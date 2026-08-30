@@ -8,9 +8,11 @@ import {
   useGetPhaseEquipmentQuery,
   useGetPhaseVehiclesQuery,
   useDeletePhaseAssignmentMutation,
+  useDeletePhaseVehicleMutation,
 } from '@/store/api/eventPhasesApi';
-import { useGetEventEmployeesQuery, useGetEventEquipmentQuery, useGetEventVehiclesQuery } from '../../../store/api/eventsApi';
+import { useGetEventEmployeesQuery, useGetEventEquipmentQuery } from '../../../store/api/eventsApi';
 import { AddPhaseAssignmentModal } from '../Modals/AddPhaseAssignmentModal';
+import { AddPhaseVehicleModal } from '../Modals/AddPhaseVehicleModal';
 import { supabase } from '@/lib/supabase/browser';
 import { roleLabels } from '../../helpers/roleLabels';
 
@@ -31,6 +33,7 @@ export const PhaseResourcesPanel: React.FC<PhaseResourcesPanelProps> = ({
 }) => {
   const [currentTab, setCurrentTab] = useState<'employees' | 'equipment' | 'vehicles'>('employees');
   const [showAddEmployeeModal, setShowAddEmployeeModal] = useState(false);
+  const [showAddVehicleModal, setShowAddVehicleModal] = useState(false);
 
   // Get all data from event
   const { data: eventEquipment = [], isLoading: equipmentLoading } = useGetEventEquipmentQuery(eventId, {
@@ -39,17 +42,15 @@ export const PhaseResourcesPanel: React.FC<PhaseResourcesPanelProps> = ({
   const { data: eventEmployees = [], isLoading: teamLoading } = useGetEventEmployeesQuery(eventId, {
     skip: !eventId,
   });
-  const { data: eventVehicles = [], isLoading: vehiclesLoading } = useGetEventVehiclesQuery(eventId, {
-    skip: !eventId,
-  });
 
   // Get phase-specific assignments
   const { data: phaseAssignments = [], refetch: refetchAssignments } = useGetPhaseAssignmentsQuery(phase.id);
   const { data: phaseEquipment = [] } = useGetPhaseEquipmentQuery(phase.id);
-  const { data: phaseVehicles = [] } = useGetPhaseVehiclesQuery(phase.id);
+  const { data: phaseVehicles = [], refetch: refetchVehicles } = useGetPhaseVehiclesQuery(phase.id);
 
   // Mutations
   const [deleteAssignment] = useDeletePhaseAssignmentMutation();
+  const [deleteVehicle] = useDeletePhaseVehicleMutation();
 
   // Realtime subscription for phase assignments
   useEffect(() => {
@@ -69,12 +70,24 @@ export const PhaseResourcesPanel: React.FC<PhaseResourcesPanelProps> = ({
           refetchAssignments();
         }
       )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'event_phase_vehicles',
+          filter: `phase_id=eq.${phase.id}`,
+        },
+        () => {
+          refetchVehicles();
+        },
+      )
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [phase?.id, refetchAssignments]);
+  }, [phase?.id, refetchAssignments, refetchVehicles]);
 
   // Handlers
   const handleRemoveEmployee = async (assignmentId: string) => {
@@ -85,6 +98,16 @@ export const PhaseResourcesPanel: React.FC<PhaseResourcesPanelProps> = ({
     } catch (error) {
       console.error('Failed to remove employee:', error);
       alert('Nie udało się usunąć pracownika z fazy');
+    }
+  };
+
+  const handleRemoveVehicle = async (assignmentId: string) => {
+    if (!confirm('Czy na pewno chcesz usunąć ten pojazd z fazy?')) return;
+    try {
+      await deleteVehicle({ id: assignmentId, phase_id: phase.id }).unwrap();
+    } catch (error) {
+      console.error('Failed to remove vehicle:', error);
+      alert('Nie udało się usunąć pojazdu z fazy');
     }
   };
 
@@ -123,18 +146,8 @@ export const PhaseResourcesPanel: React.FC<PhaseResourcesPanelProps> = ({
   }, [eventEmployees, phaseAssignments]);
 
   const filteredVehicles = useMemo(() => {
-    if (!eventVehicles) return [];
-    const phaseStart = new Date(phase.start_time);
-    const phaseEnd = new Date(phase.end_time);
-
-    return eventVehicles.filter(vehicle => {
-      if (!vehicle.assigned_start || !vehicle.assigned_end) return false;
-      const vehicleStart = new Date(vehicle.assigned_start);
-      const vehicleEnd = new Date(vehicle.assigned_end);
-
-      return (vehicleStart <= phaseEnd && vehicleEnd >= phaseStart);
-    });
-  }, [eventVehicles, phase.start_time, phase.end_time]);
+    return phaseVehicles;
+  }, [phaseVehicles]);
 
   const phaseColor = phase.color || phase.phase_type?.color || '#3b82f6';
 
@@ -182,7 +195,7 @@ export const PhaseResourcesPanel: React.FC<PhaseResourcesPanelProps> = ({
     { id: 'vehicles' as const, label: 'Pojazdy', icon: Car, count: filteredVehicles.length },
   ];
 
-  const isLoading = teamLoading || equipmentLoading || vehiclesLoading;
+  const isLoading = teamLoading || equipmentLoading;
 
   return (
     <div className="fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col border-l border-[#d3bb73]/20 bg-[#1c1f33] shadow-2xl">
@@ -397,9 +410,7 @@ export const PhaseResourcesPanel: React.FC<PhaseResourcesPanelProps> = ({
                 <div className="border-b border-[#d3bb73]/10 p-4">
                   <button
                     className="flex w-full items-center justify-center gap-2 rounded-lg border border-[#d3bb73]/30 bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
-                    onClick={() => {
-                      alert('Modal do dodawania pojazdów - w trakcie implementacji');
-                    }}
+                    onClick={() => setShowAddVehicleModal(true)}
                   >
                     <Plus className="h-4 w-4" />
                     Przypisz do fazy
@@ -441,6 +452,14 @@ export const PhaseResourcesPanel: React.FC<PhaseResourcesPanelProps> = ({
                                 </p>
                               )}
                             </div>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveVehicle(vehicleAssignment.id)}
+                              className="rounded-lg p-2 text-[#e5e4e2]/50 transition-colors hover:bg-red-500/15 hover:text-red-300"
+                              title="Usuń pojazd z fazy"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
                           </div>
                         </div>
                       );
@@ -467,6 +486,13 @@ export const PhaseResourcesPanel: React.FC<PhaseResourcesPanelProps> = ({
         phase={phase}
         eventId={eventId}
         eventOffers={eventOffers}
+      />
+
+      <AddPhaseVehicleModal
+        open={showAddVehicleModal}
+        onClose={() => setShowAddVehicleModal(false)}
+        phase={phase}
+        eventId={eventId}
       />
     </div>
   );

@@ -8,6 +8,7 @@ interface InvoiceNumberInputProps {
   invoiceType: 'vat' | 'proforma' | 'advance' | 'corrective';
   value: string;
   onChange: (value: string) => void;
+  onAutoModeChange: (isAuto: boolean) => void;
   myCompanyId: string;
 }
 
@@ -15,6 +16,7 @@ export default function InvoiceNumberInput({
   invoiceType,
   value,
   onChange,
+  onAutoModeChange,
   myCompanyId,
 }: InvoiceNumberInputProps) {
   const [loading, setLoading] = useState(false);
@@ -55,6 +57,7 @@ export default function InvoiceNumberInput({
 
       if (nextNumber) {
         onChange(nextNumber);
+        onAutoModeChange(true);
         setLastInvoiceNumber(nextNumber);
       }
     } catch (err) {
@@ -126,6 +129,7 @@ export default function InvoiceNumberInput({
             value={value}
             onChange={(e) => {
               onChange(e.target.value);
+              onAutoModeChange(false);
               setLastInvoiceNumber('');
             }}
             placeholder="FV/001/2026"

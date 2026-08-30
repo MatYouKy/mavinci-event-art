@@ -67,6 +67,111 @@ BEGIN
   GET DIAGNOSTICS v_affected = ROW_COUNT;
   v_reassigned := v_reassigned + v_affected;
 
+  -- Active operational responsibility is transferred to the administrator.
+  -- When the administrator is already assigned, remove only the duplicate row.
+  DELETE FROM public.employee_assignments old_assignment
+  WHERE old_assignment.employee_id = p_employee_id
+    AND EXISTS (
+      SELECT 1
+      FROM public.employee_assignments replacement_assignment
+      WHERE replacement_assignment.event_id = old_assignment.event_id
+        AND replacement_assignment.employee_id = v_admin_id
+    );
+  GET DIAGNOSTICS v_affected = ROW_COUNT;
+  v_removed_relations := v_removed_relations + v_affected;
+
+  UPDATE public.employee_assignments
+  SET employee_id = v_admin_id
+  WHERE employee_id = p_employee_id;
+  GET DIAGNOSTICS v_affected = ROW_COUNT;
+  v_reassigned := v_reassigned + v_affected;
+
+  DELETE FROM public.event_employees old_assignment
+  WHERE old_assignment.employee_id = p_employee_id
+    AND EXISTS (
+      SELECT 1
+      FROM public.event_employees replacement_assignment
+      WHERE replacement_assignment.event_id = old_assignment.event_id
+        AND replacement_assignment.employee_id = v_admin_id
+    );
+  GET DIAGNOSTICS v_affected = ROW_COUNT;
+  v_removed_relations := v_removed_relations + v_affected;
+
+  UPDATE public.event_employees
+  SET employee_id = v_admin_id
+  WHERE employee_id = p_employee_id;
+  GET DIAGNOSTICS v_affected = ROW_COUNT;
+  v_reassigned := v_reassigned + v_affected;
+
+  DELETE FROM public.task_assignees old_assignment
+  WHERE old_assignment.employee_id = p_employee_id
+    AND EXISTS (
+      SELECT 1
+      FROM public.task_assignees replacement_assignment
+      WHERE replacement_assignment.task_id = old_assignment.task_id
+        AND replacement_assignment.employee_id = v_admin_id
+    );
+  GET DIAGNOSTICS v_affected = ROW_COUNT;
+  v_removed_relations := v_removed_relations + v_affected;
+
+  UPDATE public.task_assignees
+  SET employee_id = v_admin_id
+  WHERE employee_id = p_employee_id;
+  GET DIAGNOSTICS v_affected = ROW_COUNT;
+  v_reassigned := v_reassigned + v_affected;
+
+  DELETE FROM public.meeting_participants old_participant
+  WHERE old_participant.employee_id = p_employee_id
+    AND EXISTS (
+      SELECT 1
+      FROM public.meeting_participants replacement_participant
+      WHERE replacement_participant.meeting_id = old_participant.meeting_id
+        AND replacement_participant.employee_id = v_admin_id
+    );
+  GET DIAGNOSTICS v_affected = ROW_COUNT;
+  v_removed_relations := v_removed_relations + v_affected;
+
+  UPDATE public.meeting_participants
+  SET employee_id = v_admin_id
+  WHERE employee_id = p_employee_id;
+  GET DIAGNOSTICS v_affected = ROW_COUNT;
+  v_reassigned := v_reassigned + v_affected;
+
+  DELETE FROM public.event_phase_assignments old_assignment
+  WHERE old_assignment.employee_id = p_employee_id
+    AND EXISTS (
+      SELECT 1
+      FROM public.event_phase_assignments replacement_assignment
+      WHERE replacement_assignment.phase_id = old_assignment.phase_id
+        AND replacement_assignment.employee_id = v_admin_id
+    );
+  GET DIAGNOSTICS v_affected = ROW_COUNT;
+  v_removed_relations := v_removed_relations + v_affected;
+
+  UPDATE public.event_phase_assignments
+  SET employee_id = v_admin_id
+  WHERE employee_id = p_employee_id;
+  GET DIAGNOSTICS v_affected = ROW_COUNT;
+  v_reassigned := v_reassigned + v_affected;
+
+  UPDATE public.tasks
+  SET assigned_to = v_admin_id
+  WHERE assigned_to = p_employee_id;
+  GET DIAGNOSTICS v_affected = ROW_COUNT;
+  v_reassigned := v_reassigned + v_affected;
+
+  UPDATE public.contact_messages
+  SET assigned_to = v_admin_id
+  WHERE assigned_to = p_employee_id;
+  GET DIAGNOSTICS v_affected = ROW_COUNT;
+  v_reassigned := v_reassigned + v_affected;
+
+  UPDATE public.event_phase_vehicles
+  SET driver_id = v_admin_id
+  WHERE driver_id = p_employee_id;
+  GET DIAGNOSTICS v_affected = ROW_COUNT;
+  v_reassigned := v_reassigned + v_affected;
+
   -- Resolve every single-column FK that still blocks deleting employees.
   -- CASCADE and SET NULL relations are intentionally left to PostgreSQL.
   FOR v_fk IN

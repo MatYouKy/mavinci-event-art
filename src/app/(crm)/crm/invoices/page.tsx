@@ -59,11 +59,11 @@ type SortKey =
 type SortDirection = 'asc' | 'desc';
 
 interface Invoice {
-  ksef_status: string;
+  ksef_status: string | null;
   id: string;
   invoice_number: string;
   invoice_type: 'vat' | 'proforma' | 'advance' | 'corrective' | 'final';
-  status: 'draft' | 'issued' | 'sent' | 'paid' | 'overdue' | 'cancelled';
+  status: 'draft' | 'proforma' | 'issued' | 'sent' | 'paid' | 'overdue' | 'cancelled';
   issue_date: string;
   sale_date: string;
   payment_due_date: string;
@@ -76,6 +76,9 @@ interface Invoice {
   pdf_url: string | null;
   event_id: string | null;
   organization_id: string | null;
+  my_company_id: string | null;
+  created_by: string | null;
+  is_proforma?: boolean;
   created_at: string;
   event?: {
     title: string;
@@ -227,6 +230,7 @@ export default function InvoicesPage() {
   const [sortKey, setSortKey] = useState<SortKey>('issue_date');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [showSummaryDrawer, setShowSummaryDrawer] = useState(false);
+  const lastInvoiceLoadErrorRef = useRef<string | null>(null);
 
   const {
     canManageModule,
@@ -396,7 +400,8 @@ export default function InvoicesPage() {
           `
           *,
           event:events(name),
-          organization:organizations(name),
+          organization:organizations!invoices_organization_id_fkey(name),
+          service_recipient_organization:organizations!invoices_service_recipient_organization_id_fkey(name),
           my_company:my_companies(id, name)
         `,
         )
@@ -410,9 +415,15 @@ export default function InvoicesPage() {
 
       if (error) {
         console.error('Error fetching invoices:', error);
+        const errorKey = `${error.code || 'unknown'}:${error.message}`;
+        if (lastInvoiceLoadErrorRef.current !== errorKey) {
+          lastInvoiceLoadErrorRef.current = errorKey;
+          showSnackbar('Nie udało się pobrać lokalnych faktur i proform.', 'error');
+        }
         return;
       }
 
+      lastInvoiceLoadErrorRef.current = null;
       setInvoices(data || []);
     } catch (err) {
       console.error('Error:', err);
@@ -427,6 +438,11 @@ export default function InvoicesPage() {
         label: 'Szkic',
         color: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
         icon: Clock,
+      },
+      proforma: {
+        label: 'Proforma',
+        color: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30',
+        icon: FileText,
       },
       issued: {
         label: 'Wystawiona',
@@ -473,6 +489,7 @@ export default function InvoicesPage() {
       vat: 'Faktura VAT',
       proforma: 'Faktura Proforma',
       advance: 'Zaliczkowa',
+      final: 'Końcowa',
       corrective: 'Korygująca',
     };
 
@@ -512,7 +529,7 @@ export default function InvoicesPage() {
         selectedCompanyIds.size === 0 || selectedCompanyIds.has((invoice as any).my_company_id);
 
       if (!isAdmin) {
-        const cid = (invoice as any).my_company_id as string | null;
+        const cid = invoice.my_company_id;
         if (allowedCompanyIds && (!cid || !allowedCompanyIds.includes(cid))) return false;
 
         if (hasAnyInvoiceCompanyPerm) {
@@ -522,7 +539,13 @@ export default function InvoicesPage() {
           const canViewOwn = canViewAll || scopes.includes('view_own') || scopes.includes('issue');
 
           if (!canViewOwn) return false;
-          if (!canViewAll && (invoice as any).created_by !== sessionUserId) return false;
+          if (
+            !canViewAll &&
+            invoice.created_by !== currentEmployee?.id &&
+            invoice.created_by !== sessionUserId
+          ) {
+            return false;
+          }
         } else if (!canManageInvoices) {
           return false;
         }
@@ -571,6 +594,7 @@ export default function InvoicesPage() {
     allowedCompanyIds,
     hasAnyInvoiceCompanyPerm,
     invoiceCompanyPerms,
+    currentEmployee?.id,
     sessionUserId,
     canManageInvoices,
     sortKey,
@@ -772,6 +796,11 @@ export default function InvoicesPage() {
             <>
               {/* Original content */}
 
+              <div className="mb-4 rounded-xl border border-[#d3bb73]/15 bg-[#d3bb73]/5 px-4 py-3 text-sm text-[#e5e4e2]/70">
+                Lokalny rejestr przechowuje proformy, szkice, wizualizacje PDF oraz dokumenty
+                oczekujące na wysłanie do KSeF. KSeF uzupełnia ten rejestr, ale go nie zastępuje.
+              </div>
+
               {/* Stats */}
               <div className="mb-6 overflow-hidden rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33]">
                 <button
@@ -920,6 +949,7 @@ export default function InvoicesPage() {
                         <option value="vat">Faktura VAT</option>
                         <option value="proforma">Proforma</option>
                         <option value="advance">Zaliczkowa</option>
+                        <option value="final">Końcowa</option>
                         <option value="corrective">Korygująca</option>
                       </select>
                     </div>
@@ -933,6 +963,7 @@ export default function InvoicesPage() {
                       >
                         <option value="all">Wszystkie statusy</option>
                         <option value="draft">Szkic</option>
+                        <option value="proforma">Proforma</option>
                         <option value="issued">Wystawiona</option>
                         <option value="sent">Wysłana</option>
                         <option value="paid">Opłacona</option>

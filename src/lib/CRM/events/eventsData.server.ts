@@ -64,7 +64,9 @@ export async function fetchEventsInitialServer(): Promise<{events: EventRow[], c
   .eq('id', userId)
   .maybeSingle();
 
-if (viewModeError) throw viewModeError;
+if (viewModeError) {
+  console.warn('[fetchEventsInitialServer] Could not load events view preference:', viewModeError);
+}
 
   // Uwaga: Ty masz RLS i polityki na events/tasks/employees.
   // To oznacza: jeśli user nie ma uprawnień, select i tak wróci pusty.
@@ -75,7 +77,7 @@ if (viewModeError) throw viewModeError;
     .select(`
       id, name, event_date, event_end_date, location, status, category_id,
       expected_revenue, created_by, created_at, my_company_id,
-      organizations(name, alias),
+      organizations:organizations!events_organization_id_fkey(name, alias),
       contacts(first_name, last_name),
       event_categories(name, color),
       locations(name, formatted_address, address, city, postal_code),
@@ -99,7 +101,9 @@ if (viewModeError) throw viewModeError;
   .order('name', { ascending: true });
 
 
-  if (categoriesError) throw categoriesError;
+  if (categoriesError) {
+    console.warn('[fetchEventsInitialServer] Could not load event categories:', categoriesError);
+  }
 
   return {events: data ?? [], categories: categories ?? [], viewMode: viewMode?.preferences as ViewMode | null} as unknown as {events: EventRow[], categories: EventCategoryRow[], viewMode: ViewMode | null};
 }

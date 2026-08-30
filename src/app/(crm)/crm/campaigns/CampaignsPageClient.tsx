@@ -68,6 +68,7 @@ type Campaign = {
   track_opens: boolean;
   track_clicks: boolean;
   updated_at: string;
+  brochure_generation_id: string | null;
 };
 
 type AudienceRules = {
@@ -76,6 +77,7 @@ type AudienceRules = {
   regions?: string[];
   budget_min?: number;
   budget_max?: number;
+  business_types?: string[];
 };
 
 type Segment = { id: string; name: string; color: string; description: string | null };
@@ -132,6 +134,7 @@ const exclusionLabels: Record<string, string> = {
   duplicate_email: 'Duplikat adresu',
   consent_changed: 'Zmieniona zgoda',
   campaign_cancelled: 'Kampania anulowana',
+  audience_business_type: 'Inny rodzaj organizacji',
 };
 
 const recipientStatusLabels: Record<string, string> = {
@@ -170,6 +173,9 @@ const toDateTimeInput = (value: string | null) => {
 };
 
 export default function CampaignsPageClient() {
+  const [requestedCampaignId] = useState(() => typeof window === 'undefined'
+    ? null
+    : new URLSearchParams(window.location.search).get('campaign'));
   const { showSnackbar } = useSnackbar();
   const { employee, loading: employeeLoading, isAdmin, hasScope } = useCurrentEmployee();
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
@@ -217,9 +223,13 @@ export default function CampaignsPageClient() {
     setSegments((segmentRes.data || []) as Segment[]);
     setAccounts((accountRes.data || []) as EmailAccount[]);
     setTemplates((templateRes.data || []) as Template[]);
-    setSelectedId((current) => current && loadedCampaigns.some((item) => item.id === current) ? current : loadedCampaigns[0]?.id || null);
+    setSelectedId((current) => {
+      if (current && loadedCampaigns.some((item) => item.id === current)) return current;
+      if (requestedCampaignId && loadedCampaigns.some((item) => item.id === requestedCampaignId)) return requestedCampaignId;
+      return loadedCampaigns[0]?.id || null;
+    });
     if (!quiet) setLoading(false);
-  }, [canView, showSnackbar]);
+  }, [canView, requestedCampaignId, showSnackbar]);
 
   const loadRecipients = useCallback(async (campaignId: string) => {
     const { data, error } = await supabase
@@ -452,6 +462,7 @@ export default function CampaignsPageClient() {
                 <button key={campaign.id} type="button" onClick={() => setSelectedId(campaign.id)} className={`w-full rounded-lg border p-3 text-left transition-colors ${selectedId === campaign.id ? 'border-[#d3bb73]/45 bg-[#d3bb73]/10' : 'border-transparent bg-[#0f1119]/65 hover:border-[#d3bb73]/20'}`}>
                   <div className="flex items-start justify-between gap-2"><span className="min-w-0 truncate text-sm font-medium">{campaign.name}</span><span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] ${statusClasses[campaign.status]}`}>{statusLabels[campaign.status]}</span></div>
                   <div className="mt-2 truncate text-xs text-[#e5e4e2]/40">{campaign.subject || 'Brak tematu'}</div>
+                  {campaign.brochure_generation_id && <div className="mt-2 inline-flex rounded-full border border-violet-400/20 bg-violet-400/10 px-2 py-0.5 text-[10px] text-violet-200">Broszura PDF · szkic</div>}
                   <div className="mt-3 flex gap-3 text-[11px] text-[#e5e4e2]/35"><span>{campaign.eligible_count} odbiorców</span><span>{formatDate(campaign.updated_at)}</span></div>
                 </button>
               ))}
@@ -464,7 +475,7 @@ export default function CampaignsPageClient() {
             <div className="min-w-0 space-y-5">
               <section className={`${cardClass} p-4 md:p-5`}>
                 <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div><div className="flex items-center gap-2"><span className={`rounded-full border px-2.5 py-1 text-xs ${statusClasses[draft.status]}`}>{statusLabels[draft.status]}</span>{draft.test_sent_at && <span className="inline-flex items-center gap-1 text-xs text-emerald-300"><CheckCircle2 className="h-3.5 w-3.5" /> Test {formatDate(draft.test_sent_at)}</span>}</div></div>
+                  <div><div className="flex flex-wrap items-center gap-2"><span className={`rounded-full border px-2.5 py-1 text-xs ${statusClasses[draft.status]}`}>{statusLabels[draft.status]}</span>{draft.brochure_generation_id && <span className="rounded-full border border-violet-400/20 bg-violet-400/10 px-2.5 py-1 text-xs text-violet-200">Przypisana broszura PDF</span>}{draft.test_sent_at && <span className="inline-flex items-center gap-1 text-xs text-emerald-300"><CheckCircle2 className="h-3.5 w-3.5" /> Test {formatDate(draft.test_sent_at)}</span>}</div></div>
                   <button type="button" onClick={saveCampaign} disabled={!isEditable || Boolean(busyAction)} className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] disabled:cursor-not-allowed disabled:opacity-40">{busyAction === 'save' ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Zapisz wersję</button>
                 </div>
 
@@ -520,8 +531,9 @@ export default function CampaignsPageClient() {
                   <h2 className="flex items-center gap-2 text-lg font-light"><TestTube2 className="h-5 w-5 text-[#d3bb73]" /> Test, zatwierdzenie i wysyłka</h2>
                   <div className="mt-4 flex gap-2"><input type="email" value={testEmail} onChange={(event) => setTestEmail(event.target.value)} placeholder="Adres odbiorcy testowego" disabled={!canManage || !['draft', 'pending_approval'].includes(draft.status)} className={inputClass} /><button type="button" onClick={sendTest} disabled={!testEmail || !canManage || !['draft', 'pending_approval'].includes(draft.status) || Boolean(busyAction)} className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-[#d3bb73]/25 px-3 text-sm text-[#d3bb73] disabled:opacity-40">{busyAction === 'test' ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Test</button></div>
                   <div className="mt-4 space-y-2 text-xs text-[#e5e4e2]/50"><div className="flex items-center gap-2">{draft.eligible_count > 0 ? <CheckCircle2 className="h-4 w-4 text-emerald-300" /> : <AlertTriangle className="h-4 w-4 text-amber-300" />} Grupa odbiorców została przeliczona</div><div className="flex items-center gap-2">{draft.test_sent_at ? <CheckCircle2 className="h-4 w-4 text-emerald-300" /> : <AlertTriangle className="h-4 w-4 text-amber-300" />} Wiadomość testowa została wysłana</div></div>
+                  {draft.brochure_generation_id && <div className="mt-4 rounded-lg border border-violet-400/20 bg-violet-400/10 p-3 text-xs leading-5 text-violet-100">To bezpieczny szkic powiązany z konkretną wersją PDF. Zatwierdzenie i masowa wysyłka są zablokowane do czasu aktywacji kontrolowanej dystrybucji linku.</div>}
                   <div className="mt-5 flex flex-wrap gap-2">
-                    {draft.status === 'draft' && canManage && <button type="button" onClick={submitForApproval} disabled={Boolean(busyAction)} className="inline-flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2.5 text-sm font-medium text-[#1c1f33] disabled:opacity-40"><ShieldCheck className="h-4 w-4" /> Przekaż do zatwierdzenia</button>}
+                    {draft.status === 'draft' && canManage && <button type="button" onClick={submitForApproval} disabled={Boolean(busyAction) || Boolean(draft.brochure_generation_id)} className="inline-flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2.5 text-sm font-medium text-[#1c1f33] disabled:opacity-40"><ShieldCheck className="h-4 w-4" /> Przekaż do zatwierdzenia</button>}
                     {draft.status === 'pending_approval' && canApprove && <button type="button" onClick={approveCampaign} disabled={Boolean(busyAction)} className="inline-flex items-center gap-2 rounded-lg bg-emerald-400 px-4 py-2.5 text-sm font-medium text-[#0f1119] disabled:opacity-40"><ShieldCheck className="h-4 w-4" /> Zatwierdź kampanię</button>}
                   </div>
 

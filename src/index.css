@@ -8,6 +8,23 @@ html, body {
   color-scheme: dark; /* ważne – eliminuje biały błysk w Safari */
 }
 
+/*
+ * CRM przewija wyłącznie własny obszar <main>. Zerowanie wymiarów i
+ * przewijania dokumentu zapobiega powstawaniu kilkupikselowego pasa nad
+ * warstwami `position: fixed` (widocznego szczególnie przy innym zoomie
+ * przeglądarki). Dzięki temu backdrop każdego modala zaczyna się dokładnie
+ * w lewym górnym rogu viewportu.
+ */
+html.crm-document,
+body.crm-body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background-color: #0f1119;
+}
+
 @layer utilities {
   .scrollbar-hide {
     -ms-overflow-style: none;

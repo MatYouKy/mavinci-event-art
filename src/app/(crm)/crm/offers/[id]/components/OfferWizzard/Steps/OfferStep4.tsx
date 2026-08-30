@@ -2,16 +2,7 @@
 
 import { Plus, Trash2, Wrench, Users, Pencil, Check, X } from 'lucide-react';
 import { useState } from 'react';
-
-interface OfferItem {
-  id: string;
-  name: string;
-  quantity: number;
-  unit_price: number; // netto
-  vat_rate?: number;
-  total: number; // netto
-  description?: string;
-}
+import type { IOfferItem } from '@/app/(crm)/crm/offers/types';
 
 export interface CustomItem {
   name: string;
@@ -30,11 +21,21 @@ interface OfferStep4Props {
   equipmentList: any[];
   subcontractors: any[];
   addCustomItem: () => void;
-  updateOfferItem: (itemId: string, field: string, value: any) => void;
+  updateOfferItem: (itemId: string, patch: Partial<IOfferItem>) => void | Promise<void>;
   removeOfferItem: (itemId: string) => void;
   calculateTotal: () => number;
   customItem: CustomItem;
-  offerItems: OfferItem[];
+  offerItems: IOfferItem[];
+  pricing: {
+    listNet: number;
+    targetNet: number;
+    discountAmount: number;
+    discountPercent: number;
+    taxAmount: number;
+    gross: number;
+  };
+  targetNetPriceInput: string;
+  setTargetNetPriceInput: (value: string) => void;
   setCustomItem: (item: CustomItem) => void;
 }
 
@@ -53,17 +54,17 @@ export default function OfferStep4({
   calculateTotal,
   customItem,
   offerItems,
+  pricing,
+  targetNetPriceInput,
+  setTargetNetPriceInput,
   setCustomItem,
 }: OfferStep4Props) {
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
-  const [editedItem, setEditedItem] = useState<OfferItem | null>(null);
+  const [editedItem, setEditedItem] = useState<IOfferItem | null>(null);
 
-  const startEditingItem = (item: OfferItem) => {
+  const startEditingItem = (item: IOfferItem) => {
     setEditingItemId(item.id);
-    setEditedItem({
-      ...item,
-      vat_rate: item.vat_rate ?? 23,
-    });
+    setEditedItem({ ...item });
   };
 
   const cancelEditingItem = () => {
@@ -71,14 +72,22 @@ export default function OfferStep4({
     setEditedItem(null);
   };
 
-  const saveEditedItem = () => {
+  const saveEditedItem = async () => {
     if (!editedItem) return;
 
-    updateOfferItem(editedItem.id, 'name', editedItem.name);
-    updateOfferItem(editedItem.id, 'description', editedItem.description ?? '');
-    updateOfferItem(editedItem.id, 'quantity', editedItem.quantity);
-    updateOfferItem(editedItem.id, 'unit_price', editedItem.unit_price);
-    updateOfferItem(editedItem.id, 'vat_rate', editedItem.vat_rate ?? 23);
+    const quantity = Number.isFinite(editedItem.quantity)
+      ? Math.max(1, editedItem.quantity)
+      : 1;
+    const unitPrice = Number.isFinite(editedItem.unit_price)
+      ? Math.max(0, editedItem.unit_price)
+      : 0;
+
+    await updateOfferItem(editedItem.id, {
+      name: editedItem.name.trim() || 'Pozycja oferty',
+      description: editedItem.description?.trim() || '',
+      quantity,
+      unit_price: unitPrice,
+    });
 
     setEditingItemId(null);
     setEditedItem(null);
@@ -179,7 +188,7 @@ export default function OfferStep4({
             const editable = isEditing && editedItem ? editedItem : item;
 
             const netto = editable.quantity * editable.unit_price;
-            const vatRate = editable.vat_rate ?? 23;
+            const vatRate = 23;
             const vatValue = netto * (vatRate / 100);
             const brutto = netto + vatValue;
             return (
@@ -204,7 +213,7 @@ export default function OfferStep4({
 
                         <input
                           type="number"
-                          min={0}
+                          min={1}
                           step="1"
                           value={editedItem.quantity}
                           onChange={(e) =>
@@ -230,22 +239,7 @@ export default function OfferStep4({
                           className="rounded-lg border border-[#d3bb73]/20 bg-[#0f1117] px-3 py-2 text-[#e5e4e2]"
                         />
 
-                        <input
-                          type="number"
-                          min={0}
-                          step="1"
-                          value={editedItem.vat_rate ?? 23}
-                          onChange={(e) =>
-                            setEditedItem({
-                              ...editedItem,
-                              vat_rate: Number(e.target.value),
-                            })
-                          }
-                          className="rounded-lg border border-[#d3bb73]/20 bg-[#0f1117] px-3 py-2 text-[#e5e4e2]"
-                          placeholder="VAT %"
-                        />
-
-                        <div className="rounded-lg border border-[#d3bb73]/10 bg-black/10 px-3 py-2 text-sm text-[#e5e4e2]/80">
+                        <div className="col-span-2 rounded-lg border border-[#d3bb73]/10 bg-black/10 px-3 py-2 text-sm text-[#e5e4e2]/80">
                           Netto: {netto.toFixed(2)} zł
                           <br />
                           VAT: {vatValue.toFixed(2)} zł
@@ -268,7 +262,7 @@ export default function OfferStep4({
                             Ilość: {item.quantity} × {item.unit_price.toFixed(2)} zł netto
                           </div>
                           <div className="font-medium text-[#d3bb73]">
-                            Netto: {item.total.toFixed(2)} zł
+                            Netto: {item.subtotal.toFixed(2)} zł
                           </div>
                         </div>
                       </>
@@ -327,11 +321,52 @@ export default function OfferStep4({
       {/* Total */}
       {offerItems.length > 0 && (
         <div className="rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] p-4">
-          <div className="flex items-center justify-between">
-            <span className="text-lg font-medium text-[#e5e4e2]">Suma całkowita:</span>
-            <span className="text-2xl font-bold text-[#d3bb73]">
-              {calculateTotal().toFixed(2)} zł
-            </span>
+          <div className="grid gap-4 lg:grid-cols-[1fr_260px]">
+            <div className="space-y-2 text-sm">
+              <div className="flex items-center justify-between text-[#e5e4e2]/70">
+                <span>Wartość pozycji netto</span>
+                <span>{pricing.listNet.toFixed(2)} zł</span>
+              </div>
+              {pricing.discountAmount > 0 && (
+                <div className="flex items-center justify-between font-medium text-green-400">
+                  <span>Rabat {pricing.discountPercent.toFixed(2)}%</span>
+                  <span>− {pricing.discountAmount.toFixed(2)} zł</span>
+                </div>
+              )}
+              <div className="flex items-center justify-between border-t border-[#d3bb73]/10 pt-2">
+                <span className="text-base font-medium text-[#e5e4e2]">Po rabacie netto</span>
+                <span className="text-xl font-bold text-[#d3bb73]">
+                  {pricing.targetNet.toFixed(2)} zł
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-[#e5e4e2]/60">
+                <span>VAT 23%</span>
+                <span>{pricing.taxAmount.toFixed(2)} zł</span>
+              </div>
+              <div className="flex items-center justify-between text-[#e5e4e2]">
+                <span>Wartość brutto</span>
+                <span className="font-semibold">{pricing.gross.toFixed(2)} zł</span>
+              </div>
+            </div>
+
+            <label className="block">
+              <span className="mb-2 block text-xs text-[#e5e4e2]/60">
+                Docelowa cena oferty netto
+              </span>
+              <input
+                type="number"
+                min={0}
+                max={pricing.listNet}
+                step="0.01"
+                value={targetNetPriceInput}
+                onChange={(event) => setTargetNetPriceInput(event.target.value)}
+                placeholder={calculateTotal().toFixed(2)}
+                className="w-full rounded-lg border border-[#d3bb73]/30 bg-[#0f1117] px-3 py-2 text-right text-lg font-semibold text-[#d3bb73] focus:border-[#d3bb73] focus:outline-none"
+              />
+              <span className="mt-1 block text-xs leading-5 text-[#e5e4e2]/45">
+                Pozostaw puste, aby nie naliczać rabatu.
+              </span>
+            </label>
           </div>
         </div>
       )}

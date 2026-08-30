@@ -17,12 +17,15 @@ import {
   Upload,
   Eye,
   Loader2,
+  Sparkles,
+  Image as ImageIcon,
 } from 'lucide-react';
 import Image from 'next/image';
 
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import { optimizeOfferImage } from '@/lib/optimizeOfferImage';
 
 import { IEventCategory } from '@/app/(crm)/crm/event-categories/types';
 import { Building2, ExternalLink } from 'lucide-react';
@@ -30,14 +33,23 @@ import { ProductEquipment } from '../components/ProductEquipment';
 import { ProductStaffSection } from '../components/ProductStuffSection';
 import { ProductContractClauses } from '../components/ProductContractClauses';
 import { ProductMavinciLiveModules } from '../components/ProductMavinciLiveModules';
+import { ProductOfferCardPreview } from '../components/ProductOfferCardPreview';
+import { ProductVariantsEditor } from '../components/ProductVariantsEditor';
 import { AddEquipmentModal } from '../modal/AddEquipmentModal';
 import { useManageProduct } from '../hooks/useManageProduct';
 import ResponsiveActionBar, { Action } from '@/components/crm/ResponsiveActionBar';
+import type { IProductVariant } from '@/app/(crm)/crm/offers/types';
 
 const toNumber = (v: string, fallback = 0) => {
   if (v === '' || v === null || v === undefined) return fallback;
   const n = Number(v);
   return Number.isFinite(n) ? n : fallback;
+};
+
+const normalizeOfferImageScale = (value: unknown) => {
+  const scale = Number(value ?? 1);
+  if (!Number.isFinite(scale)) return 1;
+  return Math.min(3, Math.max(0.5, scale));
 };
 
 interface IProduct {
@@ -52,6 +64,8 @@ interface IProduct {
   vat_rate: number;
   price_net: number;
   price_gross: number;
+  service_duration_hours?: number | null;
+  extension_price_net_per_hour?: number | null;
   cost_net: number;
   cost_gross: number;
   transport_cost_net: number;
@@ -70,18 +84,241 @@ interface IProduct {
   display_order: number;
   pdf_page_url?: string | null;
   pdf_thumbnail_url?: string | null;
+  offer_short_description?: string | null;
+  offer_description?: string | null;
+  offer_benefits?: string[] | null;
+  offer_requirements?: string[] | null;
+  offer_image_path?: string | null;
+  offer_image_alt?: string | null;
+  offer_image_position_x?: number | null;
+  offer_image_position_y?: number | null;
+  offer_image_zoom?: number | null;
+  product_page_url?: string | null;
+  offer_page_variant?: string | null;
+  offer_page_enabled?: boolean;
   recommended_contract_clauses?: string | null;
   recommended_contract_clause_category?: 'requirements' | 'obligations' | 'risks' | 'general';
   category?: IEventCategory;
   is_subcontractor_service?: boolean;
   subcontractor_id?: string | null;
   subcontractor_service_catalog_id?: string | null;
+  subcontractor_settlement_method?: 'invoice' | 'cash_documented' | 'cash_non_deductible' | null;
+  subcontractor_economic_cost?: number | null;
+  offer_product_variants?: IProductVariant[];
 }
 
 type Props = {
   initialProduct: IProduct | null;
   initialCategories: IEventCategory[];
 };
+
+type ProductOfferAiDraft = {
+  short_description: string;
+  description: string;
+  benefits: string[];
+  image_alt: string;
+};
+
+function ProductPricingPanel({
+  product,
+  canEdit,
+  onChange,
+  className = '',
+}: {
+  product: IProduct;
+  canEdit: boolean;
+  onChange: (next: IProduct) => void;
+  className?: string;
+}) {
+  const roundPrice = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
+  const vatMultiplier = 1 + Number(product.vat_rate || 0) / 100;
+  const priceNet = Number(product.price_net ?? product.base_price ?? 0);
+  const priceGross = Number(product.price_gross ?? priceNet * vatMultiplier);
+  const costNet = Number(product.cost_net ?? product.cost_price ?? 0);
+  const costGross = Number(product.cost_gross ?? costNet * vatMultiplier);
+  const transportNet = Number(product.transport_cost_net ?? product.transport_cost ?? 0);
+  const logisticsNet = Number(product.logistics_cost_net ?? product.logistics_cost ?? 0);
+  const totalCostNet = costNet + transportNet + logisticsNet;
+  const totalPriceNet = priceNet + transportNet + logisticsNet;
+  const margin = priceNet > 0 ? ((priceNet - costNet) / priceNet) * 100 : 0;
+
+  const inputClass =
+    'w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50';
+
+  return (
+    <section className={`rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6 ${className}`}>
+      <div className="mb-4 flex items-center gap-2">
+        <DollarSign className="h-5 w-5 text-[#d3bb73]" />
+        <h2 className="text-lg font-medium text-[#e5e4e2]">Ceny i koszty (netto/brutto)</h2>
+      </div>
+
+      <div className="space-y-4">
+        <div>
+          <label className="mb-2 block text-sm text-[#e5e4e2]/60">Stawka VAT (%)</label>
+          <input
+            type="number"
+            value={Number.isFinite(product.vat_rate) ? product.vat_rate : 0}
+            onChange={(event) => {
+              const vatRate = toNumber(event.target.value);
+              const multiplier = 1 + vatRate / 100;
+              onChange({
+                ...product,
+                vat_rate: vatRate,
+                price_gross: roundPrice(priceNet * multiplier),
+                cost_gross: roundPrice(costNet * multiplier),
+                transport_cost_gross: roundPrice(transportNet * multiplier),
+                logistics_cost_gross: roundPrice(logisticsNet * multiplier),
+              });
+            }}
+            disabled={!canEdit}
+            step="0.01"
+            className={inputClass}
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Cena netto</label>
+            <input
+              type="number"
+              value={roundPrice(priceNet)}
+              onChange={(event) => {
+                const value = toNumber(event.target.value);
+                onChange({
+                  ...product,
+                  price_net: value,
+                  price_gross: roundPrice(value * vatMultiplier),
+                });
+              }}
+              disabled={!canEdit}
+              step="0.01"
+              className={inputClass}
+            />
+          </div>
+          <div>
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Cena brutto</label>
+            <input
+              type="number"
+              value={roundPrice(priceGross)}
+              onChange={(event) => {
+                const value = toNumber(event.target.value);
+                onChange({
+                  ...product,
+                  price_gross: value,
+                  price_net: roundPrice(value / vatMultiplier),
+                });
+              }}
+              disabled={!canEdit}
+              step="0.01"
+              className={inputClass}
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Koszt netto</label>
+            <input
+              type="number"
+              value={roundPrice(costNet)}
+              onChange={(event) => {
+                const value = toNumber(event.target.value);
+                onChange({
+                  ...product,
+                  cost_net: value,
+                  cost_gross: roundPrice(value * vatMultiplier),
+                });
+              }}
+              disabled={!canEdit}
+              step="0.01"
+              className={inputClass}
+            />
+          </div>
+          <div>
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Koszt brutto</label>
+            <input
+              type="number"
+              value={roundPrice(costGross)}
+              onChange={(event) => {
+                const value = toNumber(event.target.value);
+                onChange({
+                  ...product,
+                  cost_gross: value,
+                  cost_net: roundPrice(value / vatMultiplier),
+                });
+              }}
+              disabled={!canEdit}
+              step="0.01"
+              className={inputClass}
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Transport netto</label>
+            <input
+              type="number"
+              value={roundPrice(transportNet)}
+              onChange={(event) => {
+                const value = toNumber(event.target.value);
+                onChange({
+                  ...product,
+                  transport_cost_net: value,
+                  transport_cost_gross: roundPrice(value * vatMultiplier),
+                });
+              }}
+              disabled={!canEdit}
+              step="0.01"
+              className={inputClass}
+            />
+          </div>
+          <div>
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Logistyka netto</label>
+            <input
+              type="number"
+              value={roundPrice(logisticsNet)}
+              onChange={(event) => {
+                const value = toNumber(event.target.value);
+                onChange({
+                  ...product,
+                  logistics_cost_net: value,
+                  logistics_cost_gross: roundPrice(value * vatMultiplier),
+                });
+              }}
+              disabled={!canEdit}
+              step="0.01"
+              className={inputClass}
+            />
+          </div>
+        </div>
+
+        <div className="space-y-2 border-t border-[#d3bb73]/10 pt-4 text-sm">
+          <div className="flex justify-between gap-4">
+            <span className="text-[#e5e4e2]/60">Marża:</span>
+            <span
+              className={
+                margin > 50 ? 'text-green-400' : margin > 30 ? 'text-yellow-400' : 'text-red-400'
+              }
+            >
+              {margin.toFixed(1)}% ({(priceNet - costNet).toLocaleString('pl-PL')} zł netto)
+            </span>
+          </div>
+          <div className="flex justify-between gap-4">
+            <span className="text-[#e5e4e2]/60">Całkowity koszt:</span>
+            <span className="text-[#e5e4e2]">{totalCostNet.toLocaleString('pl-PL')} zł netto</span>
+          </div>
+          <div className="flex justify-between gap-4">
+            <span className="text-[#e5e4e2]/60">Całkowita cena:</span>
+            <span className="font-medium text-[#d3bb73]">
+              {totalPriceNet.toLocaleString('pl-PL')} zł netto
+            </span>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
 
 export default function ProductDetailPage({ initialProduct, initialCategories }: Props) {
   const router = useRouter();
@@ -92,9 +329,7 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
   const canEdit = isAdmin || hasScope('offers_manage');
 
   const productId = params.id as string;
-
-  // hooki zależne od id zostawiamy (to nie jest "fetch produktu", tylko zależne zasoby)
-  const { items } = useManageProduct({ productId });
+  const [configurationVariantId, setConfigurationVariantId] = useState<string | null>(null);
   const [draftStaff, setDraftStaff] = useState<any[]>([]);
   const [showAddEquipmentModal, setShowAddEquipmentModal] = useState(false);
 
@@ -106,12 +341,46 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
 
   const [product, setProduct] = useState<IProduct | null>(initialProduct);
   const [tagsInput, setTagsInput] = useState<string>((initialProduct?.tags ?? []).join(', '));
+  const [productVariants, setProductVariants] = useState<IProductVariant[]>(
+    [...(initialProduct?.offer_product_variants || [])].sort(
+      (a, b) => a.display_order - b.display_order,
+    ),
+  );
+  const persistedProductVariants = useMemo(
+    () => productVariants.filter((variant) => !variant.id.startsWith('temp-')),
+    [productVariants],
+  );
+  const selectedConfigurationVariant = useMemo(
+    () => persistedProductVariants.find((variant) => variant.id === configurationVariantId) || null,
+    [persistedProductVariants, configurationVariantId],
+  );
+  useEffect(() => {
+    if (configurationVariantId && !selectedConfigurationVariant) {
+      setConfigurationVariantId(null);
+    }
+  }, [configurationVariantId, selectedConfigurationVariant]);
+  const effectiveEquipmentVariantId = selectedConfigurationVariant?.overrides_equipment
+    ? selectedConfigurationVariant.id
+    : null;
+  const { items, refetch: refetchProductEquipment } = useManageProduct({
+    productId,
+    productVariantId: effectiveEquipmentVariantId,
+  });
+  const [configuringSection, setConfiguringSection] = useState<string | null>(null);
 
   const [uploadingPdf, setUploadingPdf] = useState(false);
   const [pdfFile, setPdfFile] = useState<File | null>(null);
 
   const [uploadingThumbnail, setUploadingThumbnail] = useState(false);
   const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
+  const [uploadingOfferImage, setUploadingOfferImage] = useState(false);
+  const [offerImageFile, setOfferImageFile] = useState<File | null>(null);
+  const [offerImageSrc, setOfferImageSrc] = useState<string | null>(null);
+  const [draggingOfferImage, setDraggingOfferImage] = useState(false);
+  const [variantImageUrls, setVariantImageUrls] = useState<Record<string, string>>({});
+  const [uploadingVariantImageId, setUploadingVariantImageId] = useState<string | null>(null);
+  const [generatingOfferCopy, setGeneratingOfferCopy] = useState(false);
+  const [offerAiDraft, setOfferAiDraft] = useState<ProductOfferAiDraft | null>(null);
 
   // Subcontractors
   const [subcontractors, setSubcontractors] = useState<any[]>([]);
@@ -168,25 +437,38 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
   useEffect(() => {
     if (selectedService && subcontractorServices.length > 0) {
       const service = subcontractorServices.find((s) => s.id === selectedService);
-      if (service) {
+      if (service && product) {
         const isEquipment = (service as any)._type === 'equipment';
-        const priceGross = isEquipment
+        const isCashWithoutTaxDocument =
+          !isEquipment && (service as any).settlement_method === 'cash_non_deductible';
+        const supplierGross = isEquipment
           ? (service as any).daily_price_gross || (service as any).rental_price_per_day
           : (service as any).price_gross || (service as any).unit_price;
-        const priceNet = isEquipment
+        const supplierNet = isEquipment
           ? (service as any).daily_price_net
           : (service as any).price_net;
-        const vatRate = (service as any).vat_rate || 23;
-        const calculatedNet = priceNet || (priceGross ? priceGross / (1 + vatRate / 100) : 0);
+        const supplierVatRate = Number((service as any).vat_rate ?? 23);
+        const vatRate =
+          !isEquipment && (service as any).settlement_method !== 'invoice'
+            ? Number(product.vat_rate ?? 23) || 23
+            : supplierVatRate;
+        const calculatedNet =
+          supplierNet || (supplierGross ? supplierGross / (1 + supplierVatRate / 100) : 0);
+        const defaultSaleGross = Number((calculatedNet * (1 + vatRate / 100)).toFixed(2));
+        const economicCost = Number((service as any).economic_cost ?? calculatedNet);
 
         setProduct({
           ...product,
-          base_price: priceGross || 0,
-          price_gross: priceGross || 0,
+          base_price: calculatedNet,
+          price_gross: defaultSaleGross,
           price_net: calculatedNet,
-          cost_gross: priceGross || 0,
-          cost_net: calculatedNet,
+          cost_gross: isCashWithoutTaxDocument ? economicCost : supplierGross || 0,
+          cost_net: economicCost,
           vat_rate: vatRate,
+          subcontractor_settlement_method: isEquipment
+            ? null
+            : (service as any).settlement_method || 'invoice',
+          subcontractor_economic_cost: isEquipment ? null : economicCost,
         });
       }
     }
@@ -282,6 +564,20 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
     const price = isEquipment
       ? (item as any).rental_price_per_day || 0
       : (item as any).unit_price || 0;
+    const supplierVatRate = Number((item as any).vat_rate ?? 23);
+    const supplierNet = isEquipment
+      ? Number((item as any).daily_price_net ?? price / (1 + supplierVatRate / 100))
+      : Number((item as any).price_net ?? price / (1 + supplierVatRate / 100));
+    const economicCost = isEquipment
+      ? supplierNet
+      : Number((item as any).economic_cost ?? supplierNet);
+    const isCashWithoutTaxDocument =
+      !isEquipment && (item as any).settlement_method === 'cash_non_deductible';
+    const saleVatRate =
+      !isEquipment && (item as any).settlement_method !== 'invoice'
+        ? Number(product?.vat_rate ?? 23) || 23
+        : supplierVatRate;
+    const defaultSaleGross = Number((supplierNet * (1 + saleVatRate / 100)).toFixed(2));
 
     const unit = isEquipment ? 'dzień' : (item as any).unit || 'szt';
     const typeLabel = isEquipment ? 'Wynajem' : 'Usługa';
@@ -291,14 +587,19 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
       ...product!,
       name: `${item.name} (${organization.name})`,
       description: item.description || '',
-      price_net: price,
-      price_gross: price * 1.23,
-      cost_net: price,
-      cost_gross: price * 1.23,
+      price_net: supplierNet,
+      price_gross: defaultSaleGross,
+      cost_net: economicCost,
+      cost_gross: isCashWithoutTaxDocument ? economicCost : price,
+      vat_rate: saleVatRate,
       unit: unit,
       is_subcontractor_service: true,
       subcontractor_id: selectedSubcontractor,
       subcontractor_service_catalog_id: selectedService,
+      subcontractor_settlement_method: isEquipment
+        ? null
+        : (item as any).settlement_method || 'invoice',
+      subcontractor_economic_cost: isEquipment ? null : economicCost,
       tags: [...(product?.tags || []), 'podwykonawca', organization.name, typeLabel],
     });
 
@@ -331,6 +632,8 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
         transport_cost_gross: 0,
         logistics_cost_net: 0,
         logistics_cost_gross: 0,
+        subcontractor_settlement_method: null,
+        subcontractor_economic_cost: null,
         setup_time_hours: 0,
         teardown_time_hours: 0,
         unit: 'szt',
@@ -341,6 +644,20 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
         tags: [],
         is_active: true,
         display_order: 0,
+        offer_short_description: '',
+        offer_description: '',
+        service_duration_hours: null,
+        extension_price_net_per_hour: null,
+        offer_benefits: [],
+        offer_requirements: [],
+        offer_image_path: null,
+        offer_image_alt: '',
+        offer_image_position_x: 50,
+        offer_image_position_y: 25,
+        offer_image_zoom: 1,
+        product_page_url: '',
+        offer_page_variant: 'default',
+        offer_page_enabled: true,
       });
       setLoading(false);
       return;
@@ -375,6 +692,53 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
     setThumbSrc(thumbPublicUrl);
   }, [thumbPublicUrl]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadOfferImage = async () => {
+      if (!product?.offer_image_path) {
+        setOfferImageSrc(null);
+        return;
+      }
+
+      const { data } = await bucket.createSignedUrl(product.offer_image_path, 3600);
+      if (!cancelled) setOfferImageSrc(data?.signedUrl || null);
+    };
+
+    loadOfferImage();
+    return () => {
+      cancelled = true;
+    };
+  }, [bucket, product?.offer_image_path]);
+
+  const variantImageSignature = useMemo(
+    () =>
+      productVariants.map((variant) => `${variant.id}:${variant.offer_image_path || ''}`).join('|'),
+    [productVariants],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadVariantImages = async () => {
+      const entries = await Promise.all(
+        productVariants.map(async (variant) => {
+          if (!variant.offer_image_path || variant.id.startsWith('temp-')) return null;
+          const { data } = await bucket.createSignedUrl(variant.offer_image_path, 3600);
+          return data?.signedUrl ? ([variant.id, data.signedUrl] as const) : null;
+        }),
+      );
+      if (!cancelled) {
+        setVariantImageUrls(Object.fromEntries(entries.filter(Boolean) as Array<[string, string]>));
+      }
+    };
+
+    loadVariantImages();
+    return () => {
+      cancelled = true;
+    };
+  }, [bucket, variantImageSignature]);
+
   // -----------------------------
   // FETCH (ONLY ACTIONS / FALLBACK)
   // -----------------------------
@@ -387,6 +751,7 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
           `
           *,
           category:event_categories(id, name),
+          offer_product_variants(*),
           subcontractor:organizations(id, name)
         `,
         )
@@ -394,11 +759,135 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
         .maybeSingle();
 
       if (error) throw error;
-      if (data) setProduct(data);
+      if (data) {
+        setProduct(data);
+        setProductVariants(
+          [...(data.offer_product_variants || [])].sort(
+            (a: IProductVariant, b: IProductVariant) => a.display_order - b.display_order,
+          ),
+        );
+      }
     } catch (err: any) {
       showSnackbar(err.message || 'Błąd pobierania produktu', 'error');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const variantOverrideField = {
+    equipment: 'overrides_equipment',
+    staff: 'overrides_staff',
+    mavinci_live: 'overrides_mavinci_live',
+    contract_clauses: 'overrides_contract_clauses',
+  } as const;
+
+  const cloneBaseConfigurationRows = async (
+    table: 'offer_product_equipment' | 'offer_product_staff' | 'offer_product_mavinci_live_modules',
+    variantId: string,
+  ) => {
+    const { data, error } = await supabase
+      .from(table)
+      .select('*')
+      .eq('product_id', productId)
+      .is('product_variant_id', null);
+    if (error) throw error;
+    if (!data?.length) return;
+
+    const rows = data.map((row: any) => {
+      const { id: _id, created_at: _createdAt, updated_at: _updatedAt, ...copy } = row;
+      return { ...copy, product_id: productId, product_variant_id: variantId };
+    });
+    const { error: insertError } = await supabase.from(table).insert(rows);
+    if (insertError) throw insertError;
+  };
+
+  const handleCustomizeVariantSection = async (section: keyof typeof variantOverrideField) => {
+    if (!selectedConfigurationVariant || configuringSection) return;
+    const variantId = selectedConfigurationVariant.id;
+    const overrideField = variantOverrideField[section];
+
+    try {
+      setConfiguringSection(section);
+      if (section === 'equipment') {
+        await cloneBaseConfigurationRows('offer_product_equipment', variantId);
+      } else if (section === 'staff') {
+        await cloneBaseConfigurationRows('offer_product_staff', variantId);
+      } else if (section === 'mavinci_live') {
+        await cloneBaseConfigurationRows('offer_product_mavinci_live_modules', variantId);
+      }
+
+      const patch: Record<string, unknown> = { [overrideField]: true };
+      if (section === 'contract_clauses') {
+        patch.recommended_contract_clauses = product?.recommended_contract_clauses || null;
+        patch.recommended_contract_clause_category =
+          product?.recommended_contract_clause_category || 'requirements';
+      }
+
+      const { error } = await supabase
+        .from('offer_product_variants')
+        .update(patch)
+        .eq('id', variantId)
+        .eq('product_id', productId);
+      if (error) throw error;
+
+      setProductVariants((current) =>
+        current.map((variant) => (variant.id === variantId ? { ...variant, ...patch } : variant)),
+      );
+      showSnackbar(
+        `Wariant „${selectedConfigurationVariant.name}” ma teraz własną konfigurację`,
+        'success',
+      );
+    } catch (error: any) {
+      showSnackbar(error?.message || 'Nie udało się utworzyć konfiguracji wariantu', 'error');
+    } finally {
+      setConfiguringSection(null);
+    }
+  };
+
+  const handleResetVariantSection = async (section: keyof typeof variantOverrideField) => {
+    if (!selectedConfigurationVariant || configuringSection) return;
+    const variantId = selectedConfigurationVariant.id;
+    const overrideField = variantOverrideField[section];
+
+    try {
+      setConfiguringSection(section);
+      const table =
+        section === 'equipment'
+          ? 'offer_product_equipment'
+          : section === 'staff'
+            ? 'offer_product_staff'
+            : section === 'mavinci_live'
+              ? 'offer_product_mavinci_live_modules'
+              : null;
+      if (table) {
+        const { error: deleteError } = await supabase
+          .from(table)
+          .delete()
+          .eq('product_id', productId)
+          .eq('product_variant_id', variantId);
+        if (deleteError) throw deleteError;
+      }
+
+      const patch: Record<string, unknown> = { [overrideField]: false };
+      if (section === 'contract_clauses') {
+        patch.recommended_contract_clauses = null;
+        patch.recommended_contract_clause_category = 'requirements';
+      }
+      const { error } = await supabase
+        .from('offer_product_variants')
+        .update(patch)
+        .eq('id', variantId)
+        .eq('product_id', productId);
+      if (error) throw error;
+
+      setProductVariants((current) =>
+        current.map((variant) => (variant.id === variantId ? { ...variant, ...patch } : variant)),
+      );
+      showSnackbar(`Przywrócono dziedziczenie z produktu bazowego`, 'success');
+    } catch (error: any) {
+      showSnackbar(error?.message || 'Nie udało się przywrócić dziedziczenia', 'error');
+    } finally {
+      setConfiguringSection(null);
     }
   };
 
@@ -511,6 +1000,255 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
     } finally {
       setUploadingThumbnail(false);
     }
+  };
+
+  const handleUploadOfferImage = async (selectedFile?: File | null) => {
+    const file = selectedFile || offerImageFile;
+    if (!file || !product || productId === 'new') return;
+
+    if (!['image/png', 'image/jpeg'].includes(file.type)) {
+      showSnackbar('Grafika do PDF musi być plikiem PNG lub JPG', 'error');
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      showSnackbar('Grafika nie może być większa niż 10 MB', 'error');
+      return;
+    }
+
+    const previousPreview = offerImageSrc;
+    let localPreview = '';
+    try {
+      setUploadingOfferImage(true);
+      const optimizedFile = await optimizeOfferImage(file, {
+        maxWidth: 1800,
+        maxHeight: 1800,
+        quality: 0.82,
+      });
+      localPreview = URL.createObjectURL(optimizedFile);
+      setOfferImageFile(optimizedFile);
+      setOfferImageSrc(localPreview);
+      const extension = optimizedFile.type === 'image/png' ? 'png' : 'jpg';
+      const filePath = `assets/${product.id}/offer-image-${Date.now()}.${extension}`;
+
+      const { error: uploadError } = await bucket.upload(filePath, optimizedFile, {
+        contentType: optimizedFile.type,
+        upsert: false,
+      });
+      if (uploadError) throw uploadError;
+
+      const previousPath = product.offer_image_path;
+      const { error: updateError } = await supabase
+        .from('offer_products')
+        .update({ offer_image_path: filePath })
+        .eq('id', product.id);
+      if (updateError) {
+        await bucket.remove([filePath]);
+        throw updateError;
+      }
+
+      if (previousPath) await bucket.remove([previousPath]);
+      const { data } = await bucket.createSignedUrl(filePath, 3600);
+      setOfferImageSrc(data?.signedUrl || null);
+      setOfferImageFile(null);
+      setProduct((current) => (current ? { ...current, offer_image_path: filePath } : current));
+      showSnackbar('Grafika produktu została zapisana', 'success');
+    } catch (err: any) {
+      setOfferImageSrc(previousPreview);
+      showSnackbar(err.message || 'Błąd przesyłania grafiki', 'error');
+    } finally {
+      if (localPreview) URL.revokeObjectURL(localPreview);
+      setUploadingOfferImage(false);
+    }
+  };
+
+  const handleOfferImageDrop = async (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setDraggingOfferImage(false);
+    if (!canEdit || productId === 'new' || uploadingOfferImage) return;
+
+    const file = event.dataTransfer.files?.[0];
+    if (file) await handleUploadOfferImage(file);
+  };
+
+  const handleUploadVariantImage = async (variant: IProductVariant, file: File) => {
+    if (!product || productId === 'new' || variant.id.startsWith('temp-')) return;
+    if (!['image/png', 'image/jpeg'].includes(file.type)) {
+      showSnackbar('Zdjęcie wariantu musi być plikiem PNG lub JPG', 'error');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      showSnackbar('Zdjęcie wariantu nie może być większe niż 10 MB', 'error');
+      return;
+    }
+
+    const previousUrl = variantImageUrls[variant.id];
+    let localPreview = '';
+    try {
+      setUploadingVariantImageId(variant.id);
+      const optimizedFile = await optimizeOfferImage(file, {
+        maxWidth: 1800,
+        maxHeight: 1800,
+        quality: 0.82,
+      });
+      localPreview = URL.createObjectURL(optimizedFile);
+      setVariantImageUrls((current) => ({ ...current, [variant.id]: localPreview }));
+
+      const extension = optimizedFile.type === 'image/png' ? 'png' : 'jpg';
+      const filePath = `assets/${product.id}/variants/${variant.id}-${Date.now()}.${extension}`;
+      const { error: uploadError } = await bucket.upload(filePath, optimizedFile, {
+        contentType: optimizedFile.type,
+        upsert: false,
+      });
+      if (uploadError) throw uploadError;
+
+      const { error: updateError } = await supabase
+        .from('offer_product_variants')
+        .update({ offer_image_path: filePath })
+        .eq('id', variant.id);
+      if (updateError) {
+        await bucket.remove([filePath]);
+        throw updateError;
+      }
+
+      if (variant.offer_image_path) await bucket.remove([variant.offer_image_path]);
+      const { data } = await bucket.createSignedUrl(filePath, 3600);
+      setVariantImageUrls((current) => ({
+        ...current,
+        [variant.id]: data?.signedUrl || localPreview,
+      }));
+      setProductVariants((current) =>
+        current.map((item) =>
+          item.id === variant.id ? { ...item, offer_image_path: filePath } : item,
+        ),
+      );
+      showSnackbar('Zdjęcie wariantu zostało zapisane', 'success');
+    } catch (err: any) {
+      setVariantImageUrls((current) => {
+        const next = { ...current };
+        if (previousUrl) next[variant.id] = previousUrl;
+        else delete next[variant.id];
+        return next;
+      });
+      showSnackbar(err.message || 'Błąd przesyłania zdjęcia wariantu', 'error');
+    } finally {
+      if (localPreview) URL.revokeObjectURL(localPreview);
+      setUploadingVariantImageId(null);
+    }
+  };
+
+  const handleDeleteVariantImage = async (variant: IProductVariant) => {
+    if (!variant.offer_image_path || variant.id.startsWith('temp-')) return;
+    if (!confirm(`Usunąć zdjęcie wariantu „${variant.name}”?`)) return;
+
+    try {
+      setUploadingVariantImageId(variant.id);
+      const { error } = await supabase
+        .from('offer_product_variants')
+        .update({ offer_image_path: null })
+        .eq('id', variant.id);
+      if (error) throw error;
+      await bucket.remove([variant.offer_image_path]);
+      setProductVariants((current) =>
+        current.map((item) =>
+          item.id === variant.id ? { ...item, offer_image_path: null } : item,
+        ),
+      );
+      setVariantImageUrls((current) => {
+        const next = { ...current };
+        delete next[variant.id];
+        return next;
+      });
+      showSnackbar('Zdjęcie wariantu zostało usunięte', 'success');
+    } catch (err: any) {
+      showSnackbar(err.message || 'Nie udało się usunąć zdjęcia wariantu', 'error');
+    } finally {
+      setUploadingVariantImageId(null);
+    }
+  };
+
+  const handleDeleteOfferImage = async () => {
+    if (!product?.offer_image_path || productId === 'new') return;
+    if (!confirm('Czy na pewno chcesz usunąć grafikę używaną w ofercie?')) return;
+
+    try {
+      setUploadingOfferImage(true);
+      const imagePath = product.offer_image_path;
+      const { error: updateError } = await supabase
+        .from('offer_products')
+        .update({ offer_image_path: null })
+        .eq('id', product.id);
+      if (updateError) throw updateError;
+
+      await bucket.remove([imagePath]);
+      setOfferImageSrc(null);
+      setProduct((current) => (current ? { ...current, offer_image_path: null } : current));
+      showSnackbar('Grafika produktu została usunięta', 'success');
+    } catch (err: any) {
+      showSnackbar(err.message || 'Błąd usuwania grafiki', 'error');
+    } finally {
+      setUploadingOfferImage(false);
+    }
+  };
+
+  const handleGenerateOfferCopy = async () => {
+    if (!product || productId === 'new') return;
+
+    try {
+      setGeneratingOfferCopy(true);
+      setOfferAiDraft(null);
+      const { data, error } = await supabase.functions.invoke('assist-inquiry', {
+        body: {
+          action: 'draft_product_offer_content',
+          productId: product.id,
+          currentContent: {
+            short_description: product.offer_short_description || '',
+            description: product.offer_description || '',
+            benefits: product.offer_benefits || [],
+            image_alt: product.offer_image_alt || '',
+          },
+        },
+      });
+      if (error) {
+        let errorMessage = error.message;
+        const response = (error as any).context;
+        if (response instanceof Response) {
+          const payload = await response
+            .clone()
+            .json()
+            .catch(() => null);
+          if (payload?.error) errorMessage = payload.error;
+        }
+        throw new Error(errorMessage);
+      }
+      if (!data?.result) throw new Error('AI nie zwróciło propozycji treści');
+
+      setOfferAiDraft(data.result as ProductOfferAiDraft);
+    } catch (err: any) {
+      showSnackbar(err.message || 'Nie udało się przygotować propozycji AI', 'error');
+    } finally {
+      setGeneratingOfferCopy(false);
+    }
+  };
+
+  const handleApplyOfferAiDraft = () => {
+    if (!offerAiDraft) return;
+    setProduct((current) =>
+      current
+        ? {
+            ...current,
+            offer_short_description: offerAiDraft.short_description,
+            offer_description: offerAiDraft.description,
+            offer_benefits: offerAiDraft.benefits,
+            offer_image_alt: offerAiDraft.image_alt,
+          }
+        : current,
+    );
+    setOfferAiDraft(null);
+    showSnackbar(
+      'Propozycję przeniesiono do formularza. Zapisz produkt, aby ją zatwierdzić.',
+      'info',
+    );
   };
 
   // -----------------------------
@@ -650,6 +1388,16 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
     try {
       setSaving(true);
 
+      const productPageUrl = product.product_page_url?.trim() || '';
+      if (productPageUrl) {
+        try {
+          const parsedProductPageUrl = new URL(productPageUrl);
+          if (!['http:', 'https:'].includes(parsedProductPageUrl.protocol)) throw new Error();
+        } catch {
+          throw new Error('Wklej pełny link rozpoczynający się od https:// lub http://');
+        }
+      }
+
       const productData = {
         category_id: product.category_id || null,
         name: product.name,
@@ -673,9 +1421,99 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
         tags: product.tags,
         is_active: product.is_active,
         display_order: product.display_order,
+        offer_short_description: product.offer_short_description || null,
+        offer_description: product.offer_description || null,
+        service_duration_hours: product.service_duration_hours == null
+          ? null
+          : Number(product.service_duration_hours),
+        extension_price_net_per_hour: product.extension_price_net_per_hour == null
+          ? null
+          : Number(product.extension_price_net_per_hour),
+        offer_benefits: product.offer_benefits || [],
+        offer_requirements: product.offer_requirements || [],
+        offer_image_path: product.offer_image_path || null,
+        offer_image_alt: product.offer_image_alt || null,
+        offer_image_position_x: Number(product.offer_image_position_x ?? 50),
+        offer_image_position_y: Number(product.offer_image_position_y ?? 25),
+        offer_image_zoom: normalizeOfferImageScale(product.offer_image_zoom),
+        product_page_url: productPageUrl || null,
+        offer_page_variant: product.offer_page_variant || 'default',
+        offer_page_enabled: product.offer_page_enabled !== false,
         is_subcontractor_service: product.is_subcontractor_service || false,
         subcontractor_id: product.subcontractor_id || null,
         subcontractor_service_catalog_id: product.subcontractor_service_catalog_id || null,
+        subcontractor_settlement_method: product.subcontractor_settlement_method || null,
+        subcontractor_economic_cost: product.subcontractor_economic_cost ?? null,
+      };
+
+      const persistVariants = async (savedProductId: string) => {
+        const variants = productVariants.slice(0, 3).map((variant, index) => ({
+          ...variant,
+          name: variant.name.trim(),
+          short_description: variant.short_description?.trim() || null,
+          description: variant.description?.trim() || null,
+          benefits: (variant.benefits || []).map((item) => item.trim()).filter(Boolean),
+          price_net: Number(variant.price_net || 0),
+          price_gross: Number(variant.price_gross || 0),
+          service_duration_hours: variant.service_duration_hours == null
+            ? null
+            : Number(variant.service_duration_hours),
+          extension_price_net_per_hour: variant.extension_price_net_per_hour == null
+            ? null
+            : Number(variant.extension_price_net_per_hour),
+          is_recommended: productVariants.some((item) => item.is_recommended)
+            ? variant.is_recommended
+            : index === 0,
+          is_active: true,
+          display_order: index,
+        }));
+
+        if (variants.some((variant) => !variant.name)) {
+          throw new Error('Każdy wariant musi mieć nazwę');
+        }
+        const normalizedNames = variants.map((variant) => variant.name.toLocaleLowerCase('pl-PL'));
+        if (new Set(normalizedNames).size !== normalizedNames.length) {
+          throw new Error('Nazwy wariantów produktu muszą być unikalne');
+        }
+
+        const { data: existingVariants, error: existingError } = await supabase
+          .from('offer_product_variants')
+          .select('id')
+          .eq('product_id', savedProductId);
+        if (existingError) throw existingError;
+
+        const persistedIds = variants
+          .map((variant) => variant.id)
+          .filter((id) => id && !id.startsWith('temp-'));
+        const removedIds = (existingVariants || [])
+          .map((variant) => variant.id)
+          .filter((id) => !persistedIds.includes(id));
+
+        if (removedIds.length > 0) {
+          const { error } = await supabase
+            .from('offer_product_variants')
+            .delete()
+            .in('id', removedIds);
+          if (error) throw error;
+        }
+
+        const existingPayload = variants
+          .filter((variant) => !variant.id.startsWith('temp-'))
+          .map(({ id, ...variant }) => ({ ...variant, id, product_id: savedProductId }));
+        const newPayload = variants
+          .filter((variant) => variant.id.startsWith('temp-'))
+          .map(({ id: _temporaryId, ...variant }) => ({ ...variant, product_id: savedProductId }));
+
+        if (existingPayload.length > 0) {
+          const { error } = await supabase
+            .from('offer_product_variants')
+            .upsert(existingPayload, { onConflict: 'id' });
+          if (error) throw error;
+        }
+        if (newPayload.length > 0) {
+          const { error } = await supabase.from('offer_product_variants').insert(newPayload);
+          if (error) throw error;
+        }
       };
 
       if (productId === 'new') {
@@ -687,6 +1525,8 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
 
         if (error) throw error;
 
+        await persistVariants(data.id);
+
         showSnackbar('Produkt został dodany', 'success');
         router.push(`/crm/offers/products/${data.id}`);
       } else {
@@ -695,6 +1535,8 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
           .update(productData)
           .eq('id', product.id);
         if (error) throw error;
+
+        await persistVariants(product.id);
 
         showSnackbar('Zapisano zmiany', 'success');
         // tylko po akcji
@@ -835,11 +1677,17 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
             )}
             <button
               onClick={handleSave}
-              disabled={saving}
+              disabled={saving || uploadingOfferImage}
               className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:opacity-50"
             >
               <Save className="h-4 w-4" />
-              {saving ? 'Zapisywanie...' : productId === 'new' ? 'Dodaj produkt' : 'Zapisz zmiany'}
+              {uploadingOfferImage
+                ? 'Zapisywanie grafiki...'
+                : saving
+                  ? 'Zapisywanie...'
+                  : productId === 'new'
+                    ? 'Dodaj produkt'
+                    : 'Zapisz zmiany'}
             </button>
           </div>
         )}
@@ -1074,6 +1922,12 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
                       subcontractor_service_catalog_id: isChecked
                         ? product.subcontractor_service_catalog_id
                         : null,
+                      subcontractor_settlement_method: isChecked
+                        ? product.subcontractor_settlement_method
+                        : null,
+                      subcontractor_economic_cost: isChecked
+                        ? product.subcontractor_economic_cost
+                        : null,
                     });
                     if (!isChecked) {
                       setSelectedSubcontractor('');
@@ -1130,10 +1984,16 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
                             : (item as any).unit_price;
                           const unit = isEquip ? 'dzień' : (item as any).unit || 'szt';
                           const badge = isEquip ? '[WYNAJEM] ' : '[USŁUGA] ';
+                          const economicCost = Number((item as any).economic_cost ?? price ?? 0);
+                          const cashCostLabel =
+                            !isEquip && (item as any).settlement_method === 'cash_non_deductible'
+                              ? ` · koszt firmy ${economicCost.toLocaleString('pl-PL')} zł`
+                              : '';
                           return (
                             <option key={item.id} value={item.id}>
                               {badge}
                               {item.name} - {price?.toLocaleString('pl-PL') || '0'} zł / {unit}
+                              {cashCostLabel}
                             </option>
                           );
                         })}
@@ -1217,8 +2077,551 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
           </div>
         </div>
 
+        <ProductPricingPanel
+          product={product}
+          canEdit={canEdit}
+          onChange={setProduct}
+          className="hidden lg:block"
+        />
+
+        {/* Presentation in generated offer */}
+        <div className="lg:col-span-2">
+          <ProductVariantsEditor
+            variants={productVariants}
+            vatRate={product.vat_rate}
+            defaultServiceDurationHours={product.service_duration_hours}
+            defaultExtensionPriceNetPerHour={product.extension_price_net_per_hour}
+            disabled={!canEdit}
+            onChange={setProductVariants}
+            imageUrls={variantImageUrls}
+            uploadingImageId={uploadingVariantImageId}
+            onImageUpload={handleUploadVariantImage}
+            onImageDelete={handleDeleteVariantImage}
+          />
+        </div>
+
+        {/* Presentation in generated offer */}
+        <div className="rounded-xl border border-[#7f1734]/40 bg-[#1c1f33] p-6 lg:col-span-2">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <ImageIcon className="h-5 w-5 text-[#b94b69]" />
+              <h2 className="text-lg font-medium text-[#e5e4e2]">Prezentacja w ofercie PDF</h2>
+            </div>
+            {canEdit && productId !== 'new' && (
+              <button
+                type="button"
+                onClick={handleGenerateOfferCopy}
+                disabled={generatingOfferCopy}
+                className="flex items-center gap-2 rounded-lg border border-violet-400/30 bg-violet-400/10 px-4 py-2 text-sm text-violet-300 transition-colors hover:bg-violet-400/20 disabled:opacity-50"
+              >
+                {generatingOfferCopy ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Sparkles className="h-4 w-4" />
+                )}
+                {generatingOfferCopy ? 'Przygotowywanie...' : 'Zaproponuj treść z AI'}
+              </button>
+            )}
+          </div>
+          <p className="mb-5 text-sm text-[#e5e4e2]/60">
+            Te zatwierdzone dane z CRM zasilają dynamiczną kartę produktu. AI przygotowuje wyłącznie
+            roboczą propozycję tekstu i nie zmienia cen, ilości ani terminów.
+          </p>
+
+          {product.pdf_page_url && (
+            <div className="mb-5 rounded-lg border border-amber-400/25 bg-amber-400/10 p-3 text-sm text-amber-200">
+              Ten produkt ma własną stronę PDF, więc generator użyje jej w pierwszej kolejności.
+              Usuń statyczny PDF w sekcji poniżej, aby przełączyć produkt na kartę dynamiczną.
+            </div>
+          )}
+
+          {offerAiDraft && (
+            <div className="mb-5 rounded-lg border border-violet-400/30 bg-violet-400/10 p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-medium text-violet-200">Robocza propozycja AI</h3>
+                  <p className="text-xs text-violet-200/60">
+                    Sprawdź treść. Zastosowanie wypełni formularz, ale nie zapisze produktu.
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setOfferAiDraft(null)}
+                    className="rounded-lg px-3 py-2 text-xs text-[#e5e4e2]/70 hover:bg-white/10"
+                  >
+                    Odrzuć
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleApplyOfferAiDraft}
+                    className="rounded-lg bg-violet-400 px-3 py-2 text-xs font-medium text-[#1c1f33] hover:bg-violet-300"
+                  >
+                    Zastosuj do formularza
+                  </button>
+                </div>
+              </div>
+              <p className="text-sm font-medium text-[#e5e4e2]">{offerAiDraft.short_description}</p>
+              <p className="mt-2 whitespace-pre-wrap text-sm text-[#e5e4e2]/70">
+                {offerAiDraft.description}
+              </p>
+              {offerAiDraft.benefits.length > 0 && (
+                <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-[#e5e4e2]/70">
+                  {offerAiDraft.benefits.map((benefit, index) => (
+                    <li key={`${benefit}-${index}`}>{benefit}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_320px]">
+            <div className="space-y-4">
+              <label className="flex cursor-pointer items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={product.offer_page_enabled !== false}
+                  onChange={(e) => setProduct({ ...product, offer_page_enabled: e.target.checked })}
+                  disabled={!canEdit}
+                  className="h-4 w-4 rounded border-[#d3bb73]/20 bg-[#0a0d1a] text-[#7f1734]"
+                />
+                <span className="text-sm text-[#e5e4e2]">
+                  Dodawaj dynamiczną kartę tego produktu
+                </span>
+              </label>
+
+              <div>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Krótki opis / lead</label>
+                <input
+                  type="text"
+                  value={product.offer_short_description || ''}
+                  onChange={(e) =>
+                    setProduct({ ...product, offer_short_description: e.target.value })
+                  }
+                  disabled={!canEdit}
+                  maxLength={220}
+                  placeholder="Jedno zdanie wyjaśniające wartość produktu"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Opis dla klienta</label>
+                <textarea
+                  value={product.offer_description || ''}
+                  onChange={(e) => setProduct({ ...product, offer_description: e.target.value })}
+                  disabled={!canEdit}
+                  className="min-h-[140px] w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
+                  placeholder="Zakres, sposób realizacji i najważniejsze informacje dla klienta"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="mb-2 block text-sm text-[#e5e4e2]/60">
+                    Czas usługi (godziny)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.5"
+                    value={product.service_duration_hours ?? ''}
+                    onChange={(event) => setProduct({
+                      ...product,
+                      service_duration_hours: event.target.value === ''
+                        ? null
+                        : Number(event.target.value),
+                    })}
+                    disabled={!canEdit}
+                    placeholder="np. 6"
+                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
+                  />
+                </div>
+                <div>
+                  <label className="mb-2 block text-sm text-[#e5e4e2]/60">
+                    Każda dodatkowa godzina netto
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={product.extension_price_net_per_hour ?? ''}
+                    onChange={(event) => setProduct({
+                      ...product,
+                      extension_price_net_per_hour: event.target.value === ''
+                        ? null
+                        : Number(event.target.value),
+                    })}
+                    disabled={!canEdit}
+                    placeholder="np. 500"
+                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
+                  />
+                </div>
+              </div>
+              <p className="-mt-2 text-xs leading-5 text-[#e5e4e2]/40">
+                Wartości główne dotyczą całej usługi. W wariancie możesz je nadpisać,
+                jeśli Standard, Premium lub VIP mają inne warunki.
+              </p>
+
+              <div>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">
+                  Korzyści <span className="text-xs text-[#e5e4e2]/40">(jedna w wierszu)</span>
+                </label>
+                <textarea
+                  value={(product.offer_benefits || []).join('\n')}
+                  onChange={(e) =>
+                    setProduct({
+                      ...product,
+                      offer_benefits: e.target.value
+                        .split('\n')
+                        .map((item) => item.trim())
+                        .filter(Boolean),
+                    })
+                  }
+                  disabled={!canEdit}
+                  className="min-h-[120px] w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
+                  placeholder={
+                    'Czytelny obraz dla uczestników\nObsługa techniczna podczas wydarzenia'
+                  }
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">
+                  Wymagania po stronie klienta / obiektu{' '}
+                  <span className="text-xs text-[#e5e4e2]/40">(jedno w wierszu)</span>
+                </label>
+                <textarea
+                  value={(product.offer_requirements || []).join('\n')}
+                  onChange={(e) =>
+                    setProduct({
+                      ...product,
+                      offer_requirements: e.target.value
+                        .split('\n')
+                        .map((item) => item.trim())
+                        .filter(Boolean),
+                    })
+                  }
+                  disabled={!canEdit}
+                  className="min-h-[110px] w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
+                  placeholder={
+                    'Stabilne łącze internetowe po kablu Ethernet\nZasilanie 230 V / 16 A\nPrzy większych realizacjach: dostęp do zasilania 400 V (siła)'
+                  }
+                />
+                <p className="mt-1 text-xs text-[#e5e4e2]/40">
+                  Te informacje zostaną pokazane klientowi na karcie produktu w wygenerowanej
+                  ofercie.
+                </p>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Link „Zobacz więcej”</label>
+                <input
+                  type="url"
+                  value={product.product_page_url || ''}
+                  onChange={(e) => setProduct({ ...product, product_page_url: e.target.value })}
+                  disabled={!canEdit}
+                  placeholder="https://mavinci.pl/uslugi/streaming lub https://www.eventrulers.pl/..."
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
+                />
+                <p className="mt-1 text-xs text-[#e5e4e2]/40">
+                  W PDF pojawi się klikalny odnośnik do rozszerzonego opisu i galerii produktu.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div>
+                  <label className="mb-2 block text-sm text-[#e5e4e2]/60">Wariant strony</label>
+                  <select
+                    value={product.offer_page_variant || 'default'}
+                    onChange={(e) => setProduct({ ...product, offer_page_variant: e.target.value })}
+                    disabled={!canEdit}
+                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
+                  >
+                    <option value="default">Domyślny</option>
+                    <option value="compact">Kompaktowy - do 3 produktów na stronie</option>
+                    <option value="visual">Duża grafika</option>
+                  </select>
+                  <p className="mt-1 text-xs text-[#e5e4e2]/40">
+                    Wariant kompaktowy grupuje kolejne produkty po maksymalnie trzy na jednej
+                    stronie PDF.
+                  </p>
+                </div>
+                <div>
+                  <label className="mb-2 block text-sm text-[#e5e4e2]/60">Opis grafiki</label>
+                  <input
+                    type="text"
+                    value={product.offer_image_alt || ''}
+                    onChange={(e) => setProduct({ ...product, offer_image_alt: e.target.value })}
+                    disabled={!canEdit}
+                    placeholder="Co przedstawia grafika"
+                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-[#d3bb73]/15 bg-[#0a0d1a] p-4">
+              <p className="mb-3 text-sm font-medium text-[#e5e4e2]">Grafika na karcie produktu</p>
+              <div
+                onDragEnter={(event) => {
+                  event.preventDefault();
+                  if (canEdit && productId !== 'new') setDraggingOfferImage(true);
+                }}
+                onDragOver={(event) => event.preventDefault()}
+                onDragLeave={(event) => {
+                  if (!event.currentTarget.contains(event.relatedTarget as Node)) {
+                    setDraggingOfferImage(false);
+                  }
+                }}
+                onDrop={handleOfferImageDrop}
+                className={`relative overflow-hidden rounded-lg border-2 border-dashed transition-colors ${
+                  draggingOfferImage
+                    ? 'border-[#b94b69] bg-[#7f1734]/20'
+                    : 'border-[#e5e4e2]/15 bg-[#1c1f33]'
+                }`}
+              >
+                {offerImageSrc ? (
+                  <div className="relative aspect-[4/3] w-full overflow-hidden rounded-t-lg bg-black/20">
+                    {normalizeOfferImageScale(product.offer_image_zoom) < 1 && (
+                      <Image
+                        src={offerImageSrc}
+                        alt=""
+                        fill
+                        unoptimized
+                        aria-hidden
+                        className="scale-110 object-cover opacity-55 blur-lg"
+                        style={{
+                          objectPosition: `${Number(product.offer_image_position_x ?? 50)}% ${Number(product.offer_image_position_y ?? 25)}%`,
+                        }}
+                      />
+                    )}
+                    <Image
+                      src={offerImageSrc}
+                      alt={product.offer_image_alt || product.name}
+                      fill
+                      unoptimized
+                      className={`z-10 transition-transform duration-150 ${
+                        normalizeOfferImageScale(product.offer_image_zoom) < 1
+                          ? 'object-contain'
+                          : 'object-cover'
+                      }`}
+                      style={{
+                        objectPosition: `${Number(product.offer_image_position_x ?? 50)}% ${Number(product.offer_image_position_y ?? 25)}%`,
+                        transform: `scale(${normalizeOfferImageScale(product.offer_image_zoom)})`,
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <div className="flex aspect-[4/3] flex-col items-center justify-center gap-3 text-center">
+                    <ImageIcon className="h-12 w-12 text-[#e5e4e2]/15" />
+                    <span className="px-4 text-xs text-[#e5e4e2]/40">
+                      {productId === 'new'
+                        ? 'Najpierw zapisz produkt'
+                        : 'Przeciągnij tutaj plik PNG lub JPG'}
+                    </span>
+                  </div>
+                )}
+
+                {uploadingOfferImage && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-[#0a0d1a]/75 text-white backdrop-blur-sm">
+                    <Loader2 className="h-8 w-8 animate-spin text-[#b94b69]" />
+                    <span className="text-sm">Zapisywanie grafiki...</span>
+                  </div>
+                )}
+
+                {draggingOfferImage && !uploadingOfferImage && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-[#7f1734]/65 text-sm font-medium text-white backdrop-blur-sm">
+                    Upuść, aby zapisać grafikę
+                  </div>
+                )}
+              </div>
+
+              {canEdit && productId !== 'new' && (
+                <div className="mt-4 space-y-3">
+                  <label
+                    htmlFor={`offer-image-${product.id}`}
+                    className={`flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-[#7f1734] px-3 py-2 text-sm text-white hover:bg-[#941d3e] ${
+                      uploadingOfferImage ? 'pointer-events-none opacity-50' : ''
+                    }`}
+                  >
+                    <Upload className="h-4 w-4" />
+                    {offerImageSrc ? 'Zmień grafikę' : 'Wybierz grafikę'}
+                  </label>
+                  <input
+                    id={`offer-image-${product.id}`}
+                    type="file"
+                    accept="image/png,image/jpeg"
+                    disabled={uploadingOfferImage}
+                    onChange={async (event) => {
+                      const file = event.target.files?.[0];
+                      if (file) await handleUploadOfferImage(file);
+                      event.target.value = '';
+                    }}
+                    className="hidden"
+                  />
+                  {offerImageSrc && (
+                    <>
+                      <div className="space-y-3 rounded-lg border border-[#d3bb73]/15 bg-[#111421] p-3">
+                        <p className="text-xs font-medium uppercase tracking-wide text-[#d3bb73]">
+                          Kadrowanie w ofercie
+                        </p>
+                        <label className="block text-xs text-[#e5e4e2]/55">
+                          Poziom: {Math.round(Number(product.offer_image_position_x ?? 50))}%
+                          <input
+                            type="range"
+                            min="0"
+                            max="100"
+                            value={Number(product.offer_image_position_x ?? 50)}
+                            onChange={(event) =>
+                              setProduct({
+                                ...product,
+                                offer_image_position_x: Number(event.target.value),
+                              })
+                            }
+                            className="mt-1 w-full accent-[#d3bb73]"
+                          />
+                        </label>
+                        <label className="block text-xs text-[#e5e4e2]/55">
+                          Pion: {Math.round(Number(product.offer_image_position_y ?? 25))}%
+                          <input
+                            type="range"
+                            min="0"
+                            max="100"
+                            value={Number(product.offer_image_position_y ?? 25)}
+                            onChange={(event) =>
+                              setProduct({
+                                ...product,
+                                offer_image_position_y: Number(event.target.value),
+                              })
+                            }
+                            className="mt-1 w-full accent-[#d3bb73]"
+                          />
+                        </label>
+                        <label className="block text-xs text-[#e5e4e2]/55">
+                          Skala:{' '}
+                          {Math.round(normalizeOfferImageScale(product.offer_image_zoom) * 100)}%
+                          <input
+                            type="range"
+                            min="0.5"
+                            max="3"
+                            step="0.05"
+                            value={normalizeOfferImageScale(product.offer_image_zoom)}
+                            onChange={(event) =>
+                              setProduct({
+                                ...product,
+                                offer_image_zoom: Number(event.target.value),
+                              })
+                            }
+                            className="mt-1 w-full accent-[#d3bb73]"
+                          />
+                        </label>
+                        <div className="flex items-center justify-between gap-3 text-[11px] text-[#e5e4e2]/35">
+                          <span>50% — pomniejszenie</span>
+                          <button
+                            type="button"
+                            onClick={() => setProduct({ ...product, offer_image_zoom: 1 })}
+                            className="rounded border border-[#d3bb73]/20 px-2 py-1 text-[#d3bb73] hover:bg-[#d3bb73]/10"
+                          >
+                            Ustaw 100%
+                          </button>
+                          <span>300% — powiększenie</span>
+                        </div>
+                        <p className="text-[11px] leading-4 text-[#e5e4e2]/35">
+                          Poniżej 100% zdjęcie jest pomniejszane wewnątrz stałego kadru, a jego tło
+                          nadal wypełnia cały obszar.
+                        </p>
+                        <p className="text-[11px] text-[#e5e4e2]/35">
+                          Ustawienia zatwierdzisz przyciskiem „Zapisz zmiany”.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleDeleteOfferImage}
+                        disabled={uploadingOfferImage}
+                        className="flex w-full items-center justify-center gap-2 rounded-lg bg-red-500/15 px-3 py-2 text-sm text-red-300 hover:bg-red-500/25 disabled:opacity-50"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        Usuń grafikę
+                      </button>
+                    </>
+                  )}
+                  <p className="text-xs text-[#e5e4e2]/40">
+                    PNG lub JPG, maksymalnie 10 MB. Plik zapisuje się automatycznie po wybraniu lub
+                    upuszczeniu.
+                  </p>
+                </div>
+              )}
+              {productId === 'new' && (
+                <p className="mt-3 text-xs text-[#e5e4e2]/40">
+                  Najpierw zapisz nowy produkt, aby dodać grafikę i użyć AI.
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <ProductOfferCardPreview
+          product={{ ...product, offer_product_variants: productVariants }}
+          imageUrl={offerImageSrc}
+          variantImageUrls={variantImageUrls}
+        />
+
+        {persistedProductVariants.length > 0 && (
+          <section className="rounded-xl border border-[#d3bb73]/25 bg-[#1c1f33] p-6 lg:col-span-2">
+            <div className="grid gap-4 lg:grid-cols-[minmax(280px,420px)_1fr] lg:items-end">
+              <div>
+                <label className="mb-2 block text-xs font-semibold uppercase tracking-[.16em] text-[#d3bb73]">
+                  Konfigurowany zakres produktu
+                </label>
+                <select
+                  value={configurationVariantId || ''}
+                  onChange={(event) => setConfigurationVariantId(event.target.value || null)}
+                  disabled={Boolean(configuringSection)}
+                  className="w-full rounded-lg border border-[#d3bb73]/25 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2] disabled:opacity-50"
+                >
+                  <option value="">Produkt bazowy — główny zakres oferty</option>
+                  {persistedProductVariants.map((variant) => (
+                    <option key={variant.id} value={variant.id}>
+                      Wariant: {variant.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <p className="text-sm text-[#e5e4e2]/65">
+                  {selectedConfigurationVariant
+                    ? `Poniższe sekcje pokazują konfigurację wariantu „${selectedConfigurationVariant.name}”. Sekcja bez własnych zmian dziedziczy dane produktu bazowego.`
+                    : 'Poniższe sekcje tworzą główny zakres produktu używany bez wariantu oraz dziedziczony przez warianty.'}
+                </p>
+                {selectedConfigurationVariant && (
+                  <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
+                    {[
+                      ['Sprzęt', selectedConfigurationVariant.overrides_equipment],
+                      ['Pracownicy', selectedConfigurationVariant.overrides_staff],
+                      ['Mavinci Live', selectedConfigurationVariant.overrides_mavinci_live],
+                      ['Klauzule', selectedConfigurationVariant.overrides_contract_clauses],
+                    ].map(([label, overridden]) => (
+                      <span
+                        key={String(label)}
+                        className={`rounded-full px-2.5 py-1 ${
+                          overridden
+                            ? 'bg-[#d3bb73]/15 text-[#d3bb73]'
+                            : 'bg-white/5 text-[#e5e4e2]/45'
+                        }`}
+                      >
+                        {label}: {overridden ? 'własne' : 'dziedziczone'}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </section>
+        )}
+
         {/* Pricing */}
-        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6 lg:hidden">
           <div className="mb-4 flex items-center gap-2">
             <DollarSign className="h-5 w-5 text-[#d3bb73]" />
             <h2 className="text-lg font-medium text-[#e5e4e2]">Ceny i koszty (netto/brutto)</h2>
@@ -1620,21 +3023,48 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
 
       {/* Equipment */}
       {productId !== 'new' && (
-        <ProductEquipment canEdit={canEdit} setShowAddEquipmentModal={setShowAddEquipmentModal} />
+        <ProductEquipment
+          canEdit={canEdit}
+          setShowAddEquipmentModal={setShowAddEquipmentModal}
+          productVariantId={selectedConfigurationVariant?.id || null}
+          productVariantName={selectedConfigurationVariant?.name || null}
+          isInherited={Boolean(
+            selectedConfigurationVariant && !selectedConfigurationVariant.overrides_equipment,
+          )}
+          onCustomizeVariant={() => handleCustomizeVariantSection('equipment')}
+          onResetInheritance={() => handleResetVariantSection('equipment')}
+        />
       )}
 
       {/* Mavinci LIVE */}
       {productId !== 'new' && (
-        <ProductMavinciLiveModules productId={productId} canEdit={canEdit} />
+        <ProductMavinciLiveModules
+          productId={productId}
+          productVariantId={selectedConfigurationVariant?.id || null}
+          productVariantName={selectedConfigurationVariant?.name || null}
+          isInherited={Boolean(
+            selectedConfigurationVariant && !selectedConfigurationVariant.overrides_mavinci_live,
+          )}
+          canEdit={canEdit}
+          onCustomizeVariant={() => handleCustomizeVariantSection('mavinci_live')}
+          onResetInheritance={() => handleResetVariantSection('mavinci_live')}
+        />
       )}
 
       {/* Staff */}
       {productId !== 'new' && (
         <ProductStaffSection
           productId={productId === 'new' ? null : productId}
+          productVariantId={selectedConfigurationVariant?.id || null}
+          productVariantName={selectedConfigurationVariant?.name || null}
+          isInherited={Boolean(
+            selectedConfigurationVariant && !selectedConfigurationVariant.overrides_staff,
+          )}
           canEdit={canEdit}
           draftStaff={draftStaff}
           setDraftStaff={setDraftStaff}
+          onCustomizeVariant={() => handleCustomizeVariantSection('staff')}
+          onResetInheritance={() => handleResetVariantSection('staff')}
         />
       )}
 
@@ -1642,28 +3072,71 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
       {productId !== 'new' && product && (
         <ProductContractClauses
           productId={productId}
-          initialClauses={product.recommended_contract_clauses || null}
-          initialCategory={product.recommended_contract_clause_category || 'requirements'}
+          productVariantId={selectedConfigurationVariant?.id || null}
+          productVariantName={selectedConfigurationVariant?.name || null}
+          isInherited={Boolean(
+            selectedConfigurationVariant &&
+            !selectedConfigurationVariant.overrides_contract_clauses,
+          )}
+          initialClauses={
+            selectedConfigurationVariant?.overrides_contract_clauses
+              ? selectedConfigurationVariant.recommended_contract_clauses || null
+              : product.recommended_contract_clauses || null
+          }
+          initialCategory={
+            selectedConfigurationVariant?.overrides_contract_clauses
+              ? selectedConfigurationVariant.recommended_contract_clause_category || 'requirements'
+              : product.recommended_contract_clause_category || 'requirements'
+          }
           canEdit={canEdit}
           onSave={async (clauses, category) => {
             try {
-              const { error } = await supabase
-                .from('offer_products')
-                .update({
-                  recommended_contract_clauses: clauses,
-                  recommended_contract_clause_category: category,
-                })
-                .eq('id', productId);
+              const target = selectedConfigurationVariant
+                ? supabase
+                    .from('offer_product_variants')
+                    .update({
+                      recommended_contract_clauses: clauses,
+                      recommended_contract_clause_category: category,
+                      overrides_contract_clauses: true,
+                    })
+                    .eq('id', selectedConfigurationVariant.id)
+                    .eq('product_id', productId)
+                : supabase
+                    .from('offer_products')
+                    .update({
+                      recommended_contract_clauses: clauses,
+                      recommended_contract_clause_category: category,
+                    })
+                    .eq('id', productId);
+
+              const { error } = await target;
 
               if (error) throw error;
 
-              setProduct((prev) =>
-                prev ? {
-                  ...prev,
-                  recommended_contract_clauses: clauses,
-                  recommended_contract_clause_category: category,
-                } : prev,
-              );
+              if (selectedConfigurationVariant) {
+                setProductVariants((current) =>
+                  current.map((variant) =>
+                    variant.id === selectedConfigurationVariant.id
+                      ? {
+                          ...variant,
+                          recommended_contract_clauses: clauses,
+                          recommended_contract_clause_category: category,
+                          overrides_contract_clauses: true,
+                        }
+                      : variant,
+                  ),
+                );
+              } else {
+                setProduct((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        recommended_contract_clauses: clauses,
+                        recommended_contract_clause_category: category,
+                      }
+                    : prev,
+                );
+              }
 
               showSnackbar('Zapisano klauzule umowy', 'success');
             } catch (err: any) {
@@ -1672,6 +3145,11 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
               throw err;
             }
           }}
+          onResetInheritance={
+            selectedConfigurationVariant
+              ? () => handleResetVariantSection('contract_clauses')
+              : undefined
+          }
         />
       )}
 
@@ -1679,9 +3157,14 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
       {showAddEquipmentModal && (
         <AddEquipmentModal
           productId={productId}
+          productVariantId={effectiveEquipmentVariantId}
+          productVariantName={selectedConfigurationVariant?.name || null}
           existingEquipment={items}
           onClose={() => setShowAddEquipmentModal(false)}
-          onSuccess={() => setShowAddEquipmentModal(false)}
+          onSuccess={async () => {
+            await refetchProductEquipment().unwrap();
+            setShowAddEquipmentModal(false);
+          }}
         />
       )}
     </div>

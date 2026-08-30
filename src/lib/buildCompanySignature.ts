@@ -14,12 +14,14 @@ import {
 interface BuildOptions {
   companyId?: string | null;
   employeeId?: string | null;
+  emailAccountId?: string | null;
 }
 
 interface BuildResult {
   html: string;
   enabled: boolean;
   companyId: string | null;
+  companyName: string | null;
 }
 
 export type EmailTemplatePurpose = 'general' | 'offer' | 'invoice' | 'contract' | 'link';
@@ -87,12 +89,34 @@ const loadCompanyContext = async (opts: BuildOptions): Promise<CompanyContext | 
     : { data: null };
   const employee = employeeRes.data;
 
-  let companyQuery = supabase.from('my_companies').select('*').eq('is_active', true);
-  if (opts.companyId) companyQuery = companyQuery.eq('id', opts.companyId);
-  else companyQuery = companyQuery.order('is_default', { ascending: false });
+  const { data: emailAccount } = opts.emailAccountId
+    ? await supabase
+        .from('employee_email_accounts')
+        .select('*')
+        .eq('id', opts.emailAccountId)
+        .maybeSingle()
+    : { data: null };
 
-  const { data: companies } = await companyQuery.limit(1);
-  const company = companies?.[0] ?? null;
+  const resolvedCompanyId = opts.companyId || (emailAccount as any)?.my_company_id || null;
+  let companyQuery = supabase
+    .from('my_companies')
+    .select('*')
+    .eq('is_active', true)
+    .order('is_default', { ascending: false });
+  if (resolvedCompanyId) companyQuery = companyQuery.eq('id', resolvedCompanyId);
+
+  const { data: companies } = await companyQuery;
+  const accountEmail = String((emailAccount as any)?.email_address || '').trim().toLowerCase();
+  const accountDomain = accountEmail.split('@')[1] || '';
+  const company = resolvedCompanyId
+    ? companies?.[0] ?? null
+    : companies?.find((item) => String(item.email || '').trim().toLowerCase() === accountEmail) ||
+      companies?.find(
+        (item) =>
+          accountDomain && String(item.email || '').trim().toLowerCase().split('@')[1] === accountDomain,
+      ) ||
+      companies?.[0] ||
+      null;
   if (!company) return null;
 
   const [logosRes, colorsRes] = await Promise.all([
@@ -162,7 +186,12 @@ const buildSignatureValues = (ctx: CompanyContext): SignaturePlaceholderValues =
 export async function buildCompanySignatureHtml(opts: BuildOptions = {}): Promise<BuildResult> {
   const ctx = await loadCompanyContext(opts);
   if (!ctx || !ctx.company.email_signature_use_template) {
-    return { html: '', enabled: false, companyId: ctx?.company?.id ?? null };
+    return {
+      html: '',
+      enabled: false,
+      companyId: ctx?.company?.id ?? null,
+      companyName: ctx?.company?.name ?? null,
+    };
   }
   const template = ctx.company.email_signature_template || DEFAULT_SIGNATURE_TEMPLATE;
   const values = buildSignatureValues(ctx);
@@ -170,6 +199,7 @@ export async function buildCompanySignatureHtml(opts: BuildOptions = {}): Promis
     html: renderSignatureTemplate(template, values),
     enabled: true,
     companyId: ctx.company.id,
+    companyName: ctx.company.name ?? null,
   };
 }
 

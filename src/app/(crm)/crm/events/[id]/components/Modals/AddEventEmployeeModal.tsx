@@ -1,10 +1,9 @@
 import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/lib/supabase/browser';
-import { Loader2, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { useEmployees } from '@/app/(crm)/crm/employees/hooks/useEmployees';
 import { useEventTeam } from '../../../hooks/useEventTeam';
 import { useSnackbar } from '@/contexts/SnackbarContext';
-import { useDialog } from '@/contexts/DialogContext';
 
 export function AddEventEmployeeModal({
   isOpen,
@@ -21,6 +20,7 @@ export function AddEventEmployeeModal({
   const [accessLevels, setAccessLevels] = useState<any[]>([]);
   const [selectedAccessLevel, setSelectedAccessLevel] = useState('');
   const [canEditEvent, setCanEditEvent] = useState(false);
+  const [canEditPhases, setCanEditPhases] = useState(false);
   const [canEditAgenda, setCanEditAgenda] = useState(false);
   const [canEditTasks, setCanEditTasks] = useState(false);
   const [canEditFiles, setCanEditFiles] = useState(false);
@@ -28,18 +28,17 @@ export function AddEventEmployeeModal({
   const [canInviteMembers, setCanInviteMembers] = useState(false);
   const [canViewBudget, setCanViewBudget] = useState(false);
   const [employeesInPhases, setEmployeesInPhases] = useState<any[]>([]);
-  const [loadingPhases, setLoadingPhases] = useState(false);
+  const [sendInvitationNow, setSendInvitationNow] = useState(true);
+  const [includePhasesInInvitation, setIncludePhasesInInvitation] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const { showSnackbar } = useSnackbar();
-  const { showConfirm } = useDialog();
-
   const { list: employees, loading } = useEmployees({ activeOnly: true });
 
   const {
     employees: eventEmployees,
     addEmployee,
-    isLoading: isAddingEmployee,
+    isAdding: isAddingEmployee,
   } = useEventTeam(eventId);
 
   useEffect(() => {
@@ -86,7 +85,6 @@ export function AddEventEmployeeModal({
   };
 
   const fetchEmployeesInPhases = async () => {
-    setLoadingPhases(true);
     try {
       const { data: phaseAssignments, error } = await supabase
         .from('event_phase_assignments')
@@ -134,21 +132,16 @@ export function AddEventEmployeeModal({
     } catch (error) {
       console.error('Error fetching employees in phases:', error);
       showSnackbar('Błąd podczas pobierania pracowników z faz', 'error');
-    } finally {
-      setLoadingPhases(false);
     }
   };
 
   const availableEmployees = useMemo(() => {
     if (!employees) return [];
 
-    const employeesInPhasesIds = new Set(employeesInPhases.map((e) => e.employee_id));
     const alreadyAssignedIds = new Set(eventEmployees?.map((e: any) => e.employee_id) || []);
 
-    return employees.filter(
-      (emp) => employeesInPhasesIds.has(emp.id) && !alreadyAssignedIds.has(emp.id),
-    );
-  }, [employees, employeesInPhases, eventEmployees]);
+    return employees.filter((emp) => !alreadyAssignedIds.has(emp.id));
+  }, [employees, eventEmployees]);
 
   const selectedEmployeePhases = useMemo(() => {
     if (!selectedEmployee) return [];
@@ -157,14 +150,15 @@ export function AddEventEmployeeModal({
   }, [selectedEmployee, employeesInPhases]);
 
   const handleSubmit = async () => {
-    setIsSubmitting(true);
     if (!selectedEmployee) {
-      const confirmed = await showConfirm('Wybierz pracownika', 'error');
-      if (!confirmed) return;
+      showSnackbar('Wybierz pracownika', 'warning');
       return;
     }
+
+    setIsSubmitting(true);
     const permissions = {
       can_edit_event: canEditEvent,
+      can_edit_phases: canEditPhases,
       can_edit_agenda: canEditAgenda,
       can_edit_tasks: canEditTasks,
       can_edit_files: canEditFiles,
@@ -173,24 +167,31 @@ export function AddEventEmployeeModal({
       can_view_budget: canViewBudget,
     };
     try {
-      await addEmployee({
+      const wasAdded = await addEmployee({
         employeeId: selectedEmployee,
         role,
         responsibilities,
-        access_level_id: selectedAccessLevel,
+        access_level_id: selectedAccessLevel || null,
         permissions,
+        sendInvitation: sendInvitationNow,
+        includePhases: includePhasesInInvitation,
       });
+
+      if (!wasAdded) return;
+
       setSelectedEmployee('');
       setRole('');
       setResponsibilities('');
       setCanEditEvent(false);
+      setCanEditPhases(false);
       setCanEditAgenda(false);
       setCanEditTasks(false);
       setCanEditFiles(false);
       setCanEditEquipment(false);
       setCanInviteMembers(false);
       setCanViewBudget(false);
-      showSnackbar('Pracownik dodany do zespołu', 'success');
+      setSendInvitationNow(true);
+      setIncludePhasesInInvitation(false);
       onClose();
     } catch (error) {
       console.error('Error adding employee:', error);
@@ -202,6 +203,7 @@ export function AddEventEmployeeModal({
 
   const hasAnyPermission =
     canEditEvent ||
+    canEditPhases ||
     canEditAgenda ||
     canEditTasks ||
     canEditFiles ||
@@ -232,28 +234,29 @@ export function AddEventEmployeeModal({
               value={selectedEmployee}
               onChange={(e) => setSelectedEmployee(e.target.value)}
               className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
-              disabled={loading || loadingPhases}
+              disabled={loading}
             >
               <option value="">
-                {loading || loadingPhases
+                {loading
                   ? 'Ładowanie...'
                   : availableEmployees.length === 0
-                    ? 'Brak pracowników przypisanych do faz'
+                    ? 'Wszyscy aktywni pracownicy są już w zespole'
                     : 'Wybierz pracownika...'}
               </option>
 
-              {!loading && !loadingPhases && availableEmployees.length > 0 ? (
+              {!loading && availableEmployees.length > 0 ? (
                 availableEmployees.map((emp) => (
                   <option key={emp.id} value={emp.id}>
                     {emp.name} {emp.surname} {emp.occupation ? `- ${emp.occupation}` : ''}
                   </option>
                 ))
-              ) : loading || loadingPhases ? (
+              ) : loading ? (
                 <option disabled>Ładowanie...</option>
               ) : null}
             </select>
             <p className="mt-1 text-xs text-[#e5e4e2]/40">
-              Widoczni są tylko pracownicy przypisani do faz wydarzenia
+              Dodanie do zespołu od razu nadaje dostęp do wydarzenia. Timeline możesz uzupełnić
+              później.
             </p>
           </div>
 
@@ -341,6 +344,7 @@ export function AddEventEmployeeModal({
                   const checked = e.target.checked;
                   if (!checked) {
                     setCanEditEvent(false);
+                    setCanEditPhases(false);
                     setCanEditAgenda(false);
                     setCanEditTasks(false);
                     setCanEditFiles(false);
@@ -367,6 +371,15 @@ export function AddEventEmployeeModal({
                     className="h-4 w-4 rounded border-[#d3bb73]/20 bg-[#1c1f33] text-[#d3bb73]"
                   />
                   Edycja wydarzenia (nazwa, data, lokalizacja)
+                </label>
+                <label className="flex items-center gap-2 text-sm text-[#e5e4e2]/70">
+                  <input
+                    type="checkbox"
+                    checked={canEditPhases}
+                    onChange={(e) => setCanEditPhases(e.target.checked)}
+                    className="h-4 w-4 rounded border-[#d3bb73]/20 bg-[#1c1f33] text-[#d3bb73]"
+                  />
+                  Edycja faz i timeline
                 </label>
                 <label className="flex items-center gap-2 text-sm text-[#e5e4e2]/70">
                   <input
@@ -426,12 +439,53 @@ export function AddEventEmployeeModal({
             )}
           </div>
 
+          <div className="space-y-3 rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33]/50 p-4">
+            <label className="flex cursor-pointer items-start gap-3">
+              <input
+                type="checkbox"
+                checked={sendInvitationNow}
+                onChange={(event) => setSendInvitationNow(event.target.checked)}
+                className="mt-1 h-4 w-4 rounded border-[#d3bb73]/20 bg-[#0f1119] text-[#d3bb73]"
+              />
+              <span>
+                <span className="block text-sm font-medium text-[#e5e4e2]">
+                  Wyślij teraz zaproszenie e-mailem
+                </span>
+                <span className="mt-1 block text-xs text-[#e5e4e2]/50">
+                  Pracownik może zostać dodany do zespołu również bez wysyłania wiadomości.
+                </span>
+              </span>
+            </label>
+
+            {sendInvitationNow && (
+              <label className="flex cursor-pointer items-start gap-3 border-t border-white/5 pt-3">
+                <input
+                  type="checkbox"
+                  checked={includePhasesInInvitation}
+                  onChange={(event) => setIncludePhasesInInvitation(event.target.checked)}
+                  className="mt-1 h-4 w-4 rounded border-[#d3bb73]/20 bg-[#0f1119] text-[#d3bb73]"
+                />
+                <span>
+                  <span className="block text-sm font-medium text-[#e5e4e2]">
+                    Dołącz aktualnie przypisane fazy timeline
+                  </span>
+                  <span className="mt-1 block text-xs text-[#e5e4e2]/50">
+                    {selectedEmployeePhases.length > 0
+                      ? `W wiadomości pojawi się ${selectedEmployeePhases.length} przypisanych faz.`
+                      : 'Brak przypisanych faz — zaproszenie zostanie wysłane bez harmonogramu. Możesz dosłać go później z listy zespołu.'}
+                  </span>
+                </span>
+              </label>
+            )}
+          </div>
+
           <div className="flex gap-3 pt-4">
             <button
               onClick={handleSubmit}
-              className="flex-1 rounded-lg bg-[#d3bb73] px-4 py-2 font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90"
+              disabled={isSubmitting || isAddingEmployee}
+              className="flex-1 rounded-lg bg-[#d3bb73] px-4 py-2 font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Dodaj
+              {isSubmitting || isAddingEmployee ? 'Dodawanie...' : 'Dodaj do wydarzenia'}
             </button>
             <button
               onClick={onClose}

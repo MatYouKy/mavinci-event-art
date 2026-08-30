@@ -21,6 +21,8 @@ import { useOfferById } from '../hooks/useOfferById';
 import { IOfferItem } from '../types';
 import { deleteOfferWithFiles } from '@/lib/CRM/Offers/deleteOfferWithFiles';
 import Image from 'next/image';
+import InquirySourceContextPanel from '@/components/crm/inquiries/InquirySourceContextPanel';
+import OfferPackagesEditor from './components/OfferPackagesEditor';
 
 const statusColors: Record<string, string> = {
   draft: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
@@ -46,7 +48,7 @@ export default function OfferDetailPage() {
   const { showConfirm } = useDialog();
 
   usePrefetchOffer(offerId);
-  const { offer, isLoading, refetch } = useOfferById(offerId);
+  const { offer, isLoading, error: offerLoadError, refetch } = useOfferById(offerId);
 
   const [showSendEmailModal, setShowSendEmailModal] = useState(false);
   const [showAddItemModal, setShowAddItemModal] = useState(false);
@@ -239,9 +241,25 @@ export default function OfferDetailPage() {
   }
 
   if (!offer) {
+    const errorData = (offerLoadError as any)?.data;
+    const errorMessage = errorData?.message || errorData?.data?.message || '';
+    const isMissing = errorMessage.toLocaleLowerCase('pl-PL').includes('nie znaleziono');
     return (
       <div className="flex h-screen flex-col items-center justify-center space-y-4">
-        <div className="text-lg text-[#e5e4e2]">Oferta nie została znaleziona</div>
+        <div className="text-lg text-[#e5e4e2]">
+          {isMissing ? 'Oferta nie została znaleziona' : 'Nie udało się pobrać oferty'}
+        </div>
+        {!isMissing && errorMessage && (
+          <div className="max-w-xl text-center text-sm text-red-300/80">{errorMessage}</div>
+        )}
+        {!isMissing && (
+          <button
+            onClick={() => refetch()}
+            className="rounded-lg border border-[#d3bb73]/30 px-4 py-2 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/10"
+          >
+            Spróbuj ponownie
+          </button>
+        )}
         <button
           onClick={() => router.push('/crm/offers')}
           className="rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90"
@@ -251,6 +269,24 @@ export default function OfferDetailPage() {
       </div>
     );
   }
+
+  const inquiryDetails = offer.inquiry?.inquiry_details || {};
+  const inquirySourceHref = inquiryDetails.received_email_id
+    ? `/crm/messages/${inquiryDetails.received_email_id}?type=received`
+    : inquiryDetails.source_message_id
+      ? `/crm/messages/${inquiryDetails.source_message_id}?type=contact`
+      : null;
+  const offerContact = offer.client_type === 'business'
+    ? offer.contact_person || offer.contact || offer.event?.contact
+    : offer.contact || offer.event?.contact;
+  const offerClientName = offerContact?.full_name
+    || [offerContact?.first_name, offerContact?.last_name].filter(Boolean).join(' ')
+    || offer.organization?.alias
+    || offer.organization?.name
+    || [offer.event?.contact?.first_name, offer.event?.contact?.last_name].filter(Boolean).join(' ')
+    || inquiryDetails.client_text;
+  const offerClientEmail = offerContact?.email || offer.organization?.email || inquiryDetails.client_email;
+  const offerClientPhone = offerContact?.mobile || offerContact?.phone || inquiryDetails.client_phone;
 
   return (
     <div className="space-y-6">
@@ -293,10 +329,32 @@ export default function OfferDetailPage() {
             onAddItem={() => setShowAddItemModal(true)}
           />
 
+          <OfferPackagesEditor
+            offer={offer}
+            canEdit={canSendManage}
+            onSaved={refetch}
+          />
+
           <OfferHistory offerId={offer.id} />
         </div>
 
         <div className="space-y-6">
+          {offer.inquiry && (
+            <InquirySourceContextPanel
+              inquiryTitle={offer.inquiry.title?.replace(/^Zapytanie:\s*/i, '') || offer.title || 'Zapytanie'}
+              message={inquiryDetails.source_message_content || offer.inquiry.description}
+              sourceLabel={inquiryDetails.source || inquiryDetails.source_name || 'Zapytanie'}
+              clientName={offerClientName}
+              clientEmail={offerClientEmail}
+              clientPhone={offerClientPhone}
+              sourceHref={inquirySourceHref}
+              items={[
+                { label: 'Termin', value: inquiryDetails.termin || offer.inquiry.due_date || offer.event?.event_date, kind: 'date' },
+                { label: 'Miejsce', value: inquiryDetails.location_text || offer.event?.location, kind: 'location' },
+                { label: 'Zakres', value: inquiryDetails.scope || inquiryDetails.event_type, kind: 'scope' },
+              ]}
+            />
+          )}
           <OfferDetails offer={offer} />
           <OfferActions
             offer={offer}
@@ -312,8 +370,9 @@ export default function OfferDetailPage() {
         <SendOfferEmailModal
           offerId={offer.id}
           offerNumber={offer.offer_number}
-          clientEmail={offer.organization?.email}
-          clientName={offer.organization?.name}
+          clientEmail={offerClientEmail}
+          clientName={offerClientName}
+          eventId={offer.event_id || undefined}
           onClose={() => setShowSendEmailModal(false)}
           onSent={handleOfferUpdated}
         />
@@ -322,6 +381,20 @@ export default function OfferDetailPage() {
       {showAddItemModal && offer && (
         <AddOfferItemModal
           offerId={offer.id}
+          inquiryContext={offer.inquiry ? {
+            inquiryTitle: offer.inquiry.title?.replace(/^Zapytanie:\s*/i, '') || offer.title || 'Zapytanie',
+            message: inquiryDetails.source_message_content || offer.inquiry.description,
+            sourceLabel: inquiryDetails.source || inquiryDetails.source_name || 'Zapytanie',
+            clientName: offerClientName,
+            clientEmail: offerClientEmail,
+            clientPhone: offerClientPhone,
+            sourceHref: inquirySourceHref,
+            items: [
+              { label: 'Termin', value: inquiryDetails.termin || offer.inquiry.due_date || offer.event?.event_date, kind: 'date' },
+              { label: 'Miejsce', value: inquiryDetails.location_text || offer.event?.location, kind: 'location' },
+              { label: 'Zakres', value: inquiryDetails.scope || inquiryDetails.event_type, kind: 'scope' },
+            ],
+          } : undefined}
           onClose={() => setShowAddItemModal(false)}
           onSuccess={refetch}
         />

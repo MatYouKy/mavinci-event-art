@@ -193,7 +193,8 @@ export function replaceVariables(
   let result = template;
 
   for (const [key, value] of Object.entries(variables)) {
-    const placeholder = new RegExp(`\\{\\{${key}\\}\\}`, 'g');
+    const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const placeholder = new RegExp(`\\{\\{\\s*${escapedKey}\\s*\\}\\}`, 'g');
     result = result.replace(placeholder, value || '');
   }
 

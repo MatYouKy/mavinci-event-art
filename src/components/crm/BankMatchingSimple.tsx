@@ -14,6 +14,7 @@ import {
   CreditCard,
 } from 'lucide-react';
 import ResponsiveActionBar from './ResponsiveActionBar';
+import { applyBankTransactionMatchToDocument } from '@/lib/bankTransactionMatching';
 
 interface Transaction {
   id: string;
@@ -205,12 +206,12 @@ export default function BankMatchingSimple({ month, year, companyId, invoiceData
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [matchingId, setMatchingId] = useState<string | null>(null);
-  const [invoices, setInvoices] = useState<KSeFInvoice[]>([]);
   const { showSnackbar } = useSnackbar();
+  const invoices = useMemo(() => [invoiceData], [invoiceData]);
 
   useEffect(() => {
     void loadData();
-  }, [month, year, companyId]);
+  }, [month, year, companyId, invoiceData.id, invoiceData.invoice_type]);
 
   const loadData = async () => {
     try {
@@ -239,8 +240,8 @@ export default function BankMatchingSimple({ month, year, companyId, invoiceData
           .from('bank_transactions')
           .select('*')
           .in('statement_id', allStatementIds)
-          .is('matched_invoice_id', null)
-          .eq('transaction_type', 'debit')
+          .neq('match_status', 'matched')
+          .eq('transaction_type', invoiceData.invoice_type === 'issued' ? 'credit' : 'debit')
           .order('transaction_date', { ascending: false });
   
         if (transactionsError) throw transactionsError;
@@ -248,41 +249,6 @@ export default function BankMatchingSimple({ month, year, companyId, invoiceData
         setTransactions((transactionsData || []) as Transaction[]);
       }
   
-      // 2. Pobierz nieopłacone faktury kosztowe z całego roku
-      const yearStart = `${year}-01-01`;
-      const yearEnd = `${year + 1}-01-01`;
-  
-      let invoicesQuery = supabase
-        .from('ksef_invoices')
-        .select(`
-          id,
-          invoice_number,
-          ksef_reference_number,
-          buyer_name,
-          seller_name,
-          issue_date,
-          payment_due_date,
-          gross_amount,
-          payment_status,
-          invoice_type,
-          seller_nip,
-          buyer_nip,
-          my_company_id
-        `)
-        .eq('invoice_type', 'received')
-        .neq('payment_status', 'paid')
-        .gte('issue_date', yearStart)
-        .lt('issue_date', yearEnd);
-  
-      if (companyId) {
-        invoicesQuery = invoicesQuery.eq('my_company_id', companyId);
-      }
-  
-      const { data: invoicesData, error: invoicesError } = await invoicesQuery;
-  
-      if (invoicesError) throw invoicesError;
-  
-      setInvoices((invoicesData || []) as KSeFInvoice[]);
     } catch (error: any) {
       console.error('Error loading bank matching data:', error);
       showSnackbar(error.message || 'Błąd podczas ładowania danych do dopasowania', 'error');
@@ -305,26 +271,14 @@ export default function BankMatchingSimple({ month, year, companyId, invoiceData
     try {
       setMatchingId(match.transaction.id);
 
-      const { error: transactionError } = await supabase
-        .from('bank_transactions')
-        .update({
-          matched_invoice_id: match.invoice.id,
-          match_confidence: match.score / 100,
-          manual_match: true,
-        })
-        .eq('id', match.transaction.id);
-
-      if (transactionError) throw transactionError;
-
-      const { error: invoiceError } = await supabase
-        .from('ksef_invoices')
-        .update({
-          payment_status: 'paid',
-          payment_date: match.transaction.transaction_date,
-        })
-        .eq('id', match.invoice.id);
-
-      if (invoiceError) throw invoiceError;
+      await applyBankTransactionMatchToDocument(supabase, {
+        transactionId: match.transaction.id,
+        documentSource: 'ksef',
+        documentId: match.invoice.id,
+        confidence: match.score / 100,
+        method: 'manual',
+        reasons: match.reasons,
+      });
 
       showSnackbar('Płatność została dopasowana', 'success');
       onClose();

@@ -1,9 +1,20 @@
 'use client';
 
+import { EventAssumptionsEditor } from '@/components/crm/offers/EventAssumptionsEditor';
+import {
+  EventAssumptionItem,
+  formatEventAssumptionItems,
+} from '@/lib/CRM/Offers/eventAssumptions';
+import LocationSelector from '@/components/crm/LocationSelector';
+
 interface OfferStep2Data {
   offer_number: string;
   valid_until: string;
   notes: string;
+  event_location: string;
+  event_assumptions: string;
+  event_assumption_items: EventAssumptionItem[];
+  event_goal: string;
 }
 
 interface OfferStep2Props {
@@ -40,6 +51,15 @@ export default function OfferStep2({
       </div>
 
       <div>
+        <label className="mb-2 block text-sm text-[#e5e4e2]/60">Miejsce wydarzenia</label>
+        <LocationSelector
+          value={offerData.event_location}
+          onChange={(value) => setOfferData({ ...offerData, event_location: value })}
+          placeholder="Wyszukaj miejsce lub wpisz własną lokalizację..."
+        />
+      </div>
+
+      <div>
         <label className="mb-2 block text-sm text-[#e5e4e2]/60">Ważna do</label>
         <input
           type="date"
@@ -48,6 +68,25 @@ export default function OfferStep2({
             setOfferData({ ...offerData, valid_until: e.target.value })
           }
           className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+        />
+      </div>
+
+      <EventAssumptionsEditor
+        value={offerData.event_assumption_items}
+        onChange={(eventAssumptionItems) => setOfferData({
+          ...offerData,
+          event_assumption_items: eventAssumptionItems,
+          event_assumptions: formatEventAssumptionItems(eventAssumptionItems),
+        })}
+      />
+
+      <div>
+        <label className="mb-2 block text-sm text-[#e5e4e2]/60">Cel wydarzenia</label>
+        <textarea
+          value={offerData.event_goal}
+          onChange={(e) => setOfferData({ ...offerData, event_goal: e.target.value })}
+          className="min-h-[90px] w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+          placeholder="Co klient chce osiągnąć dzięki wydarzeniu?"
         />
       </div>
 

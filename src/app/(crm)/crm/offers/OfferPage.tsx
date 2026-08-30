@@ -32,7 +32,6 @@ import { deleteOfferWithFiles } from '@/lib/CRM/Offers/deleteOfferWithFiles';
 import { CatalogTab } from '@/components/crm/offers/products/CatalogTab';
 
 type Tab = 'offers' | 'catalog' | 'templates';
-type TemplatesSubTab = 'offer-templates' | 'page-templates';
 
 interface Offer {
   client: any;
@@ -121,7 +120,6 @@ export function OfferPage({
   const { showSnackbar } = useSnackbar();
 
   const [activeTab, setActiveTab] = useState<Tab>((searchParams.get('tab') as Tab) || 'offers');
-  const [templatesSubTab, setTemplatesSubTab] = useState<TemplatesSubTab>('offer-templates');
   const [loading, setLoading] = useState(false);
 
   const [filteredOffers, setFilteredOffers] = useState<Offer[]>([]);
@@ -133,11 +131,7 @@ export function OfferPage({
   const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
   const [productSearch, setProductSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-
-  // Szablony
-  const [showTemplateModal, setShowTemplateModal] = useState(false);
-  const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
+  const [viewMode, setViewMode] = useState<'grid' | 'list' | 'table'>('grid');
 
   // Liczniki
   // Kreator oferty
@@ -206,6 +200,11 @@ export function OfferPage({
   };
 
   const getClientName = (offer: Offer) => {
+    if ((offer as any).organization?.name) return (offer as any).organization.alias || (offer as any).organization.name;
+    if ((offer as any).contact?.full_name) return (offer as any).contact.full_name;
+    if ((offer as any).contact?.first_name || (offer as any).contact?.last_name) {
+      return `${(offer as any).contact.first_name || ''} ${(offer as any).contact.last_name || ''}`.trim();
+    }
     const event = (offer as any).event;
     if (event?.organization?.name) {
       return event.organization.name;
@@ -255,6 +254,7 @@ export function OfferPage({
           id,
           name,
           event_date,
+          client_type,
           organization_id,
           contact_person_id
         `,
@@ -282,7 +282,7 @@ export function OfferPage({
         if (contactIds.length > 0) {
           const { data: contacts } = await supabase
             .from('contacts')
-            .select('id, first_name, last_name, company_name')
+            .select('id, full_name, first_name, last_name, company_name, email')
             .in('id', contactIds);
           contactsMap = Object.fromEntries((contacts || []).map((c) => [c.id, c]));
         }
@@ -318,6 +318,10 @@ export function OfferPage({
       </div>
     );
   }
+
+  const selectedEvent = selectedEventId
+    ? events.find((event) => event.id === selectedEventId)
+    : null;
 
   return (
     <div className="space-y-6">
@@ -420,69 +424,11 @@ export function OfferPage({
       )}
 
       {activeTab === 'templates' && (
-        <div className="space-y-6">
-          {/* Sub-tabs dla Szablonów */}
-          <div className="flex space-x-1 rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-1">
-            <button
-              onClick={() => setTemplatesSubTab('offer-templates')}
-              className={`flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-                templatesSubTab === 'offer-templates'
-                  ? 'bg-[#d3bb73] text-[#1c1f33]'
-                  : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
-              }`}
-            >
-              Szablony ofert
-            </button>
-            <button
-              onClick={() => setTemplatesSubTab('page-templates')}
-              className={`flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-                templatesSubTab === 'page-templates'
-                  ? 'bg-[#d3bb73] text-[#1c1f33]'
-                  : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
-              }`}
-            >
-              Szablony stron
-            </button>
+        <div className="rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33]/50">
+          <div className="p-6">
+            <OfferPageTemplatesEditor />
           </div>
-
-          {/* Treść sub-tabów */}
-          {templatesSubTab === 'offer-templates' && (
-            <TemplatesTab
-              templates={templates}
-              onNew={() => {
-                setEditingTemplate(null);
-                setShowTemplateModal(true);
-              }}
-              onEdit={(template) => {
-                setEditingTemplate(template);
-                setShowTemplateModal(true);
-              }}
-            />
-          )}
-
-          {templatesSubTab === 'page-templates' && (
-            <div className="rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33]/50">
-              <div className="p-6">
-                <OfferPageTemplatesEditor />
-              </div>
-            </div>
-          )}
         </div>
-      )}
-
-      {/* Template Modal */}
-      {showTemplateModal && (
-        <TemplateEditorModal
-          template={editingTemplate}
-          onClose={() => {
-            setShowTemplateModal(false);
-            setEditingTemplate(null);
-          }}
-          onSuccess={() => {
-            setShowTemplateModal(false);
-            setEditingTemplate(null);
-          }}
-        />
       )}
 
       {/* Event Selector Modal */}
@@ -506,12 +452,14 @@ export function OfferPage({
               ) : (
                 <div className="space-y-2">
                   {events.map((event: any) => {
-                    const clientName =
-                      event.organization?.name ||
+                    const individualName =
+                      event.contact?.full_name ||
                       [event.contact?.first_name, event.contact?.last_name]
                         .filter(Boolean)
-                        .join(' ') ||
-                      'Brak klienta';
+                        .join(' ');
+                    const clientName = event.client_type === 'individual'
+                      ? individualName || 'Brak klienta indywidualnego'
+                      : event.organization?.name || individualName || 'Brak klienta';
 
                     return (
                       <button
@@ -555,6 +503,14 @@ export function OfferPage({
             setSelectedEventId(null);
           }}
           eventId={selectedEventId}
+          clientType={
+            selectedEvent?.client_type ||
+            (selectedEvent?.contact_person_id && !selectedEvent?.organization_id
+              ? 'individual'
+              : 'business')
+          }
+          organizationId={selectedEvent?.organization_id || ''}
+          contactId={selectedEvent?.contact_person_id || ''}
           onSuccess={() => {
             setShowOfferWizard(false);
             setSelectedEventId(null);

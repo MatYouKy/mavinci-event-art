@@ -26,6 +26,8 @@ export const equipmentApi = createApi({
     'StorageLocations',
     'Categories',
     'CablesList',
+    'CableCategories',
+    'CableStockMovements',
   ],
 
   endpoints: (builder) => ({
@@ -119,6 +121,8 @@ export const equipmentApi = createApi({
             .select(
               `
               id, name, warehouse_category_id, thumbnail_url, description, created_at, stock_quantity,
+              stock_unit, minimum_stock_quantity, cable_category_id,
+              cable_category:cable_categories(id, parent_id, slug, name, color),
               cable_units:cable_units(id, status)
             `,
               { count: 'exact' },
@@ -235,8 +239,14 @@ export const equipmentApi = createApi({
       },
       // cache po parametrach
       serializeQueryArgs: ({ endpointName, queryArgs }) => {
-        const { q = '', categoryId = null, itemType = 'all', activeOnly = false } = queryArgs ?? {};
-        return `${endpointName}|q:${q}|cat:${categoryId}|type:${itemType}|active:${activeOnly}`;
+        const {
+          q = '',
+          categoryId = null,
+          itemType = 'all',
+          activeOnly = false,
+          showCablesOnly = false,
+        } = queryArgs ?? {};
+        return `${endpointName}|q:${q}|cat:${categoryId}|type:${itemType}|active:${activeOnly}|cables:${showCablesOnly}`;
       },
       // po zmianie page nie chcemy nadpisać cache klucza — RTKQ wywoła merge
       merge: (currentCache, newData) => {
@@ -372,11 +382,17 @@ export const equipmentApi = createApi({
             connector_in,
             connector_out,
             stock_quantity,
+            stock_unit,
+            minimum_stock_quantity,
+            tracking_mode,
+            is_directional,
+            cable_category_id,
             thumbnail_url,
             warehouse_category_id,
             storage_location_id,
             warehouse_categories:warehouse_categories(id, name),
             storage_location:storage_locations(id, name),
+            cable_category:cable_categories(id, parent_id, slug, name, color, order_index),
             connector_in_type:connector_types!cables_connector_in_fkey(id, name, thumbnail_url),
             connector_out_type:connector_types!cables_connector_out_fkey(id, name, thumbnail_url)
           `,
@@ -401,6 +417,7 @@ export const equipmentApi = createApi({
             *,
             warehouse_categories:warehouse_categories(*),
             storage_location:storage_locations(id, name),
+            cable_category:cable_categories(id, parent_id, slug, name, color, order_index),
             connector_in_type:connector_types!cables_connector_in_fkey(id, name, thumbnail_url),
             connector_out_type:connector_types!cables_connector_out_fkey(id, name, thumbnail_url)
           `,
@@ -413,9 +430,31 @@ export const equipmentApi = createApi({
         }
         return { data };
       },
-      providesTags: (_res, _err, id) => {
-        return [{ type: 'Equipment', id }];
+      providesTags: (_res, _err, id) => [{ type: 'Equipment', id }],
+    }),
+
+    getCableStockMovements: builder.query<any[], string>({
+      async queryFn(cableId) {
+        const { data, error } = await supabase
+          .from('cable_stock_movements')
+          .select(`
+            id,
+            movement_type,
+            quantity_delta,
+            balance_after,
+            reason,
+            created_at,
+            created_by,
+            employee:employees!cable_stock_movements_created_by_fkey(name, surname)
+          `)
+          .eq('cable_id', cableId)
+          .order('created_at', { ascending: false })
+          .limit(100);
+
+        if (error) return { error: error as any };
+        return { data: data ?? [] };
       },
+      providesTags: (_res, _err, cableId) => [{ type: 'CableStockMovements', id: cableId }],
     }),
 
     // jednostki kabla
@@ -458,16 +497,21 @@ export const equipmentApi = createApi({
     // aktualizacja kabla
     updateCable: builder.mutation<{ success: true }, { id: string; payload: Record<string, any> }>({
       async queryFn({ id, payload }) {
-        // Sprawdź sesję użytkownika
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-
-        const { error, count } = await supabase.from('cables').update(payload).eq('id', id);
+        const { stock_quantity, ...cablePayload } = payload;
+        const { error } = await supabase.from('cables').update(cablePayload).eq('id', id);
 
         if (error) {
           console.error('updateCable mutation - error:', error);
           return { error: error as any };
+        }
+
+        if (stock_quantity !== undefined && stock_quantity !== null) {
+          const { error: stockError } = await supabase.rpc('adjust_cable_stock', {
+            p_cable_id: id,
+            p_new_quantity: Number(stock_quantity),
+            p_reason: 'Korekta z karty przewodu',
+          });
+          if (stockError) return { error: stockError as any };
         }
 
         const { data: updatedData } = await supabase
@@ -486,9 +530,12 @@ export const equipmentApi = createApi({
 
         return { data: updatedData || { success: true } };
       },
-      invalidatesTags: (_result, _error, { id }) => {
-        return [{ type: 'Equipment', id }, 'EquipmentList'];
-      },
+      invalidatesTags: (_result, _error, { id }) => [
+        { type: 'Equipment', id },
+        { type: 'CableStockMovements', id },
+        'EquipmentList',
+        'CablesList',
+      ],
     }),
 
     // tworzenie kabla
@@ -504,6 +551,19 @@ export const equipmentApi = createApi({
         return { data };
       },
       invalidatesTags: ['CablesList'],
+    }),
+
+    getCableCategories: builder.query<any[], void>({
+      async queryFn() {
+        const { data, error } = await supabase
+          .from('cable_categories')
+          .select('id, parent_id, slug, name, description, color, order_index')
+          .eq('is_active', true)
+          .order('order_index', { ascending: true });
+        if (error) return { error: error as any };
+        return { data: data ?? [] };
+      },
+      providesTags: ['CableCategories'],
     }),
 
     // usuwanie kabla
@@ -751,6 +811,8 @@ export const {
   useGetEquipmentDetailsQuery,
   useGetCablesListQuery,
   useGetCableDetailsQuery,
+  useGetCableCategoriesQuery,
+  useGetCableStockMovementsQuery,
   useGetUnitsByEquipmentQuery,
   useGetCableUnitsQuery,
   useGetConnectorTypesQuery,

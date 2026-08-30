@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Check, Loader2, MonitorPlay } from 'lucide-react';
+import { Check, Loader2, MonitorPlay, RotateCcw } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 
@@ -14,13 +14,26 @@ type LiveModule = {
 
 type Props = {
   productId: string;
+  productVariantId?: string | null;
+  productVariantName?: string | null;
+  isInherited?: boolean;
   canEdit: boolean;
+  onCustomizeVariant?: () => Promise<void>;
+  onResetInheritance?: () => Promise<void>;
 };
 
 const isMissingSchema = (message?: string) =>
-  /does not exist|schema cache|PGRST205|42P01/i.test(message || '');
+  /does not exist|schema cache|PGRST204|PGRST205|42P01|42703/i.test(message || '');
 
-export function ProductMavinciLiveModules({ productId, canEdit }: Props) {
+export function ProductMavinciLiveModules({
+  productId,
+  productVariantId = null,
+  productVariantName = null,
+  isInherited = false,
+  canEdit,
+  onCustomizeVariant,
+  onResetInheritance,
+}: Props) {
   const { showSnackbar } = useSnackbar();
   const [modules, setModules] = useState<LiveModule[]>([]);
   const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
@@ -32,16 +45,21 @@ export function ProductMavinciLiveModules({ productId, canEdit }: Props) {
     setLoading(true);
     setMissingSchema(false);
 
+    let linksQuery = supabase
+      .from('offer_product_mavinci_live_modules')
+      .select('module_key')
+      .eq('product_id', productId);
+    linksQuery = productVariantId && !isInherited
+      ? linksQuery.eq('product_variant_id', productVariantId)
+      : linksQuery.is('product_variant_id', null);
+
     const [modulesResult, linksResult] = await Promise.all([
       supabase
         .from('mavinci_live_modules')
         .select('module_key,name,description,display_order')
         .eq('is_active', true)
         .order('display_order'),
-      supabase
-        .from('offer_product_mavinci_live_modules')
-        .select('module_key')
-        .eq('product_id', productId),
+      linksQuery,
     ]);
 
     setLoading(false);
@@ -58,27 +76,35 @@ export function ProductMavinciLiveModules({ productId, canEdit }: Props) {
 
     setModules((modulesResult.data || []) as LiveModule[]);
     setSelectedKeys((linksResult.data || []).map((item) => item.module_key));
-  }, [productId, showSnackbar]);
+  }, [productId, productVariantId, isInherited, showSnackbar]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
   const toggleModule = async (moduleKey: string) => {
-    if (!canEdit || savingKey) return;
+    if (!canEdit || isInherited || savingKey) return;
     const selected = selectedKeys.includes(moduleKey);
     setSavingKey(moduleKey);
 
-    const result = selected
-      ? await supabase
-          .from('offer_product_mavinci_live_modules')
-          .delete()
-          .eq('product_id', productId)
-          .eq('module_key', moduleKey)
-      : await supabase.from('offer_product_mavinci_live_modules').insert({
+    let result;
+    if (selected) {
+      let deleteQuery = supabase
+        .from('offer_product_mavinci_live_modules')
+        .delete()
+        .eq('product_id', productId)
+        .eq('module_key', moduleKey);
+      deleteQuery = productVariantId
+        ? deleteQuery.eq('product_variant_id', productVariantId)
+        : deleteQuery.is('product_variant_id', null);
+      result = await deleteQuery;
+    } else {
+      result = await supabase.from('offer_product_mavinci_live_modules').insert({
           product_id: productId,
+          product_variant_id: productVariantId,
           module_key: moduleKey,
         });
+    }
 
     setSavingKey(null);
     if (result.error) {
@@ -115,6 +141,36 @@ export function ProductMavinciLiveModules({ productId, canEdit }: Props) {
         </div>
       </div>
 
+      {productVariantId && (
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#d3bb73]/15 bg-[#111522] p-3">
+          <div>
+            <p className="text-sm font-medium text-[#e5e4e2]">Wariant: {productVariantName}</p>
+            <p className="text-xs text-[#e5e4e2]/45">
+              {isInherited
+                ? 'Moduły są dziedziczone z produktu bazowego.'
+                : 'Ten wariant ma własną listę modułów.'}
+            </p>
+          </div>
+          {canEdit && (isInherited ? (
+            <button
+              type="button"
+              onClick={() => void onCustomizeVariant?.()}
+              className="rounded-lg bg-[#d3bb73]/20 px-3 py-2 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/30"
+            >
+              Dostosuj wariant
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => void onResetInheritance?.()}
+              className="flex items-center gap-1.5 rounded-lg bg-white/5 px-3 py-2 text-sm text-[#e5e4e2]/70 hover:bg-white/10"
+            >
+              <RotateCcw className="h-4 w-4" /> Dziedzicz bazowe
+            </button>
+          ))}
+        </div>
+      )}
+
       {loading && (
         <div className="flex items-center justify-center rounded-lg border border-white/10 p-8 text-sm text-[#e5e4e2]/55">
           <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Wczytuję moduły…
@@ -123,8 +179,9 @@ export function ProductMavinciLiveModules({ productId, canEdit }: Props) {
 
       {!loading && missingSchema && (
         <div className="rounded-lg border border-amber-400/25 bg-amber-400/10 p-4 text-sm text-amber-100">
-          Zastosuj migrację <strong>20260826100000_link_offer_products_to_mavinci_live.sql</strong>,
-          aby włączyć przypisywanie zawartości.
+          Zastosuj migracje Mavinci LIVE oraz{' '}
+          <strong>20260831100000_unify_offer_variant_configuration.sql</strong>, aby włączyć
+          wariantowe przypisywanie zawartości.
         </div>
       )}
 
@@ -137,7 +194,7 @@ export function ProductMavinciLiveModules({ productId, canEdit }: Props) {
               <button
                 key={module.module_key}
                 type="button"
-                disabled={!canEdit || Boolean(savingKey)}
+                disabled={!canEdit || isInherited || Boolean(savingKey)}
                 onClick={() => void toggleModule(module.module_key)}
                 className={`flex min-h-28 items-start gap-3 rounded-xl border p-4 text-left transition disabled:cursor-default ${
                   selected

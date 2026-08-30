@@ -1,9 +1,9 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { FileText, Save, Eye, CreditCard as Edit3, ChevronDown, Plus } from 'lucide-react';
+import { FileText, Save, CreditCard as Edit3, Plus, RotateCcw } from 'lucide-react';
 import dynamic from 'next/dynamic';
-import { supabase } from '@/lib/supabase/browser';
+import { normalizeContractClauseHtml } from '@/lib/CRM/contracts/contractClauseContent';
 
 const ReactQuill = dynamic(() => import('react-quill'), { ssr: false });
 import 'react-quill/dist/quill.snow.css';
@@ -11,16 +11,18 @@ const ReactQuillWithRef = ReactQuill as React.ComponentType<any>;
 
 interface Props {
   productId: string;
+  productVariantId?: string | null;
+  productVariantName?: string | null;
+  isInherited?: boolean;
   initialClauses: string | null;
   initialCategory: 'requirements' | 'obligations' | 'risks' | 'general';
   canEdit: boolean;
   onSave: (clauses: string, category: 'requirements' | 'obligations' | 'risks' | 'general') => Promise<void>;
+  onResetInheritance?: () => Promise<void>;
 }
 
 const formats = [
   'header',
-  'font',
-  'size',
   'bold',
   'italic',
   'underline',
@@ -84,14 +86,24 @@ const PLACEHOLDERS = [
   ]},
 ];
 
-export function ProductContractClauses({ productId, initialClauses, initialCategory, canEdit, onSave }: Props) {
+export function ProductContractClauses({
+  productId,
+  productVariantId,
+  productVariantName,
+  isInherited = false,
+  initialClauses,
+  initialCategory,
+  canEdit,
+  onSave,
+  onResetInheritance,
+}: Props) {
   const [isEditing, setIsEditing] = useState(false);
   const [clauses, setClauses] = useState(initialClauses || '');
   const [category, setCategory] = useState(initialCategory);
   const [isSaving, setIsSaving] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<string>('');
   const [cursorPosition, setCursorPosition] = useState<number | null>(null);
-  const [availableFonts, setAvailableFonts] = useState<Array<{ family: string; file_url?: string | null; weight?: string }>>([]);
+  const [previewClauses, setPreviewClauses] = useState(initialClauses || '');
   const quillRef = useRef<any>(null);
 
   useEffect(() => {
@@ -100,88 +112,17 @@ export function ProductContractClauses({ productId, initialClauses, initialCateg
   }, [initialClauses, initialCategory]);
 
   useEffect(() => {
-    let active = true;
-    const configureFonts = async () => {
-      try {
-        // `select('*')` zachowuje zgodność także przed migracją dodającą file_url.
-        const { data, error } = await supabase
-          .from('company_brandbook_fonts')
-          .select('*')
-          .order('order_index');
-
-        if (!active) return;
-        if (error) {
-          console.warn('Nie udało się pobrać fontów księgi znaku:', error.message);
-        }
-
-        const fonts = ((data || []) as Array<{
-          family?: string | null;
-          file_url?: string | null;
-          weight?: string | null;
-        }>)
-          .filter((font): font is { family: string; file_url?: string | null; weight?: string | null } =>
-            Boolean(font.family?.trim()),
-          )
-          .map((font) => ({ ...font, family: font.family.trim() }));
-
-        setAvailableFonts(fonts);
-
-        if (typeof FontFace !== 'undefined' && document.fonts) {
-          await Promise.allSettled(
-            fonts.filter((font) => font.file_url).map(async (font) => {
-              const loadedFont = new FontFace(font.family, `url(${font.file_url})`, {
-                weight: font.weight || '400',
-              });
-              await loadedFont.load();
-              document.fonts.add(loadedFont);
-            }),
-          );
-        }
-
-        const reactQuillModule = await import('react-quill');
-        const Quill =
-          (reactQuillModule as any).Quill ||
-          (reactQuillModule as any).default?.Quill;
-
-        if (!Quill?.import || !Quill?.register) {
-          console.warn('Nie udało się skonfigurować dodatkowych fontów edytora Quill.');
-          return;
-        }
-
-        const FontStyle = Quill.import('attributors/style/font');
-        FontStyle.whitelist = [
-          'Arial',
-          'Georgia',
-          'Verdana',
-          'Tahoma',
-          'Garamond',
-          'Times New Roman',
-          'Courier New',
-          ...fonts.map((font) => font.family),
-        ];
-        const SizeStyle = Quill.import('attributors/style/size');
-        SizeStyle.whitelist = [
-          '8pt', '9pt', '10pt', '11pt', '12pt', '14pt', '16pt', '18pt', '20pt', '24pt',
-          '28pt', '32pt', '36pt', '48pt', '64pt', '72pt',
-        ];
-        Quill.register(FontStyle, true);
-        Quill.register(SizeStyle, true);
-      } catch (error) {
-        console.error('Błąd konfiguracji fontów edytora klauzul:', error);
-      }
-    };
-    void configureFonts();
-    return () => {
-      active = false;
-    };
-  }, []);
+    setPreviewClauses(normalizeContractClauseHtml(clauses));
+  }, [clauses]);
 
 
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      const trimmedClauses = clauses.trim();
-      await onSave(trimmedClauses, category);
+      const normalizedClauses = normalizeContractClauseHtml(clauses);
+      setClauses(normalizedClauses);
+      setPreviewClauses(normalizedClauses);
+      await onSave(normalizedClauses, category);
       setIsEditing(false);
     } catch (error) {
       console.error('Error saving clauses:', error);
@@ -258,7 +199,9 @@ export function ProductContractClauses({ productId, initialClauses, initialCateg
                 Rekomendowane klauzule umowy
               </h3>
               <p className="text-sm text-gray-400">
-                Dodatkowe paragrafy automatycznie wstawiane do umów zawierających ten produkt
+                {productVariantName
+                  ? `${productVariantName}: ${isInherited ? 'dziedziczy klauzule produktu bazowego' : 'własne klauzule wariantu'}`
+                  : 'Dodatkowe paragrafy automatycznie wstawiane do umów zawierających ten produkt'}
               </p>
             </div>
           </div>
@@ -283,13 +226,25 @@ export function ProductContractClauses({ productId, initialClauses, initialCateg
                   </button>
                 </>
               ) : (
-                <button
-                  onClick={() => setIsEditing(true)}
-                  className="flex items-center gap-2 rounded-lg border border-gray-600 bg-gray-700 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-gray-600"
-                >
-                  <Edit3 className="h-4 w-4" />
-                  Edytuj
-                </button>
+                <>
+                  {productVariantId && !isInherited && onResetInheritance && (
+                    <button
+                      type="button"
+                      onClick={() => void onResetInheritance()}
+                      className="flex items-center gap-2 rounded-lg border border-gray-600 bg-gray-700 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-gray-600"
+                    >
+                      <RotateCcw className="h-4 w-4" />
+                      Dziedzicz bazowe
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setIsEditing(true)}
+                    className="flex items-center gap-2 rounded-lg border border-gray-600 bg-gray-700 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-gray-600"
+                  >
+                    <Edit3 className="h-4 w-4" />
+                    {isInherited ? 'Dostosuj wariant' : 'Edytuj'}
+                  </button>
+                </>
               )}
             </div>
           )}
@@ -323,7 +278,7 @@ export function ProductContractClauses({ productId, initialClauses, initialCateg
                 background: white;
                 border: 1px solid #e5e7eb;
                 border-radius: 0 0 8px 8px;
-                font-family: 'Arial', sans-serif;
+                font-family: Georgia, serif;
               }
 
               .contract-clauses-editor .ql-toolbar {
@@ -335,13 +290,13 @@ export function ProductContractClauses({ productId, initialClauses, initialCateg
 
               .contract-clauses-editor .ql-editor {
                 min-height: 300px;
-                font-size: 14px;
-                line-height: 1.8;
+                font-size: 12pt;
+                line-height: 1.6;
                 color: #000000;
               }
 
               .contract-clauses-editor .ql-editor p {
-                margin-bottom: 1em;
+                margin-bottom: 0.5em;
                 color: #000000;
               }
 
@@ -349,19 +304,19 @@ export function ProductContractClauses({ productId, initialClauses, initialCateg
               .contract-clauses-editor .ql-editor h2,
               .contract-clauses-editor .ql-editor h3 {
                 font-weight: bold;
-                margin-top: 1.2em;
-                margin-bottom: 0.8em;
+                margin-top: 0.7em;
+                margin-bottom: 0.35em;
                 color: #000000;
               }
 
               .contract-clauses-editor .ql-editor ul,
               .contract-clauses-editor .ql-editor ol {
                 padding-left: 24px;
-                margin-bottom: 1em;
+                margin-bottom: 0.5em;
               }
 
               .contract-clauses-editor .ql-editor li {
-                margin-bottom: 0.5em;
+                margin-bottom: 0.2em;
               }
 
               .contract-clauses-editor .ql-editor blockquote {
@@ -463,10 +418,14 @@ export function ProductContractClauses({ productId, initialClauses, initialCateg
                   💡 Wybierz zmienną z listy - zostanie wstawiona w miejscu kursora w edytorze
                 </div>
               )}
+              <div className="rounded-lg border border-amber-400/25 bg-amber-400/10 px-3 py-2 text-xs leading-relaxed text-amber-100/80">
+                Tutaj określasz wyłącznie strukturę: paragraf, tytuł, akapit, listę, podpunkt
+                i wyróżnienia. Wcięcia oraz świadomie ustawione wyrównanie są zachowywane.
+                Font, rozmiar, interlinia i odstępy pobierane są z wybranego szablonu umowy.
+              </div>
             </div>
 
             <ReactQuillWithRef
-              key={availableFonts.map((font) => font.family).join('|') || 'system-fonts'}
               ref={quillRef}
               theme="snow"
               value={clauses}
@@ -488,8 +447,6 @@ export function ProductContractClauses({ productId, initialClauses, initialCateg
               modules={{
                 toolbar: [
                   [{ header: [1, 2, 3, false] }],
-                  [{ font: ['Arial', 'Georgia', 'Verdana', 'Tahoma', 'Garamond', 'Times New Roman', 'Courier New', ...availableFonts.map((font) => font.family)] }],
-                  [{ size: ['8pt', '9pt', '10pt', '11pt', '12pt', '14pt', '16pt', '18pt', '20pt', '24pt', '28pt', '32pt', '36pt', '48pt', '64pt', '72pt'] }],
                   ['bold', 'italic', 'underline'],
                   ['blockquote'],
                   [{ list: 'ordered' }, { list: 'bullet' }],
@@ -536,40 +493,100 @@ export function ProductContractClauses({ productId, initialClauses, initialCateg
             </div>
           </div>
         ) : (
-          <div className="rounded-lg border border-gray-700 bg-gray-800 p-6">
+          <div className="overflow-hidden rounded-lg border border-gray-700 bg-gray-800">
+            <div className="flex items-center justify-between border-b border-gray-700 px-5 py-3">
+              <div>
+                <div className="text-sm font-medium text-gray-100">Podgląd struktury klauzuli</div>
+                <div className="mt-0.5 text-xs text-gray-400">
+                  Ostateczny wygląd nada wybrany szablon umowy
+                </div>
+              </div>
+              <span className="rounded bg-blue-500/10 px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-blue-300">
+                bez dekoracji edytora
+              </span>
+            </div>
             <style jsx>{`
-              div :global(p) {
-                color: #e5e7eb;
-                margin-bottom: 1em;
-                line-height: 1.7;
+              .clause-structure-preview {
+                color: #111827;
+                font-family: Georgia, serif;
+                font-size: 12pt;
+                line-height: 1.6;
               }
-              div :global(strong) {
-                color: #f3f4f6;
-                font-weight: 600;
+              .clause-structure-preview :global(p) {
+                margin: 0 0 6pt;
+                color: inherit;
+                text-align: justify;
               }
-              div :global(em) {
-                color: #d1d5db;
+              .clause-structure-preview :global([data-contract-paragraph='true']) {
+                margin: 8pt 0 4pt;
+                text-align: center;
+                font-weight: 700;
               }
-              div :global(h1),
-              div :global(h2),
-              div :global(h3) {
-                color: #f9fafb;
-                font-weight: bold;
-                margin-top: 1.5em;
-                margin-bottom: 0.8em;
+              .clause-structure-preview :global([data-clause-role='title']) {
+                margin: 4pt 0 3pt;
+                text-align: left;
+                font-weight: 700;
               }
-              div :global(ul),
-              div :global(ol) {
-                color: #e5e7eb;
-                padding-left: 1.5em;
-                margin-bottom: 1em;
+              .clause-structure-preview :global([data-clause-align='left']) { text-align: left; }
+              .clause-structure-preview :global([data-clause-align='center']) { text-align: center; }
+              .clause-structure-preview :global([data-clause-align='right']) { text-align: right; }
+              .clause-structure-preview :global([data-clause-align='justify']) { text-align: justify; }
+              .clause-structure-preview :global([data-clause-indent='1']) { margin-left: 1.5em; }
+              .clause-structure-preview :global([data-clause-indent='2']) { margin-left: 3em; }
+              .clause-structure-preview :global([data-clause-indent='3']) { margin-left: 4.5em; }
+              .clause-structure-preview :global([data-clause-indent='4']) { margin-left: 6em; }
+              .clause-structure-preview :global(strong),
+              .clause-structure-preview :global(b) {
+                font-weight: 700;
               }
-              div :global(li) {
-                color: #e5e7eb;
-                margin-bottom: 0.5em;
+              .clause-structure-preview :global(h1),
+              .clause-structure-preview :global(h2),
+              .clause-structure-preview :global(h3) {
+                margin: 4pt 0 3pt;
+                color: inherit;
+                font-size: 12pt;
+                font-weight: 700;
+              }
+              .clause-structure-preview :global(ul),
+              .clause-structure-preview :global(ol) {
+                margin: 0 0 3pt;
+                padding-left: 1.65em;
+              }
+              .clause-structure-preview :global(ul) {
+                list-style-type: disc;
+              }
+              .clause-structure-preview :global(ol) {
+                list-style-type: decimal;
+              }
+              .clause-structure-preview :global(ol[data-clause-marker='lower-alpha']) {
+                list-style-type: lower-alpha;
+              }
+              .clause-structure-preview :global(ol[data-clause-marker='decimal-paren'] > li::marker) {
+                content: counter(list-item) ') ';
+              }
+              .clause-structure-preview :global(ol[data-clause-marker='lower-alpha-paren'] > li::marker) {
+                content: counter(list-item, lower-alpha) ') ';
+              }
+              .clause-structure-preview :global(ol[data-clause-marker='bullet']) {
+                list-style-type: disc;
+              }
+              .clause-structure-preview :global(li) {
+                margin: 0 0 2pt;
+                color: inherit;
+              }
+              .clause-structure-preview :global(blockquote) {
+                margin: 4pt 0;
+                border-left: 2px solid #6b7280;
+                padding-left: 8pt;
               }
             `}</style>
-            <div dangerouslySetInnerHTML={{ __html: clauses }} />
+            <div className="bg-white px-8 py-7">
+              <div
+                className="clause-structure-preview"
+                suppressHydrationWarning
+                dangerouslySetInnerHTML={{ __html: previewClauses }}
+              />
+            </div>
           </div>
         )}
       </div>

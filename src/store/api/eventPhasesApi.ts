@@ -97,9 +97,17 @@ export interface EventPhaseVehicle {
   updated_at: string;
   vehicle?: {
     id: string;
+    name?: string | null;
     registration_number: string;
     brand: string;
     model: string;
+    thumb_url?: string | null;
+    status?: string | null;
+  };
+  driver?: {
+    id: string;
+    name: string;
+    surname: string;
   };
 }
 
@@ -352,7 +360,10 @@ export const eventPhasesApi = createApi({
       query: (phaseId) => ({
         table: 'event_phase_vehicles',
         method: 'select',
-        select: '*, vehicle:vehicles(*)',
+        select: `*,
+          vehicle:vehicles!event_phase_vehicles_vehicle_id_fkey(*),
+          driver:employees!event_phase_vehicles_driver_id_fkey(id,name,surname)
+        `,
         match: { phase_id: phaseId },
       }),
       providesTags: (result, error, phaseId) => [
@@ -366,7 +377,10 @@ export const eventPhasesApi = createApi({
         table: 'event_phase_vehicles',
         method: 'insert',
         data,
-        select: '*',
+        select: `*,
+          vehicle:vehicles!event_phase_vehicles_vehicle_id_fkey(*),
+          driver:employees!event_phase_vehicles_driver_id_fkey(id,name,surname)
+        `,
       }),
       invalidatesTags: (result, error, arg) => [{ type: 'PhaseVehicles', id: arg.phase_id }],
     }),
@@ -382,13 +396,16 @@ export const eventPhasesApi = createApi({
       invalidatesTags: (result) => (result ? [{ type: 'PhaseVehicles', id: result.phase_id }] : []),
     }),
 
-    deletePhaseVehicle: builder.mutation<void, string>({
-      query: (id) => ({
+    deletePhaseVehicle: builder.mutation<void, { id: string; phase_id: string }>({
+      query: ({ id }) => ({
         table: 'event_phase_vehicles',
         method: 'delete',
         match: { id },
       }),
-      invalidatesTags: ['PhaseVehicles'],
+      invalidatesTags: (_result, _error, arg) => [
+        { type: 'PhaseVehicles', id: arg.phase_id },
+        { type: 'PhaseVehicles', id: 'LIST' },
+      ],
     }),
 
     // Conflict Detection

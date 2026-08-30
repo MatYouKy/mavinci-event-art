@@ -79,13 +79,25 @@ export function TeamMembersList({
     if (!permissionsModal) return;
 
     try {
-      const { error } = await supabase
+      let { error } = await supabase
         .from('employee_assignments')
         .update({
           ...permissionsForm,
           permissions_updated_at: new Date().toISOString(),
         })
         .eq('id', permissionsModal.assignment.id);
+
+      if (error?.code === 'PGRST204' && error.message?.includes('can_edit_phases')) {
+        const { can_edit_phases: _phasePermission, ...compatiblePermissions } = permissionsForm;
+        const retry = await supabase
+          .from('employee_assignments')
+          .update({
+            ...compatiblePermissions,
+            permissions_updated_at: new Date().toISOString(),
+          })
+          .eq('id', permissionsModal.assignment.id);
+        error = retry.error;
+      }
 
       if (error) throw error;
 
@@ -152,20 +164,37 @@ export function TeamMembersList({
     }
   };
 
-  const sendInvitation = async (assignmentId: string) => {
+  const sendInvitation = async (
+    assignmentId: string,
+    options: { includePhases?: boolean; mode?: 'invitation' | 'timeline_update' } = {},
+  ) => {
     setSendingInvitation(assignmentId);
     try {
       const result = await supabase.functions.invoke('send-event-invitation', {
-        body: { assignmentId },
+        body: {
+          assignmentId,
+          includePhases: options.includePhases ?? false,
+          mode: options.mode ?? 'invitation',
+        },
       });
 
       if (result.error) {
         console.error('Error sending invitation:', result.error);
-        showSnackbar('Błąd podczas wysyłania zaproszenia', 'error');
+        showSnackbar(
+          options.mode === 'timeline_update'
+            ? 'Nie wysłano harmonogramu. Sprawdź, czy pracownik ma przypisaną co najmniej jedną fazę.'
+            : 'Błąd podczas wysyłania zaproszenia',
+          'error',
+        );
         return;
       }
 
-      showSnackbar('Zaproszenie zostało wysłane!', 'success');
+      showSnackbar(
+        options.mode === 'timeline_update'
+          ? 'Uzupełniony harmonogram został wysłany'
+          : 'Zaproszenie zostało wysłane',
+        'success',
+      );
       window.location.reload();
     } catch (error) {
       console.error('Exception sending invitation:', error);
@@ -225,7 +254,7 @@ export function TeamMembersList({
                           actions={[
                             {
                               label: 'Wyślij zaproszenie',
-                              onClick: () => sendInvitation(item.id),
+                              onClick: () => sendInvitation(item.id, { includePhases: false }),
                               icon: sendingInvitation === item.id ? (
                                 <div className="h-4 w-4 animate-spin rounded-full border-2 border-[#d3bb73] border-t-transparent" />
                               ) : (
@@ -233,6 +262,23 @@ export function TeamMembersList({
                               ),
                               variant: 'default',
                               show: item.status === 'pending' && !item.invitation_email_sent,
+                              disabled: sendingInvitation === item.id,
+                            },
+                            {
+                              label: 'Wyślij aktualny timeline',
+                              onClick: () =>
+                                sendInvitation(item.id, {
+                                  includePhases: true,
+                                  mode: 'timeline_update',
+                                }),
+                              icon:
+                                sendingInvitation === item.id ? (
+                                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-[#d3bb73] border-t-transparent" />
+                                ) : (
+                                  <Mail className="h-4 w-4" />
+                                ),
+                              variant: 'default',
+                              show: item.status !== 'rejected',
                               disabled: sendingInvitation === item.id,
                             },
                             {

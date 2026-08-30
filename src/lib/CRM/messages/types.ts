@@ -1,15 +1,3 @@
-export type MessageListItem = {
-  id: string;
-  type: 'contact_form' | 'sent' | 'received';
-  from: string;
-  subject: string;
-  preview: string;
-  date: string;
-
-  // te pola MUSZĄ istnieć w liście:
-  is_read: boolean;
-  is_starred: boolean;
-
-  assigned_to?: string | null;
-  assigned_employee?: { name: string; surname: string } | null;
-};
+// Jedno źródło typu wiadomości. Warstwa API normalizuje kolumny Supabase
+// (snake_case) do modelu używanego przez React (camelCase).
+export type { MessageListItem } from '@/store/api/messagesApi';

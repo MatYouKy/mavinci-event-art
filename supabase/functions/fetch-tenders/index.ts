@@ -450,7 +450,7 @@ async function notifyAboutHighScoreTender(
 ) {
   const { data: recipients, error: recipientsError } = await supabase
     .from("employees")
-    .select("id, role, access_level, permissions")
+    .select("id, auth_user_id, role, access_level, permissions")
     .eq("is_active", true);
 
   if (recipientsError) throw recipientsError;
@@ -461,43 +461,34 @@ async function notifyAboutHighScoreTender(
       employee.access_level === "admin" ||
       (Array.isArray(employee.permissions) && employee.permissions.includes("tenders_view"))
     )
-    .map((employee) => employee.id);
+    .map((employee) => employee.auth_user_id || employee.id);
 
   if (recipientIds.length === 0) return;
 
-  const { data: notification, error: notificationError } = await supabase
-    .from("notifications")
-    .insert({
-      title: `Nowy trafny przetarg (${relevanceScore}/100)`,
-      message: tender.title,
-      type: "info",
-      category: "system",
-      related_entity_id: tenderId,
-      action_url: `/crm/tenders?tender=${tenderId}`,
-      metadata: {
+  const { error: notificationError } = await supabase.rpc(
+    "enqueue_crm_business_notification",
+    {
+      p_deduplication_key: `high-score-tender:${tenderId}`,
+      p_notification_kind: "high_score_tender",
+      p_title: `Nowy trafny przetarg (${relevanceScore}/100)`,
+      p_message: tender.title,
+      p_type: "info",
+      p_category: "system",
+      p_action_url: `/crm/tenders?tender=${tenderId}`,
+      p_related_entity_type: null,
+      p_related_entity_id: null,
+      p_metadata: {
         kind: "high_score_tender",
         tender_id: tenderId,
         source: tender.source,
         source_url: tender.source_url,
         relevance_score: relevanceScore,
       },
-    })
-    .select("id")
-    .single();
+      p_recipient_user_ids: recipientIds,
+    }
+  );
 
   if (notificationError) throw notificationError;
-
-  const { error: recipientInsertError } = await supabase
-    .from("notification_recipients")
-    .insert(
-      recipientIds.map((userId) => ({
-        notification_id: notification.id,
-        user_id: userId,
-        is_read: false,
-      }))
-    );
-
-  if (recipientInsertError) throw recipientInsertError;
 }
 
 Deno.serve(async (req: Request) => {

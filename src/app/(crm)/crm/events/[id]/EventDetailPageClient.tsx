@@ -90,6 +90,7 @@ import { EventCategoryRow } from '@/lib/CRM/events/eventsData.server';
 import { EventContractTab } from '@/components/crm/events/contract/EventContractTab';
 import EventWorkflowReadinessPanel from '@/components/crm/events/EventWorkflowReadinessPanel';
 import EventPreflightPanel from '@/components/crm/events/EventPreflightPanel';
+import { useEventWorkspace } from '@/components/crm/events/EventWorkspaceProvider';
 
 export const ADMIN_EVENT_TABS = [
   'overview',
@@ -298,14 +299,11 @@ export default function EventDetailPageClient({
   const { showConfirm } = useDialog();
 
   const { equipment } = useEventEquipment(eventId);
+  const { employees: teamEmployees, refetch: refetchTeam } = useEventTeam(eventId);
+  const { refresh: refreshWorkspace } = useEventWorkspace();
 
   const { event: eventData, updateEvent } = useEvent(initialData);
-  const [teamEmployees, setTeamEmployees] = useState<any[]>([]);
   const [showStatusModal, setShowStatusModal] = useState(false);
-
-  useEffect(() => {
-    setTeamEmployees(employees || []);
-  }, [employees]);
 
   // ✅ uprawnienia do OFERT / FAKTUR / FINANSÓW (dopasuj nazwy scope do swoich)
   const canViewCommercials =
@@ -378,6 +376,7 @@ export default function EventDetailPageClient({
   }, [event?.location_id, initialLocation]);
 
   const [isConfirmed, setIsConfirmed] = useState(false);
+  const requestedTab = searchParams.get('tab');
   const [activeTab, setActiveTab] = useState<
     | 'overview'
     | 'phases'
@@ -394,7 +393,13 @@ export default function EventDetailPageClient({
     | 'calculations'
     | 'history'
     | 'mavinci-live'
-  >('overview');
+  >(requestedTab === 'contract' ? 'contract' : 'overview');
+
+  useEffect(() => {
+    if (searchParams.get('tab') === 'contract') {
+      setActiveTab('contract');
+    }
+  }, [searchParams]);
 
   const [showAddChecklistModal, setShowAddChecklistModal] = useState(false);
   const [showEditEventModal, setShowEditEventModal] = useState(false);
@@ -589,7 +594,8 @@ export default function EventDetailPageClient({
         return;
       }
 
-      setTeamEmployees((prev) => prev.filter((a) => a.id !== assignmentId));
+      await refetchTeam();
+      refreshWorkspace('employee_assignments');
       showSnackbar('Pracownik został usunięty z eventu', 'success');
     } catch (err) {
       console.error('Error:', err);
@@ -1623,7 +1629,11 @@ export default function EventDetailPageClient({
       {showAddEmployeeModal && (
         <AddEventEmployeeModal
           isOpen={showAddEmployeeModal}
-          onClose={() => setShowAddEmployeeModal(false)}
+          onClose={() => {
+            setShowAddEmployeeModal(false);
+            void refetchTeam();
+            refreshWorkspace('employee_assignments');
+          }}
           eventId={eventId}
         />
       )}

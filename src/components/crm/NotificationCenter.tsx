@@ -120,6 +120,16 @@ interface NotificationBanner {
   relatedEntityType: string | null;
 }
 
+// Responsive shells can briefly render more than one notification center.
+// Keep one audio claim per notification for the current browser runtime.
+const soundedNotificationIds = new Set<string>();
+
+function claimNotificationSound(notificationId: string): boolean {
+  if (soundedNotificationIds.has(notificationId)) return false;
+  soundedNotificationIds.add(notificationId);
+  return true;
+}
+
 export interface Notification {
   id: string;
   title: string;
@@ -157,10 +167,9 @@ export default function NotificationCenter({
   const [customSoundUrl, setCustomSoundUrl] = useState<string | null>(null);
   const soundEnabledRef = useRef(true);
   const customSoundUrlRef = useRef<string | null>(null);
-  const prevUnreadCountRef = useRef<number>(0);
-  const readyForSoundRef = useRef(false);
-  const initialLoadDoneRef = useRef(false);
-  const sessionStartRef = useRef<string>(new Date().toISOString());
+  const soundSessionStartedAtRef = useRef(0);
+  const realtimeReadyRef = useRef(false);
+  const preferencesLoadedRef = useRef(false);
   const [absenceModalId, setAbsenceModalId] = useState<string | null>(null);
   const [banners, setBanners] = useState<NotificationBanner[]>([]);
   const bannerTimeoutsRef = useRef<Record<string, NodeJS.Timeout>>({});
@@ -203,6 +212,9 @@ export default function NotificationCenter({
   useEffect(() => {
     if (!sessionUserId) return;
 
+    soundSessionStartedAtRef.current = Date.now();
+    realtimeReadyRef.current = false;
+    preferencesLoadedRef.current = false;
     fetchNotifications();
     loadUserPreferences();
 
@@ -223,22 +235,15 @@ export default function NotificationCenter({
         },
         (payload) => {
           const newRow = payload.new as any;
-          const createdAt = newRow?.created_at;
-          if (
-            createdAt &&
-            createdAt > sessionStartRef.current &&
-            readyForSoundRef.current &&
-            soundEnabledRef.current
-          ) {
-            playNotificationSound();
-          }
-          fetchNotifications().then(() => {
-            if (newRow?.notification_id && createdAt && createdAt > sessionStartRef.current) {
-              (async () => {
-                const { data: notifData, error: notifError } = await supabase
-                  .from('notifications')
-                  .select(
-                    `
+          void (async () => {
+            await fetchNotifications();
+
+            if (!newRow?.notification_id || newRow?.is_read) return;
+
+            const { data: notifData, error: notifError } = await supabase
+              .from('notifications')
+              .select(
+                `
                   id,
                   title,
                   message,
@@ -250,21 +255,44 @@ export default function NotificationCenter({
                   related_entity_type,
                   related_entity_id
                 `,
-                  )
-                  .eq('id', newRow.notification_id)
-                  .maybeSingle();
+              )
+              .eq('id', newRow.notification_id)
+              .maybeSingle();
 
-                if (notifError) {
-                  console.error('Błąd pobierania nowego powiadomienia:', notifError);
-                  return;
-                }
-
-                if (notifData) {
-                  showBanner(notifData as Notification);
-                }
-              })();
+            if (notifError) {
+              console.error('Błąd pobierania nowego powiadomienia:', notifError);
+              return;
             }
-          });
+
+            if (!notifData) return;
+
+            const recipientCreatedAt = Date.parse(newRow.created_at || '');
+            const notificationCreatedAt = Date.parse(notifData.created_at || '');
+            const isNewInCurrentSession =
+              realtimeReadyRef.current &&
+              Number.isFinite(recipientCreatedAt) &&
+              Number.isFinite(notificationCreatedAt) &&
+              recipientCreatedAt >= soundSessionStartedAtRef.current &&
+              notificationCreatedAt >= soundSessionStartedAtRef.current;
+
+            if (!isNewInCurrentSession) return;
+
+            const isAudibleBrowserSession =
+              typeof document !== 'undefined' &&
+              document.visibilityState === 'visible' &&
+              document.hasFocus();
+
+            if (
+              isAudibleBrowserSession &&
+              preferencesLoadedRef.current &&
+              soundEnabledRef.current &&
+              claimNotificationSound(notifData.id)
+            ) {
+              playNotificationSound();
+            }
+
+            showBanner(notifData as Notification);
+          })();
         },
       )
       .on(
@@ -291,7 +319,9 @@ export default function NotificationCenter({
           fetchNotifications();
         },
       )
-      .subscribe();
+      .subscribe((status) => {
+        realtimeReadyRef.current = status === 'SUBSCRIBED';
+      });
 
     const notificationsChannel = supabase
       .channel(`notifications-changes-${channelSuffix}`)
@@ -309,6 +339,7 @@ export default function NotificationCenter({
       .subscribe();
 
     return () => {
+      realtimeReadyRef.current = false;
       supabase.removeChannel(recipientsChannel);
       supabase.removeChannel(notificationsChannel);
     };
@@ -322,19 +353,6 @@ export default function NotificationCenter({
     customSoundUrlRef.current = customSoundUrl;
   }, [customSoundUrl]);
 
-  useEffect(() => {
-    if (!initialLoadDoneRef.current) {
-      initialLoadDoneRef.current = true;
-      prevUnreadCountRef.current = unreadCount;
-      setTimeout(() => {
-        readyForSoundRef.current = true;
-      }, 3000);
-      return;
-    }
-
-    prevUnreadCountRef.current = unreadCount;
-  }, [unreadCount]);
-
   const loadUserPreferences = async () => {
     try {
       const {
@@ -345,7 +363,7 @@ export default function NotificationCenter({
       const { data, error } = await supabase
         .from('employees')
         .select('preferences')
-        .eq('id', user.id)
+        .or(`id.eq.${user.id},auth_user_id.eq.${user.id}`)
         .maybeSingle();
 
       if (error) throw error;
@@ -355,9 +373,13 @@ export default function NotificationCenter({
       }
       if (data?.preferences?.notifications?.customSoundUrl) {
         setCustomSoundUrl(data.preferences.notifications.customSoundUrl);
+      } else {
+        setCustomSoundUrl(null);
       }
     } catch (error) {
       console.error('Error loading user preferences:', error);
+    } finally {
+      preferencesLoadedRef.current = true;
     }
   };
 

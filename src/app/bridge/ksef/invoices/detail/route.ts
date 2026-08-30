@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 import { getCredentials, supabase } from '@/lib/ksef/db';
+import { createSupabaseServerClient } from '@/lib/supabase/server.app';
 import { getKSeFInvoiceXml } from '../../client';
 import { parseFA3InvoiceXml } from '../../parseInvoiceXml';
 import { parsePaymentData } from '../../parsePaymentData';
@@ -20,6 +22,12 @@ export async function POST(req: Request) {
       );
     }
 
+    const userClient = createSupabaseServerClient(cookies());
+    const { data: authData } = await userClient.auth.getUser();
+    if (!authData.user) {
+      return NextResponse.json({ success: false, error: 'Wymagane logowanie.' }, { status: 401 });
+    }
+
     const { data: invoiceRow, error: fetchErr } = await supabase
       .from('ksef_invoices')
       .select('*')
@@ -30,6 +38,17 @@ export async function POST(req: Request) {
       return NextResponse.json(
         { success: false, error: 'Faktura nie znaleziona w bazie' },
         { status: 404 }
+      );
+    }
+
+    const { data: canViewCompany, error: permissionError } = await userClient.rpc(
+      'can_view_invoice_company',
+      { p_company_id: invoiceRow.my_company_id },
+    );
+    if (permissionError || !canViewCompany) {
+      return NextResponse.json(
+        { success: false, error: 'Brak uprawnień do faktur tej spółki.' },
+        { status: 403 },
       );
     }
 

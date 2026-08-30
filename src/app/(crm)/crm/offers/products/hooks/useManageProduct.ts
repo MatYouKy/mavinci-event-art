@@ -27,6 +27,7 @@ export type ProductEquipmentViewRow = OfferProductEquipmentRow & {
 
 type Params = {
   productId?: string | null;
+  productVariantId?: string | null;
   /** jeśli chcesz też pokazać kable jako alternatywy w pickerze */
   includeCablesInPicker?: boolean;
   enabled?: boolean;
@@ -34,6 +35,7 @@ type Params = {
 
 export function useManageProduct({
   productId,
+  productVariantId = null,
   includeCablesInPicker = false,
   enabled = true,
 }: Params) {
@@ -49,7 +51,7 @@ export function useManageProduct({
     error: linkedError,
     refetch: refetchLinked,
   } = useGetOfferProductEquipmentByProductIdQuery(
-    { productId: productId as string },
+    { productId: productId as string, productVariantId },
     { skip: !canRun },
   );
 
@@ -142,6 +144,7 @@ export function useManageProduct({
         return addLink({
           mode: 'item',
           product_id: payload.product_id,
+          product_variant_id: payload.product_variant_id ?? productVariantId,
           equipment_item_id: payload.equipment_item_id,
           quantity: payload.quantity ?? 1,
           is_optional: payload.is_optional ?? false,
@@ -152,13 +155,14 @@ export function useManageProduct({
       return addLink({
         mode: 'kit',
         product_id: payload.product_id,
+        product_variant_id: payload.product_variant_id ?? productVariantId,
         equipment_kit_id: payload.equipment_kit_id,
         quantity: payload.quantity ?? 1,
         is_optional: payload.is_optional ?? false,
         notes: payload.notes ?? null,
       } as any).unwrap();
     },
-    [addLink, productId],
+    [addLink, productId, productVariantId],
   );
 
   /**

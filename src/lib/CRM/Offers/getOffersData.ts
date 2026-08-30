@@ -12,6 +12,8 @@ export const getOffersData = cache(async () => {
     .select(
       `
       *,
+      organization:organizations!organization_id(id, name, alias, email),
+      contact:contacts!contact_id(id, full_name, first_name, last_name, email),
       event:events!event_id(
         name,
         event_date,
@@ -78,6 +80,18 @@ export const getOffersData = cache(async () => {
         category:event_categories(
           id, name, icon_id,
           custom_icon:custom_icons(id, name, svg_code, preview_color)
+        ),
+        variants:offer_product_variants(
+          id,
+          product_id,
+          name,
+          price_net,
+          price_gross,
+          is_recommended,
+          is_active,
+          display_order,
+          offer_image_path,
+          offer_image_alt
         )
       `,
       )

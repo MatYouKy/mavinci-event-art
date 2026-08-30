@@ -18,26 +18,34 @@ import ComposeEmailModal from '@/components/crm/ComposeEmailModal';
 import MessageActionsMenu from '@/components/crm/MessageActionsMenu';
 import AssignMessageModal from '@/components/crm/AssignMessageModal';
 import CreateInquiryFromMessageModal from '@/components/crm/CreateInquiryFromMessageModal';
+import CreateTaskFromMessageModal from '@/components/crm/CreateTaskFromMessageModal';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 import {
   useGetMessagesListQuery,
+  useLazyGetMessageDetailsQuery,
   useMarkMessageAsReadMutation,
   useDeleteMessageMutation,
   useToggleStarMessageMutation,
   useLazySearchMessagesQuery,
   useGetEmailAccountsQuery,
+  useGetUnreadCountsByAccountQuery,
   type MessageFolder,
+  type MessageListItem,
+  type MessageDetails,
+  type MessageType,
 } from '@/store/api/messagesApi';
 import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
 import { MessageMobileFilteredModal } from './components/MessageMobileFilteredModal';
 import { MobileSearchModal } from './components/MobileSearchModal';
 import { MessagesSidebar } from './components/MessagesSidebar';
-import type { EmailAccount } from '@/lib/CRM/messages/getEmailAccounts.server';
-import type { Message } from '@/lib/CRM/messages/getMessages.server';
+import { MessagePreviewPane } from './components/MessagePreviewPane';
 import { revalidateMessages } from './actions';
-import { MessageListItem } from '@/lib/CRM/messages/types';
+import {
+  readMessageListCache,
+  writeMessageListCache,
+} from '@/lib/CRM/messages/messageListCache';
 
 const translateSubject = (subject: string): string => {
   if (!subject) return 'Wiadomość z formularza';
@@ -46,6 +54,19 @@ const translateSubject = (subject: string): string => {
     .replace(/^team_join\s*-\s*/i, 'Rekrutacja - ')
     .replace(/^general\s*-\s*/i, 'Ogólna - ');
 };
+
+const extractReplyAddress = (message: MessageDetails | null) => {
+  if (!message) return '';
+  const original = message.originalData || {};
+  const candidate =
+    (message.type === 'contact_form' ? original.email : original.reply_to || original.from_address) ||
+    message.from;
+  const bracketAddress = String(candidate).match(/<([^>]+)>/);
+  return (bracketAddress?.[1] || candidate || '').trim();
+};
+
+const replySubject = (subject: string) =>
+  /^re\s*:/i.test(subject || '') ? subject : `Re: ${subject || '(bez tematu)'}`;
 
 interface MessagesPageClientProps {
   userId: string;
@@ -61,7 +82,7 @@ export default function MessagesPageClient({
   canView: initialCanView,
 }: MessagesPageClientProps) {
   const router = useRouter();
-  const { employee: currentEmployee } = useCurrentEmployee();
+  const { employee: currentEmployee, canCreateInModule } = useCurrentEmployee();
   const { showSnackbar } = useSnackbar();
   const { showConfirm } = useDialog();
   const canManage = initialCanManage;
@@ -101,11 +122,15 @@ export default function MessagesPageClient({
   const [isSearchMode, setIsSearchMode] = useState(false);
   const [showMobileSearch, setShowMobileSearch] = useState(false);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
+  const [cacheRestoreVersion, setCacheRestoreVersion] = useState(0);
   const pageSize = 50;
   const observerTarget = useRef<HTMLDivElement>(null);
+  const serverDataAppliedKeyRef = useRef<string | null>(null);
+
+  const mailboxCacheKey = `${userId}:${selectedAccount}:${filterType}`;
 
   const {
-    data: messagesData,
+    currentData: messagesData,
     isLoading,
     isFetching,
     refetch,
@@ -129,6 +154,12 @@ export default function MessagesPageClient({
   const [markAsRead] = useMarkMessageAsReadMutation();
   const [deleteMessage] = useDeleteMessageMutation();
   const [toggleStar] = useToggleStarMessageMutation();
+  const [getMessageDetails] = useLazyGetMessageDetailsQuery();
+  const { data: unreadCounts, refetch: refetchUnreadCounts } =
+    useGetUnreadCountsByAccountQuery(undefined, {
+      pollingInterval: 60000,
+      refetchOnMountOrArgChange: true,
+    });
 
   const handleAdvancedSearch = async () => {
     if (!searchQuery.trim()) {
@@ -148,7 +179,7 @@ export default function MessagesPageClient({
         filterType: filterType as any,
       }).unwrap();
 
-      setAllMessages(result.messages as unknown as MessageListItem[]);
+      setAllMessages(result.messages);
       showSnackbar(`Znaleziono ${result.total} wiadomości`, 'success');
     } catch (error) {
       console.error('Search error:', error);
@@ -164,6 +195,8 @@ export default function MessagesPageClient({
     setShowAdvancedSearch(false);
     setOffset(0);
     setAllMessages([]);
+    setSelectedMessageId(null);
+    setCacheRestoreVersion((version) => version + 1);
   };
 
   const refetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -183,32 +216,84 @@ export default function MessagesPageClient({
   }, [emailAccounts, selectedAccount]);
 
   useEffect(() => {
-    if (messagesData?.messages) {
+    if (messagesData?.messages && !isSearchMode) {
+      serverDataAppliedKeyRef.current = mailboxCacheKey;
       if (offset === 0) {
-        setAllMessages(messagesData.messages as unknown as MessageListItem[]);
+        setAllMessages((previous) => {
+          const merged = Array.from(
+            new Map(
+              [...messagesData.messages, ...previous].map((message) => [
+                `${message.type}:${message.id}`,
+                message,
+              ] as const),
+            ).values(),
+          ).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+          void writeMessageListCache(userId, selectedAccount, filterType, merged);
+          return merged;
+        });
       } else {
         setAllMessages((prev: MessageListItem[]) => {
-          const existingIds = new Set(prev.map((m) => m.id));
-          const newMessages = messagesData.messages.filter(
-            (m: any) => !existingIds.has(m.id),
-          ) as unknown as MessageListItem[];
-          return [...prev, ...newMessages] as unknown as MessageListItem[];
+          const merged = Array.from(
+            new Map(
+              [...prev, ...messagesData.messages].map((message) => [
+                `${message.type}:${message.id}`,
+                message,
+              ] as const),
+            ).values(),
+          ).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+          void writeMessageListCache(userId, selectedAccount, filterType, merged);
+          return merged;
         });
       }
       setIsLoadingMore(false);
     }
-  }, [messagesData, offset]);
+  }, [filterType, isSearchMode, mailboxCacheKey, messagesData, offset, selectedAccount, userId]);
 
   useEffect(() => {
+    let active = true;
+    const currentServerMessages = messagesData?.messages;
+    serverDataAppliedKeyRef.current = currentServerMessages ? mailboxCacheKey : null;
     setOffset(0);
-  }, [selectedAccount, filterType]);
+    setSelectedMessageId(null);
+    setAllMessages([]);
+
+    if (!selectedAccount) return () => undefined;
+
+    if (currentServerMessages) {
+      setAllMessages(currentServerMessages);
+      void writeMessageListCache(userId, selectedAccount, filterType, currentServerMessages);
+      return () => {
+        active = false;
+      };
+    }
+
+    void readMessageListCache(userId, selectedAccount, filterType).then((cachedMessages) => {
+      if (
+        active &&
+        serverDataAppliedKeyRef.current !== mailboxCacheKey &&
+        cachedMessages.length > 0
+      ) {
+        setAllMessages(cachedMessages);
+      }
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [cacheRestoreVersion, filterType, mailboxCacheKey, selectedAccount, userId]);
 
   const loadMore = useCallback(() => {
     if (!isLoading && !isLoadingMore && messagesData?.hasMore && !isFetching) {
       setIsLoadingMore(true);
-      setOffset((prev) => prev + pageSize);
+      setOffset((previousOffset) =>
+        previousOffset === 0
+          ? Math.max(pageSize, Math.floor(allMessages.length / pageSize) * pageSize)
+          : previousOffset + pageSize,
+      );
     }
-  }, [isLoading, isLoadingMore, messagesData?.hasMore, isFetching, pageSize]);
+  }, [allMessages.length, isLoading, isLoadingMore, messagesData?.hasMore, isFetching, pageSize]);
 
   // Email accounts are now loaded from server-side props
 
@@ -250,8 +335,13 @@ export default function MessagesPageClient({
       channels.push(
         supabase
           .channel('contact_messages_changes')
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'contact_messages' }, () =>
-            refetchDebounced(),
+          .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'contact_messages' },
+            () => {
+              refetchDebounced();
+              void refetchUnreadCounts();
+            },
           )
           .subscribe(),
       );
@@ -272,6 +362,7 @@ export default function MessagesPageClient({
         .channel('received_emails_changes')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'received_emails' }, () => {
           if (selectedAccount !== 'contact_form') refetchDebounced();
+          void refetchUnreadCounts();
         })
         .subscribe(),
     );
@@ -286,42 +377,74 @@ export default function MessagesPageClient({
     refetchDebounced,
     hasContactFormAccess,
     canManage,
+    refetchUnreadCounts,
   ]);
+
+  const openMessageInNewWindow = (message: MessageListItem) => {
+    window.open(
+      `/crm/messages/${message.id}?type=${message.type}`,
+      '_blank',
+      'noopener,noreferrer',
+    );
+  };
 
   const handleMessageClick = async (
     messageId: string,
-    messageType: 'contact_form' | 'sent' | 'received',
+    messageType: MessageType,
     isRead: boolean,
   ) => {
-    window.open(`/crm/messages/${messageId}?type=${messageType}`, '_blank', 'noopener,noreferrer');
+    setSelectedMessageId(messageId);
 
     if (!isRead && (messageType === 'contact_form' || messageType === 'received')) {
-      // ✅ optimistic UI
-      setAllMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, is_read: true } : m)));
+      // Natychmiastowy feedback. Błąd zewnętrznego IMAP nie powinien
+      // przywracać wiadomości do stanu nieprzeczytanego w CRM.
+      setAllMessages((previous) => {
+        const next = previous.map((message) =>
+          message.id === messageId ? { ...message, isRead: true } : message,
+        );
+        if (!isSearchMode) {
+          void writeMessageListCache(userId, selectedAccount, filterType, next);
+        }
+        return next;
+      });
 
       try {
         await markAsRead({ id: messageId, type: messageType }).unwrap();
-        // opcjonalnie:
-        // refetch();
-      } catch (e) {
-        // rollback
-        setAllMessages((prev) =>
-          prev.map((m) => (m.id === messageId ? { ...m, is_read: false } : m)),
-        );
+      } catch (error) {
+        console.error('Error marking message as read:', error);
+        showSnackbar('Wiadomość odczytana w CRM; synchronizacja poczty zostanie ponowiona', 'warning');
       }
     }
   };
 
-  const handleReply = (message: any) => {
-    setReplyToMessage(message);
-    setForwardMessage(null);
-    setShowNewMessageModal(true);
+  const loadCompleteMessage = async (message: MessageListItem | MessageDetails) => {
+    if ('body' in message && 'originalData' in message) return message as MessageDetails;
+    if (message.type === 'draft') throw new Error('Draft cannot be used as reply context');
+    return getMessageDetails({ id: message.id, type: message.type }).unwrap();
   };
 
-  const handleForward = (message: any) => {
-    setForwardMessage(message);
-    setReplyToMessage(null);
-    setShowNewMessageModal(true);
+  const handleReply = async (message: MessageListItem | MessageDetails) => {
+    try {
+      const completeMessage = await loadCompleteMessage(message);
+      setReplyToMessage(completeMessage);
+      setForwardMessage(null);
+      setShowNewMessageModal(true);
+    } catch (error) {
+      console.error('Error loading reply context:', error);
+      showSnackbar('Nie udało się pobrać pełnej treści wiadomości', 'error');
+    }
+  };
+
+  const handleForward = async (message: MessageListItem | MessageDetails) => {
+    try {
+      const completeMessage = await loadCompleteMessage(message);
+      setForwardMessage(completeMessage);
+      setReplyToMessage(null);
+      setShowNewMessageModal(true);
+    } catch (error) {
+      console.error('Error loading forward context:', error);
+      showSnackbar('Nie udało się pobrać pełnej treści wiadomości', 'error');
+    }
   };
 
   const handleStar = async (messageId: string, isStarred: boolean) => {
@@ -359,6 +482,15 @@ export default function MessagesPageClient({
 
     try {
       await deleteMessage({ id: messageId, type: messageType as any }).unwrap();
+      setAllMessages((previous) => {
+        const next = previous.filter(
+          (message) => !(message.id === messageId && message.type === messageType),
+        );
+        if (!isSearchMode) {
+          void writeMessageListCache(userId, selectedAccount, filterType, next);
+        }
+        return next;
+      });
       showSnackbar('Wiadomość została usunięta', 'success');
       if (selectedMessageId === messageId) {
         setSelectedMessageId(null);
@@ -374,9 +506,21 @@ export default function MessagesPageClient({
   };
 
   const [inquiryMessage, setInquiryMessage] = useState<MessageListItem | null>(null);
+  const [taskMessage, setTaskMessage] = useState<MessageDetails | null>(null);
+  const canCreateTasks = canCreateInModule('tasks');
 
   const handleCreateInquiry = (message: MessageListItem) => {
     setInquiryMessage(message);
+  };
+
+  const handleCreateTask = async (message: MessageListItem | MessageDetails) => {
+    try {
+      const completeMessage = await loadCompleteMessage(message);
+      setTaskMessage(completeMessage);
+    } catch (error) {
+      console.error('Error loading message task context:', error);
+      showSnackbar('Nie udało się pobrać treści wiadomości do zadania', 'error');
+    }
   };
 
   const fetchEmailsFromServer = async () => {
@@ -434,6 +578,8 @@ export default function MessagesPageClient({
     bodyHtml: string;
     attachments?: File[];
     fromAccountId?: string;
+    cc?: string;
+    bcc?: string;
   }) => {
     const accountToUse = data.fromAccountId || selectedAccount;
 
@@ -475,6 +621,25 @@ export default function MessagesPageClient({
       }
 
       const apiUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-email`;
+      let inReplyTo: string | undefined;
+      let references: string[] | undefined;
+      if (replyToMessage?.type === 'received') {
+        const { data: original } = await supabase
+          .from('received_emails')
+          .select('message_id, raw_headers')
+          .eq('id', replyToMessage.id)
+          .maybeSingle();
+        inReplyTo = original?.message_id || undefined;
+        const rawReferences = original?.raw_headers?.references;
+        const parsedReferences = Array.isArray(rawReferences)
+          ? rawReferences.map(String)
+          : typeof rawReferences === 'string'
+            ? rawReferences.match(/<[^>]+>/g) || rawReferences.split(/\s+/).filter(Boolean)
+            : [];
+        references = inReplyTo
+          ? Array.from(new Set([...parsedReferences, inReplyTo]))
+          : parsedReferences;
+      }
 
       const response = await fetch(apiUrl, {
         method: 'POST',
@@ -485,9 +650,14 @@ export default function MessagesPageClient({
         body: JSON.stringify({
           emailAccountId: accountToUse,
           to: data.to,
+          cc: data.cc,
+          bcc: data.bcc,
           subject: data.subject,
           body: data.bodyHtml,
           attachments: attachmentsBase64,
+          messageId: replyToMessage?.type === 'contact_form' ? replyToMessage.id : undefined,
+          inReplyTo,
+          references,
         }),
       });
 
@@ -522,6 +692,11 @@ export default function MessagesPageClient({
       );
     });
   }, [allMessages, searchQuery]);
+
+  const selectedMessage = useMemo(
+    () => allMessages.find((message) => message.id === selectedMessageId) || null,
+    [allMessages, selectedMessageId],
+  );
 
   const formatDate = (date: string) => {
     const messageDate = new Date(date);
@@ -645,17 +820,18 @@ export default function MessagesPageClient({
           setFilterType={setFilterType}
           hasContactFormAccess={hasContactFormAccess}
           canManage={canManage}
+          unreadCounts={unreadCounts}
         />
       </div>
-      <div className="flex min-w-0 flex-1 flex-col p-3 sm:p-6">
+      <div className="flex min-w-0 flex-1 flex-col p-2.5 sm:p-4">
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] shadow-xl">
-          <div className="border-b border-[#d3bb73]/20 p-3 sm:p-6">
-            <div className="mb-4 flex items-center justify-between sm:mb-6">
+          <div className="shrink-0 border-b border-[#d3bb73]/20 p-3 sm:p-4">
+            <div className="mb-3 flex items-center justify-between sm:mb-4">
               <div>
-                <h1 className="mb-1 text-xl font-bold text-white sm:mb-2 sm:text-3xl">
+                <h1 className="mb-0.5 text-xl font-bold text-white sm:text-2xl">
                   Wiadomości
                 </h1>
-                <p className="text-xs text-[#e5e4e2]/60 sm:text-base">
+                <p className="text-xs text-[#e5e4e2]/60 sm:text-sm">
                   {canManage ? 'Zarządzaj komunikacją z klientami' : 'Przeglądaj wiadomości email'}
                 </p>
               </div>
@@ -684,7 +860,7 @@ export default function MessagesPageClient({
                 <select
                   value={selectedAccount}
                   onChange={(e) => setSelectedAccount(e.target.value)}
-                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-3 text-sm text-white focus:border-[#d3bb73] focus:outline-none"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-2 text-sm text-white focus:border-[#d3bb73] focus:outline-none"
                 >
                   {emailAccounts.map((account) => (
                     <option key={account.id} value={account.id}>
@@ -704,14 +880,14 @@ export default function MessagesPageClient({
                     if (e.key === 'Enter' && searchQuery.trim()) handleAdvancedSearch();
                   }}
                   placeholder="Szukaj..."
-                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] py-3 pl-10 pr-4 text-base text-white placeholder-[#e5e4e2]/40 focus:border-[#d3bb73] focus:outline-none"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] py-2 pl-10 pr-3 text-sm text-white placeholder-[#e5e4e2]/40 focus:border-[#d3bb73] focus:outline-none"
                 />
               </div>
 
               <div className="flex gap-2">
                 <button
                   onClick={() => setShowAdvancedSearch(!showAdvancedSearch)}
-                  className={`flex items-center gap-2 rounded-lg px-4 py-3 transition-colors ${
+                  className={`flex items-center gap-2 rounded-lg px-3 py-2 transition-colors ${
                     showAdvancedSearch
                       ? 'bg-[#d3bb73] text-[#1c1f33]'
                       : 'bg-[#d3bb73]/20 text-[#d3bb73] hover:bg-[#d3bb73]/30'
@@ -724,7 +900,7 @@ export default function MessagesPageClient({
                 {isSearchMode && (
                   <button
                     onClick={handleClearSearch}
-                    className="flex items-center gap-2 rounded-lg bg-red-500/20 px-4 py-3 text-red-400 transition-colors hover:bg-red-500/30"
+                    className="flex items-center gap-2 rounded-lg bg-red-500/20 px-3 py-2 text-red-400 transition-colors hover:bg-red-500/30"
                     title="Wyczyść wyszukiwanie"
                   >
                     <X className="h-5 w-5" />
@@ -737,7 +913,7 @@ export default function MessagesPageClient({
                     disabled={
                       isLoading || selectedAccount === 'all' || selectedAccount === 'contact_form'
                     }
-                    className="flex items-center gap-2 rounded-lg bg-blue-500/20 px-4 py-3 text-blue-400 transition-colors hover:bg-blue-500/30 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="flex items-center gap-2 rounded-lg bg-blue-500/20 px-3 py-2 text-blue-400 transition-colors hover:bg-blue-500/30 disabled:cursor-not-allowed disabled:opacity-50"
                     title="Pobierz nowe wiadomości z serwera email"
                   >
                     <Inbox className="h-5 w-5" />
@@ -748,7 +924,7 @@ export default function MessagesPageClient({
                 <button
                   onClick={() => (isSearchMode ? handleClearSearch() : refetchDebounced())}
                   disabled={isLoading}
-                  className="rounded-lg bg-[#d3bb73]/20 px-6 py-3 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/30 disabled:opacity-50"
+                  className="rounded-lg bg-[#d3bb73]/20 px-3 py-2 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/30 disabled:opacity-50"
                   title="Odśwież"
                 >
                   <RefreshCw className={`h-5 w-5 ${isLoading ? 'animate-spin' : ''}`} />
@@ -827,126 +1003,172 @@ export default function MessagesPageClient({
             </div>
           </div>
 
-          <div className="max-h-[calc(100%-60px)] min-h-0 flex-1 overflow-y-auto">
-            {isLoading ? (
-              <div className="p-8 text-center text-[#e5e4e2]/60">
-                <RefreshCw className="mx-auto mb-2 h-8 w-8 animate-spin" />
-                Ładowanie wiadomości...
-              </div>
-            ) : filteredMessages.length === 0 ? (
-              <div className="p-8 text-center">
-                <Inbox className="mx-auto mb-4 h-16 w-16 text-[#e5e4e2]/20" />
-                <p className="text-[#e5e4e2]/60">Brak wiadomości</p>
-              </div>
-            ) : (
-              <div className="divide-y divide-[#d3bb73]/10">
-                {filteredMessages.map((message) => {
-                  const typeInfo = getTypeLabel(message.type);
-                  return (
-                    <div
-                      key={message.id}
-                      className={`p-2 transition-colors hover:bg-[#d3bb73]/5 sm:p-4 ${
-                        !message.is_read ? 'bg-[#d3bb73]/5 font-semibold' : ''
-                      }`}
-                    >
-                      <div className="mb-1.5 flex items-start justify-between gap-2 sm:mb-2">
+          <div className="flex min-h-0 flex-1 overflow-hidden">
+            <div
+              className={`${
+                selectedMessage ? 'hidden lg:flex' : 'flex'
+              } min-h-0 w-full shrink-0 flex-col border-r border-[#d3bb73]/15 lg:w-[390px] xl:w-[430px] 2xl:w-[480px]`}
+            >
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+                {isLoading && allMessages.length === 0 ? (
+                  <div className="p-8 text-center text-[#e5e4e2]/60">
+                    <RefreshCw className="mx-auto mb-2 h-8 w-8 animate-spin" />
+                    Ładowanie wiadomości...
+                  </div>
+                ) : filteredMessages.length === 0 ? (
+                  <div className="p-8 text-center">
+                    <Inbox className="mx-auto mb-4 h-12 w-12 text-[#e5e4e2]/20" />
+                    <p className="text-sm text-[#e5e4e2]/60">Brak wiadomości</p>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-[#d3bb73]/10">
+                    {filteredMessages.map((message) => {
+                      const typeInfo = getTypeLabel(message.type);
+                      const isSelected = selectedMessageId === message.id;
+                      return (
                         <div
-                          className="min-w-0 flex-1 cursor-pointer"
+                          key={message.id}
+                          role="button"
+                          tabIndex={0}
+                          title="Kliknij, aby wyświetlić podgląd. Kliknij dwukrotnie, aby otworzyć w nowej karcie."
                           onClick={() =>
-                            handleMessageClick(message.id, message.type, message.is_read)
+                            handleMessageClick(message.id, message.type, message.isRead)
                           }
+                          onDoubleClick={() => openMessageInNewWindow(message)}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter') {
+                              handleMessageClick(message.id, message.type, message.isRead);
+                            }
+                          }}
+                          className={`cursor-default px-2.5 py-2 outline-none transition-colors hover:bg-[#d3bb73]/10 focus-visible:bg-[#d3bb73]/10 ${
+                            isSelected
+                              ? 'bg-[#d3bb73]/10 shadow-[inset_3px_0_0_#d3bb73]'
+                              : !message.isRead
+                                ? 'bg-[#d3bb73]/5 font-semibold'
+                                : ''
+                          }`}
                         >
-                          <div className="mb-0.5 flex items-center gap-1.5 sm:mb-1 sm:gap-2">
-                            <span className="truncate text-sm text-white sm:text-base">
-                              {message.from}
-                            </span>
-                            {!message.is_read && (
-                              <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-[#d3bb73] sm:h-2 sm:w-2"></span>
-                            )}
+                          <div className="mb-0.5 flex items-start justify-between gap-2">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1.5">
+                                <span className="truncate text-[13px] leading-4 text-white">
+                                  {message.from}
+                                </span>
+                                {!message.isRead && (
+                                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#d3bb73]" />
+                                )}
+                              </div>
+                              <p className="truncate text-[11px] leading-4 text-[#e5e4e2]/70">
+                                {translateSubject(message.subject)}
+                              </p>
+                            </div>
+                            <div
+                              className="ml-1 flex shrink-0 items-center gap-0.5"
+                              onClick={(event) => event.stopPropagation()}
+                              onDoubleClick={(event) => event.stopPropagation()}
+                            >
+                              <span className="whitespace-nowrap text-[9px] leading-4 text-[#e5e4e2]/45">
+                                {formatDate(message.date)}
+                              </span>
+                              {(message.type === 'contact_form' || message.type === 'received') && (
+                                <MessageActionsMenu
+                                  messageId={message.id}
+                                  messageType={message.type}
+                                  isStarred={message.isStarred}
+                                  onReply={() => handleReply(message)}
+                                  onForward={
+                                    message.type === 'received'
+                                      ? () => handleForward(message)
+                                      : undefined
+                                  }
+                                  onAssign={() =>
+                                    handleAssign(
+                                      message.id,
+                                      message.type as 'contact_form' | 'received',
+                                      message.assigned_to || null,
+                                    )
+                                  }
+                                  onDelete={() => handleDelete(message.id, message.type)}
+                                  onMove={() => handleMove(message.id)}
+                                  onCreateInquiry={() => handleCreateInquiry(message)}
+                                  onCreateTask={
+                                    canCreateTasks
+                                      ? () => void handleCreateTask(message)
+                                      : undefined
+                                  }
+                                  onStar={
+                                    message.type === 'received'
+                                      ? () => handleStar(message.id, message.isStarred)
+                                      : undefined
+                                  }
+                                  onArchive={
+                                    message.type === 'received'
+                                      ? () => handleArchive(message)
+                                      : undefined
+                                  }
+                                  canManage={canManage}
+                                />
+                              )}
+                            </div>
                           </div>
-                          <p className="truncate text-xs text-[#e5e4e2]/70 sm:text-sm">
-                            {message.subject}
-                          </p>
+                          <div className="flex min-w-0 items-center gap-1.5">
+                            <span
+                              className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] leading-3 ${typeInfo.color} text-white`}
+                            >
+                              {typeInfo.label}
+                            </span>
+                            {message.assigned_employee && (
+                              <span className="max-w-[110px] shrink-0 truncate rounded border border-purple-500/25 bg-purple-500/15 px-1.5 py-0.5 text-[9px] leading-3 text-purple-300">
+                                {message.assigned_employee.name} {message.assigned_employee.surname}
+                              </span>
+                            )}
+                            <p className="min-w-0 flex-1 truncate text-[10px] leading-4 text-[#e5e4e2]/40">
+                              {message.preview}
+                            </p>
+                          </div>
                         </div>
-                        <div className="ml-2 flex flex-shrink-0 items-center gap-1 sm:gap-2">
-                          <span className="whitespace-nowrap text-[10px] text-[#e5e4e2]/50 sm:text-xs">
-                            {formatDate(message.date)}
-                          </span>
-                          {(message.type === 'contact_form' || message.type === 'received') && (
-                            <MessageActionsMenu
-                              messageId={message.id}
-                              messageType={message.type}
-                              isStarred={message.is_starred}
-                              onReply={() => handleReply(message)}
-                              onForward={
-                                message.type === 'received'
-                                  ? () => handleForward(message)
-                                  : undefined
-                              }
-                              onAssign={() =>
-                                handleAssign(
-                                  message.id,
-                                  message.type as 'contact_form' | 'received',
-                                  message.assigned_to || null,
-                                )
-                              }
-                              onDelete={() => handleDelete(message.id, message.type)}
-                              onMove={() => handleMove(message.id)}
-                              onCreateInquiry={
-                                message.type === 'received' || message.type === 'contact_form'
-                                  ? () => handleCreateInquiry(message)
-                                  : undefined
-                              }
-                              onStar={
-                                message.type === 'received'
-                                  ? () => handleStar(message.id, message.is_starred)
-                                  : undefined
-                              }
-                              onArchive={
-                                message.type === 'received'
-                                  ? () => handleArchive(message)
-                                  : undefined
-                              }
-                              canManage={canManage}
-                            />
-                          )}
+                      );
+                    })}
+
+                    {messagesData?.hasMore && (
+                      <div ref={observerTarget} className="flex items-center justify-center p-4">
+                        <div className="flex items-center gap-2 text-[#d3bb73]">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <span className="text-xs">Ładowanie kolejnych…</span>
                         </div>
                       </div>
-                      <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-                        <span
-                          className={`rounded px-1.5 py-0.5 text-[10px] sm:px-2 sm:py-1 sm:text-xs ${typeInfo.color} text-white`}
-                        >
-                          {typeInfo.label}
-                        </span>
-                        {message.assigned_employee && (
-                          <span className="rounded border border-purple-500/30 bg-purple-500/20 px-1.5 py-0.5 text-[10px] text-purple-300 sm:px-2 sm:py-1 sm:text-xs">
-                            {message.assigned_employee.name} {message.assigned_employee.surname}
-                          </span>
-                        )}
-                        <p className="hidden flex-1 truncate text-sm text-[#e5e4e2]/50 sm:block">
-                          {message.preview}
-                        </p>
+                    )}
+
+                    {!messagesData?.hasMore && filteredMessages.length > 0 && (
+                      <div className="p-3 text-center text-[10px] text-[#e5e4e2]/35">
+                        Koniec listy wiadomości
                       </div>
-                    </div>
-                  );
-                })}
-
-                {messagesData?.hasMore && (
-                  <div ref={observerTarget} className="flex items-center justify-center p-6">
-                    <div className="flex items-center gap-3 text-[#d3bb73]">
-                      <Loader2 className="h-5 w-5 animate-spin" />
-                      <span className="text-sm">Ładowanie więcej wiadomości...</span>
-                    </div>
-                  </div>
-                )}
-
-                {!messagesData?.hasMore && filteredMessages.length > 0 && (
-                  <div className="p-4 text-center text-sm text-[#e5e4e2]/40">
-                    Koniec listy wiadomości
+                    )}
                   </div>
                 )}
               </div>
-            )}
+            </div>
+
+            <div
+              className={`${selectedMessage ? 'flex' : 'hidden lg:flex'} min-h-0 min-w-0 flex-1`}
+            >
+              <MessagePreviewPane
+                message={selectedMessage}
+                canManage={canManage}
+                onClose={() => setSelectedMessageId(null)}
+                onOpenInNewWindow={openMessageInNewWindow}
+                onReply={handleReply}
+                onForward={handleForward}
+                onAssign={(message) => {
+                  if (message.type === 'received' || message.type === 'contact_form') {
+                    handleAssign(message.id, message.type, message.assigned_to || null);
+                  }
+                }}
+                onCreateInquiry={handleCreateInquiry}
+                onCreateTask={canCreateTasks ? handleCreateTask : undefined}
+                onDelete={(message) => handleDelete(message.id, message.type)}
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -982,23 +1204,33 @@ export default function MessagesPageClient({
           setForwardMessage(null);
         }}
         onSend={handleSendNewMessage}
-        initialTo={replyToMessage?.from || ''}
+        initialTo={extractReplyAddress(replyToMessage)}
         initialSubject={
           replyToMessage
-            ? `Re: ${replyToMessage.subject}`
+            ? replySubject(replyToMessage.subject)
             : forwardMessage
               ? `Fwd: ${forwardMessage.subject}`
               : ''
         }
-        initialBody={
-          replyToMessage ? `\n\n--- Odpowiedź na wiadomość ---\n${replyToMessage.preview}` : ''
+        initialBody=""
+        replyContext={
+          replyToMessage
+            ? {
+                from: replyToMessage.from,
+                date: replyToMessage.date,
+                subject: replyToMessage.subject,
+                body: replyToMessage.body,
+                bodyHtml: replyToMessage.bodyHtml,
+                messageId: replyToMessage.originalData?.message_id || null,
+              }
+            : undefined
         }
         forwardedBody={
           forwardMessage
-            ? `\n\n--- Przekazana wiadomość ---\nOd: ${forwardMessage.from}\nData: ${formatDate(forwardMessage.date)}\nTemat: ${forwardMessage.subject}\n\n${forwardMessage.preview}`
+            ? `\n\n--- Przekazana wiadomość ---\nOd: ${forwardMessage.from}\nData: ${formatDate(forwardMessage.date)}\nTemat: ${forwardMessage.subject}\n\n${forwardMessage.body}`
             : ''
         }
-        selectedAccountId={selectedAccount}
+        selectedAccountId={replyToMessage?.email_account_id || forwardMessage?.email_account_id || selectedAccount}
         emailAccounts={emailAccounts.filter((acc) => acc.id !== 'all' && acc.id !== 'contact_form')}
       />
 
@@ -1025,6 +1257,15 @@ export default function MessagesPageClient({
           onSuccess={() => {
             setInquiryMessage(null);
           }}
+        />
+      )}
+
+      {taskMessage && (
+        <CreateTaskFromMessageModal
+          message={taskMessage}
+          createdBy={currentEmployee?.id || userId}
+          onClose={() => setTaskMessage(null)}
+          onSuccess={() => setTaskMessage(null)}
         />
       )}
     </div>

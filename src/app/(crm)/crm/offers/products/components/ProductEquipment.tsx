@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, List, Loader2, Package, Table2, Wrench } from 'lucide-react';
+import { ChevronDown, ChevronRight, List, Loader2, Package, RotateCcw, Table2, Wrench } from 'lucide-react';
 import React, { FC, useMemo, useState } from 'react';
 import { ProductEquipmentViewRow, useManageProduct } from '../hooks/useManageProduct';
 import { useParams } from 'next/navigation';
@@ -8,14 +8,30 @@ import { ProductEquipmentRow } from './ProductEquipmentRow';
 interface IProductEquipment {
   canEdit: boolean;
   setShowAddEquipmentModal: (show: boolean) => void;
+  productVariantId?: string | null;
+  productVariantName?: string | null;
+  isInherited?: boolean;
+  onCustomizeVariant?: () => Promise<void>;
+  onResetInheritance?: () => Promise<void>;
 }
 
 type ViewMode = 'table' | 'list';
 
-export const ProductEquipment: FC<IProductEquipment> = ({ canEdit, setShowAddEquipmentModal }) => {
+export const ProductEquipment: FC<IProductEquipment> = ({
+  canEdit,
+  setShowAddEquipmentModal,
+  productVariantId = null,
+  productVariantName = null,
+  isInherited = false,
+  onCustomizeVariant,
+  onResetInheritance,
+}) => {
   const { showSnackbar } = useSnackbar();
   const productId = useParams().id as string;
-  const { items, isLoading, remove, update, updatingId } = useManageProduct({ productId });
+  const { items, isLoading, remove, update, updatingId } = useManageProduct({
+    productId,
+    productVariantId: isInherited ? null : productVariantId,
+  });
 
   const [viewMode, setViewMode] = useState<ViewMode>('table');
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
@@ -129,7 +145,7 @@ export const ProductEquipment: FC<IProductEquipment> = ({ canEdit, setShowAddEqu
     <ProductEquipmentRow
       key={item.id}
       item={item}
-      canEdit={canEdit}
+      canEdit={canEdit && !isInherited}
       updatingId={updatingId}
       variant={variant}
       handleUpdateEquipmentQuantity={handleUpdateEquipmentQuantity}
@@ -152,7 +168,18 @@ export const ProductEquipment: FC<IProductEquipment> = ({ canEdit, setShowAddEqu
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <Wrench className="h-5 w-5 text-[#d3bb73]" />
-          <h2 className="text-lg font-medium text-[#e5e4e2]">Sprzęt produktu ({items.length})</h2>
+          <div>
+            <h2 className="text-lg font-medium text-[#e5e4e2]">
+              {productVariantName ? `Sprzęt wariantu: ${productVariantName}` : 'Bazowy sprzęt produktu'} ({items.length})
+            </h2>
+            <p className="mt-0.5 text-xs text-[#e5e4e2]/45">
+              {productVariantName
+                ? isInherited
+                  ? 'Zakres jest dziedziczony z produktu bazowego.'
+                  : 'Własny zakres wariantu zastępuje zakres bazowy.'
+                : 'Zakres używany przez produkt bez wariantu oraz jako domyślny dla pustych wariantów.'}
+            </p>
+          </div>
         </div>
 
         <div className="flex items-center gap-2">
@@ -189,15 +216,34 @@ export const ProductEquipment: FC<IProductEquipment> = ({ canEdit, setShowAddEqu
             </div>
           )}
 
-          {canEdit && (
+          {canEdit && (productVariantId && isInherited ? (
             <button
               type="button"
-              onClick={() => setShowAddEquipmentModal(true)}
+              onClick={() => void onCustomizeVariant?.()}
               className="rounded-lg bg-[#d3bb73]/20 px-3 py-1.5 text-sm text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/30"
             >
-              + Dodaj sprzęt / pakiet
+              Dostosuj wariant
             </button>
-          )}
+          ) : (
+            <>
+              {productVariantId && onResetInheritance && (
+                <button
+                  type="button"
+                  onClick={() => void onResetInheritance()}
+                  className="flex items-center gap-1.5 rounded-lg bg-white/5 px-3 py-1.5 text-sm text-[#e5e4e2]/70 hover:bg-white/10"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" /> Dziedzicz bazowe
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setShowAddEquipmentModal(true)}
+                className="rounded-lg bg-[#d3bb73]/20 px-3 py-1.5 text-sm text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/30"
+              >
+                + Dodaj sprzęt / pakiet
+              </button>
+            </>
+          ))}
         </div>
       </div>
 

@@ -1,9 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type ComponentProps } from 'react';
 import { X, Plus, Search, Package } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import InquirySourceContextPanel from '@/components/crm/inquiries/InquirySourceContextPanel';
+import type { IProductVariant } from '@/app/(crm)/crm/offers/types';
 
 interface Product {
   id: string;
@@ -14,23 +16,28 @@ interface Product {
   category?: {
     name: string;
   };
+  variants?: IProductVariant[];
 }
 
 interface AddOfferItemModalProps {
   offerId: string;
   onClose: () => void;
   onSuccess: () => void;
+  inquiryContext?: ComponentProps<typeof InquirySourceContextPanel>;
 }
 
-export default function AddOfferItemModal({ offerId, onClose, onSuccess }: AddOfferItemModalProps) {
+export default function AddOfferItemModal({ offerId, onClose, onSuccess, inquiryContext }: AddOfferItemModalProps) {
   const { showSnackbar } = useSnackbar();
   const [loading, setLoading] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [selectedVariant, setSelectedVariant] = useState<IProductVariant | null>(null);
   const [quantity, setQuantity] = useState(1);
   const [unitPrice, setUnitPrice] = useState(0);
   const [discountPercent, setDiscountPercent] = useState(0);
+  const [showVariantPricesInPdf, setShowVariantPricesInPdf] = useState(true);
+  const [showProductVariantsInPdf, setShowProductVariantsInPdf] = useState(true);
 
   useEffect(() => {
     fetchProducts();
@@ -38,7 +45,10 @@ export default function AddOfferItemModal({ offerId, onClose, onSuccess }: AddOf
 
   useEffect(() => {
     if (selectedProduct) {
-      setUnitPrice(selectedProduct.base_price);
+      const variants = selectedProduct.variants || [];
+      const defaultVariant = variants.find((variant) => variant.is_recommended) || variants[0] || null;
+      setSelectedVariant(defaultVariant);
+      setUnitPrice(defaultVariant ? Number(defaultVariant.price_net || 0) : selectedProduct.base_price);
     }
   }, [selectedProduct]);
 
@@ -49,6 +59,7 @@ export default function AddOfferItemModal({ offerId, onClose, onSuccess }: AddOf
         .select(
           `
           *,
+          variants:offer_product_variants(id, product_id, name, short_description, description, benefits, price_net, price_gross, is_recommended, is_active, display_order),
           category:event_categories(name)
         `,
         )
@@ -56,7 +67,12 @@ export default function AddOfferItemModal({ offerId, onClose, onSuccess }: AddOf
         .order('name');
 
       if (error) throw error;
-      setProducts(data || []);
+      setProducts((data || []).map((product: any) => ({
+        ...product,
+        variants: [...(product.variants || [])]
+          .filter((variant: IProductVariant) => variant.is_active !== false)
+          .sort((a: IProductVariant, b: IProductVariant) => a.display_order - b.display_order),
+      })));
     } catch (error) {
       console.error('Error fetching products:', error);
       showSnackbar('Błąd podczas ładowania produktów', 'error');
@@ -88,8 +104,11 @@ export default function AddOfferItemModal({ offerId, onClose, onSuccess }: AddOf
       const { error } = await supabase.from('offer_items').insert({
         offer_id: offerId,
         product_id: selectedProduct.id,
-        name: selectedProduct.name,
-        description: selectedProduct.description,
+        product_variant_id: selectedVariant?.id || null,
+        show_variant_prices_in_pdf: showVariantPricesInPdf,
+        show_product_variants_in_pdf: showProductVariantsInPdf,
+        name: selectedVariant ? `${selectedProduct.name} — ${selectedVariant.name}` : selectedProduct.name,
+        description: selectedVariant?.description || selectedVariant?.short_description || selectedProduct.description,
         quantity,
         unit: selectedProduct.unit,
         unit_price: unitPrice,
@@ -121,7 +140,7 @@ export default function AddOfferItemModal({ offerId, onClose, onSuccess }: AddOf
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="flex max-h-[90vh] w-full max-w-4xl flex-col rounded-xl border border-[#d3bb73]/20 bg-[#0f1119]">
+      <div className="flex max-h-[90vh] w-full max-w-5xl flex-col rounded-xl border border-[#d3bb73]/20 bg-[#0f1119]">
         <div className="flex items-center justify-between border-b border-[#d3bb73]/20 p-6">
           <h2 className="text-xl font-light text-[#e5e4e2]">Dodaj pozycję do oferty</h2>
           <button
@@ -133,6 +152,7 @@ export default function AddOfferItemModal({ offerId, onClose, onSuccess }: AddOf
         </div>
 
         <div className="flex-1 space-y-6 overflow-y-auto p-6">
+          {inquiryContext && <InquirySourceContextPanel {...inquiryContext} />}
           <div>
             <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
               Wyszukaj produkt
@@ -172,7 +192,10 @@ export default function AddOfferItemModal({ offerId, onClose, onSuccess }: AddOf
                     <div className="mt-2 flex items-center justify-between">
                       <span className="text-xs text-[#e5e4e2]/40">{product.category?.name}</span>
                       <span className="text-sm font-medium text-[#d3bb73]">
-                        {product.base_price.toFixed(2)} PLN
+                        {(product.variants?.length
+                          ? Math.min(...product.variants.map((variant) => Number(variant.price_net || 0)))
+                          : product.base_price
+                        ).toFixed(2)} PLN
                       </span>
                     </div>
                   </div>
@@ -184,6 +207,46 @@ export default function AddOfferItemModal({ offerId, onClose, onSuccess }: AddOf
           {selectedProduct && (
             <div className="space-y-4 rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
               <h3 className="text-lg font-medium text-[#e5e4e2]">Szczegóły pozycji</h3>
+
+              {(selectedProduct.variants || []).length > 0 && (
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
+                    Wariant produktu
+                  </label>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                    {(selectedProduct.variants || []).slice(0, 3).map((variant) => (
+                      <button
+                        key={variant.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedVariant(variant);
+                          setUnitPrice(Number(variant.price_net || 0));
+                        }}
+                        className={`rounded-lg border px-3 py-3 text-left ${
+                          selectedVariant?.id === variant.id
+                            ? 'border-[#d3bb73] bg-[#d3bb73]/10'
+                            : 'border-[#d3bb73]/10 bg-[#0d0f1a]'
+                        }`}
+                      >
+                        <span className="block text-sm font-medium text-[#e5e4e2]">{variant.name}</span>
+                        <span className="mt-1 block text-sm text-[#d3bb73]">
+                          {Number(variant.price_net || 0).toFixed(2)} PLN
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    <label className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-[#d3bb73]/10 bg-[#0d0f1a] px-3 py-2.5">
+                      <span><span className="block text-sm text-[#e5e4e2]">Pokaż wszystkie warianty w PDF</span><span className="mt-0.5 block text-xs text-[#e5e4e2]/40">Po wyłączeniu drukowany jest tylko wybrany wariant</span></span>
+                      <input type="checkbox" checked={showProductVariantsInPdf} onChange={(event) => setShowProductVariantsInPdf(event.target.checked)} className="h-4 w-4 accent-[#d3bb73]" />
+                    </label>
+                    <label className={`flex items-center justify-between gap-3 rounded-lg border border-[#d3bb73]/10 bg-[#0d0f1a] px-3 py-2.5 ${showProductVariantsInPdf ? 'cursor-pointer' : 'cursor-not-allowed opacity-40'}`}>
+                      <span><span className="block text-sm text-[#e5e4e2]">Pokaż ceny wariantów w PDF</span><span className="mt-0.5 block text-xs text-[#e5e4e2]/40">Cena netto i brutto VAT 23% przy każdym wariancie</span></span>
+                      <input type="checkbox" checked={showVariantPricesInPdf} disabled={!showProductVariantsInPdf} onChange={(event) => setShowVariantPricesInPdf(event.target.checked)} className="h-4 w-4 accent-[#d3bb73]" />
+                    </label>
+                  </div>
+                </div>
+              )}
 
               <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                 <div>

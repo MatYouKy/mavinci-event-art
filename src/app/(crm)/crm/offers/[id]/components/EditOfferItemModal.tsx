@@ -32,7 +32,12 @@ export default function EditOfferItemModal({
   const [discountPercent, setDiscountPercent] = useState(item.discount_percent ?? 0);
   const [itemVatRate, setItemVatRate] = useState(vatRate);
   const [name, setName] = useState(item.name || item.product?.name || '');
+  const [selectedVariantId, setSelectedVariantId] = useState(item.product_variant_id || '');
+  const [showVariantPricesInPdf, setShowVariantPricesInPdf] = useState(item.show_variant_prices_in_pdf !== false);
+  const [showProductVariantsInPdf, setShowProductVariantsInPdf] = useState(item.show_product_variants_in_pdf !== false);
   if (!item) return null;
+
+  const productVariants = (item.product?.variants || []).filter((variant) => variant.is_active !== false);
 
   const safeQuantity = Number.isFinite(quantity) ? quantity : 0;
   const safeUnitPrice = Number.isFinite(unitPrice) ? unitPrice : 0;
@@ -79,6 +84,9 @@ export default function EditOfferItemModal({
           quantity: safeQuantity,
           unit_price: safeUnitPrice,
           discount_percent: safeDiscountPercent,
+          product_variant_id: selectedVariantId || null,
+          show_variant_prices_in_pdf: showVariantPricesInPdf,
+          show_product_variants_in_pdf: showProductVariantsInPdf,
         })
         .eq('id', item.id)
         .select('id, name')
@@ -104,6 +112,9 @@ export default function EditOfferItemModal({
         quantity: safeQuantity,
         unit_price: safeUnitPrice,
         discount_percent: safeDiscountPercent,
+        product_variant_id: selectedVariantId || null,
+        show_variant_prices_in_pdf: showVariantPricesInPdf,
+        show_product_variants_in_pdf: showProductVariantsInPdf,
       });
 
       onClose();
@@ -160,6 +171,47 @@ export default function EditOfferItemModal({
               </p>
             )}
           </div>
+
+          {productVariants.length > 0 && (
+            <div>
+              <label className="mb-2 block text-xs font-medium uppercase tracking-wide text-[#e5e4e2]/55">
+                Wariant produktu
+              </label>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                {productVariants.slice(0, 3).map((variant) => (
+                  <button
+                    key={variant.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedVariantId(variant.id);
+                      setUnitPrice(Number(variant.price_net || 0));
+                      setName(`${item.product?.name || item.name} — ${variant.name}`);
+                    }}
+                    className={`rounded-lg border px-3 py-3 text-left ${
+                      selectedVariantId === variant.id
+                        ? 'border-[#d3bb73] bg-[#d3bb73]/10'
+                        : 'border-[#d3bb73]/10 bg-[#1c1f33] hover:border-[#d3bb73]/30'
+                    }`}
+                  >
+                    <span className="block text-sm font-medium text-[#e5e4e2]">{variant.name}</span>
+                    <span className="mt-1 block text-xs text-[#d3bb73]">
+                      {Number(variant.price_net || 0).toFixed(2)} PLN netto
+                    </span>
+                  </button>
+                ))}
+              </div>
+              <div className="mt-3 space-y-2">
+                <label className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] px-3 py-2.5">
+                  <span><span className="block text-sm text-[#e5e4e2]">Pokaż wszystkie warianty w PDF</span><span className="mt-0.5 block text-xs text-[#e5e4e2]/40">Po wyłączeniu drukowany jest tylko wybrany wariant</span></span>
+                  <input type="checkbox" checked={showProductVariantsInPdf} onChange={(event) => setShowProductVariantsInPdf(event.target.checked)} className="h-4 w-4 accent-[#d3bb73]" />
+                </label>
+                <label className={`flex items-center justify-between gap-3 rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] px-3 py-2.5 ${showProductVariantsInPdf ? 'cursor-pointer' : 'cursor-not-allowed opacity-40'}`}>
+                  <span><span className="block text-sm text-[#e5e4e2]">Pokaż ceny wariantów w PDF</span><span className="mt-0.5 block text-xs text-[#e5e4e2]/40">Cena netto i brutto VAT 23% przy każdym wariancie</span></span>
+                  <input type="checkbox" checked={showVariantPricesInPdf} disabled={!showProductVariantsInPdf} onChange={(event) => setShowVariantPricesInPdf(event.target.checked)} className="h-4 w-4 accent-[#d3bb73]" />
+                </label>
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>

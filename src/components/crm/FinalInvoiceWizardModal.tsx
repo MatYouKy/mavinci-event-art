@@ -38,6 +38,9 @@ interface CandidateInvoice {
   total_gross: number;
   event_id: string | null;
   organization_id: string | null;
+  billing_arrangement: 'direct' | 'hotel' | 'agency' | 'other' | null;
+  service_recipient_organization_id: string | null;
+  service_recipient_contact_id: string | null;
   buyer_name: string;
   buyer_nip: string | null;
   buyer_street: string | null;
@@ -52,6 +55,7 @@ interface CandidateInvoice {
   bank_name: string | null;
   issue_place: string | null;
   my_company_id: string | null;
+  currency_code: string | null;
   seller_name: string | null;
   seller_nip: string | null;
   seller_street: string | null;
@@ -68,7 +72,10 @@ interface CandidateInvoice {
     quantity: number;
     price_net: number;
     vat_rate: number;
+    vat_code?: '23' | '8' | '5' | '0' | '0 KR' | '0 WDT' | '0 EX' | 'zw' | 'np' | 'np I' | 'np II' | 'oo';
+    vat_exemption_reason?: string | null;
   }[];
+  invoice_order_items?: CandidateInvoice['invoice_items'];
 }
 
 interface EventOpt {
@@ -245,36 +252,57 @@ export default function FinalInvoiceWizardModal({
       const select = `
       id, invoice_number, invoice_type, status, issue_date,
       total_net, total_vat, total_gross,
-      event_id, organization_id,
+      event_id, organization_id, billing_arrangement,
+      service_recipient_organization_id, service_recipient_contact_id,
       buyer_name, buyer_nip, buyer_street, buyer_postal_code, buyer_city, buyer_country,
       buyer_email, buyer_phone, buyer_contact_person,
       payment_method, bank_account, issue_place, my_company_id,
+      bank_name, currency_code,
       seller_name, seller_nip, seller_street, seller_postal_code, seller_city, seller_country,
       invoice_items (
         name,
         unit,
         quantity,
         price_net,
-        vat_rate
+        vat_rate,
+        vat_code,
+        vat_exemption_reason
+      ),
+      invoice_order_items (
+        name, unit, quantity, price_net, vat_rate, vat_code, vat_exemption_reason
       ),
       event:events(name),
-      organization:organizations(id, name)
+      organization:organizations!invoices_organization_id_fkey(id, name)
     `;
       let query = supabase
         .from('invoices')
         .select(select)
         .eq('invoice_type', 'advance')
+        .in('status', ['issued', 'sent', 'paid'])
         .order('issue_date', { ascending: false });
       if (mode === 'event' && eventId) query = query.eq('event_id', eventId);
       else if (mode === 'organization' && organizationId)
-        query = query.eq('organization_id', organizationId);
+        query = query.or(
+          `organization_id.eq.${organizationId},service_recipient_organization_id.eq.${organizationId}`,
+        );
       else {
         setCandidates([]);
         setLoadingCandidates(false);
         return;
       }
-      const { data } = await query;
-      const list = (data ?? []) as unknown as CandidateInvoice[];
+      const { data, error } = await query;
+      if (error) throw error;
+      const rawList = (data ?? []) as unknown as CandidateInvoice[];
+      const candidateIds = rawList.map((invoice) => invoice.id);
+      const { data: settledRows, error: settledError } = candidateIds.length
+        ? await supabase
+            .from('invoice_settlements')
+            .select('advance_invoice_id')
+            .in('advance_invoice_id', candidateIds)
+        : { data: [], error: null };
+      if (settledError) throw settledError;
+      const settledIds = new Set((settledRows ?? []).map((row) => row.advance_invoice_id));
+      const list = rawList.filter((invoice) => !settledIds.has(invoice.id));
       setCandidates(list);
       if (locked && list.length) {
         setSelectedIds(new Set(list.map((c) => c.id)));
@@ -351,7 +379,9 @@ export default function FinalInvoiceWizardModal({
     if (!selectedInvoices.length) return;
   
     const firstSelected = selectedInvoices[0];
-    const sourceItems = firstSelected.invoice_items ?? [];
+    const sourceItems = firstSelected.invoice_order_items?.length
+      ? firstSelected.invoice_order_items
+      : firstSelected.invoice_items ?? [];
   
     setEditingValues({});
   
@@ -387,6 +417,8 @@ export default function FinalInvoiceWizardModal({
         quantity: Number(item.quantity || 1),
         price_net: round2(Number(item.price_net || 0) * multiplier),
         vat_rate: Number(item.vat_rate || 23),
+        vat_code: item.vat_code ?? String(item.vat_rate || 23) as FinalInvoiceItemInput['vat_code'],
+        vat_exemption_reason: item.vat_exemption_reason ?? null,
       })),
     );
   }, [locked, selectedInvoiceKey, offerNet]);
@@ -517,6 +549,28 @@ export default function FinalInvoiceWizardModal({
       return;
     }
 
+    if (remainingGross < -0.01) {
+      showSnackbar('Suma zaliczek przekracza wartość faktury końcowej.', 'error');
+      return;
+    }
+
+    const reference = selectedInvoices[0];
+    const normalizeNip = (value: string | null) => (value || '').replace(/\D/g, '');
+    const incompatible = selectedInvoices.some((invoice) =>
+      invoice.my_company_id !== reference.my_company_id ||
+      normalizeNip(invoice.buyer_nip) !== normalizeNip(reference.buyer_nip) ||
+      (invoice.currency_code || 'PLN') !== (reference.currency_code || 'PLN') ||
+      invoice.event_id !== reference.event_id ||
+      invoice.organization_id !== reference.organization_id
+    );
+    if (incompatible) {
+      showSnackbar(
+        'Wybrane zaliczki muszą mieć tego samego sprzedawcę, nabywcę, walutę, wydarzenie i płatnika.',
+        'error',
+      );
+      return;
+    }
+
     setCreating(true);
     try {
       const ref = selectedInvoices[0];
@@ -527,6 +581,7 @@ export default function FinalInvoiceWizardModal({
         total_vat: i.total_vat,
         total_gross: i.total_gross,
         invoice_type: i.invoice_type,
+        issue_date: i.issue_date,
       }));
 
       const uniqueCompanyIds = Array.from(
@@ -542,7 +597,10 @@ export default function FinalInvoiceWizardModal({
 
       const result = await createFinalInvoice({
         eventId: mode === 'event' ? eventId : ref.event_id,
-        organizationId: mode === 'organization' ? organizationId : ref.organization_id,
+        organizationId: ref.organization_id,
+        billingArrangement: ref.billing_arrangement || 'direct',
+        serviceRecipientOrganizationId: ref.service_recipient_organization_id,
+        serviceRecipientContactId: ref.service_recipient_contact_id,
         myCompanyId: myCompanyId || ref.my_company_id,
 
         customNumber: useCustomNumber ? customNumber : undefined,
@@ -576,6 +634,7 @@ export default function FinalInvoiceWizardModal({
           seller_country: ref.seller_country,
         },
         paymentMethod: ref.payment_method,
+        currencyCode: ref.currency_code || 'PLN',
         issuePlace: ref.issue_place,
       });
 

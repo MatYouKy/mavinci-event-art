@@ -216,18 +216,31 @@ export default function LocationSelector({
                 {searchQuery && (
                   <div className="border-t border-[#d3bb73]/10 bg-[#0f1117] px-4 py-3">
                     <p className="mb-2 text-xs text-[#e5e4e2]/40">Nie znalazłeś czego szukasz?</p>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowAddModal(true);
-                        setShowDropdown(false);
-                      }}
-                      className="flex w-full items-center justify-center gap-2 rounded bg-[#d3bb73]/20 px-3 py-2 text-sm text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/30"
-                    >
-                      <Plus className="h-4 w-4" />
-                      Dodaj nową lokalizację
-                    </button>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onChange(searchQuery.trim());
+                          setShowDropdown(false);
+                          setSearchQuery('');
+                        }}
+                        className="flex w-full items-center justify-center gap-2 rounded border border-[#d3bb73]/30 px-3 py-2 text-sm text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/10"
+                      >
+                        <MapPin className="h-4 w-4" />
+                        Użyj jako tekst
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowAddModal(true);
+                          setShowDropdown(false);
+                        }}
+                        className="flex w-full items-center justify-center gap-2 rounded bg-[#d3bb73]/20 px-3 py-2 text-sm text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/30"
+                      >
+                        <Plus className="h-4 w-4" />
+                        Dodaj do bazy
+                      </button>
+                    </div>
                   </div>
                 )}
               </>

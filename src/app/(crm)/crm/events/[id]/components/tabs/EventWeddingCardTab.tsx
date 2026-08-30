@@ -4,10 +4,15 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   CheckCircle2,
   Clock3,
+  Download,
   HeartHandshake,
   Edit3,
+  FileText,
+  Gamepad2,
   Loader2,
+  MapPin,
   Music2,
+  Printer,
   Save,
   Sparkles,
   X,
@@ -15,6 +20,8 @@ import {
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import WeddingPeopleSchedulePanel from './WeddingPeopleSchedulePanel';
+import FullScreenLoader from '@/components/UI/Loader/CustomModalLoader';
+import { isWeddingReceptionGame } from '@/lib/weddingAttractions';
 
 type WeddingCard = {
   id: string;
@@ -42,24 +49,64 @@ type Track = {
 
 type Attraction = {
   id: string;
+  attraction_key: string;
   attraction_name: string;
   choice: 'undecided' | 'interested' | 'selected' | 'rejected';
   notes: string | null;
 };
 
+type FamiliadaMaterial = {
+  gameId: string;
+  gameName: string;
+  pdfPath: string | null;
+  pdfFileName: string | null;
+  generatedAt: string | null;
+};
+
+type WeddingCardPdfMaterial = {
+  filePath: string;
+  fileName: string;
+  generatedAt: string | null;
+};
+
 const SECTIONS = [
+  {
+    id: 'ceremony',
+    title: 'Ceremonia',
+    icon: HeartHandshake,
+    fields: [
+      ['ceremony_type', 'Rodzaj ceremonii'],
+      ['ceremony_time', 'Godzina ślubu'],
+      ['church_address', 'Adres kościoła'],
+      ['civil_ceremony_setting', 'Miejsce ceremonii cywilnej'],
+      ['ceremony_address', 'Adres ceremonii'],
+      ['church_wishes_enabled', 'Życzenia pod kościołem'],
+    ],
+  },
   {
     id: 'technical',
     title: 'Przebieg i logistyka',
     icon: Clock3,
     fields: [
       ['guest_count', 'Liczba gości'],
-      ['ceremony', 'Ceremonia'],
+      ['ceremony', 'Dodatkowe informacje o ceremonii'],
       ['venue_arrival_time', 'Przyjazd na salę'],
       ['venue_access', 'Dostęp i schody'],
-      ['hot_vodka', 'Ciepła wódka'],
+      ['hot_vodka', 'Gorzka wódka'],
       ['first_dance', 'Pierwszy taniec'],
       ['special_toasts', 'Specjalne toasty'],
+    ],
+  },
+  {
+    id: 'welcome',
+    title: 'Przyjazd i powitanie',
+    icon: MapPin,
+    fields: [
+      ['couple_wait_before_welcome', 'Para czeka przed wjazdem na główne powitanie'],
+      ['bread_and_salt_enabled', 'Powitanie chlebem i solą'],
+      ['welcome_throwing', 'Czym witamy / rzucamy'],
+      ['welcome_glasses', 'Kieliszki powitalne'],
+      ['welcome_sequence', 'Kolejność powitania'],
     ],
   },
   {
@@ -111,14 +158,80 @@ const SECTIONS = [
 const ALL_FIELDS = SECTIONS.flatMap((section) =>
   section.fields.map(([key, label]) => ({ key, label, section: section.id })),
 );
-const BOOLEAN_FIELDS = new Set(['hot_vodka', 'parents_thanks_enabled', 'oczepiny_enabled']);
+
+const CARD_NAV_ITEMS = [
+  { id: 'bride_side', label: 'Strona Panny Młodej' },
+  { id: 'groom_side', label: 'Strona Pana Młodego' },
+  { id: 'shared_people', label: 'Pozostałe osoby' },
+  { id: 'ceremony', label: 'Ceremonia' },
+  { id: 'technical', label: 'Informacje ogólne' },
+  { id: 'welcome', label: 'Przyjazd i powitanie' },
+  { id: 'schedule', label: 'Harmonogram i posiłki' },
+  { id: 'cake', label: 'Tort weselny' },
+  { id: 'parents_thanks', label: 'Podziękowania' },
+  { id: 'oczepiny', label: 'Oczepiny i zabawy' },
+  { id: 'familiada', label: 'Familiada' },
+  { id: 'attractions', label: 'Atrakcje i dodatki' },
+  { id: 'music', label: 'Muzyka i playlisty' },
+  { id: 'notes', label: 'Dodatkowe informacje' },
+] as const;
+
+type CardCategoryId = (typeof CARD_NAV_ITEMS)[number]['id'];
+const BOOLEAN_FIELDS = new Set([
+  'church_wishes_enabled',
+  'couple_wait_before_welcome',
+  'bread_and_salt_enabled',
+  'hot_vodka',
+  'parents_thanks_enabled',
+  'oczepiny_enabled',
+]);
 const SHORT_FIELDS = new Set([
-  'bride_name',
-  'groom_name',
   'guest_count',
+  'ceremony_time',
+  'church_address',
+  'ceremony_address',
   'venue_arrival_time',
   'cake_time',
 ]);
+
+const SELECT_OPTIONS: Record<string, Array<{ value: string; label: string }>> = {
+  ceremony_type: [
+    { value: 'church', label: 'Kościelna' },
+    { value: 'civil', label: 'Cywilna' },
+    { value: 'humanist', label: 'Humanistyczna' },
+  ],
+  civil_ceremony_setting: [
+    { value: 'registry_office', label: 'W urzędzie' },
+    { value: 'outdoor', label: 'W plenerze' },
+  ],
+  welcome_throwing: [
+    { value: 'none', label: 'Bez rzucania' },
+    { value: 'rice', label: 'Ryż' },
+    { value: 'petals', label: 'Płatki kwiatów' },
+    { value: 'confetti', label: 'Konfetti' },
+    { value: 'coins', label: 'Monety' },
+    { value: 'other', label: 'Inne — opisane w kolejności powitania' },
+  ],
+  welcome_glasses: [
+    { value: 'vodka', label: 'Kieliszki z wódką' },
+    { value: 'champagne', label: 'Kieliszki do szampana' },
+    { value: 'none', label: 'Bez kieliszków' },
+  ],
+};
+
+const isWeddingFieldVisible = (key: string, values: Record<string, string | boolean>) => {
+  const ceremonyType = values.ceremony_type;
+  if (['church_address', 'church_wishes_enabled'].includes(key)) return ceremonyType === 'church';
+  if (key === 'civil_ceremony_setting') return ceremonyType === 'civil';
+  if (key === 'ceremony_address') return ceremonyType === 'civil' || ceremonyType === 'humanist';
+  if (['parents_thanks_recipients', 'parents_thanks_plan'].includes(key)) {
+    return values.parents_thanks_enabled === true;
+  }
+  return true;
+};
+
+const isExplicitlyFalse = (value: unknown) =>
+  value === false || value === 'false' || value === 0 || value === '0';
 
 const STATUS_LABELS: Record<WeddingCard['status'], string> = {
   not_started: 'Nie rozpoczęto',
@@ -156,13 +269,53 @@ export default function EventWeddingCardTab({
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState<Record<string, string | boolean>>({});
+  const [activeCategory, setActiveCategory] = useState<CardCategoryId>('bride_side');
+  const [familiadaMaterial, setFamiliadaMaterial] = useState<FamiliadaMaterial | null>(null);
+  const [openingFamiliadaPdf, setOpeningFamiliadaPdf] = useState(false);
+  const [weddingCardPdf, setWeddingCardPdf] = useState<WeddingCardPdfMaterial | null>(null);
+  const [generatingWeddingCardPdf, setGeneratingWeddingCardPdf] = useState(false);
+  const [openingWeddingCardPdf, setOpeningWeddingCardPdf] = useState(false);
 
   const loadCard = useCallback(async () => {
-    const { data: cardData, error: cardError } = await supabase
-      .from('wedding_cards')
-      .select('id,status,progress,submitted_at,updated_at')
-      .eq('event_id', eventId)
-      .maybeSingle();
+    const [cardResult, projectResult, generatedPdfResult] = await Promise.all([
+      supabase
+        .from('wedding_cards')
+        .select('id,status,progress,submitted_at,updated_at')
+        .eq('event_id', eventId)
+        .maybeSingle(),
+      supabase
+        .from('mavinci_event_projects')
+        .select('draft_manifest')
+        .eq('event_id', eventId)
+        .maybeSingle(),
+      supabase
+        .from('event_files')
+        .select('name,file_path,updated_at')
+        .eq('event_id', eventId)
+        .like('file_path', `${eventId}/documents/wedding-card/%`)
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ]);
+
+    const { data: cardData, error: cardError } = cardResult;
+    const familiada = (projectResult.data?.draft_manifest as { familiada?: Partial<FamiliadaMaterial> } | null)?.familiada;
+    setFamiliadaMaterial(familiada?.gameId ? {
+      gameId: familiada.gameId,
+      gameName: familiada.gameName || 'Familiada',
+      pdfPath: familiada.pdfPath || null,
+      pdfFileName: familiada.pdfFileName || null,
+      generatedAt: familiada.generatedAt || null,
+    } : null);
+    setWeddingCardPdf(
+      generatedPdfResult.data?.file_path
+        ? {
+            filePath: generatedPdfResult.data.file_path,
+            fileName: generatedPdfResult.data.name,
+            generatedAt: generatedPdfResult.data.updated_at || null,
+          }
+        : null,
+    );
 
     if (cardError) throw cardError;
     if (!cardData) {
@@ -185,7 +338,7 @@ export default function EventWeddingCardTab({
         .order('sort_order'),
       supabase
         .from('wedding_attraction_choices')
-        .select('id,attraction_name,choice,notes')
+        .select('id,attraction_key,attraction_name,choice,notes')
         .eq('wedding_card_id', cardData.id)
         .order('attraction_name'),
     ]);
@@ -215,6 +368,11 @@ export default function EventWeddingCardTab({
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'wedding_cards', filter: `event_id=eq.${eventId}` },
+        () => void loadCard(),
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'mavinci_event_projects', filter: `event_id=eq.${eventId}` },
         () => void loadCard(),
       )
       .subscribe();
@@ -251,6 +409,106 @@ export default function EventWeddingCardTab({
     [answers],
   );
 
+  const weddingGameChoices = useMemo(
+    () => attractions.filter((item) => isWeddingReceptionGame(item) && item.choice === 'selected'),
+    [attractions],
+  );
+
+  const additionalAttractions = useMemo(
+    () => attractions.filter((item) => !isWeddingReceptionGame(item)),
+    [attractions],
+  );
+
+  const noParentsThanks = isExplicitlyFalse(answersByKey.get('parents_thanks_enabled'));
+
+  const visibleCardNavItems = useMemo(
+    () => CARD_NAV_ITEMS.filter((item) => item.id !== 'familiada' || Boolean(familiadaMaterial)),
+    [familiadaMaterial],
+  );
+
+  useEffect(() => {
+    if (activeCategory === 'familiada' && !familiadaMaterial) setActiveCategory('oczepiny');
+  }, [activeCategory, familiadaMaterial]);
+
+  const openFamiliadaPdf = async () => {
+    if (!familiadaMaterial?.pdfPath || openingFamiliadaPdf) return;
+    const popup = window.open('', '_blank');
+    setOpeningFamiliadaPdf(true);
+    const { data, error } = await supabase.storage
+      .from('event-files')
+      .createSignedUrl(familiadaMaterial.pdfPath, 60 * 60);
+    setOpeningFamiliadaPdf(false);
+    if (error || !data?.signedUrl) {
+      popup?.close();
+      showSnackbar(error?.message || 'Nie udało się otworzyć materiału Familiady.', 'error');
+      return;
+    }
+    if (popup) popup.location.href = data.signedUrl;
+    else window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
+  };
+
+  const openWeddingCardPdf = async (material = weddingCardPdf) => {
+    if (!material?.filePath || openingWeddingCardPdf) return;
+    const popup = window.open('', '_blank');
+    setOpeningWeddingCardPdf(true);
+    const { data, error } = await supabase.storage
+      .from('event-files')
+      .createSignedUrl(material.filePath, 60 * 60);
+    setOpeningWeddingCardPdf(false);
+    if (error || !data?.signedUrl) {
+      popup?.close();
+      showSnackbar(error?.message || 'Nie udało się otworzyć Karty Weselnej.', 'error');
+      return;
+    }
+    if (popup) popup.location.href = data.signedUrl;
+    else window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
+  };
+
+  const generateWeddingCardPdf = async () => {
+    if (generatingWeddingCardPdf) return;
+    if (editing) {
+      showSnackbar('Zapisz zmiany przed wygenerowaniem Karty Weselnej.', 'warning');
+      return;
+    }
+
+    const popup = window.open('', '_blank');
+    setGeneratingWeddingCardPdf(true);
+    try {
+      const response = await fetch('/bridge/events/wedding-card-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ eventId }),
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(result?.error || 'Nie udało się wygenerować Karty Weselnej.');
+      }
+
+      const material: WeddingCardPdfMaterial = {
+        filePath: result.storagePath,
+        fileName: result.fileName,
+        generatedAt: result.generatedAt,
+      };
+      setWeddingCardPdf(material);
+      showSnackbar('Karta Weselna PDF została wygenerowana.', 'success');
+
+      if (result.signedUrl && popup) popup.location.href = result.signedUrl;
+      else {
+        popup?.close();
+        await openWeddingCardPdf(material);
+      }
+    } catch (error) {
+      popup?.close();
+      console.error('Error generating wedding card PDF:', error);
+      showSnackbar(
+        error instanceof Error ? error.message : 'Nie udało się wygenerować Karty Weselnej.',
+        'error',
+      );
+    } finally {
+      setGeneratingWeddingCardPdf(false);
+    }
+  };
+
   const beginEditing = () => {
     setDraft(
       Object.fromEntries(
@@ -260,6 +518,9 @@ export default function EventWeddingCardTab({
         ]),
       ),
     );
+    if (['bride_side', 'groom_side', 'shared_people', 'schedule', 'attractions', 'familiada'].includes(activeCategory)) {
+      setActiveCategory('ceremony');
+    }
     setEditing(true);
   };
 
@@ -288,8 +549,12 @@ export default function EventWeddingCardTab({
       return;
     }
 
-    const filled = rows.filter((row) => row.value !== '' && row.value !== null).length;
-    const progress = Math.round((filled / ALL_FIELDS.length) * 100);
+    const applicableFields = ALL_FIELDS.filter((field) => isWeddingFieldVisible(field.key, draft));
+    const filled = applicableFields.filter((field) => {
+      const value = draft[field.key];
+      return value !== '' && value !== null && value !== undefined;
+    }).length;
+    const progress = Math.round((filled / applicableFields.length) * 100);
     const { error: cardError } = await supabase
       .from('wedding_cards')
       .update({
@@ -324,6 +589,7 @@ export default function EventWeddingCardTab({
     }
     await loadCard();
     setDraft({});
+    setActiveCategory('ceremony');
     setEditing(true);
     showSnackbar('Karta weselna została utworzona', 'success');
   };
@@ -362,6 +628,11 @@ export default function EventWeddingCardTab({
 
   return (
     <div className="space-y-5">
+      <FullScreenLoader
+        show={generatingWeddingCardPdf}
+        title="Generowanie Karty Weselnej"
+        description="Zbieramy ustalenia, osoby, harmonogram, atrakcje i muzykę..."
+      />
       <div className="rounded-2xl border border-[#d3bb73]/20 bg-[#1e2035]/70 p-5">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -385,7 +656,7 @@ export default function EventWeddingCardTab({
               </div>
             </div>
             {canManage && (
-              <div className="flex gap-2">
+              <div className="flex flex-wrap justify-end gap-2">
                 {editing ? (
                   <>
                     <button
@@ -407,13 +678,43 @@ export default function EventWeddingCardTab({
                     </button>
                   </>
                 ) : (
-                  <button
-                    type="button"
-                    onClick={beginEditing}
-                    className="inline-flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 px-3 py-2 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/10"
-                  >
-                    <Edit3 className="h-4 w-4" /> Edytuj kartę
-                  </button>
+                  <>
+                    {weddingCardPdf && (
+                      <button
+                        type="button"
+                        onClick={() => void openWeddingCardPdf()}
+                        disabled={openingWeddingCardPdf}
+                        className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs text-[#e5e4e2]/70 hover:bg-white/[0.05] disabled:opacity-50"
+                      >
+                        {openingWeddingCardPdf ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Download className="h-4 w-4" />
+                        )}
+                        Otwórz PDF
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => void generateWeddingCardPdf()}
+                      disabled={generatingWeddingCardPdf}
+                      className="inline-flex items-center gap-2 rounded-lg bg-[#d3bb73] px-3 py-2 text-xs font-medium text-[#111320] hover:bg-[#d3bb73]/90 disabled:opacity-50"
+                    >
+                      {generatingWeddingCardPdf ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Printer className="h-4 w-4" />
+                      )}
+                      {weddingCardPdf ? 'Aktualizuj PDF' : 'Generuj PDF'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={beginEditing}
+                      className="inline-flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 px-3 py-2 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/10"
+                    >
+                      <Edit3 className="h-4 w-4" /> Edytuj kartę
+                    </button>
+                  </>
                 )}
               </div>
             )}
@@ -421,11 +722,35 @@ export default function EventWeddingCardTab({
         </div>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-2">
-        <div className="xl:col-span-2">
-          <WeddingPeopleSchedulePanel cardId={card.id} canManage={canManage} />
-        </div>
-        {SECTIONS.map((section) => {
+      <div className="grid gap-5 lg:grid-cols-[240px_minmax(0,1fr)]">
+        <aside className="lg:sticky lg:top-24 lg:self-start">
+          <nav className="flex gap-2 overflow-x-auto rounded-2xl border border-white/10 bg-[#171927] p-2 lg:block lg:space-y-1 lg:overflow-visible" aria-label="Sekcje Karty Weselnej">
+            {visibleCardNavItems.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setActiveCategory(item.id)}
+                className={`shrink-0 whitespace-nowrap rounded-xl px-3 py-2.5 text-left text-sm transition lg:block lg:w-full ${
+                  activeCategory === item.id
+                    ? 'bg-[#d3bb73] font-medium text-[#111320] shadow-sm'
+                    : 'text-[#e5e4e2]/60 hover:bg-white/[0.05] hover:text-white'
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </nav>
+        </aside>
+
+        <div className="min-w-0 space-y-4">
+        {(['bride_side', 'groom_side', 'shared_people', 'schedule'] as CardCategoryId[]).includes(activeCategory) && (
+          <WeddingPeopleSchedulePanel
+            cardId={card.id}
+            canManage={canManage}
+            view={activeCategory === 'bride_side' ? 'bride' : activeCategory === 'groom_side' ? 'groom' : activeCategory === 'shared_people' ? 'shared' : 'schedule'}
+          />
+        )}
+        {SECTIONS.filter((section) => section.id === activeCategory).map((section) => {
           const Icon = section.icon;
           return (
             <section key={section.id} className="rounded-2xl border border-white/10 bg-[#171927] p-5">
@@ -433,13 +758,32 @@ export default function EventWeddingCardTab({
                 <Icon className="h-4 w-4 text-[#d3bb73]" />
                 {section.title}
               </h3>
-              <dl className="space-y-3">
-                {section.fields.map(([key, label]) => (
+              {section.id === 'welcome' && (
+                <div className="mb-4 rounded-xl border border-[#d3bb73]/20 bg-[#d3bb73]/[0.06] p-3 text-xs leading-5 text-[#e5e4e2]/70">
+                  Rekomendacja: po przyjeździe Para Młoda czeka przed głównym wjazdem, aż goście wysiądą,
+                  odłożą rzeczy i ustawią się do powitania. Dzięki temu nie wjeżdża na puste wejście.
+                </div>
+              )}
+              {section.id === 'parents_thanks' && !editing && noParentsThanks ? (
+                <div className="rounded-xl border-2 border-red-500/50 bg-red-500/10 px-4 py-5">
+                  <p className="text-lg font-extrabold text-red-400">Bez podziękowań dla rodziców</p>
+                </div>
+              ) : <dl className="space-y-3">
+                {section.fields.filter(([key]) => isWeddingFieldVisible(key, editing ? draft : Object.fromEntries(answers.map((answer) => [answer.field_key, typeof answer.value === 'boolean' ? answer.value : String(answer.value ?? '')])))).map(([key, label]) => (
                   <div key={key} className="grid gap-1 border-b border-white/5 pb-3 sm:grid-cols-[150px_1fr]">
                     <dt className="text-xs text-[#e5e4e2]/50">{label}</dt>
                     <dd className="whitespace-pre-wrap text-sm text-[#e5e4e2]">
                       {editing ? (
-                        BOOLEAN_FIELDS.has(key) ? (
+                        SELECT_OPTIONS[key] ? (
+                          <select
+                            value={String(draft[key] ?? '')}
+                            onChange={(event) => setDraft((current) => ({ ...current, [key]: event.target.value }))}
+                            className="w-full rounded-lg border border-white/10 bg-[#111320] px-3 py-2 text-sm outline-none focus:border-[#d3bb73]/60"
+                          >
+                            <option value="">Wybierz…</option>
+                            {SELECT_OPTIONS[key].map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                          </select>
+                        ) : BOOLEAN_FIELDS.has(key) ? (
                           <div className="flex gap-2">
                             {[true, false].map((value) => (
                               <button
@@ -473,24 +817,40 @@ export default function EventWeddingCardTab({
                           />
                         )
                       ) : (
-                        formatValue(answersByKey.get(key))
+                        SELECT_OPTIONS[key]?.find((option) => option.value === answersByKey.get(key))?.label
+                          || formatValue(answersByKey.get(key))
                       )}
                     </dd>
                   </div>
                 ))}
-              </dl>
+              </dl>}
             </section>
           );
         })}
 
-        <section className="rounded-2xl border border-white/10 bg-[#171927] p-5">
+        {activeCategory === 'oczepiny' && weddingGameChoices.length > 0 && <section className="rounded-2xl border border-white/10 bg-[#171927] p-5">
+          <h3 className="mb-4 flex items-center gap-2 font-semibold text-white">
+            <Gamepad2 className="h-4 w-4 text-[#d3bb73]" />
+            Wybrane zabawy oczepinowe
+          </h3>
+          <div className="space-y-2">
+            {weddingGameChoices.map((attraction) => (
+              <div key={attraction.id} className="rounded-lg bg-white/[0.03] px-3 py-2">
+                <span className="text-sm font-semibold text-[#e5e4e2]">{attraction.attraction_name}</span>
+                {attraction.notes && <p className="mt-1 text-xs text-[#e5e4e2]/45">{attraction.notes}</p>}
+              </div>
+            ))}
+          </div>
+        </section>}
+
+        {activeCategory === 'attractions' && <section className="rounded-2xl border border-white/10 bg-[#171927] p-5">
           <h3 className="mb-4 flex items-center gap-2 font-semibold text-white">
             <Sparkles className="h-4 w-4 text-[#d3bb73]" />
             Atrakcje i dodatki
           </h3>
-          {attractions.length ? (
+          {additionalAttractions.length ? (
             <div className="space-y-2">
-              {attractions.map((attraction) => (
+              {additionalAttractions.map((attraction) => (
                 <div key={attraction.id} className="flex items-center justify-between gap-3 rounded-lg bg-white/[0.03] px-3 py-2">
                   <span className="text-sm text-[#e5e4e2]">{attraction.attraction_name}</span>
                   <span className="text-xs text-[#d3bb73]">
@@ -508,9 +868,30 @@ export default function EventWeddingCardTab({
           ) : (
             <p className="text-sm text-[#e5e4e2]/50">Brak wybranych atrakcji.</p>
           )}
-        </section>
+        </section>}
 
-        <section className="rounded-2xl border border-white/10 bg-[#171927] p-5">
+        {activeCategory === 'familiada' && familiadaMaterial && <section className="rounded-2xl border border-white/10 bg-[#171927] p-5">
+          <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex items-start gap-3">
+              <span className="rounded-xl bg-[#d3bb73]/10 p-3 text-[#d3bb73]"><Gamepad2 className="h-5 w-5" /></span>
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[.16em] text-[#d3bb73]">Mavinci LIVE · Familiada</p>
+                <h3 className="mt-1 text-lg font-semibold text-white">{familiadaMaterial.gameName}</h3>
+                <p className="mt-1 max-w-xl text-sm leading-relaxed text-[#e5e4e2]/55">Ta rozgrywka jest przypisana do wydarzenia. Materiał jest osobnym, czytelnym arkuszem zawierającym wyłącznie pytania — bez odpowiedzi i punktacji.</p>
+              </div>
+            </div>
+            {familiadaMaterial.pdfPath ? <button type="button" onClick={() => void openFamiliadaPdf()} disabled={openingFamiliadaPdf} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[#d3bb73] px-4 py-2.5 text-sm font-semibold text-[#111320] disabled:opacity-60">
+              {openingFamiliadaPdf ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+              Otwórz i drukuj pytania
+            </button> : null}
+          </div>
+          {familiadaMaterial.pdfPath ? <div className="mt-5 flex flex-wrap items-center gap-3 rounded-xl border border-emerald-400/20 bg-emerald-400/[0.06] p-4">
+            <FileText className="h-5 w-5 text-emerald-300" />
+            <div><strong className="block text-sm text-emerald-100">Arkusz pytań gotowy do druku</strong><span className="text-xs text-emerald-100/55">{familiadaMaterial.pdfFileName || 'Pytania Familiady'}{familiadaMaterial.generatedAt ? ` · ${new Date(familiadaMaterial.generatedAt).toLocaleString('pl-PL')}` : ''}</span></div>
+          </div> : <div className="mt-5 rounded-xl border border-amber-400/20 bg-amber-400/[0.06] p-4 text-sm text-amber-100/75">Gra została wybrana, ale arkusz pytań nie został jeszcze wygenerowany. Użyj przycisku „Generuj arkusz pytań” w zakładce Mavinci LIVE.</div>}
+        </section>}
+
+        {activeCategory === 'music' && <section className="rounded-2xl border border-white/10 bg-[#171927] p-5">
           <h3 className="mb-4 flex items-center gap-2 font-semibold text-white">
             <Music2 className="h-4 w-4 text-[#d3bb73]" />
             Muzyka
@@ -537,7 +918,8 @@ export default function EventWeddingCardTab({
           ) : (
             <p className="text-sm text-[#e5e4e2]/50">Lista utworów nie została jeszcze dodana.</p>
           )}
-        </section>
+        </section>}
+        </div>
       </div>
     </div>
   );

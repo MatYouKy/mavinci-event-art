@@ -69,6 +69,7 @@ export default function ConvertProformaModal({
     issueDate: today,
     saleDate: today,
     paymentDueDate: due.toISOString().split('T')[0],
+    advancePercent: 30,
   });
 
   const [editableBuyer, setEditableBuyer] = useState({
@@ -159,6 +160,13 @@ export default function ConvertProformaModal({
       showSnackbar('Podaj numer faktury', 'error');
       return;
     }
+    if (
+      form.targetType === 'advance' &&
+      (form.advancePercent <= 0 || form.advancePercent > 100)
+    ) {
+      showSnackbar('Zaliczka musi być większa od 0% i nie może przekraczać 100%.', 'error');
+      return;
+    }
     setStep('preview');
   };
 
@@ -174,31 +182,18 @@ export default function ConvertProformaModal({
         issueDate: form.issueDate,
         saleDate: form.saleDate,
         paymentDueDate: form.paymentDueDate,
+        advancePercent: form.advancePercent,
+        buyerData: {
+          buyer_name: editableBuyer.buyer_name,
+          buyer_nip: editableBuyer.buyer_nip || null,
+          buyer_email: editableBuyer.buyer_email || null,
+          buyer_street: editableBuyer.buyer_street,
+          buyer_postal_code: editableBuyer.buyer_postal_code,
+          buyer_city: editableBuyer.buyer_city,
+        },
       });
       if (!result.success || !result.invoiceId) {
         throw new Error(result.error || 'Blad konwersji');
-      }
-
-      const buyerChanged =
-        editableBuyer.buyer_name !== (proforma.buyer_name || '') ||
-        editableBuyer.buyer_nip !== (proforma.buyer_nip || '') ||
-        editableBuyer.buyer_email !== (proforma.buyer_email || '') ||
-        editableBuyer.buyer_street !== (proforma.buyer_street || '') ||
-        editableBuyer.buyer_postal_code !== (proforma.buyer_postal_code || '') ||
-        editableBuyer.buyer_city !== (proforma.buyer_city || '');
-
-      if (buyerChanged) {
-        await supabase
-          .from('invoices')
-          .update({
-            buyer_name: editableBuyer.buyer_name || null,
-            buyer_nip: editableBuyer.buyer_nip || null,
-            buyer_email: editableBuyer.buyer_email || null,
-            buyer_street: editableBuyer.buyer_street || null,
-            buyer_postal_code: editableBuyer.buyer_postal_code || null,
-            buyer_city: editableBuyer.buyer_city || null,
-          })
-          .eq('id', result.invoiceId);
       }
 
       showSnackbar('Faktura zostala utworzona (szkic)', 'success');
@@ -213,6 +208,7 @@ export default function ConvertProformaModal({
 
   const targetNumber =
     form.numberingMode === 'manual' ? form.customNumber.trim() : autoPreview || '—';
+  const previewFactor = form.targetType === 'advance' ? form.advancePercent / 100 : 1;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -286,6 +282,31 @@ export default function ConvertProformaModal({
                 })}
               </div>
             </div>
+
+            {form.targetType === 'advance' && (
+              <div className="rounded-lg border border-blue-500/25 bg-blue-500/10 p-4">
+                <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
+                  Procent pełnego zamówienia objęty tą zaliczką *
+                </label>
+                <div className="relative max-w-[220px]">
+                  <input
+                    type="number"
+                    min="0.01"
+                    max="100"
+                    step="0.01"
+                    value={form.advancePercent}
+                    onChange={(e) =>
+                      setForm({ ...form, advancePercent: Number(e.target.value) })
+                    }
+                    className="w-full rounded-lg border border-blue-400/30 bg-[#0a0d1a] px-4 py-3 pr-10 text-[#e5e4e2]"
+                  />
+                  <span className="absolute right-4 top-3 text-[#e5e4e2]/50">%</span>
+                </div>
+                <p className="mt-2 text-xs text-[#e5e4e2]/55">
+                  Pełna wartość zamówienia pozostanie zapisana w strukturze faktury zaliczkowej.
+                </p>
+              </div>
+            )}
 
             <div>
               <label className="mb-2 block text-sm text-[#e5e4e2]/60">Numer faktury</label>
@@ -461,6 +482,14 @@ export default function ConvertProformaModal({
                   <span className="text-[#e5e4e2]/50">Status:</span>{' '}
                   <span className="font-medium text-[#e5e4e2]">Szkic</span>
                 </div>
+                {form.targetType === 'advance' && (
+                  <div>
+                    <span className="text-[#e5e4e2]/50">Zaliczka:</span>{' '}
+                    <span className="font-medium text-[#e5e4e2]">
+                      {form.advancePercent}% zamówienia
+                    </span>
+                  </div>
+                )}
                 <div>
                   <span className="text-[#e5e4e2]/50">Wystawienia:</span>{' '}
                   <span className="text-[#e5e4e2]">{form.issueDate}</span>
@@ -525,10 +554,12 @@ export default function ConvertProformaModal({
                       <td className="px-3 py-2">{it.name}</td>
                       <td className="px-2 py-2 text-[#e5e4e2]/70">{it.unit}</td>
                       <td className="px-2 py-2 text-right">{Number(it.quantity)}</td>
-                      <td className="px-2 py-2 text-right">{Number(it.price_net).toFixed(2)}</td>
+                      <td className="px-2 py-2 text-right">
+                        {(Number(it.price_net) * previewFactor).toFixed(2)}
+                      </td>
                       <td className="px-2 py-2 text-right">{it.vat_rate}%</td>
                       <td className="px-2 py-2 text-right font-medium">
-                        {Number(it.value_gross).toFixed(2)}
+                        {(Number(it.value_gross) * previewFactor).toFixed(2)}
                       </td>
                     </tr>
                   ))}
@@ -537,16 +568,20 @@ export default function ConvertProformaModal({
               <div className="grid grid-cols-3 gap-4 border-t border-[#d3bb73]/10 px-4 py-3 text-sm">
                 <div>
                   <span className="text-[#e5e4e2]/50">Netto:</span>{' '}
-                  <span className="text-[#e5e4e2]">{Number(proforma.total_net).toFixed(2)}</span>
+                  <span className="text-[#e5e4e2]">
+                    {(Number(proforma.total_net) * previewFactor).toFixed(2)}
+                  </span>
                 </div>
                 <div>
                   <span className="text-[#e5e4e2]/50">VAT:</span>{' '}
-                  <span className="text-[#e5e4e2]">{Number(proforma.total_vat).toFixed(2)}</span>
+                  <span className="text-[#e5e4e2]">
+                    {(Number(proforma.total_vat) * previewFactor).toFixed(2)}
+                  </span>
                 </div>
                 <div>
                   <span className="text-[#e5e4e2]/50">Brutto:</span>{' '}
                   <span className="font-medium text-[#d3bb73]">
-                    {Number(proforma.total_gross).toFixed(2)} PLN
+                    {(Number(proforma.total_gross) * previewFactor).toFixed(2)} PLN
                   </span>
                 </div>
               </div>

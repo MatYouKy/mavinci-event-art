@@ -19,9 +19,13 @@ interface SmtpConfig {
 
 interface EmailRequest {
   to: string;
+  cc?: string;
+  bcc?: string;
   subject: string;
   body: string;
   replyTo?: string;
+  inReplyTo?: string;
+  references?: string[];
   messageId?: string;
   emailAccountId?: string;
   smtpConfig?: SmtpConfig;
@@ -54,7 +58,20 @@ Deno.serve(async (req: Request) => {
 
     const requestBody = await req.json();
 
-    const { to, subject, body, replyTo, messageId, emailAccountId, smtpConfig, attachments }: EmailRequest = requestBody;
+    const {
+      to,
+      cc,
+      bcc,
+      subject,
+      body,
+      replyTo,
+      inReplyTo,
+      references,
+      messageId,
+      emailAccountId,
+      smtpConfig,
+      attachments,
+    }: EmailRequest = requestBody;
 
     if (!to || !subject || !body) {
       console.error('[send-email] Missing fields:', { to: !!to, subject: !!subject, body: !!body });
@@ -123,9 +140,13 @@ Deno.serve(async (req: Request) => {
     const relayPayload = {
       smtpConfig: smtpSettings,
       to,
+      cc,
+      bcc,
       subject,
       body,
       replyTo,
+      inReplyTo,
+      references,
       attachments,
     };
 
@@ -190,6 +211,8 @@ Deno.serve(async (req: Request) => {
             subject: subject,
             body: body,
             reply_to: replyTo,
+            in_reply_to: inReplyTo || null,
+            email_references: references || [],
             message_id: info.messageId,
             sent_at: new Date().toISOString(),
           })

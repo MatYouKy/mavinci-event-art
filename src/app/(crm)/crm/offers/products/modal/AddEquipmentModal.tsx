@@ -20,14 +20,18 @@ type SelectedEquipment = {
 
 export function AddEquipmentModal({
   productId,
+  productVariantId,
+  productVariantName,
   existingEquipment,
   onClose,
   onSuccess,
 }: {
   productId: string;
+  productVariantId?: string | null;
+  productVariantName?: string | null;
   existingEquipment: ProductEquipment[];
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess: () => void | Promise<void>;
 }) {
   const [showItems, setShowItems] = useState(true);
   const [showKits, setShowKits] = useState(true);
@@ -39,7 +43,7 @@ export function AddEquipmentModal({
   const [loading, setLoading] = useState(false);
 
   const { showSnackbar } = useSnackbar();
-  const { add } = useManageProduct({ productId });
+  const { add } = useManageProduct({ productId, productVariantId });
   const { loadKit, kit: selectedKit, loading: kitLoading } = useKitByIdLazy();
 
   const { items, isLoading, loadMore } = useEquipmentCatalog({
@@ -141,11 +145,13 @@ export function AddEquipmentModal({
     }
 
     setLoading(true);
+    let equipmentSaved = false;
     try {
       if (selected.type === 'item') {
         await add({
           mode: 'item',
           product_id: productId,
+          product_variant_id: productVariantId || null,
           equipment_item_id: selected.id,
           quantity,
           is_optional: isOptional,
@@ -155,6 +161,7 @@ export function AddEquipmentModal({
         await add({
           mode: 'kit',
           product_id: productId,
+          product_variant_id: productVariantId || null,
           equipment_kit_id: selected.id,
           quantity,
           is_optional: isOptional,
@@ -162,11 +169,17 @@ export function AddEquipmentModal({
         });
       }
 
+      equipmentSaved = true;
+      await onSuccess();
       showSnackbar(selected.type === 'kit' ? 'Zestaw dodany' : 'Sprzęt dodany', 'success');
-      onSuccess();
     } catch (error) {
       console.error('Error adding equipment:', error);
-      showSnackbar('Błąd podczas dodawania', 'error');
+      if (equipmentSaved) {
+        onClose();
+        showSnackbar('Sprzęt zapisano, ale lista nie odświeżyła się. Odśwież widok.', 'warning');
+      } else {
+        showSnackbar('Błąd podczas dodawania', 'error');
+      }
     } finally {
       setLoading(false);
     }
@@ -176,7 +189,12 @@ export function AddEquipmentModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33]">
         <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[#d3bb73]/10 bg-[#1c1f33] p-6">
-          <h3 className="text-xl font-light text-[#e5e4e2]">Dodaj sprzęt do produktu</h3>
+          <div>
+            <h3 className="text-xl font-light text-[#e5e4e2]">Dodaj sprzęt</h3>
+            <p className="mt-1 text-xs text-[#d3bb73]">
+              {productVariantName ? `Wariant: ${productVariantName}` : 'Zakres bazowy produktu'}
+            </p>
+          </div>
           <button
             type="button"
             onClick={onClose}

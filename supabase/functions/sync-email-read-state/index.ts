@@ -32,18 +32,21 @@ Deno.serve(async (req: Request) => {
     ])];
     if (!allowedAccountIds.length) return json({ success: true, updated: 0 });
 
+    const isDirectChange = mode === "mark_read" || mode === "mark_unread";
     let emailQuery = supabase
       .from("received_emails")
-      .select("id, message_id, email_account_id")
+      .select("id, message_id, email_account_id, imap_uid, imap_uidvalidity, imap_mailbox")
       .in("email_account_id", allowedAccountIds)
       .is("deleted_at", null)
       .order("received_date", { ascending: false })
-      .limit(mode === "mark_read" ? 1 : 250);
+      .limit(isDirectChange ? 1 : 500);
     if (messageId) emailQuery = emailQuery.eq("id", messageId);
 
     const { data: emails, error: emailError } = await emailQuery;
     if (emailError) throw emailError;
-    if (!emails?.length) throw new Error("Email not found or unavailable");
+    if (!emails?.length) {
+      return json({ success: true, updated: 0 });
+    }
 
     let updated = 0;
     for (const accountId of [...new Set(emails.map((email) => email.email_account_id))]) {
@@ -56,7 +59,13 @@ Deno.serve(async (req: Request) => {
 
       const accountEmails = emails
         .filter((email) => email.email_account_id === accountId && email.message_id)
-        .map((email) => ({ id: email.id, messageId: email.message_id }));
+        .map((email) => ({
+          id: email.id,
+          messageId: email.message_id,
+          imapUid: email.imap_uid,
+          imapUidValidity: email.imap_uidvalidity,
+          mailbox: email.imap_mailbox || "INBOX",
+        }));
       const relayResponse = await fetch(`${Deno.env.get("SMTP_RELAY_URL")}/api/imap/read-state`, {
         method: "POST",
         headers: {
@@ -72,7 +81,9 @@ Deno.serve(async (req: Request) => {
             secure: account.imap_use_ssl,
           },
           messages: accountEmails,
-          markAsRead: mode === "mark_read",
+          targetReadState:
+            mode === "mark_read" ? true : mode === "mark_unread" ? false : null,
+          mailbox: "INBOX",
         }),
       });
       const relayResult = await relayResponse.json();
@@ -82,7 +93,14 @@ Deno.serve(async (req: Request) => {
         if (!state.found) continue;
         const { error } = await supabase
           .from("received_emails")
-          .update({ is_read: state.isRead })
+          .update({
+            is_read: state.isRead,
+            imap_uid: state.uid || null,
+            imap_uidvalidity: state.uidValidity || null,
+            imap_mailbox: state.mailbox || "INBOX",
+            imap_flags: state.flags || [],
+            imap_synced_at: new Date().toISOString(),
+          })
           .eq("id", state.id);
         if (!error) updated += 1;
       }

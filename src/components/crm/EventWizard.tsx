@@ -735,6 +735,10 @@ export default function EventWizard({
         await supabase.from('offers').insert([
           {
             event_id: createdEventId,
+            client_type: clientType,
+            organization_id: clientType === 'business' ? eventData.organization_id || null : null,
+            contact_id: clientType === 'individual' ? eventData.contact_person_id || null : null,
+            contact_person_id: clientType === 'business' ? eventData.contact_person_id || null : null,
             offer_number: offerData.offer_number || null,
             valid_until: offerData.valid_until || null,
             notes: offerData.notes || null,

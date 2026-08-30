@@ -18,6 +18,7 @@ type Props = {
   onToggleExpand?: (rowId: string) => void;
 
   availabilityByKey?: Record<string, any>;
+  equipmentRevision?: string;
   getKeyForEventRow: (row: any) => string | null;
   getUiLimits: (avail: any) => { maxAdd: number; maxSet: number; reserved: number; total: number };
   getStatusBadge: (status?: string) => StatusBadge;
@@ -45,7 +46,8 @@ type Props = {
   // for required components warning
   eventId?: string;
   offerId?: string;
-  onComponentsAdded?: () => void;
+  canVerifyInventory?: boolean;
+  onComponentsAdded?: () => void | Promise<void>;
 };
 
 export function EventEquipmentRow({
@@ -56,6 +58,7 @@ export function EventEquipmentRow({
   onToggleExpand,
 
   availabilityByKey,
+  equipmentRevision,
   getKeyForEventRow,
   getUiLimits,
   getStatusBadge,
@@ -75,9 +78,15 @@ export function EventEquipmentRow({
 
   eventId,
   offerId,
+  canVerifyInventory,
   onComponentsAdded,
 }: Props) {
   const isKit = !!row?.kit;
+  const cable = row?.cable || row?.cables || null;
+  const isCable = !!row?.cable_id || !!cable;
+  const displayAsset = row?.equipment || cable;
+  const displayName = row?.kit ? row.kit.name : displayAsset?.name || 'Nieznany';
+  const unitLabel = isCable && cable?.stock_unit === 'meter' ? 'm' : 'szt.';
 
   const aKey = getKeyForEventRow(row);
   const avail = aKey ? availabilityByKey?.[aKey] : undefined;
@@ -119,23 +128,23 @@ export function EventEquipmentRow({
         <div className="flex min-w-0 flex-1 items-center gap-3">
           {isKit ? (
             <span className="text-base">🎁</span>
-          ) : row?.equipment?.thumbnail_url ? (
+          ) : displayAsset?.thumbnail_url ? (
             <Popover
               trigger={
                 <NextImage
-                  src={row.equipment.thumbnail_url}
+                  src={displayAsset.thumbnail_url}
                   width={40}
                   height={40}
-                  alt={row.equipment.name}
+                  alt={displayName}
                   className="h-10 w-10 rounded border border-[#d3bb73]/20 object-cover"
                 />
               }
               content={
                 <NextImage
-                  src={row.equipment.thumbnail_url}
+                  src={displayAsset.thumbnail_url}
                   width={400}
                   height={400}
-                  alt={row.equipment.name}
+                  alt={displayName}
                   className="h-auto cursor-pointer rounded-lg object-contain transition-all"
                 />
               }
@@ -150,13 +159,17 @@ export function EventEquipmentRow({
           <div className="flex min-w-0 flex-col">
             <div className="flex min-w-0 items-center gap-2">
               <span className="truncate font-medium text-[#e5e4e2]">
-                {row?.kit ? row.kit.name : row?.equipment?.name || 'Nieznany'}
+                {displayName}
               </span>
 
               <span
                 className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] uppercase ${badge.cls}`}
               >
                 {badge.label}
+              </span>
+
+              <span className="shrink-0 rounded-full border border-[#e5e4e2]/10 bg-[#e5e4e2]/5 px-2 py-0.5 text-[10px] uppercase text-[#e5e4e2]/45">
+                {row?.auto_added || row?.offer_id ? 'Z oferty / importu' : 'Dodane ręcznie'}
               </span>
 
               {isShortage && (
@@ -192,6 +205,12 @@ export function EventEquipmentRow({
                 )}
               </div>
             )}
+            {isCable && cable && (
+              <div className="flex items-center gap-2 text-xs text-[#e5e4e2]/50">
+                <span>Przewód</span>
+                {cable.length_meters && <span>• {cable.length_meters} m</span>}
+              </div>
+            )}
           </div>
         </div>
 
@@ -202,7 +221,7 @@ export function EventEquipmentRow({
         )}
 
         <div className="flex items-center gap-4 text-sm text-[#e5e4e2]/60">
-          {!isKit && row?.equipment?.category && (
+          {!isKit && !isCable && row?.equipment?.category && (
             <span className="hidden md:inline">{row.equipment.category.name}</span>
           )}
 
@@ -248,7 +267,7 @@ export function EventEquipmentRow({
                   autoFocus
                 />
 
-                <span className="text-[#e5e4e2]/60">szt.</span>
+                <span className="text-[#e5e4e2]/60">{unitLabel}</span>
                 <span className="text-[#e5e4e2]/40">max {maxSet}</span>
               </span>
             ) : (
@@ -259,12 +278,12 @@ export function EventEquipmentRow({
                   setDraftQuantity(row.quantity);
                 }}
               >
-                {row.quantity} <span className="text-[#e5e4e2]/60">szt.</span>
+                {row.quantity} <span className="text-[#e5e4e2]/60">{unitLabel}</span>
               </span>
             )
           ) : (
             <span className="text-[#e5e4e2]">
-              {row.quantity} <span className="text-[#e5e4e2]/60">szt.</span>
+              {row.quantity} <span className="text-[#e5e4e2]/60">{unitLabel}</span>
             </span>
           )}
         </div>
@@ -342,7 +361,9 @@ export function EventEquipmentRow({
             equipmentId={row.equipment_id}
             eventId={eventId}
             offerId={offerId}
+            canVerifyInventory={canVerifyInventory}
             availabilityByKey={availabilityByKey}
+            equipmentRevision={equipmentRevision}
             onComponentsAdded={onComponentsAdded}
           />
         </div>

@@ -4,16 +4,15 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { X, Search, UserPlus, Sparkles, Clock, Calendar } from 'lucide-react';
 import {
   EventPhase,
-  useCreatePhaseAssignmentMutation,
   useLazyGetEmployeeConflictsQuery,
 } from '@/store/api/eventPhasesApi';
 import { useGetEventPhasesQuery } from '@/store/api/eventPhasesApi';
 import { useGetEmployeesQuery } from '@/app/(crm)/crm/employees/store/employeeApi';
+import { useGetEventEmployeesQuery } from '../../../store/api/eventsApi';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import Image from 'next/image';
-import { getCurrentEmployeeServer } from '@/lib/CRM/auth/getCurrentEmployeeServer';
 import { supabase } from '@/lib/supabase/browser';
-import { useEmployees } from '@/app/(crm)/crm/employees/hooks/useEmployees';
+import { useEventWorkspace } from '@/components/crm/events/EventWorkspaceProvider';
 
 interface AddPhaseAssignmentModalProps {
   open: boolean;
@@ -37,26 +36,33 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
   eventId,
   eventOffers = [],
 }) => {
-  const [createAssignment, { isLoading }] = useCreatePhaseAssignmentMutation();
-  const [checkConflicts, { data: conflicts, isFetching: checkingConflicts }] =
-    useLazyGetEmployeeConflictsQuery();
+  const [isSaving, setIsSaving] = useState(false);
+  const [checkConflicts, { data: conflicts }] = useLazyGetEmployeeConflictsQuery();
   const { data: allPhases = [] } = useGetEventPhasesQuery(eventId);
+  const { data: eventEmployees = [] } = useGetEventEmployeesQuery(eventId, {
+    skip: !eventId,
+  });
   const {
     data: allEmployees = [],
     isLoading: employeesLoading,
-    error: employeesError,
   } = useGetEmployeesQuery({
-    activeOnly: false, // Zmienione z true na false - pobierz wszystkich
+    activeOnly: true,
   });
 
   const { showSnackbar } = useSnackbar();
+  const { refresh: refreshWorkspace } = useEventWorkspace();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedEmployee, setSelectedEmployee] = useState<any | null>(null);
   const [selectedPhases, setSelectedPhases] = useState<Set<string>>(new Set([phase.id]));
-  const [showPhaseSelector, setShowPhaseSelector] = useState(false);
+  const [existingPhaseIds, setExistingPhaseIds] = useState<Set<string>>(new Set());
   const [assignToAllPhases, setAssignToAllPhases] = useState(false);
   const [role, setRole] = useState('technician');
+
+  const eventTeamIds = useMemo(
+    () => new Set(eventEmployees.map((assignment: any) => assignment.employee_id)),
+    [eventEmployees],
+  );
 
   // Oblicz sugerowanych pracowników na podstawie wymagań w produktach
   const suggestedEmployees = useMemo<SuggestedEmployee[]>(() => {
@@ -121,27 +127,29 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
 
   // Filtruj pracowników przez wyszukiwarkę
   const filteredEmployees = useMemo(() => {
-    if (!searchQuery) return allEmployees;
+    const employees = [...allEmployees].sort((left, right) => {
+      const leftInTeam = eventTeamIds.has(left.id) ? 0 : 1;
+      const rightInTeam = eventTeamIds.has(right.id) ? 0 : 1;
+      if (leftInTeam !== rightInTeam) return leftInTeam - rightInTeam;
+      return `${left.name} ${left.surname}`.localeCompare(`${right.name} ${right.surname}`, 'pl');
+    });
+
+    if (!searchQuery) return employees;
 
     const query = searchQuery.toLowerCase();
-    return allEmployees.filter((emp) => {
+    return employees.filter((emp) => {
       const fullName = `${emp.name} ${emp.surname}`.toLowerCase();
       const email = (emp.email || '').toLowerCase();
       return fullName.includes(query) || email.includes(query);
     });
-  }, [allEmployees, searchQuery]);
-
-  // Inne fazy do przypisania
-  const otherPhases = useMemo(() => {
-    return allPhases.filter((p) => p.id !== phase.id);
-  }, [allPhases, phase.id]);
+  }, [allEmployees, eventTeamIds, searchQuery]);
 
   // Reset po zamknięciu
   useEffect(() => {
     if (!open) {
       setSelectedEmployee(null);
       setSelectedPhases(new Set([phase.id]));
-      setShowPhaseSelector(false);
+      setExistingPhaseIds(new Set());
       setAssignToAllPhases(false);
       setSearchQuery('');
       setRole('technician');
@@ -159,21 +167,43 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
     }
   }, [selectedEmployee, phase, checkConflicts]);
 
-  const handleEmployeeSelect = (emp: any) => {
+  const handleEmployeeSelect = async (emp: any) => {
     setSelectedEmployee(emp);
+    setAssignToAllPhases(false);
 
-    // Pokaż selector faz tylko jeśli są inne fazy
-    if (otherPhases.length > 0) {
-      setShowPhaseSelector(true);
+    const phaseIds = allPhases.map((item) => item.id);
+    if (phaseIds.length === 0) return;
+
+    const { data, error } = await supabase
+      .from('event_phase_assignments')
+      .select('phase_id')
+      .eq('employee_id', emp.id)
+      .in('phase_id', phaseIds);
+
+    if (error) {
+      showSnackbar('Nie udało się sprawdzić obecnych przypisań pracownika', 'error');
+      return;
     }
+
+    const assignedIds = new Set<string>(
+      (data || [])
+        .map((assignment) => assignment.phase_id)
+        .filter((phaseId): phaseId is string => Boolean(phaseId)),
+    );
+    setExistingPhaseIds(assignedIds);
+
+    const preferredPhase = !assignedIds.has(phase.id)
+      ? phase.id
+      : allPhases.find((item) => !assignedIds.has(item.id))?.id;
+    setSelectedPhases(preferredPhase ? new Set([preferredPhase]) : new Set());
   };
 
   const handlePhaseToggle = (phaseId: string) => {
+    if (existingPhaseIds.has(phaseId)) return;
+
     setSelectedPhases((prev) => {
       const next = new Set(prev);
       if (next.has(phaseId)) {
-        // Nie pozwól usunąć głównej fazy
-        if (phaseId === phase.id) return prev;
         next.delete(phaseId);
       } else {
         next.add(phaseId);
@@ -188,38 +218,43 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
       return;
     }
 
+    const phasesToAssign = assignToAllPhases
+      ? allPhases.filter((p) => !existingPhaseIds.has(p.id)).map((p) => p.id)
+      : Array.from(selectedPhases);
+
+    if (phasesToAssign.length === 0) {
+      showSnackbar('Wybierz co najmniej jeden etap timeline', 'warning');
+      return;
+    }
+
     try {
-      const phasesToAssign = assignToAllPhases
-        ? allPhases.map((p) => p.id)
-        : Array.from(selectedPhases);
+      setIsSaving(true);
+      const { data: insertedCount, error } = await supabase.rpc(
+        'assign_event_employee_to_phases',
+        {
+          p_event_id: eventId,
+          p_employee_id: selectedEmployee.id,
+          p_phase_ids: phasesToAssign,
+          p_role: role,
+        },
+      );
+      if (error) throw error;
 
-      const promises = phasesToAssign.map((phaseId) => {
-        const targetPhase = allPhases.find((p) => p.id === phaseId);
-        if (!targetPhase) return Promise.resolve();
+      refreshWorkspace('event_phase_assignments');
+      refreshWorkspace('employee_assignments');
 
-        return createAssignment({
-          phase_id: phaseId,
-          employee_id: selectedEmployee.id,          // musi być employees.id
-          role,
-          assignment_start: targetPhase.start_time,
-          assignment_end: targetPhase.end_time,
-          phase_work_start: targetPhase.start_time,  // jeśli NOT NULL
-          phase_work_end: targetPhase.end_time,      // jeśli NOT NULL
-        }).unwrap();
-      });
-
-      await Promise.all(promises);
-
-      const phaseCount = phasesToAssign.length;
+      const phaseCount = Number(insertedCount ?? phasesToAssign.length);
       showSnackbar(
         assignToAllPhases
-          ? `Pracownik przypisany do całego wydarzenia (${phaseCount} faz)`
-          : `Pracownik przypisany do ${phaseCount} ${phaseCount === 1 ? 'fazy' : 'faz'}`,
+          ? `Pracownik przypisany do wszystkich etapów timeline (${phaseCount})`
+          : `Pracownik przypisany do ${phaseCount} ${phaseCount === 1 ? 'etapu' : 'etapów'} timeline`,
         'success',
       );
       onClose();
     } catch (err: any) {
       showSnackbar(err?.message || 'Błąd podczas przypisywania pracownika', 'error');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -233,8 +268,10 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
           <div className="flex items-center gap-2">
             <UserPlus className="h-5 w-5 text-[#d3bb73]" />
             <div>
-              <h2 className="text-lg font-semibold text-[#e5e4e2]">Dodaj pracownika do fazy</h2>
-              <p className="text-sm text-[#e5e4e2]/50">{phase.name}</p>
+              <h2 className="text-lg font-semibold text-[#e5e4e2]">Dodaj pracownika do timeline</h2>
+              <p className="text-sm text-[#e5e4e2]/50">
+                Wybierz osobę i etapy, w których ma pracować
+              </p>
             </div>
           </div>
           <button
@@ -360,8 +397,13 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
                             </div>
                           )}
                           <div>
-                            <div className="font-medium text-[#e5e4e2]">
-                              {employee.name} {employee.surname}
+                            <div className="flex items-center gap-2 font-medium text-[#e5e4e2]">
+                              <span>{employee.name} {employee.surname}</span>
+                              {eventTeamIds.has(employee.id) && (
+                                <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-medium text-emerald-300">
+                                  Zespół wydarzenia
+                                </span>
+                              )}
                             </div>
                             <div className="text-xs text-[#e5e4e2]/50">{employee.email}</div>
                           </div>
@@ -402,13 +444,23 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
                     </div>
                   </div>
                   <button
-                    onClick={() => setSelectedEmployee(null)}
+                    onClick={() => {
+                      setSelectedEmployee(null);
+                      setExistingPhaseIds(new Set());
+                    }}
                     className="text-sm text-[#e5e4e2]/50 hover:text-[#e5e4e2]"
                   >
                     Zmień
                   </button>
                 </div>
               </div>
+
+              {!eventTeamIds.has(selectedEmployee.id) && (
+                <div className="mb-4 rounded-lg border border-blue-400/20 bg-blue-400/10 p-3 text-sm text-blue-100">
+                  Ta osoba nie jest jeszcze w zespole wydarzenia. Przy zapisie otrzyma dostęp do
+                  eventu i zostanie dodana do wybranych etapów timeline.
+                </div>
+              )}
 
               {/* Konflikty */}
               {conflicts && conflicts.length > 0 && (
@@ -517,16 +569,16 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
               </div>
 
               {/* Wybór faz */}
-              {showPhaseSelector && otherPhases.length > 0 && (
+              {allPhases.length > 0 && (
                 <div className="mb-6">
                   <div className="mb-3 flex items-center gap-2">
                     <Calendar className="h-4 w-4 text-[#d3bb73]" />
                     <h3 className="text-sm font-semibold text-[#e5e4e2]">
-                      Przypisz również do innych faz?
+                      Wybierz etapy timeline
                     </h3>
                   </div>
 
-                  {/* Checkbox: Przypisz do całego wydarzenia */}
+                  {/* Checkbox: Przypisz do wszystkich etapów timeline */}
                   <label className="mb-4 flex cursor-pointer items-center gap-3 rounded-lg border-2 border-[#d3bb73] bg-[#d3bb73]/10 px-4 py-3">
                     <input
                       type="checkbox"
@@ -536,42 +588,42 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
                     />
                     <div className="flex-1">
                       <div className="text-sm font-bold text-[#e5e4e2]">
-                        Przypisz do całego wydarzenia
+                        Przypisz do wszystkich etapów timeline
                       </div>
                       <div className="text-xs text-[#e5e4e2]/60">
-                        Przypisze pracownika automatycznie do wszystkich {allPhases.length} faz
+                        Utworzy brakujące wpisy w{' '}
+                        {allPhases.filter((item) => !existingPhaseIds.has(item.id)).length} etapach
                       </div>
                     </div>
                   </label>
 
                   {!assignToAllPhases && (
                     <div className="space-y-2">
-                      {/* Główna faza - zawsze zaznaczona */}
-                      <div className="flex items-center gap-2 rounded-lg border border-[#d3bb73] bg-[#d3bb73]/10 px-3 py-2">
-                        <input type="checkbox" checked={true} disabled className="h-4 w-4" />
-                        <div className="flex-1">
-                          <div className="text-sm font-medium text-[#e5e4e2]">{phase.name}</div>
-                          <div className="text-xs text-[#e5e4e2]/50">
-                            {new Date(phase.start_time).toLocaleString('pl-PL')} -{' '}
-                            {new Date(phase.end_time).toLocaleString('pl-PL')}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Inne fazy */}
-                      {otherPhases.map((p) => (
+                      {allPhases.map((p) => (
                         <label
                           key={p.id}
-                          className="flex cursor-pointer items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#0d0f1a] px-3 py-2 transition-all hover:border-[#d3bb73] hover:bg-[#d3bb73]/5"
+                          className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 transition-all hover:border-[#d3bb73] hover:bg-[#d3bb73]/5 ${
+                            selectedPhases.has(p.id)
+                              ? 'border-[#d3bb73] bg-[#d3bb73]/10'
+                              : 'border-[#d3bb73]/20 bg-[#0d0f1a]'
+                          }`}
                         >
                           <input
                             type="checkbox"
                             checked={selectedPhases.has(p.id)}
                             onChange={() => handlePhaseToggle(p.id)}
+                            disabled={existingPhaseIds.has(p.id)}
                             className="h-4 w-4"
                           />
                           <div className="flex-1">
-                            <div className="text-sm font-medium text-[#e5e4e2]">{p.name}</div>
+                            <div className="flex items-center gap-2 text-sm font-medium text-[#e5e4e2]">
+                              <span>{p.name}</span>
+                              {existingPhaseIds.has(p.id) && (
+                                <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] text-emerald-300">
+                                  Już przypisany
+                                </span>
+                              )}
+                            </div>
                             <div className="text-xs text-[#e5e4e2]/50">
                               {new Date(p.start_time).toLocaleString('pl-PL')} -{' '}
                               {new Date(p.end_time).toLocaleString('pl-PL')}
@@ -599,12 +651,22 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
               </button>
               <button
                 onClick={handleSubmit}
-                disabled={isLoading}
+                disabled={isSaving}
                 className="rounded-lg bg-[#d3bb73] px-6 py-2 font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-50"
               >
-                {isLoading
+                {isSaving
                   ? 'Przypisywanie...'
-                  : `Przypisz do ${selectedPhases.size} ${selectedPhases.size === 1 ? 'fazy' : 'faz'}`}
+                  : `Przypisz do ${
+                      assignToAllPhases
+                        ? allPhases.filter((item) => !existingPhaseIds.has(item.id)).length
+                        : selectedPhases.size
+                    } ${
+                      (assignToAllPhases
+                        ? allPhases.filter((item) => !existingPhaseIds.has(item.id)).length
+                        : selectedPhases.size) === 1
+                        ? 'etapu'
+                        : 'etapów'
+                    }`}
               </button>
             </div>
           </div>

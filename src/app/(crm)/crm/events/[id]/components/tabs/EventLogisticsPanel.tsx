@@ -84,6 +84,9 @@ interface EventVehicle {
   external_trailer_return_date: string | null;
   external_trailer_return_location: string | null;
   external_trailer_notes: string | null;
+  added_from_phase?: boolean;
+  phase_assignment_from?: string | null;
+  phase_assignment_until?: string | null;
   vehicles: {
     name: string;
     registration_number: string;
@@ -450,6 +453,11 @@ export default function EventLogisticsPanel({
                               Zewnętrzny
                             </span>
                           )}
+                          {vehicle.added_from_phase && (
+                            <span className="rounded bg-blue-500/20 px-2 py-1 text-xs text-blue-300">
+                              Dodano z fazy
+                            </span>
+                          )}
                           {vehicle.is_in_use && (
                             <span className="flex items-center gap-1 rounded bg-green-500/20 px-2 py-1 text-xs text-green-400">
                               <CheckCircle className="h-3 w-3" />W użytkowaniu
@@ -533,8 +541,10 @@ export default function EventLogisticsPanel({
                         <div>
                           <span className="text-[#e5e4e2]/60">Wyjazd:</span>
                           <p className="text-[#e5e4e2]">
-                            {vehicle.departure_time
-                              ? new Date(vehicle.departure_time).toLocaleTimeString('pl-PL', {
+                            {vehicle.departure_time || vehicle.phase_assignment_from
+                              ? new Date(
+                                  vehicle.departure_time || vehicle.phase_assignment_from!,
+                                ).toLocaleTimeString('pl-PL', {
                                   hour: '2-digit',
                                   minute: '2-digit',
                                 })

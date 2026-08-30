@@ -3,7 +3,20 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { FileText, Download, CreditCard as Edit, Save, X, Mail, Eye, Loader } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import {
+  FileText,
+  Download,
+  CreditCard as Edit,
+  Save,
+  X,
+  Mail,
+  Eye,
+  Loader,
+  Printer,
+  FilePenLine,
+  RefreshCw,
+} from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
@@ -14,12 +27,14 @@ import SendContractEmailModal from '@/components/crm/SendContractEmailModal';
 import { UnifiedContact } from '@/store/slices/contactsSlice';
 import { ILocation } from '@/app/(crm)/crm/locations/type';
 import { Organization } from '@/app/(crm)/crm/contacts/[id]/page';
-import { getContractCssForPrint } from '../calculations/helpers/getContractCssForPrint';
-import { paginateContractHtml } from '@/lib/CRM/contracts/contractPagination';
 import {
-  normalizeContractParagraphPlaceholders,
-  resolveContractParagraphPlaceholders,
-} from '@/lib/CRM/contracts/contractParagraphs';
+  getContractCssForPrint,
+  getContractDocumentCss,
+} from '../calculations/helpers/getContractCssForPrint';
+import { renderContractDocument } from '@/lib/CRM/contracts/contractPagination';
+import { normalizeContractClauseHtml } from '@/lib/CRM/contracts/contractClauseContent';
+import { placeContractClauses } from '@/lib/CRM/contracts/contractClauseSlots';
+import { createContractDraftPdf } from '@/app/(crm)/crm/contract-templates/printDraft';
 
 export interface DecisionMaker {
   id: string;
@@ -54,34 +69,36 @@ const formatPrefixedValue = (
 const escapeContractText = (value: string) =>
   value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-const CONTRACT_CLAUSE_CATEGORY_KEYS = [
-  'requirements',
-  'obligations',
-  'risks',
-  'general',
-] as const;
+const compactContractParts = (parts: Array<string | null | undefined>) =>
+  parts.map((part) => String(part || '').trim()).filter(Boolean);
 
-const placeProductClauses = (flow: string, sourceVariables: Record<string, string>) => {
-  const nextVariables = { ...sourceVariables };
-  const unplacedSections = CONTRACT_CLAUSE_CATEGORY_KEYS.filter(
-    (category) =>
-      !new RegExp(`\\{\\{\\s*contract_clauses_${category}\\s*\\}\\}`, 'i').test(flow),
-  ).map((category) => nextVariables[`contract_clauses_${category}`]);
+const joinRawContractParts = (
+  parts: Array<string | null | undefined>,
+  separator = ', ',
+) => compactContractParts(parts).join(separator);
 
-  nextVariables.contract_clauses_all = unplacedSections.filter(Boolean).join('');
-  const hasCatchAllSlot = /\{\{\s*contract_clauses_all\s*\}\}/i.test(flow);
-  const flowContent =
-    nextVariables.contract_clauses_all && !hasCatchAllSlot
-      ? `${flow}<div data-auto-product-clauses="true">{{contract_clauses_all}}</div>`
-      : flow;
+const joinContractParts = (
+  parts: Array<string | null | undefined>,
+  separator = ', ',
+) => escapeContractText(joinRawContractParts(parts, separator));
 
-  return { flowContent, variables: nextVariables };
+const CONTRACT_CLAUSE_CATEGORY_LABELS: Record<string, string> = {
+  requirements: 'wymagania organizacyjne i techniczne',
+  obligations: 'obowiązki zamawiającego',
+  risks: 'ryzyka i odpowiedzialność',
+  general: 'postanowienia dodatkowe',
 };
 
 const deduplicateProductClauseSections = (html: string) => {
-  if (typeof document === 'undefined' || !html.includes('contract-product-clauses')) return html;
+  if (typeof document === 'undefined') return html;
   const container = document.createElement('div');
   container.innerHTML = html;
+  // Starsze wersje automatycznie dopisywały klauzule na końcu szablonu bez
+  // zadeklarowanych obszarów. Taki fallback nie jest częścią indywidualnej
+  // treści umowy i nie może wracać ze starego snapshotu.
+  container
+    .querySelectorAll('[data-auto-product-clauses="true"]')
+    .forEach((section) => section.remove());
   const seenSections = new Set<string>();
   container.querySelectorAll<HTMLElement>('.contract-product-clauses').forEach((section) => {
     const signature = section.innerHTML.replace(/\s+/g, ' ').trim();
@@ -92,8 +109,12 @@ const deduplicateProductClauseSections = (html: string) => {
 };
 
 const includeContractFonts = (flow: string, variables: Record<string, string>) => {
-  const fontFaces = variables.__contract_font_faces || '';
-  return fontFaces && !flow.includes('data-contract-fonts') ? `${fontFaces}${flow}` : flow;
+  // Wsteczna kompatybilność: usuń style zapisane dawniej w treści umowy.
+  // Fonty są ładowane do document.fonts i przekazywane jako CSS do generatora PDF.
+  return flow.replace(
+    /<style\b[^>]*data-contract-fonts[^>]*>[\s\S]*?<\/style>/gi,
+    '',
+  );
 };
 
 
@@ -114,7 +135,53 @@ const getTemplateSettings = (pageSettings: any) => ({
     logoUrl: '/erulers_logo_vect.png',
   },
   footerLogoScale: pageSettings?.footerLogoScale ?? 80,
+  clauseTypography: pageSettings?.clauseTypography,
 });
+
+type EventCompanyBranding = {
+  company: any;
+  logoUrl: string | null;
+  logoUrls: string[];
+};
+
+const resolveCompanyLogoUrl = (value?: string | null) => {
+  if (!value) return null;
+  if (/^https?:\/\//i.test(value) || value.startsWith('data:')) return value;
+  return `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/company-logos/${value.replace(/^\/+/, '')}`;
+};
+
+const applyEventCompanyBranding = (
+  settings: ReturnType<typeof getTemplateSettings>,
+  branding: EventCompanyBranding | null,
+) => {
+  if (!branding) return settings;
+  const { company, logoUrl, logoUrls } = branding;
+  const normalizedCompanyLogos = new Set(logoUrls.filter(Boolean));
+  const savedHeaderLogo = resolveCompanyLogoUrl(settings.selectedLogo);
+  const savedFooterLogo = resolveCompanyLogoUrl(settings.footerContent?.logoUrl);
+  const fallbackLogo = logoUrl || resolveCompanyLogoUrl(company.logo_url) || settings.selectedLogo;
+  const selectedLogo =
+    savedHeaderLogo && normalizedCompanyLogos.has(savedHeaderLogo)
+      ? savedHeaderLogo
+      : fallbackLogo;
+  const selectedFooterLogo =
+    savedFooterLogo && normalizedCompanyLogos.has(savedFooterLogo)
+      ? savedFooterLogo
+      : selectedLogo;
+
+  return {
+    ...settings,
+    selectedLogo,
+    footerContent: {
+      companyName: company.legal_name || company.name || '',
+      tagline: '',
+      website: company.website || '',
+      email: company.email || '',
+      phone: company.phone || '',
+      logoUrl: selectedFooterLogo,
+    },
+  };
+};
 
 
 
@@ -132,6 +199,7 @@ type ContractStatus =
   | 'cancelled';
 
 export function EventContractTab({ eventId }: { eventId: string }) {
+  const router = useRouter();
   const { showSnackbar } = useSnackbar();
   const { isAdmin, employee } = useCurrentEmployee();
   const [loading, setLoading] = useState(true);
@@ -149,6 +217,7 @@ export function EventContractTab({ eventId }: { eventId: string }) {
   const [contractCreatedBy, setContractCreatedBy] = useState<string | null>(null);
   const [showSendEmailModal, setShowSendEmailModal] = useState(false);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const [isPrintingDraft, setIsPrintingDraft] = useState(false);
   const [clientEmail, setClientEmail] = useState('');
   const [clientName, setClientName] = useState('');
   const [statusDates, setStatusDates] = useState<{
@@ -164,6 +233,12 @@ export function EventContractTab({ eventId }: { eventId: string }) {
     [],
   );
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+  const [eventCompanyBranding, setEventCompanyBranding] =
+    useState<EventCompanyBranding | null>(null);
+  const [contractFontFaceCss, setContractFontFaceCss] = useState('');
+  const [sourceContractContent, setSourceContractContent] = useState('');
+  const [contractSourceOutdated, setContractSourceOutdated] = useState(false);
+  const [unplacedClauseCategories, setUnplacedClauseCategories] = useState<string[]>([]);
 
   useEffect(() => {
     fetchContractData();
@@ -203,9 +278,10 @@ export function EventContractTab({ eventId }: { eventId: string }) {
           location,
           category_id,
           contact_person_id,
+          my_company_id,
           selected_contract_template_id,
           locations:location_id(name, formatted_address, address, city, postal_code),
-          organizations:organization_id(
+          organizations:organizations!events_organization_id_fkey(
           *,
           legal_representative:legal_representative_id(
             id,
@@ -244,6 +320,45 @@ export function EventContractTab({ eventId }: { eventId: string }) {
 
       if (eventError) throw eventError;
       if (!event) throw new Error('Nie znaleziono wydarzenia');
+
+      let resolvedCompanyBranding: EventCompanyBranding | null = null;
+      if (event.my_company_id) {
+        const { data: company } = await supabase
+          .from('my_companies')
+          .select('id, name, legal_name, nip, regon, krs, street, building_number, apartment_number, city, postal_code, email, phone, website, logo_url, bank_account, bank_name, signature_name, signature_title')
+          .eq('id', event.my_company_id)
+          .maybeSingle();
+
+        if (company) {
+          const { data: companyLogos } = await supabase
+            .from('company_brandbook_logos')
+            .select('url, is_default, order_index')
+            .eq('company_id', company.id)
+            .order('is_default', { ascending: false })
+            .order('order_index', { ascending: true });
+          const logoPath =
+            companyLogos?.find((logo: any) => logo.is_default)?.url ||
+            companyLogos?.[0]?.url ||
+            company.logo_url ||
+            null;
+          const companyLogoUrls = Array.from(
+            new Set(
+              [
+                ...(companyLogos || []).map((logo: any) => logo.url),
+                company.logo_url,
+              ]
+                .map((value) => resolveCompanyLogoUrl(value))
+                .filter(Boolean) as string[],
+            ),
+          );
+          resolvedCompanyBranding = {
+            company,
+            logoUrl: resolveCompanyLogoUrl(logoPath),
+            logoUrls: companyLogoUrls,
+          };
+        }
+      }
+      setEventCompanyBranding(resolvedCompanyBranding);
 
       let decisionMakers: any[] | null = null;
       if (event.organization_id) {
@@ -387,6 +502,11 @@ export function EventContractTab({ eventId }: { eventId: string }) {
 
       template = selectedTemplate;
 
+      const templateSettings = applyEventCompanyBranding(
+        getTemplateSettings(template.page_settings),
+        resolvedCompanyBranding,
+      );
+
       setTemplateId(template.id);
       setSelectedTemplateId(template.id);
 
@@ -394,39 +514,31 @@ export function EventContractTab({ eventId }: { eventId: string }) {
 
       if (template.page_settings?.pages) {
         const baseFlow = template.page_settings.flowContent || template.page_settings.pages.join('');
-        const { flowContent } = placeProductClauses(baseFlow, variables);
+        const { flowContent } = placeContractClauses(baseFlow, variables);
         templateToStore = JSON.stringify({
           pages: template.page_settings.pages,
           flowContent,
-          settings: {
-            logoScale: template.page_settings.logoScale || 80,
-            logoPositionX: template.page_settings.logoPositionX || 50,
-            logoPositionY: template.page_settings.logoPositionY || 0,
-            lineHeight: template.page_settings.lineHeight || 1.6,
-            selectedLogo: template.page_settings.selectedLogo || '/erulers_logo_vect.png',
-            selectedFooter: template.page_settings.selectedFooter || 'default',
-            footerContent: template.page_settings.footerContent || {
-              companyName: 'EVENT RULERS',
-              tagline: 'Więcej niż Wodzireje!',
-              website: 'www.eventrulers.pl',
-              email: 'biuro@eventrulers.pl',
-              phone: '698-212-279',
-              logoUrl: '/erulers_logo_vect.png',
-            },
-            footerLogoScale: template.page_settings.footerLogoScale || 80,
-          },
+          settings: templateSettings,
         });
       }
       setOriginalTemplate(templateToStore);
 
-      const { data: offers } = await supabase
+      const { data: offerCandidates, error: offersError } = await supabase
         .from('offers')
-        .select('id, total_amount, offer_number, valid_until')
+        .select('id, total_amount, offer_number, valid_until, status, created_at, updated_at')
         .eq('event_id', eventId)
-        .eq('status', 'accepted')
         .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+        .limit(20);
+
+      if (offersError) throw offersError;
+
+      const activeOfferCandidates = (offerCandidates || []).filter(
+        (offer: any) => !['rejected', 'cancelled', 'expired'].includes(String(offer.status)),
+      );
+      const offers =
+        activeOfferCandidates.find((offer: any) => offer.status === 'accepted') ||
+        activeOfferCandidates[0] ||
+        null;
 
       let offerItems = null;
       if (offers?.id) {
@@ -435,6 +547,11 @@ export function EventContractTab({ eventId }: { eventId: string }) {
           .select(`
             *,
             product:offer_products!product_id(
+              recommended_contract_clauses,
+              recommended_contract_clause_category
+            ),
+            product_variant:offer_product_variants!product_variant_id(
+              overrides_contract_clauses,
               recommended_contract_clauses,
               recommended_contract_clause_category
             )
@@ -505,6 +622,14 @@ export function EventContractTab({ eventId }: { eventId: string }) {
         .from('company_brandbook_fonts')
         .select('*')
         .order('order_index');
+      const fontFaceCss = (contractFonts || [])
+        .filter((font: any) => font.file_url)
+        .map(
+          (font: any) =>
+            `@font-face{font-family:'${String(font.family).replace(/'/g, "\\'")}';src:url('${font.file_url}');font-weight:${font.weight || '400'};font-style:normal;font-display:swap;}`,
+        )
+        .join('');
+      setContractFontFaceCss(fontFaceCss);
       await Promise.all(
         (contractFonts || []).filter((font: any) => font.file_url).map(async (font: any) => {
           const loadedFont = new FontFace(font.family, `url(${font.file_url})`, {
@@ -520,48 +645,33 @@ export function EventContractTab({ eventId }: { eventId: string }) {
         risks: [],
         general: [],
       };
-      const inheritClauseTypography = (html: string) =>
-        html.replace(/style=(['"])(.*?)\1/gi, (_match, quote: string, styles: string) => {
-          const inheritedStyles = styles
-            .split(';')
-            .map((style) => style.trim())
-            .filter(Boolean)
-            .filter(
-              (style) =>
-                !/^(?:line-height|color)\s*:/i.test(style),
-            )
-            .join('; ');
-          return inheritedStyles ? `style=${quote}${inheritedStyles}${quote}` : '';
-        }).replace(/class=(['"])(.*?)\1/gi, (_match, quote: string, classes: string) => {
-          const inheritedClasses = classes
-            .split(/\s+/)
-            .filter(Boolean)
-            .filter((className) => !/^ql-color-/i.test(className))
-            .join(' ');
-          return inheritedClasses ? `class=${quote}${inheritedClasses}${quote}` : '';
-        });
-
       offerItemsArray.forEach((item: any) => {
         const product = Array.isArray(item.product) ? item.product[0] : item.product;
-        const clause = product?.recommended_contract_clauses?.trim();
+        const variant = Array.isArray(item.product_variant)
+          ? item.product_variant[0]
+          : item.product_variant;
+        const clauseSource = variant?.overrides_contract_clauses ? variant : product;
+        const clause = normalizeContractClauseHtml(
+          clauseSource?.recommended_contract_clauses,
+        );
         if (!clause) return;
-        const category = clausesByCategory[product.recommended_contract_clause_category]
-          ? product.recommended_contract_clause_category
+        const category = clausesByCategory[clauseSource.recommended_contract_clause_category]
+          ? clauseSource.recommended_contract_clause_category
           : 'requirements';
         clausesByCategory[category].push(
-          `<div class="product-contract-clause" data-product-name="${escapeContractText(item.name || 'Produkt')}" style="font:inherit;color:inherit;line-height:inherit">${inheritClauseTypography(clause)}</div>`,
+          `<div class="product-contract-clause" data-clause-category="${category}" data-product-name="${escapeContractText(item.name || 'Produkt')}">${clause}</div>`,
         );
       });
 
-      const clauseSection = (clauses: string[]) =>
+      const clauseSection = (category: string, clauses: string[]) =>
         clauses.length
-          ? `<div class="contract-product-clauses" style="font:inherit;color:inherit;line-height:inherit">${clauses.join('')}</div>`
+          ? `<div class="contract-product-clauses" data-clause-category="${category}">${clauses.join('')}</div>`
           : '';
       const rawClauseSections = {
-        contract_clauses_requirements: clauseSection(clausesByCategory.requirements),
-        contract_clauses_obligations: clauseSection(clausesByCategory.obligations),
-        contract_clauses_risks: clauseSection(clausesByCategory.risks),
-        contract_clauses_general: clauseSection(clausesByCategory.general),
+        contract_clauses_requirements: clauseSection('requirements', clausesByCategory.requirements),
+        contract_clauses_obligations: clauseSection('obligations', clausesByCategory.obligations),
+        contract_clauses_risks: clauseSection('risks', clausesByCategory.risks),
+        contract_clauses_general: clauseSection('general', clausesByCategory.general),
       };
       const offerItemsHtml =
         offerItemsArray.length > 0
@@ -585,16 +695,68 @@ export function EventContractTab({ eventId }: { eventId: string }) {
         (decisionMakers as unknown as DecisionMaker[]) || [],
       );
 
+      const organizationAddress = joinContractParts([
+        organization?.address,
+        joinRawContractParts([organization?.postal_code, organization?.city], ' '),
+      ]);
+      const contactAddress = joinContractParts([
+        contact?.address,
+        joinRawContractParts([contact?.postal_code, contact?.city], ' '),
+      ]);
+      const clientContractPartyBlock = organization
+        ? `<div data-contract-party="client"><p style="font:inherit;line-height:inherit;margin:0;text-align:justify;"><strong>${escapeContractText(
+            compactContractParts([organization.name, organization.legal_form]).join(' '),
+          )}</strong>${organizationAddress ? `, ${organizationAddress}` : ''}${
+            organization.nip ? `, NIP ${escapeContractText(String(organization.nip))}` : ''
+          }${organization.regon ? `, REGON ${escapeContractText(String(organization.regon))}` : ''}${
+            organization.krs ? `, KRS ${escapeContractText(String(organization.krs))}` : ''
+          }${
+            legalRepresentativeFullName
+              ? `, reprezentowaną przez <strong>${escapeContractText(legalRepresentativeFullName)}</strong>`
+              : ''
+          }, zwaną dalej „Zleceniodawcą”.</p></div>`
+        : `<div data-contract-party="client"><p style="font:inherit;line-height:inherit;margin:0;text-align:justify;"><strong>${escapeContractText(
+            contact?.full_name ||
+              compactContractParts([contact?.first_name, contact?.last_name]).join(' ') ||
+              'Zleceniodawca',
+          )}</strong>${contactAddress ? `, ${contactAddress}` : ''}${
+            contact?.pesel ? `, PESEL ${escapeContractText(String(contact.pesel))}` : ''
+          }, zwaną/zwanym dalej „Zleceniodawcą”.</p></div>`;
+
+      const executorCompany = resolvedCompanyBranding?.company;
+      const executorAddressLine = joinRawContractParts([
+        executorCompany?.street,
+        joinRawContractParts(
+          [
+            executorCompany?.building_number,
+            executorCompany?.apartment_number
+              ? `/${executorCompany.apartment_number}`
+              : '',
+          ],
+          '',
+        ),
+      ], ' ');
+      const executorFullAddress = joinContractParts([
+        executorAddressLine,
+        joinRawContractParts([executorCompany?.postal_code, executorCompany?.city], ' '),
+      ]);
+      const executorRepresentative =
+        executorCompany?.signature_name || 'Mateusz Kwiatkowski';
+      const executorRepresentativeTitle = executorCompany?.signature_title || '';
+      const executorContractPartyBlock = `<div data-contract-party="executor"><p style="font:inherit;line-height:inherit;margin:0;text-align:justify;"><strong>${escapeContractText(
+        executorCompany?.legal_name || executorCompany?.name || 'Mavinci Sp. z o.o.',
+      )}</strong>${executorFullAddress ? `, ${executorFullAddress}` : ''}${
+        executorCompany?.krs ? `, KRS ${escapeContractText(String(executorCompany.krs))}` : ''
+      }${executorCompany?.nip ? `, NIP ${escapeContractText(String(executorCompany.nip))}` : ''}${
+        executorCompany?.regon ? `, REGON ${escapeContractText(String(executorCompany.regon))}` : ''
+      }, reprezentowaną przez <strong>${escapeContractText(executorRepresentative)}</strong>${
+        executorRepresentativeTitle
+          ? ` — ${escapeContractText(executorRepresentativeTitle)}`
+          : ''
+      }, zwaną dalej „Zleceniobiorcą”.</p></div>`;
+
       const varsMap: Record<string, string> = {
-        __contract_font_faces: contractFonts?.some((font: any) => font.file_url)
-          ? `<style data-contract-fonts="true">${contractFonts
-              .filter((font: any) => font.file_url)
-              .map(
-                (font: any) =>
-                  `@font-face{font-family:'${String(font.family).replace(/'/g, "\\'")}';src:url('${font.file_url}');font-weight:${font.weight || '400'};font-style:normal;font-display:swap;}`,
-              )
-              .join('')}</style>`
-          : '',
+        __contract_font_faces: '',
         contact_first_name: contact?.first_name || '',
         contact_last_name: contact?.last_name || '',
         contact_full_name: contact?.full_name || '',
@@ -653,6 +815,7 @@ export function EventContractTab({ eventId }: { eventId: string }) {
         legal_representative_title: formatPrefixedValue(organization?.legal_representative_title, '-', '.'),
 
         decision_makers_list: decisionMakersListHtml,
+        client_contract_party_block: clientContractPartyBlock,
 
         budget:
           totalPrice.toLocaleString('pl-PL', {
@@ -670,13 +833,32 @@ export function EventContractTab({ eventId }: { eventId: string }) {
         contract_number: contractNumber,
         contract_date: new Date().toLocaleDateString('pl-PL'),
 
-        executor_name: 'Mavinci Sp. z o.o.',
-        executor_address: 'ul. Marcina Kasprzaka 15/66',
-        executor_postal_code: '10-057',
-        executor_city: 'Olsztyn',
-        executor_nip: '7394011583',
-        executor_phone: '698-212-279',
-        executor_email: 'biuro@mavinci.pl',
+        executor_name:
+          resolvedCompanyBranding?.company.legal_name ||
+          resolvedCompanyBranding?.company.name ||
+          'Mavinci Sp. z o.o.',
+        executor_address: resolvedCompanyBranding
+          ? [
+              resolvedCompanyBranding.company.street,
+              [
+                resolvedCompanyBranding.company.building_number,
+                resolvedCompanyBranding.company.apartment_number,
+              ].filter(Boolean).join('/'),
+            ].filter(Boolean).join(' ')
+          : 'ul. Marcina Kasprzaka 15/66',
+        executor_postal_code: resolvedCompanyBranding?.company.postal_code || '10-057',
+        executor_city: resolvedCompanyBranding?.company.city || 'Olsztyn',
+        executor_nip: resolvedCompanyBranding?.company.nip || '7394011583',
+        executor_regon: resolvedCompanyBranding?.company.regon || '',
+        executor_krs: resolvedCompanyBranding?.company.krs || '',
+        executor_phone: resolvedCompanyBranding?.company.phone || '698-212-279',
+        executor_email: resolvedCompanyBranding?.company.email || 'biuro@mavinci.pl',
+        executor_website: resolvedCompanyBranding?.company.website || '',
+        executor_bank_account: resolvedCompanyBranding?.company.bank_account || '',
+        executor_bank_name: resolvedCompanyBranding?.company.bank_name || '',
+        executor_representative_name: executorRepresentative,
+        executor_representative_title: executorRepresentativeTitle,
+        executor_contract_party_block: executorContractPartyBlock,
 
         offer_number: offers?.offer_number || '',
         offer_valid_until: offers?.valid_until ? formatDateOnly(offers.valid_until) : '',
@@ -702,61 +884,72 @@ export function EventContractTab({ eventId }: { eventId: string }) {
           template.page_settings?.pages?.join('') || template.content_html || template.content,
         varsMap,
       );
-      const clausePlacement = placeProductClauses(templateFlow, varsMap);
+      const clausePlacement = placeContractClauses(templateFlow, varsMap);
       const flowWithAutomaticClauses = clausePlacement.flowContent;
       Object.assign(varsMap, clausePlacement.variables);
+      setUnplacedClauseCategories(clausePlacement.unplacedClauseCategories);
+      const sourceMeta = {
+        sourceOfferId: offers?.id || null,
+        sourceOfferStatus: offers?.status || null,
+        sourceOfferUpdatedAt: offers?.updated_at || null,
+      };
       setOriginalTemplate(JSON.stringify({
         flowContent: flowWithAutomaticClauses,
         pages: template.page_settings?.pages || [flowWithAutomaticClauses],
-        settings: getTemplateSettings(template.page_settings),
+        settings: templateSettings,
+        meta: sourceMeta,
       }));
 
       setVariables(varsMap);
       setEditedVariables(varsMap);
-      const templateSettings = getTemplateSettings(template.page_settings);
       let contentToSet = '';
+
+      const currentSourceDocument = await renderContractDocument(
+        replaceVariables(flowWithAutomaticClauses, varsMap),
+        templateSettings,
+      );
+      const currentSourceContent = JSON.stringify({
+        ...currentSourceDocument,
+        meta: sourceMeta,
+      });
+      setSourceContractContent(currentSourceContent);
+      setContractSourceOutdated(false);
 
       // Jeśli istnieje zapisana umowa, użyj jej contentu zamiast szablonu
       if (existingContract?.content) {
         try {
           const parsedContract = JSON.parse(existingContract.content);
-          if (parsedContract.pages && Array.isArray(parsedContract.pages)) {
-            const flowContent = resolveContractParagraphPlaceholders(
-              normalizeContractParagraphPlaceholders(
-                deduplicateProductClauseSections(
+          if (
+            parsedContract.meta?.individuallyEdited === true &&
+            parsedContract.pages &&
+            Array.isArray(parsedContract.pages)
+          ) {
+            const renderedContract = await renderContractDocument(
+              deduplicateProductClauseSections(
+                includeContractFonts(
                   parsedContract.flowContent || parsedContract.pages.join(''),
+                  varsMap,
                 ),
               ),
+              parsedContract.settings || templateSettings,
             );
-            const resolvedPages = await paginateContractHtml(flowContent, templateSettings);
             contentToSet = JSON.stringify({
               ...parsedContract,
-              flowContent,
-              pages: resolvedPages,
-              settings: templateSettings,
+              ...renderedContract,
             });
-          } else {
-            contentToSet = existingContract.content;
+            setContractSourceOutdated(
+              parsedContract.meta?.sourceOfferId !== sourceMeta.sourceOfferId ||
+                parsedContract.meta?.sourceOfferUpdatedAt !== sourceMeta.sourceOfferUpdatedAt,
+            );
           }
         } catch {
-          contentToSet = existingContract.content;
+          // Starszy zapis bez metadanych zostanie odbudowany z aktualnych źródeł.
         }
-      } else if (template.page_settings?.pages) {
-        // Jeśli nie ma umowy, wygeneruj z szablonu
-        const source = flowWithAutomaticClauses;
-        const flowContent = resolveContractParagraphPlaceholders(replaceVariables(source, varsMap));
-        const pages = await paginateContractHtml(flowContent, templateSettings);
-        contentToSet = JSON.stringify({
-          flowContent,
-          pages,
-          settings: templateSettings,
-        });
-      } else {
-        const flowContent = resolveContractParagraphPlaceholders(
-          replaceVariables(flowWithAutomaticClauses, varsMap),
-        );
-        const pages = await paginateContractHtml(flowContent, templateSettings);
-        contentToSet = JSON.stringify({ flowContent, pages, settings: templateSettings });
+      }
+
+      if (!contentToSet) {
+        // Dopóki treść nie była edytowana indywidualnie, źródłem prawdy jest oferta i szablon.
+        contentToSet = currentSourceContent;
       }
       setContractContent(contentToSet);
     } catch (err) {
@@ -796,15 +989,21 @@ export function EventContractTab({ eventId }: { eventId: string }) {
     try {
       const parsed = JSON.parse(originalTemplate);
       if (parsed.pages && Array.isArray(parsed.pages)) {
-        const flowContent = resolveContractParagraphPlaceholders(
-          replaceVariables(parsed.flowContent || parsed.pages.join(''), updatedVariables),
+        const renderedContract = await renderContractDocument(
+          replaceVariables(
+            includeContractFonts(parsed.flowContent || parsed.pages.join(''), updatedVariables),
+            updatedVariables,
+          ),
+          parsed.settings || {},
         );
-        const pages = await paginateContractHtml(flowContent, parsed.settings || {});
         setContractContent(
           JSON.stringify({
-            flowContent,
-            pages,
-            settings: parsed.settings,
+            ...renderedContract,
+            meta: {
+              ...(parsed.meta || {}),
+              individuallyEdited: true,
+              editSource: 'variables',
+            },
           }),
         );
       } else if (Array.isArray(parsed)) {
@@ -830,14 +1029,18 @@ export function EventContractTab({ eventId }: { eventId: string }) {
     if (!newTemplateId) return;
 
     try {
-      const { error: eventTemplateError } = await supabase
-        .from('events')
-        .update({
-          selected_contract_template_id: newTemplateId,
-        })
-        .eq('id', eventId);
+      const templateUpdateResponse = await fetch('/bridge/events/contracts/template', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ eventId, templateId: newTemplateId }),
+      });
+      const templateUpdateResult = await templateUpdateResponse.json();
 
-      if (eventTemplateError) throw eventTemplateError;
+      if (!templateUpdateResponse.ok || templateUpdateResult.templateId !== newTemplateId) {
+        throw new Error(
+          templateUpdateResult.error || 'Nie udało się utrwalić wyboru szablonu.',
+        );
+      }
 
       // If no variables loaded yet (first template pick), do full reload
       if (Object.keys(variables).length === 0) {
@@ -862,28 +1065,17 @@ export function EventContractTab({ eventId }: { eventId: string }) {
           template.page_settings.flowContent || template.page_settings.pages.join(''),
           variables,
         );
-        const clausePlacement = placeProductClauses(baseFlow, variables);
+        const clausePlacement = placeContractClauses(baseFlow, variables);
         const flowContent = clausePlacement.flowContent;
+        setUnplacedClauseCategories(clausePlacement.unplacedClauseCategories);
+        const settings = applyEventCompanyBranding(
+          getTemplateSettings(template.page_settings),
+          eventCompanyBranding,
+        );
         templateToStore = JSON.stringify({
           pages: template.page_settings.pages,
           flowContent,
-          settings: {
-            logoScale: template.page_settings.logoScale || 80,
-            logoPositionX: template.page_settings.logoPositionX || 50,
-            logoPositionY: template.page_settings.logoPositionY || 0,
-            lineHeight: template.page_settings.lineHeight || 1.6,
-            selectedLogo: template.page_settings.selectedLogo || '/erulers_logo_vect.png',
-            selectedFooter: template.page_settings.selectedFooter || 'default',
-            footerContent: template.page_settings.footerContent || {
-              companyName: 'EVENT RULERS',
-              tagline: 'Więcej niż Wodzireje!',
-              website: 'www.eventrulers.pl',
-              email: 'biuro@eventrulers.pl',
-              phone: '698-212-279',
-              logoUrl: '/erulers_logo_vect.png',
-            },
-            footerLogoScale: template.page_settings.footerLogoScale || 80,
-          },
+          settings,
         });
       }
       setOriginalTemplate(templateToStore);
@@ -892,25 +1084,30 @@ export function EventContractTab({ eventId }: { eventId: string }) {
       if (template.page_settings?.pages) {
         const parsedTemplate = JSON.parse(templateToStore);
         const source = parsedTemplate.flowContent;
-        const clausePlacement = placeProductClauses(source, variables);
-        const flowContent = resolveContractParagraphPlaceholders(
+        const clausePlacement = placeContractClauses(source, variables);
+        const renderedContract = await renderContractDocument(
           replaceVariables(clausePlacement.flowContent, clausePlacement.variables),
+          applyEventCompanyBranding(
+            getTemplateSettings(template.page_settings),
+            eventCompanyBranding,
+          ),
         );
-        const settings = getTemplateSettings(template.page_settings);
-        const pages = await paginateContractHtml(flowContent, settings);
-        contentToSet = JSON.stringify({
-          flowContent,
-          pages,
-          settings,
-        });
+        contentToSet = JSON.stringify(renderedContract);
       } else {
-        const templateToUse = template.content_html || template.content;
-        const flowContent = resolveContractParagraphPlaceholders(
-          replaceVariables(templateToUse, variables),
+        const templateToUse = includeContractFonts(
+          template.content_html || template.content,
+          variables,
         );
-        const settings = getTemplateSettings(template.page_settings);
-        const pages = await paginateContractHtml(flowContent, settings);
-        contentToSet = JSON.stringify({ flowContent, pages, settings });
+        const clausePlacement = placeContractClauses(templateToUse, variables);
+        setUnplacedClauseCategories(clausePlacement.unplacedClauseCategories);
+        const renderedContract = await renderContractDocument(
+          replaceVariables(clausePlacement.flowContent, clausePlacement.variables),
+          applyEventCompanyBranding(
+            getTemplateSettings(template.page_settings),
+            eventCompanyBranding,
+          ),
+        );
+        contentToSet = JSON.stringify(renderedContract);
       }
       setContractContent(contentToSet);
 
@@ -930,7 +1127,147 @@ export function EventContractTab({ eventId }: { eventId: string }) {
       showSnackbar(`Zmieniono szablon na: ${template.name}`, 'success');
     } catch (err) {
       console.error('Error changing template:', err);
-      showSnackbar('Błąd podczas zmiany szablonu', 'error');
+      showSnackbar(
+        err instanceof Error ? err.message : 'Błąd podczas zmiany szablonu',
+        'error',
+      );
+    }
+  };
+
+  const ensureContractRecord = async (): Promise<string | null> => {
+    if (contractId) return contractId;
+
+    if (!templateId && !selectedTemplateId) {
+      showSnackbar('Wybierz szablon umowy', 'error');
+      return null;
+    }
+
+    try {
+      const { data: eventData, error: eventError } = await supabase
+        .from('events')
+        .select('contact_person_id, organization_id')
+        .eq('id', eventId)
+        .single();
+
+      if (eventError) throw eventError;
+
+      const clientId = eventData?.contact_person_id || eventData?.organization_id || null;
+      const { data: newContract, error: createError } = await supabase
+        .from('contracts')
+        .insert({
+          event_id: eventId,
+          client_id: clientId,
+          title: `Umowa dla eventu ${eventId}`,
+          content: contractContent,
+          status: 'draft',
+          template_id: selectedTemplateId || templateId,
+          created_by: employee?.id || null,
+        })
+        .select('id')
+        .single();
+
+      if (createError) throw createError;
+      setContractId(newContract.id);
+      return newContract.id;
+    } catch (err) {
+      console.error('Error creating contract:', err);
+      showSnackbar('Błąd podczas tworzenia umowy', 'error');
+      return null;
+    }
+  };
+
+  const handlePrintDraft = async () => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      showSnackbar('Zezwól przeglądarce na otwieranie nowych kart', 'error');
+      return;
+    }
+
+    printWindow.document.write(
+      '<html><head><meta charset="utf-8"><title>Przygotowywanie draftu…</title></head>' +
+        '<body style="font-family:Arial,sans-serif;padding:40px;color:#333">' +
+        'Przygotowywanie wersji roboczej umowy…</body></html>',
+    );
+    printWindow.document.close();
+
+    try {
+      setIsPrintingDraft(true);
+      let parsed: any = {};
+      try {
+        parsed = JSON.parse(contractContent);
+      } catch {
+        parsed = { flowContent: contractContent, pages: [contractContent], settings: {} };
+      }
+      const pages = Array.isArray(parsed?.pages) ? parsed.pages : [contractContent];
+      const flowContent = parsed?.flowContent || pages.join('');
+      const settings = parsed?.settings || {};
+      const blob = await createContractDraftPdf({
+        id: contractId || eventId,
+        name: 'Umowa wydarzenia',
+        description: 'Wersja robocza umowy wydarzenia',
+        content: flowContent.replace(/<[^>]*>/g, ' ').trim() || 'Umowa wydarzenia',
+        content_html: flowContent,
+        page_settings: {
+          ...settings,
+          flowContent,
+          pages,
+          paginationMode: 'automatic',
+        },
+        is_active: true,
+        created_at: new Date().toISOString(),
+      });
+      const url = URL.createObjectURL(blob);
+      printWindow.location.href = url;
+      printWindow.addEventListener('load', () => printWindow.print(), { once: true });
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (err: any) {
+      printWindow.close();
+      console.error('Error printing contract draft:', err);
+      showSnackbar(err?.message || 'Nie udało się przygotować draftu umowy', 'error');
+    } finally {
+      setIsPrintingDraft(false);
+    }
+  };
+
+  const handleEditContractContent = async () => {
+    const currentContractId = await ensureContractRecord();
+    const currentTemplateId = selectedTemplateId || templateId;
+    if (!currentContractId || !currentTemplateId) return;
+
+    router.push(
+      `/crm/contract-templates/${currentTemplateId}/edit-wysiwyg?contractId=${currentContractId}&eventId=${eventId}`,
+    );
+  };
+
+  const handleRefreshFromOffer = async () => {
+    if (!sourceContractContent) return;
+    if (
+      contractId &&
+      !window.confirm(
+        'Treść umowy zostanie odbudowana z aktualnego szablonu i najnowszej oferty. Indywidualne poprawki w treści zostaną zastąpione. Kontynuować?',
+      )
+    ) {
+      return;
+    }
+
+    try {
+      setContractContent(sourceContractContent);
+      if (contractId) {
+        const { error } = await supabase
+          .from('contracts')
+          .update({
+            content: sourceContractContent,
+            modified_after_generation: true,
+          })
+          .eq('id', contractId);
+        if (error) throw error;
+      }
+      setContractSourceOutdated(false);
+      setModifiedAfterGeneration(Boolean(contractId));
+      showSnackbar('Umowa została odświeżona z aktualnej oferty i klauzul', 'success');
+    } catch (err) {
+      console.error('Error refreshing contract from offer:', err);
+      showSnackbar('Nie udało się odświeżyć umowy z oferty', 'error');
     }
   };
 
@@ -941,46 +1278,10 @@ export function EventContractTab({ eventId }: { eventId: string }) {
     }
 
     setIsGeneratingPdf(true);
-    let currentContractId = contractId;
-
-    // 1) upewnij się, że contract istnieje (zostawiam jak u Ciebie)
+    const currentContractId = await ensureContractRecord();
     if (!currentContractId) {
-      if (!templateId && !selectedTemplateId) {
-        showSnackbar('Wybierz szablon umowy przed wygenerowaniem PDF', 'error');
-        setIsGeneratingPdf(false);
-        return;
-      }
-
-      try {
-        const { data: eventData } = await supabase
-          .from('events')
-          .select('contact_person_id, organization_id')
-          .eq('id', eventId)
-          .single();
-
-        const clientId = eventData?.contact_person_id || eventData?.organization_id || null;
-
-        const { data: newContract, error: createError } = await supabase
-          .from('contracts')
-          .insert({
-            event_id: eventId,
-            client_id: clientId,
-            title: `Umowa dla eventu ${eventId}`,
-            content: contractContent,
-            status: 'draft',
-            template_id: selectedTemplateId || templateId,
-          })
-          .select('id')
-          .single();
-
-        if (createError) throw createError;
-        currentContractId = newContract.id;
-        setContractId(newContract.id);
-      } catch (err) {
-        console.error('Error creating contract:', err);
-        showSnackbar('Błąd podczas tworzenia umowy', 'error');
-        return;
-      }
+      setIsGeneratingPdf(false);
+      return;
     }
 
     // 2) PDF na backendzie (Chromium)
@@ -1001,7 +1302,7 @@ export function EventContractTab({ eventId }: { eventId: string }) {
         'class="contract-page-counter"',
       );
 
-      const cssText = getContractCssForPrint();
+      const cssText = `${contractFontFaceCss}\n${getContractCssForPrint()}`;
 
       const res = await fetch('/bridge/events/contracts/generate', {
         method: 'POST',
@@ -1278,6 +1579,18 @@ export function EventContractTab({ eventId }: { eventId: string }) {
 
     const baseActions = [];
 
+    baseActions.push({
+      label: isPrintingDraft ? 'Przygotowywanie…' : 'Drukuj draft',
+      onClick: handlePrintDraft,
+      icon: isPrintingDraft ? (
+        <Loader className="h-4 w-4 animate-spin" />
+      ) : (
+        <Printer className="h-4 w-4" />
+      ),
+      variant: 'default' as const,
+      disabled: isPrintingDraft,
+    });
+
     if (!generatedPdfPath || modifiedAfterGeneration) {
       baseActions.push({
         label: modifiedAfterGeneration ? 'Regeneruj PDF' : 'Generuj PDF',
@@ -1312,12 +1625,27 @@ export function EventContractTab({ eventId }: { eventId: string }) {
     }
 
     if (canEdit) {
-      baseActions.unshift({
-        label: 'Edytuj zmienne',
-        onClick: () => setEditMode(true),
-        icon: <Edit className="h-4 w-4" />,
-        variant: 'default' as const,
-      });
+      baseActions.unshift(
+        {
+          label: contractSourceOutdated ? 'Oferta zmieniona — odśwież' : 'Odśwież z oferty',
+          onClick: handleRefreshFromOffer,
+          icon: <RefreshCw className="h-4 w-4" />,
+          variant: contractSourceOutdated ? ('primary' as const) : ('default' as const),
+          disabled: !sourceContractContent,
+        },
+        {
+          label: 'Edytuj treść umowy',
+          onClick: handleEditContractContent,
+          icon: <FilePenLine className="h-4 w-4" />,
+          variant: 'default' as const,
+        },
+        {
+          label: 'Edytuj zmienne',
+          onClick: () => setEditMode(true),
+          icon: <Edit className="h-4 w-4" />,
+          variant: 'default' as const,
+        },
+      );
     }
 
     if (contractId && canEdit) {
@@ -1344,6 +1672,9 @@ export function EventContractTab({ eventId }: { eventId: string }) {
     handleDownloadPdf,
     handleDeleteContract,
     isGeneratingPdf,
+    isPrintingDraft,
+    contractSourceOutdated,
+    sourceContractContent,
   ]);
 
   if (loading) {
@@ -1399,6 +1730,7 @@ export function EventContractTab({ eventId }: { eventId: string }) {
 
   return (
     <>
+      <style dangerouslySetInnerHTML={{ __html: getContractDocumentCss() }} />
       <div className="space-y-6">
         <div className="no-print rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-4 md:p-6">
           <div className="mb-5 flex flex-col gap-4 md:mb-6 md:flex-row md:items-start md:justify-between">
@@ -1407,7 +1739,8 @@ export function EventContractTab({ eventId }: { eventId: string }) {
                 Umowa na realizację wydarzenia
               </h2>
               <p className="mt-1 text-sm text-[#e5e4e2]/50">
-                Automatycznie wygenerowana z danych wydarzenia
+                Podgląd uwzględnia dane wydarzenia, ofertę i klauzule produktów. Draft nie jest
+                dokumentem finalnym.
               </p>
             </div>
 
@@ -1424,6 +1757,22 @@ export function EventContractTab({ eventId }: { eventId: string }) {
           </div>
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            {contractSourceOutdated && (
+              <div className="rounded-lg border border-amber-400/30 bg-amber-400/10 p-3 text-sm text-amber-200 lg:col-span-2">
+                Oferta lub jej produkty zmieniły się po indywidualnej edycji umowy. Użyj „Oferta
+                zmieniona — odśwież”, aby ponownie pobrać pozycje i klauzule. Operacja zastąpi
+                indywidualnie zmienioną treść.
+              </div>
+            )}
+            {unplacedClauseCategories.length > 0 && (
+              <div className="rounded-lg border border-blue-400/25 bg-blue-400/10 p-3 text-sm text-blue-100 lg:col-span-2">
+                <strong>Klauzule produktowe zostały pominięte.</strong>{' '}
+                Ten szablon nie przewiduje miejsca dla sekcji: {unplacedClauseCategories.map(
+                  (category) => CONTRACT_CLAUSE_CATEGORY_LABELS[category] || category,
+                ).join(', ')}. Dokument zostanie wygenerowany bez nich — w przypadku umowy
+                uproszczonej nie musisz nic robić.
+              </div>
+            )}
             {!generatedPdfPath && availableTemplates.length > 0 && (
               <div className="rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-3 md:p-4">
                 <label className="mb-2 block text-xs font-medium uppercase tracking-wide text-[#e5e4e2]/50">
@@ -1629,13 +1978,18 @@ export function EventContractTab({ eventId }: { eventId: string }) {
                       style={{
                         lineHeight: String(settings.lineHeight),
                         fontFamily: settings.selectedFont || 'Georgia, serif',
-                        minHeight: pageIndex === 0 ? '160mm' : '250mm',
+                        minHeight: 0,
+                        flex: '1 1 0',
+                        overflow: 'hidden',
                       }}
                       dangerouslySetInnerHTML={{ __html: pageContent }}
                     />
 
                     {settings.selectedFooter !== 'none' && (
-                      <div className="contract-footer">
+                      <div
+                        className="contract-footer"
+                        style={{ fontFamily: settings.selectedFont || 'Georgia, serif' }}
+                      >
                         {settings.selectedFooter === 'default' && (
                           <div className="footer-logo">
                             <img
@@ -1657,7 +2011,7 @@ export function EventContractTab({ eventId }: { eventId: string }) {
                         <div className="footer-info">
                           <p>
                             <span className="font-bold">
-                              {settings.footerContent?.companyName || 'EVENT RULERS'}
+                              {settings.footerContent?.companyName ?? 'EVENT RULERS'}
                             </span>
                             {settings.footerContent?.tagline && (
                               <>
@@ -1667,10 +2021,14 @@ export function EventContractTab({ eventId }: { eventId: string }) {
                             )}
                           </p>
                           <p>
-                            {settings.footerContent?.website || 'www.eventrulers.pl'} |{' '}
-                            {settings.footerContent?.email || 'biuro@eventrulers.pl'}
+                            {[
+                              settings.footerContent?.website ?? 'www.eventrulers.pl',
+                              settings.footerContent?.email ?? 'biuro@eventrulers.pl',
+                            ].filter(Boolean).join(' | ')}
                           </p>
-                          <p>tel: {settings.footerContent?.phone || '698-212-279'}</p>
+                          {settings.footerContent?.phone !== '' && (
+                            <p>tel: {settings.footerContent?.phone ?? '698-212-279'}</p>
+                          )}
                         </div>
                       </div>
                     )}

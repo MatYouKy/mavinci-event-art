@@ -38,12 +38,20 @@ interface EmailAccount {
   smtp_port: number;
   smtp_username: string;
   smtp_password: string;
+  my_company_id: string | null;
+}
+
+interface CompanyOption {
+  id: string;
+  name: string;
+  legal_name: string;
 }
 
 export default function EmailAccountsManagementPage() {
   const router = useRouter();
   const { employee: currentEmployee } = useCurrentEmployee();
   const [accounts, setAccounts] = useState<EmailAccount[]>([]);
+  const [companies, setCompanies] = useState<CompanyOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingAccount, setEditingAccount] = useState<EmailAccount | null>(null);
@@ -56,8 +64,22 @@ export default function EmailAccountsManagementPage() {
   useEffect(() => {
     if (isAdmin) {
       fetchAccounts();
+      fetchCompanies();
     }
   }, [isAdmin]);
+
+  const fetchCompanies = async () => {
+    const { data, error } = await supabase
+      .from('my_companies')
+      .select('id, name, legal_name')
+      .eq('is_active', true)
+      .order('is_default', { ascending: false });
+    if (error) {
+      console.error('Error fetching companies for email accounts:', error);
+      return;
+    }
+    setCompanies(data || []);
+  };
 
   const fetchAccounts = async () => {
     try {
@@ -299,6 +321,7 @@ export default function EmailAccountsManagementPage() {
         <EditEmailAccountModal
           isOpen={!!editingAccount}
           account={editingAccount}
+          companies={companies}
           onClose={() => setEditingAccount(null)}
           onUpdated={() => {
             fetchAccounts();
@@ -416,11 +439,13 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 function EditEmailAccountModal({
   isOpen,
   account,
+  companies,
   onClose,
   onUpdated,
 }: {
   isOpen: boolean;
   account: EmailAccount;
+  companies: CompanyOption[];
   onClose: () => void;
   onUpdated: () => void;
 }) {
@@ -430,6 +455,7 @@ function EditEmailAccountModal({
     account_type: account.account_type,
     department: account.department || '',
     description: account.description || '',
+    my_company_id: account.my_company_id || '',
     imap_host: account.imap_host,
     imap_port: account.imap_port,
     imap_username: account.imap_username,
@@ -454,6 +480,7 @@ function EditEmailAccountModal({
           account_type: formData.account_type,
           department: formData.department || null,
           description: formData.description || null,
+          my_company_id: formData.my_company_id || null,
           imap_host: formData.imap_host,
           imap_port: formData.imap_port,
           imap_username: formData.imap_username,
@@ -515,6 +542,27 @@ function EditEmailAccountModal({
               onChange={(e) => setFormData({ ...formData, email_address: e.target.value })}
               className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2]"
             />
+          </div>
+
+          <div>
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">
+              Firma i stopka nadawcy
+            </label>
+            <select
+              value={formData.my_company_id}
+              onChange={(e) => setFormData({ ...formData, my_company_id: e.target.value })}
+              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2]"
+            >
+              <option value="">Dobierz automatycznie po domenie</option>
+              {companies.map((company) => (
+                <option key={company.id} value={company.id}>
+                  {company.name} — {company.legal_name}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-[#e5e4e2]/45">
+              To powiązanie wybiera właściwe logo, dane firmy i stopkę podczas odpowiedzi.
+            </p>
           </div>
 
           {formData.account_type === 'shared' && (

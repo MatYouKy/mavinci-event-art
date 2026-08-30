@@ -1,7 +1,9 @@
 import { IContractTemplate } from './type';
 import { getContractCssForPrint } from '@/components/crm/events/calculations/helpers/getContractCssForPrint';
-import { paginateContractHtml } from '@/lib/CRM/contracts/contractPagination';
-import { resolveContractParagraphPlaceholders } from '@/lib/CRM/contracts/contractParagraphs';
+import {
+  renderContractDocument,
+  type ContractClauseTypography,
+} from '@/lib/CRM/contracts/contractPagination';
 import { supabase } from '@/lib/supabase/browser';
 
 interface TemplateSettings {
@@ -11,7 +13,7 @@ interface TemplateSettings {
   lineHeight: number;
   selectedFont: string;
   selectedLogo: string;
-  selectedFooter: string;
+  selectedFooter: 'default' | 'minimal' | 'none';
   footerContent: {
     companyName: string;
     tagline: string;
@@ -21,6 +23,7 @@ interface TemplateSettings {
     logoUrl: string;
   };
   footerLogoScale: number;
+  clauseTypography?: Partial<ContractClauseTypography>;
 }
 
 const DEFAULT_FOOTER = {
@@ -39,9 +42,12 @@ const getTemplateSettings = (pageSettings: any): TemplateSettings => ({
   lineHeight: pageSettings?.lineHeight ?? 1.6,
   selectedFont: pageSettings?.selectedFont ?? 'Georgia, serif',
   selectedLogo: pageSettings?.selectedLogo ?? '/erulers_logo_vect.png',
-  selectedFooter: pageSettings?.selectedFooter ?? 'default',
+  selectedFooter: ['minimal', 'none'].includes(pageSettings?.selectedFooter)
+    ? pageSettings.selectedFooter
+    : 'default',
   footerContent: pageSettings?.footerContent ?? DEFAULT_FOOTER,
   footerLogoScale: pageSettings?.footerLogoScale ?? 80,
+  clauseTypography: pageSettings?.clauseTypography,
 });
 
 const resolveLogoUrl = (url?: string) => {
@@ -200,7 +206,7 @@ const buildFooter = (settings: TemplateSettings): string => {
       : '';
 
   return `
-    <div class="contract-footer">
+    <div class="contract-footer" style="font-family:${escapeHtml(settings.selectedFont).replace(/"/g, '&quot;')}">
       ${logoBlock}
       <div class="footer-info">
         <p><span class="font-bold" style="font-weight:bold">${escapeHtml(footer.companyName || 'EVENT RULERS')}</span>${
@@ -219,14 +225,13 @@ const buildPage = (
   settings: TemplateSettings,
 ): string => {
   const header = pageIndex === 0 ? buildHeader(settings) : '';
-  const minHeight = pageIndex === 0 ? '160mm' : '250mm';
   const counter = `<div class="contract-page-counter">${pageIndex + 1}/${totalPages}</div>`;
 
   return `
     <div class="contract-a4-page">
       ${WATERMARK_HTML} 
       ${header}
-      <div class="contract-content" style="line-height:${settings.lineHeight};font-family:${settings.selectedFont};min-height:${minHeight}">
+      <div class="contract-content" style="line-height:${settings.lineHeight};font-family:${settings.selectedFont};min-height:0;overflow:hidden">
         ${replacePlaceholdersWithBlanks(pageContent)}
       </div>
       ${buildFooter(settings)}
@@ -236,40 +241,60 @@ const buildPage = (
 
 // Buduje wyłącznie zawartość stron (bez opakowania .contract-a4-container),
 // tak jak innerHTML kontenera w zakładce Umowa. Backend owija je w kontener.
-const buildPagesHtml = async (template: IContractTemplate): Promise<string> => {
+const loadContractFontFaceCss = async (): Promise<string> => {
   const { data: brandFonts } = await supabase
     .from('company_brandbook_fonts')
     .select('*')
     .order('order_index');
-  const fontFaceCss = (brandFonts || [])
+
+  const fonts = (brandFonts || []).filter((font: any) => font.file_url);
+  await Promise.all(
+    fonts.map(async (font: any) => {
+      const loadedFont = new FontFace(font.family, `url(${font.file_url})`, {
+        weight: font.weight || '400',
+      });
+      await loadedFont.load();
+      document.fonts.add(loadedFont);
+    }),
+  );
+
+  return fonts
     .filter((font: any) => font.file_url)
     .map(
       (font: any) =>
         `@font-face{font-family:'${String(font.family).replace(/'/g, "\\'")}';src:url('${font.file_url}');font-weight:${font.weight || '400'};font-style:normal;font-display:swap;}`,
     )
     .join('');
-  const fontStyle = fontFaceCss ? `<style data-contract-fonts="true">${fontFaceCss}</style>` : '';
+};
+
+const buildPagesHtml = async (template: IContractTemplate): Promise<string> => {
   const settings = getTemplateSettings(template.page_settings);
   const pages: string[] | undefined = template.page_settings?.pages;
 
   if (pages && pages.length > 0) {
     const source = template.page_settings?.flowContent || pages.join('');
-    const draftContent = resolveContractParagraphPlaceholders(
+    const renderedDocument = await renderContractDocument(
       replacePlaceholdersWithBlanks(source),
+      settings,
     );
-    const paginatedPages = await paginateContractHtml(draftContent, settings);
-    return fontStyle + paginatedPages
-      .map((pageContent, index) => buildPage(pageContent, index, paginatedPages.length, settings))
+    return renderedDocument.pages
+      .map((pageContent, index) =>
+        buildPage(pageContent, index, renderedDocument.pages.length, renderedDocument.settings),
+      )
       .join('');
   }
 
   const body = template.content_html
     ? template.content_html
     : `<pre style="white-space:pre-wrap;word-wrap:break-word;margin:0">${escapeHtml(template.content || '')}</pre>`;
-  const draftContent = resolveContractParagraphPlaceholders(replacePlaceholdersWithBlanks(body));
-  const paginatedPages = await paginateContractHtml(draftContent, settings);
-  return fontStyle + paginatedPages
-    .map((pageContent, index) => buildPage(pageContent, index, paginatedPages.length, settings))
+  const renderedDocument = await renderContractDocument(
+    replacePlaceholdersWithBlanks(body),
+    settings,
+  );
+  return renderedDocument.pages
+    .map((pageContent, index) =>
+      buildPage(pageContent, index, renderedDocument.pages.length, renderedDocument.settings),
+    )
     .join('');
 };
 
@@ -279,8 +304,9 @@ interface DraftResult {
 }
 
 export async function createContractDraftPdf(template: IContractTemplate): Promise<Blob> {
+  const fontFaceCss = await loadContractFontFaceCss();
   const pagesHtml = await buildPagesHtml(template);
-  const cssText = getContractCssForPrint() + DRAFT_EXTRA_STYLES;
+  const cssText = `${fontFaceCss}\n${getContractCssForPrint()}\n${DRAFT_EXTRA_STYLES}`;
   const res = await fetch('/bridge/contract-templates/draft-pdf', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },

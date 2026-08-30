@@ -10,6 +10,8 @@ export interface FinalInvoiceItemInput {
   quantity: number;
   price_net: number;
   vat_rate: number;
+  vat_code?: '23' | '8' | '5' | '0' | '0 KR' | '0 WDT' | '0 EX' | 'zw' | 'np' | 'np I' | 'np II' | 'oo';
+  vat_exemption_reason?: string | null;
 }
 
 export interface SettledInvoiceRef {
@@ -25,6 +27,9 @@ export interface SettledInvoiceRef {
 export interface CreateFinalInvoiceOptions {
   eventId?: string | null;
   organizationId?: string | null;
+  billingArrangement?: 'direct' | 'hotel' | 'agency' | 'other';
+  serviceRecipientOrganizationId?: string | null;
+  serviceRecipientContactId?: string | null;
   myCompanyId?: string | null;
   customNumber?: string;
   issueDate?: string;
@@ -50,6 +55,7 @@ export interface CreateFinalInvoiceOptions {
   bankSwiftCode?: string | null;
   issuePlace?: string | null;
   notes?: string | null;
+  currencyCode?: string;
 }
 
 interface CreateResult {
@@ -70,7 +76,24 @@ export async function createFinalInvoice(opts: CreateFinalInvoiceOptions): Promi
       return { success: false, error: 'Faktura koncowa musi rozliczac co najmniej jedna fakture' };
     }
 
-    let invoiceNumber: string;
+    if (new Set(opts.settledInvoices.map((invoice) => invoice.id)).size !== opts.settledInvoices.length) {
+      return { success: false, error: 'Ta sama zaliczka została wybrana więcej niż raz' };
+    }
+
+    if (opts.items.some((item) => !item.name.trim() || item.quantity <= 0 || item.price_net < 0)) {
+      return { success: false, error: 'Pozycje faktury zawierają nieprawidłowe wartości' };
+    }
+
+    if (opts.items.some((item) => item.vat_code === 'zw' && !item.vat_exemption_reason?.trim())) {
+      return { success: false, error: 'Podaj podstawę prawną dla każdej pozycji zwolnionej z VAT' };
+    }
+
+    if (opts.items.some((item) => item.vat_code === '0' || item.vat_code === 'np')) {
+      return { success: false, error: 'Uzupełnij klasyfikację pozycji 0% lub niepodlegających VAT przed utworzeniem faktury końcowej' };
+    }
+
+    const useAutoNumber = !opts.customNumber?.trim();
+    let invoiceNumber = '';
 
     if (opts.customNumber && opts.customNumber.trim()) {
       const trimmed = opts.customNumber.trim();
@@ -79,6 +102,7 @@ export async function createFinalInvoice(opts: CreateFinalInvoiceOptions): Promi
         .from('invoices')
         .select('id')
         .eq('invoice_number', trimmed)
+        .eq('my_company_id', opts.myCompanyId ?? null)
         .maybeSingle();
 
       if (existing) {
@@ -86,21 +110,6 @@ export async function createFinalInvoice(opts: CreateFinalInvoiceOptions): Promi
       }
 
       invoiceNumber = trimmed;
-    } else {
-      const { data: generated, error: genErr } = await supabase.rpc('generate_invoice_number', {
-        p_invoice_type: 'final',
-        p_my_company_id: opts.myCompanyId ?? null,
-      });
-
-      if (genErr || !generated) {
-        console.error('generate_invoice_number error:', genErr);
-        return {
-          success: false,
-          error: genErr?.message || 'Blad generowania numeru faktury',
-        };
-      }
-
-      invoiceNumber = generated as string;
     }
 
     const today = new Date().toISOString().split('T')[0];
@@ -119,6 +128,8 @@ export async function createFinalInvoice(opts: CreateFinalInvoiceOptions): Promi
         quantity: Number(it.quantity),
         price_net: Number(it.price_net),
         vat_rate: Number(it.vat_rate),
+        vat_code: it.vat_code ?? String(it.vat_rate),
+        vat_exemption_reason: it.vat_exemption_reason?.trim() || null,
         value_net: valueNet,
         vat_amount: vatAmount,
         value_gross: valueGross,
@@ -196,6 +207,7 @@ export async function createFinalInvoice(opts: CreateFinalInvoiceOptions): Promi
 
     const insertPayload: Record<string, any> = {
       invoice_number: invoiceNumber,
+      auto_number: useAutoNumber,
 
       // WAŻNE: to musi być final, nie vat
       invoice_type: 'final',
@@ -207,12 +219,16 @@ export async function createFinalInvoice(opts: CreateFinalInvoiceOptions): Promi
       payment_due_date: opts.paymentDueDate || defaultDue.toISOString().split('T')[0],
       event_id: opts.eventId || null,
       organization_id: opts.organizationId || null,
+      billing_arrangement: opts.billingArrangement || 'direct',
+      service_recipient_organization_id: opts.serviceRecipientOrganizationId || null,
+      service_recipient_contact_id: opts.serviceRecipientContactId || null,
       my_company_id: opts.myCompanyId || null,
       created_by: employee?.id ?? null,
 
       total_net: totalNet,
       total_vat: totalVat,
       total_gross: totalGross,
+      currency_code: opts.currencyCode || 'PLN',
 
       payment_method: opts.paymentMethod ?? null,
       bank_account: opts.bankAccount ?? null,
@@ -236,41 +252,24 @@ export async function createFinalInvoice(opts: CreateFinalInvoiceOptions): Promi
       Object.assign(insertPayload, opts.sellerData);
     }
 
-    const { data: created, error: insertErr } = await supabase
-      .from('invoices')
-      .insert(insertPayload)
-      .select()
-      .single();
-
-    if (insertErr || !created) {
-      console.error('Error creating final invoice:', insertErr);
-      return { success: false, error: insertErr?.message || 'Blad tworzenia faktury' };
-    }
-
-    const itemsToInsert = computedItems.map((it) => ({
-      ...it,
-      invoice_id: created.id,
-    }));
-
-    const { error: itemsErr } = await supabase.from('invoice_items').insert(itemsToInsert);
-
-    if (itemsErr) {
-      await supabase.from('invoices').delete().eq('id', created.id);
-      return { success: false, error: 'Blad zapisu pozycji faktury' };
-    }
-
-    await supabase.from('invoice_history').insert({
-      invoice_id: created.id,
-      action: 'final_invoice_created',
-      changed_by: employee?.id ?? null,
-      changes: {
-        settled_invoice_ids: opts.settledInvoices.map((i) => i.id),
-        settled_invoices: settledInvoicesJson,
-        settlement_summary: settlementSummaryJson,
+    const { data: createdId, error: createError } = await supabase.rpc(
+      'create_final_invoice_atomic',
+      {
+        p_invoice: insertPayload,
+        p_items: computedItems,
+        p_advance_ids: opts.settledInvoices.map((invoice) => invoice.id),
       },
-    });
+    );
 
-    return { success: true, invoiceId: created.id };
+    if (createError || !createdId) {
+      console.error('Error creating final invoice atomically:', createError);
+      return {
+        success: false,
+        error: createError?.message || 'Nie udało się utworzyć faktury końcowej',
+      };
+    }
+
+    return { success: true, invoiceId: createdId as string };
   } catch (err: any) {
     console.error('createFinalInvoice error:', err);
     return { success: false, error: err.message || 'Nieznany blad' };

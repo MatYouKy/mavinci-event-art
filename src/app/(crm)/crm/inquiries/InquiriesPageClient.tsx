@@ -20,6 +20,7 @@ import {
   Pencil,
   Percent,
   Phone,
+  Plus,
   RefreshCw,
   Save,
   Search,
@@ -32,6 +33,7 @@ import {
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import NewInquiryModal from '@/components/crm/NewInquiryModal';
 import type {
   InquiryEmployee,
   InquiryListItem,
@@ -94,6 +96,7 @@ const getSourceLabel = (inquiry: InquiryListItem) => {
   const details = inquiry.inquiry_details;
   if (details?.source_kind === 'webhook') return details.source_name || details.source_slug || 'Zewnętrzne źródło';
   if (details?.source_page) return details.source_page;
+  if (details?.source_kind === 'manual') return details.source_name || 'Wprowadzone ręcznie';
   return details?.source_kind === 'contact_form' ? 'Formularz WWW' : 'Wprowadzone ręcznie';
 };
 
@@ -187,7 +190,7 @@ function InquiryCard({ inquiry, onEdit, onClaim, onCompleteContact, onSnooze, ca
       )}
 
       <div className="mt-4 flex items-center justify-between gap-2 border-t border-[#d3bb73]/10 pt-3">
-        <Link href={`/crm/tasks/${inquiry.id}`} className="inline-flex items-center gap-1 text-xs text-[#d3bb73] hover:text-[#d3bb73]/80">Otwórz szczegóły <ChevronRight className="h-3.5 w-3.5" /></Link>
+        <Link href={`/crm/inquiries/${inquiry.id}`} className="inline-flex items-center gap-1 text-xs text-[#d3bb73] hover:text-[#d3bb73]/80">Otwórz szczegóły <ChevronRight className="h-3.5 w-3.5" /></Link>
         {canEdit && inquiry.inquiry_owner_id && isOpenInquiry(inquiry) && (
           <div className="flex items-center gap-1.5">
             <button type="button" onClick={() => onSnooze(inquiry)} disabled={actionPending} className="rounded-lg border border-[#d3bb73]/15 px-2.5 py-1.5 text-[11px] text-[#e5e4e2]/65 hover:border-[#d3bb73]/35 disabled:opacity-50">Odłóż 1h</button>
@@ -230,6 +233,10 @@ function InquiryEditorModal({ inquiry, employees, canAssign, onClose, onSaved }:
   const [probability, setProbability] = useState(String(inquiry.win_probability));
   const [lostReason, setLostReason] = useState(inquiry.lost_reason ?? '');
   const [lostReasonCategory, setLostReasonCategory] = useState(inquiry.lost_reason_category ?? '');
+  const [eventAssumptions, setEventAssumptions] = useState(
+    inquiry.inquiry_details?.event_assumptions || inquiry.inquiry_details?.scope || '',
+  );
+  const [eventGoal, setEventGoal] = useState(inquiry.inquiry_details?.event_goal || '');
   const [customerKey, setCustomerKey] = useState(
     inquiry.contact_id
       ? `contact:${inquiry.contact_id}`
@@ -282,6 +289,11 @@ function InquiryEditorModal({ inquiry, employees, canAssign, onClose, onSaved }:
       win_probability: Math.max(0, Math.min(100, Number(probability) || 0)),
       lost_reason: stage === 'lost' ? lostReason.trim() : null,
       lost_reason_category: stage === 'lost' ? lostReasonCategory : null,
+      inquiry_details: {
+        ...(inquiry.inquiry_details || {}),
+        event_assumptions: eventAssumptions.trim() || null,
+        event_goal: eventGoal.trim() || null,
+      },
       contact_id: customerType === 'contact' ? customerId : null,
       organization_id: customerType === 'organization' ? customerId : null,
     }).eq('id', inquiry.id).select(`
@@ -328,6 +340,21 @@ function InquiryEditorModal({ inquiry, employees, canAssign, onClose, onSaved }:
           </div>
 
           <div className="rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-4"><div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"><label className="block flex-1"><span className="mb-2 block text-xs text-[#e5e4e2]/50">Ostatni kontakt</span><input type="datetime-local" value={lastContactAt} onChange={(event) => setLastContactAt(event.target.value)} className="w-full rounded-lg border border-[#d3bb73]/15 bg-[#1c1f33] px-3 py-2.5 text-sm text-[#e5e4e2] outline-none focus:border-[#d3bb73]/50" /></label><button type="button" onClick={() => setLastContactAt(toDateTimeLocal(new Date().toISOString()))} className="rounded-lg border border-[#d3bb73]/20 px-4 py-2.5 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/10">Kontakt teraz</button></div></div>
+
+          <div className="space-y-4 rounded-lg border border-[#7f1734]/25 bg-[#7f1734]/5 p-4">
+            <div>
+              <h3 className="text-sm font-medium text-[#e5e4e2]">Treść przyszłej oferty</h3>
+              <p className="mt-1 text-xs text-[#e5e4e2]/45">Te dane zostaną odziedziczone przez ofertę i pokazane na stronie „Założenia wydarzenia”.</p>
+            </div>
+            <label className="block">
+              <span className="mb-2 block text-xs text-[#e5e4e2]/55">Założenia wydarzenia</span>
+              <textarea value={eventAssumptions} onChange={(event) => setEventAssumptions(event.target.value)} rows={4} placeholder="Format, liczba uczestników, układ sali, godziny, sposób realizacji…" className="w-full resize-y rounded-lg border border-[#d3bb73]/15 bg-[#0f1119] px-3 py-2.5 text-sm text-[#e5e4e2] outline-none placeholder:text-[#e5e4e2]/25 focus:border-[#d3bb73]/50" />
+            </label>
+            <label className="block">
+              <span className="mb-2 block text-xs text-[#e5e4e2]/55">Cel wydarzenia</span>
+              <textarea value={eventGoal} onChange={(event) => setEventGoal(event.target.value)} rows={3} placeholder="Co klient chce osiągnąć dzięki wydarzeniu?" className="w-full resize-y rounded-lg border border-[#d3bb73]/15 bg-[#0f1119] px-3 py-2.5 text-sm text-[#e5e4e2] outline-none placeholder:text-[#e5e4e2]/25 focus:border-[#d3bb73]/50" />
+            </label>
+          </div>
 
           {stage === 'lost' && <div className="grid gap-3"><label className="block"><span className="mb-2 block text-xs font-medium text-red-300">Kategoria utraty *</span><select value={lostReasonCategory} onChange={(event) => setLostReasonCategory(event.target.value)} className="w-full rounded-lg border border-red-400/25 bg-[#0f1119] px-3 py-2.5 text-sm text-[#e5e4e2] outline-none focus:border-red-400/50"><option value="">Wybierz kategorię</option>{LOST_REASON_CATEGORIES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label className="block"><span className="mb-2 block text-xs font-medium text-red-300">Opis powodu *</span><textarea value={lostReason} onChange={(event) => setLostReason(event.target.value)} rows={3} placeholder="Dodaj kontekst, który pomoże poprawić sprzedaż…" className="w-full resize-y rounded-lg border border-red-400/25 bg-[#0f1119] px-3 py-2.5 text-sm text-[#e5e4e2] outline-none placeholder:text-[#e5e4e2]/25 focus:border-red-400/50" /></label></div>}
         </div>
@@ -433,6 +460,7 @@ export default function InquiriesPageClient({ initialInquiries, employees }: { i
   const [claimingId, setClaimingId] = useState<string | null>(null);
   const [actionPendingId, setActionPendingId] = useState<string | null>(null);
   const [showSlaSettings, setShowSlaSettings] = useState(false);
+  const [showNewInquiry, setShowNewInquiry] = useState(false);
   const [attentionFilter, setAttentionFilter] = useState<AttentionFilter>('all');
 
   const currentEmployeeId = currentEmployee?.id ?? null;
@@ -442,6 +470,10 @@ export default function InquiriesPageClient({ initialInquiries, employees }: { i
   const canViewAll = isAdmin || hasScope('inquiries_view_all') || hasScope('inquiries_manage_all');
   const canAssign = isAdmin || hasScope('inquiries_assign') || hasScope('inquiries_manage_all');
   const canClaim = isAdmin || hasScope('inquiries_assign') || hasScope('inquiries_manage');
+  const canCreateInquiry = isAdmin
+    || hasScope('inquiries_manage')
+    || hasScope('inquiries_manage_all')
+    || hasScope('tasks_create');
 
   const canManageInquiry = useCallback((inquiry: InquiryListItem) => {
     if (isAdmin || hasScope('inquiries_manage_all')) return true;
@@ -658,7 +690,7 @@ export default function InquiriesPageClient({ initialInquiries, employees }: { i
     <div className="mx-auto max-w-[1600px] space-y-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div><div className="mb-2 flex items-center gap-2 text-sm text-[#d3bb73]"><Inbox className="h-4 w-4" />Centrum sprzedaży</div><h1 className="text-2xl font-light text-[#e5e4e2] md:text-3xl">Lejek zapytań</h1><p className="mt-1 text-sm text-[#e5e4e2]/55">Formularze, webhooki i zapytania ręczne w jednym procesie sprzedażowym.</p></div>
-        <div className="flex flex-wrap gap-2"><div className="flex rounded-lg border border-[#d3bb73]/15 bg-[#1c1f33] p-1"><button type="button" onClick={() => changeView('pipeline')} className={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm ${viewMode === 'pipeline' ? 'bg-[#d3bb73] text-[#1c1f33]' : 'text-[#e5e4e2]/55'}`}><LayoutGrid className="h-4 w-4" /> Lejek</button><button type="button" onClick={() => changeView('list')} className={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm ${viewMode === 'list' ? 'bg-[#d3bb73] text-[#1c1f33]' : 'text-[#e5e4e2]/55'}`}><List className="h-4 w-4" /> Lista</button></div>{isAdmin && <button type="button" onClick={() => setShowSlaSettings(true)} className="inline-flex items-center justify-center gap-2 rounded-lg border border-[#d3bb73]/25 bg-[#1c1f33] px-4 py-2 text-sm text-[#e5e4e2] hover:border-[#d3bb73]/50"><Settings className="h-4 w-4" /> SLA</button>}<button type="button" onClick={() => void reload()} disabled={refreshing} className="inline-flex items-center justify-center gap-2 rounded-lg border border-[#d3bb73]/25 bg-[#1c1f33] px-4 py-2 text-sm text-[#e5e4e2] hover:border-[#d3bb73]/50 disabled:opacity-50"><RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} /> Odśwież</button></div>
+        <div className="flex flex-wrap gap-2">{canCreateInquiry && <button type="button" onClick={() => setShowNewInquiry(true)} className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#e2cd8d]"><Plus className="h-4 w-4" /> Dodaj zapytanie</button>}<div className="flex rounded-lg border border-[#d3bb73]/15 bg-[#1c1f33] p-1"><button type="button" onClick={() => changeView('pipeline')} className={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm ${viewMode === 'pipeline' ? 'bg-[#d3bb73] text-[#1c1f33]' : 'text-[#e5e4e2]/55'}`}><LayoutGrid className="h-4 w-4" /> Lejek</button><button type="button" onClick={() => changeView('list')} className={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm ${viewMode === 'list' ? 'bg-[#d3bb73] text-[#1c1f33]' : 'text-[#e5e4e2]/55'}`}><List className="h-4 w-4" /> Lista</button></div>{isAdmin && <button type="button" onClick={() => setShowSlaSettings(true)} className="inline-flex items-center justify-center gap-2 rounded-lg border border-[#d3bb73]/25 bg-[#1c1f33] px-4 py-2 text-sm text-[#e5e4e2] hover:border-[#d3bb73]/50"><Settings className="h-4 w-4" /> SLA</button>}<button type="button" onClick={() => void reload()} disabled={refreshing} className="inline-flex items-center justify-center gap-2 rounded-lg border border-[#d3bb73]/25 bg-[#1c1f33] px-4 py-2 text-sm text-[#e5e4e2] hover:border-[#d3bb73]/50 disabled:opacity-50"><RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} /> Odśwież</button></div>
       </div>
 
       {(slaMetrics.unassigned > 0 || slaMetrics.firstContactBreached > 0 || slaMetrics.overdueActions > 0 || slaMetrics.missingNextAction > 0) && (
@@ -698,6 +730,17 @@ export default function InquiriesPageClient({ initialInquiries, employees }: { i
       ) : <div className="grid gap-3 lg:grid-cols-2">{visibleInquiries.map((inquiry) => <InquiryCard key={inquiry.id} inquiry={inquiry} onEdit={setEditingInquiry} onClaim={(item) => void claimInquiry(item)} onCompleteContact={(item) => void completeContact(item)} onSnooze={(item) => void snoozeFollowup(item)} canEdit={canManageInquiry(inquiry)} canClaim={canClaim && !inquiry.inquiry_owner_id} claiming={claimingId === inquiry.id} actionPending={actionPendingId === inquiry.id} />)}</div>}
 
       {editingInquiry && <InquiryEditorModal inquiry={editingInquiry} employees={assignableEmployees} canAssign={canAssign} onClose={() => setEditingInquiry(null)} onSaved={updateInquiry} />}
+      <NewInquiryModal
+        isOpen={showNewInquiry}
+        onClose={() => setShowNewInquiry(false)}
+        onSaved={async () => {
+          setFilter('open');
+          setAttentionFilter('all');
+          changeScope('pool');
+          await reload();
+          showSnackbar('Zapytanie zostało dodane do wspólnej kolejki', 'success');
+        }}
+      />
       {showSlaSettings && <InquirySlaSettingsModal onClose={() => setShowSlaSettings(false)} />}
     </div>
   );

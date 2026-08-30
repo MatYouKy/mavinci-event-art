@@ -43,8 +43,11 @@ interface CalculationSource {
 interface EventDetails {
   name: string;
   event_date: string;
-  organization_id: string;
-  contact_person_id: string;
+  organization_id: string | null;
+  contact_person_id: string | null;
+  service_recipient_organization_id: string | null;
+  service_recipient_contact_id: string | null;
+  billing_arrangement: 'direct' | 'hotel' | 'agency' | 'other';
   organization_name: string | null;
   contact_name: string | null;
   buyer_nip: string | null;
@@ -166,7 +169,8 @@ export default function IssueInvoiceFromEventModal({
         .from('events')
         .select(`
           name, event_date, organization_id, contact_person_id, financial_source,
-          organizations:organization_id (name, nip, street, postal_code, city),
+          billing_arrangement, billing_organization_id,
+          organizations:organizations!events_organization_id_fkey (name, nip, street, postal_code, city),
           contacts:contact_person_id (first_name, last_name, nip, street, postal_code, city)
         `)
         .eq('id', eventId)
@@ -176,18 +180,35 @@ export default function IssueInvoiceFromEventModal({
         const org = event.organizations as any;
         const contact = event.contacts as any;
         const evtFinancialSource = (event.financial_source as 'offer' | 'calculation') || 'offer';
+        const billingArrangement =
+          (event.billing_arrangement as 'direct' | 'hotel' | 'agency' | 'other') || 'direct';
+        const billingOrganizationId =
+          billingArrangement !== 'direct' ? event.billing_organization_id : null;
+        let buyerOrganization = org;
+
+        if (billingOrganizationId) {
+          const { data: payerOrganization } = await supabase
+            .from('organizations')
+            .select('id,name,nip,street,postal_code,city')
+            .eq('id', billingOrganizationId)
+            .maybeSingle();
+          if (payerOrganization) buyerOrganization = payerOrganization;
+        }
 
         setEventDetails({
           name: event.name,
           event_date: event.event_date,
-          organization_id: event.organization_id,
-          contact_person_id: event.contact_person_id,
-          organization_name: org?.name || null,
+          organization_id: billingOrganizationId || event.organization_id,
+          contact_person_id: billingOrganizationId ? null : event.contact_person_id,
+          service_recipient_organization_id: event.organization_id,
+          service_recipient_contact_id: event.contact_person_id,
+          billing_arrangement: billingArrangement,
+          organization_name: buyerOrganization?.name || null,
           contact_name: contact ? `${contact.first_name} ${contact.last_name}` : null,
-          buyer_nip: org?.nip || contact?.nip || null,
-          buyer_street: org?.street || contact?.street || null,
-          buyer_postal_code: org?.postal_code || contact?.postal_code || null,
-          buyer_city: org?.city || contact?.city || null,
+          buyer_nip: buyerOrganization?.nip || contact?.nip || null,
+          buyer_street: buyerOrganization?.street || contact?.street || null,
+          buyer_postal_code: buyerOrganization?.postal_code || contact?.postal_code || null,
+          buyer_city: buyerOrganization?.city || contact?.city || null,
           financial_source: evtFinancialSource,
         });
 
@@ -328,7 +349,7 @@ export default function IssueInvoiceFromEventModal({
 
       if (numberError || !invoiceNumber) throw new Error('Nie udało się wygenerować numeru faktury');
 
-      const buyerId = eventDetails.organization_id || eventDetails.contact_person_id;
+      const buyerId = eventDetails.organization_id;
       const buyerName = eventDetails.organization_name || eventDetails.contact_name || '';
 
       const { data: employee } = await supabase
@@ -348,6 +369,11 @@ export default function IssueInvoiceFromEventModal({
           payment_due_date: calculatePaymentDueDate(),
           event_id: eventId,
           organization_id: buyerId,
+          buyer_contact_id: buyerId ? null : eventDetails.contact_person_id,
+          buyer_is_private_person: !buyerId,
+          billing_arrangement: eventDetails.billing_arrangement,
+          service_recipient_organization_id: eventDetails.service_recipient_organization_id,
+          service_recipient_contact_id: eventDetails.service_recipient_contact_id,
           my_company_id: selectedCompanyId,
           seller_name: selectedCompany.legal_name,
           seller_nip: selectedCompany.nip,

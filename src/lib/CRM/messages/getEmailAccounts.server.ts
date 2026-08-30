@@ -8,8 +8,12 @@ export interface EmailAccount {
   from_name: string;
   account_type: 'personal' | 'shared' | 'system';
   department?: string;
+  is_default?: boolean;
   display_name: string;
 }
+
+const SAFE_ACCOUNT_FIELDS =
+  'id, email_address, account_name, from_name, account_type, department, is_default';
 
 async function fetchEmailAccountsData(userId: string) {
   const supabase = await createSupabaseServerClient(cookies());
@@ -17,7 +21,7 @@ async function fetchEmailAccountsData(userId: string) {
   // Get personal accounts
   const { data: personalAccounts, error: personalError } = await supabase
     .from('employee_email_accounts')
-    .select('*')
+    .select(SAFE_ACCOUNT_FIELDS)
     .eq('employee_id', userId)
     .eq('is_active', true);
 
@@ -47,7 +51,7 @@ async function fetchEmailAccountsData(userId: string) {
   if (assignedAccountIds.length > 0) {
     const { data: assignedData, error: assignedError } = await supabase
       .from('employee_email_accounts')
-      .select('*')
+      .select(SAFE_ACCOUNT_FIELDS)
       .in('id', assignedAccountIds)
       .eq('is_active', true);
 
@@ -85,7 +89,13 @@ async function fetchEmailAccountsData(userId: string) {
   };
 
   const formattedAccounts: EmailAccount[] = sortedAccounts.map((acc) => ({
-    ...acc,
+    id: acc.id,
+    email_address: acc.email_address,
+    account_name: acc.account_name,
+    from_name: acc.from_name,
+    account_type: acc.account_type,
+    department: acc.department ?? undefined,
+    is_default: Boolean(acc.is_default),
     display_name: formatAccountName(acc),
   }));
 

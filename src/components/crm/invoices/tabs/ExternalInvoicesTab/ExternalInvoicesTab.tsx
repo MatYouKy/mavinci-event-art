@@ -49,6 +49,8 @@ export interface ExternalInvoice {
   category_id: string | null;
   payment_status: 'unpaid' | 'partially_paid' | 'paid' | 'cancelled';
   payment_date: string | null;
+  paid_amount: number;
+  payment_amount_needs_review: boolean;
   created_at: string;
 }
 

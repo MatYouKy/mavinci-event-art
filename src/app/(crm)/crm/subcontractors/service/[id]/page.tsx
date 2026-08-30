@@ -20,6 +20,10 @@ import {
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import {
+  calculateSubcontractorSettlementCost,
+  type SubcontractorSettlementMethod,
+} from '@/lib/CRM/subcontractors/settlementCosts';
 
 import {
   useGetServiceCatalogDetailsQuery,
@@ -79,9 +83,7 @@ const compressImage = async (
               reject(new Error('Blob failed'));
               return;
             }
-            resolve(
-              new File([blob], file.name, { type: 'image/jpeg', lastModified: Date.now() }),
-            );
+            resolve(new File([blob], file.name, { type: 'image/jpeg', lastModified: Date.now() }));
           },
           'image/jpeg',
           quality,
@@ -137,6 +139,18 @@ export default function ServiceCatalogDetailPage() {
 
     try {
       const primaryImg = (editForm.images || []).find((img: ServiceImage) => img.isPrimary);
+      const settlementMethod = (editForm.settlement_method ||
+        'invoice') as SubcontractorSettlementMethod;
+      const contractorAmount =
+        settlementMethod === 'invoice'
+          ? Number(editForm.price_net || editForm.unit_price || 0)
+          : Number(editForm.cash_payout_amount || editForm.unit_price || 0);
+      const settlementCost = calculateSubcontractorSettlementCost({
+        contractorAmount,
+        settlementMethod,
+        citRate: Number(editForm.cit_rate ?? 9),
+        dividendTaxRate: Number(editForm.dividend_tax_rate ?? 19),
+      });
       await updateServiceMutation({
         id: serviceId,
         updates: {
@@ -148,6 +162,13 @@ export default function ServiceCatalogDetailPage() {
           vat_rate: editForm.vat_rate,
           price_net: editForm.price_net,
           price_gross: editForm.price_gross,
+          settlement_method: settlementMethod,
+          cash_payout_amount: settlementMethod === 'invoice' ? null : contractorAmount,
+          cit_rate: Number(editForm.cit_rate ?? 9),
+          dividend_tax_rate: Number(editForm.dividend_tax_rate ?? 19),
+          is_tax_deductible: settlementMethod !== 'cash_non_deductible',
+          economic_cost: settlementCost.economicCost,
+          tax_burden_amount: settlementCost.taxBurden,
           is_active: editForm.is_active,
           images: editForm.images || [],
           thumbnail_url: primaryImg?.url || editForm.images?.[0]?.url || editForm.thumbnail_url,
@@ -224,7 +245,10 @@ export default function ServiceCatalogDetailPage() {
         });
       } catch (error: any) {
         console.error(`Upload error for ${file.name}:`, error);
-        showSnackbar(`Blad przesylania ${file.name}: ${error?.message || 'Nieznany blad'}`, 'error');
+        showSnackbar(
+          `Blad przesylania ${file.name}: ${error?.message || 'Nieznany blad'}`,
+          'error',
+        );
       } finally {
         setUploadingFiles((prev) => prev.filter((n) => n !== file.name));
       }
@@ -338,6 +362,18 @@ export default function ServiceCatalogDetailPage() {
 
   const displayData = isEditing ? editForm : service;
   const galleryImages: ServiceImage[] = displayData?.images || [];
+  const settlementMethod = (displayData?.settlement_method ||
+    'invoice') as SubcontractorSettlementMethod;
+  const contractorAmount =
+    settlementMethod === 'invoice'
+      ? Number(displayData?.price_net || displayData?.unit_price || 0)
+      : Number(displayData?.cash_payout_amount || displayData?.unit_price || 0);
+  const settlementCost = calculateSubcontractorSettlementCost({
+    contractorAmount,
+    settlementMethod,
+    citRate: Number(displayData?.cit_rate ?? 9),
+    dividendTaxRate: Number(displayData?.dividend_tax_rate ?? 19),
+  });
 
   return (
     <div className="min-h-screen bg-[#0a0d1a] p-6">
@@ -403,9 +439,7 @@ export default function ServiceCatalogDetailPage() {
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-[#e5e4e2]/60">Firma:</span>
-                <span className="text-[#e5e4e2]">
-                  {service.subcontractor?.company_name || '-'}
-                </span>
+                <span className="text-[#e5e4e2]">{service.subcontractor?.company_name || '-'}</span>
               </div>
               {service.subcontractor?.organization && (
                 <>
@@ -532,92 +566,238 @@ export default function ServiceCatalogDetailPage() {
             <h2 className="mb-4 text-lg font-semibold text-[#e5e4e2]">Cennik</h2>
 
             <div className="mb-6">
-              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Stawka VAT</label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Sposób rozliczenia</label>
               {isEditing ? (
                 <select
-                  value={editForm.vat_rate ?? 23}
+                  value={settlementMethod}
                   onChange={(e) => {
-                    const vat = parseFloat(e.target.value);
-                    handleChange('vat_rate', vat);
-                    if (editForm.price_net > 0) {
-                      handleChange(
-                        'price_gross',
-                        Number((editForm.price_net * (1 + vat / 100)).toFixed(2)),
+                    const method = e.target.value as SubcontractorSettlementMethod;
+                    setEditForm((prev: any) => {
+                      const amount = Number(
+                        prev.cash_payout_amount || prev.unit_price || prev.price_gross || 0,
                       );
-                    }
+                      return {
+                        ...prev,
+                        settlement_method: method,
+                        cash_payout_amount: method === 'invoice' ? null : amount,
+                        vat_rate: method === 'invoice' ? Number(prev.vat_rate ?? 23) : 0,
+                        price_net: method === 'invoice' ? prev.price_net : amount,
+                        price_gross: method === 'invoice' ? prev.price_gross : amount,
+                        unit_price: amount,
+                      };
+                    });
                   }}
-                  className="w-full max-w-xs rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2]"
+                  className="w-full max-w-xl rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2]"
                 >
-                  <option value={0}>0% (zwolniony z VAT)</option>
-                  <option value={5}>5%</option>
-                  <option value={8}>8%</option>
-                  <option value={23}>23%</option>
+                  <option value="invoice">Faktura / rachunek kosztowy</option>
+                  <option value="cash_documented">Gotówka z dokumentem kosztowym</option>
+                  <option value="cash_non_deductible">
+                    Gotówka bez dokumentu kosztowego (poza KUP)
+                  </option>
                 </select>
               ) : (
                 <div className="text-[#e5e4e2]">
-                  {displayData.vat_rate === 0 ? (
-                    <span>0% (zwolniony z VAT)</span>
-                  ) : (
-                    <span>{displayData.vat_rate ?? 23}%</span>
-                  )}
+                  {settlementMethod === 'invoice' && 'Faktura / rachunek kosztowy'}
+                  {settlementMethod === 'cash_documented' && 'Gotówka z dokumentem kosztowym'}
+                  {settlementMethod === 'cash_non_deductible' &&
+                    'Gotówka bez dokumentu kosztowego (poza KUP)'}
                 </div>
               )}
             </div>
 
-            <div className="grid gap-6 md:grid-cols-2">
-              <div className="space-y-3">
-                <div className="text-sm font-medium text-[#d3bb73]">Cena netto</div>
-                {isEditing ? (
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={editForm.price_net || ''}
-                    onChange={(e) => {
-                      const net = parseFloat(e.target.value) || 0;
-                      handleChange('price_net', net);
-                      handleChange(
-                        'price_gross',
-                        Number((net * (1 + (editForm.vat_rate ?? 23) / 100)).toFixed(2)),
-                      );
-                      handleChange(
-                        'unit_price',
-                        Number((net * (1 + (editForm.vat_rate ?? 23) / 100)).toFixed(2)),
-                      );
-                    }}
-                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2]"
-                    placeholder="0.00"
-                  />
-                ) : (
-                  <div className="text-lg text-[#e5e4e2]">{formatMoney(displayData.price_net)}</div>
-                )}
-              </div>
+            {settlementMethod === 'invoice' ? (
+              <>
+                <div className="mb-6">
+                  <label className="mb-2 block text-sm text-[#e5e4e2]/60">Stawka VAT</label>
+                  {isEditing ? (
+                    <select
+                      value={editForm.vat_rate ?? 23}
+                      onChange={(e) => {
+                        const vat = parseFloat(e.target.value);
+                        handleChange('vat_rate', vat);
+                        if (editForm.price_net > 0) {
+                          handleChange(
+                            'price_gross',
+                            Number((editForm.price_net * (1 + vat / 100)).toFixed(2)),
+                          );
+                        }
+                      }}
+                      className="w-full max-w-xs rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2]"
+                    >
+                      <option value={0}>0% (zwolniony z VAT)</option>
+                      <option value={5}>5%</option>
+                      <option value={8}>8%</option>
+                      <option value={23}>23%</option>
+                    </select>
+                  ) : (
+                    <div className="text-[#e5e4e2]">
+                      {displayData.vat_rate === 0 ? (
+                        <span>0% (zwolniony z VAT)</span>
+                      ) : (
+                        <span>{displayData.vat_rate ?? 23}%</span>
+                      )}
+                    </div>
+                  )}
+                </div>
 
-              <div className="space-y-3">
-                <div className="text-sm font-medium text-[#d3bb73]">Cena brutto</div>
-                {isEditing ? (
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={editForm.price_gross || ''}
-                    onChange={(e) => {
-                      const gross = parseFloat(e.target.value) || 0;
-                      handleChange('price_gross', gross);
-                      handleChange(
-                        'price_net',
-                        Number((gross / (1 + (editForm.vat_rate ?? 23) / 100)).toFixed(2)),
-                      );
-                      handleChange('unit_price', gross);
-                    }}
-                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 font-semibold text-[#e5e4e2]"
-                    placeholder="0.00"
-                  />
-                ) : (
-                  <div className="text-lg font-semibold text-[#e5e4e2]">
-                    {formatMoney(displayData.price_gross)}
+                <div className="grid gap-6 md:grid-cols-2">
+                  <div className="space-y-3">
+                    <div className="text-sm font-medium text-[#d3bb73]">Cena netto</div>
+                    {isEditing ? (
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={editForm.price_net || ''}
+                        onChange={(e) => {
+                          const net = parseFloat(e.target.value) || 0;
+                          handleChange('price_net', net);
+                          handleChange(
+                            'price_gross',
+                            Number((net * (1 + (editForm.vat_rate ?? 23) / 100)).toFixed(2)),
+                          );
+                          handleChange(
+                            'unit_price',
+                            Number((net * (1 + (editForm.vat_rate ?? 23) / 100)).toFixed(2)),
+                          );
+                        }}
+                        className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2]"
+                        placeholder="0.00"
+                      />
+                    ) : (
+                      <div className="text-lg text-[#e5e4e2]">
+                        {formatMoney(displayData.price_net)}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="text-sm font-medium text-[#d3bb73]">Cena brutto</div>
+                    {isEditing ? (
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={editForm.price_gross || ''}
+                        onChange={(e) => {
+                          const gross = parseFloat(e.target.value) || 0;
+                          handleChange('price_gross', gross);
+                          handleChange(
+                            'price_net',
+                            Number((gross / (1 + (editForm.vat_rate ?? 23) / 100)).toFixed(2)),
+                          );
+                          handleChange('unit_price', gross);
+                        }}
+                        className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 font-semibold text-[#e5e4e2]"
+                        placeholder="0.00"
+                      />
+                    ) : (
+                      <div className="text-lg font-semibold text-[#e5e4e2]">
+                        {formatMoney(displayData.price_gross)}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="space-y-4">
+                <div>
+                  <label className="mb-2 block text-sm text-[#e5e4e2]/60">
+                    Kwota dla podwykonawcy „do ręki”
+                  </label>
+                  {isEditing ? (
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={contractorAmount || ''}
+                      onChange={(e) => {
+                        const amount = parseFloat(e.target.value) || 0;
+                        setEditForm((prev: any) => ({
+                          ...prev,
+                          cash_payout_amount: amount,
+                          unit_price: amount,
+                          price_net: amount,
+                          price_gross: amount,
+                          vat_rate: 0,
+                        }));
+                      }}
+                      className="w-full max-w-xs rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2]"
+                    />
+                  ) : (
+                    <div className="text-lg font-semibold text-[#e5e4e2]">
+                      {formatMoney(contractorAmount)}
+                    </div>
+                  )}
+                </div>
+
+                {settlementMethod === 'cash_non_deductible' && (
+                  <div className="space-y-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4">
+                    {isEditing && (
+                      <div className="grid max-w-xl grid-cols-2 gap-4">
+                        <label className="text-xs text-amber-100/70">
+                          CIT (%)
+                          <input
+                            type="number"
+                            min="0"
+                            max="99.99"
+                            step="0.01"
+                            value={editForm.cit_rate ?? 9}
+                            onChange={(e) =>
+                              handleChange('cit_rate', parseFloat(e.target.value) || 0)
+                            }
+                            className="mt-1 w-full rounded-lg border border-amber-500/30 bg-[#0a0d1a] px-3 py-2 text-white"
+                          />
+                        </label>
+                        <label className="text-xs text-amber-100/70">
+                          Podatek od dywidendy (%)
+                          <input
+                            type="number"
+                            min="0"
+                            max="99.99"
+                            step="0.01"
+                            value={editForm.dividend_tax_rate ?? 19}
+                            onChange={(e) =>
+                              handleChange('dividend_tax_rate', parseFloat(e.target.value) || 0)
+                            }
+                            className="mt-1 w-full rounded-lg border border-amber-500/30 bg-[#0a0d1a] px-3 py-2 text-white"
+                          />
+                        </label>
+                      </div>
+                    )}
+                    <div className="grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
+                      <div>
+                        <div className="text-amber-100/60">Do ręki</div>
+                        <div className="font-semibold text-white">
+                          {formatMoney(settlementCost.contractorAmount)}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-amber-100/60">Koszt ekonomiczny</div>
+                        <div className="font-semibold text-amber-300">
+                          {formatMoney(settlementCost.economicCost)}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-amber-100/60">Efektywne podatki</div>
+                        <div className="text-white">
+                          {settlementCost.effectiveTaxRate.toFixed(2)}%
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-amber-100/60">Narzut finansowania</div>
+                        <div className="text-white">{settlementCost.grossUpRate.toFixed(2)}%</div>
+                      </div>
+                    </div>
+                    <p className="text-xs leading-relaxed text-amber-100/70">
+                      Kalkulacja pokazuje zysk spółki przed CIT potrzebny do sfinansowania prywatnej
+                      wypłaty po podatku od dywidendy. Nie zastępuje dokumentu ani oceny księgowej
+                      podstawy wypłaty.
+                    </p>
                   </div>
                 )}
               </div>
-            </div>
+            )}
 
             {displayData.unit_price != null && displayData.unit_price > 0 && !isEditing && (
               <div className="mt-4 border-t border-[#d3bb73]/10 pt-4">
@@ -759,9 +939,8 @@ export default function ServiceCatalogDetailPage() {
                 }}
                 className="absolute left-4 rounded-lg bg-[#0f1119] p-2 text-[#e5e4e2] transition-colors hover:bg-[#d3bb73] disabled:opacity-30"
                 disabled={
-                  galleryImages.findIndex(
-                    (img: ServiceImage) => img.url === selectedImage.url,
-                  ) === 0
+                  galleryImages.findIndex((img: ServiceImage) => img.url === selectedImage.url) ===
+                  0
                 }
               >
                 <ChevronLeft className="h-6 w-6" />
@@ -774,9 +953,7 @@ export default function ServiceCatalogDetailPage() {
                 }}
                 className="absolute right-4 rounded-lg bg-[#0f1119] p-2 text-[#e5e4e2] transition-colors hover:bg-[#d3bb73] disabled:opacity-30"
                 disabled={
-                  galleryImages.findIndex(
-                    (img: ServiceImage) => img.url === selectedImage.url,
-                  ) ===
+                  galleryImages.findIndex((img: ServiceImage) => img.url === selectedImage.url) ===
                   galleryImages.length - 1
                 }
               >

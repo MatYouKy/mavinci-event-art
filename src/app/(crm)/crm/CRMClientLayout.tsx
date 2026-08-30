@@ -132,7 +132,7 @@ export default function CRMClientLayout({
   }
 
   return (
-    <div className="flex h-dvh min-h-0 flex-col overflow-hidden bg-[#0f1119]">
+    <div className="fixed inset-0 flex min-h-0 flex-col overflow-hidden bg-[#0f1119]">
       <header className="fixed left-0 right-0 top-0 z-50 h-[73px] border-b border-[#d3bb73]/10 bg-[#1c1f33] px-6">
         <div className="flex h-full items-center justify-between">
           <div className="flex items-center gap-4">

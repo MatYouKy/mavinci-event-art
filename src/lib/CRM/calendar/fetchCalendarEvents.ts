@@ -22,7 +22,7 @@ export async function fetchCalendarEventsServer() {
       event_date,
       event_end_date,
       created_by,
-      organization:organizations(
+      organization:organizations!events_organization_id_fkey(
         id,
         name
       ),

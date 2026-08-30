@@ -90,6 +90,7 @@ interface KSeFInvoice {
   buyer_nip?: string | null;
   net_amount?: number | null;
   gross_amount?: number | null;
+  amount_to_pay_gross?: number | null;
   vat_rate?: string | null;
   invoice_items?: any;
   currency?: string | null;
@@ -106,6 +107,7 @@ interface KSeFInvoicePayment {
   payment_date: string;
   notes?: string | null;
   created_at?: string | null;
+  bank_match_id?: string | null;
 }
 
 interface SyncLog {
@@ -294,6 +296,7 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
   const [paymentDate, setPaymentDate] = useState('');
   const [paymentDueDate, setPaymentDueDate] = useState('');
   const [paymentsMap, setPaymentsMap] = useState<Record<string, KSeFInvoicePayment[]>>({});
+  const [paymentReviewIds, setPaymentReviewIds] = useState<Set<string>>(new Set());
   const [editingPayments, setEditingPayments] = useState<KSeFInvoicePayment[]>([]);
   const [newPaymentAmount, setNewPaymentAmount] = useState('');
   const [newPaymentDate, setNewPaymentDate] = useState('');
@@ -530,8 +533,17 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
           }
           setPaymentsMap(map);
         }
+        const { data: reviewData } = await supabase
+          .from('financial_payment_review_issues')
+          .select('document_id')
+          .eq('document_source', 'ksef')
+          .eq('issue_code', 'payment_status_without_ledger')
+          .is('resolved_at', null)
+          .in('document_id', allIds);
+        setPaymentReviewIds(new Set((reviewData || []).map((issue) => issue.document_id)));
       } else {
         setPaymentsMap({});
+        setPaymentReviewIds(new Set());
       }
     } catch (error) {
       console.error('Error loading invoices:', error);
@@ -754,13 +766,25 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
 
   const handleMarkAsPaid = async (invoice: KSeFInvoice) => {
     try {
-      const { error } = await supabase
-        .from('ksef_invoices')
-        .update({
-          payment_status: 'paid',
-          payment_date: new Date().toISOString(),
-        })
-        .eq('id', invoice.id);
+      const alreadyPaid = (paymentsMap[invoice.id] || []).reduce(
+        (sum, payment) => sum + Number(payment.amount || 0),
+        0,
+      );
+      const remaining = Math.max(
+        Math.abs(Number(invoice.amount_to_pay_gross ?? invoice.gross_amount ?? 0)) - alreadyPaid,
+        0,
+      );
+      if (remaining <= 0.009) {
+        showSnackbar('Faktura jest już rozliczona w rejestrze wpłat', 'success');
+        return;
+      }
+      const { error } = await supabase.from('ksef_invoice_payments').insert({
+        ksef_invoice_id: invoice.id,
+        amount: remaining,
+        payment_date: new Date().toISOString().slice(0, 10),
+        notes: 'Ręczne oznaczenie jako opłacona',
+        created_by: currentEmployee?.id ?? null,
+      });
 
       if (error) throw error;
 
@@ -819,16 +843,22 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
   const handleMarkAsUnpaid = async (invoice: KSeFInvoice) => {
     try {
       const { error } = await supabase
-        .from('ksef_invoices')
-        .update({
-          payment_status: 'unpaid',
-          payment_date: null,
-        })
-        .eq('id', invoice.id);
+        .from('ksef_invoice_payments')
+        .delete()
+        .eq('ksef_invoice_id', invoice.id)
+        .is('bank_match_id', null);
 
       if (error) throw error;
 
-      showSnackbar('Status płatności zaktualizowany', 'success');
+      await supabase
+        .from('financial_payment_review_issues')
+        .update({ resolved_at: new Date().toISOString(), resolved_by: currentEmployee?.id ?? null })
+        .eq('document_source', 'ksef')
+        .eq('document_id', invoice.id)
+        .eq('issue_code', 'payment_status_without_ledger')
+        .is('resolved_at', null);
+
+      showSnackbar('Usunięto ręczne wpłaty. Dopasowania z wyciągów pozostają zachowane.', 'success');
       await loadInvoices();
     } catch (error: any) {
       console.error('Error marking invoice as unpaid:', error);
@@ -886,16 +916,21 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
     }
   };
 
-  const handleRemovePartialPayment = async (paymentId: string) => {
+  const handleRemovePartialPayment = async (payment: KSeFInvoicePayment) => {
+    if (payment.bank_match_id) {
+      showSnackbar('Wpłatę z wyciągu usuń przez odpięcie dopasowania transakcji', 'error');
+      return;
+    }
     try {
       const { error } = await supabase
         .from('ksef_invoice_payments')
         .delete()
-        .eq('id', paymentId);
+        .eq('id', payment.id)
+        .is('bank_match_id', null);
 
       if (error) throw error;
 
-      setEditingPayments((prev) => prev.filter((p) => p.id !== paymentId));
+      setEditingPayments((prev) => prev.filter((p) => p.id !== payment.id));
       showSnackbar('Wpłata usunięta', 'success');
       await loadInvoices();
     } catch (error: any) {
@@ -913,13 +948,20 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
       };
 
       const hasPayments = editingPayments.length > 0;
-      const paidSum = editingPayments.reduce((s, p) => s + Number(p.amount || 0), 0);
-      const gross = Number(editPaymentInvoice.gross_amount || 0);
+      const gross = Math.abs(
+        Number(editPaymentInvoice.amount_to_pay_gross ?? editPaymentInvoice.gross_amount ?? 0),
+      );
 
       if (!hasPayments) {
         if (paymentDate) {
-          updates.payment_date = paymentDate;
-          updates.payment_status = 'paid';
+          const { error: paymentError } = await supabase.from('ksef_invoice_payments').insert({
+            ksef_invoice_id: editPaymentInvoice.id,
+            amount: gross,
+            payment_date: paymentDate,
+            notes: 'Ręcznie zarejestrowana pełna płatność',
+            created_by: currentEmployee?.id ?? null,
+          });
+          if (paymentError) throw paymentError;
         } else {
           updates.payment_date = null;
           if (paymentDueDate && new Date(paymentDueDate) < new Date()) {
@@ -928,10 +970,6 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
             updates.payment_status = 'unpaid';
           }
         }
-      } else if (gross > 0 && paidSum >= gross) {
-        updates.payment_status = 'paid';
-      } else {
-        updates.payment_status = 'partially_paid';
       }
 
       const { error } = await supabase
@@ -940,6 +978,16 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
         .eq('id', editPaymentInvoice.id);
 
       if (error) throw error;
+
+      if (!hasPayments && !paymentDate) {
+        await supabase
+          .from('financial_payment_review_issues')
+          .update({ resolved_at: new Date().toISOString(), resolved_by: currentEmployee?.id ?? null })
+          .eq('document_source', 'ksef')
+          .eq('document_id', editPaymentInvoice.id)
+          .eq('issue_code', 'payment_status_without_ledger')
+          .is('resolved_at', null);
+      }
 
       showSnackbar('Dane płatności zaktualizowane', 'success');
       setEditPaymentInvoice(null);
@@ -1483,6 +1531,11 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
                             <td className={`whitespace-nowrap px-2.5 py-2 font-medium ${paymentStatus.color.split(' ')[0]}`}>
                               <PaymentIcon className="mr-1 inline h-3 w-3" />
                               {paymentStatus.label}
+                              {paymentReviewIds.has(invoice.id) && (
+                                <span className="ml-2 rounded bg-orange-500/15 px-1.5 py-0.5 text-[10px] text-orange-300">
+                                  do weryfikacji
+                                </span>
+                              )}
                             </td>
                           )}
 
@@ -1605,6 +1658,11 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
                         >
                           {paymentStatus.label}
                         </span>
+                        {paymentReviewIds.has(invoice.id) && (
+                          <span className="rounded bg-orange-500/15 px-2 py-1 text-xs text-orange-300">
+                            Status bez wpisu wpłaty — zweryfikuj
+                          </span>
+                        )}
                       </div>
 
                       {renderActions(invoice)}
@@ -1772,13 +1830,19 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
                             {p.notes ? ` · ${p.notes}` : ''}
                           </div>
                         </div>
-                        <button
-                          onClick={() => handleRemovePartialPayment(p.id)}
-                          className="text-red-400 hover:text-red-300"
-                          title="Usuń wpłatę"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                        {p.bank_match_id ? (
+                          <span className="rounded bg-blue-500/15 px-2 py-1 text-xs text-blue-300">
+                            Wyciąg bankowy
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => handleRemovePartialPayment(p)}
+                            className="text-red-400 hover:text-red-300"
+                            title="Usuń wpłatę"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        )}
                       </div>
                     ))}
                   </div>

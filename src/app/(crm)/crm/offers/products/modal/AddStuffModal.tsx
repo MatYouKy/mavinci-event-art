@@ -6,10 +6,12 @@ import { X } from 'lucide-react';
 
 export function AddStaffModal({
   productId,
+  productVariantName,
   onClose,
   onSubmit,
 }: {
   productId: string;
+  productVariantName?: string | null;
   onClose: () => void;
   onSubmit: (payload: ProductStaffRow) => Promise<void> | void;
 }) {
@@ -45,7 +47,12 @@ export function AddStaffModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="w-full max-w-xl rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33]">
         <div className="flex items-center justify-between border-b border-[#d3bb73]/10 p-6">
-          <h3 className="text-xl font-light text-[#e5e4e2]">Dodaj rolę</h3>
+          <div>
+            <h3 className="text-xl font-light text-[#e5e4e2]">Dodaj rolę</h3>
+            <p className="mt-1 text-xs text-[#d3bb73]">
+              {productVariantName ? `Wariant: ${productVariantName}` : 'Produkt bazowy'}
+            </p>
+          </div>
           <button onClick={onClose} className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]">
             <X className="h-5 w-5" />
           </button>

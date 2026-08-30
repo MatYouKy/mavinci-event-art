@@ -116,8 +116,10 @@ const KitItemRow = ({
   );
 };
 
-type ItemType = 'item' | 'kit';
+type ItemType = 'item' | 'kit' | 'cable';
 type AvailKey = `${ItemType}-${string}`;
+
+const isCableRow = (row: any) => !!(row?.cable_id || row?.cable || row?.cables);
 
 /** --- helpers --- */
 const num = (v: unknown, fallback = 0) => {
@@ -504,6 +506,25 @@ export const EventEquipmentTab: React.FC<{
     event_date: eventDate,
     event_end_date: eventEndDate,
   });
+
+  const equipmentRevision = useMemo(
+    () =>
+      (equipment || [])
+        .map((row: any) =>
+          [
+            row.id,
+            row.equipment_id,
+            row.kit_id,
+            row.cable_id,
+            Number(row.quantity || 0),
+            row.status || '',
+            row.removed_from_offer ? 'removed' : 'active',
+          ].join(':'),
+        )
+        .sort()
+        .join('|'),
+    [equipment],
+  );
 
   useEffect(() => {
     if (!eventId) return;
@@ -1298,11 +1319,25 @@ export const EventEquipmentTab: React.FC<{
   );
 
   const manualItemRows = useMemo(
-    () => (equipment || []).filter((r: any) => !r.auto_added && !isKitRow(r)),
+    () =>
+      (equipment || []).filter(
+        (r: any) => !r.auto_added && !isKitRow(r) && !isCableRow(r),
+      ),
     [equipment],
   );
   const autoItemRows = useMemo(
-    () => (equipment || []).filter((r: any) => r.auto_added && !isKitRow(r)),
+    () =>
+      (equipment || []).filter(
+        (r: any) => r.auto_added && !isKitRow(r) && !isCableRow(r),
+      ),
+    [equipment],
+  );
+  const manualCableRows = useMemo(
+    () => (equipment || []).filter((r: any) => !r.auto_added && isCableRow(r)),
+    [equipment],
+  );
+  const autoCableRows = useMemo(
+    () => (equipment || []).filter((r: any) => r.auto_added && isCableRow(r)),
     [equipment],
   );
 
@@ -1867,6 +1902,7 @@ export const EventEquipmentTab: React.FC<{
           });
         }}
         availabilityByKey={availabilityByKey}
+        equipmentRevision={equipmentRevision}
         getKeyForEventRow={getKeyForEventRow}
         getUiLimits={getUiLimits}
         getStatusBadge={(status) => getStatusBadge(status, hasConflict)}
@@ -1882,9 +1918,11 @@ export const EventEquipmentTab: React.FC<{
         onToggleExpandInChecklist={handleToggleExpandInChecklist}
         eventId={eventId}
         offerId={row?.offer_id}
-        onComponentsAdded={() => {
-          refetch();
-          refetchEvent();
+        canVerifyInventory={isAdmin}
+        onComponentsAdded={async () => {
+          await refetch();
+          await fetchAvailableEquipment();
+          await refetchEvent();
         }}
       />
     );
@@ -2074,7 +2112,9 @@ export const EventEquipmentTab: React.FC<{
               equipmentId={componentReviewQueue[0].equipmentId}
               eventId={eventId}
               availabilityByKey={availabilityByKey}
+              equipmentRevision={equipmentRevision}
               autoOpen={componentReviewQueue[0].source === 'manual'}
+              canVerifyInventory={isAdmin}
               onComponentsAdded={async () => {
                 await refetch();
                 await fetchAvailableEquipment();
@@ -2378,48 +2418,104 @@ export const EventEquipmentTab: React.FC<{
       {(equipment || []).length === 0 ? (
         <p className="text-[#e5e4e2]/60">Brak przypisanego sprzętu</p>
       ) : (
-        <div className="space-y-4">
-          {/* MANUAL: KITY */}
-          {manualKitRows.length > 0 && (
-            <div className="space-y-2">
-              <div className="text-xs uppercase tracking-wider text-[#e5e4e2]/40">Zestawy</div>
-              {manualKitRows.map((r: any) => renderKitRow(r, true))}
-            </div>
-          )}
-
-          {/* MANUAL: ITEMY (stary EventEquipmentRow) */}
-          {manualItemRows.length > 0 && (
-            <div className="space-y-2">
-              <div className="text-xs uppercase tracking-wider text-[#e5e4e2]/40">Sprzęt</div>
-              {manualItemRows.map((r: any) => renderRow(r, true))}
-            </div>
-          )}
-
-          {manualKitRows.length + manualItemRows.length > 0 &&
-            autoKitRows.length + autoItemRows.length > 0 && (
-              <div className="my-6 flex items-center gap-4">
-                <div className="h-px flex-1 bg-[#d3bb73]/10" />
-                <span className="text-xs uppercase tracking-wider text-[#e5e4e2]/40">
-                  Z produktów oferty
+        <div className="space-y-5">
+          {manualItemRows.length + autoItemRows.length > 0 && (
+            <section className="space-y-3 rounded-xl border border-[#d3bb73]/10 bg-[#0f1119]/25 p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-medium text-[#e5e4e2]">Pojedynczy sprzęt</h3>
+                  <p className="mt-0.5 text-xs text-[#e5e4e2]/45">
+                    Samodzielne urządzenia rezerwowane na wydarzenie
+                  </p>
+                </div>
+                <span className="rounded-full bg-[#e5e4e2]/5 px-2.5 py-1 text-xs text-[#e5e4e2]/50">
+                  {manualItemRows.length + autoItemRows.length}
                 </span>
-                <div className="h-px flex-1 bg-[#d3bb73]/10" />
               </div>
-            )}
 
-          {/* AUTO: KITY */}
-          {autoKitRows.length > 0 && (
-            <div className="space-y-2">
-              <div className="text-xs uppercase tracking-wider text-[#e5e4e2]/40">Zestawy</div>
-              {autoKitRows.map((r: any) => renderKitRow(r, true))}
-            </div>
+              {manualItemRows.length > 0 && (
+                <div className="space-y-2">
+                  <div className="text-[11px] uppercase tracking-wider text-[#e5e4e2]/35">
+                    Dodane bezpośrednio
+                  </div>
+                  {manualItemRows.map((row: any) => renderRow(row, true))}
+                </div>
+              )}
+              {autoItemRows.length > 0 && (
+                <div className="space-y-2">
+                  <div className="text-[11px] uppercase tracking-wider text-[#d3bb73]/55">
+                    Z oferty / importu
+                  </div>
+                  {autoItemRows.map((row: any) => renderRow(row, true))}
+                </div>
+              )}
+            </section>
           )}
 
-          {/* AUTO: ITEMY */}
-          {autoItemRows.length > 0 && (
-            <div className="space-y-2">
-              <div className="text-xs uppercase tracking-wider text-[#e5e4e2]/40">Sprzęt</div>
-              {autoItemRows.map((r: any) => renderRow(r, true))}
-            </div>
+          {manualKitRows.length + autoKitRows.length > 0 && (
+            <section className="space-y-3 rounded-xl border border-sky-500/15 bg-sky-500/[0.025] p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-medium text-[#e5e4e2]">Zestawy sprzętowe</h3>
+                  <p className="mt-0.5 text-xs text-[#e5e4e2]/45">
+                    Gotowe komplety z możliwością rozwinięcia zawartości
+                  </p>
+                </div>
+                <span className="rounded-full bg-sky-500/10 px-2.5 py-1 text-xs text-sky-300/70">
+                  {manualKitRows.length + autoKitRows.length}
+                </span>
+              </div>
+
+              {manualKitRows.length > 0 && (
+                <div className="space-y-2">
+                  <div className="text-[11px] uppercase tracking-wider text-[#e5e4e2]/35">
+                    Dodane bezpośrednio
+                  </div>
+                  {manualKitRows.map((row: any) => renderKitRow(row, true))}
+                </div>
+              )}
+              {autoKitRows.length > 0 && (
+                <div className="space-y-2">
+                  <div className="text-[11px] uppercase tracking-wider text-sky-300/50">
+                    Z oferty / importu
+                  </div>
+                  {autoKitRows.map((row: any) => renderKitRow(row, true))}
+                </div>
+              )}
+            </section>
+          )}
+
+          {manualCableRows.length + autoCableRows.length > 0 && (
+            <section className="space-y-3 rounded-xl border border-violet-500/15 bg-violet-500/[0.025] p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-medium text-[#e5e4e2]">Przewody i okablowanie</h3>
+                  <p className="mt-0.5 text-xs text-[#e5e4e2]/45">
+                    Pozycje magazynowe rozliczane w sztukach lub metrach
+                  </p>
+                </div>
+                <span className="rounded-full bg-violet-500/10 px-2.5 py-1 text-xs text-violet-300/70">
+                  {manualCableRows.length + autoCableRows.length}
+                </span>
+              </div>
+
+              {manualCableRows.length > 0 && (
+                <div className="space-y-2">
+                  <div className="text-[11px] uppercase tracking-wider text-[#e5e4e2]/35">
+                    Dodane bezpośrednio
+                  </div>
+                  {manualCableRows.map((row: any) => renderRow(row, true))}
+                </div>
+              )}
+              {autoCableRows.length > 0 && (
+                <div className="space-y-2">
+                  <div className="text-[11px] uppercase tracking-wider text-violet-300/50">
+                    Z oferty / importu
+                  </div>
+                  {autoCableRows.map((row: any) => renderRow(row, true))}
+                </div>
+              )}
+            </section>
           )}
         </div>
       )}

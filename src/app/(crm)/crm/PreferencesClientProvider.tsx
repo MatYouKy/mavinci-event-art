@@ -29,6 +29,7 @@ type Ctx = {
   loading: boolean;
   getViewMode: (module: keyof Preferences) => ViewMode;
   setViewMode: (module: keyof Preferences, viewMode: ViewMode) => void;
+  setPreference: <K extends keyof Preferences>(module: K, value: Preferences[K]) => void;
   getNotificationSettings: () => NotificationPreferences;
   refetch: () => void; // opcjonalnie noop
 };
@@ -51,7 +52,14 @@ export default function PreferencesClientProvider({
     (preferences[module] as any)?.viewMode || 'grid';
 
   const setViewMode = (module: keyof Preferences, viewMode: ViewMode) => {
-    const next = { ...preferences, [module]: { viewMode } };
+    const currentSection = preferences[module];
+    const next = {
+      ...preferences,
+      [module]: {
+        ...(currentSection && typeof currentSection === 'object' ? currentSection : {}),
+        viewMode,
+      },
+    };
 
     // optimistic update (zero migania)
     setPreferences(next);
@@ -67,6 +75,19 @@ export default function PreferencesClientProvider({
     });
   };
 
+  const setPreference = <K extends keyof Preferences>(module: K, value: Preferences[K]) => {
+    const next = { ...preferences, [module]: value };
+    setPreferences(next);
+
+    startTransition(async () => {
+      try {
+        await updateEmployeePreferences(employeeId, next);
+      } catch (error) {
+        console.error('Error updating preferences:', error);
+      }
+    });
+  };
+
   const getNotificationSettings = () => preferences.notifications ?? defaultNotifications;
 
   const value = useMemo<Ctx>(
@@ -76,6 +97,7 @@ export default function PreferencesClientProvider({
       loading: isPending,
       getViewMode,
       setViewMode,
+      setPreference,
       getNotificationSettings,
       refetch: () => {}, // już nie fetchujemy w hooku
     }),

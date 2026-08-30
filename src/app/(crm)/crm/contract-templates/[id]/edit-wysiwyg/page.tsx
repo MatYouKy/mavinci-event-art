@@ -2,7 +2,7 @@
 import '@/styles/contractA4.css';
 
 import { useState, useEffect, useRef } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase/browser';
 import {
   Save,
@@ -27,9 +27,21 @@ import {
 } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import Image from 'next/image';
-import { paginateContractHtml } from '@/lib/CRM/contracts/contractPagination';
+import {
+  renderContractDocument,
+  createDefaultContractClauseTypography,
+  resolveContractClauseTypography,
+  type ContractClauseTypography,
+  type ContractClauseTypographyRole,
+  type ContractClauseTextStyle,
+} from '@/lib/CRM/contracts/contractPagination';
 import { normalizeContractParagraphPlaceholders } from '@/lib/CRM/contracts/contractParagraphs';
+import {
+  CONTRACT_CLAUSE_SLOTS,
+  decorateContractClauseSlots,
+} from '@/lib/CRM/contracts/contractClauseSlots';
 import { createContractDraftPdf } from '../../printDraft';
+import { getContractDocumentCss } from '@/components/crm/events/calculations/helpers/getContractCssForPrint';
 
 const DEFAULT_LOGO = '/erulers_logo_vect.png';
 
@@ -47,13 +59,16 @@ const SYSTEM_FONTS = [
   { label: 'Systemowy', family: 'system-ui, -apple-system, BlinkMacSystemFont, sans-serif' },
 ];
 
-const CONTRACT_CLAUSE_SLOTS = [
-  { key: '{{contract_clauses_requirements}}', label: 'Wymagania organizacyjne i techniczne' },
-  { key: '{{contract_clauses_obligations}}', label: 'Obowiązki zamawiającego' },
-  { key: '{{contract_clauses_risks}}', label: 'Ryzyka i odpowiedzialność' },
-  { key: '{{contract_clauses_general}}', label: 'Postanowienia dodatkowe' },
-  { key: '{{contract_clauses_all}}', label: 'Wszystkie klauzule produktowe' },
-] as const;
+const CLAUSE_TYPOGRAPHY_ROLES: Array<{
+  key: ContractClauseTypographyRole;
+  label: string;
+}> = [
+  { key: 'paragraphHeading', label: 'Numer paragrafu (§)' },
+  { key: 'title', label: 'Tytuł klauzuli' },
+  { key: 'body', label: 'Treść klauzuli' },
+  { key: 'list', label: 'Lista / punkt' },
+  { key: 'subpoint', label: 'Podpunkt' },
+];
 
 const PLACEHOLDER_CONTEXT_GROUPS = [
   {
@@ -96,6 +111,7 @@ const PLACEHOLDER_CONTEXT_GROUPS = [
       { key: '{{primary_contact_full_name}}', label: 'Osoba kontaktowa' },
       { key: '{{legal_representative_full_name}}', label: 'Reprezentant prawny' },
       { key: '{{decision_makers_list}}', label: 'Osoby decyzyjne' },
+      { key: '{{client_contract_party_block}}', label: 'Pełne dane strony klienta' },
     ],
   },
   {
@@ -139,33 +155,30 @@ const PLACEHOLDER_CONTEXT_GROUPS = [
       { key: '{{executor_postal_code}}', label: 'Kod pocztowy' },
       { key: '{{executor_city}}', label: 'Miasto' },
       { key: '{{executor_nip}}', label: 'NIP' },
+      { key: '{{executor_regon}}', label: 'REGON' },
+      { key: '{{executor_krs}}', label: 'KRS' },
       { key: '{{executor_phone}}', label: 'Telefon' },
       { key: '{{executor_email}}', label: 'E-mail' },
+      { key: '{{executor_website}}', label: 'Strona WWW' },
+      { key: '{{executor_bank_account}}', label: 'Rachunek bankowy' },
+      { key: '{{executor_bank_name}}', label: 'Nazwa banku' },
+      { key: '{{executor_representative_name}}', label: 'Reprezentant wykonawcy' },
+      { key: '{{executor_representative_title}}', label: 'Stanowisko reprezentanta' },
+      { key: '{{executor_contract_party_block}}', label: 'Pełne dane wykonawcy' },
     ],
   },
   { label: 'Sekcje klauzul', items: CONTRACT_CLAUSE_SLOTS, clauseSlots: true },
 ] as const;
 
-const decorateClauseSlots = (html: string): string => {
-  let decorated = html;
-  CONTRACT_CLAUSE_SLOTS.forEach(({ key, label }) => {
-    const slotName = key.replace(/[{}]/g, '');
-    if (!decorated.includes(key) || decorated.includes(`data-contract-clause-slot="${slotName}"`)) {
-      return;
-    }
-    decorated = decorated.replace(
-      key,
-      `<div data-contract-clause-slot="${slotName}" data-clause-label="${label}"><span data-clause-placeholder="true">${key}</span></div>`,
-    );
-  });
-  return decorated;
-};
-
 export default function EditTemplateWYSIWYGPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { showSnackbar } = useSnackbar();
   const templateId = params.id as string;
+  const contractId = searchParams.get('contractId');
+  const eventId = searchParams.get('eventId');
+  const isContractInstance = Boolean(contractId && eventId);
   const editorRef = useRef<HTMLDivElement>(null);
 
   const [loading, setLoading] = useState(true);
@@ -188,6 +201,7 @@ export default function EditTemplateWYSIWYGPage() {
     Array<{ id: string; label: string; family: string; weight: string; file_url?: string | null }>
   >([]);
   const [showFooterEditor, setShowFooterEditor] = useState(false);
+  const [showClauseTypographyEditor, setShowClauseTypographyEditor] = useState(false);
   const [footerLogoScale, setFooterLogoScale] = useState(80);
   const [footerContent, setFooterContent] = useState({
     companyName: 'EVENT RULERS',
@@ -200,6 +214,9 @@ export default function EditTemplateWYSIWYGPage() {
   const [history, setHistory] = useState<string[][]>([['']]);
   const [historyIndex, setHistoryIndex] = useState(0);
   const [selectedFont, setSelectedFont] = useState<string>('Georgia, serif');
+  const [clauseTypography, setClauseTypography] = useState<ContractClauseTypography>(() =>
+    createDefaultContractClauseTypography('Georgia, serif', 1.6),
+  );
   const [showPlaceholders, setShowPlaceholders] = useState(false);
   const [placeholderCategory, setPlaceholderCategory] = useState<string>('offer');
   const [pages, setPages] = useState<string[]>(['']);
@@ -226,6 +243,7 @@ export default function EditTemplateWYSIWYGPage() {
     selectedFooter,
     footerContent,
     footerLogoScale,
+    clauseTypography,
   });
 
   useEffect(() => {
@@ -322,9 +340,44 @@ export default function EditTemplateWYSIWYGPage() {
       if (error) throw error;
 
       if (data) {
-        setTemplate(data);
+        let instanceContract: any = null;
+        if (isContractInstance) {
+          const { data: contractData, error: contractError } = await supabase
+            .from('contracts')
+            .select('id, title, content, status, locked_at')
+            .eq('id', contractId)
+            .eq('event_id', eventId)
+            .maybeSingle();
+
+          if (contractError) throw contractError;
+          if (!contractData) throw new Error('Nie znaleziono umowy przypisanej do wydarzenia');
+          if (contractData.locked_at) {
+            throw new Error('Podpisana umowa jest zablokowana i nie może być edytowana');
+          }
+          instanceContract = contractData;
+        }
+
+        setTemplate(
+          instanceContract
+            ? { ...data, name: instanceContract.title || `Umowa wydarzenia ${eventId}` }
+            : data,
+        );
 
         let initialHtml = data.content_html || '';
+        let settings = data.page_settings || {};
+
+        if (instanceContract?.content) {
+          try {
+            const parsedContent = JSON.parse(instanceContract.content);
+            initialHtml =
+              parsedContent.flowContent ||
+              (Array.isArray(parsedContent.pages) ? parsedContent.pages.join('') : '') ||
+              instanceContract.content;
+            settings = { ...settings, ...(parsedContent.settings || {}) };
+          } catch {
+            initialHtml = instanceContract.content;
+          }
+        }
 
         if (!initialHtml && data.content) {
           initialHtml = data.content
@@ -333,40 +386,46 @@ export default function EditTemplateWYSIWYGPage() {
             .join('');
         }
 
-        initialHtml = normalizeContractParagraphPlaceholders(decorateClauseSlots(initialHtml));
+        initialHtml = normalizeContractParagraphPlaceholders(
+          isContractInstance ? initialHtml : decorateContractClauseSlots(initialHtml),
+        );
         setContentHtml(initialHtml);
-        const settings = data.page_settings || {};
 
         setSelectedLogo(settings.selectedLogo || DEFAULT_LOGO);
+        const templateFont = settings.selectedFont || 'Georgia, serif';
+        const templateLineHeight = settings.lineHeight || 1.6;
+        setClauseTypography(
+          resolveContractClauseTypography({
+            selectedFont: templateFont,
+            lineHeight: templateLineHeight,
+            clauseTypography: settings.clauseTypography,
+          }),
+        );
 
-        if (data.page_settings) {
-          if (data.page_settings.logoScale) setLogoScale(data.page_settings.logoScale);
-          if (data.page_settings.logoPositionX !== undefined)
-            setLogoPositionX(data.page_settings.logoPositionX);
-          if (data.page_settings.logoPositionY !== undefined)
-            setLogoPositionY(data.page_settings.logoPositionY);
-          if (data.page_settings.lineHeight) setLineHeight(data.page_settings.lineHeight);
-          if (data.page_settings.selectedFont) setSelectedFont(data.page_settings.selectedFont);
+        if (Object.keys(settings).length > 0) {
+          if (settings.logoScale) setLogoScale(settings.logoScale);
+          if (settings.logoPositionX !== undefined) setLogoPositionX(settings.logoPositionX);
+          if (settings.logoPositionY !== undefined) setLogoPositionY(settings.logoPositionY);
+          if (settings.lineHeight) setLineHeight(settings.lineHeight);
+          if (settings.selectedFont) setSelectedFont(settings.selectedFont);
 
-          if (data.page_settings.selectedFooter)
-            setSelectedFooter(data.page_settings.selectedFooter);
-          if (data.page_settings.selectedFooterTemplateId)
-            setSelectedFooterTemplateId(data.page_settings.selectedFooterTemplateId);
-          if (data.page_settings.footerContent) setFooterContent(data.page_settings.footerContent);
-          if (data.page_settings.footerLogoScale)
-            setFooterLogoScale(data.page_settings.footerLogoScale);
-          if (data.page_settings.flowContent || (data.page_settings.pages && Array.isArray(data.page_settings.pages))) {
+          if (settings.selectedFooter) setSelectedFooter(settings.selectedFooter);
+          if (settings.selectedFooterTemplateId)
+            setSelectedFooterTemplateId(settings.selectedFooterTemplateId);
+          if (settings.footerContent) setFooterContent(settings.footerContent);
+          if (settings.footerLogoScale) setFooterLogoScale(settings.footerLogoScale);
+          if (isContractInstance || settings.flowContent || (settings.pages && Array.isArray(settings.pages))) {
             const source = normalizeContractParagraphPlaceholders(
-              decorateClauseSlots(
-                data.page_settings.flowContent || data.page_settings.pages.join(''),
-              ),
+              isContractInstance
+                ? initialHtml
+                : decorateContractClauseSlots(settings.flowContent || settings.pages.join('')),
             );
-            const initialPages = await paginateContractHtml(source, {
+            const initialDocument = await renderContractDocument(source, {
               ...settings,
               selectedFooter: settings.selectedFooter || 'default',
-            });
-            setPages(initialPages);
-            setHistory([initialPages]);
+            }, { resolveParagraphNumbers: false });
+            setPages(initialDocument.pages);
+            setHistory([initialDocument.pages]);
             setHistoryIndex(0);
           } else if (initialHtml) {
             setPages([initialHtml]);
@@ -388,6 +447,7 @@ export default function EditTemplateWYSIWYGPage() {
   };
 
   const handleSaveTemplateName = async () => {
+    if (isContractInstance) return;
     if (!tempName.trim()) {
       showSnackbar('Nazwa szablonu nie może być pusta', 'error');
       return;
@@ -417,7 +477,12 @@ export default function EditTemplateWYSIWYGPage() {
     }
 
     const flowContent = normalizeContractParagraphPlaceholders(pages.join(''));
-    const paginatedPages = await paginateContractHtml(flowContent, paginationSettings());
+    const renderedDocument = await renderContractDocument(
+      flowContent,
+      paginationSettings(),
+      { resolveParagraphNumbers: false },
+    );
+    const paginatedPages = renderedDocument.pages;
     const allContent = paginatedPages.join('');
     const plainText = allContent.replace(/<[^>]*>/g, '').trim();
 
@@ -429,6 +494,40 @@ export default function EditTemplateWYSIWYGPage() {
     try {
       setSaving(true);
       setPages(paginatedPages);
+
+      if (isContractInstance && contractId && eventId) {
+        const { error } = await supabase
+          .from('contracts')
+          .update({
+            content: JSON.stringify({
+              flowContent,
+              pages: paginatedPages,
+              settings: {
+                ...paginationSettings(),
+                selectedFooterTemplateId,
+                paginationMode: 'automatic',
+                marginTop: 50,
+                marginBottom: 50,
+                marginLeft: 50,
+                marginRight: 50,
+                pageSize: 'A4',
+              },
+              meta: {
+                individuallyEdited: true,
+                editSource: 'wysiwyg',
+                editedAt: new Date().toISOString(),
+              },
+            }),
+            modified_after_generation: true,
+          })
+          .eq('id', contractId)
+          .eq('event_id', eventId);
+
+        if (error) throw error;
+        showSnackbar('Indywidualna treść umowy została zapisana', 'success');
+        router.push(`/crm/events/${eventId}?tab=contract`);
+        return;
+      }
 
       const updateData = {
         content: plainText || 'Szablon umowy',
@@ -444,6 +543,7 @@ export default function EditTemplateWYSIWYGPage() {
           selectedFooterTemplateId,
           footerContent,
           footerLogoScale,
+          clauseTypography,
           flowContent,
           pages: paginatedPages,
           paginationMode: 'automatic',
@@ -804,6 +904,61 @@ export default function EditTemplateWYSIWYGPage() {
       return;
     }
 
+    const alignmentByCommand: Record<string, 'left' | 'center' | 'right' | 'justify'> = {
+      justifyLeft: 'left',
+      justifyCenter: 'center',
+      justifyRight: 'right',
+      justifyFull: 'justify',
+    };
+    const requestedAlignment = alignmentByCommand[command];
+    if (requestedAlignment) {
+      restoreEditorSelection();
+      const selection = window.getSelection();
+      if (!selection?.rangeCount) return;
+
+      const range = selection.getRangeAt(0);
+      const selectionNode = range.commonAncestorContainer;
+      const selectionElement =
+        selectionNode.nodeType === Node.TEXT_NODE
+          ? selectionNode.parentElement
+          : (selectionNode as Element);
+      const editorElement = selectionElement?.closest('.contract-content') as HTMLDivElement | null;
+      if (!editorElement) return;
+
+      const blockSelector =
+        'p, pre, li, h1, h2, h3, h4, h5, h6, [data-contract-paragraph="true"], .contract-paragraph-heading, div';
+      const closestBlock = selectionElement?.closest(blockSelector) as HTMLElement | null;
+      const intersectingBlocks = Array.from(
+        editorElement.querySelectorAll<HTMLElement>(blockSelector),
+      ).filter((element) => {
+        if (element === editorElement) return false;
+        try {
+          return range.intersectsNode(element);
+        } catch {
+          return false;
+        }
+      });
+      const blocks = range.collapsed
+        ? closestBlock && closestBlock !== editorElement
+          ? [closestBlock]
+          : []
+        : intersectingBlocks;
+
+      if (blocks.length === 0) {
+        document.execCommand(command, false, value);
+      } else {
+        blocks.forEach((block) => {
+          block.style.textAlign = requestedAlignment;
+        });
+      }
+
+      formatRangeRef.current = range.cloneRange();
+      const pageIndex = pageRefs.current.findIndex((page) => page === editorElement);
+      if (pageIndex >= 0) updatePageContent(pageIndex, editorElement.innerHTML);
+      return;
+    }
+
+    restoreEditorSelection();
     const selection = window.getSelection();
     if (!selection) return;
 
@@ -1042,8 +1197,12 @@ export default function EditTemplateWYSIWYGPage() {
 
   const repaginate = async (sourcePages = pages) => {
     const normalizedContent = normalizeContractParagraphPlaceholders(sourcePages.join(''));
-    const nextPages = await paginateContractHtml(normalizedContent, paginationSettings());
-    setPages(nextPages);
+    const nextDocument = await renderContractDocument(
+      normalizedContent,
+      paginationSettings(),
+      { resolveParagraphNumbers: false },
+    );
+    setPages(nextDocument.pages);
     pageRefs.current = [];
   };
 
@@ -1109,32 +1268,6 @@ export default function EditTemplateWYSIWYGPage() {
     }, 500);
   };
 
-  const justifySelection = () => {
-    const selection = window.getSelection();
-    if (!selection || selection.rangeCount === 0) return;
-
-    let el =
-      selection.focusNode?.nodeType === Node.TEXT_NODE
-        ? selection.focusNode.parentElement
-        : (selection.focusNode as HTMLElement | null);
-
-    while (el && !el.classList?.contains('contract-content')) {
-      if (['P', 'DIV', 'LI', 'H1', 'H2', 'H3'].includes(el.tagName)) break;
-      el = el.parentElement;
-    }
-
-    if (!el) return;
-
-    el.style.textAlign = 'justify';
-
-    const editor = el.closest('.contract-content') as HTMLElement | null;
-    const pageIndex = pageRefs.current.findIndex((ref) => ref === editor);
-
-    if (editor && pageIndex !== -1) {
-      updatePageContent(pageIndex, editor.innerHTML);
-    }
-  };
-
   if (loading) {
     return (
       <div className="flex items-center justify-center p-8">
@@ -1153,6 +1286,7 @@ export default function EditTemplateWYSIWYGPage() {
 
   return (
     <div className="-m-2 min-h-screen bg-[#0a0b14] sm:-m-4 md:-m-6">
+      <style dangerouslySetInnerHTML={{ __html: getContractDocumentCss() }} />
       <div className="sticky -top-2 z-40 max-h-[calc(100dvh-73px)] overflow-y-auto overscroll-contain bg-[#1c1f33] shadow-xl sm:-top-4 md:-top-6">
       {/* Header */}
       <div className="border-b border-[#d3bb73]/20 bg-[#1c1f33]">
@@ -1160,13 +1294,19 @@ export default function EditTemplateWYSIWYGPage() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <button
-                onClick={() => router.push('/crm/contract-templates')}
+                onClick={() =>
+                  router.push(
+                    isContractInstance && eventId
+                      ? `/crm/events/${eventId}?tab=contract`
+                      : '/crm/contract-templates',
+                  )
+                }
                 className="rounded-lg p-2 text-[#e5e4e2]/60 transition-colors hover:bg-[#d3bb73]/10 hover:text-[#e5e4e2]"
               >
                 <ArrowLeft className="h-5 w-5" />
               </button>
               <div>
-                {editingName ? (
+                {editingName && !isContractInstance ? (
                   <div className="flex items-center gap-2">
                     <input
                       type="text"
@@ -1201,16 +1341,25 @@ export default function EditTemplateWYSIWYGPage() {
                 ) : (
                   <h1
                     onClick={() => {
+                      if (isContractInstance) return;
                       setEditingName(true);
                       setTempName(template.name);
                     }}
-                    className="cursor-pointer text-xl font-light text-[#e5e4e2] hover:text-[#d3bb73]"
-                    title="Kliknij aby edytować nazwę"
+                    className={`text-xl font-light text-[#e5e4e2] ${
+                      isContractInstance
+                        ? ''
+                        : 'cursor-pointer hover:text-[#d3bb73]'
+                    }`}
+                    title={isContractInstance ? undefined : 'Kliknij aby edytować nazwę'}
                   >
                     {template.name}
                   </h1>
                 )}
-                <p className="text-sm text-[#e5e4e2]/40">Edytor WYSIWYG</p>
+                <p className="text-sm text-[#e5e4e2]/40">
+                  {isContractInstance
+                    ? 'Indywidualna treść umowy — zmiany nie modyfikują szablonu ani klauzul'
+                    : 'Edytor WYSIWYG'}
+                </p>
               </div>
             </div>
 
@@ -1304,7 +1453,10 @@ export default function EditTemplateWYSIWYGPage() {
             <div className="mx-2 h-6 w-px bg-[#d3bb73]/30" />
 
             <button
-              onMouseDown={(e) => e.preventDefault()}
+              onMouseDown={(e) => {
+                rememberEditorSelection();
+                e.preventDefault();
+              }}
               onClick={() => execCommand('justifyLeft')}
               className="rounded p-2 hover:bg-[#d3bb73]/10"
               title="Do lewej"
@@ -1312,7 +1464,10 @@ export default function EditTemplateWYSIWYGPage() {
               <AlignLeft className="h-4 w-4 text-[#e5e4e2]" />
             </button>
             <button
-              onMouseDown={(e) => e.preventDefault()}
+              onMouseDown={(e) => {
+                rememberEditorSelection();
+                e.preventDefault();
+              }}
               onClick={() => execCommand('justifyCenter')}
               className="rounded p-2 hover:bg-[#d3bb73]/10"
               title="Wyśrodkuj"
@@ -1320,7 +1475,10 @@ export default function EditTemplateWYSIWYGPage() {
               <AlignCenter className="h-4 w-4 text-[#e5e4e2]" />
             </button>
             <button
-              onMouseDown={(e) => e.preventDefault()}
+              onMouseDown={(e) => {
+                rememberEditorSelection();
+                e.preventDefault();
+              }}
               onClick={() => execCommand('justifyRight')}
               className="rounded p-2 hover:bg-[#d3bb73]/10"
               title="Do prawej"
@@ -1328,8 +1486,11 @@ export default function EditTemplateWYSIWYGPage() {
               <AlignRight className="h-4 w-4 text-[#e5e4e2]" />
             </button>
             <button
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={justifySelection}
+              onMouseDown={(e) => {
+                rememberEditorSelection();
+                e.preventDefault();
+              }}
+              onClick={() => execCommand('justifyFull')}
               className="rounded p-2 hover:bg-[#d3bb73]/10"
               title="Wyjustuj"
             >
@@ -1448,10 +1609,9 @@ export default function EditTemplateWYSIWYGPage() {
               <span className="text-xs text-[#e5e4e2]/60">Odstęp linii:</span>
               <input
                 type="range"
-                min="1"
+                min="0.7"
                 max="3"
-                step="0.1"
-                onMouseDown={(e) => e.preventDefault()}
+                step="0.05"
                 value={lineHeight}
                 onChange={(e) => {
                   const newValue = Number(e.target.value);
@@ -1481,6 +1641,14 @@ export default function EditTemplateWYSIWYGPage() {
               title="Przelicz podział stron z uwzględnieniem nagłówka i stopki"
             >
               📄 Przelicz strony
+            </button>
+
+            <button
+              onClick={() => setShowClauseTypographyEditor((value) => !value)}
+              className="rounded border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-1.5 text-sm font-medium text-[#d3bb73] hover:bg-[#d3bb73]/10"
+              title="Ustaw jednolity wygląd klauzul produktowych"
+            >
+              Typografia klauzul
             </button>
 
             <div className="mx-2 h-6 w-px bg-[#d3bb73]/30" />
@@ -1743,6 +1911,7 @@ export default function EditTemplateWYSIWYGPage() {
                   { key: '{{legal_representative_full_name}}', label: 'Reprezentant prawny' },
                   { key: '{{legal_representative_title}}', label: 'Stanowisko reprezentanta' },
                   { key: '{{decision_makers_list}}', label: 'Lista osób decyzyjnych' },
+                  { key: '{{client_contract_party_block}}', label: 'Pełne dane strony klienta' },
                 ].map((p) => (
                   <button
                     key={p.key}
@@ -1814,8 +1983,16 @@ export default function EditTemplateWYSIWYGPage() {
                   { key: '{{executor_postal_code}}', label: 'Kod pocztowy' },
                   { key: '{{executor_city}}', label: 'Miasto' },
                   { key: '{{executor_nip}}', label: 'NIP' },
+                  { key: '{{executor_regon}}', label: 'REGON' },
+                  { key: '{{executor_krs}}', label: 'KRS' },
                   { key: '{{executor_phone}}', label: 'Telefon' },
                   { key: '{{executor_email}}', label: 'Email' },
+                  { key: '{{executor_website}}', label: 'Strona WWW' },
+                  { key: '{{executor_bank_account}}', label: 'Rachunek bankowy' },
+                  { key: '{{executor_bank_name}}', label: 'Nazwa banku' },
+                  { key: '{{executor_representative_name}}', label: 'Reprezentant wykonawcy' },
+                  { key: '{{executor_representative_title}}', label: 'Stanowisko reprezentanta' },
+                  { key: '{{executor_contract_party_block}}', label: 'Pełne dane wykonawcy' },
                 ].map((p) => (
                   <button
                     key={p.key}
@@ -1947,6 +2124,205 @@ export default function EditTemplateWYSIWYGPage() {
         </div>
       )}
 
+      {showClauseTypographyEditor && (
+        <div className="border-b border-[#d3bb73]/20 bg-[#16171d] px-4 py-4">
+          <div className="mx-auto max-w-[230mm]">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold text-[#d3bb73]">Typografia klauzul</div>
+                <p className="mt-1 text-xs text-[#e5e4e2]/50">
+                  Dekoracje zapisane w produkcie są ignorowane. Podgląd i PDF używają wyłącznie tego profilu.
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setClauseTypography(
+                      createDefaultContractClauseTypography(selectedFont, lineHeight),
+                    )
+                  }
+                  className="rounded border border-[#d3bb73]/20 px-3 py-1.5 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/10"
+                >
+                  Ustaw jak dokument
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowClauseTypographyEditor(false)}
+                  className="rounded px-3 py-1.5 text-xs text-[#e5e4e2]/60 hover:text-[#e5e4e2]"
+                >
+                  Zamknij
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              {CLAUSE_TYPOGRAPHY_ROLES.map(({ key, label }) => {
+                const role = clauseTypography[key];
+                return (
+                  <div
+                    key={key}
+                    className="grid gap-2 rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-3 md:grid-cols-[140px_minmax(150px,1fr)_64px_88px_72px_72px_72px_100px] md:items-center"
+                  >
+                    <span className="text-xs font-semibold text-[#e5e4e2]">{label}</span>
+                    <select
+                      value={role.fontFamily}
+                      onChange={(event) =>
+                        setClauseTypography((current) => ({
+                          ...current,
+                          [key]: { ...current[key], fontFamily: event.target.value },
+                        }))
+                      }
+                      className="rounded border border-[#d3bb73]/20 bg-[#16171d] px-2 py-1.5 text-xs text-[#e5e4e2]"
+                    >
+                      {SYSTEM_FONTS.map((font) => (
+                        <option key={`${key}-${font.family}`} value={font.family}>{font.label}</option>
+                      ))}
+                      {brandFonts.map((font) => (
+                        <option key={`${key}-${font.id}`} value={font.family}>{font.label || font.family}</option>
+                      ))}
+                      {![...SYSTEM_FONTS.map((font) => font.family), ...brandFonts.map((font) => font.family)].includes(role.fontFamily) && (
+                        <option value={role.fontFamily}>{role.fontFamily}</option>
+                      )}
+                    </select>
+                    <label className="flex items-center gap-1 text-[10px] text-[#e5e4e2]/50">
+                      pt
+                      <input
+                        type="number"
+                        min="6"
+                        max="72"
+                        step="0.5"
+                        value={role.fontSizePt}
+                        onChange={(event) =>
+                          setClauseTypography((current) => ({
+                            ...current,
+                            [key]: { ...current[key], fontSizePt: Number(event.target.value) },
+                          }))
+                        }
+                        className="w-full rounded border border-[#d3bb73]/20 bg-[#16171d] px-2 py-1.5 text-xs text-[#e5e4e2]"
+                      />
+                    </label>
+                    <select
+                      value={role.fontWeight}
+                      onChange={(event) =>
+                        setClauseTypography((current) => ({
+                          ...current,
+                          [key]: { ...current[key], fontWeight: Number(event.target.value) },
+                        }))
+                      }
+                      className="rounded border border-[#d3bb73]/20 bg-[#16171d] px-2 py-1.5 text-xs text-[#e5e4e2]"
+                    >
+                      <option value="300">Lekka</option>
+                      <option value="400">Normalna</option>
+                      <option value="500">Średnia</option>
+                      <option value="600">Półgruba</option>
+                      <option value="700">Gruba</option>
+                    </select>
+                    <label className="flex items-center gap-1 text-[10px] text-[#e5e4e2]/50">
+                      inter.
+                      <input
+                        type="number"
+                        min="0.7"
+                        max="3"
+                        step="0.05"
+                        value={role.lineHeight}
+                        title="Interlinia"
+                        aria-label={`${label}: interlinia`}
+                        onChange={(event) =>
+                          setClauseTypography((current) => ({
+                            ...current,
+                            [key]: { ...current[key], lineHeight: Number(event.target.value) },
+                          }))
+                        }
+                        className="min-w-0 w-full rounded border border-[#d3bb73]/20 bg-[#16171d] px-1.5 py-1.5 text-xs text-[#e5e4e2]"
+                      />
+                    </label>
+                    <label className="flex items-center gap-1 text-[10px] text-[#e5e4e2]/50">
+                      przed
+                      <input
+                        type="number"
+                        min="0"
+                        max="72"
+                        step="0.5"
+                        value={role.spaceBeforePt}
+                        aria-label={`${label}: odstęp przed`}
+                        onChange={(event) =>
+                          setClauseTypography((current) => ({
+                            ...current,
+                            [key]: { ...current[key], spaceBeforePt: Number(event.target.value) },
+                          }))
+                        }
+                        className="min-w-0 w-full rounded border border-[#d3bb73]/20 bg-[#16171d] px-1.5 py-1.5 text-xs text-[#e5e4e2]"
+                      />
+                    </label>
+                    <label className="flex items-center gap-1 text-[10px] text-[#e5e4e2]/50">
+                      po
+                      <input
+                        type="number"
+                        min="0"
+                        max="72"
+                        step="0.5"
+                        value={role.spaceAfterPt}
+                        aria-label={`${label}: odstęp po`}
+                        onChange={(event) =>
+                          setClauseTypography((current) => ({
+                            ...current,
+                            [key]: { ...current[key], spaceAfterPt: Number(event.target.value) },
+                          }))
+                        }
+                        className="min-w-0 w-full rounded border border-[#d3bb73]/20 bg-[#16171d] px-1.5 py-1.5 text-xs text-[#e5e4e2]"
+                      />
+                    </label>
+                    <select
+                      value={role.textAlign}
+                      onChange={(event) =>
+                        setClauseTypography((current) => ({
+                          ...current,
+                          [key]: {
+                            ...current[key],
+                            textAlign: event.target.value as ContractClauseTextStyle['textAlign'],
+                          },
+                        }))
+                      }
+                      className="rounded border border-[#d3bb73]/20 bg-[#16171d] px-2 py-1.5 text-xs text-[#e5e4e2]"
+                    >
+                      <option value="left">Do lewej</option>
+                      <option value="center">Środek</option>
+                      <option value="right">Do prawej</option>
+                      <option value="justify">Justuj</option>
+                    </select>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="mt-3 flex flex-wrap gap-5 rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-3 text-xs text-[#e5e4e2]/70">
+              <label className="flex items-center gap-2">
+                Pogrubienie
+                <select
+                  value={clauseTypography.emphasisWeight}
+                  onChange={(event) =>
+                    setClauseTypography((current) => ({ ...current, emphasisWeight: Number(event.target.value) }))
+                  }
+                  className="rounded border border-[#d3bb73]/20 bg-[#16171d] px-2 py-1 text-[#e5e4e2]"
+                >
+                  <option value="600">Półgrube</option>
+                  <option value="700">Grube</option>
+                </select>
+              </label>
+              <label className="flex items-center gap-2">
+                <input type="checkbox" checked={clauseTypography.italicEnabled} onChange={(event) => setClauseTypography((current) => ({ ...current, italicEnabled: event.target.checked }))} />
+                Stosuj kursywę semantyczną
+              </label>
+              <label className="flex items-center gap-2">
+                <input type="checkbox" checked={clauseTypography.underlineEnabled} onChange={(event) => setClauseTypography((current) => ({ ...current, underlineEnabled: event.target.checked }))} />
+                Stosuj podkreślenie semantyczne
+              </label>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* A4 Editor */}
       <div className="min-h-screen bg-[#525659] py-8">
         <div className="mx-auto" style={{ maxWidth: '230mm' }}>
@@ -2016,6 +2392,9 @@ export default function EditTemplateWYSIWYGPage() {
                   }
                 }}
                 onContextMenu={(event) => openPlaceholderContextMenu(event, pageIndex)}
+                onMouseUp={rememberEditorSelection}
+                onKeyUp={rememberEditorSelection}
+                onSelect={rememberEditorSelection}
                 contentEditable={true}
                 suppressContentEditableWarning
                 dir="ltr"

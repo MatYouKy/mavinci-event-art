@@ -17,12 +17,19 @@ export function useOfferWizardCatalog(opts: { isOpen: boolean; step: number }) {
       const pRes = await supabase
         .from('offer_products')
         .select(
-          `*, category:event_categories(name, icon_id, custom_icon:custom_icons(id, name, svg_code, preview_color))`,
+          `*, variants:offer_product_variants(id, product_id, name, short_description, description, benefits, price_net, price_gross, is_recommended, is_active, display_order), category:event_categories(name, icon_id, custom_icon:custom_icons(id, name, svg_code, preview_color))`,
         )
         .eq('is_active', true)
         .order('display_order');
 
-      if (!pRes.error && pRes.data) setProducts(pRes.data as any);
+      if (!pRes.error && pRes.data) {
+        setProducts(pRes.data.map((product: any) => ({
+          ...product,
+          variants: [...(product.variants || [])]
+            .filter((variant: any) => variant.is_active !== false)
+            .sort((a: any, b: any) => a.display_order - b.display_order),
+        })) as any);
+      }
 
       const cRes = await supabase
         .from('event_categories')

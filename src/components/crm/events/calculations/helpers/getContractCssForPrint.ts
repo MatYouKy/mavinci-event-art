@@ -1,4 +1,4 @@
-export const getContractCssForPrint = () => `
+const CONTRACT_DOCUMENT_AND_PRINT_CSS = `
 /* ===== BASE: contractA4.css (Twoje, 1:1) ===== */
 .contract-a4-container {
   background: #f5f5f5;
@@ -61,6 +61,10 @@ export const getContractCssForPrint = () => `
 
 .contract-content {
   flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  box-sizing: border-box;
+  padding-bottom: 2mm;
   text-align: justify;
   color: #000;
   font-family: Arial, sans-serif;
@@ -72,9 +76,16 @@ export const getContractCssForPrint = () => `
   word-wrap: break-word;
 }
 
-.contract-content > * {
+.contract-content > :not(style):not(script):not(link):not(meta) {
   display: block;
   white-space: pre-wrap;
+}
+
+.contract-content > style,
+.contract-content > script,
+.contract-content > link,
+.contract-content > meta {
+  display: none !important;
 }
 
 /* inline formatowanie */
@@ -132,17 +143,16 @@ export const getContractCssForPrint = () => `
 .contract-product-clauses h3 { break-after: avoid; page-break-after: avoid; }
 .product-contract-clause {
   margin-bottom: 0.75em;
-  font: inherit;
-  color: inherit;
-  line-height: inherit;
+  font-family: inherit !important;
+  font-size: inherit !important;
+  color: inherit !important;
+  line-height: inherit !important;
 }
-.product-contract-clause p,
-.product-contract-clause li,
-.product-contract-clause blockquote {
-  font-family: inherit;
-  font-size: inherit;
-  color: inherit;
-  line-height: inherit;
+.product-contract-clause * {
+  font-family: inherit !important;
+  font-size: inherit !important;
+  color: inherit !important;
+  line-height: inherit !important;
 }
 .product-contract-clause p { margin: 0 0 0.45em; }
 .contract-paragraph-heading {
@@ -156,6 +166,14 @@ export const getContractCssForPrint = () => `
 }
 .product-contract-clause ol,
 .product-contract-clause ul { margin: 0.35em 0 0.65em; padding-left: 1.6em; }
+.product-contract-clause ol { list-style-type: decimal; }
+.product-contract-clause ul { list-style-type: disc; }
+.product-contract-clause ol ol { list-style-type: lower-alpha; }
+.product-contract-clause ul ul { list-style-type: circle; }
+.product-contract-clause ol[data-clause-marker='lower-alpha'] { list-style-type: lower-alpha; }
+.product-contract-clause ol[data-clause-marker='decimal-paren'] > li::marker { content: counter(list-item) ') '; }
+.product-contract-clause ol[data-clause-marker='lower-alpha-paren'] > li::marker { content: counter(list-item, lower-alpha) ') '; }
+.product-contract-clause ol[data-clause-marker='bullet'] { list-style-type: disc; }
 .product-contract-clause li { margin-bottom: 0.25em; }
 .product-contract-clause blockquote {
   margin: 0.6em 0;
@@ -271,3 +289,12 @@ html, body {
   color: rgba(0,0,0,0.5);
 }
 `;
+
+const PRINT_SECTION_MARKER = '/* ===== PRINT (iframe) ===== */';
+
+/** Bazowe style używane identycznie przez edytor i podgląd umowy. */
+export const getContractDocumentCss = () =>
+  CONTRACT_DOCUMENT_AND_PRINT_CSS.split(PRINT_SECTION_MARKER)[0];
+
+/** Te same style bazowe rozszerzone wyłącznie o reguły wydruku Chromium. */
+export const getContractCssForPrint = () => CONTRACT_DOCUMENT_AND_PRINT_CSS;

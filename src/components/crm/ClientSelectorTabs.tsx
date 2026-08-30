@@ -17,6 +17,7 @@ interface ClientSelectorTabsProps {
   }) => void;
   showEventContactPersons?: boolean;
   initialContact?: Contact;
+  organizationTypeFilter?: string | null;
 }
 
 export interface Contact {
@@ -68,6 +69,7 @@ export default function ClientSelectorTabs({
   onChange,
   showEventContactPersons = false,
   initialContact,
+  organizationTypeFilter = 'client',
 }: ClientSelectorTabsProps) {
   const { showSnackbar } = useSnackbar();
 
@@ -157,6 +159,8 @@ export default function ClientSelectorTabs({
     }
 
     if (initialContact.contact_type === 'contact') {
+      setActiveTab('business');
+      setSelectedBusinessContactId(initialContact.id);
       setNewBusinessContactData({
         first_name: initialContact.first_name || '',
         last_name: initialContact.last_name || '',
@@ -242,12 +246,20 @@ export default function ClientSelectorTabs({
   }, [activeTab, individualContactId, organizationId, selectedBusinessContactId]);
 
   const fetchOrganizations = async () => {
-    const { data } = await supabase
+    let query = supabase
       .from('organizations')
-      .select('id, name, alias')
-      .eq('organization_type', 'client')
-      .order('name');
-    if (data) setOrganizations(data);
+      .select('id, name, alias');
+    if (organizationTypeFilter) {
+      query = query.eq('organization_type', organizationTypeFilter);
+    }
+    const { data } = await query.order('name');
+    if (data) {
+      setOrganizations(data);
+      const selected = data.find((organization) => organization.id === organizationId);
+      if (selected && !organizationSearch) {
+        setOrganizationSearch(selected.alias || selected.name);
+      }
+    }
   };
 
   const fetchIndividualContacts = async () => {
@@ -258,7 +270,14 @@ export default function ClientSelectorTabs({
       .order('full_name');
 
     if (data) {
-      setIndividualContacts((prev) => mergeUniqueById(prev, data as any));
+      const contacts = mergeUniqueById(individualContacts, data as any);
+      setIndividualContacts(contacts);
+      const selected = contacts.find((contact) => contact.id === individualContactId);
+      if (selected && !individualSearch) {
+        setIndividualSearch(
+          `${selected.full_name}${selected.email ? ` (${selected.email})` : ''}`,
+        );
+      }
     }
   };
 
@@ -299,8 +318,13 @@ export default function ClientSelectorTabs({
       contacts[0]?.id ||
       '';
 
-    // ustaw jako wybraną osobę kontaktową (draft)
-    setSelectedBusinessContactId(pickPrimaryId);
+    // Nie nadpisuj osoby zapisanej na ofercie głównym kontaktem organizacji.
+    // Kontakt główny jest wyłącznie wartością domyślną dla nowego wyboru.
+    setSelectedBusinessContactId((currentId) =>
+      currentId && contacts.some((contact) => contact.id === currentId)
+        ? currentId
+        : pickPrimaryId,
+    );
 
     // jeśli pokazujesz listę event_contact_persons, to:
     // - NIE zapisujemy do bazy

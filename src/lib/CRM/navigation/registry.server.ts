@@ -148,6 +148,14 @@ export const allNavigation: NavigationItemDTO[] = [
         module: 'offers',
         permissions: ['offers_view'],
       },
+      {
+        key: 'offers',
+        name: 'Broszury',
+        href: '/crm/brochures',
+        iconKey: 'bookOpen',
+        module: 'offers',
+        permissions: ['offers_view'],
+      },
     ],
   },
   {

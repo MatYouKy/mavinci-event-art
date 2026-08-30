@@ -107,46 +107,43 @@ export function useEventEquipment(eventId: string, event?: EventCore) {
     refetch: refetchAll,
   } = useGetAllEventEquipmentForAvailabilityQuery(eventId, { skip: !eventId });
 
-  // Realtime subscription for instant is_loaded updates from mobile
+  // Każda zmiana listy sprzętu odświeża widok i przelicza współdzielone wymagania.
+  useEffect(() => {
+    if (!eventId) return;
 
-// Realtime subscription for instant is_loaded updates from mobile
-useEffect(() => {
-  if (!eventId) return;
+    const channelName = `event_equipment_${eventId}`;
+    const existing = supabase
+      .getChannels()
+      .find((channel) => channel.topic === `realtime:${channelName}`);
 
-  const channelName = `event_equipment_loaded_${eventId}`;
+    if (existing) {
+      supabase.removeChannel(existing);
+    }
 
-  // zabezpieczenie przed duplikatem kanału
-  const existing = supabase
-    .getChannels()
-    .find((c) => c.topic === `realtime:${channelName}`);
+    const channel = supabase
+      .channel(channelName)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'event_equipment',
+          filter: `event_id=eq.${eventId}`,
+        },
+        () => {
+          void refetch();
+          void refetchAll();
+        },
+      );
 
-  if (existing) {
-    supabase.removeChannel(existing);
-  }
+    channel.subscribe((status) => {
+      console.log('[event_equipment realtime]', status);
+    });
 
-  const channel = supabase
-    .channel(channelName)
-    .on(
-      'postgres_changes',
-      {
-        event: 'UPDATE',
-        schema: 'public',
-        table: 'event_equipment',
-        filter: `event_id=eq.${eventId}`,
-      },
-      () => {
-        refetch();
-      },
-    );
-
-  channel.subscribe((status) => {
-    console.log('[event_equipment realtime]', status);
-  });
-
-  return () => {
-    supabase.removeChannel(channel);
-  };
-}, [eventId, refetch]);
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [eventId, refetch, refetchAll]);
 
   const [addMutation, { isLoading: isAdding }] = useAddEventEquipmentMutation();
   const [updateMutation, { isLoading: isUpdating }] = useUpdateEventEquipmentMutation();
@@ -219,23 +216,53 @@ useEffect(() => {
         };
       }
 
-      // ✅ Dodaj kable do byKey (RPC ich nie zwraca)
-      const { data: cables } = await supabase
-        .from('cables')
-        .select('id, stock_quantity')
-        .eq('is_active', true)
-        .is('deleted_at', null);
+      // Przewody mają osobny model magazynowy. Ich dostępność obejmuje również
+      // przewody znajdujące się w zestawach zarezerwowanych na inne wydarzenia.
+      let cableRows: Array<{
+        cable_id: string;
+        total_quantity: number;
+        reserved_quantity: number;
+        available_quantity: number;
+      }> = [];
 
-      for (const cable of cables || []) {
-        const k = keyOf('cable', cable.id);
+      if (event.event_date) {
+        const fallbackEnd = new Date(event.event_date);
+        fallbackEnd.setDate(fallbackEnd.getDate() + 1);
+        const { data: cableAvailability, error: cableAvailabilityError } = await supabase.rpc(
+          'get_cable_availability_for_event',
+          {
+            p_event_id: event.id,
+            p_start_date: event.event_date,
+            p_end_date: event.event_end_date || fallbackEnd.toISOString(),
+          },
+        );
+        if (cableAvailabilityError) throw cableAvailabilityError;
+        cableRows = (cableAvailability || []) as typeof cableRows;
+      } else {
+        const { data: cables, error: cablesError } = await supabase
+          .from('cables')
+          .select('id, stock_quantity')
+          .eq('is_active', true)
+          .is('deleted_at', null);
+        if (cablesError) throw cablesError;
+        cableRows = (cables || []).map((cable: any) => ({
+          cable_id: cable.id,
+          total_quantity: Number(cable.stock_quantity ?? 0),
+          reserved_quantity: 0,
+          available_quantity: Number(cable.stock_quantity ?? 0),
+        }));
+      }
+
+      for (const cable of cableRows) {
+        const k = keyOf('cable', cable.cable_id);
         const used = Number(usedMap.get(k) ?? 0);
-        const available_in_term = Math.max(0, Number(cable.stock_quantity ?? 0));
+        const available_in_term = Math.max(0, Number(cable.available_quantity ?? 0));
         const max_add = Math.max(0, available_in_term - used);
         const max_set = used + max_add;
 
         byKey[k] = {
-          total_quantity: Number(cable.stock_quantity ?? 0),
-          reserved_quantity: 0,
+          total_quantity: Number(cable.total_quantity ?? 0),
+          reserved_quantity: Number(cable.reserved_quantity ?? 0),
           used_by_this_event: used,
           available_in_term,
           max_add,
@@ -257,6 +284,51 @@ useEffect(() => {
       if (seq !== fetchSeqRef.current) return;
 
       if (!itemsError && allItems) {
+        const scopedCandidates = (allItems as any[]).filter((item) => {
+          const availability = byKey[keyOf('item', item.id)];
+          return Number(item.total_quantity || 0) > 0 && Number(availability?.total_quantity || 0) === 0;
+        });
+
+        if (scopedCandidates.length > 0 && event.event_date) {
+          const fallbackEnd = new Date(event.event_date);
+          fallbackEnd.setDate(fallbackEnd.getDate() + 1);
+          const endDate = event.event_end_date || fallbackEnd.toISOString();
+          const verifyOne = async (item: any) => {
+            const { data, error } = await supabase.rpc(
+              'check_single_equipment_availability_for_event',
+              {
+                p_event_id: event.id,
+                p_equipment_id: item.id,
+                p_start_date: event.event_date,
+                p_end_date: endDate,
+              },
+            );
+            if (error || !data?.[0]) return false;
+            const row = data[0] as any;
+            const key = keyOf('item', item.id);
+            const used = Number(usedMap.get(key) ?? 0);
+            const availableInTerm = Math.max(0, Number(row.available_quantity ?? 0));
+            const maxAdd = Math.max(0, availableInTerm - used);
+            byKey[key] = {
+              total_quantity: Math.max(0, Number(row.total_quantity ?? 0)),
+              reserved_quantity: Math.max(0, Number(row.reserved_quantity ?? 0)),
+              used_by_this_event: used,
+              available_in_term: availableInTerm,
+              max_add: maxAdd,
+              max_set: used + maxAdd,
+            };
+            return true;
+          };
+
+          // Najpierw sprawdź jedną pozycję. Jeżeli migracja nie jest jeszcze wdrożona,
+          // nie wysyłaj serii identycznych, nieudanych wywołań.
+          const firstSucceeded = await verifyOne(scopedCandidates[0]);
+          if (firstSucceeded && scopedCandidates.length > 1) {
+            await Promise.all(scopedCandidates.slice(1).map(verifyOne));
+          }
+        }
+
+        setAvailabilityByKey({ ...byKey });
         const itemsWithAvail = (allItems as any[]).map((it) => {
           const k = keyOf('item', it.id);
           const a = byKey[k];

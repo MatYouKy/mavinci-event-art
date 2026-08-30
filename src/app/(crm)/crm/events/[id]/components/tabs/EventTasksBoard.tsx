@@ -233,19 +233,17 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
             })
             .filter((x): x is { employee: IEmployee } => x !== null);
           setTasks((prevTasks: Array<Task>) => {
-            return prevTasks.map((task: Task) =>
-              task.id === newTask.id
-                ? {
-                    ...task,
-                    ...newTask,
-                    assignees: normalizedAssignees,
-                    currently_working_employee: currently_working_employee
-                      ? normalizeEmployee(currently_working_employee)
-                      : null,
-                    comments_count: count || 0,
-                  }
-                : task,
-            );
+            const hydratedTask = {
+              ...newTask,
+              assignees: normalizedAssignees,
+              currently_working_employee: currently_working_employee
+                ? normalizeEmployee(currently_working_employee)
+                : null,
+              comments_count: count || 0,
+            };
+            return prevTasks.some((task) => task.id === newTask.id)
+              ? prevTasks.map((task) => (task.id === newTask.id ? { ...task, ...hydratedTask } : task))
+              : [hydratedTask, ...prevTasks];
           });
         },
       )

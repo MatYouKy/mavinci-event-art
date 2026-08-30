@@ -28,6 +28,7 @@ export default function AddSystemEmailModal({
   const { employee: currentEmployee } = useCurrentEmployee();
   const [loading, setLoading] = useState(false);
   const [receiveProtocol, setReceiveProtocol] = useState<ReceiveProtocol>('imap');
+  const [companies, setCompanies] = useState<Array<{ id: string; name: string; legal_name: string }>>([]);
 
   const isAdmin = currentEmployee?.permissions?.includes('admin');
 
@@ -36,6 +37,7 @@ export default function AddSystemEmailModal({
     accountName: '',
     department: '',
     description: '',
+    myCompanyId: '',
     fromName: '',
     emailAddress: '',
     smtpHost: '',
@@ -59,6 +61,26 @@ export default function AddSystemEmailModal({
       setFormData((prev) => ({ ...prev, accountType: isAdmin ? 'shared' : 'personal' }));
     }
   }, [employeeId, isAdmin, formData.accountType]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    supabase
+      .from('my_companies')
+      .select('id, name, legal_name')
+      .eq('is_active', true)
+      .order('is_default', { ascending: false })
+      .then(({ data, error }) => {
+        if (error) {
+          console.error('Error fetching companies for email account:', error);
+          return;
+        }
+        setCompanies(data || []);
+        setFormData((prev) => ({
+          ...prev,
+          myCompanyId: prev.myCompanyId || data?.[0]?.id || '',
+        }));
+      });
+  }, [isOpen]);
 
   const handleProtocolChange = (protocol: ReceiveProtocol) => {
     setReceiveProtocol(protocol);
@@ -104,6 +126,7 @@ export default function AddSystemEmailModal({
         account_name: formData.accountName,
         department: formData.accountType === 'shared' ? formData.department : null,
         description: formData.description || null,
+        my_company_id: formData.myCompanyId || null,
         from_name: formData.fromName,
         email_address: formData.emailAddress,
         smtp_host: formData.smtpHost,
@@ -142,6 +165,7 @@ export default function AddSystemEmailModal({
         accountName: '',
         department: '',
         description: '',
+        myCompanyId: companies[0]?.id || '',
         fromName: '',
         emailAddress: '',
         smtpHost: '',
@@ -328,6 +352,27 @@ export default function AddSystemEmailModal({
                     className="w-full rounded-lg border border-[#d3bb73]/30 bg-[#1c1f33] px-4 py-2.5 text-[#e5e4e2] placeholder-[#e5e4e2]/40 focus:border-[#d3bb73] focus:outline-none focus:ring-1 focus:ring-[#d3bb73]"
                     required
                   />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
+                    Firma i stopka nadawcy
+                  </label>
+                  <select
+                    value={formData.myCompanyId}
+                    onChange={(e) => handleInputChange('myCompanyId', e.target.value)}
+                    className="w-full rounded-lg border border-[#d3bb73]/30 bg-[#1c1f33] px-4 py-2.5 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none focus:ring-1 focus:ring-[#d3bb73]"
+                  >
+                    <option value="">Dobierz automatycznie po domenie</option>
+                    {companies.map((company) => (
+                      <option key={company.id} value={company.id}>
+                        {company.name} — {company.legal_name}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-xs text-[#e5e4e2]/50">
+                    Określa dane firmy, logo oraz stopkę używane podczas wysyłania.
+                  </p>
                 </div>
               </div>
             </div>

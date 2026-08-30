@@ -26,6 +26,7 @@ import { IEvent } from '../../../../type';
 import Image from 'next/image';
 import { EditRealizationCompanyModal } from './EditRealizationCompanyModal';
 import { supabase } from '@/lib/supabase/browser';
+import EventBillingContextCard from './EventBillingContextCard';
 
 interface EventsDetailsTabProps {
   hasLimitedAccess: boolean;
@@ -52,6 +53,9 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
   const { updateEvent, refetch } = useEvent();
 
   const [event, setEvent] = useState<IEvent>(initialEvent);
+  const hasEventBillingSchema =
+    Object.prototype.hasOwnProperty.call(initialEvent, 'billing_arrangement') &&
+    Object.prototype.hasOwnProperty.call(initialEvent, 'billing_organization_id');
   const [realizationCompany, setRealizationCompany] = useState<any>(
     () => (initialEvent as any).my_company ?? null,
   );
@@ -492,6 +496,20 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
           currentCompanyId={event.my_company_id}
           onClose={() => setShowEditCompanyModal(false)}
           onSave={handleChangeRealizationCompany}
+        />
+      )}
+      {hasEventBillingSchema && (
+        <EventBillingContextCard
+          eventId={event.id}
+          clientOrganizationId={event.organization_id || null}
+          clientOrganizationName={organization?.alias || organization?.name || null}
+          initialArrangement={event.billing_arrangement || 'direct'}
+          initialBillingOrganizationId={event.billing_organization_id || null}
+          canEdit={canEditEventDetails}
+          onSaved={async (billingContext) => {
+            setEvent((current) => ({ ...current, ...billingContext }));
+            await refetch();
+          }}
         />
       )}
       <EventDestailsDescription

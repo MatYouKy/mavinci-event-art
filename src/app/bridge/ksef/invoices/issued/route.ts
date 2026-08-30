@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 import { getCredentials, supabase } from '@/lib/ksef/db';
+import { createSupabaseServerClient } from '@/lib/supabase/server.app';
 import { getKSeFInvoices, getKSeFInvoiceXml } from '../../client';
 import { parsePaymentData } from '../../parsePaymentData';
 import { parseFA3InvoiceXml } from '../../parseInvoiceXml';
@@ -17,6 +19,42 @@ const normalizeKsefDate = (value: unknown): string | null => {
 
   return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
 };
+
+async function fetchAllIssuedInvoices(
+  accessToken: string,
+  isTestEnvironment: boolean,
+  companyId: string,
+  dateFrom: string,
+  dateTo: string,
+) {
+  const invoices: any[] = [];
+  const seen = new Set<string>();
+  let metadata: any = {};
+
+  for (let pageOffset = 0; pageOffset < 100; pageOffset += 1) {
+    const page = await getKSeFInvoices(
+      { accessToken, subjectType: 'Subject1', dateFrom, dateTo, pageOffset, pageSize: 100, sortOrder: 'Desc' },
+      isTestEnvironment,
+      { stage: 'invoices-issued', companyId, pageOffset },
+    );
+    metadata = page;
+    const pageInvoices = Array.isArray(page?.invoices) ? page.invoices : [];
+    let added = 0;
+    for (const invoice of pageInvoices) {
+      const reference = invoice.ksefNumber || invoice.ksefReferenceNumber || invoice.ksef_reference_number || invoice.referenceNumber;
+      if (reference && seen.has(reference)) continue;
+      if (reference) seen.add(reference);
+      invoices.push(invoice);
+      added += 1;
+    }
+    if (pageOffset === 99 && pageInvoices.length === 100 && page?.hasMore !== false) {
+      throw new Error('Zakres synchronizacji obejmuje ponad 10 000 faktur. Zawęź daty synchronizacji.');
+    }
+    if (pageInvoices.length < 100 || page?.hasMore === false || added === 0) break;
+  }
+
+  return { ...metadata, invoices };
+}
 
 export async function POST(req: Request) {
   try {
@@ -36,9 +74,25 @@ export async function POST(req: Request) {
       );
     }
 
-    if (!dateFrom || !dateTo) {
+    const userClient = createSupabaseServerClient(cookies());
+    const { data: authData } = await userClient.auth.getUser();
+    if (!authData.user) {
+      return NextResponse.json({ success: false, error: 'Wymagane logowanie.' }, { status: 401 });
+    }
+    const { data: canManageCompany, error: permissionError } = await userClient.rpc(
+      'can_manage_invoice_company',
+      { p_company_id: companyId },
+    );
+    if (permissionError || !canManageCompany) {
       return NextResponse.json(
-        { success: false, error: 'Brak dateFrom lub dateTo' },
+        { success: false, error: 'Brak uprawnień do synchronizacji faktur tej spółki.' },
+        { status: 403 },
+      );
+    }
+
+    if (!/^\d{4}-\d{2}-\d{2}/.test(dateFrom) || !/^\d{4}-\d{2}-\d{2}/.test(dateTo) || dateFrom > dateTo) {
+      return NextResponse.json(
+        { success: false, error: 'Nieprawidłowy zakres dat synchronizacji' },
         { status: 400 }
       );
     }
@@ -52,21 +106,12 @@ export async function POST(req: Request) {
       );
     }
 
-    const data = await getKSeFInvoices(
-      {
-        accessToken: credentials.access_token,
-        subjectType: 'Subject1',
-        dateFrom,
-        dateTo,
-        pageOffset: 0,
-        pageSize: 100,
-        sortOrder: 'Desc',
-      },
+    const data = await fetchAllIssuedInvoices(
+      credentials.access_token,
       credentials.is_test_environment,
-      {
-        stage: 'invoices-issued',
-        companyId,
-      }
+      companyId,
+      dateFrom,
+      dateTo,
     );
 
     const invoices = Array.isArray(data?.invoices) ? data.invoices : [];
@@ -95,6 +140,7 @@ export async function POST(req: Request) {
       );
 
       const rows = [];
+      const localLinks: Array<{ invoiceId: string; ksefRef: string }> = [];
 
       for (const inv of invoices) {
         try {
@@ -145,26 +191,13 @@ export async function POST(req: Request) {
                 const { data: localInvoice } = await supabase
                   .from('invoices')
                   .select('id, ksef_reference_number, ksef_status')
+                  .eq('my_company_id', companyId)
                   .eq('invoice_number', invoiceNumber)
+                  .limit(1)
                   .maybeSingle();
       
-                if (
-                  localInvoice &&
-                  !localInvoice.ksef_reference_number
-                ) {
-                  await supabase
-                    .from('invoices')
-                    .update({
-                      ksef_reference_number: ksefRef,
-                      ksef_status: 'accepted',
-                      ksef_error: null,
-                      updated_at: new Date().toISOString(),
-                    })
-                    .eq('id', localInvoice.id);
-      
-                  console.log(
-                    `[KSEF_SYNC] Updated local invoice ${invoiceNumber} with KSeF ref ${ksefRef}`,
-                  );
+                if (localInvoice && !localInvoice.ksef_reference_number) {
+                  localLinks.push({ invoiceId: localInvoice.id, ksefRef });
                 }
               }
             } catch (err) {
@@ -220,18 +253,7 @@ export async function POST(req: Request) {
             null,
           );
       
-          const effectivePaymentDate =
-            paymentDate ||
-            (
-              paymentData.payment_status === 'paid' &&
-              (paymentMethod === '1' || paymentMethod === '2')
-            )
-              ? (
-                  paymentDueDate ||
-                  issueDate ||
-                  new Date().toISOString().split('T')[0]
-                )
-              : null;
+          const effectivePaymentDate = paymentDate;
       
           let vatRate: string | null = null;
       
@@ -259,22 +281,17 @@ export async function POST(req: Request) {
             try {
               const { data: localInvoice } = await supabase
                 .from('invoices')
-                .select('id')
+                .select('id, ksef_reference_number')
+                .eq('my_company_id', companyId)
                 .eq('invoice_number', invoiceNumber)
+                .limit(1)
                 .maybeSingle();
       
               if (localInvoice?.id) {
                 localInvoiceId = localInvoice.id;
-      
-                await supabase
-                  .from('invoices')
-                  .update({
-                    ksef_reference_number: ksefRef,
-                    ksef_status: 'accepted',
-                    ksef_error: null,
-                    updated_at: new Date().toISOString(),
-                  })
-                  .eq('id', localInvoice.id);
+                if (!localInvoice.ksef_reference_number) {
+                  localLinks.push({ invoiceId: localInvoice.id, ksefRef });
+                }
               }
             } catch (err) {
               console.error(
@@ -383,7 +400,7 @@ export async function POST(req: Request) {
       if (rows.length > 0) {
         const { error: insertError } = await supabase
           .from('ksef_invoices')
-          .insert(rows);
+          .upsert(rows, { onConflict: 'ksef_reference_number', ignoreDuplicates: true });
 
         if (insertError) {
           console.error('[KSEF_NEXT] issued invoices insert error', insertError);
@@ -395,6 +412,23 @@ export async function POST(req: Request) {
             },
             { status: 500 }
           );
+        }
+      }
+
+      const uniqueLocalLinks = new Map(
+        localLinks.map((link) => [`${link.invoiceId}|${link.ksefRef}`, link]),
+      );
+      for (const link of Array.from(uniqueLocalLinks.values())) {
+        const { error: linkError } = await supabase.rpc(
+          'reconcile_local_invoice_with_ksef_atomic',
+          {
+            p_invoice_id: link.invoiceId,
+            p_ksef_reference_number: link.ksefRef,
+          },
+        );
+
+        if (linkError) {
+          console.error('[KSEF_SYNC] failed atomically linking a local invoice', linkError);
         }
       }
 

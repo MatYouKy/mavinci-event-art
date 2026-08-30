@@ -11,13 +11,15 @@ interface EquipmentItem {
   brand: string | null;
   thumbnail_url: string | null;
   cable_stock_quantity?: number | null;
+  stock_quantity?: number | null;
+  stock_unit?: 'piece' | 'meter';
   equipment_units?: Array<{ id: string; status: string }>;
   warehouse_categories?:
     | {
         name: string;
       }
     | Array<{ name: string }>;
-  item_type?: 'equipment' | 'kit';
+  item_type?: 'equipment' | 'kit' | 'cable';
   equipment_kit_items?: Array<{
     quantity: number;
     equipment: {
@@ -58,12 +60,21 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
   >('optional');
   const [compatibilityNotes, setCompatibilityNotes] = useState('');
   const [compatibilityGroup, setCompatibilityGroup] = useState('');
+  const [compatibilityQuantity, setCompatibilityQuantity] = useState(1);
+  const [compatibilityQuantityMode, setCompatibilityQuantityMode] = useState<'per_item' | 'fixed'>(
+    'per_item',
+  );
   const [existingGroups, setExistingGroups] = useState<string[]>([]);
-  const [showGroupSuggestions, setShowGroupSuggestions] = useState(false);
+  const [groupSelectionMode, setGroupSelectionMode] = useState<'none' | 'existing' | 'new'>(
+    'none',
+  );
   const [showComponentDetailModal, setShowComponentDetailModal] = useState(false);
   const [selectedComponent, setSelectedComponent] = useState<any>(null);
 
   const getAvailableQuantity = (item: EquipmentItem): number => {
+    if (item.stock_quantity !== undefined && item.stock_quantity !== null) {
+      return Number(item.stock_quantity);
+    }
     if (
       item.cable_stock_quantity !== undefined &&
       item.cable_stock_quantity !== null &&
@@ -93,13 +104,15 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
     if (showCompatibleModal) {
       fetchExistingGroups();
     }
-  }, [showCompatibleModal]);
+  }, [showCompatibleModal, compatibilityType, equipment?.id]);
 
   const fetchExistingGroups = async () => {
     try {
       const { data, error } = await supabase
         .from('equipment_compatible_items')
         .select('compatibility_group')
+        .eq('equipment_id', equipment.id)
+        .eq('compatibility_type', compatibilityType)
         .not('compatibility_group', 'is', null);
 
       if (error) throw error;
@@ -279,6 +292,8 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
         id,
         compatibility_type,
         compatibility_group,
+        quantity,
+        quantity_mode,
         notes,
         display_order,
         compatible_equipment:compatible_equipment_id(
@@ -309,6 +324,7 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
           description,
           thumbnail_url,
           stock_quantity,
+          stock_unit,
           length_meters,
           warehouse_categories(name)
         )
@@ -333,6 +349,8 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
         equipment_id: equipment.id,
         compatibility_type: compatibilityType,
         compatibility_group: compatibilityGroup.trim() || null,
+        quantity: Math.max(1, Number(compatibilityQuantity || 1)),
+        quantity_mode: compatibilityQuantityMode,
         notes: compatibilityNotes || null,
         display_order: compatibleItems.length,
       };
@@ -359,6 +377,9 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
       setCompatibilityNotes('');
       setCompatibilityType('optional');
       setCompatibilityGroup('');
+      setGroupSelectionMode('none');
+      setCompatibilityQuantity(1);
+      setCompatibilityQuantityMode('per_item');
       setSearchQuery('');
       setItemTypeFilter('all');
     } catch (error) {
@@ -819,9 +840,9 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
       <div className="mt-6 border-t border-[#d3bb73]/10 pt-6">
         <div className="mb-4 flex items-center justify-between">
           <div>
-            <h3 className="text-lg font-medium text-[#e5e4e2]">Skład opcjonalny (pasujący)</h3>
+            <h3 className="text-lg font-medium text-[#e5e4e2]">Elementy wymagane i powiązane</h3>
             <p className="mt-1 text-sm text-[#e5e4e2]/60">
-              Opcjonalne komponenty i produkty z magazynu które pasują jako akcesoria
+              Sprzęt, zestawy i przewody wymagane, zalecane lub opcjonalne dla tego produktu
             </p>
           </div>
           {isEditing && (
@@ -975,12 +996,15 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
                         {group.items.map((item: any) => {
                           const compatEquip = item.compatible_equipment;
                           const compatKit = item.compatible_kit;
+                          const compatCable = item.compatible_cable;
                           const isKit = !!compatKit;
-                          const displayItem = isKit ? compatKit : compatEquip;
+                          const isCable = !!compatCable;
+                          const displayItem = compatKit || compatCable || compatEquip;
 
                           if (!displayItem) return null;
 
-                          const availableQty = isKit ? 0 : getAvailableQuantity(compatEquip);
+                          const availableQty = isKit ? 0 : getAvailableQuantity(displayItem);
+                          const unitLabel = isCable && compatCable.stock_unit === 'meter' ? 'm' : 'szt.';
 
                           return (
                             <div
@@ -1020,6 +1044,15 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
                                       ZESTAW
                                     </span>
                                   )}
+                                  {isCable && (
+                                    <span className="rounded bg-purple-500/20 px-2 py-0.5 text-xs text-purple-300">
+                                      PRZEWÓD
+                                    </span>
+                                  )}
+                                  <span className="rounded bg-[#e5e4e2]/10 px-2 py-0.5 text-xs text-[#e5e4e2]/70">
+                                    {item.quantity || 1} {unitLabel}{' '}
+                                    {item.quantity_mode === 'fixed' ? 'łącznie' : 'na sztukę'}
+                                  </span>
                                   {!isKit && (
                                     <span
                                       className={`rounded px-2 py-1 text-xs ${
@@ -1028,7 +1061,7 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
                                           : 'bg-red-500/20 text-red-400'
                                       }`}
                                     >
-                                      {availableQty} szt. dostępne
+                                      {availableQty} {unitLabel} dostępne
                                     </span>
                                   )}
                                 </div>
@@ -1059,12 +1092,15 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
                 return group.items.map((item: any) => {
                   const compatEquip = item.compatible_equipment;
                   const compatKit = item.compatible_kit;
+                  const compatCable = item.compatible_cable;
                   const isKit = !!compatKit;
-                  const displayItem = isKit ? compatKit : compatEquip;
+                  const isCable = !!compatCable;
+                  const displayItem = compatKit || compatCable || compatEquip;
 
                   if (!displayItem) return null;
 
-                  const availableQty = isKit ? 0 : getAvailableQuantity(compatEquip);
+                  const availableQty = isKit ? 0 : getAvailableQuantity(displayItem);
+                  const unitLabel = isCable && compatCable.stock_unit === 'meter' ? 'm' : 'szt.';
                   const typeColors = {
                     required: 'bg-red-500/20 text-red-400',
                     recommended: 'bg-blue-500/20 text-blue-400',
@@ -1115,6 +1151,15 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
                                 ZESTAW
                               </span>
                             )}
+                            {isCable && (
+                              <span className="rounded bg-purple-500/20 px-2 py-0.5 text-xs text-purple-300">
+                                PRZEWÓD
+                              </span>
+                            )}
+                            <span className="rounded bg-[#e5e4e2]/10 px-2 py-0.5 text-xs text-[#e5e4e2]/70">
+                              {item.quantity || 1} {unitLabel}{' '}
+                              {item.quantity_mode === 'fixed' ? 'łącznie' : 'na sztukę'}
+                            </span>
                             <span
                               className={`rounded px-2 py-0.5 text-xs ${typeColors[item.compatibility_type as keyof typeof typeColors]}`}
                             >
@@ -1128,7 +1173,7 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
                                     : 'bg-red-500/20 text-red-400'
                                 }`}
                               >
-                                {availableQty} szt. dostępne
+                                {availableQty} {unitLabel} dostępne
                               </span>
                             )}
                           </div>
@@ -1173,7 +1218,7 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
           <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] py-12 text-center">
             <Package className="mx-auto mb-4 h-16 w-16 text-[#e5e4e2]/20" />
             <p className="text-[#e5e4e2]/60">
-              Brak opcjonalnych komponentów i pasujących produktów
+              Brak wymaganych i powiązanych elementów
             </p>
             <p className="mt-1 text-sm text-[#e5e4e2]/40">
               Zaznacz checkbox &ldquo;Opcjonalny&rdquo; przy dodawaniu komponentu lub dodaj produkty z magazynu
@@ -1195,7 +1240,9 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
                     setCompatibilityNotes('');
                     setCompatibilityType('optional');
                     setCompatibilityGroup('');
-                    setShowGroupSuggestions(false);
+                    setGroupSelectionMode('none');
+                    setCompatibilityQuantity(1);
+                    setCompatibilityQuantityMode('per_item');
                     setItemTypeFilter('all');
                   }}
                   className="rounded-lg p-2 hover:bg-[#e5e4e2]/10"
@@ -1211,7 +1258,12 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
                   </label>
                   <select
                     value={compatibilityType}
-                    onChange={(e) => setCompatibilityType(e.target.value as any)}
+                    onChange={(e) => {
+                      const nextType = e.target.value as 'required' | 'recommended' | 'optional';
+                      setCompatibilityType(nextType);
+                      setCompatibilityGroup('');
+                      setGroupSelectionMode('none');
+                    }}
                     className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] px-4 py-3 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
                   >
                     <option value="optional">Opcjonalny</option>
@@ -1220,61 +1272,97 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
                   </select>
                 </div>
 
-                {compatibilityType === 'required' && (
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div>
+                    <label className="mb-2 block text-sm text-[#e5e4e2]/60">
+                      Wymagana liczba
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={compatibilityQuantity}
+                      onChange={(event) =>
+                        setCompatibilityQuantity(Math.max(1, Number(event.target.value || 1)))
+                      }
+                      className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] px-4 py-3 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-sm text-[#e5e4e2]/60">
+                      Sposób przeliczania
+                    </label>
+                    <select
+                      value={compatibilityQuantityMode}
+                      onChange={(event) =>
+                        setCompatibilityQuantityMode(event.target.value as 'per_item' | 'fixed')
+                      }
+                      className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] px-4 py-3 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
+                    >
+                      <option value="per_item">Na każdą sztukę sprzętu</option>
+                      <option value="fixed">Stała liczba dla całego eventu</option>
+                    </select>
+                  </div>
+                </div>
+
+                {compatibilityType !== 'optional' && (
                   <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 p-4">
                     <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
-                      Grupa alternatywnych komponentów
+                      Sposób spełnienia {compatibilityType === 'required' ? 'wymagania' : 'zalecenia'}
                     </label>
                     <p className="mb-3 text-xs text-[#e5e4e2]/60">
-                      Jeśli ten komponent jest JEDNYM Z alternatyw (np. jeden z kilku wzmacniaczy), podaj nazwę grupy. Komponenty z tą samą nazwą grupy będą alternatywami - użytkownik wybierze JEDEN z nich.
+                      Bez grupy każda pozycja jest liczona osobno. Pozycje w tej samej grupie są
+                      alternatywami — wystarczy wybrać jedną z nich.
                     </p>
-                    <div className="relative">
+                    <select
+                      value={
+                        groupSelectionMode === 'none'
+                          ? '__none__'
+                          : groupSelectionMode === 'new'
+                            ? '__new__'
+                            : compatibilityGroup
+                      }
+                      onChange={(event) => {
+                        if (event.target.value === '__none__') {
+                          setGroupSelectionMode('none');
+                          setCompatibilityGroup('');
+                          return;
+                        }
+                        if (event.target.value === '__new__') {
+                          setGroupSelectionMode('new');
+                          setCompatibilityGroup('');
+                          return;
+                        }
+                        setGroupSelectionMode('existing');
+                        setCompatibilityGroup(event.target.value);
+                      }}
+                      className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] px-4 py-3 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
+                    >
+                      <option value="__none__">Osobne — ten komponent musi być dodany niezależnie</option>
+                      {existingGroups.map((group) => (
+                        <option key={group} value={group}>
+                          Grupa „{group}” — jedna z alternatyw
+                        </option>
+                      ))}
+                      <option value="__new__">+ Utwórz nową grupę alternatyw</option>
+                    </select>
+
+                    {groupSelectionMode === 'new' && (
                       <input
                         type="text"
                         value={compatibilityGroup}
-                        onChange={(e) => {
-                          setCompatibilityGroup(e.target.value);
-                          setShowGroupSuggestions(e.target.value.length > 0 && existingGroups.length > 0);
-                        }}
-                        onFocus={() => setShowGroupSuggestions(compatibilityGroup.length > 0 && existingGroups.length > 0)}
-                        onBlur={() => setTimeout(() => setShowGroupSuggestions(false), 200)}
-                        placeholder="np. wzmacniacz, kable, głośniki (opcjonalne)"
-                        className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] px-4 py-3 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
+                        onChange={(event) => setCompatibilityGroup(event.target.value)}
+                        placeholder="Nazwa nowej grupy, np. procesor albo rama"
+                        className="mt-3 w-full rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] px-4 py-3 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
+                        autoFocus
                       />
-                      {showGroupSuggestions && (
-                        <div className="absolute z-10 mt-1 max-h-48 w-full overflow-y-auto rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] shadow-lg">
-                          <div className="p-2 text-xs text-[#e5e4e2]/50">
-                            Istniejące grupy (kliknij aby użyć):
-                          </div>
-                          {existingGroups
-                            .filter((group) =>
-                              group.toLowerCase().includes(compatibilityGroup.toLowerCase())
-                            )
-                            .map((group) => (
-                              <button
-                                key={group}
-                                type="button"
-                                onClick={() => {
-                                  setCompatibilityGroup(group);
-                                  setShowGroupSuggestions(false);
-                                }}
-                                className="w-full px-4 py-2 text-left text-sm text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/10"
-                              >
-                                {group}
-                              </button>
-                            ))}
-                          {existingGroups.filter((group) =>
-                            group.toLowerCase().includes(compatibilityGroup.toLowerCase())
-                          ).length === 0 && (
-                            <div className="px-4 py-2 text-sm text-[#e5e4e2]/50">
-                              Brak pasujących grup
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
+                    )}
                     <p className="mt-2 text-xs italic text-[#e5e4e2]/50">
-                      Puste = komponent zawsze wymagany. Podana wartość = użytkownik wybierze jeden z grupy.
+                      {groupSelectionMode === 'none'
+                        ? 'Ta pozycja pozostanie samodzielnym wymaganiem.'
+                        : compatibilityGroup.trim()
+                          ? `Pozycja trafi do grupy „${compatibilityGroup.trim()}”.`
+                          : 'Wpisz nazwę nowej grupy przed wybraniem produktu.'}
                     </p>
                   </div>
                 )}
@@ -1366,22 +1454,31 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   {filteredEquipment.map((item) => {
                     const isKit = item.item_type === 'kit';
+                    const isCable = item.item_type === 'cable';
                     const availableQty = getAvailableQuantity(item);
                     const alreadyAdded = compatibleItems.some((ci: any) => {
                       if (isKit) {
                         return ci.compatible_kit?.id === item.id;
-                      } else {
-                        return ci.compatible_equipment?.id === item.id;
                       }
+                      if (isCable) return ci.compatible_cable?.id === item.id;
+                      return ci.compatible_equipment?.id === item.id;
                     });
 
                     return (
                       <button
                         key={item.id}
-                        onClick={() => handleAddCompatible(item.id, isKit ? 'kit' : 'equipment')}
-                        disabled={alreadyAdded}
+                        onClick={() =>
+                          handleAddCompatible(item.id, isKit ? 'kit' : isCable ? 'cable' : 'equipment')
+                        }
+                        disabled={
+                          alreadyAdded ||
+                          (groupSelectionMode === 'new' && !compatibilityGroup.trim())
+                        }
                         className={`rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-4 text-left transition-colors hover:border-[#d3bb73]/30 ${
-                          alreadyAdded ? 'cursor-not-allowed opacity-50' : ''
+                          alreadyAdded ||
+                          (groupSelectionMode === 'new' && !compatibilityGroup.trim())
+                            ? 'cursor-not-allowed opacity-50'
+                            : ''
                         }`}
                       >
                         <div className="flex gap-4">

@@ -327,47 +327,6 @@ export default function CRMDashboard({
         </div>
       </div>
 
-      {widgetEnabled('kpi-overview') && statCards.length > 0 && (
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
-          {statCards.map((stat) => {
-            const trend = 'trendKey' in stat && stat.trendKey ? getTrend(stat.trendKey) : null;
-            return (
-              <Link
-                key={stat.name}
-                href={stat.href}
-                className="group rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-5 transition-all duration-200 hover:border-[#d3bb73]/30"
-              >
-                <div className="mb-4 flex items-center justify-between">
-                  <div className={`${stat.bgColor} rounded-lg p-3`}>
-                    <stat.icon className={`h-6 w-6 ${stat.color}`} />
-                  </div>
-                  {trend !== null && (
-                    <span className={`rounded-full px-2 py-1 text-xs ${trend >= 0 ? 'bg-emerald-400/10 text-emerald-400' : 'bg-red-400/10 text-red-400'}`}>
-                      {trend > 0 ? '+' : ''}{trend}%
-                    </span>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <p className="text-sm font-light text-[#e5e4e2]/60">{stat.name}</p>
-                  <div className="flex items-baseline gap-2">
-                    <p className="text-3xl font-light text-[#e5e4e2]">
-                      {'displayValue' in stat ? stat.displayValue : stat.value}
-                    </p>
-                    {'total' in stat && stat.total && <span className="text-sm text-[#e5e4e2]/40">/ {stat.total}</span>}
-                  </div>
-                  {'helper' in stat && stat.helper && (
-                    <p className="text-xs text-[#e5e4e2]/40">{stat.helper}</p>
-                  )}
-                  {trend !== null && (
-                    <p className="text-[11px] text-[#e5e4e2]/35">względem poprzedniego miesiąca</p>
-                  )}
-                </div>
-              </Link>
-            );
-          })}
-        </div>
-      )}
-
       {(widgetEnabled('sales-trends') || widgetEnabled('sales-funnel')) && (
         <div className="grid gap-6 lg:grid-cols-3">
           {widgetEnabled('sales-trends') && (
@@ -492,6 +451,51 @@ export default function CRMDashboard({
         )}
         </div>
       </div>
+      )}
+
+      {widgetEnabled('kpi-overview') && statCards.length > 0 && (
+        <details className="group rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33]/60">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 text-sm text-[#e5e4e2]/65 transition-colors hover:text-[#e5e4e2] [&::-webkit-details-marker]:hidden">
+            <span>
+              Pozostałe wskaźniki
+              <span className="ml-2 text-xs text-[#e5e4e2]/35">liczniki pomocnicze i dane referencyjne</span>
+            </span>
+            <span className="text-xs text-[#d3bb73] group-open:hidden">Rozwiń</span>
+            <span className="hidden text-xs text-[#d3bb73] group-open:inline">Zwiń</span>
+          </summary>
+          <div className="grid grid-cols-2 gap-px border-t border-[#d3bb73]/10 bg-[#d3bb73]/10 sm:grid-cols-3 lg:grid-cols-5">
+            {statCards.map((stat) => {
+              const trend = 'trendKey' in stat && stat.trendKey ? getTrend(stat.trendKey) : null;
+              return (
+                <Link
+                  key={stat.name}
+                  href={stat.href}
+                  className="group/card min-w-0 bg-[#151829] px-4 py-3 transition-colors hover:bg-[#1c1f33]"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <div className={`${stat.bgColor} shrink-0 rounded-md p-1.5`}>
+                        <stat.icon className={`h-4 w-4 ${stat.color}`} />
+                      </div>
+                      <p className="truncate text-xs text-[#e5e4e2]/50">{stat.name}</p>
+                    </div>
+                    {trend !== null && (
+                      <span className={`shrink-0 text-[10px] ${trend >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {trend > 0 ? '+' : ''}{trend}%
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-2 flex items-baseline gap-1.5">
+                    <p className="truncate text-lg font-medium text-[#e5e4e2]">
+                      {'displayValue' in stat ? stat.displayValue : stat.value}
+                    </p>
+                    {'total' in stat && stat.total && <span className="text-[11px] text-[#e5e4e2]/35">/ {stat.total}</span>}
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        </details>
       )}
     </div>
   );

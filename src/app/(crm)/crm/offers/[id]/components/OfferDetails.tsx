@@ -1,11 +1,10 @@
 import React from 'react';
 import { getOfferStatusBadgeProps } from '../../helpers/statusColors';
+import { getOfferTotals } from '@/lib/CRM/Offers/offerTotals';
 
 export const OfferDetails = ({ offer }: { offer: any }) => {
   const badge = getOfferStatusBadgeProps(offer.status);
-  const netto = Number(offer.subtotal || offer.total_amount || 0);
-  const vat = Number(offer.tax_amount || 0);
-  const brutto = netto + vat;
+  const totals = getOfferTotals(offer);
 
   return (
     <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
@@ -23,17 +22,29 @@ export const OfferDetails = ({ offer }: { offer: any }) => {
       <div className="mb-4 rounded-lg border border-[#d3bb73]/10 bg-[#0a0d1a] p-4">
         <p className="mb-2 text-sm text-[#e5e4e2]/60">Podsumowanie</p>
         <div className="space-y-1.5 text-sm">
+          {totals.discountAmount > 0 && (
+            <>
+              <div className="flex items-center justify-between">
+                <span className="text-[#e5e4e2]/60">Wartość pozycji</span>
+                <span className="text-[#e5e4e2]">{totals.listNet.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} PLN</span>
+              </div>
+              <div className="flex items-center justify-between text-green-400">
+                <span>Rabat {totals.discountPercent.toFixed(2)}%</span>
+                <span>−{totals.discountAmount.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} PLN</span>
+              </div>
+            </>
+          )}
           <div className="flex items-center justify-between">
             <span className="text-[#e5e4e2]/60">Netto</span>
-            <span className="text-[#e5e4e2]">{netto.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} PLN</span>
+            <span className="text-[#e5e4e2]">{totals.net.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} PLN</span>
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-[#e5e4e2]/60">VAT ({offer.tax_percent ?? 23}%)</span>
-            <span className="text-[#e5e4e2]/80">{vat.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} PLN</span>
+            <span className="text-[#e5e4e2]/60">VAT ({totals.taxPercent}%)</span>
+            <span className="text-[#e5e4e2]/80">{totals.taxAmount.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} PLN</span>
           </div>
           <div className="flex items-center justify-between border-t border-[#d3bb73]/10 pt-1.5">
             <span className="font-medium text-[#e5e4e2]">Brutto</span>
-            <span className="font-medium text-[#d3bb73]">{brutto.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} PLN</span>
+            <span className="font-medium text-[#d3bb73]">{totals.gross.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} PLN</span>
           </div>
         </div>
       </div>

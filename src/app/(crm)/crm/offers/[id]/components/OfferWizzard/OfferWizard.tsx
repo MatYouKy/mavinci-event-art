@@ -63,6 +63,9 @@ export default function OfferWizard({
     step,
     loading,
     initialStep,
+    pricing,
+    targetNetPriceInput,
+    setTargetNetPriceInput,
     catalog: {
       filteredProducts,
       categories,
@@ -124,7 +127,7 @@ export default function OfferWizard({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/50 p-4">
-      <div className="flex max-h-[90vh] w-full max-w-6xl flex-col rounded-xl border border-[#d3bb73]/20 bg-[#0f1119]">
+      <div className="flex h-[90vh] max-h-[90vh] w-full max-w-[1500px] flex-col rounded-xl border border-[#d3bb73]/20 bg-[#0f1119]">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-[#d3bb73]/20 p-6">
           <div>
@@ -200,7 +203,11 @@ export default function OfferWizard({
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6">
+        <div
+          className={`min-h-0 flex-1 p-6 ${
+            step === 3 ? 'overflow-hidden' : 'overflow-y-auto'
+          }`}
+        >
           {/* Step 1: Wybór klienta */}
 
           {step === 1 && (
@@ -226,6 +233,7 @@ export default function OfferWizard({
           {step === 3 && (
             <OfferStep3
               offerItems={offerItems}
+              products={products}
               searchQuery={searchQuery}
               setSearchQuery={setSearchQuery}
               selectedCategory={selectedCategory}
@@ -233,6 +241,7 @@ export default function OfferWizard({
               categories={categories}
               filteredProducts={filteredProducts}
               addProductToOffer={addProductToOffer}
+              updateOfferItem={updateOfferItem}
               removeOfferItem={removeOfferItem}
             />
           )}
@@ -254,6 +263,9 @@ export default function OfferWizard({
               calculateTotal={calculateTotal}
               customItem={customItem}
               offerItems={offerItems}
+              pricing={pricing}
+              targetNetPriceInput={targetNetPriceInput}
+              setTargetNetPriceInput={setTargetNetPriceInput}
               setCustomItem={(item: CustomItem) => setCustomItem(item as IOfferWizardCustomItem)}
             />
           )}

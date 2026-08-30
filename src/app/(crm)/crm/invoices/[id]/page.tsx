@@ -19,6 +19,7 @@ import {
   FileDown,
   Loader,
   RefreshCw,
+  Eye,
 } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import SendInvoiceEmailModal from '@/components/crm/SendInvoiceEmailModal';
@@ -45,7 +46,7 @@ interface Invoice {
   invoice_number: string;
   invoice_type: string;
   status: string;
-  payment_status: 'unpaid' | 'partial' | 'paid' | null;
+  payment_status: 'unpaid' | 'partially_paid' | 'paid' | 'overdue' | 'refund_due' | 'partially_refunded' | 'refunded' | null;
   paid_amount: number | null;
   paid_at: string | null;
   issue_date: string;
@@ -66,11 +67,15 @@ interface Invoice {
   total_net: number;
   total_vat: number;
   total_gross: number;
+  currency_code: string;
   issue_place: string;
   pdf_url: string | null;
   pdf_generated_at: string | null;
   event_id: string | null;
   organization_id: string | null;
+  billing_arrangement: 'direct' | 'hotel' | 'agency' | 'other';
+  service_recipient_organization_id: string | null;
+  service_recipient_contact_id: string | null;
   buyer_contact_id: string | null;
   related_invoice_id: string | null;
   is_proforma: boolean;
@@ -111,6 +116,12 @@ interface RelatedData {
     contact_person_id?: string | null;
   } | null;
   organization?: { id: string; name: string; nip: string; email?: string } | null;
+  serviceRecipientOrganization?: {
+    id: string;
+    name: string;
+    nip: string;
+    email?: string;
+  } | null;
   primaryContact?: { id: string; name: string; email?: string | null } | null;
   relatedInvoice?: {
     id: string;
@@ -134,6 +145,8 @@ export interface InvoiceItem {
   quantity: number;
   price_net: number;
   vat_rate: number;
+  vat_code?: '23' | '8' | '5' | '0' | '0 KR' | '0 WDT' | '0 EX' | 'zw' | 'np' | 'np I' | 'np II' | 'oo';
+  vat_exemption_reason?: string | null;
   value_net: number;
   vat_amount: number;
   value_gross: number;
@@ -226,6 +239,20 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
           );
         }
 
+        const hasSeparateServiceRecipient =
+          invoiceRes.data.service_recipient_organization_id &&
+          invoiceRes.data.service_recipient_organization_id !== invoiceRes.data.organization_id;
+
+        if (hasSeparateServiceRecipient) {
+          promises.push(
+            supabase
+              .from('organizations')
+              .select('id, name, nip, email')
+              .eq('id', invoiceRes.data.service_recipient_organization_id)
+              .maybeSingle(),
+          );
+        }
+
         if (invoiceRes.data.related_invoice_id) {
           promises.push(
             supabase
@@ -243,18 +270,25 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
         const related: RelatedData = {};
         let resultIndex = 0;
 
-        if (invoiceRes.data.event_id && results[resultIndex]?.data) {
-          related.event = results[resultIndex].data;
+        if (invoiceRes.data.event_id) {
+          if (results[resultIndex]?.data) related.event = results[resultIndex].data;
           resultIndex++;
         }
 
-        if (invoiceRes.data.organization_id && results[resultIndex]?.data) {
-          related.organization = results[resultIndex].data;
+        if (invoiceRes.data.organization_id) {
+          if (results[resultIndex]?.data) related.organization = results[resultIndex].data;
           resultIndex++;
         }
 
-        if (invoiceRes.data.related_invoice_id && results[resultIndex]?.data) {
-          related.relatedInvoice = results[resultIndex].data;
+        if (hasSeparateServiceRecipient) {
+          if (results[resultIndex]?.data) {
+            related.serviceRecipientOrganization = results[resultIndex].data;
+          }
+          resultIndex++;
+        }
+
+        if (invoiceRes.data.related_invoice_id) {
+          if (results[resultIndex]?.data) related.relatedInvoice = results[resultIndex].data;
           resultIndex++;
         }
 
@@ -405,18 +439,25 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
   }, [invoice, relatedData.relatedInvoices]);
 
   const handleGeneratePDF = async () => {
-    if (!invoice) return;
+    if (!invoice || generating) return;
 
     setGenerating(true);
 
     try {
       const resolvedEventId = invoice.event_id || relatedData.relatedInvoice?.event_id || null;
 
-      const { data: freshItems } = await supabase
-        .from('invoice_items')
-        .select('*')
-        .eq('invoice_id', invoice.id)
-        .order('position_number', { ascending: true });
+      const [{ data: freshItems }, { data: freshOrderItems }] = await Promise.all([
+        supabase
+          .from('invoice_items')
+          .select('*')
+          .eq('invoice_id', invoice.id)
+          .order('position_number', { ascending: true }),
+        supabase
+          .from('invoice_order_items')
+          .select('*')
+          .eq('invoice_id', invoice.id)
+          .order('position_number', { ascending: true }),
+      ]);
 
       const pdfItems = freshItems || items;
 
@@ -433,11 +474,13 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
           ? Number(finalSettlementData.settlementSummary.remainingGross ?? 0)
           : Number(invoice.total_gross ?? 0);
 
-      const normalizedPaymentStatus: 'unpaid' | 'partial' | 'paid' =
+      const normalizedPaymentStatus: NonNullable<Invoice['payment_status']> =
         invoice.payment_status || (invoice.status === 'paid' ? 'paid' : 'unpaid');
 
       const normalizedPaidAmount =
-        normalizedPaymentStatus === 'paid' ? pdfAmountToPay : Number(invoice.paid_amount ?? 0);
+        normalizedPaymentStatus === 'paid' || normalizedPaymentStatus === 'refunded'
+          ? Math.abs(pdfAmountToPay)
+          : Number(invoice.paid_amount ?? 0);
 
       const html = buildInvoicePdfHtml({
         paymentStatus: normalizedPaymentStatus,
@@ -473,6 +516,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
         totalNet: invoice.total_net,
         totalVat: invoice.total_vat,
         totalGross: invoice.total_gross,
+        currencyCode: invoice.currency_code || 'PLN',
         companyLogoUrl: invoice.company_logo_url
           ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/company-logos/${invoice.company_logo_url}`
           : null,
@@ -486,12 +530,27 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
           quantity: item.quantity,
           priceNet: item.price_net,
           vatRate: item.vat_rate,
+          vatCode: item.vat_code,
+          vatExemptionReason: item.vat_exemption_reason,
           valueNet: item.value_net,
           vatAmount: item.vat_amount,
           valueGross: item.value_gross,
         })),
         invoice_items: (freshItems || invoice.invoice_items || []) as InvoiceItem[],
-        isProforma: false,
+        orderItems: (freshOrderItems || []).map((item) => ({
+          positionNumber: item.position_number,
+          name: item.name,
+          unit: item.unit,
+          quantity: Number(item.quantity),
+          priceNet: Number(item.price_net),
+          vatRate: Number(item.vat_rate),
+          vatCode: item.vat_code,
+          vatExemptionReason: item.vat_exemption_reason,
+          valueNet: Number(item.value_net),
+          vatAmount: Number(item.vat_amount),
+          valueGross: Number(item.value_gross),
+        })),
+        isProforma: invoice.invoice_type === 'proforma' || invoice.is_proforma,
         settledInvoices: invoice.settled_invoices ?? finalSettlementData.settledInvoices,
         settlementSummary: invoice.settlement_summary ?? finalSettlementData.settlementSummary,
       });
@@ -610,6 +669,45 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
     }
   };
 
+  const handlePreviewPDF = async () => {
+    if (!pdfPath && !lastBase64) {
+      showSnackbar('Najpierw wygeneruj PDF', 'warning');
+      return;
+    }
+
+    const previewWindow = window.open('', '_blank');
+    if (!previewWindow) {
+      showSnackbar('Przeglądarka zablokowała nowe okno podglądu', 'warning');
+      return;
+    }
+    previewWindow.opener = null;
+
+    try {
+      if (lastBase64) {
+        const byteChars = atob(lastBase64);
+        const byteNumbers = new Array(byteChars.length);
+        for (let i = 0; i < byteChars.length; i++) byteNumbers[i] = byteChars.charCodeAt(i);
+        const blob = new Blob([new Uint8Array(byteNumbers)], { type: 'application/pdf' });
+        const blobUrl = window.URL.createObjectURL(blob);
+        previewWindow.location.href = blobUrl;
+        setTimeout(() => window.URL.revokeObjectURL(blobUrl), 60_000);
+        return;
+      }
+
+      const url = await getSignedUrl(pdfPath!);
+      if (!url) {
+        previewWindow.close();
+        showSnackbar('Nie można otworzyć PDF. Wygeneruj dokument ponownie.', 'error');
+        return;
+      }
+      previewWindow.location.href = url;
+    } catch (err) {
+      previewWindow.close();
+      console.error('Error previewing PDF:', err);
+      showSnackbar('Błąd podczas otwierania podglądu PDF', 'error');
+    }
+  };
+
   const handlePrintPDF = async () => {
     if (lastBase64) {
       const byteChars = atob(lastBase64);
@@ -663,12 +761,12 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
 
     if (safeStatus === 'paid') {
       updateData.payment_status = 'paid';
-      updateData.paid_amount = Number(invoice.total_gross ?? 0);
+      updateData.paid_amount = Math.abs(Number(invoice.total_gross ?? 0));
       updateData.paid_at = new Date().toISOString();
       updateData.payment_due_date = new Date().toISOString().split('T')[0];
     }
 
-    if (safeStatus !== 'paid' && invoice.payment_status === 'paid') {
+    if (safeStatus !== 'paid' && ['paid', 'refunded'].includes(invoice.payment_status || '')) {
       updateData.payment_status = 'unpaid';
       updateData.paid_amount = 0;
       updateData.paid_at = null;
@@ -679,29 +777,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
 
       if (error) throw error;
 
-      // When a regular/final/corrective invoice is marked as paid, set event to 'settled'
-      if (
-        safeStatus === 'paid' &&
-        invoice.event_id &&
-        !invoice.is_proforma &&
-        invoice.invoice_type !== 'proforma' &&
-        (invoice.invoice_type === 'vat' || invoice.invoice_type === 'corrective')
-      ) {
-        const { error: eventError } = await supabase
-          .from('events')
-          .update({
-            status: 'settled',
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', invoice.event_id)
-          .not('status', 'in', '("settled","cancelled")');
-
-        if (eventError) {
-          console.warn('Error syncing event to settled:', eventError);
-        }
-      }
-
-      setInvoice((prev) => (prev ? { ...prev, ...updateData } : null));
+      await fetchInvoice();
       showSnackbar('Status faktury został zmieniony', 'success');
     } catch (err) {
       console.error('Error updating status:', err);
@@ -760,6 +836,12 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
           variant: 'default',
         },
         {
+          label: 'Podgląd PDF',
+          icon: <Eye className="h-4 w-4" />,
+          onClick: handlePreviewPDF,
+          variant: 'default',
+        },
+        {
           label: 'Pobierz PDF',
           icon: <Download className="h-4 w-4" />,
           onClick: handleDownloadPDF,
@@ -783,18 +865,24 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
       });
     }
 
+    const normalizedKsefStatus = invoice?.ksef_status?.trim().toLowerCase() || '';
+    const ksefSubmissionInProgressOrFinished =
+      ['pending', 'sent', 'accepted'].includes(normalizedKsefStatus) ||
+      Boolean(invoice?.ksef_reference_number);
     const canSendToKSeF =
       !invoice?.is_proforma &&
+      invoice?.invoice_type !== 'proforma' &&
       invoice?.status !== 'cancelled' &&
       !invoice?.buyer_is_private_person &&
-      (!invoice?.ksef_status || invoice.ksef_status === 'rejected');
+      !ksefSubmissionInProgressOrFinished;
 
     if (canSendToKSeF) {
       nextActions.push({
-        label: 'Wyslij do KSeF',
+        label: normalizedKsefStatus === 'rejected' ? 'Wyślij ponownie do KSeF' : 'Wyślij do KSeF',
         icon: <Send className="h-4 w-4" />,
         onClick: handleSendToKSeF,
         variant: 'primary',
+        pin: true,
       });
     }
 
@@ -916,15 +1004,17 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
   //   return `${number > 0 ? '+' : ''}${number}`;
   // };
   const paidAmount = Number(invoice.paid_amount ?? 0);
+  const isRefund = invoice.invoice_type === 'corrective' && Number(invoice.total_gross ?? 0) < 0;
+  const paymentBaseAmount = isRefund ? Math.abs(previewAmountToPay) : previewAmountToPay;
 
   const amountToDisplay =
-    paymentStatus === 'paid'
+    paymentStatus === 'paid' || paymentStatus === 'refunded'
       ? paidAmount > 0
         ? paidAmount
-        : previewAmountToPay
-      : paymentStatus === 'partial'
-        ? Math.max(previewAmountToPay - paidAmount, 0)
-        : previewAmountToPay;
+        : paymentBaseAmount
+      : paymentStatus === 'partially_paid' || paymentStatus === 'partially_refunded'
+        ? Math.max(paymentBaseAmount - paidAmount, 0)
+        : paymentBaseAmount;
 
   return (
     <PermissionGuard module="invoices">
@@ -994,6 +1084,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
 
           {(relatedData.event ||
             relatedData.organization ||
+            relatedData.serviceRecipientOrganization ||
             relatedData.relatedInvoice ||
             (relatedData.relatedInvoices && relatedData.relatedInvoices.length > 0)) && (
             <div className="mb-6 overflow-hidden rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33]">
@@ -1011,6 +1102,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
                       [
                         relatedData.event,
                         relatedData.organization,
+                        relatedData.serviceRecipientOrganization,
                         relatedData.relatedInvoice,
                         ...(relatedData.relatedInvoices ?? []),
                       ].filter(Boolean).length
@@ -1054,7 +1146,9 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
                         <Building2 className="h-4 w-4 shrink-0 text-[#d3bb73]" />
                         <div className="min-w-0">
                           <div className="text-[11px] uppercase tracking-wide text-[#e5e4e2]/40">
-                            Organizacja
+                            {invoice.billing_arrangement === 'direct'
+                              ? 'Organizacja'
+                              : 'Nabywca i płatnik faktury'}
                           </div>
                           <div className="truncate text-sm font-medium text-[#e5e4e2]">
                             {relatedData.organization.name}
@@ -1064,6 +1158,35 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
                               NIP: {relatedData.organization.nip}
                             </div>
                           )}
+                        </div>
+                      </button>
+                    )}
+
+                    {relatedData.serviceRecipientOrganization && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          router.push(
+                            `/crm/contacts/${relatedData.serviceRecipientOrganization!.id}`,
+                          )
+                        }
+                        className="flex items-center gap-3 rounded-lg border border-sky-400/20 bg-sky-400/5 p-3 text-left transition-colors hover:border-sky-400/40"
+                      >
+                        <Building2 className="h-4 w-4 shrink-0 text-sky-300" />
+                        <div className="min-w-0">
+                          <div className="text-[11px] uppercase tracking-wide text-sky-200/60">
+                            Klient wydarzenia
+                          </div>
+                          <div className="truncate text-sm font-medium text-[#e5e4e2]">
+                            {relatedData.serviceRecipientOrganization.name}
+                          </div>
+                          <div className="text-xs text-[#e5e4e2]/50">
+                            {invoice.billing_arrangement === 'hotel'
+                              ? 'Płatność realizowana przez hotel'
+                              : invoice.billing_arrangement === 'agency'
+                                ? 'Płatność realizowana przez agencję'
+                                : 'Płatność realizowana przez inną organizację'}
+                          </div>
                         </div>
                       </button>
                     )}
@@ -1745,10 +1868,16 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
                 </div>
                 <div className="mb-2">
                   <span className="text-gray-600">Status płatności:</span>{' '}
-                  {paymentStatus === 'paid'
+                  {paymentStatus === 'refunded'
+                    ? `Zwrot wykonany${invoice.paid_at ? ` (${new Date(invoice.paid_at).toLocaleDateString('pl-PL')})` : ''}`
+                    : paymentStatus === 'partially_refunded'
+                      ? `Częściowo zwrócono: ${paidAmount.toFixed(2)} ${invoice.currency_code || 'PLN'}`
+                      : paymentStatus === 'refund_due'
+                        ? 'Do zwrotu nabywcy'
+                  : paymentStatus === 'paid'
                     ? `Zapłacono${invoice.paid_at ? ` (${new Date(invoice.paid_at).toLocaleDateString('pl-PL')})` : ''}`
-                    : paymentStatus === 'partial'
-                      ? `Częściowo zapłacono: ${paidAmount.toFixed(2)} PLN`
+                    : paymentStatus === 'partially_paid'
+                      ? `Częściowo zapłacono: ${paidAmount.toFixed(2)} ${invoice.currency_code || 'PLN'}`
                       : 'Do zapłaty'}
                 </div>
                 <div>
@@ -1764,14 +1893,22 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
                 <div className="mb-2">
                   <span className="text-gray-600">
                     {invoice.invoice_type === 'corrective'
-                      ? 'Kwota korekty:'
+                      ? isRefund
+                        ? paymentStatus === 'refunded'
+                          ? 'Zwrócono:'
+                          : paymentStatus === 'partially_refunded'
+                            ? 'Pozostało do zwrotu:'
+                            : 'Do zwrotu:'
+                        : 'Kwota korekty:'
                       : paymentStatus === 'paid'
                         ? 'Zapłacono:'
-                        : paymentStatus === 'partial'
+                        : paymentStatus === 'partially_paid'
                           ? 'Pozostało do zapłaty:'
                           : 'Do zapłaty:'}
                   </span>{' '}
-                  <span className="text-base font-bold">{amountToDisplay.toFixed(2)} PLN</span>
+                  <span className="text-base font-bold">
+                    {amountToDisplay.toFixed(2)} {invoice.currency_code || 'PLN'}
+                  </span>
                 </div>
               </div>
             </div>
@@ -1850,21 +1987,53 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
               position: absolute;
               left: 0;
               top: 0;
-              width: 210mm;
-              height: 297mm;
+              width: 100%;
+              min-height: calc(297mm - 27mm);
               margin: 0;
-              padding: 20mm;
+              padding: 0;
               background: white;
               box-shadow: none;
               border-radius: 0;
+              box-sizing: border-box;
             }
 
             @page {
               size: A4;
-              margin: 0;
+              margin: 10mm 10mm 17mm;
             }
           }
         `}</style>
+
+        {generating && (
+          <div
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-[#090b13]/85 p-4 backdrop-blur-sm"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="invoice-pdf-progress-title"
+            aria-live="assertive"
+          >
+            <div className="w-full max-w-md rounded-2xl border border-[#d3bb73]/25 bg-[#1c1f33] p-8 text-center shadow-2xl">
+              <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-[#d3bb73]/10">
+                <Loader className="h-8 w-8 animate-spin text-[#d3bb73]" />
+              </div>
+              <h2
+                id="invoice-pdf-progress-title"
+                className="text-xl font-semibold text-[#e5e4e2]"
+              >
+                {pdfPath ? 'Regenerowanie dokumentu PDF' : 'Generowanie dokumentu PDF'}
+              </h2>
+              <p className="mt-3 text-sm leading-6 text-[#e5e4e2]/65">
+                Pobieramy aktualne dane faktury, przygotowujemy strony i zapisujemy dokument.
+              </p>
+              <div className="mt-6 h-1.5 overflow-hidden rounded-full bg-black/30">
+                <div className="h-full w-1/2 animate-pulse rounded-full bg-[#d3bb73]" />
+              </div>
+              <p className="mt-4 text-xs text-[#e5e4e2]/45">
+                Operacja może potrwać kilkanaście sekund. Nie zamykaj tego okna.
+              </p>
+            </div>
+          </div>
+        )}
 
         {showConvertProformaModal && invoice && (
           <ConvertProformaModal
@@ -1881,8 +2050,8 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
           <SendInvoiceEmailModal
             invoiceId={invoice.id}
             invoiceNumber={invoice.invoice_number}
-            clientEmail={relatedData.primaryContact?.email || relatedData.organization?.email || ''}
-            clientName={relatedData.primaryContact?.name || relatedData.organization?.name || ''}
+            clientEmail={relatedData.organization?.email || relatedData.primaryContact?.email || ''}
+            clientName={relatedData.organization?.name || relatedData.primaryContact?.name || ''}
             pdfStoragePath={pdfPath}
             onClose={() => setShowSendEmailModal(false)}
             onSent={() => {
@@ -1895,7 +2064,10 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
           <KSeFSendModal
             invoiceId={invoice.id}
             invoiceNumber={invoice.invoice_number}
-            onSuccess={handleKsefSuccess}
+            onSuccess={async () => {
+              await handleKsefSuccess();
+              await handleGeneratePDF();
+            }}
             onError={handleKsefError}
             onClose={() => setShowKSeFModal(false)}
           />

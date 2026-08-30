@@ -1,9 +1,13 @@
 'use client';
 
 import { supabase } from '@/lib/supabase/browser';
-import { buildSubstitutionsForInsert, calcTotal, getRentalEquipmentFromSelectedAlt } from '../utils';
+import { buildSubstitutionsForInsert, getRentalEquipmentFromSelectedAlt } from '../utils';
 import { EquipmentConflictRow, SelectedAltMap } from '../types';
 import { IOfferItem } from '@/app/(crm)/crm/offers/types';
+import {
+  EventAssumptionItem,
+  formatEventAssumptionItems,
+} from '@/lib/CRM/Offers/eventAssumptions';
 
 export async function submitOfferWizard(params: {
   eventId: string;
@@ -13,25 +17,52 @@ export async function submitOfferWizard(params: {
   organizationId?: string;
   contactId?: string;
 
-  offerData: { offer_number: string; valid_until: string; notes: string };
+  offerData: {
+    offer_number: string;
+    valid_until: string;
+    notes: string;
+    event_location: string;
+    event_assumptions: string;
+    event_assumption_items: EventAssumptionItem[];
+    event_goal: string;
+  };
   offerItems: IOfferItem[];
 
   selectedAlt: SelectedAltMap;
   conflicts: EquipmentConflictRow[];
   equipmentSubstitutions?: Record<string, any>;
   hasEquipmentShortage?: boolean;
+  pricing: {
+    listNet: number;
+    targetNet: number;
+    discountAmount: number;
+    discountPercent: number;
+    taxPercent: number;
+    taxAmount: number;
+    gross: number;
+  };
 }) {
-  const totalAmount = calcTotal(params.offerItems);
-
   const offerDataToInsert: any = {
     event_id: params.eventId,
     client_type: params.clientType,
     organization_id: params.clientType === 'business' ? params.organizationId || null : null,
-    contact_id: params.clientType === 'individual' ? params.contactId || null : null,
+    contact_id: params.contactId || null,
     valid_until: params.offerData.valid_until || null,
     notes: params.offerData.notes || null,
+    event_location: params.offerData.event_location.trim() || null,
+    event_assumptions:
+      formatEventAssumptionItems(params.offerData.event_assumption_items) ||
+      params.offerData.event_assumptions.trim() ||
+      null,
+    event_assumption_items: params.offerData.event_assumption_items,
+    event_goal: params.offerData.event_goal.trim() || null,
     status: 'draft',
-    total_amount: totalAmount,
+    subtotal: params.pricing.listNet,
+    discount_percent: params.pricing.discountPercent,
+    discount_amount: params.pricing.discountAmount,
+    tax_percent: params.pricing.taxPercent,
+    tax_amount: params.pricing.taxAmount,
+    total_amount: params.pricing.gross,
     created_by: params.employeeId,
     offer_number: params.offerData.offer_number?.trim()
       ? params.offerData.offer_number.trim()
@@ -49,6 +80,9 @@ export async function submitOfferWizard(params: {
   const itemsToInsert = params.offerItems.map((item, index) => ({
     offer_id: offerResult.id,
     product_id: item.product_id?.trim() ? item.product_id : null,
+    product_variant_id: item.product_variant_id || null,
+    show_variant_prices_in_pdf: item.show_variant_prices_in_pdf !== false,
+    show_product_variants_in_pdf: item.show_product_variants_in_pdf !== false,
     name: item.name,
     description: item.description || null,
     quantity: item.quantity,
@@ -56,7 +90,9 @@ export async function submitOfferWizard(params: {
     unit_price: item.unit_price,
     unit_cost: 0,
     discount_percent: item.discount_percent || 0,
-    discount_amount: 0,
+    discount_amount: Math.round(
+      (Number(item.quantity || 0) * Number(item.unit_price || 0) * Number(item.discount_percent || 0) / 100 + Number.EPSILON) * 100,
+    ) / 100,
     transport_cost: 0,
     logistics_cost: 0,
     display_order: index + 1,
@@ -65,6 +101,22 @@ export async function submitOfferWizard(params: {
 
   const { error: itemsError } = await supabase.from('offer_items').insert(itemsToInsert);
   if (itemsError) throw itemsError;
+
+  // Trigger przelicza ofertę po dodaniu pozycji. Nadpisujemy podsumowanie dokładną
+  // kwotą rabatu wpisaną przez użytkownika, aby np. 400 zł nie stało się 400,32 zł
+  // wskutek zaokrąglenia procentu do dwóch miejsc.
+  const { error: totalsError } = await supabase
+    .from('offers')
+    .update({
+      subtotal: params.pricing.listNet,
+      discount_percent: params.pricing.discountPercent,
+      discount_amount: params.pricing.discountAmount,
+      tax_percent: params.pricing.taxPercent,
+      tax_amount: params.pricing.taxAmount,
+      total_amount: params.pricing.gross,
+    })
+    .eq('id', offerResult.id);
+  if (totalsError) throw totalsError;
 
   // Merge committed substitutions with temporary selections
   const combinedSubstitutions: SelectedAltMap = {};

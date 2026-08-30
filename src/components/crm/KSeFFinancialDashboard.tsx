@@ -20,15 +20,15 @@ import {
   List,
   Pencil,
 } from 'lucide-react';
-import { parseMT940, parseJPK_WB, findMatchingInvoices } from '@/lib/bankStatementParsers';
+import { parseMT940, parseJPK_WB } from '@/lib/bankStatementParsers';
 import BankTransactionsAnalysis from './BankTransactionsAnalysis';
-import BankMatchingSimple from './BankMatchingSimple';
+import UnmatchedTransactionsModal from './UnmatchedTransactionsModal';
 import CompanySelector from './CompanySelector';
 import ResponsiveActionBar from './ResponsiveActionBar';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useDialog } from '@/contexts/DialogContext';
-import { KSeFInvoice } from './BankMatchingSimple';
 import BankStatementsListModal from './invoices/modal/BankStatementRecord';
+import { tryAutomaticBankTransactionMatch } from '@/lib/bankTransactionMatching';
 
 type AccountType = 'regular' | 'vat' | 'mt940';
 
@@ -453,22 +453,6 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
         await supabase.storage.from('bank-statements').remove([stmt.file_storage_path]);
       }
 
-      const { data: transactions } = await supabase
-        .from('bank_transactions')
-        .select('id, matched_invoice_id')
-        .eq('statement_id', statementId);
-
-      const matchedInvoiceIds = [
-        ...new Set((transactions || []).map((t) => t.matched_invoice_id).filter(Boolean)),
-      ];
-
-      if (matchedInvoiceIds.length > 0) {
-        await supabase
-          .from('ksef_invoices')
-          .update({ payment_status: 'unpaid', payment_date: null })
-          .in('id', matchedInvoiceIds);
-      }
-
       const { error } = await supabase.from('bank_statements').delete().eq('id', statementId);
 
       if (error) throw error;
@@ -661,29 +645,6 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
           await supabase.storage.from('bank-statements').remove(oldStoragePaths);
         }
 
-        const { data: oldTransactions, error: oldTransactionsError } = await supabase
-          .from('bank_transactions')
-          .select('id, matched_invoice_id')
-          .in('statement_id', existingStatementIds);
-
-        if (oldTransactionsError) throw oldTransactionsError;
-
-        const oldMatchedInvoiceIds = [
-          ...new Set((oldTransactions || []).map((t) => t.matched_invoice_id).filter(Boolean)),
-        ];
-
-        if (oldMatchedInvoiceIds.length > 0) {
-          const { error: resetInvoicesError } = await supabase
-            .from('ksef_invoices')
-            .update({
-              payment_status: 'unpaid',
-              payment_date: null,
-            })
-            .in('id', oldMatchedInvoiceIds);
-
-          if (resetInvoicesError) throw resetInvoicesError;
-        }
-
         const { error: deleteTransactionsError } = await supabase
           .from('bank_transactions')
           .delete()
@@ -758,7 +719,8 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
       });
 
       let matchedCount = 0;
-      let unmatchedCount = 0;
+      let unmatchedCount = transactions.length;
+      const insertedTransactionIds: string[] = [];
 
       for (let i = 0; i < transactions.length; i++) {
         const transaction = transactions[i];
@@ -771,52 +733,27 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
           });
         }
 
-        const matches = await findMatchingInvoices(transaction, supabase);
-
-        let matchedInvoiceId: string | null = null;
-        let matchConfidence: number | null = null;
-
-        if (matches.length > 0 && matches[0].confidence >= 0.95) {
-          matchedInvoiceId = matches[0].invoiceId;
-          matchConfidence = matches[0].confidence;
-          matchedCount++;
-
-          const { error: markPaidError } = await supabase
-            .from('ksef_invoices')
-            .update({
-              payment_status: 'paid',
-              payment_date: transaction.transactionDate,
-            })
-            .eq('id', matchedInvoiceId);
-
-          if (markPaidError) throw markPaidError;
-        } else if (matches.length > 0 && matches[0].confidence >= 0.75) {
-          matchedInvoiceId = matches[0].invoiceId;
-          matchConfidence = matches[0].confidence;
-          unmatchedCount++;
-        } else {
-          unmatchedCount++;
-        }
-
-        const { error: insertTransactionError } = await supabase.from('bank_transactions').insert({
-          statement_id: statement.id,
-          transaction_date: transaction.transactionDate,
-          posting_date: transaction.postingDate ?? null,
-          amount: transaction.amount,
-          currency: transaction.currency || 'PLN',
-          transaction_type: transaction.type,
-          counterparty_name: transaction.counterpartyName ?? null,
-          counterparty_account: transaction.counterpartyAccount ?? null,
-          title: transaction.title ?? null,
-          reference_number: transaction.referenceNumber ?? null,
-          matched_invoice_id: matchedInvoiceId,
-          match_confidence: matchConfidence,
-          manual_match: false,
-          raw_description: transaction.rawDescription ?? null,
-          raw_counterparty: transaction.rawCounterparty ?? null,
-        });
+        const { data: insertedTransaction, error: insertTransactionError } = await supabase
+          .from('bank_transactions')
+          .insert({
+            statement_id: statement.id,
+            transaction_date: transaction.transactionDate,
+            posting_date: transaction.postingDate ?? null,
+            amount: transaction.amount,
+            currency: transaction.currency || 'PLN',
+            transaction_type: transaction.type,
+            counterparty_name: transaction.counterpartyName ?? null,
+            counterparty_account: transaction.counterpartyAccount ?? null,
+            title: transaction.title ?? null,
+            reference_number: transaction.referenceNumber ?? null,
+            raw_description: transaction.rawDescription ?? null,
+            raw_counterparty: transaction.rawCounterparty ?? null,
+          })
+          .select('id')
+          .single();
 
         if (insertTransactionError) throw insertTransactionError;
+        insertedTransactionIds.push(insertedTransaction.id);
       }
 
       setUploadProgress({ step: 'Finalizowanie importu...', current: 7, total: 8 });
@@ -832,6 +769,21 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
         .eq('id', statement.id);
 
       if (finalizeStatementError) throw finalizeStatementError;
+
+      setUploadProgress({ step: 'Bezpieczne dopasowywanie płatności…', current: 7, total: 8 });
+      for (const transactionId of insertedTransactionIds) {
+        try {
+          const result = await tryAutomaticBankTransactionMatch(supabase, transactionId);
+          if (result.matched) {
+            matchedCount += 1;
+            unmatchedCount -= 1;
+          }
+        } catch (matchingError) {
+          // Błąd pojedynczego dopasowania nie może unieważnić poprawnie
+          // zaimportowanego wyciągu. Transakcja pozostaje do ręcznej kontroli.
+          console.warn('Automatic bank matching skipped:', transactionId, matchingError);
+        }
+      }
 
       await loadSummaries();
 
@@ -1578,7 +1530,7 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
       )}
 
       {showSimpleMatchModal && unmatchedModalMonth && (
-        <BankMatchingSimple
+        <UnmatchedTransactionsModal
           month={unmatchedModalMonth.month}
           year={unmatchedModalMonth.year}
           companyId={selectedCompanyId}

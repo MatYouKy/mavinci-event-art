@@ -1,11 +1,27 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Plus, Trash2, Package, Truck, Wrench, Save, X, Upload, Star, StarOff, ExternalLink } from 'lucide-react';
+import {
+  Plus,
+  Trash2,
+  Package,
+  Truck,
+  Wrench,
+  Save,
+  X,
+  Upload,
+  Star,
+  StarOff,
+  ExternalLink,
+} from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useRouter } from 'next/navigation';
 import NextImage from 'next/image';
+import {
+  calculateSubcontractorSettlementCost,
+  type SubcontractorSettlementMethod,
+} from '@/lib/CRM/subcontractors/settlementCosts';
 
 interface SubcontractorServicesPanelProps {
   subcontractorId: string;
@@ -41,6 +57,13 @@ interface ServiceCatalogItem {
   vat_rate?: number;
   price_net?: number;
   price_gross?: number;
+  settlement_method?: SubcontractorSettlementMethod;
+  cash_payout_amount?: number;
+  cit_rate?: number;
+  dividend_tax_rate?: number;
+  economic_cost?: number;
+  tax_burden_amount?: number;
+  is_tax_deductible?: boolean;
   daily_price_net?: number;
   daily_price_gross?: number;
   images?: ServiceImage[];
@@ -77,7 +100,12 @@ const serviceTypeConfig = {
   },
 };
 
-const compressImage = async (file: File, maxWidth = 1920, maxHeight = 1080, quality = 0.8): Promise<File> => {
+const compressImage = async (
+  file: File,
+  maxWidth = 1920,
+  maxHeight = 1080,
+  quality = 0.8,
+): Promise<File> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);
@@ -91,21 +119,33 @@ const compressImage = async (file: File, maxWidth = 1920, maxHeight = 1080, qual
 
         if (width > maxWidth || height > maxHeight) {
           if (width > height) {
-            if (width > maxWidth) { height *= maxWidth / width; width = maxWidth; }
+            if (width > maxWidth) {
+              height *= maxWidth / width;
+              width = maxWidth;
+            }
           } else {
-            if (height > maxHeight) { width *= maxHeight / height; height = maxHeight; }
+            if (height > maxHeight) {
+              width *= maxHeight / height;
+              height = maxHeight;
+            }
           }
         }
 
         canvas.width = width;
         canvas.height = height;
         const ctx = canvas.getContext('2d');
-        if (!ctx) { reject(new Error('No canvas ctx')); return; }
+        if (!ctx) {
+          reject(new Error('No canvas ctx'));
+          return;
+        }
         ctx.drawImage(img, 0, 0, width, height);
 
         canvas.toBlob(
           (blob) => {
-            if (!blob) { reject(new Error('Blob failed')); return; }
+            if (!blob) {
+              reject(new Error('Blob failed'));
+              return;
+            }
             resolve(new File([blob], file.name, { type: 'image/jpeg', lastModified: Date.now() }));
           },
           'image/jpeg',
@@ -122,7 +162,10 @@ const compressThumbnail = async (file: File): Promise<File> => {
   return compressImage(file, 400, 400, 0.7);
 };
 
-export default function SubcontractorServicesPanel({ subcontractorId, organizationId }: SubcontractorServicesPanelProps) {
+export default function SubcontractorServicesPanel({
+  subcontractorId,
+  organizationId,
+}: SubcontractorServicesPanelProps) {
   const { showSnackbar } = useSnackbar();
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -140,6 +183,10 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
   const [newItemVatRate, setNewItemVatRate] = useState<number>(23);
   const [newItemPriceNet, setNewItemPriceNet] = useState<number>(0);
   const [newItemPriceGross, setNewItemPriceGross] = useState<number>(0);
+  const [newItemSettlementMethod, setNewItemSettlementMethod] =
+    useState<SubcontractorSettlementMethod>('invoice');
+  const [newItemCitRate, setNewItemCitRate] = useState<number>(9);
+  const [newItemDividendTaxRate, setNewItemDividendTaxRate] = useState<number>(19);
   const [newItemImages, setNewItemImages] = useState<ServiceImage[]>([]);
   const [uploading, setUploading] = useState(false);
 
@@ -155,8 +202,19 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
 
   const [activeTab, setActiveTab] = useState<ServiceType | null>(null);
 
-  useEffect(() => { fetchServices(); }, [subcontractorId]);
-  useEffect(() => { if (activeTab) fetchCatalog(activeTab); }, [activeTab]);
+  const settlementCalculation = calculateSubcontractorSettlementCost({
+    contractorAmount: newItemPrice,
+    settlementMethod: newItemSettlementMethod,
+    citRate: newItemCitRate,
+    dividendTaxRate: newItemDividendTaxRate,
+  });
+
+  useEffect(() => {
+    fetchServices();
+  }, [subcontractorId]);
+  useEffect(() => {
+    if (activeTab) fetchCatalog(activeTab);
+  }, [activeTab]);
 
   const fetchServices = async () => {
     try {
@@ -183,13 +241,23 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
       let setter: (items: ServiceCatalogItem[]) => void = () => {};
 
       switch (serviceType) {
-        case 'services': tableName = 'subcontractor_service_catalog'; setter = setServiceCatalog; break;
-        case 'rental': tableName = 'subcontractor_rental_equipment'; setter = setEquipmentCatalog; break;
-        case 'transport': tableName = 'subcontractor_transport_catalog'; setter = setTransportCatalog; break;
+        case 'services':
+          tableName = 'subcontractor_service_catalog';
+          setter = setServiceCatalog;
+          break;
+        case 'rental':
+          tableName = 'subcontractor_rental_equipment';
+          setter = setEquipmentCatalog;
+          break;
+        case 'transport':
+          tableName = 'subcontractor_transport_catalog';
+          setter = setTransportCatalog;
+          break;
       }
 
       let selectQuery = '*';
-      if (serviceType === 'rental') selectQuery = '*, warehouse_categories(id, name, level, parent_id)';
+      if (serviceType === 'rental')
+        selectQuery = '*, warehouse_categories(id, name, level, parent_id)';
 
       const { data, error } = await supabase
         .from(tableName)
@@ -200,7 +268,10 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
       if (error) throw error;
       setter((data as any) || []);
     } catch (error: any) {
-      showSnackbar(`Blad podczas ladowania katalogu ${serviceTypeConfig[serviceType].label}`, 'error');
+      showSnackbar(
+        `Blad podczas ladowania katalogu ${serviceTypeConfig[serviceType].label}`,
+        'error',
+      );
     }
   };
 
@@ -226,7 +297,10 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
   };
 
   const handleRemoveService = async (serviceId: string, serviceType: ServiceType) => {
-    if (!confirm(`Czy na pewno chcesz usunac typ uslugi "${serviceTypeConfig[serviceType].label}"?`)) return;
+    if (
+      !confirm(`Czy na pewno chcesz usunac typ uslugi "${serviceTypeConfig[serviceType].label}"?`)
+    )
+      return;
     try {
       const { error } = await supabase.from('subcontractor_services').delete().eq('id', serviceId);
       if (error) throw error;
@@ -254,10 +328,14 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
 
   const getCatalogItems = () => {
     switch (activeTab) {
-      case 'services': return serviceCatalog;
-      case 'rental': return equipmentCatalog;
-      case 'transport': return transportCatalog;
-      default: return [];
+      case 'services':
+        return serviceCatalog;
+      case 'rental':
+        return equipmentCatalog;
+      case 'transport':
+        return transportCatalog;
+      default:
+        return [];
     }
   };
 
@@ -278,7 +356,10 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       if (!file.type.startsWith('image/')) continue;
-      if (file.size > 10 * 1024 * 1024) { showSnackbar(`${file.name} przekracza 10MB`, 'error'); continue; }
+      if (file.size > 10 * 1024 * 1024) {
+        showSnackbar(`${file.name} przekracza 10MB`, 'error');
+        continue;
+      }
 
       try {
         const compressed = await compressImage(file);
@@ -290,7 +371,9 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
 
         if (uploadError) throw uploadError;
 
-        const { data: { publicUrl } } = supabase.storage.from('service-catalog-images').getPublicUrl(fileName);
+        const {
+          data: { publicUrl },
+        } = supabase.storage.from('service-catalog-images').getPublicUrl(fileName);
 
         uploaded.push({
           url: publicUrl,
@@ -341,8 +424,17 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
           insertData.vat_rate = newItemVatRate;
           insertData.price_net = newItemPriceNet;
           insertData.price_gross = newItemPriceGross;
+          insertData.settlement_method = newItemSettlementMethod;
+          insertData.cash_payout_amount =
+            newItemSettlementMethod === 'invoice' ? null : newItemPrice;
+          insertData.cit_rate = newItemCitRate;
+          insertData.dividend_tax_rate = newItemDividendTaxRate;
+          insertData.is_tax_deductible = newItemSettlementMethod !== 'cash_non_deductible';
+          insertData.economic_cost = settlementCalculation.economicCost;
+          insertData.tax_burden_amount = settlementCalculation.taxBurden;
           insertData.images = newItemImages;
-          insertData.thumbnail_url = newItemImages.find((img) => img.isPrimary)?.url || newItemImages[0]?.url || null;
+          insertData.thumbnail_url =
+            newItemImages.find((img) => img.isPrimary)?.url || newItemImages[0]?.url || null;
           break;
         case 'rental':
           tableName = 'subcontractor_rental_equipment';
@@ -355,7 +447,10 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
           insertData.daily_price_net = newItemPriceNet;
           insertData.daily_price_gross = newItemPriceGross;
           insertData.required_skills = newItemRequiredSkills
-            ? newItemRequiredSkills.split(',').map(s => s.trim()).filter(Boolean)
+            ? newItemRequiredSkills
+                .split(',')
+                .map((s) => s.trim())
+                .filter(Boolean)
             : [];
           break;
         case 'transport':
@@ -388,19 +483,29 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
     setNewItemVatRate(23);
     setNewItemPriceNet(0);
     setNewItemPriceGross(0);
+    setNewItemSettlementMethod('invoice');
+    setNewItemCitRate(9);
+    setNewItemDividendTaxRate(19);
     setNewItemImages([]);
   };
 
   const handleDeleteCatalogItem = async (itemId: string, itemName: string) => {
     if (!activeTab) return;
-    if (!confirm(`Czy na pewno chcesz usunac "${itemName}"? Ta operacja jest nieodwracalna.`)) return;
+    if (!confirm(`Czy na pewno chcesz usunac "${itemName}"? Ta operacja jest nieodwracalna.`))
+      return;
 
     try {
       let tableName = '';
       switch (activeTab) {
-        case 'services': tableName = 'subcontractor_service_catalog'; break;
-        case 'rental': tableName = 'subcontractor_rental_equipment'; break;
-        case 'transport': tableName = 'subcontractor_transport_catalog'; break;
+        case 'services':
+          tableName = 'subcontractor_service_catalog';
+          break;
+        case 'rental':
+          tableName = 'subcontractor_rental_equipment';
+          break;
+        case 'transport':
+          tableName = 'subcontractor_transport_catalog';
+          break;
       }
       const { error } = await supabase.from(tableName).delete().eq('id', itemId);
       if (error) throw error;
@@ -483,7 +588,11 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
                 Dodaj
               </button>
               <button
-                onClick={() => { setShowAddService(false); setSelectedServiceType(null); setServiceNotes(''); }}
+                onClick={() => {
+                  setShowAddService(false);
+                  setSelectedServiceType(null);
+                  setServiceNotes('');
+                }}
                 className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-gray-700 px-4 py-2 text-sm font-medium text-white hover:bg-gray-600"
               >
                 <X className="h-4 w-4" />
@@ -518,7 +627,9 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
                   <Icon className="h-4 w-4" />
                   {config.label}
                   {!service.is_active && (
-                    <span className="rounded-full bg-red-900/30 px-2 py-0.5 text-xs text-red-400">Nieaktywny</span>
+                    <span className="rounded-full bg-red-900/30 px-2 py-0.5 text-xs text-red-400">
+                      Nieaktywny
+                    </span>
                   )}
                 </button>
               );
@@ -528,7 +639,9 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
           {activeTab && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <h3 className="text-lg font-medium text-white">{serviceTypeConfig[activeTab].label}</h3>
+                <h3 className="text-lg font-medium text-white">
+                  {serviceTypeConfig[activeTab].label}
+                </h3>
                 <div className="flex gap-2">
                   {services.find((s) => s.service_type === activeTab) && (
                     <>
@@ -539,7 +652,9 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
                         }}
                         className="rounded-lg bg-gray-700 px-3 py-1.5 text-sm text-white hover:bg-gray-600"
                       >
-                        {services.find((s) => s.service_type === activeTab)?.is_active ? 'Dezaktywuj' : 'Aktywuj'}
+                        {services.find((s) => s.service_type === activeTab)?.is_active
+                          ? 'Dezaktywuj'
+                          : 'Aktywuj'}
                       </button>
                       <button
                         onClick={() => {
@@ -557,9 +672,12 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
 
               <div className="rounded-lg border border-blue-900/30 bg-blue-900/10 p-4">
                 <p className="text-sm text-blue-400">
-                  {activeTab === 'services' && 'Dodaj produkty/uslugi jakie moze swiadczyc ten podwykonawca. Kliknij w pozycje aby zobaczyc szczegoly.'}
-                  {activeTab === 'rental' && 'Dodaj sprzet ktory mozesz wynajac od tego podwykonawcy. Kliknij w pozycje aby zobaczyc szczegoly.'}
-                  {activeTab === 'transport' && 'Dodaj pojazdy transportowe dostepne u tego podwykonawcy. (W przyszlosci)'}
+                  {activeTab === 'services' &&
+                    'Dodaj produkty/uslugi jakie moze swiadczyc ten podwykonawca. Kliknij w pozycje aby zobaczyc szczegoly.'}
+                  {activeTab === 'rental' &&
+                    'Dodaj sprzet ktory mozesz wynajac od tego podwykonawcy. Kliknij w pozycje aby zobaczyc szczegoly.'}
+                  {activeTab === 'transport' &&
+                    'Dodaj pojazdy transportowe dostepne u tego podwykonawcy. (W przyszlosci)'}
                 </p>
               </div>
 
@@ -584,16 +702,16 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
                         className="group relative rounded-lg border border-gray-700 bg-[#1a1d2e] transition-colors hover:border-[#d3bb73]"
                       >
                         <button
-                          onClick={(e) => { e.stopPropagation(); handleDeleteCatalogItem(item.id, item.name); }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteCatalogItem(item.id, item.name);
+                          }}
                           className="absolute right-2 top-2 z-10 rounded-lg border border-red-500/20 bg-red-900/30 p-2 text-red-400 opacity-0 transition-all hover:bg-red-900/50 group-hover:opacity-100"
                           title="Usun pozycje"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
-                        <div
-                          onClick={() => handleViewInCatalog(item)}
-                          className="cursor-pointer"
-                        >
+                        <div onClick={() => handleViewInCatalog(item)} className="cursor-pointer">
                           {item.thumbnail_url ? (
                             <NextImage
                               src={item.thumbnail_url}
@@ -613,7 +731,9 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
                               <ExternalLink className="h-3.5 w-3.5 text-gray-500 opacity-0 transition-opacity group-hover:opacity-100" />
                             </div>
                             {item.description && (
-                              <p className="mb-2 line-clamp-2 text-sm text-gray-400">{item.description}</p>
+                              <p className="mb-2 line-clamp-2 text-sm text-gray-400">
+                                {item.description}
+                              </p>
                             )}
                             {(item.warehouse_categories?.name || item.category) && (
                               <span className="inline-block rounded-full bg-[#d3bb73]/10 px-2 py-1 text-xs text-[#d3bb73]">
@@ -621,15 +741,34 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
                               </span>
                             )}
                             <div className="mt-3 flex items-center justify-between border-t border-gray-700 pt-3 text-sm">
-                              {item.unit_price != null && item.unit_price > 0 && (
-                                <span className="text-green-400">{item.unit_price} zl / {item.unit}</span>
-                              )}
+                              <div>
+                                {item.unit_price != null && item.unit_price > 0 && (
+                                  <span className="text-green-400">
+                                    {item.unit_price} zl / {item.unit}
+                                  </span>
+                                )}
+                                {item.settlement_method === 'cash_non_deductible' && (
+                                  <div className="mt-1 text-xs text-amber-300">
+                                    Gotówka poza KUP · koszt ekonomiczny{' '}
+                                    {Number(
+                                      item.economic_cost || item.unit_price || 0,
+                                    ).toLocaleString('pl-PL', {
+                                      minimumFractionDigits: 2,
+                                      maximumFractionDigits: 2,
+                                    })}{' '}
+                                    zł
+                                  </div>
+                                )}
+                              </div>
                               {item.price_net != null && item.price_net > 0 && !item.unit_price && (
                                 <span className="text-green-400">{item.price_net} zl netto</span>
                               )}
-                              {item.rental_price_per_day != null && item.rental_price_per_day > 0 && (
-                                <span className="text-green-400">{item.rental_price_per_day} zl / dzien</span>
-                              )}
+                              {item.rental_price_per_day != null &&
+                                item.rental_price_per_day > 0 && (
+                                  <span className="text-green-400">
+                                    {item.rental_price_per_day} zl / dzien
+                                  </span>
+                                )}
                               {!item.is_active && (
                                 <span className="text-xs text-red-400">Nieaktywny</span>
                               )}
@@ -685,7 +824,10 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
                       type="file"
                       accept="image/*"
                       multiple
-                      onChange={(e) => { if (e.target.files) handleUploadImages(e.target.files); e.target.value = ''; }}
+                      onChange={(e) => {
+                        if (e.target.files) handleUploadImages(e.target.files);
+                        e.target.value = '';
+                      }}
                       className="hidden"
                     />
                     <button
@@ -700,11 +842,22 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
 
                     {newItemImages.length > 0 && (
                       <div className="mt-3">
-                        <p className="mb-2 text-xs text-gray-500">Kliknij gwiazdke aby ustawic miniature (thumbnail)</p>
+                        <p className="mb-2 text-xs text-gray-500">
+                          Kliknij gwiazdke aby ustawic miniature (thumbnail)
+                        </p>
                         <div className="grid grid-cols-4 gap-2">
                           {newItemImages.map((img, idx) => (
-                            <div key={idx} className="group/img relative aspect-square overflow-hidden rounded-lg border border-gray-700">
-                              <NextImage src={img.url} alt={img.title || ''} className="h-full w-full object-cover" width={160} height={160} />
+                            <div
+                              key={idx}
+                              className="group/img relative aspect-square overflow-hidden rounded-lg border border-gray-700"
+                            >
+                              <NextImage
+                                src={img.url}
+                                alt={img.title || ''}
+                                className="h-full w-full object-cover"
+                                width={160}
+                                height={160}
+                              />
                               {img.isPrimary && (
                                 <div className="absolute left-1 top-1 rounded-full bg-[#d3bb73] p-0.5">
                                   <Star className="h-3 w-3 fill-[#0f1119] text-[#0f1119]" />
@@ -752,54 +905,195 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
                     />
                   </div>
                   <div>
-                    <label className="mb-2 block text-sm text-gray-400">Stawka VAT (%)</label>
+                    <label className="mb-2 block text-sm text-gray-400">Sposób rozliczenia</label>
                     <select
-                      value={newItemVatRate}
+                      value={newItemSettlementMethod}
                       onChange={(e) => {
-                        const vat = parseFloat(e.target.value);
-                        setNewItemVatRate(vat);
-                        if (newItemPriceNet > 0) setNewItemPriceGross(Number((newItemPriceNet * (1 + vat / 100)).toFixed(2)));
+                        const method = e.target.value as SubcontractorSettlementMethod;
+                        setNewItemSettlementMethod(method);
+                        if (method !== 'invoice') {
+                          setNewItemVatRate(0);
+                          setNewItemPriceNet(newItemPrice);
+                          setNewItemPriceGross(newItemPrice);
+                        }
                       }}
                       className="w-full rounded-lg border border-gray-700 bg-[#252837] p-3 text-white focus:border-[#d3bb73] focus:outline-none"
                     >
-                      <option value="0">0% (zwolniony)</option>
-                      <option value="5">5%</option>
-                      <option value="8">8%</option>
-                      <option value="23">23%</option>
+                      <option value="invoice">Faktura / rachunek kosztowy</option>
+                      <option value="cash_documented">Gotówka z dokumentem kosztowym</option>
+                      <option value="cash_non_deductible">
+                        Gotówka bez dokumentu kosztowego (poza KUP)
+                      </option>
                     </select>
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="mb-2 block text-sm text-gray-400">Cena netto (PLN)</label>
-                      <input
-                        type="number"
-                        value={newItemPriceNet}
-                        onChange={(e) => {
-                          const net = parseFloat(e.target.value);
-                          setNewItemPriceNet(net);
-                          setNewItemPriceGross(Number((net * (1 + newItemVatRate / 100)).toFixed(2)));
-                          setNewItemPrice(Number((net * (1 + newItemVatRate / 100)).toFixed(2)));
-                        }}
-                        className="w-full rounded-lg border border-gray-700 bg-[#252837] p-3 text-white focus:border-[#d3bb73] focus:outline-none"
-                        step="0.01"
-                      />
-                    </div>
-                    <div>
-                      <label className="mb-2 block text-sm text-gray-400">Cena brutto (PLN)</label>
-                      <input
-                        type="number"
-                        value={newItemPriceGross}
-                        onChange={(e) => {
-                          const gross = parseFloat(e.target.value);
-                          setNewItemPriceGross(gross);
-                          setNewItemPriceNet(Number((gross / (1 + newItemVatRate / 100)).toFixed(2)));
-                          setNewItemPrice(gross);
-                        }}
-                        className="w-full rounded-lg border border-gray-700 bg-[#252837] p-3 text-white focus:border-[#d3bb73] focus:outline-none"
-                        step="0.01"
-                      />
-                    </div>
-                  </div>
+
+                  {newItemSettlementMethod === 'invoice' ? (
+                    <>
+                      <div>
+                        <label className="mb-2 block text-sm text-gray-400">Stawka VAT (%)</label>
+                        <select
+                          value={newItemVatRate}
+                          onChange={(e) => {
+                            const vat = parseFloat(e.target.value);
+                            setNewItemVatRate(vat);
+                            if (newItemPriceNet > 0)
+                              setNewItemPriceGross(
+                                Number((newItemPriceNet * (1 + vat / 100)).toFixed(2)),
+                              );
+                          }}
+                          className="w-full rounded-lg border border-gray-700 bg-[#252837] p-3 text-white focus:border-[#d3bb73] focus:outline-none"
+                        >
+                          <option value="0">0% (zwolniony)</option>
+                          <option value="5">5%</option>
+                          <option value="8">8%</option>
+                          <option value="23">23%</option>
+                        </select>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="mb-2 block text-sm text-gray-400">
+                            Cena netto (PLN)
+                          </label>
+                          <input
+                            type="number"
+                            value={newItemPriceNet}
+                            onChange={(e) => {
+                              const net = parseFloat(e.target.value) || 0;
+                              setNewItemPriceNet(net);
+                              setNewItemPriceGross(
+                                Number((net * (1 + newItemVatRate / 100)).toFixed(2)),
+                              );
+                              setNewItemPrice(
+                                Number((net * (1 + newItemVatRate / 100)).toFixed(2)),
+                              );
+                            }}
+                            className="w-full rounded-lg border border-gray-700 bg-[#252837] p-3 text-white focus:border-[#d3bb73] focus:outline-none"
+                            min="0"
+                            step="0.01"
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-2 block text-sm text-gray-400">
+                            Cena brutto (PLN)
+                          </label>
+                          <input
+                            type="number"
+                            value={newItemPriceGross}
+                            onChange={(e) => {
+                              const gross = parseFloat(e.target.value) || 0;
+                              setNewItemPriceGross(gross);
+                              setNewItemPriceNet(
+                                Number((gross / (1 + newItemVatRate / 100)).toFixed(2)),
+                              );
+                              setNewItemPrice(gross);
+                            }}
+                            className="w-full rounded-lg border border-gray-700 bg-[#252837] p-3 text-white focus:border-[#d3bb73] focus:outline-none"
+                            min="0"
+                            step="0.01"
+                          />
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div>
+                        <label className="mb-2 block text-sm text-gray-400">
+                          Kwota dla podwykonawcy „do ręki” (PLN)
+                        </label>
+                        <input
+                          type="number"
+                          value={newItemPrice}
+                          onChange={(e) => {
+                            const amount = parseFloat(e.target.value) || 0;
+                            setNewItemPrice(amount);
+                            setNewItemPriceNet(amount);
+                            setNewItemPriceGross(amount);
+                          }}
+                          className="w-full rounded-lg border border-gray-700 bg-[#252837] p-3 text-white focus:border-[#d3bb73] focus:outline-none"
+                          min="0"
+                          step="0.01"
+                        />
+                      </div>
+
+                      {newItemSettlementMethod === 'cash_non_deductible' && (
+                        <div className="space-y-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4">
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="mb-1 block text-xs text-amber-100/70">
+                                CIT (%)
+                              </label>
+                              <input
+                                type="number"
+                                value={newItemCitRate}
+                                onChange={(e) => setNewItemCitRate(parseFloat(e.target.value) || 0)}
+                                className="w-full rounded-lg border border-amber-500/30 bg-[#252837] p-2 text-white"
+                                min="0"
+                                max="99.99"
+                                step="0.01"
+                              />
+                            </div>
+                            <div>
+                              <label className="mb-1 block text-xs text-amber-100/70">
+                                Podatek od dywidendy (%)
+                              </label>
+                              <input
+                                type="number"
+                                value={newItemDividendTaxRate}
+                                onChange={(e) =>
+                                  setNewItemDividendTaxRate(parseFloat(e.target.value) || 0)
+                                }
+                                className="w-full rounded-lg border border-amber-500/30 bg-[#252837] p-2 text-white"
+                                min="0"
+                                max="99.99"
+                                step="0.01"
+                              />
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-3 text-sm">
+                            <div>
+                              <div className="text-amber-100/60">Podwykonawca otrzyma</div>
+                              <div className="font-semibold text-white">
+                                {settlementCalculation.contractorAmount.toLocaleString('pl-PL', {
+                                  minimumFractionDigits: 2,
+                                })}{' '}
+                                zł
+                              </div>
+                            </div>
+                            <div>
+                              <div className="text-amber-100/60">Faktyczny koszt ekonomiczny</div>
+                              <div className="font-semibold text-amber-300">
+                                {settlementCalculation.economicCost.toLocaleString('pl-PL', {
+                                  minimumFractionDigits: 2,
+                                })}{' '}
+                                zł
+                              </div>
+                            </div>
+                            <div>
+                              <div className="text-amber-100/60">Efektywne opodatkowanie</div>
+                              <div className="text-white">
+                                {settlementCalculation.effectiveTaxRate.toFixed(2)}%
+                              </div>
+                            </div>
+                            <div>
+                              <div className="text-amber-100/60">Narzut do kwoty „do ręki”</div>
+                              <div className="text-white">
+                                {settlementCalculation.grossUpRate.toFixed(2)}% (
+                                {settlementCalculation.taxBurden.toLocaleString('pl-PL', {
+                                  minimumFractionDigits: 2,
+                                })}{' '}
+                                zł)
+                              </div>
+                            </div>
+                          </div>
+                          <p className="text-xs leading-relaxed text-amber-100/70">
+                            CIT i podatek od dywidendy są liczone kolejno, nie przez proste dodanie
+                            9% + 19%. To kalkulacja ekonomiczna. Brak faktury nie zastępuje
+                            prawidłowej podstawy wypłaty ani dokumentu księgowego.
+                          </p>
+                        </div>
+                      )}
+                    </>
+                  )}
                   <div>
                     <label className="mb-2 block text-sm text-gray-400">Jednostka</label>
                     <input
@@ -832,7 +1126,10 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
                       onChange={(e) => {
                         const vat = parseFloat(e.target.value);
                         setNewItemVatRate(vat);
-                        if (newItemPriceNet > 0) setNewItemPriceGross(Number((newItemPriceNet * (1 + vat / 100)).toFixed(2)));
+                        if (newItemPriceNet > 0)
+                          setNewItemPriceGross(
+                            Number((newItemPriceNet * (1 + vat / 100)).toFixed(2)),
+                          );
                       }}
                       className="w-full rounded-lg border border-gray-700 bg-[#252837] p-3 text-white focus:border-[#d3bb73] focus:outline-none"
                     >
@@ -844,7 +1141,9 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="mb-2 block text-sm text-gray-400">Cena dzienna netto (PLN)</label>
+                      <label className="mb-2 block text-sm text-gray-400">
+                        Cena dzienna netto (PLN)
+                      </label>
                       <input
                         type="number"
                         value={newItemPriceNet}
@@ -860,7 +1159,9 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
                       />
                     </div>
                     <div>
-                      <label className="mb-2 block text-sm text-gray-400">Cena dzienna brutto (PLN)</label>
+                      <label className="mb-2 block text-sm text-gray-400">
+                        Cena dzienna brutto (PLN)
+                      </label>
                       <input
                         type="number"
                         value={newItemPriceGross}
@@ -887,7 +1188,9 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
                     />
                   </div>
                   <div>
-                    <label className="mb-2 block text-sm text-gray-400">Wymagane umiejetnosci</label>
+                    <label className="mb-2 block text-sm text-gray-400">
+                      Wymagane umiejetnosci
+                    </label>
                     <input
                       type="text"
                       value={newItemRequiredSkills}

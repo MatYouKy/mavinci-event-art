@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 import { getCredentials, supabase } from '@/lib/ksef/db';
+import { createSupabaseServerClient } from '@/lib/supabase/server.app';
 import { getKSeFInvoices, getKSeFInvoiceXml } from '../../client';
 import { parsePaymentData } from '../../parsePaymentData';
 import { parseFA3InvoiceXml } from '../../parseInvoiceXml';
@@ -21,6 +23,42 @@ const normalizeDate = (value: any): string | null => {
   return null;
 };
 
+async function fetchAllReceivedInvoices(
+  accessToken: string,
+  isTestEnvironment: boolean,
+  companyId: string,
+  dateFrom: string,
+  dateTo: string,
+) {
+  const invoices: any[] = [];
+  const seen = new Set<string>();
+  let metadata: any = {};
+
+  for (let pageOffset = 0; pageOffset < 100; pageOffset += 1) {
+    const page = await getKSeFInvoices(
+      { accessToken, subjectType: 'Subject2', dateFrom, dateTo, pageOffset, pageSize: 100, sortOrder: 'Desc' },
+      isTestEnvironment,
+      { stage: 'invoices-received', companyId, pageOffset },
+    );
+    metadata = page;
+    const pageInvoices = Array.isArray(page?.invoices) ? page.invoices : [];
+    let added = 0;
+    for (const invoice of pageInvoices) {
+      const reference = invoice.ksefNumber || invoice.ksefReferenceNumber || invoice.ksef_reference_number || invoice.referenceNumber;
+      if (reference && seen.has(reference)) continue;
+      if (reference) seen.add(reference);
+      invoices.push(invoice);
+      added += 1;
+    }
+    if (pageOffset === 99 && pageInvoices.length === 100 && page?.hasMore !== false) {
+      throw new Error('Zakres synchronizacji obejmuje ponad 10 000 faktur. Zawęź daty synchronizacji.');
+    }
+    if (pageInvoices.length < 100 || page?.hasMore === false || added === 0) break;
+  }
+
+  return { ...metadata, invoices };
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => null);
@@ -39,9 +77,25 @@ export async function POST(req: Request) {
       );
     }
 
-    if (!dateFrom || !dateTo) {
+    const userClient = createSupabaseServerClient(cookies());
+    const { data: authData } = await userClient.auth.getUser();
+    if (!authData.user) {
+      return NextResponse.json({ success: false, error: 'Wymagane logowanie.' }, { status: 401 });
+    }
+    const { data: canManageCompany, error: permissionError } = await userClient.rpc(
+      'can_manage_invoice_company',
+      { p_company_id: companyId },
+    );
+    if (permissionError || !canManageCompany) {
       return NextResponse.json(
-        { success: false, error: 'Brak dateFrom lub dateTo' },
+        { success: false, error: 'Brak uprawnień do synchronizacji faktur tej spółki.' },
+        { status: 403 },
+      );
+    }
+
+    if (!/^\d{4}-\d{2}-\d{2}/.test(dateFrom) || !/^\d{4}-\d{2}-\d{2}/.test(dateTo) || dateFrom > dateTo) {
+      return NextResponse.json(
+        { success: false, error: 'Nieprawidłowy zakres dat synchronizacji' },
         { status: 400 }
       );
     }
@@ -55,21 +109,12 @@ export async function POST(req: Request) {
       );
     }
 
-    const data = await getKSeFInvoices(
-      {
-        accessToken: credentials.access_token,
-        subjectType: 'Subject2',
-        dateFrom,
-        dateTo,
-        pageOffset: 0,
-        pageSize: 100,
-        sortOrder: 'Desc',
-      },
+    const data = await fetchAllReceivedInvoices(
+      credentials.access_token,
       credentials.is_test_environment,
-      {
-        stage: 'invoices-received',
-        companyId,
-      }
+      companyId,
+      dateFrom,
+      dateTo,
     );
 
     const invoices = Array.isArray(data?.invoices) ? data.invoices : [];
@@ -126,6 +171,10 @@ export async function POST(req: Request) {
           console.error(`[KSEF_NEXT] failed to fetch XML for ${ksefRef}:`, e?.message);
         }
 
+        if (!xmlContent || !parsed) {
+          continue;
+        }
+
         const paymentMethod =
           parsed?.payment_method ||
           inv.paymentMethod ||
@@ -166,12 +215,7 @@ export async function POST(req: Request) {
           bankAccountNumber,
         });
 
-        // For immediate payment methods (cash/card), set payment_date to issue_date
-        const effectivePaymentDate =
-          paymentDate ||
-          (paymentData.payment_status === 'paid' && (paymentMethod === '1' || paymentMethod === '2')
-            ? (parsed?.issue_date || inv.issueDate || new Date().toISOString().split('T')[0])
-            : null);
+        const effectivePaymentDate = paymentDate;
 
         // VAT rate from items
         let vatRate: string | null = null;
@@ -181,26 +225,6 @@ export async function POST(req: Request) {
             : null;
         } else if (inv.vatRate) {
           vatRate = typeof inv.vatRate === 'number' ? `${inv.vatRate}%` : inv.vatRate;
-        }
-
-        if (
-          String(paymentDueDate || '').includes('<Termin') ||
-          String(parsed?.payment_due_date || '').includes('<Termin')
-        ) {
-          console.error('[KSEF DEBUG DATE]', {
-            ksefRef,
-            parsedPaymentDueDate: parsed?.payment_due_date,
-            paymentDueDate,
-            issueDate: parsed?.issue_date,
-            rawInv: {
-              paymentDueDate: inv.paymentDueDate,
-              payment_due_date: inv.payment_due_date,
-              TerminPlatnosci: inv.TerminPlatnosci,
-              terminPlatnosci: inv.terminPlatnosci,
-              dueDate: inv.dueDate,
-              PaymentDueDate: inv.PaymentDueDate,
-            },
-          });
         }
 
         rows.push({
@@ -245,7 +269,7 @@ export async function POST(req: Request) {
       if (rows.length > 0) {
         const { error: insertError } = await supabase
           .from('ksef_invoices')
-          .insert(rows);
+          .upsert(rows, { onConflict: 'ksef_reference_number', ignoreDuplicates: true });
 
         if (insertError) {
           console.error('[KSEF_NEXT] received invoices insert error', insertError);

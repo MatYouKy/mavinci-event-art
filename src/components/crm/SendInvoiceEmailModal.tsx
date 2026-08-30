@@ -62,6 +62,14 @@ interface InvoiceItem {
   value_gross: number;
 }
 
+interface RecipientOption {
+  contactId: string | null;
+  email: string;
+  name: string;
+  position: string | null;
+  preferred: boolean;
+}
+
 // function getTypeLabel(type: string) {
 //   const labels: Record<string, string> = {
 //     standard: 'Faktura VAT',
@@ -84,12 +92,18 @@ export default function SendInvoiceEmailModal({
   const [loading, setLoading] = useState(false);
   const [senderEmail, setSenderEmail] = useState<string>('');
   const [invoiceCompanyId, setInvoiceCompanyId] = useState<string | null>(null);
+  const [recipientOptions, setRecipientOptions] = useState<RecipientOption[]>([]);
+  const [recipientOrganizationName, setRecipientOrganizationName] = useState(clientName);
+  const [selectedRecipientName, setSelectedRecipientName] = useState(clientName);
+  const [recipientsLoading, setRecipientsLoading] = useState(true);
   const [formData, setFormData] = useState({
     to: clientEmail,
-    subject: `Faktura ${invoiceNumber} wizualizacja`,
+    subject: `Faktura ${invoiceNumber}`,
     message: `Dzień dobry,
-    W załączeniu przesyłam wizualizację faktury ${invoiceNumber}, która została wysłana do KSeF.
-    W razie pytań proszę o kontakt.`,
+
+W załączeniu przesyłam fakturę ${invoiceNumber}.
+
+W razie pytań proszę o kontakt.`,
   });
 
   useEffect(() => {
@@ -130,10 +144,13 @@ export default function SendInvoiceEmailModal({
   }, []);
 
   useEffect(() => {
+    setRecipientsLoading(true);
     (async () => {
       const { data: inv } = await supabase
         .from('invoices')
-        .select('my_company_id, event_id')
+        .select(
+          'my_company_id,event_id,organization_id,buyer_contact_id,buyer_email,buyer_name',
+        )
         .eq('id', invoiceId)
         .maybeSingle();
 
@@ -147,8 +164,131 @@ export default function SendInvoiceEmailModal({
           .maybeSingle();
         if (evt?.my_company_id) setInvoiceCompanyId(evt.my_company_id);
       }
-    })();
-  }, [invoiceId]);
+
+      const organizationId = inv?.organization_id || null;
+      if (!organizationId) {
+        const fallback: RecipientOption[] = clientEmail
+          ? [
+              {
+                contactId: inv?.buyer_contact_id || null,
+                email: clientEmail,
+                name: inv?.buyer_name || clientName || clientEmail,
+                position: null,
+                preferred: true,
+              },
+            ]
+          : [];
+        setRecipientOptions(fallback);
+        setRecipientsLoading(false);
+        return;
+      }
+
+      const [organizationResult, contactsResult, preferredContactsResult] = await Promise.all([
+        supabase
+          .from('organizations')
+          .select('id,name,alias,email')
+          .eq('id', organizationId)
+          .maybeSingle(),
+        supabase
+          .from('contact_organizations')
+          .select(
+            `
+              contact_id,
+              position,
+              is_primary,
+              contact:contacts(id,full_name,first_name,last_name,email)
+            `,
+          )
+          .eq('organization_id', organizationId)
+          .eq('is_current', true)
+          .order('is_primary', { ascending: false }),
+        inv?.event_id
+          ? supabase
+              .from('event_billing_contacts')
+              .select('contact_id,is_primary')
+              .eq('event_id', inv.event_id)
+              .eq('organization_id', organizationId)
+              .order('is_primary', { ascending: false })
+          : Promise.resolve({ data: [], error: null }),
+      ]);
+
+      const organization = organizationResult.data;
+      const preferredContactIds = new Set(
+        (preferredContactsResult.data || []).map((row) => row.contact_id),
+      );
+
+      const optionsWithPriority = (contactsResult.data || [])
+        .map((relation: any) => {
+          const contact = relation.contact;
+          if (!contact?.email) return null;
+          return {
+            contactId: contact.id,
+            email: String(contact.email).trim(),
+            name:
+              contact.full_name ||
+              `${contact.first_name || ''} ${contact.last_name || ''}`.trim() ||
+              contact.email,
+            position: relation.position || null,
+            preferred: preferredContactIds.has(contact.id),
+            organizationPrimary: Boolean(relation.is_primary),
+          };
+        })
+        .filter(Boolean)
+        .sort((left: any, right: any) => {
+          if (left.preferred !== right.preferred) return left.preferred ? -1 : 1;
+          if (left.organizationPrimary !== right.organizationPrimary) {
+            return left.organizationPrimary ? -1 : 1;
+          }
+          return left.name.localeCompare(right.name, 'pl');
+        });
+
+      const options: RecipientOption[] = optionsWithPriority.map(
+        ({ organizationPrimary: _organizationPrimary, ...option }: any) => option,
+      );
+
+      if (organization?.email) {
+        options.push({
+          contactId: null,
+          email: String(organization.email).trim(),
+          name: organization.alias || organization.name,
+          position: 'Ogólny adres organizacji',
+          preferred: options.length === 0,
+        });
+      }
+
+      if (inv?.buyer_email && !options.some((option) => option.email === inv.buyer_email)) {
+        options.push({
+          contactId: inv.buyer_contact_id || null,
+          email: String(inv.buyer_email).trim(),
+          name: inv.buyer_name || inv.buyer_email,
+          position: 'Adres zapisany na fakturze',
+          preferred: options.length === 0,
+        });
+      }
+
+      const deduplicated = options.filter(
+        (option, index, all) =>
+          all.findIndex(
+            (candidate) => candidate.email.toLowerCase() === option.email.toLowerCase(),
+          ) === index,
+      );
+
+      setRecipientOptions(deduplicated);
+      setRecipientOrganizationName(
+        organization?.alias || organization?.name || inv?.buyer_name || '',
+      );
+
+      const suggestedRecipient = deduplicated[0];
+      if (suggestedRecipient) {
+        setFormData((previous) => ({ ...previous, to: suggestedRecipient.email }));
+        setSelectedRecipientName(suggestedRecipient.name);
+      }
+      setRecipientsLoading(false);
+    })().catch((error) => {
+      console.error('Error loading invoice recipient suggestions:', error);
+      setRecipientsLoading(false);
+    });
+  }, [invoiceId, clientEmail, clientName]);
 
   const generateInvoicePDF = async (): Promise<{ base64: string; filename: string }> => {
     const [invoiceRes, itemsRes] = await Promise.all([
@@ -217,6 +357,7 @@ export default function SendInvoiceEmailModal({
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
+        invoiceId,
         html,
         fileName: `Faktura_${invoiceNumber}.pdf`,
       }),
@@ -319,7 +460,7 @@ export default function SendInvoiceEmailModal({
             message: formData.message,
             attachments,
             signatureHtml: (await buildCompanySignatureHtml({ companyId: invoiceCompanyId })).html,
-            recipientName: clientName,
+            recipientName: selectedRecipientName || clientName,
           }),
         },
       );
@@ -367,12 +508,72 @@ export default function SendInvoiceEmailModal({
             <input
               type="email"
               value={formData.to}
-              onChange={(e) => setFormData({ ...formData, to: e.target.value })}
+              onChange={(e) => {
+                setFormData({ ...formData, to: e.target.value });
+                setSelectedRecipientName('');
+              }}
               disabled={loading}
               placeholder="klient@example.com"
               className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none disabled:opacity-50"
             />
-            {clientName && <p className="mt-1 text-xs text-[#e5e4e2]/40">Klient: {clientName}</p>}
+            {recipientOrganizationName && (
+              <p className="mt-1 text-xs text-[#e5e4e2]/40">
+                Nabywca faktury: {recipientOrganizationName}
+              </p>
+            )}
+
+            {recipientsLoading ? (
+              <div className="mt-3 flex items-center gap-2 text-xs text-[#e5e4e2]/45">
+                <Loader className="h-3.5 w-3.5 animate-spin" /> Pobieranie kontaktów nabywcy...
+              </div>
+            ) : recipientOptions.length > 0 ? (
+              <div className="mt-3 rounded-lg border border-[#d3bb73]/10 bg-[#0a0d1a]/60 p-3">
+                <p className="mb-2 text-xs font-medium uppercase tracking-wide text-[#e5e4e2]/45">
+                  Kontakty organizacji wskazanej na fakturze
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {recipientOptions.map((recipient) => {
+                    const selected = formData.to === recipient.email;
+                    return (
+                      <button
+                        key={`${recipient.contactId || 'organization'}-${recipient.email}`}
+                        type="button"
+                        disabled={loading}
+                        onClick={() => {
+                          setFormData((previous) => ({ ...previous, to: recipient.email }));
+                          setSelectedRecipientName(recipient.name);
+                        }}
+                        className={`rounded-lg border px-3 py-2 text-left transition-colors disabled:opacity-50 ${
+                          selected
+                            ? 'border-[#d3bb73] bg-[#d3bb73]/10'
+                            : 'border-[#d3bb73]/15 bg-[#1c1f33] hover:border-[#d3bb73]/40'
+                        }`}
+                      >
+                        <span className="block text-sm text-[#e5e4e2]">
+                          {recipient.name}
+                          {recipient.preferred && (
+                            <span className="ml-2 text-[10px] uppercase tracking-wide text-[#d3bb73]">
+                              opiekun
+                            </span>
+                          )}
+                        </span>
+                        {recipient.position && (
+                          <span className="block text-[11px] text-[#e5e4e2]/40">
+                            {recipient.position}
+                          </span>
+                        )}
+                        <span className="block text-xs text-[#d3bb73]/75">{recipient.email}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              <p className="mt-2 text-xs text-amber-300/70">
+                Organizacja wskazana na fakturze nie ma kontaktu z adresem e-mail. Wpisz adres
+                ręcznie albo uzupełnij kartotekę organizacji.
+              </p>
+            )}
           </div>
 
           <div>

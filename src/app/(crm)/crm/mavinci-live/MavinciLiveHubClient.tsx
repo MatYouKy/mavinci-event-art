@@ -12,6 +12,7 @@ import {
   Database,
   Download,
   Edit3,
+  Eye,
   FileQuestion,
   Gamepad2,
   Lightbulb,
@@ -28,8 +29,9 @@ import { supabase } from '@/lib/supabase/browser';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
+import MavinciQuizShowPanel from './MavinciQuizShowPanel';
 
-type HubTab = 'overview' | 'familiada' | 'presets' | 'users' | 'sync';
+type HubTab = 'overview' | 'quizshow' | 'familiada' | 'presets' | 'users' | 'sync';
 
 type FamiliadaAnswer = { text: string; points: number };
 type FamiliadaQuestion = {
@@ -111,6 +113,15 @@ const emptyAnswers = (): FamiliadaAnswer[] => Array.from({ length: 6 }, () => ({
 const emptyQuestion = () => ({ id: '', event_id: '', category: 'Ogólne', question: '', answers: emptyAnswers(), tags: '' });
 const emptyGame = () => ({ id: '', event_id: '', name: '', description: '', is_active: true, rounds: [] as FamiliadaGameRound[] });
 
+const FAMILIADA_ROUND_RULES = [
+  { answers: 6, multiplier: 1 as const },
+  { answers: 6, multiplier: 1 as const },
+  { answers: 5, multiplier: 2 as const },
+  { answers: 4, multiplier: 2 as const },
+  { answers: 3, multiplier: 3 as const },
+  { answers: 3, multiplier: 3 as const },
+] as const;
+
 const formatDate = (value?: string | null) => value
   ? new Date(value).toLocaleString('pl-PL', { dateStyle: 'short', timeStyle: 'short' })
   : '—';
@@ -128,6 +139,7 @@ export default function MavinciLiveHubClient() {
   const { canManageModule, canViewModule, hasScope, isAdmin, loading: employeeLoading } = useCurrentEmployee();
   const canViewHub = isAdmin || canViewModule('mavinci_live');
   const canManage = isAdmin || canManageModule('mavinci_live');
+  const canUseQuizShow = isAdmin || hasScope('mavinci_live_quiz_show');
   const canUseFamiliada = isAdmin || hasScope('mavinci_live_familiada');
   const canManageFamiliada = canUseFamiliada && canManage;
   const { showSnackbar } = useSnackbar();
@@ -146,10 +158,14 @@ export default function MavinciLiveHubClient() {
   const [projects, setProjects] = useState<CloudProject[]>([]);
   const [events, setEvents] = useState<EventOption[]>([]);
   const [questionEditorOpen, setQuestionEditorOpen] = useState(false);
+  const [questionPreview, setQuestionPreview] = useState<FamiliadaQuestion | null>(null);
+  const [gamePreview, setGamePreview] = useState<FamiliadaGame | null>(null);
   const [questionDraft, setQuestionDraft] = useState(emptyQuestion);
   const [savingQuestion, setSavingQuestion] = useState(false);
-  const [gameEditorOpen, setGameEditorOpen] = useState(false);
+  const [structuredGameEditorOpen, setStructuredGameEditorOpen] = useState(false);
   const [gameDraft, setGameDraft] = useState(emptyGame);
+  const [roundQuestionSearch, setRoundQuestionSearch] = useState<Record<number, string>>({});
+  const [openRoundQuestionSelector, setOpenRoundQuestionSelector] = useState<number | null>(null);
   const [savingGame, setSavingGame] = useState(false);
 
   const loadData = useCallback(async (quiet = false) => {
@@ -190,8 +206,9 @@ export default function MavinciLiveHubClient() {
   useEffect(() => { void loadData(); }, [loadData]);
 
   useEffect(() => {
+    if (!canUseQuizShow && tab === 'quizshow') setTab('overview');
     if (!canUseFamiliada && tab === 'familiada') setTab('overview');
-  }, [canUseFamiliada, tab]);
+  }, [canUseFamiliada, canUseQuizShow, tab]);
 
   useEffect(() => {
     const channel = supabase
@@ -299,10 +316,15 @@ export default function MavinciLiveHubClient() {
   };
 
   const removeQuestion = async (question: FamiliadaQuestion) => {
-    if (!await showConfirm(`Usunąć pytanie „${question.question}”?`, 'Usuń')) return;
+    if (!await showConfirm(`Usunąć pytanie „${question.question}”?`, 'Usuń')) return false;
     const { error } = await supabase.from('mavinci_familiada_questions').delete().eq('id', question.id);
-    if (error) showSnackbar(error.message, 'error');
-    else { showSnackbar('Pytanie usunięte.', 'success'); await loadData(true); }
+    if (error) {
+      showSnackbar(error.message, 'error');
+      return false;
+    }
+    showSnackbar('Pytanie usunięte.', 'success');
+    await loadData(true);
+    return true;
   };
 
   const openGameEditor = (game?: FamiliadaGame) => {
@@ -312,18 +334,74 @@ export default function MavinciLiveHubClient() {
       name: game.name,
       description: game.description,
       is_active: game.is_active,
-      rounds: game.rounds.map((round, index) => ({ ...round, sort_order: index })),
+      rounds: game.rounds.slice(0, FAMILIADA_ROUND_RULES.length).map((round, index) => ({
+        ...round,
+        sort_order: index,
+        multiplier: FAMILIADA_ROUND_RULES[index].multiplier,
+      })),
     } : emptyGame());
-    setGameEditorOpen(true);
+    setRoundQuestionSearch({});
+    setOpenRoundQuestionSelector(null);
+    setStructuredGameEditorOpen(true);
+  };
+
+  const addStructuredFamiliadaRound = () => {
+    const roundIndex = gameDraft.rounds.length;
+    const rule = FAMILIADA_ROUND_RULES[roundIndex];
+    if (!rule) {
+      showSnackbar('Gra Familiady ma dokładnie 6 rund.', 'warning');
+      return;
+    }
+    const hasUnusedQuestion = questions.some(
+      (question) =>
+        question.answers.length === rule.answers &&
+        !gameDraft.rounds.some((round) => round.question_id === question.id),
+    );
+    if (!hasUnusedQuestion) {
+      showSnackbar(
+        `Brakuje niewykorzystanego pytania z ${rule.answers} odpowiedziami dla rundy ${roundIndex + 1}.`,
+        'warning',
+      );
+      return;
+    }
+    setGameDraft((current) => ({
+      ...current,
+      rounds: [
+        ...current.rounds,
+        {
+          question_id: '',
+          sort_order: roundIndex,
+          multiplier: rule.multiplier,
+        },
+      ],
+    }));
+    setRoundQuestionSearch((current) => ({ ...current, [roundIndex]: '' }));
+    setOpenRoundQuestionSelector(roundIndex);
   };
 
   const saveGame = async () => {
-    if (gameDraft.name.trim().length < 2 || gameDraft.rounds.length === 0) {
-      showSnackbar('Podaj nazwę i dodaj przynajmniej jedną rundę.', 'warning');
+    if (gameDraft.name.trim().length < 2 || gameDraft.rounds.length !== FAMILIADA_ROUND_RULES.length) {
+      showSnackbar('Podaj nazwę i skonfiguruj dokładnie 6 rund Familiady.', 'warning');
+      return;
+    }
+    if (gameDraft.rounds.some((round) => !round.question_id)) {
+      showSnackbar('Wybierz pytanie dla każdej rundy.', 'warning');
       return;
     }
     if (new Set(gameDraft.rounds.map((round) => round.question_id)).size !== gameDraft.rounds.length) {
       showSnackbar('Każde pytanie może wystąpić w grze tylko raz.', 'warning');
+      return;
+    }
+    const invalidRoundIndex = gameDraft.rounds.findIndex((round, index) => {
+      const question = questions.find((item) => item.id === round.question_id);
+      return !question || question.answers.length !== FAMILIADA_ROUND_RULES[index].answers;
+    });
+    if (invalidRoundIndex >= 0) {
+      const rule = FAMILIADA_ROUND_RULES[invalidRoundIndex];
+      showSnackbar(
+        `Runda ${invalidRoundIndex + 1} wymaga pytania z ${rule.answers} odpowiedziami.`,
+        'warning',
+      );
       return;
     }
     setSavingGame(true);
@@ -334,7 +412,10 @@ export default function MavinciLiveHubClient() {
         name: gameDraft.name.trim(),
         description: gameDraft.description.trim(),
         is_active: gameDraft.is_active,
-        rounds: gameDraft.rounds.map((round) => ({ question_id: round.question_id, multiplier: round.multiplier })),
+        rounds: gameDraft.rounds.map((round, index) => ({
+          question_id: round.question_id,
+          multiplier: FAMILIADA_ROUND_RULES[index].multiplier,
+        })),
       },
     });
     setSavingGame(false);
@@ -342,16 +423,21 @@ export default function MavinciLiveHubClient() {
       showSnackbar(error.message, 'error');
       return;
     }
-    setGameEditorOpen(false);
+    setStructuredGameEditorOpen(false);
     showSnackbar(gameDraft.id ? 'Gra została zaktualizowana.' : 'Gra została zapisana w centralnej bazie.', 'success');
     await loadData(true);
   };
 
   const removeGame = async (game: FamiliadaGame) => {
-    if (!await showConfirm(`Usunąć grę „${game.name}”?`, 'Usuń')) return;
+    if (!await showConfirm(`Usunąć grę „${game.name}”?`, 'Usuń')) return false;
     const { error } = await supabase.from('mavinci_familiada_games').delete().eq('id', game.id);
-    if (error) showSnackbar(error.message, 'error');
-    else { showSnackbar('Gra usunięta.', 'success'); await loadData(true); }
+    if (error) {
+      showSnackbar(error.message, 'error');
+      return false;
+    }
+    showSnackbar('Gra usunięta.', 'success');
+    await loadData(true);
+    return true;
   };
 
   const importPreset = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -386,6 +472,7 @@ export default function MavinciLiveHubClient() {
 
   const tabs: Array<{ id: HubTab; label: string; icon: typeof Database; count?: number }> = [
     { id: 'overview', label: 'Przegląd', icon: Activity },
+    ...(canUseQuizShow ? [{ id: 'quizshow' as const, label: 'Quiz Show', icon: BookOpenCheck }] : []),
     ...(canUseFamiliada ? [{ id: 'familiada' as const, label: 'Baza Familiady', icon: FileQuestion, count: questions.length + games.length }] : []),
     { id: 'presets', label: 'Presety Light Magic', icon: Lightbulb, count: presets.length },
     { id: 'users', label: 'Aktywni użytkownicy', icon: Users, count: activeSessions.length },
@@ -428,15 +515,124 @@ export default function MavinciLiveHubClient() {
         </section>
       </div>}
 
+      {tab === 'quizshow' && <MavinciQuizShowPanel canManage={canManage && canUseQuizShow} />}
+
       {tab === 'familiada' && <div className="space-y-5">
         <section className="rounded-2xl border border-white/10 bg-[#171b2b] p-5">
-          <SectionHeader eyebrow="Familiada · gry" title="Gotowe rozgrywki" description="Wybierz pytania, ustaw ich kolejność i mnożnik rundy. Taką samą grę zobaczy Mavinci LIVE przy wydarzeniu." actions={<>{canManageFamiliada && <button onClick={() => openGameEditor()} className="flex items-center gap-2 rounded-xl bg-[#d3bb73] px-4 py-3 text-sm font-bold text-[#111522]"><Plus className="h-4 w-4" /> Nowa gra</button>}</>} />
+          <SectionHeader eyebrow="Familiada · gry" title="Gotowe rozgrywki" description="Wybierz sześć pytań. Liczba odpowiedzi i mnożnik są pilnowane automatycznie dla każdej rundy." actions={<>{canManageFamiliada && <button onClick={() => openGameEditor()} className="flex items-center gap-2 rounded-xl bg-[#d3bb73] px-4 py-3 text-sm font-bold text-[#111522]"><Plus className="h-4 w-4" /> Nowa gra</button>}</>} />
           <SearchBox value={search} onChange={setSearch} placeholder="Szukaj gry albo pytania…" />
-          <div className="mt-4 grid gap-3 lg:grid-cols-2 xl:grid-cols-3">{filteredGames.map((game) => <article key={game.id} className="rounded-xl border border-white/8 bg-[#111522] p-4"><div className="flex items-start justify-between gap-3"><div><span className="rounded-full bg-cyan-400/10 px-2.5 py-1 text-[10px] font-semibold text-cyan-200">{game.event_id ? eventMap.get(game.event_id)?.name || 'Wydarzenie' : 'Gra globalna'}</span><h3 className="mt-3 text-lg font-semibold">{game.name}</h3><p className="mt-1 text-sm text-[#e5e4e2]/40">{game.description || 'Bez opisu'}</p></div>{canManageFamiliada && <div className="flex shrink-0 gap-2"><button onClick={() => openGameEditor(game)} className="rounded-lg border border-white/10 p-2 text-[#e5e4e2]/60 hover:text-[#d3bb73]" title="Edytuj"><Edit3 className="h-4 w-4" /></button><button onClick={() => void removeGame(game)} className="rounded-lg border border-red-400/20 p-2 text-red-300/70 hover:bg-red-400/10" title="Usuń"><Trash2 className="h-4 w-4" /></button></div>}</div><div className="mt-4 space-y-1.5">{game.rounds.map((round, index) => <div key={round.id || `${game.id}-${index}`} className="flex items-center justify-between rounded-lg bg-white/[.025] px-3 py-2 text-xs"><span><b className="mr-2 text-[#d3bb73]">{index + 1}.</b>{questions.find((question) => question.id === round.question_id)?.question || 'Usunięte pytanie'}</span><strong className="rounded-md bg-[#d3bb73]/10 px-2 py-1 text-[#d3bb73]">×{round.multiplier}</strong></div>)}</div><footer className="mt-4 flex items-center justify-between border-t border-white/5 pt-3 text-[11px] text-[#e5e4e2]/35"><span>{game.rounds.length} rund</span><span>{formatDate(game.updated_at)}</span></footer></article>)}{filteredGames.length === 0 && <div className="lg:col-span-2 xl:col-span-3"><EmptyState text="Nie ma jeszcze gotowej gry. Utwórz ją z pytań poniżej." /></div>}</div>
+          <div className="mt-4 overflow-hidden rounded-xl border border-white/8 bg-[#111522]">
+            <div className="hidden grid-cols-[minmax(0,1fr)_180px_90px_130px_40px] gap-3 border-b border-white/8 bg-white/[.035] px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-[#e5e4e2]/35 md:grid">
+              <span>Rozgrywka</span>
+              <span>Wydarzenie</span>
+              <span>Rundy</span>
+              <span>Aktualizacja</span>
+              <span className="sr-only">Akcje</span>
+            </div>
+            <div className="max-h-[430px] divide-y divide-white/5 overflow-y-auto overscroll-contain">
+              {filteredGames.map((game) => (
+                <div
+                  key={game.id}
+                  className="grid min-h-[58px] grid-cols-[minmax(0,1fr)_40px] items-center gap-2 px-3 py-2.5 hover:bg-white/[.025] md:grid-cols-[minmax(0,1fr)_180px_90px_130px_40px] md:gap-3"
+                >
+                  <div className="min-w-0">
+                    <button
+                      type="button"
+                      onClick={() => setGamePreview(game)}
+                      className="block max-w-full truncate text-left text-sm font-semibold text-[#e5e4e2] hover:text-[#d3bb73]"
+                    >
+                      {game.name}
+                    </button>
+                    <span className="block truncate text-[10px] text-[#e5e4e2]/35">
+                      {game.description || 'Bez opisu'}
+                    </span>
+                  </div>
+                  <span className="hidden truncate text-xs text-[#e5e4e2]/50 md:block">
+                    {game.event_id ? eventMap.get(game.event_id)?.name || 'Wydarzenie' : 'Gra globalna'}
+                  </span>
+                  <span className="hidden text-xs tabular-nums text-[#e5e4e2]/50 md:block">
+                    {game.rounds.length} / {FAMILIADA_ROUND_RULES.length}
+                  </span>
+                  <span className="hidden text-xs text-[#e5e4e2]/35 md:block">
+                    {formatDate(game.updated_at)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setGamePreview(game)}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 text-[#e5e4e2]/55 hover:border-[#d3bb73]/35 hover:text-[#d3bb73]"
+                    title="Pokaż rundy rozgrywki"
+                    aria-label={`Pokaż rozgrywkę: ${game.name}`}
+                  >
+                    <Eye className="h-4 w-4" />
+                  </button>
+                </div>
+              ))}
+              {filteredGames.length === 0 && (
+                <EmptyState text="Nie ma jeszcze gotowej gry. Utwórz ją z pytań poniżej." />
+              )}
+            </div>
+          </div>
         </section>
         <section className="rounded-2xl border border-white/10 bg-[#171b2b] p-5">
           <SectionHeader eyebrow="Familiada · pytania" title="Centralna biblioteka pytań" description="Każde pytanie ma od 3 do 6 odpowiedzi. Mnożnik wybierasz dopiero podczas układania gry." actions={<>{canManageFamiliada && <button onClick={() => openQuestionEditor()} className="flex items-center gap-2 rounded-xl border border-[#d3bb73]/30 px-4 py-3 text-sm font-bold text-[#d3bb73]"><Plus className="h-4 w-4" /> Dodaj pytanie</button>}</>} />
-          <div className="mt-4 space-y-3">{filteredQuestions.map((question) => <article key={question.id} className="rounded-xl border border-white/8 bg-[#111522] p-4"><div className="flex flex-wrap items-start justify-between gap-4"><div className="min-w-0 flex-1"><div className="mb-2 flex flex-wrap items-center gap-2"><span className="rounded-full bg-[#d3bb73]/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[#d3bb73]">{question.category}</span><span className="rounded-full bg-cyan-400/10 px-2.5 py-1 text-[10px] font-semibold text-cyan-200">{question.event_id ? eventMap.get(question.event_id)?.name || 'Wydarzenie' : 'Pytanie globalne'}</span>{question.tags.map((tag) => <span key={tag} className="text-xs text-[#e5e4e2]/35">#{tag}</span>)}</div><h3 className="text-base font-semibold">{question.question}</h3><div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">{question.answers.map((answer, index) => <div key={`${answer.text}-${index}`} className="flex items-center justify-between rounded-lg border border-white/5 bg-white/[.025] px-3 py-2 text-sm"><span><b className="mr-2 text-[#d3bb73]">{index + 1}.</b>{answer.text}</span><strong className="text-[#d3bb73]">{answer.points}</strong></div>)}</div></div>{canManageFamiliada && <div className="flex shrink-0 gap-2"><button onClick={() => openQuestionEditor(question)} className="rounded-lg border border-white/10 p-2 text-[#e5e4e2]/60 hover:text-[#d3bb73]" title="Edytuj"><Edit3 className="h-4 w-4" /></button><button onClick={() => void removeQuestion(question)} className="rounded-lg border border-red-400/20 p-2 text-red-300/70 hover:bg-red-400/10" title="Usuń"><Trash2 className="h-4 w-4" /></button></div>}</div><footer className="mt-3 flex items-center justify-between border-t border-white/5 pt-3 text-[11px] text-[#e5e4e2]/35"><span>{question.answers.length} odpowiedzi · suma {question.answers.reduce((sum, answer) => sum + answer.points, 0)} pkt</span><span>{formatDate(question.updated_at)}</span></footer></article>)}{filteredQuestions.length === 0 && <EmptyState text="Brak pytań spełniających wybrane kryteria." />}</div>
+          <div className="mt-4 overflow-hidden rounded-xl border border-white/8 bg-[#111522]">
+            <div className="hidden grid-cols-[minmax(0,1fr)_140px_125px_48px] gap-3 border-b border-white/8 bg-white/[.035] px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-[#e5e4e2]/35 md:grid">
+              <span>Pytanie</span>
+              <span>Kategoria</span>
+              <span>Odpowiedzi</span>
+              <span className="sr-only">Akcje</span>
+            </div>
+            <div className="max-h-[540px] divide-y divide-white/5 overflow-y-auto overscroll-contain">
+              {filteredQuestions.map((question, index) => (
+                <div
+                  key={question.id}
+                  className="grid min-h-[52px] grid-cols-[minmax(0,1fr)_40px] items-center gap-2 px-3 py-2 hover:bg-white/[.025] md:grid-cols-[minmax(0,1fr)_140px_125px_40px] md:gap-3"
+                >
+                  <div className="flex min-w-0 items-center gap-2.5">
+                    <span className="w-6 shrink-0 text-right text-[11px] tabular-nums text-[#e5e4e2]/25">
+                      {index + 1}.
+                    </span>
+                    <div className="min-w-0">
+                      <button
+                        type="button"
+                        onClick={() => setQuestionPreview(question)}
+                        className="block max-w-full truncate text-left text-sm font-medium text-[#e5e4e2] hover:text-[#d3bb73]"
+                        title={question.question}
+                      >
+                        {question.question}
+                      </button>
+                      <span className="block truncate text-[10px] text-[#e5e4e2]/30 md:hidden">
+                        {question.category} · {question.answers.length} odpowiedzi
+                      </span>
+                    </div>
+                  </div>
+                  <span className="hidden truncate text-xs text-[#e5e4e2]/55 md:block">
+                    {question.category}
+                  </span>
+                  <span className="hidden text-xs tabular-nums text-[#e5e4e2]/45 md:block">
+                    {question.answers.length} · {question.answers.reduce((sum, answer) => sum + answer.points, 0)} pkt
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setQuestionPreview(question)}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 text-[#e5e4e2]/55 hover:border-[#d3bb73]/35 hover:text-[#d3bb73]"
+                    title="Pokaż pytanie i odpowiedzi"
+                    aria-label={`Pokaż szczegóły pytania: ${question.question}`}
+                  >
+                    <Eye className="h-4 w-4" />
+                  </button>
+                </div>
+              ))}
+              {filteredQuestions.length === 0 && (
+                <EmptyState text="Brak pytań spełniających wybrane kryteria." />
+              )}
+            </div>
+            {filteredQuestions.length > 10 && (
+              <div className="border-t border-white/8 px-3 py-2 text-[10px] text-[#e5e4e2]/30">
+                Wyświetlono {filteredQuestions.length} pytań · przewiń listę, aby zobaczyć pozostałe
+              </div>
+            )}
+          </div>
         </section>
       </div>}
 
@@ -456,7 +652,536 @@ export default function MavinciLiveHubClient() {
         <div className="mt-5 space-y-3">{projects.map((project) => <article key={project.id} className="grid gap-4 rounded-xl border border-white/8 bg-[#111522] p-4 lg:grid-cols-[1.2fr_.8fr_.8fr_auto] lg:items-center"><div><span className="text-[10px] font-bold uppercase tracking-wider text-[#d3bb73]">{project.event_name || 'Wydarzenie'}</span><h3 className="mt-1 font-semibold">{project.name}</h3><small className="text-[#e5e4e2]/35">{project.event_date ? new Date(project.event_date).toLocaleDateString('pl-PL') : 'Bez daty'}</small></div><div><span className="text-xs text-[#e5e4e2]/35">Moduły</span><div className="mt-2 flex flex-wrap gap-1">{project.enabled_modules.map((module) => <span key={module} className="rounded-full bg-white/5 px-2 py-1 text-[10px]">{MODULE_LABELS[module] || module}</span>)}</div></div><div><span className="text-xs text-[#e5e4e2]/35">Ostatnia aktualizacja</span><strong className="mt-1 block text-sm">{formatDate(project.updated_at)}</strong></div><span className={`rounded-full px-3 py-2 text-center text-xs font-bold ${project.version > 0 && project.published_manifest ? 'bg-emerald-400/10 text-emerald-300' : 'bg-amber-400/10 text-amber-300'}`}>{project.version > 0 && project.published_manifest ? `Opublikowano v${project.version}` : 'Tylko szkic'}</span></article>)}{projects.length === 0 && <EmptyState text="Brak projektów Mavinci LIVE przypisanych do wydarzeń." />}</div>
       </section>}
 
-      {gameEditorOpen && <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) setGameEditorOpen(false); }}><div className="max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-2xl border border-[#d3bb73]/25 bg-[#171b2b] shadow-2xl"><header className="sticky top-0 z-10 flex items-center justify-between border-b border-white/10 bg-[#171b2b]/95 px-6 py-5 backdrop-blur"><div><p className="text-xs font-bold uppercase tracking-[.16em] text-[#d3bb73]">Kompozytor Familiady</p><h2 className="mt-1 text-xl font-semibold">{gameDraft.id ? 'Edytuj grę' : 'Nowa gra'}</h2></div><button onClick={() => setGameEditorOpen(false)} className="rounded-lg border border-white/10 p-2 text-[#e5e4e2]/55"><X className="h-5 w-5" /></button></header><div className="space-y-5 p-6"><div className="grid gap-4 md:grid-cols-2"><label className="text-sm text-[#e5e4e2]/65">Nazwa gry<input value={gameDraft.name} onChange={(event) => setGameDraft((current) => ({ ...current, name: event.target.value }))} placeholder="np. Familiada weselna" className="mt-2 w-full rounded-xl border border-white/10 bg-[#111522] px-4 py-3 text-[#e5e4e2] outline-none focus:border-[#d3bb73]" /></label><label className="text-sm text-[#e5e4e2]/65">Wydarzenie<select value={gameDraft.event_id} onChange={(event) => setGameDraft((current) => ({ ...current, event_id: event.target.value }))} className="mt-2 w-full rounded-xl border border-white/10 bg-[#111522] px-4 py-3 text-[#e5e4e2] outline-none focus:border-[#d3bb73]"><option value="">Gra globalna</option>{events.map((event) => <option key={event.id} value={event.id}>{event.name}{event.event_date ? ` · ${new Date(event.event_date).toLocaleDateString('pl-PL')}` : ''}</option>)}</select></label></div><label className="block text-sm text-[#e5e4e2]/65">Opis<textarea value={gameDraft.description} onChange={(event) => setGameDraft((current) => ({ ...current, description: event.target.value }))} rows={2} className="mt-2 w-full resize-none rounded-xl border border-white/10 bg-[#111522] px-4 py-3 text-[#e5e4e2] outline-none focus:border-[#d3bb73]" /></label><div><div className="mb-3 flex items-end justify-between gap-3"><div><h3 className="font-semibold">Rundy gry</h3><p className="text-xs text-[#e5e4e2]/40">Ustaw kolejność pytań oraz mnożnik ×1, ×2 lub ×3.</p></div><button onClick={() => { const firstUnused = questions.find((question) => !gameDraft.rounds.some((round) => round.question_id === question.id)); if (firstUnused) setGameDraft((current) => ({ ...current, rounds: [...current.rounds, { question_id: firstUnused.id, sort_order: current.rounds.length, multiplier: 1 }] })); else showSnackbar('Wszystkie dostępne pytania są już w tej grze.', 'warning'); }} className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/25 px-3 py-2 text-xs font-semibold text-[#d3bb73]"><Plus className="h-4 w-4" /> Dodaj rundę</button></div><div className="space-y-2">{gameDraft.rounds.map((round, index) => <div key={`${round.question_id}-${index}`} className="grid grid-cols-[42px_1fr_110px_auto] items-center gap-2 rounded-xl border border-white/8 bg-[#111522] p-2"><span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#d3bb73]/10 text-sm font-bold text-[#d3bb73]">{index + 1}</span><select value={round.question_id} onChange={(event) => setGameDraft((current) => ({ ...current, rounds: current.rounds.map((item, itemIndex) => itemIndex === index ? { ...item, question_id: event.target.value } : item) }))} className="min-w-0 rounded-lg border border-white/10 bg-[#0c1020] px-3 py-2.5 outline-none focus:border-[#d3bb73]">{questions.map((question) => <option key={question.id} value={question.id} disabled={gameDraft.rounds.some((item, itemIndex) => itemIndex !== index && item.question_id === question.id)}>{question.question}</option>)}</select><select value={round.multiplier} onChange={(event) => setGameDraft((current) => ({ ...current, rounds: current.rounds.map((item, itemIndex) => itemIndex === index ? { ...item, multiplier: Number(event.target.value) as 1 | 2 | 3 } : item) }))} className="rounded-lg border border-white/10 bg-[#0c1020] px-3 py-2.5 text-center outline-none focus:border-[#d3bb73]"><option value={1}>× 1</option><option value={2}>× 2</option><option value={3}>× 3</option></select><div className="flex"><button disabled={index === 0} onClick={() => setGameDraft((current) => { const rounds = [...current.rounds]; [rounds[index - 1], rounds[index]] = [rounds[index], rounds[index - 1]]; return { ...current, rounds }; })} className="rounded-lg p-2 text-[#e5e4e2]/45 disabled:opacity-20"><ArrowUp className="h-4 w-4" /></button><button disabled={index === gameDraft.rounds.length - 1} onClick={() => setGameDraft((current) => { const rounds = [...current.rounds]; [rounds[index + 1], rounds[index]] = [rounds[index], rounds[index + 1]]; return { ...current, rounds }; })} className="rounded-lg p-2 text-[#e5e4e2]/45 disabled:opacity-20"><ArrowDown className="h-4 w-4" /></button><button onClick={() => setGameDraft((current) => ({ ...current, rounds: current.rounds.filter((_item, itemIndex) => itemIndex !== index) }))} className="rounded-lg p-2 text-red-300/60"><Trash2 className="h-4 w-4" /></button></div></div>)}{gameDraft.rounds.length === 0 && <EmptyState text="Dodaj pierwszą rundę z biblioteki pytań." />}</div></div><footer className="flex items-center justify-end gap-3 border-t border-white/10 pt-5"><span className="mr-auto text-sm text-[#e5e4e2]/45">{gameDraft.rounds.length} rund · mnożniki zapisują się razem z grą</span><button onClick={() => setGameEditorOpen(false)} className="rounded-xl border border-white/10 px-5 py-3 text-sm">Anuluj</button><button onClick={() => void saveGame()} disabled={savingGame} className="rounded-xl bg-[#d3bb73] px-5 py-3 text-sm font-bold text-[#111522] disabled:opacity-50">{savingGame ? 'Zapisywanie…' : 'Zapisz grę'}</button></footer></div></div></div>}
+      {gamePreview && (
+        <div
+          className="fixed inset-0 z-[90] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setGamePreview(null);
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="familiada-game-preview-title"
+            className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-[#d3bb73]/25 bg-[#171b2b] shadow-2xl"
+          >
+            <header className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-white/10 bg-[#171b2b]/95 px-5 py-4 backdrop-blur">
+              <div className="min-w-0">
+                <span className="rounded-full bg-cyan-400/10 px-2.5 py-1 text-[10px] font-semibold text-cyan-200">
+                  {gamePreview.event_id
+                    ? eventMap.get(gamePreview.event_id)?.name || 'Wydarzenie'
+                    : 'Gra globalna'}
+                </span>
+                <h2 id="familiada-game-preview-title" className="mt-3 text-xl font-semibold text-[#e5e4e2]">
+                  {gamePreview.name}
+                </h2>
+                {gamePreview.description && (
+                  <p className="mt-1 text-sm text-[#e5e4e2]/45">{gamePreview.description}</p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setGamePreview(null)}
+                className="shrink-0 rounded-lg border border-white/10 p-2 text-[#e5e4e2]/55 hover:text-[#e5e4e2]"
+                aria-label="Zamknij podgląd rozgrywki"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </header>
+
+            <div className="space-y-2 p-5">
+              {gamePreview.rounds.map((round, index) => {
+                const question = questions.find((item) => item.id === round.question_id);
+                return (
+                  <div
+                    key={round.id || `${gamePreview.id}-${index}`}
+                    className="flex items-start gap-3 rounded-xl border border-white/8 bg-[#111522] px-3 py-3"
+                  >
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#d3bb73]/10 text-xs font-bold text-[#d3bb73]">
+                      {index + 1}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      {question ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setGamePreview(null);
+                            setQuestionPreview(question);
+                          }}
+                          className="block max-w-full text-left text-sm font-medium text-[#e5e4e2] hover:text-[#d3bb73]"
+                        >
+                          {question.question}
+                        </button>
+                      ) : (
+                        <span className="text-sm text-red-300/70">Usunięte pytanie</span>
+                      )}
+                      <span className="mt-1 block text-[10px] text-[#e5e4e2]/35">
+                        {question ? `${question.answers.length} odpowiedzi · ${question.category}` : 'Brak danych pytania'}
+                      </span>
+                    </div>
+                    <strong className="shrink-0 rounded-lg bg-[#d3bb73]/10 px-2.5 py-1.5 text-xs text-[#d3bb73]">
+                      ×{round.multiplier}
+                    </strong>
+                  </div>
+                );
+              })}
+              {gamePreview.rounds.length === 0 && (
+                <EmptyState text="Ta rozgrywka nie ma jeszcze rund." />
+              )}
+            </div>
+
+            <footer className="flex flex-wrap items-center justify-end gap-2 border-t border-white/10 px-5 py-4">
+              <span className="mr-auto text-xs text-[#e5e4e2]/35">
+                {gamePreview.rounds.length} rund · aktualizacja {formatDate(gamePreview.updated_at)}
+              </span>
+              {canManageFamiliada && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (await removeGame(gamePreview)) setGamePreview(null);
+                  }}
+                  className="rounded-xl border border-red-400/20 px-4 py-2.5 text-sm text-red-300/75 hover:bg-red-400/10"
+                >
+                  Usuń
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setGamePreview(null)}
+                className="rounded-xl border border-white/10 px-4 py-2.5 text-sm text-[#e5e4e2]/70"
+              >
+                Zamknij
+              </button>
+              {canManageFamiliada && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const game = gamePreview;
+                    setGamePreview(null);
+                    openGameEditor(game);
+                  }}
+                  className="flex items-center gap-2 rounded-xl bg-[#d3bb73] px-4 py-2.5 text-sm font-bold text-[#111522]"
+                >
+                  <Edit3 className="h-4 w-4" />
+                  Edytuj rozgrywkę
+                </button>
+              )}
+            </footer>
+          </div>
+        </div>
+      )}
+
+      {structuredGameEditorOpen && (
+        <div
+          className="fixed inset-0 z-[90] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setStructuredGameEditorOpen(false);
+          }}
+        >
+          <div className="max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-2xl border border-[#d3bb73]/25 bg-[#171b2b] shadow-2xl">
+            <header className="sticky top-0 z-10 flex items-center justify-between border-b border-white/10 bg-[#171b2b]/95 px-6 py-5 backdrop-blur">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[.16em] text-[#d3bb73]">
+                  Kompozytor Familiady
+                </p>
+                <h2 className="mt-1 text-xl font-semibold">
+                  {gameDraft.id ? 'Edytuj grę' : 'Nowa gra'}
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setStructuredGameEditorOpen(false)}
+                className="rounded-lg border border-white/10 p-2 text-[#e5e4e2]/55"
+                aria-label="Zamknij kompozytor"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </header>
+
+            <div className="space-y-5 p-6">
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="text-sm text-[#e5e4e2]/65">
+                  Nazwa gry
+                  <input
+                    value={gameDraft.name}
+                    onChange={(event) =>
+                      setGameDraft((current) => ({ ...current, name: event.target.value }))
+                    }
+                    placeholder="np. Familiada weselna"
+                    className="mt-2 w-full rounded-xl border border-white/10 bg-[#111522] px-4 py-3 text-[#e5e4e2] outline-none focus:border-[#d3bb73]"
+                  />
+                </label>
+                <label className="text-sm text-[#e5e4e2]/65">
+                  Wydarzenie
+                  <select
+                    value={gameDraft.event_id}
+                    onChange={(event) =>
+                      setGameDraft((current) => ({ ...current, event_id: event.target.value }))
+                    }
+                    className="mt-2 w-full rounded-xl border border-white/10 bg-[#111522] px-4 py-3 text-[#e5e4e2] outline-none focus:border-[#d3bb73]"
+                  >
+                    <option value="">Gra globalna</option>
+                    {events.map((event) => (
+                      <option key={event.id} value={event.id}>
+                        {event.name}
+                        {event.event_date
+                          ? ` · ${new Date(event.event_date).toLocaleDateString('pl-PL')}`
+                          : ''}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <label className="block text-sm text-[#e5e4e2]/65">
+                Opis
+                <textarea
+                  value={gameDraft.description}
+                  onChange={(event) =>
+                    setGameDraft((current) => ({ ...current, description: event.target.value }))
+                  }
+                  rows={2}
+                  className="mt-2 w-full resize-none rounded-xl border border-white/10 bg-[#111522] px-4 py-3 text-[#e5e4e2] outline-none focus:border-[#d3bb73]"
+                />
+              </label>
+
+              <div className="rounded-xl border border-[#d3bb73]/15 bg-[#d3bb73]/5 px-4 py-3 text-xs text-[#e5e4e2]/65">
+                Układ gry: rundy 1–2 — 6 odpowiedzi i ×1; runda 3 — 5 odpowiedzi i ×2;
+                runda 4 — 4 odpowiedzi i ×2; rundy 5–6 — 3 odpowiedzi i ×3.
+              </div>
+
+              <div>
+                <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+                  <div>
+                    <h3 className="font-semibold">Rundy gry</h3>
+                    <p className="text-xs text-[#e5e4e2]/40">
+                      Dla każdej rundy dostępne są tylko pytania z właściwą liczbą odpowiedzi.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={addStructuredFamiliadaRound}
+                    disabled={gameDraft.rounds.length >= FAMILIADA_ROUND_RULES.length}
+                    className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/25 px-3 py-2 text-xs font-semibold text-[#d3bb73] disabled:cursor-not-allowed disabled:opacity-35"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Dodaj rundę
+                  </button>
+                </div>
+
+                <div className="space-y-2">
+                  {gameDraft.rounds.map((round, index) => {
+                    const rule = FAMILIADA_ROUND_RULES[index];
+                    const currentQuestion = questions.find(
+                      (question) => question.id === round.question_id,
+                    );
+                    const currentQuestionIsInvalid =
+                      currentQuestion && currentQuestion.answers.length !== rule.answers;
+                    const eligibleQuestions = questions.filter(
+                      (question) => question.answers.length === rule.answers,
+                    );
+                    const questionSearch = (roundQuestionSearch[index] || '')
+                      .trim()
+                      .toLocaleLowerCase('pl-PL');
+                    const visibleQuestions = eligibleQuestions.filter(
+                      (question) =>
+                        !questionSearch ||
+                        question.question.toLocaleLowerCase('pl-PL').includes(questionSearch) ||
+                        question.category.toLocaleLowerCase('pl-PL').includes(questionSearch) ||
+                        question.tags.some((tag) =>
+                          tag.toLocaleLowerCase('pl-PL').includes(questionSearch),
+                        ),
+                    );
+
+                    return (
+                      <div
+                        key={`${round.question_id}-${index}`}
+                        className="grid gap-2 rounded-xl border border-white/8 bg-[#111522] p-3 md:grid-cols-[48px_minmax(0,1fr)_150px_auto] md:items-center"
+                      >
+                        <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#d3bb73]/10 text-sm font-bold text-[#d3bb73]">
+                          {index + 1}
+                        </span>
+                        <div
+                          className="relative min-w-0"
+                          onBlur={(event) => {
+                            if (
+                              !event.currentTarget.contains(event.relatedTarget as Node | null)
+                            ) {
+                              setOpenRoundQuestionSelector((current) =>
+                                current === index ? null : current,
+                              );
+                            }
+                          }}
+                        >
+                          <Search className="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-[#e5e4e2]/35" />
+                          <input
+                            type="search"
+                            autoFocus={openRoundQuestionSelector === index}
+                            value={
+                              openRoundQuestionSelector === index
+                                ? roundQuestionSearch[index] || ''
+                                : currentQuestion?.question || ''
+                            }
+                            onFocus={() => {
+                              setOpenRoundQuestionSelector(index);
+                              setRoundQuestionSearch((current) => ({
+                                ...current,
+                                [index]: '',
+                              }));
+                            }}
+                            onChange={(event) => {
+                              setOpenRoundQuestionSelector(index);
+                              setRoundQuestionSearch((current) => ({
+                                ...current,
+                                [index]: event.target.value,
+                              }));
+                            }}
+                            placeholder={`Szukaj pytania z ${rule.answers} odpowiedziami…`}
+                            role="combobox"
+                            aria-autocomplete="list"
+                            aria-controls={`familiada-round-${index}-questions`}
+                            aria-expanded={openRoundQuestionSelector === index}
+                            className={`w-full rounded-lg border bg-[#0c1020] py-2.5 pl-9 pr-3 text-sm outline-none placeholder:text-[#e5e4e2]/25 focus:border-[#d3bb73] ${
+                              currentQuestionIsInvalid
+                                ? 'border-red-400/50'
+                                : 'border-white/10'
+                            }`}
+                          />
+
+                          {openRoundQuestionSelector === index && (
+                            <div
+                              id={`familiada-round-${index}-questions`}
+                              className="absolute left-0 right-0 top-full z-30 mt-1 overflow-hidden rounded-xl border border-[#d3bb73]/20 bg-[#0c1020] shadow-2xl"
+                            >
+                              <div className="border-b border-white/8 px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-[#e5e4e2]/35">
+                                {visibleQuestions.length} z {eligibleQuestions.length} pytań ·{' '}
+                                {rule.answers} odpowiedzi
+                              </div>
+                              <div className="max-h-64 overflow-y-auto overscroll-contain p-1.5">
+                                {visibleQuestions.map((question) => {
+                                  const usedRoundIndex = gameDraft.rounds.findIndex(
+                                    (item) => item.question_id === question.id,
+                                  );
+                                  const usedElsewhere =
+                                    usedRoundIndex >= 0 && usedRoundIndex !== index;
+                                  const isSelected = round.question_id === question.id;
+
+                                  return (
+                                    <button
+                                      key={question.id}
+                                      type="button"
+                                      disabled={usedElsewhere}
+                                      onClick={() => {
+                                        setGameDraft((current) => ({
+                                          ...current,
+                                          rounds: current.rounds.map((item, itemIndex) =>
+                                            itemIndex === index
+                                              ? { ...item, question_id: question.id }
+                                              : item,
+                                          ),
+                                        }));
+                                        setRoundQuestionSearch((current) => ({
+                                          ...current,
+                                          [index]: '',
+                                        }));
+                                        setOpenRoundQuestionSelector(null);
+                                      }}
+                                      className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors ${
+                                        isSelected
+                                          ? 'bg-[#d3bb73]/12 text-[#d3bb73]'
+                                          : 'text-[#e5e4e2]/80 hover:bg-white/5'
+                                      } disabled:cursor-not-allowed disabled:opacity-35`}
+                                    >
+                                      <span className="min-w-0 flex-1">
+                                        <span className="block truncate">{question.question}</span>
+                                        <span className="mt-0.5 block truncate text-[10px] text-[#e5e4e2]/35">
+                                          {question.category}
+                                          {question.tags.length > 0
+                                            ? ` · ${question.tags.map((tag) => `#${tag}`).join(' ')}`
+                                            : ''}
+                                        </span>
+                                      </span>
+                                      {usedElsewhere && (
+                                        <span className="shrink-0 text-[10px] text-[#e5e4e2]/40">
+                                          runda {usedRoundIndex + 1}
+                                        </span>
+                                      )}
+                                      {isSelected && <Check className="h-4 w-4 shrink-0" />}
+                                    </button>
+                                  );
+                                })}
+                                {visibleQuestions.length === 0 && (
+                                  <div className="px-3 py-6 text-center text-xs text-[#e5e4e2]/40">
+                                    Brak pytań pasujących do wyszukiwania.
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className="rounded-lg bg-white/5 px-2.5 py-2 text-[#e5e4e2]/60">
+                            {rule.answers} odpowiedzi
+                          </span>
+                          <strong className="rounded-lg bg-[#d3bb73]/10 px-2.5 py-2 text-[#d3bb73]">
+                            ×{rule.multiplier}
+                          </strong>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setGameDraft((current) => ({
+                              ...current,
+                              rounds: current.rounds.slice(0, -1),
+                            }))
+                          }
+                          disabled={index !== gameDraft.rounds.length - 1}
+                          className="rounded-lg p-2 text-red-300/60 disabled:invisible"
+                          title="Usuń ostatnią rundę"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                  {gameDraft.rounds.length === 0 && (
+                    <EmptyState text="Dodaj pierwszą rundę. Kompozytor dobierze pytania zgodnie z formatem gry." />
+                  )}
+                </div>
+              </div>
+
+              <footer className="flex flex-wrap items-center justify-end gap-3 border-t border-white/10 pt-5">
+                <span className="mr-auto text-sm text-[#e5e4e2]/45">
+                  {gameDraft.rounds.length} / {FAMILIADA_ROUND_RULES.length} rund
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setStructuredGameEditorOpen(false)}
+                  className="rounded-xl border border-white/10 px-5 py-3 text-sm"
+                >
+                  Anuluj
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void saveGame()}
+                  disabled={savingGame || gameDraft.rounds.length !== FAMILIADA_ROUND_RULES.length}
+                  className="rounded-xl bg-[#d3bb73] px-5 py-3 text-sm font-bold text-[#111522] disabled:opacity-50"
+                >
+                  {savingGame ? 'Zapisywanie…' : 'Zapisz grę'}
+                </button>
+              </footer>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {questionPreview && (
+        <div
+          className="fixed inset-0 z-[90] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setQuestionPreview(null);
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="familiada-question-preview-title"
+            className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-[#d3bb73]/25 bg-[#171b2b] shadow-2xl"
+          >
+            <header className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-white/10 bg-[#171b2b]/95 px-5 py-4 backdrop-blur">
+              <div className="min-w-0">
+                <div className="mb-2 flex flex-wrap items-center gap-2">
+                  <span className="rounded-full bg-[#d3bb73]/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[#d3bb73]">
+                    {questionPreview.category}
+                  </span>
+                  <span className="rounded-full bg-cyan-400/10 px-2.5 py-1 text-[10px] font-semibold text-cyan-200">
+                    {questionPreview.event_id
+                      ? eventMap.get(questionPreview.event_id)?.name || 'Wydarzenie'
+                      : 'Pytanie globalne'}
+                  </span>
+                </div>
+                <h2 id="familiada-question-preview-title" className="text-xl font-semibold text-[#e5e4e2]">
+                  {questionPreview.question}
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setQuestionPreview(null)}
+                className="shrink-0 rounded-lg border border-white/10 p-2 text-[#e5e4e2]/55 hover:text-[#e5e4e2]"
+                aria-label="Zamknij podgląd pytania"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </header>
+
+            <div className="p-5">
+              <div className="space-y-2">
+                {questionPreview.answers.map((answer, index) => (
+                  <div
+                    key={`${answer.text}-${index}`}
+                    className="flex min-h-12 items-center gap-3 rounded-xl border border-white/8 bg-[#111522] px-3 py-2.5"
+                  >
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#d3bb73]/10 text-xs font-bold text-[#d3bb73]">
+                      {index + 1}
+                    </span>
+                    <span className="min-w-0 flex-1 text-sm text-[#e5e4e2]">{answer.text}</span>
+                    <strong className="shrink-0 text-sm tabular-nums text-[#d3bb73]">
+                      {answer.points} pkt
+                    </strong>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-white/8 pt-4 text-xs text-[#e5e4e2]/40">
+                <span>
+                  {questionPreview.answers.length} odpowiedzi · suma{' '}
+                  {questionPreview.answers.reduce((sum, answer) => sum + answer.points, 0)} pkt
+                </span>
+                <span>Aktualizacja: {formatDate(questionPreview.updated_at)}</span>
+                {questionPreview.tags.length > 0 && (
+                  <span>{questionPreview.tags.map((tag) => `#${tag}`).join(' ')}</span>
+                )}
+              </div>
+            </div>
+
+            <footer className="flex flex-wrap items-center justify-end gap-2 border-t border-white/10 px-5 py-4">
+              {canManageFamiliada && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (await removeQuestion(questionPreview)) setQuestionPreview(null);
+                  }}
+                  className="mr-auto rounded-xl border border-red-400/20 px-4 py-2.5 text-sm text-red-300/75 hover:bg-red-400/10"
+                >
+                  Usuń
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setQuestionPreview(null)}
+                className="rounded-xl border border-white/10 px-4 py-2.5 text-sm text-[#e5e4e2]/70"
+              >
+                Zamknij
+              </button>
+              {canManageFamiliada && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const question = questionPreview;
+                    setQuestionPreview(null);
+                    openQuestionEditor(question);
+                  }}
+                  className="flex items-center gap-2 rounded-xl bg-[#d3bb73] px-4 py-2.5 text-sm font-bold text-[#111522]"
+                >
+                  <Edit3 className="h-4 w-4" />
+                  Edytuj pytanie
+                </button>
+              )}
+            </footer>
+          </div>
+        </div>
+      )}
+
 
       {questionEditorOpen && <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) setQuestionEditorOpen(false); }}><div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-[#d3bb73]/25 bg-[#171b2b] shadow-2xl"><header className="sticky top-0 z-10 flex items-center justify-between border-b border-white/10 bg-[#171b2b]/95 px-6 py-5 backdrop-blur"><div><p className="text-xs font-bold uppercase tracking-[.16em] text-[#d3bb73]">Baza Familiady</p><h2 className="mt-1 text-xl font-semibold">{questionDraft.id ? 'Edytuj pytanie' : 'Nowe pytanie'}</h2></div><button onClick={() => setQuestionEditorOpen(false)} className="rounded-lg border border-white/10 p-2 text-[#e5e4e2]/55"><X className="h-5 w-5" /></button></header><div className="space-y-5 p-6"><div className="grid gap-4 md:grid-cols-3"><label className="text-sm text-[#e5e4e2]/65">Wydarzenie<select value={questionDraft.event_id} onChange={(event) => setQuestionDraft((current) => ({ ...current, event_id: event.target.value }))} className="mt-2 w-full rounded-xl border border-white/10 bg-[#111522] px-4 py-3 text-[#e5e4e2] outline-none focus:border-[#d3bb73]"><option value="">Globalne — dostępne dla wszystkich</option>{events.map((event) => <option key={event.id} value={event.id}>{event.name}{event.event_date ? ` · ${new Date(event.event_date).toLocaleDateString('pl-PL')}` : ''}</option>)}</select></label><label className="text-sm text-[#e5e4e2]/65">Kategoria<input value={questionDraft.category} onChange={(event) => setQuestionDraft((current) => ({ ...current, category: event.target.value }))} className="mt-2 w-full rounded-xl border border-white/10 bg-[#111522] px-4 py-3 text-[#e5e4e2] outline-none focus:border-[#d3bb73]" /></label><label className="text-sm text-[#e5e4e2]/65">Tagi, oddzielone przecinkami<input value={questionDraft.tags} onChange={(event) => setQuestionDraft((current) => ({ ...current, tags: event.target.value }))} className="mt-2 w-full rounded-xl border border-white/10 bg-[#111522] px-4 py-3 text-[#e5e4e2] outline-none focus:border-[#d3bb73]" /></label></div><label className="block text-sm text-[#e5e4e2]/65">Treść pytania<textarea value={questionDraft.question} onChange={(event) => setQuestionDraft((current) => ({ ...current, question: event.target.value }))} rows={3} className="mt-2 w-full resize-none rounded-xl border border-white/10 bg-[#111522] px-4 py-3 text-[#e5e4e2] outline-none focus:border-[#d3bb73]" /></label><div><div className="mb-3 flex items-center justify-between"><div><h3 className="font-semibold">Odpowiedzi i punkty</h3><p className="text-xs text-[#e5e4e2]/40">Od 3 do 6 odpowiedzi, suma nie większa niż 100.</p></div><button onClick={distributePoints} className="rounded-lg border border-[#d3bb73]/25 px-3 py-2 text-xs font-semibold text-[#d3bb73]">Rozłóż 100 pkt</button></div><div className="space-y-2">{questionDraft.answers.map((answer, index) => <div key={index} className="grid grid-cols-[auto_1fr_90px_auto] items-center gap-2"><span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#d3bb73]/10 text-sm font-bold text-[#d3bb73]">{index + 1}</span><input value={answer.text} onChange={(event) => setQuestionDraft((current) => ({ ...current, answers: current.answers.map((item, itemIndex) => itemIndex === index ? { ...item, text: event.target.value } : item) }))} placeholder="Odpowiedź" className="rounded-lg border border-white/10 bg-[#111522] px-3 py-2.5 outline-none focus:border-[#d3bb73]" /><input type="number" min={0} max={100} value={answer.points} onChange={(event) => setQuestionDraft((current) => ({ ...current, answers: current.answers.map((item, itemIndex) => itemIndex === index ? { ...item, points: Number(event.target.value) } : item) }))} className="rounded-lg border border-white/10 bg-[#111522] px-3 py-2.5 text-center outline-none focus:border-[#d3bb73]" /><button disabled={questionDraft.answers.length <= 3} onClick={() => setQuestionDraft((current) => ({ ...current, answers: current.answers.filter((_item, itemIndex) => itemIndex !== index) }))} className="rounded-lg p-2 text-red-300/60 disabled:opacity-20"><Trash2 className="h-4 w-4" /></button></div>)}</div>{questionDraft.answers.length < 6 && <button onClick={() => setQuestionDraft((current) => ({ ...current, answers: [...current.answers, { text: '', points: 0 }] }))} className="mt-3 flex items-center gap-2 text-xs font-semibold text-[#d3bb73]"><Plus className="h-4 w-4" /> Dodaj odpowiedź</button>}<div className="mt-4 flex items-center justify-end gap-3"><span className={`mr-auto text-sm ${questionDraft.answers.reduce((sum, answer) => sum + (Number(answer.points) || 0), 0) > 100 ? 'text-red-300' : 'text-[#e5e4e2]/45'}`}>Suma: <strong>{questionDraft.answers.reduce((sum, answer) => sum + (Number(answer.points) || 0), 0)} / 100</strong></span><button onClick={() => setQuestionEditorOpen(false)} className="rounded-xl border border-white/10 px-5 py-3 text-sm">Anuluj</button><button onClick={() => void saveQuestion()} disabled={savingQuestion} className="rounded-xl bg-[#d3bb73] px-5 py-3 text-sm font-bold text-[#111522] disabled:opacity-50">{savingQuestion ? 'Zapisywanie…' : 'Zapisz pytanie'}</button></div></div></div></div></div>}
     </div>

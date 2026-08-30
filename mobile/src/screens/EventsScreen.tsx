@@ -25,6 +25,10 @@ export interface EventListItem {
   category_color: string | null;
   location_name: string | null;
   organization_name: string | null;
+  billing_arrangement: 'direct' | 'hotel' | 'agency' | 'other';
+  billing_organization_name: string | null;
+  has_wedding_card: boolean;
+  wedding_card_progress: number | null;
   creator_name: string | null;
 }
 
@@ -89,6 +93,7 @@ export default function EventsScreen({ onEventPress }: Props) {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [showPastEvents, setShowPastEvents] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const fetchEvents = useCallback(
     async (isRefresh = false) => {
@@ -96,9 +101,13 @@ export default function EventsScreen({ onEventPress }: Props) {
 
       if (isRefresh) setRefreshing(true);
       else setIsLoading(true);
+      setLoadError(null);
 
       try {
-        const isAdmin = employee.role === 'admin';
+        const isAdmin =
+          employee.role === 'admin' ||
+          employee.access_level === 'admin' ||
+          employee.permissions?.includes('events_manage') === true;
 
         let eventIds: string[] | null = null;
 
@@ -107,7 +116,7 @@ export default function EventsScreen({ onEventPress }: Props) {
             .from('employee_assignments')
             .select('event_id')
             .eq('employee_id', employee.id)
-            .eq('status', 'accepted');
+            .in('status', ['accepted', 'pending']);
 
           if (assignmentsError) throw assignmentsError;
 
@@ -153,9 +162,12 @@ export default function EventsScreen({ onEventPress }: Props) {
             event_end_date,
             status,
             created_by,
+            billing_arrangement,
             event_categories(name, color),
             locations(name),
-            organizations(name, alias),
+            client_organization:organizations!events_organization_id_fkey(name, alias),
+            billing_organization:organizations!events_billing_organization_id_fkey(name, alias),
+            wedding_cards(id, status, progress),
             creator:employees!created_by(name, surname)
           `,
           )
@@ -172,6 +184,15 @@ export default function EventsScreen({ onEventPress }: Props) {
 
         const mapped: EventListItem[] = (data || []).map((event: any) => {
           const creator = event.creator;
+          const clientOrganization = Array.isArray(event.client_organization)
+            ? event.client_organization[0]
+            : event.client_organization;
+          const billingOrganization = Array.isArray(event.billing_organization)
+            ? event.billing_organization[0]
+            : event.billing_organization;
+          const weddingCard = Array.isArray(event.wedding_cards)
+            ? event.wedding_cards[0]
+            : event.wedding_cards;
 
           const creatorName = creator
             ? [creator.name, creator.surname].filter(Boolean).join(' ')
@@ -186,18 +207,21 @@ export default function EventsScreen({ onEventPress }: Props) {
             category_name: event.event_categories?.name ?? null,
             category_color: event.event_categories?.color ?? null,
             location_name: event.locations?.name ?? null,
-            organization_name: event.organizations?.alias || event.organizations?.name || null,
+            organization_name: clientOrganization?.alias || clientOrganization?.name || null,
+            billing_arrangement: event.billing_arrangement || 'direct',
+            billing_organization_name:
+              billingOrganization?.alias || billingOrganization?.name || null,
+            has_wedding_card: Boolean(weddingCard?.id),
+            wedding_card_progress:
+              typeof weddingCard?.progress === 'number' ? weddingCard.progress : null,
             creator_name: creatorName,
           };
         });
 
-        console.log('ROLE:', employee.role);
-        console.log('IS ADMIN:', isAdmin);
-        console.log('EVENTS COUNT:', mapped.length);
-
         setEvents(mapped);
       } catch (error) {
         console.error('Error fetching events:', error);
+        setLoadError('Nie udało się pobrać wydarzeń. Odśwież listę i spróbuj ponownie.');
       } finally {
         setIsLoading(false);
         setRefreshing(false);
@@ -224,6 +248,7 @@ export default function EventsScreen({ onEventPress }: Props) {
         (event) =>
           event.name.toLowerCase().includes(q) ||
           event.organization_name?.toLowerCase().includes(q) ||
+          event.billing_organization_name?.toLowerCase().includes(q) ||
           event.location_name?.toLowerCase().includes(q),
       );
     }
@@ -263,7 +288,7 @@ export default function EventsScreen({ onEventPress }: Props) {
     >
       <View style={styles.eventHeader}>
         <View style={styles.eventCategoryDot}>
-          {item.category_color && (
+          {Boolean(item.category_color) && (
             <View style={[styles.dot, { backgroundColor: item.category_color }]} />
           )}
         </View>
@@ -271,7 +296,7 @@ export default function EventsScreen({ onEventPress }: Props) {
           <Text style={styles.eventName} numberOfLines={1}>
             {item.name}
           </Text>
-          {item.organization_name && (
+          {Boolean(item.organization_name) && (
             <Text style={styles.eventOrg} numberOfLines={1}>
               {item.organization_name}
             </Text>
@@ -291,7 +316,7 @@ export default function EventsScreen({ onEventPress }: Props) {
       <View style={styles.eventMeta}>
         <Feather name="calendar" size={12} color={colors.text.tertiary} />
         <Text style={styles.eventDate}>{formatDate(item.event_date)}</Text>
-        {item.location_name && (
+        {Boolean(item.location_name) && (
           <>
             <Feather
               name="map-pin"
@@ -305,11 +330,30 @@ export default function EventsScreen({ onEventPress }: Props) {
           </>
         )}
       </View>
-      {item.creator_name && (
+      {Boolean(item.creator_name) && (
         <View style={styles.eventMeta}>
           <Feather name="user" size={12} color={colors.text.tertiary} />
           <Text style={styles.eventCreator} numberOfLines={1}>
             {item.creator_name}
+          </Text>
+        </View>
+      )}
+      {item.billing_arrangement !== 'direct' && Boolean(item.billing_organization_name) && (
+        <View style={styles.eventMeta}>
+          <Feather name="credit-card" size={12} color={colors.primary.gold} />
+          <Text style={styles.eventBilling} numberOfLines={1}>
+            Rozliczenie: {item.billing_organization_name}
+          </Text>
+        </View>
+      )}
+      {(item.has_wedding_card ||
+        item.category_name?.trim().toLocaleLowerCase('pl-PL').startsWith('wesel') === true) && (
+        <View style={styles.eventMeta}>
+          <Feather name="heart" size={12} color={colors.primary.gold} />
+          <Text style={styles.eventWedding} numberOfLines={1}>
+            {item.has_wedding_card
+              ? `Karta weselna${item.wedding_card_progress !== null ? ` · ${item.wedding_card_progress}%` : ''}`
+              : 'Wesele · karta jeszcze nieutworzona'}
           </Text>
         </View>
       )}
@@ -427,8 +471,18 @@ export default function EventsScreen({ onEventPress }: Props) {
         contentContainerStyle={styles.listContent}
         ListEmptyComponent={
           <View style={styles.emptyState}>
-            <Feather name="calendar" size={48} color={colors.text.tertiary} />
-            <Text style={styles.emptyText}>Brak wydarzeń</Text>
+            <Feather
+              name={loadError ? 'alert-circle' : 'calendar'}
+              size={48}
+              color={loadError ? colors.status.error : colors.text.tertiary}
+            />
+            <Text style={styles.emptyText}>{loadError || 'Brak wydarzeń'}</Text>
+            {loadError && (
+              <TouchableOpacity style={styles.retryButton} onPress={() => void fetchEvents(true)}>
+                <Feather name="refresh-cw" size={14} color={colors.background.primary} />
+                <Text style={styles.retryButtonText}>Spróbuj ponownie</Text>
+              </TouchableOpacity>
+            )}
           </View>
         }
       />
@@ -562,6 +616,18 @@ const styles = StyleSheet.create({
     marginLeft: 2,
     flex: 1,
   },
+  eventBilling: {
+    fontSize: 11,
+    color: colors.primary.gold,
+    marginLeft: 2,
+    flex: 1,
+  },
+  eventWedding: {
+    fontSize: 11,
+    color: colors.primary.gold,
+    marginLeft: 2,
+    flex: 1,
+  },
   emptyState: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -571,6 +637,22 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 14,
     color: colors.text.tertiary,
+    textAlign: 'center',
+  },
+  retryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: spacing.xs,
+    borderRadius: 8,
+    backgroundColor: colors.primary.gold,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+  },
+  retryButtonText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.background.primary,
   },
 
   pastEventsToggle: {

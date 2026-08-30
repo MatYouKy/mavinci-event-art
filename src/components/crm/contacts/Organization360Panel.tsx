@@ -65,7 +65,7 @@ export default function Organization360Panel({ organization }: { organization: O
       supabase.from('tasks').select('id, title, inquiry_stage, status, estimated_value, next_action_at, created_at').eq('is_inquiry', true).eq('organization_id', organization.id).order('created_at', { ascending: false }).limit(100),
       supabase.from('offers').select('id, offer_number, status, created_at').eq('organization_id', organization.id).order('created_at', { ascending: false }).limit(100),
       supabase.from('events').select('id, name, status, event_date').eq('organization_id', organization.id).order('event_date', { ascending: false }).limit(100),
-      supabase.from('invoices').select('id, invoice_number, status, issue_date, total_gross').eq('organization_id', organization.id).order('issue_date', { ascending: false }).limit(100),
+      supabase.from('invoices').select('id, invoice_number, status, issue_date, total_gross, organization_id, service_recipient_organization_id, billing_arrangement').or(`organization_id.eq.${organization.id},service_recipient_organization_id.eq.${organization.id}`).order('issue_date', { ascending: false }).limit(100),
       supabase.from('contact_organizations').select('position, is_primary, contact:contacts(id, full_name, email, phone, mobile)').eq('organization_id', organization.id).eq('is_current', true),
       supabase.from('employees').select('id, name, surname').eq('is_active', true).order('surname'),
       email ? supabase.from('received_emails').select('id, subject, received_date, from_address, is_read').ilike('from_address', `%${email}%`).order('received_date', { ascending: false }).limit(50) : Promise.resolve({ data: [], error: null }),
@@ -87,7 +87,21 @@ export default function Organization360Panel({ organization }: { organization: O
       ...inquiryRows.map((item: any) => ({ id: `inquiry-${item.id}`, kind: 'inquiry' as const, title: item.title, date: item.created_at, status: item.inquiry_stage || item.status, href: `/crm/tasks/${item.id}` })),
       ...(offers.data || []).map((item: any) => ({ id: `offer-${item.id}`, kind: 'offer' as const, title: `Oferta ${item.offer_number || ''}`.trim(), date: item.created_at, status: item.status, href: `/crm/offers/${item.id}` })),
       ...eventRows.map((item: any) => ({ id: `event-${item.id}`, kind: 'event' as const, title: item.name || 'Wydarzenie', date: item.event_date, status: item.status, href: `/crm/events/${item.id}` })),
-      ...(invoices.data || []).map((item: any) => ({ id: `invoice-${item.id}`, kind: 'invoice' as const, title: `Faktura ${item.invoice_number}`, date: item.issue_date, status: item.status, href: `/crm/invoices/${item.id}` })),
+      ...(invoices.data || []).map((item: any) => ({
+        id: `invoice-${item.id}`,
+        kind: 'invoice' as const,
+        title: `Faktura ${item.invoice_number}`,
+        date: item.issue_date,
+        status:
+          item.organization_id === organization.id
+            ? item.billing_arrangement === 'hotel'
+              ? `${item.status} · płatnik: hotel`
+              : item.status
+            : item.billing_arrangement === 'hotel'
+              ? `${item.status} · opłacana przez hotel`
+              : `${item.status} · inny płatnik`,
+        href: `/crm/invoices/${item.id}`,
+      })),
       ...(received.data || []).map((item: any) => ({ id: `received-${item.id}`, kind: 'email' as const, title: item.subject || 'Odebrana wiadomość', date: item.received_date, status: item.is_read ? 'przeczytana' : 'nieprzeczytana', href: `/crm/messages/${item.id}?type=received` })),
       ...(sent.data || []).map((item: any) => ({ id: `sent-${item.id}`, kind: 'email' as const, title: item.subject || 'Wysłana wiadomość', date: item.sent_at, status: 'wysłana', href: `/crm/messages/${item.id}?type=sent` })),
     ].filter((item) => item.date).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());

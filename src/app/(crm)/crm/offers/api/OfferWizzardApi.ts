@@ -232,9 +232,13 @@ export const offerWizardApi = createApi({
             .select(
               `
               *,
+              organization:organizations!organization_id(id, name, alias, email),
+              contact:contacts!contact_id(id, full_name, first_name, last_name, email, phone, mobile),
+              contact_person:contacts!contact_id(id, full_name, first_name, last_name, email, phone, mobile),
               event:events!event_id(
                 name,
                 event_date,
+                client_type,
                 organization_id,
                 contact_person_id
               ),
@@ -302,7 +306,10 @@ export const offerWizardApi = createApi({
             .select(
               `
               *,
-              organization:organizations!organization_id(name, email),
+              organization:organizations!organization_id(id, name, alias, email),
+              contact:contacts!contact_id(id, full_name, first_name, last_name, email, phone, mobile),
+              contact_person:contacts!contact_id(id, full_name, first_name, last_name, email, phone, mobile),
+              inquiry:tasks!inquiry_id(id, title, description, inquiry_details, due_date),
               event:events!event_id(
                 name,
                 event_date,
@@ -328,12 +335,29 @@ export const offerWizardApi = createApi({
                 subtotal,
                 total,
                 display_order,
+                product_variant_id,
+                offer_page_variant_override,
+                show_variant_prices_in_pdf,
+                show_product_variants_in_pdf,
+                product_variant:offer_product_variants!product_variant_id(
+                  id, product_id, name, short_description, description, benefits,
+                  price_net, price_gross, is_recommended, is_active, display_order,
+                  offer_image_path, offer_image_alt
+                ),
                 product:offer_products(
                   id,
                   name,
                   description,
                   pdf_page_url,
-                  pdf_thumbnail_url
+                  pdf_thumbnail_url,
+                  offer_image_path,
+                  offer_page_variant,
+                  product_page_url,
+                  variants:offer_product_variants(
+                    id, product_id, name, short_description, description, benefits,
+                    price_net, price_gross, is_recommended, is_active, display_order,
+                    offer_image_path, offer_image_alt
+                  )
                 )
               )
             `,
@@ -365,7 +389,10 @@ export const offerWizardApi = createApi({
             .select(
               `
               *,
-              organization:organizations!organization_id(name, email),
+              organization:organizations!organization_id(id, name, alias, email),
+              contact:contacts!contact_id(id, full_name, first_name, last_name, email, phone, mobile),
+              contact_person:contacts!contact_id(id, full_name, first_name, last_name, email, phone, mobile),
+              inquiry:tasks!inquiry_id(id, title, description, inquiry_details, due_date),
               event:events!event_id(
                 name,
                 event_date,
@@ -390,12 +417,27 @@ export const offerWizardApi = createApi({
                 subtotal,
                 total,
                 display_order,
+                product_variant_id,
+                offer_page_variant_override,
+                product_variant:offer_product_variants!product_variant_id(
+                  id, product_id, name, short_description, description, benefits,
+                  price_net, price_gross, is_recommended, is_active, display_order,
+                  offer_image_path, offer_image_alt
+                ),
                 product:offer_products(
                   id,
                   name,
                   description,
                   pdf_page_url,
-                  pdf_thumbnail_url
+                  pdf_thumbnail_url,
+                  offer_image_path,
+                  offer_page_variant,
+                  product_page_url,
+                  variants:offer_product_variants(
+                    id, product_id, name, short_description, description, benefits,
+                    price_net, price_gross, is_recommended, is_active, display_order,
+                    offer_image_path, offer_image_alt
+                  )
                 )
               )
             `,
@@ -651,7 +693,9 @@ export const offerWizardApi = createApi({
             event_id: eventId,
             client_type: clientType,
             organization_id: clientType === 'business' ? (organizationId ?? null) : null,
-            contact_id: clientType === 'individual' ? (contactId ?? null) : null,
+            // organization_id określa klienta biznesowego, a contact_id zawsze
+            // wskazuje osobę kontaktową wybraną dla tej konkretnej oferty.
+            contact_id: contactId ?? null,
             valid_until: valid_until || null,
             notes: notes || null,
             status: 'draft',
@@ -679,6 +723,7 @@ export const offerWizardApi = createApi({
               item.product_id.trim() !== ''
                 ? item.product_id
                 : null,
+            product_variant_id: item.product_variant_id || null,
             name: item.name,
             description: item.description || null,
             quantity: item.quantity,
@@ -732,7 +777,7 @@ export const offerWizardApi = createApi({
     }),
     getOfferProductEquipmentByProductId: builder.query<
       OfferProductEquipmentRow[],
-      { productId: string }
+      { productId: string; productVariantId?: string | null }
     >({
       providesTags: (res, _err, arg) =>
         res
@@ -741,9 +786,9 @@ export const offerWizardApi = createApi({
               ...res.map((r) => ({ type: 'OfferProductEquipment' as const, id: r.id })),
             ]
           : [{ type: 'OfferProductEquipment' as const, id: `PRODUCT:${arg.productId}` }],
-      queryFn: async ({ productId }) => {
+      queryFn: async ({ productId, productVariantId = null }) => {
         try {
-          const { data, error } = await supabase
+          let query = supabase
             .from('offer_product_equipment')
             .select(`
               *,
@@ -759,12 +804,17 @@ export const offerWizardApi = createApi({
               ),
               subcontractor:subcontractors(
                 id,
-                organization:organizations(name, alias)
+                organization:organizations!subcontractors_organization_id_fkey(name, alias)
               )
             `)
             .eq('product_id', productId)
-            .is('replaced_by_rental_id', null)
-            .order('created_at', { ascending: true });
+            .is('replaced_by_rental_id', null);
+
+          query = productVariantId
+            ? query.eq('product_variant_id', productVariantId)
+            : query.is('product_variant_id', null);
+
+          const { data, error } = await query.order('created_at', { ascending: true });
 
           if (error) return { error: toRtkError(error) };
           return { data: (data ?? []) as OfferProductEquipmentRow[] };
@@ -785,26 +835,69 @@ export const offerWizardApi = createApi({
         try {
           const base = {
             product_id: arg.product_id,
+            product_variant_id: arg.product_variant_id ?? null,
             quantity: arg.quantity ?? 1,
             is_optional: arg.is_optional ?? false,
             notes: arg.notes ?? null,
           };
 
-          // ITEM: masz UNIQUE (product_id, equipment_item_id) -> upsert
-          if (arg.mode === 'item') {
-            const { data, error } = await supabase
+          const mergeExistingLink = async () => {
+            let existingQuery = supabase
               .from('offer_product_equipment')
-              .upsert(
-                {
-                  ...base,
-                  equipment_item_id: arg.equipment_item_id,
-                  equipment_kit_id: null,
-                },
-                { onConflict: 'product_id,equipment_item_id' },
-              )
+              .select('*')
+              .eq('product_id', arg.product_id);
+
+            existingQuery = arg.product_variant_id
+              ? existingQuery.eq('product_variant_id', arg.product_variant_id)
+              : existingQuery.is('product_variant_id', null);
+
+            existingQuery = arg.mode === 'item'
+              ? existingQuery.eq('equipment_item_id', arg.equipment_item_id)
+              : existingQuery.eq('equipment_kit_id', arg.equipment_kit_id);
+
+            const { data: existing, error: existingError } = await existingQuery.maybeSingle();
+            if (existingError) throw existingError;
+            if (!existing) return null;
+
+            const { data: merged, error: mergeError } = await supabase
+              .from('offer_product_equipment')
+              .update({
+                quantity: Math.max(1, Number(existing.quantity || 0) + Number(arg.quantity || 1)),
+                // A required occurrence takes precedence over an optional one.
+                is_optional: Boolean(existing.is_optional) && Boolean(arg.is_optional),
+                notes: arg.notes?.trim() || existing.notes || null,
+                replaced_by_rental_id: null,
+              })
+              .eq('id', existing.id)
               .select('*')
               .single();
 
+            if (mergeError) throw mergeError;
+            return merged as OfferProductEquipmentRow;
+          };
+
+          // A repeated selection means "add this quantity". This also makes
+          // the operation safe when the modal opened with a stale cached list.
+          const existingLink = await mergeExistingLink();
+          if (existingLink) return { data: existingLink };
+
+          // Warianty mogą korzystać z tego samego sprzętu co zakres bazowy,
+          // dlatego konflikt rozstrzyga indeks obejmujący product_variant_id.
+          if (arg.mode === 'item') {
+            const { data, error } = await supabase
+              .from('offer_product_equipment')
+              .insert({
+                ...base,
+                equipment_item_id: arg.equipment_item_id,
+                equipment_kit_id: null,
+              })
+              .select('*')
+              .single();
+
+            if (error?.code === '23505') {
+              const racedLink = await mergeExistingLink();
+              if (racedLink) return { data: racedLink };
+            }
             if (error) return { error: toRtkError(error) };
             return { data: data as OfferProductEquipmentRow };
           }
@@ -820,6 +913,10 @@ export const offerWizardApi = createApi({
             .select('*')
             .single();
 
+          if (error?.code === '23505') {
+            const racedLink = await mergeExistingLink();
+            if (racedLink) return { data: racedLink };
+          }
           if (error) return { error: toRtkError(error) };
           return { data: data as OfferProductEquipmentRow };
         } catch (e) {

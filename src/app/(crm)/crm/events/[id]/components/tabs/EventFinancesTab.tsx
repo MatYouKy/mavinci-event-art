@@ -3,10 +3,11 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/browser';
-import { DollarSign, TrendingUp, TrendingDown, Receipt, Plus, Trash2, CreditCard as Edit, Check, X, FileText, Calendar, Fuel, Users, Package, Truck, Upload, Eye, AlertCircle, Building2, User, Info, Calculator } from 'lucide-react';
+import { DollarSign, TrendingUp, TrendingDown, Receipt, Plus, Trash2, CreditCard as Edit, Check, X, FileText, Calendar, Fuel, Users, Package, Truck, Upload, Eye, AlertCircle, Building2, User, Info, Calculator, BarChart3 } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import FinalInvoiceWizardModal from '@/components/crm/FinalInvoiceWizardModal';
 import EventFinancialControls from '@/components/crm/events/EventFinancialControls';
+import { getOfferTotals } from '@/lib/CRM/Offers/offerTotals';
 
 interface FinancialSummary {
   expected_revenue: number;
@@ -50,6 +51,7 @@ interface Invoice {
   issue_date: string;
   total_gross: number;
   buyer_name: string;
+  billing_arrangement?: 'direct' | 'hotel' | 'agency' | 'other';
 }
 
 interface Cost {
@@ -78,6 +80,43 @@ interface AcceptedOffer {
   subtotal: number;
   tax_percent: number;
   tax_amount: number;
+  discount_percent?: number;
+  discount_amount?: number;
+  created_by?: string | null;
+}
+
+interface ProfitabilitySubcontractorTask {
+  id: string;
+  agreed_cost: number | null;
+  total_cost: number | null;
+  status: string;
+  payment_status: string;
+}
+
+interface ProfitabilityTimeEntry {
+  id: string;
+  duration_minutes: number | null;
+  hourly_rate: number | null;
+  employee?: {
+    name?: string | null;
+    surname?: string | null;
+  } | null;
+}
+
+interface EventSalesperson {
+  name: string;
+  surname: string;
+}
+
+interface EventCommission {
+  id: string;
+  beneficiary_type: 'salesperson' | 'hotel' | 'partner' | 'employee' | 'other';
+  beneficiary_name: string;
+  calculation_type: 'percent' | 'fixed';
+  rate: number;
+  base_amount: number;
+  amount: number;
+  status: 'planned' | 'approved' | 'paid' | 'cancelled';
 }
 
 interface Props {
@@ -102,6 +141,21 @@ export default function EventFinancesTab({ eventId }: Props) {
   const [showAddCost, setShowAddCost] = useState(false);
   const [financialSource, setFinancialSource] = useState<'offer' | 'calculation'>('offer');
   const [acceptedCalcName, setAcceptedCalcName] = useState<string | null>(null);
+  const [profitabilitySubcontractors, setProfitabilitySubcontractors] = useState<ProfitabilitySubcontractorTask[]>([]);
+  const [profitabilityTimeEntries, setProfitabilityTimeEntries] = useState<ProfitabilityTimeEntry[]>([]);
+  const [eventSalesperson, setEventSalesperson] = useState<EventSalesperson | null>(null);
+  const [assignedEmployeeCount, setAssignedEmployeeCount] = useState(0);
+  const [eventCommissions, setEventCommissions] = useState<EventCommission[]>([]);
+  const [commissionsAvailable, setCommissionsAvailable] = useState(true);
+  const [showAddCommission, setShowAddCommission] = useState(false);
+  const [commissionForm, setCommissionForm] = useState({
+    beneficiary_type: 'hotel' as EventCommission['beneficiary_type'],
+    beneficiary_name: '',
+    calculation_type: 'percent' as EventCommission['calculation_type'],
+    rate: 0,
+    amount: 0,
+    status: 'planned' as EventCommission['status'],
+  });
 
   // Formularz kosztu
   const [costForm, setCostForm] = useState({
@@ -138,7 +192,7 @@ export default function EventFinancesTab({ eventId }: Props) {
 
   const fetchFinancialData = async () => {
     try {
-      const [summaryRes, invoicesRes, costsRes, categoriesRes, clientInfoRes, offerRes] = await Promise.all([
+      const [summaryRes, invoicesRes, costsRes, categoriesRes, clientInfoRes, offerRes, subcontractorsRes, timeEntriesRes, commissionsRes, assignmentsRes] = await Promise.all([
         supabase.rpc('get_event_financial_summary', { p_event_id: eventId }),
         supabase
           .from('invoices')
@@ -161,18 +215,43 @@ export default function EventFinancesTab({ eventId }: Props) {
         supabase.rpc('get_event_client_info', { p_event_id: eventId }),
         supabase
           .from('offers')
-          .select('total_amount, subtotal, tax_percent, tax_amount')
+          .select('total_amount, subtotal, discount_percent, discount_amount, tax_percent, tax_amount, created_by')
           .eq('event_id', eventId)
           .eq('status', 'accepted')
           .order('created_at', { ascending: false })
           .limit(1)
           .maybeSingle(),
+        supabase
+          .from('subcontractor_tasks')
+          .select('id, agreed_cost, total_cost, status, payment_status')
+          .eq('event_id', eventId)
+          .neq('status', 'cancelled'),
+        supabase
+          .from('time_entries')
+          .select('id, duration_minutes, hourly_rate, employee:employees(name, surname)')
+          .eq('event_id', eventId)
+          .not('end_time', 'is', null),
+        supabase
+          .from('event_commissions')
+          .select('id, beneficiary_type, beneficiary_name, calculation_type, rate, base_amount, amount, status')
+          .eq('event_id', eventId)
+          .neq('status', 'cancelled')
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('employee_assignments')
+          .select('employee_id')
+          .eq('event_id', eventId),
       ]);
 
       if (summaryRes.data?.[0]) setSummary(summaryRes.data[0]);
       if (invoicesRes.data) setInvoices(invoicesRes.data);
       if (clientInfoRes.data?.[0]) setClientInfo(clientInfoRes.data[0]);
-      if (offerRes.data) setAcceptedOffer(offerRes.data);
+      setAcceptedOffer(offerRes.data || null);
+      setProfitabilitySubcontractors(subcontractorsRes.data || []);
+      setProfitabilityTimeEntries((timeEntriesRes.data || []) as ProfitabilityTimeEntry[]);
+      setEventCommissions((commissionsRes.data || []) as EventCommission[]);
+      setCommissionsAvailable(!commissionsRes.error);
+      setAssignedEmployeeCount(new Set((assignmentsRes.data || []).map((assignment) => assignment.employee_id)).size);
       if (costsRes.data) {
         const formattedCosts = costsRes.data.map((cost: any) => ({
           ...cost,
@@ -181,6 +260,17 @@ export default function EventFinancesTab({ eventId }: Props) {
         setCosts(formattedCosts);
       }
       if (categoriesRes.data) setCategories(categoriesRes.data);
+
+      if (offerRes.data?.created_by) {
+        const { data: salespersonData } = await supabase
+          .from('employees')
+          .select('name, surname')
+          .eq('id', offerRes.data.created_by)
+          .maybeSingle();
+        setEventSalesperson(salespersonData || null);
+      } else {
+        setEventSalesperson(null);
+      }
 
       // Fetch financial source info
       const { data: eventFinSource } = await supabase
@@ -296,6 +386,85 @@ export default function EventFinancesTab({ eventId }: Props) {
     }
   };
 
+  const handleAddCommission = async () => {
+    if (!commissionForm.beneficiary_name.trim()) {
+      showSnackbar('Podaj beneficjenta prowizji', 'warning');
+      return;
+    }
+
+    const currentExpectedRevenue = acceptedOffer
+      ? getOfferTotals(acceptedOffer).gross
+      : Number(summary?.expected_revenue || 0);
+    const baseAmount = commissionForm.calculation_type === 'percent' ? currentExpectedRevenue : 0;
+    const amount = commissionForm.calculation_type === 'percent'
+      ? baseAmount * Number(commissionForm.rate || 0) / 100
+      : Number(commissionForm.amount || 0);
+    if (amount <= 0) {
+      showSnackbar('Kwota prowizji musi być większa od zera', 'warning');
+      return;
+    }
+
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      const userId = authData.user?.id;
+      const { data: employee } = userId
+        ? await supabase
+            .from('employees')
+            .select('id')
+            .eq('id', userId)
+            .maybeSingle()
+        : { data: null };
+      const { error } = await supabase.from('event_commissions').insert({
+        event_id: eventId,
+        beneficiary_type: commissionForm.beneficiary_type,
+        beneficiary_name: commissionForm.beneficiary_name.trim(),
+        calculation_type: commissionForm.calculation_type,
+        rate: commissionForm.calculation_type === 'percent' ? Number(commissionForm.rate || 0) : 0,
+        base_amount: baseAmount,
+        amount,
+        status: commissionForm.status,
+        created_by: employee?.id || null,
+      });
+      if (error) throw error;
+
+      setCommissionForm({
+        beneficiary_type: 'hotel',
+        beneficiary_name: '',
+        calculation_type: 'percent',
+        rate: 0,
+        amount: 0,
+        status: 'planned',
+      });
+      setShowAddCommission(false);
+      showSnackbar('Prowizja została dodana do rentowności wydarzenia', 'success');
+      await fetchFinancialData();
+    } catch (error: any) {
+      console.error('Error adding event commission:', error);
+      showSnackbar(error?.message || 'Nie udało się zapisać prowizji', 'error');
+    }
+  };
+
+  const handleDeleteCommission = async (commissionId: string) => {
+    const { error } = await supabase.from('event_commissions').delete().eq('id', commissionId);
+    if (error) {
+      showSnackbar('Nie udało się usunąć prowizji', 'error');
+      return;
+    }
+    setEventCommissions((current) => current.filter((commission) => commission.id !== commissionId));
+    showSnackbar('Prowizja została usunięta', 'success');
+  };
+
+  const handleUpdateCommissionStatus = async (commissionId: string, status: EventCommission['status']) => {
+    const { error } = await supabase.from('event_commissions').update({ status }).eq('id', commissionId);
+    if (error) {
+      showSnackbar('Nie udało się zmienić statusu prowizji', 'error');
+      return;
+    }
+    setEventCommissions((current) => current.map((commission) => (
+      commission.id === commissionId ? { ...commission, status } : commission
+    )));
+  };
+
   const getStatusBadge = (status: string) => {
     const statusConfig: Record<string, { label: string; color: string }> = {
       pending: {
@@ -316,6 +485,73 @@ export default function EventFinancesTab({ eventId }: Props) {
       </span>
     );
   };
+
+  const expectedRevenue = acceptedOffer
+    ? getOfferTotals(acceptedOffer).gross
+    : Number(summary?.expected_revenue || 0);
+  const actualRevenue = Number(summary?.actual_revenue || 0);
+  const isEmployeeCost = (cost: Cost) => /personel|pracown|wynagrodz|pensj/i.test(cost.category?.name || '');
+  const registeredPlannedCosts = costs
+    .filter((cost) => cost.status !== 'rejected' && !cost.subcontractor && !isEmployeeCost(cost))
+    .reduce((sum, cost) => sum + Number(cost.amount || 0), 0);
+  const registeredActualCosts = costs
+    .filter((cost) => ['approved', 'paid'].includes(cost.status) && !cost.subcontractor && !isEmployeeCost(cost))
+    .reduce((sum, cost) => sum + Number(cost.amount || 0), 0);
+  const plannedEmployeeCostsFromRegister = costs
+    .filter((cost) => cost.status !== 'rejected' && isEmployeeCost(cost))
+    .reduce((sum, cost) => sum + Number(cost.amount || 0), 0);
+  const actualEmployeeCosts = profitabilityTimeEntries.reduce((sum, entry) => {
+    const hourlyRate = Number(entry.hourly_rate || 0);
+    return sum + (Number(entry.duration_minutes || 0) / 60) * hourlyRate;
+  }, 0);
+  const plannedEmployeeCosts = plannedEmployeeCostsFromRegister || actualEmployeeCosts;
+  const plannedSubcontractorCosts = profitabilitySubcontractors.reduce(
+    (sum, task) => sum + Number(task.agreed_cost || task.total_cost || 0),
+    0,
+  );
+  const actualSubcontractorCosts = profitabilitySubcontractors
+    .filter((task) => task.payment_status === 'paid' || task.status === 'completed')
+    .reduce((sum, task) => sum + Number(task.agreed_cost || task.total_cost || 0), 0);
+  const hasExplicitSalesCommission = eventCommissions.some((commission) => commission.beneficiary_type === 'salesperson');
+  const explicitPlannedCommissions = eventCommissions
+    .filter((commission) => commission.status !== 'cancelled')
+    .reduce((sum, commission) => sum + Number(commission.amount || 0), 0);
+  const explicitActualCommissions = eventCommissions
+    .filter((commission) => ['approved', 'paid'].includes(commission.status))
+    .reduce((sum, commission) => sum + Number(commission.amount || 0), 0);
+  const plannedCommissions = explicitPlannedCommissions;
+  const actualCommissions = explicitActualCommissions;
+  const plannedTotalCosts = registeredPlannedCosts + plannedEmployeeCosts + plannedSubcontractorCosts + plannedCommissions;
+  const actualTotalCosts = registeredActualCosts + actualEmployeeCosts + actualSubcontractorCosts + actualCommissions;
+  const plannedProfit = expectedRevenue - plannedTotalCosts;
+  const actualProfit = actualRevenue - actualTotalCosts;
+  const plannedMargin = expectedRevenue > 0 ? plannedProfit / expectedRevenue * 100 : 0;
+  const actualMargin = actualRevenue > 0 ? actualProfit / actualRevenue * 100 : 0;
+  const profitabilityRows = [
+    { label: 'Pozostałe koszty', planned: registeredPlannedCosts, actual: registeredActualCosts, color: '#ef4444' },
+    { label: 'Pracownicy', planned: plannedEmployeeCosts, actual: actualEmployeeCosts, color: '#3b82f6' },
+    { label: 'Podwykonawcy', planned: plannedSubcontractorCosts, actual: actualSubcontractorCosts, color: '#f59e0b' },
+    { label: 'Prowizje', planned: plannedCommissions, actual: actualCommissions, color: '#8b5cf6' },
+  ];
+  const maxProfitabilityCost = Math.max(...profitabilityRows.map((row) => Math.max(row.planned, row.actual)), 1);
+  const missingSubcontractorCosts = profitabilitySubcontractors.filter(
+    (task) => Number(task.agreed_cost || task.total_cost || 0) <= 0,
+  ).length;
+  const missingEmployeeRates = profitabilityTimeEntries.filter(
+    (entry) => Number(entry.hourly_rate || 0) <= 0,
+  ).length;
+  const pendingCosts = costs.filter((cost) => cost.status === 'pending').length;
+  const profitabilityIssues = [
+    missingSubcontractorCosts > 0 ? `${missingSubcontractorCosts} zleceń podwykonawców bez kosztu` : null,
+    missingEmployeeRates > 0 ? `${missingEmployeeRates} wpisów czasu bez stawki` : null,
+    assignedEmployeeCount > 0 && profitabilityTimeEntries.length === 0
+      ? `${assignedEmployeeCount} przypisanych pracowników bez zarejestrowanego czasu`
+      : null,
+    acceptedOffer && !acceptedOffer.created_by ? 'Oferta nie ma przypisanego autora / sprzedawcy' : null,
+    acceptedOffer?.created_by && !hasExplicitSalesCommission ? 'Nie zarejestrowano prowizji sprzedawcy' : null,
+    !commissionsAvailable ? 'Uruchom migrację rejestru prowizji' : null,
+    pendingCosts > 0 ? `${pendingCosts} kosztów czeka na zatwierdzenie` : null,
+  ].filter(Boolean) as string[];
 
   if (loading) {
     return (
@@ -407,25 +643,25 @@ export default function EventFinancesTab({ eventId }: Props) {
             {acceptedOffer ? (
               <>
                 <div className="text-2xl font-light text-[#d3bb73]">
-                  {(Number(acceptedOffer.subtotal || acceptedOffer.total_amount || 0) + Number(acceptedOffer.tax_amount || 0)).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
+                  {getOfferTotals(acceptedOffer).gross.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
                 </div>
                 <div className="mt-2 space-y-0.5 text-xs text-[#e5e4e2]/40">
                   <div>
                     Netto:{' '}
                     <span className="text-[#e5e4e2]/60">
-                      {Number(acceptedOffer.subtotal || acceptedOffer.total_amount || 0).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
+                      {getOfferTotals(acceptedOffer).net.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
                     </span>
                   </div>
                   <div>
                     VAT ({acceptedOffer.tax_percent ?? 23}%):{' '}
                     <span className="text-[#e5e4e2]/60">
-                      {Number(acceptedOffer.tax_amount || 0).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
+                      {getOfferTotals(acceptedOffer).taxAmount.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
                     </span>
                   </div>
                   <div>
                     Brutto:{' '}
                     <span className="text-[#e5e4e2]/60">
-                      {(Number(acceptedOffer.subtotal || acceptedOffer.total_amount || 0) + Number(acceptedOffer.tax_amount || 0)).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
+                      {getOfferTotals(acceptedOffer).gross.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
                     </span>
                   </div>
                 </div>
@@ -455,10 +691,10 @@ export default function EventFinancesTab({ eventId }: Props) {
               <span className="text-sm text-[#e5e4e2]/60">Koszty faktyczne</span>
             </div>
             <div className="text-2xl font-light text-red-400">
-              {summary.actual_costs.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
+              {actualTotalCosts.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
             </div>
             <div className="mt-1 text-xs text-[#e5e4e2]/40">
-              Plan: {summary.estimated_costs.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
+              Plan: {plannedTotalCosts.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
             </div>
           </div>
 
@@ -468,12 +704,12 @@ export default function EventFinancesTab({ eventId }: Props) {
               <span className="text-sm text-[#e5e4e2]/60">Zysk faktyczny</span>
             </div>
             <div
-              className={`text-2xl font-light ${summary.actual_profit >= 0 ? 'text-[#d3bb73]' : 'text-red-400'}`}
+              className={`text-2xl font-light ${actualProfit >= 0 ? 'text-[#d3bb73]' : 'text-red-400'}`}
             >
-              {summary.actual_profit.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
+              {actualProfit.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
             </div>
             <div className="mt-1 text-xs text-[#e5e4e2]/40">
-              Marża: {summary.profit_margin_actual.toFixed(2)}%
+              Marża: {actualMargin.toFixed(2)}%
             </div>
           </div>
 
@@ -492,6 +728,217 @@ export default function EventFinancesTab({ eventId }: Props) {
             </div>
           </div>
         </div>
+      )}
+
+      {summary && (
+        <section className="rounded-xl border border-[#d3bb73]/15 bg-[#111522] p-5">
+          <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 className="flex items-center gap-2 text-lg font-medium text-[#e5e4e2]">
+                <BarChart3 className="h-5 w-5 text-[#d3bb73]" />
+                Rentowność wydarzenia
+              </h3>
+              <p className="mt-1 max-w-3xl text-xs text-[#e5e4e2]/45">
+                Plan korzysta z zaakceptowanej oferty i kosztów przewidywanych. Wykonanie korzysta z zatwierdzonych kosztów,
+                czasu pracy, zakończonych zleceń podwykonawców i faktycznych wpływów.
+              </p>
+            </div>
+            <span className={`rounded-full px-3 py-1 text-xs ${profitabilityIssues.length === 0 ? 'bg-green-500/15 text-green-300' : 'bg-amber-500/15 text-amber-300'}`}>
+              {profitabilityIssues.length === 0 ? 'Dane kompletne' : `${profitabilityIssues.length} elementów do uzupełnienia`}
+            </span>
+          </div>
+
+          <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-lg border border-white/5 bg-[#0a0d1a] p-4">
+              <div className="text-xs text-[#e5e4e2]/45">Przychód</div>
+              <div className="mt-1 text-lg text-green-300">{expectedRevenue.toLocaleString('pl-PL')} zł</div>
+              <div className="mt-1 text-[11px] text-[#e5e4e2]/35">Wpływy: {actualRevenue.toLocaleString('pl-PL')} zł</div>
+            </div>
+            <div className="rounded-lg border border-white/5 bg-[#0a0d1a] p-4">
+              <div className="text-xs text-[#e5e4e2]/45">Wszystkie koszty</div>
+              <div className="mt-1 text-lg text-red-300">{plannedTotalCosts.toLocaleString('pl-PL')} zł</div>
+              <div className="mt-1 text-[11px] text-[#e5e4e2]/35">Poniesione: {actualTotalCosts.toLocaleString('pl-PL')} zł</div>
+            </div>
+            <div className="rounded-lg border border-white/5 bg-[#0a0d1a] p-4">
+              <div className="text-xs text-[#e5e4e2]/45">Prognozowany wynik</div>
+              <div className={`mt-1 text-lg ${plannedProfit >= 0 ? 'text-[#d3bb73]' : 'text-red-400'}`}>
+                {plannedProfit.toLocaleString('pl-PL')} zł
+              </div>
+              <div className="mt-1 text-[11px] text-[#e5e4e2]/35">Marża {plannedMargin.toLocaleString('pl-PL', { maximumFractionDigits: 1 })}%</div>
+            </div>
+            <div className="rounded-lg border border-white/5 bg-[#0a0d1a] p-4">
+              <div className="text-xs text-[#e5e4e2]/45">Wynik faktyczny</div>
+              <div className={`mt-1 text-lg ${actualProfit >= 0 ? 'text-[#d3bb73]' : 'text-red-400'}`}>
+                {actualProfit.toLocaleString('pl-PL')} zł
+              </div>
+              <div className="mt-1 text-[11px] text-[#e5e4e2]/35">Marża {actualMargin.toLocaleString('pl-PL', { maximumFractionDigits: 1 })}%</div>
+            </div>
+          </div>
+
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
+            <div className="space-y-4">
+              {profitabilityRows.map((row) => (
+                <div key={row.label}>
+                  <div className="mb-1.5 flex items-center justify-between gap-3 text-xs">
+                    <span className="text-[#e5e4e2]/70">{row.label}</span>
+                    <span className="text-[#e5e4e2]/50">
+                      plan {row.planned.toLocaleString('pl-PL')} zł · wykonanie {row.actual.toLocaleString('pl-PL')} zł
+                    </span>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="h-2 overflow-hidden rounded-full bg-white/5">
+                      <div className="h-full rounded-full opacity-45" style={{ width: `${Math.max(row.planned / maxProfitabilityCost * 100, row.planned > 0 ? 2 : 0)}%`, backgroundColor: row.color }} />
+                    </div>
+                    <div className="h-2 overflow-hidden rounded-full bg-white/5">
+                      <div className="h-full rounded-full" style={{ width: `${Math.max(row.actual / maxProfitabilityCost * 100, row.actual > 0 ? 2 : 0)}%`, backgroundColor: row.color }} />
+                    </div>
+                  </div>
+                </div>
+              ))}
+              <div className="flex items-center gap-4 text-[10px] text-[#e5e4e2]/35">
+                <span><i className="mr-1 inline-block h-2 w-4 rounded bg-[#d3bb73]/35" />Plan</span>
+                <span><i className="mr-1 inline-block h-2 w-4 rounded bg-[#d3bb73]" />Wykonanie</span>
+              </div>
+            </div>
+
+            <aside className="rounded-lg border border-white/5 bg-[#0a0d1a] p-4">
+              <div className="mb-3 text-sm font-medium text-[#e5e4e2]">Jakość kalkulacji</div>
+              {profitabilityIssues.length > 0 ? (
+                <ul className="space-y-2 text-xs text-amber-200/80">
+                  {profitabilityIssues.map((issue) => (
+                    <li key={issue} className="flex gap-2">
+                      <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                      <span>{issue}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-xs text-green-300/80">Najważniejsze źródła kosztów mają kompletne wartości.</p>
+              )}
+              <p className="mt-4 border-t border-white/5 pt-3 text-[11px] leading-relaxed text-[#e5e4e2]/35">
+                Kwoty bez kompletnego źródła są wskazywane jako brak danych. Dzięki temu późniejsza analiza AI otrzyma fakty,
+                a nie wartości domyślne udające rzeczywiste koszty.
+              </p>
+            </aside>
+          </div>
+
+          <div className="mt-6 border-t border-white/5 pt-5">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="text-sm font-medium text-[#e5e4e2]">Prowizje i polecenia</div>
+                <div className="mt-0.5 text-[11px] text-[#e5e4e2]/35">Sprzedawcy, hotele, sale, partnerzy i pozostali beneficjenci.</div>
+              </div>
+              {isAdmin && commissionsAvailable && (
+                <button
+                  type="button"
+                  onClick={() => setShowAddCommission((visible) => !visible)}
+                  className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/25 px-3 py-2 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/10"
+                >
+                  <Plus className="h-3.5 w-3.5" /> Dodaj prowizję
+                </button>
+              )}
+            </div>
+
+            {!commissionsAvailable && (
+              <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-xs text-amber-200">
+                Rejestr prowizji będzie dostępny po uruchomieniu migracji `20260831170000_create_event_commissions_for_profitability.sql`.
+              </div>
+            )}
+
+            {showAddCommission && commissionsAvailable && (
+              <div className="mb-4 grid gap-3 rounded-lg border border-[#d3bb73]/15 bg-[#0a0d1a] p-4 md:grid-cols-2 xl:grid-cols-6">
+                <select
+                  value={commissionForm.beneficiary_type}
+                  onChange={(event) => setCommissionForm({ ...commissionForm, beneficiary_type: event.target.value as EventCommission['beneficiary_type'] })}
+                  className="rounded-lg border border-white/10 bg-[#111522] px-3 py-2 text-sm text-[#e5e4e2]"
+                >
+                  <option value="salesperson">Sprzedawca</option>
+                  <option value="hotel">Hotel / sala</option>
+                  <option value="partner">Partner</option>
+                  <option value="employee">Pracownik</option>
+                  <option value="other">Inny</option>
+                </select>
+                <input
+                  value={commissionForm.beneficiary_name}
+                  onChange={(event) => setCommissionForm({ ...commissionForm, beneficiary_name: event.target.value })}
+                  placeholder="Nazwa lub osoba"
+                  className="rounded-lg border border-white/10 bg-[#111522] px-3 py-2 text-sm text-[#e5e4e2] xl:col-span-2"
+                />
+                <select
+                  value={commissionForm.calculation_type}
+                  onChange={(event) => setCommissionForm({ ...commissionForm, calculation_type: event.target.value as EventCommission['calculation_type'] })}
+                  className="rounded-lg border border-white/10 bg-[#111522] px-3 py-2 text-sm text-[#e5e4e2]"
+                >
+                  <option value="percent">Procent przychodu</option>
+                  <option value="fixed">Stała kwota</option>
+                </select>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={commissionForm.calculation_type === 'percent' ? commissionForm.rate : commissionForm.amount}
+                  onChange={(event) => commissionForm.calculation_type === 'percent'
+                    ? setCommissionForm({ ...commissionForm, rate: Number(event.target.value || 0) })
+                    : setCommissionForm({ ...commissionForm, amount: Number(event.target.value || 0) })}
+                  placeholder={commissionForm.calculation_type === 'percent' ? 'Procent' : 'Kwota'}
+                  className="rounded-lg border border-white/10 bg-[#111522] px-3 py-2 text-sm text-[#e5e4e2]"
+                />
+                <button
+                  type="button"
+                  onClick={handleAddCommission}
+                  className="rounded-lg bg-[#d3bb73] px-3 py-2 text-sm font-medium text-[#111522] hover:bg-[#e2ce91]"
+                >
+                  Zapisz
+                </button>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              {!hasExplicitSalesCommission && eventSalesperson && (
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-white/5 bg-[#0a0d1a] px-4 py-3 text-xs">
+                  <div>
+                    <span className="text-[#e5e4e2]">{eventSalesperson.name} {eventSalesperson.surname}</span>
+                    <span className="ml-2 text-[#e5e4e2]/35">autor oferty / sprzedawca</span>
+                  </div>
+                  <span className="text-amber-300/70">uzupełnij prowizję</span>
+                </div>
+              )}
+              {eventCommissions.map((commission) => (
+                <div key={commission.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-white/5 bg-[#0a0d1a] px-4 py-3 text-xs">
+                  <div>
+                    <span className="text-[#e5e4e2]">{commission.beneficiary_name}</span>
+                    <span className="ml-2 text-[#e5e4e2]/35">{commission.beneficiary_type} · {commission.status}</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-[#d3bb73]">
+                      {commission.calculation_type === 'percent' ? `${commission.rate}% · ` : ''}
+                      {Number(commission.amount || 0).toLocaleString('pl-PL')} zł
+                    </span>
+                    {isAdmin && (
+                      <>
+                        <select
+                          value={commission.status}
+                          onChange={(event) => handleUpdateCommissionStatus(commission.id, event.target.value as EventCommission['status'])}
+                          className="rounded border border-white/10 bg-[#111522] px-2 py-1 text-[11px] text-[#e5e4e2]/70"
+                        >
+                          <option value="planned">Planowana</option>
+                          <option value="approved">Zatwierdzona</option>
+                          <option value="paid">Wypłacona</option>
+                        </select>
+                        <button type="button" onClick={() => handleDeleteCommission(commission.id)} className="rounded p-1 text-red-300 hover:bg-red-500/10">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              ))}
+              {commissionsAvailable && eventCommissions.length === 0 && !eventSalesperson && (
+                <div className="rounded-lg border border-dashed border-white/10 px-4 py-5 text-center text-xs text-[#e5e4e2]/30">Brak zarejestrowanych prowizji.</div>
+              )}
+            </div>
+          </div>
+        </section>
       )}
 
       {/* Invoices Section - Only show for business clients */}
@@ -561,7 +1008,19 @@ export default function EventFinancesTab({ eventId }: Props) {
                           {invoice.invoice_type}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-[#e5e4e2]/80">{invoice.buyer_name}</td>
+                      <td className="px-4 py-3 text-[#e5e4e2]/80">
+                        <div>{invoice.buyer_name}</div>
+                        {invoice.billing_arrangement &&
+                          invoice.billing_arrangement !== 'direct' && (
+                            <div className="mt-1 text-[11px] text-sky-300">
+                              {invoice.billing_arrangement === 'hotel'
+                                ? 'Płatność przez hotel'
+                                : invoice.billing_arrangement === 'agency'
+                                  ? 'Płatność przez agencję'
+                                  : 'Płatność przez inną organizację'}
+                            </div>
+                          )}
+                      </td>
                       <td className="px-4 py-3 text-[#e5e4e2]/80">
                         {new Date(invoice.issue_date).toLocaleDateString('pl-PL')}
                       </td>

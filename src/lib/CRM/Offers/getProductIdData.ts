@@ -10,7 +10,7 @@ export const getProductPageData = cache(async (productId: string) => {
     productId && productId !== 'new'
       ? supabase
           .from('offer_products')
-          .select(`*, category:event_categories(id, name)`)
+          .select(`*, category:event_categories(id, name), offer_product_variants(*)`)
           .eq('id', productId)
           .maybeSingle()
       : Promise.resolve({ data: null as any, error: null as any }),

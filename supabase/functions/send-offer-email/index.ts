@@ -9,6 +9,7 @@ const corsHeaders = {
 
 interface SendOfferEmailRequest {
   offerId: string;
+  emailAccountId?: string;
   to: string;
   subject: string;
   message: string;
@@ -60,6 +61,15 @@ const fetchAsDataUri = async (url: string): Promise<string> => {
   }
 };
 
+const bytesToBase64 = (bytes: Uint8Array): string => {
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+  }
+  return btoa(binary);
+};
+
 const toPublicLogoUrl = (value: string | null | undefined, supabaseUrl: string): string => {
   if (!value) return "";
   if (/^https?:\/\//i.test(value) || value.startsWith("data:")) return value;
@@ -75,7 +85,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { offerId, to, subject, message, signatureHtml, recipientName }: SendOfferEmailRequest = await req.json();
+    const { offerId, emailAccountId, to, subject, message, signatureHtml, recipientName }: SendOfferEmailRequest = await req.json();
 
     if (!offerId || !to || !subject) {
       throw new Error("Missing required fields: offerId, to, subject");
@@ -111,7 +121,9 @@ Deno.serve(async (req: Request) => {
     const { data: employee } = await supabase
       .from("employees")
       .select("*")
-      .eq("id", user.id)
+      .or(`id.eq.${user.id},auth_user_id.eq.${user.id}`)
+      .eq("is_active", true)
+      .limit(1)
       .maybeSingle();
 
     if (!employee) {
@@ -119,31 +131,52 @@ Deno.serve(async (req: Request) => {
     }
 
     const isAdmin = employee.permissions?.includes('admin');
-    const isCreator = offer.created_by === user.id;
+    const isCreator = offer.created_by === user.id || offer.created_by === employee.id;
 
     if (!isAdmin && !isCreator) {
       throw new Error("Not authorized to send this offer");
     }
 
-    let { data: emailAccount } = await supabase
-      .from("employee_email_accounts")
-      .select("*")
-      .eq("employee_id", user.id)
-      .eq("is_default", true)
-      .maybeSingle();
-
-    if (!emailAccount) {
-      const { data: systemAccount } = await supabase
+    let emailAccount: any = null;
+    if (emailAccountId) {
+      const { data: requestedAccount } = await supabase
         .from("employee_email_accounts")
         .select("*")
-        .eq("is_system_account", true)
+        .eq("id", emailAccountId)
+        .eq("is_active", true)
+        .or("account_type.is.null,account_type.neq.system")
         .maybeSingle();
 
-      if (!systemAccount) {
-        throw new Error("Nie masz skonfigurowanego domyślnego konta email. Skontaktuj się z administratorem lub skonfiguruj konto w ustawieniach.");
+      if (requestedAccount) {
+        const isPersonalAccount = requestedAccount.employee_id === employee.id;
+        let isAssignedAccount = false;
+        if (!isPersonalAccount) {
+          const { data: assignment } = await supabase
+            .from("employee_email_account_assignments")
+            .select("id")
+            .eq("email_account_id", requestedAccount.id)
+            .eq("employee_id", employee.id)
+            .eq("can_send", true)
+            .maybeSingle();
+          isAssignedAccount = Boolean(assignment);
+        }
+        if (isPersonalAccount || isAssignedAccount) emailAccount = requestedAccount;
       }
+    } else {
+      const { data: personalAccounts } = await supabase
+        .from("employee_email_accounts")
+        .select("*")
+        .eq("employee_id", employee.id)
+        .eq("is_active", true)
+        .or("account_type.is.null,account_type.neq.system")
+        .order("is_default", { ascending: false })
+        .order("created_at", { ascending: true })
+        .limit(1);
+      emailAccount = personalAccounts?.[0] || null;
+    }
 
-      emailAccount = systemAccount;
+    if (!emailAccount) {
+      throw new Error("Wybierz aktywną skrzynkę pracownika. Oferty nie mogą być wysyłane z konta systemowego.");
     }
 
     const relayUrl = Deno.env.get("SMTP_RELAY_URL");
@@ -155,6 +188,7 @@ Deno.serve(async (req: Request) => {
 
     console.log('[send-offer-email] Generating PDF for offer:', offerId);
     let pdfDownloadUrl = '';
+    let pdfStoragePath = '';
 
     try {
       const pdfResponse = await fetch(`${supabaseUrl}/functions/v1/generate-offer-pdf`, {
@@ -165,13 +199,14 @@ Deno.serve(async (req: Request) => {
         },
         body: JSON.stringify({
           offerId: offerId,
-          employeeId: user.id,
+          employeeId: employee.id,
         }),
       });
 
       if (pdfResponse.ok) {
         const pdfResult = await pdfResponse.json();
         if (pdfResult.success && pdfResult.fileName) {
+          pdfStoragePath = pdfResult.fileName;
           const { data: signedUrlData } = await supabase.storage
             .from('generated-offers')
             .createSignedUrl(pdfResult.fileName, 60 * 60 * 24 * 7);
@@ -187,21 +222,50 @@ Deno.serve(async (req: Request) => {
       console.error('[send-offer-email] Error generating PDF:', pdfError);
     }
 
-    if (!pdfDownloadUrl && offer.generated_pdf_url) {
+    if (!pdfStoragePath && offer.generated_pdf_url) {
+      pdfStoragePath = offer.generated_pdf_url;
+    }
+
+    if (!pdfDownloadUrl && pdfStoragePath) {
       const { data: signedUrlData } = await supabase.storage
         .from('generated-offers')
-        .createSignedUrl(offer.generated_pdf_url, 60 * 60 * 24 * 7);
+        .createSignedUrl(pdfStoragePath, 60 * 60 * 24 * 7);
       if (signedUrlData?.signedUrl) {
         pdfDownloadUrl = signedUrlData.signedUrl;
       }
     }
 
-    const { data: companies } = await supabase
+    if (!pdfStoragePath) {
+      throw new Error("Nie udało się wygenerować pliku PDF oferty. Wiadomość nie została wysłana.");
+    }
+
+    const { data: pdfFile, error: pdfDownloadError } = await supabase.storage
+      .from('generated-offers')
+      .download(pdfStoragePath);
+    if (pdfDownloadError || !pdfFile) {
+      throw new Error(`Nie udało się pobrać PDF do załącznika: ${pdfDownloadError?.message || 'brak pliku'}`);
+    }
+    const pdfBytes = new Uint8Array(await pdfFile.arrayBuffer());
+    if (pdfBytes.byteLength === 0) {
+      throw new Error("Wygenerowany PDF jest pusty. Wiadomość nie została wysłana.");
+    }
+    const safeOfferNumber = String(offer.offer_number || offerId)
+      .replace(/[^a-zA-Z0-9._-]+/g, "_");
+    const pdfAttachment = {
+      filename: `Oferta_${safeOfferNumber}.pdf`,
+      content: bytesToBase64(pdfBytes),
+      contentType: "application/pdf",
+      contentDisposition: "attachment",
+    };
+
+    let companyQuery = supabase
       .from("my_companies")
       .select("*")
-      .eq("is_active", true)
-      .order("is_default", { ascending: false })
-      .limit(1);
+      .eq("is_active", true);
+    companyQuery = emailAccount.my_company_id
+      ? companyQuery.eq("id", emailAccount.my_company_id)
+      : companyQuery.order("is_default", { ascending: false });
+    const { data: companies } = await companyQuery.limit(1);
     const company = companies?.[0] ?? null;
 
     let companyLogoDataUri = "";
@@ -271,7 +335,7 @@ Deno.serve(async (req: Request) => {
         subject,
         recipient_name: recipientName ?? "",
         sender_name: `${employee.name ?? ""} ${employee.surname ?? ""}`.trim(),
-        sender_email: employee.email ?? "",
+        sender_email: emailAccount.email_address ?? employee.email ?? "",
         company_logo: companyLogoDataUri,
         company_name: company?.name ?? "",
         company_website: company?.website ?? "",
@@ -299,10 +363,13 @@ Deno.serve(async (req: Request) => {
         password: emailAccount.smtp_password,
         from: emailAccount.email_address,
         fromName: emailAccount.from_name,
+        replyTo: emailAccount.email_address,
       },
       to,
       subject,
       body: htmlBody,
+      replyTo: emailAccount.email_address,
+      attachments: [pdfAttachment],
     };
 
     const relayResponse = await fetch(`${relayUrl}/api/send-email`, {
@@ -323,11 +390,12 @@ Deno.serve(async (req: Request) => {
     const info = { messageId: relayResult.messageId };
 
     await supabase.from("sent_emails").insert({
-      employee_id: user.id,
+      employee_id: employee.id,
       email_account_id: emailAccount.id,
       to_address: to,
       subject: subject,
       body: htmlBody,
+      reply_to: emailAccount.email_address,
       message_id: info.messageId,
       sent_at: new Date().toISOString(),
     });

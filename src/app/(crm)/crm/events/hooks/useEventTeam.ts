@@ -28,8 +28,11 @@ export function useEventTeam(eventId: string) {
       role?: string;
       responsibilities?: string | null;
       access_level_id?: string | null;
+      sendInvitation?: boolean;
+      includePhases?: boolean;
       permissions?: {
         can_edit_event?: boolean;
+        can_edit_phases?: boolean;
         can_edit_agenda?: boolean;
         can_edit_tasks?: boolean;
         can_edit_files?: boolean;
@@ -40,6 +43,7 @@ export function useEventTeam(eventId: string) {
     }) => {
       try {
         await addEmployee({ eventId, ...payload }).unwrap();
+        await refetch();
         showSnackbar('Pracownik dodany do zespołu', 'success');
         return true;
       } catch (error: any) {
@@ -47,13 +51,14 @@ export function useEventTeam(eventId: string) {
         return false;
       }
     },
-    [eventId, addEmployee, showSnackbar],
+    [eventId, addEmployee, refetch, showSnackbar],
   );
 
   const handleRemoveEmployee = useCallback(
     async (employeeId: string) => {
       try {
         await removeEmployee({ eventId, employeeId }).unwrap();
+        await refetch();
         showSnackbar('Pracownik usunięty z zespołu', 'success');
         return true;
       } catch (error: any) {
@@ -61,7 +66,7 @@ export function useEventTeam(eventId: string) {
         return false;
       }
     },
-    [eventId, removeEmployee, showSnackbar],
+    [eventId, refetch, removeEmployee, showSnackbar],
   );
 
   // Realtime subscription - auto-refresh przy zmianach w employee_assignments

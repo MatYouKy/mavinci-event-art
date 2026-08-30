@@ -71,6 +71,8 @@ app.post('/api/send-email', verifyAuth, async (req, res) => {
       subject,
       body,
       replyTo,
+      inReplyTo,
+      references,
       attachments = [],
     } = req.body;
 
@@ -125,7 +127,9 @@ app.post('/api/send-email', verifyAuth, async (req, res) => {
       return emails.length ? emails.join(', ') : undefined;
     };
     
-    const fromEmail = smtpConfig.username;
+    // The SMTP login can be a technical mailbox. Keep the visible sender and
+    // Reply-To on the employee account selected in CRM.
+    const fromEmail = smtpConfig.from || smtpConfig.username;
     const replyToEmail = smtpConfig.replyTo || smtpConfig.from || replyTo;
     
     const mailOptions = {
@@ -136,6 +140,8 @@ app.post('/api/send-email', verifyAuth, async (req, res) => {
       subject,
       html: body,
       replyTo: replyToEmail,
+      inReplyTo: inReplyTo || undefined,
+      references: Array.isArray(references) && references.length > 0 ? references : undefined,
       attachments: attachments.map((att) => ({
         filename: att.filename,
         content: Buffer.from(att.content, 'base64'),
@@ -171,7 +177,7 @@ app.post('/api/send-email', verifyAuth, async (req, res) => {
 });
 
 app.post('/api/imap/read-state', verifyAuth, async (req, res) => {
-  const { imapConfig, messages, markAsRead } = req.body;
+  const { imapConfig, messages, targetReadState, mailbox = 'INBOX' } = req.body;
 
   if (!imapConfig?.host || !imapConfig?.username || !imapConfig?.password) {
     return res.status(400).json({ success: false, error: 'Missing IMAP configuration' });
@@ -194,34 +200,78 @@ app.post('/api/imap/read-state', verifyAuth, async (req, res) => {
 
   try {
     await client.connect();
-    await client.mailboxOpen('INBOX');
+    const openedMailbox = await client.mailboxOpen(mailbox);
+    const uidValidity = String(openedMailbox?.uidValidity || client.mailbox?.uidValidity || '');
     const states = [];
+    const normalizedMessageId = (value) => String(value || '').replace(/[<>]/g, '').trim();
+    const buildState = (message, email, isRead) => ({
+      id: message.id,
+      found: true,
+      isRead,
+      uid: Number(email?.uid || message.imapUid || 0) || null,
+      uidValidity,
+      mailbox,
+      flags: email?.flags ? Array.from(email.flags) : isRead ? ['\\Seen'] : [],
+    });
 
-    if (markAsRead === true) {
-      for (const message of messages.slice(0, 10)) {
+    if (typeof targetReadState === 'boolean') {
+      for (const message of messages.slice(0, 50)) {
         if (!message?.messageId) continue;
-        const matches = await client.search(
-          { header: { 'message-id': message.messageId } },
-          { uid: true },
-        );
-        const uid = matches.at(-1);
+        const cachedUidIsValid =
+          message.imapUid &&
+          (!message.imapUidValidity || String(message.imapUidValidity) === uidValidity);
+        let uid = cachedUidIsValid ? Number(message.imapUid) : null;
+        if (!uid) {
+          const matches = await client.search(
+            { header: { 'message-id': message.messageId } },
+            { uid: true },
+          );
+          uid = matches.at(-1) || null;
+        }
         if (!uid) {
           states.push({ id: message.id, found: false });
           continue;
         }
-        await client.messageFlagsAdd(uid, ['\\Seen'], { uid: true });
-        states.push({ id: message.id, found: true, isRead: true });
+        if (targetReadState) {
+          await client.messageFlagsAdd(uid, ['\\Seen'], { uid: true });
+        } else {
+          await client.messageFlagsRemove(uid, ['\\Seen'], { uid: true });
+        }
+        states.push(buildState({ ...message, imapUid: uid }, null, targetReadState));
       }
     } else {
       const idsByMessageId = new Map(
-        messages.map((message) => [String(message.messageId).replace(/[<>]/g, ''), message.id]),
+        messages.map((message) => [normalizedMessageId(message.messageId), message]),
       );
-      const start = Math.max(1, Number(client.mailbox.exists || 0) - 499);
+      const messagesByUid = new Map(
+        messages
+          .filter(
+            (message) =>
+              message.imapUid &&
+              (!message.imapUidValidity || String(message.imapUidValidity) === uidValidity),
+          )
+          .map((message) => [Number(message.imapUid), message]),
+      );
+      const resolvedIds = new Set();
+
+      if (messagesByUid.size > 0) {
+        const uidSet = [...messagesByUid.keys()].join(',');
+        for await (const email of client.fetch(uidSet, { envelope: true, flags: true }, { uid: true })) {
+          const message = messagesByUid.get(Number(email.uid));
+          if (!message) continue;
+          resolvedIds.add(message.id);
+          states.push(buildState(message, email, email.flags?.has('\\Seen') || false));
+        }
+      }
+
+      // Pierwsza synchronizacja starszych rekordów nie ma jeszcze UID. Szukamy
+      // ich po Message-ID, a znalezione UID zapisujemy do kolejnych szybkich przebiegów.
+      const start = Math.max(1, Number(client.mailbox.exists || 0) - 1999);
       for await (const email of client.fetch(`${start}:*`, { envelope: true, flags: true })) {
-        const normalizedMessageId = String(email.envelope?.messageId || '').replace(/[<>]/g, '');
-        const id = idsByMessageId.get(normalizedMessageId);
-        if (!id) continue;
-        states.push({ id, found: true, isRead: email.flags?.has('\\Seen') || false });
+        const message = idsByMessageId.get(normalizedMessageId(email.envelope?.messageId));
+        if (!message || resolvedIds.has(message.id)) continue;
+        resolvedIds.add(message.id);
+        states.push(buildState(message, email, email.flags?.has('\\Seen') || false));
       }
     }
 

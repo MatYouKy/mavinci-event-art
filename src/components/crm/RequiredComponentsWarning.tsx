@@ -1,7 +1,19 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Package, AlertTriangle, X, CheckCircle } from 'lucide-react';
+import {
+  Package,
+  AlertTriangle,
+  X,
+  CheckCircle,
+  ChevronDown,
+  ChevronUp,
+  Loader2,
+  CalendarClock,
+  MinusCircle,
+  Minus,
+  Plus,
+} from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import Image from 'next/image';
@@ -13,6 +25,9 @@ interface RequiredComponent {
   compatible_cable_id: string | null;
   compatibility_type: string;
   compatibility_group: string | null;
+  quantity: number;
+  quantity_mode: 'per_item' | 'fixed';
+  existing_quantity?: number;
   compatible_equipment?: {
     id: string;
     name: string;
@@ -31,6 +46,7 @@ interface RequiredComponent {
     name: string;
     description?: string;
     length_meters?: number;
+    stock_unit?: 'piece' | 'meter';
     thumbnail_url?: string | null;
   };
 }
@@ -42,13 +58,25 @@ interface ComponentGroup {
   isRequired: boolean;
 }
 
+type EquipmentConflict = {
+  reservationId: string;
+  eventId: string;
+  eventName: string;
+  start: string;
+  end: string;
+  quantity: number;
+  source: 'direct' | 'kit';
+};
+
 interface RequiredComponentsWarningProps {
   equipmentId: string;
   eventId: string;
   offerId?: string;
-  onComponentsAdded?: () => void;
+  onComponentsAdded?: () => void | Promise<void>;
   availabilityByKey?: Record<string, any>;
+  equipmentRevision?: string;
   autoOpen?: boolean;
+  canVerifyInventory?: boolean;
   onReviewFinished?: (status: 'reviewed' | 'skipped' | 'not_applicable') => void;
 }
 
@@ -58,30 +86,321 @@ export function RequiredComponentsWarning({
   offerId,
   onComponentsAdded,
   availabilityByKey,
+  equipmentRevision = '',
   autoOpen = false,
+  canVerifyInventory = false,
   onReviewFinished,
 }: RequiredComponentsWarningProps) {
   const [componentGroups, setComponentGroups] = useState<ComponentGroup[]>([]);
   const [selectedAlternatives, setSelectedAlternatives] = useState<Record<string, string>>({});
+  const [componentQuantities, setComponentQuantities] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [sourceEquipmentQuantity, setSourceEquipmentQuantity] = useState(1);
+  const [expandedConflictKey, setExpandedConflictKey] = useState<string | null>(null);
+  const [loadingConflictKey, setLoadingConflictKey] = useState<string | null>(null);
+  const [conflictsByKey, setConflictsByKey] = useState<Record<string, EquipmentConflict[]>>({});
+  const [dismissedComponentIds, setDismissedComponentIds] = useState<Set<string>>(new Set());
+  const [verifiedAvailabilityByKey, setVerifiedAvailabilityByKey] = useState<Record<string, any>>({});
   const { showSnackbar } = useSnackbar();
 
+  const getRequiredQuantity = (component: RequiredComponent, sourceQuantity = sourceEquipmentQuantity) => {
+    const baseQuantity = Math.max(1, Number(component.quantity ?? 1));
+    return component.quantity_mode === 'fixed'
+      ? baseQuantity
+      : baseQuantity * Math.max(1, sourceQuantity);
+  };
+
+  const getMissingQuantity = (component: RequiredComponent) =>
+    Math.max(0, getRequiredQuantity(component) - Number(component.existing_quantity ?? 0));
+
   useEffect(() => {
-    checkRequiredComponents();
-  }, [equipmentId]);
+    void checkRequiredComponents();
+  }, [equipmentId, eventId, canVerifyInventory, equipmentRevision]);
 
   const getAvailability = (component: RequiredComponent) => {
-    const key = component.compatible_equipment_id
+    const key = getComponentKey(component);
+    const availability = key
+      ? verifiedAvailabilityByKey[key] || availabilityByKey?.[key]
+      : null;
+    if (!key || !availability) return null;
+    const available = Number(availability.max_add ?? availability.available_in_term ?? 0);
+    const required = getMissingQuantity(component);
+    return {
+      available,
+      required,
+      addable: Math.min(required, available),
+      isAvailable: available > 0,
+      isPartial: available > 0 && available < required,
+    };
+  };
+
+  const getMaximumQuantityToAdd = (component: RequiredComponent) => {
+    const missing = getMissingQuantity(component);
+    const availability = getAvailability(component);
+    return Math.max(0, availability?.addable ?? missing);
+  };
+
+  const getSelectedQuantity = (component: RequiredComponent) => {
+    const maximum = getMaximumQuantityToAdd(component);
+    if (maximum <= 0) return 0;
+    const selected = componentQuantities[component.id];
+    return Math.min(maximum, Math.max(1, Number(selected ?? maximum)));
+  };
+
+  const setSelectedQuantity = (component: RequiredComponent, quantity: number) => {
+    const maximum = getMaximumQuantityToAdd(component);
+    if (maximum <= 0) return;
+    setComponentQuantities((current) => ({
+      ...current,
+      [component.id]: Math.min(maximum, Math.max(1, Number(quantity || 1))),
+    }));
+  };
+
+  const getComponentKey = (component: RequiredComponent) =>
+    component.compatible_equipment_id
       ? `item-${component.compatible_equipment_id}`
       : component.compatible_kit_id
         ? `kit-${component.compatible_kit_id}`
-        : null;
-    if (!key || !availabilityByKey?.[key]) return null;
-    const availability = availabilityByKey[key];
-    const available = Number(availability.max_add ?? availability.available_in_term ?? 0);
-    return { available, isAvailable: available > 0 };
+        : component.compatible_cable_id
+          ? `cable-${component.compatible_cable_id}`
+          : null;
+
+  const formatConflictDate = (value: string) =>
+    new Date(value).toLocaleString('pl-PL', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+
+  const verifyAdminInventory = async (component: RequiredComponent, key: string) => {
+    if (!canVerifyInventory || !component.compatible_equipment_id) return;
+    const [{ data: item, error: itemError }, { data: units, error: unitsError }] = await Promise.all([
+      supabase
+        .from('equipment_items')
+        .select('total_quantity')
+        .eq('id', component.compatible_equipment_id)
+        .single(),
+      supabase
+        .from('equipment_units')
+        .select('id,status')
+        .eq('equipment_id', component.compatible_equipment_id),
+    ]);
+    if (itemError || unitsError) return;
+    const activeUnitCount = (units || []).filter((unit: any) =>
+      ['available', 'reserved', 'in_use'].includes(String(unit.status)),
+    ).length;
+    const total = (units || []).length > 0
+      ? activeUnitCount
+      : Math.max(0, Number(item?.total_quantity || 0));
+    const available = Math.max(0, total - Number(component.existing_quantity || 0));
+    setVerifiedAvailabilityByKey((current) => ({
+      ...current,
+      [key]: {
+        total_quantity: total,
+        reserved_quantity: 0,
+        used_by_this_event: Number(component.existing_quantity || 0),
+        available_in_term: available,
+        max_add: available,
+        max_set: total,
+      },
+    }));
+  };
+
+  const loadConflicts = async (component: RequiredComponent, expand = true) => {
+    const key = getComponentKey(component);
+    if (!key) return;
+    if (expand && expandedConflictKey === key) {
+      setExpandedConflictKey(null);
+      return;
+    }
+    if (expand) setExpandedConflictKey(key);
+    if (conflictsByKey[key]) {
+      if (canVerifyInventory && conflictsByKey[key].length === 0) {
+        await verifyAdminInventory(component, key);
+      }
+      return;
+    }
+
+    try {
+      setLoadingConflictKey(key);
+      const { data: currentEvent, error: currentEventError } = await supabase
+        .from('events')
+        .select('event_date,event_end_date')
+        .eq('id', eventId)
+        .single();
+      if (currentEventError) throw currentEventError;
+
+      const start = new Date(currentEvent.event_date).getTime();
+      const end = new Date(
+        currentEvent.event_end_date || new Date(start + 24 * 60 * 60 * 1000).toISOString(),
+      ).getTime();
+      const field = component.compatible_equipment_id
+        ? 'equipment_id'
+        : component.compatible_kit_id
+          ? 'kit_id'
+          : 'cable_id';
+      const itemId =
+        component.compatible_equipment_id ||
+        component.compatible_kit_id ||
+        component.compatible_cable_id;
+
+      const { data: directRows, error: directError } = await supabase
+        .from('event_equipment')
+        .select('id,event_id,quantity,status')
+        .eq(field, itemId!)
+        .neq('event_id', eventId);
+      if (directError) throw directError;
+
+      let kitRows: any[] = [];
+      if (component.compatible_equipment_id) {
+        const { data: kitItems, error: kitItemsError } = await supabase
+          .from('equipment_kit_items')
+          .select('kit_id')
+          .eq('equipment_id', component.compatible_equipment_id);
+        if (kitItemsError) throw kitItemsError;
+        const kitIds = Array.from(new Set((kitItems || []).map((row) => row.kit_id)));
+        if (kitIds.length > 0) {
+          const { data, error } = await supabase
+            .from('event_equipment')
+            .select('id,event_id,quantity,status')
+            .in('kit_id', kitIds)
+            .neq('event_id', eventId);
+          if (error) throw error;
+          kitRows = data || [];
+        }
+      }
+
+      const activeRows = [...(directRows || []).map((row) => ({ ...row, source: 'direct' as const })),
+        ...kitRows.map((row) => ({ ...row, source: 'kit' as const }))]
+        .filter((row) => !['cancelled', 'returned'].includes(String(row.status || 'reserved')));
+      const relatedEventIds = Array.from(new Set(activeRows.map((row) => row.event_id).filter(Boolean)));
+      if (relatedEventIds.length === 0) {
+        setConflictsByKey((current) => ({ ...current, [key]: [] }));
+        await verifyAdminInventory(component, key);
+        return;
+      }
+
+      const { data: relatedEvents, error: eventsError } = await supabase
+        .from('events')
+        .select('id,name,event_date,event_end_date,status')
+        .in('id', relatedEventIds);
+      if (eventsError) throw eventsError;
+      const eventById = new Map((relatedEvents || []).map((item) => [item.id, item]));
+      const conflicts = activeRows.flatMap((row) => {
+        const event = eventById.get(row.event_id) as any;
+        if (!event || event.status === 'cancelled') return [];
+        const conflictStart = new Date(event.event_date).getTime();
+        const conflictEnd = new Date(
+          event.event_end_date || new Date(conflictStart + 24 * 60 * 60 * 1000).toISOString(),
+        ).getTime();
+        if (conflictStart >= end || conflictEnd <= start) return [];
+        return [{
+          reservationId: row.id,
+          eventId: row.event_id,
+          eventName: event.name || 'Wydarzenie bez nazwy',
+          start: event.event_date,
+          end: event.event_end_date || new Date(conflictEnd).toISOString(),
+          quantity: Number(row.quantity || 1),
+          source: row.source,
+        } satisfies EquipmentConflict];
+      });
+      setConflictsByKey((current) => ({ ...current, [key]: conflicts }));
+      if (conflicts.length === 0) await verifyAdminInventory(component, key);
+    } catch (error: any) {
+      console.error('Failed to load equipment conflicts:', error);
+      showSnackbar('Nie udało się pobrać szczegółów zajętości', 'error');
+      setConflictsByKey((current) => ({ ...current, [key]: [] }));
+    } finally {
+      setLoadingConflictKey(null);
+    }
+  };
+
+  const renderConflictDetails = (component: RequiredComponent) => {
+    const key = getComponentKey(component);
+    const availability = getAvailability(component);
+    if (!key || !availability || availability.isAvailable) return null;
+    const expanded = expandedConflictKey === key;
+    const conflicts = conflictsByKey[key];
+    return (
+      <div className="mt-2">
+        <button
+          type="button"
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            void loadConflicts(component);
+          }}
+          className="inline-flex items-center gap-1 text-xs font-medium text-red-300 hover:text-red-200"
+        >
+          {loadingConflictKey === key ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+          {expanded ? 'Ukryj zajętość' : 'Gdzie jest zajęty?'}
+        </button>
+        {expanded && loadingConflictKey !== key && (
+          <div className="mt-2 space-y-2 rounded-lg border border-red-500/20 bg-red-500/5 p-3">
+            {conflicts?.length ? conflicts.map((conflict) => (
+              <div key={`${conflict.reservationId}-${conflict.source}`} className="flex gap-2 text-xs text-[#e5e4e2]/75">
+                <CalendarClock className="mt-0.5 h-3.5 w-3.5 flex-none text-red-300" />
+                <div>
+                  <a
+                    href={`/crm/events/${conflict.eventId}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={(event) => event.stopPropagation()}
+                    className="font-medium text-[#e5e4e2] underline decoration-[#d3bb73]/40 underline-offset-2 hover:text-[#d3bb73]"
+                  >
+                    {conflict.eventName}
+                  </a>
+                  <div>{formatConflictDate(conflict.start)} – {formatConflictDate(conflict.end)}</div>
+                  <div className="text-[#e5e4e2]/50">Ilość: {conflict.quantity}{conflict.source === 'kit' ? ' · element zarezerwowanego zestawu' : ''}</div>
+                </div>
+              </div>
+            )) : (
+              <div className="text-xs text-[#e5e4e2]/60">
+                Brak rezerwacji nakładającej się na termin. Niedostępność wynika ze stanu lub statusu jednostki magazynowej i wymaga weryfikacji danych sprzętu.
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const dismissComponentGroup = async (group: ComponentGroup) => {
+    const ids = group.components.map((component) => component.id);
+    const nextDismissed = new Set(Array.from(dismissedComponentIds).concat(ids));
+
+    const { error } = await supabase
+      .from('event_equipment_component_reviews')
+      .update({
+        dismissed_component_ids: Array.from(nextDismissed),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('event_id', eventId)
+      .eq('equipment_id', equipmentId);
+
+    if (error) {
+      console.error('Failed to persist dismissed component decision:', error);
+      showSnackbar('Nie udało się zapisać decyzji o pominięciu komponentu', 'error');
+      return;
+    }
+
+    setDismissedComponentIds(nextDismissed);
+    const nextGroups = componentGroups.filter((item) => item !== group);
+    setComponentGroups(nextGroups);
+    showSnackbar(
+      group.isRequired
+        ? 'Wymaganie zostało świadomie pominięte dla tego wydarzenia'
+        : 'Rekomendacja została pominięta dla tego wydarzenia',
+      'success',
+    );
+    if (nextGroups.length === 0) {
+      setShowModal(false);
+      onReviewFinished?.('reviewed');
+    }
   };
 
   const renderThumbnail = (item: { name: string; thumbnail_url?: string | null }) => (
@@ -115,14 +434,40 @@ export function RequiredComponentsWarning({
           compatible_cable_id,
           compatibility_type,
           compatibility_group,
+          quantity,
+          quantity_mode,
           compatible_equipment:equipment_items!compatible_equipment_id(id, name, model, brand, thumbnail_url),
           compatible_kit:equipment_kits!compatible_kit_id(id, name, description, thumbnail_url),
-          compatible_cable:cables!compatible_cable_id(id, name, description, length_meters, thumbnail_url)
+          compatible_cable:cables!compatible_cable_id(id, name, description, length_meters, thumbnail_url, stock_unit)
         `)
         .eq('equipment_id', equipmentId)
         .in('compatibility_type', ['required', 'recommended']);
 
       if (error) throw error;
+
+      const { data: sourceRows } = await supabase
+        .from('event_equipment')
+        .select('quantity')
+        .eq('event_id', eventId)
+        .eq('equipment_id', equipmentId)
+        .or('status.is.null,status.not.in.(cancelled,returned)');
+      const sourceQuantity = Math.max(
+        1,
+        (sourceRows || []).reduce((sum, row: any) => sum + Number(row.quantity ?? 0), 0),
+      );
+      setSourceEquipmentQuantity(sourceQuantity);
+
+      const { data: reviewDecision, error: reviewDecisionError } = await supabase
+        .from('event_equipment_component_reviews')
+        .select('dismissed_component_ids')
+        .eq('event_id', eventId)
+        .eq('equipment_id', equipmentId)
+        .maybeSingle();
+      if (reviewDecisionError && reviewDecisionError.code !== 'PGRST204') {
+        console.error('Failed to load component decisions:', reviewDecisionError);
+      }
+      const persistedDismissed = new Set<string>(reviewDecision?.dismissed_component_ids || []);
+      setDismissedComponentIds(persistedDismissed);
 
       const mapped = (data || []).map((item: any) => ({
         ...item,
@@ -135,7 +480,7 @@ export function RequiredComponentsWarning({
         compatible_cable: Array.isArray(item.compatible_cable)
           ? item.compatible_cable[0]
           : item.compatible_cable,
-      })) as RequiredComponent[];
+      })).filter((item: RequiredComponent) => !persistedDismissed.has(item.id)) as RequiredComponent[];
 
       if (mapped.length > 0) {
         const allEquipmentIds = mapped
@@ -148,8 +493,9 @@ export function RequiredComponentsWarning({
           allEquipmentIds.length > 0
             ? await supabase
                 .from('event_equipment')
-                .select('equipment_id, kit_id')
+                .select('equipment_id, kit_id, quantity')
                 .eq('event_id', eventId)
+                .or('status.is.null,status.not.in.(cancelled,returned)')
                 .in('equipment_id', allEquipmentIds)
             : { data: [] };
 
@@ -157,8 +503,9 @@ export function RequiredComponentsWarning({
           allKitIds.length > 0
             ? await supabase
                 .from('event_equipment')
-                .select('equipment_id, kit_id, cable_id')
+                .select('equipment_id, kit_id, cable_id, quantity')
                 .eq('event_id', eventId)
+                .or('status.is.null,status.not.in.(cancelled,returned)')
                 .in('kit_id', allKitIds)
             : { data: [] };
 
@@ -166,16 +513,51 @@ export function RequiredComponentsWarning({
           allCableIds.length > 0
             ? await supabase
                 .from('event_equipment')
-                .select('equipment_id, kit_id, cable_id')
+                .select('equipment_id, kit_id, cable_id, quantity')
                 .eq('event_id', eventId)
+                .or('status.is.null,status.not.in.(cancelled,returned)')
                 .in('cable_id', allCableIds)
             : { data: [] };
 
-        const existingEquipmentIds = new Set(
-          (existingEquipment || []).map((e) => e.equipment_id).filter(Boolean)
-        );
-        const existingKitIds = new Set((existingKits || []).map((e) => e.kit_id).filter(Boolean));
-        const existingCableIds = new Set((existingCables || []).map((e) => e.cable_id).filter(Boolean));
+        const sumById = (rows: any[], field: 'equipment_id' | 'kit_id' | 'cable_id') =>
+          rows.reduce((map, row) => {
+            const id = row[field];
+            if (id) map.set(id, (map.get(id) ?? 0) + Number(row.quantity ?? 0));
+            return map;
+          }, new Map<string, number>());
+        const existingEquipmentQuantities = sumById(existingEquipment || [], 'equipment_id');
+        const existingKitQuantities = sumById(existingKits || [], 'kit_id');
+        const existingCableQuantities = sumById(existingCables || [], 'cable_id');
+
+        const isComponentSatisfied = (component: RequiredComponent) => {
+          const required = getRequiredQuantity(component, sourceQuantity);
+          const isRecommended = component.compatibility_type === 'recommended';
+          if (component.compatible_equipment_id) {
+            const existing = existingEquipmentQuantities.get(component.compatible_equipment_id) ?? 0;
+            return isRecommended ? existing > 0 : existing >= required;
+          }
+          if (component.compatible_kit_id) {
+            const existing = existingKitQuantities.get(component.compatible_kit_id) ?? 0;
+            return isRecommended ? existing > 0 : existing >= required;
+          }
+          if (component.compatible_cable_id) {
+            const existing = existingCableQuantities.get(component.compatible_cable_id) ?? 0;
+            return isRecommended ? existing > 0 : existing >= required;
+          }
+          return false;
+        };
+
+        mapped.forEach((component) => {
+          if (component.compatible_equipment_id) {
+            component.existing_quantity =
+              existingEquipmentQuantities.get(component.compatible_equipment_id) ?? 0;
+          } else if (component.compatible_kit_id) {
+            component.existing_quantity = existingKitQuantities.get(component.compatible_kit_id) ?? 0;
+          } else if (component.compatible_cable_id) {
+            component.existing_quantity =
+              existingCableQuantities.get(component.compatible_cable_id) ?? 0;
+          }
+        });
 
         // Group by compatibility_group
         const groupedComponents: Record<string, RequiredComponent[]> = {};
@@ -196,18 +578,7 @@ export function RequiredComponentsWarning({
 
           if (hasGroup) {
             // For groups: check if AT LEAST ONE component from the group is added
-            const isGroupSatisfied = components.some((comp) => {
-              if (comp.compatible_equipment_id) {
-                return existingEquipmentIds.has(comp.compatible_equipment_id);
-              }
-              if (comp.compatible_kit_id) {
-                return existingKitIds.has(comp.compatible_kit_id);
-              }
-              if (comp.compatible_cable_id) {
-                return existingCableIds.has(comp.compatible_cable_id);
-              }
-              return false;
-            });
+            const isGroupSatisfied = components.some(isComponentSatisfied);
 
             if (!isGroupSatisfied) {
               unsatisfiedGroups.push({
@@ -220,13 +591,7 @@ export function RequiredComponentsWarning({
           } else {
             // For single components: must be added
             const comp = components[0];
-            const isAdded = comp.compatible_equipment_id
-              ? existingEquipmentIds.has(comp.compatible_equipment_id)
-              : comp.compatible_kit_id
-                ? existingKitIds.has(comp.compatible_kit_id)
-                : comp.compatible_cable_id
-                  ? existingCableIds.has(comp.compatible_cable_id)
-                  : false;
+            const isAdded = isComponentSatisfied(comp);
 
             if (!isAdded) {
               unsatisfiedGroups.push({
@@ -240,16 +605,60 @@ export function RequiredComponentsWarning({
         });
 
         setComponentGroups(unsatisfiedGroups);
+        if (unsatisfiedGroups.length === 0) {
+          onReviewFinished?.('reviewed');
+          return;
+        }
+        if (canVerifyInventory) {
+          unsatisfiedGroups.forEach((group) => {
+            group.components.forEach((component) => {
+              const availability = getAvailability(component);
+              if (!availability || availability.available <= 0) {
+                void loadConflicts(component, false);
+              }
+            });
+          });
+        }
         if (autoOpen && unsatisfiedGroups.length > 0) setShowModal(true);
       } else {
         setComponentGroups([]);
-        onReviewFinished?.('not_applicable');
+        onReviewFinished?.((data || []).length > 0 ? 'reviewed' : 'not_applicable');
       }
     } catch (err: any) {
       console.error('Error checking required components:', err);
     } finally {
       setLoading(false);
     }
+  };
+
+  const addComponentReservation = async (payload: Record<string, unknown>) => {
+    const targetField = payload.equipment_id
+      ? 'equipment_id'
+      : payload.kit_id
+        ? 'kit_id'
+        : 'cable_id';
+    const targetId = payload[targetField];
+    const { data: existing, error: existingError } = await supabase
+      .from('event_equipment')
+      .select('id,quantity')
+      .eq('event_id', eventId)
+      .eq(targetField, targetId)
+      .or('status.is.null,status.not.in.(cancelled,returned)')
+      .limit(1)
+      .maybeSingle();
+    if (existingError) throw existingError;
+
+    if (existing) {
+      const { error } = await supabase
+        .from('event_equipment')
+        .update({ quantity: Number(existing.quantity || 0) + Number(payload.quantity || 0) })
+        .eq('id', existing.id);
+      if (error) throw error;
+      return;
+    }
+
+    const { error } = await supabase.from('event_equipment').insert(payload);
+    if (error) throw error;
   };
 
   const handleAddComponents = async () => {
@@ -288,27 +697,29 @@ export function RequiredComponentsWarning({
               showSnackbar('Wybrany komponent nie jest dostępny w terminie wydarzenia', 'warning');
               return;
             }
+            const quantityToAdd = getSelectedQuantity(selectedComponent);
+            if (quantityToAdd <= 0) continue;
             if (selectedComponent.compatible_equipment_id) {
-              await supabase.from('event_equipment').insert({
+              await addComponentReservation({
                 event_id: eventId,
                 equipment_id: selectedComponent.compatible_equipment_id,
-                quantity: 1,
+                quantity: quantityToAdd,
                 status: 'reserved',
                 offer_id: offerId || null,
               });
             } else if (selectedComponent.compatible_kit_id) {
-              await supabase.from('event_equipment').insert({
+              await addComponentReservation({
                 event_id: eventId,
                 kit_id: selectedComponent.compatible_kit_id,
-                quantity: 1,
+                quantity: quantityToAdd,
                 status: 'reserved',
                 offer_id: offerId || null,
               });
             } else if (selectedComponent.compatible_cable_id) {
-              await supabase.from('event_equipment').insert({
+              await addComponentReservation({
                 event_id: eventId,
                 cable_id: selectedComponent.compatible_cable_id,
-                quantity: 1,
+                quantity: quantityToAdd,
                 status: 'reserved',
                 offer_id: offerId || null,
               });
@@ -325,27 +736,29 @@ export function RequiredComponentsWarning({
             );
             return;
           }
+          const quantityToAdd = getSelectedQuantity(component);
+          if (quantityToAdd <= 0) continue;
           if (component.compatible_equipment_id) {
-            await supabase.from('event_equipment').insert({
+            await addComponentReservation({
               event_id: eventId,
               equipment_id: component.compatible_equipment_id,
-              quantity: 1,
+              quantity: quantityToAdd,
               status: 'reserved',
               offer_id: offerId || null,
             });
           } else if (component.compatible_kit_id) {
-            await supabase.from('event_equipment').insert({
+            await addComponentReservation({
               event_id: eventId,
               kit_id: component.compatible_kit_id,
-              quantity: 1,
+              quantity: quantityToAdd,
               status: 'reserved',
               offer_id: offerId || null,
             });
           } else if (component.compatible_cable_id) {
-            await supabase.from('event_equipment').insert({
+            await addComponentReservation({
               event_id: eventId,
               cable_id: component.compatible_cable_id,
-              quantity: 1,
+              quantity: quantityToAdd,
               status: 'reserved',
               offer_id: offerId || null,
             });
@@ -353,11 +766,12 @@ export function RequiredComponentsWarning({
         }
       }
 
-      showSnackbar('Dodano wymagane komponenty', 'success');
+      showSnackbar('Zaktualizowano komponenty wydarzenia', 'success');
       setShowModal(false);
       setComponentGroups([]);
       setSelectedAlternatives({});
-      onComponentsAdded?.();
+      setComponentQuantities({});
+      await onComponentsAdded?.();
       onReviewFinished?.('reviewed');
     } catch (err: any) {
       console.error('Error adding components:', err);
@@ -372,6 +786,55 @@ export function RequiredComponentsWarning({
   }
 
   const totalMissing = componentGroups.reduce((sum, group) => sum + (group.groupName ? 1 : group.components.length), 0);
+
+  const renderQuantitySelector = (component: RequiredComponent, disabled = false) => {
+    const maximum = getMaximumQuantityToAdd(component);
+    if (maximum <= 0) return null;
+    const selected = getSelectedQuantity(component);
+    const unit = component.compatible_cable?.stock_unit === 'meter' ? 'm' : 'szt.';
+
+    return (
+      <div
+        className="mt-3 flex flex-wrap items-center gap-2"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <span className="text-xs text-[#e5e4e2]/60">Dodaj:</span>
+        <div className="inline-flex items-center overflow-hidden rounded-lg border border-[#d3bb73]/20 bg-[#0f1119]">
+          <button
+            type="button"
+            onClick={() => setSelectedQuantity(component, selected - 1)}
+            disabled={disabled || selected <= 1}
+            aria-label="Zmniejsz ilość"
+            className="p-2 text-[#e5e4e2]/70 hover:bg-[#e5e4e2]/10 disabled:cursor-not-allowed disabled:opacity-30"
+          >
+            <Minus className="h-3.5 w-3.5" />
+          </button>
+          <input
+            type="number"
+            min={1}
+            max={maximum}
+            value={selected}
+            disabled={disabled}
+            onChange={(event) => setSelectedQuantity(component, Number(event.target.value))}
+            aria-label="Ilość dodawanego komponentu"
+            className="w-14 border-x border-[#d3bb73]/15 bg-transparent px-1 py-1.5 text-center text-sm text-[#e5e4e2] outline-none disabled:opacity-40"
+          />
+          <button
+            type="button"
+            onClick={() => setSelectedQuantity(component, selected + 1)}
+            disabled={disabled || selected >= maximum}
+            aria-label="Zwiększ ilość"
+            className="p-2 text-[#e5e4e2]/70 hover:bg-[#e5e4e2]/10 disabled:cursor-not-allowed disabled:opacity-30"
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </button>
+        </div>
+        <span className="text-xs text-[#e5e4e2]/50">
+          z maks. {maximum} {unit}
+        </span>
+      </div>
+    );
+  };
 
   return (
     <>
@@ -445,10 +908,18 @@ export function RequiredComponentsWarning({
                             <span className="rounded bg-blue-500/20 px-2 py-0.5 text-xs text-blue-400">
                               {group.isRequired ? 'Wybierz JEDEN' : 'Rekomendowane'}
                             </span>
+                            <button
+                              type="button"
+                              onClick={() => void dismissComponentGroup(group)}
+                              className="ml-auto inline-flex items-center gap-1 rounded-lg border border-[#e5e4e2]/15 px-2.5 py-1 text-xs text-[#e5e4e2]/65 hover:border-red-400/30 hover:text-red-300"
+                            >
+                              <MinusCircle className="h-3.5 w-3.5" />
+                              {group.isRequired ? 'Pomiń wymaganie' : 'Nie używamy'}
+                            </button>
                           </div>
                           <p className="ml-7 mt-1 text-xs text-[#e5e4e2]/60">
                             {group.isRequired
-                              ? 'Musisz wybrać jeden z poniższych komponentów alternatywnych'
+                              ? 'Wybierz jeden z poniższych komponentów albo świadomie pomiń wymaganie dla tego wydarzenia'
                               : 'Możesz wybrać jeden z rekomendowanych wariantów'}
                           </p>
                         </div>
@@ -490,6 +961,12 @@ export function RequiredComponentsWarning({
                                 <div className="flex-1">
                                   <div className="flex items-center gap-2">
                                     <div className="font-medium text-[#e5e4e2]">{item.name}</div>
+                                    <span className="rounded bg-[#e5e4e2]/10 px-2 py-0.5 text-xs text-[#e5e4e2]/70">
+                                      {component.compatibility_type === 'required' ? 'Do dodania' : 'Sugerowane'}:{' '}
+                                      {getMissingQuantity(component)} / {component.compatibility_type === 'required' ? 'wymagane' : 'docelowo'}{' '}
+                                      {getRequiredQuantity(component)}{' '}
+                                      {component.compatible_cable?.stock_unit === 'meter' ? 'm' : 'szt.'}
+                                    </span>
                                     {availability && (
                                       <span
                                         className={`rounded px-2 py-0.5 text-xs ${
@@ -499,7 +976,9 @@ export function RequiredComponentsWarning({
                                         }`}
                                       >
                                         {availability.isAvailable
-                                          ? `Dostępne: ${availability.available}`
+                                          ? availability.isPartial
+                                            ? `Dostępna część: ${availability.available}`
+                                            : `Dostępne: ${availability.available}`
                                           : 'Niedostępne'}
                                       </span>
                                     )}
@@ -531,6 +1010,8 @@ export function RequiredComponentsWarning({
                                       {component.compatible_cable.description && ` - ${component.compatible_cable.description}`}
                                     </div>
                                   )}
+                                  {renderQuantitySelector(component, !isSelected)}
+                                  {renderConflictDetails(component)}
                                 </div>
                               </label>
                             );
@@ -558,6 +1039,12 @@ export function RequiredComponentsWarning({
                           <div className="flex-1">
                             <div className="flex items-center gap-2">
                               <div className="font-medium text-[#e5e4e2]">{item.name}</div>
+                              <span className="rounded bg-[#e5e4e2]/10 px-2 py-0.5 text-xs text-[#e5e4e2]/70">
+                                {component.compatibility_type === 'required' ? 'Do dodania' : 'Sugerowane'}:{' '}
+                                {getMissingQuantity(component)} / {component.compatibility_type === 'required' ? 'wymagane' : 'docelowo'}{' '}
+                                {getRequiredQuantity(component)}{' '}
+                                {component.compatible_cable?.stock_unit === 'meter' ? 'm' : 'szt.'}
+                              </span>
                               {availability && (
                                 <span
                                   className={`rounded px-2 py-0.5 text-xs ${
@@ -567,7 +1054,9 @@ export function RequiredComponentsWarning({
                                   }`}
                                 >
                                   {availability.isAvailable
-                                    ? `Dostępne: ${availability.available}`
+                                    ? availability.isPartial
+                                      ? `Dostępna część: ${availability.available}`
+                                      : `Dostępne: ${availability.available}`
                                     : 'Niedostępne'}
                                 </span>
                               )}
@@ -613,6 +1102,18 @@ export function RequiredComponentsWarning({
                                 ? 'Ten komponent jest niezbędny i zostanie dodany po zatwierdzeniu.'
                                 : 'Ten komponent warto dodać, jeśli będzie potrzebny w tej realizacji.'}
                             </div>
+                            {renderQuantitySelector(component)}
+                            <button
+                              type="button"
+                              onClick={() => void dismissComponentGroup(group)}
+                              className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-[#e5e4e2]/15 px-3 py-1.5 text-xs text-[#e5e4e2]/65 hover:border-red-400/30 hover:text-red-300"
+                            >
+                              <MinusCircle className="h-3.5 w-3.5" />
+                              {group.isRequired
+                                ? 'Pomiń wymaganie w tym wydarzeniu'
+                                : 'Nie używamy w tym rozwiązaniu'}
+                            </button>
+                            {renderConflictDetails(component)}
                           </div>
                         </div>
                       </div>

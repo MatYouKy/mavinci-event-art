@@ -195,26 +195,41 @@ export default function OfferActions({
         return;
       }
 
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/generate-offer-pdf`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${session.access_token}`,
+      let result: any = null;
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const response = await fetch(
+          `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/generate-offer-pdf`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${session.access_token}`,
+            },
+            body: JSON.stringify({
+              offerId: offer.id,
+              employeeId: employee.id,
+            }),
           },
-          body: JSON.stringify({
-            offerId: offer.id,
-            employeeId: employee.id,
-          }),
-        },
-      );
+        );
 
-      const result = await response.json();
+        result = await response.json().catch(() => ({}));
+        if (response.ok && result.success) break;
 
-      if (!response.ok || !result.success) {
-        throw new Error(result.error || 'Błąd generowania PDF');
+        const resourceLimit = result.code === 'WORKER_RESOURCE_LIMIT';
+        if (resourceLimit && attempt === 0) {
+          showSnackbar('Generator potrzebuje więcej zasobów — ponawiam automatycznie...', 'info');
+          await new Promise((resolve) => setTimeout(resolve, 1200));
+          continue;
+        }
+
+        throw new Error(
+          resourceLimit
+            ? 'Generator PDF chwilowo przekroczył limit zasobów. Spróbuj ponownie za chwilę.'
+            : result.error || result.message || 'Błąd generowania PDF',
+        );
       }
+
+      if (!result?.success) throw new Error('Błąd generowania PDF');
 
       showSnackbar(`PDF wygenerowany pomyślnie (${result.pageCount} stron)`, 'success');
 

@@ -17,6 +17,8 @@ const toPublicCompanyLogoUrl = (value: string, supabaseUrl: string): string => {
 
 interface EventInvitationRequest {
   assignmentId: string;
+  includePhases?: boolean;
+  mode?: "invitation" | "timeline_update";
 }
 
 Deno.serve(async (req: Request) => {
@@ -34,11 +36,18 @@ Deno.serve(async (req: Request) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const { assignmentId }: EventInvitationRequest = await req.json();
+    const {
+      assignmentId,
+      includePhases = true,
+      mode = "invitation",
+    }: EventInvitationRequest = await req.json();
     console.log('[send-event-invitation] Assignment ID:', assignmentId);
 
     if (!assignmentId) {
       throw new Error("Assignment ID is required");
+    }
+    if (mode !== "invitation" && mode !== "timeline_update") {
+      throw new Error("Unsupported email mode");
     }
 
     const { data: assignment, error: assignmentError } = await supabase
@@ -80,25 +89,31 @@ Deno.serve(async (req: Request) => {
       throw new Error("Assignment not found");
     }
 
-    const { data: phaseAssignments, error: phasesError } = await supabase
-      .from("event_phase_assignments")
-      .select(`
-        phase_id,
-        assignment_start,
-        assignment_end,
-        phase_work_start,
-        phase_work_end,
-        event_phases!inner(
-          id,
-          name,
-          start_time,
-          end_time,
-          color,
-          event_id
-        )
-      `)
-      .eq("employee_id", assignment.employee_id)
-      .eq("event_phases.event_id", assignment.event_id);
+    let phaseAssignments: any[] = [];
+    let phasesError: any = null;
+    if (includePhases) {
+      const phaseResult = await supabase
+        .from("event_phase_assignments")
+        .select(`
+          phase_id,
+          assignment_start,
+          assignment_end,
+          phase_work_start,
+          phase_work_end,
+          event_phases!inner(
+            id,
+            name,
+            start_time,
+            end_time,
+            color,
+            event_id
+          )
+        `)
+        .eq("employee_id", assignment.employee_id)
+        .eq("event_phases.event_id", assignment.event_id);
+      phaseAssignments = phaseResult.data || [];
+      phasesError = phaseResult.error;
+    }
 
     if (phasesError) {
       console.error('[send-event-invitation] Error fetching phases:', phasesError);
@@ -108,8 +123,14 @@ Deno.serve(async (req: Request) => {
 
     console.log('[send-event-invitation] Assignment status:', assignment.status);
 
-    if (assignment.status !== "pending") {
+    if (mode === "invitation" && assignment.status !== "pending") {
       throw new Error("Can only send invitations for pending assignments");
+    }
+    if (mode === "timeline_update" && assignment.status === "rejected") {
+      throw new Error("Cannot send a timeline update to a rejected assignment");
+    }
+    if (mode === "timeline_update" && phaseAssignments.length === 0) {
+      throw new Error("No timeline phases are assigned to this employee");
     }
 
     const employee = assignment.employees as any;
@@ -197,7 +218,7 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    if (!assignment.invitation_token) {
+    if (mode === "invitation" && !assignment.invitation_token) {
       throw new Error("Invitation token not generated");
     }
 
@@ -259,14 +280,18 @@ Deno.serve(async (req: Request) => {
       <tbody>
         ${phaseAssignments.map((phase: any) => {
           const phaseData = phase.event_phases;
-          const workStart = new Date(phase.phase_work_start).toLocaleString('pl-PL', {
+          const workStart = new Date(
+            phase.phase_work_start || phase.assignment_start || phaseData.start_time,
+          ).toLocaleString('pl-PL', {
             day: '2-digit',
             month: '2-digit',
             year: 'numeric',
             hour: '2-digit',
             minute: '2-digit'
           });
-          const workEnd = new Date(phase.phase_work_end).toLocaleString('pl-PL', {
+          const workEnd = new Date(
+            phase.phase_work_end || phase.assignment_end || phaseData.end_time,
+          ).toLocaleString('pl-PL', {
             day: '2-digit',
             month: '2-digit',
             year: 'numeric',
@@ -304,7 +329,38 @@ Deno.serve(async (req: Request) => {
   <p style="margin: 10px 0 0; font-size: 12px; color: rgba(229, 228, 226, 0.5); text-align: center;">
     Godziny pracy w poszczególnych fazach wydarzenia
   </p>
-</div>` : '';
+</div>` : mode === "invitation" ? `
+  <div style="margin:24px 0;padding:16px;border:1px solid rgba(211,187,115,.18);border-radius:8px;background:rgba(211,187,115,.05);">
+    <strong style="color:#d3bb73;">Harmonogram zostanie uzupełniony później</strong>
+    <p style="margin:8px 0 0;color:rgba(229,228,226,.75);line-height:1.5;">
+      Jesteś zapraszany do zespołu wydarzenia niezależnie od timeline. Po przypisaniu godzin otrzymasz osobną wiadomość z aktualnym harmonogramem.
+    </p>
+  </div>
+` : '';
+
+    const actionSectionHtml = mode === "timeline_update" ? `
+      <div style="margin-top:30px;padding:22px;border:1px solid rgba(211,187,115,.2);border-radius:10px;text-align:center;">
+        <p style="margin:0 0 14px;color:#e5e4e2;line-height:1.6;">
+          Harmonogram został uzupełniony. Sprawdź godziny pracy powyżej. W razie rozbieżności skontaktuj się z opiekunem wydarzenia.
+        </p>
+        <a href="${eventUrl}" class="link">Zobacz szczegóły wydarzenia w CRM →</a>
+      </div>
+    ` : `
+      <p class="text center" style="margin-top:40px;margin-bottom:20px;font-weight:500;">Potwierdź swoją obecność:</p>
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
+        <td class="mobile-full" width="50%" style="padding:5px;">
+          <a href="${acceptUrl}" style="display:block;background:#16a34a;color:#fff;text-decoration:none;border-radius:8px;font-weight:600;font-size:16px;padding:14px 20px;text-align:center;">Akceptuję zaproszenie</a>
+        </td>
+        <td class="mobile-full" width="50%" style="padding:5px;">
+          <a href="${rejectUrl}" style="display:block;background:#dc2626;color:#fff;text-decoration:none;border-radius:8px;font-weight:600;font-size:16px;padding:14px 20px;text-align:center;">Odrzucam zaproszenie</a>
+        </td>
+      </tr></table>
+      <div style="margin-top:30px;padding-top:25px;border-top:1px solid rgba(211,187,115,.2);text-align:center;">
+        <p style="font-size:14px;color:rgba(229,228,226,.6);">Możesz też zalogować się do CRM, aby zobaczyć więcej szczegółów.</p>
+        <a href="${eventUrl}" class="link">Zobacz szczegóły wydarzenia w CRM →</a>
+        <p style="margin-top:20px;font-size:12px;color:rgba(229,228,226,.55);">Link do odpowiedzi wygasa: <strong style="color:#d3bb73;">${expiresAt}</strong></p>
+      </div>
+    `;
 
     const emailBody = `
 <!DOCTYPE html>
@@ -722,86 +778,7 @@ Deno.serve(async (req: Request) => {
 
                     ${phasesTableHtml}
 
-                    <p class="text center" style="margin-top: 40px; margin-bottom: 20px; font-weight: 500;">
-                      Potwierdź swoją obecność:
-                    </p>
-
-                    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-                      <tr>
-
-                        <!-- ACCEPT -->
-                        <td class="mobile-full" width="50%" style="padding:5px;">
-                          <a href="${acceptUrl}" style="display:block;background:linear-gradient(135deg,#22c55e 0%,#16a34a 100%);
-                                    color:#ffffff;text-decoration:none;border-radius:8px;
-                                    font-weight:600;font-size:16px;padding:14px 20px;text-align:center;">
-
-                            <img src="https://mavinci.pl/icons/tick-white.svg" width="16"
-                              style="display:inline-block;vertical-align:middle;margin-right:6px;">
-
-                            <span style="vertical-align:middle;">
-                              Akceptuję zaproszenie
-                            </span>
-                          </a>
-                        </td>
-
-                        <!-- REJECT -->
-                        <td class="mobile-full" width="50%" style="padding:5px;">
-                          <a href="${rejectUrl}" style="display:block;background:rgba(239,68,68,0.9);
-                                    color:#ffffff;text-decoration:none;border-radius:8px;
-                                    font-weight:600;font-size:16px;padding:14px 20px;text-align:center;">
-
-                            <img src="https://mavinci.pl/icons/math-white.svg" width="16"
-                              style="display:inline-block;vertical-align:middle;margin-right:6px;">
-
-                            <span style="vertical-align:middle;">
-                              Odrzucam zaproszenie
-                            </span>
-                          </a>
-                        </td>
-
-                      </tr>
-                    </table>
-
-                    <div style="margin-top: 30px; padding-top: 25px; border-top: 1px solid rgba(211, 187, 115, 0.2);">
-                      <p class="text center"
-                        style="margin-bottom: 15px; font-size: 14px; color: rgba(229, 228, 226, 0.6);">
-                        Możesz też zalogować się do systemu CRM aby zobaczyć więcej szczegółów:
-                      </p>
-                      <p class="center" style="margin: 0;">
-                        <a href="${eventUrl}" class="link">
-                          Zobacz szczegóły wydarzenia w CRM →
-                        </a>
-                      </p>
-                    </div>
-
-                    <div class="footer-note">
-
-                      <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center"
-                        style="margin:0 auto 6px auto;">
-                        <tr>
-                          <td style="vertical-align:middle;padding-right:8px;">
-                            <img src="https://mavinci.pl/icons/clock1-gold.svg" width="16"
-                              style="display:inline-block; vertical-align:middle; position:relative; top:1px;">
-                          </td>
-                          <td style="vertical-align:middle;">
-                            <span
-                              style="font-size:12px;font-weight:600;letter-spacing:0.6px;color:#d3bb73;text-transform:uppercase;">
-                              Link wygasa
-                            </span>
-                            <strong style="color:#d3bb73;margin-left:6px;">
-                              ${expiresAt}
-                            </strong>
-                          </td>
-                        </tr>
-                      </table>
-
-                      <div style="font-size:14px;color:#e5e4e2;text-align:center;line-height:1.6;">
-                        <span style="color:rgba(229,228,226,0.6);">
-                          Po tym czasie musisz zalogować się do systemu CRM aby potwierdzić udział.
-                        </span>
-                      </div>
-
-                    </div>
+                    ${actionSectionHtml}
                   </td>
                 </tr>
 
@@ -852,7 +829,9 @@ Deno.serve(async (req: Request) => {
         },
         body: JSON.stringify({
           to: emailAddress,
-          subject: `Zaproszenie do wydarzenia: ${event.name}`,
+          subject: mode === "timeline_update"
+            ? `Uzupełniony harmonogram: ${event.name}`
+            : `Zaproszenie do wydarzenia: ${event.name}`,
           body: emailBody,
           emailAccountId: systemEmail.id,
         }),
@@ -871,9 +850,13 @@ Deno.serve(async (req: Request) => {
 
     await supabase
       .from("employee_assignments")
-      .update({
+      .update(mode === "timeline_update" ? {
+        invitation_includes_phases: true,
+        timeline_update_email_sent_at: new Date().toISOString(),
+      } : {
         invitation_email_sent: true,
         invitation_email_sent_at: new Date().toISOString(),
+        invitation_includes_phases: includePhases && phaseAssignments.length > 0,
       })
       .eq("id", assignmentId);
 

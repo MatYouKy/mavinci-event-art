@@ -31,6 +31,7 @@ import {
   Plug,
   Megaphone,
   MonitorPlay,
+  BookOpen,
 } from 'lucide-react';
 
 /**
@@ -75,6 +76,7 @@ export const NavigationIcons = {
   fileText: FileText,
   package: Package,
   fileType: FileType,
+  bookOpen: BookOpen,
 } as const;
 
 export type IconKey = keyof typeof NavigationIcons;

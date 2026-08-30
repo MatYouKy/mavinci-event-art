@@ -36,6 +36,7 @@ export interface TaskListItem {
 
 export interface TaskDetail extends TaskListItem {
   event_id: string | null;
+  inquiry_id: string | null;
   is_private: boolean;
   creator?: {
     name: string;

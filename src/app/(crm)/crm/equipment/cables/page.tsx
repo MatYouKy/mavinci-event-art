@@ -16,9 +16,12 @@ interface CableItem {
   connector_in_type: { id: string; name: string; thumbnail_url: string | null } | null;
   connector_out_type: { id: string; name: string; thumbnail_url: string | null } | null;
   stock_quantity: number;
+  stock_unit: 'piece' | 'meter';
+  minimum_stock_quantity: number;
   thumbnail_url: string | null;
   warehouse_categories: { id: string; name: string } | null;
   storage_location: { id: string; name: string } | null;
+  cable_category: { id: string; parent_id: string | null; name: string; color: string } | null;
 }
 
 export default function CablesListPage() {
@@ -28,13 +31,30 @@ export default function CablesListPage() {
   const { canCreateInModule, canManageModule } = useCurrentEmployee();
 
   const [searchTerm, setSearchTerm] = useState('');
+  const [categoryId, setCategoryId] = useState('all');
 
   const { data: cables = [], isLoading, refetch } = useGetCablesListQuery();
   const [deleteCable] = useDeleteCableMutation();
 
-  const filteredCables = cables.filter((cable: CableItem) =>
-    cable.name?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const cableCategories = Array.from(
+    new Map(
+      cables
+        .map((cable: CableItem) => cable.cable_category)
+        .filter(Boolean)
+        .map((category: any) => [category.id, category]),
+    ).values(),
+  ) as CableItem['cable_category'][];
+  const filteredCables = cables.filter((cable: CableItem) => {
+    const query = searchTerm.trim().toLowerCase();
+    const matchesQuery = !query || [
+      cable.name,
+      cable.connector_in_type?.name,
+      cable.connector_out_type?.name,
+      cable.cable_category?.name,
+    ].some((value) => value?.toLowerCase().includes(query));
+    const matchesCategory = categoryId === 'all' || cable.cable_category?.id === categoryId;
+    return matchesQuery && matchesCategory;
+  });
 
   const handleDelete = async (id: string, name: string) => {
     const confirmed = await showConfirm(
@@ -82,7 +102,7 @@ export default function CablesListPage() {
         </div>
 
         {/* Search */}
-        <div className="mb-6">
+        <div className="mb-6 grid gap-3 md:grid-cols-[minmax(0,1fr)_280px]">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#8a8988]" />
             <input
@@ -93,6 +113,16 @@ export default function CablesListPage() {
               className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg pl-10 pr-4 py-2 text-[#e5e4e2] placeholder-[#8a8988] focus:outline-none focus:border-[#d3bb73]"
             />
           </div>
+          <select
+            value={categoryId}
+            onChange={(event) => setCategoryId(event.target.value)}
+            className="rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+          >
+            <option value="all">Wszystkie przeznaczenia</option>
+            {cableCategories.map((category) => category && (
+              <option key={category.id} value={category.id}>{category.name}</option>
+            ))}
+          </select>
         </div>
 
         {/* Loading */}
@@ -144,6 +174,14 @@ export default function CablesListPage() {
                   {/* Info */}
                   <div className="flex-1 min-w-0">
                     <h3 className="font-semibold text-lg mb-1">{cable.name}</h3>
+                    {cable.cable_category && (
+                      <span
+                        className="mb-1 inline-flex rounded-full border px-2 py-0.5 text-[11px]"
+                        style={{ borderColor: `${cable.cable_category.color}66`, color: cable.cable_category.color }}
+                      >
+                        {cable.cable_category.name}
+                      </span>
+                    )}
                     <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-[#8a8988]">
                       {cable.length_meters && (
                         <span>Długość: {cable.length_meters}m</span>
@@ -155,8 +193,11 @@ export default function CablesListPage() {
                         <span>Wyjście: {cable.connector_out_type.name}</span>
                       )}
                       <span className="text-[#d3bb73]">
-                        Ilość: {cable.stock_quantity || 0}
+                        Stan: {cable.stock_quantity || 0} {cable.stock_unit === 'meter' ? 'm' : 'szt.'}
                       </span>
+                      {Number(cable.stock_quantity || 0) <= Number(cable.minimum_stock_quantity || 0) && (
+                        <span className="text-amber-400">Niski stan</span>
+                      )}
                     </div>
                     {cable.warehouse_categories && (
                       <div className="text-xs text-[#8a8988] mt-1">

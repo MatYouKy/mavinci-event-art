@@ -1,8 +1,8 @@
 export const DASHBOARD_WIDGETS = [
   {
     id: 'kpi-overview',
-    label: 'Najważniejsze wskaźniki',
-    description: 'Kafelki KPI z porównaniem do poprzedniego miesiąca.',
+    label: 'Pozostałe wskaźniki',
+    description: 'Kompaktowe, rozwijane liczniki pomocnicze na końcu dashboardu.',
   },
   {
     id: 'sales-trends',

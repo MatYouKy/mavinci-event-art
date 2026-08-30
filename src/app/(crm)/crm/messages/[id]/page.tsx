@@ -3,8 +3,10 @@
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   useGetMessageDetailsQuery,
+  useGetEmailAccountsQuery,
   useMarkMessageAsReadMutation,
   useToggleStarMessageMutation,
+  useDeleteMessageMutation,
 } from '@/store/api/messagesApi';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -16,19 +18,26 @@ import {
   Reply,
   Forward,
   Trash2,
-  Pin,
   Paperclip,
   Download,
   BrainCircuit,
   UserRound,
   Building2,
   ListTodo,
+  ListPlus,
   History,
+  UserPlus,
+  MailOpen,
+  MailCheck,
 } from 'lucide-react';
 import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
 import { useState, useEffect } from 'react';
 import ComposeEmailModal from '@/components/crm/ComposeEmailModal';
+import AssignMessageModal from '@/components/crm/AssignMessageModal';
+import CreateInquiryFromMessageModal from '@/components/crm/CreateInquiryFromMessageModal';
+import CreateTaskFromMessageModal from '@/components/crm/CreateTaskFromMessageModal';
 import { supabase } from '@/lib/supabase/browser';
+import { useDialog } from '@/contexts/DialogContext';
 
 interface PageProps {
   params: { id: string };
@@ -58,21 +67,32 @@ export default function MessageDetailPage({ params }: PageProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { showSnackbar } = useSnackbar();
-  const { canManageModule } = useCurrentEmployee();
+  const { showConfirm } = useDialog();
+  const { employee, canManageModule, canCreateInModule, sessionUserId } = useCurrentEmployee();
   const canManage = canManageModule('messages');
+  const canCreateTasks = canCreateInModule('tasks');
 
-  const [messageType, setMessageType] = useState<'contact_form' | 'sent' | 'received'>(
+  const [messageType] = useState<'contact_form' | 'sent' | 'received'>(
     (searchParams.get('type') as 'contact_form' | 'sent' | 'received') || 'received',
   );
   const [showReplyModal, setShowReplyModal] = useState(false);
   const [showForwardModal, setShowForwardModal] = useState(false);
   const [aiContext, setAiContext] = useState<EmailAiContext | null>(null);
   const [previousConversationCount, setPreviousConversationCount] = useState(0);
+  const [showAssignModal, setShowAssignModal] = useState(false);
+  const [showCreateInquiryModal, setShowCreateInquiryModal] = useState(false);
+  const [showCreateTaskModal, setShowCreateTaskModal] = useState(false);
+  const [linkedInquiryId, setLinkedInquiryId] = useState<string | null>(null);
+  const { data: emailAccountsData } = useGetEmailAccountsQuery();
+  const selectableEmailAccounts = (emailAccountsData?.accounts || []).filter(
+    (account) => account.id !== 'all' && account.id !== 'contact_form',
+  );
 
   const {
     data: message,
     isLoading,
     error,
+    refetch: refetchMessage,
   } = useGetMessageDetailsQuery({
     id: params.id,
     type: messageType,
@@ -80,6 +100,7 @@ export default function MessageDetailPage({ params }: PageProps) {
 
   const [markAsRead] = useMarkMessageAsReadMutation();
   const [toggleStar] = useToggleStarMessageMutation();
+  const [deleteMessage] = useDeleteMessageMutation();
 
   useEffect(() => {
     if (
@@ -90,6 +111,37 @@ export default function MessageDetailPage({ params }: PageProps) {
       markAsRead({ id: message.id, type: message.type as 'contact_form' | 'received' });
     }
   }, [message, markAsRead]);
+
+  useEffect(() => {
+    if (!message || (message.type !== 'contact_form' && message.type !== 'received')) {
+      setLinkedInquiryId(null);
+      return;
+    }
+
+    let active = true;
+    supabase
+      .from('tasks')
+      .select('id')
+      .eq('is_inquiry', true)
+      .contains('inquiry_details', {
+        source_message_id: message.id,
+        source_message_type: message.type,
+      })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data, error: inquiryError }) => {
+        if (!active) return;
+        if (inquiryError) {
+          console.error('Error finding inquiry linked to message:', inquiryError);
+          return;
+        }
+        setLinkedInquiryId(data?.id || null);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [message]);
 
   useEffect(() => {
     let active = true;
@@ -174,21 +226,41 @@ export default function MessageDetailPage({ params }: PageProps) {
   const handleDelete = async () => {
     if (!message) return;
 
+    const confirmed = await showConfirm({
+      title: 'Przenieś wiadomość do kosza',
+      message: 'Wiadomość będzie można później przywrócić z kosza.',
+      confirmText: 'Przenieś do kosza',
+      cancelText: 'Anuluj',
+    });
+    if (!confirmed) return;
+
     try {
-      const tableName =
-        message.type === 'contact_form'
-          ? 'contact_messages'
-          : message.type === 'received'
-            ? 'received_emails'
-            : 'sent_emails';
+      await deleteMessage({ id: message.id, type: message.type }).unwrap();
 
-      await supabase.from(tableName).delete().eq('id', message.id);
-
-      showSnackbar('Wiadomość została usunięta', 'success');
+      showSnackbar('Wiadomość została przeniesiona do kosza', 'success');
       router.push('/crm/messages');
     } catch (error) {
       console.error('Error deleting message:', error);
       showSnackbar('Błąd podczas usuwania wiadomości', 'error');
+    }
+  };
+
+  const handleToggleRead = async () => {
+    if (!message || (message.type !== 'contact_form' && message.type !== 'received')) return;
+
+    try {
+      await markAsRead({
+        id: message.id,
+        type: message.type,
+        isRead: !message.isRead,
+      }).unwrap();
+      showSnackbar(
+        message.isRead ? 'Oznaczono jako nieprzeczytaną' : 'Oznaczono jako przeczytaną',
+        'success',
+      );
+    } catch (error) {
+      console.error('Error changing message read state:', error);
+      showSnackbar('Nie udało się zmienić stanu wiadomości', 'error');
     }
   };
 
@@ -198,6 +270,9 @@ export default function MessageDetailPage({ params }: PageProps) {
     body: string;
     bodyHtml: string;
     attachments?: File[];
+    fromAccountId?: string;
+    cc?: string;
+    bcc?: string;
   }) => {
     try {
       const {
@@ -227,6 +302,17 @@ export default function MessageDetailPage({ params }: PageProps) {
       }
 
       const apiUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-email`;
+      const originalMessageId =
+        message?.type === 'received' ? message.originalData?.message_id || null : null;
+      const rawReferences = message?.originalData?.raw_headers?.references;
+      const parsedReferences = Array.isArray(rawReferences)
+        ? rawReferences.map(String)
+        : typeof rawReferences === 'string'
+          ? rawReferences.match(/<[^>]+>/g) || rawReferences.split(/\s+/).filter(Boolean)
+          : [];
+      const references = originalMessageId
+        ? Array.from(new Set([...parsedReferences, originalMessageId]))
+        : parsedReferences;
 
       const response = await fetch(apiUrl, {
         method: 'POST',
@@ -235,11 +321,16 @@ export default function MessageDetailPage({ params }: PageProps) {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          emailAccountId: message?.email_account_id,
+          emailAccountId: data.fromAccountId || message?.email_account_id,
           to: data.to,
+          cc: data.cc,
+          bcc: data.bcc,
           subject: data.subject,
           body: data.bodyHtml,
           attachments: attachmentsBase64,
+          messageId: message?.type === 'contact_form' ? message.id : undefined,
+          inReplyTo: showReplyModal ? originalMessageId : undefined,
+          references: showReplyModal && references.length > 0 ? references : undefined,
         }),
       });
 
@@ -334,21 +425,6 @@ export default function MessageDetailPage({ params }: PageProps) {
 
               <ResponsiveActionBar
                 actions={[
-                  ...(message.type === 'received'
-                    ? [
-                        {
-                          label: message.isStarred ? 'Usuń ' : 'Oznacz',
-                          onClick: handleToggleStar,
-                          icon: message.isStarred ? (
-                            <Star className="h-4 w-4 fill-[#d3bb73] text-[#d3bb73]" />
-                          ) : (
-                            <StarOff className="h-4 w-4" />
-                          ),
-                          variant: 'default' as const,
-                          show: true,
-                        },
-                      ]
-                    : []),
                   ...(canManage && (message.type === 'contact_form' || message.type === 'received')
                     ? [
                         {
@@ -356,6 +432,74 @@ export default function MessageDetailPage({ params }: PageProps) {
                           onClick: () => setShowReplyModal(true),
                           icon: <Reply className="h-4 w-4" />,
                           variant: 'primary' as const,
+                          show: true,
+                          pin: true,
+                        },
+                      ]
+                    : []),
+                  ...(canManage && (message.type === 'contact_form' || message.type === 'received')
+                    ? [
+                        {
+                          label: linkedInquiryId ? 'Otwórz zapytanie' : 'Dodaj do zapytań',
+                          onClick: () =>
+                            linkedInquiryId
+                              ? router.push(`/crm/inquiries/${linkedInquiryId}`)
+                              : setShowCreateInquiryModal(true),
+                          icon: <ListTodo className="h-4 w-4" />,
+                          variant: 'default' as const,
+                          show: true,
+                          pin: true,
+                        },
+                        {
+                          label: 'Przypisz',
+                          onClick: () => setShowAssignModal(true),
+                          icon: <UserPlus className="h-4 w-4" />,
+                          variant: 'default' as const,
+                          show: true,
+                          pin: true,
+                        },
+                      ]
+                    : []),
+                  ...(canCreateTasks &&
+                  (message.type === 'contact_form' || message.type === 'received')
+                    ? [
+                        {
+                          label: 'Utwórz zadanie',
+                          onClick: () => setShowCreateTaskModal(true),
+                          icon: <ListPlus className="h-4 w-4" />,
+                          variant: 'default' as const,
+                          show: true,
+                        },
+                      ]
+                    : []),
+                  ...(message.type === 'contact_form' || message.type === 'received'
+                    ? [
+                        {
+                          label: message.isRead
+                            ? 'Oznacz jako nieprzeczytaną'
+                            : 'Oznacz jako przeczytaną',
+                          onClick: handleToggleRead,
+                          icon: message.isRead ? (
+                            <MailOpen className="h-4 w-4" />
+                          ) : (
+                            <MailCheck className="h-4 w-4" />
+                          ),
+                          variant: 'default' as const,
+                          show: true,
+                        },
+                      ]
+                    : []),
+                  ...(message.type === 'received'
+                    ? [
+                        {
+                          label: message.isStarred ? 'Usuń oznaczenie' : 'Oznacz gwiazdką',
+                          onClick: handleToggleStar,
+                          icon: message.isStarred ? (
+                            <Star className="h-4 w-4 fill-[#d3bb73] text-[#d3bb73]" />
+                          ) : (
+                            <StarOff className="h-4 w-4" />
+                          ),
+                          variant: 'default' as const,
                           show: true,
                         },
                       ]
@@ -374,7 +518,7 @@ export default function MessageDetailPage({ params }: PageProps) {
                   ...(canManage
                     ? [
                         {
-                          label: 'Usuń',
+                          label: 'Przenieś do kosza',
                           onClick: handleDelete,
                           icon: <Trash2 className="h-4 w-4" />,
                           variant: 'danger' as const,
@@ -465,7 +609,7 @@ export default function MessageDetailPage({ params }: PageProps) {
                   )}
                   {aiContext.conversation?.inquiry && (
                     <button
-                      onClick={() => router.push(`/crm/tasks/${aiContext.conversation?.inquiry?.id}`)}
+                      onClick={() => router.push(`/crm/inquiries/${aiContext.conversation?.inquiry?.id}`)}
                       className="inline-flex items-center gap-1.5 rounded-md border border-emerald-400/30 bg-emerald-400/10 px-2.5 py-1.5 text-xs text-emerald-100 transition-colors hover:bg-emerald-400/20"
                     >
                       <ListTodo className="h-3.5 w-3.5" />
@@ -581,10 +725,23 @@ export default function MessageDetailPage({ params }: PageProps) {
         isOpen={showReplyModal}
         onClose={() => setShowReplyModal(false)}
         onSend={handleSendReply}
-        initialTo={message.type === 'contact_form' ? message.originalData.email : message.from}
-        initialSubject={`Re: ${message.subject}`}
-        initialBody={`\n\n--- Odpowiedź na wiadomość ---\n${message.body}`}
+        initialTo={
+          message.type === 'contact_form'
+            ? message.originalData.email
+            : message.from.match(/<([^>]+)>/)?.[1] || message.from
+        }
+        initialSubject={/^re\s*:/i.test(message.subject) ? message.subject : `Re: ${message.subject}`}
+        initialBody=""
+        replyContext={{
+          from: message.from,
+          date: message.date,
+          subject: message.subject,
+          body: message.body,
+          bodyHtml: message.bodyHtml,
+          messageId: message.type === 'received' ? message.originalData?.message_id || null : null,
+        }}
         selectedAccountId={message.email_account_id || ''}
+        emailAccounts={selectableEmailAccounts}
       />
 
       <ComposeEmailModal
@@ -595,7 +752,46 @@ export default function MessageDetailPage({ params }: PageProps) {
         initialSubject={`Fwd: ${message.subject}`}
         forwardedBody={`\n\n--- Przekazana wiadomość ---\nOd: ${message.from}\nData: ${new Date(message.date).toLocaleString('pl-PL')}\nTemat: ${message.subject}\n\n${message.body}`}
         selectedAccountId={message.email_account_id || ''}
+        emailAccounts={selectableEmailAccounts}
       />
+
+      {showAssignModal && (message.type === 'contact_form' || message.type === 'received') && (
+        <AssignMessageModal
+          messageId={message.id}
+          messageType={message.type}
+          currentAssignee={message.assigned_to || null}
+          onClose={() => setShowAssignModal(false)}
+          onSuccess={() => {
+            setShowAssignModal(false);
+            void refetchMessage();
+          }}
+        />
+      )}
+
+      {showCreateInquiryModal && sessionUserId && (
+        <CreateInquiryFromMessageModal
+          message={message}
+          userId={sessionUserId}
+          onClose={() => setShowCreateInquiryModal(false)}
+          onSuccess={(inquiryId) => {
+            setLinkedInquiryId(inquiryId);
+            setShowCreateInquiryModal(false);
+            router.push(`/crm/inquiries/${inquiryId}`);
+          }}
+        />
+      )}
+
+      {showCreateTaskModal && (employee?.id || sessionUserId) && (
+        <CreateTaskFromMessageModal
+          message={message}
+          createdBy={employee?.id || sessionUserId!}
+          onClose={() => setShowCreateTaskModal(false)}
+          onSuccess={(taskId) => {
+            setShowCreateTaskModal(false);
+            router.push(`/crm/tasks/${taskId}`);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -17,6 +17,10 @@ import {
   ArrowDown,
   RefreshCw,
 } from 'lucide-react';
+import {
+  applyBankTransactionMatchToDocument,
+  removeBankTransactionMatch,
+} from '@/lib/bankTransactionMatching';
 
 interface InvoiceRelation {
   id?: string;
@@ -46,6 +50,9 @@ interface Transaction {
   matched_invoice_id?: string;
   match_confidence?: number;
   manual_match: boolean;
+  match_status?: 'unmatched' | 'partial' | 'matched';
+  allocated_amount?: number;
+  matched_document_count?: number;
   invoice?: InvoiceRelation | InvoiceRelation[];
 }
 
@@ -75,6 +82,25 @@ interface Props {
 function getInvoiceObject(invoice?: InvoiceRelation | InvoiceRelation[]) {
   if (!invoice) return null;
   return Array.isArray(invoice) ? (invoice[0] ?? null) : invoice;
+}
+
+function isTransactionFullyMatched(transaction: Transaction) {
+  return transaction.match_status === 'matched' ||
+    (!transaction.match_status && Boolean(transaction.matched_invoice_id));
+}
+
+function hasTransactionMatches(transaction: Transaction) {
+  return Number(transaction.allocated_amount || 0) > 0 || Boolean(transaction.matched_invoice_id);
+}
+
+function getExpectedTransactionDirection(invoice: KSeFInvoice): Transaction['transaction_type'] {
+  const amountIsPositive = Number(invoice.gross_amount || 0) >= 0;
+
+  if (invoice.invoice_type === 'issued') {
+    return amountIsPositive ? 'credit' : 'debit';
+  }
+
+  return amountIsPositive ? 'debit' : 'credit';
 }
 
 function safeDate(value?: string | null) {
@@ -233,26 +259,14 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
       const transaction = transactions.find((t) => t.id === transactionId);
       if (!transaction) throw new Error('Transakcja nie została znaleziona');
 
-      const { error: transError } = await supabase
-        .from('bank_transactions')
-        .update({
-          matched_invoice_id: invoiceId,
-          match_confidence: 1.0,
-          manual_match: true,
-        })
-        .eq('id', transactionId);
-
-      if (transError) throw transError;
-
-      const { error: invError } = await supabase
-        .from('ksef_invoices')
-        .update({
-          payment_status: 'paid',
-          payment_date: transaction.transaction_date,
-        })
-        .eq('id', invoiceId);
-
-      if (invError) throw invError;
+      await applyBankTransactionMatchToDocument(supabase, {
+        transactionId,
+        documentSource: 'ksef',
+        documentId: invoiceId,
+        confidence: 1,
+        method: 'manual',
+        reasons: ['Ręczne dopasowanie w analizie wyciągu'],
+      });
 
       showSnackbar('Płatność została ręcznie dopasowana', 'success');
       setMatchModalOpen(false);
@@ -278,28 +292,9 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
     }));
   };
 
-  const handleUnmatch = async (transactionId: string, invoiceId: string) => {
+  const handleUnmatch = async (transactionId: string) => {
     try {
-      const { error: transError } = await supabase
-        .from('bank_transactions')
-        .update({
-          matched_invoice_id: null,
-          match_confidence: null,
-          manual_match: false,
-        })
-        .eq('id', transactionId);
-
-      if (transError) throw transError;
-
-      const { error: invError } = await supabase
-        .from('ksef_invoices')
-        .update({
-          payment_status: 'unpaid',
-          payment_date: null,
-        })
-        .eq('id', invoiceId);
-
-      if (invError) throw invError;
+      await removeBankTransactionMatch(supabase, transactionId);
 
       showSnackbar('Dopasowanie zostało usunięte', 'success');
       await loadData();
@@ -316,8 +311,8 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
 
   const filteredTransactions = useMemo(() => {
     let filtered = transactions.filter((t) => {
-      if (filterType === 'matched') return !!t.matched_invoice_id;
-      if (filterType === 'unmatched') return !t.matched_invoice_id;
+      if (filterType === 'matched') return isTransactionFullyMatched(t);
+      if (filterType === 'unmatched') return !isTransactionFullyMatched(t);
       return true;
     });
 
@@ -373,8 +368,8 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
   const stats = useMemo(
     () => ({
       total: transactions.length,
-      matched: transactions.filter((t) => t.matched_invoice_id).length,
-      unmatched: transactions.filter((t) => !t.matched_invoice_id).length,
+      matched: transactions.filter(isTransactionFullyMatched).length,
+      unmatched: transactions.filter((t) => !isTransactionFullyMatched(t)).length,
       totalAmount: transactions.reduce(
         (sum, t) => sum + (t.transaction_type === 'credit' ? t.amount : -t.amount),
         0,
@@ -418,7 +413,11 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
         sanitizeBrokenPolish(t.counterparty_name || ''),
         t.counterparty_account || '',
         sanitizeBrokenPolish(t.title || '').replace(/;/g, ','),
-        t.matched_invoice_id ? 'Dopasowana' : 'Niedopasowana',
+        isTransactionFullyMatched(t)
+          ? 'Dopasowana'
+          : hasTransactionMatches(t)
+            ? 'Częściowo dopasowana'
+            : 'Niedopasowana',
         invoice?.invoice_number || '',
         invoice?.payment_due_date ? safeDate(invoice.payment_due_date) : '',
         t.match_confidence ? `${(t.match_confidence * 100).toFixed(0)}%` : '',
@@ -615,8 +614,10 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
                               className="border-b border-[#d3bb73]/10 align-top hover:bg-[#1c1f33]/40"
                             >
                               <td className="px-4 py-3">
-                                {transaction.matched_invoice_id ? (
+                                {isTransactionFullyMatched(transaction) ? (
                                   <CheckCircle className="h-5 w-5 text-green-400" />
+                                ) : hasTransactionMatches(transaction) ? (
+                                  <LinkIcon className="h-5 w-5 text-blue-400" />
                                 ) : (
                                   <XCircle className="h-5 w-5 text-orange-400" />
                                 )}
@@ -676,16 +677,24 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
                                       </div>
                                     )}
                                   </div>
+                                ) : hasTransactionMatches(transaction) ? (
+                                  <div>
+                                    <div className="font-medium text-blue-300">
+                                      {transaction.matched_document_count || 1}{' '}
+                                      {transaction.matched_document_count === 1 ? 'dokument' : 'dokumenty'}
+                                    </div>
+                                    <div className="mt-1 text-xs text-[#e5e4e2]/50">
+                                      Rozliczono {safeMoney(transaction.allocated_amount, transaction.currency)}
+                                    </div>
+                                  </div>
                                 ) : (
                                   <span className="text-orange-400">Brak dopasowania</span>
                                 )}
                               </td>
                               <td className="px-4 py-3 text-right">
-                                {transaction.matched_invoice_id ? (
+                                {hasTransactionMatches(transaction) ? (
                                   <button
-                                    onClick={() =>
-                                      handleUnmatch(transaction.id, transaction.matched_invoice_id!)
-                                    }
+                                    onClick={() => handleUnmatch(transaction.id)}
                                     className="rounded bg-red-500/20 px-3 py-1 text-xs text-red-400 hover:bg-red-500/30"
                                   >
                                     Usuń
@@ -904,7 +913,10 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
             <div className="flex-1 overflow-auto p-4">
               <div className="space-y-2">
                 {transactions
-                  .filter((t) => !t.matched_invoice_id)
+                  .filter((t) => (
+                    !isTransactionFullyMatched(t) &&
+                    t.transaction_type === getExpectedTransactionDirection(selectedInvoice)
+                  ))
                   .map((transaction) => {
                     const amountMatch =
                       selectedInvoice.gross_amount != null &&
@@ -976,9 +988,12 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
                     );
                   })}
 
-                {transactions.filter((t) => !t.matched_invoice_id).length === 0 && (
+                {transactions.filter((t) => (
+                  !isTransactionFullyMatched(t) &&
+                  t.transaction_type === getExpectedTransactionDirection(selectedInvoice)
+                )).length === 0 && (
                   <div className="py-8 text-center text-[#e5e4e2]/60">
-                    Wszystkie transakcje z tego miesiąca są już dopasowane
+                    Brak niedopasowanych transakcji o właściwym kierunku płatności
                   </div>
                 )}
               </div>

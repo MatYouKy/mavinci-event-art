@@ -3,17 +3,27 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { X, PhoneCall, Loader2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 
 interface NewInquiryModalProps {
   isOpen: boolean;
   onClose: () => void;
   initialDate?: Date;
-  onSaved?: () => void;
+  onSaved?: () => void | Promise<void>;
 }
 
 type OrgRow = { id: string; name: string; alias?: string | null };
 type ContactRow = { id: string; first_name: string | null; last_name: string | null; phone: string | null; email: string | null };
 type LocationRow = { id: string; name: string; address?: string | null; city?: string | null };
+type ManualSource = 'phone' | 'meeting' | 'referral' | 'social_media' | 'other';
+
+const SOURCE_LABELS: Record<ManualSource, string> = {
+  phone: 'Telefon',
+  meeting: 'Rozmowa / spotkanie',
+  referral: 'Polecenie',
+  social_media: 'Social media',
+  other: 'Inne źródło',
+};
 
 function toLocalDateTimeInput(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, '0');
@@ -21,9 +31,12 @@ function toLocalDateTimeInput(d: Date): string {
 }
 
 export default function NewInquiryModal({ isOpen, onClose, initialDate, onSaved }: NewInquiryModalProps) {
+  const { employee, loading: employeeLoading } = useCurrentEmployee();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [subject, setSubject] = useState('');
+  const [source, setSource] = useState<ManualSource>('phone');
   const [termin, setTermin] = useState('');
   const [scope, setScope] = useState('');
   const [budget, setBudget] = useState('');
@@ -50,6 +63,8 @@ export default function NewInquiryModal({ isOpen, onClose, initialDate, onSaved 
   useEffect(() => {
     if (!isOpen) return;
     setError(null);
+    setSubject('');
+    setSource('phone');
     setTermin(initialDate ? toLocalDateTimeInput(initialDate) : '');
     setScope('');
     setBudget('');
@@ -126,6 +141,11 @@ export default function NewInquiryModal({ isOpen, onClose, initialDate, onSaved 
   const handleSave = async () => {
     setError(null);
 
+    if (!subject.trim()) {
+      setError('Podaj temat zapytania.');
+      return;
+    }
+
     if (!clientText.trim() && !clientPhone.trim() && !clientEmail.trim()) {
       setError('Podaj przynajmniej dane kontaktowe klienta (nazwa, telefon lub e-mail).');
       return;
@@ -134,7 +154,7 @@ export default function NewInquiryModal({ isOpen, onClose, initialDate, onSaved 
     setSaving(true);
     try {
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      if (sessionError || !session) {
+      if (sessionError || !session || !employee?.id) {
         setError('Brak aktywnej sesji. Zaloguj się ponownie.');
         setSaving(false);
         return;
@@ -149,8 +169,7 @@ export default function NewInquiryModal({ isOpen, onClose, initialDate, onSaved 
 
       const newOrderIndex = (minRow?.order_index ?? 0) - 1;
 
-      const clientLabel = clientText.trim() || clientPhone.trim() || clientEmail.trim() || 'nieznany';
-      const title = `Zapytanie: ${clientLabel}`;
+      const title = `Zapytanie: ${subject.trim()}`;
 
       const descParts: string[] = [];
       if (termin) descParts.push(`Termin: ${termin.replace('T', ' ')}`);
@@ -161,7 +180,20 @@ export default function NewInquiryModal({ isOpen, onClose, initialDate, onSaved 
       const contactBits = [clientText.trim(), clientPhone.trim(), clientEmail.trim()].filter(Boolean);
       if (contactBits.length) descParts.push(`Kontakt: ${contactBits.join(' | ')}`);
 
+      const normalizedBudget = budget
+        .replace(/\s/g, '')
+        .replace(',', '.')
+        .replace(/[^\d.-]/g, '');
+      const parsedBudget = Number(normalizedBudget);
+      const estimatedValue = normalizedBudget && Number.isFinite(parsedBudget) && parsedBudget >= 0
+        ? parsedBudget
+        : null;
+
       const inquiryDetails = {
+        source_kind: 'manual',
+        source_name: SOURCE_LABELS[source],
+        source_channel: source,
+        source_message_content: expectations.trim() || scope.trim() || null,
         termin: termin || null,
         location_text: locationText.trim() || null,
         location_id: locationId,
@@ -184,8 +216,14 @@ export default function NewInquiryModal({ isOpen, onClose, initialDate, onSaved 
           board_column: 'todo',
           order_index: newOrderIndex,
           due_date: termin ? new Date(termin).toISOString() : null,
-          created_by: session.user.id,
+          created_by: employee.id,
           is_inquiry: true,
+          inquiry_stage: 'new',
+          inquiry_owner_id: null,
+          win_probability: 10,
+          estimated_value: estimatedValue,
+          contact_id: clientContactId,
+          organization_id: clientOrgId,
           inquiry_details: inquiryDetails,
         },
       ]);
@@ -196,8 +234,8 @@ export default function NewInquiryModal({ isOpen, onClose, initialDate, onSaved 
         return;
       }
 
+      await onSaved?.();
       setSaving(false);
-      onSaved?.();
       onClose();
     } catch (e: any) {
       setError(e?.message || 'Nieznany błąd');
@@ -208,7 +246,7 @@ export default function NewInquiryModal({ isOpen, onClose, initialDate, onSaved 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/65 p-4 backdrop-blur-[1px]">
       <div className="bg-[#0f1119] rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between p-6 border-b border-[#d3bb73]/10 sticky top-0 bg-[#0f1119] z-10">
           <div className="flex items-center gap-3">
@@ -231,6 +269,31 @@ export default function NewInquiryModal({ isOpen, onClose, initialDate, onSaved 
               {error}
             </div>
           )}
+
+          <div>
+            <label className="block text-sm text-[#e5e4e2]/70 mb-1">Temat zapytania *</label>
+            <input
+              type="text"
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              placeholder="Np. oprawa techniczna wesela 12.09.2027"
+              autoFocus
+              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm text-[#e5e4e2]/70 mb-1">Źródło zapytania</label>
+            <select
+              value={source}
+              onChange={(e) => setSource(e.target.value as ManualSource)}
+              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
+            >
+              {Object.entries(SOURCE_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </select>
+          </div>
 
           <div>
             <label className="block text-sm text-[#e5e4e2]/70 mb-1">Termin</label>
@@ -394,10 +457,10 @@ export default function NewInquiryModal({ isOpen, onClose, initialDate, onSaved 
           </button>
           <button
             onClick={handleSave}
-            disabled={saving}
+            disabled={saving || employeeLoading}
             className="flex-1 px-4 py-2 bg-[#d3bb73] rounded-lg text-[#0f1119] font-medium hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
           >
-            {saving && <Loader2 className="w-4 h-4 animate-spin" />}
+            {(saving || employeeLoading) && <Loader2 className="w-4 h-4 animate-spin" />}
             Zapisz zapytanie
           </button>
         </div>

@@ -16,7 +16,7 @@ export const rentalApi = createApi({
             subcontractor:subcontractors(
               id,
               company_name,
-              organization:organizations(
+              organization:organizations!subcontractors_organization_id_fkey(
                 id,
                 name,
                 email,
@@ -80,7 +80,7 @@ export const rentalApi = createApi({
             subcontractor:subcontractors(
               id,
               company_name,
-              organization:organizations(
+              organization:organizations!subcontractors_organization_id_fkey(
                 id,
                 name
               )
@@ -136,7 +136,7 @@ export const rentalApi = createApi({
             subcontractor:subcontractors(
               id,
               company_name,
-              organization:organizations(
+              organization:organizations!subcontractors_organization_id_fkey(
                 id,
                 name,
                 email,

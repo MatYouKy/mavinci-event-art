@@ -22,12 +22,20 @@ import {
 } from '@/components/Events/EventDetailScreen/ChecklistTab';
 import { EventFile, FilesTab } from '@/components/Events/EventDetailScreen/FilesTab';
 import { AgendaData, AgendaTab } from '@/components/Events/EventDetailScreen/AgendaTab';
-import { DetailsTab, EventDetail } from '@/components/Events/EventDetailScreen/DetailsTab';
+import {
+  DetailsTab,
+  EventBillingContact,
+  EventDetail,
+} from '@/components/Events/EventDetailScreen/DetailsTab';
 import { EventVehicleAssignment, FleetTab } from '@/components/Events/EventDetailScreen/FleetTab';
 import { TeamTab } from '@/components/Events/EventDetailScreen/TeamTab';
+import {
+  WeddingCardData,
+  WeddingCardTab,
+} from '@/components/Events/EventDetailScreen/WeddingCardTab';
 import { isManagerOrAdmin } from '../lib/permissions';
 
-type TabKey = 'details' | 'agenda' | 'checklist' | 'team' | 'fleet' | 'files';
+type TabKey = 'details' | 'agenda' | 'wedding' | 'checklist' | 'team' | 'fleet' | 'files';
 
 interface Props {
   eventId: string;
@@ -44,9 +52,22 @@ interface MyAssignment {
 export default function EventDetailScreen({ eventId, onBack, initialTab }: Props) {
   const { employee } = useAuth();
   const canManageEvent = isManagerOrAdmin(employee);
+  const canViewBillingContext =
+    canManageEvent ||
+    employee?.permissions?.some((permission) =>
+      [
+        'finances_manage',
+        'finances_view',
+        'offers_manage',
+        'offers_view',
+        'invoices_manage',
+        'invoices_view',
+      ].includes(permission),
+    ) === true;
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab ?? 'details');
   const [event, setEvent] = useState<EventDetail | null>(null);
   const [agenda, setAgenda] = useState<AgendaData | null>(null);
+  const [weddingCard, setWeddingCard] = useState<WeddingCardData | null>(null);
   const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
   const [eventEquipment, setEventEquipment] = useState<EventEquipmentItem[]>([]);
   const [logistics, setLogistics] = useState<LogisticsItem[]>([]);
@@ -59,24 +80,25 @@ export default function EventDetailScreen({ eventId, onBack, initialTab }: Props
   const [respondingInvitation, setRespondingInvitation] = useState(false);
   const [showAcceptedFeedback, setShowAcceptedFeedback] = useState(false);
   const [canViewPrivateFiles, setCanViewPrivateFiles] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const isWeddingEvent =
+    Boolean(weddingCard) ||
+    event?.category_name?.trim().toLocaleLowerCase('pl-PL').startsWith('wesel') === true;
 
   const fetchMyAssignment = useCallback(async () => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return null;
+    if (!employee?.id) return null;
 
     const { data: assignment } = await supabase
       .from('employee_assignments')
       .select('id, status, role')
       .eq('event_id', eventId)
-      .eq('employee_id', user.id)
+      .eq('employee_id', employee.id)
       .maybeSingle();
 
     return assignment
       ? { id: assignment.id, status: assignment.status, role: assignment.role }
       : null;
-  }, [eventId]);
+  }, [employee?.id, eventId]);
 
   const respondToInvitation = async (newStatus: 'accepted' | 'rejected') => {
     if (!myAssignment) return;
@@ -99,16 +121,9 @@ export default function EventDetailScreen({ eventId, onBack, initialTab }: Props
 
       // Notify event creator
       if (event) {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-        const { data: emp } = await supabase
-          .from('employees')
-          .select('name, surname')
-          .eq('user_id', user?.id ?? '')
-          .maybeSingle();
-
-        const empName = emp ? `${emp.name} ${emp.surname}` : 'Pracownik';
+        const empName = employee
+          ? [employee.name, employee.surname].filter(Boolean).join(' ')
+          : 'Pracownik';
         const title =
           newStatus === 'accepted' ? 'Akceptacja zaproszenia' : 'Odrzucenie zaproszenia';
         const message =
@@ -178,18 +193,24 @@ export default function EventDetailScreen({ eventId, onBack, initialTab }: Props
       .select(
         `
         id, name, description, event_date, event_end_date, status, notes, created_by,
-        expected_revenue, budget, equipment_checklist_pdf_path, loading_locked,
+        expected_revenue, budget, equipment_checklist_pdf_path,
+        billing_arrangement, billing_organization_id,
+        loading_confirmed, loading_confirmed_at, loading_confirmed_by, loading_notes,
+        loading_locked, loading_unlock_requested, loading_unlock_requested_at,
+        loading_unlock_requested_by, loading_unlock_reason,
         event_categories(name, color),
         locations(name, formatted_address, address, city),
-        organizations(id, name, alias),
-        contacts(id, first_name, last_name, phone, mobile, email),
+        client_organization:organizations!events_organization_id_fkey(id, name, alias),
+        billing_organization:organizations!events_billing_organization_id_fkey(id, name, alias),
+        client_contact:contacts!events_contact_person_id_fkey(id, first_name, last_name, phone, mobile, email),
         creator:employees!created_by(name, surname)
       `,
       )
       .eq('id', eventId)
       .maybeSingle();
 
-    if (error || !data) return null;
+    if (error) throw error;
+    if (!data) return null;
 
     setChecklistPdfPath((data as any).equipment_checklist_pdf_path || null);
 
@@ -202,13 +223,55 @@ export default function EventDetailScreen({ eventId, onBack, initialTab }: Props
       .order('created_at', { ascending: true });
 
     const loc = (data as any).locations;
-    const org = (data as any).organizations;
-    const contact = (data as any).contacts;
+    const rawClientOrganization = (data as any).client_organization;
+    const rawBillingOrganization = (data as any).billing_organization;
+    const rawClientContact = (data as any).client_contact;
+    const org = Array.isArray(rawClientOrganization)
+      ? rawClientOrganization[0]
+      : rawClientOrganization;
+    const billingOrg = Array.isArray(rawBillingOrganization)
+      ? rawBillingOrganization[0]
+      : rawBillingOrganization;
+    const contact = Array.isArray(rawClientContact) ? rawClientContact[0] : rawClientContact;
     const cat = (data as any).event_categories;
     const creatorData = (data as any).creator;
     const creatorName = creatorData
       ? [creatorData.name, creatorData.surname].filter(Boolean).join(' ')
       : null;
+
+    let billingContacts: EventBillingContact[] = [];
+    if (canViewBillingContext && (data as any).billing_organization_id) {
+      const { data: billingContactRows, error: billingContactsError } = await supabase
+        .from('event_billing_contacts')
+        .select(
+          'is_primary, contact:contacts!event_billing_contacts_contact_id_fkey(id, first_name, last_name, full_name, phone, mobile, email)',
+        )
+        .eq('event_id', eventId)
+        .order('is_primary', { ascending: false });
+
+      if (billingContactsError) {
+        console.warn('Error loading event billing contacts:', billingContactsError);
+      } else {
+        billingContacts = (billingContactRows || [])
+          .map((row: any) => {
+            const embeddedContact = Array.isArray(row.contact) ? row.contact[0] : row.contact;
+            if (!embeddedContact?.id) return null;
+            return {
+              id: embeddedContact.id,
+              name:
+                embeddedContact.full_name ||
+                [embeddedContact.first_name, embeddedContact.last_name]
+                  .filter(Boolean)
+                  .join(' ') ||
+                'Kontakt rozliczeniowy',
+              phone: embeddedContact.mobile || embeddedContact.phone || null,
+              email: embeddedContact.email || null,
+              is_primary: row.is_primary === true,
+            } as EventBillingContact;
+          })
+          .filter((contact): contact is EventBillingContact => Boolean(contact));
+      }
+    }
 
     return {
       id: data.id,
@@ -227,6 +290,10 @@ export default function EventDetailScreen({ eventId, onBack, initialTab }: Props
         loc?.formatted_address || loc?.address || (loc?.city ? `${loc.city}` : null),
       organization_name: org?.alias || org?.name || null,
       organization_id: org?.id ?? null,
+      billing_arrangement: (data as any).billing_arrangement || 'direct',
+      billing_organization_name: billingOrg?.alias || billingOrg?.name || null,
+      billing_organization_id: (data as any).billing_organization_id ?? null,
+      billing_contacts: billingContacts,
       contact_name: contact
         ? `${contact.first_name || ''} ${contact.last_name || ''}`.trim()
         : null,
@@ -235,6 +302,15 @@ export default function EventDetailScreen({ eventId, onBack, initialTab }: Props
       contact_email: contact?.email ?? null,
       creator_name: creatorName,
       created_by: (data as any).created_by ?? null,
+      loading_confirmed: (data as any).loading_confirmed ?? false,
+      loading_confirmed_at: (data as any).loading_confirmed_at ?? null,
+      loading_confirmed_by: (data as any).loading_confirmed_by ?? null,
+      loading_notes: (data as any).loading_notes ?? null,
+      loading_locked: (data as any).loading_locked ?? false,
+      loading_unlock_requested: (data as any).loading_unlock_requested ?? false,
+      loading_unlock_requested_at: (data as any).loading_unlock_requested_at ?? null,
+      loading_unlock_requested_by: (data as any).loading_unlock_requested_by ?? null,
+      loading_unlock_reason: (data as any).loading_unlock_reason ?? null,
       employees: (assignments || [])
         .map((a: any) => ({
           id: a.employee?.id,
@@ -250,7 +326,97 @@ export default function EventDetailScreen({ eventId, onBack, initialTab }: Props
         }))
         .filter((member: any) => Boolean(member.id)),
     } as EventDetail;
+  }, [canViewBillingContext, eventId]);
+
+  const refreshEventState = useCallback(async () => {
+    try {
+      const nextEvent = await fetchEvent();
+      if (nextEvent) setEvent(nextEvent);
+    } catch (error) {
+      console.error('Error refreshing event:', error);
+    }
+  }, [fetchEvent]);
+
+  const fetchWeddingCard = useCallback(async (): Promise<WeddingCardData | null> => {
+    const { data: card, error: cardError } = await supabase
+      .from('wedding_cards')
+      .select('id,status,progress,updated_at')
+      .eq('event_id', eventId)
+      .maybeSingle();
+
+    if (cardError) throw cardError;
+    if (!card) return null;
+
+    const [answersResult, peopleResult, scheduleResult, tracksResult, attractionsResult, pdfResult] =
+      await Promise.all([
+        supabase
+          .from('wedding_card_answers')
+          .select('id,section,field_key,value')
+          .eq('wedding_card_id', card.id),
+        supabase
+          .from('wedding_card_people')
+          .select(
+            'id,side,role,first_name,last_name,phone,email,instagram_handle,instagram_tag_consent,notes',
+          )
+          .eq('wedding_card_id', card.id)
+          .order('side')
+          .order('sort_order'),
+        supabase
+          .from('wedding_schedule_items')
+          .select('id,title,scheduled_at,category,location,responsible_person,notes,is_confirmed')
+          .eq('wedding_card_id', card.id)
+          .order('scheduled_at', { ascending: true, nullsFirst: false })
+          .order('sort_order'),
+        supabase
+          .from('wedding_music_tracks')
+          .select('id,list_type,title,artist,notes')
+          .eq('wedding_card_id', card.id)
+          .order('sort_order'),
+        supabase
+          .from('wedding_attraction_choices')
+          .select('id,attraction_key,attraction_name,choice,notes')
+          .eq('wedding_card_id', card.id)
+          .order('attraction_name'),
+        supabase
+          .from('event_files')
+          .select('file_path')
+          .eq('event_id', eventId)
+          .like('file_path', `${eventId}/documents/wedding-card/%`)
+          .order('updated_at', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+      ]);
+
+    const contentError = [
+      answersResult,
+      peopleResult,
+      scheduleResult,
+      tracksResult,
+      attractionsResult,
+    ].find((result) => result.error)?.error;
+    if (contentError) throw contentError;
+
+    return {
+      id: card.id,
+      status: card.status as WeddingCardData['status'],
+      progress: Number(card.progress || 0),
+      updated_at: card.updated_at || null,
+      pdf_path: pdfResult.data?.file_path || null,
+      answers: (answersResult.data || []) as WeddingCardData['answers'],
+      people: (peopleResult.data || []) as WeddingCardData['people'],
+      schedule: (scheduleResult.data || []) as WeddingCardData['schedule'],
+      tracks: (tracksResult.data || []) as WeddingCardData['tracks'],
+      attractions: (attractionsResult.data || []) as WeddingCardData['attractions'],
+    };
   }, [eventId]);
+
+  const refreshWeddingCard = useCallback(async () => {
+    try {
+      setWeddingCard(await fetchWeddingCard());
+    } catch (error) {
+      console.error('Error refreshing wedding card:', error);
+    }
+  }, [fetchWeddingCard]);
 
   const fetchAgenda = useCallback(async (): Promise<AgendaData | null> => {
     const { data: agendaRow, error: agendaError } = await supabase
@@ -427,9 +593,13 @@ export default function EventDetailScreen({ eventId, onBack, initialTab }: Props
     async (isRefresh = false) => {
       if (isRefresh) setRefreshing(true);
       else setIsLoading(true);
+      setLoadError(null);
 
       try {
-        const ev = await fetchEvent();
+        const [ev, nextWeddingCard] = await Promise.all([fetchEvent(), fetchWeddingCard()]);
+        const eventUsesWeddingCard =
+          Boolean(nextWeddingCard) ||
+          ev?.category_name?.trim().toLocaleLowerCase('pl-PL').startsWith('wesel') === true;
         const isEventAuthor = Boolean(employee?.id && ev?.created_by === employee.id);
         const canViewSubfolders =
           employee?.role === 'admin' ||
@@ -440,13 +610,14 @@ export default function EventDetailScreen({ eventId, onBack, initialTab }: Props
         setCanViewPrivateFiles(canViewSubfolders);
 
         const [ag, ch, fi, fleet, assignment] = await Promise.all([
-          fetchAgenda(),
+          eventUsesWeddingCard ? Promise.resolve(null) : fetchAgenda(),
           fetchChecklist(),
           fetchFiles(canViewSubfolders),
           fetchFleet(),
           fetchMyAssignment(),
         ]);
         if (ev) setEvent(ev);
+        setWeddingCard(nextWeddingCard);
         setAgenda(ag);
         setChecklist(ch.checklist);
         setLogistics(ch.logistics);
@@ -463,6 +634,7 @@ export default function EventDetailScreen({ eventId, onBack, initialTab }: Props
         setMyAssignment(assignment);
       } catch (err) {
         console.error('Error loading event detail:', err);
+        setLoadError('Nie udało się pobrać aktualnych danych wydarzenia.');
       } finally {
         setIsLoading(false);
         setRefreshing(false);
@@ -473,6 +645,7 @@ export default function EventDetailScreen({ eventId, onBack, initialTab }: Props
       employee?.id,
       employee?.role,
       fetchEvent,
+      fetchWeddingCard,
       fetchAgenda,
       fetchChecklist,
       fetchFiles,
@@ -527,7 +700,17 @@ export default function EventDetailScreen({ eventId, onBack, initialTab }: Props
 
   useEffect(() => {
     const channel = supabase
-      .channel(`mobile-event-team-${eventId}`)
+      .channel(`mobile-event-data-${eventId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'events',
+          filter: `id=eq.${eventId}`,
+        },
+        () => void refreshEventState(),
+      )
       .on(
         'postgres_changes',
         {
@@ -537,26 +720,88 @@ export default function EventDetailScreen({ eventId, onBack, initialTab }: Props
           filter: `event_id=eq.${eventId}`,
         },
         () => {
-          void fetchEvent().then((nextEvent) => {
-            if (nextEvent) setEvent(nextEvent);
-          });
+          void refreshEventState();
         },
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'event_billing_contacts',
+          filter: `event_id=eq.${eventId}`,
+        },
+        () => void refreshEventState(),
       )
       .subscribe();
 
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [eventId, fetchEvent]);
+  }, [eventId, refreshEventState]);
 
   useEffect(() => {
+    const channel = supabase
+      .channel(`mobile-wedding-card-${eventId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'wedding_cards',
+          filter: `event_id=eq.${eventId}`,
+        },
+        () => void refreshWeddingCard(),
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [eventId, refreshWeddingCard]);
+
+  useEffect(() => {
+    if (!weddingCard?.id) return;
+    const channel = supabase.channel(`mobile-wedding-card-content-${weddingCard.id}`);
+    [
+      'wedding_card_answers',
+      'wedding_card_people',
+      'wedding_schedule_items',
+      'wedding_music_tracks',
+      'wedding_attraction_choices',
+    ].forEach((table) => {
+      channel.on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table,
+          filter: `wedding_card_id=eq.${weddingCard.id}`,
+        },
+        () => void refreshWeddingCard(),
+      );
+    });
+    channel.subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [refreshWeddingCard, weddingCard?.id]);
+
+  useEffect(() => {
+    if (isWeddingEvent && activeTab === 'agenda') {
+      setActiveTab('wedding');
+    }
+    if (!isWeddingEvent && activeTab === 'wedding') {
+      setActiveTab('agenda');
+    }
     if (!isLoading && activeTab === 'fleet' && fleetAssignments.length === 0) {
       setActiveTab('details');
     }
     if (!isLoading && activeTab === 'files' && !canViewPrivateFiles && files.length === 0) {
       setActiveTab('details');
     }
-  }, [activeTab, canViewPrivateFiles, files.length, fleetAssignments.length, isLoading]);
+  }, [activeTab, canViewPrivateFiles, files.length, fleetAssignments.length, isLoading, isWeddingEvent]);
 
   const toggleLoadedItem = async (item: ChecklistItem) => {
     // If loading is locked, prevent unchecking
@@ -608,17 +853,32 @@ export default function EventDetailScreen({ eventId, onBack, initialTab }: Props
     return (
       <View style={styles.centered}>
         <Feather name="alert-circle" size={48} color={colors.text.tertiary} />
-        <Text style={styles.errorText}>Nie znaleziono wydarzenia</Text>
-        <TouchableOpacity style={styles.backBtn} onPress={onBack}>
-          <Text style={styles.backBtnText}>Wróć</Text>
-        </TouchableOpacity>
+        <Text style={styles.errorText}>{loadError || 'Nie znaleziono wydarzenia'}</Text>
+        <View style={styles.errorActions}>
+          <TouchableOpacity style={styles.retryBtn} onPress={() => void loadAll(true)}>
+            <Feather name="refresh-cw" size={15} color={colors.background.primary} />
+            <Text style={styles.retryBtnText}>Spróbuj ponownie</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.backBtn} onPress={onBack}>
+            <Text style={styles.backBtnText}>Wróć</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     );
   }
 
   const tabs: { key: TabKey; label: string; icon: string; count?: number }[] = [
     { key: 'details', label: 'Szczegóły', icon: 'info' },
-    { key: 'agenda', label: 'Agenda', icon: 'clock', count: agenda?.items.length || 0 },
+    ...(isWeddingEvent
+      ? ([
+          {
+            key: 'wedding',
+            label: 'Karta weselna',
+            icon: 'heart',
+            count: weddingCard?.schedule.length || 0,
+          },
+        ] as const)
+      : ([{ key: 'agenda', label: 'Agenda', icon: 'clock', count: agenda?.items.length || 0 }] as const)),
     {
       key: 'checklist',
       label: 'Checklista',
@@ -653,10 +913,10 @@ export default function EventDetailScreen({ eventId, onBack, initialTab }: Props
             {event.name}
           </Text>
           <View style={styles.headerMeta}>
-            {event.category_color && (
+            {Boolean(event.category_color) && (
               <View style={[styles.headerDot, { backgroundColor: event.category_color }]} />
             )}
-            {event.category_name && (
+            {Boolean(event.category_name) && (
               <Text style={styles.headerCategory}>{event.category_name}</Text>
             )}
           </View>
@@ -770,7 +1030,8 @@ export default function EventDetailScreen({ eventId, onBack, initialTab }: Props
         }
       >
         {activeTab === 'details' && <DetailsTab event={event} employee={employee as Employee} />}
-        {activeTab === 'agenda' && <AgendaTab agenda={agenda} />}
+        {activeTab === 'agenda' && !isWeddingEvent && <AgendaTab agenda={agenda} />}
+        {activeTab === 'wedding' && isWeddingEvent && <WeddingCardTab card={weddingCard} />}
         {activeTab === 'checklist' && (
           <ChecklistTab
             checklist={checklist}
@@ -782,7 +1043,7 @@ export default function EventDetailScreen({ eventId, onBack, initialTab }: Props
             onToggleEquipment={toggleEquipmentLoaded}
             event={event}
             employee={employee}
-            onRefreshEvent={fetchEvent}
+            onRefreshEvent={refreshEventState}
           />
         )}
         {activeTab === 'team' && (
@@ -823,6 +1084,18 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   backBtnText: { color: colors.primary.gold, fontWeight: '600', fontSize: 14 },
+  errorActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  retryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    backgroundColor: colors.primary.gold,
+    borderRadius: 8,
+    marginTop: spacing.sm,
+  },
+  retryBtnText: { color: colors.background.primary, fontWeight: '700', fontSize: 14 },
 
   // Header
   header: {

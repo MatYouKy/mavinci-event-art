@@ -166,7 +166,13 @@ export function ImportFromOfferModal({
   const fetchEquipmentAndStaff = async (offerIds: string[], offers: any[]) => {
     const { data: itemsData } = await supabase
       .from('offer_items')
-      .select('id, offer_id, product_id, name, quantity')
+      .select(`
+        id, offer_id, product_id, product_variant_id, name, quantity,
+        product_variant:offer_product_variants!product_variant_id(
+          overrides_equipment,
+          overrides_staff
+        )
+      `)
       .in('offer_id', offerIds);
 
     if (!itemsData?.length) return;
@@ -180,20 +186,41 @@ export function ImportFromOfferModal({
     const { data: prodEquipment } = await supabase
       .from('offer_product_equipment')
       .select(
-        `id, product_id, equipment_item_id, equipment_kit_id, rental_equipment_id, quantity, is_rental, notes`,
+        `id, product_id, product_variant_id, equipment_item_id, equipment_kit_id, rental_equipment_id, quantity, is_rental, notes`,
       )
       .in('product_id', productIds);
 
     const { data: prodStaff } = await supabase
       .from('offer_product_staff')
-      .select('id, product_id, role, quantity, hourly_rate, estimated_hours, notes')
+      .select('id, product_id, product_variant_id, role, quantity, hourly_rate, estimated_hours, notes')
       .in('product_id', productIds);
 
-    const equipItemIds = (prodEquipment ?? [])
+    const isEffectiveScope = (
+      row: { product_id: string; product_variant_id?: string | null },
+      item: any,
+      overrideField: 'overrides_equipment' | 'overrides_staff',
+    ) => {
+      if (row.product_id !== item.product_id) return false;
+      const variant = Array.isArray(item.product_variant)
+        ? item.product_variant[0]
+        : item.product_variant;
+      return item.product_variant_id && variant?.[overrideField]
+        ? row.product_variant_id === item.product_variant_id
+        : row.product_variant_id == null;
+    };
+
+    const effectiveEquipment = (prodEquipment ?? []).filter((row: any) =>
+      itemsData.some((item: any) => isEffectiveScope(row, item, 'overrides_equipment')),
+    );
+    const effectiveStaff = (prodStaff ?? []).filter((row: any) =>
+      itemsData.some((item: any) => isEffectiveScope(row, item, 'overrides_staff')),
+    );
+
+    const equipItemIds = effectiveEquipment
       .map((e: any) => e.equipment_item_id)
       .filter(Boolean);
-    const equipKitIds = (prodEquipment ?? []).map((e: any) => e.equipment_kit_id).filter(Boolean);
-    const rentalIds = (prodEquipment ?? [])
+    const equipKitIds = effectiveEquipment.map((e: any) => e.equipment_kit_id).filter(Boolean);
+    const rentalIds = effectiveEquipment
       .map((e: any) => e.rental_equipment_id)
       .filter(Boolean);
 
@@ -229,7 +256,7 @@ export function ImportFromOfferModal({
     });
 
     const eqRows: EquipmentRow[] = [];
-    (prodEquipment ?? []).forEach((pe: any) => {
+    effectiveEquipment.forEach((pe: any) => {
       const offer = offers.find((o) =>
         itemsData.some((it: any) => it.offer_id === o.id && it.product_id === pe.product_id),
       );
@@ -280,7 +307,7 @@ export function ImportFromOfferModal({
 
     setEquipmentRows(eqRows);
 
-    const stRows: StaffRow[] = (prodStaff ?? []).map((ps: any) => {
+    const stRows: StaffRow[] = effectiveStaff.map((ps: any) => {
       const offer = offers.find((o) =>
         itemsData.some((it: any) => it.offer_id === o.id && it.product_id === ps.product_id),
       );

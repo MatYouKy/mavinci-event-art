@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
-import { PdfReader } from 'pdfreader';
+import { cookies } from 'next/headers';
+import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
+import { createSupabaseServerClient } from '@/lib/supabase/server.app';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -334,44 +336,74 @@ function parsePKOPdfRows(rows: PdfRow[]): BankStatement {
 }
 
 function extractPdfRows(buffer: Buffer): Promise<PdfRow[]> {
-  return new Promise((resolve, reject) => {
+  return (async () => {
     const rows = new Map<string, PdfCell[]>();
-    let page = 0;
-
-    new PdfReader().parseBuffer(buffer, (err, item) => {
-      if (err) {
-        reject(err);
-        return;
-      }
-
-      if (!item) {
-        resolve([...rows.values()]
-          .map((cells) => ({ page: cells[0].page, y: cells[0].y, cells: cells.sort((a, b) => a.x - b.x) }))
-          .sort((a, b) => a.page - b.page || a.y - b.y));
-        return;
-      }
-
-      if ('page' in item && typeof item.page === 'number') {
-        page = item.page;
-        return;
-      }
-
-      if ('text' in item && typeof item.text === 'string') {
-        const x = Number(item.x);
-        const y = Number(item.y);
-        const key = `${page}:${Math.round(y * 100)}`;
-        const row = rows.get(key) || [];
-        row.push({ page, x, y, text: item.text });
-        rows.set(key, row);
-      }
+    const loadingTask = getDocument({
+      data: new Uint8Array(buffer),
+      isEvalSupported: false,
+      disableFontFace: true,
     });
-  });
+    const document = await loadingTask.promise;
+
+    try {
+      if (document.numPages > 100) {
+        throw new Error('Wyciąg ma zbyt wiele stron. Maksymalna liczba stron to 100.');
+      }
+
+      for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
+        const page = await document.getPage(pageNumber);
+        const viewport = page.getViewport({ scale: 1 });
+        const content = await page.getTextContent();
+
+        for (const item of content.items) {
+          if (!('str' in item) || typeof item.str !== 'string' || !item.str.trim()) continue;
+
+          // pdfreader używał siatki czterech jednostek na cal. Zachowujemy tę samą
+          // skalę, aby istniejący, zweryfikowany parser kolumn PKO działał identycznie.
+          const x = Number(item.transform[4]) / 12 - 0.25;
+          const y = (viewport.height - Number(item.transform[5])) / 12 - 0.75;
+          const key = `${pageNumber}:${Math.round(y * 100)}`;
+          const row = rows.get(key) || [];
+          row.push({ page: pageNumber, x, y, text: item.str });
+          rows.set(key, row);
+        }
+
+        page.cleanup();
+      }
+    } finally {
+      await document.destroy();
+    }
+
+    return Array.from(rows.values())
+      .map((cells: PdfCell[]) => ({
+        page: cells[0].page,
+        y: cells[0].y,
+        cells: cells.sort((a, b) => a.x - b.x),
+      }))
+      .sort((a, b) => a.page - b.page || a.y - b.y);
+  })();
 }
 
 export async function POST(req: Request) {
   try {
+    const userClient = createSupabaseServerClient(cookies());
+    const { data: authData } = await userClient.auth.getUser();
+    if (!authData.user) {
+      return NextResponse.json({ success: false, error: 'Wymagane logowanie.' }, { status: 401 });
+    }
+
+    const { data: canManageInvoices, error: permissionError } = await userClient.rpc(
+      'can_manage_invoices',
+    );
+    if (permissionError || !canManageInvoices) {
+      return NextResponse.json(
+        { success: false, error: 'Brak uprawnień do importu wyciągów.' },
+        { status: 403 },
+      );
+    }
+
     const formData = await req.formData();
-    const file = formData.get('file');
+    const file = (formData as any).get('file');
 
     if (!(file instanceof File)) {
       return NextResponse.json(
@@ -384,6 +416,13 @@ export async function POST(req: Request) {
       return NextResponse.json(
         { success: false, error: 'Dozwolony jest tylko plik PDF' },
         { status: 400 },
+      );
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      return NextResponse.json(
+        { success: false, error: 'Plik PDF jest zbyt duży. Maksymalny rozmiar to 10 MB.' },
+        { status: 413 },
       );
     }
 

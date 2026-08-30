@@ -14,6 +14,8 @@ export type InquiryDetails = {
   termin?: string | null;
   location_text?: string | null;
   scope?: string | null;
+  event_assumptions?: string | null;
+  event_goal?: string | null;
   budget?: string | number | null;
   client_text?: string | null;
   client_phone?: string | null;

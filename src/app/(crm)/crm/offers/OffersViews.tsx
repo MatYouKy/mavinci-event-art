@@ -1,4 +1,5 @@
 import { FileText, Calendar, Building2, DollarSign, Eye, CreditCard as Edit, Trash2 } from 'lucide-react';
+import { getOfferTotals } from '@/lib/CRM/Offers/offerTotals';
 
 const statusColors: Record<string, string> = {
   draft: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
@@ -27,7 +28,9 @@ interface OffersViewsProps {
 export function OffersListView({ offers, getClientName, onView, onDelete }: Omit<OffersViewsProps, 'viewMode'>) {
   return (
     <div className="space-y-4">
-      {offers.map((offer: any) => (
+      {offers.map((offer: any) => {
+        const totals = getOfferTotals(offer);
+        return (
         <div
           key={offer.id}
           className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg p-6 hover:border-[#d3bb73]/30 transition-all"
@@ -68,10 +71,10 @@ export function OffersListView({ offers, getClientName, onView, onDelete }: Omit
             <div className="flex items-center gap-4">
               <div className="text-right">
                 <div className="text-2xl font-light text-[#d3bb73] mb-1">
-                  {(Number(offer.subtotal || offer.total_amount || 0) + Number(offer.tax_amount || 0)).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
+                  {totals.gross.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
                 </div>
                 <div className="text-xs text-[#e5e4e2]/50">
-                  netto: {Number(offer.subtotal || offer.total_amount || 0).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
+                  netto: {totals.net.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
                 </div>
                 {offer.valid_until && (
                   <div className="text-xs text-[#e5e4e2]/60">
@@ -105,7 +108,8 @@ export function OffersListView({ offers, getClientName, onView, onDelete }: Omit
             </div>
           </div>
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -126,7 +130,9 @@ export function OffersTableView({ offers, getClientName, onView, onDelete }: Omi
           </tr>
         </thead>
         <tbody>
-          {offers.map((offer: any) => (
+          {offers.map((offer: any) => {
+            const totals = getOfferTotals(offer);
+            return (
             <tr
               key={offer.id}
               className="border-b border-[#d3bb73]/10 hover:bg-[#0f1119] transition-colors"
@@ -144,10 +150,10 @@ export function OffersTableView({ offers, getClientName, onView, onDelete }: Omi
               </td>
               <td className="py-3 px-4">
                 <span className="text-[#d3bb73] font-medium">
-                  {(Number(offer.subtotal || offer.total_amount || 0) + Number(offer.tax_amount || 0)).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
+                  {totals.gross.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
                 </span>
                 <div className="text-xs text-[#e5e4e2]/40">
-                  netto: {Number(offer.subtotal || offer.total_amount || 0).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
+                  netto: {totals.net.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
                 </div>
               </td>
               <td className="py-3 px-4">
@@ -189,7 +195,8 @@ export function OffersTableView({ offers, getClientName, onView, onDelete }: Omi
                 </div>
               </td>
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -199,7 +206,9 @@ export function OffersTableView({ offers, getClientName, onView, onDelete }: Omi
 export function OffersGridView({ offers, getClientName, onView, onDelete }: Omit<OffersViewsProps, 'viewMode'>) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-      {offers.map((offer: any) => (
+      {offers.map((offer: any) => {
+        const totals = getOfferTotals(offer);
+        return (
         <div
           key={offer.id}
           className="bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg p-6 hover:border-[#d3bb73]/30 transition-all"
@@ -236,10 +245,10 @@ export function OffersGridView({ offers, getClientName, onView, onDelete }: Omit
 
           <div className="mb-4">
             <div className="text-2xl font-light text-[#d3bb73]">
-              {(Number(offer.subtotal || offer.total_amount || 0) + Number(offer.tax_amount || 0)).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
+              {totals.gross.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
             </div>
             <div className="text-xs text-[#e5e4e2]/50 mt-0.5">
-              netto: {Number(offer.subtotal || offer.total_amount || 0).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
+              netto: {totals.net.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
             </div>
             {offer.valid_until && (
               <div className="text-xs text-[#e5e4e2]/60 mt-1">
@@ -271,7 +280,8 @@ export function OffersGridView({ offers, getClientName, onView, onDelete }: Omit
             </button>
           </div>
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

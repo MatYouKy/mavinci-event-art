@@ -53,6 +53,7 @@ interface Task {
   board_column: string;
   due_date: string | null;
   event_id: string | null;
+  inquiry_id: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -848,6 +849,15 @@ export default function TaskDetailPage({ initialTask }: { initialTask: Task | nu
     );
   }
 
+  const sourceMessageUrl =
+    task.description?.match(/(?:^|\n)Wiadomość źródłowa:\s*(\/crm\/messages\/[^\s]+)/)?.[1] ||
+    null;
+  const visibleDescription = sourceMessageUrl
+    ? task.description
+        ?.replace(/(?:^|\n)Wiadomość źródłowa:\s*\/crm\/messages\/[^\s]+\s*/, '')
+        .trim()
+    : task.description;
+
   return (
     <div className="mx-auto max-w-7xl bg-[#0a0d1a]">
       {/* Header - Sticky */}
@@ -866,6 +876,16 @@ export default function TaskDetailPage({ initialTask }: { initialTask: Task | nu
           </div>
           <ResponsiveActionBar
           actions={[
+            ...(task.inquiry_id
+              ? [
+                  {
+                    label: 'Otwórz zapytanie',
+                    onClick: () => router.push(`/crm/inquiries/${task.inquiry_id}`),
+                    icon: <FileText className="h-4 w-4" />,
+                    variant: 'default' as const,
+                  },
+                ]
+              : []),
             {
               label: 'Usuń',
               onClick: () => handleDeleteTask(task.id),
@@ -1027,10 +1047,20 @@ export default function TaskDetailPage({ initialTask }: { initialTask: Task | nu
                     >
                       Opis
                     </h3>
+                    {sourceMessageUrl && (
+                      <button
+                        type="button"
+                        onClick={() => router.push(sourceMessageUrl)}
+                        className="mb-3 inline-flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/5 px-3 py-2 text-xs text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/10"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" />
+                        Otwórz wiadomość źródłową
+                      </button>
+                    )}
                     <p
                       className={`${isMobile ? 'text-xs' : 'text-sm'} whitespace-pre-wrap text-[#e5e4e2]/80`}
                     >
-                      {task.description}
+                      {visibleDescription}
                     </p>
                   </div>
                 )}

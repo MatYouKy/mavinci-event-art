@@ -28,6 +28,14 @@ interface ReserveEquipmentModalProps {
   onSuccess: () => void;
 }
 
+interface AcceptancePackage {
+  id: string;
+  name: string;
+  price_net: number;
+  is_recommended: boolean;
+  variants: string[];
+}
+
 interface SubstitutionItem {
   id: string;
   name: string;
@@ -41,7 +49,10 @@ interface RequiredComponent {
   id: string;
   compatible_equipment_id: string | null;
   compatible_kit_id: string | null;
+  compatible_cable_id: string | null;
   compatibility_type: 'required' | 'recommended' | 'optional';
+  quantity: number;
+  quantity_mode: 'per_item' | 'fixed';
   compatible_equipment?: {
     id: string;
     name: string;
@@ -52,6 +63,12 @@ interface RequiredComponent {
     id: string;
     name: string;
     description?: string;
+  };
+  compatible_cable?: {
+    id: string;
+    name: string;
+    description?: string;
+    stock_unit?: 'piece' | 'meter';
   };
 }
 
@@ -155,6 +172,10 @@ export default function ReserveEquipmentModal({
   const [acceptedShortages, setAcceptedShortages] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [packageMode, setPackageMode] = useState(false);
+  const [packages, setPackages] = useState<AcceptancePackage[]>([]);
+  const [selectedPackageId, setSelectedPackageId] = useState<string | null>(null);
+  const [selectedOfferVariants, setSelectedOfferVariants] = useState<string[]>([]);
   const [showSubstitutionModal, setShowSubstitutionModal] = useState(false);
   const [currentConflictItem, setCurrentConflictItem] = useState<EquipmentItem | null>(null);
   const [substitutions, setSubstitutions] = useState<SubstitutionItem[]>([]);
@@ -167,15 +188,74 @@ export default function ReserveEquipmentModal({
 
   useEffect(() => {
     if (open && offerId) {
-      loadEquipment();
+      void loadAcceptanceContext();
     }
   }, [open, offerId]);
 
-  const loadEquipment = async () => {
+  const loadAcceptanceContext = async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('offers')
+        .select(`
+          package_mode,
+          accepted_package_id,
+          offer_items(product_variant:offer_product_variants!product_variant_id(name)),
+          packages:offer_packages!offer_id(
+            id,
+            name,
+            price_net,
+            is_recommended,
+            display_order,
+            items:offer_package_items(product_variant:offer_product_variants!product_variant_id(name))
+          )
+        `)
+        .eq('id', offerId)
+        .single();
+      if (error) throw error;
+
+      const packageRows = [...((data as any)?.packages || [])]
+        .sort((a: any, b: any) => Number(a.display_order || 0) - Number(b.display_order || 0))
+        .map((pkg: any) => ({
+          id: pkg.id,
+          name: pkg.name,
+          price_net: Number(pkg.price_net || 0),
+          is_recommended: Boolean(pkg.is_recommended),
+          variants: (pkg.items || [])
+            .map((item: any) => item.product_variant?.name)
+            .filter(Boolean),
+        }));
+      const usesPackages = Boolean((data as any)?.package_mode && packageRows.length > 0);
+      const initialPackageId = usesPackages
+        ? ((data as any)?.accepted_package_id
+          || packageRows.find((pkg) => pkg.is_recommended)?.id
+          || packageRows[0]?.id)
+        : null;
+
+      setPackageMode(usesPackages);
+      setPackages(packageRows);
+      setSelectedPackageId(initialPackageId || null);
+      setSelectedOfferVariants(
+        usesPackages
+          ? (packageRows.find((pkg) => pkg.id === initialPackageId)?.variants || [])
+          : (((data as any)?.offer_items || [])
+            .map((item: any) => item.product_variant?.name)
+            .filter(Boolean)),
+      );
+      await loadEquipment(initialPackageId || null);
+    } catch (err: any) {
+      console.error('Error loading acceptance context:', err);
+      showSnackbar(err.message || 'Błąd podczas ładowania wariantów oferty', 'error');
+      setLoading(false);
+    }
+  };
+
+  const loadEquipment = async (packageId: string | null = selectedPackageId) => {
     try {
       setLoading(true);
       const { data, error } = await supabase.rpc('get_offer_equipment_for_reservation', {
         p_offer_id: offerId,
+        p_package_id: packageId,
       });
 
       if (error) throw error;
@@ -289,9 +369,13 @@ export default function ReserveEquipmentModal({
           id,
           compatible_equipment_id,
           compatible_kit_id,
+          compatible_cable_id,
           compatibility_type,
+          quantity,
+          quantity_mode,
           compatible_equipment:equipment_items!compatible_equipment_id(id, name, model, brand),
-          compatible_kit:equipment_kits!compatible_kit_id(id, name, description)
+          compatible_kit:equipment_kits!compatible_kit_id(id, name, description),
+          compatible_cable:cables!compatible_cable_id(id, name, description, stock_unit)
         `)
         .eq('equipment_id', equipmentId)
         .eq('compatibility_type', 'required');
@@ -306,6 +390,9 @@ export default function ReserveEquipmentModal({
         compatible_kit: Array.isArray(item.compatible_kit)
           ? item.compatible_kit[0]
           : item.compatible_kit,
+        compatible_cable: Array.isArray(item.compatible_cable)
+          ? item.compatible_cable[0]
+          : item.compatible_cable,
       })) as RequiredComponent[];
     } catch (err: any) {
       console.error('Error checking required components:', err);
@@ -379,11 +466,14 @@ export default function ReserveEquipmentModal({
       }
 
       for (const component of requiredComponents) {
+        const quantity = component.quantity_mode === 'fixed'
+          ? Math.max(1, Number(component.quantity || 1))
+          : Math.max(1, Number(component.quantity || 1)) * Math.max(1, Number(currentConflictItem?.required_qty || 1));
         if (component.compatible_equipment_id) {
           await supabase.from('event_equipment').insert({
             event_id: offer.event_id,
             equipment_id: component.compatible_equipment_id,
-            quantity: 1,
+            quantity,
             status: 'reserved',
             offer_id: offerId,
           });
@@ -391,7 +481,15 @@ export default function ReserveEquipmentModal({
           await supabase.from('event_equipment').insert({
             event_id: offer.event_id,
             kit_id: component.compatible_kit_id,
-            quantity: 1,
+            quantity,
+            status: 'reserved',
+            offer_id: offerId,
+          });
+        } else if (component.compatible_cable_id) {
+          await supabase.from('event_equipment').insert({
+            event_id: offer.event_id,
+            cable_id: component.compatible_cable_id,
+            quantity,
             status: 'reserved',
             offer_id: offerId,
           });
@@ -452,6 +550,7 @@ export default function ReserveEquipmentModal({
         p_offer_id: offerId,
         p_items: itemsToReserve,
         p_accepted_shortages: acceptedShortageItems,
+        p_package_id: packageMode ? selectedPackageId : null,
       });
 
       if (error) throw error;
@@ -523,6 +622,43 @@ export default function ReserveEquipmentModal({
               </div>
             ) : (
               <>
+                {packageMode && (
+                  <div className="mb-5 rounded-xl border border-[#d3bb73]/20 bg-[#0f1117] p-4">
+                    <label className="mb-2 block text-xs font-medium uppercase tracking-wide text-[#d3bb73]">
+                      Akceptowany pakiet i warianty
+                    </label>
+                    <select
+                      value={selectedPackageId || ''}
+                      onChange={async (event) => {
+                        const packageId = event.target.value || null;
+                        const selectedPackage = packages.find((pkg) => pkg.id === packageId);
+                        setSelectedPackageId(packageId);
+                        setSelectedOfferVariants(selectedPackage?.variants || []);
+                        await loadEquipment(packageId);
+                      }}
+                      disabled={confirming}
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-sm text-[#e5e4e2]"
+                    >
+                      {packages.map((pkg) => (
+                        <option key={pkg.id} value={pkg.id}>
+                          {pkg.name}{pkg.is_recommended ? ' — rekomendowany' : ''} · {pkg.price_net.toLocaleString('pl-PL')} zł netto
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {selectedOfferVariants.length > 0 && (
+                  <div className="mb-5 rounded-lg border border-green-500/20 bg-green-500/10 px-4 py-3">
+                    <p className="text-xs font-medium uppercase tracking-wide text-green-400">
+                      Warianty zapisane przy akceptacji
+                    </p>
+                    <p className="mt-1 text-sm text-[#e5e4e2]">
+                      {selectedOfferVariants.join('  •  ')}
+                    </p>
+                  </div>
+                )}
+
                 <p className="mb-6 text-sm text-[#e5e4e2]/60">
                   {equipment.length === 0
                     ? 'Ta oferta nie zawiera pozycji sprzętowych. Po potwierdzeniu status oferty zmieni się na '
@@ -864,8 +1000,9 @@ export default function ReserveEquipmentModal({
 
               <div className="space-y-3">
                 {requiredComponents.map((component) => {
-                  const item = component.compatible_equipment || component.compatible_kit;
+                  const item = component.compatible_equipment || component.compatible_kit || component.compatible_cable;
                   const isKit = !!component.compatible_kit;
+                  const isCable = !!component.compatible_cable;
 
                   if (!item) return null;
 
@@ -886,6 +1023,16 @@ export default function ReserveEquipmentModal({
                                 ZESTAW
                               </span>
                             )}
+                            {isCable && (
+                              <span className="rounded bg-purple-500/20 px-2 py-0.5 text-xs text-purple-300">
+                                PRZEWÓD
+                              </span>
+                            )}
+                            <span className="rounded bg-[#e5e4e2]/10 px-2 py-0.5 text-xs text-[#e5e4e2]/70">
+                              {component.quantity || 1}{' '}
+                              {isCable && component.compatible_cable?.stock_unit === 'meter' ? 'm' : 'szt.'}{' '}
+                              {component.quantity_mode === 'fixed' ? 'łącznie' : 'na sztukę sprzętu'}
+                            </span>
                             <span className="rounded bg-red-500/20 px-2 py-0.5 text-xs text-red-400">
                               WYMAGANY
                             </span>
@@ -898,6 +1045,11 @@ export default function ReserveEquipmentModal({
                           {isKit && component.compatible_kit?.description && (
                             <div className="mt-1 text-xs text-[#e5e4e2]/50">
                               {component.compatible_kit.description}
+                            </div>
+                          )}
+                          {isCable && component.compatible_cable?.description && (
+                            <div className="mt-1 text-xs text-[#e5e4e2]/50">
+                              {component.compatible_cable.description}
                             </div>
                           )}
                         </div>

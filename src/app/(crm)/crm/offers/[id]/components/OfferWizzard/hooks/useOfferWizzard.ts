@@ -11,8 +11,9 @@ import { useOfferWizardResources } from './useOfferWizzardResources';
 import { useOfferWizardItems } from './useOfferWizzardItems';
 import { useOfferWizardConflicts } from './useOfferWizzardConflicts';
 import { submitOfferWizard } from './useOfferWizzardSubmit';
-import { IProduct } from '@/app/(crm)/crm/offers/types';
+import { IProduct, IProductVariant } from '@/app/(crm)/crm/offers/types';
 import { ClientType } from '@/app/(crm)/crm/clients/type';
+import { normalizeEventAssumptionItems } from '@/lib/CRM/Offers/eventAssumptions';
 
 export function useOfferWizardLogic(opts: {
   isOpen: boolean;
@@ -36,8 +37,40 @@ export function useOfferWizardLogic(opts: {
   const catalog = useOfferWizardCatalog({ isOpen: opts.isOpen, step });
   const items = useOfferWizardItems();
   const conflicts = useOfferWizardConflicts({ eventId: opts.eventId });
+  const [targetNetPriceInput, setTargetNetPriceInput] = useState('');
 
-  const [offerData, setOfferData] = useState({ offer_number: '', valid_until: '', notes: '' });
+  const pricing = useMemo(() => {
+    const listNet = items.offerItems.reduce((sum, item) => sum + Number(item.subtotal || 0), 0);
+    const normalizedInput = targetNetPriceInput.trim().replace(',', '.');
+    const parsedTarget = normalizedInput === '' ? listNet : Number(normalizedInput);
+    const targetNet = Math.round((Number.isFinite(parsedTarget)
+      ? Math.min(listNet, Math.max(0, parsedTarget))
+      : listNet) * 100) / 100;
+    const discountAmount = Math.round((listNet - targetNet + Number.EPSILON) * 100) / 100;
+    const discountPercent = listNet > 0 ? discountAmount / listNet * 100 : 0;
+    const taxPercent = 23;
+    const taxAmount = Math.round((targetNet * taxPercent / 100 + Number.EPSILON) * 100) / 100;
+
+    return {
+      listNet,
+      targetNet,
+      discountAmount,
+      discountPercent,
+      taxPercent,
+      taxAmount,
+      gross: Math.round((targetNet + taxAmount + Number.EPSILON) * 100) / 100,
+    };
+  }, [items.offerItems, targetNetPriceInput]);
+
+  const [offerData, setOfferData] = useState({
+    offer_number: '',
+    valid_until: '',
+    notes: '',
+    event_location: '',
+    event_assumptions: '',
+    event_assumption_items: normalizeEventAssumptionItems([], ''),
+    event_goal: '',
+  });
 
   /**
    * ✅ ID sprzętów do wykluczenia z listy “manualnego sprzętu”
@@ -128,9 +161,9 @@ export function useOfferWizardLogic(opts: {
     return client.canProceedFromStep1;
   }, [step, client.canProceedFromStep1]);
 
-  const addProductToOffer = async (product: IProduct) => {
+  const addProductToOffer = async (product: IProduct, variant?: IProductVariant) => {
     // ✅ dostajesz "next" od razu
-    const nextItems = items.addProduct(product);
+    const nextItems = items.addProduct(product, variant);
 
     const rows = await conflicts.checkCartConflicts(nextItems);
     if (rows.length > 0) {
@@ -220,6 +253,7 @@ export function useOfferWizardLogic(opts: {
         conflicts: conflicts.conflicts,
         equipmentSubstitutions: conflicts.equipmentSubstitutions,
         hasEquipmentShortage,
+        pricing,
       });
 
       // Invaliduj cache RTK Query aby automatycznie odświeżyć sprzęt i oferty eventu
@@ -282,6 +316,9 @@ export function useOfferWizardLogic(opts: {
     catalog,
     resources,
     items,
+    pricing,
+    targetNetPriceInput,
+    setTargetNetPriceInput,
     conflicts,
 
     canGoNext,

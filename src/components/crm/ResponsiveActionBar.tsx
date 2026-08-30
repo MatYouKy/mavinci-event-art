@@ -11,6 +11,8 @@ export interface Action {
   variant?: 'default' | 'primary' | 'danger';
   show?: boolean;
   disabled?: boolean;
+  /** Keep this action visible on desktop while remaining actions go to the menu. */
+  pin?: boolean;
 }
 
 interface ResponsiveActionBarProps {
@@ -118,7 +120,12 @@ export default function ResponsiveActionBar({
     }
   };
 
-  const shouldUseDropdown = isMobile || filteredActions.length > 4;
+  const pinnedActions = filteredActions.filter((action) => action.pin);
+  const overflowActions = filteredActions.filter((action) => !action.pin);
+  const usePinnedDesktopLayout =
+    !isMobile && pinnedActions.length > 0 && overflowActions.length > 0;
+  const menuActions = usePinnedDesktopLayout ? overflowActions : filteredActions;
+  const shouldUseDropdown = isMobile || (filteredActions.length > 4 && !usePinnedDesktopLayout);
 
   const openMenu = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
@@ -126,7 +133,7 @@ export default function ResponsiveActionBar({
 
     const rect = e.currentTarget.getBoundingClientRect();
     const menuWidth = 224;
-    const menuHeight = Math.min(filteredActions.length * 44 + 8, 260);
+    const menuHeight = Math.min(menuActions.length * 44 + 8, 260);
 
     const spaceBelow = window.innerHeight - rect.bottom;
     const openUpward = spaceBelow < menuHeight && rect.top > menuHeight;
@@ -140,63 +147,96 @@ export default function ResponsiveActionBar({
     setShowMenu((prev) => !prev);
   };
 
+  const dropdownMenu = (
+    <PortalDropdownMenu
+      open={showMenu}
+      position={position}
+      className="rounded-xl"
+      content={
+        <div
+          ref={portalMenuRef}
+          className="max-h-[260px] overflow-y-auto"
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {menuActions.map((action, index) => (
+            <button
+              key={`${action.label}-${index}`}
+              type="button"
+              disabled={action.disabled}
+              onClick={() => {
+                if (action.disabled) return;
+                action.onClick();
+                setShowMenu(false);
+              }}
+              className={`${getMenuItemClasses(action.variant)} ${
+                action.disabled ? 'cursor-not-allowed opacity-50' : ''
+              }`}
+            >
+              {action.icon && <span className="h-5 w-5 flex-shrink-0">{action.icon}</span>}
+              <span>{action.label}</span>
+            </button>
+          ))}
+        </div>
+      }
+    />
+  );
+
+  const dropdownButton = (
+    <button
+      ref={buttonRef}
+      type="button"
+      onMouseDown={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      }}
+      onClick={openMenu}
+      className={
+        disabledBackground
+          ? `flex items-center justify-center bg-transparent text-[#e5e4e2]/70 transition-colors hover:text-[#e5e4e2] ${
+              compact ? 'h-8 w-8 rounded-md' : 'h-10 w-10 rounded-lg'
+            }`
+          : `flex items-center justify-center bg-[#d3bb73]/10 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/20 ${
+              compact ? 'h-8 w-8 rounded-md' : 'h-10 w-10 rounded-lg'
+            }`
+      }
+      aria-label="Więcej akcji"
+    >
+      <MoreVertical className={compact ? 'h-4 w-4' : 'h-5 w-5'} />
+    </button>
+  );
+
+  if (usePinnedDesktopLayout) {
+    return (
+      <div className="flex items-center gap-2">
+        {pinnedActions.map((action, index) => (
+          <button
+            key={`${action.label}-${index}`}
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              action.onClick();
+            }}
+            disabled={action.disabled}
+            className={`${getButtonClasses(action.variant)} ${
+              action.disabled ? 'cursor-not-allowed opacity-50' : ''
+            }`}
+          >
+            {action.icon}
+            {action.label}
+          </button>
+        ))}
+        {dropdownButton}
+        {dropdownMenu}
+      </div>
+    );
+  }
+
   if (shouldUseDropdown) {
     return (
       <>
-        <button
-          ref={buttonRef}
-          type="button"
-          onMouseDown={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-          }}
-          onClick={openMenu}
-          className={
-            disabledBackground
-              ? `flex items-center justify-center bg-transparent text-[#e5e4e2]/70 transition-colors hover:text-[#e5e4e2] ${
-                  compact ? 'h-8 w-8 rounded-md' : 'h-10 w-10 rounded-lg'
-                }`
-              : `flex items-center justify-center bg-[#d3bb73]/10 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/20 ${
-                  compact ? 'h-8 w-8 rounded-md' : 'h-10 w-10 rounded-lg'
-                }`
-          }
-          aria-label="Akcje"
-        >
-          <MoreVertical className={compact ? 'h-4 w-4' : 'h-5 w-5'} />
-        </button>
-
-        <PortalDropdownMenu
-          open={showMenu}
-          position={position}
-          className="rounded-xl"
-          content={
-            <div
-              ref={portalMenuRef}
-              className="max-h-[260px] overflow-y-auto"
-              onMouseDown={(e) => e.stopPropagation()}
-              onClick={(e) => e.stopPropagation()}
-            >
-              {filteredActions.map((action, index) => (
-                <button
-                  key={`${action.label}-${index}`}
-                  type="button"
-                  disabled={action.disabled}
-                  onClick={() => {
-                    if (action.disabled) return;
-                    action.onClick();
-                    setShowMenu(false);
-                  }}
-                  className={`${getMenuItemClasses(action.variant)} ${
-                    action.disabled ? 'cursor-not-allowed opacity-50' : ''
-                  }`}
-                >
-                  {action.icon && <span className="h-5 w-5 flex-shrink-0">{action.icon}</span>}
-                  <span>{action.label}</span>
-                </button>
-              ))}
-            </div>
-          }
-        />
+        {dropdownButton}
+        {dropdownMenu}
       </>
     );
   }

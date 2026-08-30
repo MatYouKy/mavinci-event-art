@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { X, User, ClipboardList } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { supabase } from '@/lib/supabase/browser';
-import type { MessageListItem } from '@/lib/CRM/messages/types';
+import type { MessageListItem } from '@/store/api/messagesApi';
 import { sendTaskAssignmentPush } from '@/lib/CRM/tasks/sendTaskAssignmentPush';
 
 interface Employee {
@@ -19,7 +19,7 @@ interface CreateInquiryFromMessageModalProps {
   message: MessageListItem;
   userId: string;
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess: (inquiryId: string) => void;
 }
 
 export default function CreateInquiryFromMessageModal({
@@ -60,6 +60,25 @@ export default function CreateInquiryFromMessageModal({
   const handleCreate = async () => {
     setSaving(true);
     try {
+      const { data: existingInquiry, error: existingInquiryError } = await supabase
+        .from('tasks')
+        .select('id')
+        .eq('is_inquiry', true)
+        .contains('inquiry_details', {
+          source_message_id: message.id,
+          source_message_type: message.type,
+        })
+        .limit(1)
+        .maybeSingle();
+
+      if (existingInquiryError) throw existingInquiryError;
+      if (existingInquiry) {
+        showSnackbar('Ta wiadomość jest już powiązana z zapytaniem', 'info');
+        onSuccess(existingInquiry.id);
+        onClose();
+        return;
+      }
+
       const title = `Zapytanie: ${message.subject || 'Brak tematu'}`;
 
       let body = '';
@@ -91,33 +110,6 @@ export default function CreateInquiryFromMessageModal({
         messageDate = fullMsg?.received_date || null;
         senderEmail = fullMsg?.from_address || message.from || null;
         senderName = null;
-      }
-
-      if (message.type === 'contact_form') {
-        const { data: fullMsg, error: fullMsgError } = await supabase
-          .from('contact_messages')
-          .select(
-            `
-            message,
-            email,
-            name,
-            phone,
-            created_at
-          `,
-          )
-          .eq('id', message.id)
-          .maybeSingle();
-
-        if (fullMsgError) {
-          throw fullMsgError;
-        }
-
-        body = fullMsg?.message || message.preview || '';
-
-        messageDate = fullMsg?.created_at || null;
-        senderName = fullMsg?.name || null;
-        senderEmail = fullMsg?.email || message.from || null;
-        senderPhone = fullMsg?.phone || null;
       }
 
       if (message.type === 'contact_form') {
@@ -211,7 +203,7 @@ export default function CreateInquiryFromMessageModal({
       }
 
       showSnackbar('Utworzono zapytanie z wiadomości', 'success');
-      onSuccess();
+      onSuccess(taskData.id);
       onClose();
     } catch (err) {
       console.error('Error creating inquiry from message:', err);

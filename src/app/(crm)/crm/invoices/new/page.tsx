@@ -9,6 +9,9 @@ import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import BuyerSearchInput from './components/BuyerSearchInput';
 import AddBuyerModal from './components/AddBuyerModal';
 import InvoiceNumberInput from './components/InvoiceNumberInput';
+import InvoiceBillingContext, {
+  type BillingArrangement,
+} from './components/InvoiceBillingContext';
 import { MyCompany } from '../../settings/my-companies/page';
 
 interface EventOption {
@@ -16,6 +19,9 @@ interface EventOption {
   name: string;
   event_date: string | null;
   organization_id: string | null;
+  contact_person_id: string | null;
+  billing_arrangement?: BillingArrangement | null;
+  billing_organization_id?: string | null;
 }
 
 interface IndividualContact {
@@ -52,6 +58,8 @@ interface InvoiceItem {
   quantity: number;
   price_net: number;
   vat_rate: number;
+  vat_code: '23' | '8' | '5' | '0' | '0 KR' | '0 WDT' | '0 EX' | 'zw' | 'np' | 'np I' | 'np II' | 'oo';
+  vat_exemption_reason?: string;
 
   before_quantity?: number;
   before_price_net?: number;
@@ -104,6 +112,7 @@ export default function NewInvoicePage() {
     urlType === 'corrective' ? 'corrective' : 'vat',
   );
   const [invoiceNumber, setInvoiceNumber] = useState<string>('');
+  const [invoiceNumberIsAuto, setInvoiceNumberIsAuto] = useState(true);
   const [issueDate, setIssueDate] = useState(new Date().toISOString().split('T')[0]);
   const [saleDate, setSaleDate] = useState(new Date().toISOString().split('T')[0]);
   const [paymentDays, setPaymentDays] = useState(7);
@@ -119,6 +128,7 @@ export default function NewInvoicePage() {
       quantity: 1,
       price_net: 0,
       vat_rate: 23,
+      vat_code: '23',
       before_value_net: 0,
       before_vat_amount: 0,
     },
@@ -127,6 +137,7 @@ export default function NewInvoicePage() {
   const [simplifiedServiceName, setSimplifiedServiceName] = useState('Obsługa muzyczna');
 
   const [correctionReason, setCorrectionReason] = useState('');
+  const [correctionType, setCorrectionType] = useState<1 | 2 | 3>(2);
   const [correctionScope, setCorrectionScope] = useState<'full' | 'partial'>('full');
   const [relatedInvoiceId, setRelatedInvoiceId] = useState('');
   const [correctedInvoiceNumber, setCorrectedInvoiceNumber] = useState('');
@@ -144,9 +155,16 @@ export default function NewInvoicePage() {
 
   const [selectedEventId, setSelectedEventId] = useState<string>(eventId || '');
   const [organizationEvents, setOrganizationEvents] = useState<EventOption[]>([]);
+  const [linkedEvent, setLinkedEvent] = useState<EventOption | null>(null);
+  const [billingArrangement, setBillingArrangement] =
+    useState<BillingArrangement>('direct');
+  const [serviceRecipientOrganizationId, setServiceRecipientOrganizationId] =
+    useState<string>('');
+  const [serviceRecipientContactId, setServiceRecipientContactId] = useState<string>('');
 
   const [isPaid, setIsPaid] = useState(false);
   const [paidDate, setPaidDate] = useState(new Date().toISOString().split('T')[0]);
+  const [advancePercent, setAdvancePercent] = useState(30);
 
   const [privateBuyer, setPrivateBuyer] = useState({
     firstName: '',
@@ -166,17 +184,60 @@ export default function NewInvoicePage() {
   useEffect(() => {
     if (!selectedOrgId) {
       setOrganizationEvents([]);
-      setSelectedEventId(eventId || '');
+      if (!selectedEventId) setSelectedEventId(eventId || '');
       return;
     }
 
-    fetchOrganizationEvents(selectedOrgId);
+    fetchOrganizationEvents(selectedOrgId, selectedEventId || eventId || '');
   }, [selectedOrgId]);
 
-  const fetchOrganizationEvents = async (organizationId: string) => {
+  const applyEventContext = (event: EventOption | null) => {
+    setLinkedEvent(event);
+    setServiceRecipientOrganizationId(event?.organization_id || '');
+    setServiceRecipientContactId(event?.contact_person_id || '');
+  };
+
+  const fetchEventContext = async (linkedEventId: string, syncRecipients = true) => {
+    if (!linkedEventId) {
+      applyEventContext(null);
+      return null;
+    }
+
     const { data, error } = await supabase
       .from('events')
-      .select('id, name, event_date, organization_id')
+      .select(
+        'id,name,event_date,organization_id,contact_person_id,billing_arrangement,billing_organization_id',
+      )
+      .eq('id', linkedEventId)
+      .maybeSingle();
+
+    if (error) {
+      console.error('Error fetching invoice event context:', error);
+      return null;
+    }
+
+    const event = (data as EventOption | null) || null;
+    setLinkedEvent(event);
+    if (syncRecipients) {
+      setServiceRecipientOrganizationId(event?.organization_id || '');
+      setServiceRecipientContactId(event?.contact_person_id || '');
+      const eventBillingArrangement = event?.billing_arrangement || 'direct';
+      setBillingArrangement(eventBillingArrangement);
+      setSelectedOrgId(
+        eventBillingArrangement !== 'direct' && event?.billing_organization_id
+          ? event.billing_organization_id
+          : event?.organization_id || '',
+      );
+    }
+    return event;
+  };
+
+  const fetchOrganizationEvents = async (organizationId: string, preservedEventId = '') => {
+    const { data, error } = await supabase
+      .from('events')
+      .select(
+        'id,name,event_date,organization_id,contact_person_id,billing_arrangement,billing_organization_id',
+      )
       .eq('organization_id', organizationId)
       .order('event_date', { ascending: false });
 
@@ -185,7 +246,49 @@ export default function NewInvoicePage() {
       return;
     }
 
-    setOrganizationEvents(data || []);
+    const events = (data || []) as EventOption[];
+
+    if (preservedEventId && !events.some((event) => event.id === preservedEventId)) {
+      const preserved =
+        linkedEvent?.id === preservedEventId
+          ? linkedEvent
+          : await fetchEventContext(preservedEventId);
+      if (preserved) events.unshift(preserved);
+    }
+
+    setOrganizationEvents(events);
+  };
+
+  const handleEventChange = async (linkedEventId: string) => {
+    setSelectedEventId(linkedEventId);
+    setBillingArrangement('direct');
+
+    await fetchEventContext(linkedEventId);
+  };
+
+  const handleBuyerSelect = (organizationId: string) => {
+    setSelectedOrgId(organizationId);
+
+    if (!selectedEventId || !serviceRecipientOrganizationId) return;
+    if (organizationId === serviceRecipientOrganizationId) {
+      setBillingArrangement('direct');
+    } else if (billingArrangement === 'direct') {
+      setBillingArrangement('other');
+    }
+  };
+
+  const handleBillingArrangementChange = (arrangement: BillingArrangement) => {
+    setBillingArrangement(arrangement);
+    setBuyerIsPrivatePerson(false);
+
+    if (arrangement === 'direct' && serviceRecipientOrganizationId) {
+      setSelectedOrgId(serviceRecipientOrganizationId);
+    } else if (
+      arrangement !== 'direct' &&
+      selectedOrgId === serviceRecipientOrganizationId
+    ) {
+      setSelectedOrgId('');
+    }
   };
 
   useEffect(() => {
@@ -224,6 +327,19 @@ export default function NewInvoicePage() {
       setSelectedOrgId(origInvoice.organization_id || '');
       setSelectedCompanyId(origInvoice.my_company_id || '');
       setSelectedEventId(origInvoice.event_id || '');
+      setBillingArrangement(origInvoice.billing_arrangement || 'direct');
+      setServiceRecipientOrganizationId(origInvoice.service_recipient_organization_id || '');
+      setServiceRecipientContactId(origInvoice.service_recipient_contact_id || '');
+
+      if (origInvoice.event_id) {
+        await fetchEventContext(
+          origInvoice.event_id,
+          !origInvoice.service_recipient_organization_id &&
+            !origInvoice.service_recipient_contact_id,
+        );
+      } else {
+        applyEventContext(null);
+      }
 
       if (origInvoice.sale_date) {
         setSaleDate(origInvoice.sale_date.split('T')[0]);
@@ -265,6 +381,8 @@ export default function NewInvoicePage() {
               quantity: beforeQuantity,
               price_net: beforePriceNet,
               vat_rate: item.vat_rate,
+              vat_code: (item.vat_code || String(item.vat_rate || 23)) as InvoiceItem['vat_code'],
+              vat_exemption_reason: item.vat_exemption_reason || '',
 
               before_quantity: beforeQuantity,
               before_price_net: beforePriceNet,
@@ -414,16 +532,24 @@ export default function NewInvoicePage() {
         const [eventRes, financialInfoRes] = await Promise.all([
           supabase
             .from('events')
-            .select('name, event_date, organization_id, contact_person_id')
+            .select(
+              'id,name,event_date,organization_id,contact_person_id,billing_arrangement,billing_organization_id',
+            )
             .eq('id', eventId)
             .maybeSingle(),
           supabase.rpc('get_event_financial_info', { p_event_id: eventId }),
         ]);
 
         if (eventRes.data) {
-          if (eventRes.data.organization_id) {
-            setSelectedOrgId(eventRes.data.organization_id);
-          }
+          const eventContext = eventRes.data as EventOption;
+          applyEventContext(eventContext);
+          const eventBillingArrangement = eventContext.billing_arrangement || 'direct';
+          setBillingArrangement(eventBillingArrangement);
+          setSelectedOrgId(
+            eventBillingArrangement !== 'direct' && eventContext.billing_organization_id
+              ? eventContext.billing_organization_id
+              : eventContext.organization_id || '',
+          );
 
           if (eventRes.data.event_date) {
             setSaleDate(eventRes.data.event_date.split('T')[0]);
@@ -474,6 +600,7 @@ export default function NewInvoicePage() {
                 quantity: oi.quantity ?? 1,
                 price_net: Number(oi.total ?? 0) / Math.max(oi.quantity ?? 1, 1),
                 vat_rate: vatRate,
+                vat_code: String(vatRate) as InvoiceItem['vat_code'],
                 before_value_net: 0,
                 before_value_gross: 0,
                 before_vat_amount: 0,
@@ -504,6 +631,7 @@ export default function NewInvoicePage() {
               quantity: 1,
               price_net: 0,
               vat_rate: 23,
+              vat_code: '23',
               before_value_net: 0,
               before_vat_amount: 0,
             },
@@ -574,12 +702,12 @@ export default function NewInvoicePage() {
     return { valueNet, vatAmount, valueGross };
   };
 
-  const calculateTotals = () => {
+  const calculateTotalsFor = (invoiceItems: InvoiceItem[]) => {
     let totalNet = 0;
     let totalVat = 0;
     let totalGross = 0;
 
-    items.forEach((item) => {
+    invoiceItems.forEach((item) => {
       const { valueNet, vatAmount, valueGross } = calculateItemValues(item);
       totalNet += valueNet;
       totalVat += vatAmount;
@@ -588,6 +716,8 @@ export default function NewInvoicePage() {
 
     return { totalNet, totalVat, totalGross };
   };
+
+  const calculateTotals = () => calculateTotalsFor(items);
 
   const addItem = () => {
     setItems([
@@ -599,6 +729,7 @@ export default function NewInvoicePage() {
         quantity: 1,
         price_net: 0,
         vat_rate: 23,
+        vat_code: '23',
         before_value_net: 0,
         after_value_net: 0,
         before_vat_amount: 0,
@@ -623,6 +754,10 @@ export default function NewInvoicePage() {
       return items;
     }
 
+    // Pozycji z różnymi stawkami VAT nie wolno księgowo scalać w jeden wiersz.
+    const vatCodes = new Set(items.map((item) => item.vat_code));
+    if (vatCodes.size > 1) return items;
+
     // Sumuj wszystkie pozycje w jedną
     const totalNet = items.reduce((sum, item) => {
       const { valueNet } = calculateItemValues(item);
@@ -637,16 +772,26 @@ export default function NewInvoicePage() {
         unit: 'usł.',
         quantity: 1,
         price_net: Math.round(totalNet * 100) / 100,
-        vat_rate: 23,
+        vat_rate: items[0]?.vat_rate ?? 23,
+        vat_code: items[0]?.vat_code ?? ('23' as const),
+        vat_exemption_reason: items[0]?.vat_exemption_reason,
         before_value_net: 0,
         after_value_net: 0,
       },
     ];
   };
 
+  const getAdvancePaymentItems = (orderItems: InvoiceItem[]) => {
+    const ratio = advancePercent / 100;
+    return orderItems.map((item) => ({
+      ...item,
+      price_net: round2(Number(item.price_net) * ratio),
+    }));
+  };
+
   const handleBuyerAdded = async (buyerId: string) => {
-    setSelectedOrgId(buyerId);
     await fetchData();
+    handleBuyerSelect(buyerId);
   };
 
   const buildInvoiceFooterText = () => {
@@ -673,6 +818,11 @@ export default function NewInvoicePage() {
       return;
     }
 
+    if (selectedEventId && billingArrangement !== 'direct' && buyerIsPrivatePerson) {
+      showSnackbar('Hotel lub pośrednik musi być wybrany jako organizacja.', 'error');
+      return;
+    }
+
     if (buyerIsPrivatePerson) {
       if (
         !privateBuyer.firstName.trim() ||
@@ -689,6 +839,15 @@ export default function NewInvoicePage() {
       }
     } else if (!selectedOrgId) {
       showSnackbar('Wybierz nabywcę', 'error');
+      return;
+    }
+
+    if (
+      selectedEventId &&
+      billingArrangement !== 'direct' &&
+      selectedOrgId === serviceRecipientOrganizationId
+    ) {
+      showSnackbar('Wybierz hotel lub inną organizację, która będzie nabywcą faktury.', 'error');
       return;
     }
 
@@ -712,8 +871,37 @@ export default function NewInvoicePage() {
         showSnackbar('Wypełnij nazwy wszystkich pozycji faktury', 'error');
         return;
       }
-    } else if (items.some((item) => !item.name.trim() || item.price_net === 0)) {
+    } else if (
+      items.some(
+        (item) =>
+          !item.name.trim() ||
+          !Number.isFinite(Number(item.quantity)) ||
+          Number(item.quantity) <= 0 ||
+          !Number.isFinite(Number(item.price_net)) ||
+          Number(item.price_net) < 0,
+      )
+    ) {
       showSnackbar('Wypełnij wszystkie pozycje faktury', 'error');
+      return;
+    }
+
+    if (items.some((item) => item.vat_code === 'zw' && !item.vat_exemption_reason?.trim())) {
+      showSnackbar('Podaj podstawę prawną dla każdej pozycji zwolnionej z VAT.', 'error');
+      return;
+    }
+
+    if (items.some((item) => item.vat_code === '0' || item.vat_code === 'np')) {
+      showSnackbar('Dla 0% wybierz rodzaj transakcji (krajowa, WDT lub eksport), a dla „np.” wybierz np I albo np II.', 'error');
+      return;
+    }
+
+    if (simplifiedInvoice && new Set(items.map((item) => item.vat_code)).size > 1) {
+      showSnackbar('Nie można scalić pozycji z różnymi stawkami VAT w jeden wiersz.', 'error');
+      return;
+    }
+
+    if (invoiceType === 'advance' && (advancePercent <= 0 || advancePercent > 100)) {
+      showSnackbar('Zaliczka musi być większa od 0% i nie może przekraczać 100%.', 'error');
       return;
     }
 
@@ -722,21 +910,23 @@ export default function NewInvoicePage() {
 
       const normalizedInvoiceNumber = invoiceNumber.trim();
 
-      const { data: existingInvoiceNumber, error: existingInvoiceNumberError } = await supabase
-        .from('invoices')
-        .select('id')
-        .eq('my_company_id', selectedCompanyId)
-        .eq('invoice_number', normalizedInvoiceNumber)
-        .maybeSingle();
+      if (!invoiceNumberIsAuto) {
+        const { data: existingInvoiceNumber, error: existingInvoiceNumberError } = await supabase
+          .from('invoices')
+          .select('id')
+          .eq('my_company_id', selectedCompanyId)
+          .eq('invoice_number', normalizedInvoiceNumber)
+          .maybeSingle();
 
-      if (existingInvoiceNumberError) {
-        throw existingInvoiceNumberError;
-      }
+        if (existingInvoiceNumberError) {
+          throw existingInvoiceNumberError;
+        }
 
-      if (existingInvoiceNumber) {
-        showSnackbar('Ten numer faktury jest już użyty dla wybranej działalności.', 'error');
-        setLoading(false);
-        return;
+        if (existingInvoiceNumber) {
+          showSnackbar('Ten numer faktury jest już użyty dla wybranej działalności.', 'error');
+          setLoading(false);
+          return;
+        }
       }
 
       const selectedOrg = buyerIsPrivatePerson
@@ -808,14 +998,27 @@ export default function NewInvoicePage() {
         return;
       }
 
+      const orderItems = getItemsForInvoice();
+      const documentItems =
+        invoiceType === 'advance' ? getAdvancePaymentItems(orderItems) : orderItems;
+      const orderTotals = calculateTotalsFor(orderItems);
+      const documentTotals = calculateTotalsFor(documentItems);
+
       const invoiceData = {
         buyer_is_private_person: buyerIsPrivatePerson,
         invoice_number: normalizedInvoiceNumber,
+        auto_number: invoiceNumberIsAuto,
         invoice_type: invoiceType,
         is_proforma: invoiceType === 'proforma',
         status: isPaid ? 'paid' : invoiceType === 'proforma' ? 'proforma' : 'draft',
         paid_at: isPaid ? paidDate : null,
+        payment_status: isPaid ? 'paid' : 'unpaid',
+        paid_amount: isPaid ? documentTotals.totalGross : 0,
         payment_due_date: isPaid ? paidDate : calculatePaymentDueDate(),
+        currency_code: 'PLN',
+        order_total_net: invoiceType === 'advance' ? orderTotals.totalNet : null,
+        order_total_vat: invoiceType === 'advance' ? orderTotals.totalVat : null,
+        order_total_gross: invoiceType === 'advance' ? orderTotals.totalGross : null,
         footer_note: footerNote,
         signature_name: signatureName,
         website,
@@ -823,6 +1026,11 @@ export default function NewInvoicePage() {
         sale_date: saleDate,
         event_id: selectedEventId || null,
         organization_id: buyerIsPrivatePerson ? null : selectedOrgId,
+        billing_arrangement: selectedEventId ? billingArrangement : 'direct',
+        service_recipient_organization_id: selectedEventId
+          ? serviceRecipientOrganizationId || null
+          : null,
+        service_recipient_contact_id: selectedEventId ? serviceRecipientContactId || null : null,
 
         buyer_name: buyerIsPrivatePerson
           ? `${privateBuyer.firstName} ${privateBuyer.lastName}`.trim()
@@ -837,6 +1045,9 @@ export default function NewInvoicePage() {
           : selectedOrg!.postal_code || '',
 
         buyer_city: buyerIsPrivatePerson ? privateBuyer.city : selectedOrg!.city || '',
+        buyer_country: 'Polska',
+        buyer_email: buyerIsPrivatePerson ? privateBuyer.email || null : selectedOrg!.email || null,
+        buyer_phone: buyerIsPrivatePerson ? privateBuyer.phone || null : selectedOrg!.phone || null,
 
         buyer_contact_id: buyerIsPrivatePerson ? selectedIndividualId || null : null,
         my_company_id: selectedCompanyId,
@@ -851,6 +1062,7 @@ export default function NewInvoicePage() {
         payment_method: paymentMethod,
         bank_name: selectedCompany.bank_name || '',
         bank_account: selectedCompany.bank_account || '',
+        bank_swift_code: selectedCompany.bank_swift_code || null,
         issue_place: selectedCompany.city,
         company_logo_url: selectedCompany.logo_url || null,
         created_by: employee?.id,
@@ -858,6 +1070,7 @@ export default function NewInvoicePage() {
           ? {
               related_invoice_id: relatedInvoiceId || null,
               correction_reason: correctionReason,
+              correction_type: correctionType,
               correction_scope: correctionScope,
               corrected_invoice_number: correctedInvoiceNumber,
               corrected_invoice_issue_date: correctedInvoiceIssueDate || null,
@@ -867,16 +1080,7 @@ export default function NewInvoicePage() {
           : {}),
       };
 
-      const { data: invoice, error: invoiceError } = await supabase
-        .from('invoices')
-        .insert(invoiceData)
-        .select()
-        .single();
-
-      if (invoiceError) throw invoiceError;
-
-      const finalItems = getItemsForInvoice();
-      const itemsToInsert = finalItems.map((item) => {
+      const itemsToInsert = documentItems.map((item) => {
         if (invoiceType === 'corrective') {
           const vatRate = Number(item.vat_rate ?? 0);
           const beforeQuantity = Number(item.before_quantity ?? 0);
@@ -885,11 +1089,12 @@ export default function NewInvoicePage() {
           const afterPriceNet = Number(item.price_net ?? beforePriceNet);
 
           return {
-            invoice_id: invoice.id,
             position_number: item.position_number,
             name: item.name,
             unit: item.unit,
             vat_rate: vatRate,
+            vat_code: item.vat_code,
+            vat_exemption_reason: item.vat_exemption_reason?.trim() || null,
             before_quantity: beforeQuantity,
             before_price_net: beforePriceNet,
             after_quantity: afterQuantity,
@@ -900,36 +1105,54 @@ export default function NewInvoicePage() {
         const { valueNet, vatAmount, valueGross } = calculateItemValues(item);
 
         return {
-          invoice_id: invoice.id,
           position_number: item.position_number,
           name: item.name,
           unit: item.unit,
           quantity: item.quantity,
           price_net: item.price_net,
           vat_rate: item.vat_rate,
+          vat_code: item.vat_code,
+          vat_exemption_reason: item.vat_exemption_reason?.trim() || null,
           value_net: valueNet,
           vat_amount: vatAmount,
           value_gross: valueGross,
         };
       });
 
-      const { error: itemsError } = await supabase.from('invoice_items').insert(itemsToInsert);
+      const orderItemsToInsert =
+        invoiceType === 'advance'
+          ? orderItems.map((item) => {
+          const { valueNet, vatAmount, valueGross } = calculateItemValues(item);
+          return {
+            position_number: item.position_number,
+            name: item.name,
+            unit: item.unit,
+            quantity: item.quantity,
+            price_net: item.price_net,
+            vat_rate: item.vat_rate,
+            vat_code: item.vat_code,
+            vat_exemption_reason: item.vat_exemption_reason?.trim() || null,
+            value_net: valueNet,
+            vat_amount: vatAmount,
+            value_gross: valueGross,
+          };
+            })
+          : [];
 
-      if (itemsError) throw itemsError;
-
-      await supabase.from('invoice_history').insert({
-        invoice_id: invoice.id,
-        action: 'created',
-        changed_by: employee?.id,
-        changes: {
-          invoice_type: invoiceType,
-          my_company_id: selectedCompanyId,
-          invoice_number: normalizedInvoiceNumber,
+      const { data: invoiceId, error: createError } = await supabase.rpc(
+        'create_invoice_atomic',
+        {
+          p_invoice: invoiceData,
+          p_items: itemsToInsert,
+          p_order_items: orderItemsToInsert,
         },
-      });
+      );
+      if (createError || !invoiceId) {
+        throw createError || new Error('Nie udało się utworzyć dokumentu');
+      }
 
       showSnackbar('Faktura została utworzona', 'success');
-      router.push(`/crm/invoices/${invoice.id}`);
+      router.push(`/crm/invoices/${invoiceId}`);
     } catch (err: any) {
       console.error('Error creating invoice:', err);
 
@@ -981,6 +1204,10 @@ export default function NewInvoicePage() {
   }, [selectedCompanyId, myCompanies, includeDefaultFooterNote]);
 
   const totals = calculateTotals();
+  const advanceTotals =
+    invoiceType === 'advance'
+      ? calculateTotalsFor(getAdvancePaymentItems(getItemsForInvoice()))
+      : null;
   const filteredIndividualContacts = individualContacts.filter((contact) => {
     const search = individualSearch.toLowerCase().trim();
 
@@ -1031,6 +1258,7 @@ export default function NewInvoicePage() {
                       phone: '',
                     });
                   }}
+                  disabled={Boolean(selectedEventId && billingArrangement !== 'direct')}
                   className="mt-1 h-4 w-4 rounded border-[#d3bb73]/20 text-[#d3bb73]"
                 />
 
@@ -1100,6 +1328,7 @@ export default function NewInvoicePage() {
                   invoiceType={invoiceType}
                   value={invoiceNumber}
                   onChange={setInvoiceNumber}
+                  onAutoModeChange={setInvoiceNumberIsAuto}
                   myCompanyId={selectedCompanyId}
                 />
               </div>
@@ -1199,6 +1428,19 @@ export default function NewInvoicePage() {
 
                 <div>
                   <label className="mb-2 block text-sm text-[#e5e4e2]/60">
+                    Skutek korekty w ewidencji VAT *
+                  </label>
+                  <select
+                    value={correctionType}
+                    onChange={(e) => setCorrectionType(Number(e.target.value) as 1 | 2 | 3)}
+                    className="mb-4 w-full rounded-lg border border-orange-500/30 bg-[#0a0d1a] px-4 py-3 text-sm text-[#e5e4e2] focus:border-orange-500 focus:outline-none"
+                  >
+                    <option value={1}>Korekta skutkująca w dacie ujęcia faktury pierwotnej</option>
+                    <option value={2}>Korekta skutkująca w dacie wystawienia faktury korygującej</option>
+                    <option value={3}>Inna data lub różne daty dla pozycji korekty</option>
+                  </select>
+
+                  <label className="mb-2 block text-sm text-[#e5e4e2]/60">
                     Przyczyna korekty *
                   </label>
                   <textarea
@@ -1213,6 +1455,22 @@ export default function NewInvoicePage() {
             )}
 
             <div className="grid grid-cols-1 gap-6">
+              {selectedEventId && linkedEvent && (
+                <InvoiceBillingContext
+                  eventName={linkedEvent.name}
+                  eventDate={linkedEvent.event_date}
+                  serviceRecipientName={
+                    organizations.find((organization) =>
+                      organization.id === serviceRecipientOrganizationId)?.name || null
+                  }
+                  arrangement={billingArrangement}
+                  payerName={
+                    organizations.find((organization) => organization.id === selectedOrgId)?.name ||
+                    null
+                  }
+                  onArrangementChange={handleBillingArrangementChange}
+                />
+              )}
               {invoiceType === 'corrective' && relatedInvoiceId ? (
                 <div>
                   <label className="mb-2 block text-sm text-[#e5e4e2]/60">Nabywca *</label>
@@ -1335,11 +1593,11 @@ export default function NewInvoicePage() {
                 <BuyerSearchInput
                   contacts={organizations}
                   selectedContactId={selectedOrgId}
-                  onContactSelect={setSelectedOrgId}
+                  onContactSelect={handleBuyerSelect}
                   onAddNew={() => setShowAddBuyerModal(true)}
                 />
               )}
-              {!buyerIsPrivatePerson && selectedOrgId && (
+              {!buyerIsPrivatePerson && selectedOrgId && !eventId && (
                 <div className="rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/5 p-4">
                   <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
                     Powiązane wydarzenie
@@ -1347,7 +1605,7 @@ export default function NewInvoicePage() {
 
                   <select
                     value={selectedEventId}
-                    onChange={(e) => setSelectedEventId(e.target.value)}
+                    onChange={(e) => void handleEventChange(e.target.value)}
                     className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2]"
                   >
                     <option value="">Brak powiązanego wydarzenia</option>
@@ -1527,6 +1785,35 @@ export default function NewInvoicePage() {
                     />
                   </div>
                 )}
+              </div>
+            )}
+
+            {invoiceType === 'advance' && (
+              <div className="rounded-lg border border-blue-500/25 bg-blue-500/10 p-4">
+                <div className="grid gap-4 md:grid-cols-[220px_1fr] md:items-end">
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
+                      Wysokość zaliczki *
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        min="0.01"
+                        max="100"
+                        step="0.01"
+                        value={advancePercent}
+                        onChange={(e) => setAdvancePercent(Number(e.target.value))}
+                        className="w-full rounded-lg border border-blue-400/30 bg-[#0a0d1a] px-4 py-3 pr-10 text-[#e5e4e2]"
+                      />
+                      <span className="absolute right-4 top-3 text-[#e5e4e2]/50">%</span>
+                    </div>
+                  </div>
+                  <div className="text-sm text-[#e5e4e2]/65">
+                    Pozycje poniżej opisują pełne zamówienie. Na fakturze zaliczkowej kwoty
+                    zostaną proporcjonalnie ograniczone do wskazanego procentu, a pełna wartość
+                    zamówienia pozostanie zapisana osobno dla KSeF i faktury końcowej.
+                  </div>
+                </div>
               </div>
             )}
 
@@ -1909,17 +2196,21 @@ export default function NewInvoicePage() {
 
                               <div>
                                 <label className="mb-1 block text-xs text-[#e5e4e2]/40">
-                                  VAT %
+                                  Stawka VAT
                                 </label>
                                 <select
-                                  value={item.vat_rate}
+                                  value={item.vat_code}
                                   onChange={(e) => {
-                                    const newVatRate = parseInt(e.target.value);
+                                    const newVatCode = e.target.value as InvoiceItem['vat_code'];
+                                    const newVatRate = ['23', '8', '5', '0'].includes(newVatCode)
+                                      ? Number(newVatCode)
+                                      : 0;
                                     const currentGross = grossFromNet(
                                       Number(item.price_net ?? 0),
                                       vatRate,
                                     );
 
+                                    updateItem(index, 'vat_code', newVatCode);
                                     updateItem(index, 'vat_rate', newVatRate);
                                     updateItem(
                                       index,
@@ -1929,10 +2220,18 @@ export default function NewInvoicePage() {
                                   }}
                                   className="w-full rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-sm text-[#e5e4e2]"
                                 >
-                                  <option value={0}>0%</option>
-                                  <option value={5}>5%</option>
-                                  <option value={8}>8%</option>
-                                  <option value={23}>23%</option>
+                                  <option value="23">23%</option>
+                                  <option value="8">8%</option>
+                                  <option value="5">5%</option>
+                                  <option value="0" disabled>0% — wybierz właściwy rodzaj</option>
+                                  <option value="0 KR">0% — sprzedaż krajowa</option>
+                                  <option value="0 WDT">0% — WDT</option>
+                                  <option value="0 EX">0% — eksport</option>
+                                  <option value="zw">zw. — zwolniona</option>
+                                  <option value="np" disabled>np. — wybierz właściwy rodzaj</option>
+                                  <option value="np I">np I — poza terytorium kraju</option>
+                                  <option value="np II">np II — art. 100 ust. 1 pkt 4 VAT</option>
+                                  <option value="oo">oo — odwrotne obciążenie</option>
                                 </select>
                               </div>
                             </div>
@@ -1944,6 +2243,23 @@ export default function NewInvoicePage() {
                               <Trash2 className="h-4 w-4" />
                             </button>
                           </div>
+
+                          {item.vat_code === 'zw' && (
+                            <div className="mt-3">
+                              <label className="mb-1 block text-xs text-[#e5e4e2]/50">
+                                Podstawa prawna zwolnienia z VAT *
+                              </label>
+                              <input
+                                type="text"
+                                value={item.vat_exemption_reason || ''}
+                                onChange={(e) =>
+                                  updateItem(index, 'vat_exemption_reason', e.target.value)
+                                }
+                                placeholder="Np. art. 43 ust. 1 pkt … ustawy o VAT"
+                                className="w-full rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-sm text-[#e5e4e2]"
+                              />
+                            </div>
+                          )}
 
                           <div className="mt-3 grid grid-cols-3 gap-4 border-t border-[#d3bb73]/10 pt-3 text-sm">
                             <div>
@@ -2070,6 +2386,26 @@ export default function NewInvoicePage() {
 
                 {invoiceType !== 'corrective' && (
                   <>
+                    {invoiceType === 'advance' && advanceTotals && (
+                      <div className="mb-4 grid grid-cols-2 gap-4 rounded-lg border border-blue-500/20 bg-blue-500/10 p-4">
+                        <div>
+                          <div className="text-xs uppercase tracking-wide text-blue-300/70">
+                            Pełna wartość zamówienia brutto
+                          </div>
+                          <div className="mt-1 text-xl text-[#e5e4e2]">
+                            {totals.totalGross.toFixed(2)} zł
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-xs uppercase tracking-wide text-blue-300/70">
+                            Kwota tej zaliczki brutto ({advancePercent}%)
+                          </div>
+                          <div className="mt-1 text-xl font-medium text-[#d3bb73]">
+                            {advanceTotals.totalGross.toFixed(2)} zł
+                          </div>
+                        </div>
+                      </div>
+                    )}
                     {simplifiedInvoice && items.length > 1 && (
                       <div className="mb-4 rounded-lg border border-blue-500/20 bg-blue-500/10 p-3">
                         <div className="mb-2 text-xs font-medium text-blue-400">
@@ -2089,19 +2425,19 @@ export default function NewInvoicePage() {
                       <div>
                         <div className="mb-1 text-sm text-[#e5e4e2]/60">Suma netto</div>
                         <div className="text-2xl font-light text-[#e5e4e2]">
-                          {totals.totalNet.toFixed(2)} zł
+                          {(advanceTotals?.totalNet ?? totals.totalNet).toFixed(2)} zł
                         </div>
                       </div>
                       <div>
                         <div className="mb-1 text-sm text-[#e5e4e2]/60">Suma VAT</div>
                         <div className="text-2xl font-light text-[#e5e4e2]">
-                          {totals.totalVat.toFixed(2)} zł
+                          {(advanceTotals?.totalVat ?? totals.totalVat).toFixed(2)} zł
                         </div>
                       </div>
                       <div>
                         <div className="mb-1 text-sm text-[#e5e4e2]/60">Suma brutto</div>
                         <div className="text-2xl font-medium text-[#d3bb73]">
-                          {totals.totalGross.toFixed(2)} zł
+                          {(advanceTotals?.totalGross ?? totals.totalGross).toFixed(2)} zł
                         </div>
                       </div>
                     </div>

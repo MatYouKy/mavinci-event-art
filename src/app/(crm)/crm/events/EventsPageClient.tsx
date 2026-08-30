@@ -1017,7 +1017,7 @@ export default function EventsPageClient({
       let query = supabase.from('events').select(
         `
           *,
-          organizations(name, alias),
+          organizations:organizations!events_organization_id_fkey(name, alias),
           contacts(first_name, last_name),
           event_categories(name, color),
           locations(name, formatted_address, address, city, postal_code)

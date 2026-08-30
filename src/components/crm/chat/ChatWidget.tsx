@@ -62,7 +62,8 @@ export default function ChatWidget({ employee }: { employee: IEmployee }) {
   const [isLoading, setIsLoading] = useState(false);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const audioUnlockedRef = useRef(false);
+  const chatSessionStartedAtRef = useRef(Date.now());
+  const realtimeReadyRef = useRef(false);
 
   const currentEmployeeId = employeeId || employee.id;
 
@@ -149,7 +150,8 @@ export default function ChatWidget({ employee }: { employee: IEmployee }) {
   const activeConversationRef = useRef<string | null>(null);
   activeConversationRef.current = activeConversation?.id ?? null;
 
-  // Pre-load notification sound
+  // Preload only. Playing a silent fragment on the first click caused an
+  // audible click in some browsers and made ordinary CRM actions sound.
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const audio = new Audio('/sounds/chat-notification.wav');
@@ -157,24 +159,10 @@ export default function ChatWidget({ employee }: { employee: IEmployee }) {
     audio.preload = 'auto';
     audioRef.current = audio;
 
-    // Unlock audio context on first user interaction
-    const unlock = () => {
-      if (!audioUnlockedRef.current && audioRef.current) {
-        audioRef.current.play().then(() => {
-          audioRef.current!.pause();
-          audioRef.current!.currentTime = 0;
-          audioUnlockedRef.current = true;
-        }).catch(() => {});
-      }
-      document.removeEventListener('click', unlock);
-      document.removeEventListener('keydown', unlock);
-    };
-    document.addEventListener('click', unlock);
-    document.addEventListener('keydown', unlock);
-
     return () => {
-      document.removeEventListener('click', unlock);
-      document.removeEventListener('keydown', unlock);
+      audio.pause();
+      audio.src = '';
+      audioRef.current = null;
     };
   }, []);
 
@@ -204,7 +192,9 @@ export default function ChatWidget({ employee }: { employee: IEmployee }) {
         body,
         icon: '/logo-mavinci-crm.png',
         tag: `chat-${msg.conversation_id}`,
-        silent: false,
+        // The in-app sound is the single source of audio. This prevents the
+        // browser notification and CRM from playing two sounds at once.
+        silent: true,
       });
       notification.onclick = () => {
         window.focus();
@@ -227,6 +217,9 @@ export default function ChatWidget({ employee }: { employee: IEmployee }) {
   useEffect(() => {
     if (!currentEmployeeId) return;
 
+    chatSessionStartedAtRef.current = Date.now();
+    realtimeReadyRef.current = false;
+
     const channel = supabase
       .channel('chat_widget_realtime')
       .on(
@@ -236,6 +229,11 @@ export default function ChatWidget({ employee }: { employee: IEmployee }) {
           const msg = payload.new as ChatMessage;
           const isOwnMessage = msg.sender_id === currentEmployeeId;
           const isActiveConv = activeConversationRef.current === msg.conversation_id;
+          const messageCreatedAt = Date.parse(msg.created_at || '');
+          const isNewInCurrentSession =
+            realtimeReadyRef.current &&
+            Number.isFinite(messageCreatedAt) &&
+            messageCreatedAt >= chatSessionStartedAtRef.current;
 
           setConversations((prev) => {
             const idx = prev.findIndex((c) => c.id === msg.conversation_id);
@@ -259,17 +257,22 @@ export default function ChatWidget({ employee }: { employee: IEmployee }) {
             return updated;
           });
 
-          if (!isOwnMessage && !isActiveConv) {
+          if (!isOwnMessage && !isActiveConv && isNewInCurrentSession) {
             setTotalUnread((u) => u + 1);
-            playChatSound();
+            if (document.visibilityState === 'visible' && document.hasFocus()) {
+              playChatSound();
+            }
             showBrowserNotificationRef.current(msg);
           }
         },
       )
-      .subscribe();
+      .subscribe((status) => {
+        realtimeReadyRef.current = status === 'SUBSCRIBED';
+      });
 
     channelRef.current = channel;
     return () => {
+      realtimeReadyRef.current = false;
       supabase.removeChannel(channel);
     };
   }, [currentEmployeeId, fetchConversations, playChatSound]);

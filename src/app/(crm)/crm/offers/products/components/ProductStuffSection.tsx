@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Users, X, AlertCircle, CheckCircle } from 'lucide-react';
+import { Users, X, AlertCircle, CheckCircle, RotateCcw } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { ProductStaffRow } from '../../types';
@@ -26,14 +26,24 @@ function makeTempId() {
 
 export function ProductStaffSection({
   productId, // null jeśli "new"
+  productVariantId = null,
+  productVariantName = null,
+  isInherited = false,
   canEdit,
   draftStaff,
   setDraftStaff,
+  onCustomizeVariant,
+  onResetInheritance,
 }: {
   productId: string | null;
+  productVariantId?: string | null;
+  productVariantName?: string | null;
+  isInherited?: boolean;
   canEdit: boolean;
   draftStaff: DraftStaff[];
   setDraftStaff: (next: DraftStaff[]) => void;
+  onCustomizeVariant?: () => Promise<void>;
+  onResetInheritance?: () => Promise<void>;
 }) {
   const { showSnackbar } = useSnackbar();
   const [staff, setStaff] = useState<ProductStaffRow[]>([]);
@@ -51,10 +61,10 @@ export function ProductStaffSection({
 
   useEffect(() => {
     if (!productId) return;
-    fetchStaff(productId);
+    fetchStaff(productId, isInherited ? null : productVariantId);
     fetchRequiredSkills(productId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [productId]);
+  }, [productId, productVariantId, isInherited]);
 
   const fetchRequiredSkills = async (pid: string) => {
     setLoadingSkills(true);
@@ -72,14 +82,20 @@ export function ProductStaffSection({
     }
   };
 
-  const fetchStaff = async (pid: string) => {
+  const fetchStaff = async (pid: string, variantId: string | null = null) => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('offer_product_staff')
         .select('*')
         .eq('product_id', pid)
         .order('created_at', { ascending: true });
+
+      query = variantId
+        ? query.eq('product_variant_id', variantId)
+        : query.is('product_variant_id', null);
+
+      const { data, error } = await query;
 
       if (error) throw error;
       setStaff((data ?? []) as ProductStaffRow[]);
@@ -104,13 +120,14 @@ export function ProductStaffSection({
     try {
       setLoading(true);
       const { error } = await supabase.from('offer_product_staff').insert({
-        product_id: productId,
         ...payload,
+        product_id: productId,
+        product_variant_id: productVariantId,
       });
       if (error) throw error;
 
       showSnackbar('Rola dodana', 'success');
-      await fetchStaff(productId);
+      await fetchStaff(productId, productVariantId);
     } catch (e: any) {
       showSnackbar(e?.message || 'Błąd podczas dodawania roli', 'error');
     } finally {
@@ -133,7 +150,7 @@ export function ProductStaffSection({
       if (error) throw error;
 
       showSnackbar('Rola usunięta', 'success');
-      await fetchStaff(productId);
+      await fetchStaff(productId, productVariantId);
     } catch (e: any) {
       showSnackbar(e?.message || 'Błąd podczas usuwania roli', 'error');
     } finally {
@@ -146,7 +163,16 @@ export function ProductStaffSection({
       <div className="mb-4 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Users className="h-5 w-5 text-[#d3bb73]" />
-          <h2 className="text-lg font-medium text-[#e5e4e2]">Wymagani pracownicy</h2>
+          <div>
+            <h2 className="text-lg font-medium text-[#e5e4e2]">Wymagani pracownicy</h2>
+            {productVariantName && (
+              <p className="mt-0.5 text-xs text-[#e5e4e2]/45">
+                {isInherited
+                  ? `${productVariantName} dziedziczy personel produktu bazowego`
+                  : `Własny personel wariantu: ${productVariantName}`}
+              </p>
+            )}
+          </div>
           {isNew && (
             <span className="ml-2 rounded bg-[#d3bb73]/15 px-2 py-0.5 text-xs text-[#d3bb73]">
               draft
@@ -163,12 +189,35 @@ export function ProductStaffSection({
         </div>
 
         {canEdit && (
-          <button
-            onClick={() => setShowAddStaffModal(true)}
-            className="rounded-lg bg-[#d3bb73]/20 px-3 py-1 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/30"
-          >
-            + Dodaj rolę
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            {productVariantId && isInherited ? (
+              <button
+                type="button"
+                onClick={() => void onCustomizeVariant?.()}
+                className="rounded-lg bg-[#d3bb73]/20 px-3 py-1 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/30"
+              >
+                Dostosuj wariant
+              </button>
+            ) : (
+              <>
+                {productVariantId && onResetInheritance && (
+                  <button
+                    type="button"
+                    onClick={() => void onResetInheritance()}
+                    className="flex items-center gap-1.5 rounded-lg bg-white/5 px-3 py-1 text-sm text-[#e5e4e2]/70 hover:bg-white/10"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" /> Dziedzicz bazowe
+                  </button>
+                )}
+                <button
+                  onClick={() => setShowAddStaffModal(true)}
+                  className="rounded-lg bg-[#d3bb73]/20 px-3 py-1 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/30"
+                >
+                  + Dodaj rolę
+                </button>
+              </>
+            )}
+          </div>
         )}
       </div>
 
@@ -260,7 +309,7 @@ export function ProductStaffSection({
                     </span>
                   )}
 
-                  {canEdit && (
+                  {canEdit && !isInherited && (
                     <button
                       onClick={() => handleDelete(key)}
                       className="rounded p-1 text-[#e5e4e2]/50 hover:bg-white/5 hover:text-red-400"
@@ -279,6 +328,7 @@ export function ProductStaffSection({
       {showAddStaffModal && (
         <AddStaffModal
           productId={productId as string}
+          productVariantName={productVariantName}
           onClose={() => setShowAddStaffModal(false)}
           onSubmit={async (payload) => {
             await handleAdd(payload);

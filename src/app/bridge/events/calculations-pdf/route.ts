@@ -1,12 +1,15 @@
 import { NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 import { createClient } from '@supabase/supabase-js';
 import { chromium } from 'playwright';
+import { createSupabaseServerClient } from '@/lib/supabase/server.app';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 type Body = {
-  eventId: string;
+  eventId?: string | null;
+  inquiryId?: string | null;
   calculationId: string;
   eventName: string;
   calculationName: string;
@@ -63,6 +66,7 @@ export async function POST(req: Request) {
     const body = (await req.json()) as Body;
     const {
       eventId,
+      inquiryId,
       calculationId,
       html,
       eventName,
@@ -72,8 +76,34 @@ export async function POST(req: Request) {
       previousPdfPath,
     } = body;
 
-    if (!eventId || !calculationId || !html) {
+    if ((!eventId && !inquiryId) || !calculationId || !html) {
       return NextResponse.json({ error: 'Brak wymaganych danych' }, { status: 400 });
+    }
+
+    const supabaseForUser = createSupabaseServerClient(cookies());
+    const {
+      data: { user },
+    } = await supabaseForUser.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json({ error: 'Wymagane logowanie' }, { status: 401 });
+    }
+
+    const { data: calculation, error: calculationError } = await supabaseForUser
+      .from('event_calculations')
+      .select('id, event_id, inquiry_id')
+      .eq('id', calculationId)
+      .maybeSingle();
+
+    if (calculationError || !calculation) {
+      return NextResponse.json({ error: 'Brak dostępu do kalkulacji' }, { status: 403 });
+    }
+
+    if (
+      (eventId && calculation.event_id !== eventId) ||
+      (inquiryId && calculation.inquiry_id !== inquiryId)
+    ) {
+      return NextResponse.json({ error: 'Kalkulacja nie należy do wskazanego rekordu' }, { status: 403 });
     }
 
     const browser = await chromium.launch({
@@ -116,11 +146,13 @@ export async function POST(req: Request) {
         await supabase.from('event_files').delete().eq('file_path', previousPdfPath);
       }
 
-      const folderId = await getOrCreateCalculationFolderId({
-        supabase,
-        eventId,
-        createdBy: createdBy ?? null,
-      });
+      const folderId = eventId
+        ? await getOrCreateCalculationFolderId({
+            supabase,
+            eventId,
+            createdBy: createdBy ?? null,
+          })
+        : null;
 
       const slug = (calculationName || eventName || 'kalkulacja')
         .replace(/[^a-z0-9]/gi, '-')
@@ -130,7 +162,9 @@ export async function POST(req: Request) {
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
       const finalFileName = fileName || `kalkulacja-${slug || 'event'}-${timestamp}.pdf`;
 
-      const storagePath = `${eventId}/documents/calculations/${finalFileName}`;
+      const storagePath = eventId
+        ? `${eventId}/documents/calculations/${finalFileName}`
+        : `inquiries/${inquiryId}/calculations/${finalFileName}`;
 
       const upload = await supabase.storage.from('event-files').upload(storagePath, pdfBuffer, {
         contentType: 'application/pdf',
@@ -141,23 +175,25 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: upload.error.message }, { status: 500 });
       }
 
-      const insertFile = await supabase.from('event_files').insert([
-        {
-          event_id: eventId,
-          folder_id: folderId,
-          name: finalFileName,
-          original_name: finalFileName,
-          file_path: storagePath,
-          file_size: pdfBuffer.byteLength,
-          mime_type: 'application/pdf',
-          document_type: 'calculation',
-          thumbnail_url: null,
-          uploaded_by: createdBy ?? null,
-        },
-      ]);
+      if (eventId) {
+        const insertFile = await supabase.from('event_files').insert([
+          {
+            event_id: eventId,
+            folder_id: folderId,
+            name: finalFileName,
+            original_name: finalFileName,
+            file_path: storagePath,
+            file_size: pdfBuffer.byteLength,
+            mime_type: 'application/pdf',
+            document_type: 'calculation',
+            thumbnail_url: null,
+            uploaded_by: createdBy ?? null,
+          },
+        ]);
 
-      if (insertFile.error) {
-        console.error('event_files insert error:', insertFile.error);
+        if (insertFile.error) {
+          console.error('event_files insert error:', insertFile.error);
+        }
       }
 
       const upd = await supabase

@@ -1,5 +1,7 @@
 import { NextRequest } from 'next/server';
+import { cookies } from 'next/headers';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { createSupabaseServerClient } from '@/lib/supabase/server.app';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -28,11 +30,10 @@ import {
   prepareFA3Invoice,
   validatePreparedFA3Invoice,
   generateFA3XML,
-  debugFA3PreparedInvoice,
 } from '../../../../../lib/ksef/generateFA3XML';
 
-const DEBUG_XML_ONLY = process.env.NODE_ENV !== 'production';
-// const DEBUG_XML_ONLY = false;
+const DEBUG_XML_ONLY =
+  process.env.NODE_ENV !== 'production' && process.env.KSEF_DEBUG_XML_ONLY === 'true';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -60,7 +61,11 @@ function getDb(supabase: SupabaseClient<any>) {
 
 async function fetchInvoice(supabase: SupabaseClient<any>, invoiceId: string) {
   const db = getDb(supabase);
-  return await db.invoices().select('*, invoice_items(*)').eq('id', invoiceId).single();
+  return await db
+    .invoices()
+    .select('*, invoice_items(*), invoice_order_items(*)')
+    .eq('id', invoiceId)
+    .single();
 }
 
 async function fetchOrganization(supabase: SupabaseClient<any>, organizationId?: string | null) {
@@ -90,6 +95,8 @@ async function checkExistingSyncedInvoice(supabase: SupabaseClient<any>, invoice
     .select('ksef_reference_number')
     .eq('invoice_id', invoiceId)
     .eq('sync_status', 'synced')
+    .order('created_at', { ascending: false })
+    .limit(1)
     .maybeSingle();
 }
 
@@ -208,113 +215,6 @@ async function reAuthenticateKSeF(params: {
   };
 }
 
-async function createOrUpdateKsefInvoiceRecord(params: {
-  supabase: SupabaseClient<any>;
-  invoice: any;
-  invoiceId: string;
-  xmlContent: string;
-  isRejected: boolean;
-  ksefNumber: string | null;
-  finalTimestamp: string | null;
-  rejectionMessage?: string;
-}) {
-  const { supabase, invoice, invoiceId, xmlContent, isRejected, ksefNumber, finalTimestamp, rejectionMessage } = params;
-  const db = getDb(supabase);
-
-  const isFinalInvoice =
-    invoice.invoice_type === 'final' || String(invoice.invoice_number || '').startsWith('FKO/');
-
-  const settlementSummary = invoice.settlement_summary ?? null;
-  const settledInvoices = Array.isArray(invoice.settled_invoices) ? invoice.settled_invoices : [];
-
-  const amountToPayGross =
-    isFinalInvoice && settlementSummary?.remainingGross !== undefined
-      ? Number(settlementSummary.remainingGross)
-      : Number(invoice.total_gross ?? 0);
-
-  return await db
-    .ksefInvoices()
-    .insert({
-      invoice_id: invoiceId,
-      ksef_reference_number: isRejected ? null : ksefNumber,
-      invoice_type: 'issued',
-      invoice_number: invoice.invoice_number,
-      seller_name: invoice.seller_name,
-      seller_nip: invoice.seller_nip,
-      buyer_name: invoice.buyer_name,
-      buyer_nip: invoice.buyer_nip,
-      net_amount: invoice.total_net,
-      vat_amount: invoice.total_vat,
-      gross_amount: invoice.total_gross,
-      amount_to_pay_gross: amountToPayGross,
-      settlement_summary: settlementSummary,
-      settled_invoices: settledInvoices,
-      currency: 'PLN',
-      issue_date: invoice.issue_date,
-      payment_due_date: invoice.payment_due_date,
-      xml_content: xmlContent,
-      sync_status: isRejected ? 'error' : 'synced',
-      sync_error: rejectionMessage ?? null,
-      ksef_issued_at: isRejected ? null : finalTimestamp,
-      synced_at: new Date().toISOString(),
-      my_company_id: invoice.my_company_id,
-    })
-    .select()
-    .single();
-}
-
-async function updateInvoiceStatus(params: {
-  supabase: SupabaseClient<any>;
-  invoiceId: string;
-  isRejected: boolean;
-  ksefNumber: string | null;
-  finalTimestamp: string | null;
-  rejectionMessage?: string;
-}) {
-  const db = getDb(params.supabase);
-  return await db
-    .invoices()
-    .update({
-      status: params.isRejected ? 'draft' : 'issued',
-      ksef_status: params.isRejected ? 'rejected' : 'accepted',
-      ksef_reference_number: params.ksefNumber,
-      ksef_error: params.rejectionMessage ?? null,
-      ksef_sent_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', params.invoiceId);
-}
-
-async function writeInvoiceHistory(params: {
-  supabase: SupabaseClient<any>;
-  invoiceId: string;
-  finalRefNumber: string | null;
-  finalTimestamp: string | null;
-  rejectionMessage?: string;
-  isRejected: boolean;
-}) {
-  const { supabase, invoiceId, finalRefNumber, finalTimestamp, rejectionMessage, isRejected } = params;
-  const db = getDb(supabase);
-
-  const { data: user } = await supabase.auth.getUser();
-  const { data: employee } = await db
-    .employees()
-    .select('id')
-    .eq('email', user.user?.email)
-    .maybeSingle();
-
-  return await db.invoiceHistory().insert({
-    invoice_id: invoiceId,
-    action: isRejected ? 'ksef_send_error' : 'sent_to_ksef',
-    changed_by: employee?.id,
-    changes: {
-      ksef_reference_number: finalRefNumber,
-      sent_at: finalTimestamp,
-      rejection_message: rejectionMessage ?? null,
-    },
-  });
-}
-
 async function enrichFinalInvoiceSettledInvoicesWithKsefNumbers(
   supabase: SupabaseClient<any>,
   invoice: any,
@@ -333,7 +233,10 @@ async function enrichFinalInvoiceSettledInvoicesWithKsefNumbers(
   const [{ data: invoiceRows }, { data: ksefByIdRows }, { data: ksefByNumberRows }] =
     await Promise.all([
       settledIds.length
-        ? db.invoices().select('id, invoice_number, ksef_reference_number').in('id', settledIds)
+        ? db
+            .invoices()
+            .select('id, invoice_number, ksef_reference_number, invoice_items(vat_code, vat_rate, value_net, vat_amount, value_gross)')
+            .in('id', settledIds)
         : Promise.resolve({ data: [] }),
       settledIds.length
         ? db
@@ -347,6 +250,7 @@ async function enrichFinalInvoiceSettledInvoicesWithKsefNumbers(
             .ksefInvoices()
             .select('invoice_id, invoice_number, ksef_reference_number')
             .in('invoice_number', settledNumbers)
+            .eq('my_company_id', invoice.my_company_id)
             .eq('sync_status', 'synced')
         : Promise.resolve({ data: [] }),
     ]);
@@ -354,14 +258,41 @@ async function enrichFinalInvoiceSettledInvoicesWithKsefNumbers(
   const ksefFromInvoicesById = new Map(
     (invoiceRows ?? []).map((row: any) => [row.id, row.ksef_reference_number]),
   );
-  const ksefFromKsefById = new Map(
-    (ksefByIdRows ?? []).map((row: any) => [row.invoice_id, row.ksef_reference_number]),
-  );
-  const ksefFromKsefByNumber = new Map(
-    (ksefByNumberRows ?? [])
-      .filter((row: any) => row.ksef_reference_number)
-      .map((row: any) => [row.invoice_number, row.ksef_reference_number]),
-  );
+  const uniqueReferenceMap = (rows: any[], key: 'invoice_id' | 'invoice_number') => {
+    const grouped = new Map<string, Set<string>>();
+    rows.forEach((row) => {
+      if (!row?.[key] || !row?.ksef_reference_number) return;
+      const references = grouped.get(row[key]) ?? new Set<string>();
+      references.add(row.ksef_reference_number);
+      grouped.set(row[key], references);
+    });
+    return new Map(
+      Array.from(grouped.entries())
+        .filter(([, references]) => references.size === 1)
+        .map(([mapKey, references]) => [mapKey, Array.from(references)[0]]),
+    );
+  };
+  const ksefFromKsefById = uniqueReferenceMap(ksefByIdRows ?? [], 'invoice_id');
+  const ksefFromKsefByNumber = uniqueReferenceMap(ksefByNumberRows ?? [], 'invoice_number');
+  const invoiceRowsById = new Map((invoiceRows ?? []).map((row: any) => [row.id, row]));
+
+  const buildVatBreakdown = (rows: any[] = []) => {
+    const grouped = new Map<string, { vatCode: string; net: number; vat: number; gross: number }>();
+    rows.forEach((row) => {
+      const vatCode = String(row.vat_code ?? row.vat_rate ?? '23');
+      const current = grouped.get(vatCode) ?? { vatCode, net: 0, vat: 0, gross: 0 };
+      current.net += Number(row.value_net ?? 0);
+      current.vat += Number(row.vat_amount ?? 0);
+      current.gross += Number(row.value_gross ?? 0);
+      grouped.set(vatCode, current);
+    });
+    return Array.from(grouped.values()).map((entry) => ({
+      ...entry,
+      net: Number(entry.net.toFixed(2)),
+      vat: Number(entry.vat.toFixed(2)),
+      gross: Number(entry.gross.toFixed(2)),
+    }));
+  };
 
   return {
     ...invoice,
@@ -375,7 +306,14 @@ async function enrichFinalInvoiceSettledInvoicesWithKsefNumbers(
         ksefFromKsefByNumber.get(invoiceNumber) ??
         null;
 
-      return { ...inv, invoiceNumber, ksefReferenceNumber, ksef_reference_number: ksefReferenceNumber };
+      const sourceInvoice = invoiceRowsById.get(inv.id) as any;
+      return {
+        ...inv,
+        invoiceNumber,
+        ksefReferenceNumber,
+        ksef_reference_number: ksefReferenceNumber,
+        vatBreakdown: inv.vatBreakdown ?? buildVatBreakdown(sourceInvoice?.invoice_items),
+      };
     }),
   };
 }
@@ -407,6 +345,41 @@ export async function POST(request: NextRequest) {
     });
   }
 
+  const userClient = createSupabaseServerClient(cookies());
+  const { data: authData } = await userClient.auth.getUser();
+  if (!authData.user) {
+    return new Response(JSON.stringify({ error: 'Wymagane logowanie.' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  const { data: canManage, error: permissionError } = await userClient.rpc(
+    'can_manage_invoice',
+    { p_invoice_id: invoiceId },
+  );
+  if (permissionError || !canManage) {
+    return new Response(
+      JSON.stringify({ error: 'Nie masz uprawnień do wysyłania faktur do KSeF.' }),
+      { status: 403, headers: { 'Content-Type': 'application/json' } },
+    );
+  }
+
+  const { data: actorByAuth } = await userClient
+    .from('employees')
+    .select('id')
+    .eq('auth_user_id', authData.user.id)
+    .maybeSingle();
+  const { data: actorByEmail } = actorByAuth || !authData.user.email
+    ? { data: null }
+    : await userClient
+        .from('employees')
+        .select('id')
+        .eq('email', authData.user.email)
+        .maybeSingle();
+  const actorEmployee = actorByAuth ?? actorByEmail;
+  const actorEmployeeId = actorEmployee?.id ?? null;
+
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
@@ -414,6 +387,9 @@ export async function POST(request: NextRequest) {
       let accessTokenForClose: string | undefined;
       let isTestEnvForClose = false;
       let currentStep = 'validate';
+      let ksefSendClaimed = false;
+      let invoiceMayHaveReachedKsef = false;
+      let persistenceClient: SupabaseClient<any> | undefined;
 
       const emit = (data: any) => {
         try {
@@ -435,12 +411,44 @@ export async function POST(request: NextRequest) {
         emitProgress('validate', 'active', { message: 'Pobieranie faktury z bazy' });
 
         const supabase = createClient(supabaseUrl, supabaseServiceKey);
+        persistenceClient = supabase;
 
         const { data: invoice, error: invoiceError } = await fetchInvoice(supabase, invoiceId);
 
         if (invoiceError || !invoice) {
           emitProgress('validate', 'error', { message: 'Nie znaleziono faktury' });
           emitResult({ success: false, error: 'Nie znaleziono faktury' });
+          controller.close();
+          return;
+        }
+
+        if (
+          invoice.ksef_status === 'accepted' ||
+          invoice.ksef_status === 'pending' ||
+          invoice.ksef_reference_number
+        ) {
+          const message =
+            invoice.ksef_status === 'pending'
+              ? 'Faktura oczekuje na rozstrzygnięcie poprzedniej wysyłki do KSeF. Najpierw odśwież jej status.'
+              : 'Faktura została już przyjęta przez KSeF.';
+          emitProgress('validate', 'error', { message });
+          emitResult({
+            success: false,
+            error: message,
+            ksef_reference_number: invoice.ksef_reference_number || null,
+          });
+          controller.close();
+          return;
+        }
+
+        const { data: alreadySynced } = await checkExistingSyncedInvoice(supabase, invoiceId);
+        if (alreadySynced?.ksef_reference_number) {
+          emitProgress('validate', 'error', { message: 'Faktura została już przyjęta przez KSeF' });
+          emitResult({
+            success: false,
+            error: 'Faktura została już przyjęta przez KSeF',
+            ksef_reference_number: alreadySynced.ksef_reference_number,
+          });
           controller.close();
           return;
         }
@@ -472,16 +480,6 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        if (invoice.status === 'issued') {
-          const { data: existingKsef } = await checkExistingSyncedInvoice(supabase, invoiceId);
-          if (existingKsef) {
-            emitProgress('validate', 'error', { message: 'Faktura już wysłana do KSeF' });
-            emitResult({ success: false, error: 'Faktura została już wysłana do KSeF', ksef_reference_number: existingKsef.ksef_reference_number });
-            controller.close();
-            return;
-          }
-        }
-
         const organizationQuery = await fetchOrganization(supabase, invoice.organization_id);
         if (organizationQuery.error) {
           emitProgress('validate', 'error', { message: 'Błąd pobierania danych organizacji' });
@@ -495,11 +493,15 @@ export async function POST(request: NextRequest) {
           const db = getDb(supabase);
           const { data: relatedInv } = await db
             .invoices()
-            .select('invoice_type')
+            .select('invoice_type, total_gross, settlement_summary')
             .eq('id', invoice.related_invoice_id)
             .maybeSingle();
           if (relatedInv) {
             invoice.corrected_invoice_type = relatedInv.invoice_type;
+            invoice.corrected_amount_before =
+              relatedInv.invoice_type === 'final'
+                ? Number(relatedInv.settlement_summary?.remainingGross ?? relatedInv.total_gross ?? 0)
+                : Number(relatedInv.total_gross ?? 0);
           }
         }
 
@@ -508,32 +510,25 @@ export async function POST(request: NextRequest) {
           ? await enrichFinalInvoiceSettledInvoicesWithKsefNumbers(supabase, invoice)
           : invoice;
 
-          const normalizedPaymentDate =
-  invoice.paid_at
-    ? String(invoice.paid_at).split('T')[0]
-    : invoice.payment_date
-      ? String(invoice.payment_date).split('T')[0]
-      : invoice.payment_status === 'paid'
-        ? String(invoice.payment_due_date || invoice.issue_date).split('T')[0]
-        : null;
+        const normalizedPaymentDate = invoice.paid_at
+          ? String(invoice.paid_at).split('T')[0]
+          : invoice.paid_date
+            ? String(invoice.paid_date).split('T')[0]
+            : invoice.payment_date
+              ? String(invoice.payment_date).split('T')[0]
+              : null;
 
-const normalizedInvoiceForXml = {
-  ...invoiceForXml,
-  payment_date: normalizedPaymentDate,
-  paid_at: invoice.paid_at,
-  paid_amount:
-    invoice.payment_status === 'paid'
-      ? Number(invoice.paid_amount ?? invoice.total_gross ?? 0)
-      : Number(invoice.paid_amount ?? 0),
-};
-
-console.log('organization bank swift:', organization?.bank_swift_code, organization?.bankSwiftCode);
-
-console.log('invoice bank swift:', invoice?.bank_swift_code, invoice?.bankSwiftCode);
+        const normalizedInvoiceForXml = {
+          ...invoiceForXml,
+          payment_date: normalizedPaymentDate,
+          paid_at: invoice.paid_at,
+          paid_amount:
+            invoice.payment_status === 'paid'
+              ? Math.abs(Number(invoice.paid_amount ?? invoice.total_gross ?? 0))
+              : Number(invoice.paid_amount ?? 0),
+        };
 
         const preparedInvoice = prepareFA3Invoice(normalizedInvoiceForXml, organization);
-
-        console.log('prepared bank swift:', preparedInvoice.invoice.bankSwiftCode);
         const validation = validatePreparedFA3Invoice(preparedInvoice);
 
         if (!validation.valid) {
@@ -543,14 +538,13 @@ console.log('invoice bank swift:', invoice?.bank_swift_code, invoice?.bankSwiftC
           return;
         }
 
-        debugFA3PreparedInvoice(preparedInvoice);
         emitProgress('validate', 'completed');
 
         // XML generation
         currentStep = 'xml';
         emitProgress('xml', 'active', { message: 'Generowanie XML FA(3)' });
 
-        const xmlContent = generateFA3XML(preparedInvoice, { debug: true });
+        const xmlContent = generateFA3XML(preparedInvoice);
 
 
         if (DEBUG_XML_ONLY) {        
@@ -562,6 +556,7 @@ console.log('invoice bank swift:', invoice?.bank_swift_code, invoice?.bankSwiftC
           controller.close();
           return;
         }
+
         emitProgress('xml', 'completed');
         // Auth
         currentStep = 'auth';
@@ -611,6 +606,15 @@ console.log('invoice bank swift:', invoice?.bank_swift_code, invoice?.bankSwiftC
           controller.close();
           return;
         }
+
+        const { error: claimError } = await supabase.rpc('begin_ksef_send_atomic', {
+          p_invoice_id: invoiceId,
+          p_actor: actorEmployeeId,
+        });
+        if (claimError) {
+          throw new Error(`Nie udało się zablokować dokumentu do pojedynczej wysyłki KSeF: ${claimError.message}`);
+        }
+        ksefSendClaimed = true;
 
         const keyMaterial = createSymmetricKeyMaterial(symmetricKeyCert.certificate);
 
@@ -667,13 +671,9 @@ console.log('invoice bank swift:', invoice?.bank_swift_code, invoice?.bankSwiftC
           isTestEnv,
           { action: 'send-invoice', invoiceId, myCompanyId: invoice.my_company_id },
         );
+        invoiceMayHaveReachedKsef = true;
 
         emitProgress('encrypt', 'completed');
-
-        console.log(
-          'SEND RESPONSE:',
-          JSON.stringify(sendResponse, null, 2),
-        );
 
         // Poll
         currentStep = 'poll';
@@ -698,11 +698,6 @@ console.log('invoice bank swift:', invoice?.bank_swift_code, invoice?.bankSwiftC
               accessToken,
               isTestEnv,
               { action: 'check-invoice-status', invoiceId, myCompanyId: invoice.my_company_id, attempt: i + 1 },
-            );
-
-            console.log(
-              'SESSION INVOICES RESPONSE:',
-              JSON.stringify(sessionInvoices, null, 2),
             );
 
             const inv = sessionInvoices.invoices?.[0];
@@ -762,57 +757,24 @@ console.log('invoice bank swift:', invoice?.bank_swift_code, invoice?.bankSwiftC
         const isRejected = !!rejectionMessage;
         const isPending = !ksefNumber && !rejectionMessage;
 
-        await supabase.from('invoices').update({
-          status: isRejected
-            ? 'draft'
-            : isPending
-              ? 'processing'
-              : 'issued',
-        
-          ksef_status: isRejected
-            ? 'rejected'
-            : isPending
-              ? 'pending'
-              : 'accepted',
-        
-          ksef_reference_number: finalRefNumber,
-          ksef_error: rejectionMessage ?? null,
-          ksef_sent_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        });
+        const { error: persistenceError } = await supabase.rpc(
+          'persist_ksef_send_result_atomic',
+          {
+            p_invoice_id: invoiceId,
+            p_xml_content: xmlContent,
+            p_ksef_number: finalRefNumber,
+            p_final_timestamp: finalTimestamp,
+            p_rejection_message: rejectionMessage ?? null,
+            p_is_pending: isPending,
+            p_actor: actorEmployeeId,
+          },
+        );
 
-        const { data: ksefInvoice, error: ksefError } = await createOrUpdateKsefInvoiceRecord({
-          supabase,
-          invoice,
-          invoiceId,
-          xmlContent,
-          isRejected,
-          ksefNumber: finalRefNumber,
-          finalTimestamp,
-          rejectionMessage,
-        });
-
-        if (ksefError) {
-          console.error('Error saving to ksef_invoices:', ksefError);
+        if (persistenceError) {
+          throw new Error(
+            `KSeF przetworzył dokument, ale nie udało się atomowo zapisać wyniku: ${persistenceError.message}`,
+          );
         }
-
-        await updateInvoiceStatus({
-          supabase,
-          invoiceId,
-          isRejected,
-          ksefNumber: finalRefNumber,
-          finalTimestamp,
-          rejectionMessage,
-        });
-
-        await writeInvoiceHistory({
-          supabase,
-          invoiceId,
-          finalRefNumber,
-          finalTimestamp,
-          rejectionMessage,
-          isRejected,
-        });
 
         emitProgress('save', 'completed', { message: 'Wynik zapisany w systemie' });
 
@@ -822,6 +784,13 @@ console.log('invoice bank swift:', invoice?.bank_swift_code, invoice?.bankSwiftC
             error: 'Faktura została odrzucona przez KSeF',
             details: rejectionMessage || 'Błąd weryfikacji semantyki dokumentu faktury',
           });
+        } else if (isPending) {
+          emitResult({
+            success: false,
+            pending: true,
+            error:
+              'KSeF nie zwrócił jeszcze ostatecznego statusu. Faktura została zablokowana do czasu synchronizacji, aby nie wysłać jej ponownie.',
+          });
         } else {
           emitResult({
             success: true,
@@ -830,6 +799,20 @@ console.log('invoice bank swift:', invoice?.bank_swift_code, invoice?.bankSwiftC
           });
         }
       } catch (error: any) {
+        if (ksefSendClaimed && persistenceClient) {
+          const { error: failurePersistenceError } = await persistenceClient.rpc(
+            'finish_ksef_send_attempt_failure_atomic',
+            {
+              p_invoice_id: invoiceId,
+              p_error: error?.message || String(error),
+              p_keep_pending: invoiceMayHaveReachedKsef,
+              p_actor: actorEmployeeId,
+            },
+          );
+          if (failurePersistenceError) {
+            console.error('Nie udało się zapisać stanu awarii wysyłki KSeF:', failurePersistenceError);
+          }
+        }
         console.error('Error sending invoice to KSeF:', error);
         emitProgress(currentStep, 'error', { message: error.message || String(error) });
         emitResult({ success: false, error: error.message || 'Błąd podczas wysyłania faktury do KSeF' });

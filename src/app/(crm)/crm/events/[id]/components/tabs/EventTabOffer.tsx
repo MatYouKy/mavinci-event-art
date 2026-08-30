@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import React, { Dispatch, SetStateAction, useState } from 'react';
 import ReserveEquipmentModal from '@/components/crm/ReserveEquipmentModal';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import { getOfferTotals } from '@/lib/CRM/Offers/offerTotals';
 
 interface EventTabOfferProps {
   offers: any[];
@@ -156,16 +157,21 @@ export default function EventTabOffer({
                           </span>
                         </div>
                         <p className="text-sm text-[#e5e4e2]/60">
-                          Klient: {offer.organization?.name || 'Brak klienta'}
+                          Klient:{' '}
+                          {offer.contact?.full_name ||
+                            `${offer.contact?.first_name || ''} ${offer.contact?.last_name || ''}`.trim() ||
+                            offer.organization?.alias ||
+                            offer.organization?.name ||
+                            'Brak klienta'}
                         </p>
                       </div>
 
                       <div className="text-right">
                         <p className="text-2xl font-light text-[#d3bb73]">
-                          {(Number(offer.subtotal || offer.total_amount || 0) + Number(offer.tax_amount || 0)).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
+                          {getOfferTotals(offer).gross.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
                         </p>
                         <p className="text-xs text-[#e5e4e2]/50">
-                          netto: {Number(offer.subtotal || offer.total_amount || 0).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
+                          netto: {getOfferTotals(offer).net.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
                         </p>
                         {offer.valid_until && (
                           <p className="mt-1 text-xs text-[#e5e4e2]/40">

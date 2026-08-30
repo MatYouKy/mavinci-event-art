@@ -50,6 +50,7 @@ export function InvoiceFormModal({
     my_company_id: invoice?.my_company_id ?? '',
     category_id: invoice?.category_id ?? '',
     payment_status: invoice?.payment_status ?? 'paid',
+    paid_amount: invoice?.paid_amount ? String(invoice.paid_amount) : '',
     payment_date:
       invoice?.payment_date ?? invoice?.invoice_date ?? prefill?.invoice_date ?? new Date().toISOString().slice(0, 10),
   });
@@ -64,6 +65,17 @@ export function InvoiceFormModal({
     if (!form.seller_name.trim() || !form.invoice_number.trim() || !form.invoice_date || !form.my_company_id) {
       showSnackbar('Uzupełnij działalność, sprzedającego, numer i datę faktury', 'error');
       return;
+    }
+    if (form.payment_status === 'partially_paid') {
+      const paid = Number(form.paid_amount || 0);
+      const gross = Math.abs(Number(form.amount_gross || 0));
+      if (paid <= 0 || gross <= 0 || paid >= gross) {
+        showSnackbar(
+          'Dla płatności częściowej podaj kwotę większą od zera i mniejszą od kwoty brutto',
+          'error',
+        );
+        return;
+      }
     }
     setSaving(true);
 
@@ -95,7 +107,16 @@ export function InvoiceFormModal({
       my_company_id: form.my_company_id || null,
       category_id: form.category_id || null,
       payment_status: form.payment_status,
-      payment_date: form.payment_status === 'paid' ? (form.payment_date || form.invoice_date) : null,
+      paid_amount:
+        form.payment_status === 'paid'
+          ? Math.abs(Number(form.amount_gross || 0))
+          : form.payment_status === 'partially_paid'
+            ? Math.max(Number(form.paid_amount || 0), 0)
+            : 0,
+      payment_date:
+        form.payment_status === 'paid' || form.payment_status === 'partially_paid'
+          ? form.payment_date || form.invoice_date
+          : null,
     };
 
     let result;
@@ -126,10 +147,11 @@ export function InvoiceFormModal({
       supabase.from('my_companies').select('id,name').eq('is_active', true).order('name'),
       supabase.from('finance_categories').select('id,name').eq('is_active', true).in('kind', ['expense', 'both']).order('sort_order'),
     ]).then(([companiesResult, categoriesResult]) => {
-      setCompanies(companiesResult.data || []);
+      const companyRows = companiesResult.data || [];
+      setCompanies(companyRows);
       setCategories(categoriesResult.data || []);
-      if (companiesResult.data?.length === 1) {
-        setForm((current) => ({ ...current, my_company_id: current.my_company_id || companiesResult.data[0].id }));
+      if (companyRows.length === 1) {
+        setForm((current) => ({ ...current, my_company_id: current.my_company_id || companyRows[0].id }));
       }
     });
   }, []);
@@ -248,10 +270,30 @@ export function InvoiceFormModal({
             <option value="cancelled">Anulowana</option>
           </select>
         </div>
-        {form.payment_status === 'paid' && (
+        {(form.payment_status === 'paid' || form.payment_status === 'partially_paid') && (
           <div>
             <label className={labelClass}>Data zapłaty</label>
             <input type="date" className={inputClass} value={form.payment_date} onChange={(e) => setForm({ ...form, payment_date: e.target.value })} />
+          </div>
+        )}
+
+        {form.payment_status === 'partially_paid' && (
+          <div>
+            <label className={labelClass}>Faktycznie zapłacona kwota brutto *</label>
+            <input
+              type="number"
+              min="0.01"
+              max={form.amount_gross ? Math.abs(Number(form.amount_gross)) : undefined}
+              step="0.01"
+              required
+              value={form.paid_amount}
+              onChange={(event) => setForm({ ...form, paid_amount: event.target.value })}
+              className={inputClass}
+              placeholder="0,00"
+            />
+            <p className="mt-1 text-xs text-[#e5e4e2]/45">
+              Ta kwota jest potrzebna, aby kolejne przelewy rozliczały wyłącznie pozostałe saldo.
+            </p>
           </div>
         )}
         <div>

@@ -1,7 +1,16 @@
 'use client';
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Plus, Filter, AlertCircle, Clock, ChevronDown, Save, RotateCcw } from 'lucide-react';
+import {
+  Plus,
+  Filter,
+  AlertCircle,
+  Clock,
+  ChevronDown,
+  Save,
+  RotateCcw,
+  UserPlus,
+} from 'lucide-react';
 import {
   useGetEventPhasesQuery,
   useUpdatePhaseMutation,
@@ -15,6 +24,7 @@ import { ResourceTimeline } from './ResourceTimeline';
 import { PhaseAssignmentsLoader, PhaseAssignmentsData } from './PhaseAssignmentsLoader';
 import { AddPhaseModal } from '../Modals/AddPhaseModal';
 import { EditPhaseModal } from '../Modals/EditPhaseModal';
+import { AddPhaseAssignmentModal } from '../Modals/AddPhaseAssignmentModal';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 import {
@@ -55,6 +65,7 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
   const [resourceFilter, setResourceFilter] = useState<ResourceFilter>('all');
   const [selectedPhase, setSelectedPhase] = useState<EventPhase | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showQuickEmployeeModal, setShowQuickEmployeeModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showResourcePanel, setShowResourcePanel] = useState(false);
   const [showFilterMenu, setShowFilterMenu] = useState(false);
@@ -319,20 +330,6 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
     return result;
   }, [eventEmployees, phaseAssignments]);
 
-  const employeesFromAssignments = useMemo(() => {
-    const map = new Map<string, any>();
-  
-    phaseAssignments.forEach(pa => {
-      pa.assignments?.forEach((a: any) => {
-        if (a.employee_id && a.employee) {
-          map.set(a.employee_id, { ...a.employee, id: a.employee_id });
-        }
-      });
-    });
-  
-    return Array.from(map.values());
-  }, [phaseAssignments]);
-
   if (isLoading) {
     return (
       <div className="flex h-96 items-center justify-center">
@@ -344,8 +341,8 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-[#d3bb73]/10 bg-[#1c1f33] p-4">
-        <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#d3bb73]/10 bg-[#1c1f33] p-4">
+        <div className="flex flex-wrap items-center gap-3">
           <Clock className="h-5 w-5 text-[#d3bb73]" />
           <h2 className="text-lg font-semibold text-[#e5e4e2]">Fazy Wydarzenia</h2>
           <span className="rounded-full bg-[#d3bb73]/20 px-3 py-1 text-xs font-medium text-[#d3bb73]">
@@ -359,7 +356,7 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
           )}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {/* Draft Changes Actions */}
           {hasUnsavedChanges && (
             <>
@@ -431,6 +428,16 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
           </div>
 
           {/* Add Phase Button */}
+          {displayPhases.length > 0 && (
+            <button
+              onClick={() => setShowQuickEmployeeModal(true)}
+              className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 bg-[#0f1119] px-4 py-1.5 text-sm font-medium text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/10"
+            >
+              <UserPlus className="h-4 w-4" />
+              Dodaj do timeline
+            </button>
+          )}
+
           <button
             onClick={() => setShowAddModal(true)}
             className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 bg-[#d3bb73] px-4 py-1.5 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
@@ -508,7 +515,7 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
                   phaseAssignments={phaseAssignments}
                   timelineBounds={timelineBounds}
                   zoomLevel={zoomLevel}
-                  employees={employeesFromAssignments}
+                  employees={employees}
                   vehicles={eventVehicles}
                   equipment={eventEquipment}
                 />
@@ -550,6 +557,15 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
         }}
         phase={selectedPhase}
       />
+
+      {displayPhases.length > 0 && (
+        <AddPhaseAssignmentModal
+          open={showQuickEmployeeModal}
+          onClose={() => setShowQuickEmployeeModal(false)}
+          phase={selectedPhase || displayPhases[0]}
+          eventId={eventId}
+        />
+      )}
 
       {/* Resource Panel */}
       {showResourcePanel && selectedPhase && (

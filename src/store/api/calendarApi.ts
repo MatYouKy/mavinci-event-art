@@ -67,7 +67,7 @@ export const calendarApi = createApi({
                 contact_person_id,
                 created_by,
                 created_at,
-                organizations:organization_id(id, name, alias),
+                organizations:organizations!events_organization_id_fkey(id, name, alias),
                 contacts:contact_person_id(id, first_name, last_name, full_name),
                 event_categories:category_id(
                   id,

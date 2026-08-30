@@ -49,6 +49,15 @@ export interface Preferences {
   employees?: ViewModePreference;
   notifications?: NotificationPreferences;
   dashboard?: DashboardPreferences;
+  messages?: {
+    mailboxOrder?: string[];
+  };
+  offerWizard?: {
+    catalogViewMode?: 'list' | 'table';
+  };
+  offerCatalog?: {
+    viewMode?: 'grid' | 'list' | 'table';
+  };
 }
 
 const modules = [

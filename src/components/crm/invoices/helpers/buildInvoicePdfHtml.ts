@@ -1,4 +1,4 @@
-import { InvoiceItem } from '@/app/(crm)/crm/invoices/[id]/page';
+import type { InvoiceItem } from '@/app/(crm)/crm/invoices/[id]/page';
 
 export interface SettledInvoicePdfRef {
   id?: string;
@@ -10,8 +10,8 @@ export interface SettledInvoicePdfRef {
   totalGross: number;
 }
 
-interface InvoicePdfData {
-  paymentStatus?: 'unpaid' | 'partial' | 'paid' | null;
+export interface InvoicePdfData {
+  paymentStatus?: 'unpaid' | 'partially_paid' | 'paid' | 'overdue' | 'refund_due' | 'partially_refunded' | 'refunded' | null;
   paidAmount?: number | null;
   paidAt?: string | null;
 
@@ -19,6 +19,7 @@ interface InvoicePdfData {
   footerNote: string;
   signatureName: string;
   website?: string | null;
+  showPreviewWatermark?: boolean;
   invoiceNumber: string;
   invoiceType: string;
   issueDate: string;
@@ -41,6 +42,7 @@ interface InvoicePdfData {
   totalNet: number;
   totalVat: number;
   totalGross: number;
+  currencyCode?: string;
   companyLogoUrl?: string | null;
   isProforma: boolean;
   correctionReason?: string;
@@ -53,12 +55,27 @@ interface InvoicePdfData {
     quantity: number;
     priceNet: number;
     vatRate: number;
+    vatCode?: '23' | '8' | '5' | '0' | '0 KR' | '0 WDT' | '0 EX' | 'zw' | 'np' | 'np I' | 'np II' | 'oo';
+    vatExemptionReason?: string | null;
     valueNet: number;
     vatAmount: number;
     valueGross: number;
     unitPriceNet?: number;
   }>;
   invoice_items?: Array<InvoiceItem>;
+  orderItems?: Array<{
+    positionNumber: number;
+    name: string;
+    unit: string;
+    quantity: number;
+    priceNet: number;
+    vatRate: number;
+    vatCode?: '23' | '8' | '5' | '0' | '0 KR' | '0 WDT' | '0 EX' | 'zw' | 'np' | 'np I' | 'np II' | 'oo';
+    vatExemptionReason?: string | null;
+    valueNet: number;
+    vatAmount: number;
+    valueGross: number;
+  }>;
   settledInvoices?: SettledInvoicePdfRef[];
   settlementSummary?: {
     invoiceTotalNet: number;
@@ -114,7 +131,13 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
     return `${number > 0 ? '+' : ''}${number.toFixed(2)}`;
   };
 
+  const vatLabel = (
+    vatRate: number,
+    vatCode?: '23' | '8' | '5' | '0' | '0 KR' | '0 WDT' | '0 EX' | 'zw' | 'np' | 'np I' | 'np II' | 'oo',
+  ) => (vatCode && ['zw', 'np', 'np I', 'np II', 'oo'].includes(vatCode) ? vatCode.toUpperCase() : `${vatCode || vatRate}%`);
+
   const isCorrectiveInvoice = data.invoiceType === 'corrective';
+  const currencyCode = data.currencyCode || 'PLN';
   const isFinalInvoice =
     data.invoiceType === 'final' || data.invoiceNumber?.startsWith('FKO/');
 
@@ -130,40 +153,53 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
     paymentMethod === 'gotowka' ||
     paymentMethod === 'cash';
 
-  const paymentStatus: 'unpaid' | 'partial' | 'paid' =
+  const paymentStatus: 'unpaid' | 'partially_paid' | 'paid' | 'overdue' | 'refund_due' | 'partially_refunded' | 'refunded' =
     data.paymentStatus || (isCash ? 'paid' : 'unpaid');
 
+  const isRefund = isCorrectiveInvoice && data.totalGross < 0;
+  const refundAmount = Math.abs(invoiceTotalToPay);
+
   const paidAmount =
-    paymentStatus === 'paid' ? invoiceTotalToPay : money(data.paidAmount ?? 0);
+    paymentStatus === 'paid' || paymentStatus === 'refunded'
+      ? (isRefund ? refundAmount : invoiceTotalToPay)
+      : money(data.paidAmount ?? 0);
 
   const remainingAmount =
-    paymentStatus === 'paid'
+    paymentStatus === 'paid' || paymentStatus === 'refunded'
       ? 0
-      : paymentStatus === 'partial'
-        ? Math.max(invoiceTotalToPay - paidAmount, 0)
-        : invoiceTotalToPay;
+      : paymentStatus === 'partially_paid' || paymentStatus === 'partially_refunded'
+        ? Math.max((isRefund ? refundAmount : invoiceTotalToPay) - paidAmount, 0)
+        : isRefund
+          ? refundAmount
+          : invoiceTotalToPay;
 
-  const paymentLabel = isCorrectiveInvoice
-    ? data.totalGross < 0
-      ? 'Razem do zwrotu:'
-      : 'Suma korekt:'
+  const paymentLabel = isRefund
+    ? paymentStatus === 'refunded'
+      ? 'Zwrócono:'
+      : paymentStatus === 'partially_refunded'
+        ? 'Pozostało do zwrotu:'
+        : 'Do zwrotu:'
+    : isCorrectiveInvoice
+      ? 'Suma korekt:'
     : paymentStatus === 'paid'
       ? 'Zapłacono:'
-      : paymentStatus === 'partial'
+      : paymentStatus === 'partially_paid'
         ? 'Pozostało do zapłaty:'
         : 'Do zapłaty:';
 
   const paymentInfoHtml =
-    paymentStatus === 'paid'
+    paymentStatus === 'paid' || paymentStatus === 'refunded'
       ? `
         <div style="margin-top: 4px; font-size: 10px; color: #666;">
-          ${data.paidAt ? `Opłacono dnia: ${esc(formatDate(data.paidAt))}` : 'Faktura opłacona'}
+          ${paymentStatus === 'refunded'
+            ? (data.paidAt ? `Zwrot wykonano dnia: ${esc(formatDate(data.paidAt))}` : 'Zwrot wykonany')
+            : (data.paidAt ? `Opłacono dnia: ${esc(formatDate(data.paidAt))}` : 'Faktura opłacona')}
         </div>
       `
-      : paymentStatus === 'partial'
+      : paymentStatus === 'partially_paid' || paymentStatus === 'partially_refunded'
         ? `
           <div style="margin-top: 4px; font-size: 10px; color: #666;">
-            Zapłacono: ${formatMoney(paidAmount)} PLN${
+            ${paymentStatus === 'partially_refunded' ? 'Zwrócono' : 'Zapłacono'}: ${formatMoney(paidAmount)} ${esc(currencyCode)}${
               data.paidAt ? ` dnia ${esc(formatDate(data.paidAt))}` : ''
             }
           </div>
@@ -181,6 +217,8 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
             quantity: Number(item.quantity),
             priceNet: Number(item.price_net ?? item.price_net ?? 0),
             vatRate: Number(item.vat_rate ?? 0),
+            vatCode: item.vat_code,
+            vatExemptionReason: item.vat_exemption_reason,
             valueNet: Number(item.value_net ?? item.total_net ?? 0),
             vatAmount: Number(item.vat_amount ?? item.total_vat ?? 0),
             valueGross: Number(item.value_gross ?? item.total_gross ?? 0),
@@ -196,17 +234,15 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
     const beforeVat = money(item.before_vat_amount ?? (beforeNet * vatRate) / 100);
     const beforeGross = money(item.before_value_gross ?? beforeNet + beforeVat);
 
-    const correctionNet = money(item.value_net ?? 0);
-    const correctionVat = money(item.vat_amount ?? (correctionNet * vatRate) / 100);
-    const correctionGross = money(item.value_gross ?? correctionNet + correctionVat);
+    const afterQty = Number(item.after_quantity ?? item.quantity ?? 0);
+    const afterPrice = Number(item.after_price_net ?? item.price_net ?? 0);
+    const afterNet = money(item.after_value_net ?? afterQty * afterPrice);
+    const afterVat = money(item.after_vat_amount ?? (afterNet * vatRate) / 100);
+    const afterGross = money(item.after_value_gross ?? afterNet + afterVat);
 
-    const correctionQty =
-      correctionNet !== 0 && beforePrice !== 0
-        ? money(Math.abs(correctionNet / beforePrice))
-        : Math.abs(Number(item.before_quantity ?? item.quantity ?? 1));
-
-    const correctionPrice =
-      correctionQty !== 0 ? money(correctionNet / correctionQty) : correctionNet;
+    const correctionNet = money(item.value_net ?? afterNet - beforeNet);
+    const correctionVat = money(item.vat_amount ?? afterVat - beforeVat);
+    const correctionGross = money(item.value_gross ?? afterGross - beforeGross);
 
     return {
       vatRate,
@@ -215,8 +251,11 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
       beforeNet,
       beforeVat,
       beforeGross,
-      correctionQty,
-      correctionPrice,
+      afterQty,
+      afterPrice,
+      afterNet,
+      afterVat,
+      afterGross,
       correctionNet,
       correctionVat,
       correctionGross,
@@ -273,7 +312,7 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
               <div class="advance-row">
                 ${esc(inv.invoiceNumber)}
                 ${inv.issueDate ? ` z dnia ${esc(formatDate(inv.issueDate))}` : ''}
-                — ${formatMoney(inv.totalGross)} PLN brutto
+                — ${formatMoney(inv.totalGross)} ${esc(currencyCode)} brutto
               </div>
             `,
           )
@@ -293,12 +332,15 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
           (item) => `
           <tr>
             <td>${item.positionNumber}</td>
-            <td>${esc(item.name)}</td>
+            <td>
+              ${esc(item.name)}
+              ${item.vatCode === 'zw' && item.vatExemptionReason ? `<div class="item-note">Podstawa zwolnienia: ${esc(item.vatExemptionReason)}</div>` : ''}
+            </td>
             <td class="center">${esc(item.unit)}</td>
             <td class="right">${item.quantity}</td>
             <td class="right">${formatMoney(item.priceNet)}</td>
             <td class="right">${formatMoney(item.valueNet)}</td>
-            <td class="center">${item.vatRate}%</td>
+            <td class="center">${esc(vatLabel(item.vatRate, item.vatCode))}</td>
             <td class="right">${formatMoney(item.vatAmount)}</td>
             <td class="right strong">${formatMoney(item.valueGross)}</td>
           </tr>
@@ -325,25 +367,73 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
               <td class="right">${correction.beforeQty}</td>
               <td class="right">${formatMoney(correction.beforePrice)}</td>
               <td class="right">${formatMoney(correction.beforeNet)}</td>
-              <td class="center">${correction.vatRate}%</td>
+              <td class="center">${esc(vatLabel(correction.vatRate, item.vat_code))}</td>
               <td class="right">${formatMoney(correction.beforeVat)}</td>
               <td class="right">${formatMoney(correction.beforeGross)}</td>
             </tr>
 
             <tr>
-              <td style="font-size: 9px; color: #666;">Korekta</td>
+              <td style="font-size: 9px; color: #666;">Po korekcie</td>
               <td class="center">${esc(item.unit)}</td>
-              <td class="right">${correction.correctionQty}</td>
-              <td class="right">${formatMoney(correction.correctionPrice)}</td>
-              <td class="right">${formatMoney(correction.correctionNet)}</td>
-              <td class="center">${correction.vatRate}%</td>
-              <td class="right">${formatMoney(correction.correctionVat)}</td>
-              <td class="right strong">${formatMoney(correction.correctionGross)}</td>
+              <td class="right">${correction.afterQty}</td>
+              <td class="right">${formatMoney(correction.afterPrice)}</td>
+              <td class="right">${formatMoney(correction.afterNet)}</td>
+              <td class="center">${esc(vatLabel(correction.vatRate, item.vat_code))}</td>
+              <td class="right">${formatMoney(correction.afterVat)}</td>
+              <td class="right strong">${formatMoney(correction.afterGross)}</td>
             </tr>
           `;
         })
         .join('')
     : '';
+
+  const orderItemsHtml =
+    data.invoiceType === 'advance' && data.orderItems?.length
+      ? `
+        <div class="order-section">
+          <div class="settlement-title">Pełna wartość zamówienia</div>
+          <table>
+            <thead>
+              <tr>
+                <th style="width: 4%">Lp.</th>
+                <th style="width: 38%">Nazwa towaru lub usługi</th>
+                <th style="width: 7%">Jm.</th>
+                <th style="width: 8%">Ilość</th>
+                <th style="width: 12%">Cena netto</th>
+                <th style="width: 12%">Netto</th>
+                <th style="width: 7%">VAT</th>
+                <th style="width: 12%">Brutto</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${data.orderItems
+                .map(
+                  (item) => `
+                    <tr>
+                      <td>${item.positionNumber}</td>
+                      <td>
+                        ${esc(item.name)}
+                        ${item.vatCode === 'zw' && item.vatExemptionReason ? `<div class="item-note">Podstawa zwolnienia: ${esc(item.vatExemptionReason)}</div>` : ''}
+                      </td>
+                      <td class="center">${esc(item.unit)}</td>
+                      <td class="right">${item.quantity}</td>
+                      <td class="right">${formatMoney(item.priceNet)}</td>
+                      <td class="right">${formatMoney(item.valueNet)}</td>
+                      <td class="center">${esc(vatLabel(item.vatRate, item.vatCode))}</td>
+                      <td class="right strong">${formatMoney(item.valueGross)}</td>
+                    </tr>`,
+                )
+                .join('')}
+              <tr>
+                <td colspan="5" class="right strong">Wartość zamówienia</td>
+                <td class="right strong">${formatMoney(data.orderItems.reduce((sum, item) => sum + item.valueNet, 0))}</td>
+                <td></td>
+                <td class="right strong">${formatMoney(data.orderItems.reduce((sum, item) => sum + item.valueGross, 0))} ${esc(currencyCode)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>`
+      : '';
 
   return `<!DOCTYPE html>
 <html lang="pl">
@@ -353,7 +443,7 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
   <style>
     @page {
       size: A4;
-      margin: 10mm;
+      margin: 10mm 10mm 17mm;
     }
 
     html,
@@ -367,12 +457,10 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
       color: #111;
       font-size: 12px;
       line-height: 1.45;
-      margin: 10mm;
-      min-height: calc(297mm - 20mm);
-      width: calc(210mm - 20mm);
+      margin: 0;
+      width: auto;
       box-sizing: border-box;
-      display: flex;
-      flex-direction: column;
+      display: block;
     }
 
     .top {
@@ -438,8 +526,29 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
 
     table {
       border-collapse: collapse;
-      width: calc(100% - 2mm);
+      width: 100%;
       table-layout: fixed;
+    }
+
+    thead {
+      display: table-header-group;
+    }
+
+    tr,
+    .summary,
+    .settlement-box,
+    .advance-list,
+    .order-section,
+    .closing-section,
+    .ksef-verification {
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+
+    .item-note {
+      margin-top: 2px;
+      color: #555;
+      font-size: 9px;
     }
 
     th,
@@ -467,8 +576,8 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
       font-size: 12px;
       font-weight: 700;
       padding: 6px 0;
-      margin: -10mm -10mm 16px -10mm;
-      width: calc(100% + 20mm);
+      margin: 0 0 16px;
+      width: 100%;
       box-sizing: border-box;
       text-transform: uppercase;
     }
@@ -520,7 +629,7 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
     }
 
     .signature {
-      margin: 60px 5% 0;
+      margin: 32px 5% 0;
       text-align: right;
     }
 
@@ -548,14 +657,6 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
     .signature-role {
       font-size: 9px;
       color: #666;
-    }
-
-    .footer-website {
-      margin-top: auto;
-      text-align: center;
-      font-size: 9px;
-      color: #999;
-      padding-top: 12px;
     }
 
     .settlement-box {
@@ -593,11 +694,35 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
     .advance-row:last-child {
       border-bottom: 1px solid #d1d5db;
     }
+
+    .order-section {
+      margin-top: 18px;
+    }
+
+    .ksef-verification {
+      margin-top: 18px;
+      padding-top: 10px;
+      border-top: 1px solid #d1d5db;
+      text-align: right;
+    }
+
+    .ksef-verification img {
+      display: inline-block;
+      width: 112px;
+      height: 112px;
+    }
+
+    .ksef-label {
+      margin-top: 3px;
+      font-size: 8px;
+      line-height: 1.25;
+      overflow-wrap: anywhere;
+    }
   </style>
 </head>
 
 <body>
-${!data.buyerIsPrivatePerson && data.invoiceType !== 'proforma'
+${data.showPreviewWatermark
   ? `<div class="preview-banner">Wizualizacja</div>`
   : ''}
 
@@ -750,9 +875,11 @@ ${!data.buyerIsPrivatePerson && data.invoiceType !== 'proforma'
   `
   }
 
+  ${orderItemsHtml}
   ${settledInvoicesHtml}
   ${finalSettlementHtml}
 
+  <div class="closing-section">
   <div class="summary">
 <div class="summary-left">
   <div>
@@ -763,9 +890,9 @@ ${!data.buyerIsPrivatePerson && data.invoiceType !== 'proforma'
   <span class="meta-label">Status płatności:</span>
 
   ${
-    paymentStatus === 'paid'
+    paymentStatus === 'paid' || paymentStatus === 'refunded'
       ? `
-        Zapłacono 
+        ${paymentStatus === 'refunded' ? 'Zwrot wykonany' : 'Zapłacono'}
         ${
           data.paidAt
             ? `<div style="margin-top: 2px;">
@@ -775,18 +902,22 @@ ${!data.buyerIsPrivatePerson && data.invoiceType !== 'proforma'
             : ''
         }
       `
-      : paymentStatus === 'partial'
+      : paymentStatus === 'partially_paid'
         ? `Częściowo opłacono`
-        : 'Do zapłaty'
+        : paymentStatus === 'partially_refunded'
+          ? 'Częściowo zwrócono'
+          : paymentStatus === 'refund_due'
+            ? 'Do zwrotu'
+            : 'Do zapłaty'
   }
 </div>
 
   ${
-    paymentStatus === 'partial'
+    paymentStatus === 'partially_paid' || paymentStatus === 'partially_refunded'
       ? `
         <div style="margin-top: 4px;">
-          <span class="meta-label">Wpłacono:</span>
-          ${formatMoney(paidAmount)} PLN
+          <span class="meta-label">${paymentStatus === 'partially_refunded' ? 'Zwrócono:' : 'Wpłacono:'}</span>
+          ${formatMoney(paidAmount)} ${esc(currencyCode)}
         </div>
       `
       : ''
@@ -815,12 +946,12 @@ ${!data.buyerIsPrivatePerson && data.invoiceType !== 'proforma'
         <span class="meta-label">${esc(paymentLabel)}</span>
         <span class="amount">
         ${
-          paymentStatus === 'paid'
+          paymentStatus === 'paid' || paymentStatus === 'refunded'
             ? formatMoney(paidAmount)
             : isCorrectiveInvoice
-              ? formatSignedMoney(remainingAmount)
+              ? (isRefund ? formatMoney(remainingAmount) : formatSignedMoney(remainingAmount))
               : formatMoney(remainingAmount)
-        } PLN
+        } ${esc(currencyCode)}
         </span>
         ${paymentInfoHtml}
       </div>
@@ -840,7 +971,8 @@ ${!data.buyerIsPrivatePerson && data.invoiceType !== 'proforma'
     </div>
   </div>
 
-  ${data.website ? `<div class="footer-website">${esc(data.website)}</div>` : ''}
+  <div id="ksef-verification-placeholder"></div>
+  </div>
 </body>
 </html>`;
 };

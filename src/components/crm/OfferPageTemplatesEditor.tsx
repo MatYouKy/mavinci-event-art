@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Plus, CreditCard as Edit, Trash2, Save, X, FileText, Building2, DollarSign, CheckCircle, Upload, Image as ImageIcon, Settings, Move, Type, ChevronDown, ChevronRight, Tag, Table2 } from 'lucide-react';
+import { Plus, CreditCard as Edit, Trash2, Save, X, FileText, Building2, DollarSign, CheckCircle, Upload, Image as ImageIcon, Settings, Move, Type, ChevronDown, ChevronRight, Tag, Table2, Package, Layers3, Loader2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
@@ -9,6 +9,7 @@ import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import dynamic from 'next/dynamic';
 import Draggable from 'react-draggable';
 import PricingTableConfigEditor from './PricingTableConfigEditor';
+import { optimizeOfferImage } from '@/lib/optimizeOfferImage';
 
 const ReactQuill = dynamic(() => import('react-quill'), { ssr: false });
 import 'react-quill/dist/quill.snow.css';
@@ -21,11 +22,60 @@ interface OfferTemplateCategory {
   color: string;
   created_at: string;
   updated_at: string;
+  hero_image_path?: string | null;
+  hero_image_alt?: string | null;
+  design_config?: CategoryDesignConfig | null;
+}
+
+interface CategoryDesignConfig {
+  primary_color: string;
+  secondary_color: string;
+  accent_color: string;
+  surface_color: string;
+  hero_opacity: number;
+  hero_gradient_enabled: boolean;
+  hero_gradient_end: number;
+  hero_height: number;
+  logo_scale: number;
+  assumptions_layout: 'cards' | 'simple';
+  visual_image_height: number;
+  pricing_style: 'card' | 'minimal';
+  info_page_enabled: boolean;
+  info_page_title: string;
+  order_process_text: string;
+  technical_requirements_text: string;
+  reservation_terms_text: string;
+}
+
+const DEFAULT_CATEGORY_DESIGN: CategoryDesignConfig = {
+  primary_color: '#5b001f',
+  secondary_color: '#1c1f33',
+  accent_color: '#d3bb73',
+  surface_color: '#faf7f2',
+  hero_opacity: 0.58,
+  hero_gradient_enabled: true,
+  hero_gradient_end: 0.45,
+  hero_height: 395,
+  logo_scale: 1,
+  assumptions_layout: 'cards',
+  visual_image_height: 285,
+  pricing_style: 'card',
+  info_page_enabled: true,
+  info_page_title: 'INFORMACJE I WARUNKI',
+  order_process_text: 'Akceptacja zakresu i wyceny\nPotwierdzenie terminu i podpisanie umowy\nUstalenia techniczne z obiektem\nRealizacja wydarzenia',
+  technical_requirements_text: 'Dostęp do sali przed wydarzeniem w czasie uzgodnionym z realizatorem\nStabilne zasilanie 230 V oraz miejsce dla stanowiska technicznego\nDostęp do internetu przewodowego przy realizacjach online\nKontakt do osoby technicznej po stronie obiektu',
+  reservation_terms_text: 'Termin rezerwujemy po akceptacji oferty i podpisaniu umowy\nZakres końcowy potwierdzamy po weryfikacji warunków technicznych\nDodatkowe usługi i zmiany wymagają potwierdzenia przed wydarzeniem',
+};
+
+interface EventCategoryAssignment {
+  id: string;
+  name: string;
+  default_offer_template_category_id?: string | null;
 }
 
 interface OfferPageTemplate {
   id: string;
-  type: 'cover' | 'about' | 'pricing' | 'final';
+  type: 'cover' | 'about' | 'product' | 'pricing' | 'final';
   name: string;
   description: string;
   is_default: boolean;
@@ -35,6 +85,7 @@ interface OfferPageTemplate {
   pdf_height?: number;
   text_fields_config?: TextFieldConfig[];
   template_category_id?: string;
+  variant_key?: 'default' | 'compact' | 'visual';
   created_by: string;
   created_at: string;
 }
@@ -53,6 +104,7 @@ interface TextFieldConfig {
   height?: number;
   border_radius?: number;
   is_circular?: boolean;
+  line_height?: number;
 }
 
 interface TemplateContent {
@@ -68,33 +120,40 @@ interface TemplateContent {
 const templateTypes = [
   {
     value: 'cover',
-    label: 'Strona tytułowa',
+    label: '1. Okładka',
     icon: FileText,
-    description: 'Pierwsza strona oferty z logo i danymi',
+    description: 'Nazwa wydarzenia, termin, klient i zdjęcie przewodnie',
   },
   {
     value: 'about',
-    label: 'O nas',
+    label: '2. Założenia wydarzenia',
     icon: Building2,
-    description: 'Informacje o firmie i doświadczeniu',
+    description: 'Najważniejsze liczby, cel spotkania i rekomendowany zakres',
+  },
+  {
+    value: 'product',
+    label: '3. Strony produktów i usług',
+    icon: Package,
+    description: 'Powtarzalna strona z opisem, grafiką i danymi pozycji',
   },
   {
     value: 'pricing',
-    label: 'Wycena',
+    label: '4. Wycena',
     icon: DollarSign,
     description: 'Podsumowanie cenowe i warunki',
   },
   {
     value: 'final',
-    label: 'Strona końcowa',
+    label: '5. Zakończenie',
     icon: CheckCircle,
-    description: 'Warunki techniczne i dane sprzedawcy',
+    description: 'Zdjęcie, dane sprzedawcy i czytelne wezwanie do kontaktu',
   },
 ];
 
 const sectionTypes: Record<string, string[]> = {
   cover: ['logo', 'title', 'subtitle', 'client_details', 'offer_details', 'background_image'],
   about: ['company_description', 'achievements', 'certifications', 'team', 'gallery'],
+  product: ['product_details', 'product_benefits', 'product_image', 'item_summary'],
   pricing: ['summary_table', 'payment_terms', 'validity', 'notes'],
   final: ['technical_requirements', 'seller_details', 'contact_info', 'legal_terms', 'footer'],
 };
@@ -105,16 +164,13 @@ export default function OfferPageTemplatesEditor() {
   const { employee } = useCurrentEmployee();
   const [templates, setTemplates] = useState<OfferPageTemplate[]>([]);
   const [categories, setCategories] = useState<OfferTemplateCategory[]>([]);
+  const [eventCategoryAssignments, setEventCategoryAssignments] = useState<EventCategoryAssignment[]>([]);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
-  const [selectedType, setSelectedType] = useState<string>('cover');
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [modalCategoryId, setModalCategoryId] = useState<string | null>(null);
   const [modalType, setModalType] = useState<string>('cover');
   const [editingTemplate, setEditingTemplate] = useState<OfferPageTemplate | null>(null);
-  const [showContentEditor, setShowContentEditor] = useState(false);
-  const [editingContent, setEditingContent] = useState<TemplateContent[]>([]);
   const [uploadingPdf, setUploadingPdf] = useState<string | null>(null);
   const [showTextFieldsEditor, setShowTextFieldsEditor] = useState(false);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
@@ -124,7 +180,17 @@ export default function OfferPageTemplatesEditor() {
   useEffect(() => {
     fetchCategories();
     fetchTemplates();
-  }, [selectedType]);
+    fetchEventCategoryAssignments();
+  }, []);
+
+  const fetchEventCategoryAssignments = async () => {
+    const { data } = await supabase
+      .from('event_categories')
+      .select('id, name, default_offer_template_category_id')
+      .eq('is_active', true)
+      .order('name');
+    setEventCategoryAssignments((data || []) as EventCategoryAssignment[]);
+  };
 
   const fetchCategories = async () => {
     try {
@@ -182,19 +248,6 @@ export default function OfferPageTemplatesEditor() {
     setModalCategoryId(categoryId);
     setModalType(type);
     setShowModal(true);
-  };
-
-  const handleEditTemplate = async (template: OfferPageTemplate) => {
-    setEditingTemplate(template);
-
-    const { data: content } = await supabase
-      .from('offer_page_template_content')
-      .select('*')
-      .eq('template_id', template.id)
-      .order('display_order');
-
-    setEditingContent(content || []);
-    setShowContentEditor(true);
   };
 
   const handleDeleteTemplate = async (template: OfferPageTemplate) => {
@@ -320,9 +373,9 @@ export default function OfferPageTemplatesEditor() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-light text-[#e5e4e2]">Szablony stron ofert</h2>
+          <h2 className="text-xl font-light text-[#e5e4e2]">Projekt oferty PDF</h2>
           <p className="mt-1 text-sm text-[#e5e4e2]/60">
-            Zarządzaj kategoriami i szablonami stron dla różnych typów eventów
+            Jeden spójny proces dla każdej kategorii wydarzenia
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -351,10 +404,28 @@ export default function OfferPageTemplatesEditor() {
         </div>
       </div>
 
+      <div className="grid gap-3 rounded-xl border border-[#7f1734]/40 bg-[#7f1734]/10 p-4 md:grid-cols-3">
+        <div className="flex gap-3">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#7f1734] text-sm font-semibold text-white">1</div>
+          <div><p className="text-sm font-medium text-[#e5e4e2]">Wybierz kategorię</p><p className="mt-1 text-xs text-[#e5e4e2]/55">Np. konferencja, wesele lub nagłośnienie.</p></div>
+        </div>
+        <div className="flex gap-3">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#7f1734] text-sm font-semibold text-white">2</div>
+          <div><p className="text-sm font-medium text-[#e5e4e2]">Użyj projektu Mavinci</p><p className="mt-1 text-xs text-[#e5e4e2]/55">Gotowy układ działa od razu. Własny PDF jest opcjonalnym tłem.</p></div>
+        </div>
+        <div className="flex gap-3">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#7f1734] text-sm font-semibold text-white">3</div>
+          <div><p className="text-sm font-medium text-[#e5e4e2]">Dodaj pola CRM</p><p className="mt-1 text-xs text-[#e5e4e2]/55">Po wgraniu własnego tła rozmieść dane i tabelę wyceny.</p></div>
+        </div>
+      </div>
+
       {/* Kategorie w accordion */}
       <div className="space-y-3">
         {categories.map((category) => {
           const isExpanded = expandedCategories.has(category.id);
+          const assignedEventCategories = eventCategoryAssignments.filter(
+            (eventCategory) => eventCategory.default_offer_template_category_id === category.id,
+          );
 
           return (
             <div
@@ -385,9 +456,28 @@ export default function OfferPageTemplatesEditor() {
                     {category.description && (
                       <p className="mt-0.5 text-sm text-[#e5e4e2]/60">{category.description}</p>
                     )}
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <span className={`rounded px-2 py-0.5 text-xs ${category.hero_image_path ? 'bg-green-500/15 text-green-300' : 'bg-amber-500/15 text-amber-300'}`}>
+                        {category.hero_image_path ? 'Zdjęcie hero: gotowe' : 'Zdjęcie hero: do uzupełnienia'}
+                      </span>
+                      <span className="rounded bg-[#7f1734]/15 px-2 py-0.5 text-xs text-[#d77a94]">
+                        5 etapów dokumentu
+                      </span>
+                    </div>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleEditCategory(category);
+                    }}
+                    className="flex items-center gap-2 rounded-lg border border-[#b94b69]/40 bg-[#7f1734]/25 px-3 py-2 text-sm text-[#f0c8d3] transition-colors hover:bg-[#7f1734]/40"
+                    title={category.hero_image_path ? 'Zmień zdjęcie hero' : 'Wgraj zdjęcie hero'}
+                  >
+                    <ImageIcon className="h-4 w-4" />
+                    {category.hero_image_path ? 'Zmień hero' : 'Wgraj hero'}
+                  </button>
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -409,6 +499,36 @@ export default function OfferPageTemplatesEditor() {
               {/* Rozwinięta zawartość - typy stron i szablony */}
               {isExpanded && (
                 <div className="space-y-4 border-t border-[#d3bb73]/10 p-4">
+                  <div className="grid gap-3 rounded-lg border border-[#d3bb73]/10 bg-[#0a0d1a] p-4 md:grid-cols-3">
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-[#e5e4e2]/35">1. Przypisanie</p>
+                      <p className={`mt-1 text-sm ${assignedEventCategories.length > 0 || category.is_default ? 'text-green-300' : 'text-amber-300'}`}>
+                        {assignedEventCategories.length > 0
+                          ? assignedEventCategories.map((item) => item.name).join(', ')
+                          : category.is_default
+                            ? 'Zestaw domyślny'
+                            : 'Nieprzypisana do kategorii wydarzenia'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-[#e5e4e2]/35">2. Zdjęcie hero</p>
+                      <p className={`mt-1 text-sm ${category.hero_image_path ? 'text-green-300' : 'text-amber-300'}`}>
+                        {category.hero_image_path ? 'Gotowe' : 'Brak zdjęcia dla okładki'}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => handleEditCategory(category)}
+                        className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-[#7f1734]/30 px-2.5 py-1.5 text-xs text-[#f0c8d3] hover:bg-[#7f1734]/45"
+                      >
+                        <Upload className="h-3.5 w-3.5" />
+                        {category.hero_image_path ? 'Zmień zdjęcie' : 'Wgraj zdjęcie'}
+                      </button>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-[#e5e4e2]/35">3. Strony dokumentu</p>
+                      <p className="mt-1 text-sm text-green-300">Gotowy układ Mavinci + opcjonalne tła</p>
+                    </div>
+                  </div>
                   {templateTypes.map((type) => {
                     const Icon = type.icon;
                     const categoryTemplates = getTemplatesForCategory(category.id, type.value);
@@ -451,6 +571,11 @@ export default function OfferPageTemplatesEditor() {
                                           Domyślny
                                         </span>
                                       )}
+                                      {template.type === 'product' && (
+                                        <span className="rounded bg-[#7f1734]/25 px-2 py-0.5 text-xs text-[#d77a94]">
+                                          {template.variant_key || 'default'}
+                                        </span>
+                                      )}
                                       {!template.is_active && (
                                         <span className="rounded bg-gray-500/20 px-2 py-0.5 text-xs text-gray-400">
                                           Nieaktywny
@@ -466,17 +591,17 @@ export default function OfferPageTemplatesEditor() {
                                       {template.pdf_url ? (
                                         <span className="flex items-center gap-1 rounded bg-green-500/20 px-2 py-0.5 text-xs text-green-400">
                                           <FileText className="h-3 w-3" />
-                                          PDF
+                                          Własne tło PDF
                                         </span>
                                       ) : (
-                                        <span className="flex items-center gap-1 rounded bg-red-500/20 px-2 py-0.5 text-xs text-red-400">
-                                          <FileText className="h-3 w-3" />
-                                          Brak PDF
+                                        <span className="flex items-center gap-1 rounded bg-[#7f1734]/20 px-2 py-0.5 text-xs text-[#d77a94]">
+                                          <Layers3 className="h-3 w-3" />
+                                          Gotowy układ Mavinci
                                         </span>
                                       )}
                                     </div>
                                   </div>
-                                  <div className="flex items-center gap-1">
+                                  <div className="flex flex-wrap items-center justify-end gap-2">
                                     <label className="cursor-pointer">
                                       <input
                                         type="file"
@@ -489,37 +614,43 @@ export default function OfferPageTemplatesEditor() {
                                         }}
                                       />
                                       <div
-                                        className="rounded p-1.5 text-blue-400 transition-colors hover:bg-blue-400/10"
-                                        title="Upload PDF"
+                                        className="flex items-center gap-1.5 rounded-lg border border-blue-400/20 px-2.5 py-1.5 text-xs text-blue-300 transition-colors hover:bg-blue-400/10"
+                                        title="Opcjonalnie wgraj własne tło PDF"
                                       >
                                         <Upload className="h-4 w-4" />
+                                        {uploadingPdf === template.id ? 'Wgrywanie…' : template.pdf_url ? 'Zmień tło' : 'Własne tło'}
                                       </div>
                                     </label>
                                     {template.pdf_url && (
                                       <button
                                         onClick={() => handleEditTextFields(template)}
-                                        className="rounded p-1.5 text-green-400 transition-colors hover:bg-green-400/10"
+                                        className="flex items-center gap-1.5 rounded-lg border border-green-400/20 px-2.5 py-1.5 text-xs text-green-300 transition-colors hover:bg-green-400/10"
                                         title="Konfiguruj pola"
                                       >
                                         <Type className="h-4 w-4" />
+                                        Rozmieść dane
+                                      </button>
+                                    )}
+                                    {template.pdf_url && (
+                                      <button
+                                        onClick={() => handleDeletePdf(template)}
+                                        className="flex items-center gap-1.5 rounded-lg border border-red-400/20 px-2.5 py-1.5 text-xs text-red-300 transition-colors hover:bg-red-400/10"
+                                        title="Usuń własne tło i wróć do gotowego układu Mavinci"
+                                      >
+                                        <Trash2 className="h-4 w-4" />
+                                        Wróć do Mavinci
                                       </button>
                                     )}
                                     {template.type === 'pricing' && (
                                       <button
                                         onClick={() => handleEditTableConfig(template)}
-                                        className="rounded p-1.5 text-cyan-400 transition-colors hover:bg-cyan-400/10"
+                                        className="flex items-center gap-1.5 rounded-lg border border-cyan-400/20 px-2.5 py-1.5 text-xs text-cyan-300 transition-colors hover:bg-cyan-400/10"
                                         title="Konfiguruj tabelę wyceny"
                                       >
                                         <Table2 className="h-4 w-4" />
+                                        Tabela wyceny
                                       </button>
                                     )}
-                                    <button
-                                      onClick={() => handleEditTemplate(template)}
-                                      className="rounded p-1.5 text-[#e5e4e2]/60 transition-colors hover:bg-[#d3bb73]/10 hover:text-[#d3bb73]"
-                                      title="Edytuj"
-                                    >
-                                      <Edit className="h-4 w-4" />
-                                    </button>
                                     <button
                                       onClick={() => handleDeleteTemplate(template)}
                                       className="rounded p-1.5 text-[#e5e4e2]/60 transition-colors hover:bg-red-500/10 hover:text-red-400"
@@ -534,7 +665,7 @@ export default function OfferPageTemplatesEditor() {
                           </div>
                         ) : (
                           <div className="pl-6 text-sm italic text-[#e5e4e2]/40">
-                            Brak szablonów
+                            Używany jest gotowy układ Mavinci. Dodaj wpis tylko wtedy, gdy chcesz go zastąpić własnym tłem PDF.
                           </div>
                         )}
                       </div>
@@ -580,24 +711,6 @@ export default function OfferPageTemplatesEditor() {
         />
       )}
 
-      {/* Edytor zawartości */}
-      {showContentEditor && editingTemplate && (
-        <ContentEditorModal
-          template={editingTemplate}
-          content={editingContent}
-          onClose={() => {
-            setShowContentEditor(false);
-            setEditingTemplate(null);
-            setEditingContent([]);
-          }}
-          onSuccess={() => {
-            setShowContentEditor(false);
-            setEditingTemplate(null);
-            setEditingContent([]);
-            fetchTemplates();
-          }}
-        />
-      )}
 
       {/* Edytor pól tekstowych */}
       {showTextFieldsEditor && editingTemplate && (
@@ -680,7 +793,7 @@ function CreateTemplateModal({
   onClose,
   onSuccess,
 }: {
-  type: 'cover' | 'about' | 'pricing' | 'final';
+  type: 'cover' | 'about' | 'product' | 'pricing' | 'final';
   categoryId: string | null;
   employee: any;
   onClose: () => void;
@@ -691,6 +804,7 @@ function CreateTemplateModal({
   const [formData, setFormData] = useState({
     name: '',
     description: '',
+    variant_key: 'default',
     is_default: false,
     is_active: true,
   });
@@ -784,6 +898,24 @@ function CreateTemplateModal({
               placeholder="Opcjonalny opis szablonu..."
             />
           </div>
+
+          {type === 'product' && (
+            <div>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Wariant karty produktu</label>
+              <select
+                value={formData.variant_key}
+                onChange={(e) => setFormData({ ...formData, variant_key: e.target.value })}
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+              >
+                <option value="default">Domyślny</option>
+                <option value="compact">Kompaktowy - do 3 produktów na stronie</option>
+                <option value="visual">Duża grafika</option>
+              </select>
+              <p className="mt-1 text-xs text-[#e5e4e2]/40">
+                Produkty kompaktowe są automatycznie grupowane po maksymalnie trzy na stronie.
+              </p>
+            </div>
+          )}
 
           <div className="space-y-2">
             <label className="flex cursor-pointer items-center gap-2">
@@ -990,6 +1122,11 @@ function ContentEditorModal({
 
 const AVAILABLE_FIELDS = [
   { value: 'client_name', label: 'Nazwa klienta', type: 'text' },
+  { value: 'organization_name', label: 'Organizacja: nazwa / alias', type: 'text' },
+  { value: 'organization_legal_name', label: 'Organizacja: pełna nazwa prawna', type: 'text' },
+  { value: 'contact_person_name', label: 'Osoba kontaktowa: imię i nazwisko', type: 'text' },
+  { value: 'contact_person_email', label: 'Osoba kontaktowa: e-mail', type: 'email' },
+  { value: 'contact_person_phone', label: 'Osoba kontaktowa: telefon', type: 'phone' },
   { value: 'client_address', label: 'Adres klienta', type: 'text' },
   { value: 'client_nip', label: 'NIP klienta', type: 'text' },
   { value: 'client_city', label: 'Miasto klienta', type: 'text' },
@@ -999,8 +1136,34 @@ const AVAILABLE_FIELDS = [
   { value: 'offer_name', label: 'Nazwa oferty', type: 'text' },
   { value: 'offer_date', label: 'Data oferty', type: 'text' },
   { value: 'event_name', label: 'Nazwa eventu', type: 'text' },
+  { value: 'event_category_name', label: 'Kategoria wydarzenia', type: 'text' },
   { value: 'event_date', label: 'Data eventu', type: 'text' },
   { value: 'event_location', label: 'Lokalizacja eventu', type: 'text' },
+  { value: 'event_assumptions', label: 'Założenia wydarzenia', type: 'text' },
+  { value: 'event_goal', label: 'Cel wydarzenia', type: 'text' },
+  { value: 'category_hero_image', label: 'Kategoria: zdjęcie hero', type: 'image' },
+  { value: 'company_logo', label: 'Firma: logo z my_companies', type: 'image' },
+  { value: 'product_name', label: 'Produkt: nazwa', type: 'text' },
+  { value: 'product_short_description', label: 'Produkt: krótki opis', type: 'text' },
+  { value: 'product_description', label: 'Produkt: opis do oferty', type: 'text' },
+  { value: 'product_benefits', label: 'Produkt: lista korzyści', type: 'text' },
+  { value: 'product_image', label: 'Produkt: grafika', type: 'image' },
+  { value: 'product_quantity', label: 'Pozycja: ilość', type: 'text' },
+  { value: 'product_unit', label: 'Pozycja: jednostka', type: 'text' },
+  { value: 'product_unit_price', label: 'Pozycja: cena jednostkowa', type: 'text' },
+  { value: 'product_total', label: 'Pozycja: wartość', type: 'text' },
+  { value: 'product_1_name', label: 'Kompaktowy 1: nazwa', type: 'text' },
+  { value: 'product_1_short_description', label: 'Kompaktowy 1: lead', type: 'text' },
+  { value: 'product_1_description', label: 'Kompaktowy 1: opis', type: 'text' },
+  { value: 'product_1_image', label: 'Kompaktowy 1: zdjęcie', type: 'image' },
+  { value: 'product_2_name', label: 'Kompaktowy 2: nazwa', type: 'text' },
+  { value: 'product_2_short_description', label: 'Kompaktowy 2: lead', type: 'text' },
+  { value: 'product_2_description', label: 'Kompaktowy 2: opis', type: 'text' },
+  { value: 'product_2_image', label: 'Kompaktowy 2: zdjęcie', type: 'image' },
+  { value: 'product_3_name', label: 'Kompaktowy 3: nazwa', type: 'text' },
+  { value: 'product_3_short_description', label: 'Kompaktowy 3: lead', type: 'text' },
+  { value: 'product_3_description', label: 'Kompaktowy 3: opis', type: 'text' },
+  { value: 'product_3_image', label: 'Kompaktowy 3: zdjęcie', type: 'image' },
   { value: 'total_price', label: 'Całkowita cena', type: 'text' },
   { value: 'employee_first_name', label: 'Imię pracownika', type: 'text' },
   { value: 'employee_last_name', label: 'Nazwisko pracownika', type: 'text' },
@@ -1024,12 +1187,110 @@ function CategoryModal({
 }) {
   const { showSnackbar } = useSnackbar();
   const [loading, setLoading] = useState(false);
+  const [heroFile, setHeroFile] = useState<File | null>(null);
+  const [heroPreviewUrl, setHeroPreviewUrl] = useState('');
+  const [heroDragActive, setHeroDragActive] = useState(false);
+  const heroDragDepth = useRef(0);
+  const [removeHero, setRemoveHero] = useState(false);
+  const [brandLogoPreviewUrl, setBrandLogoPreviewUrl] = useState('');
+  const [brandHeadingPreviewUrl, setBrandHeadingPreviewUrl] = useState('');
   const [formData, setFormData] = useState({
     name: category?.name || '',
     description: category?.description || '',
     color: category?.color || '#d3bb73',
     is_default: category?.is_default || false,
+    hero_image_alt: category?.hero_image_alt || '',
+    design_config: {
+      ...DEFAULT_CATEGORY_DESIGN,
+      ...(category?.design_config || {}),
+    },
   });
+
+  const updateDesign = <K extends keyof CategoryDesignConfig>(key: K, value: CategoryDesignConfig[K]) => {
+    setFormData((current) => ({
+      ...current,
+      design_config: { ...current.design_config, [key]: value },
+    }));
+  };
+
+  useEffect(() => {
+    let active = true;
+    const loadBrandLogo = async () => {
+      const { data: company } = await supabase
+        .from('my_companies')
+        .select('id, logo_url')
+        .eq('is_active', true)
+        .eq('is_default', true)
+        .limit(1)
+        .maybeSingle();
+      if (!company) return;
+      const [{ data: logos }, { data: headingFont }] = await Promise.all([
+        supabase
+          .from('company_brandbook_logos')
+          .select('url, is_default, order_index')
+          .eq('company_id', company.id)
+          .order('is_default', { ascending: false })
+          .order('order_index'),
+        supabase
+          .from('company_brandbook_fonts')
+          .select('file_url, storage_path')
+          .eq('company_id', company.id)
+          .eq('role', 'heading')
+          .order('order_index')
+          .limit(1)
+          .maybeSingle(),
+      ]);
+      const logoPath = logos?.find((logo: any) => logo.is_default)?.url || logos?.[0]?.url || company.logo_url;
+      if (!logoPath || !active) return;
+      const publicUrl = logoPath.startsWith('http')
+        ? logoPath
+        : supabase.storage.from('company-logos').getPublicUrl(logoPath).data.publicUrl;
+      if (active) setBrandLogoPreviewUrl(publicUrl);
+      if (active && headingFont) {
+        setBrandHeadingPreviewUrl(
+          headingFont.file_url
+            || (headingFont.storage_path
+              ? supabase.storage.from('company-logos').getPublicUrl(headingFont.storage_path).data.publicUrl
+              : ''),
+        );
+      }
+    };
+    loadBrandLogo();
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    if (!category?.hero_image_path) return;
+    supabase.storage
+      .from('offer-template-pages')
+      .createSignedUrl(category.hero_image_path, 3600)
+      .then(({ data }) => {
+        if (active) setHeroPreviewUrl(data?.signedUrl || '');
+      });
+    return () => { active = false; };
+  }, [category?.hero_image_path]);
+
+  useEffect(() => {
+    if (!heroFile) return;
+    const objectUrl = URL.createObjectURL(heroFile);
+    setHeroPreviewUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [heroFile]);
+
+  const selectHeroFile = (file?: File) => {
+    if (!file) return;
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      showSnackbar('Wybierz zdjęcie JPG, PNG lub WEBP', 'error');
+      return;
+    }
+    if (file.size > 12 * 1024 * 1024) {
+      showSnackbar('Zdjęcie może mieć maksymalnie 12 MB', 'error');
+      return;
+    }
+    setHeroFile(file);
+    setRemoveHero(false);
+  };
 
   const handleSubmit = async () => {
     if (!formData.name.trim()) {
@@ -1040,21 +1301,67 @@ function CategoryModal({
     try {
       setLoading(true);
 
+      let categoryId = category?.id || '';
       if (category) {
         // Update existing category
         const { error } = await supabase
           .from('offer_template_categories')
-          .update(formData)
+          .update({
+            name: formData.name,
+            description: formData.description,
+            color: formData.color,
+            is_default: formData.is_default,
+            hero_image_alt: formData.hero_image_alt || null,
+            design_config: formData.design_config,
+          })
           .eq('id', category.id);
 
         if (error) throw error;
         showSnackbar('Kategoria zaktualizowana', 'success');
       } else {
         // Create new category
-        const { error } = await supabase.from('offer_template_categories').insert(formData);
+        const { data, error } = await supabase
+          .from('offer_template_categories')
+          .insert({
+            name: formData.name,
+            description: formData.description,
+            color: formData.color,
+            is_default: formData.is_default,
+            hero_image_alt: formData.hero_image_alt || null,
+            design_config: formData.design_config,
+          })
+          .select('id')
+          .single();
 
         if (error) throw error;
+        categoryId = data.id;
         showSnackbar('Kategoria utworzona', 'success');
+      }
+
+      if (heroFile && categoryId) {
+        const optimizedHeroFile = await optimizeOfferImage(heroFile, {
+          maxWidth: 1800,
+          maxHeight: 1800,
+          quality: 0.82,
+        });
+        const extension = optimizedHeroFile.type === 'image/png' ? 'png' : 'jpg';
+        const heroPath = `category-heroes/${categoryId}/hero-${Date.now()}.${extension}`;
+        const { error: uploadError } = await supabase.storage
+          .from('offer-template-pages')
+          .upload(heroPath, optimizedHeroFile, { contentType: optimizedHeroFile.type, upsert: true });
+        if (uploadError) throw uploadError;
+
+        const { error: heroUpdateError } = await supabase
+          .from('offer_template_categories')
+          .update({ hero_image_path: heroPath, hero_image_alt: formData.hero_image_alt || null })
+          .eq('id', categoryId);
+        if (heroUpdateError) throw heroUpdateError;
+      } else if (removeHero && categoryId) {
+        const { error: heroUpdateError } = await supabase
+          .from('offer_template_categories')
+          .update({ hero_image_path: null, hero_image_alt: null })
+          .eq('id', categoryId);
+        if (heroUpdateError) throw heroUpdateError;
       }
 
       onSuccess();
@@ -1065,9 +1372,12 @@ function CategoryModal({
     }
   };
 
+  const heroPreviewHeightPercent = (Math.min(470, Math.max(320, formData.design_config.hero_height)) / 841.89) * 100;
+  const heroPreviewTopPercent = ((841.89 - 210 - Math.min(470, Math.max(320, formData.design_config.hero_height))) / 841.89) * 100;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-2xl rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33]">
+      <div className="flex max-h-[94vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33]">
         <div className="flex items-center justify-between border-b border-[#d3bb73]/10 p-6">
           <h3 className="text-xl font-light text-[#e5e4e2]">
             {category ? 'Edytuj kategorię' : 'Nowa kategoria'}
@@ -1077,7 +1387,7 @@ function CategoryModal({
           </button>
         </div>
 
-        <div className="space-y-4 p-6">
+        <div className="space-y-5 overflow-y-auto p-6">
           <div>
             <label className="mb-2 block text-sm text-[#e5e4e2]/60">Nazwa kategorii *</label>
             <input
@@ -1120,6 +1430,305 @@ function CategoryModal({
           </div>
 
           <div>
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Zdjęcie hero kategorii</label>
+            <label
+              className={`relative flex min-h-[180px] cursor-pointer items-center justify-center overflow-hidden rounded-xl border-2 border-dashed transition-all duration-150 ${
+                heroDragActive
+                  ? 'scale-[1.01] border-[#d3bb73] bg-[#d3bb73]/15 shadow-[0_0_0_4px_rgba(211,187,115,0.12)]'
+                  : 'border-[#d3bb73]/30 bg-[#0a0d1a] hover:border-[#d3bb73]/60'
+              }`}
+              onDragEnter={(event) => {
+                event.preventDefault();
+                heroDragDepth.current += 1;
+                setHeroDragActive(true);
+              }}
+              onDragOver={(event) => {
+                event.preventDefault();
+                event.dataTransfer.dropEffect = 'copy';
+                setHeroDragActive(true);
+              }}
+              onDragLeave={(event) => {
+                event.preventDefault();
+                heroDragDepth.current = Math.max(0, heroDragDepth.current - 1);
+                if (heroDragDepth.current === 0) setHeroDragActive(false);
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                heroDragDepth.current = 0;
+                setHeroDragActive(false);
+                selectHeroFile(event.dataTransfer.files?.[0]);
+              }}
+            >
+              <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(event) => selectHeroFile(event.target.files?.[0])} />
+              {heroPreviewUrl && !removeHero ? (
+                <img src={heroPreviewUrl} alt="Podgląd hero kategorii" className="h-[220px] w-full object-cover" />
+              ) : (
+                <div className="px-6 py-10 text-center">
+                  <ImageIcon className="mx-auto h-10 w-10 text-[#d3bb73]/50" />
+                  <p className="mt-3 text-sm text-[#e5e4e2]/70">Upuść zdjęcie lub kliknij, aby wybrać</p>
+                  <p className="mt-1 text-xs text-[#e5e4e2]/35">JPG, PNG lub WEBP, maks. 12 MB</p>
+                </div>
+              )}
+              {heroDragActive && (
+                <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-[#0a0d1a]/85 backdrop-blur-[2px]">
+                  <div className="text-center">
+                    <Upload className="mx-auto h-11 w-11 animate-bounce text-[#d3bb73]" />
+                    <p className="mt-3 text-base font-medium text-[#f3e7bd]">Upuść zdjęcie tutaj</p>
+                    <p className="mt-1 text-xs text-[#e5e4e2]/60">Pole jest gotowe do wgrania pliku</p>
+                  </div>
+                </div>
+              )}
+            </label>
+            {(heroPreviewUrl || category?.hero_image_path) && !removeHero && (
+              <button type="button" onClick={() => { setHeroFile(null); setHeroPreviewUrl(''); setRemoveHero(true); }} className="mt-2 text-xs text-red-300 hover:text-red-200">Usuń zdjęcie hero</button>
+            )}
+          </div>
+
+          <div>
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Opis zdjęcia hero</label>
+            <input
+              type="text"
+              value={formData.hero_image_alt}
+              onChange={(e) => setFormData({ ...formData, hero_image_alt: e.target.value })}
+              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+              placeholder="Np. eleganckie przyjęcie weselne w sali balowej"
+            />
+          </div>
+
+          <div className="rounded-xl border border-[#d3bb73]/15 bg-[#0a0d1a] p-5">
+            {brandHeadingPreviewUrl && <style>{`@font-face{font-family:'CategoryOfferHeading';src:url('${brandHeadingPreviewUrl}') format('truetype');font-weight:400;font-style:normal;font-display:swap;}`}</style>}
+            <div className="mb-4">
+              <h4 className="text-base font-medium text-[#e5e4e2]">Kreator wyglądu kategorii</h4>
+              <p className="mt-1 text-xs text-[#e5e4e2]/45">Te ustawienia sterują okładką, założeniami, dużą kartą produktu i wyceną.</p>
+            </div>
+
+            <div
+              className="relative mx-auto mb-5 aspect-[1/1.414] w-full max-w-[430px] overflow-hidden rounded-lg border border-white/10 shadow-2xl"
+              style={{ backgroundColor: formData.design_config.primary_color }}
+            >
+              {heroPreviewUrl && !removeHero && (
+                <div className="absolute inset-x-0 bg-cover bg-center" style={{ backgroundImage: `url(${heroPreviewUrl})`, top: `${heroPreviewTopPercent}%`, height: `${heroPreviewHeightPercent}%` }} />
+              )}
+              <div
+                className="absolute inset-x-0"
+                style={formData.design_config.hero_gradient_enabled
+                  ? {
+                      background: `linear-gradient(to right, ${formData.design_config.primary_color} 0%, ${formData.design_config.primary_color}${Math.round((1 - formData.design_config.hero_gradient_end) * 255).toString(16).padStart(2, '0')} 100%)`,
+                      top: `${heroPreviewTopPercent}%`,
+                      height: `${heroPreviewHeightPercent}%`,
+                    }
+                  : { backgroundColor: formData.design_config.primary_color, opacity: formData.design_config.hero_opacity, top: `${heroPreviewTopPercent}%`, height: `${heroPreviewHeightPercent}%` }}
+              />
+              {brandLogoPreviewUrl ? (
+                <img
+                  src={brandLogoPreviewUrl}
+                  alt="Logo z my_companies"
+                  className="absolute left-[7%] top-[5%] h-[15%] w-[24%] object-contain object-left-top"
+                  style={{ transform: `scale(${formData.design_config.logo_scale})`, transformOrigin: 'left top' }}
+                />
+              ) : (
+                <span className="absolute left-[7%] top-[7%] text-sm font-semibold tracking-[0.3em] text-white">MAVINCI</span>
+              )}
+              <div className="absolute left-[7%] top-[28%] text-[9px] uppercase tracking-[0.12em]" style={{ color: formData.design_config.accent_color }}>Oferta obsługi technicznej</div>
+              <div className="absolute left-[7%] top-[34%] max-w-[78%] text-2xl font-light leading-tight text-white" style={{ fontFamily: brandHeadingPreviewUrl ? "'CategoryOfferHeading', sans-serif" : undefined }}>NAZWA<br />WYDARZENIA</div>
+              <div className="absolute left-[7%] top-[47%] h-px w-[82%]" style={{ backgroundColor: formData.design_config.accent_color }} />
+              <div className="absolute left-[7%] top-[51%] text-[8px] uppercase" style={{ color: formData.design_config.accent_color }}>Termin i miejsce</div>
+              <div className="absolute left-[7%] top-[55%] text-xs text-white">24.10.2026 · 10:00–18:00</div>
+              <div className="absolute left-[7%] top-[59%] text-[10px] text-white">Lokalizacja z CRM</div>
+              <div className="absolute bottom-[6%] left-[7%] text-[8px] text-white/70">OFERTA PRZYGOTOWANA NA PODSTAWIE ZAPYTANIA</div>
+              <div className="absolute bottom-[6%] right-[7%] text-[8px]" style={{ color: formData.design_config.accent_color }}>01</div>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              {([
+                ['primary_color', 'Kolor główny'],
+                ['secondary_color', 'Kolor dodatkowy'],
+                ['accent_color', 'Kolor akcentu'],
+                ['surface_color', 'Tło jasnych stron'],
+              ] as Array<[keyof CategoryDesignConfig, string]>).map(([key, label]) => (
+                <label key={key} className="flex items-center justify-between gap-3 text-sm text-[#e5e4e2]/70">
+                  {label}
+                  <div className="flex items-center gap-2">
+                    <input type="color" value={String(formData.design_config[key])} onChange={(event) => updateDesign(key, event.target.value as never)} className="h-9 w-12 rounded border-0 bg-transparent" />
+                    <span className="w-20 text-xs text-[#e5e4e2]/45">{String(formData.design_config[key])}</span>
+                  </div>
+                </label>
+              ))}
+
+              <label className="text-sm text-[#e5e4e2]/70">
+                Przyciemnienie zdjęcia: {Math.round(formData.design_config.hero_opacity * 100)}%
+                <input type="range" min="0.2" max="0.85" step="0.05" value={formData.design_config.hero_opacity} onChange={(event) => updateDesign('hero_opacity', Number(event.target.value))} className="mt-2 w-full accent-[#b94b69]" />
+              </label>
+              <div className="space-y-2 text-sm text-[#e5e4e2]/70">
+                <label className="flex cursor-pointer items-center gap-2">
+                  <input type="checkbox" checked={formData.design_config.hero_gradient_enabled} onChange={(event) => updateDesign('hero_gradient_enabled', event.target.checked)} className="h-4 w-4 accent-[#b94b69]" />
+                  Gradient widoczności zdjęcia
+                </label>
+                <div className={formData.design_config.hero_gradient_enabled ? '' : 'opacity-40'}>
+                  Widoczność po prawej: {Math.round(formData.design_config.hero_gradient_end * 100)}%
+                  <input type="range" min="0.2" max="0.8" step="0.05" disabled={!formData.design_config.hero_gradient_enabled} value={formData.design_config.hero_gradient_end} onChange={(event) => updateDesign('hero_gradient_end', Number(event.target.value))} className="mt-2 w-full accent-[#b94b69]" />
+                </div>
+              </div>
+              <label className="text-sm text-[#e5e4e2]/70">
+                Wielkość logo: {Math.round(formData.design_config.logo_scale * 100)}%
+                <input type="range" min="0.7" max="1.5" step="0.05" value={formData.design_config.logo_scale} onChange={(event) => updateDesign('logo_scale', Number(event.target.value))} className="mt-2 w-full accent-[#b94b69]" />
+              </label>
+              <label className="text-sm text-[#e5e4e2]/70">
+                Wysokość hero: {formData.design_config.hero_height} pt
+                <input type="range" min="320" max="470" step="5" value={formData.design_config.hero_height} onChange={(event) => updateDesign('hero_height', Number(event.target.value))} className="mt-2 w-full accent-[#b94b69]" />
+              </label>
+              <label className="text-sm text-[#e5e4e2]/70">
+                Wysokość dużego zdjęcia produktu: {formData.design_config.visual_image_height} pt
+                <input type="range" min="220" max="330" step="5" value={formData.design_config.visual_image_height} onChange={(event) => updateDesign('visual_image_height', Number(event.target.value))} className="mt-2 w-full accent-[#b94b69]" />
+              </label>
+              <label className="text-sm text-[#e5e4e2]/70">
+                Strona założeń
+                <select value={formData.design_config.assumptions_layout} onChange={(event) => updateDesign('assumptions_layout', event.target.value as CategoryDesignConfig['assumptions_layout'])} className="mt-2 w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-[#e5e4e2]">
+                  <option value="cards">Karty jak w projekcie</option>
+                  <option value="simple">Prosty układ tekstowy</option>
+                </select>
+              </label>
+              <label className="text-sm text-[#e5e4e2]/70">
+                Karta podsumowania wyceny
+                <select value={formData.design_config.pricing_style} onChange={(event) => updateDesign('pricing_style', event.target.value as CategoryDesignConfig['pricing_style'])} className="mt-2 w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-[#e5e4e2]">
+                  <option value="card">Duża kolorowa karta</option>
+                  <option value="minimal">Minimalna linia podsumowania</option>
+                </select>
+              </label>
+            </div>
+
+            <div className="mt-6 grid gap-4 md:grid-cols-2">
+              <div>
+                <p className="mb-2 text-xs uppercase tracking-wide text-[#e5e4e2]/45">Podgląd strony założeń</p>
+                <div className="aspect-[1/1.414] overflow-hidden rounded-lg p-4 shadow-xl" style={{ backgroundColor: formData.design_config.surface_color }}>
+                  <p className="text-lg" style={{ color: formData.design_config.primary_color, fontFamily: brandHeadingPreviewUrl ? "'CategoryOfferHeading', sans-serif" : undefined }}>ZAŁOŻENIA SPOTKANIA</p>
+                  <div className="mt-2 h-px" style={{ backgroundColor: formData.design_config.primary_color }} />
+                  <div className="mt-5 space-y-2">
+                    {[
+                      ['180', 'LICZBA GOŚCI', 'Wartość może zostać wpisana i wyeksponowana w znaczniku.'],
+                      ['02', 'PRZEBIEG I POTRZEBY KLIENTA', 'Przy pustej wartości znacznik zachowuje numer sekcji.'],
+                      ['6 H', 'CZAS REALIZACJI', 'Krótka wartość może zawierać również jednostkę.'],
+                    ].map(([number, title, detail]) => (
+                      <div key={number} className="flex items-center gap-3 rounded-md bg-white px-3 py-3">
+                        <span
+                          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[9px] text-white"
+                          style={{
+                            backgroundColor: formData.design_config.primary_color,
+                            fontFamily: brandHeadingPreviewUrl ? "'CategoryOfferHeading', sans-serif" : undefined,
+                          }}
+                        >
+                          {number}
+                        </span>
+                        <span className="min-w-0">
+                          <span
+                            className="block text-[8px] uppercase"
+                            style={{
+                              color: formData.design_config.primary_color,
+                              fontFamily: brandHeadingPreviewUrl ? "'CategoryOfferHeading', sans-serif" : undefined,
+                            }}
+                          >
+                            {title}
+                          </span>
+                          <span className="mt-1 block text-[6px] text-black/70">{detail}</span>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="mt-5 text-[8px] uppercase" style={{ color: formData.design_config.primary_color }}>Cel realizacji</p>
+                  <div className="mt-2 h-6 rounded bg-black/5" />
+                  <div className="mt-4 rounded-md px-3 py-4 text-[8px] text-white" style={{ backgroundColor: formData.design_config.primary_color }}>REKOMENDOWANY ZESTAW</div>
+                </div>
+              </div>
+              <div>
+                <p className="mb-2 text-xs uppercase tracking-wide text-[#e5e4e2]/45">Podgląd wyceny</p>
+                <div className="aspect-[1/1.414] overflow-hidden rounded-lg p-4 shadow-xl" style={{ backgroundColor: formData.design_config.surface_color }}>
+                  <p className="text-lg" style={{ color: formData.design_config.primary_color, fontFamily: brandHeadingPreviewUrl ? "'CategoryOfferHeading', sans-serif" : undefined }}>WYCENA</p>
+                  <div className="mt-2 h-px" style={{ backgroundColor: formData.design_config.primary_color }} />
+                  <div className="mt-5 overflow-hidden rounded-sm bg-white text-[7px]">
+                    <div className="grid grid-cols-[1fr_auto] gap-2 px-2 py-2 text-white" style={{ backgroundColor: formData.design_config.primary_color }}><span>NAZWA POZYCJI</span><span>WARTOŚĆ</span></div>
+                    <div className="grid grid-cols-[1fr_auto] gap-2 px-2 py-2"><span>Usługa techniczna</span><span>5 000 PLN</span></div>
+                    <div className="grid grid-cols-[1fr_auto] gap-2 bg-black/[0.03] px-2 py-2"><span>Streaming</span><span>2 500 PLN</span></div>
+                  </div>
+                  <div className={`mt-auto translate-y-24 px-3 py-4 ${formData.design_config.pricing_style === 'minimal' ? 'border-t' : 'rounded-md text-white'}`} style={formData.design_config.pricing_style === 'minimal' ? { borderColor: formData.design_config.primary_color, color: formData.design_config.primary_color } : { backgroundColor: formData.design_config.primary_color }}>
+                    <p className="text-[7px] uppercase">Łączna wartość oferty</p>
+                    <p className="mt-2 text-base">7 500 PLN</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-6 rounded-xl border border-[#d3bb73]/15 bg-[#121625] p-4">
+              <label className="flex cursor-pointer items-center gap-3">
+                <input
+                  type="checkbox"
+                  checked={formData.design_config.info_page_enabled}
+                  onChange={(event) => updateDesign('info_page_enabled', event.target.checked)}
+                  className="h-4 w-4 accent-[#b94b69]"
+                />
+                <span>
+                  <span className="block text-sm text-[#e5e4e2]">Dodaj stronę „Informacje i warunki”</span>
+                  <span className="mt-0.5 block text-xs text-[#e5e4e2]/40">Strona pojawi się po wycenie, przed kontaktem do sprzedawcy.</span>
+                </span>
+              </label>
+
+              {formData.design_config.info_page_enabled && (
+                <div className="mt-5 grid gap-5 lg:grid-cols-[1fr_250px]">
+                  <div className="space-y-4">
+                    <label className="block text-sm text-[#e5e4e2]/70">
+                      Tytuł strony
+                      <input
+                        type="text"
+                        value={formData.design_config.info_page_title}
+                        onChange={(event) => updateDesign('info_page_title', event.target.value)}
+                        className="mt-2 w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-3 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                      />
+                    </label>
+                    {([
+                      ['order_process_text', 'Jak wygląda zamówienie', 'Każdy krok wpisz w nowym wierszu.'],
+                      ['technical_requirements_text', 'Warunki techniczne', 'Każdy warunek wpisz w nowym wierszu.'],
+                      ['reservation_terms_text', 'Rezerwacja i zmiany', 'Każdą zasadę wpisz w nowym wierszu.'],
+                    ] as Array<[keyof CategoryDesignConfig, string, string]>).map(([key, label, hint]) => (
+                      <label key={key} className="block text-sm text-[#e5e4e2]/70">
+                        {label}
+                        <textarea
+                          rows={4}
+                          value={String(formData.design_config[key])}
+                          onChange={(event) => updateDesign(key, event.target.value as never)}
+                          className="mt-2 w-full resize-y rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                        />
+                        <span className="mt-1 block text-xs text-[#e5e4e2]/35">{hint}</span>
+                      </label>
+                    ))}
+                  </div>
+
+                  <div>
+                    <p className="mb-2 text-xs uppercase tracking-wide text-[#e5e4e2]/45">Podgląd strony</p>
+                    <div className="aspect-[1/1.414] overflow-hidden rounded-lg p-4 shadow-xl" style={{ backgroundColor: formData.design_config.surface_color }}>
+                      <p className="text-base leading-tight" style={{ color: formData.design_config.primary_color, fontFamily: brandHeadingPreviewUrl ? "'CategoryOfferHeading', sans-serif" : undefined }}>{formData.design_config.info_page_title || 'INFORMACJE I WARUNKI'}</p>
+                      <div className="mt-2 h-px" style={{ backgroundColor: formData.design_config.primary_color }} />
+                      {[
+                        ['01', 'JAK WYGLĄDA ZAMÓWIENIE', formData.design_config.order_process_text],
+                        ['02', 'WARUNKI TECHNICZNE', formData.design_config.technical_requirements_text],
+                        ['03', 'REZERWACJA I ZMIANY', formData.design_config.reservation_terms_text],
+                      ].map(([number, title, content]) => (
+                        <div key={number} className="mt-3 rounded-md bg-white p-2.5">
+                          <div className="flex gap-2">
+                            <span className="text-xs" style={{ color: formData.design_config.accent_color }}>{number}</span>
+                            <div className="min-w-0">
+                              <p className="text-[7px] font-medium" style={{ color: formData.design_config.primary_color }}>{title}</p>
+                              <p className="mt-1 line-clamp-3 whitespace-pre-line text-[6px] leading-relaxed text-black/55">{content}</p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div>
             <label className="flex cursor-pointer items-center gap-2">
               <input
                 type="checkbox"
@@ -1145,8 +1754,9 @@ function CategoryModal({
           <button
             onClick={handleSubmit}
             disabled={loading}
-            className="rounded-lg bg-[#d3bb73] px-6 py-2 font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-2 font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-50"
           >
+            {loading && <Loader2 className="h-4 w-4 animate-spin" />}
             {loading ? 'Zapisywanie...' : category ? 'Zapisz zmiany' : 'Utwórz kategorię'}
           </button>
         </div>
@@ -1932,6 +2542,24 @@ function TextFieldsEditorModal({
                           })
                         }
                         placeholder="Auto"
+                        className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm text-[#e5e4e2]/60">
+                        Interlinia (opcjonalne)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.5"
+                        value={selectedField.line_height || ''}
+                        onChange={(e) =>
+                          handleUpdateField(selectedFieldIndex!, {
+                            line_height: parseFloat(e.target.value) || undefined,
+                          })
+                        }
+                        placeholder="Automatyczna"
                         className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                       />
                     </div>

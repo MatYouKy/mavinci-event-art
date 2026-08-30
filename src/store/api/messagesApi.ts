@@ -42,6 +42,12 @@ export interface MessageDetails extends MessageListItem {
   attachments?: EmailAttachment[];
 }
 
+export interface MessageUnreadCounts {
+  total: number;
+  contactForm: number;
+  byAccount: Record<string, number>;
+}
+
 export interface FetchMessagesParams {
   emailAccountId: string;
   offset?: number;
@@ -124,7 +130,7 @@ export const messagesApi = api.injectEndpoints({
               `,
               )
               .order('created_at', { ascending: false })
-              .range(offset, offset + limit);
+              .range(0, offset + limit);
 
             if (isTrash) {
               contactMessagesQuery = contactMessagesQuery.not('deleted_at', 'is', null);
@@ -165,7 +171,7 @@ export const messagesApi = api.injectEndpoints({
                 'id, to_address, subject, body, sent_at, email_account_id, deleted_at, employees!employee_id(name, surname, email, id)',
               )
               .order('sent_at', { ascending: false })
-              .range(offset, offset + limit);
+              .range(0, offset + limit);
 
             if (isTrash) {
               sentQuery = sentQuery.not('deleted_at', 'is', null);
@@ -242,7 +248,7 @@ export const messagesApi = api.injectEndpoints({
               `,
               )
               .order('received_date', { ascending: false })
-              .range(offset, offset + limit);
+              .range(0, offset + limit);
 
             if (isTrash) {
               receivedQuery = receivedQuery.not('deleted_at', 'is', null);
@@ -308,7 +314,7 @@ export const messagesApi = api.injectEndpoints({
               )
               .eq('employee_id', user.id)
               .order('updated_at', { ascending: false })
-              .range(offset, offset + limit)
+              .range(0, offset + limit)
               .is('deleted_at', null);
 
             if (emailAccountId !== 'all') {
@@ -361,8 +367,9 @@ export const messagesApi = api.injectEndpoints({
 
           const filteredMessages = allMessages.filter(folderMatchesType);
 
-          const hasMore = filteredMessages.length > limit;
-          const messages = hasMore ? filteredMessages.slice(0, limit) : filteredMessages;
+          const pageEnd = offset + limit;
+          const hasMore = filteredMessages.length > pageEnd;
+          const messages = filteredMessages.slice(offset, pageEnd);
 
           return {
             data: {
@@ -529,15 +536,21 @@ export const messagesApi = api.injectEndpoints({
       keepUnusedDataFor: 7200,
     }),
 
-    markMessageAsRead: builder.mutation<void, { id: string; type: 'contact_form' | 'received' }>({
-      queryFn: async ({ id, type }) => {
+    markMessageAsRead: builder.mutation<
+      void,
+      { id: string; type: 'contact_form' | 'received'; isRead?: boolean }
+    >({
+      queryFn: async ({ id, type, isRead = true }) => {
         try {
           const { supabase } = await import('@/lib/supabase/browser');
 
           if (type === 'contact_form') {
             const { error } = await supabase
               .from('contact_messages')
-              .update({ status: 'read', read_at: new Date().toISOString() })
+              .update({
+                status: isRead ? 'read' : 'new',
+                read_at: isRead ? new Date().toISOString() : null,
+              })
               .eq('id', id);
 
             if (error) {
@@ -545,13 +558,23 @@ export const messagesApi = api.injectEndpoints({
               return { error: { status: 'CUSTOM_ERROR', error: error.message } };
             }
           } else if (type === 'received') {
-            const { error } = await supabase.functions.invoke('sync-email-read-state', {
-              body: { messageId: id, mode: 'mark_read' },
+            // CRM pozostaje responsywny również podczas chwilowej awarii relay workera.
+            // IMAP jest synchronizowany zaraz po zapisie i ponawiany przez cykliczny sync.
+            const { error: localError } = await supabase
+              .from('received_emails')
+              .update({ is_read: isRead })
+              .eq('id', id);
+
+            if (localError) {
+              return { error: { status: 'CUSTOM_ERROR', error: localError.message } };
+            }
+
+            const { error: syncError } = await supabase.functions.invoke('sync-email-read-state', {
+              body: { messageId: id, mode: isRead ? 'mark_read' : 'mark_unread' },
             });
 
-            if (error) {
-              console.error('Error synchronizing email read state with IMAP:', error);
-              return { error: { status: 'CUSTOM_ERROR', error: error.message } };
+            if (syncError) {
+              console.warn('Email read state saved locally; IMAP sync will retry:', syncError);
             }
           }
 
@@ -796,6 +819,7 @@ export const messagesApi = api.injectEndpoints({
                 from_address,
                 to_address,
                 subject,
+                body_text,
                 received_date,
                 is_read,
                 is_starred,
@@ -816,14 +840,26 @@ export const messagesApi = api.injectEndpoints({
             if (emailAccountId !== 'all') {
               receivedQuery = receivedQuery.eq('email_account_id', emailAccountId);
             } else if (user) {
-              const { data: userAccounts } = await supabase
-                .from('employee_email_accounts')
-                .select('id')
-                .eq('employee_id', user.id)
-                .eq('is_active', true);
+              const [{ data: userAccounts }, { data: assignedAccounts }] = await Promise.all([
+                supabase
+                  .from('employee_email_accounts')
+                  .select('id')
+                  .eq('employee_id', user.id)
+                  .eq('is_active', true),
+                supabase
+                  .from('employee_email_account_assignments')
+                  .select('email_account_id')
+                  .eq('employee_id', user.id),
+              ]);
 
-              if (userAccounts && userAccounts.length > 0) {
-                const accountIds = userAccounts.map((acc) => acc.id);
+              const accountIds = Array.from(
+                new Set([
+                  ...(userAccounts || []).map((account) => account.id),
+                  ...(assignedAccounts || []).map((assignment) => assignment.email_account_id),
+                ]),
+              );
+
+              if (accountIds.length > 0) {
                 receivedQuery = receivedQuery.in('email_account_id', accountIds);
               }
             }
@@ -835,7 +871,7 @@ export const messagesApi = api.injectEndpoints({
                 ...receivedEmails
                   .filter((msg: any) => {
                     const searchIn =
-                      `${msg.from_address} ${msg.to_address} ${msg.subject || ''}`.toLowerCase();
+                      `${msg.from_address} ${msg.to_address} ${msg.subject || ''} ${msg.body_text || ''}`.toLowerCase();
                     return searchIn.includes(searchQuery);
                   })
                   .map((msg: any) => ({
@@ -844,7 +880,9 @@ export const messagesApi = api.injectEndpoints({
                     from: msg.from_address,
                     to: msg.to_address,
                     subject: msg.subject || '(Brak tematu)',
-                    preview: '',
+                    preview:
+                      (msg.body_text || '').substring(0, 100) +
+                      ((msg.body_text || '').length > 100 ? '...' : ''),
                     date: msg.received_date,
                     isRead: msg.is_read,
                     isStarred: msg.is_starred,
@@ -948,7 +986,9 @@ export const messagesApi = api.injectEndpoints({
           const sortedAccounts = uniqueAccounts.sort((a, b) => {
             if (a.account_type !== b.account_type) {
               const order = { system: 0, shared: 1, personal: 2 } as const;
-              return order[a.account_type] - order[b.account_type];
+              const aOrder = order[a.account_type as keyof typeof order] ?? 99;
+              const bOrder = order[b.account_type as keyof typeof order] ?? 99;
+              return aOrder - bOrder;
             }
             return a.account_name.localeCompare(b.account_name);
           });
@@ -1008,6 +1048,94 @@ export const messagesApi = api.injectEndpoints({
         }
       },
       providesTags: ['MessagesList'],
+    }),
+
+    getUnreadCountsByAccount: builder.query<MessageUnreadCounts, void>({
+      queryFn: async () => {
+        try {
+          const { supabase } = await import('@/lib/supabase/browser');
+          const {
+            data: { user },
+          } = await supabase.auth.getUser();
+
+          if (!user) {
+            return { data: { total: 0, contactForm: 0, byAccount: {} } };
+          }
+
+          const [{ data: employee }, { data: personalAccounts }, { data: assignments }] =
+            await Promise.all([
+              supabase
+                .from('employees')
+                .select('permissions, can_receive_contact_forms')
+                .eq('id', user.id)
+                .maybeSingle(),
+              supabase
+                .from('employee_email_accounts')
+                .select('id')
+                .eq('employee_id', user.id)
+                .eq('is_active', true),
+              supabase
+                .from('employee_email_account_assignments')
+                .select('email_account_id')
+                .eq('employee_id', user.id),
+            ]);
+
+          const accountIds = Array.from(
+            new Set([
+              ...(personalAccounts || []).map((account) => account.id),
+              ...(assignments || []).map((assignment) => assignment.email_account_id),
+            ]),
+          );
+
+          const permissions: string[] = employee?.permissions || [];
+          const canViewContactForms =
+            permissions.includes('admin') ||
+            permissions.includes('messages_manage') ||
+            employee?.can_receive_contact_forms === true;
+
+          const [accountCounts, contactResult] = await Promise.all([
+            Promise.all(
+              accountIds.map(async (accountId) => {
+                const { count, error } = await supabase
+                  .from('received_emails')
+                  .select('id', { count: 'exact', head: true })
+                  .eq('email_account_id', accountId)
+                  .eq('is_read', false)
+                  .is('deleted_at', null);
+
+                if (error) {
+                  console.warn('Could not count unread messages for account:', accountId, error);
+                }
+
+                return [accountId, count || 0] as const;
+              }),
+            ),
+            canViewContactForms
+              ? supabase
+                  .from('contact_messages')
+                  .select('id', { count: 'exact', head: true })
+                  .eq('status', 'new')
+                  .is('deleted_at', null)
+              : Promise.resolve({ count: 0, error: null }),
+          ]);
+
+          if (contactResult.error) {
+            console.warn('Could not count unread contact messages:', contactResult.error);
+          }
+
+          const byAccount: Record<string, number> = Object.fromEntries(accountCounts);
+          const contactForm = contactResult.count || 0;
+          const total =
+            contactForm + Object.values(byAccount).reduce((sum, count) => sum + count, 0);
+
+          return { data: { total, contactForm, byAccount } };
+        } catch (error) {
+          console.error('Error fetching unread counts by account:', error);
+          return { error: { status: 'CUSTOM_ERROR', error: String(error) } };
+        }
+      },
+      providesTags: ['MessagesList'],
+      keepUnusedDataFor: 60,
     }),
 
     getUnreadCount: builder.query<number, void>({
@@ -1102,6 +1230,7 @@ export const messagesApi = api.injectEndpoints({
 export const {
   useGetMessagesListQuery,
   useGetMessageDetailsQuery,
+  useLazyGetMessageDetailsQuery,
   useSearchMessagesQuery,
   useLazySearchMessagesQuery,
   useMarkMessageAsReadMutation,
@@ -1109,5 +1238,6 @@ export const {
   useDeleteMessageMutation,
   useRestoreMessageMutation,
   useGetEmailAccountsQuery,
+  useGetUnreadCountsByAccountQuery,
   useGetUnreadCountQuery,
 } = messagesApi;

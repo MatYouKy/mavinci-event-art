@@ -90,8 +90,9 @@ export function useCurrentEmployee(): CurrentEmployeeData {
         .select(
           'id, name, surname, nickname, email, phone_number, phone_private, avatar_url, role, access_level, permissions, occupation, region, signature_thumb, my_company_ids, invoice_company_permissions, sales_team_id, is_sales_team_manager, is_active',
         )
-        .eq('id', user.id)
+        .or(`id.eq.${user.id},auth_user_id.eq.${user.id}`)
         .eq('is_active', true)
+        .limit(1)
         .maybeSingle();
 
       if (error) {

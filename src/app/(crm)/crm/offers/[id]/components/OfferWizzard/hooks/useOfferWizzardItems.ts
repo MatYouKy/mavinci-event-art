@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState } from 'react';
 import { calcSubtotal, calcTotal } from '../utils';
-import { IOfferItem, IOfferWizardCustomItem, IProduct } from '@/app/(crm)/crm/offers/types';
+import { IOfferItem, IOfferWizardCustomItem, IProduct, IProductVariant } from '@/app/(crm)/crm/offers/types';
 
 export function useOfferWizardItems() {
   const [offerItems, setOfferItems] = useState<IOfferItem[]>([]);
@@ -36,13 +36,25 @@ export function useOfferWizardItems() {
   };
 
   // ✅ teraz addProduct zwraca nextItems
-  const addProduct = (product: IProduct) => {
+  const addProduct = (product: IProduct, variant?: IProductVariant) => {
     const prev = offerItemsRef.current;
 
     const existing = prev.find((i) => i.product_id === product.id);
     let next: IOfferItem[];
 
-    if (existing) {
+    if (existing && variant) {
+      next = prev.map((item) => item.id === existing.id
+        ? {
+            ...item,
+            product_variant_id: variant.id,
+            product_variant: variant,
+            name: `${product.name} — ${variant.name}`,
+            description: variant.description || variant.short_description || product.description || '',
+            unit_price: Number(variant.price_net || 0),
+            subtotal: calcSubtotal(item.quantity, Number(variant.price_net || 0), item.discount_percent),
+          }
+        : item);
+    } else if (existing) {
       next = prev.map((i) =>
         i.id === existing.id
           ? {
@@ -59,13 +71,18 @@ export function useOfferWizardItems() {
       const newItem: IOfferItem = {
         id: `temp-${Date.now()}`,
         product_id: product.id,
-        name: product.name,
+        name: variant ? `${product.name} — ${variant.name}` : product.name,
         description: product.description || '',
         quantity: 1,
         unit: product.unit,
-        unit_price: product.base_price,
+        unit_price: variant ? Number(variant.price_net || 0) : product.base_price,
+        product_variant_id: variant?.id || null,
+        product_variant: variant || null,
+        product,
+        show_variant_prices_in_pdf: true,
+        show_product_variants_in_pdf: true,
         discount_percent: 0,
-        subtotal: product.base_price,
+        subtotal: variant ? Number(variant.price_net || 0) : product.base_price,
         discount_amount: 0,
         total: 0,
         display_order: 0,

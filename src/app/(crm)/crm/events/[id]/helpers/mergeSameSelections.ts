@@ -9,5 +9,5 @@ export function mergeSameSelections(selected: SelectedItem[]) {
     if (!prev) map.set(k, { ...s });
     else map.set(k, { ...prev, quantity: prev.quantity + s.quantity });
   }
-  return [...map.values()];
+  return Array.from(map.values());
 }

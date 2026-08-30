@@ -35,12 +35,23 @@ const REQUIRED_FIELDS = [
 const VALID_PRIORITIES = ["low", "normal", "high", "critical"];
 const WEDDING_CARD_FIELDS: Record<string, string> = {
   guest_count: "technical",
+  ceremony_type: "ceremony",
+  ceremony_time: "ceremony",
+  church_address: "ceremony",
+  civil_ceremony_setting: "ceremony",
+  ceremony_address: "ceremony",
+  church_wishes_enabled: "ceremony",
   ceremony: "technical",
   venue_arrival_time: "technical",
   venue_access: "technical",
   hot_vodka: "technical",
   first_dance: "technical",
   special_toasts: "technical",
+  couple_wait_before_welcome: "welcome",
+  bread_and_salt_enabled: "welcome",
+  welcome_throwing: "welcome",
+  welcome_glasses: "welcome",
+  welcome_sequence: "welcome",
   cake_time: "cake",
   cake_presentation: "cake",
   cake_location: "cake",
@@ -63,6 +74,18 @@ const WEDDING_SCHEDULE_CATEGORIES = [
   "preparation", "ceremony", "arrival", "meal", "first_dance", "cake",
   "parents_thanks", "oczepiny", "attraction", "ending", "other",
 ];
+
+function applicableWeddingFieldKeys(answers: Array<{ field_key: string; value: unknown }>) {
+  const values = new Map(answers.map((answer) => [answer.field_key, answer.value]));
+  const ceremonyType = values.get("ceremony_type");
+
+  return Object.keys(WEDDING_CARD_FIELDS).filter((key) => {
+    if (["church_address", "church_wishes_enabled"].includes(key)) return ceremonyType === "church";
+    if (key === "civil_ceremony_setting") return ceremonyType === "civil";
+    if (key === "ceremony_address") return ceremonyType === "civil" || ceremonyType === "humanist";
+    return true;
+  });
+}
 
 const PRIORITY_TO_NOTIFICATION_TYPE: Record<string, string> = {
   low: "info",
@@ -133,10 +156,13 @@ Deno.serve(async (req: Request) => {
             event_date,
             event_end_date,
             status,
+            billing_arrangement,
+            billing_organization_id,
             event_categories!inner(name),
             locations(name, formatted_address, address, city, postal_code),
-            organizations(name, alias),
-            contacts(first_name, last_name)
+            organizations:organizations!events_organization_id_fkey(name, alias),
+            billing_organizations:organizations!events_billing_organization_id_fkey(name, alias),
+            contacts:contacts!events_contact_person_id_fkey(first_name, last_name)
           `)
           .eq("id", eventId)
           .ilike("event_categories.name", "wesele")
@@ -144,7 +170,7 @@ Deno.serve(async (req: Request) => {
 
         if (eventError) {
           console.error("Fetch wedding event failed:", eventError);
-          return jsonResponse({ error: "Failed to fetch wedding event" }, 500);
+          return jsonResponse({ error: "Nie udało się pobrać wydarzenia weselnego z CRM" }, 500);
         }
         if (!event) {
           return jsonResponse({ error: "Wedding event not found" }, 404);
@@ -186,7 +212,7 @@ Deno.serve(async (req: Request) => {
             .eq("wedding_card_id", card.id),
           supabase
             .from("wedding_card_people")
-            .select("id,side,role,first_name,last_name,phone,email,notes,sort_order")
+            .select("id,side,role,first_name,last_name,phone,email,instagram_handle,instagram_tag_consent,notes,sort_order")
             .eq("wedding_card_id", card.id)
             .order("side")
             .order("sort_order"),
@@ -243,17 +269,20 @@ Deno.serve(async (req: Request) => {
           event_end_date,
           status,
           client_type,
+          billing_arrangement,
+          billing_organization_id,
           event_categories!inner(name),
           locations(name, formatted_address, address, city, postal_code),
-          organizations(name, alias, email, phone),
-          contacts(first_name, last_name, email, phone, business_phone)
+          organizations:organizations!events_organization_id_fkey(name, alias, email, phone),
+          billing_organizations:organizations!events_billing_organization_id_fkey(name, alias, email, phone),
+          contacts:contacts!events_contact_person_id_fkey(first_name, last_name, email, phone, business_phone)
         `)
         .ilike("event_categories.name", "wesele")
         .order("event_date", { ascending: true });
 
       if (eventsError) {
         console.error("Fetch wedding events failed:", eventsError);
-        return jsonResponse({ error: "Failed to fetch wedding events" }, 500);
+        return jsonResponse({ error: "Nie udało się pobrać wydarzeń weselnych z CRM" }, 500);
       }
 
       return jsonResponse(
@@ -310,7 +339,10 @@ Deno.serve(async (req: Request) => {
 
       const payload = await req.json().catch(() => null) as Record<string, unknown> | null;
       const rawAnswers = Array.isArray(payload?.answers) ? payload.answers : null;
-      if (!rawAnswers || rawAnswers.length > Object.keys(WEDDING_CARD_FIELDS).length) {
+      // The form may send empty values for every known field so that clearing a
+      // previously saved answer is synchronized. Keep a transport limit here,
+      // while the field-by-field allowlist below remains the source of truth.
+      if (!rawAnswers || rawAnswers.length > 100) {
         return jsonResponse({ error: "Invalid answers payload" }, 400);
       }
 
@@ -335,13 +367,19 @@ Deno.serve(async (req: Request) => {
           !firstName || !WEDDING_PERSON_SIDES.includes(side) ||
           !WEDDING_PERSON_ROLES.includes(role)
         ) return [];
+        const isCouple = role === "bride" || role === "groom";
+        const instagramHandle = isCouple && typeof raw.instagram_handle === "string"
+          ? raw.instagram_handle.trim().replace(/^@+/, "").slice(0, 100)
+          : null;
         return [{
           side,
           role,
           first_name: firstName.slice(0, 120),
           last_name: typeof raw.last_name === "string" ? raw.last_name.trim().slice(0, 120) : null,
-          phone: typeof raw.phone === "string" ? raw.phone.trim().slice(0, 50) : null,
-          email: typeof raw.email === "string" ? raw.email.trim().slice(0, 255) : null,
+          phone: isCouple && typeof raw.phone === "string" ? raw.phone.trim().slice(0, 50) : null,
+          email: isCouple && typeof raw.email === "string" ? raw.email.trim().slice(0, 255) : null,
+          instagram_handle: instagramHandle || null,
+          instagram_tag_consent: isCouple && raw.instagram_tag_consent === true,
           notes: typeof raw.notes === "string" ? raw.notes.trim().slice(0, 2000) : null,
           sort_order: index,
         }];
@@ -439,25 +477,26 @@ Deno.serve(async (req: Request) => {
       }
 
       if (people) {
-        const { error: deletePeopleError } = await supabase
-          .from("wedding_card_people")
-          .delete()
-          .eq("wedding_card_id", cardId);
-        if (deletePeopleError) {
-          return jsonResponse({ error: "Failed to update wedding people" }, 500);
-        }
-        if (people.length > 0) {
-          const { error: insertPeopleError } = await supabase
-            .from("wedding_card_people")
-            .insert(people.map((person) => ({
-              wedding_card_id: cardId,
-              ...person,
-              source: "event_rulers",
-            })));
-          if (insertPeopleError) {
-            console.error("Save wedding people failed:", insertPeopleError);
-            return jsonResponse({ error: "Failed to save wedding people" }, 500);
+        const { error: replacePeopleError } = await supabase.rpc(
+          "replace_wedding_card_people",
+          { p_wedding_card_id: cardId, p_people: people },
+        );
+        if (replacePeopleError) {
+          console.error("Save wedding people failed:", replacePeopleError);
+          const missingPeopleRpc = ["PGRST202", "PGRST204", "42883"].includes(
+            replacePeopleError.code ?? "",
+          );
+          if (missingPeopleRpc) {
+            return jsonResponse({
+              error:
+                "Baza CRM wymaga migracji 20260901161000_repair_wedding_card_people_schema.sql",
+              code: "WEDDING_PEOPLE_SCHEMA_OUTDATED",
+            }, 503);
           }
+          return jsonResponse({
+            error: "Nie udało się zapisać osób w karcie weselnej",
+            code: replacePeopleError.code ?? "WEDDING_PEOPLE_SAVE_FAILED",
+          }, 500);
         }
       }
 
@@ -502,7 +541,9 @@ Deno.serve(async (req: Request) => {
         }
       }
 
+      const applicableFieldKeys = new Set(applicableWeddingFieldKeys(answers));
       const filledCount = answers.filter((answer) => {
+        if (!applicableFieldKeys.has(answer.field_key)) return false;
         const value = answer.value;
         if (value === null || value === undefined || value === "") return false;
         if (Array.isArray(value)) return value.length > 0;
@@ -513,7 +554,7 @@ Deno.serve(async (req: Request) => {
         : 0;
       const progress = Math.min(100, Math.round(
         ((filledCount + Math.min(essentialPeopleCount, 8)) /
-          (Object.keys(WEDDING_CARD_FIELDS).length + 8)) * 100,
+          (applicableFieldKeys.size + 8)) * 100,
       ));
       const submit = payload?.submit === true;
 

@@ -12,7 +12,7 @@ export interface EventsApiError {
 
 export type SelectedEquipment = {
   id: string;
-  type: 'item' | 'kit';
+  type: 'item' | 'kit' | 'cable';
   quantity: number;
   notes?: string;
 };
@@ -257,6 +257,14 @@ export const eventsApi = createApi({
                   cable_id,
                   quantity
                 )
+              ),
+              cable:cables(
+                id,
+                name,
+                description,
+                length_meters,
+                stock_unit,
+                thumbnail_url
               )
             `,
             )
@@ -316,6 +324,14 @@ export const eventsApi = createApi({
                     category:warehouse_categories(id, name, parent_id)
                   )
                 )
+              ),
+              cable:cables(
+                id,
+                name,
+                description,
+                length_meters,
+                stock_unit,
+                thumbnail_url
               )
             `,
             )
@@ -333,9 +349,9 @@ export const eventsApi = createApi({
           }
 
           // Enrich with loaded_by employee info
-          const loadedByIds = [...new Set(
-            (data || []).map((r: any) => r.loaded_by).filter(Boolean)
-          )];
+          const loadedByIds = Array.from(
+            new Set((data || []).map((r: any) => r.loaded_by).filter(Boolean)),
+          );
           let employeeMap: Record<string, any> = {};
           if (loadedByIds.length > 0) {
             const { data: emps } = await supabase
@@ -378,6 +394,7 @@ export const eventsApi = createApi({
             event_id: eventId,
             equipment_id: item.type === 'item' ? item.id : null,
             kit_id: item.type === 'kit' ? item.id : null,
+            cable_id: item.type === 'cable' ? item.id : null,
             quantity: item.quantity,
             notes: item.notes ?? null,
           }));
@@ -545,8 +562,11 @@ export const eventsApi = createApi({
         role?: string;
         responsibilities?: string | null;
         access_level_id?: string | null;
+        sendInvitation?: boolean;
+        includePhases?: boolean;
         permissions?: {
           can_edit_event?: boolean;
+          can_edit_phases?: boolean;
           can_edit_agenda?: boolean;
           can_edit_tasks?: boolean;
           can_edit_files?: boolean;
@@ -556,7 +576,16 @@ export const eventsApi = createApi({
         };
       }
     >({
-      async queryFn({ eventId, employeeId, role, responsibilities, access_level_id, permissions }) {
+      async queryFn({
+        eventId,
+        employeeId,
+        role,
+        responsibilities,
+        access_level_id,
+        sendInvitation = true,
+        includePhases = false,
+        permissions,
+      }) {
         try {
           const payload = {
             event_id: eventId,
@@ -566,6 +595,7 @@ export const eventsApi = createApi({
             access_level_id: access_level_id ?? null,
 
             can_edit_event: !!permissions?.can_edit_event,
+            can_edit_phases: !!permissions?.can_edit_phases,
             can_edit_agenda: !!permissions?.can_edit_agenda,
             can_edit_tasks: !!permissions?.can_edit_tasks,
             can_edit_files: !!permissions?.can_edit_files,
@@ -574,18 +604,35 @@ export const eventsApi = createApi({
             can_view_budget: !!permissions?.can_view_budget,
           };
 
-          const { data, error } = await supabase
+          let { data, error } = await supabase
             .from('employee_assignments')
             .insert(payload)
             .select()
             .single();
 
+          // Compatibility for environments where the latest event-team migration
+          // has not been applied yet. The dedicated permission will be available
+          // after the migration, but adding a team member must not be blocked.
+          if (
+            error?.code === 'PGRST204' &&
+            error.message?.includes('can_edit_phases')
+          ) {
+            const { can_edit_phases: _phasePermission, ...compatiblePayload } = payload;
+            const retry = await supabase
+              .from('employee_assignments')
+              .insert(compatiblePayload)
+              .select()
+              .single();
+            data = retry.data;
+            error = retry.error;
+          }
+
           if (error) throw error;
 
-          if (data?.id) {
+          if (data?.id && sendInvitation) {
             try {
               const result = await supabase.functions.invoke('send-event-invitation', {
-                body: { assignmentId: data.id },
+                body: { assignmentId: data.id, includePhases, mode: 'invitation' },
               });
 
               if (result.error) {

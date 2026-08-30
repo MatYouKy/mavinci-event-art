@@ -33,6 +33,7 @@ interface Cable {
   length_meters: number | null;
   thumbnail_url: string | null;
   stock_quantity: number;
+  stock_unit?: 'piece' | 'meter';
 }
 
 interface KitItem {
@@ -156,7 +157,7 @@ export function KitsPageClient({ viewMode }: { viewMode: ViewMode }) {
   const fetchCables = async () => {
     const { data } = await supabase
       .from('cables')
-      .select('id, name, length_meters, thumbnail_url, stock_quantity')
+      .select('id, name, length_meters, thumbnail_url, stock_quantity, stock_unit')
       .eq('is_active', true)
       .is('deleted_at', null)
       .order('name');
@@ -174,7 +175,7 @@ export function KitsPageClient({ viewMode }: { viewMode: ViewMode }) {
           equipment_kit_items(
             *,
             equipment_items(id, name, brand, model, thumbnail_url),
-            cables(id, name, length_meters, thumbnail_url, stock_quantity)
+            cables(id, name, length_meters, thumbnail_url, stock_quantity, stock_unit)
           )
         `,
         )
@@ -1129,7 +1130,8 @@ export function KitsPageClient({ viewMode }: { viewMode: ViewMode }) {
                               )}
                               {cable.stock_quantity > 0 && (
                                 <span className="text-[#d3bb73]">
-                                  {cable.stock_quantity} m dostępnych
+                                  {cable.stock_quantity}{' '}
+                                  {cable.stock_unit === 'meter' ? 'm' : 'szt.'} dostępnych
                                 </span>
                               )}
                             </div>

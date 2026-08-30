@@ -69,6 +69,8 @@ export type EventRow = {
   location_id: string | null;
   contact_person_id: string | null;
   organization_id: string | null;
+  billing_arrangement: 'direct' | 'hotel' | 'agency' | 'other' | null;
+  billing_organization_id: string | null;
 
   organizations: { name: string | null; alias: string | null } | null;
   contacts: { first_name: string | null; last_name: string | null } | null;

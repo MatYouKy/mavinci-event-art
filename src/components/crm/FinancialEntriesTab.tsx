@@ -67,7 +67,7 @@ export default function FinancialEntriesTab() {
     const [entriesRes, categoriesRes, companiesRes, employeesRes] = await Promise.all([
       supabase
         .from('financial_entries')
-        .select('*, company:my_companies(id,name), employee:employees(id,name,surname), category:finance_categories(id,code,name,color)')
+        .select('*, company:my_companies(id,name), employee:employees!financial_entries_employee_id_fkey(id,name,surname), category:finance_categories(id,code,name,color)')
         .order('recognition_date', { ascending: false })
         .limit(200),
       supabase.from('finance_categories').select('id,code,name,color').eq('is_active', true).in('kind', ['expense', 'both']).order('sort_order'),

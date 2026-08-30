@@ -7,6 +7,7 @@ import { getContactById } from '@/lib/CRM/client/getContactById';
 import { UUID } from '../../contacts/types';
 import { fetchEventOffersServer } from '@/lib/CRM/Offers/fetchEventOffers.server';
 import { fetchEventCategoriesServer } from '@/lib/CRM/events/eventsData.server';
+import { EventWorkspaceProvider } from '@/components/crm/events/EventWorkspaceProvider';
 
 export default async function EventPage({ params }: { params: { id: string } }) {
   const event = await fetchEventByIdServer(params.id);
@@ -15,36 +16,44 @@ export default async function EventPage({ params }: { params: { id: string } }) 
   const categories = await fetchEventCategoriesServer();
   const offers = await fetchEventOffersServer(params.id);
 
+  const acceptedOffer = offers.find((offer) => offer.status === 'accepted');
   const updateEventsByOffers = {
     ...event,
-    expected_revenue: offers.reduce((acc, offer) => acc + offer.total_amount, 0),
+    expected_revenue:
+      event.financial_source === 'calculation'
+        ? event.expected_revenue
+        : acceptedOffer
+          ? Number(acceptedOffer.subtotal ?? acceptedOffer.total_amount ?? 0)
+          : event.expected_revenue,
   };
 
   return (
-    <EventDetailPageClient
-      categories={categories}
-      initialData={updateEventsByOffers as unknown as IEvent}
-      initialLocation={{
-        id: location?.id,
-        name: location?.name,
-        formatted_address: location?.formatted_address,
-        address: location?.address,
-        city: location?.city,
-        postal_code: location?.postal_code,
-        google_maps_url: location?.google_maps_url,
-      }}
-      initialContact={{
-        organization_name: contact?.organization_name,
-        id: contact?.id,
-        first_name: contact?.first_name,
-        last_name: contact?.last_name,
-        full_name: contact?.full_name,
-        email: contact?.email,
-        phone: contact?.phone,
-        business_phone: contact?.business_phone,
-        contact_type: contact?.contact_type,
-      }}
-      initialOffers={offers as unknown as IOffer[]}
-    />
+    <EventWorkspaceProvider eventId={params.id}>
+      <EventDetailPageClient
+        categories={categories}
+        initialData={updateEventsByOffers as unknown as IEvent}
+        initialLocation={{
+          id: location?.id,
+          name: location?.name,
+          formatted_address: location?.formatted_address,
+          address: location?.address,
+          city: location?.city,
+          postal_code: location?.postal_code,
+          google_maps_url: location?.google_maps_url,
+        }}
+        initialContact={{
+          organization_name: contact?.organization_name,
+          id: contact?.id,
+          first_name: contact?.first_name,
+          last_name: contact?.last_name,
+          full_name: contact?.full_name,
+          email: contact?.email,
+          phone: contact?.phone,
+          business_phone: contact?.business_phone,
+          contact_type: contact?.contact_type,
+        }}
+        initialOffers={offers as unknown as IOffer[]}
+      />
+    </EventWorkspaceProvider>
   );
 }

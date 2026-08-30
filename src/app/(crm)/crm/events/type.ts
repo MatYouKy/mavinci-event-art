@@ -6,7 +6,12 @@ import { IOfferItem } from '../offers/types';
 import { OrganizationRow } from '../contacts/types';
 import { EventPermissionContext } from '@/lib/CRM/events/eventsIdData.server';
 
-export type SelectedItem = { id: string; quantity: number; notes: string; type: 'item' | 'kit' };
+export type SelectedItem = {
+  id: string;
+  quantity: number;
+  notes: string;
+  type: 'item' | 'kit' | 'cable';
+};
 
 export interface IOffer {
   subtotal: number;
@@ -56,6 +61,8 @@ export interface IEvent {
   category_id?: string | null;
   organization_id?: string | null;
   contact_person_id?: string | null;
+  billing_arrangement?: 'direct' | 'hotel' | 'agency' | 'other' | null;
+  billing_organization_id?: string | null;
   my_company_id?: string | null;
   created_by?: string;
   created_at?: string;

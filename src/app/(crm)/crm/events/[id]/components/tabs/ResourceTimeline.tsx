@@ -994,8 +994,8 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [equipment, phaseAssignments, isFullRangeAssignment]);
 
-  // pokazuj tylko z przypisaniami (jak wcześniej)
-  const filteredEmployees = employeeRows.filter((r) => r.assignments.length > 0);
+  // Zespół wydarzenia jest widoczny również przed ustaleniem godzin pracy.
+  const filteredEmployees = employeeRows;
   const filteredVehicles = vehicleRows.filter((r) => r.assignments.length > 0);
   const filteredEquipment = equipmentRows.filter((r) => r.assignments.length > 0);
 
@@ -1009,6 +1009,16 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
       return (
         <div key={resource.id} className="relative overflow-hidden border-b border-[#d3bb73]/10">
           <div ref={containerRef} className="relative" style={{ height: `${heightPx}px` }}>
+            {resource.assignments.length === 0 && isEmployee && (
+              <div className="absolute inset-y-0 left-4 flex items-center gap-2 text-[#e5e4e2]/55">
+                <ResourceAvatar avatar_url={resource.avatar_url} name={resource.name} />
+                <span className="text-xs font-medium">{resource.name}</span>
+                <span className="rounded-full border border-[#d3bb73]/20 bg-[#1c1f33] px-2 py-0.5 text-[10px] text-[#d3bb73]/80">
+                  Bez ustalonych godzin
+                </span>
+              </div>
+            )}
+
             {/* Renderuj nakładające się obszary (kreskowany wzór) */}
             {overlaps.map((overlap, idx) => {
               const position = getAssignmentPosition(

@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/lib/supabase/browser';
-import { X, Send, Eye, Code, RefreshCw, Paperclip, Trash2 } from 'lucide-react';
+import { X, Send, Eye, Code, RefreshCw, Paperclip, Trash2, Sparkles } from 'lucide-react';
 import { generateEmailSignature } from './EmailSignatureGenerator';
 import { buildCompanyEmailBody, buildCompanySignatureHtml } from '@/lib/buildCompanySignature';
 
@@ -23,9 +23,72 @@ interface ComposeEmailModalProps {
   initialSubject?: string;
   initialBody?: string;
   forwardedBody?: string;
+  replyContext?: EmailReplyContext;
   selectedAccountId?: string;
   emailAccounts?: any[];
+  onImproveWithAI?: (draft: { subject: string; body: string }) => Promise<{
+    subject?: string;
+    body: string;
+  }>;
 }
+
+export interface EmailReplyContext {
+  from: string;
+  date: string;
+  subject: string;
+  body: string;
+  bodyHtml?: string;
+  messageId?: string | null;
+}
+
+const escapeHtml = (value: string) =>
+  value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+
+const sanitizeQuotedEmailHtml = (html: string) => {
+  if (!html || typeof window === 'undefined') return '';
+  const documentNode = new DOMParser().parseFromString(html, 'text/html');
+  documentNode
+    .querySelectorAll('script, style, iframe, object, embed, form, input, button, meta, link, base')
+    .forEach((element) => element.remove());
+
+  documentNode.body.querySelectorAll('*').forEach((element) => {
+    Array.from(element.attributes).forEach((attribute) => {
+      const name = attribute.name.toLowerCase();
+      const value = attribute.value.trim().toLowerCase();
+      if (name.startsWith('on') || ((name === 'href' || name === 'src') && value.startsWith('javascript:'))) {
+        element.removeAttribute(attribute.name);
+      }
+    });
+  });
+
+  return documentNode.body.innerHTML;
+};
+
+const buildReplyQuoteHtml = (context?: EmailReplyContext) => {
+  if (!context) return '';
+  const originalHtml = context.bodyHtml?.trim()
+    ? sanitizeQuotedEmailHtml(context.bodyHtml)
+    : escapeHtml(context.body || '').replace(/\n/g, '<br>');
+  const formattedDate = new Date(context.date).toLocaleString('pl-PL', {
+    dateStyle: 'long',
+    timeStyle: 'short',
+  });
+
+  return `
+    <div style="margin:24px 0 0; padding:0; color:#4b5563; background:#ffffff; font-family:Arial,sans-serif; font-size:13px; line-height:1.5;">
+      <div class="moz-cite-prefix" style="margin:0 0 8px; color:#4b5563;">
+        Dnia ${escapeHtml(formattedDate)}, użytkownik ${escapeHtml(context.from)} napisał:
+      </div>
+      <blockquote type="cite"${context.messageId ? ` cite="mid:${escapeHtml(context.messageId)}"` : ''} style="margin:0; padding:0 0 0 14px; border-left:2px solid #729fcf; color:#1f2937; background:#ffffff;">
+        ${originalHtml}
+      </blockquote>
+    </div>`;
+};
 
 export default function ComposeEmailModal({
   isOpen,
@@ -35,8 +98,10 @@ export default function ComposeEmailModal({
   initialSubject = '',
   initialBody = '',
   forwardedBody = '',
+  replyContext,
   selectedAccountId,
   emailAccounts = [],
+  onImproveWithAI,
 }: ComposeEmailModalProps) {
   const [to, setTo] = useState(initialTo);
   const [subject, setSubject] = useState(initialSubject);
@@ -53,6 +118,20 @@ export default function ComposeEmailModal({
   const [fromAccountId, setFromAccountId] = useState<string>('');
   const [companySignatureHtml, setCompanySignatureHtml] = useState('');
   const [companySignatureEnabled, setCompanySignatureEnabled] = useState(false);
+  const [companySignatureCompanyName, setCompanySignatureCompanyName] = useState<string | null>(null);
+  const [loadingSignature, setLoadingSignature] = useState(false);
+  const [signatureProfileLoaded, setSignatureProfileLoaded] = useState(false);
+  const [improvingWithAI, setImprovingWithAI] = useState(false);
+  const replyQuoteHtml = useMemo(() => buildReplyQuoteHtml(replyContext), [replyContext]);
+  const selectableEmailAccounts = emailAccounts.filter(
+    (account) => account.id !== 'all' && account.id !== 'contact_form',
+  );
+  const emailAccountIdsKey = selectableEmailAccounts.map((account) => account.id).join('|');
+  const selectedReplyAccountId =
+    selectedAccountId && !['all', 'contact_form'].includes(selectedAccountId)
+      ? selectedAccountId
+      : '';
+  const effectiveAccountId = fromAccountId || selectedReplyAccountId || null;
 
   useEffect(() => {
     if (isOpen) {
@@ -62,24 +141,66 @@ export default function ComposeEmailModal({
       setCc('');
       setBcc('');
       setAttachments([]);
-      fetchSignatureAndTemplate();
-      buildCompanySignatureHtml().then((result) => {
+      setSignatureProfileLoaded(false);
+      void fetchSignatureAndTemplate();
+    }
+  }, [isOpen, initialTo, initialSubject, initialBody, forwardedBody]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    setFromAccountId((currentAccountId) => {
+      const accountStillAvailable = selectableEmailAccounts.some(
+        (account) => account.id === currentAccountId,
+      );
+      const incomingAccountAvailable = selectableEmailAccounts.some(
+        (account) => account.id === selectedReplyAccountId,
+      );
+
+      if (selectedReplyAccountId && (incomingAccountAvailable || selectableEmailAccounts.length === 0)) {
+        return selectedReplyAccountId;
+      }
+      if (accountStillAvailable) return currentAccountId;
+      return selectableEmailAccounts[0]?.id || selectedReplyAccountId;
+    });
+  }, [isOpen, selectedReplyAccountId, emailAccountIdsKey]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    if (selectableEmailAccounts.length > 0 && !effectiveAccountId) return;
+
+    let active = true;
+    setLoadingSignature(true);
+    buildCompanySignatureHtml({ emailAccountId: effectiveAccountId })
+      .then((result) => {
+        if (!active) return;
         setCompanySignatureHtml(result.html);
         setCompanySignatureEnabled(result.enabled);
+        setCompanySignatureCompanyName(result.companyName);
+      })
+      .finally(() => {
+        if (active) setLoadingSignature(false);
       });
 
-      // Set default account
-      if (emailAccounts.length > 0) {
-        // If selectedAccountId is a real account (not 'all' or 'contact_form'), use it
-        const validAccount = emailAccounts.find((acc) => acc.id === selectedAccountId);
-        setFromAccountId(validAccount ? selectedAccountId : emailAccounts[0].id);
-      }
-    }
-  }, [isOpen, initialTo, initialSubject, initialBody, forwardedBody, selectedAccountId, emailAccounts]);
+    return () => {
+      active = false;
+    };
+  }, [isOpen, effectiveAccountId, emailAccountIdsKey]);
 
   useEffect(() => {
     void generatePreview();
-  }, [body, subject, signature, template, companySignatureHtml, companySignatureEnabled]);
+  }, [
+    body,
+    subject,
+    signature,
+    template,
+    companySignatureHtml,
+    companySignatureEnabled,
+    fromAccountId,
+    selectedAccountId,
+    replyQuoteHtml,
+    employee,
+  ]);
 
   const fetchSignatureAndTemplate = async () => {
     try {
@@ -99,6 +220,8 @@ export default function ComposeEmailModal({
       setTemplate(templateResult.data);
     } catch (error) {
       console.error('Error fetching signature/template:', error);
+    } finally {
+      setSignatureProfileLoaded(true);
     }
   };
 
@@ -122,17 +245,24 @@ export default function ComposeEmailModal({
     return generateEmailSignature(sig);
   };
 
-  const generatePreview = async () => {
+  const buildCurrentMessageHtml = async () => {
     const signatureHtml = companySignatureEnabled
       ? companySignatureHtml
       : generateSignatureHtml();
     const result = await buildCompanyEmailBody({
-      content: body,
+      content: escapeHtml(body),
       subject,
       signatureHtml,
       purpose: 'general',
+      emailAccountId:
+        effectiveAccountId,
     });
-    setPreviewHtml(result.html);
+    return `${result.html}${replyQuoteHtml}`;
+  };
+
+  const generatePreview = async () => {
+    const html = await buildCurrentMessageHtml();
+    setPreviewHtml(html);
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -158,20 +288,27 @@ export default function ComposeEmailModal({
       return;
     }
 
-    if (!fromAccountId && emailAccounts.length > 0) {
+    if (!effectiveAccountId && selectableEmailAccounts.length > 0) {
       alert('Wybierz konto, z którego chcesz wysłać wiadomość');
+      return;
+    }
+
+    if (loadingSignature || !signatureProfileLoaded) {
+      alert('Poczekaj chwilę — przygotowujemy stopkę wybranego konta.');
       return;
     }
 
     setSending(true);
     try {
+      const finalHtml = await buildCurrentMessageHtml();
+      setPreviewHtml(finalHtml);
       await onSend({
         to,
         subject,
         body,
-        bodyHtml: previewHtml,
+        bodyHtml: finalHtml,
         attachments,
-        fromAccountId,
+        fromAccountId: effectiveAccountId || undefined,
         cc: cc.trim(),
         bcc: bcc.trim(),
       });
@@ -180,10 +317,26 @@ export default function ComposeEmailModal({
       setBody('');
       setAttachments([]);
       onClose();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error sending:', error);
+      alert(error?.message || 'Nie udało się wysłać wiadomości');
     }
     setSending(false);
+  };
+
+  const handleImproveWithAI = async () => {
+    if (!onImproveWithAI) return;
+    setImprovingWithAI(true);
+    try {
+      const improved = await onImproveWithAI({ subject, body });
+      setBody(improved.body);
+      if (improved.subject) setSubject(improved.subject);
+    } catch (error: any) {
+      console.error('Error improving email with AI:', error);
+      alert(error?.message || 'Nie udało się poprawić wiadomości z pomocą AI');
+    } finally {
+      setImprovingWithAI(false);
+    }
   };
 
   if (!isOpen) return null;
@@ -192,7 +345,9 @@ export default function ComposeEmailModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33]">
         <div className="flex items-center justify-between border-b border-[#d3bb73]/20 p-6">
-          <h2 className="text-2xl font-bold text-white">Nowa Wiadomość</h2>
+          <h2 className="text-2xl font-bold text-white">
+            {replyContext ? 'Odpowiedź' : forwardedBody ? 'Przekaż wiadomość' : 'Nowa wiadomość'}
+          </h2>
           <div className="flex items-center gap-4">
             <button
               onClick={() => setShowPreview(!showPreview)}
@@ -210,10 +365,10 @@ export default function ComposeEmailModal({
         <div className="flex-1 overflow-y-auto p-6">
           {!showPreview ? (
             <div className="space-y-4">
-              {emailAccounts.length > 0 && (
+              {selectableEmailAccounts.length > 0 && (
                 <div>
                   <label className="mb-2 block text-sm text-[#e5e4e2]/70">
-                    Z konta: <span className="text-red-400">*</span>
+                    Konto nadawcze i stopka: <span className="text-red-400">*</span>
                   </label>
                   <select
                     value={fromAccountId}
@@ -221,14 +376,21 @@ export default function ComposeEmailModal({
                     className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-3 text-white focus:border-[#d3bb73] focus:outline-none"
                   >
                     <option value="">-- Wybierz konto email --</option>
-                    {emailAccounts.map((account) => (
+                    {selectableEmailAccounts.map((account) => (
                       <option key={account.id} value={account.id}>
-                        {account.display_name || account.email_address}
+                        {account.display_name || account.account_name || account.email_address}
+                        {account.email_address &&
+                        !String(account.display_name || account.account_name || '').includes(
+                          account.email_address,
+                        )
+                          ? ` — ${account.email_address}`
+                          : ''}
                       </option>
                     ))}
                   </select>
                   <p className="mt-1 text-xs text-[#e5e4e2]/50">
-                    Wybierz z jakiego konta email chcesz wysłać wiadomość
+                    Przy odpowiedzi domyślnie używamy konta, na które przyszła wiadomość. Zmiana
+                    konta automatycznie zmieni również stopkę.
                   </p>
                 </div>
               )}
@@ -275,7 +437,20 @@ export default function ComposeEmailModal({
                 />
               </div>
               <div>
-                <label className="mb-2 block text-sm text-[#e5e4e2]/70">Wiadomość:</label>
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <label className="block text-sm text-[#e5e4e2]/70">Wiadomość:</label>
+                  {onImproveWithAI && (
+                    <button
+                      type="button"
+                      onClick={() => void handleImproveWithAI()}
+                      disabled={improvingWithAI}
+                      className="inline-flex items-center gap-2 rounded-lg border border-violet-400/25 bg-violet-400/10 px-3 py-1.5 text-xs text-violet-200 transition-colors hover:bg-violet-400/15 disabled:opacity-50"
+                    >
+                      {improvingWithAI ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                      {improvingWithAI ? 'Redaguję…' : 'Popraw z AI'}
+                    </button>
+                  )}
+                </div>
                 <textarea
                   value={body}
                   onChange={(e) => setBody(e.target.value)}
@@ -283,23 +458,41 @@ export default function ComposeEmailModal({
                   rows={12}
                   className="w-full resize-none rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-3 text-white focus:border-[#d3bb73] focus:outline-none"
                 />
-                {!signature && !companySignatureEnabled ? (
+                {replyContext && (
+                  <details className="mt-3 overflow-hidden rounded-lg border border-[#d3bb73]/15 bg-[#0f1119]">
+                    <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-[#e5e4e2]/60 hover:text-[#e5e4e2]">
+                      Pełna cytowana wiadomość — zostanie dołączona pod odpowiedzią i stopką
+                    </summary>
+                    <div className="max-h-64 overflow-y-auto border-t border-[#d3bb73]/10 bg-white p-3">
+                      <div
+                        className="break-words text-sm text-[#1c1f33]"
+                        dangerouslySetInnerHTML={{ __html: replyQuoteHtml }}
+                      />
+                    </div>
+                  </details>
+                )}
+                {!loadingSignature && !signature && !companySignatureEnabled && !employee ? (
                   <div className="mt-2 rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-3">
                     <p className="text-xs text-yellow-400">
-                      ⚠️ Nie masz skonfigurowanej stopki. Użyjemy podstawowych danych z profilu
-                      pracownika.
+                      ⚠️ Dla wybranego konta nie znaleziono danych stopki.
                       <br />
                       <a
-                        href="/crm/employees/signature"
+                        href="/crm/settings/email-signature"
                         className="underline hover:text-yellow-300"
                       >
-                        Kliknij tutaj aby stworzyć profesjonalną stopkę
+                        Otwórz ustawienia stopek e-mail
                       </a>
                     </p>
                   </div>
                 ) : (
                   <p className="mt-2 text-xs text-[#e5e4e2]/50">
-                    ✓ Stopka zostanie dodana automatycznie
+                    {loadingSignature
+                      ? 'Sprawdzam stopkę wybranego konta…'
+                      : companySignatureEnabled
+                        ? `✓ Stopka firmowa${companySignatureCompanyName ? `: ${companySignatureCompanyName}` : ''}`
+                        : signature
+                          ? '✓ Stopka pracownika zostanie dodana automatycznie'
+                          : '✓ Stopka zostanie utworzona z danych profilu pracownika'}
                   </p>
                 )}
               </div>
@@ -363,7 +556,7 @@ export default function ComposeEmailModal({
           </button>
           <button
             onClick={handleSend}
-            disabled={sending}
+            disabled={sending || loadingSignature || !signatureProfileLoaded}
             className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-3 text-[#1c1f33] transition-colors hover:bg-[#c5ad65] disabled:opacity-50"
           >
             {sending ? (
@@ -373,7 +566,11 @@ export default function ComposeEmailModal({
               </>
             ) : (
               <>
-                <Send className="h-5 w-5" />
+                {loadingSignature || !signatureProfileLoaded ? (
+                  <RefreshCw className="h-5 w-5 animate-spin" />
+                ) : (
+                  <Send className="h-5 w-5" />
+                )}
                 Wyślij
               </>
             )}

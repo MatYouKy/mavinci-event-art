@@ -41,8 +41,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const { navigation } = await getNavigationForUserServer();
 
   return (
-    <html lang="pl">
-      <body>
+    <html lang="pl" className="crm-document">
+      <body className="crm-body">
         <GlobalLoaderProvider>
           <RouteLoaderReset />
           <CrmProviders>

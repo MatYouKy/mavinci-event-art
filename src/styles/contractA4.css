@@ -71,6 +71,10 @@
 
 .contract-content {
   flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  box-sizing: border-box;
+  padding-bottom: 2mm;
   text-align: justify;
   color: #000;
   font-family: Arial, sans-serif;
@@ -82,9 +86,16 @@
   word-wrap: break-word;
 }
 
-.contract-content > * {
+.contract-content > :not(style):not(script):not(link):not(meta) {
   display: block;
   white-space: pre-wrap;
+}
+
+.contract-content > style,
+.contract-content > script,
+.contract-content > link,
+.contract-content > meta {
+  display: none !important;
 }
 
 /* Inline formatowanie musi pozostać inline */
@@ -150,18 +161,17 @@
 
 .product-contract-clause {
   margin-bottom: 0.75em;
-  font: inherit;
-  color: inherit;
-  line-height: inherit;
+  font-family: inherit !important;
+  font-size: inherit !important;
+  color: inherit !important;
+  line-height: inherit !important;
 }
 
-.product-contract-clause p,
-.product-contract-clause li,
-.product-contract-clause blockquote {
-  font-family: inherit;
-  font-size: inherit;
-  color: inherit;
-  line-height: inherit;
+.product-contract-clause * {
+  font-family: inherit !important;
+  font-size: inherit !important;
+  color: inherit !important;
+  line-height: inherit !important;
 }
 
 .product-contract-clause p {
@@ -182,6 +192,38 @@
 .product-contract-clause ul {
   margin: 0.35em 0 0.65em;
   padding-left: 1.6em;
+}
+
+.product-contract-clause ol {
+  list-style-type: decimal;
+}
+
+.product-contract-clause ul {
+  list-style-type: disc;
+}
+
+.product-contract-clause ol ol {
+  list-style-type: lower-alpha;
+}
+
+.product-contract-clause ul ul {
+  list-style-type: circle;
+}
+
+.product-contract-clause ol[data-clause-marker='lower-alpha'] {
+  list-style-type: lower-alpha;
+}
+
+.product-contract-clause ol[data-clause-marker='decimal-paren'] > li::marker {
+  content: counter(list-item) ') ';
+}
+
+.product-contract-clause ol[data-clause-marker='lower-alpha-paren'] > li::marker {
+  content: counter(list-item, lower-alpha) ') ';
+}
+
+.product-contract-clause ol[data-clause-marker='bullet'] {
+  list-style-type: disc;
 }
 
 .product-contract-clause li {
@@ -411,7 +453,8 @@
   .contract-content {
     page-break-inside: auto !important;
     flex: 1 !important;
-    overflow: visible !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
   }
 
   .contract-content h1,

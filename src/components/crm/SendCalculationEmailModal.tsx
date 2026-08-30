@@ -9,7 +9,7 @@ import { buildCompanySignatureHtml, buildCompanyEmailBody } from '@/lib/buildCom
 
 interface SendCalculationEmailModalProps {
   calculationId: string;
-  eventId: string;
+  eventId: string | null;
   calculationName?: string;
   eventName?: string;
   defaultEmail?: string;
@@ -130,6 +130,10 @@ export default function SendCalculationEmailModal({
   };
 
   const fetchEventFiles = async () => {
+    if (!eventId) {
+      setEventFiles([]);
+      return;
+    }
     try {
       setLoadingFiles(true);
 
@@ -457,7 +461,7 @@ export default function SendCalculationEmailModal({
   };
 
   useEffect(() => {
-    if (!includeEventFiles) {
+    if (!includeEventFiles || !eventId) {
       setSelectedFileIds([]);
       return;
     }
@@ -623,7 +627,7 @@ export default function SendCalculationEmailModal({
                   Stopka zostanie dodana automatycznie
                 </p>
               </div>
-              <div className="rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] p-4">
+              {eventId && <div className="rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] p-4">
                 <label className="flex cursor-pointer items-start gap-3">
                   <input
                     type="checkbox"
@@ -642,8 +646,8 @@ export default function SendCalculationEmailModal({
                     </p>
                   </div>
                 </label>
-              </div>
-              {includeEventFiles && (
+              </div>}
+              {eventId && includeEventFiles && (
                 <div className="rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] p-4">
                   <div className="mb-3 flex items-center justify-between">
                     <div>

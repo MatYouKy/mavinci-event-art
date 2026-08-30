@@ -32,10 +32,22 @@ import FullScreenLoader from '@/components/UI/Loader/CustomModalLoader';
 export function CalculationEditor({
   calculationId,
   eventId,
+  inquiryContext,
   onBack,
 }: {
   calculationId: string;
-  eventId: string;
+  eventId: string | null;
+  inquiryContext?: {
+    inquiryId: string;
+    name: string;
+    date: string | null;
+    contactPerson: {
+      id: string;
+      name: string;
+      email: string | null;
+      phone: string | null;
+    } | null;
+  };
   onBack: () => void;
 }) {
   const { showSnackbar } = useSnackbar();
@@ -66,7 +78,7 @@ export function CalculationEditor({
     setLoading(true);
 
     try {
-      const [{ data: calc }, { data: itemsData }, { data: ev }] = await Promise.all([
+      const [{ data: calc }, { data: itemsData }, eventResult] = await Promise.all([
         supabase.from('event_calculations').select('*').eq('id', calculationId).maybeSingle(),
         supabase
           .from('event_calculation_items')
@@ -74,12 +86,15 @@ export function CalculationEditor({
           .eq('calculation_id', calculationId)
           .order('category')
           .order('position'),
-        supabase
-          .from('events')
-          .select('name, event_date, my_company_id, contact_person_id')
-          .eq('id', eventId)
-          .maybeSingle(),
+        eventId
+          ? supabase
+              .from('events')
+              .select('name, event_date, my_company_id, contact_person_id')
+              .eq('id', eventId)
+              .maybeSingle()
+          : Promise.resolve({ data: null, error: null }),
       ]);
+      const ev = eventResult.data;
 
       if (calc) {
         setName(calc.name);
@@ -232,6 +247,19 @@ export function CalculationEditor({
           setPrimaryContact(null);
           setDefaultEmail('');
         }
+      } else if (inquiryContext) {
+        setEventName(inquiryContext.name);
+        setEventDate(inquiryContext.date);
+        setPrimaryContact(inquiryContext.contactPerson);
+        setDefaultEmail(inquiryContext.contactPerson?.email ?? '');
+
+        const { data: comp } = await supabase
+          .from('my_companies')
+          .select('id, name, legal_name, nip, logo_url, street, building_number, apartment_number, postal_code, city, email, phone, website')
+          .eq('is_default', true)
+          .eq('is_active', true)
+          .maybeSingle();
+        setCompany(comp ?? null);
       }
     } catch (error) {
       console.error('Error loading calculation:', error);
@@ -239,7 +267,7 @@ export function CalculationEditor({
     } finally {
       setLoading(false);
     }
-  }, [calculationId, eventId, showSnackbar]);
+  }, [calculationId, eventId, inquiryContext, showSnackbar]);
 
   useEffect(() => {
     load();
@@ -574,6 +602,7 @@ export function CalculationEditor({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           eventId,
+          inquiryId: inquiryContext?.inquiryId ?? null,
           calculationId,
           eventName,
           calculationName: name,
@@ -589,7 +618,10 @@ export function CalculationEditor({
       }
 
       setGeneratedPdfPath(data.storagePath);
-      showSnackbar('PDF kalkulacji zapisany w plikach wydarzenia', 'success');
+      showSnackbar(
+        eventId ? 'PDF kalkulacji zapisany w plikach wydarzenia' : 'PDF kalkulacji zapisany przy zapytaniu',
+        'success',
+      );
     } catch (e: any) {
       console.error(e);
       showSnackbar(e.message || 'Błąd generowania PDF', 'error');
@@ -673,6 +705,7 @@ export function CalculationEditor({
               label: 'Importuj z oferty',
               onClick: () => setShowImport(true),
               icon: <Import className="h-4 w-4" />,
+              show: Boolean(eventId),
             },
             {
               label: 'Drukuj',
@@ -827,7 +860,7 @@ export function CalculationEditor({
         description="Proszę chwilę poczekać..."
       />
 
-      {showImport && (
+      {showImport && eventId && (
         <ImportFromOfferModal
           eventId={eventId}
           existingRefs={new Set(items.map((i) => i.source_ref).filter(Boolean) as string[])}
