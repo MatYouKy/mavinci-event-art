@@ -8,7 +8,6 @@ import {
   RefreshCw,
   CheckCircle,
   AlertCircle,
-  Key,
   Building2,
   Calendar,
   FileText,
@@ -282,7 +281,6 @@ const getInvoiceItemsSearchText = (items: unknown): string => {
 export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrationPanelProps) {
   const [allCredentials, setAllCredentials] = useState<KSeFCredentials[]>([]);
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [showSetup, setShowSetup] = useState(false);
   const [issuedInvoices, setIssuedInvoices] = useState<KSeFInvoice[]>([]);
@@ -337,7 +335,7 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
     }
   }, [filterCompanyIds]);
 
-  const canManageKSeF = useMemo(() => canManageModule('ksef'), [canManageModule]);
+  const canManageKSeF = useMemo(() => canManageModule('invoices'), [canManageModule]);
 
   const selectedCredentials = allCredentials.find(
     (c) =>
@@ -439,11 +437,6 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
       return 0;
     });
   }, [activeTab, filteredInvoices, sortDirection, sortKey]);
-
-  const isSessionActive = useCallback(() => {
-    if (!selectedCredentials?.access_token_valid_until) return false;
-    return new Date(selectedCredentials.access_token_valid_until) > new Date();
-  }, [selectedCredentials]);
 
   const loadCredentials = useCallback(async () => {
     try {
@@ -606,59 +599,40 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
     setShowMatchModal(true);
   };
 
-  const handleAuthenticate = async () => {
+  const authenticateForSync = async () => {
     if (!selectedCredentials) {
-      showSnackbar('Skonfiguruj najpierw dane KSeF dla wybranej firmy', 'error');
-      return;
+      throw new Error('Skonfiguruj najpierw dane KSeF dla wybranej firmy');
     }
 
-    setLoading(true);
+    const response = await fetch('/bridge/ksef/auth/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        companyId: selectedCredentials.my_company_id,
+      }),
+    });
+
+    const raw = await response.text();
+    let result: any = null;
 
     try {
-      const response = await fetch('/bridge/ksef/auth/token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          companyId: selectedCredentials.my_company_id,
-        }),
-      });
+      result = raw ? JSON.parse(raw) : null;
+    } catch {
+      result = { raw };
+    }
 
-      const raw = await response.text();
-
-      let result: any = null;
-
-      try {
-        result = raw ? JSON.parse(raw) : null;
-      } catch {
-        result = { raw };
-      }
-
-      if (!response.ok || !result?.success) {
-        throw new Error(
-          result?.error ||
-            result?.details ||
-            `Błąd uwierzytelnienia KSeF (HTTP ${response.status})`,
-        );
-      }
-
-      await loadCredentials();
-      showSnackbar('Uwierzytelnienie KSeF wykonane poprawnie', 'success');
-    } catch (error: any) {
-      console.error('[KSEF_FRONT] auth error', error);
-      showSnackbar(error.message || 'Błąd uwierzytelnienia KSeF', 'error');
-    } finally {
-      setLoading(false);
+    if (!response.ok || !result?.success || !result?.data?.redeemed) {
+      throw new Error(
+        result?.error ||
+          result?.details ||
+          `Błąd automatycznej autoryzacji KSeF (HTTP ${response.status})`,
+      );
     }
   };
 
   const handleSyncInvoices = async () => {
     if (!selectedCredentials) {
       showSnackbar('Brak konfiguracji KSeF', 'error');
-      return;
-    }
-
-    if (!isSessionActive()) {
-      showSnackbar('Sesja wygasła – uwierzytelnij ponownie', 'error');
       return;
     }
 
@@ -675,6 +649,8 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
         setSyncing(false);
         return;
       }
+
+      await authenticateForSync();
 
       const payload = {
         companyId: selectedCredentials.my_company_id,
@@ -750,6 +726,7 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
       );
 
       await new Promise((resolve) => setTimeout(resolve, 400));
+      await loadCredentials();
       await loadInvoices();
       await loadSyncLogs();
     } catch (error: any) {
@@ -1117,12 +1094,14 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
           <p className="mb-4 text-[#e5e4e2]/60">
             Brak skonfigurowanych firm. Najpierw dodaj firmę i skonfiguruj jej dane KSeF.
           </p>
-          <button
-            onClick={() => setShowSetup(true)}
-            className="text-[#d3bb73] hover:text-[#d3bb73]/80"
-          >
-            Skonfiguruj KSeF
-          </button>
+          {canManageKSeF && (
+            <button
+              onClick={() => setShowSetup(true)}
+              className="text-[#d3bb73] hover:text-[#d3bb73]/80"
+            >
+              Skonfiguruj KSeF
+            </button>
+          )}
         </div>
       )}
 
@@ -1132,14 +1111,14 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
             <div className="min-w-0">
               <p className="text-sm font-medium text-[#e5e4e2]">Połączenie z KSeF</p>
               <p className="mt-0.5 text-xs text-[#e5e4e2]/45">
-                Autoryzacja, synchronizacja i konfiguracja
+                Automatyczna synchronizacja codziennie o 09:30
               </p>
             </div>
             <div className="shrink-0">
               <ResponsiveActionBar
                 mobileBreakpoint={4000}
-                actions={[
-                  ...(canManageKSeF
+                actions={
+                  canManageKSeF
                     ? [
                         {
                           label: 'Konfiguracja',
@@ -1147,23 +1126,16 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
                           icon: <Settings className="h-4 w-4" />,
                           variant: 'default' as const,
                         },
+                        {
+                          label: syncing ? 'Synchronizacja...' : 'Synchronizuj',
+                          onClick: handleSyncInvoices,
+                          icon: <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />,
+                          variant: 'primary' as const,
+                          disabled: syncing || !selectedCredentials,
+                        },
                       ]
-                    : []),
-                  {
-                    label: loading ? 'Uwierzytelnianie...' : 'Uwierzytelnij',
-                    onClick: handleAuthenticate,
-                    icon: <Key className="h-4 w-4" />,
-                    variant: 'primary' as const,
-                    disabled: loading || !selectedCredentials,
-                  },
-                  {
-                    label: syncing ? 'Synchronizacja...' : 'Synchronizuj',
-                    onClick: handleSyncInvoices,
-                    icon: <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />,
-                    variant: 'primary' as const,
-                    disabled: syncing || !isSessionActive(),
-                  },
-                ]}
+                    : []
+                }
               />
             </div>
           </div>
@@ -1218,20 +1190,11 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
               )}
 
               <div className="min-w-0">
-                <label className="mb-1 block text-xs text-[#e5e4e2]/50">Status sesji</label>
+                <label className="mb-1 block text-xs text-[#e5e4e2]/50">Automatyzacja</label>
 
                 <div className="flex h-10 items-center gap-2 rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] px-3">
-                  {isSessionActive() ? (
-                    <>
-                      <CheckCircle className="h-4 w-4 text-green-400" />
-                      <span className="text-sm text-green-400">Sesja aktywna</span>
-                    </>
-                  ) : (
-                    <>
-                      <AlertCircle className="h-4 w-4 text-orange-400" />
-                      <span className="text-sm text-orange-400">Wymagana autoryzacja</span>
-                    </>
-                  )}
+                  <CheckCircle className="h-4 w-4 text-green-400" />
+                  <span className="text-sm text-green-400">Codziennie 09:30</span>
                 </div>
               </div>
             </div>
@@ -1262,8 +1225,8 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
               <div className="flex flex-col gap-2 sm:flex-row sm:items-end xl:items-center">
                 <ResponsiveActionBar
                   mobileBreakpoint={4000}
-                  actions={[
-                    ...(canManageKSeF
+                  actions={
+                    canManageKSeF
                       ? [
                           {
                             label: 'Konfiguracja',
@@ -1271,23 +1234,16 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
                             icon: <Settings className="h-4 w-4" />,
                             variant: 'default' as const,
                           },
+                          {
+                            label: syncing ? 'Synchronizacja...' : 'Synchronizuj',
+                            onClick: handleSyncInvoices,
+                            icon: <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />,
+                            variant: 'primary' as const,
+                            disabled: syncing || !selectedCredentials,
+                          },
                         ]
-                      : []),
-                    {
-                      label: loading ? 'Uwierzytelnianie...' : 'Uwierzytelnij',
-                      onClick: handleAuthenticate,
-                      icon: <Key className="h-4 w-4" />,
-                      variant: 'primary' as const,
-                      disabled: loading || !selectedCredentials,
-                    },
-                    {
-                      label: syncing ? 'Synchronizacja...' : 'Synchronizuj',
-                      onClick: handleSyncInvoices,
-                      icon: <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />,
-                      variant: 'primary' as const,
-                      disabled: syncing || !isSessionActive(),
-                    },
-                  ]}
+                      : []
+                  }
                 />
               </div>
             </div>

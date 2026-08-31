@@ -1,7 +1,7 @@
 'use client';
 
 import { Plus, Trash2, Wrench, Users, Pencil, Check, X } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { IOfferItem } from '@/app/(crm)/crm/offers/types';
 
 export interface CustomItem {
@@ -61,6 +61,24 @@ export default function OfferStep4({
 }: OfferStep4Props) {
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [editedItem, setEditedItem] = useState<IOfferItem | null>(null);
+  const [discountAmountInput, setDiscountAmountInput] = useState('');
+  const [discountPercentInput, setDiscountPercentInput] = useState('');
+  const [discountInputSource, setDiscountInputSource] = useState<
+    'target' | 'amount' | 'percent' | null
+  >(null);
+
+  useEffect(() => {
+    if (discountInputSource !== 'amount') {
+      setDiscountAmountInput(
+        pricing.discountAmount > 0 ? pricing.discountAmount.toFixed(2) : '',
+      );
+    }
+    if (discountInputSource !== 'percent') {
+      setDiscountPercentInput(
+        pricing.discountPercent > 0 ? pricing.discountPercent.toFixed(2) : '',
+      );
+    }
+  }, [pricing.discountAmount, pricing.discountPercent, discountInputSource]);
 
   const startEditingItem = (item: IOfferItem) => {
     setEditingItemId(item.id);
@@ -349,24 +367,97 @@ export default function OfferStep4({
               </div>
             </div>
 
-            <label className="block">
-              <span className="mb-2 block text-xs text-[#e5e4e2]/60">
-                Docelowa cena oferty netto
+            <div className="space-y-3">
+              <label className="block">
+                <span className="mb-1 block text-xs text-[#e5e4e2]/60">
+                  Docelowa cena oferty netto
+                </span>
+                <input
+                  type="number"
+                  min={0}
+                  max={pricing.listNet}
+                  step="0.01"
+                  value={targetNetPriceInput}
+                  onChange={(event) => {
+                    setDiscountInputSource('target');
+                    setTargetNetPriceInput(event.target.value);
+                  }}
+                  placeholder={calculateTotal().toFixed(2)}
+                  className="w-full rounded-lg border border-[#d3bb73]/30 bg-[#0f1117] px-3 py-2 text-right text-lg font-semibold text-[#d3bb73] focus:border-[#d3bb73] focus:outline-none"
+                />
+              </label>
+
+              <div className="grid grid-cols-2 gap-2">
+                <label className="block">
+                  <span className="mb-1 block text-xs text-[#e5e4e2]/60">Rabat netto</span>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      min={0}
+                      max={pricing.listNet}
+                      step="0.01"
+                      value={discountAmountInput}
+                      onFocus={() => setDiscountInputSource('amount')}
+                      onBlur={() => setDiscountInputSource(null)}
+                      onChange={(event) => {
+                        setDiscountInputSource('amount');
+                        setDiscountAmountInput(event.target.value);
+                        if (event.target.value === '') {
+                          setTargetNetPriceInput('');
+                          return;
+                        }
+                        const amount = Math.min(
+                          pricing.listNet,
+                          Math.max(0, Number(event.target.value) || 0),
+                        );
+                        setTargetNetPriceInput((pricing.listNet - amount).toFixed(2));
+                      }}
+                      placeholder="0,00"
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1117] px-3 py-2 pr-8 text-right text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                    />
+                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[#e5e4e2]/40">
+                      zł
+                    </span>
+                  </div>
+                </label>
+
+                <label className="block">
+                  <span className="mb-1 block text-xs text-[#e5e4e2]/60">Rabat procentowy</span>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      step="0.01"
+                      value={discountPercentInput}
+                      onFocus={() => setDiscountInputSource('percent')}
+                      onBlur={() => setDiscountInputSource(null)}
+                      onChange={(event) => {
+                        setDiscountInputSource('percent');
+                        setDiscountPercentInput(event.target.value);
+                        if (event.target.value === '') {
+                          setTargetNetPriceInput('');
+                          return;
+                        }
+                        const percent = Math.min(100, Math.max(0, Number(event.target.value) || 0));
+                        setTargetNetPriceInput(
+                          (pricing.listNet * (1 - percent / 100)).toFixed(2),
+                        );
+                      }}
+                      placeholder="0,00"
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1117] px-3 py-2 pr-8 text-right text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                    />
+                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[#e5e4e2]/40">
+                      %
+                    </span>
+                  </div>
+                </label>
+              </div>
+
+              <span className="block text-xs leading-5 text-[#e5e4e2]/45">
+                Możesz wpisać cenę końcową, kwotę rabatu albo procent. Pozostałe wartości przeliczą się automatycznie.
               </span>
-              <input
-                type="number"
-                min={0}
-                max={pricing.listNet}
-                step="0.01"
-                value={targetNetPriceInput}
-                onChange={(event) => setTargetNetPriceInput(event.target.value)}
-                placeholder={calculateTotal().toFixed(2)}
-                className="w-full rounded-lg border border-[#d3bb73]/30 bg-[#0f1117] px-3 py-2 text-right text-lg font-semibold text-[#d3bb73] focus:border-[#d3bb73] focus:outline-none"
-              />
-              <span className="mt-1 block text-xs leading-5 text-[#e5e4e2]/45">
-                Pozostaw puste, aby nie naliczać rabatu.
-              </span>
-            </label>
+            </div>
           </div>
         </div>
       )}

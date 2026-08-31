@@ -810,7 +810,7 @@ export default function MessagesPageClient({
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#0f1119]">
+    <div className="flex h-full min-h-0 overflow-hidden bg-[#0f1119]">
       <div className="hidden h-full min-h-0 w-64 shrink-0 overflow-hidden lg:block">
         <MessagesSidebar
           emailAccounts={emailAccounts}
@@ -1214,9 +1214,14 @@ export default function MessagesPageClient({
         }
         initialBody=""
         replyContext={
-          replyToMessage
+              replyToMessage
             ? {
                 from: replyToMessage.from,
+                to: replyToMessage.to,
+                cc:
+                  replyToMessage.originalData?.raw_headers?.cc ||
+                  replyToMessage.originalData?.cc ||
+                  null,
                 date: replyToMessage.date,
                 subject: replyToMessage.subject,
                 body: replyToMessage.body,

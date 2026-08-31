@@ -56,6 +56,19 @@ export interface EventPhaseAssignment {
     email?: string;
     phone?: string;
   };
+  accepted_conflicts_as_a?: EmployeeConflictAcceptance[];
+  accepted_conflicts_as_b?: EmployeeConflictAcceptance[];
+}
+
+export interface EmployeeConflictAcceptance {
+  id: string;
+  reason: string;
+  accepted_at: string;
+  accepted_by_employee?: {
+    id: string;
+    name: string;
+    surname: string;
+  } | null;
 }
 
 export interface EventPhaseEquipment {
@@ -122,6 +135,8 @@ export interface PhaseConflict {
   assignment_end: string;
   conflict_status: string;
   conflict_details: Record<string, any>;
+  requested_phase_id?: string;
+  requested_phase_name?: string;
 }
 
 export interface AlternativeEquipment {
@@ -272,7 +287,15 @@ export const eventPhasesApi = createApi({
         // ✅ bierzemy tylko pola z tabeli assignments
         select: `*,
         employee:employees!event_phase_assignments_employee_id_fkey(*),
-        created_by_employee:employees!event_phase_assignments_created_by_fkey(id,name,surname,avatar_url)
+        created_by_employee:employees!event_phase_assignments_created_by_fkey(id,name,surname,avatar_url),
+        accepted_conflicts_as_a:event_employee_conflict_acceptances!event_employee_conflict_acceptances_assignment_a_id_fkey(
+          id,reason,accepted_at,
+          accepted_by_employee:employees!event_employee_conflict_acceptances_acceptor_fkey(id,name,surname)
+        ),
+        accepted_conflicts_as_b:event_employee_conflict_acceptances!event_employee_conflict_acceptances_assignment_b_id_fkey(
+          id,reason,accepted_at,
+          accepted_by_employee:employees!event_employee_conflict_acceptances_acceptor_fkey(id,name,surname)
+        )
         `,
         match: { phase_id: phaseId },
       }),
@@ -287,7 +310,15 @@ export const eventPhasesApi = createApi({
         // ✅ też bez embed — inaczej insert potrafi wywalić tym samym błędem relacji
         select: `*,
         employee:employees!event_phase_assignments_employee_id_fkey(*),
-        created_by_employee:employees!event_phase_assignments_created_by_fkey(id,name,surname,avatar_url)
+        created_by_employee:employees!event_phase_assignments_created_by_fkey(id,name,surname,avatar_url),
+        accepted_conflicts_as_a:event_employee_conflict_acceptances!event_employee_conflict_acceptances_assignment_a_id_fkey(
+          id,reason,accepted_at,
+          accepted_by_employee:employees!event_employee_conflict_acceptances_acceptor_fkey(id,name,surname)
+        ),
+        accepted_conflicts_as_b:event_employee_conflict_acceptances!event_employee_conflict_acceptances_assignment_b_id_fkey(
+          id,reason,accepted_at,
+          accepted_by_employee:employees!event_employee_conflict_acceptances_acceptor_fkey(id,name,surname)
+        )
         `,
       }),
       invalidatesTags: (result, error, arg) => [{ type: 'PhaseAssignments', id: arg.phase_id }],
@@ -411,18 +442,16 @@ export const eventPhasesApi = createApi({
     // Conflict Detection
     getEmployeeConflicts: builder.query<PhaseConflict[], {
       employeeId: string;
-      startTime: string;
-      endTime: string;
-      excludeAssignmentId?: string;
+      eventId: string;
+      phaseId: string;
     }>({
-      queryFn: async ({ employeeId, startTime, endTime, excludeAssignmentId }) => {
+      queryFn: async ({ employeeId, eventId, phaseId }) => {
         const { supabase } = await import('@/lib/supabase/client');
 
-        const { data, error } = await supabase.rpc('get_employee_phase_conflicts', {
+        const { data, error } = await supabase.rpc('get_employee_realization_conflicts', {
           p_employee_id: employeeId,
-          p_start_time: startTime,
-          p_end_time: endTime,
-          p_exclude_assignment_id: excludeAssignmentId || null,
+          p_event_id: eventId,
+          p_phase_id: phaseId,
         });
 
         if (error) return { error };

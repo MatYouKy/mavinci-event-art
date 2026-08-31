@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { prepareInlineEmailImages } from "../_shared/emailInlineImages.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -11,8 +12,11 @@ interface SendOfferEmailRequest {
   offerId: string;
   emailAccountId?: string;
   to: string;
+  cc?: string;
+  bcc?: string;
   subject: string;
   message: string;
+  messageHtml?: string;
   signatureHtml?: string;
   recipientName?: string;
 }
@@ -43,6 +47,19 @@ const renderTemplate = (template: string, values: Record<string, string>): strin
   }
   return out;
 };
+
+const hasTemplatePlaceholder = (template: string, key: string): boolean =>
+  new RegExp(`{{\\s*${key}\\s*}}`, "i").test(template || "");
+
+const normalizeMessageText = (value: string): string =>
+  (value || "")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/\s+/g, " ")
+    .trim();
 
 const fetchAsDataUri = async (url: string): Promise<string> => {
   if (!url || url.startsWith("data:")) return url;
@@ -85,7 +102,18 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { offerId, emailAccountId, to, subject, message, signatureHtml, recipientName }: SendOfferEmailRequest = await req.json();
+    const {
+      offerId,
+      emailAccountId,
+      to,
+      cc,
+      bcc,
+      subject,
+      message = "",
+      messageHtml,
+      signatureHtml,
+      recipientName,
+    }: SendOfferEmailRequest = await req.json();
 
     if (!offerId || !to || !subject) {
       throw new Error("Missing required fields: offerId, to, subject");
@@ -327,10 +355,22 @@ Deno.serve(async (req: Request) => {
 
     const contentHtml = message.replace(/\n/g, "<br>");
     const finalSignature = signatureHtml || emailAccount.signature || "";
+    const expectedMessageText = normalizeMessageText(message);
+    const preparedMessageText = normalizeMessageText(messageHtml || "");
+    const messageHtmlContainsContent =
+      Boolean(messageHtml) &&
+      (!expectedMessageText || preparedMessageText.includes(expectedMessageText));
 
     let htmlBody: string;
-    if (useBodyTemplate) {
-      htmlBody = renderTemplate(bodyTemplate, {
+    if (messageHtmlContainsContent) {
+      htmlBody = `${messageHtml}${pdfLinkHtml}`;
+    } else if (useBodyTemplate) {
+      const safeBodyTemplate =
+        hasTemplatePlaceholder(bodyTemplate, "content") &&
+        (!finalSignature || hasTemplatePlaceholder(bodyTemplate, "signature"))
+          ? bodyTemplate
+          : DEFAULT_EMAIL_BODY_TEMPLATE;
+      htmlBody = renderTemplate(safeBodyTemplate, {
         content: contentHtml,
         subject,
         recipient_name: recipientName ?? "",
@@ -347,13 +387,17 @@ Deno.serve(async (req: Request) => {
       });
     } else {
       htmlBody = `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <p>${contentHtml}</p>
+        <div style="display:block;width:100%;max-width:none;margin:0;padding:0;box-sizing:border-box;font-family:Arial,sans-serif;">
+          <div style="margin:0;padding:0;">${contentHtml}</div>
           ${pdfLinkHtml}
           ${finalSignature}
         </div>
       `;
     }
+
+    const storedHtmlBody = htmlBody;
+    const preparedEmail = prepareInlineEmailImages(htmlBody, [pdfAttachment]);
+    htmlBody = preparedEmail.html;
 
     const relayPayload = {
       smtpConfig: {
@@ -366,10 +410,12 @@ Deno.serve(async (req: Request) => {
         replyTo: emailAccount.email_address,
       },
       to,
+      cc,
+      bcc,
       subject,
       body: htmlBody,
       replyTo: emailAccount.email_address,
-      attachments: [pdfAttachment],
+      attachments: preparedEmail.attachments,
     };
 
     const relayResponse = await fetch(`${relayUrl}/api/send-email`, {
@@ -394,7 +440,7 @@ Deno.serve(async (req: Request) => {
       email_account_id: emailAccount.id,
       to_address: to,
       subject: subject,
-      body: htmlBody,
+      body: storedHtmlBody,
       reply_to: emailAccount.email_address,
       message_id: info.messageId,
       sent_at: new Date().toISOString(),

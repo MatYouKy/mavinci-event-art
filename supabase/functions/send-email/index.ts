@@ -1,5 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { prepareInlineEmailImages } from "../_shared/emailInlineImages.ts";
+import type { RelayEmailAttachment } from "../_shared/emailInlineImages.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -29,11 +31,7 @@ interface EmailRequest {
   messageId?: string;
   emailAccountId?: string;
   smtpConfig?: SmtpConfig;
-  attachments?: Array<{
-    filename: string;
-    content: string;
-    contentType?: string;
-  }>;
+  attachments?: RelayEmailAttachment[];
 }
 
 interface EmailAccount {
@@ -137,17 +135,19 @@ Deno.serve(async (req: Request) => {
 
     console.log('[send-email] Using SMTP relay:', relayUrl);
 
+    const preparedEmail = prepareInlineEmailImages(body, attachments ?? []);
+
     const relayPayload = {
       smtpConfig: smtpSettings,
       to,
       cc,
       bcc,
       subject,
-      body,
+      body: preparedEmail.html,
       replyTo,
       inReplyTo,
       references,
-      attachments,
+      attachments: preparedEmail.attachments,
     };
 
     console.log('[send-email] Sending request to relay with attachments count:', attachments?.length || 0);
@@ -209,7 +209,10 @@ Deno.serve(async (req: Request) => {
             email_account_id: emailAccountId,
             to_address: to,
             subject: subject,
-            body: body,
+            // Do CRM zapisujemy wersję z obrazami data URI. Wersja CID jest
+            // przeznaczona wyłącznie dla transportu SMTP i bez części MIME nie
+            // nadaje się do późniejszego podglądu w folderze „Wysłane”.
+            body,
             reply_to: replyTo,
             in_reply_to: inReplyTo || null,
             email_references: references || [],

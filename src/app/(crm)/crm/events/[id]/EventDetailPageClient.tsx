@@ -88,6 +88,7 @@ import { IEmployee } from '../../employees/type';
 import { hasScope } from './helpers/hasScope';
 import { EventCategoryRow } from '@/lib/CRM/events/eventsData.server';
 import { EventContractTab } from '@/components/crm/events/contract/EventContractTab';
+import { deleteEventSafely } from '@/lib/CRM/events/deleteEventSafely';
 import EventWorkflowReadinessPanel from '@/components/crm/events/EventWorkflowReadinessPanel';
 import EventPreflightPanel from '@/components/crm/events/EventPreflightPanel';
 import { useEventWorkspace } from '@/components/crm/events/EventWorkspaceProvider';
@@ -317,6 +318,7 @@ export default function EventDetailPageClient({
     hasScope('invoices_view', currentEmployee as IEmployee);
 
   const [event, setEvent] = useState<IEvent>(initialData);
+  const [deletingEvent, setDeletingEvent] = useState(false);
 
   const isWeddingEvent = useMemo(() => {
     const categoryName =
@@ -464,7 +466,7 @@ export default function EventDetailPageClient({
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const handleDeleteEvent = async () => {
-    if (!event) return;
+    if (!event || deletingEvent) return;
 
     const confirmed = await showConfirm(
       'Czy na pewno chcesz usunąć to wydarzenie?',
@@ -473,20 +475,17 @@ export default function EventDetailPageClient({
 
     if (!confirmed) return;
 
+    setDeletingEvent(true);
     try {
-      const { error } = await supabase.from('events').delete().eq('id', eventId);
-
-      if (error) {
-        console.error('Error deleting event:', error);
-        showSnackbar('Błąd podczas usuwania wydarzenia', 'error');
-        return;
-      }
+      await deleteEventSafely(eventId);
 
       showSnackbar('Wydarzenie zostało usunięte', 'success');
       router.push('/crm/events');
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error:', err);
-      showSnackbar('Wystąpił błąd podczas usuwania', 'error');
+      showSnackbar(err.message || 'Wystąpił błąd podczas usuwania', 'error');
+    } finally {
+      setDeletingEvent(false);
     }
   };
 

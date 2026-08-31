@@ -39,3 +39,6 @@ verify_jwt = false
 
 [functions.process-subcontractor-reminders]
 verify_jwt = false
+
+[functions.sync-ksef-daily]
+verify_jwt = true

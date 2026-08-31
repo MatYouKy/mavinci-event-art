@@ -38,6 +38,7 @@ import CreateInquiryFromMessageModal from '@/components/crm/CreateInquiryFromMes
 import CreateTaskFromMessageModal from '@/components/crm/CreateTaskFromMessageModal';
 import { supabase } from '@/lib/supabase/browser';
 import { useDialog } from '@/contexts/DialogContext';
+import EmailHtmlPreview from '../components/EmailHtmlPreview';
 
 interface PageProps {
   params: { id: string };
@@ -641,13 +642,11 @@ export default function MessageDetailPage({ params }: PageProps) {
 
             <div className="prose prose-invert prose-sm sm:prose-base max-w-none text-white">
               {message.bodyHtml && message.bodyHtml.trim() ? (
-                <div
-                  dangerouslySetInnerHTML={{ __html: message.bodyHtml }}
-                  className="email-content text-sm text-[#e5e4e2] sm:text-base"
-                  style={{
-                    wordWrap: 'break-word',
-                    overflowWrap: 'break-word',
-                  }}
+                <EmailHtmlPreview
+                  html={message.bodyHtml}
+                  employeeId={message.originalData?.employee_id}
+                  emailAccountId={message.email_account_id}
+                  title={`Wiadomość: ${message.subject || 'bez tematu'}`}
                 />
               ) : message.body && message.body.trim() ? (
                 <p className="whitespace-pre-wrap text-sm text-[#e5e4e2] sm:text-base">
@@ -734,6 +733,8 @@ export default function MessageDetailPage({ params }: PageProps) {
         initialBody=""
         replyContext={{
           from: message.from,
+          to: message.to,
+          cc: message.originalData?.raw_headers?.cc || message.originalData?.cc || null,
           date: message.date,
           subject: message.subject,
           body: message.body,

@@ -33,6 +33,14 @@ import {
 } from '@/store/api/calendarApi';
 import { getWeekBounds } from '@/lib/timeline';
 
+const INQUIRY_STAGE_LABELS: Record<string, string> = {
+  new: 'Nowe',
+  contacted: 'Kontakt podjęty',
+  qualified: 'Zakwalifikowane',
+  proposal: 'Oferta wysłana',
+  negotiation: 'Negocjacje',
+};
+
 export default function CalendarMain({
   initialCalendarEvents,
 }: {
@@ -70,6 +78,7 @@ export default function CalendarMain({
     employees: [] as string[],
     myEvents: false,
     assignedToMe: false,
+    potentialInquiries: true,
   });
 
   const {
@@ -108,6 +117,26 @@ export default function CalendarMain({
   }, []);
 
   useEffect(() => {
+    const refreshCalendar = () => {
+      void refetchEvents();
+    };
+    const channel = supabase
+      .channel('crm-calendar-live-data')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'events' }, refreshCalendar)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'meetings' }, refreshCalendar)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'tasks', filter: 'is_inquiry=eq.true' },
+        refreshCalendar,
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [refetchEvents]);
+
+  useEffect(() => {
     if (filterOptions) {
       setCategories(filterOptions.categories);
       setClients(filterOptions.clients);
@@ -141,6 +170,10 @@ export default function CalendarMain({
 
   const applyFilters = useCallback(() => {
     let filtered = [...allEvents];
+
+    if (!filters.potentialInquiries) {
+      filtered = filtered.filter((event) => !event.is_inquiry);
+    }
 
     if (isAcceptedOnlyViewer && currentEmployee) {
       filtered = filtered.filter((e: any) => {
@@ -209,6 +242,7 @@ export default function CalendarMain({
     filters.myEvents,
     filters.assignedToMe,
     filters.employees,
+    filters.potentialInquiries,
     currentEmployee?.id,
     isAcceptedOnlyViewer,
   ]);
@@ -245,6 +279,7 @@ export default function CalendarMain({
       employees: [],
       myEvents: false,
       assignedToMe: false,
+      potentialInquiries: true,
     });
   };
 
@@ -255,7 +290,8 @@ export default function CalendarMain({
       filters.clients.length > 0 ||
       filters.employees.length > 0 ||
       filters.myEvents ||
-      filters.assignedToMe
+      filters.assignedToMe ||
+      !filters.potentialInquiries
     );
   };
 
@@ -497,6 +533,9 @@ export default function CalendarMain({
           isOpen={isInquiryModalOpen}
           onClose={() => setIsInquiryModalOpen(false)}
           initialDate={modalInitialDate}
+          onSaved={() => {
+            void refetchEvents();
+          }}
         />
       </div>
     );
@@ -556,7 +595,8 @@ export default function CalendarMain({
                   filters.clients.length +
                   filters.employees.length +
                   (filters.myEvents ? 1 : 0) +
-                  (filters.assignedToMe ? 1 : 0)}
+                  (filters.assignedToMe ? 1 : 0) +
+                  (filters.potentialInquiries ? 0 : 1)}
               </span>
             )}
           </button>
@@ -661,6 +701,20 @@ export default function CalendarMain({
                 >
                   Przypisane do mnie
                 </button>
+                <button
+                  onClick={() => toggleFilter('potentialInquiries', null)}
+                  className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition-colors ${
+                    filters.potentialInquiries
+                      ? 'border border-amber-400/40 bg-amber-400/10 text-amber-300'
+                      : 'border border-[#d3bb73]/10 bg-[#0f1119] text-[#e5e4e2]/50 hover:bg-[#d3bb73]/5'
+                  }`}
+                >
+                  <span>Potencjalne zapytania</span>
+                  <span className="flex items-center gap-1.5 text-[11px]">
+                    <span className="h-2.5 w-2.5 rounded-sm border border-dashed border-amber-400 bg-amber-400/15" />
+                    {filters.potentialInquiries ? 'widoczne' : 'ukryte'}
+                  </span>
+                </button>
               </div>
             </div>
 
@@ -750,7 +804,7 @@ export default function CalendarMain({
           </div>
 
           <div className="border-t border-[#d3bb73]/10 pt-4 text-sm text-[#e5e4e2]/60">
-            Pokazuje {events.length} z {allEvents.length} wydarzeń
+            Pokazuje {events.length} z {allEvents.length} pozycji kalendarza
           </div>
         </div>
       )}
@@ -847,7 +901,13 @@ export default function CalendarMain({
 
             <div className="flex items-center gap-2 text-xs text-[#e5e4e2]/70">
               <Building2 className="h-3 w-3" />
-              <span>{hoveredEvent.organization?.name || 'Brak klienta'}</span>
+              <span>
+                {hoveredEvent.organization?.alias ||
+                  hoveredEvent.organization?.name ||
+                  hoveredEvent.contact_person?.full_name ||
+                  hoveredEvent.inquiry_data?.client_label ||
+                  'Brak klienta'}
+              </span>
             </div>
 
             <div className="flex items-center gap-2 text-xs text-[#e5e4e2]/70">
@@ -862,10 +922,21 @@ export default function CalendarMain({
               </span>
             </div>
 
-            <div className="flex items-center gap-2 text-xs text-[#e5e4e2]/70">
-              <MapPin className="h-3 w-3" />
-              <span>{hoveredEvent.location}</span>
-            </div>
+            {hoveredEvent.is_inquiry && (
+              <div className="rounded border border-dashed border-amber-400/30 bg-amber-400/5 px-2 py-1.5 text-xs text-amber-200">
+                {INQUIRY_STAGE_LABELS[hoveredEvent.inquiry_data?.inquiry_stage || 'new'] ||
+                  'Otwarte zapytanie'}
+                {typeof hoveredEvent.inquiry_data?.win_probability === 'number' &&
+                  ` · szansa ${hoveredEvent.inquiry_data.win_probability}%`}
+              </div>
+            )}
+
+            {hoveredEvent.location && (
+              <div className="flex items-center gap-2 text-xs text-[#e5e4e2]/70">
+                <MapPin className="h-3 w-3" />
+                <span>{hoveredEvent.location}</span>
+              </div>
+            )}
 
             <div className="border-t border-[#d3bb73]/10 pt-2">
               <span
@@ -890,7 +961,7 @@ export default function CalendarMain({
             <div className="flex items-center justify-between border-b border-[#d3bb73]/20 p-6">
               <div>
                 <h3 className="text-xl font-light text-[#e5e4e2]">
-                  Wydarzenia -{' '}
+                  Plan dnia —{' '}
                   {allEventsModalDate.toLocaleDateString('pl-PL', {
                     day: 'numeric',
                     month: 'long',
@@ -898,7 +969,7 @@ export default function CalendarMain({
                   })}
                 </h3>
                 <p className="mt-1 text-sm text-[#e5e4e2]/60">
-                  {getEventsForDate(allEventsModalDate).length} wydarzeń
+                  {getEventsForDate(allEventsModalDate).length} pozycji
                 </p>
               </div>
               <button
@@ -926,7 +997,13 @@ export default function CalendarMain({
                         <div className="space-y-1">
                           <div className="flex items-center gap-2 text-xs text-[#e5e4e2]/70">
                             <Building2 className="h-3 w-3" />
-                            <span>{event.organization?.name || 'Brak klienta'}</span>
+                            <span>
+                              {event.organization?.alias ||
+                                event.organization?.name ||
+                                event.contact_person?.full_name ||
+                                event.inquiry_data?.client_label ||
+                                'Brak klienta'}
+                            </span>
                           </div>
                           <div className="flex items-center gap-2 text-xs text-[#e5e4e2]/70">
                             <Clock className="h-3 w-3" />
@@ -937,10 +1014,12 @@ export default function CalendarMain({
                               })}
                             </span>
                           </div>
-                          <div className="flex items-center gap-2 text-xs text-[#e5e4e2]/70">
-                            <MapPin className="h-3 w-3" />
-                            <span>{event.location}</span>
-                          </div>
+                          {event.location && (
+                            <div className="flex items-center gap-2 text-xs text-[#e5e4e2]/70">
+                              <MapPin className="h-3 w-3" />
+                              <span>{event.location}</span>
+                            </div>
+                          )}
                         </div>
                       </div>
                       <span
@@ -1012,6 +1091,9 @@ export default function CalendarMain({
         isOpen={isInquiryModalOpen}
         onClose={() => setIsInquiryModalOpen(false)}
         initialDate={modalInitialDate}
+        onSaved={() => {
+          void refetchEvents();
+        }}
       />
     </div>
   );

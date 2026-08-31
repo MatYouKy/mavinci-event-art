@@ -16,6 +16,11 @@ export interface SignaturePlaceholderValues {
   company_phone?: string;
   company_email?: string;
   company_website?: string;
+  company_facebook_url?: string;
+  company_instagram_url?: string;
+  company_linkedin_url?: string;
+  company_tiktok_url?: string;
+  company_youtube_url?: string;
   brand_primary_color?: string;
   brand_secondary_color?: string;
   brand_accent_color?: string;
@@ -41,6 +46,11 @@ export const SIGNATURE_PLACEHOLDERS: { key: keyof SignaturePlaceholderValues; la
   { key: 'company_phone', label: 'Telefon firmy' },
   { key: 'company_email', label: 'Email firmy' },
   { key: 'company_website', label: 'WWW firmy' },
+  { key: 'company_facebook_url', label: 'Facebook marki' },
+  { key: 'company_instagram_url', label: 'Instagram marki' },
+  { key: 'company_linkedin_url', label: 'LinkedIn marki' },
+  { key: 'company_tiktok_url', label: 'TikTok marki' },
+  { key: 'company_youtube_url', label: 'YouTube marki' },
   { key: 'brand_primary_color', label: 'Kolor primary' },
   { key: 'brand_secondary_color', label: 'Kolor secondary' },
   { key: 'brand_accent_color', label: 'Kolor accent' },
@@ -52,11 +62,116 @@ export function renderSignatureTemplate(
 ): string {
   if (!template) return '';
   let out = template;
+
+  const optionalLinkKeys: Array<
+    | 'company_facebook_url'
+    | 'company_instagram_url'
+    | 'company_linkedin_url'
+    | 'company_tiktok_url'
+    | 'company_youtube_url'
+  > = [
+    'company_facebook_url',
+    'company_instagram_url',
+    'company_linkedin_url',
+    'company_tiktok_url',
+    'company_youtube_url',
+  ];
+
+  for (const key of optionalLinkKeys) {
+    if (String(values[key] ?? '').trim()) continue;
+    out = out.replace(
+      new RegExp(
+        `<a\\b[^>]*href\\s*=\\s*["']\\s*{{\\s*${key}\\s*}}\\s*["'][^>]*>[\\s\\S]*?<\\/a>`,
+        'gi',
+      ),
+      '',
+    );
+  }
+
+  const removeEmptyRegistryPlaceholder = (
+    html: string,
+    key: 'company_nip' | 'company_regon' | 'company_krs',
+    label: 'NIP' | 'REGON' | 'KRS',
+  ) => {
+    if (String(values[key] ?? '').trim()) return html;
+
+    const token = `{{\\s*${key}\\s*}}`;
+    const separator = '(?:\\||•|·|&middot;)';
+
+    return html
+      .replace(new RegExp(`${label}\\s*:?\\s*${token}\\s*${separator}\\s*`, 'gi'), '')
+      .replace(new RegExp(`\\s*${separator}\\s*${label}\\s*:?\\s*${token}`, 'gi'), '')
+      .replace(new RegExp(`${label}\\s*:?\\s*${token}`, 'gi'), '');
+  };
+
+  out = removeEmptyRegistryPlaceholder(out, 'company_nip', 'NIP');
+  out = removeEmptyRegistryPlaceholder(out, 'company_regon', 'REGON');
+  out = removeEmptyRegistryPlaceholder(out, 'company_krs', 'KRS');
+
   for (const { key } of SIGNATURE_PLACEHOLDERS) {
     const re = new RegExp(`{{\\s*${key}\\s*}}`, 'g');
     out = out.replace(re, String(values[key] ?? ''));
   }
-  return normalizeSignatureHtml(out);
+
+  out = out
+    .replace(/(?:<br\s*\/?>(?:\s|&nbsp;)*)+(?=<\/(?:div|p|span|td)>)/gi, '')
+    .replace(/<(div|p|span)\b([^>]*)>(?:\s|&nbsp;|<br\s*\/?>)*<\/\1>/gi, '');
+
+  return normalizeSignatureHtml(stripUnavailableCompanyRegistryData(out, values));
+}
+
+export function stripUnavailableCompanyRegistryData(
+  html: string,
+  values: Pick<SignaturePlaceholderValues, 'company_nip' | 'company_regon' | 'company_krs'>,
+): string {
+  if (!html) return '';
+
+  const separator = '(?:\\||•|·|&middot;)';
+  const missingFields = [
+    {
+      missing: !String(values.company_nip ?? '').trim(),
+      label: 'NIP',
+      valuePattern: '(?:PL\\s*)?\\d(?:[\\s-]*\\d){9}',
+    },
+    {
+      missing: !String(values.company_regon ?? '').trim(),
+      label: 'REGON',
+      valuePattern: '\\d(?:[\\s-]*\\d){8,13}',
+    },
+    {
+      missing: !String(values.company_krs ?? '').trim(),
+      label: 'KRS',
+      valuePattern: '\\d(?:[\\s-]*\\d){9}',
+    },
+  ];
+
+  let out = html;
+  for (const field of missingFields) {
+    if (!field.missing) continue;
+    out = out
+      .replace(
+        new RegExp(
+          `${field.label}\\s*:?\\s*${field.valuePattern}\\s*${separator}\\s*`,
+          'gi',
+        ),
+        '',
+      )
+      .replace(
+        new RegExp(
+          `\\s*${separator}\\s*${field.label}\\s*:?\\s*${field.valuePattern}`,
+          'gi',
+        ),
+        '',
+      )
+      .replace(
+        new RegExp(`${field.label}\\s*:?\\s*${field.valuePattern}`, 'gi'),
+        '',
+      );
+  }
+
+  return out
+    .replace(/(?:<br\s*\/?>(?:\s|&nbsp;)*)+(?=<\/(?:div|p|span|td)>)/gi, '')
+    .replace(/<(div|p|span|td)\b([^>]*)>(?:\s|&nbsp;|<br\s*\/?>)*<\/\1>/gi, '');
 }
 
 const mergeInlineStyle = (tag: string, requiredStyle: string): string => {
@@ -67,7 +182,20 @@ const mergeInlineStyle = (tag: string, requiredStyle: string): string => {
         `${opening}${current.replace(/\s*;?\s*$/, '; ')}${requiredStyle}${closing}`,
     );
   }
-  return tag.replace(/>$/, ` style="${requiredStyle}">`);
+  return tag.replace(/\s*\/?>$/, (closing) =>
+    ` style="${requiredStyle}"${closing.includes('/') ? ' />' : '>'}`,
+  );
+};
+
+const ensureNumericDimensionAttribute = (
+  tag: string,
+  dimension: 'width' | 'height',
+  value: string | undefined,
+) => {
+  if (!value || new RegExp(`\\s${dimension}\\s*=`, 'i').test(tag)) return tag;
+  return tag.replace(/\s*\/?>$/, (closing) =>
+    ` ${dimension}="${value}"${closing.includes('/') ? ' />' : '>'}`,
+  );
 };
 
 const lockImageDimensions = (tag: string, spacingStyle = ''): string => {
@@ -82,8 +210,14 @@ const lockImageDimensions = (tag: string, spacingStyle = ''): string => {
     height ? `height:${height}px !important; min-height:${height}px !important; max-height:${height}px !important;` : '',
   ].join('');
 
+  const tagWithDimensions = ensureNumericDimensionAttribute(
+    ensureNumericDimensionAttribute(tag, 'width', width),
+    'height',
+    height,
+  );
+
   return mergeInlineStyle(
-    tag,
+    tagWithDimensions,
     `${fixedSize} display:inline-block !important; vertical-align:middle; border:0; outline:none; object-fit:contain; ${spacingStyle}`,
   );
 };
@@ -97,7 +231,7 @@ export function normalizeSignatureHtml(html: string): string {
   if (!html) return '';
 
   const socialLinkPattern =
-    /<a\b[^>]*href\s*=\s*["'][^"']*(?:facebook\.com|instagram\.com|linkedin\.com|mavinci\.pl)[^"']*["'][^>]*>/gi;
+    /<a\b[^>]*href\s*=\s*["'][^"']*(?:facebook\.com|instagram\.com|linkedin\.com|tiktok\.com|youtube\.com|mavinci\.pl|eventrulers\.pl)[^"']*["'][^>]*>/gi;
   const contactLinkPattern = /<a\b[^>]*href\s*=\s*["'](?:tel:|mailto:)[^"']*["'][^>]*>/gi;
 
   let normalized = html
@@ -116,7 +250,7 @@ export function normalizeSignatureHtml(html: string): string {
     );
 
   normalized = normalized.replace(
-    /(<a\b[^>]*href\s*=\s*["'][^"']*(?:facebook\.com|instagram\.com|linkedin\.com|mavinci\.pl)[^"']*["'][^>]*>)([\s\S]*?)(<\/a>)/gi,
+    /(<a\b[^>]*href\s*=\s*["'][^"']*(?:facebook\.com|instagram\.com|linkedin\.com|tiktok\.com|youtube\.com|mavinci\.pl|eventrulers\.pl)[^"']*["'][^>]*>)([\s\S]*?)(<\/a>)/gi,
     (_match, opening: string, content: string, closing: string) => {
       const inlineImages = content.replace(/<img\b[^>]*>/gi, (tag) =>
         lockImageDimensions(tag),
@@ -153,9 +287,16 @@ export function normalizeSignatureHtml(html: string): string {
     '</a><span style="display:inline-block; width:8px; line-height:1px;">&nbsp;</span>',
   );
 
+  // Każdy obraz, również zdjęcie pracownika i logo poza linkiem, otrzymuje
+  // rozmiar zapisany jednocześnie jako atrybut HTML i styl inline. Klient
+  // pocztowy może usunąć jedno z nich podczas cytowania, ale nie oba.
+  normalized = normalized.replace(/<img\b[^>]*>/gi, (tag) =>
+    /\bmin-width\s*:\s*\d+px\s*!important/i.test(tag) ? tag : lockImageDimensions(tag),
+  );
+
   // Białe znaki pomiędzy ikonami nie mogą stać się miejscem łamania wiersza.
   return normalized.replace(
-    /<\/a>\s+(?=<a\b[^>]*href\s*=\s*["'][^"']*(?:facebook\.com|instagram\.com|linkedin\.com|mavinci\.pl))/gi,
+    /<\/a>\s+(?=<a\b[^>]*href\s*=\s*["'][^"']*(?:facebook\.com|instagram\.com|linkedin\.com|tiktok\.com|youtube\.com|mavinci\.pl|eventrulers\.pl))/gi,
     '</a>',
   );
 }

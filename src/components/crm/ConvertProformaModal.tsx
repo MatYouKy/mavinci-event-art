@@ -18,6 +18,7 @@ interface ConvertProformaModalProps {
 
 interface ProformaData {
   id: string;
+  event_id: string | null;
   invoice_number: string;
   my_company_id: string | null;
   buyer_name: string;
@@ -194,6 +195,23 @@ export default function ConvertProformaModal({
       });
       if (!result.success || !result.invoiceId) {
         throw new Error(result.error || 'Blad konwersji');
+      }
+
+      if (proforma.event_id) {
+        const { error: settlementLinkError } = await supabase.rpc(
+          'link_invoice_to_event_settlement',
+          {
+            p_invoice_id: result.invoiceId,
+            p_source_event_id: proforma.event_id,
+          },
+        );
+        if (settlementLinkError) {
+          console.error('Error linking converted invoice to settlement group:', settlementLinkError);
+          showSnackbar(
+            'Faktura powstała, ale nie udało się przypisać jej do całej grupy wydarzeń',
+            'warning',
+          );
+        }
       }
 
       showSnackbar('Faktura zostala utworzona (szkic)', 'success');

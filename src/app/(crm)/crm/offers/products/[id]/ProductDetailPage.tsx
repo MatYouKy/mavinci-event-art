@@ -88,6 +88,7 @@ interface IProduct {
   offer_description?: string | null;
   offer_benefits?: string[] | null;
   offer_requirements?: string[] | null;
+  offer_additional_requirements?: OfferAdditionalRequirement[] | null;
   offer_image_path?: string | null;
   offer_image_alt?: string | null;
   offer_image_position_x?: number | null;
@@ -106,6 +107,24 @@ interface IProduct {
   subcontractor_economic_cost?: number | null;
   offer_product_variants?: IProductVariant[];
 }
+
+type OfferAdditionalRequirement = {
+  id: string;
+  category: 'accommodation' | 'backstage' | 'hospitality' | 'logistics' | 'other';
+  title: string;
+  description: string;
+};
+
+const ADDITIONAL_REQUIREMENT_CATEGORIES: Array<{
+  value: OfferAdditionalRequirement['category'];
+  label: string;
+}> = [
+  { value: 'accommodation', label: 'Zakwaterowanie' },
+  { value: 'backstage', label: 'Zaplecze / garderoba' },
+  { value: 'hospitality', label: 'Gościnność / catering' },
+  { value: 'logistics', label: 'Logistyka' },
+  { value: 'other', label: 'Inne' },
+];
 
 type Props = {
   initialProduct: IProduct | null;
@@ -650,6 +669,7 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
         extension_price_net_per_hour: null,
         offer_benefits: [],
         offer_requirements: [],
+        offer_additional_requirements: [],
         offer_image_path: null,
         offer_image_alt: '',
         offer_image_position_x: 50,
@@ -1431,6 +1451,14 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
           : Number(product.extension_price_net_per_hour),
         offer_benefits: product.offer_benefits || [],
         offer_requirements: product.offer_requirements || [],
+        offer_additional_requirements: (product.offer_additional_requirements || [])
+          .map((requirement) => ({
+            id: requirement.id || crypto.randomUUID(),
+            category: requirement.category || 'other',
+            title: String(requirement.title || '').trim(),
+            description: String(requirement.description || '').trim(),
+          }))
+          .filter((requirement) => requirement.title || requirement.description),
         offer_image_path: product.offer_image_path || null,
         offer_image_alt: product.offer_image_alt || null,
         offer_image_position_x: Number(product.offer_image_position_x ?? 50),
@@ -2288,7 +2316,7 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
 
               <div>
                 <label className="mb-2 block text-sm text-[#e5e4e2]/60">
-                  Wymagania po stronie klienta / obiektu{' '}
+                  Warunki techniczne po stronie klienta / obiektu{' '}
                   <span className="text-xs text-[#e5e4e2]/40">(jedno w wierszu)</span>
                 </label>
                 <textarea
@@ -2309,9 +2337,111 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
                   }
                 />
                 <p className="mt-1 text-xs text-[#e5e4e2]/40">
-                  Te informacje zostaną pokazane klientowi na karcie produktu w wygenerowanej
-                  ofercie.
+                  Warunki zostaną zebrane z całej oferty i opisane na osobnej stronie PDF.
                 </p>
+              </div>
+
+              <div className="rounded-xl border border-[#d3bb73]/15 bg-[#0a0d1a]/55 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium text-[#e5e4e2]">Inne wymagania</p>
+                    <p className="mt-1 max-w-2xl text-xs leading-5 text-[#e5e4e2]/40">
+                      Dodaj wymagania organizacyjne związane wyłącznie z tym produktem, np. pokój
+                      dwuosobowy, garderobę, posiłek dla realizatorów albo miejsce rozładunku.
+                      Generator połączy je z wymaganiami pozostałych produktów bez duplikatów.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={!canEdit}
+                    onClick={() => setProduct({
+                      ...product,
+                      offer_additional_requirements: [
+                        ...(product.offer_additional_requirements || []),
+                        {
+                          id: crypto.randomUUID(),
+                          category: 'other',
+                          title: '',
+                          description: '',
+                        },
+                      ],
+                    })}
+                    className="rounded-lg border border-[#d3bb73]/25 px-3 py-2 text-xs text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/10 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    + Dodaj wymaganie
+                  </button>
+                </div>
+
+                {(product.offer_additional_requirements || []).length === 0 ? (
+                  <div className="mt-4 rounded-lg border border-dashed border-[#d3bb73]/15 px-4 py-5 text-center text-xs text-[#e5e4e2]/35">
+                    Brak innych wymagań dla tego produktu.
+                  </div>
+                ) : (
+                  <div className="mt-4 space-y-3">
+                    {(product.offer_additional_requirements || []).map((requirement, index) => (
+                      <div
+                        key={requirement.id || index}
+                        className="grid gap-3 rounded-lg border border-[#d3bb73]/10 bg-[#111522] p-3 lg:grid-cols-[180px_minmax(180px,0.8fr)_minmax(260px,1.5fr)_auto]"
+                      >
+                        <select
+                          value={requirement.category || 'other'}
+                          disabled={!canEdit}
+                          onChange={(event) => setProduct({
+                            ...product,
+                            offer_additional_requirements: (product.offer_additional_requirements || []).map((item, itemIndex) => (
+                              itemIndex === index
+                                ? { ...item, category: event.target.value as OfferAdditionalRequirement['category'] }
+                                : item
+                            )),
+                          })}
+                          className="rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] disabled:opacity-50"
+                        >
+                          {ADDITIONAL_REQUIREMENT_CATEGORIES.map((category) => (
+                            <option key={category.value} value={category.value}>{category.label}</option>
+                          ))}
+                        </select>
+                        <input
+                          type="text"
+                          value={requirement.title || ''}
+                          disabled={!canEdit}
+                          onChange={(event) => setProduct({
+                            ...product,
+                            offer_additional_requirements: (product.offer_additional_requirements || []).map((item, itemIndex) => (
+                              itemIndex === index ? { ...item, title: event.target.value } : item
+                            )),
+                          })}
+                          placeholder="Np. Pokój dwuosobowy"
+                          className="rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] disabled:opacity-50"
+                        />
+                        <textarea
+                          rows={2}
+                          value={requirement.description || ''}
+                          disabled={!canEdit}
+                          onChange={(event) => setProduct({
+                            ...product,
+                            offer_additional_requirements: (product.offer_additional_requirements || []).map((item, itemIndex) => (
+                              itemIndex === index ? { ...item, description: event.target.value } : item
+                            )),
+                          })}
+                          placeholder="Opisz dokładnie, dla kogo, kiedy i na jakich warunkach wymaganie ma być zapewnione."
+                          className="min-h-[42px] resize-y rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] disabled:opacity-50"
+                        />
+                        <button
+                          type="button"
+                          disabled={!canEdit}
+                          onClick={() => setProduct({
+                            ...product,
+                            offer_additional_requirements: (product.offer_additional_requirements || []).filter((_, itemIndex) => itemIndex !== index),
+                          })}
+                          className="self-start rounded-lg border border-red-400/15 p-2 text-red-300/70 transition-colors hover:bg-red-400/10 hover:text-red-200 disabled:opacity-40"
+                          title="Usuń wymaganie"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div>

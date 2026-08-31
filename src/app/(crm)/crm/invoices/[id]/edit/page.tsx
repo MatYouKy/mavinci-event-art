@@ -997,6 +997,23 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
       });
       if (updateError) throw updateError;
 
+      if (selectedEventId) {
+        const { error: settlementLinkError } = await supabase.rpc(
+          'link_invoice_to_event_settlement',
+          {
+            p_invoice_id: params.id,
+            p_source_event_id: selectedEventId,
+          },
+        );
+        if (settlementLinkError) {
+          console.error('Error refreshing invoice settlement links:', settlementLinkError);
+          showSnackbar(
+            'Faktura została zapisana, ale nie udało się odświeżyć wspólnego rozliczenia',
+            'warning',
+          );
+        }
+      }
+
       showSnackbar('Faktura zostala zaktualizowana', 'success');
       router.push(`/crm/invoices/${params.id}`);
       } catch (err: unknown | Error) {

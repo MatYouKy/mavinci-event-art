@@ -147,6 +147,7 @@ app.post('/api/send-email', verifyAuth, async (req, res) => {
         content: Buffer.from(att.content, 'base64'),
         contentType: att.contentType || 'application/octet-stream',
         contentDisposition: att.contentDisposition || 'attachment',
+        cid: att.cid || undefined,
       })),
     };
 

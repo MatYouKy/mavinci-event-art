@@ -35,6 +35,7 @@ import { renderContractDocument } from '@/lib/CRM/contracts/contractPagination';
 import { normalizeContractClauseHtml } from '@/lib/CRM/contracts/contractClauseContent';
 import { placeContractClauses } from '@/lib/CRM/contracts/contractClauseSlots';
 import { createContractDraftPdf } from '@/app/(crm)/crm/contract-templates/printDraft';
+import { getOfferTotals } from '@/lib/CRM/Offers/offerTotals';
 
 export interface DecisionMaker {
   id: string;
@@ -525,7 +526,7 @@ export function EventContractTab({ eventId }: { eventId: string }) {
 
       const { data: offerCandidates, error: offersError } = await supabase
         .from('offers')
-        .select('id, total_amount, offer_number, valid_until, status, created_at, updated_at')
+        .select('id, subtotal, discount_percent, discount_amount, tax_percent, tax_amount, total_amount, client_type, offer_number, valid_until, status, created_at, updated_at')
         .eq('event_id', eventId)
         .order('created_at', { ascending: false })
         .limit(20);
@@ -539,6 +540,13 @@ export function EventContractTab({ eventId }: { eventId: string }) {
         activeOfferCandidates.find((offer: any) => offer.status === 'accepted') ||
         activeOfferCandidates[0] ||
         null;
+
+      const { data: weddingCard } = await supabase
+        .from('wedding_cards')
+        .select('id')
+        .eq('event_id', eventId)
+        .limit(1)
+        .maybeSingle();
 
       let offerItems = null;
       if (offers?.id) {
@@ -564,8 +572,26 @@ export function EventContractTab({ eventId }: { eventId: string }) {
       const contractNumber = `UMW/${new Date().getFullYear()}/${Math.floor(Math.random() * 1000)
         .toString()
         .padStart(3, '0')}`;
-      const totalPrice = offers?.total_amount || event.budget || 0;
-      const depositAmount = Math.round(totalPrice * 0.3);
+      const offerTotals = offers ? getOfferTotals(offers) : null;
+      const fallbackBudget = Number(event.budget || 0);
+      const budgetNet = offerTotals ? offerTotals.net : fallbackBudget;
+      const budgetGross = offerTotals ? offerTotals.gross : fallbackBudget;
+      const eventCategoryName = String((event.event_categories as any)?.name || '').toLowerCase();
+      const isWedding =
+        Boolean(weddingCard) ||
+        eventCategoryName.includes('wese') ||
+        eventCategoryName.includes('wedding');
+      const contractBudget = isWedding ? budgetNet : budgetGross;
+      const depositAmount = Math.round((contractBudget * 0.3 + Number.EPSILON) * 100) / 100;
+      const discountAmount = offerTotals?.discountAmount || 0;
+      const discountPercent = offerTotals?.discountPercent || 0;
+      const budgetBeforeDiscountNet = offerTotals ? offerTotals.listNet : budgetNet;
+
+      const formatMoney = (value: number) =>
+        value.toLocaleString('pl-PL', {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        }) + ' zł';
 
       const formatDate = (dateStr: string) => {
         if (!dateStr) return '';
@@ -817,17 +843,22 @@ export function EventContractTab({ eventId }: { eventId: string }) {
         decision_makers_list: decisionMakersListHtml,
         client_contract_party_block: clientContractPartyBlock,
 
-        budget:
-          totalPrice.toLocaleString('pl-PL', {
-            minimumFractionDigits: 2,
+        // {{budget}} pozostaje aliasem kwoty umowy. Dla wesel jest nią netto,
+        // a dla pozostałych realizacji dotychczasowa wartość brutto.
+        budget: formatMoney(contractBudget),
+        budget_words: numberToWords(contractBudget),
+        budget_netto: formatMoney(budgetNet),
+        budget_netto_words: numberToWords(budgetNet),
+        budget_brutto: formatMoney(budgetGross),
+        budget_brutto_words: numberToWords(budgetGross),
+        budget_before_discount_netto: formatMoney(budgetBeforeDiscountNet),
+        discount_amount: formatMoney(discountAmount),
+        discount_percent:
+          discountPercent.toLocaleString('pl-PL', {
+            minimumFractionDigits: discountPercent > 0 ? 2 : 0,
             maximumFractionDigits: 2,
-          }) + ' zł',
-        budget_words: numberToWords(totalPrice),
-        deposit_amount:
-          depositAmount.toLocaleString('pl-PL', {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-          }) + ' zł',
+          }) + '%',
+        deposit_amount: formatMoney(depositAmount),
         deposit_words: numberToWords(depositAmount),
 
         contract_number: contractNumber,
@@ -973,10 +1004,14 @@ export function EventContractTab({ eventId }: { eventId: string }) {
       return isNaN(num) ? 0 : Math.round(num);
     };
 
-    if (updatedVariables.budget) {
-      const budgetNum = extractNumber(updatedVariables.budget);
-      updatedVariables.budget_words = numberToWords(budgetNum);
-    }
+    const syncAmountInWords = (amountKey: string, wordsKey: string) => {
+      if (!updatedVariables[amountKey]) return;
+      updatedVariables[wordsKey] = numberToWords(extractNumber(updatedVariables[amountKey]));
+    };
+
+    syncAmountInWords('budget', 'budget_words');
+    syncAmountInWords('budget_netto', 'budget_netto_words');
+    syncAmountInWords('budget_brutto', 'budget_brutto_words');
 
     if (updatedVariables.deposit_amount) {
       const depositNum = extractNumber(updatedVariables.deposit_amount);

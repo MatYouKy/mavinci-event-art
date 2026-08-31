@@ -139,8 +139,15 @@ const PLACEHOLDER_CONTEXT_GROUPS = [
   {
     label: 'Finanse i umowa',
     items: [
-      { key: '{{budget}}', label: 'Budżet' },
-      { key: '{{budget_words}}', label: 'Budżet słownie' },
+      { key: '{{budget}}', label: 'Kwota umowy (alias)' },
+      { key: '{{budget_words}}', label: 'Kwota umowy słownie' },
+      { key: '{{budget_netto}}', label: 'Kwota umowy netto po rabacie' },
+      { key: '{{budget_netto_words}}', label: 'Kwota netto słownie' },
+      { key: '{{budget_brutto}}', label: 'Kwota umowy brutto po rabacie' },
+      { key: '{{budget_brutto_words}}', label: 'Kwota brutto słownie' },
+      { key: '{{budget_before_discount_netto}}', label: 'Wartość netto przed rabatem' },
+      { key: '{{discount_amount}}', label: 'Rabat kwotowy netto' },
+      { key: '{{discount_percent}}', label: 'Rabat procentowy' },
       { key: '{{deposit_amount}}', label: 'Zadatek' },
       { key: '{{deposit_words}}', label: 'Zadatek słownie' },
       { key: '{{contract_number}}', label: 'Numer umowy' },
@@ -1960,8 +1967,15 @@ export default function EditTemplateWYSIWYGPage() {
                 ))}
               {placeholderCategory === 'financial' &&
                 [
-                  { key: '{{budget}}', label: 'Budżet (liczba)' },
-                  { key: '{{budget_words}}', label: 'Budżet słownie' },
+                  { key: '{{budget}}', label: 'Kwota umowy (alias)' },
+                  { key: '{{budget_words}}', label: 'Kwota umowy słownie' },
+                  { key: '{{budget_netto}}', label: 'Netto po rabacie' },
+                  { key: '{{budget_netto_words}}', label: 'Netto słownie' },
+                  { key: '{{budget_brutto}}', label: 'Brutto po rabacie' },
+                  { key: '{{budget_brutto_words}}', label: 'Brutto słownie' },
+                  { key: '{{budget_before_discount_netto}}', label: 'Netto przed rabatem' },
+                  { key: '{{discount_amount}}', label: 'Rabat kwotowy netto' },
+                  { key: '{{discount_percent}}', label: 'Rabat procentowy' },
                   { key: '{{deposit_amount}}', label: 'Zadatek (liczba)' },
                   { key: '{{deposit_words}}', label: 'Zadatek słownie' },
                   { key: '{{contract_number}}', label: 'Numer umowy' },

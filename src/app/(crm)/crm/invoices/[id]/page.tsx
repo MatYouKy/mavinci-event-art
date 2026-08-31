@@ -112,7 +112,7 @@ interface RelatedData {
   event?: {
     id: string;
     name: string;
-    event_date: string;
+    event_date: string | null;
     contact_person_id?: string | null;
   } | null;
   organization?: { id: string; name: string; nip: string; email?: string } | null;
@@ -134,6 +134,12 @@ interface RelatedData {
     invoice_number: string;
     invoice_type: string;
     relation_type: string;
+  }>;
+  settlementEvents?: Array<{
+    id: string;
+    name: string;
+    event_date: string;
+    allocated_gross: number;
   }>;
 }
 
@@ -321,6 +327,28 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
               };
             }
           }
+        }
+
+        const { data: settlementLinks } = await supabase
+          .from('event_invoice_settlements')
+          .select('event_id,allocated_gross,shared_event_count')
+          .eq('id', invoiceRes.data.id);
+
+        if (settlementLinks && settlementLinks.length > 1) {
+          const otherLinks = settlementLinks.filter(
+            (link) => link.event_id !== invoiceRes.data.event_id,
+          );
+          const { data: settlementEvents } = await supabase
+            .from('events')
+            .select('id,name,event_date')
+            .in('id', otherLinks.map((link) => link.event_id));
+
+          related.settlementEvents = (settlementEvents || []).map((event) => ({
+            ...event,
+            allocated_gross: Number(
+              otherLinks.find((link) => link.event_id === event.id)?.allocated_gross || 0,
+            ),
+          }));
         }
 
         setRelatedData(related);
@@ -1086,6 +1114,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
             relatedData.organization ||
             relatedData.serviceRecipientOrganization ||
             relatedData.relatedInvoice ||
+            (relatedData.settlementEvents && relatedData.settlementEvents.length > 0) ||
             (relatedData.relatedInvoices && relatedData.relatedInvoices.length > 0)) && (
             <div className="mb-6 overflow-hidden rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33]">
               <button
@@ -1104,6 +1133,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
                         relatedData.organization,
                         relatedData.serviceRecipientOrganization,
                         relatedData.relatedInvoice,
+                        ...(relatedData.settlementEvents ?? []),
                         ...(relatedData.relatedInvoices ?? []),
                       ].filter(Boolean).length
                     }
@@ -1136,6 +1166,35 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
                         </div>
                       </button>
                     )}
+
+                    {relatedData.settlementEvents?.map((settlementEvent) => (
+                      <button
+                        key={settlementEvent.id}
+                        type="button"
+                        onClick={() => router.push(`/crm/events/${settlementEvent.id}`)}
+                        className="flex items-center gap-3 rounded-lg border border-sky-400/15 bg-sky-400/5 p-3 text-left transition-colors hover:border-sky-300/40"
+                      >
+                        <LinkIcon className="h-4 w-4 shrink-0 text-sky-300" />
+                        <div className="min-w-0">
+                          <div className="text-[11px] uppercase tracking-wide text-sky-300/70">
+                            Wspólne rozliczenie
+                          </div>
+                          <div className="truncate text-sm font-medium text-[#e5e4e2]">
+                            {settlementEvent.name}
+                          </div>
+                          <div className="text-xs text-[#e5e4e2]/50">
+                            {settlementEvent.event_date
+                              ? new Date(settlementEvent.event_date).toLocaleDateString('pl-PL')
+                              : 'Termin nieustalony'}{' '}
+                            ·{' '}
+                            udział {settlementEvent.allocated_gross.toLocaleString('pl-PL', {
+                              minimumFractionDigits: 2,
+                            })}{' '}
+                            zł
+                          </div>
+                        </div>
+                      </button>
+                    ))}
 
                     {relatedData.organization && (
                       <button

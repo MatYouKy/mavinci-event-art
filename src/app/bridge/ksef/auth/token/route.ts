@@ -38,9 +38,32 @@ export async function POST(req: Request) {
     }
 
     const cookieStore = await cookies();
-    const supabase = createSupabaseServerClient(cookieStore);
+    const userSupabase = createSupabaseServerClient(cookieStore);
 
-    const { data: credentials, error } = await supabase
+    const { data: authData } = await userSupabase.auth.getUser();
+    if (!authData.user) {
+      return NextResponse.json(
+        { success: false, error: "Wymagane logowanie." },
+        { status: 401 },
+      );
+    }
+
+    const { data: canManageCompany, error: permissionError } = await userSupabase.rpc(
+      "can_manage_invoice_company",
+      { p_company_id: companyId },
+    );
+
+    if (permissionError || !canManageCompany) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Brak uprawnień do synchronizacji faktur tej spółki.",
+        },
+        { status: 403 },
+      );
+    }
+
+    const { data: credentials, error } = await userSupabase
       .from("ksef_credentials")
       .select("id, my_company_id, nip, token, is_test_environment, is_active")
       .eq("my_company_id", companyId)
@@ -159,29 +182,39 @@ export async function POST(req: Request) {
       );
     }
 
-    await wait(1500);
+    let authStatus = null;
 
-    const authStatus = await getKSeFAuthStatus(
-      authStart.referenceNumber,
-      authStart.authenticationToken.token,
-      credentials.is_test_environment,
-      {
-        requestId,
-        stage: "auth-status",
-        companyId: mask(credentials.my_company_id),
-        nip: credentials.nip,
-      }
-    );
+    for (let attempt = 1; attempt <= 8; attempt += 1) {
+      await wait(attempt === 1 ? 1200 : 750);
+      authStatus = await getKSeFAuthStatus(
+        authStart.referenceNumber,
+        authStart.authenticationToken.token,
+        credentials.is_test_environment,
+        {
+          requestId,
+          stage: "auth-status",
+          attempt,
+          companyId: mask(credentials.my_company_id),
+          nip: credentials.nip,
+        }
+      );
 
-    if (authStatus.status?.code !== 200) {
-      return NextResponse.json({
-        success: true,
-        data: {
-          referenceNumber: authStart.referenceNumber,
-          authStatus,
-          redeemed: false,
+      if (authStatus.status?.code === 200) break;
+    }
+
+    if (authStatus?.status?.code !== 200) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "KSeF nie zakończył autoryzacji w wymaganym czasie. Spróbuj ponownie.",
+          data: {
+            referenceNumber: authStart.referenceNumber,
+            authStatus,
+            redeemed: false,
+          },
         },
-      });
+        { status: 503 },
+      );
     }
 
     const redeemedTokens = await redeemKSeFAuthToken(
@@ -205,7 +238,7 @@ export async function POST(req: Request) {
       updated_at: new Date().toISOString(),
     };
 
-    const { error: updateError } = await supabase
+    const { error: updateError } = await userSupabase
       .from("ksef_credentials")
       .update(updatePayload)
       .eq("id", credentials.id);

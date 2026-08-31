@@ -36,6 +36,12 @@ const normalizeEmail = (value?: string | null) => (value || '').trim().toLowerCa
 
 const hasValue = (v?: string | null) => !!v && v.trim().length > 0;
 
+const isMissingAlternativeContactNameColumn = (error?: {
+  code?: string;
+  message?: string;
+} | null) =>
+  error?.code === 'PGRST204' && error.message?.includes('alternative_contact_name');
+
 type ContactType = 'organization' | 'contact' | 'subcontractor' | 'individual';
 type BusinessType = 'company' | 'hotel' | 'restaurant' | 'venue' | 'freelancer' | 'other';
 
@@ -55,6 +61,7 @@ interface NewContactForm {
   email: string;
   phone: string;
   mobile: string;
+  alternativeContactName: string;
   businessPhone: string;
   nip: string;
   position: string;
@@ -84,6 +91,7 @@ export default function NewContactPage() {
     email: '',
     phone: '',
     mobile: '',
+    alternativeContactName: '',
     businessPhone: '',
     nip: '',
     position: '',
@@ -211,6 +219,7 @@ export default function NewContactPage() {
         email: '',
         phone: '',
         mobile: '',
+        alternativeContactName: '',
         // resztę zostawiamy (nip/position itd.) – jeśli chcesz czyścić też, daj znać
         businessPhone: '',
         nip: '',
@@ -416,26 +425,51 @@ export default function NewContactPage() {
         }
   
         if (contactType === 'individual') {
+          const alternativeContactName = newContact.alternativeContactName?.trim();
+          if (alternativeContactName) {
+            contactData.alternative_contact_name = alternativeContactName;
+          }
           contactData.pesel = newContact.pesel?.trim() || null;
           contactData.id_number = newContact.idNumber?.trim() || null;
           contactData.event_type = newContact.eventType?.trim() || null;
           contactData.event_details = newContact.eventDetails?.trim() || null;
         }
   
-        const { data: contact, error: contactError } = await supabase
+        let { data: contact, error: contactError } = await supabase
           .from('contacts')
           .insert([contactData])
           .select()
           .single();
+
+        let skippedAlternativeContactName = false;
+        if (isMissingAlternativeContactNameColumn(contactError)) {
+          delete contactData.alternative_contact_name;
+          const retryResult = await supabase
+            .from('contacts')
+            .insert([contactData])
+            .select()
+            .single();
+
+          contact = retryResult.data;
+          contactError = retryResult.error;
+          skippedAlternativeContactName = true;
+        }
   
         if (contactError) throw contactError;
   
-        showSnackbar(
-          contactType === 'contact'
-            ? 'Kontakt dodany pomyślnie'
-            : 'Osoba prywatna dodana pomyślnie',
-          'success',
-        );
+        if (skippedAlternativeContactName) {
+          showSnackbar(
+            'Osoba prywatna została dodana, ale opis kontaktu alternatywnego wymaga aktualizacji bazy danych',
+            'warning',
+          );
+        } else {
+          showSnackbar(
+            contactType === 'contact'
+              ? 'Kontakt dodany pomyślnie'
+              : 'Osoba prywatna dodana pomyślnie',
+            'success',
+          );
+        }
   
         router.push(`/crm/contacts/${contact.id}`);
         return;
@@ -579,7 +613,7 @@ export default function NewContactPage() {
             >
               <User className="mx-auto mb-4 h-16 w-16 text-[#d3bb73] transition-transform group-hover:scale-110" />
               <h3 className="mb-2 text-xl font-semibold text-white">Kontakt</h3>
-              <p className="text-sm text-gray-400">Osoba w organizacji lub niezależna</p>
+              <p className="text-sm text-gray-400">Osoba powiązana z organizacją</p>
             </button>
 
             <button
@@ -1129,7 +1163,14 @@ export default function NewContactPage() {
                             <span className="text-xs text-gray-500">(opcjonalne)</span>
                           </label>
                           <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-                            {['wesele', 'urodziny', 'dodatki', 'inne'].map((type) => (
+                            {[
+                              'wesele',
+                              'urodziny',
+                              'rocznica',
+                              'impreza firmowa',
+                              'dodatki',
+                              'inne',
+                            ].map((type) => (
                               <button
                                 key={type}
                                 type="button"
@@ -1146,8 +1187,7 @@ export default function NewContactPage() {
                           </div>
                         </div>
 
-                        {newContact.eventType && (
-                          <div>
+                        <div>
                             <label className="mb-1 block text-sm text-gray-400">
                               Szczegóły uroczystości{' '}
                               <span className="text-xs text-gray-500">(opcjonalne)</span>
@@ -1161,8 +1201,7 @@ export default function NewContactPage() {
                               className="w-full rounded border border-gray-700 bg-[#0f1119] px-3 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
                               placeholder="Dodatkowe informacje o uroczystości..."
                             />
-                          </div>
-                        )}
+                        </div>
                       </>
                     )}
                   </div>
@@ -1186,7 +1225,7 @@ export default function NewContactPage() {
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                       <div>
                         <label className="mb-2 block text-sm font-medium text-gray-300">
-                          Telefon prywatny{' '}
+                          {contactType === 'individual' ? 'Telefon główny' : 'Telefon prywatny'}{' '}
                           {contactType === 'individual' && (
                             <span className="text-xs text-gray-500">(opcjonalne)</span>
                           )}
@@ -1203,6 +1242,21 @@ export default function NewContactPage() {
                         <>
                           <div>
                             <label className="mb-2 block text-sm font-medium text-gray-300">
+                              Telefon komórkowy{' '}
+                              <span className="text-xs text-gray-500">(opcjonalne)</span>
+                            </label>
+                            <input
+                              type="tel"
+                              value={newContact.mobile}
+                              onChange={(e) =>
+                                setNewContact({ ...newContact, mobile: e.target.value })
+                              }
+                              className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                              placeholder="600 123 456"
+                            />
+                          </div>
+                          <div>
+                            <label className="mb-2 block text-sm font-medium text-gray-300">
                               Telefon firmowy{' '}
                               <span className="text-xs text-gray-500">(opcjonalne)</span>
                             </label>
@@ -1216,23 +1270,86 @@ export default function NewContactPage() {
                               placeholder="22 123 4567"
                             />
                           </div>
+                        </>
+                      )}
+                      {contactType === 'individual' && (
+                        <>
                           <div>
                             <label className="mb-2 block text-sm font-medium text-gray-300">
-                              Pozycja w organizacja
+                              Numer alternatywny{' '}
                               <span className="text-xs text-gray-500">(opcjonalne)</span>
                             </label>
                             <input
                               type="tel"
-                              value={newContact.position}
+                              value={newContact.mobile}
                               onChange={(e) =>
-                                setNewContact({ ...newContact, position: e.target.value })
+                                setNewContact({ ...newContact, mobile: e.target.value })
                               }
                               className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                              placeholder="np. Kierownik sprzedaży"
+                              placeholder="600 123 456"
+                            />
+                          </div>
+                          <div>
+                            <label className="mb-2 block text-sm font-medium text-gray-300">
+                              Osoba alternatywna{' '}
+                              <span className="text-xs text-gray-500">(opcjonalne)</span>
+                            </label>
+                            <input
+                              type="text"
+                              value={newContact.alternativeContactName}
+                              onChange={(e) =>
+                                setNewContact({
+                                  ...newContact,
+                                  alternativeContactName: e.target.value,
+                                })
+                              }
+                              className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                              placeholder="np. Anna Kowalska — mama"
                             />
                           </div>
                         </>
                       )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {(contactType === 'contact' || contactType === 'individual') && (
+                <div className="border-t border-gray-700 pt-6">
+                  <h3 className="mb-4 text-lg font-semibold text-white">Adres</h3>
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div className="md:col-span-2">
+                      <label className="mb-2 block text-sm font-medium text-gray-300">
+                        Ulica i numer
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.address}
+                        onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                        className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                        placeholder="np. Kwiatowa 12/3"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-gray-300">Miasto</label>
+                      <input
+                        type="text"
+                        value={formData.city}
+                        onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                        className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-gray-300">
+                        Kod pocztowy
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.postalCode}
+                        onChange={(e) => setFormData({ ...formData, postalCode: e.target.value })}
+                        className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                        placeholder="00-000"
+                      />
                     </div>
                   </div>
                 </div>

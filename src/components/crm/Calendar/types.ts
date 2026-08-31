@@ -4,12 +4,26 @@ export interface CalendarEvent {
   event_date: string;
   event_end_date: string | null;
   status: string;
+  created_by?: string | null;
   color?: string;
   location?: string;
-  organization?: { name: string } | null;
-  category?: { name: string; color?: string } | null;
+  organization?: { name: string; alias?: string | null } | null;
+  contact_person?: { full_name?: string | null } | null;
+  category?: {
+    name: string;
+    color?: string;
+    custom_icon?: { svg_code?: string | null } | null;
+  } | null;
   is_meeting?: boolean;
+  is_inquiry?: boolean;
   meeting_data?: any;
+  inquiry_data?: {
+    task_id: string;
+    inquiry_stage?: string | null;
+    win_probability?: number | null;
+    client_label?: string | null;
+    [key: string]: any;
+  };
   assigned_employees?: { id: string; name: string; surname: string }[];
   event_vehicles?: any[];
   event_equipment?: any[];

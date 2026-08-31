@@ -118,7 +118,9 @@ export default function MonthView({
                           )}
 
                           <div
-                            className="text-xs p-1.5 rounded border truncate hover:opacity-80 transition-opacity relative z-10 cursor-pointer font-medium"
+                            className={`relative z-10 cursor-pointer truncate rounded border p-1.5 text-xs font-medium transition-opacity hover:opacity-80 ${
+                              event.is_inquiry ? 'border-dashed' : ''
+                            }`}
                             style={
                               event.is_meeting
                                 ? {

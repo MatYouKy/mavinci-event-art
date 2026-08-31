@@ -79,7 +79,9 @@ export default function WeekView({
                   return (
                     <div
                       key={event.id}
-                      className="absolute left-1 right-1 rounded border p-2 cursor-pointer hover:opacity-80 transition-opacity overflow-hidden z-10"
+                      className={`absolute left-1 right-1 z-10 cursor-pointer overflow-hidden rounded border p-2 transition-opacity hover:opacity-80 ${
+                        event.is_inquiry ? 'border-dashed' : ''
+                      }`}
                       style={{
                         top: `${top}px`,
                         height: `${height}px`,

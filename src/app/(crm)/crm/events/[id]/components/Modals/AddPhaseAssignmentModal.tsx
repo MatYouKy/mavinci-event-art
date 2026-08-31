@@ -1,11 +1,8 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, Search, UserPlus, Sparkles, Clock, Calendar } from 'lucide-react';
-import {
-  EventPhase,
-  useLazyGetEmployeeConflictsQuery,
-} from '@/store/api/eventPhasesApi';
+import { X, Search, UserPlus, Sparkles, Calendar, AlertTriangle } from 'lucide-react';
+import { EventPhase, PhaseConflict } from '@/store/api/eventPhasesApi';
 import { useGetEventPhasesQuery } from '@/store/api/eventPhasesApi';
 import { useGetEmployeesQuery } from '@/app/(crm)/crm/employees/store/employeeApi';
 import { useGetEventEmployeesQuery } from '../../../store/api/eventsApi';
@@ -37,7 +34,10 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
   eventOffers = [],
 }) => {
   const [isSaving, setIsSaving] = useState(false);
-  const [checkConflicts, { data: conflicts }] = useLazyGetEmployeeConflictsQuery();
+  const [conflicts, setConflicts] = useState<PhaseConflict[]>([]);
+  const [checkingConflicts, setCheckingConflicts] = useState(false);
+  const [acceptConflicts, setAcceptConflicts] = useState(false);
+  const [conflictReason, setConflictReason] = useState('');
   const { data: allPhases = [] } = useGetEventPhasesQuery(eventId);
   const { data: eventEmployees = [] } = useGetEventEmployeesQuery(eventId, {
     skip: !eventId,
@@ -58,6 +58,28 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
   const [existingPhaseIds, setExistingPhaseIds] = useState<Set<string>>(new Set());
   const [assignToAllPhases, setAssignToAllPhases] = useState(false);
   const [role, setRole] = useState('technician');
+
+  const phasesToAssign = useMemo(
+    () =>
+      assignToAllPhases
+        ? allPhases.filter((item) => !existingPhaseIds.has(item.id))
+        : allPhases.filter((item) => selectedPhases.has(item.id) && !existingPhaseIds.has(item.id)),
+    [allPhases, assignToAllPhases, existingPhaseIds, selectedPhases],
+  );
+
+  const selectedPhaseKey = useMemo(
+    () => phasesToAssign.map((item) => item.id).sort().join(','),
+    [phasesToAssign],
+  );
+
+  const absenceConflicts = useMemo(
+    () => conflicts.filter((conflict) => conflict.conflict_type === 'absence'),
+    [conflicts],
+  );
+  const realizationConflicts = useMemo(
+    () => conflicts.filter((conflict) => conflict.conflict_type === 'phase'),
+    [conflicts],
+  );
 
   const eventTeamIds = useMemo(
     () => new Set(eventEmployees.map((assignment: any) => assignment.employee_id)),
@@ -153,19 +175,72 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
       setAssignToAllPhases(false);
       setSearchQuery('');
       setRole('technician');
+      setConflicts([]);
+      setCheckingConflicts(false);
+      setAcceptConflicts(false);
+      setConflictReason('');
     }
   }, [open, phase.id]);
 
-  // Sprawdź konflikty gdy wybrano pracownika
+  // Konflikt dotyczy wyłącznie realnej obecności w wybranych etapach timeline.
+  // Sam dostęp do wydarzenia, autorstwo lub rola sprzedawcy nie blokują terminu.
   useEffect(() => {
-    if (selectedEmployee && phase) {
-      checkConflicts({
-        employeeId: selectedEmployee.id,
-        startTime: phase.start_time,
-        endTime: phase.end_time,
-      });
+    let cancelled = false;
+
+    setAcceptConflicts(false);
+    setConflictReason('');
+
+    if (!selectedEmployee || phasesToAssign.length === 0) {
+      setConflicts([]);
+      setCheckingConflicts(false);
+      return () => {
+        cancelled = true;
+      };
     }
-  }, [selectedEmployee, phase, checkConflicts]);
+
+    const loadConflicts = async () => {
+      setCheckingConflicts(true);
+      try {
+        const results = await Promise.all(
+          phasesToAssign.map(async (selectedPhase) => {
+            const { data, error } = await supabase.rpc('get_employee_realization_conflicts', {
+              p_employee_id: selectedEmployee.id,
+              p_event_id: eventId,
+              p_phase_id: selectedPhase.id,
+            });
+            if (error) throw error;
+
+            return ((data || []) as PhaseConflict[]).map((conflict) => ({
+              ...conflict,
+              requested_phase_id: selectedPhase.id,
+              requested_phase_name: selectedPhase.name,
+            }));
+          }),
+        );
+
+        if (cancelled) return;
+
+        const uniqueConflicts = new Map<string, PhaseConflict>();
+        results.flat().forEach((conflict) => {
+          const key = `${conflict.requested_phase_id}:${conflict.conflict_type}:${conflict.conflict_id}`;
+          uniqueConflicts.set(key, conflict);
+        });
+        setConflicts(Array.from(uniqueConflicts.values()));
+      } catch (error) {
+        if (cancelled) return;
+        console.error('Employee realization conflict check failed:', error);
+        setConflicts([]);
+        showSnackbar('Nie udało się sprawdzić konfliktów obsady realizacyjnej', 'error');
+      } finally {
+        if (!cancelled) setCheckingConflicts(false);
+      }
+    };
+
+    void loadConflicts();
+    return () => {
+      cancelled = true;
+    };
+  }, [eventId, phasesToAssign, selectedEmployee, selectedPhaseKey, showSnackbar]);
 
   const handleEmployeeSelect = async (emp: any) => {
     setSelectedEmployee(emp);
@@ -218,24 +293,46 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
       return;
     }
 
-    const phasesToAssign = assignToAllPhases
-      ? allPhases.filter((p) => !existingPhaseIds.has(p.id)).map((p) => p.id)
-      : Array.from(selectedPhases);
-
     if (phasesToAssign.length === 0) {
       showSnackbar('Wybierz co najmniej jeden etap timeline', 'warning');
+      return;
+    }
+
+    if (checkingConflicts) {
+      showSnackbar('Poczekaj na zakończenie sprawdzania dostępności', 'warning');
+      return;
+    }
+
+    if (absenceConflicts.length > 0) {
+      showSnackbar(
+        'Pracownik ma nieobecność w godzinach wybranego etapu. Najpierw wyjaśnij nieobecność.',
+        'error',
+      );
+      return;
+    }
+
+    if (realizationConflicts.length > 0 && !acceptConflicts) {
+      showSnackbar('Potwierdź świadomą akceptację konfliktu realizacyjnego', 'warning');
+      return;
+    }
+
+    if (realizationConflicts.length > 0 && conflictReason.trim().length < 10) {
+      showSnackbar('Opisz sposób rozdzielenia pracy (minimum 10 znaków)', 'warning');
       return;
     }
 
     try {
       setIsSaving(true);
       const { data: insertedCount, error } = await supabase.rpc(
-        'assign_event_employee_to_phases',
+        'assign_event_employee_to_phases_with_conflict_decision',
         {
           p_event_id: eventId,
           p_employee_id: selectedEmployee.id,
-          p_phase_ids: phasesToAssign,
+          p_phase_ids: phasesToAssign.map((item) => item.id),
           p_role: role,
+          p_accept_conflicts: realizationConflicts.length > 0 && acceptConflicts,
+          p_conflict_reason:
+            realizationConflicts.length > 0 && acceptConflicts ? conflictReason.trim() : null,
         },
       );
       if (error) throw error;
@@ -245,9 +342,11 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
 
       const phaseCount = Number(insertedCount ?? phasesToAssign.length);
       showSnackbar(
-        assignToAllPhases
-          ? `Pracownik przypisany do wszystkich etapów timeline (${phaseCount})`
-          : `Pracownik przypisany do ${phaseCount} ${phaseCount === 1 ? 'etapu' : 'etapów'} timeline`,
+        realizationConflicts.length > 0 && acceptConflicts
+          ? 'Pracownik przypisany. Konflikt zaakceptowany i zapisany z uzasadnieniem.'
+          : assignToAllPhases
+            ? `Pracownik przypisany do wszystkich etapów timeline (${phaseCount})`
+            : `Pracownik przypisany do ${phaseCount} ${phaseCount === 1 ? 'etapu' : 'etapów'} timeline`,
         'success',
       );
       onClose();
@@ -463,90 +562,134 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
               )}
 
               {/* Konflikty */}
-              {conflicts && conflicts.length > 0 && (
-                <div className="mb-4 rounded-lg border border-red-500/20 bg-red-500/10 p-3">
-                  <div className="mb-2 text-sm font-semibold text-red-400">
-                    ⚠️ Znaleziono {conflicts.length} konflikt(ów) czasowych
-                  </div>
-                  <div className="space-y-2">
-                    {conflicts.map((conflict) => {
-                      const startDate = new Date(conflict.assignment_start);
-                      const endDate = new Date(conflict.assignment_end);
-                      const formatDate = (date: Date) =>
-                        date.toLocaleString('pl-PL', {
-                          day: '2-digit',
-                          month: '2-digit',
-                          year: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        });
+              {checkingConflicts && (
+                <div className="mb-4 rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/5 p-3 text-sm text-[#e5e4e2]/65">
+                  Sprawdzam faktyczną obecność pracownika w wybranych etapach…
+                </div>
+              )}
 
-                      return (
-                        <div
-                          key={conflict.conflict_id}
-                          className="rounded border border-red-400/20 bg-red-500/5 p-2"
-                        >
-                          <div className="mb-1 flex items-center gap-2 text-xs font-medium text-red-300">
-                            {conflict.conflict_type === 'absence' && (
-                              <>
-                                <span>🏖️</span>
-                                <span>Nieobecność</span>
-                              </>
-                            )}
-                            {conflict.conflict_type === 'event' && (
-                              <>
-                                <span>📅</span>
-                                <span>Wydarzenie</span>
-                              </>
-                            )}
-                            {conflict.conflict_type === 'phase' && (
-                              <>
-                                <span>⚙️</span>
-                                <span>Faza wydarzenia</span>
-                              </>
-                            )}
-                            {conflict.conflict_status && (
-                              <span className="ml-auto rounded bg-red-400/20 px-2 py-0.5 text-[10px]">
-                                {conflict.conflict_status === 'approved' && 'Zatwierdzona'}
-                                {conflict.conflict_status === 'pending' && 'Oczekuje'}
-                                {conflict.conflict_status === 'accepted' && 'Zaakceptowana'}
-                                {conflict.conflict_status === 'rejected' && 'Odrzucona'}
-                              </span>
-                            )}
-                          </div>
+              {!checkingConflicts && conflicts.length > 0 && (
+                <div className="mb-4 space-y-3">
+                  <div
+                    className={`rounded-lg border p-3 ${
+                      absenceConflicts.length > 0
+                        ? 'border-red-500/25 bg-red-500/10'
+                        : 'border-amber-400/25 bg-amber-400/10'
+                    }`}
+                  >
+                    <div
+                      className={`mb-2 flex items-start gap-2 text-sm font-semibold ${
+                        absenceConflicts.length > 0 ? 'text-red-300' : 'text-amber-200'
+                      }`}
+                    >
+                      <AlertTriangle className="mt-0.5 h-4 w-4 flex-none" />
+                      <span>
+                        {absenceConflicts.length > 0
+                          ? 'Nieobecność blokuje przypisanie do realizacji'
+                          : `Nakładająca się praca na ${realizationConflicts.length} ${
+                              realizationConflicts.length === 1 ? 'etapie' : 'etapach'
+                            }`}
+                      </span>
+                    </div>
+                    <p className="mb-3 text-xs text-[#e5e4e2]/60">
+                      Konflikt wynika wyłącznie z godzin pracy na timeline. Autor, sprzedawca i
+                      osoby mające sam dostęp do innych wydarzeń nie są tutaj uwzględniane.
+                    </p>
 
-                          <div className="mb-1 text-xs font-semibold text-red-200">
-                            {conflict.event_name}
-                            {conflict.phase_name && ` - ${conflict.phase_name}`}
-                          </div>
+                    <div className="space-y-2">
+                      {conflicts.map((conflict) => {
+                        const formatDate = (value: string) =>
+                          new Date(value).toLocaleString('pl-PL', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          });
+                        const isAbsence = conflict.conflict_type === 'absence';
 
-                          <div className="text-[11px] text-red-200/70">
-                            {formatDate(startDate)} - {formatDate(endDate)}
-                          </div>
-
-                          {conflict.conflict_details && (
-                            <div className="mt-1 text-[10px] text-red-200/60">
-                              {conflict.conflict_details.absence_type && (
-                                <div>
-                                  Typ: {
-                                    conflict.conflict_details.absence_type === 'vacation' ? 'Urlop wypoczynkowy' :
-                                    conflict.conflict_details.absence_type === 'sick_leave' ? 'Zwolnienie lekarskie' :
-                                    conflict.conflict_details.absence_type === 'unpaid_leave' ? 'Urlop bezpłatny' :
-                                    conflict.conflict_details.absence_type === 'training' ? 'Szkolenie' :
-                                    conflict.conflict_details.absence_type === 'remote_work' ? 'Praca zdalna' :
-                                    'Inna nieobecność'
-                                  }
-                                </div>
+                        return (
+                          <div
+                            key={`${conflict.requested_phase_id}:${conflict.conflict_type}:${conflict.conflict_id}`}
+                            className={`rounded border p-2 ${
+                              isAbsence
+                                ? 'border-red-400/20 bg-red-500/5'
+                                : 'border-amber-300/20 bg-amber-300/5'
+                            }`}
+                          >
+                            <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-[#e5e4e2]/80">
+                              <span>{isAbsence ? 'Nieobecność' : 'Inna realizacja'}</span>
+                              {conflict.requested_phase_name && (
+                                <span className="rounded bg-white/5 px-2 py-0.5 text-[10px] text-[#e5e4e2]/55">
+                                  Dotyczy: {conflict.requested_phase_name}
+                                </span>
                               )}
-                              {conflict.conflict_details.role && (
-                                <div>Rola: {conflict.conflict_details.role}</div>
+                              {conflict.conflict_status && (
+                                <span className="ml-auto rounded bg-white/5 px-2 py-0.5 text-[10px] text-[#e5e4e2]/55">
+                                  {conflict.conflict_status === 'approved' && 'Zatwierdzona'}
+                                  {conflict.conflict_status === 'pending' && 'Oczekuje'}
+                                  {conflict.conflict_status === 'accepted' && 'Zaakceptowana'}
+                                </span>
                               )}
                             </div>
-                          )}
-                        </div>
-                      );
-                    })}
+                            <div className="mt-1 text-xs font-semibold text-[#e5e4e2]">
+                              {conflict.event_name}
+                              {conflict.phase_name && ` — ${conflict.phase_name}`}
+                            </div>
+                            <div className="mt-1 text-[11px] text-[#e5e4e2]/55">
+                              {formatDate(conflict.assignment_start)} –{' '}
+                              {formatDate(conflict.assignment_end)}
+                            </div>
+                            {conflict.conflict_details?.role && (
+                              <div className="mt-1 text-[10px] text-[#e5e4e2]/45">
+                                Rola na drugiej realizacji: {conflict.conflict_details.role}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
+
+                  {realizationConflicts.length > 0 && absenceConflicts.length === 0 && (
+                    <div className="rounded-lg border border-amber-300/25 bg-[#111421] p-4">
+                      <label className="flex cursor-pointer items-start gap-3">
+                        <input
+                          type="checkbox"
+                          checked={acceptConflicts}
+                          onChange={(event) => setAcceptConflicts(event.target.checked)}
+                          className="mt-0.5 h-4 w-4 accent-[#d3bb73]"
+                        />
+                        <span>
+                          <span className="block text-sm font-medium text-[#e5e4e2]">
+                            Akceptuję nakładanie się pracy
+                          </span>
+                          <span className="mt-1 block text-xs leading-5 text-[#e5e4e2]/55">
+                            Potwierdzam, że przejazd, godziny obecności i zakres koordynacji zostały
+                            sprawdzone. Decyzja będzie widoczna w kontroli wydarzenia.
+                          </span>
+                        </span>
+                      </label>
+
+                      {acceptConflicts && (
+                        <div className="mt-3">
+                          <label className="mb-1 block text-xs font-medium text-[#d3bb73]">
+                            Uzasadnienie i sposób podziału pracy
+                          </label>
+                          <textarea
+                            value={conflictReason}
+                            onChange={(event) => setConflictReason(event.target.value)}
+                            rows={3}
+                            placeholder="Np. koordynuje oba wydarzenia, a na miejscu jest w godz. 18:00–20:00; pozostały czas przejmuje lider techniczny."
+                            className="w-full resize-none rounded-lg border border-[#d3bb73]/20 bg-[#0d0f1a] px-3 py-2 text-sm text-[#e5e4e2] placeholder:text-[#e5e4e2]/25 focus:border-[#d3bb73] focus:outline-none"
+                          />
+                          <div className="mt-1 text-right text-[10px] text-[#e5e4e2]/35">
+                            Minimum 10 znaków
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -651,22 +794,18 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
               </button>
               <button
                 onClick={handleSubmit}
-                disabled={isSaving}
+                disabled={isSaving || checkingConflicts}
                 className="rounded-lg bg-[#d3bb73] px-6 py-2 font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-50"
               >
                 {isSaving
                   ? 'Przypisywanie...'
-                  : `Przypisz do ${
-                      assignToAllPhases
-                        ? allPhases.filter((item) => !existingPhaseIds.has(item.id)).length
-                        : selectedPhases.size
-                    } ${
-                      (assignToAllPhases
-                        ? allPhases.filter((item) => !existingPhaseIds.has(item.id)).length
-                        : selectedPhases.size) === 1
-                        ? 'etapu'
-                        : 'etapów'
-                    }`}
+                  : checkingConflicts
+                    ? 'Sprawdzanie dostępności...'
+                    : realizationConflicts.length > 0 && acceptConflicts
+                      ? 'Przypisz i zaakceptuj konflikt'
+                      : `Przypisz do ${phasesToAssign.length} ${
+                          phasesToAssign.length === 1 ? 'etapu' : 'etapów'
+                        }`}
               </button>
             </div>
           </div>

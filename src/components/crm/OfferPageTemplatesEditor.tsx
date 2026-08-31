@@ -43,6 +43,9 @@ interface CategoryDesignConfig {
   info_page_enabled: boolean;
   info_page_title: string;
   order_process_text: string;
+  requirements_page_enabled: boolean;
+  requirements_page_title: string;
+  requirements_page_subtitle: string;
   technical_requirements_text: string;
   reservation_terms_text: string;
 }
@@ -63,6 +66,9 @@ const DEFAULT_CATEGORY_DESIGN: CategoryDesignConfig = {
   info_page_enabled: true,
   info_page_title: 'INFORMACJE I WARUNKI',
   order_process_text: 'Akceptacja zakresu i wyceny\nPotwierdzenie terminu i podpisanie umowy\nUstalenia techniczne z obiektem\nRealizacja wydarzenia',
+  requirements_page_enabled: true,
+  requirements_page_title: 'WARUNKI TECHNICZNE I ORGANIZACYJNE',
+  requirements_page_subtitle: 'Wymagania niezbędne do bezpiecznego i sprawnego przygotowania realizacji.',
   technical_requirements_text: 'Dostęp do sali przed wydarzeniem w czasie uzgodnionym z realizatorem\nStabilne zasilanie 230 V oraz miejsce dla stanowiska technicznego\nDostęp do internetu przewodowego przy realizacjach online\nKontakt do osoby technicznej po stronie obiektu',
   reservation_terms_text: 'Termin rezerwujemy po akceptacji oferty i podpisaniu umowy\nZakres końcowy potwierdzamy po weryfikacji warunków technicznych\nDodatkowe usługi i zmiany wymagają potwierdzenia przed wydarzeniem',
 };
@@ -1685,7 +1691,6 @@ function CategoryModal({
                     </label>
                     {([
                       ['order_process_text', 'Jak wygląda zamówienie', 'Każdy krok wpisz w nowym wierszu.'],
-                      ['technical_requirements_text', 'Warunki techniczne', 'Każdy warunek wpisz w nowym wierszu.'],
                       ['reservation_terms_text', 'Rezerwacja i zmiany', 'Każdą zasadę wpisz w nowym wierszu.'],
                     ] as Array<[keyof CategoryDesignConfig, string, string]>).map(([key, label, hint]) => (
                       <label key={key} className="block text-sm text-[#e5e4e2]/70">
@@ -1708,8 +1713,7 @@ function CategoryModal({
                       <div className="mt-2 h-px" style={{ backgroundColor: formData.design_config.primary_color }} />
                       {[
                         ['01', 'JAK WYGLĄDA ZAMÓWIENIE', formData.design_config.order_process_text],
-                        ['02', 'WARUNKI TECHNICZNE', formData.design_config.technical_requirements_text],
-                        ['03', 'REZERWACJA I ZMIANY', formData.design_config.reservation_terms_text],
+                        ['02', 'REZERWACJA I ZMIANY', formData.design_config.reservation_terms_text],
                       ].map(([number, title, content]) => (
                         <div key={number} className="mt-3 rounded-md bg-white p-2.5">
                           <div className="flex gap-2">
@@ -1717,6 +1721,86 @@ function CategoryModal({
                             <div className="min-w-0">
                               <p className="text-[7px] font-medium" style={{ color: formData.design_config.primary_color }}>{title}</p>
                               <p className="mt-1 line-clamp-3 whitespace-pre-line text-[6px] leading-relaxed text-black/55">{content}</p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-4 rounded-xl border border-[#d3bb73]/15 bg-[#121625] p-4">
+              <label className="flex cursor-pointer items-center gap-3">
+                <input
+                  type="checkbox"
+                  checked={formData.design_config.requirements_page_enabled}
+                  onChange={(event) => updateDesign('requirements_page_enabled', event.target.checked)}
+                  className="h-4 w-4 accent-[#b94b69]"
+                />
+                <span>
+                  <span className="block text-sm text-[#e5e4e2]">Dodaj osobną stronę wymagań</span>
+                  <span className="mt-0.5 block text-xs text-[#e5e4e2]/40">
+                    Warunki ogólne oraz wymagania wszystkich produktów zostaną scalone bez duplikatów i opisane na kolejnych stronach PDF.
+                  </span>
+                </span>
+              </label>
+
+              {formData.design_config.requirements_page_enabled && (
+                <div className="mt-5 grid gap-5 lg:grid-cols-[1fr_250px]">
+                  <div className="space-y-4">
+                    <label className="block text-sm text-[#e5e4e2]/70">
+                      Tytuł strony wymagań
+                      <input
+                        type="text"
+                        value={formData.design_config.requirements_page_title}
+                        onChange={(event) => updateDesign('requirements_page_title', event.target.value)}
+                        className="mt-2 w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-3 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                      />
+                    </label>
+                    <label className="block text-sm text-[#e5e4e2]/70">
+                      Wprowadzenie
+                      <textarea
+                        rows={2}
+                        value={formData.design_config.requirements_page_subtitle}
+                        onChange={(event) => updateDesign('requirements_page_subtitle', event.target.value)}
+                        className="mt-2 w-full resize-y rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                      />
+                    </label>
+                    <label className="block text-sm text-[#e5e4e2]/70">
+                      Wspólne warunki techniczne
+                      <textarea
+                        rows={6}
+                        value={formData.design_config.technical_requirements_text}
+                        onChange={(event) => updateDesign('technical_requirements_text', event.target.value)}
+                        className="mt-2 w-full resize-y rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                      />
+                      <span className="mt-1 block text-xs text-[#e5e4e2]/35">
+                        Każdy warunek wpisz w nowym wierszu. Wymagania techniczne oraz „Inne wymagania” z produktów zostaną dopisane automatycznie.
+                      </span>
+                    </label>
+                  </div>
+
+                  <div>
+                    <p className="mb-2 text-xs uppercase tracking-wide text-[#e5e4e2]/45">Podgląd strony</p>
+                    <div className="aspect-[1/1.414] overflow-hidden rounded-lg p-4 shadow-xl" style={{ backgroundColor: formData.design_config.surface_color }}>
+                      <p className="text-sm leading-tight" style={{ color: formData.design_config.primary_color, fontFamily: brandHeadingPreviewUrl ? "'CategoryOfferHeading', sans-serif" : undefined }}>
+                        {formData.design_config.requirements_page_title || 'WARUNKI TECHNICZNE I ORGANIZACYJNE'}
+                      </p>
+                      <p className="mt-2 text-[6px] leading-relaxed text-black/45">{formData.design_config.requirements_page_subtitle}</p>
+                      <div className="mt-2 h-px" style={{ backgroundColor: formData.design_config.primary_color }} />
+                      {[
+                        ['DOSTĘP DO OBIEKTU', 'Warunek opisany pełnym zdaniem wraz z kontekstem realizacji.'],
+                        ['DJ EVENTOWY', 'Wymaganie pochodzące z wybranego produktu i widoczne tylko wtedy, gdy produkt znajduje się w ofercie.'],
+                        ['POKÓJ DWUOSOBOWY', 'Inne wymaganie organizacyjne dodane w katalogu produktu.'],
+                      ].map(([title, description], index) => (
+                        <div key={title} className="mt-2.5 rounded-md bg-white p-2.5">
+                          <div className="flex gap-2">
+                            <span className="text-[7px]" style={{ color: formData.design_config.accent_color }}>{String(index + 1).padStart(2, '0')}</span>
+                            <div>
+                              <p className="text-[7px] font-medium" style={{ color: formData.design_config.primary_color }}>{title}</p>
+                              <p className="mt-1 text-[6px] leading-relaxed text-black/55">{description}</p>
                             </div>
                           </div>
                         </div>

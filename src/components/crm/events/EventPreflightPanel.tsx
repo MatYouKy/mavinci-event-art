@@ -17,6 +17,7 @@ type Preflight = {
   ready: boolean;
   critical_count: number;
   warning_count: number;
+  accepted_employee_conflicts?: number;
   issues: PreflightIssue[];
 };
 
@@ -52,6 +53,9 @@ export default function EventPreflightPanel({
     ['contracts','employee_assignments','event_equipment','event_vehicles','event_agendas','tasks','wedding_cards','event_payment_milestones'].forEach((table) => {
       channel.on('postgres_changes', { event: '*', schema: 'public', table, filter: `event_id=eq.${eventId}` }, refresh);
     });
+    ['event_phase_assignments', 'event_employee_conflict_acceptances'].forEach((table) => {
+      channel.on('postgres_changes', { event: '*', schema: 'public', table }, refresh);
+    });
     channel.subscribe();
     return () => { void supabase.removeChannel(channel); };
   }, [available, eventId, load]);
@@ -76,7 +80,21 @@ export default function EventPreflightPanel({
             <div><h3 className="font-medium text-[#e5e4e2]">Kontrola przed wydarzeniem</h3><p className="mt-0.5 text-xs text-[#e5e4e2]/45">{daysLeft === null ? 'Termin nieznany' : daysLeft < 0 ? `${Math.abs(daysLeft)} dni po wydarzeniu` : daysLeft === 0 ? 'Wydarzenie jest dzisiaj' : `Do wydarzenia: ${daysLeft} dni`}</p></div>
             <button onClick={() => load()} className="rounded-lg p-2 text-[#e5e4e2]/45 hover:bg-[#0f1119]"><RefreshCw className="h-4 w-4" /></button>
           </div>
-          {data.ready ? <div className="mt-4 rounded-lg bg-green-500/10 p-3 text-sm text-green-200">Umowa, płatności, zespół i zasoby są przygotowane. Brak wykrytych konfliktów.</div> : <div className="mt-4 space-y-2">{data.issues.map((issue) => <button key={issue.code} onClick={() => onNavigate(issue.tab)} className="flex w-full items-center gap-3 rounded-lg border border-[#e5e4e2]/8 bg-[#0f1119]/75 p-3 text-left hover:border-[#d3bb73]/25"><span className={`h-2 w-2 flex-none rounded-full ${issue.severity === 'critical' ? 'bg-red-400' : 'bg-amber-300'}`} /><span className="flex-1 text-sm text-[#e5e4e2]/80">{issue.label}</span><ChevronRight className="h-4 w-4 text-[#e5e4e2]/30" /></button>)}</div>}
+          {data.ready ? <div className="mt-4 rounded-lg bg-green-500/10 p-3 text-sm text-green-200">Umowa, płatności, zespół i zasoby są przygotowane. Brak nierozwiązanych konfliktów.</div> : <div className="mt-4 space-y-2">{data.issues.map((issue) => <button key={issue.code} onClick={() => onNavigate(issue.tab)} className="flex w-full items-center gap-3 rounded-lg border border-[#e5e4e2]/8 bg-[#0f1119]/75 p-3 text-left hover:border-[#d3bb73]/25"><span className={`h-2 w-2 flex-none rounded-full ${issue.severity === 'critical' ? 'bg-red-400' : 'bg-amber-300'}`} /><span className="flex-1 text-sm text-[#e5e4e2]/80">{issue.label}</span><ChevronRight className="h-4 w-4 text-[#e5e4e2]/30" /></button>)}</div>}
+          {(data.accepted_employee_conflicts ?? 0) > 0 && (
+            <button
+              onClick={() => onNavigate('team')}
+              className="mt-3 flex w-full items-center gap-3 rounded-lg border border-blue-400/15 bg-blue-400/5 p-3 text-left hover:border-blue-300/30"
+            >
+              <ShieldCheck className="h-4 w-4 flex-none text-blue-300" />
+              <span className="flex-1 text-xs leading-5 text-blue-100/75">
+                Zaakceptowane nakładanie pracy między wydarzeniami:{' '}
+                {data.accepted_employee_conflicts}. Decyzje mają zapisane uzasadnienie i osobę
+                akceptującą.
+              </span>
+              <ChevronRight className="h-4 w-4 text-blue-200/35" />
+            </button>
+          )}
         </div>
       </div>
     </section>

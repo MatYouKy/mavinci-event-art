@@ -249,6 +249,23 @@ export default function FinalInvoiceWizardModal({
   const fetchCandidates = async () => {
     setLoadingCandidates(true);
     try {
+      let eventInvoiceIds: string[] = [];
+      if (mode === 'event' && eventId) {
+        const { data: settlementInvoices, error: settlementInvoicesError } = await supabase
+          .from('event_invoice_settlements')
+          .select('id')
+          .eq('event_id', eventId);
+        if (settlementInvoicesError) throw settlementInvoicesError;
+        eventInvoiceIds = Array.from(
+          new Set((settlementInvoices || []).map((invoice) => invoice.id)),
+        );
+        if (!eventInvoiceIds.length) {
+          setCandidates([]);
+          setSelectedIds(new Set());
+          return;
+        }
+      }
+
       const select = `
       id, invoice_number, invoice_type, status, issue_date,
       total_net, total_vat, total_gross,
@@ -280,7 +297,7 @@ export default function FinalInvoiceWizardModal({
         .eq('invoice_type', 'advance')
         .in('status', ['issued', 'sent', 'paid'])
         .order('issue_date', { ascending: false });
-      if (mode === 'event' && eventId) query = query.eq('event_id', eventId);
+      if (mode === 'event' && eventId) query = query.in('id', eventInvoiceIds);
       else if (mode === 'organization' && organizationId)
         query = query.or(
           `organization_id.eq.${organizationId},service_recipient_organization_id.eq.${organizationId}`,
@@ -330,27 +347,55 @@ export default function FinalInvoiceWizardModal({
 
         setLockedEventName(ev?.name ?? null);
 
-        const eventBudgetNet = Number(ev?.budget_net ?? 0);
+        let settlementEventIds = [initialEventId];
+        const { data: membership } = await supabase
+          .from('event_settlement_group_members')
+          .select('group_id')
+          .eq('event_id', initialEventId)
+          .maybeSingle();
 
-        if (eventBudgetNet > 0) {
-          setOfferNet(eventBudgetNet);
-          setOfferVatAmount(round2(eventBudgetNet * 0.23));
-        } else {
-          const { data: offer } = await supabase
+        if (membership?.group_id) {
+          const { data: members } = await supabase
+            .from('event_settlement_group_members')
+            .select('event_id')
+            .eq('group_id', membership.group_id);
+          if (members?.length) settlementEventIds = members.map((member) => member.event_id);
+        }
+
+        const [{ data: settlementEvents }, { data: acceptedOffers }] = await Promise.all([
+          supabase.from('events').select('id,budget_net').in('id', settlementEventIds),
+          supabase
             .from('offers')
-            .select('subtotal, tax_amount, total_amount')
-            .eq('event_id', initialEventId)
+            .select('event_id,subtotal,tax_amount,created_at')
+            .in('event_id', settlementEventIds)
             .eq('status', 'accepted')
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .maybeSingle();
+            .order('created_at', { ascending: false }),
+        ]);
 
-          if (offer) {
-            const net = Number(offer.subtotal ?? 0);
-            const vat = Number(offer.tax_amount ?? 0);
-            setOfferNet(net);
-            setOfferVatAmount(vat);
+        const latestOfferByEvent = new Map<string, { subtotal: number; tax_amount: number }>();
+        (acceptedOffers || []).forEach((offer) => {
+          if (!latestOfferByEvent.has(offer.event_id)) {
+            latestOfferByEvent.set(offer.event_id, {
+              subtotal: Number(offer.subtotal || 0),
+              tax_amount: Number(offer.tax_amount || 0),
+            });
           }
+        });
+
+        const totals = (settlementEvents || []).reduce(
+          (sum, settlementEvent) => {
+            const budgetNet = Number(settlementEvent.budget_net || 0);
+            const offer = latestOfferByEvent.get(settlementEvent.id);
+            const net = budgetNet > 0 ? budgetNet : Number(offer?.subtotal || 0);
+            const vat = budgetNet > 0 ? round2(budgetNet * 0.23) : Number(offer?.tax_amount || 0);
+            return { net: sum.net + net, vat: sum.vat + vat };
+          },
+          { net: 0, vat: 0 },
+        );
+
+        if (totals.net > 0) {
+          setOfferNet(round2(totals.net));
+          setOfferVatAmount(round2(totals.vat));
         }
       }
       if (initialOrganizationId) {
@@ -560,12 +605,12 @@ export default function FinalInvoiceWizardModal({
       invoice.my_company_id !== reference.my_company_id ||
       normalizeNip(invoice.buyer_nip) !== normalizeNip(reference.buyer_nip) ||
       (invoice.currency_code || 'PLN') !== (reference.currency_code || 'PLN') ||
-      invoice.event_id !== reference.event_id ||
+      (mode !== 'event' && invoice.event_id !== reference.event_id) ||
       invoice.organization_id !== reference.organization_id
     );
     if (incompatible) {
       showSnackbar(
-        'Wybrane zaliczki muszą mieć tego samego sprzedawcę, nabywcę, walutę, wydarzenie i płatnika.',
+        'Wybrane zaliczki muszą mieć tego samego sprzedawcę, nabywcę, walutę, wspólne rozliczenie i płatnika.',
         'error',
       );
       return;
@@ -596,7 +641,7 @@ export default function FinalInvoiceWizardModal({
       const selectedCompany = myCompanies.find((c) => c.id === myCompanyId);
 
       const result = await createFinalInvoice({
-        eventId: mode === 'event' ? eventId : ref.event_id,
+        eventId: ref.event_id,
         organizationId: ref.organization_id,
         billingArrangement: ref.billing_arrangement || 'direct',
         serviceRecipientOrganizationId: ref.service_recipient_organization_id,
@@ -641,6 +686,25 @@ export default function FinalInvoiceWizardModal({
       if (!result.success || !result.invoiceId) {
         throw new Error(result.error || 'Blad tworzenia faktury');
       }
+
+      const settlementEventId = ref.event_id;
+      if (settlementEventId) {
+        const { error: settlementLinkError } = await supabase.rpc(
+          'link_invoice_to_event_settlement',
+          {
+            p_invoice_id: result.invoiceId,
+            p_source_event_id: settlementEventId,
+          },
+        );
+        if (settlementLinkError) {
+          console.error('Error linking final invoice to settlement group:', settlementLinkError);
+          showSnackbar(
+            'Faktura końcowa powstała, ale nie udało się przypisać jej do całej grupy wydarzeń',
+            'warning',
+          );
+        }
+      }
+
       showSnackbar('Faktura koncowa utworzona', 'success');
       onCreated(result.invoiceId);
     } catch (err: any) {

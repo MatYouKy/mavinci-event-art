@@ -17,6 +17,7 @@ export interface ContactRow {
   email: string | null;
   phone: string | null;
   mobile: string | null;
+  alternative_contact_name?: string | null;
 
   position: string | null;
   city: string | null;

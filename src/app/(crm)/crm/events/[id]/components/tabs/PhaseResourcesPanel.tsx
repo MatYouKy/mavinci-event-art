@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { X, User, Package, Car, Plus, CheckCircle, XCircle, AlertCircle, Trash2 } from 'lucide-react';
+import { X, User, Package, Car, Plus, CheckCircle, XCircle, AlertCircle, Trash2, ShieldCheck } from 'lucide-react';
 import {
   EventPhase,
   useGetPhaseAssignmentsQuery,
@@ -80,6 +80,17 @@ export const PhaseResourcesPanel: React.FC<PhaseResourcesPanelProps> = ({
         },
         () => {
           refetchVehicles();
+        },
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'event_employee_conflict_acceptances',
+        },
+        () => {
+          refetchAssignments();
         },
       )
       .subscribe();
@@ -276,6 +287,12 @@ export const PhaseResourcesPanel: React.FC<PhaseResourcesPanelProps> = ({
                   <div className="divide-y divide-[#d3bb73]/10">
                     {filteredEmployees.map((employee) => {
                       const assignment = phaseAssignments.find(a => a.employee_id === employee.id);
+                      const acceptedConflicts = assignment
+                        ? [
+                            ...(assignment.accepted_conflicts_as_a || []),
+                            ...(assignment.accepted_conflicts_as_b || []),
+                          ]
+                        : [];
                       
                       return (
                         <div key={employee.id} className="p-4">
@@ -340,6 +357,24 @@ export const PhaseResourcesPanel: React.FC<PhaseResourcesPanelProps> = ({
                                   {roleLabels[assignment.role as keyof typeof roleLabels] ?? assignment.role}
                                 </span>
                               )}
+                              {acceptedConflicts.map((acceptedConflict) => (
+                                <div
+                                  key={acceptedConflict.id}
+                                  className="mt-2 rounded-lg border border-blue-400/20 bg-blue-400/5 p-2.5 text-blue-100/75"
+                                >
+                                  <div className="mb-1 flex items-center gap-2 font-medium text-blue-200">
+                                    <ShieldCheck className="h-3.5 w-3.5" />
+                                    Zaakceptowane nakładanie pracy
+                                  </div>
+                                  <p className="leading-5">{acceptedConflict.reason}</p>
+                                  <p className="mt-1 text-[10px] text-blue-100/45">
+                                    {acceptedConflict.accepted_by_employee
+                                      ? `${acceptedConflict.accepted_by_employee.name} ${acceptedConflict.accepted_by_employee.surname} · `
+                                      : ''}
+                                    {new Date(acceptedConflict.accepted_at).toLocaleString('pl-PL')}
+                                  </p>
+                                </div>
+                              ))}
                             </div>
                           )}
                         </div>

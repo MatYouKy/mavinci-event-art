@@ -450,14 +450,14 @@ Deno.serve(async (req: Request) => {
       const tableWidth = configTableWidth > 0 ? configTableWidth : (width - marginLeft - marginRight);
 
       const colWidths: Record<string, number> = {
-        lp: config.col_lp_width || 30,
+        lp: config.col_lp_width || 22,
         name: 0,
-        quantity: config.col_qty_width || 50,
-        unit: config.col_unit_width || 45,
-        unitPriceNet: showUnitPriceNet ? (config.col_unit_price_width || 70) : 0,
-        vat: showVatColumn ? (config.col_vat_width || 45) : 0,
-        valueNet: showValueNet ? (config.col_value_net_width || 80) : 0,
-        valueGross: showValueGross ? (config.col_value_gross_width || 80) : 0,
+        quantity: config.col_qty_width || 34,
+        unit: config.col_unit_width || 32,
+        unitPriceNet: showUnitPriceNet ? (config.col_unit_price_width || 56) : 0,
+        vat: showVatColumn ? (config.col_vat_width || 34) : 0,
+        valueNet: showValueNet ? (config.col_value_net_width || 66) : 0,
+        valueGross: showValueGross ? (config.col_value_gross_width || 66) : 0,
       };
 
       const fixedWidth = colWidths.lp + colWidths.quantity + colWidths.unit +
@@ -485,25 +485,29 @@ Deno.serve(async (req: Request) => {
         { text: 'Ilość', colKey: 'quantity', align: 'center' },
         { text: 'Jedn.', colKey: 'unit', align: 'center' },
       ];
-      if (showUnitPriceNet) headerDefs.push({ text: 'Cena jedn. netto', colKey: 'unitPriceNet', align: 'right' });
+      if (showUnitPriceNet) headerDefs.push({ text: 'Cena jedn.\nnetto', colKey: 'unitPriceNet', align: 'right' });
       if (showVatColumn) headerDefs.push({ text: 'VAT', colKey: 'vat', align: 'center' });
-      if (showValueNet) headerDefs.push({ text: 'Wartość netto', colKey: 'valueNet', align: 'right' });
-      if (showValueGross) headerDefs.push({ text: 'Wartość brutto', colKey: 'valueGross', align: 'right' });
+      if (showValueNet) headerDefs.push({ text: 'Wartość\nnetto', colKey: 'valueNet', align: 'right' });
+      if (showValueGross) headerDefs.push({ text: 'Wartość\nbrutto', colKey: 'valueGross', align: 'right' });
 
       let hx = marginLeft;
       for (let hi = 0; hi < headerDefs.length; hi++) {
         const hd = headerDefs[hi];
         const cw = colWidths[hd.colKey];
-        const textY = y - headerHeight / 2 - headerFontSize / 2 + 2;
-        if (hd.align === 'right') {
-          const tw = boldFont.widthOfTextAtSize(hd.text, headerFontSize);
-          page.drawText(hd.text, { x: hx + cw - tw - 5, y: textY, size: headerFontSize, font: boldFont, color: headerTextColor });
-        } else if (hd.align === 'center') {
-          const tw = boldFont.widthOfTextAtSize(hd.text, headerFontSize);
-          page.drawText(hd.text, { x: hx + (cw - tw) / 2, y: textY, size: headerFontSize, font: boldFont, color: headerTextColor });
-        } else {
-          page.drawText(hd.text, { x: hx + 5, y: textY, size: headerFontSize, font: boldFont, color: headerTextColor });
-        }
+        const headerLines = hd.text.split('\n');
+        const headerLineHeight = headerFontSize + 1;
+        const headerTextBlockHeight = headerFontSize + (headerLines.length - 1) * headerLineHeight;
+        const firstLineY = y - (headerHeight - headerTextBlockHeight) / 2 - headerFontSize + 2;
+        headerLines.forEach((headerLine, lineIndex) => {
+          const textY = firstLineY - lineIndex * headerLineHeight;
+          const tw = boldFont.widthOfTextAtSize(headerLine, headerFontSize);
+          const textX = hd.align === 'right'
+            ? hx + cw - tw - 4
+            : hd.align === 'center'
+              ? hx + (cw - tw) / 2
+              : hx + 5;
+          page.drawText(headerLine, { x: textX, y: textY, size: headerFontSize, font: boldFont, color: headerTextColor });
+        });
         if (showBorders && showVBorders && hi < headerDefs.length - 1) {
           drawBorderLine(hx + cw, y, hx + cw, y - headerHeight);
         }
@@ -1359,6 +1363,9 @@ Deno.serve(async (req: Request) => {
       info_page_enabled: true,
       info_page_title: 'INFORMACJE I WARUNKI',
       order_process_text: 'Akceptacja zakresu i wyceny\nPotwierdzenie terminu i podpisanie umowy\nUstalenia techniczne z obiektem\nRealizacja wydarzenia',
+      requirements_page_enabled: true,
+      requirements_page_title: 'WARUNKI TECHNICZNE I ORGANIZACYJNE',
+      requirements_page_subtitle: 'Wymagania niezbędne do bezpiecznego i sprawnego przygotowania realizacji.',
       technical_requirements_text: 'Dostęp do sali przed wydarzeniem w czasie uzgodnionym z realizatorem\nStabilne zasilanie 230 V oraz miejsce dla stanowiska technicznego\nDostęp do internetu przewodowego przy realizacjach online\nKontakt do osoby technicznej po stronie obiektu',
       reservation_terms_text: 'Termin rezerwujemy po akceptacji oferty i podpisaniu umowy\nZakres końcowy potwierdzamy po weryfikacji warunków technicznych\nDodatkowe usługi i zmiany wymagają potwierdzenia przed wydarzeniem',
       ...(selectedTemplateCategory?.design_config || defaultCategory?.design_config || {}),
@@ -1797,24 +1804,12 @@ Deno.serve(async (req: Request) => {
       const cardHeight = Math.min(430, Math.max(350, 300 + maxPackageItems * 18));
       const fallbackRecommendedId = packages.find((pkg: any) => pkg.is_recommended)?.id
         || packages[Math.min(1, packages.length - 1)].id;
-      const packageRequirements = Array.from(new Set(
-        packages.flatMap((pkg: any) => (pkg.items || []).flatMap((item: any) => (
-          Array.isArray(item.product?.offer_requirements)
-            ? item.product.offer_requirements
-            : []
-        )))
-          .filter((requirement: unknown) => typeof requirement === 'string' && requirement.trim())
-          .map((requirement: string) => requirement.trim()),
-      ));
       const packageNotes: string[] = [];
       if (offerData.logistics_enabled && Number(offerData.logistics_price_net || 0) > 0) {
         const logisticsNet = Number(offerData.logistics_price_net || 0);
         packageNotes.push(
           `* Logistyka: ${formatMoney(logisticsNet)} netto / ${formatMoney(logisticsNet * 1.23)} brutto (VAT 23%). ${offerData.logistics_description || ''}`.trim(),
         );
-      }
-      if (packageRequirements.length > 0) {
-        packageNotes.push(`* Wymagania: ${packageRequirements.join('  •  ')}`);
       }
       const fields: TextFieldConfig[] = [
         { field_name: 'packages_title', label: 'Tytuł pakietów', x: 45, y: 52, font_size: 24, font_color: categoryDesign.primary_color, max_width: 505, font_role: 'heading' },
@@ -2384,6 +2379,7 @@ Deno.serve(async (req: Request) => {
           product_description: entry.data.product_description,
           product_benefits: entry.benefits,
           product_requirements: entry.product.offer_requirements || [],
+          product_additional_requirements: entry.product.offer_additional_requirements || [],
           product_image_path: entry.item.selected_variant?.offer_image_path || entry.product.offer_image_path || null,
           product_image_alt: entry.data.product_image_alt,
           quantity: entry.quantity,
@@ -2645,6 +2641,14 @@ Deno.serve(async (req: Request) => {
         pricingTotalNet,
         {
           ...(pricingResult.tableConfig || {}),
+          col_lp_width: 22,
+          col_qty_width: 34,
+          col_unit_width: 32,
+          col_unit_price_width: 56,
+          col_vat_width: 34,
+          col_value_net_width: 66,
+          col_value_gross_width: 66,
+          header_height: 34,
           show_unit_price_net: true,
           show_value_net: true,
           show_value_gross: true,
@@ -2729,8 +2733,15 @@ Deno.serve(async (req: Request) => {
             discount_amount: pricingDiscountAmount,
             discount_percent: pricingDiscountPercent,
             show_borders: false,
+            col_lp_width: 22,
+            col_qty_width: 34,
+            col_unit_width: 32,
+            col_unit_price_width: 56,
+            col_vat_width: 34,
+            col_value_net_width: 66,
+            col_value_gross_width: 66,
             row_height: 27,
-            header_height: 32,
+            header_height: 34,
             body_font_size: 9,
             header_font_size: 9,
           },
@@ -2741,101 +2752,215 @@ Deno.serve(async (req: Request) => {
     // Porównanie pakietów zawsze następuje po kalkulacji jednostkowej.
     await addBuiltInPackageComparison();
 
-    if (categoryDesign.info_page_enabled !== false) {
-      const splitConfiguredLines = (value: unknown) => String(value || '')
-        .split(/\r?\n/)
-        .map((line) => line.trim())
-        .filter(Boolean);
-      const orderSteps = splitConfiguredLines(categoryDesign.order_process_text);
-      const productTechnicalRequirements = sortedOfferItems.flatMap((item: any) => (
-        Array.isArray(item.product?.offer_requirements)
-          ? item.product.offer_requirements
-              .filter((requirement: unknown) => typeof requirement === 'string')
-              .map((requirement: string) => requirement.trim())
-              .filter(Boolean)
-          : []
-      ));
-      const technicalRequirements = [
-        ...splitConfiguredLines(categoryDesign.technical_requirements_text),
-        ...productTechnicalRequirements,
-      ].reduce((unique: string[], requirement: string) => {
-        const normalized = requirement
-          .replace(/^[•\-–—]\s*/, '')
-          .replace(/\s+/g, ' ')
-          .trim();
-        if (!normalized) return unique;
-        if (unique.some((item) => item.toLocaleLowerCase('pl-PL') === normalized.toLocaleLowerCase('pl-PL'))) {
-          return unique;
-        }
-        unique.push(normalized);
-        return unique;
-      }, []);
-      const reservationTerms = splitConfiguredLines(categoryDesign.reservation_terms_text);
-      const technicalLineWeight = (line: string) => Math.max(1, Math.ceil(line.length / 38));
-      const totalTechnicalWeight = technicalRequirements.reduce(
-        (sum, line) => sum + technicalLineWeight(line),
-        0,
-      );
-      const useTechnicalColumns = totalTechnicalWeight > 7;
-      const technicalColumns: [string[], string[]] = [[], []];
-      if (useTechnicalColumns) {
-        const targetWeight = Math.ceil(totalTechnicalWeight / 2);
-        let leftWeight = 0;
-        technicalRequirements.forEach((line) => {
-          const weight = technicalLineWeight(line);
-          if (leftWeight < targetWeight || technicalColumns[0].length === 0) {
-            technicalColumns[0].push(line);
-            leftWeight += weight;
-          } else {
-            technicalColumns[1].push(line);
-          }
+    const splitConfiguredLines = (value: unknown) => String(value || '')
+      .split(/\r?\n/)
+      .map((line) => line.replace(/^[•\-–—]\s*/, '').replace(/\s+/g, ' ').trim())
+      .filter(Boolean);
+    const ensureSentence = (value: string) => {
+      const normalized = value.replace(/\s+/g, ' ').trim();
+      if (!normalized) return '';
+      return /[.!?]$/.test(normalized) ? normalized : `${normalized}.`;
+    };
+    const inferTechnicalTitle = (description: string) => {
+      const normalized = description.toLocaleLowerCase('pl-PL');
+      if (/internet|łącze|ethernet|wi-?fi/.test(normalized)) return 'ŁĄCZE INTERNETOWE';
+      if (/zasil|230\s*v|400\s*v|prąd|przyłącze/.test(normalized)) return 'ZASILANIE I INFRASTRUKTURA';
+      if (/dostęp|sali|obiektu|montaż|demontaż/.test(normalized)) return 'DOSTĘP DO OBIEKTU';
+      if (/kontakt|technicz|koordyn/.test(normalized)) return 'KOORDYNACJA Z OBIEKTEM';
+      return 'WARUNEK TECHNICZNY';
+    };
+    const requirementCategoryLabels: Record<string, string> = {
+      technical: 'WARUNEK TECHNICZNY',
+      accommodation: 'ZAKWATEROWANIE',
+      backstage: 'ZAPLECZE / GARDEROBA',
+      hospitality: 'GOŚCINNOŚĆ / CATERING',
+      logistics: 'LOGISTYKA',
+      other: 'INNE WYMAGANIE',
+    };
+    type OfferRequirementEntry = {
+      title: string;
+      description: string;
+      category: string;
+      sources: string[];
+    };
+    const requirementEntries: OfferRequirementEntry[] = [];
+    const requirementEntryByKey = new Map<string, OfferRequirementEntry>();
+    const addRequirementEntry = (entry: OfferRequirementEntry) => {
+      const title = entry.title.replace(/\s+/g, ' ').trim();
+      const description = ensureSentence(entry.description || title);
+      if (!title && !description) return;
+      const key = `${title}|${description}`.toLocaleLowerCase('pl-PL');
+      const existing = requirementEntryByKey.get(key);
+      if (existing) {
+        entry.sources.forEach((source) => {
+          if (source && !existing.sources.includes(source)) existing.sources.push(source);
         });
+        return;
       }
-      const denseTechnicalContent = totalTechnicalWeight > 18;
-      const technicalColumnFontSize = denseTechnicalContent ? 6.3 : 7.1;
-      const technicalColumnLineHeight = denseTechnicalContent ? 8.2 : 10;
+      const normalizedEntry = {
+        ...entry,
+        title: title || requirementCategoryLabels[entry.category] || 'WYMAGANIE',
+        description,
+        sources: entry.sources.filter(Boolean),
+      };
+      requirementEntryByKey.set(key, normalizedEntry);
+      requirementEntries.push(normalizedEntry);
+    };
+
+    splitConfiguredLines(categoryDesign.technical_requirements_text).forEach((description) => {
+      addRequirementEntry({
+        title: inferTechnicalTitle(description),
+        description,
+        category: 'technical',
+        sources: ['Warunki wspólne realizacji'],
+      });
+    });
+    sortedOfferItems.forEach((item: any) => {
+      const productName = String(item.name || item.product?.name || 'Produkt').trim();
+      const technicalRequirements = Array.isArray(item.product?.offer_requirements)
+        ? item.product.offer_requirements
+        : [];
+      technicalRequirements
+        .filter((requirement: unknown) => typeof requirement === 'string' && requirement.trim())
+        .forEach((description: string) => {
+          addRequirementEntry({
+            title: inferTechnicalTitle(description),
+            description,
+            category: 'technical',
+            sources: [productName],
+          });
+        });
+
+      const additionalRequirements = Array.isArray(item.product?.offer_additional_requirements)
+        ? item.product.offer_additional_requirements
+        : [];
+      additionalRequirements.forEach((requirement: any) => {
+        if (!requirement || typeof requirement !== 'object') return;
+        const category = Object.prototype.hasOwnProperty.call(requirementCategoryLabels, requirement.category)
+          ? String(requirement.category)
+          : 'other';
+        const title = String(requirement.title || requirementCategoryLabels[category] || 'Inne wymaganie').trim();
+        const description = String(requirement.description || title).trim();
+        if (!title && !description) return;
+        addRequirementEntry({
+          title: title.toLocaleUpperCase('pl-PL'),
+          description,
+          category,
+          sources: [productName],
+        });
+      });
+    });
+
+    if (categoryDesign.info_page_enabled !== false) {
+      const orderSteps = splitConfiguredLines(categoryDesign.order_process_text);
+      const reservationTerms = splitConfiguredLines(categoryDesign.reservation_terms_text);
       const page = mergedPdf.addPage([595.28, 841.89]);
       page.drawRectangle({ x: 0, y: 0, width: 595.28, height: 841.89, color: cream });
       page.drawLine({ start: { x: 45, y: 700 }, end: { x: 550, y: 700 }, thickness: 0.8, color: burgundy });
-      drawRoundedRectangle(page, { x: 45, y: 495, width: 505, height: 170, radius: 9, color: rgb(1, 1, 1) });
-      drawRoundedRectangle(page, { x: 45, y: 300, width: 505, height: 170, radius: 9, color: rgb(1, 1, 1) });
-      drawRoundedRectangle(page, { x: 45, y: 105, width: 505, height: 170, radius: 9, color: rgb(1, 1, 1) });
+      drawRoundedRectangle(page, { x: 45, y: 410, width: 505, height: 255, radius: 9, color: rgb(1, 1, 1) });
+      drawRoundedRectangle(page, { x: 45, y: 130, width: 505, height: 255, radius: 9, color: rgb(1, 1, 1) });
 
       await overlayTextOnPages(mergedPdf, mergedPdf.getPageCount() - 1, 1, [
         { field_name: 'info_title', label: 'Tytuł', x: 45, y: 58, font_size: 24, font_color: categoryDesign.primary_color, font_role: 'heading', max_width: 505 },
         { field_name: 'info_subtitle', label: 'Opis', x: 45, y: 118, font_size: 9.5, font_color: '#765f55', max_width: 505 },
         { field_name: 'order_number_title', label: 'Numer', x: 65, y: 205, font_size: 22, font_color: categoryDesign.accent_color, font_role: 'heading' },
         { field_name: 'order_title', label: 'Sekcja', x: 125, y: 205, font_size: 10, font_color: categoryDesign.primary_color },
-        { field_name: 'order_content', label: 'Treść', x: 125, y: 238, font_size: 8.5, line_height: 17, font_color: '#171717', max_width: 395 },
-        { field_name: 'technical_number_title', label: 'Numer', x: 65, y: 400, font_size: 22, font_color: categoryDesign.accent_color, font_role: 'heading' },
-        { field_name: 'technical_title', label: 'Sekcja', x: 125, y: 400, font_size: 10, font_color: categoryDesign.primary_color },
-        { field_name: 'technical_content', label: 'Treść', x: 125, y: 433, font_size: 8.2, line_height: 14, font_color: '#171717', max_width: 395 },
-        { field_name: 'technical_content_left', label: 'Treść — kolumna lewa', x: 65, y: 433, font_size: technicalColumnFontSize, line_height: technicalColumnLineHeight, font_color: '#171717', max_width: 220 },
-        { field_name: 'technical_content_right', label: 'Treść — kolumna prawa', x: 310, y: 433, font_size: technicalColumnFontSize, line_height: technicalColumnLineHeight, font_color: '#171717', max_width: 220 },
-        { field_name: 'reservation_number_title', label: 'Numer', x: 65, y: 595, font_size: 22, font_color: categoryDesign.accent_color, font_role: 'heading' },
-        { field_name: 'reservation_title', label: 'Sekcja', x: 125, y: 595, font_size: 10, font_color: categoryDesign.primary_color },
-        { field_name: 'reservation_content', label: 'Treść', x: 125, y: 628, font_size: 8.5, line_height: 17, font_color: '#171717', max_width: 395 },
+        { field_name: 'order_content', label: 'Treść', x: 125, y: 244, font_size: 9, line_height: 19, font_color: '#171717', max_width: 395 },
+        { field_name: 'reservation_number_title', label: 'Numer', x: 65, y: 485, font_size: 22, font_color: categoryDesign.accent_color, font_role: 'heading' },
+        { field_name: 'reservation_title', label: 'Sekcja', x: 125, y: 485, font_size: 10, font_color: categoryDesign.primary_color },
+        { field_name: 'reservation_content', label: 'Treść', x: 125, y: 524, font_size: 9, line_height: 19, font_color: '#171717', max_width: 395 },
+        { field_name: 'info_footer', label: 'Stopka', x: 45, y: 805, font_size: 7, font_color: categoryDesign.accent_color, max_width: 390 },
+        { field_name: 'info_page_number', label: 'Numer strony', x: 505, y: 805, font_size: 8, font_color: categoryDesign.primary_color, max_width: 45, align: 'right', font_role: 'heading' },
       ], {
         info_title: String(categoryDesign.info_page_title || 'INFORMACJE I WARUNKI').toLocaleUpperCase('pl-PL'),
         info_subtitle: 'Najważniejsze informacje organizacyjne przed potwierdzeniem realizacji.',
         order_number_title: '01',
         order_title: 'JAK WYGLĄDA ZAMÓWIENIE',
         order_content: orderSteps.map((line, index) => `${index + 1}.  ${line}`).join('\n'),
-        technical_number_title: '02',
-        technical_title: 'WARUNKI TECHNICZNE I WYMAGANIA PRODUKTÓW',
-        technical_content: useTechnicalColumns
-          ? ''
-          : technicalRequirements.map((line) => `•  ${line}`).join('\n'),
-        technical_content_left: useTechnicalColumns
-          ? technicalColumns[0].map((line) => `•  ${line}`).join('\n')
-          : '',
-        technical_content_right: useTechnicalColumns
-          ? technicalColumns[1].map((line) => `•  ${line}`).join('\n')
-          : '',
-        reservation_number_title: '03',
+        reservation_number_title: '02',
         reservation_title: 'REZERWACJA I ZMIANY',
-        reservation_content: reservationTerms.map((line) => `•  ${line}`).join('\n'),
+        reservation_content: reservationTerms.map((line) => ensureSentence(line)).join('\n\n'),
+        info_footer: `${brandCompanyName.toLocaleUpperCase('pl-PL')} / OFERTA NR ${offerData.offer_number}`,
+        info_page_number: String(mergedPdf.getPageCount()).padStart(2, '0'),
       });
+    }
+
+    if (categoryDesign.requirements_page_enabled !== false && requirementEntries.length > 0) {
+      const estimateRequirementLines = (description: string) => description
+        .split(/\r?\n/)
+        .reduce((sum, paragraph) => sum + Math.max(1, Math.ceil(paragraph.length / 78)), 0);
+      const requirementCards = requirementEntries.map((entry, index) => ({
+        ...entry,
+        number: String(index + 1).padStart(2, '0'),
+        height: Math.max(104, 76 + estimateRequirementLines(entry.description) * 13),
+      }));
+      const requirementPages: typeof requirementCards[] = [];
+      let currentPageCards: typeof requirementCards = [];
+      let usedHeight = 0;
+      requirementCards.forEach((card) => {
+        const cardHeight = Math.min(card.height, 310);
+        const requiredHeight = cardHeight + (currentPageCards.length > 0 ? 14 : 0);
+        if (currentPageCards.length > 0 && usedHeight + requiredHeight > 570) {
+          requirementPages.push(currentPageCards);
+          currentPageCards = [];
+          usedHeight = 0;
+        }
+        currentPageCards.push({ ...card, height: cardHeight });
+        usedHeight += cardHeight + (currentPageCards.length > 1 ? 14 : 0);
+      });
+      if (currentPageCards.length > 0) requirementPages.push(currentPageCards);
+
+      for (let requirementPageIndex = 0; requirementPageIndex < requirementPages.length; requirementPageIndex += 1) {
+        const pageCards = requirementPages[requirementPageIndex];
+        const page = mergedPdf.addPage([595.28, 841.89]);
+        page.drawRectangle({ x: 0, y: 0, width: 595.28, height: 841.89, color: cream });
+        page.drawLine({ start: { x: 45, y: 700 }, end: { x: 550, y: 700 }, thickness: 0.8, color: burgundy });
+
+        const fields: TextFieldConfig[] = [
+          { field_name: 'requirements_title', label: 'Tytuł', x: 45, y: 58, font_size: 22, font_color: categoryDesign.primary_color, font_role: 'heading', max_width: 505 },
+          { field_name: 'requirements_subtitle', label: 'Opis', x: 45, y: 112, font_size: 9.2, font_color: '#765f55', max_width: 505 },
+          { field_name: 'requirements_footer', label: 'Stopka', x: 45, y: 805, font_size: 7, font_color: categoryDesign.accent_color, max_width: 390 },
+          { field_name: 'requirements_page_number', label: 'Numer strony', x: 505, y: 805, font_size: 8, font_color: categoryDesign.primary_color, max_width: 45, align: 'right', font_role: 'heading' },
+        ];
+        const pageData: Record<string, any> = {
+          requirements_title: String(categoryDesign.requirements_page_title || 'WARUNKI TECHNICZNE I ORGANIZACYJNE').toLocaleUpperCase('pl-PL'),
+          requirements_subtitle: requirementPageIndex === 0
+            ? String(categoryDesign.requirements_page_subtitle || 'Wymagania niezbędne do bezpiecznego i sprawnego przygotowania realizacji.')
+            : 'Dalsza część warunków wynikających z zakresu wybranych produktów.',
+          requirements_footer: `${brandCompanyName.toLocaleUpperCase('pl-PL')} / OFERTA NR ${offerData.offer_number}`,
+          requirements_page_number: String(mergedPdf.getPageCount()).padStart(2, '0'),
+        };
+
+        let cardTop = 176;
+        pageCards.forEach((card, cardIndex) => {
+          const fieldPrefix = `requirement_${cardIndex}`;
+          const cardBottom = 841.89 - cardTop - card.height;
+          drawRoundedRectangle(page, { x: 45, y: cardBottom, width: 505, height: card.height, radius: 9, color: rgb(1, 1, 1) });
+          page.drawRectangle({ x: 65, y: cardBottom + 18, width: 2.5, height: card.height - 36, color: accent });
+          fields.push(
+            { field_name: `${fieldPrefix}_number`, label: 'Numer wymagania', x: 78, y: cardTop + 22, font_size: 13, font_color: categoryDesign.accent_color, font_role: 'heading', max_width: 30 },
+            { field_name: `${fieldPrefix}_title`, label: 'Nazwa wymagania', x: 125, y: cardTop + 20, font_size: 10, font_color: categoryDesign.primary_color, max_width: 395 },
+            { field_name: `${fieldPrefix}_meta`, label: 'Kategoria i źródło', x: 125, y: cardTop + 39, font_size: 6.5, font_color: categoryDesign.accent_color, max_width: 395 },
+            { field_name: `${fieldPrefix}_description`, label: 'Opis wymagania', x: 125, y: cardTop + 58, font_size: 8.7, line_height: 13, font_color: '#171717', max_width: 395 },
+          );
+          pageData[`${fieldPrefix}_number`] = card.number;
+          pageData[`${fieldPrefix}_title`] = card.title;
+          pageData[`${fieldPrefix}_meta`] = [
+            requirementCategoryLabels[card.category] || requirementCategoryLabels.other,
+            card.sources.length > 0 ? `DOTYCZY: ${card.sources.join(', ')}` : '',
+          ].filter(Boolean).join('  ·  ');
+          pageData[`${fieldPrefix}_description`] = card.description;
+          cardTop += card.height + 14;
+        });
+
+        await overlayTextOnPages(
+          mergedPdf,
+          mergedPdf.getPageCount() - 1,
+          1,
+          fields,
+          pageData,
+        );
+      }
     }
 
     // Strona końcowa zawsze powstaje z aktualnych danych CRM i brandbooka.

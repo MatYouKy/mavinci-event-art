@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase/browser';
 import {
   FileText,
@@ -209,6 +209,7 @@ function InvoiceContextMenu({
 
 export default function InvoicesPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -233,11 +234,44 @@ export default function InvoicesPage() {
   const lastInvoiceLoadErrorRef = useRef<string | null>(null);
 
   const {
+    canViewModule,
     canManageModule,
     isAdmin,
     employee: currentEmployee,
     sessionUserId,
+    loading: permissionsLoading,
   } = useCurrentEmployee();
+
+  const canAccessKSeF = useMemo(() => canViewModule('invoices'), [canViewModule]);
+  const canManageInvoices = useMemo(() => canManageModule('invoices'), [canManageModule]);
+
+  useEffect(() => {
+    if (permissionsLoading) return;
+
+    const requestedTab = searchParams.get('tab');
+    const supportedTabs = new Set([
+      'dashboard',
+      'local',
+      'ksef',
+      'external',
+      'expenses',
+      'settings',
+    ]);
+
+    if (!requestedTab || !supportedTabs.has(requestedTab)) return;
+
+    if (requestedTab === 'ksef' && !canAccessKSeF) {
+      setActiveTab('dashboard');
+      return;
+    }
+
+    if (requestedTab === 'settings' && !canManageInvoices) {
+      setActiveTab('dashboard');
+      return;
+    }
+
+    setActiveTab(requestedTab as typeof activeTab);
+  }, [canAccessKSeF, canManageInvoices, permissionsLoading, searchParams]);
 
   const allowedCompanyIds = useMemo<string[] | null>(() => {
     if (isAdmin) return null;
@@ -296,8 +330,6 @@ export default function InvoicesPage() {
   const canIssueAny = isAdmin || issuableCompanyIds.length > 0;
   const { showConfirm } = useDialog();
   const { showSnackbar } = useSnackbar();
-
-  const canManageInvoices = useMemo(() => canManageModule('invoices'), [canManageModule]);
 
   const handleDeleteInvoice = async (invoice: Invoice) => {
     if (invoice.ksef_status === 'accepted') {
@@ -757,7 +789,7 @@ export default function InvoicesPage() {
                 : []),
             ]
               .filter((tab) => {
-                return true;
+                return tab.id !== 'ksef' || canAccessKSeF;
               })
               .map((tab) => {
                 const Icon = tab.icon;

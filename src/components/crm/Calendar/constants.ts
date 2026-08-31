@@ -15,7 +15,7 @@ export const STATUS_COLORS: Record<EventStatus, string> = {
 };
 
 export const STATUS_LABELS: Record<EventStatus, string> = {
-  inquiry: 'Zapytanie',
+  inquiry: 'Zapytanie potencjalne',
   offer_to_send: 'Oferta do wysłania',
   offer_sent: 'Oferta wysłana',
   offer_accepted: 'Oferta zaakceptowana',

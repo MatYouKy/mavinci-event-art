@@ -52,6 +52,16 @@ interface Invoice {
   total_gross: number;
   buyer_name: string;
   billing_arrangement?: 'direct' | 'hotel' | 'agency' | 'other';
+  allocated_gross?: number;
+  shared_event_count?: number;
+  invoice_primary_event_id?: string;
+}
+
+interface SharedInvoiceSummary {
+  invoices_count: number;
+  invoices_paid_count: number;
+  invoices_total: number;
+  actual_invoice_revenue: number;
 }
 
 interface Cost {
@@ -192,10 +202,11 @@ export default function EventFinancesTab({ eventId }: Props) {
 
   const fetchFinancialData = async () => {
     try {
-      const [summaryRes, invoicesRes, costsRes, categoriesRes, clientInfoRes, offerRes, subcontractorsRes, timeEntriesRes, commissionsRes, assignmentsRes] = await Promise.all([
+      const [summaryRes, sharedSummaryRes, invoicesRes, costsRes, categoriesRes, clientInfoRes, offerRes, subcontractorsRes, timeEntriesRes, commissionsRes, assignmentsRes] = await Promise.all([
         supabase.rpc('get_event_financial_summary', { p_event_id: eventId }),
+        supabase.rpc('get_event_shared_invoice_summary', { p_event_id: eventId }),
         supabase
-          .from('invoices')
+          .from('event_invoice_settlements')
           .select('*')
           .eq('event_id', eventId)
           .order('issue_date', { ascending: false }),
@@ -243,7 +254,28 @@ export default function EventFinancesTab({ eventId }: Props) {
           .eq('event_id', eventId),
       ]);
 
-      if (summaryRes.data?.[0]) setSummary(summaryRes.data[0]);
+      if (summaryRes.data?.[0]) {
+        const baseSummary = summaryRes.data[0] as FinancialSummary;
+        const sharedSummary = sharedSummaryRes.data?.[0] as SharedInvoiceSummary | undefined;
+
+        if (sharedSummary) {
+          const actualRevenue = Number(sharedSummary.actual_invoice_revenue || 0);
+          const totalRevenue = actualRevenue + Number(baseSummary.actual_cash_revenue || 0);
+          const actualProfit = totalRevenue - Number(baseSummary.actual_costs || 0);
+          setSummary({
+            ...baseSummary,
+            actual_revenue: actualRevenue,
+            actual_profit: actualProfit,
+            profit_margin_actual: totalRevenue > 0 ? (actualProfit / totalRevenue) * 100 : 0,
+            invoices_count: Number(sharedSummary.invoices_count || 0),
+            invoices_paid_count: Number(sharedSummary.invoices_paid_count || 0),
+            invoices_total: Number(sharedSummary.invoices_total || 0),
+            total_revenue: totalRevenue,
+          });
+        } else {
+          setSummary(baseSummary);
+        }
+      }
       if (invoicesRes.data) setInvoices(invoicesRes.data);
       if (clientInfoRes.data?.[0]) setClientInfo(clientInfoRes.data[0]);
       setAcceptedOffer(offerRes.data || null);
@@ -1002,7 +1034,14 @@ export default function EventFinancesTab({ eventId }: Props) {
                 <tbody className="divide-y divide-[#d3bb73]/10">
                   {invoices.map((invoice) => (
                     <tr key={invoice.id} className="transition-colors hover:bg-[#0f1119]">
-                      <td className="px-4 py-3 text-[#e5e4e2]">{invoice.invoice_number}</td>
+                      <td className="px-4 py-3 text-[#e5e4e2]">
+                        <div>{invoice.invoice_number}</div>
+                        {Number(invoice.shared_event_count || 1) > 1 && (
+                          <div className="mt-1 inline-flex rounded bg-sky-400/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-sky-300">
+                            Wspólna · {invoice.shared_event_count} wydarzenia
+                          </div>
+                        )}
+                      </td>
                       <td className="px-4 py-3">
                         <span className="rounded bg-[#0a0d1a] px-2 py-1 text-xs text-[#e5e4e2]/60">
                           {invoice.invoice_type}
@@ -1025,8 +1064,19 @@ export default function EventFinancesTab({ eventId }: Props) {
                         {new Date(invoice.issue_date).toLocaleDateString('pl-PL')}
                       </td>
                       <td className="px-4 py-3 text-right font-medium text-[#d3bb73]">
-                        {invoice.total_gross.toLocaleString('pl-PL', { minimumFractionDigits: 2 })}{' '}
-                        zł
+                        <div>
+                          {invoice.total_gross.toLocaleString('pl-PL', { minimumFractionDigits: 2 })}{' '}
+                          zł
+                        </div>
+                        {Number(invoice.shared_event_count || 1) > 1 && (
+                          <div className="mt-1 text-[11px] font-normal leading-4 text-sky-300">
+                            Udział wydarzenia:{' '}
+                            {Number(invoice.allocated_gross || 0).toLocaleString('pl-PL', {
+                              minimumFractionDigits: 2,
+                            })}{' '}
+                            zł
+                          </div>
+                        )}
                       </td>
                       <td className="px-4 py-3">{getStatusBadge(invoice.status)}</td>
                       <td className="px-4 py-3 text-right">

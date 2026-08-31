@@ -4,11 +4,12 @@ import {
   normalizeSignatureHtml,
   renderSignatureTemplate,
   SignaturePlaceholderValues,
+  stripUnavailableCompanyRegistryData,
 } from '@/lib/signatureTemplate';
 import {
   DEFAULT_EMAIL_BODY_TEMPLATE,
   EmailBodyPlaceholderValues,
-  renderEmailBodyTemplate,
+  renderSafeEmailBodyTemplate,
 } from '@/lib/emailBodyTemplate';
 
 interface BuildOptions {
@@ -28,6 +29,7 @@ export type EmailTemplatePurpose = 'general' | 'offer' | 'invoice' | 'contract' 
 
 interface BuildBodyOptions extends BuildOptions {
   content: string;
+  contentIsHtml?: boolean;
   subject?: string;
   recipientName?: string;
   pdfLink?: string;
@@ -66,9 +68,125 @@ const fetchAsDataUri = async (url: string): Promise<string> => {
   }
 };
 
+const readImageDimension = (tag: string, dimension: 'width' | 'height'): number | null => {
+  const attributeValue = tag.match(
+    new RegExp(`\\s${dimension}\\s*=\\s*["']?(\\d+)["']?`, 'i'),
+  )?.[1];
+  const styleValue = tag.match(
+    new RegExp(`style\\s*=\\s*["'][^"']*\\b${dimension}\\s*:\\s*(\\d+)px`, 'i'),
+  )?.[1];
+  const value = Number(attributeValue || styleValue || 0);
+  return Number.isFinite(value) && value > 0 ? value : null;
+};
+
+const rasterizeEmbeddedImage = (
+  source: string,
+  displayedWidth: number | null,
+  displayedHeight: number | null,
+): Promise<string> =>
+  new Promise((resolve) => {
+    if (typeof window === 'undefined') {
+      resolve(source);
+      return;
+    }
+
+    const image = new window.Image();
+    image.onload = () => {
+      const naturalWidth = image.naturalWidth || displayedWidth || 120;
+      const naturalHeight = image.naturalHeight || displayedHeight || 120;
+      const ratio = naturalWidth / Math.max(1, naturalHeight);
+      // Obraz ma mieć naturalny rozmiar równy rozmiarowi wyświetlanemu.
+      // Podczas cytowania część klientów usuwa CSS i pokazuje grafikę w jej
+      // naturalnej wielkości, dlatego wariant 2x (retina) rozsadzał stopkę.
+      const density = 1;
+
+      let targetWidth = displayedWidth ? displayedWidth * density : Math.min(naturalWidth, 320);
+      let targetHeight = displayedHeight ? displayedHeight * density : Math.min(naturalHeight, 320);
+
+      if (displayedWidth && !displayedHeight) targetHeight = Math.round(targetWidth / ratio);
+      if (!displayedWidth && displayedHeight) targetWidth = Math.round(targetHeight * ratio);
+
+      const maxDimension = 480;
+      const scale = Math.min(1, maxDimension / Math.max(targetWidth, targetHeight));
+      targetWidth = Math.max(1, Math.round(targetWidth * scale));
+      targetHeight = Math.max(1, Math.round(targetHeight * scale));
+
+      const canvas = document.createElement('canvas');
+      canvas.width = targetWidth;
+      canvas.height = targetHeight;
+      const context = canvas.getContext('2d');
+      if (!context) {
+        resolve(source);
+        return;
+      }
+
+      context.clearRect(0, 0, targetWidth, targetHeight);
+      const drawScale = Math.min(targetWidth / naturalWidth, targetHeight / naturalHeight);
+      const drawWidth = Math.round(naturalWidth * drawScale);
+      const drawHeight = Math.round(naturalHeight * drawScale);
+      context.drawImage(
+        image,
+        Math.round((targetWidth - drawWidth) / 2),
+        Math.round((targetHeight - drawHeight) / 2),
+        drawWidth,
+        drawHeight,
+      );
+
+      const optimized = canvas.toDataURL('image/png');
+      const hasLockedDisplaySize = Boolean(displayedWidth || displayedHeight);
+      resolve(
+        hasLockedDisplaySize || optimized.length < source.length || /^data:image\/svg\+xml/i.test(source)
+          ? optimized
+          : source,
+      );
+    };
+    image.onerror = () => resolve(source);
+    image.src = source;
+  });
+
+/**
+ * Stopki potrafią zawierać wielomegabajtowe zdjęcia oraz SVG zapisane jako
+ * base64. Przed wysyłką rasteryzujemy SVG i zmniejszamy duże obrazy do
+ * rozmiaru faktycznie używanego w stopce.
+ */
+export const optimizeEmbeddedEmailImages = async (html: string): Promise<string> => {
+  if (!html || typeof window === 'undefined' || !/data:image\//i.test(html)) return html;
+
+  const imageTags = html.match(/<img\b[^>]*>/gi) ?? [];
+  const replacements = new Map<string, string>();
+
+  await Promise.all(
+    imageTags.map(async (tag) => {
+      const source = tag.match(/\bsrc\s*=\s*["'](data:image\/[^"']+)["']/i)?.[1];
+      if (!source || replacements.has(source)) return;
+
+      const isSvg = /^data:image\/svg\+xml/i.test(source);
+      const isOversized = source.length > 120_000;
+      const displayedWidth = readImageDimension(tag, 'width');
+      const displayedHeight = readImageDimension(tag, 'height');
+      if (!isSvg && !isOversized && !displayedWidth && !displayedHeight) return;
+
+      const optimized = await rasterizeEmbeddedImage(
+        source,
+        displayedWidth,
+        displayedHeight,
+      );
+      if (optimized !== source) replacements.set(source, optimized);
+    }),
+  );
+
+  let optimizedHtml = html;
+  replacements.forEach((replacement, source) => {
+    optimizedHtml = optimizedHtml.split(source).join(replacement);
+  });
+  return optimizedHtml;
+};
+
 interface CompanyContext {
   company: any;
   employee: any;
+  emailAccount: any;
+  employeeSignature: any;
   logos: Array<{ url: string; is_default: boolean }>;
   colors: Array<{ hex: string; role: string }>;
   companyLogoDataUri: string;
@@ -85,7 +203,12 @@ const loadCompanyContext = async (opts: BuildOptions): Promise<CompanyContext | 
   }
 
   const employeeRes = employeeId
-    ? await supabase.from('employees').select('*').eq('id', employeeId).maybeSingle()
+    ? await supabase
+        .from('employees')
+        .select('*')
+        .or(`id.eq.${employeeId},auth_user_id.eq.${employeeId}`)
+        .limit(1)
+        .maybeSingle()
     : { data: null };
   const employee = employeeRes.data;
 
@@ -96,6 +219,18 @@ const loadCompanyContext = async (opts: BuildOptions): Promise<CompanyContext | 
         .eq('id', opts.emailAccountId)
         .maybeSingle()
     : { data: null };
+
+  const employeeSignatureIds = Array.from(
+    new Set([employee?.id, employeeId].filter(Boolean) as string[]),
+  );
+  const { data: employeeSignatures } = employeeSignatureIds.length
+    ? await supabase
+        .from('employee_signatures')
+        .select('*')
+        .in('employee_id', employeeSignatureIds)
+        .limit(1)
+    : { data: [] };
+  const employeeSignature = employeeSignatures?.[0] ?? null;
 
   const resolvedCompanyId = opts.companyId || (emailAccount as any)?.my_company_id || null;
   let companyQuery = supabase
@@ -137,17 +272,49 @@ const loadCompanyContext = async (opts: BuildOptions): Promise<CompanyContext | 
   const rawLogo = logos.find((l) => l.is_default)?.url || logos[0]?.url || company.logo_url || '';
   const companyLogoDataUri = await fetchAsDataUri(toPublicLogoUrl(rawLogo));
 
-  const signatureThumbDataUri = employee?.signature_thumb
-    ? await fetchAsDataUri(employee.signature_thumb)
-    : employee?.avatar_url
-    ? await fetchAsDataUri(employee.avatar_url)
+  const signatureThumbSource =
+    employee?.signature_thumb || employeeSignature?.avatar_url || employee?.avatar_url || '';
+  const signatureThumbDataUri = signatureThumbSource
+    ? await fetchAsDataUri(signatureThumbSource)
     : '';
 
-  return { company, employee, logos, colors, companyLogoDataUri, signatureThumbDataUri };
+  return {
+    company,
+    employee,
+    emailAccount,
+    employeeSignature,
+    logos,
+    colors,
+    companyLogoDataUri,
+    signatureThumbDataUri,
+  };
+};
+
+const buildLegacyEmployeeSignatureHtml = (ctx: CompanyContext): string => {
+  const legacy = ctx.employeeSignature;
+  if (!legacy) return '';
+  if (legacy.use_custom_html && legacy.custom_html) return legacy.custom_html;
+
+  const values = buildSignatureValues(ctx);
+  return renderSignatureTemplate(DEFAULT_SIGNATURE_TEMPLATE, {
+    ...values,
+    full_name: legacy.full_name || values.full_name,
+    position: legacy.position || values.position,
+    phone: legacy.phone || values.phone,
+    email: legacy.email || values.email,
+    website: legacy.website || values.website,
+  });
 };
 
 const buildSignatureValues = (ctx: CompanyContext): SignaturePlaceholderValues => {
-  const { company, employee, colors, companyLogoDataUri, signatureThumbDataUri } = ctx;
+  const {
+    company,
+    employee,
+    emailAccount,
+    colors,
+    companyLogoDataUri,
+    signatureThumbDataUri,
+  } = ctx;
   const colorByRole = (role: string) => colors.find((c) => c.role === role)?.hex || '#d3bb73';
   const addressParts = [
     company.street,
@@ -164,7 +331,7 @@ const buildSignatureValues = (ctx: CompanyContext): SignaturePlaceholderValues =
     last_name: employee?.surname ?? '',
     position: employee?.occupation ?? '',
     phone: employee?.phone_number ?? '',
-    email: employee?.email ?? '',
+    email: emailAccount?.email_address ?? employee?.email ?? '',
     website: company.website ?? '',
     signature_thumb: signatureThumbDataUri,
     company_name: company.name ?? '',
@@ -177,6 +344,11 @@ const buildSignatureValues = (ctx: CompanyContext): SignaturePlaceholderValues =
     company_phone: company.phone ?? '',
     company_email: company.email ?? '',
     company_website: company.website ?? '',
+    company_facebook_url: company.facebook_url ?? '',
+    company_instagram_url: company.instagram_url ?? '',
+    company_linkedin_url: company.linkedin_url ?? '',
+    company_tiktok_url: company.tiktok_url ?? '',
+    company_youtube_url: company.youtube_url ?? '',
     brand_primary_color: colorByRole('primary'),
     brand_secondary_color: colorByRole('secondary'),
     brand_accent_color: colorByRole('accent'),
@@ -185,19 +357,30 @@ const buildSignatureValues = (ctx: CompanyContext): SignaturePlaceholderValues =
 
 export async function buildCompanySignatureHtml(opts: BuildOptions = {}): Promise<BuildResult> {
   const ctx = await loadCompanyContext(opts);
-  if (!ctx || !ctx.company.email_signature_use_template) {
+  if (!ctx) {
     return {
       html: '',
       enabled: false,
-      companyId: ctx?.company?.id ?? null,
-      companyName: ctx?.company?.name ?? null,
+      companyId: null,
+      companyName: null,
     };
   }
-  const template = ctx.company.email_signature_template || DEFAULT_SIGNATURE_TEMPLATE;
-  const values = buildSignatureValues(ctx);
+
+  let html = '';
+  if (ctx.company.email_signature_use_template) {
+    const template = ctx.company.email_signature_template || DEFAULT_SIGNATURE_TEMPLATE;
+    html = renderSignatureTemplate(template, buildSignatureValues(ctx));
+  } else if (ctx.emailAccount?.signature) {
+    html = normalizeSignatureHtml(ctx.emailAccount.signature);
+  } else {
+    html = buildLegacyEmployeeSignatureHtml(ctx);
+  }
+  html = stripUnavailableCompanyRegistryData(html, buildSignatureValues(ctx));
+  html = await optimizeEmbeddedEmailImages(html);
+
   return {
-    html: renderSignatureTemplate(template, values),
-    enabled: true,
+    html,
+    enabled: Boolean(html.trim()),
     companyId: ctx.company.id,
     companyName: ctx.company.name ?? null,
   };
@@ -205,7 +388,7 @@ export async function buildCompanySignatureHtml(opts: BuildOptions = {}): Promis
 
 export async function buildCompanyEmailBody(opts: BuildBodyOptions): Promise<BuildBodyResult> {
   const ctx = await loadCompanyContext(opts);
-  const rawContentHtml = opts.content.replace(/\n/g, '<br>');
+  const rawContentHtml = opts.contentIsHtml ? opts.content : opts.content.replace(/\n/g, '<br>');
   const contentHtml = `<div style="margin:0; padding:0; color:#1c1f33 !important; background-color:#ffffff !important; font-family:Arial, sans-serif; font-size:14px; line-height:1.6;">${rawContentHtml}</div>`;
 
   if (!ctx) {
@@ -224,8 +407,17 @@ export async function buildCompanyEmailBody(opts: BuildBodyOptions): Promise<Bui
   if (!signatureHtml && ctx.company.email_signature_use_template) {
     const sigTemplate = ctx.company.email_signature_template || DEFAULT_SIGNATURE_TEMPLATE;
     signatureHtml = renderSignatureTemplate(sigTemplate, buildSignatureValues(ctx));
+  } else if (!signatureHtml && ctx.emailAccount?.signature) {
+    signatureHtml = ctx.emailAccount.signature;
+  } else if (!signatureHtml) {
+    signatureHtml = buildLegacyEmployeeSignatureHtml(ctx);
   }
+  signatureHtml = stripUnavailableCompanyRegistryData(
+    signatureHtml,
+    buildSignatureValues(ctx),
+  );
   signatureHtml = normalizeSignatureHtml(signatureHtml);
+  signatureHtml = await optimizeEmbeddedEmailImages(signatureHtml);
 
   const values: EmailBodyPlaceholderValues = {
     content: contentHtml,
@@ -276,16 +468,22 @@ export async function buildCompanyEmailBody(opts: BuildBodyOptions): Promise<Bui
   }
 
   if (!assignedTemplateHtml) {
+    const html = await optimizeEmbeddedEmailImages(
+      `<div style="display:block; width:100%; max-width:none; margin:0; padding:0; box-sizing:border-box; font-family:Arial,sans-serif; color:#1c1f33; background-color:#ffffff;"><div style="margin:0; padding:0; white-space:pre-wrap; color:#1c1f33; background-color:#ffffff;">${contentHtml}</div>${opts.pdfLink ?? ''}${signatureHtml}</div>`,
+    );
     return {
-      html: `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color:#1c1f33; background-color:#ffffff;"><div style="white-space: pre-wrap; color:#1c1f33; background-color:#ffffff;">${contentHtml}</div>${opts.pdfLink ?? ''}${signatureHtml}</div>`,
+      html,
       templateEnabled: false,
       companyId: ctx.company.id,
       signatureHtml,
     };
   }
 
+  const html = await optimizeEmbeddedEmailImages(
+    renderSafeEmailBodyTemplate(assignedTemplateHtml, values),
+  );
   return {
-    html: renderEmailBodyTemplate(assignedTemplateHtml, values),
+    html,
     templateEnabled: true,
     companyId: ctx.company.id,
     signatureHtml,

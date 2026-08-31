@@ -30,6 +30,23 @@ export const EMAIL_BODY_PLACEHOLDERS: { key: keyof EmailBodyPlaceholderValues; l
   { key: 'pdf_link', label: 'Blok z linkiem do PDF' },
 ];
 
+export const emailBodyTemplateHasPlaceholder = (
+  template: string,
+  key: keyof EmailBodyPlaceholderValues,
+): boolean => new RegExp(`{{\\s*${key}\\s*}}`, 'i').test(template || '');
+
+export const getMissingRequiredEmailPlaceholders = (
+  template: string,
+  options: { requireSignature?: boolean } = {},
+): Array<'content' | 'signature'> => {
+  const missing: Array<'content' | 'signature'> = [];
+  if (!emailBodyTemplateHasPlaceholder(template, 'content')) missing.push('content');
+  if (options.requireSignature && !emailBodyTemplateHasPlaceholder(template, 'signature')) {
+    missing.push('signature');
+  }
+  return missing;
+};
+
 export function renderEmailBodyTemplate(
   template: string,
   values: EmailBodyPlaceholderValues,
@@ -41,6 +58,22 @@ export function renderEmailBodyTemplate(
     out = out.replace(re, String(values[key] ?? ''));
   }
   return out;
+}
+
+/**
+ * Zapisany wcześniej szablon nie może usunąć właściwej treści wiadomości ani
+ * stopki. Jeśli brakuje jednego z tych miejsc, korzystamy z kompletnego,
+ * domyślnego układu zamiast wysyłać odbiorcy sam nagłówek lub pasek systemowy.
+ */
+export function renderSafeEmailBodyTemplate(
+  template: string,
+  values: EmailBodyPlaceholderValues,
+): string {
+  const missing = getMissingRequiredEmailPlaceholders(template, {
+    requireSignature: Boolean(values.signature?.trim()),
+  });
+  const safeTemplate = missing.length > 0 ? DEFAULT_EMAIL_BODY_TEMPLATE : template;
+  return renderEmailBodyTemplate(safeTemplate, values);
 }
 
 export const DEFAULT_EMAIL_BODY_TEMPLATE = `<div style="font-family: 'Helvetica Neue', Arial, sans-serif; background: #f5f5f5; padding: 24px 0; color: #1c1f33;">

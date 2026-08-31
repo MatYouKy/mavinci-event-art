@@ -31,6 +31,11 @@ export interface MyCompany {
   vat_bank_account?: string;
   vat_bank_name?: string;
   website?: string;
+  facebook_url?: string;
+  instagram_url?: string;
+  linkedin_url?: string;
+  tiktok_url?: string;
+  youtube_url?: string;
   logo_url?: string;
   is_active: boolean;
   is_default: boolean;
@@ -135,8 +140,8 @@ export default function MyCompaniesPage() {
         {/* Header */}
         <div className="mb-8 flex items-center justify-between">
           <div>
-            <h1 className="mb-2 text-3xl font-light text-[#e5e4e2]">Moje firmy</h1>
-            <p className="text-[#e5e4e2]/60">Zarządzaj swoimi działalnościami i ich danymi</p>
+            <h1 className="mb-2 text-3xl font-light text-[#e5e4e2]">Moje firmy i marki</h1>
+            <p className="text-[#e5e4e2]/60">Zarządzaj podmiotami, markami i ich danymi</p>
           </div>
           <button
             onClick={() => {
@@ -192,13 +197,20 @@ export default function MyCompaniesPage() {
                           Nieaktywna
                         </span>
                       )}
+                      {!company.nip && (
+                        <span className="rounded-lg bg-blue-400/15 px-2 py-1 text-xs font-medium text-blue-300">
+                          Marka bez NIP
+                        </span>
+                      )}
                     </div>
                     <p className="mb-3 text-sm text-[#e5e4e2]/60">{company.legal_name}</p>
                     <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm">
-                      <div>
-                        <span className="text-[#e5e4e2]/40">NIP:</span>{' '}
-                        <span className="text-[#e5e4e2]">{company.nip}</span>
-                      </div>
+                      {company.nip && (
+                        <div>
+                          <span className="text-[#e5e4e2]/40">NIP:</span>{' '}
+                          <span className="text-[#e5e4e2]">{company.nip}</span>
+                        </div>
+                      )}
                       {company.regon && (
                         <div>
                           <span className="text-[#e5e4e2]/40">REGON:</span>{' '}
@@ -381,6 +393,11 @@ function CompanyModal({
     vat_bank_account: company?.vat_bank_account || '',
     vat_bank_name: company?.vat_bank_name || '',
     website: company?.website || '',
+    facebook_url: company?.facebook_url || '',
+    instagram_url: company?.instagram_url || '',
+    linkedin_url: company?.linkedin_url || '',
+    tiktok_url: company?.tiktok_url || '',
+    youtube_url: company?.youtube_url || '',
     is_default: company?.is_default || false,
   });
   const [loading, setLoading] = useState(false);
@@ -467,7 +484,7 @@ function CompanyModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!formData.name || !formData.legal_name || !formData.nip) {
+    if (!formData.name || !formData.legal_name) {
       showSnackbar('Wypełnij wszystkie wymagane pola', 'error');
       return;
     }
@@ -475,14 +492,28 @@ function CompanyModal({
     setLoading(true);
     try {
       let savedId = company?.id;
+      const companyPayload = {
+        ...formData,
+        nip: formData.nip.trim() || null,
+        regon: formData.regon.trim() || null,
+        krs: formData.krs.trim() || null,
+        facebook_url: formData.facebook_url.trim() || null,
+        instagram_url: formData.instagram_url.trim() || null,
+        linkedin_url: formData.linkedin_url.trim() || null,
+        tiktok_url: formData.tiktok_url.trim() || null,
+        youtube_url: formData.youtube_url.trim() || null,
+      };
 
       if (company) {
-        const { error } = await supabase.from('my_companies').update(formData).eq('id', company.id);
+        const { error } = await supabase
+          .from('my_companies')
+          .update(companyPayload)
+          .eq('id', company.id);
         if (error) throw error;
       } else {
         const { data, error } = await supabase
           .from('my_companies')
-          .insert(formData)
+          .insert(companyPayload)
           .select('id')
           .single();
         if (error) throw error;
@@ -516,7 +547,7 @@ function CompanyModal({
       <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33]">
         <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[#d3bb73]/10 bg-[#1c1f33] p-6">
           <h3 className="text-xl font-light text-[#e5e4e2]">
-            {company ? 'Edytuj firmę' : 'Dodaj firmę'}
+            {company ? 'Edytuj firmę lub markę' : 'Dodaj firmę lub markę'}
           </h3>
           <button onClick={onClose} className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]">
             <X className="h-5 w-5" />
@@ -540,7 +571,7 @@ function CompanyModal({
 
             <div className="col-span-2">
               <label className="mb-2 block text-sm text-[#e5e4e2]">
-                Pełna nazwa prawna <span className="text-red-400">*</span>
+                Pełna nazwa lub nazwa marki <span className="text-red-400">*</span>
               </label>
               <input
                 type="text"
@@ -553,7 +584,7 @@ function CompanyModal({
 
             <div>
               <label className="mb-2 block text-sm text-[#e5e4e2]">
-                NIP <span className="text-red-400">*</span>
+                NIP <span className="text-xs text-[#e5e4e2]/50">(opcjonalny dla marki)</span>
               </label>
               <input
                 type="text"
@@ -745,6 +776,34 @@ function CompanyModal({
                 placeholder="www.mavinci.pl"
               />
             </div>
+
+            <div className="col-span-2 border-t border-[#d3bb73]/10 pt-4">
+              <label className="mb-1 block text-sm font-medium text-[#e5e4e2]">
+                Profile społecznościowe marki
+              </label>
+              <p className="text-xs text-[#e5e4e2]/45">
+                Uzupełnione profile są automatycznie używane w stopkach e-mail tej marki.
+              </p>
+            </div>
+
+            {[
+              ['facebook_url', 'Facebook', 'https://www.facebook.com/twoja-marka'],
+              ['instagram_url', 'Instagram', 'https://www.instagram.com/twoja-marka'],
+              ['linkedin_url', 'LinkedIn', 'https://www.linkedin.com/company/twoja-marka'],
+              ['tiktok_url', 'TikTok', 'https://www.tiktok.com/@twoja-marka'],
+              ['youtube_url', 'YouTube', 'https://www.youtube.com/@twoja-marka'],
+            ].map(([field, label, placeholder]) => (
+              <div key={field}>
+                <label className="mb-2 block text-sm text-[#e5e4e2]">{label}</label>
+                <input
+                  type="url"
+                  value={formData[field as keyof typeof formData] as string}
+                  onChange={(e) => setFormData({ ...formData, [field]: e.target.value })}
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                  placeholder={placeholder}
+                />
+              </div>
+            ))}
 
             <div className="col-span-2">
               <label className="mb-2 block text-sm text-[#e5e4e2]">Logotyp firmy (do faktur)</label>

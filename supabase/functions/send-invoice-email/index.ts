@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { prepareInlineEmailImages } from "../_shared/emailInlineImages.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -11,13 +12,19 @@ interface Attachment {
   filename: string;
   content: string;
   contentType: string;
+  contentDisposition?: "attachment" | "inline";
+  cid?: string;
 }
 
 interface SendInvoiceEmailRequest {
   invoiceId: string;
+  emailAccountId?: string;
   to: string;
+  cc?: string;
+  bcc?: string;
   subject: string;
   message: string;
+  messageHtml?: string;
   attachments?: Attachment[];
   signatureHtml?: string;
   recipientName?: string;
@@ -49,6 +56,19 @@ const renderTemplate = (template: string, values: Record<string, string>): strin
   }
   return out;
 };
+
+const hasTemplatePlaceholder = (template: string, key: string): boolean =>
+  new RegExp(`{{\\s*${key}\\s*}}`, "i").test(template || "");
+
+const normalizeMessageText = (value: string): string =>
+  (value || "")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/\s+/g, " ")
+    .trim();
 
 const fetchAsDataUri = async (url: string): Promise<string> => {
   if (!url || url.startsWith("data:")) return url;
@@ -82,7 +102,19 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { invoiceId, to, subject, message, attachments = [], signatureHtml, recipientName }: SendInvoiceEmailRequest = await req.json();
+    const {
+      invoiceId,
+      emailAccountId,
+      to,
+      cc,
+      bcc,
+      subject,
+      message = "",
+      messageHtml,
+      attachments = [],
+      signatureHtml,
+      recipientName,
+    }: SendInvoiceEmailRequest = await req.json();
 
     if (!invoiceId || !to || !subject) {
       throw new Error("Missing required fields: invoiceId, to, subject");
@@ -118,30 +150,56 @@ Deno.serve(async (req: Request) => {
     const { data: employee } = await supabase
       .from("employees")
       .select("*")
-      .eq("id", user.id)
+      .or(`id.eq.${user.id},auth_user_id.eq.${user.id}`)
+      .eq("is_active", true)
+      .limit(1)
       .maybeSingle();
 
-    let { data: emailAccount } = await supabase
-      .from("employee_email_accounts")
-      .select("*")
-      .eq("employee_id", user.id)
-      .eq("is_default", true)
-      .maybeSingle();
+    if (!employee) throw new Error("Employee not found");
 
-    if (!emailAccount) {
-      const { data: anyOwnAccount } = await supabase
+    let emailAccount: any = null;
+    if (emailAccountId) {
+      const { data: requestedAccount } = await supabase
         .from("employee_email_accounts")
         .select("*")
-        .eq("employee_id", user.id)
-        .order("created_at", { ascending: true })
-        .limit(1)
+        .eq("id", emailAccountId)
+        .eq("is_active", true)
+        .or("account_type.is.null,account_type.neq.system")
         .maybeSingle();
 
-      if (!anyOwnAccount) {
+      if (requestedAccount) {
+        const isPersonal = requestedAccount.employee_id === employee.id;
+        let isAssigned = false;
+        if (!isPersonal) {
+          const { data: assignment } = await supabase
+            .from("employee_email_account_assignments")
+            .select("id")
+            .eq("employee_id", employee.id)
+            .eq("email_account_id", requestedAccount.id)
+            .eq("can_send", true)
+            .maybeSingle();
+          isAssigned = Boolean(assignment);
+        }
+        if (isPersonal || isAssigned) emailAccount = requestedAccount;
+      }
+    }
+
+    if (!emailAccount) {
+      const { data: anyOwnAccounts } = await supabase
+        .from("employee_email_accounts")
+        .select("*")
+        .eq("employee_id", employee.id)
+        .eq("is_active", true)
+        .or("account_type.is.null,account_type.neq.system")
+        .order("is_default", { ascending: false })
+        .order("created_at", { ascending: true })
+        .limit(1);
+
+      if (!anyOwnAccounts?.[0]) {
         throw new Error("Nie masz skonfigurowanego konta email. Skonfiguruj swoje konto w ustawieniach.");
       }
 
-      emailAccount = anyOwnAccount;
+      emailAccount = anyOwnAccounts[0];
     }
 
     const relayUrl = Deno.env.get("SMTP_RELAY_URL");
@@ -239,10 +297,22 @@ Deno.serve(async (req: Request) => {
 
     const contentHtml = message.replace(/\n/g, "<br>");
     const finalSignature = signatureHtml || emailAccount.signature || "";
+    const expectedMessageText = normalizeMessageText(message);
+    const preparedMessageText = normalizeMessageText(messageHtml || "");
+    const messageHtmlContainsContent =
+      Boolean(messageHtml) &&
+      (!expectedMessageText || preparedMessageText.includes(expectedMessageText));
 
     let htmlBody: string;
-    if (useBodyTemplate) {
-      htmlBody = renderTemplate(bodyTemplate, {
+    if (messageHtmlContainsContent) {
+      htmlBody = messageHtml;
+    } else if (useBodyTemplate) {
+      const safeBodyTemplate =
+        hasTemplatePlaceholder(bodyTemplate, "content") &&
+        (!finalSignature || hasTemplatePlaceholder(bodyTemplate, "signature"))
+          ? bodyTemplate
+          : DEFAULT_EMAIL_BODY_TEMPLATE;
+      htmlBody = renderTemplate(safeBodyTemplate, {
         content: contentHtml,
         subject,
         recipient_name: recipientName ?? "",
@@ -259,12 +329,25 @@ Deno.serve(async (req: Request) => {
       });
     } else {
       htmlBody = `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <p>${contentHtml}</p>
+        <div style="display:block;width:100%;max-width:none;margin:0;padding:0;box-sizing:border-box;font-family:Arial,sans-serif;">
+          <div style="margin:0;padding:0;">${contentHtml}</div>
           ${finalSignature}
         </div>
       `;
     }
+
+    const storedHtmlBody = htmlBody;
+    const preparedEmail = prepareInlineEmailImages(
+      htmlBody,
+      attachments.map((att: Attachment) => ({
+        filename: att.filename,
+        content: att.content,
+        contentType: att.contentType || 'application/pdf',
+        contentDisposition: att.contentDisposition || 'attachment',
+        cid: att.cid,
+      })),
+    );
+    htmlBody = preparedEmail.html;
 
     const relayPayload = {
       smtpConfig: {
@@ -276,13 +359,11 @@ Deno.serve(async (req: Request) => {
         fromName: emailAccount.from_name,
       },
       to,
+      cc,
+      bcc,
       subject,
       body: htmlBody,
-      attachments: attachments.map((att: Attachment) => ({
-        filename: att.filename,
-        content: att.content,
-        contentType: att.contentType || 'application/pdf',
-      })),
+      attachments: preparedEmail.attachments,
     };
 
     const relayResponse = await fetch(`${relayUrl}/api/send-email`, {
@@ -303,11 +384,11 @@ Deno.serve(async (req: Request) => {
     const info = { messageId: relayResult.messageId };
 
     await supabase.from("sent_emails").insert({
-      employee_id: user.id,
+      employee_id: employee.id,
       email_account_id: emailAccount.id,
       to_address: to,
       subject: subject,
-      body: htmlBody,
+      body: storedHtmlBody,
       message_id: info.messageId,
       sent_at: new Date().toISOString(),
     });

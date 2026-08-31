@@ -102,6 +102,7 @@ interface Contact {
   email: string | null;
   phone: string | null;
   mobile: string | null;
+  alternative_contact_name: string | null;
   business_phone: string | null;
   position: string | null;
   nip: string | null;
@@ -589,8 +590,15 @@ export default function OrganizationDetailPage() {
     try {
       setSaving(true);
       const { full_name, ...dataToUpdate } = editedContactData;
+      if (contact.contact_type === 'individual') {
+        dataToUpdate.nip = null;
+        dataToUpdate.position = null;
+        dataToUpdate.business_phone = null;
+      } else {
+        delete dataToUpdate.alternative_contact_name;
+      }
 
-      const { error } = await supabase
+      let { error } = await supabase
         .from('contacts')
         .update({
           ...dataToUpdate,
@@ -598,9 +606,32 @@ export default function OrganizationDetailPage() {
         })
         .eq('id', contact.id);
 
+      let skippedAlternativeContactName = false;
+      if (
+        error?.code === 'PGRST204' &&
+        error.message?.includes('alternative_contact_name')
+      ) {
+        delete dataToUpdate.alternative_contact_name;
+        const retryResult = await supabase
+          .from('contacts')
+          .update({
+            ...dataToUpdate,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', contact.id);
+
+        error = retryResult.error;
+        skippedAlternativeContactName = true;
+      }
+
       if (error) throw error;
 
-      showSnackbar('Dane kontaktu zaktualizowane', 'success');
+      showSnackbar(
+        skippedAlternativeContactName
+          ? 'Dane zapisano bez opisu kontaktu alternatywnego — baza wymaga aktualizacji'
+          : 'Dane kontaktu zaktualizowane',
+        skippedAlternativeContactName ? 'warning' : 'success',
+      );
       setEditMode(false);
       fetchData();
     } catch (error: any) {
@@ -1022,6 +1053,7 @@ export default function OrganizationDetailPage() {
   // Renderowanie dla kontaktu/osoby prywatnej
   if (entityType === 'contact' && contact) {
     const Icon = contact.contact_type === 'individual' ? UserCircle : User;
+    const isIndividual = contact.contact_type === 'individual';
     return (
       <div className="min-h-screen bg-[#0f1119] p-6">
         <div className="mx-auto max-w-7xl">
@@ -1047,7 +1079,9 @@ export default function OrganizationDetailPage() {
                     {contact.contact_type === 'individual' ? 'Osoba prywatna' : 'Kontakt'}
                   </span>
                 </div>
-                {contact.position && <p className="mt-1 text-gray-400">{contact.position}</p>}
+                {!isIndividual && contact.position && (
+                  <p className="mt-1 text-gray-400">{contact.position}</p>
+                )}
               </div>
             </div>
 
@@ -1060,7 +1094,9 @@ export default function OrganizationDetailPage() {
                         label: 'Zadzwoń',
                         icon: <Phone className="h-4 w-4" />,
                         onClick: () => {
-                          const phone = contact.mobile || contact.phone;
+                          const phone = isIndividual
+                            ? contact.phone || contact.mobile
+                            : contact.mobile || contact.phone;
                           if (phone) window.location.href = `tel:${phone}`;
                         },
                         disabled: !contact.mobile && !contact.phone,
@@ -1216,7 +1252,7 @@ export default function OrganizationDetailPage() {
                   <p className="text-white">{contact.email || '-'}</p>
                 )}
               </div>
-              <div>
+              {!isIndividual && <div>
                 <label className="mb-2 block text-sm text-gray-400">Stanowisko</label>
                 {editMode ? (
                   <input
@@ -1230,10 +1266,12 @@ export default function OrganizationDetailPage() {
                 ) : (
                   <p className="text-white">{contact.position || '-'}</p>
                 )}
-              </div>
+              </div>}
 
               <div>
-                <label className="mb-2 block text-sm text-gray-400">Telefon prywatny</label>
+                <label className="mb-2 block text-sm text-gray-400">
+                  {isIndividual ? 'Telefon główny' : 'Telefon prywatny'}
+                </label>
                 {editMode ? (
                   <input
                     type="tel"
@@ -1249,6 +1287,44 @@ export default function OrganizationDetailPage() {
               </div>
 
               <div>
+                <label className="mb-2 block text-sm text-gray-400">
+                  {isIndividual ? 'Numer alternatywny' : 'Telefon komórkowy'}
+                </label>
+                {editMode ? (
+                  <input
+                    type="tel"
+                    value={editedContactData.mobile || ''}
+                    onChange={(e) =>
+                      setEditedContactData({ ...editedContactData, mobile: e.target.value })
+                    }
+                    className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-3 py-2 text-white"
+                  />
+                ) : (
+                  <p className="text-white">{contact.mobile || '-'}</p>
+                )}
+              </div>
+
+              {isIndividual && <div>
+                <label className="mb-2 block text-sm text-gray-400">Osoba alternatywna</label>
+                {editMode ? (
+                  <input
+                    type="text"
+                    value={editedContactData.alternative_contact_name || ''}
+                    onChange={(e) =>
+                      setEditedContactData({
+                        ...editedContactData,
+                        alternative_contact_name: e.target.value,
+                      })
+                    }
+                    placeholder="np. Anna Kowalska — mama"
+                    className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-3 py-2 text-white"
+                  />
+                ) : (
+                  <p className="text-white">{contact.alternative_contact_name || '-'}</p>
+                )}
+              </div>}
+
+              {!isIndividual && <div>
                 <label className="mb-2 block text-sm text-gray-400">Telefon firmowy</label>
                 {editMode ? (
                   <input
@@ -1262,7 +1338,7 @@ export default function OrganizationDetailPage() {
                 ) : (
                   <p className="text-white">{contact.business_phone || '-'}</p>
                 )}
-              </div>
+              </div>}
 
               <div>
                 <label className="mb-2 block text-sm text-gray-400">Miasto</label>
@@ -1312,7 +1388,7 @@ export default function OrganizationDetailPage() {
                 )}
               </div>
 
-              <div>
+              {!isIndividual && <div>
                 <label className="mb-2 block text-sm text-gray-400">NIP</label>
                 {editMode ? (
                   <input
@@ -1327,9 +1403,9 @@ export default function OrganizationDetailPage() {
                 ) : (
                   <p className="text-white">{contact.nip || '-'}</p>
                 )}
-              </div>
+              </div>}
 
-              <div>
+              {isIndividual && <div>
                 <label className="mb-2 block text-sm text-gray-400">PESEL</label>
                 {editMode ? (
                   <input
@@ -1343,9 +1419,9 @@ export default function OrganizationDetailPage() {
                 ) : (
                   <p className="text-white">{contact.pesel || '-'}</p>
                 )}
-              </div>
+              </div>}
 
-              <div>
+              {isIndividual && <div>
                 <label className="mb-2 block text-sm text-gray-400">Numer dowodu</label>
                 {editMode ? (
                   <input
@@ -1359,9 +1435,9 @@ export default function OrganizationDetailPage() {
                 ) : (
                   <p className="text-white">{contact.id_number || '-'}</p>
                 )}
-              </div>
+              </div>}
 
-              <div>
+              {isIndividual && <div>
                 <label className="mb-2 block text-sm text-gray-400">Rodzaj uroczystości</label>
                 {editMode ? (
                   <select
@@ -1376,15 +1452,16 @@ export default function OrganizationDetailPage() {
                     <option value="urodziny">Urodziny</option>
                     <option value="rocznica">Rocznica</option>
                     <option value="impreza firmowa">Impreza firmowa</option>
+                    <option value="dodatki">Dodatki</option>
                     <option value="inne">Inne</option>
                   </select>
                 ) : (
                   <p className="capitalize text-white">{contact.event_type || '-'}</p>
                 )}
-              </div>
+              </div>}
             </div>
 
-            <div className="mt-6 border-t border-gray-700 pt-6">
+            {isIndividual && <div className="mt-6 border-t border-gray-700 pt-6">
               <label className="mb-2 block text-sm text-gray-400">Szczegóły uroczystości</label>
               {editMode ? (
                 <textarea
@@ -1398,7 +1475,7 @@ export default function OrganizationDetailPage() {
               ) : (
                 <p className="text-white">{contact.event_details || '-'}</p>
               )}
-            </div>
+            </div>}
 
             <div className="mt-6 border-t border-gray-700 pt-6">
               <label className="mb-2 block text-sm text-gray-400">Notatki</label>

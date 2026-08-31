@@ -9,7 +9,8 @@ import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import {
   DEFAULT_EMAIL_BODY_TEMPLATE,
   EMAIL_BODY_PLACEHOLDERS,
-  renderEmailBodyTemplate,
+  getMissingRequiredEmailPlaceholders,
+  renderSafeEmailBodyTemplate,
   EmailBodyPlaceholderValues,
 } from '@/lib/emailBodyTemplate';
 import {
@@ -39,6 +40,11 @@ interface MyCompanyOption {
   email: string | null;
   phone: string | null;
   website: string | null;
+  facebook_url: string | null;
+  instagram_url: string | null;
+  linkedin_url: string | null;
+  tiktok_url: string | null;
+  youtube_url: string | null;
   street: string;
   building_number: string;
   apartment_number: string | null;
@@ -234,6 +240,11 @@ export default function EmailTemplateSettingsPage() {
       company_phone: selectedCompany?.phone ?? '',
       company_email: selectedCompany?.email ?? '',
       company_website: selectedCompany?.website ?? '',
+      company_facebook_url: selectedCompany?.facebook_url ?? '',
+      company_instagram_url: selectedCompany?.instagram_url ?? '',
+      company_linkedin_url: selectedCompany?.linkedin_url ?? '',
+      company_tiktok_url: selectedCompany?.tiktok_url ?? '',
+      company_youtube_url: selectedCompany?.youtube_url ?? '',
       brand_primary_color: colorByRole('primary'),
       brand_secondary_color: colorByRole('secondary'),
       brand_accent_color: colorByRole('accent'),
@@ -323,6 +334,18 @@ export default function EmailTemplateSettingsPage() {
 
   const handleSaveEditor = async () => {
     if (!editingId) return;
+    const missingPlaceholders = getMissingRequiredEmailPlaceholders(editorHtml, {
+      requireSignature: true,
+    });
+    if (missingPlaceholders.length > 0) {
+      showSnackbar(
+        `Szablon musi zawierać ${missingPlaceholders
+          .map((key) => `{{${key}}}`)
+          .join(' oraz ')} — inaczej wiadomość straci treść lub stopkę.`,
+        'error',
+      );
+      return;
+    }
     setSaving(true);
     const { error } = await supabase
       .from('email_body_templates')
@@ -662,13 +685,13 @@ export default function EmailTemplateSettingsPage() {
               </div>
               {showHtml ? (
                 <pre className="max-h-[600px] overflow-auto rounded-lg bg-[#0f1119] p-3 text-[10px] text-[#e5e4e2]/70">
-                  {renderEmailBodyTemplate(editorHtml, previewValues)}
+                  {renderSafeEmailBodyTemplate(editorHtml, previewValues)}
                 </pre>
               ) : (
                 <div
                   className="overflow-auto rounded-lg bg-white p-6"
                   dangerouslySetInnerHTML={{
-                    __html: renderEmailBodyTemplate(editorHtml, previewValues),
+                    __html: renderSafeEmailBodyTemplate(editorHtml, previewValues),
                   }}
                 />
               )}

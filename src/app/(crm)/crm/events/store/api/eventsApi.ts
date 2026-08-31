@@ -1,5 +1,6 @@
 import { createApi, fakeBaseQuery } from '@reduxjs/toolkit/query/react';
 import { supabase } from '@/lib/supabase/browser';
+import { deleteEventSafely } from '@/lib/CRM/events/deleteEventSafely';
 
 import { IEvent } from '../../type';
 
@@ -213,13 +214,7 @@ export const eventsApi = createApi({
     deleteEvent: builder.mutation<void, string>({
       async queryFn(id) {
         try {
-          const { error } = await supabase.from('events').delete().eq('id', id);
-
-          if (error) {
-            return {
-              error: { status: 'CUSTOM_ERROR', error: error.message } as unknown as EventsApiError,
-            };
-          }
+          await deleteEventSafely(id);
 
           return { data: undefined };
         } catch (error: any) {

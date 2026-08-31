@@ -1,11 +1,17 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, Send, Mail, Loader, Eye, Code } from 'lucide-react';
+import { X, Send, Mail, Loader } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
-import { generateEmailSignature } from './EmailSignatureGenerator';
-import { buildCompanySignatureHtml, buildCompanyEmailBody } from '@/lib/buildCompanySignature';
+import UnifiedEmailComposer, {
+  buildUnifiedEmailHtml,
+  hasUnifiedEmailBody,
+  loadUnifiedEmailAccounts,
+  plainTextToEmailHtml,
+  type UnifiedEmailAccount,
+  type UnifiedEmailDraft,
+} from './UnifiedEmailComposer';
 
 interface SendCalculationEmailModalProps {
   calculationId: string;
@@ -23,11 +29,6 @@ interface SendCalculationEmailModalProps {
   onSent?: () => void;
 }
 
-interface EmailAccount {
-  id: string;
-  email_address: string;
-  from_name: string;
-}
 interface EventAttachment {
   id: string;
   name: string;
@@ -53,11 +54,11 @@ export default function SendCalculationEmailModal({
   const { showSnackbar } = useSnackbar();
   const [loading, setLoading] = useState(false);
   const [loadingAccounts, setLoadingAccounts] = useState(true);
-  const [emailAccounts, setEmailAccounts] = useState<EmailAccount[]>([]);
+  const [emailAccounts, setEmailAccounts] = useState<UnifiedEmailAccount[]>([]);
   const [eventFiles, setEventFiles] = useState<EventAttachment[]>([]);
   const [selectedFileIds, setSelectedFileIds] = useState<string[]>([]);
   const [loadingFiles, setLoadingFiles] = useState(false);
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<UnifiedEmailDraft>({
     to: defaultEmail,
     cc: '',
     bcc: '',
@@ -66,21 +67,16 @@ export default function SendCalculationEmailModal({
       : eventName
         ? `Kalkulacja - ${eventName}`
         : 'Kalkulacja wydarzenia',
-    message: `Dzień dobry,
-  
-  W załączeniu przesyłam kalkulację wydarzenia.
-  
-  Proszę o zapoznanie się z treścią. W razie pytań lub uwag pozostaję do dyspozycji.`,
+    messageHtml: plainTextToEmailHtml(`Dzień dobry,
+
+W załączeniu przesyłam kalkulację wydarzenia.
+
+Proszę o zapoznanie się z treścią. W razie pytań lub uwag pozostaję do dyspozycji.`),
     fromAccountId: '',
   });
-  const [signature, setSignature] = useState<any>(null);
-  const [template, setTemplate] = useState<any>(null);
-  const [employee, setEmployee] = useState<any>(null);
-  const [avatarDataUri, setAvatarDataUri] = useState<string>('');
-  const [companySignatureHtml, setCompanySignatureHtml] = useState<string>('');
-  const [companySignatureEnabled, setCompanySignatureEnabled] = useState<boolean>(false);
   const [showPreview, setShowPreview] = useState(false);
   const [previewHtml, setPreviewHtml] = useState('');
+  const [previewLoading, setPreviewLoading] = useState(false);
   const [includeEventFiles, setIncludeEventFiles] = useState(false);
 
   useEffect(() => {
@@ -92,42 +88,9 @@ export default function SendCalculationEmailModal({
   useEffect(() => {
     generatePreview();
   }, [
-    formData.message,
-    formData.subject,
+    formData,
     recipientName,
-    signature,
-    template,
-    avatarDataUri,
-    companySignatureHtml,
-    companySignatureEnabled,
   ]);
-
-  const fetchSignatureAndTemplate = async () => {
-    try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const [empResult, sigResult, templateResult] = await Promise.all([
-        supabase.from('employees').select('*').eq('id', user.id).maybeSingle(),
-        supabase.from('employee_signatures').select('*').eq('employee_id', user.id).maybeSingle(),
-        supabase.from('email_templates').select('*').eq('is_default', true).maybeSingle(),
-      ]);
-
-      setEmployee(empResult.data);
-      setSignature(sigResult.data);
-      setTemplate(templateResult.data);
-
-      const rawAvatarUrl = empResult.data?.signature_thumb || empResult.data?.avatar_url || '';
-      if (rawAvatarUrl) {
-        const dataUri = await fetchAvatarAsDataUri(rawAvatarUrl);
-        if (dataUri) setAvatarDataUri(dataUri);
-      }
-    } catch (error) {
-      console.error('Error fetching signature/template:', error);
-    }
-  };
 
   const fetchEventFiles = async () => {
     if (!eventId) {
@@ -176,71 +139,17 @@ export default function SendCalculationEmailModal({
     }
   };
 
-  const fetchAvatarAsDataUri = async (url: string): Promise<string> => {
-    try {
-      const resp = await fetch(url);
-      if (!resp.ok) return '';
-      const blob = await resp.blob();
-      const buffer = await blob.arrayBuffer();
-      const base64 = btoa(
-        new Uint8Array(buffer).reduce((data, byte) => data + String.fromCharCode(byte), ''),
-      );
-      const mime = blob.type || 'image/jpeg';
-      return `data:${mime};base64,${base64}`;
-    } catch (err) {
-      console.error('Error fetching avatar:', err);
-      return '';
-    }
-  };
-
-  const generateSignatureHtml = () => {
-    if (companySignatureEnabled && companySignatureHtml) return companySignatureHtml;
-    if (!signature && !employee) return '';
-
-    const sig = signature || {
-      full_name: employee ? employee.nickname || `${employee.name} ${employee.surname}` : '',
-      position: employee?.occupation || '',
-      phone: employee?.phone_number || '',
-      email: employee?.email || '',
-      website: 'https://mavinci.pl',
-    };
-
-    const employeeAvatar = employee?.signature_thumb || employee?.avatar_url || '';
-    const finalAvatar = avatarDataUri || employeeAvatar;
-
-    if (signature && signature.use_custom_html && signature.custom_html) {
-      let html = signature.custom_html;
-      if (finalAvatar) {
-        if (signature.avatar_url) {
-          html = html.split(signature.avatar_url).join(finalAvatar);
-        }
-        if (employee?.avatar_url && employee.avatar_url !== signature.avatar_url) {
-          html = html.split(employee.avatar_url).join(finalAvatar);
-        }
-        html = html.replace(
-          /(<img[^>]*src=["'])([^"']*\/employee-avatars\/[^"']*)(["'])/gi,
-          `$1${finalAvatar}$3`,
-        );
-      }
-      return html;
-    }
-
-    return generateEmailSignature({
-      ...sig,
-      avatar_url: finalAvatar,
-    });
-  };
-
   const generatePreview = async () => {
-    const signatureHtml = generateSignatureHtml();
-    const result = await buildCompanyEmailBody({
-      content: formData.message,
-      subject: formData.subject,
-      recipientName,
-      signatureHtml,
+    setPreviewLoading(true);
+    try {
+      setPreviewHtml(await buildUnifiedEmailHtml({
+      draft: formData,
       purpose: 'offer',
-    });
-    setPreviewHtml(result.html);
+      recipientName,
+      }));
+    } finally {
+      setPreviewLoading(false);
+    }
   };
 
   const fetchStoredCalculationPDF = async (): Promise<{
@@ -293,27 +202,10 @@ export default function SendCalculationEmailModal({
   const fetchEmailAccounts = async () => {
     try {
       setLoadingAccounts(true);
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const accounts = await loadUnifiedEmailAccounts();
+      setEmailAccounts(accounts);
 
-      if (!user) {
-        showSnackbar('Brak zalogowanego użytkownika', 'error');
-        return;
-      }
-
-      const { data: accounts, error } = await supabase
-        .from('employee_email_accounts')
-        .select('id, email_address, from_name')
-        .eq('employee_id', user.id)
-        .eq('is_active', true)
-        .order('is_default', { ascending: false });
-
-      if (error) throw error;
-
-      setEmailAccounts(accounts || []);
-
-      if (accounts && accounts.length > 0) {
+      if (accounts.length > 0) {
         setFormData((prev) => ({ ...prev, fromAccountId: accounts[0].id }));
       }
     } catch (error: any) {
@@ -364,6 +256,11 @@ export default function SendCalculationEmailModal({
 
     if (!formData.subject.trim()) {
       showSnackbar('Wprowadź temat wiadomości', 'error');
+      return;
+    }
+
+    if (!hasUnifiedEmailBody(formData.messageHtml)) {
+      showSnackbar('Wprowadź treść wiadomości', 'error');
       return;
     }
 
@@ -422,6 +319,12 @@ export default function SendCalculationEmailModal({
       }
 
       showSnackbar('Załączniki gotowe, wysyłam email...', 'info');
+      const currentPreviewHtml = await buildUnifiedEmailHtml({
+        draft: formData,
+        purpose: 'offer',
+        recipientName,
+      });
+      setPreviewHtml(currentPreviewHtml);
 
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-email`,
@@ -435,7 +338,7 @@ export default function SendCalculationEmailModal({
             emailAccountId: formData.fromAccountId,
             to: formData.to.trim(),
             subject: formData.subject.trim(),
-            body: previewHtml,
+            body: currentPreviewHtml,
             attachments,
             cc: formData.cc.trim(),
             bcc: formData.bcc.trim(),
@@ -471,12 +374,6 @@ export default function SendCalculationEmailModal({
 
   useEffect(() => {
     fetchEmailAccounts();
-    fetchSignatureAndTemplate();
-
-    buildCompanySignatureHtml().then((res) => {
-      setCompanySignatureHtml(res.html);
-      setCompanySignatureEnabled(res.enabled);
-    });
   }, []);
 
   return (
@@ -489,13 +386,6 @@ export default function SendCalculationEmailModal({
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setShowPreview(!showPreview)}
-              className="flex items-center gap-2 rounded-lg bg-[#0f1119] px-3 py-2 text-[#d3bb73] transition-colors hover:bg-[#1a1d2e]"
-            >
-              {showPreview ? <Code className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              {showPreview ? 'Edycja' : 'Podgląd'}
-            </button>
-            <button
               onClick={onClose}
               disabled={loading}
               className="rounded-lg p-2 text-[#e5e4e2]/60 transition-colors hover:bg-[#d3bb73]/10 hover:text-[#e5e4e2]"
@@ -506,127 +396,22 @@ export default function SendCalculationEmailModal({
         </div>
 
         <div className="space-y-4 p-6">
-          {showPreview ? (
-            <div>
-              <div className="mb-4 rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] p-4">
-                <p className="text-sm text-[#e5e4e2]/70">
-                  <strong>Podgląd:</strong> Tak będzie wyglądać Twoja wiadomość u odbiorcy
-                </p>
-              </div>
-              <div className="rounded-lg bg-white p-4 text-[#1c1f33] [color-scheme:light]">
-                <div dangerouslySetInnerHTML={{ __html: previewHtml }} />
-              </div>
-            </div>
-          ) : loadingAccounts ? (
-            <div className="py-8 text-center text-[#e5e4e2]/60">Ładowanie kont email...</div>
-          ) : emailAccounts.length === 0 ? (
-            <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-4">
-              <p className="text-sm text-red-400">
-                <strong>Brak skonfigurowanych kont email.</strong>
-                <br />
-                Skonfiguruj konto pocztowe w ustawieniach profilu, aby móc wysyłać wiadomości.
-              </p>
-            </div>
-          ) : (
-            <>
-              {emailAccounts.length > 1 && (
-                <div>
-                  <label className="mb-2 block text-sm text-[#e5e4e2]/60">
-                    Wyślij z konta <span className="text-red-400">*</span>
-                  </label>
-                  <select
-                    value={formData.fromAccountId}
-                    onChange={(e) => setFormData({ ...formData, fromAccountId: e.target.value })}
-                    disabled={loading}
-                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none disabled:opacity-50"
-                  >
-                    {emailAccounts.map((account) => (
-                      <option key={account.id} value={account.id}>
-                        {account.from_name} ({account.email_address})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              {emailAccounts.length === 1 && (
-                <div className="rounded-lg border border-blue-500/20 bg-blue-500/10 p-3">
-                  <p className="text-sm text-blue-400">
-                    <strong>Wysyła z konta:</strong> {emailAccounts[0].from_name} (
-                    {emailAccounts[0].email_address})
-                  </p>
-                </div>
-              )}
-
-              <div>
-                <label className="mb-2 block text-sm text-[#e5e4e2]/60">
-                  Do (email odbiorcy) <span className="text-red-400">*</span>
-                  {contactPerson && contactPerson.email ? (
-                    <span className="ml-3 mt-1 text-xs text-[#e5e4e2]/40">
-                      Kontakt główny: {contactPerson.name} ({contactPerson.email})
-                    </span>
-                  ) : null}
-                </label>
-                <input
-                  type="email"
-                  value={formData.to}
-                  onChange={(e) => setFormData({ ...formData, to: e.target.value })}
-                  disabled={loading}
-                  placeholder="klient@example.com"
-                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none disabled:opacity-50"
-                />
-              </div>
-              <div>
-                <label className="mb-2 block text-sm text-[#e5e4e2]/60">DW / CC</label>
-                <input
-                  type="text"
-                  value={formData.cc}
-                  onChange={(e) => setFormData({ ...formData, cc: e.target.value })}
-                  disabled={loading}
-                  placeholder="adres1@email.pl, adres2@email.pl"
-                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none disabled:opacity-50"
-                />
-              </div>
-
-              <div>
-                <label className="mb-2 block text-sm text-[#e5e4e2]/60">UDW / BCC</label>
-                <input
-                  type="text"
-                  value={formData.bcc}
-                  onChange={(e) => setFormData({ ...formData, bcc: e.target.value })}
-                  disabled={loading}
-                  placeholder="ukryty1@email.pl, ukryty2@email.pl"
-                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none disabled:opacity-50"
-                />
-              </div>
-
-              <div>
-                <label className="mb-2 block text-sm text-[#e5e4e2]/60">
-                  Temat <span className="text-red-400">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={formData.subject}
-                  onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
-                  disabled={loading}
-                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none disabled:opacity-50"
-                />
-              </div>
-
-              <div>
-                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Treść wiadomości</label>
-                <textarea
-                  value={formData.message}
-                  onChange={(e) => setFormData({ ...formData, message: e.target.value })}
-                  disabled={loading}
-                  rows={10}
-                  placeholder="Wpisz treść wiadomości..."
-                  className="w-full resize-none rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none disabled:opacity-50"
-                />
-                <p className="mt-2 text-xs text-[#e5e4e2]/50">
-                  Stopka zostanie dodana automatycznie
-                </p>
-              </div>
+          <UnifiedEmailComposer
+            draft={formData}
+            onChange={setFormData}
+            accounts={emailAccounts}
+            accountsLoading={loadingAccounts}
+            disabled={loading}
+            showPreview={showPreview}
+            onShowPreviewChange={setShowPreview}
+            previewHtml={previewHtml}
+            previewLoading={previewLoading}
+            recipientHint={contactPerson?.email ? (
+              <span>
+                Kontakt główny: {contactPerson.name} ({contactPerson.email})
+              </span>
+            ) : null}
+          >
               {eventId && <div className="rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] p-4">
                 <label className="flex cursor-pointer items-start gap-3">
                   <input
@@ -729,8 +514,7 @@ export default function SendCalculationEmailModal({
                   wiadomości. Upewnij się, że wcześniej wygenerowałeś aktualny PDF.
                 </p>
               </div>
-            </>
-          )}
+          </UnifiedEmailComposer>
         </div>
 
         <div className="flex items-center justify-end gap-3 border-t border-[#d3bb73]/20 p-6">

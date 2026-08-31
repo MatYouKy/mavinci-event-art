@@ -57,7 +57,9 @@ export default function DayView({
                 return (
                   <div
                     key={event.id}
-                    className="absolute left-2 right-2 z-10 cursor-pointer rounded border p-3 transition-opacity hover:opacity-90"
+                    className={`absolute left-2 right-2 z-10 cursor-pointer rounded border p-3 transition-opacity hover:opacity-90 ${
+                      event.is_inquiry ? 'border-dashed' : ''
+                    }`}
                     style={{
                       top: `${top}px`,
                       minHeight: `${Math.max(height, 60)}px`,
@@ -120,12 +122,12 @@ export default function DayView({
       <div className="space-y-4">
         <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-4">
           <h3 className="mb-4 text-lg font-light text-[#e5e4e2]">
-            Wydarzenia dnia ({dayEvents.length})
+            Plan dnia ({dayEvents.length})
           </h3>
 
           {dayEvents.length === 0 ? (
             <div className="py-8 text-center text-[#e5e4e2]/40">
-              <p className="text-sm">Brak wydarzeń tego dnia</p>
+              <p className="text-sm">Brak wydarzeń i potencjalnych zapytań tego dnia</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -137,7 +139,11 @@ export default function DayView({
                 return (
                   <div
                     key={event.id}
-                    className="cursor-pointer rounded-lg bg-[#0f1119] p-3 transition-colors hover:bg-[#0f1119]/50"
+                    className={`cursor-pointer rounded-lg border bg-[#0f1119] p-3 transition-colors hover:bg-[#0f1119]/50 ${
+                      event.is_inquiry
+                        ? 'border-dashed border-amber-400/40'
+                        : 'border-transparent'
+                    }`}
                     onClick={() => onEventClick(event)}
                   >
                     <div className="mb-2 flex items-start justify-between gap-2">

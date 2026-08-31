@@ -2,9 +2,15 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/lib/supabase/browser';
-import { X, Send, Eye, Code, RefreshCw, Paperclip, Trash2, Sparkles } from 'lucide-react';
+import { X, Send, RefreshCw, Paperclip, Trash2, Sparkles } from 'lucide-react';
 import { generateEmailSignature } from './EmailSignatureGenerator';
 import { buildCompanyEmailBody, buildCompanySignatureHtml } from '@/lib/buildCompanySignature';
+import UnifiedEmailComposer, {
+  buildUnifiedEmailHtml,
+  hasUnifiedEmailBody,
+  plainTextToEmailHtml,
+  type UnifiedEmailDraft,
+} from './UnifiedEmailComposer';
 
 interface ComposeEmailModalProps {
   isOpen: boolean;
@@ -34,6 +40,8 @@ interface ComposeEmailModalProps {
 
 export interface EmailReplyContext {
   from: string;
+  to?: string | string[] | null;
+  cc?: string | string[] | null;
   date: string;
   subject: string;
   body: string;
@@ -132,12 +140,28 @@ export default function ComposeEmailModal({
       ? selectedAccountId
       : '';
   const effectiveAccountId = fromAccountId || selectedReplyAccountId || null;
+  const composerDraft: UnifiedEmailDraft = {
+    fromAccountId: effectiveAccountId || '',
+    to,
+    cc,
+    bcc,
+    subject,
+    messageHtml: body,
+  };
+  const updateComposerDraft = (next: UnifiedEmailDraft) => {
+    setFromAccountId(next.fromAccountId);
+    setTo(next.to);
+    setCc(next.cc);
+    setBcc(next.bcc);
+    setSubject(next.subject);
+    setBody(next.messageHtml);
+  };
 
   useEffect(() => {
     if (isOpen) {
       setTo(initialTo);
       setSubject(initialSubject);
-      setBody(initialBody || forwardedBody || '');
+      setBody(plainTextToEmailHtml(initialBody || forwardedBody || ''));
       setCc('');
       setBcc('');
       setAttachments([]);
@@ -246,18 +270,18 @@ export default function ComposeEmailModal({
   };
 
   const buildCurrentMessageHtml = async () => {
-    const signatureHtml = companySignatureEnabled
-      ? companySignatureHtml
-      : generateSignatureHtml();
-    const result = await buildCompanyEmailBody({
-      content: escapeHtml(body),
-      subject,
-      signatureHtml,
+    return buildUnifiedEmailHtml({
+      draft: {
+        fromAccountId: effectiveAccountId || '',
+        to,
+        cc,
+        bcc,
+        subject,
+        messageHtml: body,
+      },
       purpose: 'general',
-      emailAccountId:
-        effectiveAccountId,
+      quotedHtml: replyQuoteHtml,
     });
-    return `${result.html}${replyQuoteHtml}`;
   };
 
   const generatePreview = async () => {
@@ -283,7 +307,7 @@ export default function ComposeEmailModal({
   };
 
   const handleSend = async () => {
-    if (!to || !subject || !body) {
+    if (!to || !subject || !hasUnifiedEmailBody(body)) {
       alert('Wypełnij wszystkie pola');
       return;
     }
@@ -305,7 +329,9 @@ export default function ComposeEmailModal({
       await onSend({
         to,
         subject,
-        body,
+        body: typeof window === 'undefined'
+          ? body.replace(/<[^>]*>/g, ' ').trim()
+          : new DOMParser().parseFromString(body, 'text/html').body.textContent?.trim() || '',
         bodyHtml: finalHtml,
         attachments,
         fromAccountId: effectiveAccountId || undefined,
@@ -328,8 +354,13 @@ export default function ComposeEmailModal({
     if (!onImproveWithAI) return;
     setImprovingWithAI(true);
     try {
-      const improved = await onImproveWithAI({ subject, body });
-      setBody(improved.body);
+      const improved = await onImproveWithAI({
+        subject,
+        body: typeof window === 'undefined'
+          ? body.replace(/<[^>]*>/g, ' ').trim()
+          : new DOMParser().parseFromString(body, 'text/html').body.textContent?.trim() || '',
+      });
+      setBody(plainTextToEmailHtml(improved.body));
       if (improved.subject) setSubject(improved.subject);
     } catch (error: any) {
       console.error('Error improving email with AI:', error);
@@ -349,13 +380,6 @@ export default function ComposeEmailModal({
             {replyContext ? 'Odpowiedź' : forwardedBody ? 'Przekaż wiadomość' : 'Nowa wiadomość'}
           </h2>
           <div className="flex items-center gap-4">
-            <button
-              onClick={() => setShowPreview(!showPreview)}
-              className="flex items-center gap-2 rounded-lg bg-[#0f1119] px-4 py-2 text-[#d3bb73] transition-colors hover:bg-[#1a1d2e]"
-            >
-              {showPreview ? <Code className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-              {showPreview ? 'Edycja' : 'Podgląd'}
-            </button>
             <button onClick={onClose} className="text-[#e5e4e2]/60 hover:text-white">
               <X className="h-6 w-6" />
             </button>
@@ -363,7 +387,70 @@ export default function ComposeEmailModal({
         </div>
 
         <div className="flex-1 overflow-y-auto p-6">
-          {!showPreview ? (
+          <UnifiedEmailComposer
+            draft={composerDraft}
+            onChange={updateComposerDraft}
+            accounts={selectableEmailAccounts}
+            disabled={sending}
+            showPreview={showPreview}
+            onShowPreviewChange={setShowPreview}
+            previewHtml={previewHtml}
+            previewLoading={loadingSignature}
+            replyContext={replyContext ? {
+              from: replyContext.from,
+              to: replyContext.to,
+              cc: replyContext.cc,
+            } : undefined}
+            editorAction={onImproveWithAI ? (
+              <button
+                type="button"
+                onClick={() => void handleImproveWithAI()}
+                disabled={improvingWithAI || sending}
+                className="inline-flex items-center gap-2 rounded-lg border border-violet-400/25 bg-violet-400/10 px-3 py-1.5 text-xs text-violet-200 transition-colors hover:bg-violet-400/15 disabled:opacity-50"
+              >
+                {improvingWithAI ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                {improvingWithAI ? 'Redaguję…' : 'Popraw z AI'}
+              </button>
+            ) : null}
+            afterEditor={replyContext ? (
+              <details className="mt-3 overflow-hidden rounded-lg border border-[#d3bb73]/15 bg-[#0f1119]">
+                <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-[#e5e4e2]/60 hover:text-[#e5e4e2]">
+                  Cytowana wiadomość — zostanie dołączona pod odpowiedzią i stopką
+                </summary>
+                <div className="max-h-64 overflow-y-auto border-t border-[#d3bb73]/10 bg-white p-3">
+                  <div className="break-words text-sm text-[#1c1f33]" dangerouslySetInnerHTML={{ __html: replyQuoteHtml }} />
+                </div>
+              </details>
+            ) : null}
+          >
+            <div>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/70">Załączniki</label>
+              <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-3 text-[#d3bb73] transition-colors hover:bg-[#1a1d2e]">
+                <Paperclip className="h-5 w-5" />
+                <span>Dodaj załącznik</span>
+                <input type="file" onChange={handleFileSelect} multiple className="hidden" />
+              </label>
+              {attachments.length > 0 && (
+                <div className="mt-2 space-y-2">
+                  {attachments.map((file, index) => (
+                    <div key={`${file.name}-${index}`} className="flex items-center justify-between rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <Paperclip className="h-4 w-4 flex-shrink-0 text-[#d3bb73]" />
+                        <div className="min-w-0">
+                          <p className="truncate text-sm text-white">{file.name}</p>
+                          <p className="text-xs text-[#e5e4e2]/50">{formatFileSize(file.size)}</p>
+                        </div>
+                      </div>
+                      <button type="button" onClick={() => removeAttachment(index)} className="p-2 text-red-400 hover:text-red-300">
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </UnifiedEmailComposer>
+          {false && (!showPreview ? (
             <div className="space-y-4">
               {selectableEmailAccounts.length > 0 && (
                 <div>
@@ -544,7 +631,7 @@ export default function ComposeEmailModal({
                 <div dangerouslySetInnerHTML={{ __html: previewHtml }} />
               </div>
             </div>
-          )}
+          ))}
         </div>
 
         <div className="flex justify-end gap-4 border-t border-[#d3bb73]/20 p-6">

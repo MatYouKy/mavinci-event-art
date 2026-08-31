@@ -36,6 +36,7 @@ import { IEmployee } from '../employees/type';
 import { hasScope } from './[id]/helpers/hasScope';
 import FullScreenLoader from '@/components/UI/Loader/CustomModalLoader';
 import { eventStatusLabels } from './[id]/components/tabs/EventsDetailsTab/EventDetailsAction';
+import { deleteEventSafely } from '@/lib/CRM/events/deleteEventSafely';
 
 const moveKey = (arr: EventsTableColKey[], from: EventsTableColKey, to: EventsTableColKey) => {
   const a = [...arr];
@@ -355,6 +356,7 @@ export default function EventsPageClient({
   const [showPastEvents, setShowPastEvents] = useState<boolean>(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [eventToDelete, setEventToDelete] = useState<any>(null);
+  const [deletingEvent, setDeletingEvent] = useState(false);
 
   const [statusModalOpen, setStatusModalOpen] = useState(false);
   const [eventToChangeStatus, setEventToChangeStatus] = useState<any>(null);
@@ -1073,20 +1075,11 @@ export default function EventsPageClient({
   };
 
   const handleDeleteConfirm = async () => {
-    if (!eventToDelete) return;
+    if (!eventToDelete || deletingEvent) return;
 
+    setDeletingEvent(true);
     try {
-      const { data, error, status, statusText } = await supabase
-        .from('events')
-        .delete()
-        .eq('id', eventToDelete.id)
-        .select('id, name');
-      if (error) throw error;
-
-      if (!data || data.length === 0) {
-        showSnackbar('Nie masz uprawnień do usunięcia tego eventu lub event nie istnieje', 'error');
-        return;
-      }
+      await deleteEventSafely(eventToDelete.id);
 
       showSnackbar('Event został usunięty', 'success');
       setDeleteModalOpen(false);
@@ -1095,6 +1088,8 @@ export default function EventsPageClient({
     } catch (err: any) {
       console.error('Error deleting event:', err);
       showSnackbar(err.message || 'Błąd podczas usuwania eventu', 'error');
+    } finally {
+      setDeletingEvent(false);
     }
   };
 
@@ -2748,15 +2743,18 @@ export default function EventsPageClient({
           <div className="flex items-center justify-end gap-3 border-t border-[#d3bb73]/20 pt-4">
             <button
               onClick={() => setDeleteModalOpen(false)}
+              disabled={deletingEvent}
               className="rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/5"
             >
               Anuluj
             </button>
             <button
               onClick={handleDeleteConfirm}
-              className="rounded-lg bg-red-500 px-4 py-2 text-white transition-colors hover:bg-red-600"
+              disabled={deletingEvent}
+              className="flex items-center gap-2 rounded-lg bg-red-500 px-4 py-2 text-white transition-colors hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Usuń event
+              {deletingEvent && <Loader2 className="h-4 w-4 animate-spin" />}
+              {deletingEvent ? 'Usuwanie…' : 'Usuń event'}
             </button>
           </div>
         </div>

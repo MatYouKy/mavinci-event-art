@@ -36,6 +36,13 @@ export interface IProduct {
   service_duration_hours?: number | null;
   extension_price_net_per_hour?: number | null;
   offer_description?: string | null;
+  offer_requirements?: string[] | null;
+  offer_additional_requirements?: Array<{
+    id: string;
+    category: 'accommodation' | 'backstage' | 'hospitality' | 'logistics' | 'other';
+    title: string;
+    description: string;
+  }> | null;
   pdf_thumbnail_url?: string | null;
   offer_image_path?: string | null;
   product_page_url?: string | null;

@@ -5,8 +5,15 @@ import { X, Send, Mail, Loader } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useUpdateEventOfferMutation } from '@/app/(crm)/crm/events/store/api/eventsApi';
-import { buildCompanySignatureHtml } from '@/lib/buildCompanySignature';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import UnifiedEmailComposer, {
+  buildUnifiedEmailContent,
+  buildUnifiedEmailHtml,
+  hasUnifiedEmailBody,
+  plainTextToEmailHtml,
+  unifiedEmailHtmlToPlainText,
+  type UnifiedEmailDraft,
+} from './UnifiedEmailComposer';
 
 type EmailAccount = {
   id: string;
@@ -41,16 +48,21 @@ export default function SendOfferEmailModal({
   const [loading, setLoading] = useState(false);
   const [loadingAccounts, setLoadingAccounts] = useState(true);
   const [emailAccounts, setEmailAccounts] = useState<EmailAccount[]>([]);
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<UnifiedEmailDraft>({
     fromAccountId: '',
     to: clientEmail,
+    cc: '',
+    bcc: '',
     subject: `Oferta ${offerNumber}`,
-    message: `Dzień dobry,
+    messageHtml: plainTextToEmailHtml(`Dzień dobry,
 
 W załączeniu przesyłam ofertę ${offerNumber}.
 
-W razie pytań proszę o kontakt.`,
+W razie pytań proszę o kontakt.`),
   });
+  const [showPreview, setShowPreview] = useState(false);
+  const [previewHtml, setPreviewHtml] = useState('');
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   useEffect(() => {
     if (clientEmail) {
@@ -138,6 +150,29 @@ W razie pytań proszę o kontakt.`,
     };
   }, [currentEmployee?.id, loadingEmployee, showSnackbar]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const refreshPreview = async () => {
+      setPreviewLoading(true);
+      try {
+        const html = await buildUnifiedEmailHtml({
+          draft: formData,
+          purpose: 'offer',
+          recipientName: clientName,
+        });
+        if (!cancelled) setPreviewHtml(html);
+      } catch (error) {
+        console.error('Error building offer email preview:', error);
+      } finally {
+        if (!cancelled) setPreviewLoading(false);
+      }
+    };
+    void refreshPreview();
+    return () => {
+      cancelled = true;
+    };
+  }, [formData, clientName]);
+
   const handleSend = async () => {
     if (!formData.to.trim()) {
       showSnackbar('Wprowadź adres email odbiorcy', 'error');
@@ -146,6 +181,11 @@ W razie pytań proszę o kontakt.`,
 
     if (!formData.subject.trim()) {
       showSnackbar('Wprowadź temat wiadomości', 'error');
+      return;
+    }
+
+    if (!hasUnifiedEmailBody(formData.messageHtml)) {
+      showSnackbar('Wprowadź treść wiadomości', 'error');
       return;
     }
 
@@ -166,6 +206,11 @@ W razie pytań proszę o kontakt.`,
         return;
       }
 
+      const currentEmail = await buildUnifiedEmailContent({
+        draft: formData,
+        purpose: 'offer',
+        recipientName: clientName,
+      });
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-offer-email`,
         {
@@ -178,9 +223,12 @@ W razie pytań proszę o kontakt.`,
             offerId,
             emailAccountId: formData.fromAccountId,
             to: formData.to,
+            cc: formData.cc,
+            bcc: formData.bcc,
             subject: formData.subject,
-            message: formData.message,
-            signatureHtml: (await buildCompanySignatureHtml()).html,
+            message: unifiedEmailHtmlToPlainText(formData.messageHtml),
+            messageHtml: currentEmail.html,
+            signatureHtml: currentEmail.signatureHtml,
             recipientName: clientName,
           }),
         },
@@ -232,7 +280,7 @@ W razie pytań proszę o kontakt.`,
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33]">
+      <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33]">
         <div className="flex items-center justify-between border-b border-[#d3bb73]/20 p-6">
           <div className="flex items-center gap-3">
             <Mail className="h-6 w-6 text-[#d3bb73]" />
@@ -248,80 +296,25 @@ W razie pytań proszę o kontakt.`,
         </div>
 
         <div className="space-y-4 p-6">
-          <div>
-            <label className="mb-2 block text-sm text-[#e5e4e2]/60">
-              Wyślij ze skrzynki pracownika <span className="text-red-400">*</span>
-            </label>
-            <select
-              value={formData.fromAccountId}
-              onChange={(event) => setFormData({ ...formData, fromAccountId: event.target.value })}
-              disabled={loading || loadingAccounts}
-              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none disabled:opacity-50"
-            >
-              <option value="">
-                {loadingAccounts ? 'Pobieranie dostępnych skrzynek…' : 'Wybierz skrzynkę'}
-              </option>
-              {emailAccounts.map((account) => (
-                <option key={account.id} value={account.id}>
-                  {account.from_name ? `${account.from_name} — ` : ''}{account.email_address}
-                  {account.account_type === 'shared' ? ' (wspólna)' : ''}
-                </option>
-              ))}
-            </select>
-            {!loadingAccounts && emailAccounts.length === 0 && (
-              <p className="mt-2 text-xs text-red-300">
-                Nie masz aktywnej skrzynki do wysyłki. Konto systemowe nie zostanie użyte zastępczo.
-              </p>
-            )}
-          </div>
-
-          <div>
-            <label className="mb-2 block text-sm text-[#e5e4e2]/60">
-              Do (email odbiorcy) <span className="text-red-400">*</span>
-            </label>
-            <input
-              type="email"
-              value={formData.to}
-              onChange={(e) => setFormData({ ...formData, to: e.target.value })}
-              disabled={loading}
-              placeholder="klient@example.com"
-              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none disabled:opacity-50"
-            />
-            {clientName && <p className="mt-1 text-xs text-[#e5e4e2]/40">Klient: {clientName}</p>}
-          </div>
-
-          <div>
-            <label className="mb-2 block text-sm text-[#e5e4e2]/60">
-              Temat <span className="text-red-400">*</span>
-            </label>
-            <input
-              type="text"
-              value={formData.subject}
-              onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
-              disabled={loading}
-              placeholder="Oferta..."
-              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none disabled:opacity-50"
-            />
-          </div>
-
-          <div>
-            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Treść wiadomości</label>
-            <textarea
-              value={formData.message}
-              onChange={(e) => setFormData({ ...formData, message: e.target.value })}
-              disabled={loading}
-              rows={8}
-              placeholder="Wpisz treść wiadomości..."
-              className="w-full resize-none rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none disabled:opacity-50"
-            />
-          </div>
-
+          <UnifiedEmailComposer
+            draft={formData}
+            onChange={setFormData}
+            accounts={emailAccounts}
+            accountsLoading={loadingAccounts || loadingEmployee}
+            disabled={loading}
+            showPreview={showPreview}
+            onShowPreviewChange={setShowPreview}
+            previewHtml={previewHtml}
+            previewLoading={previewLoading}
+            recipientHint={clientName ? <span>Klient: {clientName}</span> : null}
+          >
           <div className="rounded-lg border border-blue-500/20 bg-blue-500/10 p-4">
             <p className="text-sm text-blue-400">
               Oferta {offerNumber} zostanie ponownie wygenerowana i dołączona jako plik PDF.
               W treści pozostanie również link do pobrania ważny przez 7 dni.
             </p>
           </div>
+          </UnifiedEmailComposer>
         </div>
 
         <div className="flex items-center justify-end gap-3 border-t border-[#d3bb73]/20 p-6">

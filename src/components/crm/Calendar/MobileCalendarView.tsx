@@ -164,7 +164,11 @@ export default function MobileCalendarView({
                       <div
                         key={idx}
                         className={`h-1 w-1 rounded-full ${
-                          selected ? 'bg-[#1c1f33]' : 'bg-[#d3bb73]'
+                          selected
+                            ? 'bg-[#1c1f33]'
+                            : event.is_inquiry
+                              ? 'bg-amber-400'
+                              : 'bg-[#d3bb73]'
                         }`}
                       />
                     ))}
@@ -183,7 +187,7 @@ export default function MobileCalendarView({
           </h3>
           <p className="text-[10px] text-[#e5e4e2]/60">
             {eventsForSelectedDate.length}{' '}
-            {eventsForSelectedDate.length === 1 ? 'wydarzenie' : 'wydarzeń'}
+            {eventsForSelectedDate.length === 1 ? 'pozycja' : 'pozycji'}
           </p>
         </div>
 
@@ -193,9 +197,9 @@ export default function MobileCalendarView({
               <div className="rounded-full bg-[#d3bb73]/10 p-3">
                 <Clock className="h-6 w-6 text-[#d3bb73]/50" />
               </div>
-              <p className="mt-3 text-xs text-[#e5e4e2]/60">Brak wydarzeń</p>
+              <p className="mt-3 text-xs text-[#e5e4e2]/60">Brak pozycji w kalendarzu</p>
               <p className="mt-1 text-[10px] text-[#e5e4e2]/40">
-                Nie masz żadnych wydarzeń zaplanowanych na ten dzień
+                Brak potwierdzonych wydarzeń i potencjalnych zapytań na ten dzień
               </p>
             </div>
           ) : (
@@ -208,7 +212,11 @@ export default function MobileCalendarView({
                   <button
                     key={event.id}
                     onClick={() => handleEventClick(event)}
-                    className="w-full rounded-lg bg-[#0f1119] p-3 text-left transition-colors hover:bg-[#0f1119]/50"
+                    className={`w-full rounded-lg border bg-[#0f1119] p-3 text-left transition-colors hover:bg-[#0f1119]/50 ${
+                      event.is_inquiry
+                        ? 'border-dashed border-amber-400/40'
+                        : 'border-transparent'
+                    }`}
                   >
                     <div className="flex items-start gap-2">
                       <div

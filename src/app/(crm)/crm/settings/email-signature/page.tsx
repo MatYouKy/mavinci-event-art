@@ -37,6 +37,11 @@ interface MyCompanyOption {
   email: string | null;
   phone: string | null;
   website: string | null;
+  facebook_url: string | null;
+  instagram_url: string | null;
+  linkedin_url: string | null;
+  tiktok_url: string | null;
+  youtube_url: string | null;
   street: string;
   building_number: string;
   apartment_number: string | null;
@@ -167,6 +172,11 @@ export default function EmailSignatureSettingsPage() {
       company_phone: selectedCompany?.phone ?? '',
       company_email: selectedCompany?.email ?? '',
       company_website: selectedCompany?.website ?? '',
+      company_facebook_url: selectedCompany?.facebook_url ?? '',
+      company_instagram_url: selectedCompany?.instagram_url ?? '',
+      company_linkedin_url: selectedCompany?.linkedin_url ?? '',
+      company_tiktok_url: selectedCompany?.tiktok_url ?? '',
+      company_youtube_url: selectedCompany?.youtube_url ?? '',
       brand_primary_color: colorByRole('primary'),
       brand_secondary_color: colorByRole('secondary'),
       brand_accent_color: colorByRole('accent'),

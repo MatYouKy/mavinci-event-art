@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase/browser';
-import { ArrowLeft, Plus, Trash2, Save } from 'lucide-react';
+import { ArrowLeft, CalendarDays, Link2, Plus, Trash2, Save } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import BuyerSearchInput from './components/BuyerSearchInput';
@@ -22,6 +22,13 @@ interface EventOption {
   contact_person_id: string | null;
   billing_arrangement?: BillingArrangement | null;
   billing_organization_id?: string | null;
+}
+
+interface SettlementGroupContext {
+  id: string;
+  name: string;
+  primary_event_id: string;
+  events: Array<Pick<EventOption, 'id' | 'name' | 'event_date'>>;
 }
 
 interface IndividualContact {
@@ -156,6 +163,7 @@ export default function NewInvoicePage() {
   const [selectedEventId, setSelectedEventId] = useState<string>(eventId || '');
   const [organizationEvents, setOrganizationEvents] = useState<EventOption[]>([]);
   const [linkedEvent, setLinkedEvent] = useState<EventOption | null>(null);
+  const [settlementGroup, setSettlementGroup] = useState<SettlementGroupContext | null>(null);
   const [billingArrangement, setBillingArrangement] =
     useState<BillingArrangement>('direct');
   const [serviceRecipientOrganizationId, setServiceRecipientOrganizationId] =
@@ -190,6 +198,65 @@ export default function NewInvoicePage() {
 
     fetchOrganizationEvents(selectedOrgId, selectedEventId || eventId || '');
   }, [selectedOrgId]);
+
+  useEffect(() => {
+    let active = true;
+
+    (async () => {
+      if (!selectedEventId) {
+        setSettlementGroup(null);
+        return;
+      }
+
+      const { data: membership, error: membershipError } = await supabase
+        .from('event_settlement_group_members')
+        .select('group_id')
+        .eq('event_id', selectedEventId)
+        .maybeSingle();
+
+      if (!active) return;
+      if (membershipError || !membership?.group_id) {
+        setSettlementGroup(null);
+        return;
+      }
+
+      const [groupResult, membersResult] = await Promise.all([
+        supabase
+          .from('event_settlement_groups')
+          .select('id,name,primary_event_id')
+          .eq('id', membership.group_id)
+          .eq('status', 'active')
+          .maybeSingle(),
+        supabase
+          .from('event_settlement_group_members')
+          .select('event_id')
+          .eq('group_id', membership.group_id),
+      ]);
+
+      if (!active) return;
+      if (!groupResult.data || !membersResult.data?.length) {
+        setSettlementGroup(null);
+        return;
+      }
+
+      const memberIds = membersResult.data.map((member) => member.event_id);
+      const { data: memberEvents } = await supabase
+        .from('events')
+        .select('id,name,event_date')
+        .in('id', memberIds)
+        .order('event_date', { ascending: true });
+
+      if (!active) return;
+      setSettlementGroup({
+        ...groupResult.data,
+        events: (memberEvents || []) as SettlementGroupContext['events'],
+      });
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [selectedEventId]);
 
   const applyEventContext = (event: EventOption | null) => {
     setLinkedEvent(event);
@@ -1004,6 +1071,8 @@ export default function NewInvoicePage() {
       const orderTotals = calculateTotalsFor(orderItems);
       const documentTotals = calculateTotalsFor(documentItems);
 
+      const invoiceEventId = settlementGroup?.primary_event_id || selectedEventId || null;
+
       const invoiceData = {
         buyer_is_private_person: buyerIsPrivatePerson,
         invoice_number: normalizedInvoiceNumber,
@@ -1024,7 +1093,7 @@ export default function NewInvoicePage() {
         website,
         issue_date: issueDate,
         sale_date: saleDate,
-        event_id: selectedEventId || null,
+        event_id: invoiceEventId,
         organization_id: buyerIsPrivatePerson ? null : selectedOrgId,
         billing_arrangement: selectedEventId ? billingArrangement : 'direct',
         service_recipient_organization_id: selectedEventId
@@ -1149,6 +1218,23 @@ export default function NewInvoicePage() {
       );
       if (createError || !invoiceId) {
         throw createError || new Error('Nie udało się utworzyć dokumentu');
+      }
+
+      if (invoiceEventId && settlementGroup) {
+        const { error: settlementLinkError } = await supabase.rpc(
+          'link_invoice_to_event_settlement',
+          {
+            p_invoice_id: invoiceId,
+            p_source_event_id: invoiceEventId,
+          },
+        );
+        if (settlementLinkError) {
+          console.error('Error linking invoice to settlement group:', settlementLinkError);
+          showSnackbar(
+            'Faktura powstała, ale nie udało się przypisać jej do wszystkich wydarzeń grupy',
+            'warning',
+          );
+        }
       }
 
       showSnackbar('Faktura została utworzona', 'success');
@@ -1470,6 +1556,44 @@ export default function NewInvoicePage() {
                   }
                   onArrangementChange={handleBillingArrangementChange}
                 />
+              )}
+              {selectedEventId && settlementGroup && settlementGroup.events.length > 1 && (
+                <div className="rounded-xl border border-sky-400/20 bg-sky-400/5 p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="rounded-lg bg-sky-400/10 p-2">
+                      <Link2 className="h-4 w-4 text-sky-300" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-[#e5e4e2]">
+                        Faktura wspólna: {settlementGroup.name}
+                      </p>
+                      <p className="mt-1 text-xs leading-5 text-[#e5e4e2]/50">
+                        Dokument zostanie automatycznie pokazany i rozliczony w poniższych
+                        wydarzeniach. Operacyjnie pozostają one osobnymi realizacjami.
+                      </p>
+                      <div className="mt-3 grid gap-2 md:grid-cols-2">
+                        {settlementGroup.events.map((groupEvent) => (
+                          <div
+                            key={groupEvent.id}
+                            className="rounded-lg border border-sky-400/10 bg-[#0a0d1a] px-3 py-2"
+                          >
+                            <p className="truncate text-xs text-[#e5e4e2]/80">
+                              {groupEvent.name}
+                            </p>
+                            <p className="mt-1 flex items-center gap-1 text-[11px] text-[#e5e4e2]/35">
+                              <CalendarDays className="h-3 w-3" />
+                              {groupEvent.event_date
+                                ? new Date(groupEvent.event_date).toLocaleDateString('pl-PL')
+                                : 'Termin nieustalony'}
+                              {groupEvent.id === settlementGroup.primary_event_id &&
+                                ' · wydarzenie główne'}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
               )}
               {invoiceType === 'corrective' && relatedInvoiceId ? (
                 <div>
