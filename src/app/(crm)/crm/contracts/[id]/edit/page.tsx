@@ -416,6 +416,18 @@ export default function EditContractPage() {
                     margin-bottom: 0.5em;
                   }
 
+                  .a4-page-editor .ql-editor ol li.ql-indent-1::before {
+                    content: counter(list-0) '.' counter(list-1) ' ';
+                  }
+
+                  .a4-page-editor .ql-editor ol li.ql-indent-2::before {
+                    content: counter(list-0) '.' counter(list-1) '.' counter(list-2) ' ';
+                  }
+
+                  .a4-page-editor .ql-editor ol li.ql-indent-3::before {
+                    content: counter(list-0) '.' counter(list-1) '.' counter(list-2) '.' counter(list-3) ' ';
+                  }
+
                   .a4-page-editor .ql-editor.ql-blank::before {
                     color: #9ca3af;
                     font-style: italic;
@@ -472,6 +484,60 @@ export default function EditContractPage() {
 
                   .contract-preview li {
                     margin-bottom: 0.5em;
+                  }
+
+                  .contract-preview ol {
+                    counter-reset: list-0 list-1 list-2 list-3;
+                  }
+
+                  .contract-preview ol > li {
+                    list-style: none;
+                  }
+
+                  .contract-preview ol > li::before {
+                    display: inline-block;
+                    width: 2.5em;
+                    margin-left: -2.8em;
+                    margin-right: 0.3em;
+                    text-align: right;
+                  }
+
+                  .contract-preview ol > li:not(.ql-indent-1):not(.ql-indent-2):not(.ql-indent-3) {
+                    counter-increment: list-0;
+                    counter-reset: list-1 list-2 list-3;
+                  }
+
+                  .contract-preview ol > li:not(.ql-indent-1):not(.ql-indent-2):not(.ql-indent-3)::before {
+                    content: counter(list-0) '. ';
+                  }
+
+                  .contract-preview ol > li.ql-indent-1 {
+                    counter-increment: list-1;
+                    counter-reset: list-2 list-3;
+                    margin-left: 2.5em;
+                  }
+
+                  .contract-preview ol > li.ql-indent-1::before {
+                    content: counter(list-0) '.' counter(list-1) ' ';
+                  }
+
+                  .contract-preview ol > li.ql-indent-2 {
+                    counter-increment: list-2;
+                    counter-reset: list-3;
+                    margin-left: 5em;
+                  }
+
+                  .contract-preview ol > li.ql-indent-2::before {
+                    content: counter(list-0) '.' counter(list-1) '.' counter(list-2) ' ';
+                  }
+
+                  .contract-preview ol > li.ql-indent-3 {
+                    counter-increment: list-3;
+                    margin-left: 7.5em;
+                  }
+
+                  .contract-preview ol > li.ql-indent-3::before {
+                    content: counter(list-0) '.' counter(list-1) '.' counter(list-2) '.' counter(list-3) ' ';
                   }
 
                   .contract-preview .ql-align-center,

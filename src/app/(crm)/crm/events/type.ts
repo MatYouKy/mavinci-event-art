@@ -53,6 +53,8 @@ export interface IEvent {
   description?: string;
   event_date: string;
   event_end_date?: string | null;
+  planned_setup_at?: string | null;
+  planned_teardown_at?: string | null;
   location?: ILocation;
   status: string;
   budget?: number;
@@ -63,6 +65,8 @@ export interface IEvent {
   contact_person_id?: string | null;
   billing_arrangement?: 'direct' | 'hotel' | 'agency' | 'other' | null;
   billing_organization_id?: string | null;
+  purchase_order_number?: string | null;
+  contract_clause_overrides?: unknown;
   my_company_id?: string | null;
   created_by?: string;
   created_at?: string;

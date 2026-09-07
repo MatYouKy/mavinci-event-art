@@ -86,11 +86,29 @@ export const allNavigation: NavigationItemDTO[] = [
   },
   {
     key: 'marketing-campaigns',
-    name: 'Kampanie',
-    href: '/crm/campaigns',
+    name: 'Marketing',
+    href: '/crm/page',
     iconKey: 'campaigns',
     module: 'marketing_campaigns',
     permissions: ['marketing_campaigns_view'],
+    children: [
+      {
+        key: 'marketing-campaigns',
+        name: 'Panel marketingowy',
+        href: '/crm/page',
+        iconKey: 'campaigns',
+        module: 'marketing_campaigns',
+        permissions: ['marketing_campaigns_view'],
+      },
+      {
+        key: 'marketing-campaigns',
+        name: 'Kampanie e-mail',
+        href: '/crm/campaigns',
+        iconKey: 'messages',
+        module: 'marketing_campaigns',
+        permissions: ['marketing_campaigns_view'],
+      },
+    ],
   },
   {
     key: 'inquiries',
@@ -261,7 +279,7 @@ export const allNavigation: NavigationItemDTO[] = [
   {
     key: 'page',
     name: 'Strona',
-    href: '/crm/page',
+    href: '/crm/page?tab=website',
     iconKey: 'page',
     module: 'page',
     permissions: ['page_view'],

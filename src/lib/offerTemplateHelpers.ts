@@ -80,8 +80,10 @@ export function numberToWords(amount: number): string {
     return result.trim();
   };
 
-  let intAmount = Math.floor(amount);
-  const cents = Math.round((amount - intAmount) * 100);
+  const totalCents = Math.round(amount * 100);
+  const wholeAmount = Math.floor(totalCents / 100);
+  const cents = totalCents % 100;
+  let intAmount = wholeAmount;
 
   let result = '';
 
@@ -109,16 +111,23 @@ export function numberToWords(amount: number): string {
     result += convertGroup(intAmount) + ' ';
   }
 
-  if (intAmount === 1) {
+  if (wholeAmount === 1) {
     result += 'złoty';
-  } else if (intAmount % 10 >= 2 && intAmount % 10 <= 4 && (intAmount % 100 < 10 || intAmount % 100 >= 20)) {
+  } else if (wholeAmount % 10 >= 2 && wholeAmount % 10 <= 4 && (wholeAmount % 100 < 10 || wholeAmount % 100 >= 20)) {
     result += 'złote';
   } else {
     result += 'złotych';
   }
 
   if (cents > 0) {
-    result += ' ' + cents.toString().padStart(2, '0') + '/100';
+    result += ` ${convertGroup(cents)} `;
+    if (cents === 1) {
+      result += 'grosz';
+    } else if (cents % 10 >= 2 && cents % 10 <= 4 && (cents % 100 < 10 || cents % 100 >= 20)) {
+      result += 'grosze';
+    } else {
+      result += 'groszy';
+    }
   }
 
   return result.trim();
@@ -142,40 +151,55 @@ interface OfferItem {
  */
 export function generateOfferItemsTable(items: OfferItem[]): string {
   if (!items || items.length === 0) {
-    return '<p style="color: #888; font-style: italic;">Brak pozycji w ofercie</p>';
+    return '<span data-contract-offer-items="true" style="font:inherit;color:#888;font-style:italic;">Brak pozycji w ofercie</span>';
   }
 
+  const escapeItemText = (value: unknown) => String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+  const formatQuantity = (value: unknown) => {
+    const quantity = Number(value);
+    if (!Number.isFinite(quantity) || quantity <= 1) return '';
+    return `${quantity.toLocaleString('pl-PL', { maximumFractionDigits: 3 })}x `;
+  };
+
   const listItems = items.map((item) => {
-    let itemHTML = `<li style="margin-bottom: 5px;"><strong>${item.name}</strong>`;
-
-    // if (item.description) {
-    //   itemHTML += `<br/><span style="margin-left: 0; font-size: 10pt; color: #333;">${item.description}</span>`;
-    // }
-
-    itemHTML += '</li>';
-    return itemHTML;
+    const label = `${formatQuantity(item.quantity)}${escapeItemText(item.name || 'Produkt')}`;
+    return `<span style="display:block;font-family:inherit;font-size:inherit;line-height:inherit;color:inherit;margin:0 0 2pt;padding-left:1.2em;text-indent:-1.2em;"><span aria-hidden="true">•</span> <strong style="font-family:inherit;font-size:inherit;line-height:inherit;">${label}</strong></span>`;
   }).join('');
 
-  return `<ul style="padding-left: 10mm; list-style-type: disc; font-size: 10pt; margin-bottom: 0;">
-${listItems}
-</ul>`;
+  // Używamy wyłącznie elementów inline. Placeholder często znajduje się w <p>
+  // albo <font>; wstawienie tam <ul> tworzy niepoprawny HTML, który przeglądarka
+  // przenosi poza akapit i nadaje mu domyślną, większą czcionkę.
+  return `<span data-contract-offer-items="true" style="font-family:inherit;font-size:inherit;font-weight:inherit;line-height:inherit;color:inherit;">${listItems}</span>`;
 }
 
 export function generateDecisionMakersListTable(items: DecisionMaker[]): string {
-  // if (!items || items.length === 0) {
-  //   return '<p style="color: #888; font-style: italic;">Brak osób decyzyjnych</p>';
-  // }
+  if (!items || items.length === 0) {
+    return '<span data-contract-decision-makers="true" style="font:inherit;color:#888;font-style:italic;">Brak osób decyzyjnych</span>';
+  }
 
-  const listItems = items.map((item) => {
-    let itemHTML = `<li style="margin-bottom: 5px;"><strong>${item.contact.full_name}</strong>`;
+  const escapeItemText = (value: unknown) => String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+  const listItems = items
+    .map((item) => {
+      const name = escapeItemText(
+        item.contact.full_name ||
+          [item.contact.first_name, item.contact.last_name].filter(Boolean).join(' ') ||
+          'Osoba decyzyjna',
+      );
+      return `<span style="display:block;font-family:inherit;font-size:inherit;line-height:inherit;color:inherit;margin:0 0 2pt;padding-left:1.2em;text-indent:-1.2em;"><span aria-hidden="true">•</span> <strong style="font-family:inherit;font-size:inherit;line-height:inherit;">${name}</strong></span>`;
+    })
+    .join('');
 
-    itemHTML += '</li>';
-    return itemHTML;
-  }).join('');
-
-  return `<ul style="padding-left: 10mm; list-style-type: disc; font-size: 10pt; margin-bottom: 0;">
-${listItems}
-</ul>`;
+  // Ten sam bezpieczny format co OFFER_ITEMS_TABLE. Placeholder może znajdować
+  // się wewnątrz <p> lub <li>, dlatego nie wstawiamy w nim blokowego <ul>.
+  return `<span data-contract-decision-makers="true" style="font-family:inherit;font-size:inherit;font-weight:inherit;line-height:inherit;color:inherit;">${listItems}</span>`;
 }
 
 /**

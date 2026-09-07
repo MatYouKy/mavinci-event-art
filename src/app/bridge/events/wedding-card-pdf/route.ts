@@ -1,9 +1,8 @@
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
 import { existsSync } from 'node:fs';
-import { createClient } from '@supabase/supabase-js';
+import { randomUUID } from 'node:crypto';
 import { chromium } from 'playwright';
-import { createSupabaseServerClient } from '@/lib/supabase/server.app';
+import { authorizeWeddingDocument, getWeddingAdmin, WeddingDocumentError } from './access';
 import {
   buildWeddingCardPdfHtml,
   type WeddingCardPdfAnswer,
@@ -18,10 +17,8 @@ export const dynamic = 'force-dynamic';
 
 type Body = { eventId?: string };
 
-const getSupabaseAdmin = () =>
-  createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
-    auth: { persistSession: false },
-  });
+const getSupabaseAdmin = getWeddingAdmin;
+let activeRenders = 0;
 
 const safeFilePart = (value: string) =>
   value
@@ -63,32 +60,19 @@ async function getWeddingCardFolderId({
 
 export async function POST(request: Request) {
   let browser: Awaited<ReturnType<typeof chromium.launch>> | null = null;
+  let renderSlot = false;
 
   try {
-    const { eventId } = (await request.json()) as Body;
+    const { eventId } = (await request.json().catch(() => ({}))) as Body;
     if (!eventId) {
       return NextResponse.json({ error: 'Brak identyfikatora wydarzenia.' }, { status: 400 });
     }
 
-    const userClient = createSupabaseServerClient(cookies());
-    const { data: authData } = await userClient.auth.getUser();
-    if (!authData.user) {
-      return NextResponse.json({ error: 'Wymagane logowanie.' }, { status: 401 });
-    }
-
-    const { data: canManage, error: permissionError } = await userClient.rpc(
-      'can_manage_event_workflows',
-      { p_event_id: eventId },
-    );
-    if (permissionError || !canManage) {
-      return NextResponse.json(
-        { error: 'Nie masz uprawnień do wygenerowania Karty Weselnej.' },
-        { status: 403 },
-      );
-    }
-
-    const admin = getSupabaseAdmin();
-    const [eventResult, cardResult, employeeResult] = await Promise.all([
+    const { admin, employeeId } = await authorizeWeddingDocument(request, eventId);
+    if (activeRenders >= 1) throw new WeddingDocumentError('Generator przygotowuje inny dokument. Spróbuj ponownie za chwilę.', 503);
+    activeRenders += 1;
+    renderSlot = true;
+    const [eventResult, cardResult] = await Promise.all([
       admin
         .from('events')
         .select(
@@ -101,7 +85,6 @@ export async function POST(request: Request) {
         .select('id,status,progress,updated_at')
         .eq('event_id', eventId)
         .maybeSingle(),
-      userClient.rpc('current_workflow_employee_id'),
     ]);
 
     if (eventResult.error || !eventResult.data) {
@@ -140,7 +123,7 @@ export async function POST(request: Request) {
           .order('sort_order'),
         admin
           .from('wedding_music_tracks')
-          .select('list_type,title,artist,notes,sort_order')
+          .select('list_type,title,artist,url,notes,sort_order')
           .eq('wedding_card_id', card.id)
           .order('sort_order'),
         admin
@@ -243,6 +226,7 @@ export async function POST(request: Request) {
           listType: track.list_type as WeddingCardPdfTrack['listType'],
           title: track.title,
           artist: track.artist,
+          url: track.url,
           notes: track.notes,
         }),
       ),
@@ -262,6 +246,7 @@ export async function POST(request: Request) {
       args: ['--no-sandbox', '--disable-setuid-sandbox', '--font-render-hinting=medium'],
     });
     const page = await browser.newPage();
+    page.setDefaultTimeout(45_000);
     await page.setContent(html, { waitUntil: 'networkidle' });
     const pdfBuffer = await page.pdf({
       format: 'A4',
@@ -270,8 +255,8 @@ export async function POST(request: Request) {
     });
 
     const fileName = `karta-weselna-${safeFilePart(event.name) || event.id}.pdf`;
-    const storagePath = `${eventId}/documents/wedding-card/${fileName}`;
-    const employeeId = employeeResult.data || null;
+    // Each rendering is immutable: a queued attachment cannot change underneath the sender.
+    const storagePath = `${eventId}/documents/wedding-card/${randomUUID()}/${fileName}`;
     const folderId = await getWeddingCardFolderId({
       supabase: admin,
       eventId,
@@ -280,7 +265,7 @@ export async function POST(request: Request) {
 
     const upload = await admin.storage.from('event-files').upload(storagePath, pdfBuffer, {
       contentType: 'application/pdf',
-      upsert: true,
+      upsert: false,
       cacheControl: '0',
     });
     if (upload.error) throw upload.error;
@@ -307,8 +292,8 @@ export async function POST(request: Request) {
       updated_at: generatedAt,
     };
     const fileWrite = existingFile.data?.id
-      ? await admin.from('event_files').update(filePayload).eq('id', existingFile.data.id)
-      : await admin.from('event_files').insert(filePayload);
+      ? await admin.from('event_files').update(filePayload).eq('id', existingFile.data.id).select('id').single()
+      : await admin.from('event_files').insert(filePayload).select('id').single();
     if (fileWrite.error) throw fileWrite.error;
 
     const signed = await admin.storage.from('event-files').createSignedUrl(storagePath, 60 * 60);
@@ -316,6 +301,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       ok: true,
+      fileId: fileWrite.data?.id,
       fileName,
       storagePath,
       generatedAt,
@@ -330,9 +316,9 @@ export async function POST(request: Request) {
             ? error.message
             : 'Nie udało się wygenerować Karty Weselnej.',
       },
-      { status: 500 },
+      { status: error instanceof WeddingDocumentError ? error.status : 500 },
     );
   } finally {
-    if (browser) await browser.close();
+    try { if (browser) await browser.close(); } finally { if (renderSlot) activeRenders -= 1; }
   }
 }

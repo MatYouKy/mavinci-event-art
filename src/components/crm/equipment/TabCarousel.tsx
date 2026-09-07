@@ -33,10 +33,17 @@ export function TabCarousel({ activeTab, setActiveTab, equipment, units }: TabCa
 
   return (
     <div className="relative border-b border-[#d3bb73]/10">
-      <div className="flex items-center overflow-x-auto gap-2 px-2">
+      <div
+        role="tablist"
+        data-crm-tabs="true"
+        className="flex items-center overflow-x-auto gap-2 px-2"
+      >
         {tabs.map((tab) => (
           <button
             key={tab.id}
+            role="tab"
+            aria-selected={activeTab === tab.id}
+            data-crm-tab-active={activeTab === tab.id ? 'true' : 'false'}
             onClick={() => setActiveTab(tab.id)}
             className={`px-4 py-2 text-sm whitespace-nowrap transition-colors flex-shrink-0 ${
               activeTab === tab.id

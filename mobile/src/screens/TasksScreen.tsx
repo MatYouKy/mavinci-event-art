@@ -1259,6 +1259,8 @@ const styles = StyleSheet.create({
     borderLeftWidth: 4,
   },
   columnTitle: {
+    fontFamily: 'MBFAtom',
+    textTransform: 'uppercase',
     fontSize: typography.fontSizes.md,
     fontWeight: typography.fontWeights.bold,
     color: colors.text.primary,
@@ -1322,6 +1324,8 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   taskTitle: {
+    fontFamily: 'MBFAtom',
+    textTransform: 'uppercase',
     flex: 1,
     fontSize: typography.fontSizes.md,
     fontWeight: typography.fontWeights.bold,
@@ -1443,6 +1447,8 @@ const styles = StyleSheet.create({
     borderColor: colors.border.default,
   },
   modalTitle: {
+    fontFamily: 'MBFAtom',
+    textTransform: 'uppercase',
     fontSize: typography.fontSizes.lg,
     fontWeight: typography.fontWeights.bold,
     color: colors.text.primary,
@@ -1507,6 +1513,8 @@ const styles = StyleSheet.create({
     padding: spacing.xs,
   },
   createModalHeaderTitle: {
+    fontFamily: 'MBFAtom',
+    textTransform: 'uppercase',
     fontSize: typography.fontSizes.lg,
     fontWeight: typography.fontWeights.bold,
     color: colors.text.primary,

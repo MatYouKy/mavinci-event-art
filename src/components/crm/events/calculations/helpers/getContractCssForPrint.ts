@@ -109,10 +109,24 @@ const CONTRACT_DOCUMENT_AND_PRINT_CSS = `
   white-space: pre-wrap;
   font-family: inherit;
   font-size: 12pt;
-  line-height: 1.6;
+  line-height: inherit;
   border: none;
   background: transparent;
   color: #000;
+}
+
+/* Wcięcia zgodne z domyślną siatką list programu Word:
+   każdy kolejny poziom przesuwa tekst o 0,5 cala (12,7 mm). */
+.contract-content ol,
+.contract-content ul {
+  margin-left: 0 !important;
+  padding-left: 12.7mm !important;
+  list-style-position: outside !important;
+}
+
+.contract-content li {
+  margin-left: 0 !important;
+  padding-left: 0 !important;
 }
 
 .contract-content s,
@@ -165,25 +179,41 @@ const CONTRACT_DOCUMENT_AND_PRINT_CSS = `
   page-break-after: avoid;
 }
 .product-contract-clause ol,
-.product-contract-clause ul { margin: 0.35em 0 0.65em; padding-left: 1.6em; }
+.product-contract-clause ul { margin: 0.35em 0 0.65em; padding-left: 12.7mm !important; }
+.contract-content ol[data-contract-list-continuation='true'],
+.contract-content ul[data-contract-list-continuation='true'] { list-style: none !important; }
+.contract-content li[data-contract-list-item-continuation='true']::marker { content: '' !important; }
 .product-contract-clause ol { list-style-type: decimal; }
+.product-contract-clause ol[data-clause-marker='outline-decimal'] { list-style-type: decimal; }
+.contract-content ol:not([data-clause-marker]) ol:not([data-clause-marker]) > li::marker,
+.product-contract-clause ol[data-clause-marker='outline-decimal'] ol[data-clause-marker='outline-decimal'] > li::marker { content: counters(list-item, '.') ' '; }
 .product-contract-clause ul { list-style-type: disc; }
 .product-contract-clause ol ol { list-style-type: lower-alpha; }
 .product-contract-clause ul ul { list-style-type: circle; }
 .product-contract-clause ol[data-clause-marker='lower-alpha'] { list-style-type: lower-alpha; }
-.product-contract-clause ol[data-clause-marker='decimal-paren'] > li::marker { content: counter(list-item) ') '; }
-.product-contract-clause ol[data-clause-marker='lower-alpha-paren'] > li::marker { content: counter(list-item, lower-alpha) ') '; }
+.product-contract-clause ol[data-clause-marker='lower-roman'] { list-style-type: lower-roman; }
+.product-contract-clause ol[data-clause-marker='decimal-paren'] > li::marker { content: counter(list-item) '. '; }
+.product-contract-clause ol[data-clause-marker='lower-alpha-paren'] > li::marker { content: counter(list-item, lower-alpha) '. '; }
+.product-contract-clause ol[data-clause-marker='lower-roman-paren'] > li::marker { content: counter(list-item, lower-roman) '. '; }
 .product-contract-clause ol[data-clause-marker='bullet'] { list-style-type: disc; }
 .product-contract-clause li { margin-bottom: 0.25em; }
+.contract-content li::marker {
+  font-family: inherit;
+  font-size: 1em;
+  font-weight: inherit;
+  line-height: inherit;
+}
+.contract-content li[data-contract-outline-number]:not([data-contract-list-item-continuation='true']):not([data-contract-outline-suppressed='true'])::marker { content: attr(data-contract-outline-number) ' ' !important; }
+.contract-content li[data-contract-outline-suppressed='true']::marker { content: '' !important; }
 .product-contract-clause blockquote {
   margin: 0.6em 0;
   border-left: 2px solid #777;
   padding-left: 0.8em;
 }
-.product-contract-clause .ql-indent-1 { margin-left: 1.5em; }
-.product-contract-clause .ql-indent-2 { margin-left: 3em; }
-.product-contract-clause .ql-indent-3 { margin-left: 4.5em; }
-.product-contract-clause .ql-indent-4 { margin-left: 6em; }
+.product-contract-clause .ql-indent-1 { margin-left: 12.7mm; }
+.product-contract-clause .ql-indent-2 { margin-left: 25.4mm; }
+.product-contract-clause .ql-indent-3 { margin-left: 38.1mm; }
+.product-contract-clause .ql-indent-4 { margin-left: 50.8mm; }
 .product-contract-clause .ql-align-center { text-align: center; }
 .product-contract-clause .ql-align-right { text-align: right; }
 .product-contract-clause .ql-align-justify { text-align: justify; }

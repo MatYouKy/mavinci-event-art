@@ -12,11 +12,33 @@ export const allNavigation: NavigationItem[] = [
 
   { key: 'calendar', name: 'Kalendarz', href: '/crm/calendar', iconKey: 'calendar', module: 'calendar' },
   { key: 'messages', name: 'Wiadomości', href: '/crm/messages', iconKey: 'messages', module: 'messages' },
-  { key: 'marketing-campaigns', name: 'Kampanie', href: '/crm/campaigns', iconKey: 'campaigns', module: 'marketing_campaigns' },
+  {
+    key: 'marketing-campaigns',
+    name: 'Marketing',
+    href: '/crm/page',
+    iconKey: 'campaigns',
+    module: 'marketing_campaigns',
+    children: [
+      { key: 'marketing-campaigns', name: 'Panel marketingowy', href: '/crm/page', iconKey: 'campaigns', module: 'marketing_campaigns' },
+      { key: 'marketing-campaigns', name: 'Kampanie e-mail', href: '/crm/campaigns', iconKey: 'messages', module: 'marketing_campaigns' },
+    ],
+  },
   { key: 'contacts', name: 'Kontakty', href: '/crm/contacts', iconKey: 'contacts', module: 'clients' },
   { key: 'events', name: 'Eventy', href: '/crm/events', iconKey: 'events', module: 'events' },
   { key: 'mavinci-live', name: 'Mavinci LIVE', href: '/crm/mavinci-live', iconKey: 'mavinciLive', module: 'mavinci_live' },
-  { key: 'offers', name: 'Oferty', href: '/crm/offers', iconKey: 'offers', module: 'offers' },
+  {
+    key: 'offers',
+    name: 'Oferty',
+    href: '/crm/offers',
+    iconKey: 'offers',
+    module: 'offers',
+    children: [
+      { key: 'offers', name: 'Oferty', href: '/crm/offers', iconKey: 'fileText', module: 'offers' },
+      { key: 'offers', name: 'Produkty', href: '/crm/offers?tab=catalog', iconKey: 'package', module: 'offers' },
+      { key: 'offers', name: 'Szablony', href: '/crm/offers?tab=templates', iconKey: 'fileType', module: 'offers' },
+      { key: 'offers', name: 'Broszury', href: '/crm/brochures', iconKey: 'bookOpen', module: 'offers' },
+    ],
+  },
   {
     key: 'contracts',
     name: 'Umowy',
@@ -35,7 +57,7 @@ export const allNavigation: NavigationItem[] = [
   { key: 'inquiries', name: 'Zapytania', href: '/crm/inquiries', iconKey: 'tasks', module: 'tasks' },
   { key: 'tasks', name: 'Zadania', href: '/crm/tasks', iconKey: 'tasks', module: 'tasks' },
   { key: 'time-tracking', name: 'Czas pracy', href: '/crm/time-tracking', iconKey: 'time', module: 'time_tracking' },
-  { key: 'page', name: 'Strona', href: '/crm/page', iconKey: 'page', module: 'page' },
+  { key: 'page', name: 'Strona', href: '/crm/page?tab=website', iconKey: 'page', module: 'page' },
   { key: 'locations', name: 'Lokalizacje', href: '/crm/locations', iconKey: 'locations', module: 'locations' },
   { key: 'tenders', name: 'Przetargi', href: '/crm/tenders', iconKey: 'tenders', module: 'tenders' },
 ];

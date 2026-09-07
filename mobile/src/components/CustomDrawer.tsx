@@ -221,8 +221,11 @@ const styles = StyleSheet.create({
   },
   menuItemText: {
     flex: 1,
-    fontSize: typography.fontSizes.md,
-    fontWeight: typography.fontWeights.medium,
+    fontFamily: typography.fontFamilies.heading,
+    fontSize: typography.fontSizes.xs,
+    fontWeight: typography.fontWeights.regular,
+    letterSpacing: 0.35,
+    textTransform: 'uppercase',
     color: colors.text.primary,
   },
   menuItemTextActive: {
@@ -246,8 +249,11 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   logoutText: {
-    fontSize: typography.fontSizes.sm,
-    fontWeight: typography.fontWeights.semibold,
+    fontFamily: typography.fontFamilies.heading,
+    fontSize: typography.fontSizes.xs,
+    fontWeight: typography.fontWeights.regular,
+    letterSpacing: 0.35,
+    textTransform: 'uppercase',
     color: colors.status.error,
   },
   version: {

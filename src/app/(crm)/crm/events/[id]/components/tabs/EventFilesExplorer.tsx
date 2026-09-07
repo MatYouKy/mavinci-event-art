@@ -21,15 +21,13 @@ import {
   MoreVertical,
   X,
   FileText,
-  FileVideo,
-  FileAudio,
-  Archive,
   ExternalLink,
   Eye,
 } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 import ResponsiveActionBar, { Action } from '@/components/crm/ResponsiveActionBar';
+import StorageFileThumbnail from '@/components/crm/StorageFileThumbnail';
 
 interface FileItem {
   id: string;
@@ -642,15 +640,6 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
     }
   };
 
-  const getFileIcon = (mimeType: string) => {
-    if (mimeType.startsWith('image/')) return <ImageIcon className="h-5 w-5" />;
-    if (mimeType.startsWith('video/')) return <FileVideo className="h-5 w-5" />;
-    if (mimeType.startsWith('audio/')) return <FileAudio className="h-5 w-5" />;
-    if (mimeType.includes('zip') || mimeType.includes('rar'))
-      return <Archive className="h-5 w-5" />;
-    return <FileText className="h-5 w-5" />;
-  };
-
   const formatFileSize = (bytes: number) => {
     if (bytes === 0) return '0 B';
     const k = 1024;
@@ -867,7 +856,13 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
                       className="h-4 w-4 accent-[#d3bb73]"
                     />
                   </div>
-                  <div className="flex-shrink-0 text-[#d3bb73]">{getFileIcon(file.mime_type)}</div>
+                  <StorageFileThumbnail
+                    storagePath={file.file_path}
+                    mimeType={file.mime_type}
+                    fileName={file.original_name || file.name}
+                    alt={file.name}
+                    className="h-11 w-11 rounded-md border border-[#d3bb73]/10"
+                  />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm text-[#e5e4e2]">{file.name}</p>
                     <p className="text-xs text-[#e5e4e2]/40">{formatFileSize(file.file_size)}</p>
@@ -1137,7 +1132,13 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
                       className="h-4 w-4 accent-[#d3bb73]"
                     />
                   </div>
-                  <div className="text-[#d3bb73]">{getFileIcon(file.mime_type)}</div>
+                  <StorageFileThumbnail
+                    storagePath={file.file_path}
+                    mimeType={file.mime_type}
+                    fileName={file.original_name || file.name}
+                    alt={file.name}
+                    className="h-10 w-10 rounded-md border border-[#d3bb73]/10"
+                  />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm text-[#e5e4e2]">{file.name}</p>
                     <p className="text-xs text-[#e5e4e2]/40">
@@ -1192,7 +1193,13 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
                   onContextMenu={(e) => handleContextMenu(e, file, 'file')}
                   onClick={() => handlePreview(file)}
                 >
-                  <div className="mb-3 text-[#d3bb73]">{getFileIcon(file.mime_type)}</div>
+                  <StorageFileThumbnail
+                    storagePath={file.file_path}
+                    mimeType={file.mime_type}
+                    fileName={file.original_name || file.name}
+                    alt={file.name}
+                    className="mb-3 h-24 w-full rounded-md border border-[#d3bb73]/10"
+                  />
                   <p className="mb-1 truncate text-sm text-[#e5e4e2]">{file.name}</p>
                   <p className="text-xs text-[#e5e4e2]/40">{formatFileSize(file.file_size)}</p>
                 </div>
@@ -1207,17 +1214,13 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
                   onContextMenu={(e) => handleContextMenu(e, file, 'file')}
                   onClick={() => handlePreview(file)}
                 >
-                  {file.thumbnail_url ? (
-                    <img
-                      src={file.thumbnail_url}
-                      alt={file.name}
-                      className="h-32 w-full object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-32 w-full items-center justify-center bg-[#1c1f33]">
-                      <div className="text-[#d3bb73]">{getFileIcon(file.mime_type)}</div>
-                    </div>
-                  )}
+                  <StorageFileThumbnail
+                    storagePath={file.file_path}
+                    mimeType={file.mime_type}
+                    fileName={file.original_name || file.name}
+                    alt={file.name}
+                    className="h-32 w-full"
+                  />
                   <div className="p-2">
                     <p className="truncate text-xs text-[#e5e4e2]">{file.name}</p>
                   </div>

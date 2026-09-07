@@ -108,6 +108,13 @@ export const organizationFa3Schema = yup.object({
     .max(34, 'Numer rachunku jest za długi'),
 
   notes: yup.string().nullable().transform(normalizeToken).max(512),
+  representation_type: yup
+    .mixed<'sole' | 'joint' | 'joint_with_proxy' | 'proxy' | 'other'>()
+    .nullable()
+    .oneOf(['sole', 'joint', 'joint_with_proxy', 'proxy', 'other', null]),
+  representation_rule: yup.string().nullable().transform(normalizeToken).max(2000),
+  representation_basis: yup.string().nullable().transform(normalizeToken).max(512),
+  representation_verified_at: yup.string().nullable().transform(normalizeToken),
 });
 
 export async function validateOrganizationForm(data: Partial<Organization>) {

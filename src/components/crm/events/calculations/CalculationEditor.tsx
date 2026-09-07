@@ -28,6 +28,7 @@ import { Zap } from 'lucide-react';
 import { Weight } from 'lucide-react';
 import { fmt } from '../helpers/calculations/calculations.helper';
 import FullScreenLoader from '@/components/UI/Loader/CustomModalLoader';
+import { getCalculationNumber } from '@/lib/CRM/calculations/calculationNumber';
 
 export function CalculationEditor({
   calculationId,
@@ -63,6 +64,7 @@ export function CalculationEditor({
   const [showImport, setShowImport] = useState(false);
   const [addModalCategory, setAddModalCategory] = useState<Category | null>(null);
   const [generatedPdfPath, setGeneratedPdfPath] = useState<string | null>(null);
+  const [calculationCreatedAt, setCalculationCreatedAt] = useState<string | null>(null);
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [showSendEmail, setShowSendEmail] = useState(false);
   const [company, setCompany] = useState<any>(null);
@@ -100,6 +102,7 @@ export function CalculationEditor({
         setName(calc.name);
         setNotes(calc.notes ?? '');
         setGeneratedPdfPath(calc.generated_pdf_path ?? null);
+        setCalculationCreatedAt(calc.created_at ?? null);
       }
 
       if (itemsData) {
@@ -512,6 +515,7 @@ export function CalculationEditor({
         };
 
     const html = buildCalculationHtml({
+      calculationNumber: getCalculationNumber(calculationId, calculationCreatedAt),
       name,
       notes,
       eventName,
@@ -576,6 +580,7 @@ export function CalculationEditor({
           };
 
       const html = buildCalculationHtml({
+        calculationNumber: getCalculationNumber(calculationId, calculationCreatedAt),
         name,
         notes,
         eventName,

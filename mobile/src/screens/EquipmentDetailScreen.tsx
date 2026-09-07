@@ -565,6 +565,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   headerTitle: {
+    fontFamily: 'MBFAtom',
+    textTransform: 'uppercase',
     fontSize: 16,
     fontWeight: '700',
     color: colors.text.primary,
@@ -605,6 +607,7 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border.default,
   },
   sectionTitle: {
+    fontFamily: 'MBFAtom',
     fontSize: 13,
     fontWeight: '700',
     color: colors.primary.gold,

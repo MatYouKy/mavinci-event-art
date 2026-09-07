@@ -83,7 +83,7 @@ const styles = StyleSheet.create({
   overlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.65)' },
   sheet: { maxHeight: '88%', backgroundColor: colors.background.secondary, borderTopLeftRadius: 24, borderTopRightRadius: 24, borderWidth: 1, borderColor: colors.border.default },
   header: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, padding: spacing.lg, borderBottomWidth: 1, borderBottomColor: colors.border.default },
-  title: { color: colors.text.primary, fontSize: typography.fontSizes.lg, fontWeight: typography.fontWeights.bold },
+  title: { fontFamily: 'MBFAtom', textTransform: 'uppercase', color: colors.text.primary, fontSize: typography.fontSizes.lg, fontWeight: typography.fontWeights.bold },
   subtitle: { color: colors.text.secondary, fontSize: typography.fontSizes.sm, marginTop: 4 },
   close: { padding: spacing.sm },
   content: { padding: spacing.lg, gap: spacing.md },

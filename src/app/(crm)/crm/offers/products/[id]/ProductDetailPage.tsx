@@ -31,14 +31,22 @@ import { IEventCategory } from '@/app/(crm)/crm/event-categories/types';
 import { Building2, ExternalLink } from 'lucide-react';
 import { ProductEquipment } from '../components/ProductEquipment';
 import { ProductStaffSection } from '../components/ProductStuffSection';
-import { ProductContractClauses } from '../components/ProductContractClauses';
+import { ProductContractClauses } from '../components/StructuredProductContractClauses';
 import { ProductMavinciLiveModules } from '../components/ProductMavinciLiveModules';
 import { ProductOfferCardPreview } from '../components/ProductOfferCardPreview';
 import { ProductVariantsEditor } from '../components/ProductVariantsEditor';
 import { AddEquipmentModal } from '../modal/AddEquipmentModal';
 import { useManageProduct } from '../hooks/useManageProduct';
 import ResponsiveActionBar, { Action } from '@/components/crm/ResponsiveActionBar';
-import type { IProductVariant } from '@/app/(crm)/crm/offers/types';
+import type {
+  ContractClauseCategory,
+  IProductVariant,
+} from '@/app/(crm)/crm/offers/types';
+import { serializeContractClauseEntries } from '@/lib/CRM/contracts/contractClauseContent';
+import {
+  getOfferRequirementLabel,
+  inferOfferRequirementCategory,
+} from '@/lib/CRM/Offers/offerRequirements';
 
 const toNumber = (v: string, fallback = 0) => {
   if (v === '' || v === null || v === undefined) return fallback;
@@ -98,7 +106,7 @@ interface IProduct {
   offer_page_variant?: string | null;
   offer_page_enabled?: boolean;
   recommended_contract_clauses?: string | null;
-  recommended_contract_clause_category?: 'requirements' | 'obligations' | 'risks' | 'general';
+  recommended_contract_clause_category?: ContractClauseCategory;
   category?: IEventCategory;
   is_subcontractor_service?: boolean;
   subcontractor_id?: string | null;
@@ -110,21 +118,91 @@ interface IProduct {
 
 type OfferAdditionalRequirement = {
   id: string;
-  category: 'accommodation' | 'backstage' | 'hospitality' | 'logistics' | 'other';
+  category:
+    | 'people'
+    | 'resources'
+    | 'place'
+    | 'time'
+    | 'power'
+    | 'internet'
+    | 'access'
+    | 'setup'
+    | 'surface'
+    | 'venue_approval'
+    | 'coordination'
+    | 'schedule'
+    | 'safety'
+    | 'technical'
+    | 'accommodation'
+    | 'backstage'
+    | 'hospitality'
+    | 'logistics'
+    | 'other';
   title: string;
   description: string;
 };
 
-const ADDITIONAL_REQUIREMENT_CATEGORIES: Array<{
+const PRODUCT_REQUIREMENT_CATEGORIES: Array<{
   value: OfferAdditionalRequirement['category'];
   label: string;
 }> = [
+  { value: 'people', label: 'Ludzie i obsada' },
+  { value: 'resources', label: 'Sprzęt i zasoby' },
+  { value: 'place', label: 'Miejsce realizacji' },
+  { value: 'time', label: 'Czas i harmonogram' },
+  { value: 'power', label: 'Zasilanie' },
+  { value: 'internet', label: 'Łącze internetowe' },
+  { value: 'access', label: 'Dostęp i rozładunek' },
+  { value: 'setup', label: 'Montaż i próba' },
+  { value: 'surface', label: 'Miejsce realizacji' },
+  { value: 'venue_approval', label: 'Zgoda obiektu' },
+  { value: 'coordination', label: 'Koordynacja z obiektem' },
+  { value: 'schedule', label: 'Harmonogram i materiały' },
+  { value: 'safety', label: 'Bezpieczeństwo' },
+  { value: 'technical', label: 'Inny warunek techniczny' },
   { value: 'accommodation', label: 'Zakwaterowanie' },
   { value: 'backstage', label: 'Zaplecze / garderoba' },
   { value: 'hospitality', label: 'Gościnność / catering' },
   { value: 'logistics', label: 'Logistyka' },
   { value: 'other', label: 'Inne' },
 ];
+
+const normalizeRequirementText = (value: string) => value
+  .toLocaleLowerCase('pl-PL')
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .replace(/ł/g, 'l')
+  .replace(/[^a-z0-9]+/g, ' ')
+  .trim();
+
+const withCategorizedProductRequirements = (source: IProduct): IProduct => {
+  const categorized = [...(source.offer_additional_requirements || [])].map((requirement, index) => {
+    const description = String(requirement.description || requirement.title || '').trim();
+    const category = inferOfferRequirementCategory(description, requirement.category) as OfferAdditionalRequirement['category'];
+    return {
+      ...requirement,
+      id: requirement.id || `stored-${index}`,
+      category,
+      title: String(requirement.title || getOfferRequirementLabel(category)).trim(),
+      description,
+    };
+  });
+  const known = new Set(categorized.map((requirement) => normalizeRequirementText(requirement.description)));
+  (source.offer_requirements || []).forEach((description, index) => {
+    const text = String(description || '').trim();
+    const fingerprint = normalizeRequirementText(text);
+    if (!text || known.has(fingerprint)) return;
+    const category = inferOfferRequirementCategory(text) as OfferAdditionalRequirement['category'];
+    categorized.push({
+      id: `legacy-${index}-${fingerprint.slice(0, 20)}`,
+      category,
+      title: getOfferRequirementLabel(category),
+      description: text,
+    });
+    known.add(fingerprint);
+  });
+  return { ...source, offer_additional_requirements: categorized };
+};
 
 type Props = {
   initialProduct: IProduct | null;
@@ -685,7 +763,7 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
 
     // EDIT: jeśli mamy initialProduct dla tego id — nie fetchujemy
     if (initialProduct && initialProduct.id === productId) {
-      setProduct(initialProduct);
+      setProduct(withCategorizedProductRequirements(initialProduct));
       setLoading(false);
       return;
     }
@@ -780,7 +858,7 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
 
       if (error) throw error;
       if (data) {
-        setProduct(data);
+        setProduct(withCategorizedProductRequirements(data));
         setProductVariants(
           [...(data.offer_product_variants || [])].sort(
             (a: IProductVariant, b: IProductVariant) => a.display_order - b.display_order,
@@ -1026,8 +1104,8 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
     const file = selectedFile || offerImageFile;
     if (!file || !product || productId === 'new') return;
 
-    if (!['image/png', 'image/jpeg'].includes(file.type)) {
-      showSnackbar('Grafika do PDF musi być plikiem PNG lub JPG', 'error');
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+      showSnackbar('Grafika do PDF musi być plikiem PNG, JPG lub WebP', 'error');
       return;
     }
 
@@ -1048,7 +1126,12 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
       localPreview = URL.createObjectURL(optimizedFile);
       setOfferImageFile(optimizedFile);
       setOfferImageSrc(localPreview);
-      const extension = optimizedFile.type === 'image/png' ? 'png' : 'jpg';
+      const extension =
+        optimizedFile.type === 'image/png'
+          ? 'png'
+          : optimizedFile.type === 'image/webp'
+            ? 'webp'
+            : 'jpg';
       const filePath = `assets/${product.id}/offer-image-${Date.now()}.${extension}`;
 
       const { error: uploadError } = await bucket.upload(filePath, optimizedFile, {
@@ -1093,8 +1176,8 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
 
   const handleUploadVariantImage = async (variant: IProductVariant, file: File) => {
     if (!product || productId === 'new' || variant.id.startsWith('temp-')) return;
-    if (!['image/png', 'image/jpeg'].includes(file.type)) {
-      showSnackbar('Zdjęcie wariantu musi być plikiem PNG lub JPG', 'error');
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+      showSnackbar('Zdjęcie wariantu musi być plikiem PNG, JPG lub WebP', 'error');
       return;
     }
     if (file.size > 10 * 1024 * 1024) {
@@ -1114,7 +1197,12 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
       localPreview = URL.createObjectURL(optimizedFile);
       setVariantImageUrls((current) => ({ ...current, [variant.id]: localPreview }));
 
-      const extension = optimizedFile.type === 'image/png' ? 'png' : 'jpg';
+      const extension =
+        optimizedFile.type === 'image/png'
+          ? 'png'
+          : optimizedFile.type === 'image/webp'
+            ? 'webp'
+            : 'jpg';
       const filePath = `assets/${product.id}/variants/${variant.id}-${Date.now()}.${extension}`;
       const { error: uploadError } = await bucket.upload(filePath, optimizedFile, {
         contentType: optimizedFile.type,
@@ -1450,7 +1538,9 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
           ? null
           : Number(product.extension_price_net_per_hour),
         offer_benefits: product.offer_benefits || [],
-        offer_requirements: product.offer_requirements || [],
+        // Wymagania mają jedno źródło prawdy: rekordy z przypisaną kategorią.
+        // Starsza lista tekstowa jest czyszczona po pierwszym zapisie produktu.
+        offer_requirements: [],
         offer_additional_requirements: (product.offer_additional_requirements || [])
           .map((requirement) => ({
             id: requirement.id || crypto.randomUUID(),
@@ -2314,41 +2404,14 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
                 />
               </div>
 
-              <div>
-                <label className="mb-2 block text-sm text-[#e5e4e2]/60">
-                  Warunki techniczne po stronie klienta / obiektu{' '}
-                  <span className="text-xs text-[#e5e4e2]/40">(jedno w wierszu)</span>
-                </label>
-                <textarea
-                  value={(product.offer_requirements || []).join('\n')}
-                  onChange={(e) =>
-                    setProduct({
-                      ...product,
-                      offer_requirements: e.target.value
-                        .split('\n')
-                        .map((item) => item.trim())
-                        .filter(Boolean),
-                    })
-                  }
-                  disabled={!canEdit}
-                  className="min-h-[110px] w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
-                  placeholder={
-                    'Stabilne łącze internetowe po kablu Ethernet\nZasilanie 230 V / 16 A\nPrzy większych realizacjach: dostęp do zasilania 400 V (siła)'
-                  }
-                />
-                <p className="mt-1 text-xs text-[#e5e4e2]/40">
-                  Warunki zostaną zebrane z całej oferty i opisane na osobnej stronie PDF.
-                </p>
-              </div>
-
               <div className="rounded-xl border border-[#d3bb73]/15 bg-[#0a0d1a]/55 p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <p className="text-sm font-medium text-[#e5e4e2]">Inne wymagania</p>
+                    <p className="text-sm font-medium text-[#e5e4e2]">Wymagania produktu</p>
                     <p className="mt-1 max-w-2xl text-xs leading-5 text-[#e5e4e2]/40">
-                      Dodaj wymagania organizacyjne związane wyłącznie z tym produktem, np. pokój
-                      dwuosobowy, garderobę, posiłek dla realizatorów albo miejsce rozładunku.
-                      Generator połączy je z wymaganiami pozostałych produktów bez duplikatów.
+                      Przypisz każdemu warunkowi kategorię, np. zasilanie, internet, dostęp,
+                      montaż, bezpieczeństwo lub zaplecze. Generator połączy wymagania wszystkich
+                      produktów, usunie powtórzenia i wybierze mocniejszy wariant.
                     </p>
                   </div>
                   <button
@@ -2368,13 +2431,13 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
                     })}
                     className="rounded-lg border border-[#d3bb73]/25 px-3 py-2 text-xs text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/10 disabled:cursor-not-allowed disabled:opacity-40"
                   >
-                    + Dodaj wymaganie
+                    + Dodaj wymaganie produktu
                   </button>
                 </div>
 
                 {(product.offer_additional_requirements || []).length === 0 ? (
                   <div className="mt-4 rounded-lg border border-dashed border-[#d3bb73]/15 px-4 py-5 text-center text-xs text-[#e5e4e2]/35">
-                    Brak innych wymagań dla tego produktu.
+                    Brak wymagań dla tego produktu.
                   </div>
                 ) : (
                   <div className="mt-4 space-y-3">
@@ -2386,17 +2449,27 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
                         <select
                           value={requirement.category || 'other'}
                           disabled={!canEdit}
-                          onChange={(event) => setProduct({
-                            ...product,
-                            offer_additional_requirements: (product.offer_additional_requirements || []).map((item, itemIndex) => (
-                              itemIndex === index
-                                ? { ...item, category: event.target.value as OfferAdditionalRequirement['category'] }
-                                : item
-                            )),
-                          })}
+                          onChange={(event) => {
+                            const category = event.target.value as OfferAdditionalRequirement['category'];
+                            const oldDefaultTitle = getOfferRequirementLabel(requirement.category || 'other');
+                            setProduct({
+                              ...product,
+                              offer_additional_requirements: (product.offer_additional_requirements || []).map((item, itemIndex) => (
+                                itemIndex === index
+                                  ? {
+                                    ...item,
+                                    category,
+                                    title: !item.title || item.title === oldDefaultTitle
+                                      ? getOfferRequirementLabel(category)
+                                      : item.title,
+                                  }
+                                  : item
+                              )),
+                            });
+                          }}
                           className="rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] disabled:opacity-50"
                         >
-                          {ADDITIONAL_REQUIREMENT_CATEGORIES.map((category) => (
+                          {PRODUCT_REQUIREMENT_CATEGORIES.map((category) => (
                             <option key={category.value} value={category.value}>{category.label}</option>
                           ))}
                         </select>
@@ -2548,7 +2621,7 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
                     <span className="px-4 text-xs text-[#e5e4e2]/40">
                       {productId === 'new'
                         ? 'Najpierw zapisz produkt'
-                        : 'Przeciągnij tutaj plik PNG lub JPG'}
+                        : 'Przeciągnij tutaj plik PNG, JPG lub WebP'}
                     </span>
                   </div>
                 )}
@@ -2581,7 +2654,7 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
                   <input
                     id={`offer-image-${product.id}`}
                     type="file"
-                    accept="image/png,image/jpeg"
+                    accept="image/png,image/jpeg,image/webp"
                     disabled={uploadingOfferImage}
                     onChange={async (event) => {
                       const file = event.target.files?.[0];
@@ -2677,7 +2750,7 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
                     </>
                   )}
                   <p className="text-xs text-[#e5e4e2]/40">
-                    PNG lub JPG, maksymalnie 10 MB. Plik zapisuje się automatycznie po wybraniu lub
+                    PNG, JPG lub WebP, maksymalnie 10 MB. Plik zapisuje się automatycznie po wybraniu lub
                     upuszczeniu.
                   </p>
                 </div>
@@ -3219,14 +3292,25 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
               : product.recommended_contract_clause_category || 'requirements'
           }
           canEdit={canEdit}
-          onSave={async (clauses, category) => {
+          onSave={async (clauseEntries) => {
             try {
+              const firstCategory = clauseEntries[0]?.category;
+              // Kolumna historyczna ma starszy CHECK. Pełna kategoria znajduje się
+              // w dokumencie v2; tutaj zapisujemy zgodny znacznik awaryjny.
+              const storedFirstCategory = firstCategory === 'additional_requirements'
+                ? 'general'
+                : firstCategory === 'conditions'
+                  ? 'requirements'
+                  : firstCategory || 'requirements';
+              const serializedClauses = clauseEntries.length > 0
+                ? serializeContractClauseEntries(clauseEntries)
+                : null;
               const target = selectedConfigurationVariant
                 ? supabase
                     .from('offer_product_variants')
                     .update({
-                      recommended_contract_clauses: clauses,
-                      recommended_contract_clause_category: category,
+                      recommended_contract_clauses: serializedClauses,
+                      recommended_contract_clause_category: storedFirstCategory,
                       overrides_contract_clauses: true,
                     })
                     .eq('id', selectedConfigurationVariant.id)
@@ -3234,8 +3318,8 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
                 : supabase
                     .from('offer_products')
                     .update({
-                      recommended_contract_clauses: clauses,
-                      recommended_contract_clause_category: category,
+                      recommended_contract_clauses: serializedClauses,
+                      recommended_contract_clause_category: storedFirstCategory,
                     })
                     .eq('id', productId);
 
@@ -3249,8 +3333,8 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
                     variant.id === selectedConfigurationVariant.id
                       ? {
                           ...variant,
-                          recommended_contract_clauses: clauses,
-                          recommended_contract_clause_category: category,
+                          recommended_contract_clauses: serializedClauses,
+                          recommended_contract_clause_category: storedFirstCategory,
                           overrides_contract_clauses: true,
                         }
                       : variant,
@@ -3261,8 +3345,8 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
                   prev
                     ? {
                         ...prev,
-                        recommended_contract_clauses: clauses,
-                        recommended_contract_clause_category: category,
+                        recommended_contract_clauses: serializedClauses,
+                        recommended_contract_clause_category: storedFirstCategory,
                       }
                     : prev,
                 );

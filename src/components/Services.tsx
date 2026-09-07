@@ -108,7 +108,7 @@ export default function Services({ categories }: { categories: CategoryWithFirst
 
               return (
                 <Link href={href} key={category.id}>
-                  <article className="group relative h-full cursor-pointer overflow-hidden rounded-2xl border border-[#d3bb73]/10 bg-gradient-to-br from-[#1c1f33]/80 to-[#1c1f33]/40 backdrop-blur-sm transition-all duration-300 hover:-translate-y-2 hover:transform hover:border-[#d3bb73]/30 hover:shadow-2xl hover:shadow-[#d3bb73]/10">
+                  <article className="group relative h-full cursor-pointer overflow-hidden rounded-2xl border border-[#d3bb73]/15 bg-gradient-to-br from-[#3a0c20]/90 to-[#18040c]/95 backdrop-blur-sm transition-all duration-300 hover:-translate-y-2 hover:transform hover:border-[#d3bb73]/35 hover:shadow-2xl hover:shadow-[#650026]/30">
                     {category.first_service?.thumbnail_url && (
                       <div className="aspect-video overflow-hidden bg-[#0f1119]">
                         <img
@@ -185,6 +185,7 @@ export default function Services({ categories }: { categories: CategoryWithFirst
           <div className="text-center">
             <Link
               href="/uslugi"
+              data-brand-badge="true"
               className="inline-flex items-center gap-2 rounded-full bg-[#d3bb73] px-8 py-3 text-sm font-medium text-[#1c1f33] transition-all duration-200 hover:bg-[#d3bb73]/90"
             >
               Zobacz wszystkie usługi
@@ -199,6 +200,7 @@ export default function Services({ categories }: { categories: CategoryWithFirst
           </p>
           <a
             href="#kontakt"
+            data-brand-badge="true"
             className="inline-flex items-center gap-2 rounded-full border border-[#d3bb73]/30 bg-[#d3bb73]/10 px-8 py-3 text-sm font-medium text-[#d3bb73] transition-all duration-200 hover:bg-[#d3bb73]/20"
           >
             Skontaktuj się z nami

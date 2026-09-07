@@ -43,7 +43,7 @@ import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
 import { useDialog } from '@/contexts/DialogContext';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { InvoiceSettingsTab } from '@/components/crm/invoices/tabs/InvoiceSettingsTab';
-import { ExternalInvoicesTab } from '@/components/crm/invoices/tabs/ExternalInvoicesTab/ExternalInvoicesTab';
+import { AccountingWorkspaceTab } from '@/components/crm/invoices/tabs/AccountingWorkspaceTab';
 import FinalInvoiceWizardModal from '@/components/crm/FinalInvoiceWizardModal';
 
 type SortKey =
@@ -232,6 +232,7 @@ export default function InvoicesPage() {
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [showSummaryDrawer, setShowSummaryDrawer] = useState(false);
   const lastInvoiceLoadErrorRef = useRef<string | null>(null);
+  const companySelectionInitializedRef = useRef(false);
 
   const {
     canViewModule,
@@ -244,6 +245,16 @@ export default function InvoicesPage() {
 
   const canAccessKSeF = useMemo(() => canViewModule('invoices'), [canViewModule]);
   const canManageInvoices = useMemo(() => canManageModule('invoices'), [canManageModule]);
+
+  const handleTabChange = useCallback(
+    (tab: typeof activeTab) => {
+      setActiveTab(tab);
+      const params = new URLSearchParams(searchParams.toString());
+      params.set('tab', tab);
+      router.push(`/crm/invoices?${params.toString()}`, { scroll: false });
+    },
+    [router, searchParams],
+  );
 
   useEffect(() => {
     if (permissionsLoading) return;
@@ -401,16 +412,17 @@ export default function InvoicesPage() {
   }, [showCompanyDropdown]);
 
   useEffect(() => {
+    if (permissionsLoading) return;
     fetchInvoices();
     fetchMyCompanies();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allowedCompanyIds]);
+  }, [allowedCompanyIds, permissionsLoading]);
 
   const fetchMyCompanies = async () => {
     try {
       const { data, error } = await supabase
         .from('my_companies')
-        .select('id, name')
+        .select('id, name, is_default')
         .eq('is_active', true)
         .order('is_default', { ascending: false });
 
@@ -419,6 +431,11 @@ export default function InvoicesPage() {
         ? (data || []).filter((c: any) => allowedCompanyIds.includes(c.id))
         : data || [];
       setMyCompanies(filtered);
+      if (!companySelectionInitializedRef.current && filtered.length > 0) {
+        const defaultCompany = filtered.find((company: any) => company.is_default) || filtered[0];
+        setSelectedCompanyIds(new Set([defaultCompany.id]));
+        companySelectionInitializedRef.current = true;
+      }
     } catch (err) {
       console.error('Error fetching companies:', err);
     }
@@ -782,7 +799,7 @@ export default function InvoicesPage() {
               { id: 'dashboard', label: 'Przegląd finansowy', icon: DollarSign },
               { id: 'ksef', label: 'KSeF', icon: FileText },
               { id: 'local', label: 'Lokalne faktury', icon: Building },
-              { id: 'external', label: 'Faktury spoza KSeF', icon: Receipt },
+              { id: 'external', label: 'Dokumenty i rozliczenia', icon: Receipt },
               { id: 'expenses', label: 'Koszty i wypłaty', icon: WalletCards },
               ...(canManageInvoices
                 ? [{ id: 'settings', label: 'Ustawienia faktur', icon: Settings }]
@@ -796,7 +813,7 @@ export default function InvoicesPage() {
                 return (
                   <button
                     key={tab.id}
-                    onClick={() => setActiveTab(tab.id as any)}
+                    onClick={() => handleTabChange(tab.id as typeof activeTab)}
                     className={`flex shrink-0 snap-start items-center gap-2 whitespace-nowrap border-b-2 px-4 py-3 text-sm font-medium transition-colors ${
                       activeTab === tab.id
                         ? 'border-[#d3bb73] text-[#d3bb73]'
@@ -819,7 +836,11 @@ export default function InvoicesPage() {
               filterCompanyIds={selectedCompanyIds.size > 0 ? Array.from(selectedCompanyIds) : null}
             />
           ) : activeTab === 'external' ? (
-            <ExternalInvoicesTab />
+            <AccountingWorkspaceTab
+              filterCompanyIds={
+                selectedCompanyIds.size > 0 ? Array.from(selectedCompanyIds) : allowedCompanyIds
+              }
+            />
           ) : activeTab === 'expenses' ? (
             <FinancialEntriesTab />
           ) : activeTab === 'settings' ? (

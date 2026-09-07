@@ -123,7 +123,7 @@ export default function ClientsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background.primary },
   header: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, padding: spacing.lg, paddingBottom: spacing.md },
-  title: { fontSize: typography.fontSizes.xxl, fontWeight: typography.fontWeights.bold, color: colors.text.primary },
+  title: { fontFamily: 'MBFAtom', textTransform: 'uppercase', fontSize: typography.fontSizes.xxl, fontWeight: typography.fontWeights.bold, color: colors.text.primary },
   subtitle: { fontSize: typography.fontSizes.sm, color: colors.text.secondary, marginTop: 3 },
   syncButton: { minHeight: 42, flexDirection: 'row', alignItems: 'center', gap: spacing.xs, backgroundColor: colors.primary.gold, borderRadius: borderRadius.md, paddingHorizontal: spacing.md },
   syncText: { color: colors.background.primary, fontSize: typography.fontSizes.sm, fontWeight: typography.fontWeights.bold },

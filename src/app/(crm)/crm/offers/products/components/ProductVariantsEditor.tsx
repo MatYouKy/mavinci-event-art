@@ -195,7 +195,7 @@ export function ProductVariantsEditor({
                               <Upload className="h-3.5 w-3.5" /> Zmień
                               <input
                                 type="file"
-                                accept="image/png,image/jpeg"
+                                accept="image/png,image/jpeg,image/webp"
                                 disabled={disabled}
                                 className="hidden"
                                 onChange={async (event) => {
@@ -226,12 +226,12 @@ export function ProductVariantsEditor({
                             <>
                               <ImageIcon className="h-7 w-7 text-[#d3bb73]/70" />
                               Przeciągnij zdjęcie lub kliknij, aby wybrać
-                              <span className="text-[10px] text-[#e5e4e2]/30">PNG lub JPG, maks. 10 MB</span>
+                              <span className="text-[10px] text-[#e5e4e2]/30">PNG, JPG lub WebP, maks. 10 MB</span>
                             </>
                           )}
                           <input
                             type="file"
-                            accept="image/png,image/jpeg"
+                            accept="image/png,image/jpeg,image/webp"
                             disabled={disabled}
                             className="hidden"
                             onChange={async (event) => {

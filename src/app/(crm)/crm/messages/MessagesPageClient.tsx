@@ -46,6 +46,7 @@ import {
   readMessageListCache,
   writeMessageListCache,
 } from '@/lib/CRM/messages/messageListCache';
+import { dispatchCrmEmail, formatScheduledEmailDate } from '@/lib/emailScheduling';
 
 const translateSubject = (subject: string): string => {
   if (!subject) return 'Wiadomość z formularza';
@@ -580,6 +581,7 @@ export default function MessagesPageClient({
     fromAccountId?: string;
     cc?: string;
     bcc?: string;
+    scheduledAt?: string | null;
   }) => {
     const accountToUse = data.fromAccountId || selectedAccount;
 
@@ -620,7 +622,6 @@ export default function MessagesPageClient({
         }
       }
 
-      const apiUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-email`;
       let inReplyTo: string | undefined;
       let references: string[] | undefined;
       if (replyToMessage?.type === 'received') {
@@ -641,13 +642,12 @@ export default function MessagesPageClient({
           : parsedReferences;
       }
 
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+      const result = await dispatchCrmEmail({
+        accessToken: session.access_token,
+        functionName: 'send-email',
+        scheduledAt: data.scheduledAt,
+        metadata: { entityType: 'message', actionUrl: '/crm/messages' },
+        payload: {
           emailAccountId: accountToUse,
           to: data.to,
           cc: data.cc,
@@ -658,13 +658,16 @@ export default function MessagesPageClient({
           messageId: replyToMessage?.type === 'contact_form' ? replyToMessage.id : undefined,
           inReplyTo,
           references,
-        }),
+        },
       });
 
-      const result = await response.json();
-
       if (result.success) {
-        showSnackbar('Wiadomość wysłana!', 'success');
+        showSnackbar(
+          result.scheduled && result.scheduledAt
+            ? `Wiadomość zostanie wysłana ${formatScheduledEmailDate(result.scheduledAt)}`
+            : 'Wiadomość wysłana!',
+          'success',
+        );
         setShowNewMessageModal(false);
         setReplyToMessage(null);
         setForwardMessage(null);

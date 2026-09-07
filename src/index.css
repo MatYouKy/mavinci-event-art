@@ -2,9 +2,41 @@
 @tailwind components;
 @tailwind utilities;
 
+.field-marketing {
+  width: 100%;
+  border: 1px solid rgba(211, 187, 115, 0.22);
+  border-radius: 0.5rem;
+  background: #210811;
+  padding: 0.625rem 0.75rem;
+  color: #e5e4e2;
+  font-size: 0.875rem;
+  outline: none;
+}
+
+.field-marketing:focus {
+  border-color: #d3bb73;
+  box-shadow: 0 0 0 2px rgba(211, 187, 115, 0.1);
+}
+
+:root {
+  --brand-burgundy-950: #100207;
+  --brand-burgundy-900: #18040c;
+  --brand-burgundy-850: #210611;
+  --brand-burgundy-800: #2d0918;
+  --brand-burgundy-750: #3a0c20;
+  --brand-burgundy-700: #650026;
+  --brand-burgundy-600: #7f1734;
+  --brand-burgundy-500: #941d3e;
+  --brand-gold: #d3bb73;
+  --brand-gold-hover: #e2cd8d;
+  --brand-platinum: #e5e4e2;
+  --font-brand-heading: 'Atom', 'Montserrat', sans-serif;
+  --brand-atom-optical-scale: 0.88;
+}
+
 html, body {
   overscroll-behavior: none;
-  background-color: #0f1119; /* Twoje tło */
+  background-color: var(--brand-burgundy-950);
   color-scheme: dark; /* ważne – eliminuje biały błysk w Safari */
 }
 
@@ -22,7 +54,556 @@ body.crm-body {
   margin: 0;
   padding: 0;
   overflow: hidden;
-  background-color: #0f1119;
+  background-color: var(--brand-burgundy-950);
+}
+
+/*
+ * Jeden motyw dla CRM i części publicznej. Dotychczasowe komponenty używają
+ * historycznych, granatowych wartości bezpośrednio w klasach Tailwind.
+ * Poniższa warstwa mapuje je na hierarchię burgundów bez zmieniania znaczenia
+ * kolorów statusów (zielony, czerwony, ostrzegawczy).
+ */
+.brand-theme {
+  min-height: 100%;
+  background:
+    radial-gradient(circle at 82% -12%, rgba(127, 23, 52, 0.2), transparent 34rem),
+    var(--brand-burgundy-950);
+  color: var(--brand-platinum);
+  accent-color: var(--brand-gold);
+}
+
+/*
+ * CRM używa jaśniejszej, spokojniejszej gradacji burgundu niż strona
+ * publiczna. Zachowany kontrast między głównym tłem, nawigacją i kartami
+ * odciąża wzrok przy wielogodzinnej pracy z dużą ilością danych.
+ */
+.brand-theme--crm {
+  --brand-burgundy-950: #210811;
+  --brand-burgundy-900: #2c0b18;
+  --brand-burgundy-850: #351020;
+  --brand-burgundy-800: #411326;
+  --brand-burgundy-750: #521a31;
+  --crm-field-border: rgba(229, 228, 226, 0.12);
+  --crm-field-border-hover: rgba(229, 228, 226, 0.2);
+  --crm-field-border-focus: rgba(211, 187, 115, 0.38);
+  background:
+    radial-gradient(circle at 80% -18%, rgba(148, 29, 62, 0.24), transparent 38rem),
+    linear-gradient(145deg, #260914 0%, #210811 58%, #2c0b18 100%);
+}
+
+/*
+ * Pola formularzy CRM mają spokojną, pojedynczą krawędź. Złoto pojawia się
+ * dopiero przy interakcji i nie tworzy już ciężkiej, dwupikselowej obwódki.
+ * Selektor obejmuje wyłącznie kontrolki z pełnym obramowaniem, dzięki czemu
+ * nie dodaje ramki np. do bezramkowych pól wyszukiwania osadzonych w panelu.
+ */
+body.brand-theme--crm :where(
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']):not([type='color']):not([type='button']):not([type='submit']):not([type='reset'])[class~='border'],
+  textarea[class~='border'],
+  select[class~='border'],
+  [contenteditable='true'][class~='border']
+):not([aria-invalid='true']):not([data-invalid='true']):not([class*='border-red']):not([class*='border-rose']) {
+  border-width: 1px !important;
+  border-color: var(--crm-field-border) !important;
+  box-shadow: none !important;
+  transition-property: border-color, box-shadow, background-color;
+  transition-duration: 150ms;
+}
+
+body.brand-theme--crm :where(
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']):not([type='color']):not([type='button']):not([type='submit']):not([type='reset'])[class~='border'],
+  textarea[class~='border'],
+  select[class~='border'],
+  [contenteditable='true'][class~='border']
+):not(:disabled):not([aria-invalid='true']):not([data-invalid='true']):not([class*='border-red']):not([class*='border-rose']):hover {
+  border-color: var(--crm-field-border-hover) !important;
+}
+
+body.brand-theme--crm :where(
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']):not([type='color']):not([type='button']):not([type='submit']):not([type='reset'])[class~='border'],
+  textarea[class~='border'],
+  select[class~='border'],
+  [contenteditable='true'][class~='border']
+):not([aria-invalid='true']):not([data-invalid='true']):not([class*='border-red']):not([class*='border-rose']):focus {
+  border-color: var(--crm-field-border-focus) !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+/* Bezpośredni, jednoznaczny styl wspólnych kontrolek formularzy faktur. */
+body.brand-theme--crm .crm-form-control {
+  border: 1px solid rgba(229, 228, 226, 0.12) !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+body.brand-theme--crm .crm-form-control:hover {
+  border-color: rgba(229, 228, 226, 0.22) !important;
+}
+
+body.brand-theme--crm .crm-form-control:focus {
+  border-color: rgba(211, 187, 115, 0.38) !important;
+  box-shadow: none !important;
+}
+
+.brand-theme ::selection {
+  background: var(--brand-burgundy-600);
+  color: #fff;
+}
+
+.brand-theme :where(h1, h2, h3, h4, th, [role='columnheader'], .brand-heading, [data-brand-heading='true']) {
+  font-family: var(--font-brand-heading);
+  font-weight: 400;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+  zoom: var(--brand-atom-optical-scale);
+}
+
+.brand-theme :where(nav, aside, [role='navigation'], [data-brand-navigation='true'])
+  :where(a, button, [role='menuitem'], [data-navigation-label='true']) {
+  font-family: var(--font-brand-heading);
+  font-weight: 400;
+  letter-spacing: 0.065em;
+  text-transform: uppercase;
+  zoom: var(--brand-atom-optical-scale);
+}
+
+.brand-theme--crm :where(nav, aside, [role='navigation'], [data-brand-navigation='true'])
+  :where(a, button, [role='menuitem'], [data-navigation-label='true']) {
+  font-size: 0.75rem;
+  line-height: 1.125rem;
+  zoom: 1;
+}
+
+/*
+ * Krótkie oznaczenia interfejsu korzystają z tej samej typografii co marka.
+ * Selektor oparty o rozmiar tekstu obejmuje również starsze pille, które nie
+ * mają jeszcze semantycznego atrybutu `data-brand-badge`.
+ */
+.brand-theme :where(
+  [data-brand-badge='true'],
+  [class~='rounded-full'][class~='text-xs'],
+  [class~='rounded-full'][class~='text-sm'],
+  [class~='rounded-full'][class~='text-[10px]'],
+  [class~='rounded-full'][class~='text-[11px]']
+) {
+  font-family: var(--font-brand-heading);
+  font-weight: 400;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+  zoom: var(--brand-atom-optical-scale);
+}
+
+/* Badge osadzony w nawigacji skaluje się razem z linkiem tylko jeden raz. */
+.brand-theme :where(nav, aside, [role='navigation'], [data-brand-navigation='true'])
+  :where(
+    [data-brand-badge='true'],
+    [class~='rounded-full'][class~='text-xs'],
+    [class~='rounded-full'][class~='text-sm'],
+    [class~='rounded-full'][class~='text-[10px]'],
+    [class~='rounded-full'][class~='text-[11px]']
+  ) {
+  zoom: 1;
+}
+
+.brand-theme :where([data-brand-breadcrumb='true'], nav[aria-label='breadcrumb'])
+  :where(a, span, [role='link']) {
+  font-family: var(--font-brand-heading);
+  font-weight: 400;
+  letter-spacing: 0.065em;
+  text-transform: uppercase;
+}
+
+.brand-theme :where([data-brand-number='true'], .brand-number) {
+  font-family: var(--font-brand-heading);
+  font-weight: 400;
+  font-variant-numeric: lining-nums tabular-nums;
+  letter-spacing: 0.035em;
+  text-transform: uppercase;
+  zoom: var(--brand-atom-optical-scale);
+}
+
+.brand-theme :where(nav, aside, [role='navigation'], [data-brand-navigation='true'])
+  :where([data-brand-number='true'], .brand-number) {
+  zoom: 1;
+}
+
+/*
+ * Ujednolicony kontrast modali CRM. Złoto wyznacza krawędź okna i aktywny
+ * fokus, natomiast pola oraz wewnętrzne sekcje korzystają z neutralniejszych
+ * odcieni burgundu i platyny.
+ */
+body.brand-theme--crm :is(
+  [data-crm-modal='true'],
+  [role='dialog'][aria-modal='true']
+) {
+  background-color: rgba(12, 2, 7, 0.78) !important;
+  backdrop-filter: blur(4px);
+}
+
+body.brand-theme--crm :is(
+  [data-crm-modal-surface='true'],
+  [role='dialog'][aria-modal='true'][class*='max-w-'][class*='rounded-'],
+  [role='dialog'][aria-modal='true'] [class*='max-w-'][class*='rounded-']
+) {
+  background:
+    linear-gradient(155deg, rgba(65, 19, 38, 0.98), rgba(39, 9, 22, 0.99)) !important;
+  border-color: rgba(211, 187, 115, 0.42) !important;
+  box-shadow:
+    0 30px 80px rgba(5, 0, 3, 0.62),
+    0 0 0 1px rgba(229, 228, 226, 0.05) inset,
+    0 1px 0 rgba(211, 187, 115, 0.16) inset !important;
+}
+
+body.brand-theme--crm :is(
+  [data-crm-modal='true'],
+  [role='dialog'][aria-modal='true']
+) [data-crm-modal-bar='true'] {
+  background: rgba(44, 11, 24, 0.94) !important;
+  border-color: rgba(229, 228, 226, 0.12) !important;
+  box-shadow: 0 8px 24px rgba(10, 1, 5, 0.18);
+}
+
+body.brand-theme--crm :is(
+  [data-crm-modal='true'],
+  [role='dialog'][aria-modal='true']
+) :is(
+  [class~='bg-[#1c1f33]'],
+  [class^='bg-[#1c1f33]/'],
+  [class*=' bg-[#1c1f33]/']
+) {
+  background-color: #4b172f !important;
+}
+
+body.brand-theme--crm :is(
+  [data-crm-modal='true'],
+  [role='dialog'][aria-modal='true']
+) :is(
+  [class~='border-[#d3bb73]/10'],
+  [class~='border-[#d3bb73]/15'],
+  [class~='border-[#d3bb73]/20']
+) {
+  border-color: rgba(229, 228, 226, 0.16) !important;
+}
+
+body.brand-theme--crm :is(
+  [data-crm-modal='true'],
+  [role='dialog'][aria-modal='true']
+) :where(label) {
+  color: rgba(229, 228, 226, 0.74) !important;
+}
+
+body.brand-theme--crm :is(
+  [data-crm-modal='true'],
+  [role='dialog'][aria-modal='true']
+) :where(
+  input:not([type='checkbox']):not([type='radio']),
+  textarea,
+  select,
+  [contenteditable='true']
+) {
+  background-color: #501932 !important;
+  border-color: var(--crm-field-border) !important;
+  box-shadow: none !important;
+}
+
+body.brand-theme--crm :is(
+  [data-crm-modal='true'],
+  [role='dialog'][aria-modal='true']
+) :where(
+  input:not([type='checkbox']):not([type='radio']),
+  textarea,
+  select,
+  [contenteditable='true']
+):hover {
+  border-color: var(--crm-field-border-hover) !important;
+}
+
+body.brand-theme--crm :is(
+  [data-crm-modal='true'],
+  [role='dialog'][aria-modal='true']
+) :where(
+  input:not([type='checkbox']):not([type='radio']),
+  textarea,
+  select,
+  [contenteditable='true']
+):focus {
+  border-color: var(--crm-field-border-focus) !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+/*
+ * Jeden czytelny stan aktywny dla tabów CRM. Atrybuty semantyczne obsługują
+ * nowe komponenty, a ostatni selektor zachowuje zgodność ze starszymi tabami
+ * opartymi wyłącznie o klasy koloru i dolnej krawędzi.
+ */
+body.brand-theme--crm :is(
+  [data-crm-tab-active='true'],
+  [role='tab'][aria-selected='true'],
+  [role='tab'][data-state='active'],
+  [data-crm-tabs='true'] [data-state='active'],
+  [role='tablist'] [data-state='active']
+),
+body.brand-theme--crm :where([class*='border-b']) button[class~='text-[#d3bb73]'] {
+  background:
+    linear-gradient(180deg, rgba(127, 23, 52, 0.78), rgba(82, 26, 49, 0.66)) !important;
+  border-radius: 0.625rem 0.625rem 0 0;
+  border-color: var(--brand-gold-hover) !important;
+  color: #f0dda0 !important;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.06) inset,
+    0 -2px 0 rgba(226, 205, 141, 0.92) inset;
+}
+
+body.brand-theme--crm :where([data-crm-tabs='true'], [role='tablist'])
+  :where([role='tab'], button):not([aria-selected='true']):hover {
+  background-color: rgba(148, 29, 62, 0.38);
+  color: var(--brand-platinum) !important;
+  box-shadow: 0 -2px 0 rgba(211, 187, 115, 0.46) inset;
+}
+
+body.brand-theme--crm :is(
+  [data-crm-tab-active='true'],
+  [role='tab'][aria-selected='true'],
+  [role='tab'][data-state='active']
+) :where([class~='rounded-full']) {
+  background-color: rgba(211, 187, 115, 0.16) !important;
+  color: var(--brand-gold-hover) !important;
+}
+
+.brand-theme :where(h1, h2) {
+  text-wrap: balance;
+}
+
+.brand-theme :where(input, textarea, select, option, [contenteditable='true'], .ql-editor),
+.brand-theme .email-content :where(h1, h2, h3, h4, th) {
+  font-family: inherit;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.brand-theme :is(
+  [class~='bg-[#0f1119]'], [class^='bg-[#0f1119]/'], [class*=' bg-[#0f1119]/'],
+  [class~='bg-[#0f1117]'], [class^='bg-[#0f1117]/'], [class*=' bg-[#0f1117]/'],
+  [class~='bg-[#0f1118]'], [class^='bg-[#0f1118]/'], [class*=' bg-[#0f1118]/'],
+  [class~='bg-[#0f1019]'], [class^='bg-[#0f1019]/'], [class*=' bg-[#0f1019]/'],
+  [class~='bg-[#0d0f1a]'], [class^='bg-[#0d0f1a]/'], [class*=' bg-[#0d0f1a]/'],
+  [class~='bg-[#0d0f17]'], [class^='bg-[#0d0f17]/'], [class*=' bg-[#0d0f17]/'],
+  [class~='bg-[#0c1020]'], [class^='bg-[#0c1020]/'], [class*=' bg-[#0c1020]/'],
+  [class~='bg-[#0b0d16]'], [class^='bg-[#0b0d16]/'], [class*=' bg-[#0b0d16]/'],
+  [class~='bg-[#0a0d1a]'], [class^='bg-[#0a0d1a]/'], [class*=' bg-[#0a0d1a]/'],
+  [class~='bg-[#0a0b14]'], [class^='bg-[#0a0b14]/'], [class*=' bg-[#0a0b14]/'],
+  [class~='bg-[#090b13]'], [class^='bg-[#090b13]/'], [class*=' bg-[#090b13]/']
+) {
+  background-color: var(--brand-burgundy-950) !important;
+}
+
+.brand-theme :is(
+  [class~='bg-[#111320]'], [class^='bg-[#111320]/'], [class*=' bg-[#111320]/'],
+  [class~='bg-[#11131f]'], [class^='bg-[#11131f]/'], [class*=' bg-[#11131f]/'],
+  [class~='bg-[#111421]'], [class^='bg-[#111421]/'], [class*=' bg-[#111421]/'],
+  [class~='bg-[#11141f]'], [class^='bg-[#11141f]/'], [class*=' bg-[#11141f]/'],
+  [class~='bg-[#111522]'], [class^='bg-[#111522]/'], [class*=' bg-[#111522]/'],
+  [class~='bg-[#121521]'], [class^='bg-[#121521]/'], [class*=' bg-[#121521]/'],
+  [class~='bg-[#121625]'], [class^='bg-[#121625]/'], [class*=' bg-[#121625]/'],
+  [class~='bg-[#13161f]'], [class^='bg-[#13161f]/'], [class*=' bg-[#13161f]/'],
+  [class~='bg-[#131620]'], [class^='bg-[#131620]/'], [class*=' bg-[#131620]/'],
+  [class~='bg-[#151827]'], [class^='bg-[#151827]/'], [class*=' bg-[#151827]/'],
+  [class~='bg-[#151829]'], [class^='bg-[#151829]/'], [class*=' bg-[#151829]/'],
+  [class~='bg-[#161829]'], [class^='bg-[#161829]/'], [class*=' bg-[#161829]/'],
+  [class~='bg-[#161927]'], [class^='bg-[#161927]/'], [class*=' bg-[#161927]/'],
+  [class~='bg-[#171927]'], [class^='bg-[#171927]/'], [class*=' bg-[#171927]/'],
+  [class~='bg-[#171a28]'], [class^='bg-[#171a28]/'], [class*=' bg-[#171a28]/'],
+  [class~='bg-[#171a29]'], [class^='bg-[#171a29]/'], [class*=' bg-[#171a29]/'],
+  [class~='bg-[#171b2b]'], [class^='bg-[#171b2b]/'], [class*=' bg-[#171b2b]/']
+) {
+  background-color: var(--brand-burgundy-900) !important;
+}
+
+.brand-theme :is(
+  [class~='bg-[#1a1d2e]'], [class^='bg-[#1a1d2e]/'], [class*=' bg-[#1a1d2e]/'],
+  [class~='bg-[#1c1f33]'], [class^='bg-[#1c1f33]/'], [class*=' bg-[#1c1f33]/'],
+  [class~='bg-[#1e2035]'], [class^='bg-[#1e2035]/'], [class*=' bg-[#1e2035]/'],
+  [class~='bg-[#1f233b]'], [class^='bg-[#1f233b]/'], [class*=' bg-[#1f233b]/'],
+  [class~='bg-[#20233a]'], [class^='bg-[#20233a]/'], [class*=' bg-[#20233a]/']
+) {
+  background-color: var(--brand-burgundy-800) !important;
+}
+
+.brand-theme :is(
+  [class~='bg-[#252837]'], [class^='bg-[#252837]/'], [class*=' bg-[#252837]/'],
+  [class~='bg-[#252842]'], [class^='bg-[#252842]/'], [class*=' bg-[#252842]/'],
+  [class~='bg-[#252942]'], [class^='bg-[#252942]/'], [class*=' bg-[#252942]/'],
+  [class~='bg-[#252945]'], [class^='bg-[#252945]/'], [class*=' bg-[#252945]/'],
+  [class~='bg-[#262940]'], [class^='bg-[#262940]/'], [class*=' bg-[#262940]/'],
+  [class~='bg-[#2a2d3a]'], [class^='bg-[#2a2d3a]/'], [class*=' bg-[#2a2d3a]/'],
+  [class~='bg-[#2a2d42]'], [class^='bg-[#2a2d42]/'], [class*=' bg-[#2a2d42]/'],
+  [class~='bg-[#2a2e42]'], [class^='bg-[#2a2e42]/'], [class*=' bg-[#2a2e42]/'],
+  [class~='bg-[#2a2e43]'], [class^='bg-[#2a2e43]/'], [class*=' bg-[#2a2e43]/'],
+  [class~='bg-[#2a2f4a]'], [class^='bg-[#2a2f4a]/'], [class*=' bg-[#2a2f4a]/'],
+  [class~='bg-[#2d3152]'], [class^='bg-[#2d3152]/'], [class*=' bg-[#2d3152]/'],
+  [class~='bg-[#2d3254]'], [class^='bg-[#2d3254]/'], [class*=' bg-[#2d3254]/']
+) {
+  background-color: var(--brand-burgundy-750) !important;
+}
+
+/*
+ * Hover zawsze rozjaśnia powierzchnię. Starsze komponenty nadal mają w
+ * klasach granatowe wartości, dlatego ich warianty `hover:` otrzymują tutaj
+ * jaśniejszy burgund dopasowany do poziomu bazowego tła.
+ */
+body.brand-theme--crm :is(
+  [class~='hover:bg-[#0f1119]'],
+  [class~='hover:bg-[#0f1119]/80'],
+  [class~='hover:bg-[#0f1119]/70'],
+  [class~='hover:bg-[#0f1119]/60'],
+  [class~='hover:bg-[#0f1119]/50'],
+  [class~='hover:bg-[#0f1119]/30'],
+  [class~='hover:bg-[#0f1119]/20'],
+  [class~='hover:bg-[#0f1117]'],
+  [class~='hover:bg-[#0f1117]/50'],
+  [class~='hover:bg-[#0a0d1a]'],
+  [class~='hover:bg-[#0a0d1a]/70'],
+  [class~='hover:bg-[#0a0d1a]/60'],
+  [class~='hover:bg-[#0a0d1a]/50'],
+  [class~='hover:bg-[#0a0d1a]/40']
+):hover {
+  background-color: #5f1f3a !important;
+}
+
+body.brand-theme--crm :is(
+  [class~='hover:bg-[#121521]'],
+  [class~='hover:bg-[#121625]'],
+  [class~='hover:bg-[#131620]'],
+  [class~='hover:bg-[#151829]'],
+  [class~='hover:bg-[#171a29]'],
+  [class~='hover:bg-[#1a1d2e]'],
+  [class~='hover:bg-[#1a1d2e]/80'],
+  [class~='hover:bg-[#1c1f33]'],
+  [class~='hover:bg-[#1c1f33]/80'],
+  [class~='hover:bg-[#1c1f33]/70'],
+  [class~='hover:bg-[#1c1f33]/60'],
+  [class~='hover:bg-[#1c1f33]/50'],
+  [class~='hover:bg-[#1c1f33]/40'],
+  [class~='hover:bg-[#1c1f33]/30'],
+  [class~='hover:bg-[#20233a]']
+):hover {
+  background-color: #6b2341 !important;
+}
+
+body.brand-theme--crm :is(
+  [class~='hover:bg-[#252837]'],
+  [class~='hover:bg-[#252842]'],
+  [class~='hover:bg-[#252945]'],
+  [class~='hover:bg-[#252945]/50'],
+  [class~='hover:bg-[#262940]'],
+  [class~='hover:bg-[#2a2e42]'],
+  [class~='hover:bg-[#2a2f4a]'],
+  [class~='hover:bg-[#2d3152]'],
+  [class~='hover:bg-[#2d3254]'],
+  [class~='hover:bg-[#521a31]']
+):hover {
+  background-color: #7a2949 !important;
+}
+
+/*
+ * Rozliczenia wymagają mocniejszej hierarchii niż zwykłe statusy. Zaległe
+ * wydarzenia korzystają z chłodniejszej czerwieni, a świeżo zakończone z
+ * bursztynu. Pełne obramowanie pozwala rozpoznać stan również bez odczytu
+ * samego koloru tła.
+ */
+body.brand-theme--crm [data-event-urgency='overdue'] {
+  background-color: #5a1d2c !important;
+  border-color: rgba(254, 205, 211, 0.72) !important;
+  box-shadow:
+    inset 5px 0 0 #fb7185,
+    inset 0 1px 0 rgba(255, 228, 230, 0.2),
+    inset 0 -1px 0 rgba(255, 228, 230, 0.16) !important;
+}
+
+body.brand-theme--crm [data-event-urgency='overdue']:hover {
+  background-color: #75273b !important;
+  border-color: rgba(255, 228, 230, 0.92) !important;
+}
+
+body.brand-theme--crm [data-event-urgency='approaching'] {
+  background-color: #4b321d !important;
+  border-color: rgba(253, 230, 138, 0.68) !important;
+  box-shadow:
+    inset 5px 0 0 #f2c866,
+    inset 0 1px 0 rgba(254, 243, 199, 0.18),
+    inset 0 -1px 0 rgba(254, 243, 199, 0.14) !important;
+}
+
+body.brand-theme--crm [data-event-urgency='approaching']:hover {
+  background-color: #684825 !important;
+  border-color: rgba(254, 243, 199, 0.94) !important;
+}
+
+body.brand-theme--crm tr[data-event-urgency] {
+  border-top-style: solid;
+  border-bottom-style: solid;
+  border-top-width: 1px;
+  border-bottom-width: 1px;
+}
+
+body.brand-theme--crm :is(div, article)[data-event-urgency] {
+  border-width: 2px;
+}
+
+/* Wyraźne separatory listy wydarzeń — bez ciężkiej siatki pionowej. */
+body.brand-theme--crm table[data-event-list-table='true'] {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+body.brand-theme--crm table[data-event-list-table='true'] thead th {
+  border-bottom: 2px solid rgba(226, 205, 141, 0.55);
+}
+
+body.brand-theme--crm table[data-event-list-table='true'] tbody tr > td {
+  border-bottom: 2px solid rgba(211, 187, 115, 0.3);
+  box-shadow: inset 0 -1px 0 rgba(20, 4, 11, 0.48);
+}
+
+body.brand-theme--crm table[data-event-list-table='true'] tbody tr:hover > td {
+  border-bottom-color: rgba(240, 221, 160, 0.68);
+}
+
+body.brand-theme--crm table[data-event-list-table='true']
+  tbody tr[data-event-urgency='overdue'] > td {
+  border-bottom-color: rgba(254, 205, 211, 0.64);
+}
+
+body.brand-theme--crm table[data-event-list-table='true']
+  tbody tr[data-event-urgency='approaching'] > td {
+  border-bottom-color: rgba(253, 230, 138, 0.62);
+}
+
+body.brand-theme--crm table[data-event-list-table='true'] tbody tr:last-child > td {
+  border-bottom-width: 0;
+}
+
+.brand-theme :is([class~='text-[#1c1f33]'], [class~='text-[#0f1119]'], [class~='text-[#0a0d1a]']) {
+  color: var(--brand-burgundy-950) !important;
+}
+
+.brand-theme :is([class~='from-[#1c1f33]'], [class~='from-[#0f1119]'], [class~='from-[#0a0d1a]']) {
+  --tw-gradient-from: var(--brand-burgundy-900) var(--tw-gradient-from-position) !important;
+  --tw-gradient-to: rgba(24, 4, 12, 0) var(--tw-gradient-to-position) !important;
+}
+
+.brand-theme :is([class~='via-[#1c1f33]'], [class~='via-[#0f1119]'], [class~='via-[#0a0d1a]']) {
+  --tw-gradient-stops: var(--tw-gradient-from), var(--brand-burgundy-800) var(--tw-gradient-via-position), var(--tw-gradient-to) !important;
+}
+
+.brand-theme :is([class~='to-[#1c1f33]'], [class~='to-[#0f1119]'], [class~='to-[#0a0d1a]']) {
+  --tw-gradient-to: var(--brand-burgundy-950) var(--tw-gradient-to-position) !important;
+}
+
+.brand-theme :where(button, a, input, textarea, select) {
+  outline-color: var(--brand-gold);
 }
 
 @layer utilities {
@@ -39,7 +620,7 @@ body.crm-body {
   * {
     /* background-color: #0f1119; */
     scrollbar-width: thin;
-    scrollbar-color: rgba(211, 187, 115, 0.5) rgba(28, 31, 51, 0.3);
+    scrollbar-color: rgba(211, 187, 115, 0.5) rgba(74, 0, 31, 0.35);
   }
 
   *::-webkit-scrollbar {
@@ -48,7 +629,7 @@ body.crm-body {
   }
 
   *::-webkit-scrollbar-track {
-    background: rgba(28, 31, 51, 0.3);
+    background: rgba(74, 0, 31, 0.35);
     border-radius: 4px;
   }
 

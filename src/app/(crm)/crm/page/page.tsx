@@ -1,9 +1,11 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useGetAllPagesQuery } from '@/store/api/analyticsApi';
 import { FileText, ChevronRight, ChevronDown, BarChart3, Edit, Search, Code } from 'lucide-react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
+import MarketingWorkspace from '@/components/crm/marketing/MarketingWorkspace';
 
 interface PageNode {
   url: string;
@@ -13,11 +15,21 @@ interface PageNode {
 }
 
 export default function PageManagementPage() {
+  const searchParams = useSearchParams();
+  const [section, setSection] = useState<'marketing' | 'website'>(
+    searchParams.get('tab') === 'website' ? 'website' : 'marketing',
+  );
+  useEffect(() => {
+    setSection(searchParams.get('tab') === 'website' ? 'website' : 'marketing');
+  }, [searchParams]);
   const [dateRange] = useState(30);
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set(['/']));
 
-  const { data: pages, isLoading } = useGetAllPagesQuery({ dateRange });
+  const { data: pages, isLoading } = useGetAllPagesQuery(
+    { dateRange },
+    { skip: section === 'marketing' },
+  );
 
   const pageTree = useMemo(() => {
     const getVisits = (url: string) => pages?.find(p => p.url === url)?.visits || 0;
@@ -109,7 +121,7 @@ export default function PageManagementPage() {
 
     return (
       <div style={{ marginLeft: `${level * 24}px` }}>
-        <div className="flex items-center justify-between p-3 hover:bg-[#1c1f33]/50 rounded-lg transition-colors group">
+        <div className="group flex items-center justify-between rounded-lg p-3 transition-colors hover:bg-[#5a1d37]">
           <div className="flex items-center gap-3 flex-1">
             {hasChildren && (
               <button
@@ -152,7 +164,7 @@ export default function PageManagementPage() {
               {/* TODO: Implement edit page */}
               <button
                 disabled
-                className="flex items-center gap-1 px-3 py-1 bg-[#1c1f33] text-[#e5e4e2]/30 rounded text-sm cursor-not-allowed"
+                className="flex cursor-not-allowed items-center gap-1 rounded bg-[#351020] px-3 py-1 text-sm text-[#e5e4e2]/30"
               >
                 <Edit className="w-3 h-3" />
                 Edytuj
@@ -172,8 +184,40 @@ export default function PageManagementPage() {
     );
   };
 
+  if (section === 'marketing') {
+    return (
+      <div className="min-h-screen bg-[#210811] p-6">
+        <div className="mx-auto max-w-7xl space-y-6">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <h1 className="text-3xl font-light text-[#e5e4e2]">Strona, marketing i ruch</h1>
+              <p className="mt-1 text-[#e5e4e2]/60">
+                Wyniki wszystkich marek zarządzanych w CRM
+              </p>
+            </div>
+            <div className="flex rounded-xl border border-[#d3bb73]/20 bg-[#351020] p-1">
+              <button
+                onClick={() => setSection('marketing')}
+                className="rounded-lg bg-[#6a2340] px-4 py-2 text-xs text-white"
+              >
+                Marketing i ADS
+              </button>
+              <button
+                onClick={() => setSection('website')}
+                className="rounded-lg px-4 py-2 text-xs text-[#e5e4e2]/55 hover:bg-[#5a1d37] hover:text-white"
+              >
+                Struktura strony
+              </button>
+            </div>
+          </div>
+          <MarketingWorkspace initialCompanyId={searchParams.get('company') || undefined} />
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-[#0f1119] p-6">
+    <div className="min-h-screen bg-[#210811] p-6">
       <div className="max-w-7xl mx-auto space-y-6">
         <div className="flex items-center justify-between">
           <div>
@@ -182,9 +226,16 @@ export default function PageManagementPage() {
           </div>
 
           <div className="flex gap-3">
+            <button
+              onClick={() => setSection('marketing')}
+              className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#6a2340] px-4 py-2 text-sm text-[#e5e4e2] transition-colors hover:bg-[#7a2a49]"
+            >
+              <BarChart3 className="h-4 w-4" />
+              Marketing i ADS
+            </button>
             <Link
               href="/crm/page/schema-org"
-              className="flex items-center gap-2 px-4 py-2 bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] rounded-lg hover:bg-[#1c1f33]/80 hover:border-[#d3bb73]/40 transition-colors text-sm"
+              className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#351020] px-4 py-2 text-sm text-[#e5e4e2] transition-colors hover:border-[#d3bb73]/40 hover:bg-[#5a1d37]"
             >
               <Code className="w-4 h-4" />
               Schema.org
@@ -199,7 +250,7 @@ export default function PageManagementPage() {
           </div>
         </div>
 
-        <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl p-6">
+        <div className="rounded-xl border border-[#d3bb73]/20 bg-[#351020] p-6">
           <div className="mb-6">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#e5e4e2]/40" />
@@ -208,7 +259,7 @@ export default function PageManagementPage() {
                 placeholder="Szukaj strony..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg pl-10 pr-4 py-3 text-[#e5e4e2] placeholder-[#e5e4e2]/40 focus:border-[#d3bb73] focus:outline-none transition-colors"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#210811] py-3 pl-10 pr-4 text-[#e5e4e2] placeholder-[#e5e4e2]/40 transition-colors focus:border-[#d3bb73] focus:outline-none"
               />
             </div>
           </div>
@@ -228,7 +279,7 @@ export default function PageManagementPage() {
           )}
         </div>
 
-        <div className="bg-[#1c1f33]/60 border border-[#d3bb73]/10 rounded-xl p-6">
+        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#411326]/60 p-6">
           <h2 className="text-lg font-light text-[#e5e4e2] mb-4">Legenda</h2>
           <div className="grid md:grid-cols-2 gap-4 text-sm">
             <div className="flex items-center gap-2 text-[#e5e4e2]/70">

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, DragEvent, useMemo } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { GripVertical, RotateCcw, Settings, Home, ChevronDown, ChevronRight } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -48,11 +49,12 @@ export default function NavigationManager({
   onOrderChange,
 }: Props) {
   const { showSnackbar } = useSnackbar();
+  const searchParams = useSearchParams();
 
   const { showLoader } = useGlobalLoader();
 
   const handleNavigate = (href: string, name: string) => {
-    if (pathname === href) {
+    if (isRouteActive(href)) {
       onClose?.();
       return;
     }
@@ -247,10 +249,40 @@ export default function NavigationManager({
   };
 
   const isRouteActive = (href: string): boolean => {
-    if (pathname === href) return true;
+    const [targetPath, targetQuery = ''] = href.split('?');
+    const targetParams = new URLSearchParams(targetQuery);
+    const targetTab = targetParams.get('tab');
+    const currentTab = searchParams.get('tab');
+
+    if (targetTab) {
+      if (pathname === targetPath && currentTab === targetTab) return true;
+
+      // Szczegóły produktu pozostają częścią katalogu produktów.
+      if (
+        href === '/crm/offers?tab=catalog' &&
+        pathname.startsWith('/crm/offers/products/')
+      ) {
+        return true;
+      }
+
+      return false;
+    }
+
+    if (pathname === targetPath) {
+      if (targetPath === '/crm/offers') return !currentTab || currentTab === 'offers';
+      if (targetPath === '/crm/page') return !currentTab || currentTab === 'marketing';
+      return true;
+    }
+
+    if (targetPath === '/crm/offers') {
+      return (
+        pathname.startsWith('/crm/offers/') &&
+        !pathname.startsWith('/crm/offers/products/')
+      );
+    }
 
     // Dla /crm/equipment (bez subpath) - aktywne tylko dla /crm/equipment i /crm/equipment/[uuid]
-    if (href === '/crm/equipment') {
+    if (targetPath === '/crm/equipment') {
       if (pathname === '/crm/equipment') return true;
       // Sprawdź czy to szczegóły sprzętu (UUID pattern)
       const match = pathname.match(/^\/crm\/equipment\/([a-f0-9-]{36})$/);
@@ -258,7 +290,7 @@ export default function NavigationManager({
     }
 
     // Dla innych routes - sprawdź czy zaczyna się od href + '/'
-    return pathname.startsWith(href + '/');
+    return pathname.startsWith(targetPath + '/');
   };
 
   const getIcon = useMemo(() => {
@@ -328,7 +360,7 @@ export default function NavigationManager({
 
       <ul className="space-y-1">
         {items.map((item, index) => {
-          const isActive = pathname === item.href;
+          const isActive = isRouteActive(item.href);
           const hasChildren = item.children && item.children.length > 0;
           const isExpanded = expandedItems.has(item.key);
           const hasActiveChild = isChildActive(item);

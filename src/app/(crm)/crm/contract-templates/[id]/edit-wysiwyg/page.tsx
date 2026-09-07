@@ -2,6 +2,7 @@
 import '@/styles/contractA4.css';
 
 import { useState, useEffect, useRef } from 'react';
+import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase/browser';
 import {
@@ -23,6 +24,7 @@ import {
   Printer,
   Download,
   Loader2,
+  ChevronLeft,
   ChevronRight,
 } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -31,11 +33,19 @@ import {
   renderContractDocument,
   createDefaultContractClauseTypography,
   resolveContractClauseTypography,
+  CONTRACT_DEFAULT_LINE_HEIGHT,
+  CONTRACT_LINE_HEIGHT_MAX,
+  CONTRACT_LINE_HEIGHT_MIN,
+  CONTRACT_LINE_HEIGHT_STEP,
   type ContractClauseTypography,
   type ContractClauseTypographyRole,
   type ContractClauseTextStyle,
 } from '@/lib/CRM/contracts/contractPagination';
-import { normalizeContractParagraphPlaceholders } from '@/lib/CRM/contracts/contractParagraphs';
+import {
+  normalizeContractListStructureInElement,
+  normalizeContractParagraphPlaceholders,
+  resolveContractParagraphPlaceholders,
+} from '@/lib/CRM/contracts/contractParagraphs';
 import {
   CONTRACT_CLAUSE_SLOTS,
   decorateContractClauseSlots,
@@ -44,6 +54,56 @@ import { createContractDraftPdf } from '../../printDraft';
 import { getContractDocumentCss } from '@/components/crm/events/calculations/helpers/getContractCssForPrint';
 
 const DEFAULT_LOGO = '/erulers_logo_vect.png';
+
+const renumberVisibleContractParagraphs = (editor: HTMLElement) => {
+  editor
+    .querySelectorAll<HTMLElement>(
+      '[data-contract-paragraph="true"], .contract-paragraph-heading',
+    )
+    .forEach((element, index) => {
+      const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+      let textNode = walker.nextNode() as Text | null;
+      while (textNode && !textNode.textContent?.trim()) {
+        textNode = walker.nextNode() as Text | null;
+      }
+      if (!textNode) return;
+      textNode.textContent = (textNode.textContent || '').replace(
+        /^(\s*)§\s*(?:n|\d+)/iu,
+        `$1§ ${index + 1}`,
+      );
+    });
+};
+
+const syncListMarkerTypography = (editor: HTMLElement) => {
+  editor.querySelectorAll<HTMLLIElement>('li').forEach((item) => {
+    const walker = document.createTreeWalker(item, NodeFilter.SHOW_TEXT);
+    let textNode = walker.nextNode() as Text | null;
+    while (textNode && !textNode.textContent?.trim()) {
+      textNode = walker.nextNode() as Text | null;
+    }
+    const textElement = textNode?.parentElement;
+    if (!textElement) return;
+    const textStyle = window.getComputedStyle(textElement);
+    item.style.fontSize = textStyle.fontSize;
+    item.style.fontFamily = textStyle.fontFamily;
+    item.style.fontWeight = textStyle.fontWeight;
+  });
+};
+
+const inheritRangeTypographyForClauseSlot = (slot: HTMLElement, range: Range) => {
+  const node = range.startContainer;
+  const source = node.nodeType === Node.TEXT_NODE ? node.parentElement : (node as HTMLElement);
+  if (!source) return;
+  const computed = window.getComputedStyle(source);
+  slot.style.fontFamily = computed.fontFamily;
+  slot.style.fontSize = computed.fontSize;
+  slot.style.fontWeight = computed.fontWeight;
+  slot.style.fontStyle = computed.fontStyle;
+  slot.style.lineHeight = computed.lineHeight;
+  slot.style.letterSpacing = computed.letterSpacing;
+  slot.style.color = computed.color;
+  slot.style.textAlign = computed.textAlign;
+};
 
 const SYSTEM_FONTS = [
   { label: 'Arial', family: 'Arial, sans-serif' },
@@ -108,8 +168,15 @@ const PLACEHOLDER_CONTEXT_GROUPS = [
       { key: '{{organization_krs}}', label: 'KRS' },
       { key: '{{organization_regon}}', label: 'REGON' },
       { key: '{{organization_full_address}}', label: 'Pełny adres' },
+      { key: '{{zamiownienie}}', label: 'Numer PO / zamówienia' },
       { key: '{{primary_contact_full_name}}', label: 'Osoba kontaktowa' },
       { key: '{{legal_representative_full_name}}', label: 'Reprezentant prawny' },
+      { key: '{{legal_representatives_list}}', label: 'Wszyscy reprezentanci podpisujący' },
+      { key: '{{client_representation_type_label}}', label: 'Typ reprezentacji' },
+      { key: '{{client_representation_rule}}', label: 'Dokładny sposób reprezentacji' },
+      { key: '{{client_representation_basis}}', label: 'Podstawa weryfikacji reprezentacji' },
+      { key: '{{client_representation_verified_at}}', label: 'Data weryfikacji reprezentacji' },
+      { key: '{{client_representation_block}}', label: 'Pełna informacja o reprezentacji' },
       { key: '{{decision_makers_list}}', label: 'Osoby decyzyjne' },
       { key: '{{client_contract_party_block}}', label: 'Pełne dane strony klienta' },
     ],
@@ -124,6 +191,14 @@ const PLACEHOLDER_CONTEXT_GROUPS = [
       { key: '{{event_end_date_only}}', label: 'Data zakończenia' },
       { key: '{{event_time_start}}', label: 'Godzina rozpoczęcia' },
       { key: '{{event_time_end}}', label: 'Godzina zakończenia' },
+      { key: '{{event_schedule_contract}}', label: 'Pełny termin jedno- lub wielodniowy' },
+      { key: '{{planned_setup_at}}', label: 'Planowany montaż — data i godzina' },
+      { key: '{{planned_setup_date}}', label: 'Planowany montaż — data' },
+      { key: '{{planned_setup_time}}', label: 'Planowany montaż — godzina' },
+      { key: '{{planned_teardown_at}}', label: 'Planowany demontaż — data i godzina' },
+      { key: '{{planned_teardown_date}}', label: 'Planowany demontaż — data' },
+      { key: '{{planned_teardown_time}}', label: 'Planowany demontaż — godzina' },
+      { key: '{{planned_technical_schedule}}', label: 'Pełny termin montażu i demontażu' },
     ],
   },
   {
@@ -150,8 +225,12 @@ const PLACEHOLDER_CONTEXT_GROUPS = [
       { key: '{{discount_percent}}', label: 'Rabat procentowy' },
       { key: '{{deposit_amount}}', label: 'Zadatek' },
       { key: '{{deposit_words}}', label: 'Zadatek słownie' },
+      { key: '{{deposit_percent}}', label: 'Procent zadatku' },
+      { key: '{{payment_term_days}}', label: 'Termin płatności faktury końcowej (dni)' },
       { key: '{{contract_number}}', label: 'Numer umowy' },
       { key: '{{contract_date}}', label: 'Data umowy' },
+      { key: '{{accepted_calculation_number}}', label: 'Numer zaakceptowanej kalkulacji' },
+      { key: '{{accepted_calculation_name}}', label: 'Nazwa zaakceptowanej kalkulacji' },
     ],
   },
   {
@@ -196,7 +275,11 @@ export default function EditTemplateWYSIWYGPage() {
   const [logoScale, setLogoScale] = useState(80);
   const [logoPositionX, setLogoPositionX] = useState(50);
   const [logoPositionY, setLogoPositionY] = useState(0);
-  const [lineHeight, setLineHeight] = useState(1.6);
+  const [lineHeight, setLineHeight] = useState(CONTRACT_DEFAULT_LINE_HEIGHT);
+  const [lineHeightControlValue, setLineHeightControlValue] = useState(
+    CONTRACT_DEFAULT_LINE_HEIGHT,
+  );
+  const [hasTextSelection, setHasTextSelection] = useState(false);
   const [selectedLogo, setSelectedLogo] = useState('/erulers_logo_vect.png');
   const [selectedFooter, setSelectedFooter] = useState<'default' | 'minimal' | 'none'>('default');
   const [selectedFooterTemplateId, setSelectedFooterTemplateId] = useState<string | null>(null);
@@ -222,11 +305,12 @@ export default function EditTemplateWYSIWYGPage() {
   const [historyIndex, setHistoryIndex] = useState(0);
   const [selectedFont, setSelectedFont] = useState<string>('Georgia, serif');
   const [clauseTypography, setClauseTypography] = useState<ContractClauseTypography>(() =>
-    createDefaultContractClauseTypography('Georgia, serif', 1.6),
+    createDefaultContractClauseTypography('Georgia, serif', CONTRACT_DEFAULT_LINE_HEIGHT),
   );
   const [showPlaceholders, setShowPlaceholders] = useState(false);
   const [placeholderCategory, setPlaceholderCategory] = useState<string>('offer');
   const [pages, setPages] = useState<string[]>(['']);
+  const [previewPageCount, setPreviewPageCount] = useState(1);
   const pageRefs = useRef<(HTMLDivElement | null)[]>([]);
   const [editingName, setEditingName] = useState(false);
   const [tempName, setTempName] = useState('');
@@ -248,6 +332,7 @@ export default function EditTemplateWYSIWYGPage() {
     selectedFont,
     selectedLogo,
     selectedFooter,
+    selectedFooterTemplateId,
     footerContent,
     footerLogoScale,
     clauseTypography,
@@ -274,7 +359,8 @@ export default function EditTemplateWYSIWYGPage() {
     if (editorRef.current) {
       editorRef.current.style.lineHeight = String(lineHeight);
     }
-  }, [lineHeight]);
+    if (!hasTextSelection) setLineHeightControlValue(lineHeight);
+  }, [hasTextSelection, lineHeight]);
 
   useEffect(() => {
     return () => {
@@ -400,7 +486,7 @@ export default function EditTemplateWYSIWYGPage() {
 
         setSelectedLogo(settings.selectedLogo || DEFAULT_LOGO);
         const templateFont = settings.selectedFont || 'Georgia, serif';
-        const templateLineHeight = settings.lineHeight || 1.6;
+        const templateLineHeight = settings.lineHeight || CONTRACT_DEFAULT_LINE_HEIGHT;
         setClauseTypography(
           resolveContractClauseTypography({
             selectedFont: templateFont,
@@ -430,18 +516,24 @@ export default function EditTemplateWYSIWYGPage() {
             const initialDocument = await renderContractDocument(source, {
               ...settings,
               selectedFooter: settings.selectedFooter || 'default',
-            }, { resolveParagraphNumbers: false });
-            setPages(initialDocument.pages);
-            setHistory([initialDocument.pages]);
+            });
+            const editableFlow = initialDocument.pages.join('');
+            setPages([editableFlow]);
+            setPreviewPageCount(initialDocument.pages.length);
+            setHistory([[editableFlow]]);
             setHistoryIndex(0);
           } else if (initialHtml) {
-            setPages([initialHtml]);
-            setHistory([[initialHtml]]);
+            const editableFlow = resolveContractParagraphPlaceholders(initialHtml);
+            setPages([editableFlow]);
+            setPreviewPageCount(1);
+            setHistory([[editableFlow]]);
             setHistoryIndex(0);
           }
         } else if (initialHtml) {
-          setPages([initialHtml]);
-          setHistory([[initialHtml]]);
+          const editableFlow = resolveContractParagraphPlaceholders(initialHtml);
+          setPages([editableFlow]);
+          setPreviewPageCount(1);
+          setHistory([[editableFlow]]);
           setHistoryIndex(0);
         }
       }
@@ -483,11 +575,16 @@ export default function EditTemplateWYSIWYGPage() {
       return;
     }
 
-    const flowContent = normalizeContractParagraphPlaceholders(pages.join(''));
+    const livePages = pages.map((page, index) => {
+      const editor = pageRefs.current[index];
+      if (!editor) return page;
+      normalizeContractListStructureInElement(editor);
+      return editor.innerHTML;
+    });
+    const flowContent = normalizeContractParagraphPlaceholders(livePages.join(''));
     const renderedDocument = await renderContractDocument(
       flowContent,
       paginationSettings(),
-      { resolveParagraphNumbers: false },
     );
     const paginatedPages = renderedDocument.pages;
     const allContent = paginatedPages.join('');
@@ -500,7 +597,8 @@ export default function EditTemplateWYSIWYGPage() {
 
     try {
       setSaving(true);
-      setPages(paginatedPages);
+      setPages([paginatedPages.join('')]);
+      setPreviewPageCount(paginatedPages.length);
 
       if (isContractInstance && contractId && eventId) {
         const { error } = await supabase
@@ -675,7 +773,33 @@ export default function EditTemplateWYSIWYGPage() {
     const range = selection.getRangeAt(0);
     const node = range.commonAncestorContainer;
     const element = node.nodeType === Node.TEXT_NODE ? node.parentElement : (node as Element);
-    if (element?.closest('.contract-content')) formatRangeRef.current = range.cloneRange();
+    const editor = element?.closest('.contract-content');
+    if (!editor) return;
+
+    formatRangeRef.current = range.cloneRange();
+    setHasTextSelection(!range.collapsed);
+
+    if (range.collapsed) {
+      setLineHeightControlValue(lineHeight);
+      return;
+    }
+
+    const block = element?.closest(
+      'p, pre, li, h1, h2, h3, h4, h5, h6, blockquote, [data-contract-paragraph="true"], .contract-paragraph-heading, div',
+    );
+    if (!(block instanceof HTMLElement)) return;
+
+    const lineHeightSource = element instanceof HTMLElement ? element : block;
+    const computed = window.getComputedStyle(lineHeightSource);
+    const fontSizePx = Number.parseFloat(computed.fontSize);
+    const lineHeightPx = Number.parseFloat(computed.lineHeight);
+    if (Number.isFinite(fontSizePx) && fontSizePx > 0 && Number.isFinite(lineHeightPx)) {
+      const selectedValue = Math.min(
+        CONTRACT_LINE_HEIGHT_MAX,
+        Math.max(CONTRACT_LINE_HEIGHT_MIN, lineHeightPx / fontSizePx),
+      );
+      setLineHeightControlValue(Number(selectedValue.toFixed(2)));
+    }
   };
 
   const restoreEditorSelection = () => {
@@ -695,6 +819,240 @@ export default function EditTemplateWYSIWYGPage() {
     const editor = element?.closest('.contract-content') as HTMLDivElement | null;
     const pageIndex = pageRefs.current.findIndex((page) => page === editor);
     if (editor && pageIndex >= 0) updatePageContent(pageIndex, editor.innerHTML);
+  };
+
+  const handleLineHeightChange = (nextValue: number) => {
+    const normalizedValue = Math.min(
+      CONTRACT_LINE_HEIGHT_MAX,
+      Math.max(CONTRACT_LINE_HEIGHT_MIN, nextValue),
+    );
+    const range = restoreEditorSelection();
+
+    if (!range || range.collapsed) {
+      setHasTextSelection(false);
+      setLineHeight(normalizedValue);
+      setLineHeightControlValue(normalizedValue);
+      return;
+    }
+
+    const rangeNode = range.commonAncestorContainer;
+    const rangeElement =
+      rangeNode.nodeType === Node.TEXT_NODE ? rangeNode.parentElement : (rangeNode as Element);
+    const editor = rangeElement?.closest('.contract-content') as HTMLDivElement | null;
+    if (!editor) {
+      setHasTextSelection(false);
+      setLineHeight(normalizedValue);
+      setLineHeightControlValue(normalizedValue);
+      return;
+    }
+
+    const blockSelector =
+      'p, pre, li, h1, h2, h3, h4, h5, h6, blockquote, [data-contract-paragraph="true"], .contract-paragraph-heading, div';
+    const startElement = range.startContainer.nodeType === Node.TEXT_NODE
+      ? range.startContainer.parentElement
+      : (range.startContainer as Element);
+    const endElement = range.endContainer.nodeType === Node.TEXT_NODE
+      ? range.endContainer.parentElement
+      : (range.endContainer as Element);
+    const startBlock = startElement?.closest(blockSelector) as HTMLElement | null;
+    const endBlock = endElement?.closest(blockSelector) as HTMLElement | null;
+    const startLineHeightSpan = startElement?.closest(
+      'span[data-template-line-height]',
+    ) as HTMLSpanElement | null;
+    const endLineHeightSpan = endElement?.closest(
+      'span[data-template-line-height]',
+    ) as HTMLSpanElement | null;
+    const intersectingBlocks = Array.from(
+      editor.querySelectorAll<HTMLElement>(blockSelector),
+    ).filter((block) => {
+      try {
+        return range.intersectsNode(block);
+      } catch {
+        return false;
+      }
+    });
+    const selectionFitsSingleBlock = startBlock && startBlock === endBlock;
+    let updatesExistingLineHeightSpan = false;
+
+    if (startLineHeightSpan && startLineHeightSpan === endLineHeightSpan) {
+      const spanRange = document.createRange();
+      spanRange.selectNodeContents(startLineHeightSpan);
+      updatesExistingLineHeightSpan =
+        range.compareBoundaryPoints(Range.START_TO_START, spanRange) === 0 &&
+        range.compareBoundaryPoints(Range.END_TO_END, spanRange) === 0;
+    }
+
+    if (updatesExistingLineHeightSpan && startLineHeightSpan) {
+      startLineHeightSpan.dataset.templateLineHeight = String(normalizedValue);
+      startLineHeightSpan.style.lineHeight = String(normalizedValue);
+      range.selectNodeContents(startLineHeightSpan);
+    } else if (selectionFitsSingleBlock || intersectingBlocks.length === 0) {
+      const selectedContent = range.extractContents();
+      const span = document.createElement('span');
+      span.dataset.templateLineHeight = String(normalizedValue);
+      span.style.lineHeight = String(normalizedValue);
+      span.style.display = 'inline';
+      span.appendChild(selectedContent);
+      range.insertNode(span);
+      range.selectNodeContents(span);
+    } else {
+      intersectingBlocks.forEach((block) => {
+        block.style.lineHeight = String(normalizedValue);
+      });
+    }
+
+    formatRangeRef.current = range.cloneRange();
+    setLineHeightControlValue(normalizedValue);
+    setHasTextSelection(true);
+
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+
+    const pageIndex = pageRefs.current.findIndex((page) => page === editor);
+    if (pageIndex >= 0) updatePageContent(pageIndex, editor.innerHTML);
+  };
+
+  const changeOutlineLevel = (
+    direction: 'indent' | 'outdent',
+    editorOverride?: HTMLDivElement,
+    pageIndexOverride?: number,
+  ) => {
+    if (!editorOverride) restoreEditorSelection();
+    const selection = window.getSelection();
+    if (!selection?.rangeCount) return false;
+
+    const range = selection.getRangeAt(0);
+    const selectionNode = range.commonAncestorContainer;
+    const selectionElement = selectionNode.nodeType === Node.TEXT_NODE
+      ? selectionNode.parentElement
+      : (selectionNode as Element);
+    const editor = editorOverride || selectionElement?.closest('.contract-content') as HTMLDivElement | null;
+    const listItem = selectionElement?.closest('li') as HTMLLIElement | null;
+    const currentList = listItem?.parentElement as HTMLOListElement | null;
+    if (!editor || !listItem || currentList?.tagName !== 'OL' || !editor.contains(listItem)) {
+      return false;
+    }
+
+    if (direction === 'indent') {
+      const previousItem = listItem.previousElementSibling as HTMLLIElement | null;
+      if (!previousItem || previousItem.tagName !== 'LI') return false;
+
+      let nestedList = Array.from(previousItem.children).find(
+        (child): child is HTMLOListElement => child.tagName === 'OL',
+      );
+      if (!nestedList) {
+        nestedList = document.createElement('ol');
+        previousItem.appendChild(nestedList);
+      }
+      nestedList.removeAttribute('start');
+      listItem.removeAttribute('value');
+      nestedList.appendChild(listItem);
+      if (!currentList.querySelector(':scope > li')) currentList.remove();
+    } else {
+      const parentItem = currentList.parentElement?.closest('li') as HTMLLIElement | null;
+      const parentList = parentItem?.parentElement as HTMLOListElement | null;
+      if (!parentItem || parentList?.tagName !== 'OL') return false;
+
+      listItem.removeAttribute('value');
+      parentItem.after(listItem);
+      if (!currentList.querySelector(':scope > li')) currentList.remove();
+    }
+
+    normalizeContractListStructureInElement(editor);
+    syncListMarkerTypography(editor);
+    formatRangeRef.current = range.cloneRange();
+    const pageIndex = pageIndexOverride ?? pageRefs.current.findIndex((page) => page === editor);
+    if (pageIndex >= 0) updatePageContent(pageIndex, editor.innerHTML);
+    rememberEditorSelection();
+    return true;
+  };
+
+  const handleEditorTab = (
+    event: ReactKeyboardEvent<HTMLDivElement>,
+    pageIndex: number,
+  ) => {
+    if (event.key !== 'Tab') return;
+
+    const editor = event.currentTarget;
+    const selection = window.getSelection();
+    if (!selection?.rangeCount) return;
+
+    const range = selection.getRangeAt(0);
+    if (!editor.contains(range.commonAncestorContainer)) return;
+    event.preventDefault();
+
+    const selectionNode = range.commonAncestorContainer;
+    const selectionElement =
+      selectionNode.nodeType === Node.TEXT_NODE
+        ? selectionNode.parentElement
+        : (selectionNode as Element);
+    const listItem = selectionElement?.closest('li');
+
+    if (listItem && editor.contains(listItem)) {
+      changeOutlineLevel(event.shiftKey ? 'outdent' : 'indent', editor, pageIndex);
+      return;
+    }
+
+    const blockSelector = 'p, div, h1, h2, h3, h4, h5, h6, blockquote, pre';
+    const closestBlock = selectionElement?.closest(blockSelector) as HTMLElement | null;
+    const intersectingBlocks = Array.from(
+      editor.querySelectorAll<HTMLElement>(blockSelector),
+    ).filter((element) => {
+      if (element === editor) return false;
+      try {
+        return range.intersectsNode(element);
+      } catch {
+        return false;
+      }
+    });
+    const leafBlocks = intersectingBlocks.filter(
+      (element) => !intersectingBlocks.some(
+        (other) => other !== element && element.contains(other),
+      ),
+    );
+    const blocks = range.collapsed
+      ? closestBlock && closestBlock !== editor
+        ? [closestBlock]
+        : []
+      : leafBlocks;
+
+    if (blocks.length === 0) {
+      if (!event.shiftKey) document.execCommand('insertHTML', false, '&emsp;');
+      updatePageContent(pageIndex, editor.innerHTML);
+      rememberEditorSelection();
+      return;
+    }
+
+    blocks.forEach((block) => {
+      const classIndent = Array.from(block.classList)
+        .map((className) => className.match(/^ql-indent-(\d+)$/)?.[1])
+        .find(Boolean);
+      const savedLevel = Number(block.dataset.editorIndent || classIndent || 0);
+      const marginLevel = block.style.marginLeft.endsWith('mm')
+        ? Math.round((Number.parseFloat(block.style.marginLeft) || 0) / 12.7)
+        : block.style.marginLeft.endsWith('em')
+          ? Math.round((Number.parseFloat(block.style.marginLeft) || 0) / 1.5)
+          : 0;
+      const currentLevel = Math.max(savedLevel, marginLevel);
+      const nextLevel = Math.min(8, Math.max(0, currentLevel + (event.shiftKey ? -1 : 1)));
+
+      Array.from(block.classList)
+        .filter((className) => /^ql-indent-\d+$/.test(className))
+        .forEach((className) => block.classList.remove(className));
+
+      if (nextLevel === 0) {
+        delete block.dataset.editorIndent;
+        block.style.removeProperty('margin-left');
+      } else {
+        block.dataset.editorIndent = String(nextLevel);
+        block.style.marginLeft = `${nextLevel * 12.7}mm`;
+      }
+    });
+
+    formatRangeRef.current = range.cloneRange();
+    updatePageContent(pageIndex, editor.innerHTML);
+    rememberEditorSelection();
   };
 
   const handleFooterTemplateSelect = (templateId: string) => {
@@ -990,6 +1348,8 @@ export default function EditTemplateWYSIWYGPage() {
 
     setTimeout(() => {
       if (editorElement) {
+        normalizeContractListStructureInElement(editorElement);
+        syncListMarkerTypography(editorElement);
         const newPages = [...pages];
         newPages[pageIndex] = editorElement.innerHTML;
         setPages(newPages);
@@ -1023,6 +1383,7 @@ export default function EditTemplateWYSIWYGPage() {
     selection.removeAllRanges();
     selection.addRange(range);
 
+    normalizeContractListStructureInElement(editorElement);
     updatePageContent(pageIndex, editorElement.innerHTML);
   };
 
@@ -1058,6 +1419,7 @@ export default function EditTemplateWYSIWYGPage() {
     slot.setAttribute('data-contract-clause-slot', placeholder.replace(/[{}]/g, ''));
     slot.setAttribute('data-clause-label', label);
     slot.innerHTML = `<span data-clause-placeholder="true">${placeholder}</span>`;
+    inheritRangeTypographyForClauseSlot(slot, range);
 
     range.deleteContents();
     range.insertNode(slot);
@@ -1121,6 +1483,7 @@ export default function EditTemplateWYSIWYGPage() {
       node.setAttribute('data-contract-clause-slot', placeholder.replace(/[{}]/g, ''));
       node.setAttribute('data-clause-label', label);
       node.innerHTML = `<span data-clause-placeholder="true">${placeholder}</span>`;
+      inheritRangeTypographyForClauseSlot(node, range);
     }
     range.insertNode(node);
     range.setStartAfter(node);
@@ -1129,6 +1492,7 @@ export default function EditTemplateWYSIWYGPage() {
     selection?.removeAllRanges();
     selection?.addRange(range);
 
+    normalizeContractListStructureInElement(editor);
     updatePageContent(menu.pageIndex, editor.innerHTML);
     contextRangeRef.current = null;
     setPlaceholderContextMenu(null);
@@ -1194,8 +1558,11 @@ export default function EditTemplateWYSIWYGPage() {
     p.innerHTML = '§n ';
 
     range.insertNode(p);
-    range.setStart(p.firstChild!, p.innerHTML.length);
-    range.setEnd(p.firstChild!, p.innerHTML.length);
+    renumberVisibleContractParagraphs(editorElement);
+    const paragraphText = p.firstChild;
+    if (!paragraphText) return;
+    range.setStart(paragraphText, paragraphText.textContent?.length || 0);
+    range.setEnd(paragraphText, paragraphText.textContent?.length || 0);
     selection.removeAllRanges();
     selection.addRange(range);
 
@@ -1207,9 +1574,10 @@ export default function EditTemplateWYSIWYGPage() {
     const nextDocument = await renderContractDocument(
       normalizedContent,
       paginationSettings(),
-      { resolveParagraphNumbers: false },
     );
-    setPages(nextDocument.pages);
+    const editableFlow = nextDocument.pages.join('');
+    setPages([editableFlow]);
+    setPreviewPageCount(nextDocument.pages.length);
     pageRefs.current = [];
   };
 
@@ -1425,7 +1793,10 @@ export default function EditTemplateWYSIWYGPage() {
         <div className="mx-auto max-w-[1400px] px-6 py-3">
           <div className="flex flex-wrap items-center gap-2">
             <button
-              onMouseDown={(e) => e.preventDefault()}
+              onMouseDown={(e) => {
+                rememberEditorSelection();
+                e.preventDefault();
+              }}
               onClick={() => execCommand('bold')}
               className="rounded p-2 hover:bg-[#d3bb73]/10"
               title="Pogrubienie"
@@ -1433,7 +1804,10 @@ export default function EditTemplateWYSIWYGPage() {
               <Bold className="h-4 w-4 text-[#e5e4e2]" />
             </button>
             <button
-              onMouseDown={(e) => e.preventDefault()}
+              onMouseDown={(e) => {
+                rememberEditorSelection();
+                e.preventDefault();
+              }}
               onClick={() => execCommand('italic')}
               className="rounded p-2 hover:bg-[#d3bb73]/10"
               title="Kursywa"
@@ -1441,7 +1815,10 @@ export default function EditTemplateWYSIWYGPage() {
               <Italic className="h-4 w-4 text-[#e5e4e2]" />
             </button>
             <button
-              onMouseDown={(e) => e.preventDefault()}
+              onMouseDown={(e) => {
+                rememberEditorSelection();
+                e.preventDefault();
+              }}
               onClick={() => execCommand('underline')}
               className="rounded p-2 hover:bg-[#d3bb73]/10"
               title="Podkreślenie"
@@ -1449,7 +1826,10 @@ export default function EditTemplateWYSIWYGPage() {
               <Underline className="h-4 w-4 text-[#e5e4e2]" />
             </button>
             <button
-              onMouseDown={(e) => e.preventDefault()}
+              onMouseDown={(e) => {
+                rememberEditorSelection();
+                e.preventDefault();
+              }}
               onClick={() => execCommand('strikeThrough')}
               className="rounded p-2 hover:bg-[#d3bb73]/10"
               title="Przekreślenie"
@@ -1515,12 +1895,39 @@ export default function EditTemplateWYSIWYGPage() {
               <List className="h-4 w-4 text-[#e5e4e2]" />
             </button>
             <button
-              onMouseDown={(e) => e.preventDefault()}
+              onMouseDown={(e) => {
+                rememberEditorSelection();
+                e.preventDefault();
+              }}
               onClick={() => execCommand('insertOrderedList')}
-              className="rounded p-2 hover:bg-[#d3bb73]/10"
-              title="Lista numerowana"
+              className="flex items-center gap-1 rounded px-2 py-1.5 hover:bg-[#d3bb73]/10"
+              title="Punkt główny: 1., 2., 3."
             >
               <ListOrdered className="h-4 w-4 text-[#e5e4e2]" />
+              <span className="text-xs font-medium text-[#e5e4e2]">1.</span>
+            </button>
+            <button
+              onMouseDown={(e) => {
+                rememberEditorSelection();
+                e.preventDefault();
+              }}
+              onClick={() => changeOutlineLevel('indent')}
+              className="flex items-center gap-1 rounded px-2 py-1.5 hover:bg-[#d3bb73]/10"
+              title="Utwórz podpunkt: 1.1 (Tab)"
+            >
+              <ChevronRight className="h-4 w-4 text-[#e5e4e2]" />
+              <span className="text-xs font-medium text-[#e5e4e2]">1.1</span>
+            </button>
+            <button
+              onMouseDown={(e) => {
+                rememberEditorSelection();
+                e.preventDefault();
+              }}
+              onClick={() => changeOutlineLevel('outdent')}
+              className="rounded p-2 hover:bg-[#d3bb73]/10"
+              title="Przenieś punkt poziom wyżej (Shift+Tab)"
+            >
+              <ChevronLeft className="h-4 w-4 text-[#e5e4e2]" />
             </button>
 
             <div className="mx-2 h-6 w-px bg-[#d3bb73]/30" />
@@ -1529,15 +1936,21 @@ export default function EditTemplateWYSIWYGPage() {
               onMouseDown={rememberEditorSelection}
               onChange={(e) => {
                 const size = e.target.value;
-                if (!size || !restoreEditorSelection()) return;
+                const range = restoreEditorSelection();
+                if (!size || !range) return;
+                const rangeNode = range.commonAncestorContainer;
+                const rangeElement = rangeNode.nodeType === Node.TEXT_NODE
+                  ? rangeNode.parentElement
+                  : (rangeNode as Element);
+                const editor = rangeElement?.closest('.contract-content') as HTMLElement | null;
                 document.execCommand('fontSize', false, '7');
-                const fontElements = document.querySelectorAll<HTMLFontElement>(
-                  '.contract-content font[size="7"]',
-                );
+                const fontElements =
+                  editor?.querySelectorAll<HTMLFontElement>('font[size="7"]') || [];
                 for (let i = 0; i < fontElements.length; i++) {
                   fontElements[i].removeAttribute('size');
                   fontElements[i].style.fontSize = `${size}pt`;
                 }
+                if (editor) syncListMarkerTypography(editor);
                 persistFormattedEditor();
                 e.target.value = '';
               }}
@@ -1613,23 +2026,27 @@ export default function EditTemplateWYSIWYGPage() {
             </div>
 
             <div className="ml-2 flex items-center gap-2">
-              <span className="text-xs text-[#e5e4e2]/60">Odstęp linii:</span>
+              <span className="text-xs text-[#e5e4e2]/60">
+                {hasTextSelection ? 'Interlinia zaznaczenia:' : 'Interlinia dokumentu:'}
+              </span>
               <input
                 type="range"
-                min="0.7"
-                max="3"
-                step="0.05"
-                value={lineHeight}
+                min={CONTRACT_LINE_HEIGHT_MIN}
+                max={CONTRACT_LINE_HEIGHT_MAX}
+                step={CONTRACT_LINE_HEIGHT_STEP}
+                value={lineHeightControlValue}
+                onMouseDown={rememberEditorSelection}
                 onChange={(e) => {
-                  const newValue = Number(e.target.value);
-                  setLineHeight(newValue);
-                  if (editorRef.current) {
-                    editorRef.current.style.lineHeight = String(newValue);
-                  }
+                  handleLineHeightChange(Number(e.target.value));
                 }}
                 className="h-1 w-24 cursor-pointer appearance-none rounded-lg bg-[#0f1119] accent-[#d3bb73]"
               />
-              <span className="w-8 text-xs text-[#e5e4e2]">{lineHeight.toFixed(1)}</span>
+              <span className="w-8 text-xs text-[#e5e4e2]">
+                {lineHeightControlValue.toLocaleString('pl-PL', {
+                  minimumFractionDigits: 1,
+                  maximumFractionDigits: 2,
+                })}
+              </span>
             </div>
 
             <div className="mx-2 h-6 w-px bg-[#d3bb73]/30" />
@@ -1639,7 +2056,7 @@ export default function EditTemplateWYSIWYGPage() {
               className="rounded border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-1.5 text-sm font-medium text-[#d3bb73] hover:bg-[#d3bb73]/10"
               title="Nowy paragraf (§)"
             >
-              §n Paragraf automatyczny
+              §+ Nowy paragraf
             </button>
 
             <button
@@ -1647,7 +2064,7 @@ export default function EditTemplateWYSIWYGPage() {
               className="rounded border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-1.5 text-sm font-medium text-[#d3bb73] hover:bg-[#d3bb73]/10"
               title="Przelicz podział stron z uwzględnieniem nagłówka i stopki"
             >
-              📄 Przelicz strony
+              📄 Odśwież numerację i podgląd
             </button>
 
             <button
@@ -1911,12 +2328,19 @@ export default function EditTemplateWYSIWYGPage() {
                   { key: '{{organization_city}}', label: 'Miasto' },
                   { key: '{{organization_postal_code}}', label: 'Kod pocztowy' },
                   { key: '{{organization_country}}', label: 'Kraj' },
+                  { key: '{{zamiownienie}}', label: 'Numer PO / zamówienia' },
                   { key: '{{primary_contact_full_name}}', label: 'Osoba kontaktowa' },
                   { key: '{{primary_contact_position}}', label: 'Stanowisko osoby kont.' },
                   { key: '{{primary_contact_email}}', label: 'Email osoby kont.' },
                   { key: '{{primary_contact_phone}}', label: 'Telefon osoby kont.' },
                   { key: '{{legal_representative_full_name}}', label: 'Reprezentant prawny' },
                   { key: '{{legal_representative_title}}', label: 'Stanowisko reprezentanta' },
+                  { key: '{{legal_representatives_list}}', label: 'Wszyscy reprezentanci podpisujący' },
+                  { key: '{{client_representation_type_label}}', label: 'Typ reprezentacji' },
+                  { key: '{{client_representation_rule}}', label: 'Dokładny sposób reprezentacji' },
+                  { key: '{{client_representation_basis}}', label: 'Podstawa weryfikacji reprezentacji' },
+                  { key: '{{client_representation_verified_at}}', label: 'Data weryfikacji reprezentacji' },
+                  { key: '{{client_representation_block}}', label: 'Pełna informacja o reprezentacji' },
                   { key: '{{decision_makers_list}}', label: 'Lista osób decyzyjnych' },
                   { key: '{{client_contract_party_block}}', label: 'Pełne dane strony klienta' },
                 ].map((p) => (
@@ -1938,6 +2362,14 @@ export default function EditTemplateWYSIWYGPage() {
                   { key: '{{event_end_date_only}}', label: 'Data koniec (DD.MM.RRRR)' },
                   { key: '{{event_time_start}}', label: 'Godzina start (HH:MM)' },
                   { key: '{{event_time_end}}', label: 'Godzina koniec (HH:MM)' },
+                  { key: '{{event_schedule_contract}}', label: 'Pełny termin jedno- lub wielodniowy' },
+                  { key: '{{planned_setup_at}}', label: 'Montaż — data i godzina' },
+                  { key: '{{planned_setup_date}}', label: 'Montaż — data' },
+                  { key: '{{planned_setup_time}}', label: 'Montaż — godzina' },
+                  { key: '{{planned_teardown_at}}', label: 'Demontaż — data i godzina' },
+                  { key: '{{planned_teardown_date}}', label: 'Demontaż — data' },
+                  { key: '{{planned_teardown_time}}', label: 'Demontaż — godzina' },
+                  { key: '{{planned_technical_schedule}}', label: 'Pełny termin montażu i demontażu' },
                 ].map((p) => (
                   <button
                     key={p.key}
@@ -1978,8 +2410,12 @@ export default function EditTemplateWYSIWYGPage() {
                   { key: '{{discount_percent}}', label: 'Rabat procentowy' },
                   { key: '{{deposit_amount}}', label: 'Zadatek (liczba)' },
                   { key: '{{deposit_words}}', label: 'Zadatek słownie' },
+                  { key: '{{deposit_percent}}', label: 'Procent zadatku' },
+                  { key: '{{payment_term_days}}', label: 'Termin płatności końcowej (dni)' },
                   { key: '{{contract_number}}', label: 'Numer umowy' },
                   { key: '{{contract_date}}', label: 'Data umowy' },
+                  { key: '{{accepted_calculation_number}}', label: 'Numer zaakceptowanej kalkulacji' },
+                  { key: '{{accepted_calculation_name}}', label: 'Nazwa zaakceptowanej kalkulacji' },
                 ].map((p) => (
                   <button
                     key={p.key}
@@ -2236,9 +2672,9 @@ export default function EditTemplateWYSIWYGPage() {
                       inter.
                       <input
                         type="number"
-                        min="0.7"
-                        max="3"
-                        step="0.05"
+                        min={CONTRACT_LINE_HEIGHT_MIN}
+                        max={CONTRACT_LINE_HEIGHT_MAX}
+                        step={CONTRACT_LINE_HEIGHT_STEP}
                         value={role.lineHeight}
                         title="Interlinia"
                         aria-label={`${label}: interlinia`}
@@ -2339,9 +2775,17 @@ export default function EditTemplateWYSIWYGPage() {
 
       {/* A4 Editor */}
       <div className="min-h-screen bg-[#525659] py-8">
+        <div className="mx-auto mb-4 max-w-[210mm] rounded-lg border border-[#d3bb73]/30 bg-[#1c1f33] px-4 py-3 text-sm text-[#e5e4e2]/80 shadow-lg">
+          Edytujesz jeden ciągły dokument, dzięki czemu możesz swobodnie zaznaczać treść.
+          Dokładny podział na strony, nagłówki, stopki i numerację stron zobaczysz w drafcie oraz PDF.
+        </div>
         <div className="mx-auto" style={{ maxWidth: '230mm' }}>
           {pages.map((pageContent, pageIndex) => (
-            <div key={pageIndex} className="contract-a4-page">
+            <div
+              key={pageIndex}
+              className="contract-a4-page contract-editor-flow-page"
+              style={{ height: 'auto', minHeight: '297mm', overflow: 'visible' }}
+            >
               {pageIndex === 0 && (
                 <>
                   <div
@@ -2383,28 +2827,14 @@ export default function EditTemplateWYSIWYGPage() {
               <div
                 ref={(el) => {
                   pageRefs.current[pageIndex] = el;
+                  if (pageIndex === 0) editorRef.current = el;
                   if (el && el.innerHTML === '' && pageContent) {
                     el.innerHTML = pageContent;
+                    normalizeContractListStructureInElement(el);
+                    syncListMarkerTypography(el);
                   }
                 }}
-                onKeyDown={(e) => {
-                  if (e.key !== 'Tab') return;
-
-                  const selection = window.getSelection();
-                  const node = selection?.focusNode;
-                  const el =
-                    node?.nodeType === Node.TEXT_NODE
-                      ? node.parentElement
-                      : (node as HTMLElement | null);
-
-                  const li = el?.closest?.('li');
-
-                  if (li) {
-                    e.preventDefault();
-                    document.execCommand(e.shiftKey ? 'outdent' : 'indent');
-                    updatePageContent(pageIndex, e.currentTarget.innerHTML);
-                  }
-                }}
+                onKeyDown={(event) => handleEditorTab(event, pageIndex)}
                 onContextMenu={(event) => openPlaceholderContextMenu(event, pageIndex)}
                 onMouseUp={rememberEditorSelection}
                 onKeyUp={rememberEditorSelection}
@@ -2412,8 +2842,13 @@ export default function EditTemplateWYSIWYGPage() {
                 contentEditable={true}
                 suppressContentEditableWarning
                 dir="ltr"
-                onInput={(e) => updatePageContent(pageIndex, e.currentTarget.innerHTML)}
+                onInput={(e) => {
+                  normalizeContractListStructureInElement(e.currentTarget);
+                  syncListMarkerTypography(e.currentTarget);
+                  updatePageContent(pageIndex, e.currentTarget.innerHTML);
+                }}
                 onBlur={(e) => {
+                  normalizeContractListStructureInElement(e.currentTarget);
                   const nextPages = [...pages];
                   nextPages[pageIndex] = e.currentTarget.innerHTML;
                   updatePageContent(pageIndex, e.currentTarget.innerHTML);
@@ -2426,8 +2861,9 @@ export default function EditTemplateWYSIWYGPage() {
                   unicodeBidi: 'embed',
                   lineHeight: String(lineHeight),
                   fontFamily: selectedFont,
-                  minHeight: 0,
-                  overflow: 'hidden',
+                  minHeight: '230mm',
+                  overflow: 'visible',
+                  flex: '0 0 auto',
                 }}
               />
 
@@ -2463,7 +2899,8 @@ export default function EditTemplateWYSIWYGPage() {
               )}
 
               <div className="contract-page-counter">
-                {pageIndex + 1}/{pages.length}
+                Edycja ciągła · podgląd: {previewPageCount}{' '}
+                {previewPageCount === 1 ? 'strona' : previewPageCount < 5 ? 'strony' : 'stron'}
               </div>
             </div>
           ))}
@@ -2627,7 +3064,7 @@ export default function EditTemplateWYSIWYGPage() {
         .contract-content-wysiwyg ul,
         .contract-content-wysiwyg ol {
           margin: 1em 0;
-          padding-left: 2em;
+          padding-left: 12.7mm;
           list-style-position: outside;
         }
 
@@ -2641,6 +3078,7 @@ export default function EditTemplateWYSIWYGPage() {
 
         .contract-content-wysiwyg li {
           margin: 0.1em 0;
+          padding-left: 0;
           display: list-item;
         }
 

@@ -2,6 +2,7 @@ type OptimizeOfferImageOptions = {
   maxWidth?: number;
   maxHeight?: number;
   quality?: number;
+  outputType?: 'image/jpeg' | 'image/png' | 'image/webp';
 };
 
 export async function optimizeOfferImage(
@@ -13,6 +14,7 @@ export async function optimizeOfferImage(
   const maxWidth = options.maxWidth ?? 1800;
   const maxHeight = options.maxHeight ?? 1800;
   const quality = options.quality ?? 0.82;
+  const requestedOutputType = options.outputType;
 
   try {
     const bitmap = await createImageBitmap(file);
@@ -20,7 +22,7 @@ export async function optimizeOfferImage(
     const width = Math.max(1, Math.round(bitmap.width * scale));
     const height = Math.max(1, Math.round(bitmap.height * scale));
 
-    if (scale === 1 && file.size <= 1_500_000) {
+    if (scale === 1 && file.size <= 1_500_000 && (!requestedOutputType || requestedOutputType === file.type)) {
       bitmap.close();
       return file;
     }
@@ -39,14 +41,29 @@ export async function optimizeOfferImage(
     context.drawImage(bitmap, 0, 0, width, height);
     bitmap.close();
 
-    const outputType = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+    const outputType = requestedOutputType || (
+      file.type === 'image/png'
+        ? 'image/png'
+        : file.type === 'image/webp'
+          ? 'image/webp'
+          : 'image/jpeg'
+    );
     const blob = await new Promise<Blob | null>((resolve) => {
-      canvas.toBlob(resolve, outputType, outputType === 'image/jpeg' ? quality : undefined);
+      canvas.toBlob(
+        resolve,
+        outputType,
+        outputType === 'image/jpeg' || outputType === 'image/webp' ? quality : undefined,
+      );
     });
-    if (!blob || (blob.size >= file.size && scale === 1)) return file;
+    if (!blob || (
+      blob.size >= file.size
+      && scale === 1
+      && (!requestedOutputType || requestedOutputType === file.type)
+    )) return file;
 
     const baseName = file.name.replace(/\.[^.]+$/, '') || 'offer-image';
-    const extension = outputType === 'image/png' ? 'png' : 'jpg';
+    const extension =
+      outputType === 'image/png' ? 'png' : outputType === 'image/webp' ? 'webp' : 'jpg';
     return new File([blob], `${baseName}.${extension}`, {
       type: outputType,
       lastModified: Date.now(),

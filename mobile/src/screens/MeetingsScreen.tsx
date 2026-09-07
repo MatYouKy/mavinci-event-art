@@ -1419,6 +1419,9 @@ const styles = StyleSheet.create({
   },
 
   headerTitle: {
+
+    fontFamily: 'MBFAtom',
+    textTransform: 'uppercase',
     fontSize: typography.fontSizes.xl,
     fontWeight: typography.fontWeights.bold as any,
     color: colors.text.primary,
@@ -1439,6 +1442,8 @@ const styles = StyleSheet.create({
   },
 
   sectionTitle: {
+
+    fontFamily: 'MBFAtom',
     fontSize: typography.fontSizes.xs,
     fontWeight: typography.fontWeights.medium as any,
     color: colors.primary.gold,
@@ -1479,6 +1484,9 @@ const styles = StyleSheet.create({
   },
 
   meetingTitle: {
+
+    fontFamily: 'MBFAtom',
+    textTransform: 'uppercase',
     fontSize: typography.fontSizes.md,
     fontWeight: typography.fontWeights.semibold as any,
     color: colors.text.primary,
@@ -1537,6 +1545,9 @@ const styles = StyleSheet.create({
   },
 
   modalTitle: {
+
+    fontFamily: 'MBFAtom',
+    textTransform: 'uppercase',
     fontSize: typography.fontSizes.md,
     fontWeight: typography.fontWeights.semibold as any,
     color: colors.text.primary,
@@ -1657,6 +1668,9 @@ const styles = StyleSheet.create({
   },
 
   alertsSectionTitle: {
+
+    fontFamily: 'MBFAtom',
+    textTransform: 'uppercase',
     fontSize: typography.fontSizes.sm,
     fontWeight: typography.fontWeights.semibold as any,
     color: colors.text.primary,
@@ -1698,6 +1712,9 @@ const styles = StyleSheet.create({
   },
 
   detailTitle: {
+
+    fontFamily: 'MBFAtom',
+    textTransform: 'uppercase',
     fontSize: typography.fontSizes.xl,
     fontWeight: typography.fontWeights.bold as any,
     color: colors.text.primary,
@@ -1990,6 +2007,9 @@ const styles = StyleSheet.create({
   },
 
   meetingPickerTitle: {
+
+    fontFamily: 'MBFAtom',
+    textTransform: 'uppercase',
     fontSize: typography.fontSizes.sm,
     fontWeight: typography.fontWeights.semibold as any,
     color: colors.text.primary,

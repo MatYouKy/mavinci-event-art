@@ -797,8 +797,19 @@ export const eventsApi = createApi({
             .select(
               `
               *,
-              organization:organizations!organization_id(name),
+              organization:organizations!organization_id(name, alias),
               contact:contacts!contact_id(first_name, last_name, full_name),
+              event:events!event_id(
+                id,
+                financial_source,
+                accepted_calculation_id,
+                accepted_calculation:event_calculations!accepted_calculation_id(
+                  id,
+                  is_accepted,
+                  updated_at,
+                  event_calculation_items(quantity, unit_price, days, vat_rate)
+                )
+              ),
               creator:employees!created_by(name, surname)
             `,
             )

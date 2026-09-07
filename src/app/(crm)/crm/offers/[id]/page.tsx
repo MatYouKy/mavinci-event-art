@@ -23,6 +23,7 @@ import { deleteOfferWithFiles } from '@/lib/CRM/Offers/deleteOfferWithFiles';
 import Image from 'next/image';
 import InquirySourceContextPanel from '@/components/crm/inquiries/InquirySourceContextPanel';
 import OfferPackagesEditor from './components/OfferPackagesEditor';
+import OfferRequirementsEditor from './components/OfferRequirementsEditor';
 
 const statusColors: Record<string, string> = {
   draft: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
@@ -287,6 +288,12 @@ export default function OfferDetailPage() {
     || inquiryDetails.client_text;
   const offerClientEmail = offerContact?.email || offer.organization?.email || inquiryDetails.client_email;
   const offerClientPhone = offerContact?.mobile || offerContact?.phone || inquiryDetails.client_phone;
+  const offerTitle = String(
+    offer.title
+      || offer.event?.name
+      || offer.inquiry?.title?.replace(/^Zapytanie:\s*/i, '')
+      || 'Bez tytułu',
+  ).trim();
 
   return (
     <div className="space-y-6">
@@ -300,7 +307,7 @@ export default function OfferDetailPage() {
           </button>
           <div>
             <h1 className="text-2xl font-light text-[#e5e4e2]">Oferta {offer.offer_number}</h1>
-            <p className="mt-1 text-sm text-[#e5e4e2]/60">Szczegóły oferty</p>
+            <p className="mt-1 max-w-3xl text-sm text-[#e5e4e2]/60">{offerTitle}</p>
           </div>
         </div>
 
@@ -327,6 +334,12 @@ export default function OfferDetailPage() {
             onDeleteItem={handleDeleteItem}
             onPreviewImage={setPreviewImage}
             onAddItem={() => setShowAddItemModal(true)}
+          />
+
+          <OfferRequirementsEditor
+            offer={offer}
+            canEdit={canSendManage}
+            onSaved={refetch}
           />
 
           <OfferPackagesEditor

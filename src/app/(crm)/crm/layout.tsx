@@ -13,6 +13,7 @@ import { fetchNotificationsServer } from '@/lib/CRM/notifications/fetchNotificat
 import { getNavigationForUserServer } from '@/lib/CRM/navigation/getNavigationForUser.server';
 import { cookies } from 'next/headers';
 import { GlobalLoaderProvider, RouteLoaderReset } from '@/contexts/GlobalLoaderContext';
+import BrandThemeProvider from '@/components/BrandThemeProvider';
 
 export const metadata: Metadata = {
   title: 'Mavinci CRM',
@@ -42,7 +43,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
   return (
     <html lang="pl" className="crm-document">
-      <body className="crm-body">
+      <body className="crm-body brand-theme brand-theme--crm" data-brand-theme="mavinci">
+        <BrandThemeProvider />
         <GlobalLoaderProvider>
           <RouteLoaderReset />
           <CrmProviders>

@@ -19,7 +19,7 @@ export default function Footer() {
   }
 
   return (
-    <footer className="relative border-t border-[#d3bb73]/10 bg-[#0f1120]">
+    <footer className="relative border-t border-[#d3bb73]/15 bg-gradient-to-b from-[#210611] to-[#100207]">
       {/* tło z kropkami */}
       <div className="pointer-events-none absolute inset-0 opacity-5">
         <svg className="absolute inset-0 h-full w-full" xmlns="http://www.w3.org/2000/svg">

@@ -39,6 +39,7 @@ import CreateTaskFromMessageModal from '@/components/crm/CreateTaskFromMessageMo
 import { supabase } from '@/lib/supabase/browser';
 import { useDialog } from '@/contexts/DialogContext';
 import EmailHtmlPreview from '../components/EmailHtmlPreview';
+import { dispatchCrmEmail, formatScheduledEmailDate } from '@/lib/emailScheduling';
 
 interface PageProps {
   params: { id: string };
@@ -274,6 +275,7 @@ export default function MessageDetailPage({ params }: PageProps) {
     fromAccountId?: string;
     cc?: string;
     bcc?: string;
+    scheduledAt?: string | null;
   }) => {
     try {
       const {
@@ -302,7 +304,6 @@ export default function MessageDetailPage({ params }: PageProps) {
         }
       }
 
-      const apiUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-email`;
       const originalMessageId =
         message?.type === 'received' ? message.originalData?.message_id || null : null;
       const rawReferences = message?.originalData?.raw_headers?.references;
@@ -315,13 +316,16 @@ export default function MessageDetailPage({ params }: PageProps) {
         ? Array.from(new Set([...parsedReferences, originalMessageId]))
         : parsedReferences;
 
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-          'Content-Type': 'application/json',
+      const result = await dispatchCrmEmail({
+        accessToken: session.access_token,
+        functionName: 'send-email',
+        scheduledAt: data.scheduledAt,
+        metadata: {
+          entityType: 'message',
+          entityId: message?.id,
+          actionUrl: message?.id ? `/crm/messages/${message.id}` : '/crm/messages',
         },
-        body: JSON.stringify({
+        payload: {
           emailAccountId: data.fromAccountId || message?.email_account_id,
           to: data.to,
           cc: data.cc,
@@ -332,13 +336,16 @@ export default function MessageDetailPage({ params }: PageProps) {
           messageId: message?.type === 'contact_form' ? message.id : undefined,
           inReplyTo: showReplyModal ? originalMessageId : undefined,
           references: showReplyModal && references.length > 0 ? references : undefined,
-        }),
+        },
       });
 
-      const result = await response.json();
-
       if (result.success) {
-        showSnackbar('Wiadomość wysłana!', 'success');
+        showSnackbar(
+          result.scheduled && result.scheduledAt
+            ? `Wiadomość zostanie wysłana ${formatScheduledEmailDate(result.scheduledAt)}`
+            : 'Wiadomość wysłana!',
+          'success',
+        );
         setShowReplyModal(false);
         setShowForwardModal(false);
       } else {

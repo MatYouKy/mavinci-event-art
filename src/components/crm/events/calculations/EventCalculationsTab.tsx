@@ -9,6 +9,7 @@ import {
   Loader2,
   Copy,
   FileCheck2,
+  Eye,
   Printer,
   Mail,
   CheckCircle2,
@@ -80,6 +81,7 @@ export default function EventCalculationsTab({ eventId, contactPerson }: Props) 
   const [activeId, setActiveId] = useState<string | null>(null);
   const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
   const [sendingCalculation, setSendingCalculation] = useState<CalculationRow | null>(null);
+  const [viewingId, setViewingId] = useState<string | null>(null);
   const [printingId, setPrintingId] = useState<string | null>(null);
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
 
@@ -295,6 +297,38 @@ export default function EventCalculationsTab({ eventId, contactPerson }: Props) 
     }
   };
 
+  const handleShowPdf = async (calculation: CalculationRow) => {
+    if (!calculation.generated_pdf_path) {
+      showSnackbar('Ta kalkulacja nie ma jeszcze wygenerowanego PDF', 'warning');
+      return;
+    }
+
+    try {
+      setViewingId(calculation.id);
+
+      const { data, error } = await supabase.storage
+        .from('event-files')
+        .createSignedUrl(calculation.generated_pdf_path, 300);
+
+      if (error || !data?.signedUrl) {
+        throw error || new Error('Nie udało się pobrać PDF');
+      }
+
+      const win = window.open(data.signedUrl, '_blank');
+      if (!win) {
+        showSnackbar('Przeglądarka zablokowała nowe okno', 'warning');
+        return;
+      }
+      win.opener = null;
+      win.focus();
+    } catch (error: any) {
+      console.error('Error showing calculation PDF:', error);
+      showSnackbar(error.message || 'Nie udało się otworzyć PDF', 'error');
+    } finally {
+      setViewingId(null);
+    }
+  };
+
   const handleAccept = async (calc: CalculationRow) => {
     const newAccepted = !calc.is_accepted;
     const confirmMsg = newAccepted
@@ -461,6 +495,18 @@ export default function EventCalculationsTab({ eventId, contactPerson }: Props) 
                                 <Loader2 className="h-4 w-4 animate-spin" />
                               ) : (
                                 <Copy className="h-4 w-4" />
+                              ),
+                            variant: 'default',
+                          },
+                          {
+                            label: viewingId === c.id ? 'Otwieram PDF...' : 'Pokaż PDF',
+                            onClick: () => handleShowPdf(c),
+                            disabled: !c.generated_pdf_path || viewingId === c.id,
+                            icon:
+                              viewingId === c.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Eye className="h-4 w-4" />
                               ),
                             variant: 'default',
                           },

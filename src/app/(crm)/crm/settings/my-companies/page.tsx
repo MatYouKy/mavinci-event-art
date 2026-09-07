@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Building2, Plus, CreditCard as Edit, Trash2, Check, Star, Save, X, Upload, Image as ImageIcon, Palette } from 'lucide-react';
+import { Building2, Plus, CreditCard as Edit, Trash2, Check, Star, Save, X, Upload, Image as ImageIcon, Palette, Megaphone } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -30,6 +30,10 @@ export interface MyCompany {
   bank_swift_code?: string;
   vat_bank_account?: string;
   vat_bank_name?: string;
+  private_bank_account?: string;
+  private_bank_account_owner?: string;
+  saldeo_document_email?: string;
+  accountant_email?: string;
   website?: string;
   facebook_url?: string;
   instagram_url?: string;
@@ -266,6 +270,32 @@ export default function MyCompaniesPage() {
                         </div>
                       )}
 
+                      {company.private_bank_account && (
+                        <div className="col-span-2 rounded-lg border border-violet-400/15 bg-violet-400/5 px-3 py-2">
+                          <span className="text-violet-200/60">Konto prywatne:</span>{' '}
+                          <span className="text-violet-100">{company.private_bank_account}</span>
+                          {company.private_bank_account_owner && (
+                            <span className="mt-1 block text-xs text-violet-200/55">
+                              Właściciel: {company.private_bank_account_owner}
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      {company.saldeo_document_email && (
+                        <div className="col-span-2">
+                          <span className="text-[#e5e4e2]/40">Dokumenty Saldeo:</span>{' '}
+                          <span className="text-[#e5e4e2]">{company.saldeo_document_email}</span>
+                        </div>
+                      )}
+
+                      {company.accountant_email && (
+                        <div className="col-span-2">
+                          <span className="text-[#e5e4e2]/40">Księgowość:</span>{' '}
+                          <span className="text-[#e5e4e2]">{company.accountant_email}</span>
+                        </div>
+                      )}
+
                       {company.website && (
                         <div className="col-span-2">
                           <span className="text-[#e5e4e2]/40">Strona www:</span>{' '}
@@ -304,6 +334,13 @@ export default function MyCompaniesPage() {
                     title="Brandbook"
                   >
                     <Palette className="h-5 w-5" />
+                  </button>
+                  <button
+                    onClick={() => router.push(`/crm/settings/my-companies/${company.id}/marketing`)}
+                    className="rounded-lg p-2 text-[#e5e4e2]/60 transition-colors hover:bg-[#d3bb73]/10 hover:text-[#d3bb73]"
+                    title="Marketing i ADS"
+                  >
+                    <Megaphone className="h-5 w-5" />
                   </button>
                   <button
                     onClick={() => {
@@ -392,6 +429,10 @@ function CompanyModal({
     bank_swift_code: company?.bank_swift_code || '',
     vat_bank_account: company?.vat_bank_account || '',
     vat_bank_name: company?.vat_bank_name || '',
+    private_bank_account: company?.private_bank_account || '',
+    private_bank_account_owner: company?.private_bank_account_owner || '',
+    saldeo_document_email: company?.saldeo_document_email || '',
+    accountant_email: company?.accountant_email || '',
     website: company?.website || '',
     facebook_url: company?.facebook_url || '',
     instagram_url: company?.instagram_url || '',
@@ -489,6 +530,12 @@ function CompanyModal({
       return;
     }
 
+    const privateAccountDigits = formData.private_bank_account.replace(/\D/g, '');
+    if (formData.private_bank_account.trim() && privateAccountDigits.length < 16) {
+      showSnackbar('Numer konta prywatnego jest zbyt krótki', 'error');
+      return;
+    }
+
     setLoading(true);
     try {
       let savedId = company?.id;
@@ -497,6 +544,10 @@ function CompanyModal({
         nip: formData.nip.trim() || null,
         regon: formData.regon.trim() || null,
         krs: formData.krs.trim() || null,
+        private_bank_account: formData.private_bank_account.trim() || null,
+        private_bank_account_owner: formData.private_bank_account_owner.trim() || null,
+        saldeo_document_email: formData.saldeo_document_email.trim() || null,
+        accountant_email: formData.accountant_email.trim() || null,
         facebook_url: formData.facebook_url.trim() || null,
         instagram_url: formData.instagram_url.trim() || null,
         linkedin_url: formData.linkedin_url.trim() || null,
@@ -533,7 +584,21 @@ function CompanyModal({
         }
       }
 
-      showSnackbar(company ? 'Firma zaktualizowana' : 'Firma dodana', 'success');
+      const privateAccountChanged =
+        (company?.private_bank_account || '').replace(/\D/g, '') !== privateAccountDigits
+        || (company?.private_bank_account_owner || '').trim() !== formData.private_bank_account_owner.trim();
+      if (privateAccountChanged) {
+        Object.keys(window.localStorage)
+          .filter((key) => key.startsWith('bank-ai-analysis:'))
+          .forEach((key) => window.localStorage.removeItem(key));
+      }
+
+      showSnackbar(
+        privateAccountChanged
+          ? 'Firma zaktualizowana. Przelewy prywatne zostały ponownie rozpoznane.'
+          : company ? 'Firma zaktualizowana' : 'Firma dodana',
+        'success',
+      );
       onSave();
     } catch (error: any) {
       showSnackbar(error.message || 'Błąd zapisu', 'error');
@@ -755,6 +820,73 @@ function CompanyModal({
                 placeholder="PKO BP"
               />
             </div>
+
+            <div className="col-span-2 border-t border-[#d3bb73]/10 pt-4">
+              <label className="mb-1 block text-sm font-medium text-[#e5e4e2]">
+                Konto prywatne do rozpoznawania przelewów
+              </label>
+              <p className="text-xs leading-relaxed text-[#e5e4e2]/45">
+                System porówna numer lokalnie z wyciągiem, oznaczy przelew jako prywatny i nie będzie oczekiwał do niego faktury. Numer rachunku nie jest wysyłany do AI.
+              </p>
+            </div>
+
+            <div className="col-span-2">
+              <label className="mb-2 block text-sm text-[#e5e4e2]">Numer konta prywatnego</label>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={formData.private_bank_account}
+                onChange={(e) => setFormData({ ...formData, private_bank_account: e.target.value })}
+                className="w-full rounded-lg border border-violet-400/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] focus:border-violet-300 focus:outline-none"
+                placeholder="PL 12 3456 7890 1234 5678 9012 3456"
+              />
+            </div>
+
+            <div className="col-span-2">
+              <label className="mb-2 block text-sm text-[#e5e4e2]">Właściciel konta prywatnego</label>
+              <input
+                type="text"
+                value={formData.private_bank_account_owner}
+                onChange={(e) => setFormData({ ...formData, private_bank_account_owner: e.target.value })}
+                className="w-full rounded-lg border border-violet-400/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] focus:border-violet-300 focus:outline-none"
+                placeholder="np. Mateusz Kwiatkowski"
+              />
+            </div>
+
+            <div className="col-span-2 border-t border-[#d3bb73]/10 pt-4">
+              <label className="mb-1 block text-sm font-medium text-[#e5e4e2]">
+                Przekazywanie dokumentów do SaldeoSMART
+              </label>
+              <p className="text-xs leading-relaxed text-[#e5e4e2]/45">
+                Dedykowany adres jest dostępny w Saldeo w: Konto → Automatyzacja. Kod PIN nie jest zapisywany w CRM.
+              </p>
+            </div>
+
+            <div className="col-span-2">
+              <label className="mb-2 block text-sm text-[#e5e4e2]">Adres dokumentów Saldeo</label>
+              <input
+                type="email"
+                value={formData.saldeo_document_email}
+                onChange={(e) => setFormData({ ...formData, saldeo_document_email: e.target.value })}
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                placeholder="firma@dok.saldeo.pl"
+              />
+            </div>
+
+            <div className="col-span-2">
+              <label className="mb-2 block text-sm text-[#e5e4e2]">E-mail księgowej lub biura rachunkowego</label>
+              <input
+                type="email"
+                value={formData.accountant_email}
+                onChange={(e) => setFormData({ ...formData, accountant_email: e.target.value })}
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                placeholder="ksiegowosc@biuro.pl"
+              />
+              <p className="mt-1.5 text-xs leading-relaxed text-[#e5e4e2]/40">
+                Na ten adres CRM wyśle uzgodnienie transakcji, mapowanie dokumentów i oryginalne wyciągi.
+              </p>
+            </div>
+
             <div className="col-span-2">
               <label className="mb-2 block text-sm text-[#e5e4e2]">Kod SWIFT konta bankowego</label>
               <input

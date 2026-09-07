@@ -661,7 +661,7 @@ export function ChecklistTab({
             style={{
               width: '90%',
               maxWidth: 360,
-              backgroundColor: '#1c1f33',
+              backgroundColor: colors.background.elevated,
               borderRadius: 14,
               padding: 20,
               borderWidth: 1,
@@ -675,7 +675,7 @@ export function ChecklistTab({
 
             <View
               style={{
-                backgroundColor: 'rgba(15,17,25,0.8)',
+                backgroundColor: 'rgba(33,8,17,0.82)',
                 borderRadius: 8,
                 padding: 10,
                 marginBottom: 12,
@@ -717,7 +717,7 @@ export function ChecklistTab({
                   multiline
                   numberOfLines={3}
                   style={{
-                    backgroundColor: 'rgba(15,17,25,0.8)',
+                    backgroundColor: 'rgba(33,8,17,0.82)',
                     borderRadius: 8,
                     borderWidth: 1,
                     borderColor: 'rgba(211,187,115,0.2)',
@@ -788,7 +788,7 @@ export function ChecklistTab({
             style={{
               width: '90%',
               maxWidth: 360,
-              backgroundColor: '#1c1f33',
+              backgroundColor: colors.background.elevated,
               borderRadius: 14,
               padding: 20,
               borderWidth: 1,
@@ -819,7 +819,7 @@ export function ChecklistTab({
                 multiline
                 numberOfLines={3}
                 style={{
-                  backgroundColor: 'rgba(15,17,25,0.8)',
+                  backgroundColor: 'rgba(33,8,17,0.82)',
                   borderRadius: 8,
                   borderWidth: 1,
                   borderColor: 'rgba(211,187,115,0.2)',
@@ -857,7 +857,7 @@ export function ChecklistTab({
                 }}
                 onPress={handleRequestUnlock}
               >
-                <Text style={{ color: '#1c1f33', fontSize: 13, fontWeight: '600' }}>
+                <Text style={{ color: colors.background.primary, fontSize: 13, fontWeight: '600' }}>
                   Wyślij prośbę
                 </Text>
               </TouchableOpacity>
@@ -914,7 +914,7 @@ const styles = StyleSheet.create({
   },
   checklistItemContent: { flex: 1 },
   checklistItemHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  checklistItemTitle: { fontSize: 13, color: colors.text.primary, fontWeight: '500', flex: 1 },
+  checklistItemTitle: { fontFamily: 'MBFAtom', textTransform: 'uppercase', fontSize: 13, color: colors.text.primary, fontWeight: '500', flex: 1 },
   checklistItemTitleDone: {
     textDecorationLine: 'line-through',
     color: colors.text.tertiary,
@@ -924,6 +924,7 @@ const styles = StyleSheet.create({
   checklistContainer: { padding: spacing.md },
   checklistSection: { marginBottom: 20 },
   checklistSectionTitle: {
+    fontFamily: 'MBFAtom',
     fontSize: 12,
     fontWeight: '700',
     color: colors.primary.gold,
@@ -1031,7 +1032,7 @@ const styles = StyleSheet.create({
   logisticsIconContainer: { width: 28, alignItems: 'center', paddingTop: 2 },
   logisticsContent: { flex: 1 },
   logisticsHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  logisticsTitle: { fontSize: 13, color: colors.text.primary, fontWeight: '600', flex: 1 },
+  logisticsTitle: { fontFamily: 'MBFAtom', textTransform: 'uppercase', fontSize: 13, color: colors.text.primary, fontWeight: '600', flex: 1 },
   logisticsType: {
     fontSize: 10,
     color: colors.text.tertiary,
@@ -1062,6 +1063,9 @@ const styles = StyleSheet.create({
   },
 
   pdfTitle: {
+
+    fontFamily: 'MBFAtom',
+    textTransform: 'uppercase',
     flex: 1,
     fontSize: 14,
     fontWeight: '600',

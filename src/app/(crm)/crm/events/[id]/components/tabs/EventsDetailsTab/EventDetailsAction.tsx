@@ -25,6 +25,7 @@ import { EventStatus } from '@/components/crm/Calendar/types';
 
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { EventCategoryRow } from '@/lib/CRM/events/eventsData.server';
+import { EVENT_STATUS_BADGE_CLASSES } from '@/components/crm/events/eventStatusPalette';
 
 export const eventStatusLabels: Record<EventStatus, string> = {
   inquiry: 'Zapytanie',
@@ -40,18 +41,12 @@ export const eventStatusLabels: Record<EventStatus, string> = {
   settled: 'Rozliczony',
 };
 
-export const statusBadgeClasses: Record<EventStatus, string> = {
-  inquiry: 'bg-blue-500/10 text-blue-300 border-blue-500/20',
-  offer_to_send: 'bg-indigo-500/10 text-indigo-300 border-indigo-500/20',
-  offer_sent: 'bg-purple-500/10 text-purple-300 border-purple-500/20',
-  offer_accepted: 'bg-green-500/10 text-green-300 border-green-500/20',
-  in_preparation: 'bg-yellow-500/10 text-yellow-300 border-yellow-500/20',
-  ready_for_live: 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20',
-  in_progress: 'bg-purple-500/10 text-purple-300 border-purple-500/20',
-  completed: 'bg-green-500/10 text-green-300 border-green-500/20',
-  cancelled: 'bg-red-500/10 text-red-300 border-red-500/20',
-  invoiced: 'bg-[#d3bb73]/10 text-[#d3bb73] border-[#d3bb73]/20',
-  settled: 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20',
+export const statusBadgeClasses: Record<EventStatus, string> = EVENT_STATUS_BADGE_CLASSES;
+
+const categoryBadgeStyle = {
+  background: 'linear-gradient(90deg, rgba(127, 23, 52, 0.58), rgba(94, 51, 68, 0.48))',
+  borderColor: 'rgba(226, 205, 141, 0.58)',
+  color: '#f0dda0',
 };
 
 const statusIcon = (s: EventStatus) => {
@@ -442,16 +437,12 @@ export default function EventDetailsAction({
           {!canOffers ? (
             <div
               className="flex w-full items-center gap-2 rounded-lg border px-3 py-2"
-              style={{
-                backgroundColor: category?.color ? `${category.color}20` : 'rgba(255,255,255,0.04)',
-                borderColor: category?.color ? `${category.color}50` : 'rgba(255,255,255,0.10)',
-                color: category?.color ?? '#e5e4e2',
-              }}
+              style={categoryBadgeStyle}
             >
               {category?.icon ? (
                 <div
                   className="h-4 w-4"
-                  style={{ color: category?.color ?? '#e5e4e2' }}
+                  style={{ color: '#f0dda0' }}
                   dangerouslySetInnerHTML={{ __html: category.icon.svg_code }}
                 />
               ) : (
@@ -464,18 +455,14 @@ export default function EventDetailsAction({
             <button
               type="button"
               onClick={() => setIsEditingCategory(true)}
-              className="flex w-full items-center gap-2 rounded-lg border px-3 py-2 transition-opacity hover:opacity-80"
-              style={{
-                backgroundColor: category?.color ? `${category.color}20` : 'rgba(255,255,255,0.04)',
-                borderColor: category?.color ? `${category.color}50` : 'rgba(255,255,255,0.10)',
-                color: category?.color ?? '#e5e4e2',
-              }}
+              className="flex w-full items-center gap-2 rounded-lg border px-3 py-2 transition-[background-color,filter] hover:brightness-125"
+              style={categoryBadgeStyle}
               title="Kliknij aby edytować kategorię"
             >
               {category?.icon ? (
                 <div
                   className="h-4 w-4"
-                  style={{ color: category?.color ?? '#e5e4e2' }}
+                  style={{ color: '#f0dda0' }}
                   dangerouslySetInnerHTML={{ __html: category.icon.svg_code }}
                 />
               ) : (

@@ -505,6 +505,7 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
           clientOrganizationName={organization?.alias || organization?.name || null}
           initialArrangement={event.billing_arrangement || 'direct'}
           initialBillingOrganizationId={event.billing_organization_id || null}
+          initialPurchaseOrderNumber={event.purchase_order_number || null}
           canEdit={canEditEventDetails}
           onSaved={async (billingContext) => {
             setEvent((current) => ({ ...current, ...billingContext }));

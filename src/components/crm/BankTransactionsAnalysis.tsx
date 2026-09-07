@@ -16,11 +16,24 @@ import {
   ArrowUp,
   ArrowDown,
   RefreshCw,
+  ArrowRightLeft,
+  MoreVertical,
+  ReceiptText,
+  UserRound,
 } from 'lucide-react';
 import {
   applyBankTransactionMatchToDocument,
+  isBankStatementMatchablePaymentMethod,
+  reconcileExternalInvoiceWithBankTransaction,
   removeBankTransactionMatch,
 } from '@/lib/bankTransactionMatching';
+import BankAiAnalysisPanel from './BankAiAnalysisPanel';
+import BankTransactionAccountingModal from './BankTransactionAccountingModal';
+import type { AccountingTransaction, BankAccountingSubtype } from './BankTransactionAccountingModal';
+import BankTransactionDocumentPickerModal from './BankTransactionDocumentPickerModal';
+import type { DocumentPickerTransaction } from './BankTransactionDocumentPickerModal';
+import { repairBrokenBankText } from '@/lib/bankTextEncoding';
+import { decodeTextEntities } from '@/lib/textEncoding';
 
 interface InvoiceRelation {
   id?: string;
@@ -38,6 +51,8 @@ interface InvoiceRelation {
 
 interface Transaction {
   id: string;
+  statement_id: string;
+  company_id: string;
   transaction_date: string;
   posting_date: string;
   amount: number;
@@ -53,13 +68,20 @@ interface Transaction {
   match_status?: 'unmatched' | 'partial' | 'matched';
   allocated_amount?: number;
   matched_document_count?: number;
+  private_transfer_detected?: boolean;
+  private_transfer_owner?: string | null;
+  accounting_note?: string | null;
+  accounting_category?: string | null;
+  accounting_subtype?: string | null;
+  accounting_review_status?: 'pending' | 'explained' | null;
   invoice?: InvoiceRelation | InvoiceRelation[];
 }
 
 interface KSeFInvoice {
+  source: 'ksef' | 'external';
   id: string;
   invoice_number?: string | null;
-  ksef_reference_number: string;
+  ksef_reference_number?: string | null;
   buyer_name?: string | null;
   seller_name?: string | null;
   issue_date?: string | null;
@@ -70,6 +92,7 @@ interface KSeFInvoice {
   invoice_type?: 'issued' | 'received' | null;
   ksef_issued_at?: string | null;
   payment_method?: string | null;
+  currency?: string | null;
 }
 
 interface Props {
@@ -89,12 +112,46 @@ function isTransactionFullyMatched(transaction: Transaction) {
     (!transaction.match_status && Boolean(transaction.matched_invoice_id));
 }
 
+function isTransactionResolved(transaction: Transaction) {
+  return Boolean(transaction.private_transfer_detected)
+    || transaction.accounting_review_status === 'explained'
+    || isTransactionFullyMatched(transaction);
+}
+
+const accountingCategoryLabels: Record<string, string> = {
+  bank_fee: 'Opłata lub prowizja bankowa',
+  tax_or_zus: 'Podatek lub ZUS',
+  payroll: 'Wynagrodzenie',
+  own_transfer: 'Przelew własny',
+  cash: 'Rozliczenie gotówkowe',
+  foreign_purchase: 'Zakup zagraniczny',
+  other: 'Inne wyjaśnienie',
+};
+
+function accountingCategoryLabel(transaction: Transaction) {
+  return accountingCategoryLabels[transaction.accounting_category || 'other'] || 'Wyjaśniona operacja';
+}
+
+function accountingSubtypeForTransaction(transaction: Transaction): BankAccountingSubtype {
+  if (transaction.accounting_subtype) return transaction.accounting_subtype as BankAccountingSubtype;
+  if (transaction.accounting_category === 'bank_fee') return 'bank_fee';
+  if (transaction.accounting_category === 'payroll') return 'payroll_payment';
+  if (transaction.accounting_category === 'own_transfer') return 'own_transfer';
+  if (transaction.accounting_category === 'cash') return 'cash_settlement';
+  if (transaction.accounting_category === 'foreign_purchase') return 'supplier_invoice_missing';
+  return 'other';
+}
+
 function hasTransactionMatches(transaction: Transaction) {
   return Number(transaction.allocated_amount || 0) > 0 || Boolean(transaction.matched_invoice_id);
 }
 
 function getExpectedTransactionDirection(invoice: KSeFInvoice): Transaction['transaction_type'] {
   const amountIsPositive = Number(invoice.gross_amount || 0) >= 0;
+
+  if (invoice.source === 'external') {
+    return amountIsPositive ? 'debit' : 'credit';
+  }
 
   if (invoice.invoice_type === 'issued') {
     return amountIsPositive ? 'credit' : 'debit';
@@ -112,21 +169,11 @@ function safeDate(value?: string | null) {
 
 function safeMoney(value?: number | null, currency = 'PLN') {
   if (value == null || Number.isNaN(Number(value))) return '—';
-  return `${Number(value).toFixed(2)} ${currency}`;
+  return `${Number(value).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ' ')} ${currency}`;
 }
 
 function sanitizeBrokenPolish(text?: string | null) {
-  if (!text) return '';
-
-  return text
-    .replace(/�/g, '')
-    .replace(/\s{2,}/g, ' ')
-    .replace(/RACHU NKU/g, 'RACHUNKU')
-    .replace(/ROZL ICZENIOWE/g, 'ROZLICZENIOWE')
-    .replace(/OP ATA/g, 'OPŁATA')
-    .replace(/URZ D/g, 'URZĄD')
-    .replace(/SKARBOWY CENTRUM ROZL ICZENIOWE/g, 'SKARBOWY CENTRUM ROZLICZENIOWE')
-    .trim();
+  return repairBrokenBankText(text);
 }
 
 function normalizeForSearch(text?: string | null) {
@@ -150,10 +197,20 @@ type SortDirection = 'asc' | 'desc';
 export default function BankTransactionsAnalysis({ month, year, companyId, onClose }: Props) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [ksefInvoices, setKsefInvoices] = useState<KSeFInvoice[]>([]);
+  const [matchedDocumentKeys, setMatchedDocumentKeys] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
-  const [filterType, setFilterType] = useState<'all' | 'matched' | 'unmatched'>('all');
+  const [filterType, setFilterType] = useState<'all' | 'matched' | 'unmatched' | 'explained' | 'private'>('all');
   const [matchModalOpen, setMatchModalOpen] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<KSeFInvoice | null>(null);
+  const [actionMenuId, setActionMenuId] = useState<string | null>(null);
+  const [documentPicker, setDocumentPicker] = useState<{
+    transaction: Transaction;
+    source: 'all' | 'personnel';
+  } | null>(null);
+  const [accountingEditor, setAccountingEditor] = useState<{
+    transaction: Transaction;
+    subtype: BankAccountingSubtype;
+  } | null>(null);
   const [transactionSort, setTransactionSort] = useState<{ field: SortField; direction: SortDirection }>({ field: 'date', direction: 'desc' });
   const [invoiceSort, setInvoiceSort] = useState<{ field: SortField; direction: SortDirection }>({ field: 'invoice_date', direction: 'desc' });
   const { showSnackbar } = useSnackbar();
@@ -162,15 +219,17 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
     loadData();
   }, [month, year, companyId]);
 
-  const loadData = async () => {
+  const loadData = async ({ silent = false }: { silent?: boolean } = {}) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
 
       let statementsQuery = supabase
         .from('bank_statements')
-        .select('id')
+        .select('id,my_company_id')
         .eq('statement_month', month)
-        .eq('statement_year', year);
+        .eq('statement_year', year)
+        .eq('processed', true)
+        .eq('validation_status', 'valid');
 
       if (companyId) {
         statementsQuery = statementsQuery.eq('my_company_id', companyId);
@@ -207,8 +266,13 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
           .order('transaction_date', { ascending: false });
 
         if (error) throw error;
-
-        setTransactions(transactionsData || []);
+        const statementCompanies = new Map(
+          statements.map((statement) => [statement.id, statement.my_company_id || '']),
+        );
+        setTransactions((transactionsData || []).map((transaction) => ({
+          ...transaction,
+          company_id: statementCompanies.get(transaction.statement_id) || '',
+        })));
       }
 
       const monthStart = `${year}-${String(month).padStart(2, '0')}-01`;
@@ -230,7 +294,8 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
           payment_status,
           invoice_type,
           ksef_issued_at,
-          payment_method
+          payment_method,
+          currency
         `)
         .or(
           `and(issue_date.gte.${monthStart},issue_date.lte.${monthEnd}),and(issue_date.is.null,ksef_issued_at.gte.${monthStart}T00:00:00,ksef_issued_at.lte.${monthEnd}T23:59:59)`
@@ -245,28 +310,105 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
 
       if (invoicesError) throw invoicesError;
 
-      setKsefInvoices(invoicesData || []);
+      let externalInvoicesQuery = supabase
+        .from('external_invoices')
+        .select('id,invoice_number,seller_name,invoice_date,amount_gross,amount_net,currency,payment_status,payment_method')
+        .gte('invoice_date', monthStart)
+        .lte('invoice_date', monthEnd)
+        .neq('payment_status', 'cancelled')
+        .order('invoice_date', { ascending: false });
+      if (companyId) {
+        externalInvoicesQuery = externalInvoicesQuery.eq('my_company_id', companyId);
+      }
+      const { data: externalInvoicesData, error: externalInvoicesError } = await externalInvoicesQuery;
+      if (externalInvoicesError) throw externalInvoicesError;
+
+      const visibleDocuments: KSeFInvoice[] = [
+        ...(invoicesData || [])
+          .filter((invoice) => isBankStatementMatchablePaymentMethod(invoice.payment_method, 'ksef'))
+          .map((invoice) => ({
+            ...invoice,
+            source: 'ksef' as const,
+            seller_name: decodeTextEntities(invoice.seller_name) || null,
+            buyer_name: decodeTextEntities(invoice.buyer_name) || null,
+          })),
+        ...(externalInvoicesData || [])
+          .filter((invoice) => isBankStatementMatchablePaymentMethod(invoice.payment_method, 'external'))
+          .map((invoice) => ({
+            source: 'external' as const,
+            id: invoice.id,
+            invoice_number: invoice.invoice_number,
+            ksef_reference_number: null,
+            buyer_name: null,
+            seller_name: invoice.seller_name,
+            issue_date: invoice.invoice_date,
+            payment_due_date: null,
+            gross_amount: invoice.amount_gross,
+            net_amount: invoice.amount_net,
+            payment_status: invoice.payment_status,
+            invoice_type: 'received' as const,
+            ksef_issued_at: null,
+            payment_method: invoice.payment_method,
+            currency: invoice.currency || 'PLN',
+          })),
+      ];
+      setKsefInvoices(visibleDocuments);
+
+      const loadMatchedDocuments = (
+        column: 'ksef_invoice_id' | 'external_invoice_id',
+        ids: string[],
+      ) => ids.length > 0
+        ? supabase.from('bank_transaction_invoice_matches').select(column).in(column, ids)
+        : Promise.resolve({ data: [], error: null });
+      const [matchedKsefResult, matchedExternalResult] = await Promise.all([
+        loadMatchedDocuments('ksef_invoice_id', visibleDocuments.filter((document) => document.source === 'ksef').map((document) => document.id)),
+        loadMatchedDocuments('external_invoice_id', visibleDocuments.filter((document) => document.source === 'external').map((document) => document.id)),
+      ]);
+      const matchedDocumentsError = matchedKsefResult.error || matchedExternalResult.error;
+      if (matchedDocumentsError) throw matchedDocumentsError;
+      setMatchedDocumentKeys(new Set([
+        ...(matchedKsefResult.data || []).map((match: any) => `ksef:${match.ksef_invoice_id}`),
+        ...(matchedExternalResult.data || []).map((match: any) => `external:${match.external_invoice_id}`),
+      ]));
     } catch (error: any) {
       console.error('Error loading transactions/invoices:', error);
       showSnackbar(error.message || 'Błąd podczas ładowania danych analizy', 'error');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
-  const handleManualMatch = async (transactionId: string, invoiceId: string) => {
+  const handleManualMatch = async (transactionId: string, invoice: KSeFInvoice) => {
     try {
       const transaction = transactions.find((t) => t.id === transactionId);
       if (!transaction) throw new Error('Transakcja nie została znaleziona');
 
-      await applyBankTransactionMatchToDocument(supabase, {
-        transactionId,
-        documentSource: 'ksef',
-        documentId: invoiceId,
-        confidence: 1,
-        method: 'manual',
-        reasons: ['Ręczne dopasowanie w analizie wyciągu'],
-      });
+      if (invoice.source === 'external') {
+        const transactionAmount = Math.max(
+          Math.abs(Number(transaction.amount || 0)) - Number(transaction.allocated_amount || 0),
+          0,
+        );
+        const documentAmount = Math.abs(Number(invoice.gross_amount || 0));
+        const differentCurrency = String(transaction.currency || 'PLN').toUpperCase()
+          !== String(invoice.currency || 'PLN').toUpperCase();
+        await reconcileExternalInvoiceWithBankTransaction(supabase, {
+          transactionId,
+          externalInvoiceId: invoice.id,
+          transactionAmount: differentCurrency ? transactionAmount : Math.min(transactionAmount, documentAmount),
+          documentAmount: differentCurrency ? documentAmount : Math.min(transactionAmount, documentAmount),
+          confidence: 1,
+          reasons: ['Ręczne dopasowanie dokumentu spoza KSeF w analizie wyciągu'],
+        });
+      } else {
+        await applyBankTransactionMatchToDocument(supabase, {
+          transactionId,
+          documentSource: 'ksef',
+          documentId: invoice.id,
+          confidence: 1,
+          method: 'manual',
+          reasons: ['Ręczne dopasowanie dokumentu KSeF w analizie wyciągu'],
+        });
+      }
 
       showSnackbar('Płatność została ręcznie dopasowana', 'success');
       setMatchModalOpen(false);
@@ -312,7 +454,9 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
   const filteredTransactions = useMemo(() => {
     let filtered = transactions.filter((t) => {
       if (filterType === 'matched') return isTransactionFullyMatched(t);
-      if (filterType === 'unmatched') return !isTransactionFullyMatched(t);
+      if (filterType === 'unmatched') return !isTransactionResolved(t);
+      if (filterType === 'explained') return t.accounting_review_status === 'explained';
+      if (filterType === 'private') return Boolean(t.private_transfer_detected);
       return true;
     });
 
@@ -357,19 +501,16 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
     });
   }, [ksefInvoices, invoiceSort]);
 
-  const matchedInvoiceIds = useMemo(() => {
-    return new Set(
-      transactions
-        .map((t) => t.matched_invoice_id)
-        .filter(Boolean) as string[],
-    );
-  }, [transactions]);
+  const isDocumentMatched = (invoice: KSeFInvoice) => matchedDocumentKeys.has(`${invoice.source}:${invoice.id}`)
+    || (invoice.source === 'ksef' && transactions.some((transaction) => transaction.matched_invoice_id === invoice.id));
 
   const stats = useMemo(
     () => ({
       total: transactions.length,
       matched: transactions.filter(isTransactionFullyMatched).length,
-      unmatched: transactions.filter((t) => !isTransactionFullyMatched(t)).length,
+      unmatched: transactions.filter((t) => !isTransactionResolved(t)).length,
+      explained: transactions.filter((t) => t.accounting_review_status === 'explained').length,
+      privateTransfers: transactions.filter((t) => t.private_transfer_detected).length,
       totalAmount: transactions.reduce(
         (sum, t) => sum + (t.transaction_type === 'credit' ? t.amount : -t.amount),
         0,
@@ -413,7 +554,11 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
         sanitizeBrokenPolish(t.counterparty_name || ''),
         t.counterparty_account || '',
         sanitizeBrokenPolish(t.title || '').replace(/;/g, ','),
-        isTransactionFullyMatched(t)
+        t.private_transfer_detected
+          ? 'Przelew prywatny — bez faktury'
+          : t.accounting_review_status === 'explained'
+          ? `Wyjaśniona bez faktury — ${accountingCategoryLabel(t)}`
+          : isTransactionFullyMatched(t)
           ? 'Dopasowana'
           : hasTransactionMatches(t)
             ? 'Częściowo dopasowana'
@@ -436,15 +581,18 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
   };
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4">
-      <div className="flex max-h-[90vh] w-full max-w-[1800px] flex-col overflow-hidden rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] shadow-xl">
+    <div
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4"
+      onClick={() => setActionMenuId(null)}
+    >
+      <div className="flex h-[94vh] max-h-[94vh] w-full max-w-[1800px] flex-col overflow-hidden rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] shadow-xl">
         <div className="flex items-center justify-between border-b border-[#d3bb73]/10 p-6">
           <div>
             <h3 className="text-xl font-medium text-[#e5e4e2]">
               Analiza transakcji bankowych — {month}/{year}
             </h3>
             <p className="mt-1 text-sm text-[#e5e4e2]/60">
-              Transakcje z wyciągu oraz faktury KSeF z analizowanego miesiąca
+              Transakcje z wyciągu oraz faktury z KSeF i spoza KSeF; dokumenty gotówkowe są pomijane
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -467,69 +615,84 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
           </div>
         ) : (
           <>
-            <div className="border-b border-[#d3bb73]/10 bg-[#252945] p-6">
-              <div className="grid gap-4 md:grid-cols-5">
-                <div>
-                  <div className="text-xs text-[#e5e4e2]/60">Wszystkich transakcji</div>
-                  <div className="mt-1 text-2xl font-bold text-[#e5e4e2]">{stats.total}</div>
+            <div className="flex flex-wrap items-center gap-2 border-b border-[#d3bb73]/10 bg-[#252945] px-4 py-2.5">
+              {[
+                ['Wszystkie', stats.total, 'text-[#e5e4e2]'],
+                ['Dopasowane', stats.matched, 'text-green-400'],
+                ['Niedopasowane', stats.unmatched, 'text-orange-400'],
+                ['Wyjaśnione', stats.explained, 'text-sky-300'],
+                ['Prywatne', stats.privateTransfers, 'text-violet-300'],
+              ].map(([label, value, color]) => (
+                <div key={String(label)} className="flex items-baseline gap-1.5 rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] px-2.5 py-1.5">
+                  <span className="text-[10px] text-[#e5e4e2]/45">{label}</span>
+                  <strong className={`text-sm ${color}`}>{value}</strong>
                 </div>
-                <div>
-                  <div className="text-xs text-[#e5e4e2]/60">Dopasowanych</div>
-                  <div className="mt-1 text-2xl font-bold text-green-400">{stats.matched}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-[#e5e4e2]/60">Niedopasowanych</div>
-                  <div className="mt-1 text-2xl font-bold text-orange-400">{stats.unmatched}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-[#e5e4e2]/60">Wpłaty</div>
-                  <div className="mt-1 text-xl font-bold text-green-400">
-                    +{stats.creditAmount.toFixed(2)} PLN
-                  </div>
-                </div>
-                <div>
-                  <div className="text-xs text-[#e5e4e2]/60">Wypłaty</div>
-                  <div className="mt-1 text-xl font-bold text-red-400">
-                    -{stats.debitAmount.toFixed(2)} PLN
-                  </div>
-                </div>
-              </div>
+              ))}
+              <div className="ml-1 text-[11px] text-green-400">Wpłaty +{safeMoney(stats.creditAmount)}</div>
+              <div className="text-[11px] text-red-400">Wypłaty -{safeMoney(stats.debitAmount)}</div>
 
-              <div className="mt-4 flex gap-2">
+              <div className="ml-auto flex gap-1.5">
                 <button
                   onClick={() => setFilterType('all')}
-                  className={`rounded-lg px-4 py-2 text-sm font-medium ${
+                  className={`rounded-lg px-2.5 py-1.5 text-xs font-medium ${
                     filterType === 'all'
                       ? 'bg-[#d3bb73] text-[#1c1f33]'
                       : 'border border-[#d3bb73]/20 bg-[#1c1f33] text-[#e5e4e2]'
                   }`}
                 >
-                  Wszystkie ({stats.total})
+                  Wszystkie
                 </button>
                 <button
                   onClick={() => setFilterType('matched')}
-                  className={`rounded-lg px-4 py-2 text-sm font-medium ${
+                  className={`rounded-lg px-2.5 py-1.5 text-xs font-medium ${
                     filterType === 'matched'
                       ? 'bg-[#d3bb73] text-[#1c1f33]'
                       : 'border border-[#d3bb73]/20 bg-[#1c1f33] text-[#e5e4e2]'
                   }`}
                 >
-                  Dopasowane ({stats.matched})
+                  Dopasowane
                 </button>
                 <button
                   onClick={() => setFilterType('unmatched')}
-                  className={`rounded-lg px-4 py-2 text-sm font-medium ${
+                  className={`rounded-lg px-2.5 py-1.5 text-xs font-medium ${
                     filterType === 'unmatched'
                       ? 'bg-[#d3bb73] text-[#1c1f33]'
                       : 'border border-[#d3bb73]/20 bg-[#1c1f33] text-[#e5e4e2]'
                   }`}
                 >
-                  Niedopasowane ({stats.unmatched})
+                  Niedopasowane
+                </button>
+                <button
+                  onClick={() => setFilterType('explained')}
+                  className={`rounded-lg px-2.5 py-1.5 text-xs font-medium ${
+                    filterType === 'explained'
+                      ? 'bg-sky-300 text-[#1c1f33]'
+                      : 'border border-sky-300/20 bg-[#1c1f33] text-sky-200'
+                  }`}
+                >
+                  Wyjaśnione
+                </button>
+                <button
+                  onClick={() => setFilterType('private')}
+                  className={`rounded-lg px-2.5 py-1.5 text-xs font-medium ${
+                    filterType === 'private'
+                      ? 'bg-violet-300 text-[#1c1f33]'
+                      : 'border border-violet-300/20 bg-[#1c1f33] text-violet-200'
+                  }`}
+                >
+                  Prywatne
                 </button>
               </div>
             </div>
 
-            <div className="grid flex-1 gap-6 overflow-hidden p-6 xl:grid-cols-2">
+            <BankAiAnalysisPanel
+              month={month}
+              year={year}
+              companyId={companyId}
+              onMatchApplied={() => loadData({ silent: true })}
+            />
+
+            <div className="grid min-h-0 flex-1 gap-4 overflow-hidden p-4 xl:grid-cols-2">
               <div className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-[#d3bb73]/20 bg-[#252945]">
                 <div className="flex items-center justify-between border-b border-[#d3bb73]/10 px-4 py-3">
                   <div className="flex items-center gap-2 text-[#e5e4e2]">
@@ -546,14 +709,14 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
                       <p className="text-[#e5e4e2]/60">Brak transakcji w wybranym filtrze</p>
                     </div>
                   ) : (
-                    <table className="w-full min-w-[980px]">
+                    <table className="w-full min-w-[744px] table-fixed">
                       <thead className="sticky top-0 bg-[#1f233b]">
                         <tr className="border-b border-[#d3bb73]/10">
-                          <th className="px-4 py-3 text-left text-xs uppercase tracking-wider text-[#e5e4e2]/60">
+                          <th className="w-12 px-2 py-2 text-left text-[10px] uppercase tracking-wider text-[#e5e4e2]/60">
                             Status
                           </th>
                           <th
-                            className="px-4 py-3 text-left text-xs uppercase tracking-wider text-[#e5e4e2]/60 cursor-pointer hover:text-[#d3bb73] select-none"
+                            className="w-20 px-2 py-2 text-left text-[10px] uppercase tracking-wider text-[#e5e4e2]/60 cursor-pointer hover:text-[#d3bb73] select-none"
                             onClick={() => handleTransactionSort('date')}
                           >
                             <div className="flex items-center gap-1">
@@ -564,7 +727,7 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
                             </div>
                           </th>
                           <th
-                            className="px-4 py-3 text-left text-xs uppercase tracking-wider text-[#e5e4e2]/60 cursor-pointer hover:text-[#d3bb73] select-none"
+                            className="w-24 px-2 py-2 text-left text-[10px] uppercase tracking-wider text-[#e5e4e2]/60 cursor-pointer hover:text-[#d3bb73] select-none"
                             onClick={() => handleTransactionSort('amount')}
                           >
                             <div className="flex items-center gap-1">
@@ -575,7 +738,7 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
                             </div>
                           </th>
                           <th
-                            className="px-4 py-3 text-left text-xs uppercase tracking-wider text-[#e5e4e2]/60 cursor-pointer hover:text-[#d3bb73] select-none"
+                            className="w-40 px-2 py-2 text-left text-[10px] uppercase tracking-wider text-[#e5e4e2]/60 cursor-pointer hover:text-[#d3bb73] select-none"
                             onClick={() => handleTransactionSort('counterparty')}
                           >
                             <div className="flex items-center gap-1">
@@ -586,7 +749,7 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
                             </div>
                           </th>
                           <th
-                            className="px-4 py-3 text-left text-xs uppercase tracking-wider text-[#e5e4e2]/60 cursor-pointer hover:text-[#d3bb73] select-none"
+                            className="w-44 px-2 py-2 text-left text-[10px] uppercase tracking-wider text-[#e5e4e2]/60 cursor-pointer hover:text-[#d3bb73] select-none"
                             onClick={() => handleTransactionSort('title')}
                           >
                             <div className="flex items-center gap-1">
@@ -596,11 +759,11 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
                               ) : <ArrowUpDown className="h-3 w-3 opacity-40" />}
                             </div>
                           </th>
-                          <th className="px-4 py-3 text-left text-xs uppercase tracking-wider text-[#e5e4e2]/60">
+                          <th className="w-36 px-2 py-2 text-left text-[10px] uppercase tracking-wider text-[#e5e4e2]/60">
                             Dopasowanie
                           </th>
-                          <th className="px-4 py-3 text-right text-xs uppercase tracking-wider text-[#e5e4e2]/60">
-                            Akcja
+                          <th className="w-10 px-1.5 py-2 text-right text-[10px] uppercase tracking-wider text-[#e5e4e2]/60">
+                            ···
                           </th>
                         </tr>
                       </thead>
@@ -613,8 +776,12 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
                               key={transaction.id}
                               className="border-b border-[#d3bb73]/10 align-top hover:bg-[#1c1f33]/40"
                             >
-                              <td className="px-4 py-3">
-                                {isTransactionFullyMatched(transaction) ? (
+                              <td className="px-2 py-2">
+                                {transaction.private_transfer_detected ? (
+                                  <ArrowRightLeft className="h-5 w-5 text-violet-300" />
+                                ) : transaction.accounting_review_status === 'explained' ? (
+                                  <CheckCircle className="h-5 w-5 text-sky-300" />
+                                ) : isTransactionFullyMatched(transaction) ? (
                                   <CheckCircle className="h-5 w-5 text-green-400" />
                                 ) : hasTransactionMatches(transaction) ? (
                                   <LinkIcon className="h-5 w-5 text-blue-400" />
@@ -622,7 +789,7 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
                                   <XCircle className="h-5 w-5 text-orange-400" />
                                 )}
                               </td>
-                              <td className="px-4 py-3 text-sm text-[#e5e4e2]/80">
+                              <td className="px-2 py-2 text-xs text-[#e5e4e2]/80">
                                 <div>{safeDate(transaction.transaction_date)}</div>
                                 {transaction.posting_date &&
                                   transaction.posting_date !== transaction.transaction_date && (
@@ -631,7 +798,7 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
                                     </div>
                                   )}
                               </td>
-                              <td className="px-4 py-3 text-sm">
+                              <td className="px-2 py-2 text-xs">
                                 <div
                                   className={`font-semibold ${
                                     transaction.transaction_type === 'credit'
@@ -640,19 +807,24 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
                                   }`}
                                 >
                                   {transaction.transaction_type === 'credit' ? '+' : '-'}
-                                  {transaction.amount.toFixed(2)} {transaction.currency}
+                                  {safeMoney(transaction.amount, transaction.currency)}
                                 </div>
                               </td>
-                              <td className="px-4 py-3 text-sm text-[#e5e4e2]/85">
-                                <div>{sanitizeBrokenPolish(transaction.counterparty_name || '—')}</div>
+                              <td className="px-2 py-2 text-xs text-[#e5e4e2]/85">
+                                <div className="line-clamp-2">{sanitizeBrokenPolish(transaction.counterparty_name || '—')}</div>
+                                {transaction.private_transfer_detected && (
+                                  <div className="mt-1 inline-flex rounded bg-violet-400/10 px-2 py-0.5 text-xs font-medium text-violet-200">
+                                    Przelew prywatny{transaction.private_transfer_owner ? ` • ${transaction.private_transfer_owner}` : ''}
+                                  </div>
+                                )}
                                 {transaction.counterparty_account && (
                                   <div className="mt-1 text-xs text-[#e5e4e2]/40">
                                     {transaction.counterparty_account}
                                   </div>
                                 )}
                               </td>
-                              <td className="px-4 py-3 text-sm text-[#e5e4e2]/70">
-                                <div className="max-w-[320px] whitespace-normal break-words">
+                              <td className="px-2 py-2 text-xs text-[#e5e4e2]/70">
+                                <div className="line-clamp-2 break-words">
                                   {sanitizeBrokenPolish(transaction.title || '—')}
                                 </div>
                                 {transaction.reference_number && (
@@ -661,8 +833,23 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
                                   </div>
                                 )}
                               </td>
-                              <td className="px-4 py-3 text-sm text-[#e5e4e2]/80">
-                                {invoice ? (
+                              <td className="px-2 py-2 text-xs text-[#e5e4e2]/80">
+                                {transaction.private_transfer_detected ? (
+                                  <div>
+                                    <div className="font-medium text-violet-200">Przelew prywatny / własny</div>
+                                    <div className="mt-1 text-xs text-violet-200/55">Nie wymaga dopasowania do faktury</div>
+                                  </div>
+                                ) : transaction.accounting_review_status === 'explained' ? (
+                                  <div>
+                                    <div className="font-medium text-sky-300">{accountingCategoryLabel(transaction)}</div>
+                                    <div className="mt-1 text-xs text-sky-200/55">Wyjaśniona bez faktury</div>
+                                    {transaction.accounting_note && (
+                                      <div className="mt-1 max-w-[260px] text-xs text-[#e5e4e2]/45">
+                                        {transaction.accounting_note}
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : invoice ? (
                                   <div>
                                     <div className="font-medium text-green-400">
                                       {invoice.invoice_number || invoice.ksef_reference_number}
@@ -691,16 +878,77 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
                                   <span className="text-orange-400">Brak dopasowania</span>
                                 )}
                               </td>
-                              <td className="px-4 py-3 text-right">
-                                {hasTransactionMatches(transaction) ? (
-                                  <button
-                                    onClick={() => handleUnmatch(transaction.id)}
-                                    className="rounded bg-red-500/20 px-3 py-1 text-xs text-red-400 hover:bg-red-500/30"
+                              <td className="relative px-1.5 py-2 text-right">
+                                <button
+                                  type="button"
+                                  aria-label="Działania dla transakcji"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    setActionMenuId((current) => current === transaction.id ? null : transaction.id);
+                                  }}
+                                  className="rounded p-1.5 text-[#e5e4e2]/55 hover:bg-white/10 hover:text-[#d3bb73]"
+                                >
+                                  <MoreVertical className="h-4 w-4" />
+                                </button>
+
+                                {actionMenuId === transaction.id && (
+                                  <div
+                                    className="absolute right-7 top-1 z-30 w-64 rounded-lg border border-white/10 bg-[#141827] p-1.5 text-left shadow-2xl"
+                                    onClick={(event) => event.stopPropagation()}
                                   >
-                                    Usuń
-                                  </button>
-                                ) : (
-                                  <span className="text-xs text-[#e5e4e2]/30">—</span>
+                                    {!isTransactionFullyMatched(transaction) && transaction.accounting_review_status !== 'explained' && (
+                                      <>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setDocumentPicker({ transaction, source: 'all' });
+                                            setActionMenuId(null);
+                                          }}
+                                          className="flex w-full items-center gap-2 rounded px-2.5 py-2 text-xs text-[#e5e4e2]/80 hover:bg-[#d3bb73]/10 hover:text-[#d3bb73]"
+                                        >
+                                          <ReceiptText className="h-4 w-4" /> Dopasuj dokument z bazy
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setDocumentPicker({ transaction, source: 'personnel' });
+                                            setActionMenuId(null);
+                                          }}
+                                          className="flex w-full items-center gap-2 rounded px-2.5 py-2 text-xs text-[#e5e4e2]/80 hover:bg-[#d3bb73]/10 hover:text-[#d3bb73]"
+                                        >
+                                          <UserRound className="h-4 w-4" /> Dopasuj płatność kadrową
+                                        </button>
+                                      </>
+                                    )}
+                                    {!hasTransactionMatches(transaction) && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setAccountingEditor({
+                                            transaction,
+                                            subtype: accountingSubtypeForTransaction(transaction),
+                                          });
+                                          setActionMenuId(null);
+                                        }}
+                                        className="flex w-full items-center gap-2 rounded px-2.5 py-2 text-xs text-[#e5e4e2]/80 hover:bg-[#d3bb73]/10 hover:text-[#d3bb73]"
+                                      >
+                                        <MoreVertical className="h-4 w-4" />
+                                        {transaction.accounting_review_status === 'explained' ? 'Edytuj wyjaśnienie' : 'Wyjaśnij bez faktury'}
+                                      </button>
+                                    )}
+                                    {hasTransactionMatches(transaction) && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setActionMenuId(null);
+                                          void handleUnmatch(transaction.id);
+                                        }}
+                                        className="block w-full rounded px-2.5 py-2 text-left text-xs text-red-300 hover:bg-red-400/10"
+                                      >
+                                        Usuń dopasowanie
+                                      </button>
+                                    )}
+                                  </div>
                                 )}
                               </td>
                             </tr>
@@ -716,16 +964,16 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
                 <div className="flex items-center justify-between border-b border-[#d3bb73]/10 px-4 py-3">
                   <div className="flex items-center gap-2 text-[#e5e4e2]">
                     <FileText className="h-4 w-4 text-[#d3bb73]" />
-                    <span className="font-medium">Faktury KSeF z miesiąca {month}/{year}</span>
+                    <span className="font-medium">Dokumenty — {month}/{year}</span>
                   </div>
                   <div className="flex items-center gap-3">
                     <button
-                      onClick={loadData}
+                      onClick={() => void loadData()}
                       className="flex items-center gap-1.5 rounded-lg border border-[#d3bb73]/20 px-3 py-1.5 text-xs text-[#e5e4e2] hover:bg-[#1c1f33]"
-                      title="Odśwież faktury z bazy danych"
+                      title="Odśwież dokumenty z KSeF i spoza KSeF"
                     >
                       <RefreshCw className="h-3.5 w-3.5" />
-                      Pobierz faktury
+                      Odśwież
                     </button>
                     <span className="text-sm text-[#e5e4e2]/60">{ksefInvoices.length}</span>
                   </div>
@@ -735,17 +983,17 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
                   {ksefInvoices.length === 0 ? (
                     <div className="p-8 text-center">
                       <AlertTriangle className="mx-auto mb-3 h-12 w-12 text-[#e5e4e2]/40" />
-                      <p className="text-[#e5e4e2]/60">Brak faktur KSeF w tym miesiącu</p>
+                      <p className="text-[#e5e4e2]/60">Brak faktur z KSeF i spoza KSeF w tym miesiącu</p>
                     </div>
                   ) : (
-                    <table className="w-full min-w-[920px]">
+                    <table className="w-full min-w-[740px] table-fixed">
                       <thead className="sticky top-0 bg-[#1f233b]">
                         <tr className="border-b border-[#d3bb73]/10">
-                          <th className="px-4 py-3 text-left text-xs uppercase tracking-wider text-[#e5e4e2]/60">
+                          <th className="w-12 px-2 py-2 text-left text-[10px] uppercase tracking-wider text-[#e5e4e2]/60">
                             Match
                           </th>
                           <th
-                            className="px-4 py-3 text-left text-xs uppercase tracking-wider text-[#e5e4e2]/60 cursor-pointer hover:text-[#d3bb73] select-none"
+                            className="w-40 px-2 py-2 text-left text-[10px] uppercase tracking-wider text-[#e5e4e2]/60 cursor-pointer hover:text-[#d3bb73] select-none"
                             onClick={() => handleInvoiceSort('invoice_number')}
                           >
                             <div className="flex items-center gap-1">
@@ -756,7 +1004,7 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
                             </div>
                           </th>
                           <th
-                            className="px-4 py-3 text-left text-xs uppercase tracking-wider text-[#e5e4e2]/60 cursor-pointer hover:text-[#d3bb73] select-none"
+                            className="px-2 py-2 text-left text-[10px] uppercase tracking-wider text-[#e5e4e2]/60 cursor-pointer hover:text-[#d3bb73] select-none"
                             onClick={() => handleInvoiceSort('contractor')}
                           >
                             <div className="flex items-center gap-1">
@@ -767,7 +1015,7 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
                             </div>
                           </th>
                           <th
-                            className="px-4 py-3 text-left text-xs uppercase tracking-wider text-[#e5e4e2]/60 cursor-pointer hover:text-[#d3bb73] select-none"
+                            className="w-24 px-2 py-2 text-left text-[10px] uppercase tracking-wider text-[#e5e4e2]/60 cursor-pointer hover:text-[#d3bb73] select-none"
                             onClick={() => handleInvoiceSort('invoice_date')}
                           >
                             <div className="flex items-center gap-1">
@@ -777,11 +1025,11 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
                               ) : <ArrowUpDown className="h-3 w-3 opacity-40" />}
                             </div>
                           </th>
-                          <th className="px-4 py-3 text-left text-xs uppercase tracking-wider text-[#e5e4e2]/60">
+                          <th className="w-24 px-2 py-2 text-left text-[10px] uppercase tracking-wider text-[#e5e4e2]/60">
                             Termin
                           </th>
                           <th
-                            className="px-4 py-3 text-right text-xs uppercase tracking-wider text-[#e5e4e2]/60 cursor-pointer hover:text-[#d3bb73] select-none"
+                            className="w-24 px-2 py-2 text-right text-[10px] uppercase tracking-wider text-[#e5e4e2]/60 cursor-pointer hover:text-[#d3bb73] select-none"
                             onClick={() => handleInvoiceSort('invoice_amount')}
                           >
                             <div className="flex items-center justify-end gap-1">
@@ -791,11 +1039,11 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
                               ) : <ArrowUpDown className="h-3 w-3 opacity-40" />}
                             </div>
                           </th>
-                          <th className="px-4 py-3 text-left text-xs uppercase tracking-wider text-[#e5e4e2]/60">
+                          <th className="w-24 px-2 py-2 text-left text-[10px] uppercase tracking-wider text-[#e5e4e2]/60">
                             Status
                           </th>
-                          <th className="px-4 py-3 text-right text-xs uppercase tracking-wider text-[#e5e4e2]/60">
-                            Akcja
+                          <th className="w-10 px-1.5 py-2 text-right text-[10px] uppercase tracking-wider text-[#e5e4e2]/60">
+                            ···
                           </th>
                         </tr>
                       </thead>
@@ -813,8 +1061,8 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
                               key={invoice.id}
                               className="border-b border-[#d3bb73]/10 hover:bg-[#1c1f33]/40"
                             >
-                              <td className="px-4 py-3">
-                                {matchedInvoiceIds.has(invoice.id) ? (
+                              <td className="px-2 py-2">
+                                {isDocumentMatched(invoice) ? (
                                   <div className="flex items-center gap-2 text-green-400">
                                     <LinkIcon className="h-4 w-4" />
                                     <span className="text-xs">tak</span>
@@ -823,29 +1071,30 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
                                   <span className="text-xs text-[#e5e4e2]/30">—</span>
                                 )}
                               </td>
-                              <td className="px-4 py-3 text-sm text-[#e5e4e2]">
-                                <div className="font-medium">
-                                  {invoice.invoice_number || 'Brak numeru'}
+                              <td className="px-2 py-2 text-xs text-[#e5e4e2]">
+                                <div className="flex min-w-0 items-center gap-1.5">
+                                  <span className="truncate font-medium" title={invoice.invoice_number || 'Brak numeru'}>{invoice.invoice_number || 'Brak numeru'}</span>
+                                  <span className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] uppercase ${invoice.source === 'ksef' ? 'bg-sky-400/10 text-sky-200' : 'bg-violet-400/10 text-violet-200'}`}>
+                                    {invoice.source === 'ksef' ? 'KSeF' : 'Poza'}
+                                  </span>
                                 </div>
-                                <div className="mt-1 text-xs text-[#e5e4e2]/40">
-                                  {invoice.ksef_reference_number}
-                                </div>
+                                {invoice.ksef_reference_number && <div className="mt-1 truncate text-[10px] text-[#e5e4e2]/35" title={invoice.ksef_reference_number}>{invoice.ksef_reference_number}</div>}
                               </td>
-                              <td className="px-4 py-3 text-sm text-[#e5e4e2]/80">
-                                {contractor}
+                              <td className="px-2 py-2 text-xs text-[#e5e4e2]/80">
+                                <div className="line-clamp-2" title={contractor}>{contractor}</div>
                               </td>
-                              <td className="px-4 py-3 text-sm text-[#e5e4e2]/70">
+                              <td className="px-2 py-2 text-xs text-[#e5e4e2]/70">
                                 {safeDate(invoice.issue_date || invoice.ksef_issued_at)}
                               </td>
-                              <td className="px-4 py-3 text-sm text-[#e5e4e2]/70">
+                              <td className="px-2 py-2 text-xs text-[#e5e4e2]/70">
                                 {safeDate(invoice.payment_due_date)}
                               </td>
-                              <td className="px-4 py-3 text-right text-sm font-medium text-[#d3bb73]">
-                                {safeMoney(invoice.gross_amount)}
+                              <td className="px-2 py-2 text-right text-xs font-medium text-[#d3bb73]">
+                                {safeMoney(invoice.gross_amount, invoice.currency || 'PLN')}
                               </td>
-                              <td className="px-4 py-3 text-sm">
+                              <td className="px-2 py-2 text-xs">
                                 <span
-                                  className={`rounded px-2 py-1 text-xs ${
+                                  className={`inline-flex rounded px-1.5 py-0.5 text-[10px] ${
                                     invoice.payment_status === 'paid'
                                       ? 'bg-green-500/10 text-green-400'
                                       : invoice.payment_status === 'overdue'
@@ -860,16 +1109,39 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
                                       : 'Nieopłacona'}
                                 </span>
                               </td>
-                              <td className="px-4 py-3 text-right">
-                                {matchedInvoiceIds.has(invoice.id) ? (
-                                  <span className="text-xs text-green-400">Dopasowana</span>
-                                ) : (
-                                  <button
-                                    onClick={() => openMatchModal(invoice)}
-                                    className="rounded bg-[#d3bb73]/20 px-3 py-1 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/30"
+                              <td className="relative px-1.5 py-2 text-right">
+                                <button
+                                  type="button"
+                                  aria-label="Działania dla dokumentu"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    const menuKey = `invoice:${invoice.source}:${invoice.id}`;
+                                    setActionMenuId((current) => current === menuKey ? null : menuKey);
+                                  }}
+                                  className="rounded p-1.5 text-[#e5e4e2]/55 hover:bg-white/10 hover:text-[#d3bb73]"
+                                >
+                                  <MoreVertical className="h-4 w-4" />
+                                </button>
+                                {actionMenuId === `invoice:${invoice.source}:${invoice.id}` && (
+                                  <div
+                                    className="absolute right-7 top-1 z-30 w-52 rounded-lg border border-white/10 bg-[#141827] p-1.5 text-left shadow-2xl"
+                                    onClick={(event) => event.stopPropagation()}
                                   >
-                                    Dopasuj płatność
-                                  </button>
+                                    {isDocumentMatched(invoice) ? (
+                                      <div className="px-2.5 py-2 text-xs text-green-300">Dopasowanie zapisane</div>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setActionMenuId(null);
+                                          openMatchModal(invoice);
+                                        }}
+                                        className="flex w-full items-center gap-2 rounded px-2.5 py-2 text-xs text-[#e5e4e2]/80 hover:bg-[#d3bb73]/10 hover:text-[#d3bb73]"
+                                      >
+                                        <ReceiptText className="h-4 w-4" /> Dopasuj płatność
+                                      </button>
+                                    )}
+                                  </div>
                                 )}
                               </td>
                             </tr>
@@ -896,7 +1168,9 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
                 <p className="mt-1 text-sm text-[#e5e4e2]/60">
                   Faktura: {selectedInvoice.invoice_number || selectedInvoice.ksef_reference_number}
                   {' • '}
-                  {safeMoney(selectedInvoice.gross_amount)}
+                  {safeMoney(selectedInvoice.gross_amount, selectedInvoice.currency || 'PLN')}
+                  {' • '}
+                  {selectedInvoice.source === 'ksef' ? 'KSeF' : 'Poza KSeF'}
                 </p>
               </div>
               <button
@@ -914,18 +1188,19 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
               <div className="space-y-2">
                 {transactions
                   .filter((t) => (
-                    !isTransactionFullyMatched(t) &&
+                    !isTransactionResolved(t) &&
                     t.transaction_type === getExpectedTransactionDirection(selectedInvoice)
                   ))
                   .map((transaction) => {
                     const amountMatch =
                       selectedInvoice.gross_amount != null &&
+                      String(selectedInvoice.currency || 'PLN').toUpperCase() === String(transaction.currency || 'PLN').toUpperCase() &&
                       Math.abs(selectedInvoice.gross_amount - transaction.amount) < 0.01;
 
                     return (
                       <button
                         key={transaction.id}
-                        onClick={() => handleManualMatch(transaction.id, selectedInvoice.id)}
+                        onClick={() => handleManualMatch(transaction.id, selectedInvoice)}
                         className={`w-full rounded-lg border p-4 text-left transition-colors hover:bg-[#252945] ${
                           amountMatch
                             ? 'border-green-500/40 bg-green-500/5'
@@ -975,7 +1250,7 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
                               transaction.transaction_type === 'credit' ? 'text-green-400' : 'text-red-400'
                             }`}>
                               {transaction.transaction_type === 'credit' ? '+' : '-'}
-                              {transaction.amount.toFixed(2)} {transaction.currency}
+                              {safeMoney(transaction.amount, transaction.currency)}
                             </div>
                             {transaction.posting_date && transaction.posting_date !== transaction.transaction_date && (
                               <div className="mt-1 text-xs text-[#e5e4e2]/40">
@@ -989,7 +1264,7 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
                   })}
 
                 {transactions.filter((t) => (
-                  !isTransactionFullyMatched(t) &&
+                  !isTransactionResolved(t) &&
                   t.transaction_type === getExpectedTransactionDirection(selectedInvoice)
                 )).length === 0 && (
                   <div className="py-8 text-center text-[#e5e4e2]/60">
@@ -1012,6 +1287,30 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
             </div>
           </div>
         </div>
+      )}
+
+      {documentPicker && (
+        <BankTransactionDocumentPickerModal
+          transaction={documentPicker.transaction as DocumentPickerTransaction}
+          initialSource={documentPicker.source}
+          onClose={() => setDocumentPicker(null)}
+          onMatched={async () => {
+            setDocumentPicker(null);
+            await loadData({ silent: true });
+          }}
+        />
+      )}
+
+      {accountingEditor && (
+        <BankTransactionAccountingModal
+          transaction={accountingEditor.transaction as AccountingTransaction}
+          initialSubtype={accountingEditor.subtype}
+          onClose={() => setAccountingEditor(null)}
+          onSaved={() => {
+            setAccountingEditor(null);
+            void loadData({ silent: true });
+          }}
+        />
       )}
     </div>
   );

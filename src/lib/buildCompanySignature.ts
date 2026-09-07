@@ -95,10 +95,10 @@ const rasterizeEmbeddedImage = (
       const naturalWidth = image.naturalWidth || displayedWidth || 120;
       const naturalHeight = image.naturalHeight || displayedHeight || 120;
       const ratio = naturalWidth / Math.max(1, naturalHeight);
-      // Obraz ma mieć naturalny rozmiar równy rozmiarowi wyświetlanemu.
-      // Podczas cytowania część klientów usuwa CSS i pokazuje grafikę w jej
-      // naturalnej wielkości, dlatego wariant 2x (retina) rozsadzał stopkę.
-      const density = 1;
+      // Zachowujemy dwa piksele obrazu na jeden piksel CSS. Atrybuty width i
+      // height w HTML nadal blokują rozmiar stopki, a wariant 2x zapobiega
+      // rozmyciu zdjęcia i ikon na ekranach Retina/HiDPI.
+      const density = 2;
 
       let targetWidth = displayedWidth ? displayedWidth * density : Math.min(naturalWidth, 320);
       let targetHeight = displayedHeight ? displayedHeight * density : Math.min(naturalHeight, 320);
@@ -106,7 +106,7 @@ const rasterizeEmbeddedImage = (
       if (displayedWidth && !displayedHeight) targetHeight = Math.round(targetWidth / ratio);
       if (!displayedWidth && displayedHeight) targetWidth = Math.round(targetHeight * ratio);
 
-      const maxDimension = 480;
+      const maxDimension = 960;
       const scale = Math.min(1, maxDimension / Math.max(targetWidth, targetHeight));
       targetWidth = Math.max(1, Math.round(targetWidth * scale));
       targetHeight = Math.max(1, Math.round(targetHeight * scale));
@@ -120,6 +120,8 @@ const rasterizeEmbeddedImage = (
         return;
       }
 
+      context.imageSmoothingEnabled = true;
+      context.imageSmoothingQuality = 'high';
       context.clearRect(0, 0, targetWidth, targetHeight);
       const drawScale = Math.min(targetWidth / naturalWidth, targetHeight / naturalHeight);
       const drawWidth = Math.round(naturalWidth * drawScale);

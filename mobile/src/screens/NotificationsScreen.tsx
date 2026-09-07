@@ -612,6 +612,8 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border.default,
   },
   headerTitle: {
+    fontFamily: 'MBFAtom',
+    textTransform: 'uppercase',
     fontSize: typography.fontSizes.lg,
     fontWeight: typography.fontWeights.bold,
     color: colors.text.primary,
@@ -656,6 +658,8 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   notificationTitle: {
+    fontFamily: 'MBFAtom',
+    textTransform: 'uppercase',
     fontSize: typography.fontSizes.md,
     fontWeight: typography.fontWeights.semibold,
     color: colors.text.primary,

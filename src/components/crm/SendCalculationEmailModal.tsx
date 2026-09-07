@@ -12,6 +12,11 @@ import UnifiedEmailComposer, {
   type UnifiedEmailAccount,
   type UnifiedEmailDraft,
 } from './UnifiedEmailComposer';
+import {
+  dispatchCrmEmail,
+  formatScheduledEmailDate,
+  resolveScheduledEmailDate,
+} from '@/lib/emailScheduling';
 
 interface SendCalculationEmailModalProps {
   calculationId: string;
@@ -274,6 +279,14 @@ Proszę o zapoznanie się z treścią. W razie pytań lub uwag pozostaję do dys
       return;
     }
 
+    let scheduledAt: string | null;
+    try {
+      scheduledAt = resolveScheduledEmailDate(formData);
+    } catch (error) {
+      showSnackbar(error instanceof Error ? error.message : 'Nieprawidłowy termin wysyłki', 'error');
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -318,7 +331,10 @@ Proszę o zapoznanie się z treścią. W razie pytań lub uwag pozostaję do dys
         }
       }
 
-      showSnackbar('Załączniki gotowe, wysyłam email...', 'info');
+      showSnackbar(
+        scheduledAt ? 'Załączniki gotowe, zapisuję termin wysyłki...' : 'Załączniki gotowe, wysyłam email...',
+        'info',
+      );
       const currentPreviewHtml = await buildUnifiedEmailHtml({
         draft: formData,
         purpose: 'offer',
@@ -326,33 +342,33 @@ Proszę o zapoznanie się z treścią. W razie pytań lub uwag pozostaję do dys
       });
       setPreviewHtml(currentPreviewHtml);
 
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-email`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({
-            emailAccountId: formData.fromAccountId,
-            to: formData.to.trim(),
-            subject: formData.subject.trim(),
-            body: currentPreviewHtml,
-            attachments,
-            cc: formData.cc.trim(),
-            bcc: formData.bcc.trim(),
-          }),
+      const result = await dispatchCrmEmail({
+        accessToken: session.access_token,
+        functionName: 'send-email',
+        scheduledAt,
+        metadata: {
+          entityType: 'calculation',
+          entityId: calculationId,
+          eventId,
+          actionUrl: `/crm/events/${eventId}?tab=calculations`,
         },
+        payload: {
+          emailAccountId: formData.fromAccountId,
+          to: formData.to.trim(),
+          subject: formData.subject.trim(),
+          body: currentPreviewHtml,
+          attachments,
+          cc: formData.cc.trim(),
+          bcc: formData.bcc.trim(),
+        },
+      });
+
+      showSnackbar(
+        result.scheduled && result.scheduledAt
+          ? `Kalkulacja zostanie wysłana ${formatScheduledEmailDate(result.scheduledAt)}`
+          : 'Kalkulacja wysłana przez email',
+        'success',
       );
-
-      if (!response.ok) {
-        const error = await response.json().catch(() => null);
-        console.error('[SendCalculation] Error response:', error);
-        throw new Error(error?.error || error?.message || 'Błąd podczas wysyłania email');
-      }
-
-      showSnackbar('Kalkulacja wysłana przez email', 'success');
       onSent?.();
       onClose();
     } catch (error: any) {
@@ -377,9 +393,20 @@ Proszę o zapoznanie się z treścią. W razie pytań lub uwag pozostaję do dys
   }, []);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33]">
-        <div className="flex items-center justify-between border-b border-[#d3bb73]/20 p-6">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      role="dialog"
+      aria-modal="true"
+      data-crm-modal="true"
+    >
+      <div
+        data-crm-modal-surface="true"
+        className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33]"
+      >
+        <div
+          data-crm-modal-bar="true"
+          className="flex items-center justify-between border-b border-[#d3bb73]/20 p-6"
+        >
           <div className="flex items-center gap-3">
             <Mail className="h-6 w-6 text-[#d3bb73]" />
             <h2 className="text-xl font-light text-[#e5e4e2]">Wyślij kalkulację przez email</h2>
@@ -517,7 +544,10 @@ Proszę o zapoznanie się z treścią. W razie pytań lub uwag pozostaję do dys
           </UnifiedEmailComposer>
         </div>
 
-        <div className="flex items-center justify-end gap-3 border-t border-[#d3bb73]/20 p-6">
+        <div
+          data-crm-modal-bar="true"
+          className="flex items-center justify-end gap-3 border-t border-[#d3bb73]/20 p-6"
+        >
           <button
             onClick={onClose}
             disabled={loading}
@@ -533,12 +563,14 @@ Proszę o zapoznanie się z treścią. W razie pytań lub uwag pozostaję do dys
             {loading ? (
               <>
                 <Loader className="h-4 w-4 animate-spin" />
-                Wysyłanie...
+                {formData.deliveryMode === 'scheduled' ? 'Planowanie...' : 'Wysyłanie...'}
               </>
             ) : (
               <>
                 <Send className="h-4 w-4" />
-                Wyślij kalkulację
+                {formData.deliveryMode === 'scheduled'
+                  ? 'Zaplanuj kalkulację'
+                  : 'Wyślij kalkulację'}
               </>
             )}
           </button>

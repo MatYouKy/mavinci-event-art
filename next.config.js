@@ -28,6 +28,7 @@ const nextConfig = {
   experimental: {
     workerThreads: false,
     cpus: 1,
+    serverComponentsExternalPackages: ['pdfjs-dist'],
   },
   webpack: (config) => {
     config.optimization = {

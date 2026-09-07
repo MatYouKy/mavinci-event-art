@@ -38,6 +38,7 @@ type Brochure = {
   organization_id: string | null;
   my_company_id: string;
   contact_employee_id: string | null;
+  cover_image_path: string | null;
   current_pdf_path: string | null;
   current_pdf_version: number;
   modified_after_generation: boolean;
@@ -174,6 +175,7 @@ export default function BrochureEditorClient({ brochureId }: { brochureId: strin
     const paths = Array.from(new Set([
       ...normalizedProducts.flatMap((product) => [product.offer_image_path, ...product.variants.map((variant) => variant.offer_image_path)]),
       ...normalizedItems.map((item) => item.custom_image_path),
+      loadedBrochure.cover_image_path,
     ].filter(Boolean))) as string[];
     const signed = await Promise.all(paths.map(async (path) => {
       if (/^https?:\/\//i.test(path)) return [path, path] as const;
@@ -375,7 +377,12 @@ export default function BrochureEditorClient({ brochureId }: { brochureId: strin
           </section>
 
           <aside className="xl:sticky xl:top-5 xl:self-start">
-            <div className={`${cardClass} overflow-hidden`}><div className="flex items-center gap-2 border-b border-[#d3bb73]/10 px-4 py-3 text-sm"><Eye className="h-4 w-4 text-[#d3bb73]" /> Szybki podgląd</div><div className="aspect-[210/297] overflow-hidden bg-[#650026] text-white"><div className="relative flex h-full flex-col p-[9%]"><div className="absolute -right-[24%] -top-[12%] h-[45%] w-[78%] rounded-full bg-[#8f0035]/70" /><div className="absolute -right-[12%] -top-[7%] h-[35%] w-[62%] rounded-full border border-[#d3bb73]" /><div className="relative z-10 text-sm font-bold tracking-[.35em] text-[#d3bb73]">MAVINCI</div><div className="relative z-10 mt-[36%] text-[10px] font-bold tracking-[.16em] text-[#d3bb73]">BROSZURA USŁUG</div><div className="relative z-10 mt-4 text-2xl font-light leading-tight">{brochure.title || 'Oferta współpracy'}</div>{brochure.subtitle && <div className="relative z-10 mt-3 text-xs leading-5 text-white/65">{brochure.subtitle}</div>}<div className="relative z-10 mt-auto flex justify-between border-t border-[#d3bb73] pt-3 text-[8px] text-white/65"><span>{items.length} obszarów współpracy</span><span>01</span></div></div></div><div className="p-4 text-xs leading-5 text-[#e5e4e2]/45"><div className="flex items-center gap-2"><Building2 className="h-3.5 w-3.5 text-[#d3bb73]" />{organizations.find((item) => item.id === brochure.organization_id)?.name || 'Wersja ogólna'}</div><div className="mt-2 flex items-center gap-2"><RefreshCw className="h-3.5 w-3.5 text-[#d3bb73]" />{brochure.generated_at ? `Ostatni PDF: ${new Date(brochure.generated_at).toLocaleString('pl-PL')}` : 'PDF nie został jeszcze wygenerowany'}</div></div></div>
+            <BrochureQuickPreview
+              brochure={brochure}
+              items={items}
+              imageUrls={imageUrls}
+              organizationName={organizations.find((item) => item.id === brochure.organization_id)?.name || null}
+            />
           </aside>
         </section>
       </div>
@@ -391,4 +398,132 @@ function ItemImage({ item, imageUrls }: { item: BrochureItem; imageUrls: Record<
   const path = item.custom_image_path || item.variant?.offer_image_path || item.product.offer_image_path;
   const url = path ? imageUrls[path] : '';
   return url ? <img src={url} alt="" className="h-12 w-16 shrink-0 rounded object-cover" /> : <div className="h-12 w-16 shrink-0 rounded bg-[#1c1f33]" />;
+}
+
+function PreviewFooter({ page, dark = false }: { page: number; dark?: boolean }) {
+  return (
+    <div className={`absolute bottom-[4%] left-[9%] right-[9%] flex items-center justify-between border-t pt-[2.5%] text-[6px] uppercase tracking-[.12em] ${dark ? 'border-[#d3bb73] text-white/65' : 'border-black/15 text-black/40'}`}>
+      <span>MAVINCI</span>
+      <span>{String(page).padStart(2, '0')}</span>
+    </div>
+  );
+}
+
+function PreviewCircles() {
+  return (
+    <>
+      <div className="absolute -right-[20.5%] -top-[15.2%] aspect-square w-[59.5%] rounded-full bg-[#8f0035]/55" />
+      <div className="absolute -right-[14.3%] -top-[11.5%] aspect-square w-[48.1%] rounded-full border border-[#d3bb73]" />
+    </>
+  );
+}
+
+function BrochureQuickPreview({
+  brochure,
+  items,
+  imageUrls,
+  organizationName,
+}: {
+  brochure: Brochure;
+  items: BrochureItem[];
+  imageUrls: Record<string, string>;
+  organizationName: string | null;
+}) {
+  const visibleItems = items.filter((item) => item.is_visible);
+  const coverPath = brochure.cover_image_path
+    || visibleItems.map((item) => item.custom_image_path || item.variant?.offer_image_path || item.product.offer_image_path).find(Boolean)
+    || null;
+  const coverImage = coverPath ? imageUrls[coverPath] : '';
+  const totalPages = visibleItems.length + 3;
+
+  return (
+    <div className={`${cardClass} overflow-hidden`}>
+      <div className="flex items-center justify-between border-b border-[#d3bb73]/10 px-4 py-3 text-sm">
+        <span className="flex items-center gap-2"><Eye className="h-4 w-4 text-[#d3bb73]" /> Szybki podgląd</span>
+        <span className="text-xs text-[#e5e4e2]/40">{totalPages} stron</span>
+      </div>
+
+      <div className="max-h-[calc(100vh-180px)] space-y-4 overflow-y-auto bg-[#0f1119] p-3">
+        <PreviewPageLabel page={1} label="Okładka">
+          <div className="relative aspect-[210/297] overflow-hidden bg-[#650026] text-white">
+            {coverImage && <img src={coverImage} alt="" className="absolute inset-0 h-full w-full object-cover" />}
+            <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(55,0,24,.72),rgba(65,0,28,.94)_62%,#650026)]" />
+            <PreviewCircles />
+            <div className="relative z-10 flex h-full flex-col p-[9%]">
+              <div className="text-sm font-bold tracking-[.35em] text-[#d3bb73]">MAVINCI</div>
+              <div className="mt-[31%] text-[7px] font-bold tracking-[.2em] text-[#d3bb73]">BROSZURA USŁUG</div>
+              <div className="mt-[5%] text-[22px] font-light leading-[1.08]">{brochure.title || 'Oferta współpracy'}</div>
+              {brochure.subtitle && <div className="mt-[4%] text-[9px] leading-[1.5] text-white/75">{brochure.subtitle}</div>}
+              {organizationName && <div className="mt-[10%] border-t border-[#d3bb73] pt-[4%] text-[9px]"><span className="mb-1 block text-[5px] tracking-[.2em] text-[#d3bb73]">PRZYGOTOWANO DLA</span>{organizationName}</div>}
+              <PreviewFooter page={1} dark />
+            </div>
+          </div>
+        </PreviewPageLabel>
+
+        <PreviewPageLabel page={2} label="Wprowadzenie">
+          <div className="relative aspect-[210/297] overflow-hidden bg-[#f8f6f1] p-[9%] text-[#171924]">
+            <div className="mb-[11%] h-px bg-[#d3bb73]" />
+            <div className="text-[6px] font-bold tracking-[.2em] text-[#d3bb73]">WSPÓŁPRACA</div>
+            <div className="mt-[4%] text-[20px] font-light leading-[1.1]">{organizationName ? `Dla ${organizationName}` : 'Technika, która wspiera sprzedaż wydarzeń'}</div>
+            <div className="mt-[10%] grid grid-cols-[1.25fr_.75fr] gap-[7%]">
+              <p className="m-0 text-[7px] leading-[1.65] text-black/65">{brochure.introduction || 'Zapewniamy kompleksową technikę i realizację wydarzeń — od pierwszej koncepcji aż po bezpieczną obsługę na miejscu.'}</p>
+              <div className="border-l-2 border-[#d3bb73] bg-white p-[10%] shadow-sm"><span className="text-[5px] tracking-[.16em] text-black/45">JEDEN PARTNER</span><strong className="mt-[12%] block text-[10px]">Spójna realizacja</strong><p className="mt-[8%] text-[6px] leading-[1.5] text-black/55">Jedno źródło odpowiedzialności za technikę, zespół i logistykę.</p></div>
+            </div>
+            <div className="absolute bottom-[12%] left-[9%] right-[9%] grid grid-cols-3 gap-[4%] border-t border-[#d3bb73] pt-[5%]">{[[String(visibleItems.length).padStart(2, '0'), 'obszarów współpracy'], ['360°', 'obsługi wydarzenia'], ['1', 'opiekun projektu']].map(([value, label]) => <div key={label}><strong className="block text-[14px] font-normal text-[#650026]">{value}</strong><span className="mt-1 block text-[5px] leading-tight text-black/45">{label}</span></div>)}</div>
+            <PreviewFooter page={2} />
+          </div>
+        </PreviewPageLabel>
+
+        {visibleItems.map((item, index) => {
+          const imagePath = item.custom_image_path || item.variant?.offer_image_path || item.product.offer_image_path;
+          const image = imagePath ? imageUrls[imagePath] : '';
+          const benefits = itemBenefits(item).slice(0, item.page_layout === 'compact' ? 4 : 6);
+          const imageHeight = item.page_layout === 'visual' ? '39%' : item.page_layout === 'classic' ? '28%' : '23%';
+          return (
+            <PreviewPageLabel key={item.id} page={index + 3} label={itemTitle(item)}>
+              <div className="relative aspect-[210/297] overflow-hidden bg-[#f8f6f1] p-[9%] text-[#171924]">
+                <span className="absolute right-[9%] top-[5.5%] text-[7px] tracking-[.2em] text-[#d3bb73]">{String(index + 1).padStart(2, '0')}</span>
+                <div className="mt-[5%] overflow-hidden rounded-[10px] bg-[#dedbd3]" style={{ height: imageHeight }}>
+                  {image ? <img src={image} alt="" className="h-full w-full object-cover" /> : <div className="h-full w-full bg-[linear-gradient(135deg,#650026,#1c1f33)]" />}
+                </div>
+                <div className="mt-[7%] text-[6px] font-bold uppercase tracking-[.2em] text-[#d3bb73]">{item.product.category?.name || 'Usługa'}</div>
+                <div className="mt-[3%] text-[18px] font-light leading-[1.08]">{itemTitle(item)}</div>
+                {itemShort(item) && <div className="mt-[3%] text-[8px] leading-[1.45] text-black/55">{itemShort(item)}</div>}
+                {itemDescription(item) && <p className="mt-[4%] line-clamp-4 text-[6px] leading-[1.55] text-black/65">{itemDescription(item)}</p>}
+                {benefits.length > 0 && <div className="mt-[4%] grid grid-cols-2 gap-x-[6%] gap-y-1">{benefits.map((benefit, benefitIndex) => <div key={`${benefit}-${benefitIndex}`} className="relative pl-2 text-[5.5px] leading-tight text-black/65 before:absolute before:left-0 before:text-[#d3bb73] before:content-['—']">{benefit}</div>)}</div>}
+                <PreviewFooter page={index + 3} />
+              </div>
+            </PreviewPageLabel>
+          );
+        })}
+
+        <PreviewPageLabel page={totalPages} label="Kontakt i zakończenie">
+          <div className="relative aspect-[210/297] overflow-hidden bg-[#650026] text-white">
+            <PreviewCircles />
+            <div className="relative z-10 p-[10%]">
+              <div className="mt-[25%] text-[6px] font-bold tracking-[.2em] text-[#d3bb73]">POROZMAWIAJMY</div>
+              <div className="mt-[5%] text-[23px] font-light leading-[1.1]">Stwórzmy standard współpracy, który ułatwia sprzedaż wydarzeń.</div>
+              <p className="mt-[9%] text-[8px] leading-[1.65] text-white/75">{brochure.closing_text || 'Możemy przygotować stałe warianty techniczne, uzgodnić zasady komunikacji oraz zapewnić sprawną wycenę dla Państwa klientów.'}</p>
+              <div className="mt-[12%] border-t border-[#d3bb73] pt-[6%]"><strong className="block text-[10px] text-[#d3bb73]">MAVINCI</strong><span className="mt-2 block text-[7px] text-white/70">Zapraszamy do kontaktu</span></div>
+            </div>
+            <PreviewFooter page={totalPages} dark />
+          </div>
+        </PreviewPageLabel>
+      </div>
+
+      <div className="p-4 text-xs leading-5 text-[#e5e4e2]/45">
+        <div className="flex items-center gap-2"><Building2 className="h-3.5 w-3.5 text-[#d3bb73]" />{organizationName || 'Wersja ogólna'}</div>
+        <div className="mt-2 flex items-center gap-2"><RefreshCw className="h-3.5 w-3.5 text-[#d3bb73]" />{brochure.generated_at ? `Ostatni PDF: ${new Date(brochure.generated_at).toLocaleString('pl-PL')}` : 'PDF nie został jeszcze wygenerowany'}</div>
+      </div>
+    </div>
+  );
+}
+
+function PreviewPageLabel({ page, label, children }: { page: number; label: string; children: ReactNode }) {
+  return (
+    <div>
+      <div className="mb-1.5 flex items-center justify-between gap-3 px-0.5 text-[10px] uppercase tracking-[.13em] text-[#e5e4e2]/35"><span className="truncate">{label}</span><span className="shrink-0">{String(page).padStart(2, '0')}</span></div>
+      <div className="overflow-hidden rounded-sm border border-white/10 shadow-[0_10px_25px_rgba(0,0,0,.22)]">{children}</div>
+    </div>
+  );
 }

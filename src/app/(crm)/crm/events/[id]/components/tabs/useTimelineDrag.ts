@@ -5,13 +5,28 @@ export type DragMode = 'move' | 'resize-start' | 'resize-end' | null;
 interface UseTimelineDragProps {
   timelineBounds: { start: Date; end: Date };
   zoomLevel: 'days' | 'hours' | 'quarter_hours';
+  onDragMove?: (newStart: Date, newEnd: Date) => void;
   onDragEnd?: (newStart: Date, newEnd: Date) => void;
 }
 
-export const useTimelineDrag = ({ timelineBounds, zoomLevel, onDragEnd }: UseTimelineDragProps) => {
+export const useTimelineDrag = ({
+  timelineBounds,
+  zoomLevel,
+  onDragMove,
+  onDragEnd,
+}: UseTimelineDragProps) => {
   const [dragMode, setDragMode] = useState<DragMode>(null);
   const [dragStart, setDragStart] = useState<{ x: number; originalStart: Date; originalEnd: Date } | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const latestRangeRef = useRef<{ start: Date; end: Date } | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
+  const onDragMoveRef = useRef(onDragMove);
+  const onDragEndRef = useRef(onDragEnd);
+
+  useEffect(() => {
+    onDragMoveRef.current = onDragMove;
+    onDragEndRef.current = onDragEnd;
+  }, [onDragMove, onDragEnd]);
 
   const getSnapInterval = (): number => {
     switch (zoomLevel) {
@@ -49,6 +64,7 @@ export const useTimelineDrag = ({ timelineBounds, zoomLevel, onDragEnd }: UseTim
   };
 
   const startDrag = (mode: DragMode, x: number, startTime: Date, endTime: Date, container: HTMLDivElement) => {
+    latestRangeRef.current = null;
     setDragMode(mode);
     setDragStart({ x, originalStart: startTime, originalEnd: endTime });
     containerRef.current = container;
@@ -59,8 +75,11 @@ export const useTimelineDrag = ({ timelineBounds, zoomLevel, onDragEnd }: UseTim
 
     const container = containerRef.current;
     const totalDuration = timelineBounds.end.getTime() - timelineBounds.start.getTime();
+    const previousUserSelect = document.body.style.userSelect;
+    document.body.style.userSelect = 'none';
 
     const handleMouseMove = (e: MouseEvent) => {
+      e.preventDefault();
       const rect = container.getBoundingClientRect();
       const deltaX = e.clientX - dragStart.x;
       const deltaPercent = deltaX / rect.width;
@@ -96,24 +115,32 @@ export const useTimelineDrag = ({ timelineBounds, zoomLevel, onDragEnd }: UseTim
       // Prevent invalid ranges
       if (newStart >= newEnd) return;
 
-      // Store preview state if needed
-      container.setAttribute('data-drag-start', new Date(newStart).toISOString());
-      container.setAttribute('data-drag-end', new Date(newEnd).toISOString());
+      const range = { start: new Date(newStart), end: new Date(newEnd) };
+      latestRangeRef.current = range;
+      container.setAttribute('data-drag-start', range.start.toISOString());
+      container.setAttribute('data-drag-end', range.end.toISOString());
+
+      if (animationFrameRef.current === null) {
+        animationFrameRef.current = requestAnimationFrame(() => {
+          animationFrameRef.current = null;
+          const latestRange = latestRangeRef.current;
+          if (latestRange) onDragMoveRef.current?.(latestRange.start, latestRange.end);
+        });
+      }
     };
 
     const handleMouseUp = () => {
+      const latestRange = latestRangeRef.current;
+      if (latestRange) {
+        onDragEndRef.current?.(latestRange.start, latestRange.end);
+      }
       if (containerRef.current) {
-        const dragStartStr = containerRef.current.getAttribute('data-drag-start');
-        const dragEndStr = containerRef.current.getAttribute('data-drag-end');
-
-        if (dragStartStr && dragEndStr && onDragEnd) {
-          onDragEnd(new Date(dragStartStr), new Date(dragEndStr));
-        }
-
         containerRef.current.removeAttribute('data-drag-start');
         containerRef.current.removeAttribute('data-drag-end');
       }
 
+      latestRangeRef.current = null;
+      document.body.style.userSelect = previousUserSelect;
       setDragMode(null);
       setDragStart(null);
       containerRef.current = null;
@@ -125,9 +152,14 @@ export const useTimelineDrag = ({ timelineBounds, zoomLevel, onDragEnd }: UseTim
     return () => {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
+      if (animationFrameRef.current !== null) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
+      document.body.style.userSelect = previousUserSelect;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dragMode, dragStart, timelineBounds, zoomLevel, onDragEnd]);
+  }, [dragMode, dragStart, timelineBounds, zoomLevel]);
 
   return { dragMode, startDrag };
 };

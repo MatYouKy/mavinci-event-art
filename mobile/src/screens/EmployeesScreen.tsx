@@ -470,6 +470,8 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xxl * 2,
   },
   emptyTitle: {
+    fontFamily: 'MBFAtom',
+    textTransform: 'uppercase',
     fontSize: typography.fontSizes.lg,
     fontWeight: typography.fontWeights.bold as any,
     color: colors.text.primary,

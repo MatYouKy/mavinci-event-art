@@ -924,7 +924,7 @@ export default function ChatScreen({ conversation, onBack }: Props) {
         <Feather
           name={isPdf ? 'file-text' : 'file'}
           size={18}
-          color={isMine ? '#0f1119' : colors.primary.gold}
+          color={isMine ? colors.background.primary : colors.primary.gold}
         />
   
         <View style={styles.fileInfo}>
@@ -953,7 +953,7 @@ export default function ChatScreen({ conversation, onBack }: Props) {
         <Feather
           name={isPdf ? 'eye' : 'download'}
           size={14}
-          color={isMine ? '#0f1119' : colors.text.tertiary}
+          color={isMine ? colors.background.primary : colors.text.tertiary}
         />
       </TouchableOpacity>
     );
@@ -1465,6 +1465,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   headerTitle: {
+    fontFamily: 'MBFAtom',
+    textTransform: 'uppercase',
     fontSize: typography.fontSizes.md,
     fontWeight: typography.fontWeights.bold as any,
     color: colors.text.primary,
@@ -1631,7 +1633,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   fileAttachmentMine: {
-    backgroundColor: 'rgba(15,17,25,0.1)',
+    backgroundColor: 'rgba(33,8,17,0.12)',
   },
   fileAttachmentTheirs: {
     backgroundColor: 'rgba(211,187,115,0.08)',
@@ -1645,7 +1647,7 @@ const styles = StyleSheet.create({
     color: colors.text.primary,
   },
   fileNameMine: {
-    color: '#0f1119',
+    color: colors.background.primary,
   },
   fileSize: {
     fontSize: 10,
@@ -1653,7 +1655,7 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   fileSizeMine: {
-    color: 'rgba(15,17,25,0.5)',
+    color: 'rgba(33,8,17,0.55)',
   },
   // Pending attachment bar
   pendingBar: {
@@ -1856,12 +1858,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
-    backgroundColor: '#11131f',
+    backgroundColor: colors.background.secondary,
     borderRadius: 14,
     paddingHorizontal: 6,
     gap: 2,
     borderWidth: 2,
-    borderColor: '#2a2d45',
+    borderColor: colors.background.tertiary,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -1874,7 +1876,7 @@ const styles = StyleSheet.create({
 
   reactionBadgeActive: {
     borderColor: colors.primary.gold,
-    backgroundColor: '#11131f',
+    backgroundColor: colors.background.secondary,
   },
   reactionBadgeEmoji: {
     fontSize: 14,
@@ -1884,7 +1886,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 8,
-    backgroundColor: '#1c1f33',
+    backgroundColor: colors.background.secondary,
     borderWidth: 1,
     borderColor: 'rgba(239,68,68,0.2)',
   },
@@ -1932,6 +1934,9 @@ const styles = StyleSheet.create({
   },
   
   pdfTitle:{
+  
+    fontFamily: 'MBFAtom',
+    textTransform: 'uppercase',
     fontSize:15,
     fontWeight:'600',
     color:colors.text.primary,

@@ -1,10 +1,10 @@
 import React from 'react';
 import { getOfferStatusBadgeProps } from '../../helpers/statusColors';
-import { getOfferTotals } from '@/lib/CRM/Offers/offerTotals';
+import { getOfferPricingTotals } from '@/lib/CRM/Offers/offerTotals';
 
 export const OfferDetails = ({ offer }: { offer: any }) => {
   const badge = getOfferStatusBadgeProps(offer.status);
-  const totals = getOfferTotals(offer);
+  const totals = getOfferPricingTotals(offer);
 
   return (
     <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
@@ -39,7 +39,9 @@ export const OfferDetails = ({ offer }: { offer: any }) => {
             <span className="text-[#e5e4e2]">{totals.net.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} PLN</span>
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-[#e5e4e2]/60">VAT ({totals.taxPercent}%)</span>
+            <span className="text-[#e5e4e2]/60">
+              VAT ({totals.hasMixedVatRates ? 'wg stawek pozycji' : `${totals.taxPercent}%`})
+            </span>
             <span className="text-[#e5e4e2]/80">{totals.taxAmount.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} PLN</span>
           </div>
           <div className="flex items-center justify-between border-t border-[#d3bb73]/10 pt-1.5">

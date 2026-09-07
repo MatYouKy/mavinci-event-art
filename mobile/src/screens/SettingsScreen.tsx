@@ -154,6 +154,7 @@ const styles = StyleSheet.create({
     padding: spacing.md,
   },
   sectionTitle: {
+    fontFamily: 'MBFAtom',
     fontSize: typography.fontSizes.sm,
     fontWeight: typography.fontWeights.semibold,
     color: colors.text.tertiary,

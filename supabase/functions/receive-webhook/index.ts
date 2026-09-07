@@ -33,6 +33,20 @@ const REQUIRED_FIELDS = [
   "external_event_id",
 ] as const;
 const VALID_PRIORITIES = ["low", "normal", "high", "critical"];
+const WEDDING_SECTION_IDS = [
+  "bride_side",
+  "groom_side",
+  "technical",
+  "welcome",
+  "schedule",
+  "cake",
+  "parents_thanks",
+  "oczepiny",
+  "attractions",
+  "music",
+  "notes",
+  "operational_contacts",
+] as const;
 const WEDDING_CARD_FIELDS: Record<string, string> = {
   guest_count: "technical",
   ceremony_type: "ceremony",
@@ -46,24 +60,39 @@ const WEDDING_CARD_FIELDS: Record<string, string> = {
   venue_access: "technical",
   hot_vodka: "technical",
   first_dance: "technical",
+  first_dance_title: "technical",
+  first_dance_artist: "technical",
+  first_dance_url: "technical",
+  first_dance_duration: "technical",
+  first_dance_special_moments: "technical",
+  first_dance_file_url: "technical",
+  first_dance_file_name: "technical",
+  first_dance_file_path: "technical",
   special_toasts: "technical",
   couple_wait_before_welcome: "welcome",
   bread_and_salt_enabled: "welcome",
   welcome_throwing: "welcome",
   welcome_glasses: "welcome",
+  welcome_glass_throwing: "welcome",
   welcome_sequence: "welcome",
   cake_time: "cake",
   cake_presentation: "cake",
+  cake_proposal_url: "cake",
   cake_location: "cake",
   parents_thanks_enabled: "parents_thanks",
   parents_thanks_recipients: "parents_thanks",
+  parents_thanks_entries: "parents_thanks",
   parents_thanks_plan: "parents_thanks",
+  parents_thanks_proposal_url: "parents_thanks",
   oczepiny_enabled: "oczepiny",
   oczepiny_order: "oczepiny",
   oczepiny_notes: "oczepiny",
   spotify_playlist_url: "music",
   youtube_playlist_url: "music",
   general_notes: "notes",
+  ...Object.fromEntries(
+    WEDDING_SECTION_IDS.map((sectionId) => [`section_status_${sectionId}`, "workflow"]),
+  ),
 };
 const WEDDING_PERSON_SIDES = ["bride", "groom", "shared"];
 const WEDDING_PERSON_ROLES = [
@@ -80,6 +109,7 @@ function applicableWeddingFieldKeys(answers: Array<{ field_key: string; value: u
   const ceremonyType = values.get("ceremony_type");
 
   return Object.keys(WEDDING_CARD_FIELDS).filter((key) => {
+    if (key.startsWith("section_status_") || ["first_dance_file_name", "first_dance_file_path"].includes(key)) return false;
     if (["church_address", "church_wishes_enabled"].includes(key)) return ceremonyType === "church";
     if (key === "civil_ceremony_setting") return ceremonyType === "civil";
     if (key === "ceremony_address") return ceremonyType === "civil" || ceremonyType === "humanist";
@@ -351,6 +381,40 @@ Deno.serve(async (req: Request) => {
         const fieldKey = typeof raw.field_key === "string" ? raw.field_key : "";
         const section = WEDDING_CARD_FIELDS[fieldKey];
         if (!section) return [];
+        if (fieldKey === "cake_proposal_url" || fieldKey === "parents_thanks_proposal_url") {
+          if (typeof raw.value !== "string" || raw.value.length > 2048) return [];
+          if (raw.value) {
+            try {
+              const url = new URL(raw.value);
+              const prefix = fieldKey === "cake_proposal_url" ? "/strefa/tort/" : "/strefa/podziekowania/";
+              if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.search || url.hash || !url.pathname.startsWith(prefix) || !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(url.pathname.slice(prefix.length))) return [];
+            } catch { return []; }
+          }
+          return [{ field_key: fieldKey, section, value: raw.value }];
+        }
+        if (fieldKey === "welcome_glass_throwing" && !["", "vodka_before_entry", "champagne_after_entry", "none", "other"].includes(String(raw.value ?? ""))) return [];
+        if (fieldKey === "parents_thanks_entries") {
+          const entries = raw.value === "" || raw.value === null ? [] : raw.value;
+          if (!Array.isArray(entries) || entries.length > 30) return [];
+          const cleanEntries = entries.flatMap((entry) => {
+            if (!entry || typeof entry !== "object" || !["parents", "witnesses", "grandparents", "godparents", "other"].includes(entry.group)) return [];
+            if (typeof entry.id !== "string" || !entry.id || entry.id.length > 100 || typeof entry.notes !== "string" || entry.notes.length > 2000) return [];
+            if (!Array.isArray(entry.recipients) || entry.recipients.length > 30) return [];
+            const recipients = entry.recipients.flatMap((person: Record<string, unknown>) => {
+              if (!person || typeof person !== "object") return [];
+              if (typeof person.id !== "string" || !person.id || person.id.length > 100 || typeof person.name !== "string" || person.name.length > 240 || !["", "bride", "groom", "shared"].includes(String(person.side))) return [];
+              return [{ id: person.id, name: person.name.trim(), side: person.side }];
+            });
+            if (recipients.length !== entry.recipients.length || new Set(recipients.map((person: { id: string }) => person.id)).size !== recipients.length) return [];
+            return [{ id: entry.id, group: entry.group, recipients, notes: entry.notes.trim() }];
+          });
+          if (cleanEntries.length !== entries.length || new Set(cleanEntries.map((entry) => entry.id)).size !== cleanEntries.length) return [];
+          return [{ field_key: fieldKey, section, value: cleanEntries }];
+        }
+        if (
+          fieldKey.startsWith("section_status_") &&
+          !["", "complete", "skipped"].includes(String(raw.value ?? ""))
+        ) return [];
         return [{ field_key: fieldKey, section, value: raw.value ?? null }];
       });
       if (answers.length !== rawAnswers.length) {
@@ -376,8 +440,8 @@ Deno.serve(async (req: Request) => {
           role,
           first_name: firstName.slice(0, 120),
           last_name: typeof raw.last_name === "string" ? raw.last_name.trim().slice(0, 120) : null,
-          phone: isCouple && typeof raw.phone === "string" ? raw.phone.trim().slice(0, 50) : null,
-          email: isCouple && typeof raw.email === "string" ? raw.email.trim().slice(0, 255) : null,
+          phone: typeof raw.phone === "string" ? raw.phone.trim().slice(0, 50) : null,
+          email: typeof raw.email === "string" ? raw.email.trim().slice(0, 255) : null,
           instagram_handle: instagramHandle || null,
           instagram_tag_consent: isCouple && raw.instagram_tag_consent === true,
           notes: typeof raw.notes === "string" ? raw.notes.trim().slice(0, 2000) : null,
@@ -552,10 +616,20 @@ Deno.serve(async (req: Request) => {
       const essentialPeopleCount = people
         ? people.filter((person) => ["bride", "groom", "witness", "mother", "father"].includes(person.role)).length
         : 0;
-      const progress = Math.min(100, Math.round(
+      const legacyProgress = Math.min(100, Math.round(
         ((filledCount + Math.min(essentialPeopleCount, 8)) /
           (applicableFieldKeys.size + 8)) * 100,
       ));
+      const completedSectionIds = new Set(
+        answers.flatMap((answer) => {
+          if (!answer.field_key.startsWith("section_status_")) return [];
+          if (!["complete", "skipped"].includes(String(answer.value ?? ""))) return [];
+          return [answer.field_key.slice("section_status_".length)];
+        }),
+      );
+      const progress = completedSectionIds.size > 0
+        ? Math.min(100, Math.round((completedSectionIds.size / WEDDING_SECTION_IDS.length) * 100))
+        : legacyProgress;
       const submit = payload?.submit === true;
 
       const { data: updatedCard, error: updateError } = await supabase

@@ -3,6 +3,8 @@
  * Schema: https://crd.gov.pl/wzor/2025/06/25/13775/
  */
 
+import { decodeTextEntities } from '@/lib/textEncoding';
+
 export interface ParsedInvoiceXml {
   seller_name: string | null;
   seller_nip: string | null;
@@ -40,7 +42,7 @@ export interface ParsedInvoiceItem {
 
 function getTag(src: string, tag: string): string | null {
   const m = src.match(new RegExp(`<(?:[a-zA-Z0-9_]+:)?${tag}\\b[^>]*>([\\s\\S]*?)<\\/(?:[a-zA-Z0-9_]+:)?${tag}>`));
-  return m ? m[1].trim() : null;
+  return m ? decodeTextEntities(m[1].trim()) : null;
 }
 
 function getTagContent(src: string, tag: string): string | null {

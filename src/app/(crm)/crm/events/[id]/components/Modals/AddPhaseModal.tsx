@@ -1,9 +1,13 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { X, AlertCircle, Clock } from 'lucide-react';
 import { useGetPhaseTypesQuery, useCreatePhaseMutation, EventPhase } from '@/store/api/eventPhasesApi';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import {
+  localDatetimeStringToUTC,
+  utcToLocalDatetimeString,
+} from '@/lib/utils/dateTimeUtils';
 
 interface AddPhaseModalProps {
   open: boolean;
@@ -31,6 +35,7 @@ export const AddPhaseModal: React.FC<AddPhaseModalProps> = ({
   const [description, setDescription] = useState('');
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
+  const [endTimeSource, setEndTimeSource] = useState<'automatic' | 'manual'>('automatic');
   const [error, setError] = useState('');
 
   const handleTypeChange = (typeId: string) => {
@@ -39,35 +44,39 @@ export const AddPhaseModal: React.FC<AddPhaseModalProps> = ({
     if (type && !phaseName) {
       setPhaseName(type.name);
     }
+    if (!type) return;
+
+    const nextStart = startTime || utcToLocalDatetimeString(suggestedStartTime());
+    setStartTime(nextStart);
+    setEndTime(calculateSuggestedEndTime(nextStart, typeId));
+    setEndTimeSource('automatic');
   };
 
   const suggestedStartTime = () => {
     if (existingPhases.length === 0) {
       return eventStartDate;
     }
-    const sortedPhases = [...existingPhases].sort(
-      (a, b) => new Date(b.end_time).getTime() - new Date(a.end_time).getTime()
-    );
-    return sortedPhases[0].end_time;
+    const latestPhase = [...existingPhases]
+      .filter((phase) => Number.isFinite(new Date(phase.end_time).getTime()))
+      .sort(
+        (a, b) => new Date(b.end_time).getTime() - new Date(a.end_time).getTime(),
+      )[0];
+    return latestPhase?.end_time || eventStartDate;
   };
 
   const calculateSuggestedEndTime = (start: string, typeId: string): string => {
     const type = phaseTypes.find((t) => t.id === typeId);
     if (!type || !start) return '';
 
-    const startDate = new Date(start);
-    const endDate = new Date(startDate.getTime() + type.default_duration_hours * 60 * 60 * 1000);
-    return endDate.toISOString().slice(0, 16);
-  };
+    const startUtc = localDatetimeStringToUTC(start);
+    const durationHours = Number(type.default_duration_hours);
+    if (!startUtc || !Number.isFinite(durationHours) || durationHours <= 0) return '';
 
-  useEffect(() => {
-    if (selectedTypeId && !startTime) {
-      const suggested = suggestedStartTime();
-      setStartTime(new Date(suggested).toISOString().slice(0, 16));
-      setEndTime(calculateSuggestedEndTime(suggested, selectedTypeId));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedTypeId]);
+    const endDate = new Date(
+      new Date(startUtc).getTime() + durationHours * 60 * 60 * 1000,
+    );
+    return utcToLocalDatetimeString(endDate.toISOString());
+  };
 
   const validateNoOverlap = (start: Date, end: Date): boolean => {
     return !existingPhases.some((phase) => {
@@ -101,8 +110,15 @@ export const AddPhaseModal: React.FC<AddPhaseModalProps> = ({
       return;
     }
 
-    const start = new Date(startTime);
-    const end = new Date(endTime);
+    const startUtc = localDatetimeStringToUTC(startTime);
+    const endUtc = localDatetimeStringToUTC(endTime);
+    if (!startUtc || !endUtc) {
+      setError('Podane daty lub godziny są nieprawidłowe');
+      return;
+    }
+
+    const start = new Date(startUtc);
+    const end = new Date(endUtc);
 
     if (end <= start) {
       setError('Czas zakończenia musi być późniejszy niż rozpoczęcie');
@@ -141,6 +157,7 @@ export const AddPhaseModal: React.FC<AddPhaseModalProps> = ({
     setDescription('');
     setStartTime('');
     setEndTime('');
+    setEndTimeSource('automatic');
     setError('');
     onClose();
   };
@@ -150,8 +167,13 @@ export const AddPhaseModal: React.FC<AddPhaseModalProps> = ({
   const calculateDuration = (): string => {
     if (!startTime || !endTime) return '0h';
     const duration = new Date(endTime).getTime() - new Date(startTime).getTime();
-    const hours = Math.round(duration / (1000 * 60 * 60));
-    return `${hours}h`;
+    if (!Number.isFinite(duration) || duration <= 0) return '0 min';
+    const totalMinutes = Math.round(duration / (1000 * 60));
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    if (hours === 0) return `${minutes} min`;
+    if (minutes === 0) return `${hours} h`;
+    return `${hours} h ${minutes} min`;
   };
 
   if (!open) return null;
@@ -229,9 +251,10 @@ export const AddPhaseModal: React.FC<AddPhaseModalProps> = ({
                 type="datetime-local"
                 value={startTime}
                 onChange={(e) => {
-                  setStartTime(e.target.value);
-                  if (selectedTypeId) {
-                    setEndTime(calculateSuggestedEndTime(e.target.value, selectedTypeId));
+                  const nextStart = e.target.value;
+                  setStartTime(nextStart);
+                  if (selectedTypeId && endTimeSource === 'automatic') {
+                    setEndTime(calculateSuggestedEndTime(nextStart, selectedTypeId));
                   }
                 }}
                 className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-2 text-sm text-[#e5e4e2] transition-colors focus:border-[#d3bb73] focus:outline-none"
@@ -239,11 +262,29 @@ export const AddPhaseModal: React.FC<AddPhaseModalProps> = ({
             </div>
 
             <div>
-              <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Zakończenie</label>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <label className="block text-sm font-medium text-[#e5e4e2]">Zakończenie</label>
+                {selectedType && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEndTime(calculateSuggestedEndTime(startTime, selectedTypeId));
+                      setEndTimeSource('automatic');
+                    }}
+                    disabled={!startTime}
+                    className="text-[11px] text-[#d3bb73] hover:underline disabled:opacity-40"
+                  >
+                    Ustaw +{selectedType.default_duration_hours} h
+                  </button>
+                )}
+              </div>
               <input
                 type="datetime-local"
                 value={endTime}
-                onChange={(e) => setEndTime(e.target.value)}
+                onChange={(e) => {
+                  setEndTime(e.target.value);
+                  setEndTimeSource('manual');
+                }}
                 className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-2 text-sm text-[#e5e4e2] transition-colors focus:border-[#d3bb73] focus:outline-none"
               />
             </div>

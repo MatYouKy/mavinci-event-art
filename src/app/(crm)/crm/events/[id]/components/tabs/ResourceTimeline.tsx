@@ -15,6 +15,7 @@ import { PhaseAssignmentsData } from './PhaseAssignmentsLoader';
 import { useTimelineDrag } from './useTimelineDrag';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { roleLabels } from '../../helpers/roleLabels';
+import { generateTimeMarkers } from '@/lib/timeline';
 
 interface ResourceTimelineProps {
   eventId: string;
@@ -123,6 +124,7 @@ const ResizeHandle = memo<{
   onMouseDown: (e: React.MouseEvent) => void;
 }>(({ side, onMouseDown }) => (
   <div
+    data-timeline-resize-handle="true"
     className={`${side === 'left' ? 'absolute bottom-0 left-0 top-0' : ''} flex w-2 cursor-ew-resize items-center justify-center opacity-0 hover:bg-[#d3bb73]/40 group-hover:opacity-100 ${side === 'right' ? 'h-full' : ''}`}
     onMouseDown={onMouseDown}
   >
@@ -195,6 +197,16 @@ const AssignmentBar = memo<AssignmentBarProps>(
     const { dragMode, startDrag } = useTimelineDrag({
       timelineBounds,
       zoomLevel,
+      onDragMove: (newStart, newEnd) => {
+        const totalDuration = timelineBounds.end.getTime() - timelineBounds.start.getTime();
+        const left =
+          ((newStart.getTime() - timelineBounds.start.getTime()) / totalDuration) * 100;
+        const width = ((newEnd.getTime() - newStart.getTime()) / totalDuration) * 100;
+        setDragPreview({
+          left: `${Math.max(0, left)}%`,
+          width: `${Math.max(1, width)}%`,
+        });
+      },
       onDragEnd: (newStart, newEnd) => {
         if (assignment.id) {
           onTimeUpdate(
@@ -209,34 +221,6 @@ const AssignmentBar = memo<AssignmentBarProps>(
         setDragPreview(null);
       },
     });
-
-    // Live preview podczas drag - sprawdzaj atrybuty data-* na containerze
-    useEffect(() => {
-      if (!dragMode || !containerRef?.current) return;
-
-      const interval = setInterval(() => {
-        const container = containerRef.current;
-        if (!container) return;
-
-        const dragStart = container.getAttribute('data-drag-start');
-        const dragEnd = container.getAttribute('data-drag-end');
-
-        if (dragStart && dragEnd) {
-          const start = new Date(dragStart).getTime();
-          const end = new Date(dragEnd).getTime();
-          const totalDuration = timelineBounds.end.getTime() - timelineBounds.start.getTime();
-          const left = ((start - timelineBounds.start.getTime()) / totalDuration) * 100;
-          const width = ((end - start) / totalDuration) * 100;
-
-          setDragPreview({
-            left: `${Math.max(0, left)}%`,
-            width: `${Math.max(1, width)}%`,
-          });
-        }
-      }, 16); // ~60fps
-
-      return () => clearInterval(interval);
-    }, [dragMode, containerRef, timelineBounds]);
 
     const isHovered = hoveredAssignment === assignment.id;
     const isFocused = focusedAssignment === assignment.id;
@@ -330,7 +314,8 @@ const AssignmentBar = memo<AssignmentBarProps>(
     return (
       <div
         ref={barRef}
-        className="group absolute flex cursor-pointer items-center justify-between rounded border-l-4 px-3 shadow-sm transition-all hover:shadow-lg"
+        data-timeline-interactive="true"
+        className="group absolute flex cursor-pointer items-center justify-between rounded border-l-4 px-3 shadow-sm transition-[box-shadow,background-color] hover:shadow-lg"
         style={{
           top: `${(heightPx - barHeight) / 2}px`,
           height: `${barHeight}px`,
@@ -444,6 +429,8 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
   } | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const gridContainerRef = useRef<HTMLDivElement>(null);
+  const [gridWidth, setGridWidth] = useState(1200);
   const { showSnackbar } = useSnackbar();
   // Mutations
   const [deleteAssignment] = useDeletePhaseAssignmentMutation();
@@ -998,6 +985,20 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
   const filteredEmployees = employeeRows;
   const filteredVehicles = vehicleRows.filter((r) => r.assignments.length > 0);
   const filteredEquipment = equipmentRows.filter((r) => r.assignments.length > 0);
+  const resourceTimeMarkers = useMemo(
+    () => generateTimeMarkers(timelineBounds, zoomLevel, gridWidth),
+    [timelineBounds, zoomLevel, gridWidth],
+  );
+
+  useEffect(() => {
+    const container = gridContainerRef.current;
+    if (!container) return;
+    const updateWidth = () => setGridWidth(container.getBoundingClientRect().width || 1200);
+    updateWidth();
+    const observer = new ResizeObserver(updateWidth);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [filteredEmployees.length, filteredVehicles.length, filteredEquipment.length]);
 
   const renderResourceRow = useCallback(
     (resource: ResourceRow) => {
@@ -1143,6 +1144,7 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
       <div className="mb-3 flex items-center justify-between px-6"></div>
 
       <div
+        ref={gridContainerRef}
         className="relative"
         onClick={(e) => {
           // Kliknięcie w tło usuwa focus
@@ -1151,6 +1153,19 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
           }
         }}
       >
+        <div className="pointer-events-none absolute inset-0 z-0">
+          {resourceTimeMarkers.map((marker) => {
+            const left =
+              ((marker.getTime() - timelineBounds.start.getTime()) / totalDuration) * 100;
+            return (
+              <div
+                key={`resource-grid-${marker.getTime()}`}
+                className="absolute inset-y-0 border-l border-[#d3bb73]/10"
+                style={{ left: `${left}%` }}
+              />
+            );
+          })}
+        </div>
         {filteredEmployees.map(renderResourceRow)}
         <h3 className="mt-2 text-sm font-semibold uppercase tracking-wide text-[#e5e4e2]/70">
           Pojazdy

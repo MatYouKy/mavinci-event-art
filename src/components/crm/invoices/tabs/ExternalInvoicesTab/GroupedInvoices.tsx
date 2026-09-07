@@ -10,6 +10,7 @@ import { buildInvoiceGroups } from './buildInvoiceGroups';
 import {
   AlertTriangle,
   Eye,
+  Copy,
   Pencil,
   Plus,
   Repeat,
@@ -43,12 +44,14 @@ export function GroupedInvoices({
   onDelete,
   onAddForPlaceholder,
   onEdit,
+  onAddSimilar,
   viewMode,
   density,
   isColumnVisible,
   hasSearchQuery,
 }: {
   onEdit: (inv: ExternalInvoice) => void;
+  onAddSimilar: (inv: ExternalInvoice) => void;
   invoices: ExternalInvoice[];
   subscriptions: Subscription[];
   canManage: boolean;
@@ -97,20 +100,30 @@ export function GroupedInvoices({
                 {viewMode === 'table' ? (
                   <div className="overflow-x-auto overscroll-x-contain rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33]">
                     <table
-                      className={`w-full min-w-[620px] border-collapse ${tableDensityClasses[density]}`}
+                      className={`w-full min-w-[1424px] table-fixed border-collapse ${tableDensityClasses[density]}`}
                     >
+                      <colgroup>
+                        <col className="w-[210px]" />
+                        {isColumnVisible('label') && <col className="w-[280px]" />}
+                        {isColumnVisible('seller') && <col className="w-[360px]" />}
+                        {isColumnVisible('date') && <col className="w-[120px]" />}
+                        {isColumnVisible('payment') && <col className="w-[120px]" />}
+                        {isColumnVisible('net') && <col className="w-[135px]" />}
+                        {isColumnVisible('gross') && <col className="w-[135px]" />}
+                        {isColumnVisible('actions') && <col className="w-[64px]" />}
+                      </colgroup>
                       <thead>
                         <tr className="border-b border-[#d3bb73]/10 bg-[#0f1119]">
-                          <th className="sticky left-0 z-10 min-w-[170px] bg-[#0f1119] px-2.5 py-2 text-left text-[11px] font-medium uppercase tracking-wide text-[#e5e4e2]/50">
+                          <th className="sticky left-0 z-10 bg-[#0f1119] px-2.5 py-2 text-left text-[11px] font-medium uppercase tracking-wide text-[#e5e4e2]/50">
                             Numer faktury
                           </th>
                           {isColumnVisible('label') && (
-                            <th className="min-w-[130px] px-2.5 py-2 text-left text-[11px] font-medium uppercase tracking-wide text-[#e5e4e2]/50">
+                            <th className="px-2.5 py-2 text-left text-[11px] font-medium uppercase tracking-wide text-[#e5e4e2]/50">
                               Nazwa opisowa
                             </th>
                           )}
                           {isColumnVisible('seller') && (
-                            <th className="min-w-[150px] px-2.5 py-2 text-left text-[11px] font-medium uppercase tracking-wide text-[#e5e4e2]/50">
+                            <th className="px-2.5 py-2 text-left text-[11px] font-medium uppercase tracking-wide text-[#e5e4e2]/50">
                               Sprzedawca
                             </th>
                           )}
@@ -147,12 +160,19 @@ export function GroupedInvoices({
                                   </span>
                                 </td>
                                 {isColumnVisible('label') && (
-                                  <td className="px-2.5 py-2 text-[#e5e4e2]/75">{subscription.name}</td>
+                                  <td className="overflow-hidden px-2.5 py-2 text-[#e5e4e2]/75">
+                                    <div className="truncate" title={subscription.name}>{subscription.name}</div>
+                                  </td>
                                 )}
                                 {isColumnVisible('seller') && (
-                                  <td className="px-2.5 py-2 text-[#e5e4e2]/70">
-                                    {subscription.seller_name || subscription.name}
-                                    {subscription.seller_nip ? ` · ${subscription.seller_nip}` : ''}
+                                  <td className="overflow-hidden px-2.5 py-2 text-[#e5e4e2]/70">
+                                    <div
+                                      className="truncate"
+                                      title={`${subscription.seller_name || subscription.name}${subscription.seller_nip ? ` · ${subscription.seller_nip}` : ''}`}
+                                    >
+                                      {subscription.seller_name || subscription.name}
+                                      {subscription.seller_nip ? ` · ${subscription.seller_nip}` : ''}
+                                    </div>
                                   </td>
                                 )}
                                 {isColumnVisible('date') && (
@@ -191,21 +211,27 @@ export function GroupedInvoices({
                               key={`inv-${inv.id}`}
                               className="transition-colors hover:bg-[#d3bb73]/5"
                             >
-                              <td className="sticky left-0 z-[1] bg-[#1c1f33] px-2.5 py-2">
-                                <div className="text-sm font-medium text-[#e5e4e2]">
+                              <td className="sticky left-0 z-[1] overflow-hidden bg-[#1c1f33] px-2.5 py-2">
+                                <div className="truncate text-sm font-medium text-[#e5e4e2]" title={inv.invoice_number}>
                                   {inv.invoice_number}
                                 </div>
                               </td>
                               {isColumnVisible('label') && (
-                                <td className="px-2.5 py-2 text-[#e5e4e2]/75">
-                                  {inv.label || '—'}
-                                  {inv.subscription_id && (
-                                    <Repeat className="ml-1 inline h-3 w-3 text-emerald-400" />
-                                  )}
+                                <td className="overflow-hidden px-2.5 py-2 text-[#e5e4e2]/75">
+                                  <div className="truncate" title={inv.label || undefined}>
+                                    {inv.label || '—'}
+                                    {inv.subscription_id && (
+                                      <Repeat className="ml-1 inline h-3 w-3 text-emerald-400" />
+                                    )}
+                                  </div>
                                 </td>
                               )}
                               {isColumnVisible('seller') && (
-                                <td className="px-2.5 py-2 text-[#e5e4e2]/70">{inv.seller_name}{inv.seller_nip ? ` · ${inv.seller_nip}` : ''}</td>
+                                <td className="overflow-hidden px-2.5 py-2 text-[#e5e4e2]/70">
+                                  <div className="truncate" title={`${inv.seller_name}${inv.seller_nip ? ` · ${inv.seller_nip}` : ''}`}>
+                                    {inv.seller_name}{inv.seller_nip ? ` · ${inv.seller_nip}` : ''}
+                                  </div>
+                                </td>
                               )}
                               {isColumnVisible('date') && (
                                 <td className="whitespace-nowrap px-2.5 py-2 text-[#e5e4e2]/70">{formatDate(inv.invoice_date)}</td>
@@ -233,6 +259,7 @@ export function GroupedInvoices({
                                       ...(canManage
                                         ? [
                                             { label: 'Edytuj', onClick: () => onEdit(inv), icon: <Pencil className="h-4 w-4" /> },
+                                            { label: 'Dodaj podobną', onClick: () => onAddSimilar(inv), icon: <Copy className="h-4 w-4" /> },
                                             { label: 'Usuń', onClick: () => onDelete(inv), icon: <Trash2 className="h-4 w-4" />, variant: 'danger' as const },
                                           ]
                                         : []),
@@ -258,6 +285,7 @@ export function GroupedInvoices({
                           onPreview={onPreview}
                           onDelete={onDelete}
                           onEdit={onEdit}
+                          onAddSimilar={onAddSimilar}
                         />
                       ) : (
                         <PlaceholderCard

@@ -1714,8 +1714,11 @@ function CategoryModal({
                       {[
                         ['01', 'JAK WYGLĄDA ZAMÓWIENIE', formData.design_config.order_process_text],
                         ['02', 'REZERWACJA I ZMIANY', formData.design_config.reservation_terms_text],
+                        ['03', 'TERMIN I MIEJSCE', 'Data i lokalizacja wydarzenia'],
+                        ['04', 'ZAKRES I WYCENA', 'Źródło wyceny oraz wartość oferty'],
+                        ['05', 'KONTAKT I KOORDYNACJA', 'Osoba kontaktowa i ustalenia organizacyjne'],
                       ].map(([number, title, content]) => (
-                        <div key={number} className="mt-3 rounded-md bg-white p-2.5">
+                        <div key={number} className="mt-2 rounded-md bg-white p-2">
                           <div className="flex gap-2">
                             <span className="text-xs" style={{ color: formData.design_config.accent_color }}>{number}</span>
                             <div className="min-w-0">
@@ -1769,7 +1772,7 @@ function CategoryModal({
                       />
                     </label>
                     <label className="block text-sm text-[#e5e4e2]/70">
-                      Wspólne warunki techniczne
+                      Wymagania bazowe szablonu głównego / kategorii
                       <textarea
                         rows={6}
                         value={formData.design_config.technical_requirements_text}
@@ -1777,7 +1780,7 @@ function CategoryModal({
                         className="mt-2 w-full resize-y rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                       />
                       <span className="mt-1 block text-xs text-[#e5e4e2]/35">
-                        Każdy warunek wpisz w nowym wierszu. Wymagania techniczne oraz „Inne wymagania” z produktów zostaną dopisane automatycznie.
+                        Każdy warunek wpisz w nowym wierszu. Oferta połączy tę bazę z wymaganiami wybranych produktów, usunie powtórzenia i wybierze mocniejszy wariant warunku.
                       </span>
                     </label>
                   </div>

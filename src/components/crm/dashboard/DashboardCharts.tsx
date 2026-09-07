@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useState } from 'react';
 import { Activity, AlertTriangle, CalendarClock, CheckCircle2, Inbox, ReceiptText, UserRoundX, Workflow } from 'lucide-react';
 import type { DashboardAnalytics, DashboardMonth } from '@/lib/CRM/dashboard/dashboardData';
 
@@ -16,11 +17,11 @@ const money = new Intl.NumberFormat('pl-PL', {
   maximumFractionDigits: 0,
 });
 
-function linePoints(values: number[], width: number, height: number, min: number, max: number) {
+function linePoints(values: number[], width: number, height: number, min: number, max: number, offsetX = 0) {
   const range = Math.max(max - min, 1);
   return values
     .map((value, index) => {
-      const x = values.length === 1 ? width / 2 : (index / (values.length - 1)) * width;
+      const x = offsetX + (values.length === 1 ? width / 2 : (index / (values.length - 1)) * width);
       const y = height - ((value - min) / range) * height;
       return `${x},${y}`;
     })
@@ -40,12 +41,24 @@ export function TrendChart({
   series: Series[];
   formatValue?: (value: number) => string;
 }) {
+  const [hoveredPoint, setHoveredPoint] = useState<{
+    x: number;
+    y: number;
+    month: string;
+    label: string;
+    value: number;
+    color: string;
+  } | null>(null);
   const values = series.flatMap((item) => months.map((month) => Number(month[item.key] ?? 0)));
   const min = Math.min(...values, 0);
   const max = Math.max(...values, 1);
   const valueRange = Math.max(max - min, 1);
+  const plotLeft = 96;
   const chartWidth = 760;
   const chartHeight = 210;
+  const svgWidth = plotLeft + chartWidth + 16;
+  const svgHeight = chartHeight + 40;
+  const gridSteps = [0, 0.25, 0.5, 0.75, 1];
 
   return (
     <section className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-5 sm:p-6">
@@ -66,24 +79,43 @@ export function TrendChart({
 
       <div className="overflow-x-auto">
         <div className="min-w-[620px]">
-          <svg viewBox={`-16 -12 ${chartWidth + 32} ${chartHeight + 40}`} className="h-[250px] w-full" role="img">
-            {[0, 0.25, 0.5, 0.75, 1].map((step) => (
-              <line
-                key={step}
-                x1="0"
-                x2={chartWidth}
-                y1={chartHeight - chartHeight * step}
-                y2={chartHeight - chartHeight * step}
-                stroke="rgba(229,228,226,0.08)"
-                strokeWidth="1"
-              />
-            ))}
+          <svg
+            viewBox={`0 -8 ${svgWidth} ${svgHeight + 8}`}
+            className="h-[250px] w-full"
+            role="img"
+            onMouseLeave={() => setHoveredPoint(null)}
+          >
+            {gridSteps.map((step) => {
+              const y = chartHeight - chartHeight * step;
+              const tickValue = min + valueRange * step;
+              return (
+                <g key={step}>
+                  <line
+                    x1={plotLeft}
+                    x2={plotLeft + chartWidth}
+                    y1={y}
+                    y2={y}
+                    stroke="rgba(229,228,226,0.10)"
+                    strokeWidth="1"
+                  />
+                  <text
+                    x={plotLeft - 12}
+                    y={y + 4}
+                    textAnchor="end"
+                    fill="rgba(229,228,226,0.48)"
+                    fontSize="11"
+                  >
+                    {formatValue(tickValue)}
+                  </text>
+                </g>
+              );
+            })}
             {series.map((item) => {
               const itemValues = months.map((month) => Number(month[item.key] ?? 0));
               return (
                 <g key={item.key}>
                   <polyline
-                    points={linePoints(itemValues, chartWidth, chartHeight, min, max)}
+                    points={linePoints(itemValues, chartWidth, chartHeight, min, max, plotLeft)}
                     fill="none"
                     stroke={item.color}
                     strokeWidth="3"
@@ -91,10 +123,39 @@ export function TrendChart({
                     strokeLinecap="round"
                   />
                   {itemValues.map((value, index) => {
-                    const x = itemValues.length === 1 ? chartWidth / 2 : (index / (itemValues.length - 1)) * chartWidth;
+                    const x = plotLeft + (itemValues.length === 1 ? chartWidth / 2 : (index / (itemValues.length - 1)) * chartWidth);
                     const y = chartHeight - ((value - min) / valueRange) * chartHeight;
                     return (
-                      <circle key={`${item.key}-${months[index].key}`} cx={x} cy={y} r="4" fill={item.color}>
+                      <circle
+                        key={`${item.key}-${months[index].key}`}
+                        cx={x}
+                        cy={y}
+                        r="5"
+                        fill={item.color}
+                        stroke="#1c1f33"
+                        strokeWidth="2"
+                        className="cursor-pointer outline-none"
+                        tabIndex={0}
+                        aria-label={`${months[index].label}, ${item.label}: ${formatValue(value)}`}
+                        onMouseEnter={() => setHoveredPoint({
+                          x,
+                          y,
+                          month: months[index].label,
+                          label: item.label,
+                          value,
+                          color: item.color,
+                        })}
+                        onMouseLeave={() => setHoveredPoint(null)}
+                        onFocus={() => setHoveredPoint({
+                          x,
+                          y,
+                          month: months[index].label,
+                          label: item.label,
+                          value,
+                          color: item.color,
+                        })}
+                        onBlur={() => setHoveredPoint(null)}
+                      >
                         <title>{`${months[index].label}: ${formatValue(value)}`}</title>
                       </circle>
                     );
@@ -103,13 +164,52 @@ export function TrendChart({
               );
             })}
             {months.map((month, index) => {
-              const x = months.length === 1 ? chartWidth / 2 : (index / (months.length - 1)) * chartWidth;
+              const x = plotLeft + (months.length === 1 ? chartWidth / 2 : (index / (months.length - 1)) * chartWidth);
               return (
                 <text key={month.key} x={x} y={chartHeight + 28} textAnchor="middle" fill="rgba(229,228,226,0.45)" fontSize="12">
                   {month.label}
                 </text>
               );
             })}
+            {hoveredPoint && (() => {
+              const tooltipWidth = 210;
+              const tooltipHeight = 54;
+              const tooltipX = Math.min(
+                Math.max(hoveredPoint.x + 12, plotLeft),
+                plotLeft + chartWidth - tooltipWidth,
+              );
+              const tooltipY = hoveredPoint.y > 68
+                ? hoveredPoint.y - tooltipHeight - 10
+                : hoveredPoint.y + 12;
+              return (
+                <g pointerEvents="none">
+                  <line
+                    x1={hoveredPoint.x}
+                    x2={hoveredPoint.x}
+                    y1="0"
+                    y2={chartHeight}
+                    stroke="rgba(229,228,226,0.18)"
+                    strokeDasharray="4 4"
+                  />
+                  <rect
+                    x={tooltipX}
+                    y={tooltipY}
+                    width={tooltipWidth}
+                    height={tooltipHeight}
+                    rx="8"
+                    fill="#0f1119"
+                    stroke="rgba(211,187,115,0.35)"
+                  />
+                  <circle cx={tooltipX + 14} cy={tooltipY + 18} r="4" fill={hoveredPoint.color} />
+                  <text x={tooltipX + 26} y={tooltipY + 21} fill="rgba(229,228,226,0.72)" fontSize="11">
+                    {hoveredPoint.month} • {hoveredPoint.label}
+                  </text>
+                  <text x={tooltipX + 14} y={tooltipY + 42} fill="#e5e4e2" fontSize="13" fontWeight="600">
+                    {formatValue(hoveredPoint.value)}
+                  </text>
+                </g>
+              );
+            })()}
           </svg>
         </div>
       </div>

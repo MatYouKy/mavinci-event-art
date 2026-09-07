@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import {
   DragDropContext,
   Draggable,
@@ -17,6 +17,7 @@ import {
   LayoutGrid,
   List,
   Mail,
+  MoveHorizontal,
   Pencil,
   Percent,
   Phone,
@@ -462,6 +463,14 @@ export default function InquiriesPageClient({ initialInquiries, employees }: { i
   const [showSlaSettings, setShowSlaSettings] = useState(false);
   const [showNewInquiry, setShowNewInquiry] = useState(false);
   const [attentionFilter, setAttentionFilter] = useState<AttentionFilter>('all');
+  const pipelineScrollRef = useRef<HTMLDivElement>(null);
+  const pipelinePanRef = useRef<{
+    pointerId: number;
+    startX: number;
+    scrollLeft: number;
+    moved: boolean;
+  } | null>(null);
+  const [isPipelinePanning, setIsPipelinePanning] = useState(false);
 
   const currentEmployeeId = currentEmployee?.id ?? null;
   const currentSalesTeamId = currentEmployee?.sales_team_id ?? null;
@@ -686,6 +695,45 @@ export default function InquiriesPageClient({ initialInquiries, employees }: { i
     showSnackbar(`Przeniesiono do etapu „${stageConfig(nextStage).label}”`, 'success');
   };
 
+  const startPipelinePan = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    const target = event.target;
+    if (
+      target instanceof Element
+      && target.closest('[data-inquiry-card], button, a, input, textarea, select, [role="button"]')
+    ) return;
+
+    const container = pipelineScrollRef.current;
+    if (!container || container.scrollWidth <= container.clientWidth) return;
+    pipelinePanRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      scrollLeft: container.scrollLeft,
+      moved: false,
+    };
+    container.setPointerCapture(event.pointerId);
+    setIsPipelinePanning(true);
+  };
+
+  const movePipelinePan = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const pan = pipelinePanRef.current;
+    const container = pipelineScrollRef.current;
+    if (!pan || !container || pan.pointerId !== event.pointerId) return;
+    const distance = event.clientX - pan.startX;
+    if (Math.abs(distance) > 3) pan.moved = true;
+    if (pan.moved) event.preventDefault();
+    container.scrollLeft = pan.scrollLeft - distance;
+  };
+
+  const finishPipelinePan = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const pan = pipelinePanRef.current;
+    if (!pan || pan.pointerId !== event.pointerId) return;
+    const container = pipelineScrollRef.current;
+    if (container?.hasPointerCapture(event.pointerId)) container.releasePointerCapture(event.pointerId);
+    pipelinePanRef.current = null;
+    setIsPipelinePanning(false);
+  };
+
   return (
     <div className="mx-auto max-w-[1600px] space-y-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
@@ -721,10 +769,25 @@ export default function InquiriesPageClient({ initialInquiries, employees }: { i
         <div className="rounded-xl border border-dashed border-[#d3bb73]/20 bg-[#1c1f33]/50 px-6 py-16 text-center"><Inbox className="mx-auto h-10 w-10 text-[#e5e4e2]/25" /><div className="mt-4 text-[#e5e4e2]">Brak zapytań w tym widoku</div><div className="mt-1 text-sm text-[#e5e4e2]/45">Zmień filtr lub wyszukiwaną frazę.</div></div>
       ) : viewMode === 'pipeline' ? (
         <DragDropContext onDragEnd={(result) => void moveInquiry(result)}>
-        <div className="overflow-x-auto pb-4"><div className="flex min-w-max items-start gap-4">{STAGES.map((stage) => {
+        <div
+          ref={pipelineScrollRef}
+          onPointerDown={startPipelinePan}
+          onPointerMove={movePipelinePan}
+          onPointerUp={finishPipelinePan}
+          onPointerCancel={finishPipelinePan}
+          onLostPointerCapture={() => {
+            pipelinePanRef.current = null;
+            setIsPipelinePanning(false);
+          }}
+          className={`overflow-x-auto pb-4 touch-pan-y ${isPipelinePanning ? 'cursor-grabbing select-none' : 'cursor-grab'}`}
+        >
+          <div className="pointer-events-none sticky left-0 z-10 mb-2 flex w-fit items-center gap-2 rounded-full border border-[#d3bb73]/15 bg-[#141827]/95 px-3 py-1.5 text-[11px] text-[#e5e4e2]/50 shadow-lg backdrop-blur">
+            <MoveHorizontal className="h-3.5 w-3.5 text-[#d3bb73]" /> Chwyć puste miejsce i przeciągnij lejek
+          </div>
+          <div className="flex min-w-max items-start gap-4">{STAGES.map((stage) => {
           const items = visibleInquiries.filter((inquiry) => inquiry.inquiry_stage === stage.id);
           const value = items.reduce((sum, inquiry) => sum + Number(inquiry.estimated_value ?? 0), 0);
-          return <section key={stage.id} className="w-[310px] shrink-0 rounded-xl border border-[#d3bb73]/10 bg-[#0f1119]/70 p-3"><div className="mb-3 flex items-start justify-between gap-2 px-1"><div><div className="flex items-center gap-2 text-sm font-medium text-[#e5e4e2]"><span className={`h-2.5 w-2.5 rounded-full ${stage.dot}`} />{stage.label}</div><div className="mt-1 text-xs text-[#e5e4e2]/35">{formatMoney(value) || '0 zł'}</div></div><span className="rounded-full bg-[#1c1f33] px-2 py-1 text-xs text-[#e5e4e2]/55">{items.length}</span></div><Droppable droppableId={stage.id}>{(dropProvided, dropSnapshot) => <div ref={dropProvided.innerRef} {...dropProvided.droppableProps} className={`min-h-24 space-y-3 rounded-lg transition-colors ${dropSnapshot.isDraggingOver ? 'bg-[#d3bb73]/5 ring-1 ring-[#d3bb73]/30' : ''}`}>{items.length === 0 && !dropSnapshot.isDraggingOver ? <div className="rounded-lg border border-dashed border-[#d3bb73]/10 px-3 py-8 text-center text-xs text-[#e5e4e2]/25">Przeciągnij tutaj</div> : items.map((inquiry, index) => <Draggable key={inquiry.id} draggableId={inquiry.id} index={index} isDragDisabled={!canManageInquiry(inquiry)}>{(dragProvided, dragSnapshot) => <div ref={dragProvided.innerRef} {...dragProvided.draggableProps} {...dragProvided.dragHandleProps} className={`${canManageInquiry(inquiry) ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'} ${dragSnapshot.isDragging ? 'rotate-1 opacity-95 shadow-2xl' : ''}`}><InquiryCard inquiry={inquiry} onEdit={setEditingInquiry} onClaim={(item) => void claimInquiry(item)} onCompleteContact={(item) => void completeContact(item)} onSnooze={(item) => void snoozeFollowup(item)} canEdit={canManageInquiry(inquiry)} canClaim={canClaim && !inquiry.inquiry_owner_id} claiming={claimingId === inquiry.id} actionPending={actionPendingId === inquiry.id} compact /></div>}</Draggable>)}{dropProvided.placeholder}</div>}</Droppable></section>;
+          return <section key={stage.id} className="w-[310px] shrink-0 rounded-xl border border-[#d3bb73]/10 bg-[#0f1119]/70 p-3"><div className="mb-3 flex items-start justify-between gap-2 px-1"><div><div className="flex items-center gap-2 text-sm font-medium text-[#e5e4e2]"><span className={`h-2.5 w-2.5 rounded-full ${stage.dot}`} />{stage.label}</div><div className="mt-1 text-xs text-[#e5e4e2]/35">{formatMoney(value) || '0 zł'}</div></div><span className="rounded-full bg-[#1c1f33] px-2 py-1 text-xs text-[#e5e4e2]/55">{items.length}</span></div><Droppable droppableId={stage.id}>{(dropProvided, dropSnapshot) => <div ref={dropProvided.innerRef} {...dropProvided.droppableProps} className={`min-h-24 space-y-3 rounded-lg transition-colors ${dropSnapshot.isDraggingOver ? 'bg-[#d3bb73]/5 ring-1 ring-[#d3bb73]/30' : ''}`}>{items.length === 0 && !dropSnapshot.isDraggingOver ? <div className="rounded-lg border border-dashed border-[#d3bb73]/10 px-3 py-8 text-center text-xs text-[#e5e4e2]/25">Przeciągnij tutaj</div> : items.map((inquiry, index) => <Draggable key={inquiry.id} draggableId={inquiry.id} index={index} isDragDisabled={!canManageInquiry(inquiry)}>{(dragProvided, dragSnapshot) => <div data-inquiry-card ref={dragProvided.innerRef} {...dragProvided.draggableProps} {...dragProvided.dragHandleProps} className={`${canManageInquiry(inquiry) ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'} ${dragSnapshot.isDragging ? 'rotate-1 opacity-95 shadow-2xl' : ''}`}><InquiryCard inquiry={inquiry} onEdit={setEditingInquiry} onClaim={(item) => void claimInquiry(item)} onCompleteContact={(item) => void completeContact(item)} onSnooze={(item) => void snoozeFollowup(item)} canEdit={canManageInquiry(inquiry)} canClaim={canClaim && !inquiry.inquiry_owner_id} claiming={claimingId === inquiry.id} actionPending={actionPendingId === inquiry.id} compact /></div>}</Draggable>)}{dropProvided.placeholder}</div>}</Droppable></section>;
         })}</div></div>
         </DragDropContext>
       ) : <div className="grid gap-3 lg:grid-cols-2">{visibleInquiries.map((inquiry) => <InquiryCard key={inquiry.id} inquiry={inquiry} onEdit={setEditingInquiry} onClaim={(item) => void claimInquiry(item)} onCompleteContact={(item) => void completeContact(item)} onSnooze={(item) => void snoozeFollowup(item)} canEdit={canManageInquiry(inquiry)} canClaim={canClaim && !inquiry.inquiry_owner_id} claiming={claimingId === inquiry.id} actionPending={actionPendingId === inquiry.id} />)}</div>}

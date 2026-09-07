@@ -36,6 +36,7 @@ type Tab = 'offers' | 'catalog' | 'templates';
 interface Offer {
   client: any;
   id: string;
+  title?: string | null;
   offer_number: string;
   event_id: string;
   organization_id: string;
@@ -155,11 +156,6 @@ export function OfferPage({
     filterProducts();
   }, [productSearch, categoryFilter, products]);
 
-  const handleTabChange = (tab: Tab) => {
-    setActiveTab(tab);
-    router.push(`/crm/offers?tab=${tab}`);
-  };
-
   // Filter functions
   const filterOffers = () => {
     let filtered = [...offers];
@@ -168,6 +164,7 @@ export function OfferPage({
       filtered = filtered.filter(
         (offer) =>
           offer.offer_number?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          offer.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
           offer.client?.company_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
           offer.event?.name?.toLowerCase().includes(searchQuery.toLowerCase()),
       );
@@ -327,68 +324,17 @@ export function OfferPage({
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-light text-[#e5e4e2]">Oferty i Katalog</h1>
+          <h1 className="text-2xl font-light text-[#e5e4e2]">
+            {activeTab === 'offers' ? 'Oferty' : activeTab === 'catalog' ? 'Produkty' : 'Szablony ofert'}
+          </h1>
           <p className="mt-1 text-sm text-[#e5e4e2]/60">
-            Zarządzaj ofertami, katalogiem produktów i szablonami
+            {activeTab === 'offers'
+              ? 'Twórz, wysyłaj i kontroluj oferty dla klientów'
+              : activeTab === 'catalog'
+                ? 'Zarządzaj katalogiem produktów wykorzystywanych w ofertach'
+                : 'Zarządzaj wyglądem i układem generowanych ofert PDF'}
           </p>
         </div>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex space-x-1 border-b border-[#d3bb73]/10">
-        <button
-          onClick={() => handleTabChange('offers')}
-          className={`relative px-6 py-3 font-medium transition-colors ${
-            activeTab === 'offers' ? 'text-[#d3bb73]' : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
-          }`}
-        >
-          <div className="flex items-center space-x-2">
-            <FileText className="h-5 w-5" />
-            <span>Oferty</span>
-            <span className="ml-2 rounded-full bg-[#1c1f33] px-2 py-0.5 text-xs text-[#e5e4e2]/60">
-              {offers.length}
-            </span>
-          </div>
-          {activeTab === 'offers' && (
-            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#d3bb73]" />
-          )}
-        </button>
-
-        <button
-          onClick={() => handleTabChange('catalog')}
-          className={`relative px-6 py-3 font-medium transition-colors ${
-            activeTab === 'catalog' ? 'text-[#d3bb73]' : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
-          }`}
-        >
-          <div className="flex items-center space-x-2">
-            <Package className="h-5 w-5" />
-            <span>Produkty</span>
-            <span className="ml-2 rounded-full bg-[#1c1f33] px-2 py-0.5 text-xs text-[#e5e4e2]/60">
-              {products.length}
-            </span>
-          </div>
-          {activeTab === 'catalog' && (
-            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#d3bb73]" />
-          )}
-        </button>
-
-        <button
-          onClick={() => handleTabChange('templates')}
-          className={`relative px-6 py-3 font-medium transition-colors ${
-            activeTab === 'templates' ? 'text-[#d3bb73]' : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
-          }`}
-        >
-          <div className="flex items-center space-x-2">
-            <FileType className="h-5 w-5" />
-            <span>Szablony</span>
-            <span className="ml-2 rounded-full bg-[#1c1f33] px-2 py-0.5 text-xs text-[#e5e4e2]/60">
-              {templates.length}
-            </span>
-          </div>
-          {activeTab === 'templates' && (
-            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#d3bb73]" />
-          )}
-        </button>
       </div>
 
       {/* Content */}

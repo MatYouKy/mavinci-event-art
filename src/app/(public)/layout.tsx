@@ -13,6 +13,7 @@ import { fetchNotificationsServer } from '@/lib/CRM/notifications/fetchNotificat
 import { getCurrentEmployeeServerCached } from '@/lib/CRM/auth/getCurrentEmployeeServer';
 import { IEmployee } from '@/app/(crm)/crm/employees/type';
 import { cookies } from 'next/headers';
+import BrandThemeProvider from '@/components/BrandThemeProvider';
 
 const SITE_URL = 'https://mavinci.pl';
 const OG_IMAGE = '/logo-mavinci-crm.png';
@@ -342,7 +343,8 @@ export default async function RootLayout({
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
         />
       </head>
-      <body>
+      <body className="brand-theme" data-brand-theme="mavinci">
+        <BrandThemeProvider />
         <Providers>
           <AuthProvider>
             <EditModeProvider>

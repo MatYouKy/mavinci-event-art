@@ -2,8 +2,8 @@ import 'server-only';
 import { cookies } from 'next/headers';
 import { createSupabaseServerClient } from '@/lib/supabase/server.app';
 import type { CookieStoreLike } from '@/lib/supabase/server.app';
-import { ViewMode } from '@/app/(crm)/crm/settings/page';
-import { ICustomIcon } from '@/app/(crm)/crm/event-categories/types';
+import type { ViewMode } from '@/app/(crm)/crm/settings/page';
+import type { ICustomIcon } from '@/app/(crm)/crm/event-categories/types';
 
 function getCookieStore(): CookieStoreLike {
   const store = cookies();

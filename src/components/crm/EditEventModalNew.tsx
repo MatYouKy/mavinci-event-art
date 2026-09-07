@@ -145,14 +145,21 @@ export default function EditEventModalNew({
       className="fixed inset-0 z-50 bg-black/60"
       role="dialog"
       aria-modal="true"
+      data-crm-modal="true"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
       <div className="h-full w-full overflow-y-auto">
         <div className="flex min-h-full w-full items-start justify-center p-4 sm:p-6">
-          <div className="max-h-[calc(100vh-2rem)] w-full max-w-3xl overflow-y-auto rounded-xl border border-[#d3bb73]/20 bg-[#0f1119] shadow-2xl">
-            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[#d3bb73]/10 bg-[#0f1119]/95 px-6 py-4 backdrop-blur">
+          <div
+            data-crm-modal-surface="true"
+            className="max-h-[calc(100vh-2rem)] w-full max-w-3xl overflow-y-auto rounded-xl border border-[#d3bb73]/20 bg-[#0f1119] shadow-2xl"
+          >
+            <div
+              data-crm-modal-bar="true"
+              className="sticky top-0 z-10 flex items-center justify-between border-b border-[#d3bb73]/10 bg-[#0f1119]/95 px-6 py-4 backdrop-blur"
+            >
               <h2 className="text-xl font-light text-[#e5e4e2]">Edytuj event</h2>
 
               <button
@@ -317,7 +324,10 @@ export default function EditEventModalNew({
               </div>
             </div>
 
-            <div className="sticky bottom-0 z-10 border-t border-[#d3bb73]/10 bg-[#0f1119]/95 px-6 py-4 backdrop-blur">
+            <div
+              data-crm-modal-bar="true"
+              className="sticky bottom-0 z-10 border-t border-[#d3bb73]/10 bg-[#0f1119]/95 px-6 py-4 backdrop-blur"
+            >
               <div className="flex gap-3">
                 <button
                   type="button"

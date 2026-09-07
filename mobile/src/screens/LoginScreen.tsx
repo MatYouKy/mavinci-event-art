@@ -136,6 +136,8 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   title: {
+    fontFamily: 'MBFAtom',
+    textTransform: 'uppercase',
     fontSize: typography.fontSizes.huge,
     fontWeight: typography.fontWeights.bold,
     color: colors.primary.gold,

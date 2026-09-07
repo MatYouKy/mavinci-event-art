@@ -571,8 +571,11 @@ export default function ClientSelectorTabs({
   return (
     <div className="space-y-4">
       {/* Taby */}
-      <div className="flex gap-2">
+      <div role="tablist" data-crm-tabs="true" className="flex gap-2">
         <button
+          role="tab"
+          aria-selected={activeTab === 'individual'}
+          data-crm-tab-active={activeTab === 'individual' ? 'true' : 'false'}
           onClick={() => setActiveTab('individual')}
           className={`flex items-center gap-2 rounded-lg px-4 py-2 transition-colors ${
             activeTab === 'individual'
@@ -585,6 +588,9 @@ export default function ClientSelectorTabs({
           Impreza indywidualna
         </button>
         <button
+          role="tab"
+          aria-selected={activeTab === 'business'}
+          data-crm-tab-active={activeTab === 'business' ? 'true' : 'false'}
           onClick={() => setActiveTab('business')}
           className={`flex items-center gap-2 rounded-lg px-4 py-2 transition-colors ${
             activeTab === 'business'

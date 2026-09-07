@@ -49,7 +49,11 @@ export function AnimatedCounter({ end, duration = 2000, suffix }: { end: number;
   }, [end, duration, isVisible]);
 
   return (
-    <div ref={elementRef} className="text-5xl md:text-6xl font-light text-[#d3bb73] mb-3">
+    <div
+      ref={elementRef}
+      data-brand-number="true"
+      className="text-5xl md:text-6xl font-light text-[#d3bb73] mb-3"
+    >
       {count}{suffix}
     </div>
   );

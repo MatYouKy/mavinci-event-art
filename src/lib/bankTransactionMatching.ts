@@ -1,4 +1,4 @@
-export type BankMatchDocumentSource = 'invoice' | 'ksef' | 'external';
+export type BankMatchDocumentSource = 'invoice' | 'ksef' | 'external' | 'personnel';
 
 export interface BankMatchCandidateRow {
   document_source: BankMatchDocumentSource;
@@ -33,6 +33,7 @@ export interface BankMatchCandidate {
 
 interface StoredBankTransaction {
   id: string;
+  statement_id: string;
   transaction_date: string;
   amount: number | string;
   currency: string | null;
@@ -42,6 +43,15 @@ interface StoredBankTransaction {
   raw_description?: string | null;
   raw_counterparty?: string | null;
   allocated_amount?: number | string | null;
+  private_transfer_detected?: boolean | null;
+}
+
+interface BankCounterpartyMapping {
+  my_company_id: string | null;
+  alias_pattern: string;
+  normalized_alias: string;
+  counterparty_name: string;
+  counterparty_nip: string | null;
 }
 
 function normalizeText(value?: string | null) {
@@ -50,6 +60,23 @@ function normalizeText(value?: string | null) {
     .replace(/[\u0300-\u036f]/g, '')
     .toUpperCase()
     .replace(/[^A-Z0-9]/g, '');
+}
+
+export function isBankStatementMatchablePaymentMethod(
+  paymentMethod?: string | null,
+  source?: BankMatchDocumentSource,
+) {
+  const normalized = normalizeText(paymentMethod);
+  if (!normalized) return true;
+
+  // KSeF FA(2)/FA(3): code 1 means cash. Other codes can either appear on a
+  // bank statement (transfer/card) or need a manual decision, so they stay visible.
+  if (source === 'ksef' && normalized === '1') return false;
+
+  return normalized !== 'CASH'
+    && normalized !== 'CASHONDELIVERY'
+    && normalized !== 'PAYMENTINCASH'
+    && !normalized.startsWith('GOTOWK');
 }
 
 function onlyDigits(value?: string | null) {
@@ -64,7 +91,11 @@ function differenceInDays(left?: string | null, right?: string | null) {
   return Math.abs(leftDate.getTime() - rightDate.getTime()) / 86_400_000;
 }
 
-function scoreCandidate(transaction: StoredBankTransaction, row: BankMatchCandidateRow) {
+function scoreCandidate(
+  transaction: StoredBankTransaction,
+  row: BankMatchCandidateRow,
+  mapping?: BankCounterpartyMapping | null,
+) {
   const reasons: string[] = [];
   let confidence = 0;
 
@@ -111,7 +142,7 @@ function scoreCandidate(transaction: StoredBankTransaction, row: BankMatchCandid
   }
 
   const searchableTransaction = normalizeText(
-    `${transaction.counterparty_name || transaction.raw_counterparty || ''} ${transaction.title || ''}`,
+    `${transaction.counterparty_name || transaction.raw_counterparty || ''} ${transaction.title || ''} ${mapping?.counterparty_name || ''}`,
   );
   const counterparty = normalizeText(row.counterparty_name);
   if (
@@ -124,6 +155,16 @@ function scoreCandidate(transaction: StoredBankTransaction, row: BankMatchCandid
     reasons.push('Kontrahent pasuje');
   }
 
+  const mappedCounterparty = normalizeText(mapping?.counterparty_name);
+  if (
+    mappedCounterparty
+    && counterparty
+    && (mappedCounterparty.includes(counterparty) || counterparty.includes(mappedCounterparty))
+  ) {
+    confidence += 0.38;
+    reasons.push(`Szablon mapowania: ${mapping?.alias_pattern}`);
+  }
+
   const nip = onlyDigits(row.counterparty_nip);
   const transactionDigits = onlyDigits(
     `${transaction.counterparty_name || ''} ${transaction.title || ''} ${transaction.raw_description || ''}`,
@@ -131,6 +172,10 @@ function scoreCandidate(transaction: StoredBankTransaction, row: BankMatchCandid
   if (nip.length === 10 && transactionDigits.includes(nip)) {
     confidence += 0.28;
     reasons.push('NIP kontrahenta pasuje');
+  }
+  if (nip.length === 10 && nip === onlyDigits(mapping?.counterparty_nip)) {
+    confidence += 0.34;
+    reasons.push('NIP ze szablonu mapowania pasuje');
   }
 
   const dueDays = differenceInDays(transaction.transaction_date, row.due_date);
@@ -171,16 +216,21 @@ function scoreCandidate(transaction: StoredBankTransaction, row: BankMatchCandid
 export function getBankMatchSourceLabel(source: BankMatchDocumentSource) {
   if (source === 'ksef') return 'KSeF';
   if (source === 'external') return 'Poza KSeF';
+  if (source === 'personnel') return 'Kadry';
   return 'CRM';
 }
 
-export async function findBankTransactionMatchCandidates(supabase: any, transactionId: string) {
+export async function findBankTransactionMatchCandidates(
+  supabase: any,
+  transactionId: string,
+  options?: { useCounterpartyMappings?: boolean },
+) {
   const [{ data: transaction, error: transactionError }, { data: rows, error: candidatesError }] =
     await Promise.all([
       supabase
         .from('bank_transactions')
         .select(
-          'id,transaction_date,amount,currency,transaction_type,counterparty_name,title,raw_description,raw_counterparty,allocated_amount',
+          'id,statement_id,transaction_date,amount,currency,transaction_type,counterparty_name,title,raw_description,raw_counterparty,allocated_amount,private_transfer_detected',
         )
         .eq('id', transactionId)
         .single(),
@@ -190,8 +240,59 @@ export async function findBankTransactionMatchCandidates(supabase: any, transact
   if (transactionError) throw transactionError;
   if (candidatesError) throw candidatesError;
 
-  return ((rows || []) as BankMatchCandidateRow[])
-    .map((row) => scoreCandidate(transaction as StoredBankTransaction, row))
+  const storedTransaction = transaction as StoredBankTransaction;
+  if (storedTransaction.private_transfer_detected) return [];
+
+  const candidateRows = (rows || []) as BankMatchCandidateRow[];
+  const ksefCandidateIds = candidateRows
+    .filter((row) => row.document_source === 'ksef')
+    .map((row) => row.document_id);
+  const ksefPaymentMethods = ksefCandidateIds.length > 0
+    ? await supabase
+      .from('ksef_invoices')
+      .select('id,payment_method')
+      .in('id', ksefCandidateIds)
+    : { data: [], error: null };
+  if (ksefPaymentMethods.error) throw ksefPaymentMethods.error;
+  const cashKsefIds = new Set(
+    (ksefPaymentMethods.data || [])
+      .filter((invoice: { payment_method?: string | null }) => (
+        !isBankStatementMatchablePaymentMethod(invoice.payment_method, 'ksef')
+      ))
+      .map((invoice: { id: string }) => invoice.id),
+  );
+
+  const { data: statement } = await supabase
+    .from('bank_statements')
+    .select('my_company_id')
+    .eq('id', storedTransaction.statement_id)
+    .maybeSingle();
+  let mappingRows: BankCounterpartyMapping[] = [];
+  if (options?.useCounterpartyMappings !== false) {
+    let mappingsQuery = supabase
+      .from('bank_counterparty_mapping_templates')
+      .select('my_company_id,alias_pattern,normalized_alias,counterparty_name,counterparty_nip')
+      .eq('is_active', true);
+    mappingsQuery = statement?.my_company_id
+      ? mappingsQuery.or(`my_company_id.eq.${statement.my_company_id},my_company_id.is.null`)
+      : mappingsQuery.is('my_company_id', null);
+    const mappingsResult = await mappingsQuery;
+    mappingRows = (mappingsResult.data || []) as BankCounterpartyMapping[];
+  }
+  const transactionText = normalizeText(
+    `${storedTransaction.counterparty_name || storedTransaction.raw_counterparty || ''} ${storedTransaction.title || ''} ${storedTransaction.raw_description || ''}`,
+  );
+  const mapping = mappingRows
+    .filter((item) => transactionText.includes(item.normalized_alias || normalizeText(item.alias_pattern)))
+    .sort((left, right) => {
+      const companyDifference = Number(Boolean(right.my_company_id)) - Number(Boolean(left.my_company_id));
+      if (companyDifference !== 0) return companyDifference;
+      return right.normalized_alias.length - left.normalized_alias.length;
+    })[0] || null;
+
+  return candidateRows
+    .filter((row) => row.document_source !== 'ksef' || !cashKsefIds.has(row.document_id))
+    .map((row) => scoreCandidate(storedTransaction, row, mapping))
     .filter((candidate): candidate is BankMatchCandidate => Boolean(candidate))
     .sort((left, right) => right.confidence - left.confidence);
 }
@@ -241,6 +342,121 @@ export async function applyBankTransactionMatchToDocument(
   return data;
 }
 
+export async function reconcilePaidKsefInvoiceWithBankTransaction(
+  supabase: any,
+  input: {
+    transactionId: string;
+    ksefInvoiceId: string;
+    amount: number;
+    confidence?: number | null;
+    reasons?: string[];
+  },
+) {
+  const { data, error } = await supabase.rpc('reconcile_paid_ksef_invoice_with_bank_transaction', {
+    p_transaction_id: input.transactionId,
+    p_ksef_invoice_id: input.ksefInvoiceId,
+    p_amount: input.amount,
+    p_confidence: input.confidence ?? null,
+    p_match_reasons: input.reasons || [],
+  });
+  if (error) throw error;
+  return data;
+}
+
+export async function reconcileExternalInvoiceWithBankTransaction(
+  supabase: any,
+  input: {
+    transactionId: string;
+    externalInvoiceId: string;
+    transactionAmount: number;
+    documentAmount: number;
+    confidence?: number | null;
+    reasons?: string[];
+    reviewNote?: string | null;
+  },
+) {
+  const reviewNote = input.reviewNote?.trim() || null;
+  const functionName = reviewNote
+    ? 'reconcile_external_invoice_with_bank_transaction_with_review'
+    : 'reconcile_external_invoice_with_bank_transaction';
+  const { data, error } = await supabase.rpc(functionName, {
+    p_transaction_id: input.transactionId,
+    p_external_invoice_id: input.externalInvoiceId,
+    p_transaction_amount: input.transactionAmount,
+    p_document_amount: input.documentAmount,
+    p_confidence: input.confidence ?? null,
+    p_match_reasons: input.reasons || [],
+    ...(reviewNote ? { p_review_note: reviewNote } : {}),
+  });
+  if (error) {
+    if (reviewNote && error.code === 'PGRST202') {
+      throw new Error('Zapisywanie uwag do dopasowania wymaga migracji 20260904131000 w Supabase.');
+    }
+    throw error;
+  }
+  return data;
+}
+
+export async function reconcilePersonnelPaymentWithBankTransaction(
+  supabase: any,
+  input: {
+    transactionId: string;
+    personnelPaymentId: string;
+    amount: number;
+    confidence?: number | null;
+    reasons?: string[];
+  },
+) {
+  const { data, error } = await supabase.rpc('reconcile_personnel_payment_with_bank_transaction', {
+    p_transaction_id: input.transactionId,
+    p_personnel_payment_id: input.personnelPaymentId,
+    p_amount: input.amount,
+    p_confidence: input.confidence ?? null,
+    p_match_reasons: input.reasons || [],
+  });
+  if (error) {
+    if (error.code === 'PGRST202') {
+      throw new Error('Dopasowanie wynagrodzeń wymaga migracji 20260903213000 w Supabase.');
+    }
+    throw error;
+  }
+  return data;
+}
+
+export async function matchBankTransactionToDocuments(
+  supabase: any,
+  input: {
+    transactionId: string;
+    documents: Array<{
+      documentSource: BankMatchDocumentSource;
+      documentId: string;
+      amount: number;
+    }>;
+    reviewNote?: string | null;
+  },
+) {
+  const reviewNote = input.reviewNote?.trim() || null;
+  const functionName = reviewNote
+    ? 'match_bank_transaction_to_documents_with_review'
+    : 'match_bank_transaction_to_documents';
+  const { data, error } = await supabase.rpc(functionName, {
+    p_transaction_id: input.transactionId,
+    p_documents: input.documents.map((document) => ({
+      source: document.documentSource,
+      documentId: document.documentId,
+      amount: document.amount,
+    })),
+    ...(reviewNote ? { p_review_note: reviewNote } : {}),
+  });
+  if (error) {
+    if (reviewNote && error.code === 'PGRST202') {
+      throw new Error('Zapisywanie uwag do dopasowania wymaga migracji 20260904131000 w Supabase.');
+    }
+    throw error;
+  }
+  return data || [];
+}
+
 export async function removeBankTransactionMatch(
   supabase: any,
   transactionId: string,
@@ -254,8 +470,12 @@ export async function removeBankTransactionMatch(
   return Number(data || 0);
 }
 
-export async function tryAutomaticBankTransactionMatch(supabase: any, transactionId: string) {
-  const candidates = await findBankTransactionMatchCandidates(supabase, transactionId);
+export async function tryAutomaticBankTransactionMatch(
+  supabase: any,
+  transactionId: string,
+  options?: { useCounterpartyMappings?: boolean },
+) {
+  const candidates = await findBankTransactionMatchCandidates(supabase, transactionId, options);
   const best = candidates[0];
   const second = candidates[1];
   if (!best) return { matched: false, candidates };

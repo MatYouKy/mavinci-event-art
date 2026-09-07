@@ -86,6 +86,23 @@ function sanitizeBankEncoding(text?: string | null): string {
     .trim();
 }
 
+function appendMt940Continuation(parts: string[], value: string): void {
+  const previous = parts[parts.length - 1];
+  if (!previous) {
+    parts.push(value);
+    return;
+  }
+
+  // Polskie MT940 dzieli podpole na fragmenty po 27 znaków. Jeżeli fragment
+  // wykorzystał pełną długość i słowo biegnie dalej, nie wolno dodawać spacji.
+  const splitInsideWord =
+    previous.length === 27 &&
+    /[\p{L}\p{N}]$/u.test(previous) &&
+    /^[\p{L}\p{N}]/u.test(value);
+
+  parts[parts.length - 1] = `${previous}${splitInsideWord ? '' : ' '}${value}`;
+}
+
 function cleanBankText(value?: string | null): string {
   return (value || '')
     .replace(/ÿ/g, '')
@@ -166,7 +183,7 @@ function extractReadableCounterpartyFromText(text?: string | null): string | und
   return joined.length >= 3 ? joined : undefined;
 }
 
-function parse86Segments(description: string): {
+export function parseMT940Description(description: string): {
   title?: string;
   counterpartyName?: string;
   counterpartyAccount?: string;
@@ -193,14 +210,19 @@ function parse86Segments(description: string): {
 
     if (!rawValue || rawValue === '0') continue;
 
-    if (/^(20|21|22|23|24|25)$/.test(fieldCode)) {
-      titleParts.push(rawValue);
+    // W ustrukturyzowanym polu :86: pełny cel przelewu może zajmować
+    // wszystkie segmenty 20–29. Pominięcie 26–29 ucinało końcówkę tytułu.
+    if (/^2\d$/.test(fieldCode)) {
+      // Niektóre banki wypełniają niewykorzystane segmenty celu przelewu
+      // znakami „·” lub „•”. Nie są one częścią tytułu ani wielokropkiem UI.
+      if (/^[·•\s]+$/.test(rawValue)) continue;
+      appendMt940Continuation(titleParts, rawValue);
       fallbackParts.push(rawValue);
       continue;
     }
 
     if (/^(32|33)$/.test(fieldCode)) {
-      counterpartyParts.push(rawValue);
+      appendMt940Continuation(counterpartyParts, rawValue);
       continue;
     }
 
@@ -252,7 +274,7 @@ export function parseMT940(content: string): BankStatement {
   const flushCurrent86 = () => {
     if (!current86Buffer) return;
 
-    const parsed86 = parse86Segments(current86Buffer);
+    const parsed86 = parseMT940Description(current86Buffer);
 
     if (parsed86.title) {
       currentTransaction.title = parsed86.title;

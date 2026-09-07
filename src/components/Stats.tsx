@@ -62,7 +62,7 @@ export default function Stats() {
                 animation: `fadeInUp 0.6s ease-out ${index * 0.1}s both`,
               }}
             >
-              <div className="text-center p-8 rounded-2xl bg-gradient-to-br from-[#1c1f33] to-[#800020]/10 border border-[#d3bb73]/20 backdrop-blur-sm transition-all duration-500 hover:border-[#d3bb73]/50 hover:shadow-2xl hover:shadow-[#d3bb73]/20 hover:-translate-y-2">
+              <div className="text-center p-8 rounded-2xl bg-gradient-to-br from-[#3a0c20]/80 to-[#18040c]/95 border border-[#d3bb73]/20 backdrop-blur-sm transition-all duration-500 hover:border-[#d3bb73]/50 hover:shadow-2xl hover:shadow-[#650026]/30 hover:-translate-y-2">
                 <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-[#d3bb73]/10 mb-6 group-hover:bg-[#d3bb73]/20 transition-all duration-300 group-hover:scale-110">
                   <stat.icon className="w-8 h-8 text-[#d3bb73] group-hover:rotate-12 transition-transform duration-300" />
                 </div>

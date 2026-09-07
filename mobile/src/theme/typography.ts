@@ -3,6 +3,10 @@
  */
 
 export const typography = {
+  fontFamilies: {
+    heading: 'MBFAtom',
+  },
+
   fontSizes: {
     xs: 12,
     sm: 14,

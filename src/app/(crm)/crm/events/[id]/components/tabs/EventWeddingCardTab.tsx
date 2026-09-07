@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   Clock3,
   Download,
+  ExternalLink,
   HeartHandshake,
   Edit3,
   FileText,
@@ -22,6 +23,9 @@ import { useSnackbar } from '@/contexts/SnackbarContext';
 import WeddingPeopleSchedulePanel from './WeddingPeopleSchedulePanel';
 import FullScreenLoader from '@/components/UI/Loader/CustomModalLoader';
 import { isWeddingReceptionGame } from '@/lib/weddingAttractions';
+import WeddingThanksEditor from '@/components/wedding/WeddingThanksEditor';
+import WeddingThanksSummary from '@/components/wedding/WeddingThanksSummary';
+import { readThanksEntries, WELCOME_GLASS_OPTIONS, type ThanksCardPerson } from '@/lib/weddingCardDetails';
 
 type WeddingCard = {
   id: string;
@@ -94,6 +98,12 @@ const SECTIONS = [
       ['venue_access', 'Dostęp i schody'],
       ['hot_vodka', 'Gorzka wódka'],
       ['first_dance', 'Pierwszy taniec'],
+      ['first_dance_title', 'Pierwszy taniec — tytuł utworu'],
+      ['first_dance_artist', 'Pierwszy taniec — wykonawca / wersja'],
+      ['first_dance_url', 'Pierwszy taniec — link do utworu'],
+      ['first_dance_duration', 'Pierwszy taniec — czas trwania'],
+      ['first_dance_special_moments', 'Pierwszy taniec — punkty specjalne'],
+      ['first_dance_file_url', 'Pierwszy taniec — własny plik audio'],
       ['special_toasts', 'Specjalne toasty'],
     ],
   },
@@ -104,8 +114,7 @@ const SECTIONS = [
     fields: [
       ['couple_wait_before_welcome', 'Para czeka przed wjazdem na główne powitanie'],
       ['bread_and_salt_enabled', 'Powitanie chlebem i solą'],
-      ['welcome_throwing', 'Czym witamy / rzucamy'],
-      ['welcome_glasses', 'Kieliszki powitalne'],
+      ['welcome_glass_throwing', 'Czy i kiedy rzucacie kieliszkami?'],
       ['welcome_sequence', 'Kolejność powitania'],
     ],
   },
@@ -116,17 +125,20 @@ const SECTIONS = [
     fields: [
       ['cake_time', 'Godzina podania'],
       ['cake_presentation', 'Aranżacja podania'],
+      ['cake_proposal_url', 'Wybrana propozycja tortu'],
       ['cake_location', 'Miejsce podania'],
     ],
   },
   {
     id: 'parents_thanks',
-    title: 'Podziękowania dla rodziców',
+    title: 'Podziękowania dla bliskich',
     icon: HeartHandshake,
     fields: [
       ['parents_thanks_enabled', 'Czy planowane'],
       ['parents_thanks_recipients', 'Komu dziękujemy'],
+      ['parents_thanks_entries', 'Kolejność wyjść'],
       ['parents_thanks_plan', 'Forma podziękowań'],
+      ['parents_thanks_proposal_url', 'Wybrana propozycja podziękowań'],
     ],
   },
   {
@@ -162,7 +174,6 @@ const ALL_FIELDS = SECTIONS.flatMap((section) =>
 const CARD_NAV_ITEMS = [
   { id: 'bride_side', label: 'Strona Panny Młodej' },
   { id: 'groom_side', label: 'Strona Pana Młodego' },
-  { id: 'shared_people', label: 'Pozostałe osoby' },
   { id: 'ceremony', label: 'Ceremonia' },
   { id: 'technical', label: 'Informacje ogólne' },
   { id: 'welcome', label: 'Przyjazd i powitanie' },
@@ -174,6 +185,7 @@ const CARD_NAV_ITEMS = [
   { id: 'attractions', label: 'Atrakcje i dodatki' },
   { id: 'music', label: 'Muzyka i playlisty' },
   { id: 'notes', label: 'Dodatkowe informacje' },
+  { id: 'shared_people', label: 'Pozostałe osoby organizacyjne' },
 ] as const;
 
 type CardCategoryId = (typeof CARD_NAV_ITEMS)[number]['id'];
@@ -192,9 +204,23 @@ const SHORT_FIELDS = new Set([
   'ceremony_address',
   'venue_arrival_time',
   'cake_time',
+  'first_dance_title',
+  'first_dance_artist',
+  'first_dance_url',
+  'first_dance_duration',
+  'first_dance_file_url',
+]);
+const LINK_FIELDS = new Set([
+  'cake_proposal_url',
+  'parents_thanks_proposal_url',
+  'first_dance_url',
+  'first_dance_file_url',
+  'spotify_playlist_url',
+  'youtube_playlist_url',
 ]);
 
 const SELECT_OPTIONS: Record<string, Array<{ value: string; label: string }>> = {
+  welcome_glass_throwing: [...WELCOME_GLASS_OPTIONS],
   ceremony_type: [
     { value: 'church', label: 'Kościelna' },
     { value: 'civil', label: 'Cywilna' },
@@ -224,7 +250,8 @@ const isWeddingFieldVisible = (key: string, values: Record<string, string | bool
   if (['church_address', 'church_wishes_enabled'].includes(key)) return ceremonyType === 'church';
   if (key === 'civil_ceremony_setting') return ceremonyType === 'civil';
   if (key === 'ceremony_address') return ceremonyType === 'civil' || ceremonyType === 'humanist';
-  if (['parents_thanks_recipients', 'parents_thanks_plan'].includes(key)) {
+  if (key === 'parents_thanks_recipients' && readThanksEntries(values.parents_thanks_entries).length) return false;
+  if (['parents_thanks_recipients', 'parents_thanks_plan', 'parents_thanks_entries', 'parents_thanks_proposal_url'].includes(key)) {
     return values.parents_thanks_enabled === true;
   }
   return true;
@@ -252,6 +279,17 @@ const formatValue = (value: unknown) => {
   return String(value);
 };
 
+const safeHttpUrl = (value: unknown) => {
+  const candidate = String(value || '').trim();
+  if (!candidate) return null;
+  try {
+    const url = new URL(candidate);
+    return ['http:', 'https:'].includes(url.protocol) ? url.toString() : null;
+  } catch {
+    return null;
+  }
+};
+
 export default function EventWeddingCardTab({
   eventId,
   canManage,
@@ -262,6 +300,7 @@ export default function EventWeddingCardTab({
   const { showSnackbar } = useSnackbar();
   const [card, setCard] = useState<WeddingCard | null>(null);
   const [answers, setAnswers] = useState<Answer[]>([]);
+  const [thanksCardPeople, setThanksCardPeople] = useState<ThanksCardPerson[]>([]);
   const [tracks, setTracks] = useState<Track[]>([]);
   const [attractions, setAttractions] = useState<Attraction[]>([]);
   const [loading, setLoading] = useState(true);
@@ -326,7 +365,7 @@ export default function EventWeddingCardTab({
       return;
     }
 
-    const [answersResult, tracksResult, attractionsResult] = await Promise.all([
+    const [answersResult, tracksResult, attractionsResult, peopleResult] = await Promise.all([
       supabase
         .from('wedding_card_answers')
         .select('id,section,field_key,value')
@@ -341,16 +380,19 @@ export default function EventWeddingCardTab({
         .select('id,attraction_key,attraction_name,choice,notes')
         .eq('wedding_card_id', cardData.id)
         .order('attraction_name'),
+      supabase.from('wedding_card_people').select('first_name,last_name,side,role').eq('wedding_card_id', cardData.id).order('sort_order'),
     ]);
 
     if (answersResult.error) throw answersResult.error;
     if (tracksResult.error) throw tracksResult.error;
     if (attractionsResult.error) throw attractionsResult.error;
+    if (peopleResult.error) throw peopleResult.error;
 
     setCard(cardData as WeddingCard);
     setAnswers((answersResult.data || []) as Answer[]);
     setTracks((tracksResult.data || []) as Track[]);
     setAttractions((attractionsResult.data || []) as Attraction[]);
+    setThanksCardPeople((peopleResult.data || []).map((person) => ({ ...person, last_name: person.last_name || '' })));
   }, [eventId]);
 
   useEffect(() => {
@@ -386,6 +428,7 @@ export default function EventWeddingCardTab({
   useEffect(() => {
     if (!card?.id) return;
     const childTables = [
+      'wedding_card_people',
       'wedding_card_answers',
       'wedding_music_tracks',
       'wedding_attraction_choices',
@@ -514,7 +557,7 @@ export default function EventWeddingCardTab({
       Object.fromEntries(
         answers.map((answer) => [
           answer.field_key,
-          typeof answer.value === 'boolean' ? answer.value : String(answer.value ?? ''),
+          answer.field_key === 'parents_thanks_entries' ? JSON.stringify(readThanksEntries(answer.value)) : typeof answer.value === 'boolean' ? answer.value : String(answer.value ?? ''),
         ]),
       ),
     );
@@ -533,7 +576,7 @@ export default function EventWeddingCardTab({
       wedding_card_id: card.id,
       section: field.section,
       field_key: field.key,
-      value: draft[field.key] ?? '',
+      value: field.key === 'parents_thanks_entries' ? readThanksEntries(draft[field.key]) : draft[field.key] ?? '',
       source: 'crm',
       updated_by: employeeId,
     }));
@@ -554,7 +597,14 @@ export default function EventWeddingCardTab({
       const value = draft[field.key];
       return value !== '' && value !== null && value !== undefined;
     }).length;
-    const progress = Math.round((filled / applicableFields.length) * 100);
+    const completedSectionCount = new Set(
+      answers
+        .filter((answer) => answer.field_key.startsWith('section_status_') && ['complete', 'skipped'].includes(String(answer.value || '')))
+        .map((answer) => answer.field_key.slice('section_status_'.length)),
+    ).size;
+    const progress = completedSectionCount > 0
+      ? Math.round((completedSectionCount / 12) * 100)
+      : Math.round((filled / applicableFields.length) * 100);
     const { error: cardError } = await supabase
       .from('wedding_cards')
       .update({
@@ -766,14 +816,18 @@ export default function EventWeddingCardTab({
               )}
               {section.id === 'parents_thanks' && !editing && noParentsThanks ? (
                 <div className="rounded-xl border-2 border-red-500/50 bg-red-500/10 px-4 py-5">
-                  <p className="text-lg font-extrabold text-red-400">Bez podziękowań dla rodziców</p>
+                  <p className="text-lg font-extrabold text-red-400">Bez podziękowań dla bliskich</p>
                 </div>
               ) : <dl className="space-y-3">
-                {section.fields.filter(([key]) => isWeddingFieldVisible(key, editing ? draft : Object.fromEntries(answers.map((answer) => [answer.field_key, typeof answer.value === 'boolean' ? answer.value : String(answer.value ?? '')])))).map(([key, label]) => (
-                  <div key={key} className="grid gap-1 border-b border-white/5 pb-3 sm:grid-cols-[150px_1fr]">
+                {section.fields.filter(([key]) => isWeddingFieldVisible(key, editing ? draft : Object.fromEntries(answers.map((answer) => [answer.field_key, answer.field_key === 'parents_thanks_entries' ? JSON.stringify(readThanksEntries(answer.value)) : typeof answer.value === 'boolean' ? answer.value : String(answer.value ?? '')])))).map(([key, label]) => (
+                  <div key={key} className={`grid gap-1 border-b border-white/5 pb-3 ${key === 'parents_thanks_entries' ? '' : 'sm:grid-cols-[150px_1fr]'}`}>
                     <dt className="text-xs text-[#e5e4e2]/50">{label}</dt>
                     <dd className="whitespace-pre-wrap text-sm text-[#e5e4e2]">
-                      {editing ? (
+                      {key === 'parents_thanks_entries' ? (
+                        editing
+                          ? <WeddingThanksEditor entries={readThanksEntries(draft.parents_thanks_entries)} people={thanksCardPeople} onChange={(entries) => setDraft((current) => ({ ...current, parents_thanks_entries: JSON.stringify(entries) }))} />
+                          : <WeddingThanksSummary value={answersByKey.get(key)} />
+                      ) : editing ? (
                         SELECT_OPTIONS[key] ? (
                           <select
                             value={String(draft[key] ?? '')}
@@ -816,6 +870,11 @@ export default function EventWeddingCardTab({
                             className="w-full resize-y rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none focus:border-[#d3bb73]/60"
                           />
                         )
+                      ) : LINK_FIELDS.has(key) && safeHttpUrl(answersByKey.get(key)) ? (
+                        <a href={safeHttpUrl(answersByKey.get(key)) || undefined} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 break-all text-[#d3bb73] hover:underline">
+                          {key === 'first_dance_file_url' ? 'Otwórz przesłany plik audio' : formatValue(answersByKey.get(key))}
+                          <ExternalLink className="h-3.5 w-3.5 shrink-0" />
+                        </a>
                       ) : (
                         SELECT_OPTIONS[key]?.find((option) => option.value === answersByKey.get(key))?.label
                           || formatValue(answersByKey.get(key))
@@ -897,23 +956,24 @@ export default function EventWeddingCardTab({
             Muzyka
           </h3>
           {tracks.length ? (
-            <div className="space-y-2">
-              {tracks.map((track) => (
-                <div key={track.id} className="rounded-lg bg-white/[0.03] px-3 py-2">
-                  <div className="flex items-start justify-between gap-3">
-                    <span className="text-sm text-[#e5e4e2]">
-                      {track.artist ? `${track.artist} — ` : ''}{track.title}
-                    </span>
-                    <span className="whitespace-nowrap text-xs text-[#d3bb73]">
-                      {track.list_type === 'play'
-                        ? 'Zagrać'
-                        : track.list_type === 'do_not_play'
-                          ? 'Nie grać'
-                          : 'Moment specjalny'}
-                    </span>
-                  </div>
-                </div>
-              ))}
+            <div className="grid gap-4 lg:grid-cols-2">
+              {([
+                { type: 'play', title: 'Co gramy' },
+                { type: 'do_not_play', title: 'Czego nie gramy' },
+              ] as const).map((group) => {
+                const groupTracks = tracks.filter((track) => group.type === 'play' ? track.list_type !== 'do_not_play' : track.list_type === 'do_not_play');
+                return <div key={group.type} className="rounded-xl border border-white/10 bg-white/[0.02] p-4">
+                  <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-[#d3bb73]">{group.title}</p>
+                  {groupTracks.length ? <div className="space-y-2">{groupTracks.map((track) => {
+                    const trackUrl = safeHttpUrl(track.url);
+                    return <div key={track.id} className="rounded-lg bg-white/[0.03] px-3 py-2">
+                      <p className="text-sm text-[#e5e4e2]">{track.artist ? `${track.artist} — ` : ''}{track.title}</p>
+                      {trackUrl && <a href={trackUrl} target="_blank" rel="noreferrer" className="mt-1 inline-flex items-center gap-1.5 text-xs text-[#d3bb73] hover:underline">Otwórz utwór<ExternalLink className="h-3 w-3" /></a>}
+                      {track.notes && <p className="mt-1 text-xs text-[#e5e4e2]/45">{track.notes}</p>}
+                    </div>;
+                  })}</div> : <p className="text-sm text-[#e5e4e2]/40">Brak utworów.</p>}
+                </div>;
+              })}
             </div>
           ) : (
             <p className="text-sm text-[#e5e4e2]/50">Lista utworów nie została jeszcze dodana.</p>

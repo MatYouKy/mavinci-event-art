@@ -247,7 +247,10 @@ export function UslugiPageClient() {
         <section className="bg-gradient-to-b from-[#1c1f33] to-[#0f1119] px-6 py-20">
           <div className="mx-auto max-w-7xl">
             <div className="mb-12 text-center">
-              <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-[#d3bb73]/30 bg-[#d3bb73]/10 px-6 py-2">
+              <div
+                data-brand-badge="true"
+                className="mb-6 inline-flex items-center gap-2 rounded-full border border-[#d3bb73]/30 bg-[#d3bb73]/10 px-6 py-2"
+              >
                 <Star className="h-4 w-4 text-[#d3bb73]" />
                 <span className="text-sm font-medium text-[#d3bb73]">Katalog Usług</span>
               </div>
@@ -264,7 +267,12 @@ export function UslugiPageClient() {
               <div className="flex flex-wrap items-center justify-center gap-6 text-sm">
                 <div className="flex items-center gap-2">
                   <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#d3bb73]/10">
-                    <span className="text-lg font-bold text-[#d3bb73]">{totalServices}</span>
+                    <span
+                      data-brand-number="true"
+                      className="text-lg font-bold text-[#d3bb73]"
+                    >
+                      {totalServices}
+                    </span>
                   </div>
                   <div className="text-left">
                     <div className="font-medium text-[#e5e4e2]">Usług</div>
@@ -274,7 +282,10 @@ export function UslugiPageClient() {
 
                 <div className="flex items-center gap-2">
                   <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#d3bb73]/10">
-                    <span className="text-lg font-bold text-[#d3bb73]">
+                    <span
+                      data-brand-number="true"
+                      className="text-lg font-bold text-[#d3bb73]"
+                    >
                       {serviceCategories.length}
                     </span>
                   </div>
@@ -289,7 +300,9 @@ export function UslugiPageClient() {
                     <Star className="h-6 w-6 text-[#d3bb73]" />
                   </div>
                   <div className="text-left">
-                    <div className="font-medium text-[#e5e4e2]">{premiumServices} Premium</div>
+                    <div data-brand-number="true" className="font-medium text-[#e5e4e2]">
+                      {premiumServices} Premium
+                    </div>
                     <div className="text-xs text-[#e5e4e2]/40">najwyższej klasy</div>
                   </div>
                 </div>
@@ -311,6 +324,7 @@ export function UslugiPageClient() {
 
               <div className="flex flex-wrap justify-center gap-2">
                 <button
+                  data-brand-badge="true"
                   onClick={() => setSelectedCategory(null)}
                   className={`rounded-full px-4 py-2 text-sm transition-all ${
                     selectedCategory === null
@@ -322,6 +336,7 @@ export function UslugiPageClient() {
                 </button>
                 {serviceCategories.map((category) => (
                   <button
+                    data-brand-badge="true"
                     key={category.id}
                     onClick={() => setSelectedCategory(category.slug)}
                     className={`rounded-full px-4 py-2 text-sm transition-all ${
@@ -386,7 +401,10 @@ export function UslugiPageClient() {
                         {isEditMode && (
                           <div className="absolute right-2 top-2 z-10 flex items-center gap-2">
                             {!item.is_active && (
-                              <div className="rounded-lg bg-red-500/90 px-3 py-2 text-xs font-medium text-white shadow-lg">
+                              <div
+                                data-brand-badge="true"
+                                className="rounded-lg bg-red-500/90 px-3 py-2 text-xs font-medium text-white shadow-lg"
+                              >
                                 Nieaktywna
                               </div>
                             )}
@@ -454,7 +472,10 @@ export function UslugiPageClient() {
                                 {item.name}
                               </h3>
                               {item.is_premium && (
-                                <div className="flex flex-shrink-0 items-center gap-1 rounded-full bg-[#d3bb73]/10 px-2 py-1">
+                                <div
+                                  data-brand-badge="true"
+                                  className="flex flex-shrink-0 items-center gap-1 rounded-full bg-[#d3bb73]/10 px-2 py-1"
+                                >
                                   <Star className="h-3 w-3 fill-[#d3bb73] text-[#d3bb73]" />
                                   <span className="text-xs font-medium text-[#d3bb73]">
                                     Premium

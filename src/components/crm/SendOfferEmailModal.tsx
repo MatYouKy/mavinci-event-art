@@ -6,6 +6,11 @@ import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useUpdateEventOfferMutation } from '@/app/(crm)/crm/events/store/api/eventsApi';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import {
+  dispatchCrmEmail,
+  formatScheduledEmailDate,
+  resolveScheduledEmailDate,
+} from '@/lib/emailScheduling';
 import UnifiedEmailComposer, {
   buildUnifiedEmailContent,
   buildUnifiedEmailHtml,
@@ -194,6 +199,14 @@ W razie pytań proszę o kontakt.`),
       return;
     }
 
+    let scheduledAt: string | null;
+    try {
+      scheduledAt = resolveScheduledEmailDate(formData);
+    } catch (error) {
+      showSnackbar(error instanceof Error ? error.message : 'Nieprawidłowy termin wysyłki', 'error');
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -211,63 +224,66 @@ W razie pytań proszę o kontakt.`),
         purpose: 'offer',
         recipientName: clientName,
       });
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-offer-email`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({
-            offerId,
-            emailAccountId: formData.fromAccountId,
-            to: formData.to,
-            cc: formData.cc,
-            bcc: formData.bcc,
-            subject: formData.subject,
-            message: unifiedEmailHtmlToPlainText(formData.messageHtml),
-            messageHtml: currentEmail.html,
-            signatureHtml: currentEmail.signatureHtml,
-            recipientName: clientName,
-          }),
+      const result = await dispatchCrmEmail({
+        accessToken: session.access_token,
+        functionName: 'send-offer-email',
+        scheduledAt,
+        metadata: {
+          entityType: 'offer',
+          entityId: offerId,
+          markEntitySent: true,
+          actionUrl: `/crm/offers/${offerId}`,
         },
-      );
+        payload: {
+          offerId,
+          emailAccountId: formData.fromAccountId,
+          to: formData.to,
+          cc: formData.cc,
+          bcc: formData.bcc,
+          subject: formData.subject,
+          message: unifiedEmailHtmlToPlainText(formData.messageHtml),
+          messageHtml: currentEmail.html,
+          signatureHtml: currentEmail.signatureHtml,
+          recipientName: clientName,
+        },
+      });
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || error.message || 'Błąd podczas wysyłania email');
-      }
-
-      if (eventId) {
+      if (!result.scheduled && eventId) {
         await updateOffer({
           eventId,
           offerId,
           data: { status: 'sent' },
         }).unwrap();
-      } else {
+      } else if (!result.scheduled) {
         await supabase.from('offers').update({ status: 'sent' }).eq('id', offerId);
       }
 
-      const { data: sentOffer } = await supabase
-        .from('offers')
-        .select('inquiry_id')
-        .eq('id', offerId)
-        .maybeSingle();
+      if (!result.scheduled) {
+        const { data: sentOffer } = await supabase
+          .from('offers')
+          .select('inquiry_id')
+          .eq('id', offerId)
+          .maybeSingle();
 
-      if (sentOffer?.inquiry_id) {
-        await supabase
-          .from('tasks')
-          .update({
-            inquiry_stage: 'proposal',
-            linked_offer_id: offerId,
-            last_contact_at: new Date().toISOString(),
-          })
-          .eq('id', sentOffer.inquiry_id)
-          .eq('is_inquiry', true);
+        if (sentOffer?.inquiry_id) {
+          await supabase
+            .from('tasks')
+            .update({
+              inquiry_stage: 'proposal',
+              linked_offer_id: offerId,
+              last_contact_at: new Date().toISOString(),
+            })
+            .eq('id', sentOffer.inquiry_id)
+            .eq('is_inquiry', true);
+        }
       }
 
-      showSnackbar('Oferta wysłana przez email', 'success');
+      showSnackbar(
+        result.scheduled && result.scheduledAt
+          ? `Oferta zostanie wysłana ${formatScheduledEmailDate(result.scheduledAt)}`
+          : 'Oferta wysłana przez email',
+        'success',
+      );
       onSent?.();
       onClose();
     } catch (error: any) {
@@ -333,12 +349,12 @@ W razie pytań proszę o kontakt.`),
             {loading ? (
               <>
                 <Loader className="h-4 w-4 animate-spin" />
-                Wysyłanie...
+                {formData.deliveryMode === 'scheduled' ? 'Planowanie...' : 'Wysyłanie...'}
               </>
             ) : (
               <>
                 <Send className="h-4 w-4" />
-                Wyślij ofertę
+                {formData.deliveryMode === 'scheduled' ? 'Zaplanuj ofertę' : 'Wyślij ofertę'}
               </>
             )}
           </button>

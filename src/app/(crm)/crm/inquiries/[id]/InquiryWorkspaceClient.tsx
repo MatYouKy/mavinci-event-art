@@ -31,6 +31,7 @@ import ComposeEmailModal from '@/components/crm/ComposeEmailModal';
 import { CalculationEditor } from '@/components/crm/events/calculations/CalculationEditor';
 import InquirySourceContextPanel from '@/components/crm/inquiries/InquirySourceContextPanel';
 import { sendTaskAssignmentPush } from '@/lib/CRM/tasks/sendTaskAssignmentPush';
+import { dispatchCrmEmail, formatScheduledEmailDate } from '@/lib/emailScheduling';
 
 type Tab = 'overview' | 'tasks' | 'offers' | 'calculations' | 'history';
 
@@ -462,10 +463,17 @@ export default function InquiryWorkspaceClient({ initialData }: { initialData: a
     const token = sessionData.session?.access_token;
     if (!token) throw new Error('Brak aktywnej sesji');
     const attachments = await Promise.all((message.attachments || []).map(fileToAttachment));
-    const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-email`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({
+    const result = await dispatchCrmEmail({
+      accessToken: token,
+      functionName: 'send-email',
+      scheduledAt: message.scheduledAt,
+      metadata: {
+        entityType: 'inquiry',
+        entityId: inquiry.id,
+        inquiryId: inquiry.id,
+        actionUrl: `/crm/inquiries/${inquiry.id}`,
+      },
+      payload: {
         emailAccountId: message.fromAccountId,
         to: message.to,
         cc: message.cc,
@@ -473,15 +481,20 @@ export default function InquiryWorkspaceClient({ initialData }: { initialData: a
         subject: message.subject,
         body: message.bodyHtml,
         attachments,
-      }),
+      },
     });
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(result.error || result.message || 'Nie udało się wysłać wiadomości');
-    await supabase.from('tasks').update({
-      last_contact_at: new Date().toISOString(),
-      inquiry_stage: inquiry.inquiry_stage === 'new' ? 'contacted' : inquiry.inquiry_stage,
-    }).eq('id', inquiry.id);
-    showSnackbar('Wiadomość została wysłana i zapisana jako kontakt', 'success');
+    if (!result.scheduled) {
+      await supabase.from('tasks').update({
+        last_contact_at: new Date().toISOString(),
+        inquiry_stage: inquiry.inquiry_stage === 'new' ? 'contacted' : inquiry.inquiry_stage,
+      }).eq('id', inquiry.id);
+    }
+    showSnackbar(
+      result.scheduled && result.scheduledAt
+        ? `Wiadomość zostanie wysłana ${formatScheduledEmailDate(result.scheduledAt)}`
+        : 'Wiadomość została wysłana i zapisana jako kontakt',
+      'success',
+    );
     reload();
   };
 

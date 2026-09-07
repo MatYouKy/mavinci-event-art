@@ -228,12 +228,12 @@ const permissionCategories: PermissionCategory[] = [
   },
   {
     key: 'marketing_campaigns',
-    label: 'Kampanie marketingowe',
+    label: 'Marketing, reklamy i social media',
     extraPermissions: [
       {
         key: 'marketing_campaigns_approve',
-        label: 'Zatwierdzanie kampanii',
-        description: 'Może zatwierdzić przygotowaną i przetestowaną kampanię przed wysyłką.',
+        label: 'Zatwierdzanie kampanii e-mail',
+        description: 'Może zatwierdzić przygotowaną i przetestowaną kampanię e-mail przed wysyłką.',
       },
     ],
   },

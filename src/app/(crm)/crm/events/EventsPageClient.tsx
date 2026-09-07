@@ -37,6 +37,7 @@ import { hasScope } from './[id]/helpers/hasScope';
 import FullScreenLoader from '@/components/UI/Loader/CustomModalLoader';
 import { eventStatusLabels } from './[id]/components/tabs/EventsDetailsTab/EventDetailsAction';
 import { deleteEventSafely } from '@/lib/CRM/events/deleteEventSafely';
+import { EVENT_STATUS_BADGE_CLASSES } from '@/components/crm/events/eventStatusPalette';
 
 const moveKey = (arr: EventsTableColKey[], from: EventsTableColKey, to: EventsTableColKey) => {
   const a = [...arr];
@@ -106,19 +107,7 @@ const getMapsHref = (loc?: any, fallback?: string) => {
   return q ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}` : null;
 };
 
-export const statusColors: Record<string, string> = {
-  offer_sent: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
-  offer_accepted: 'bg-green-500/20 text-green-400 border-green-500/30',
-  in_preparation: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-  in_progress: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
-  completed: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
-  invoiced: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30',
-  offer_to_send: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30',
-  inquiry: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
-  cancelled: 'bg-red-500/20 text-red-400 border-red-500/30',
-  settled: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
-  ready_for_live: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
-};
+export const statusColors: Record<string, string> = { ...EVENT_STATUS_BADGE_CLASSES };
 
 const SETTLED_STATUSES = new Set(['settled', 'cancelled']);
 
@@ -193,10 +182,10 @@ const DEFAULT_EVENTS_COL_WIDTHS: Record<EventsTableColKey, number> = {
   client: 180,
   date: 110,
   location: 220,
-  status: 140,
+  status: 188,
   category: 130,
   budget: 110,
-  actions: 150,
+  actions: 84,
 };
 
 const DEFAULT_COL_ORDER: EventsTableColKey[] = [
@@ -272,7 +261,7 @@ function ResizableTh({
       }}
     >
       <div
-        className={`flex items-center gap-2 truncate pr-3 ${sortable ? 'cursor-pointer hover:text-[#d3bb73]' : ''}`}
+        className={`flex items-center gap-2 truncate ${align === 'right' ? 'justify-end pl-3 pr-2' : 'pr-3'} ${sortable ? 'cursor-pointer hover:text-[#d3bb73]' : ''}`}
         onClick={(e) => {
           e.stopPropagation();
           if (sortable && sortField && onSort) {
@@ -424,10 +413,18 @@ export default function EventsPageClient({
     currentEmployee.permissions?.includes('events_create');
   // ---- Table widths from prefs (fallback to defaults)
 
-  const [colWidths, setColWidths] = useState<Record<EventsTableColKey, number>>(() => ({
-    ...DEFAULT_EVENTS_COL_WIDTHS,
-    ...(modulePrefs?.table?.colWidths ?? {}),
-  }));
+  const [colWidths, setColWidths] = useState<Record<EventsTableColKey, number>>(() => {
+    const merged = {
+      ...DEFAULT_EVENTS_COL_WIDTHS,
+      ...(modulePrefs?.table?.colWidths ?? {}),
+    };
+
+    return {
+      ...merged,
+      status: Math.max(188, Number(merged.status) || 188),
+      actions: 84,
+    };
+  });
   const persistColWidths = async (key: EventsTableColKey, w: number) => {
     const next = { ...colWidths, [key]: w };
     setColWidths(next);
@@ -1282,16 +1279,38 @@ export default function EventsPageClient({
   }, [searchParams, router, showSnackbar]);
 
   const renderCell: Record<EventsTableColKey, (event: any) => React.ReactNode> = {
-    name: (event) => (
-      <>
-        <div className="truncate font-medium">{event.name}</div>
-        <div className="mt-0.5 truncate text-xs text-[#e5e4e2]/40">
-          {event.created_at
-            ? `Utworzono: ${new Date(event.created_at).toLocaleDateString('pl-PL')}`
-            : 'Utworzono: —'}
-        </div>
-      </>
-    ),
+    name: (event) => {
+      const urgency = getPastUrgency(event);
+
+      return (
+        <>
+          <div className="truncate font-medium">{event.name}</div>
+          <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[10px] text-[#e5e4e2]/45">
+            <span className="truncate">
+              {event.created_at
+                ? `Utworzono: ${new Date(event.created_at).toLocaleDateString('pl-PL')}`
+                : 'Utworzono: —'}
+            </span>
+            {urgency && (
+              <span
+                title={
+                  urgency === 'red'
+                    ? 'Nierozliczone ponad 7 dni'
+                    : 'Zbliża się termin rozliczenia'
+                }
+                className={`inline-flex flex-shrink-0 rounded border px-1.5 py-0.5 text-[9px] font-medium leading-none ${
+                  urgency === 'red'
+                    ? 'border-rose-200/35 bg-rose-950/25 text-rose-100/80'
+                    : 'border-amber-200/35 bg-amber-950/25 text-amber-100/80'
+                }`}
+              >
+                {urgency === 'red' ? 'Zaległe' : 'Do rozliczenia'}
+              </span>
+            )}
+          </div>
+        </>
+      );
+    },
 
     client: (event) => {
       const clientLabel = getOrgLabel(event.organizations, event.contacts);
@@ -1339,10 +1358,11 @@ export default function EventsPageClient({
 
     actions: (event) =>
       canAddNewEvent || canViewEventStatus || canDeleteEvents ? (
-        <ResponsiveActionBar
-          disabledBackground
-          mobileBreakpoint={2000}
-          actions={[
+        <div className="flex w-full justify-end pr-1">
+          <ResponsiveActionBar
+            disabledBackground
+            mobileBreakpoint={2000}
+            actions={[
             ...(canAddNewEvent
               ? [
                   {
@@ -1376,8 +1396,9 @@ export default function EventsPageClient({
                   },
                 ]
               : []),
-          ]}
-        />
+            ]}
+          />
+        </div>
       ) : null,
   };
 
@@ -1762,9 +1783,9 @@ export default function EventsPageClient({
       </div>
 
       {viewMode === 'table' ? (
-        <div className="overflow-hidden rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33]">
+        <div className="overflow-hidden rounded-xl border border-[#d3bb73]/30 bg-[#1c1f33]">
           <div className="overflow-x-auto">
-            <table className="w-full table-fixed text-sm">
+            <table data-event-list-table="true" className="w-full table-fixed text-sm">
               <thead>
                 <tr>
                   {colOrder.map((key, index) => {
@@ -1788,10 +1809,10 @@ export default function EventsPageClient({
                       client: 140,
                       date: 100,
                       location: 170,
-                      status: 120,
+                      status: 188,
                       category: 110,
                       budget: 100,
-                      actions: 140,
+                      actions: 84,
                     };
 
                     const align: 'left' | 'right' =
@@ -1848,13 +1869,14 @@ export default function EventsPageClient({
                     <tr
                       key={event.id}
                       onClick={() => handleOpenEvent(event)}
-                      className={`cursor-pointer border-b border-[#d3bb73]/5 text-[#e5e4e2] hover:bg-[#0f1117] ${
+                      data-event-urgency={
                         urgency === 'red'
-                          ? 'bg-red-500/5'
+                          ? 'overdue'
                           : urgency === 'orange'
-                            ? 'bg-orange-500/5'
-                            : ''
-                      }`}
+                            ? 'approaching'
+                            : undefined
+                      }
+                      className="cursor-pointer border-b border-[#d3bb73]/5 text-[#e5e4e2] transition-colors hover:bg-[#521a31]"
                     >
                       {colOrder.map((key) => {
                         if (key === 'budget' && !canViewEventBudget) return null;
@@ -1862,11 +1884,11 @@ export default function EventsPageClient({
 
                         const cellClassMap: Record<EventsTableColKey, string> = {
                           name: 'px-2 py-2',
-                          client: 'px-2 py-2 text-[#e5e4e2]/80',
-                          date: 'px-2 py-2 text-[#e5e4e2]/80',
-                          location: 'px-2 py-2',
-                          status: 'px-2 py-2',
-                          category: 'px-2 py-2 text-[#e5e4e2]/80',
+                          client: 'px-2 py-2 text-xs text-[#e5e4e2]/80',
+                          date: 'px-2 py-2 text-xs tabular-nums text-[#e5e4e2]/80',
+                          location: 'px-2 py-2 text-xs',
+                          status: 'px-2 py-2 text-[10px]',
+                          category: 'px-2 py-2 text-xs text-[#e5e4e2]/80',
                           budget: 'px-2 py-2 text-right text-[#e5e4e2]/80',
                           actions: 'px-2 py-2 text-right whitespace-nowrap',
                         };
@@ -1878,11 +1900,6 @@ export default function EventsPageClient({
                             onClick={key === 'actions' ? stop : undefined}
                           >
                             <div className="flex items-center gap-1.5">
-                              {key === 'name' && urgency && (
-                                <AlertCircle
-                                  className={`h-4 w-4 flex-shrink-0 ${urgency === 'red' ? 'text-red-500' : 'text-orange-500'}`}
-                                />
-                              )}
                               <div className="min-w-0 flex-1">{renderCell[key](event)}</div>
                             </div>
                           </td>
@@ -1958,20 +1975,33 @@ export default function EventsPageClient({
                 <div
                   key={`${event.id}-grid-${index}`}
                   onClick={() => handleOpenEvent(event)}
-                  className={`relative flex cursor-pointer flex-col rounded-xl border bg-[#1c1f33] p-4 transition-all hover:border-[#d3bb73]/30 md:p-6 ${
+                  data-event-urgency={
                     urgency === 'red'
-                      ? 'border-red-500/60 ring-1 ring-red-500/30'
+                      ? 'overdue'
                       : urgency === 'orange'
-                        ? 'border-orange-500/40'
+                        ? 'approaching'
+                        : undefined
+                  }
+                  className={`relative flex cursor-pointer flex-col rounded-xl border bg-[#1c1f33] p-4 transition-all hover:border-[#e2cd8d]/60 hover:bg-[#521a31] md:p-6 ${
+                    urgency === 'red'
+                      ? 'border-rose-200/80 ring-1 ring-rose-300/55'
+                      : urgency === 'orange'
+                        ? 'border-amber-200/75 ring-1 ring-amber-300/45'
                         : isPast
                           ? 'border-[#e5e4e2]/5 opacity-70'
                           : 'border-[#d3bb73]/10'
                   }`}
                 >
                   {urgency && (
-                    <div className="absolute right-3 top-3">
+                    <div
+                      className={`absolute right-3 top-3 rounded-full p-1 ring-1 ${
+                        urgency === 'red'
+                          ? 'bg-rose-300/25 text-rose-50 ring-rose-200/90'
+                          : 'bg-amber-300/25 text-amber-50 ring-amber-200/90'
+                      }`}
+                    >
                       <AlertCircle
-                        className={`h-5 w-5 ${urgency === 'red' ? 'text-red-500' : 'text-orange-500'}`}
+                        className="h-5 w-5"
                         aria-label={urgency === 'red' ? 'Nierozliczony >7 dni' : 'Nierozliczony'}
                       />
                     </div>
@@ -2135,11 +2165,18 @@ export default function EventsPageClient({
             return (
               <div
                 key={`${event.id}-list-${index}`}
-                className={`relative cursor-pointer rounded-xl border bg-[#1c1f33] p-2 transition-all hover:border-[#d3bb73]/30 sm:p-4 md:p-6 ${
+                data-event-urgency={
                   urgency === 'red'
-                    ? 'border-red-500/60 ring-1 ring-red-500/30'
+                    ? 'overdue'
                     : urgency === 'orange'
-                      ? 'border-orange-500/40'
+                      ? 'approaching'
+                      : undefined
+                }
+                className={`relative cursor-pointer rounded-xl border bg-[#1c1f33] p-2 transition-all hover:border-[#e2cd8d]/60 hover:bg-[#521a31] sm:p-4 md:p-6 ${
+                  urgency === 'red'
+                    ? 'border-rose-200/80 ring-1 ring-rose-300/55'
+                    : urgency === 'orange'
+                      ? 'border-amber-200/75 ring-1 ring-amber-300/45'
                       : isPast
                         ? 'border-[#e5e4e2]/5 opacity-70'
                         : 'border-[#d3bb73]/10'
@@ -2147,9 +2184,15 @@ export default function EventsPageClient({
                 onClick={() => handleOpenEvent(event)}
               >
                 {urgency && (
-                  <div className="absolute right-3 top-3 md:right-4 md:top-4">
+                  <div
+                    className={`absolute right-3 top-3 rounded-full p-1 ring-1 md:right-4 md:top-4 ${
+                      urgency === 'red'
+                        ? 'bg-rose-300/25 text-rose-50 ring-rose-200/90'
+                        : 'bg-amber-300/25 text-amber-50 ring-amber-200/90'
+                    }`}
+                  >
                     <AlertCircle
-                      className={`h-5 w-5 ${urgency === 'red' ? 'text-red-500' : 'text-orange-500'}`}
+                      className="h-5 w-5"
                       aria-label={urgency === 'red' ? 'Nierozliczony >7 dni' : 'Nierozliczony'}
                     />
                   </div>

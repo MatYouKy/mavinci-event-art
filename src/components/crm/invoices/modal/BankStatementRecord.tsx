@@ -1,7 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { Download, Pencil, Trash2, X } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { CalendarDays, ChevronDown, Download, Pencil, Trash2, X } from 'lucide-react';
 import ResponsiveActionBar from '../../ResponsiveActionBar';
 
 type AccountType = 'regular' | 'vat' | 'mt940';
@@ -63,6 +63,14 @@ function getTypeLabel(type: AccountType) {
   return 'Bieżące';
 }
 
+function getStatementsCountLabel(count: number) {
+  if (count === 1) return '1 wyciąg';
+  if (count % 10 >= 2 && count % 10 <= 4 && (count % 100 < 12 || count % 100 > 14)) {
+    return `${count} wyciągi`;
+  }
+  return `${count} wyciągów`;
+}
+
 export default function BankStatementsListModal({
   open,
   loading,
@@ -76,6 +84,8 @@ export default function BankStatementsListModal({
 }: Props) {
   const [selectedCompanyTab, setSelectedCompanyTab] = useState<CompanyTab>('all');
   const [selectedType, setSelectedType] = useState<AccountFilter>('all');
+  const [expandedYears, setExpandedYears] = useState<Set<number>>(new Set());
+  const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set());
 
   const companyTabs = useMemo(() => {
     const map = new Map<string, string>();
@@ -100,6 +110,64 @@ export default function BankStatementsListModal({
     });
   }, [statements, selectedCompanyTab, selectedType]);
 
+  const groupedStatements = useMemo(() => {
+    const years = new Map<number, Map<number, BankStatementRecord[]>>();
+
+    filteredStatements.forEach((statement) => {
+      if (!years.has(statement.statement_year)) years.set(statement.statement_year, new Map());
+      const months = years.get(statement.statement_year)!;
+      if (!months.has(statement.statement_month)) months.set(statement.statement_month, []);
+      months.get(statement.statement_month)!.push(statement);
+    });
+
+    return Array.from(years.entries())
+      .sort(([leftYear], [rightYear]) => rightYear - leftYear)
+      .map(([year, months]) => ({
+        year,
+        statementsCount: Array.from(months.values()).reduce((sum, rows) => sum + rows.length, 0),
+        months: Array.from(months.entries())
+          .sort(([leftMonth], [rightMonth]) => rightMonth - leftMonth)
+          .map(([month, monthStatements]) => ({ month, statements: monthStatements })),
+      }));
+  }, [filteredStatements]);
+
+  useEffect(() => {
+    if (!open || groupedStatements.length === 0) return;
+    const firstYear = groupedStatements[0];
+    const firstMonth = firstYear.months[0];
+
+    setExpandedYears((current) => {
+      if (current.has(firstYear.year)) return current;
+      return new Set(current).add(firstYear.year);
+    });
+    if (firstMonth) {
+      const monthKey = `${firstYear.year}-${firstMonth.month}`;
+      setExpandedMonths((current) => {
+        if (current.has(monthKey)) return current;
+        return new Set(current).add(monthKey);
+      });
+    }
+  }, [groupedStatements, open]);
+
+  const toggleYear = (year: number) => {
+    setExpandedYears((current) => {
+      const next = new Set(current);
+      if (next.has(year)) next.delete(year);
+      else next.add(year);
+      return next;
+    });
+  };
+
+  const toggleMonth = (year: number, month: number) => {
+    const key = `${year}-${month}`;
+    setExpandedMonths((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
   if (!open) return null;
 
   return (
@@ -109,7 +177,7 @@ export default function BankStatementsListModal({
           <div>
             <h3 className="text-xl font-medium text-[#e5e4e2]">Wszystkie wyciągi bankowe</h3>
             <p className="mt-1 text-sm text-[#e5e4e2]/50">
-              Lista wyciągów według dostępnych działalności i typu dokumentu
+              Wyciągi pogrupowane według roku rozliczeniowego i miesiąca
             </p>
           </div>
 
@@ -181,7 +249,75 @@ export default function BankStatementsListModal({
               <div className="text-[#e5e4e2]/60">Brak wyciągów dla wybranych filtrów</div>
             </div>
           ) : (
-            <table className="w-full">
+            <div className="space-y-4">
+              {groupedStatements.map((yearGroup) => {
+                const yearExpanded = expandedYears.has(yearGroup.year);
+                return (
+                  <section
+                    key={yearGroup.year}
+                    className="overflow-hidden rounded-xl border border-[#d3bb73]/20 bg-[#141827]"
+                  >
+                    <button
+                      type="button"
+                      aria-expanded={yearExpanded}
+                      onClick={() => toggleYear(yearGroup.year)}
+                      className="flex w-full items-center justify-between gap-4 bg-[#d3bb73]/10 px-4 py-3 text-left hover:bg-[#d3bb73]/15"
+                    >
+                      <span className="flex items-center gap-3">
+                        <CalendarDays className="h-5 w-5 text-[#d3bb73]" />
+                        <span>
+                          <strong className="block text-sm text-[#e5e4e2]">Rok rozliczeniowy {yearGroup.year}</strong>
+                          <span className="text-xs text-[#e5e4e2]/45">
+                            {yearGroup.months.length}{' '}
+                            {yearGroup.months.length === 1 ? 'miesiąc' : 'miesięcy'} •{' '}
+                            {getStatementsCountLabel(yearGroup.statementsCount)}
+                          </span>
+                        </span>
+                      </span>
+                      <ChevronDown
+                        className={`h-5 w-5 text-[#d3bb73] transition-transform ${yearExpanded ? 'rotate-180' : ''}`}
+                      />
+                    </button>
+
+                    {yearExpanded && (
+                      <div className="space-y-3 border-t border-[#d3bb73]/10 p-3">
+                        {yearGroup.months.map((monthGroup) => {
+                          const monthKey = `${yearGroup.year}-${monthGroup.month}`;
+                          const monthExpanded = expandedMonths.has(monthKey);
+                          const transactionCount = monthGroup.statements.reduce(
+                            (sum, statement) => sum + Number(statement.transactions_count || 0),
+                            0,
+                          );
+                          return (
+                            <div
+                              key={monthKey}
+                              className="overflow-hidden rounded-lg border border-[#d3bb73]/15 bg-[#1c1f33]"
+                            >
+                              <button
+                                type="button"
+                                aria-expanded={monthExpanded}
+                                onClick={() =>
+                                  toggleMonth(yearGroup.year, monthGroup.month)
+                                }
+                                className="flex w-full items-center justify-between gap-4 px-4 py-3 text-left hover:bg-[#252945]"
+                              >
+                                <span>
+                                  <strong className="text-sm text-[#e5e4e2]">
+                                    {MONTHS[monthGroup.month - 1]} {yearGroup.year}
+                                  </strong>
+                                  <span className="ml-3 text-xs text-[#e5e4e2]/45">
+                                    {getStatementsCountLabel(monthGroup.statements.length)} •{' '}
+                                    {transactionCount} transakcji
+                                  </span>
+                                </span>
+                                <ChevronDown
+                                  className={`h-4 w-4 text-[#d3bb73]/75 transition-transform ${monthExpanded ? 'rotate-180' : ''}`}
+                                />
+                              </button>
+
+                              {monthExpanded && (
+                                <div className="overflow-x-auto border-t border-[#d3bb73]/10">
+                                  <table className="w-full min-w-[860px]">
               <thead>
                 <tr className="border-b border-[#d3bb73]/10">
                   <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
@@ -192,9 +328,6 @@ export default function BankStatementsListModal({
                   </th>
                   <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
                     Typ
-                  </th>
-                  <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
-                    Okres
                   </th>
                   <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
                     Transakcje
@@ -209,7 +342,7 @@ export default function BankStatementsListModal({
               </thead>
 
               <tbody>
-                {filteredStatements.map((stmt) => (
+                {monthGroup.statements.map((stmt) => (
                   <tr
                     key={stmt.id}
                     className="border-b border-[#d3bb73]/10 transition-colors hover:bg-[#252945]/50"
@@ -275,12 +408,6 @@ export default function BankStatementsListModal({
 
                     <td className="px-4 py-3 text-center">
                       <span className="text-sm text-[#e5e4e2]/70">
-                        {MONTHS[stmt.statement_month - 1]} {stmt.statement_year}
-                      </span>
-                    </td>
-
-                    <td className="px-4 py-3 text-center">
-                      <span className="text-sm text-[#e5e4e2]/70">
                         {stmt.transactions_count}
                       </span>
                     </td>
@@ -339,7 +466,18 @@ export default function BankStatementsListModal({
                   </tr>
                 ))}
               </tbody>
-            </table>
+                                  </table>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </section>
+                );
+              })}
+            </div>
           )}
         </div>
 

@@ -128,8 +128,16 @@ export function EditEventModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[1000] flex items-center justify-center overflow-y-auto bg-black/50 p-4">
-      <div className="my-8 w-full max-w-2xl rounded-xl border border-[#d3bb73]/20 bg-[#0f1119] p-6">
+    <div
+      className="fixed inset-0 z-[1000] flex items-center justify-center overflow-y-auto bg-black/50 p-4"
+      role="dialog"
+      aria-modal="true"
+      data-crm-modal="true"
+    >
+      <div
+        data-crm-modal-surface="true"
+        className="my-8 w-full max-w-2xl rounded-xl border border-[#d3bb73]/20 bg-[#0f1119] p-6"
+      >
         <div className="mb-6 flex items-center justify-between">
           <h2 className="text-xl font-light text-[#e5e4e2]">Edytuj event</h2>
           <button onClick={onClose} className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]">

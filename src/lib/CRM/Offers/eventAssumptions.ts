@@ -21,6 +21,9 @@ export type EventAssumptionItem = {
   badge_value?: string;
 };
 
+// Limit odpowiada czterem zwartym wierszom na karcie założeń w PDF.
+export const EVENT_ASSUMPTION_VALUE_MAX_LENGTH = 250;
+
 export type EventAssumptionOption = {
   key: EventAssumptionKey;
   label: string;
@@ -174,7 +177,7 @@ export function normalizeEventAssumptionItems(
       normalized.push({
         key,
         label: isCustom ? customLabel.slice(0, 80) || option.label : option.label,
-        value: String((candidate as Record<string, unknown>).value || ''),
+        value: String((candidate as Record<string, unknown>).value || '').slice(0, EVENT_ASSUMPTION_VALUE_MAX_LENGTH),
         badge_value: String((candidate as Record<string, unknown>).badge_value || '').trim().slice(0, 7),
       });
     });

@@ -478,6 +478,8 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   cardTitle: {
+    fontFamily: 'MBFAtom',
+    textTransform: 'uppercase',
     flex: 1,
     fontSize: typography.fontSizes.md,
     fontWeight: '600',
@@ -538,6 +540,8 @@ const styles = StyleSheet.create({
     padding: spacing.xl,
   },
   emptyTitle: {
+    fontFamily: 'MBFAtom',
+    textTransform: 'uppercase',
     fontSize: typography.fontSizes.lg,
     fontWeight: '700',
     color: colors.text.primary,

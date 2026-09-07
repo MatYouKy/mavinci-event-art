@@ -1,4 +1,5 @@
 import { isWeddingReceptionGame } from '@/lib/weddingAttractions';
+import { readThanksEntries, THANKS_GROUP_LABELS, THANKS_SIDE_LABELS, WELCOME_GLASS_OPTIONS } from '@/lib/weddingCardDetails';
 
 export type WeddingCardPdfAnswer = {
   section: string;
@@ -32,6 +33,7 @@ export type WeddingCardPdfTrack = {
   listType: 'play' | 'do_not_play' | 'special';
   title: string;
   artist?: string | null;
+  url?: string | null;
   notes?: string | null;
 };
 
@@ -69,6 +71,17 @@ const escapeHtml = (value: unknown) =>
 
 const clean = (value: unknown) => String(value ?? '').trim();
 
+const safeHttpUrl = (value: unknown) => {
+  const candidate = clean(value);
+  if (!candidate) return null;
+  try {
+    const url = new URL(candidate);
+    return ['http:', 'https:'].includes(url.protocol) ? url.toString() : null;
+  } catch {
+    return null;
+  }
+};
+
 const isExplicitlyFalse = (value: unknown) =>
   value === false || value === 'false' || value === 0 || value === '0';
 
@@ -97,18 +110,28 @@ const ANSWER_LABELS: Record<string, string> = {
   venue_access: 'Dostęp do sali i schody',
   hot_vodka: 'Gorzka wódka',
   first_dance: 'Pierwszy taniec',
+  first_dance_title: 'Pierwszy taniec — tytuł utworu',
+  first_dance_artist: 'Pierwszy taniec — wykonawca / wersja',
+  first_dance_url: 'Pierwszy taniec — link do utworu',
+  first_dance_duration: 'Pierwszy taniec — czas trwania',
+  first_dance_special_moments: 'Pierwszy taniec — punkty specjalne',
+  first_dance_file_url: 'Pierwszy taniec — własny plik audio',
+  first_dance_file_name: 'Pierwszy taniec — nazwa pliku',
   special_toasts: 'Specjalne toasty',
   couple_wait_before_welcome: 'Para czeka przed powitaniem',
   bread_and_salt_enabled: 'Powitanie chlebem i solą',
   welcome_throwing: 'Czym witamy / rzucamy',
   welcome_glasses: 'Kieliszki powitalne',
+  welcome_glass_throwing: 'Rzucanie kieliszkami',
   welcome_sequence: 'Kolejność powitania',
   cake_time: 'Godzina podania tortu',
   cake_presentation: 'Aranżacja podania tortu',
+  cake_proposal_url: 'Wybrana propozycja tortu — opis, zdjęcia i filmy',
   cake_location: 'Miejsce podania tortu',
-  parents_thanks_enabled: 'Podziękowania dla rodziców',
+  parents_thanks_enabled: 'Podziękowania dla bliskich',
   parents_thanks_recipients: 'Osoby objęte podziękowaniami',
   parents_thanks_plan: 'Forma podziękowań',
+  parents_thanks_proposal_url: 'Wybrana propozycja podziękowań — opis, zdjęcia i filmy',
   oczepiny_enabled: 'Oczepiny',
   oczepiny_notes: 'Ustalenia dotyczące oczepin',
   spotify_playlist_url: 'Playlista Spotify',
@@ -117,6 +140,7 @@ const ANSWER_LABELS: Record<string, string> = {
 };
 
 const VALUE_LABELS: Record<string, Record<string, string>> = {
+  welcome_glass_throwing: Object.fromEntries(WELCOME_GLASS_OPTIONS.map((option) => [option.value, option.label])),
   ceremony_type: { church: 'Kościelna', civil: 'Cywilna', humanist: 'Humanistyczna' },
   civil_ceremony_setting: { registry_office: 'W urzędzie', outdoor: 'W plenerze' },
   welcome_throwing: {
@@ -169,6 +193,15 @@ const CATEGORY_LABELS: Record<string, string> = {
   other: 'Inne',
 };
 
+const LINK_ANSWER_FIELDS = new Set([
+  'cake_proposal_url',
+  'parents_thanks_proposal_url',
+  'first_dance_url',
+  'first_dance_file_url',
+  'spotify_playlist_url',
+  'youtube_playlist_url',
+]);
+
 const isFilled = (value: unknown) => {
   if (value === null || value === undefined || value === '') return false;
   if (Array.isArray(value)) return value.length > 0;
@@ -192,13 +225,17 @@ const formatAnswerValue = (fieldKey: string, value: unknown) => {
 const renderInfoRows = (answers: WeddingCardPdfAnswer[]) => {
   const rows = answers
     .filter((answer) => ANSWER_LABELS[answer.fieldKey] && isFilled(answer.value))
-    .map(
-      (answer) => `
+    .map((answer) => {
+      const href = LINK_ANSWER_FIELDS.has(answer.fieldKey) ? safeHttpUrl(answer.value) : null;
+      const value = answer.fieldKey === 'first_dance_file_url'
+        ? 'Otwórz przesłany plik audio'
+        : formatAnswerValue(answer.fieldKey, answer.value);
+      return `
         <div class="info-row">
           <dt>${escapeHtml(ANSWER_LABELS[answer.fieldKey])}</dt>
-          <dd>${escapeHtml(formatAnswerValue(answer.fieldKey, answer.value))}</dd>
-        </div>`,
-    )
+          <dd>${href ? `<a href="${escapeHtml(href)}">${escapeHtml(value)}</a>` : escapeHtml(value)}</dd>
+        </div>`;
+    })
     .join('');
   return rows || '<p class="empty">Brak uzupełnionych informacji.</p>';
 };
@@ -246,7 +283,7 @@ export function buildWeddingCardPdfHtml(payload: WeddingCardPdfPayload) {
     { title: 'Przebieg i logistyka', sections: ['technical'] },
     { title: 'Przyjazd i powitanie', sections: ['welcome'] },
     { title: 'Tort weselny', sections: ['cake'] },
-    { title: 'Podziękowania dla rodziców', sections: ['parents_thanks'] },
+    { title: 'Podziękowania dla bliskich', sections: ['parents_thanks'] },
     { title: 'Oczepiny', sections: ['oczepiny'] },
     { title: 'Dodatkowe informacje', sections: ['notes'] },
   ];
@@ -258,6 +295,9 @@ export function buildWeddingCardPdfHtml(payload: WeddingCardPdfPayload) {
   const noParentsThanks = isExplicitlyFalse(
     payload.answers.find((answer) => answer.fieldKey === 'parents_thanks_enabled')?.value,
   );
+  const thanksEntries = readThanksEntries(payload.answers.find((answer) => answer.fieldKey === 'parents_thanks_entries')?.value);
+  const newWelcome = payload.answers.some((answer) => answer.fieldKey === 'welcome_glass_throwing' && isFilled(answer.value));
+  const thanksHtml = thanksEntries.map((entry, index) => `<div class="thanks-entry"><h3>Wyjście ${index + 1}: ${escapeHtml(THANKS_GROUP_LABELS[entry.group])}</h3><ul>${entry.recipients.filter((person) => person.name.trim()).map((person) => `<li>${escapeHtml(person.name)}${person.side ? ` — ${escapeHtml(THANKS_SIDE_LABELS[person.side])}` : ''}</li>`).join('')}</ul>${entry.notes ? `<p><strong>Notatki:</strong> ${escapeHtml(entry.notes)}</p>` : ''}</div>`).join('');
   const eventDate = formatDateTime(payload.eventDate);
   const eventEndDate = formatDateTime(payload.eventEndDate);
   const dateRange = [eventDate, eventEndDate && eventEndDate !== eventDate ? eventEndDate : '']
@@ -296,18 +336,21 @@ export function buildWeddingCardPdfHtml(payload: WeddingCardPdfPayload) {
     .join('');
 
   const trackGroups = [
-    { type: 'special', title: 'Momenty specjalne' },
-    { type: 'play', title: 'Utwory do zagrania' },
-    { type: 'do_not_play', title: 'Lista „nie grać”' },
+    { type: 'play', title: 'Co gramy' },
+    { type: 'do_not_play', title: 'Czego nie gramy' },
   ] as const;
   const tracksHtml = trackGroups
     .map(({ type, title }) => {
-      const tracks = payload.tracks.filter((track) => track.listType === type);
+      const tracks = payload.tracks.filter((track) =>
+        type === 'play' ? track.listType !== 'do_not_play' : track.listType === 'do_not_play',
+      );
       if (!tracks.length) return '';
       return `<div class="track-group"><h3>${escapeHtml(title)}</h3><ul>${tracks
-        .map(
-          (track) => `<li><strong>${escapeHtml(track.artist ? `${track.artist} - ${track.title}` : track.title)}</strong>${clean(track.notes) ? `<span>${escapeHtml(track.notes)}</span>` : ''}</li>`,
-        )
+        .map((track) => {
+          const href = safeHttpUrl(track.url);
+          const titleText = escapeHtml(track.artist ? `${track.artist} - ${track.title}` : track.title);
+          return `<li><strong>${href ? `<a href="${escapeHtml(href)}">${titleText}</a>` : titleText}</strong>${clean(track.notes) ? `<span>${escapeHtml(track.notes)}</span>` : ''}</li>`;
+        })
         .join('')}</ul></div>`;
     })
     .join('');
@@ -350,6 +393,7 @@ export function buildWeddingCardPdfHtml(payload: WeddingCardPdfPayload) {
       .info-row { display: grid; grid-template-columns: 42mm minmax(0,1fr); gap: 4mm; border-bottom: .25mm solid #eee8eb; padding: 2.4mm 0; break-inside: avoid; }
       .info-row dt { color: #786c72; font-size: 8px; }
       .info-row dd { margin: 0; min-width: 0; color: #241e22; font-weight: 600; overflow-wrap: anywhere; white-space: pre-wrap; }
+      .info-row a, .track-group a { color: #5b0022; text-decoration: underline; text-decoration-color: #d3bb73; text-underline-offset: 1.2mm; }
       .people-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 5mm; }
       .people-group { border: .25mm solid #e5dde1; border-radius: 3mm; padding: 4mm; break-inside: avoid; }
       .people-group h3, .track-group h3 { margin: 0 0 2.5mm; color: #8a7338; font-size: 9px; text-transform: uppercase; letter-spacing: .08em; }
@@ -375,6 +419,10 @@ export function buildWeddingCardPdfHtml(payload: WeddingCardPdfPayload) {
       .track-group { border: .25mm solid #e5dde1; border-radius: 3mm; padding: 4mm; break-inside: avoid; }
       .empty { margin: 0; color: #988d92; font-style: italic; }
       .page-break { break-before: page; }
+      .thanks-entry { margin-top: 3mm; padding: 3mm; border: .25mm solid #e5dde1; border-radius: 2mm; break-inside: avoid; }
+      .thanks-entry h3 { margin: 0 0 2mm; color: #5b0022; font-size: 10px; }
+      .thanks-entry ul { margin: 0; padding-left: 4mm; }
+      .thanks-entry p { margin: 2mm 0 0; white-space: pre-wrap; }
     </style>
   </head>
   <body>
@@ -404,11 +452,13 @@ export function buildWeddingCardPdfHtml(payload: WeddingCardPdfPayload) {
     ${answerGroups
       .map(({ title, sections }) => {
         if (sections.includes('parents_thanks') && noParentsThanks) {
-          return `<section class="section"><div class="section-header"><h2>${escapeHtml(title)}</h2></div><div class="critical-note">Bez podziękowań dla rodziców</div></section>`;
+          return `<section class="section"><div class="section-header"><h2>${escapeHtml(title)}</h2></div><div class="critical-note">Bez podziękowań dla bliskich</div></section>`;
         }
-        const groupAnswers = payload.answers.filter((answer) => sections.includes(answer.section) && isFilled(answer.value));
+        const groupAnswers = payload.answers.filter((answer) => sections.includes(answer.section) && isFilled(answer.value)
+          && !(newWelcome && ['welcome_throwing', 'welcome_glasses'].includes(answer.fieldKey))
+          && !(thanksEntries.length && answer.fieldKey === 'parents_thanks_recipients'));
         if (!groupAnswers.length) return '';
-        return `<section class="section"><div class="section-header"><h2>${escapeHtml(title)}</h2></div><dl class="info-grid">${renderInfoRows(groupAnswers)}</dl></section>`;
+        return `<section class="section"><div class="section-header"><h2>${escapeHtml(title)}</h2></div><dl class="info-grid">${renderInfoRows(groupAnswers)}</dl>${sections.includes('parents_thanks') ? thanksHtml : ''}</section>`;
       })
       .join('')}
 

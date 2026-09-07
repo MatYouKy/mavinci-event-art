@@ -533,6 +533,8 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.sm,
   },
   headerTitle: {
+    fontFamily: 'MBFAtom',
+    textTransform: 'uppercase',
     fontSize: typography.fontSizes.xxl,
     fontWeight: typography.fontWeights.bold as any,
     color: colors.text.primary,
@@ -690,6 +692,8 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xxl * 2,
   },
   emptyTitle: {
+    fontFamily: 'MBFAtom',
+    textTransform: 'uppercase',
     fontSize: typography.fontSizes.lg,
     fontWeight: typography.fontWeights.bold as any,
     color: colors.text.primary,

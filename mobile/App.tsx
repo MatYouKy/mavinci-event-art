@@ -1,7 +1,9 @@
 import React, { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
+import { useFonts } from 'expo-font';
 import * as Notifications from 'expo-notifications';
 import { Provider } from 'react-redux';
+import { ActivityIndicator, View } from 'react-native';
 
 import { AuthProvider, useAuth } from './src/contexts/AuthContext';
 import RootNavigator from './src/navigation/RootNavigator';
@@ -20,6 +22,7 @@ import { useChatNotifications, setupChatNotificationFilter } from './src/service
 import { NotificationTargetData } from './src/navigation/navigationRef';
 import { syncCrmContactsIfEnabled } from './src/services/crmContactSync';
 import { canView } from './src/lib/permissions';
+import { colors } from './src/theme';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -108,6 +111,23 @@ function AppContent() {
 }
 
 export default function App() {
+  const [fontsLoaded, fontError] = useFonts({
+    MBFAtom: require('./src/assets/fonts/mbf-atom-v5.ttf'),
+  });
+
+  useEffect(() => {
+    if (fontError) console.warn('[Fonts] Nie udało się załadować MBF Atom:', fontError);
+  }, [fontError]);
+
+  if (!fontsLoaded && !fontError) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background.primary }}>
+        <StatusBar style="light" />
+        <ActivityIndicator size="large" color={colors.primary.gold} />
+      </View>
+    );
+  }
+
   return (
     <Provider store={store}>
       <AuthProvider>

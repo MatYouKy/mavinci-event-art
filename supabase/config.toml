@@ -16,6 +16,9 @@ verify_jwt = true
 [functions.assist-inquiry]
 verify_jwt = true
 
+[functions.audit-contract]
+verify_jwt = true
+
 [functions.send-marketing-campaign-test]
 verify_jwt = true
 
@@ -23,6 +26,12 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.process-marketing-campaigns]
+verify_jwt = false
+
+[functions.schedule-email]
+verify_jwt = true
+
+[functions.process-scheduled-emails]
 verify_jwt = false
 
 [functions.unsubscribe-marketing]

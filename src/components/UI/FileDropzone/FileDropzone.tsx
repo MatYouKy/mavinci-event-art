@@ -211,10 +211,10 @@ export function FileDropzone({
             handleFile(e.dataTransfer.files?.[0]);
           }}
           onClick={() => inputRef.current?.click()}
-          className={`flex h-44 cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed transition-all ${
+          className={`flex h-44 cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed transition-all ${
             dragActive
-              ? 'scale-[1.02] border-[#d3bb73] bg-[#d3bb73]/20'
-              : 'border-[#d3bb73]/40 bg-[#1c1f33]'
+              ? 'scale-[1.01] border-[#d3bb73]/55 bg-[#d3bb73]/15'
+              : 'border-white/15 bg-[#1c1f33] hover:border-white/25'
           } `}
         >
           <Upload className="mb-3 h-8 w-8 text-[#d3bb73]" />

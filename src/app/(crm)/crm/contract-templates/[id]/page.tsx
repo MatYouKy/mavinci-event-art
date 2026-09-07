@@ -282,12 +282,28 @@ export default function ContractTemplateViewPage() {
 
         .contract-content ul,
         .contract-content ol {
-          margin-left: 1.5em;
+          margin-left: 0;
+          padding-left: 12.7mm;
           margin-bottom: 1em;
+          list-style-position: outside;
+        }
+
+        .contract-content ol:not([data-clause-marker]) ol:not([data-clause-marker]) > li::marker,
+        .contract-content ol[data-clause-marker='outline-decimal'] ol[data-clause-marker='outline-decimal'] > li::marker {
+          content: counters(list-item, '.') ' ';
         }
 
         .contract-content li {
-          margin-bottom: 0.5em;
+          margin: 0 0 0.5em 0;
+          padding-left: 0;
+        }
+
+        .contract-content li[data-contract-outline-number]:not([data-contract-list-item-continuation='true']):not([data-contract-outline-suppressed='true'])::marker {
+          content: attr(data-contract-outline-number) ' ' !important;
+        }
+
+        .contract-content li[data-contract-outline-suppressed='true']::marker {
+          content: '' !important;
         }
 
         .contract-content strong {

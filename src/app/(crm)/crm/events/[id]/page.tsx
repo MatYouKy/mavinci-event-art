@@ -1,16 +1,22 @@
 // src/app/(crm)/crm/events/[id]/page.tsx
 import { fetchEventByIdServer } from '@/lib/CRM/events/eventsIdData.server';
 import EventDetailPageClient from './EventDetailPageClient';
-import { IEvent, IOffer } from '../type';
+import type { IEvent, IOffer } from '../type';
 import { getLocationById } from '@/lib/CRM/locations/getLocationById';
 import { getContactById } from '@/lib/CRM/client/getContactById';
-import { UUID } from '../../contacts/types';
+import type { UUID } from '../../contacts/types';
 import { fetchEventOffersServer } from '@/lib/CRM/Offers/fetchEventOffers.server';
 import { fetchEventCategoriesServer } from '@/lib/CRM/events/eventsData.server';
 import { EventWorkspaceProvider } from '@/components/crm/events/EventWorkspaceProvider';
+import { notFound } from 'next/navigation';
 
 export default async function EventPage({ params }: { params: { id: string } }) {
   const event = await fetchEventByIdServer(params.id);
+
+  if (!event) {
+    notFound();
+  }
+
   const location = await getLocationById(event.location_id);
   const contact = await getContactById(event.contact_person_id as UUID);
   const categories = await fetchEventCategoriesServer();

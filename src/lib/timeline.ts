@@ -70,25 +70,57 @@ export function isWithinBounds(value: Date, bounds: TimelineBounds): boolean {
 export function generateTimeMarkers(
   bounds: TimelineBounds,
   zoom: 'days' | 'hours' | 'quarter_hours',
+  availableWidth?: number,
 ): Date[] {
-  const current = new Date(bounds.start);
-  if (zoom === 'days') {
-    current.setHours(0, 0, 0, 0);
-    if (current < bounds.start) current.setDate(current.getDate() + 1);
-  } else if (zoom === 'hours') {
-    current.setMinutes(0, 0, 0);
-    if (current < bounds.start) current.setHours(current.getHours() + 1);
-  } else {
-    current.setSeconds(0, 0);
-    current.setMinutes(Math.ceil(current.getMinutes() / 15) * 15);
-  }
+  const interval = getTimeMarkerInterval(bounds, zoom, availableWidth);
+  const dayStart = startOfLocalDay(bounds.start).getTime();
+  const startTime = bounds.start.getTime();
+  const alignedTime = dayStart + Math.ceil((startTime - dayStart) / interval) * interval;
+  const current = new Date(alignedTime);
 
   const markers: Date[] = [];
   while (current <= bounds.end) {
     markers.push(new Date(current));
-    if (zoom === 'days') current.setDate(current.getDate() + 1);
-    else if (zoom === 'hours') current.setHours(current.getHours() + 1);
-    else current.setMinutes(current.getMinutes() + 15);
+    current.setTime(current.getTime() + interval);
   }
   return markers;
+}
+
+const TIME_MARKER_INTERVALS = [
+  5 * 60 * 1000,
+  15 * 60 * 1000,
+  30 * 60 * 1000,
+  60 * 60 * 1000,
+  2 * 60 * 60 * 1000,
+  3 * 60 * 60 * 1000,
+  4 * 60 * 60 * 1000,
+  6 * 60 * 60 * 1000,
+  12 * 60 * 60 * 1000,
+  DAY_MS,
+  2 * DAY_MS,
+  7 * DAY_MS,
+  14 * DAY_MS,
+  30 * DAY_MS,
+];
+
+export function getTimeMarkerInterval(
+  bounds: TimelineBounds,
+  zoom: 'days' | 'hours' | 'quarter_hours',
+  availableWidth = 1200,
+): number {
+  const duration = Math.max(1, bounds.end.getTime() - bounds.start.getTime());
+  const minimumSpacing = zoom === 'quarter_hours' ? 42 : zoom === 'hours' ? 58 : 88;
+  const maximumMarkers = Math.max(2, Math.floor(availableWidth / minimumSpacing));
+  const minimumInterval =
+    zoom === 'quarter_hours'
+      ? 5 * 60 * 1000
+      : zoom === 'hours'
+        ? 15 * 60 * 1000
+        : 60 * 60 * 1000;
+
+  return (
+    TIME_MARKER_INTERVALS.find(
+      (interval) => interval >= minimumInterval && duration / interval <= maximumMarkers,
+    ) || TIME_MARKER_INTERVALS[TIME_MARKER_INTERVALS.length - 1]
+  );
 }

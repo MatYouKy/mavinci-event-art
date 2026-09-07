@@ -3,11 +3,13 @@
 import { X, Printer, Banknote, CreditCard, Calendar, FileText, Building2, User, Loader2 } from 'lucide-react';
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/lib/supabase/browser';
+import { decodeTextEntities } from '@/lib/textEncoding';
 import Image from 'next/image';
 
 interface InvoiceDetailsModalProps {
   invoice: any;
   onClose: () => void;
+  overlayClassName?: string;
 }
 
 interface MyCompanyData {
@@ -338,7 +340,7 @@ function isKsefInvoiceMissingDetails(inv: any): boolean {
   return !hasItems && !hasXml && !hasAddress;
 }
 
-export default function InvoiceDetailsModal({ invoice, onClose }: InvoiceDetailsModalProps) {
+export default function InvoiceDetailsModal({ invoice, onClose, overlayClassName = 'z-50' }: InvoiceDetailsModalProps) {
   const [myCompany, setMyCompany] = useState<MyCompanyData | null>(null);
   const [dbItems, setDbItems] = useState<any[]>([]);
   const [enrichedInvoice, setEnrichedInvoice] = useState<any>(invoice);
@@ -493,11 +495,13 @@ export default function InvoiceDetailsModal({ invoice, onClose }: InvoiceDetails
   const vatBankAccount = isIssued ? myCompany?.vat_bank_account : null;
   const vatBankName = isIssued ? myCompany?.vat_bank_name : null;
 
-  const sellerName = inv.seller_name || xmlData.seller_name || (isIssued ? myCompany?.legal_name || myCompany?.name : null) || 'Brak danych sprzedawcy';
+  const sellerName = decodeTextEntities(
+    inv.seller_name || xmlData.seller_name || (isIssued ? myCompany?.legal_name || myCompany?.name : null),
+  ) || 'Brak danych sprzedawcy';
   const sellerNip = inv.seller_nip || xmlData.seller_nip || (isIssued ? myCompany?.nip : null);
   const sellerAddress = inv.seller_address || xmlData.seller_address || (isIssued ? buildFullAddress(myCompany) : null);
 
-  const buyerName = inv.buyer_name || xmlData.buyer_name || 'Brak danych nabywcy';
+  const buyerName = decodeTextEntities(inv.buyer_name || xmlData.buyer_name) || 'Brak danych nabywcy';
   const buyerNip = inv.buyer_nip || xmlData.buyer_nip || null;
   const buyerAddress = inv.buyer_address || xmlData.buyer_address || null;
 
@@ -547,7 +551,7 @@ export default function InvoiceDetailsModal({ invoice, onClose }: InvoiceDetails
         }
       `}</style>
 
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
+      <div className={`fixed inset-0 flex items-center justify-center bg-black/80 p-4 ${overlayClassName}`}>
         <div className="relative w-full max-w-5xl max-h-[92vh] overflow-y-auto rounded-xl bg-white shadow-2xl">
           {/* Toolbar */}
           <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-200 bg-white px-6 py-3 print:hidden">

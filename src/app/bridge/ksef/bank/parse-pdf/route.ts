@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
+import 'pdfjs-dist/legacy/build/pdf.worker.mjs';
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { createSupabaseServerClient } from '@/lib/supabase/server.app';
 
@@ -157,7 +158,10 @@ function cleanupTransactionTitle(text?: string | null): string | undefined {
 }
 
 function parsePolishAmount(value: string): number | null {
-  const cleaned = value.replace(/\s/g, '').replace(/\./g, '').replace(',', '.');
+  const normalized = value.replace(/[\s'’]/g, '');
+  const cleaned = normalized.includes(',')
+    ? normalized.replace(/\./g, '').replace(',', '.')
+    : normalized;
   const parsed = Number(cleaned);
   return Number.isFinite(parsed) ? parsed : null;
 }
@@ -248,16 +252,19 @@ function parsePKOPdfRows(rows: PdfRow[]): BankStatement {
   const transactionRows: Array<{ rowIndex: number; date: string; amountRaw: string; amount: number; balance: number }> = [];
 
   rows.forEach((row, rowIndex) => {
-    const dateCell = row.cells.find((cell) => cell.x < 6 && /^\d{2}\.\d{2}\.\d{4}$/.test(cell.text.trim()));
+    const leadingText = sanitizeText(
+      row.cells.filter((cell) => cell.x < 8).map((cell) => cell.text).join(' '),
+    );
+    const dateText = leadingText.match(/\b\d{2}\.\d{2}\.\d{4}\b/)?.[0];
     const moneyCells = row.cells
-      .filter((cell) => cell.x > 20 && /^-?[\d\s]+,\d{2}$/.test(cell.text.trim()))
+      .filter((cell) => cell.x > 20 && /^[+\-]?[\d\s.'’]+(?:,\d{2}|\.\d{2})$/.test(cell.text.trim()))
       .sort((a, b) => a.x - b.x);
 
     // PKO umieszcza kwotę operacji przed saldem. Bez obu kolumn rekord jest odrzucany.
-    if (!dateCell || moneyCells.length < 2) return;
+    if (!dateText || moneyCells.length < 2) return;
     const amountCell = moneyCells[0];
     const balanceCell = moneyCells[moneyCells.length - 1];
-    const date = formatIsoDateFromPolish(dateCell.text);
+    const date = formatIsoDateFromPolish(dateText);
     const amount = parsePolishAmount(amountCell.text);
     const balance = parsePolishAmount(balanceCell.text);
     if (!date || amount == null || balance == null) return;
@@ -267,6 +274,11 @@ function parsePKOPdfRows(rows: PdfRow[]): BankStatement {
   let previousBalance: number | null = null;
   let checkedTransitions = 0;
   let failedTransitions = 0;
+  const firstDifferentDate = transactionRows.find(
+    (row) => row.date !== transactionRows[0]?.date,
+  );
+  const chronologicalAscending = !firstDifferentDate
+    || String(transactionRows[0]?.date || '').localeCompare(firstDifferentDate.date) < 0;
 
   transactionRows.forEach((transactionRow, index) => {
     const nextRowIndex = transactionRows[index + 1]?.rowIndex ?? rows.length;
@@ -285,8 +297,15 @@ function parsePKOPdfRows(rows: PdfRow[]): BankStatement {
 
     if (previousBalance !== null) {
       checkedTransitions += 1;
-      const expectedBalance = previousBalance + (type === 'credit' ? absoluteAmount : -absoluteAmount);
-      if (Math.abs(expectedBalance - transactionRow.balance) > 0.02) failedTransitions += 1;
+      const previousRow = transactionRows[index - 1];
+      const previousSignedAmount = previousRow.amountRaw.trim().startsWith('-')
+        ? -Math.abs(previousRow.amount)
+        : Math.abs(previousRow.amount);
+      const currentSignedAmount = type === 'credit' ? absoluteAmount : -absoluteAmount;
+      const transitionDifference = chronologicalAscending
+        ? Math.abs((previousBalance + currentSignedAmount) - transactionRow.balance)
+        : Math.abs((transactionRow.balance + previousSignedAmount) - previousBalance);
+      if (transitionDifference > 0.02) failedTransitions += 1;
     }
     previousBalance = transactionRow.balance;
 
@@ -320,10 +339,16 @@ function parsePKOPdfRows(rows: PdfRow[]): BankStatement {
 
   const periodMatch = rawText.match(/WYCIĄG\s+za\s+okres\s+(\d{2}\.\d{2}\.\d{4})\s*-\s*(\d{2}\.\d{2}\.\d{4})/i);
   const firstSignedAmount = transactions[0].type === 'credit' ? transactions[0].amount : -transactions[0].amount;
+  const lastTransaction = transactions.at(-1)!;
+  const lastSignedAmount = lastTransaction.type === 'credit' ? lastTransaction.amount : -lastTransaction.amount;
 
   return {
-    openingBalance: transactionRows[0] ? transactionRows[0].balance - firstSignedAmount : undefined,
-    closingBalance: transactionRows.at(-1)?.balance,
+    openingBalance: chronologicalAscending
+      ? transactionRows[0]?.balance - firstSignedAmount
+      : transactionRows.at(-1)!.balance - lastSignedAmount,
+    closingBalance: chronologicalAscending
+      ? transactionRows.at(-1)?.balance
+      : transactionRows[0]?.balance,
     currency: 'PLN',
     transactions,
     rawText,
@@ -337,7 +362,7 @@ function parsePKOPdfRows(rows: PdfRow[]): BankStatement {
 
 function extractPdfRows(buffer: Buffer): Promise<PdfRow[]> {
   return (async () => {
-    const rows = new Map<string, PdfCell[]>();
+    const cellsByPage = new Map<number, PdfCell[]>();
     const loadingTask = getDocument({
       data: new Uint8Array(buffer),
       isEvalSupported: false,
@@ -362,10 +387,9 @@ function extractPdfRows(buffer: Buffer): Promise<PdfRow[]> {
           // skalę, aby istniejący, zweryfikowany parser kolumn PKO działał identycznie.
           const x = Number(item.transform[4]) / 12 - 0.25;
           const y = (viewport.height - Number(item.transform[5])) / 12 - 0.75;
-          const key = `${pageNumber}:${Math.round(y * 100)}`;
-          const row = rows.get(key) || [];
-          row.push({ page: pageNumber, x, y, text: item.str });
-          rows.set(key, row);
+          const pageCells = cellsByPage.get(pageNumber) || [];
+          pageCells.push({ page: pageNumber, x, y, text: item.str });
+          cellsByPage.set(pageNumber, pageCells);
         }
 
         page.cleanup();
@@ -374,12 +398,25 @@ function extractPdfRows(buffer: Buffer): Promise<PdfRow[]> {
       await document.destroy();
     }
 
-    return Array.from(rows.values())
-      .map((cells: PdfCell[]) => ({
-        page: cells[0].page,
-        y: cells[0].y,
-        cells: cells.sort((a, b) => a.x - b.x),
-      }))
+    const rows: PdfRow[] = [];
+    cellsByPage.forEach((pageCells, pageNumber) => {
+      pageCells
+        .sort((left, right) => left.y - right.y || left.x - right.x)
+        .forEach((cell) => {
+          const row = rows.find(
+            (candidate) => candidate.page === pageNumber && Math.abs(candidate.y - cell.y) <= 0.12,
+          );
+          if (row) {
+            row.cells.push(cell);
+            row.y = (row.y * (row.cells.length - 1) + cell.y) / row.cells.length;
+          } else {
+            rows.push({ page: pageNumber, y: cell.y, cells: [cell] });
+          }
+        });
+    });
+
+    return rows
+      .map((row) => ({ ...row, cells: row.cells.sort((a, b) => a.x - b.x) }))
       .sort((a, b) => a.page - b.page || a.y - b.y);
   })();
 }
@@ -427,7 +464,14 @@ export async function POST(req: Request) {
     }
 
     const arrayBuffer = await file.arrayBuffer();
-    const rows = await extractPdfRows(Buffer.from(arrayBuffer));
+    const buffer = Buffer.from(arrayBuffer);
+    if (buffer.subarray(0, 5).toString('ascii') !== '%PDF-') {
+      return NextResponse.json(
+        { success: false, error: 'Plik nie ma prawidłowego nagłówka PDF.' },
+        { status: 400 },
+      );
+    }
+    const rows = await extractPdfRows(buffer);
     const parsed = parsePKOPdfRows(rows);
 
     return NextResponse.json({
@@ -436,11 +480,17 @@ export async function POST(req: Request) {
     });
   } catch (error: any) {
     console.error('[BANK_PARSE_PDF_ROUTE] error', error);
+    const rawMessage = String(error?.message || '');
+    const publicMessage = /password/i.test(rawMessage)
+      ? 'Wyciąg PDF jest zabezpieczony hasłem. Zapisz jego niezabezpieczoną kopię i spróbuj ponownie.'
+      : /fake worker|pdf\.worker/i.test(rawMessage)
+        ? 'Serwer nie mógł uruchomić parsera PDF. Odśwież aplikację po ponownym wdrożeniu i spróbuj ponownie.'
+        : rawMessage || 'Błąd parsowania PDF';
 
     return NextResponse.json(
       {
         success: false,
-        error: error?.message || 'Błąd parsowania PDF',
+        error: publicMessage,
       },
       { status: 500 },
     );

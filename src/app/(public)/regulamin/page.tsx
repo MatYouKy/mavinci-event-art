@@ -3,8 +3,9 @@ import Link from 'next/link';
 import { ArrowLeft, ArrowRight, Mail, Phone } from 'lucide-react';
 
 export const metadata: Metadata = {
-  title: 'Regulamin - MAVINCI Event & ART',
-  description: 'Regulamin świadczenia usług przez MAVINCI Event & ART',
+  title: 'Regulamin usług i aplikacji CRM - MAVINCI Event & ART',
+  description:
+    'Regulamin świadczenia usług oraz korzystania z aplikacji CRM i integracji Google Ads, Google Search Console i Meta przez MAVINCI Event & ART.',
 };
 
 export default function RegulaminPage() {
@@ -20,7 +21,7 @@ export default function RegulaminPage() {
         </Link>
 
         <h1 className="mb-8 text-4xl font-light text-[#e5e4e2] md:text-5xl">
-          Regulamin Świadczenia Usług
+          Regulamin świadczenia usług i korzystania z aplikacji
         </h1>
 
         <div className="space-y-8 text-[#e5e4e2]/80">
@@ -29,7 +30,9 @@ export default function RegulaminPage() {
             <ol className="ml-6 list-decimal space-y-3">
               <li>
                 Niniejszy Regulamin określa zasady świadczenia usług w zakresie organizacji i
-                obsługi technicznej wydarzeń przez MAVINCI Event & ART, zwaną dalej &quot;Usługodawcą&quot;.
+                obsługi technicznej wydarzeń przez MAVINCI Event & ART, zwaną dalej
+                &quot;Usługodawcą&quot;, a także zasady korzystania z udostępnianej przez
+                Usługodawcę aplikacji CRM i jej integracji z usługami zewnętrznymi.
               </li>
               <li>
                 Usługodawca prowadzi działalność gospodarczą na terenie Polski w zakresie:
@@ -72,6 +75,19 @@ export default function RegulaminPage() {
               <li>
                 <strong>Wydarzenie</strong> - impreza, konferencja, szkolenie lub inne wydarzenie
                 objęte umową
+              </li>
+              <li>
+                <strong>Aplikacja CRM</strong> - system informatyczny dostępny w domenie mavinci.pl,
+                służący Usługodawcy między innymi do obsługi klientów, wydarzeń, dokumentów i
+                działań marketingowych
+              </li>
+              <li>
+                <strong>Użytkownik CRM</strong> - pracownik, współpracownik albo inna osoba, której
+                Usługodawca nadał dostęp do Aplikacji CRM
+              </li>
+              <li>
+                <strong>Integracja</strong> - opcjonalne połączenie Aplikacji CRM z usługą
+                zewnętrzną, w szczególności Google Ads, Google Search Console lub Meta/Facebook
               </li>
             </ol>
           </section>
@@ -271,8 +287,14 @@ export default function RegulaminPage() {
             </h2>
             <ol className="ml-6 list-decimal space-y-3">
               <li>
-                Usługodawca przetwarza dane osobowe zgodnie z RODO i Polityką Prywatności dostępną
-                na stronie.
+                Usługodawca przetwarza dane osobowe zgodnie z RODO i{' '}
+                <Link
+                  href="/polityka-prywatnosci"
+                  className="text-[#d3bb73] underline decoration-[#d3bb73]/40 underline-offset-4 hover:text-[#d3bb73]/80"
+                >
+                  Polityką Prywatności
+                </Link>
+                .
               </li>
               <li>
                 Dane osobowe wykorzystywane są wyłącznie w celach realizacji umowy i marketingu (za
@@ -282,7 +304,99 @@ export default function RegulaminPage() {
           </section>
 
           <section>
-            <h2 className="mb-4 text-2xl font-light text-[#e5e4e2]">§ 12. Postanowienia końcowe</h2>
+            <h2 className="mb-4 text-2xl font-light text-[#e5e4e2]">
+              § 12. Aplikacja CRM i integracje zewnętrzne
+            </h2>
+            <ol className="ml-6 list-decimal space-y-3">
+              <li>
+                Aplikacja CRM jest narzędziem przeznaczonym dla osób upoważnionych przez
+                Usługodawcę. Użytkownik CRM jest zobowiązany chronić dane logowania, nie udostępniać
+                konta osobom trzecim i niezwłocznie zgłaszać podejrzenie nieuprawnionego dostępu.
+              </li>
+              <li>
+                Połączenie Aplikacji CRM z Google Ads, Google Search Console lub Meta/Facebook jest
+                dobrowolne. Integracja jest uruchamiana dopiero po zalogowaniu się przez Użytkownika
+                CRM do właściwej usługi i zaakceptowaniu zakresu uprawnień przedstawionego na
+                ekranie autoryzacji tej usługi.
+              </li>
+              <li>
+                Użytkownik CRM może połączyć wyłącznie konto, stronę, usługę lub konto reklamowe,
+                do których posiada wymagane uprawnienia. Użytkownik odpowiada za prawidłowość
+                wskazanych identyfikatorów oraz zgodność korzystania z Integracji z prawem i
+                regulaminem dostawcy zewnętrznego.
+              </li>
+              <li>
+                W ramach Integracji Google Aplikacja CRM może pobierać podstawowe dane profilu
+                konta Google, dane o skuteczności kampanii Google Ads oraz dane o widoczności
+                zweryfikowanych usług w Google Search Console. Obejmuje to w szczególności nazwy i
+                statusy kampanii, budżety, wyświetlenia, kliknięcia, koszty, konwersje, wartość
+                konwersji, organiczne kliknięcia i wyświetlenia, współczynnik klikalności oraz
+                średnią pozycję w wynikach wyszukiwania.
+              </li>
+              <li>
+                W ramach Integracji Meta/Facebook Aplikacja CRM może pobierać listę stron i kont
+                reklamowych dostępnych dla Użytkownika CRM, statystyki stron i kampanii, informacje
+                o kampaniach oraz wiadomości kierowane do połączonej strony, w zakresie udzielonych
+                uprawnień.
+              </li>
+              <li>
+                Dane z Integracji są wykorzystywane wyłącznie do prezentowania raportów i
+                statystyk, synchronizacji danych marketingowych, obsługi wiadomości oraz realizacji
+                funkcji widocznych w Aplikacji CRM. Jeżeli Użytkownik CRM wyda takie polecenie,
+                Aplikacja CRM może również włączyć lub wstrzymać wskazaną kampanię Google Ads albo
+                Meta Ads.
+              </li>
+              <li>
+                Usługodawca nie sprzedaje danych uzyskanych przez interfejsy Google ani Meta, nie
+                wykorzystuje ich do tworzenia niezależnych profili reklamowych i nie używa ich do
+                celów niezwiązanych z funkcjami Aplikacji CRM. Dostęp do tych danych mają wyłącznie
+                upoważnione osoby i niezbędni dostawcy infrastruktury działający na rzecz
+                Usługodawcy, z zastrzeżeniem obowiązków wynikających z przepisów prawa.
+              </li>
+              <li>
+                Dane uwierzytelniające i tokeny dostępu są przechowywane w postaci zaszyfrowanej.
+                Usługodawca stosuje środki organizacyjne i techniczne odpowiednie do charakteru
+                przetwarzanych danych, jednak żaden system teleinformatyczny nie gwarantuje pełnej
+                niezawodności ani nieprzerwanej dostępności.
+              </li>
+              <li>
+                Integrację można odłączyć w Aplikacji CRM, a zgodę można dodatkowo wycofać w
+                ustawieniach konta Google lub Meta/Facebook. Odłączenie zatrzymuje przyszły dostęp
+                przez daną Integrację. Dane zapisane przed odłączeniem są przechowywane lub usuwane
+                zgodnie z Polityką Prywatności, obowiązującymi terminami retencji i przepisami prawa.
+              </li>
+              <li>
+                Dostępność i zakres działania Integracji zależą również od dostawców zewnętrznych.
+                Zmiana ich interfejsów, regulaminów, zakresów uprawnień, limitów albo dostępności
+                może czasowo ograniczyć lub wyłączyć część funkcji Aplikacji CRM.
+              </li>
+              <li>
+                Korzystanie z Integracji Google podlega również{' '}
+                <a
+                  href="https://developers.google.com/terms/api-services-user-data-policy"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-[#d3bb73] underline decoration-[#d3bb73]/40 underline-offset-4 hover:text-[#d3bb73]/80"
+                >
+                  zasadom dotyczącym danych użytkowników usług Google API
+                </a>{' '}
+                oraz, w przypadku Google Ads,{' '}
+                <a
+                  href="https://developers.google.com/google-ads/api/docs/api-policy/terms"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-[#d3bb73] underline decoration-[#d3bb73]/40 underline-offset-4 hover:text-[#d3bb73]/80"
+                >
+                  warunkom korzystania z Google Ads API
+                </a>
+                . Szczegółowe informacje o dostępie, wykorzystywaniu, przechowywaniu i udostępnianiu
+                danych zawiera Polityka Prywatności.
+              </li>
+            </ol>
+          </section>
+
+          <section>
+            <h2 className="mb-4 text-2xl font-light text-[#e5e4e2]">§ 13. Postanowienia końcowe</h2>
             <ol className="ml-6 list-decimal space-y-3">
               <li>
                 W sprawach nieuregulowanych w Regulaminie mają zastosowanie przepisy Kodeksu
@@ -301,7 +415,7 @@ export default function RegulaminPage() {
           </section>
 
           <section>
-            <h2 className="mb-4 text-2xl font-light text-[#e5e4e2]">§ 13. Kontakt</h2>
+            <h2 className="mb-4 text-2xl font-light text-[#e5e4e2]">§ 14. Kontakt</h2>
             <p className="leading-relaxed">
               W sprawach związanych z Regulaminem można kontaktować się z Usługodawcą:
             </p>
@@ -323,12 +437,7 @@ export default function RegulaminPage() {
 
           <div className="mt-12 border-t border-[#d3bb73]/20 pt-6">
             <p className="text-sm text-[#e5e4e2]/60">
-              Data wejścia w życie:{' '}
-              {new Date().toLocaleDateString('pl-PL', {
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric',
-              })}
+              Data wejścia w życie: 1 września 2026 r.
             </p>
           </div>
         </div>

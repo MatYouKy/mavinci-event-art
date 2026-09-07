@@ -6,6 +6,9 @@ import OrganizationRepresentatives from '@/components/crm/contacts/organization/
 import type { OrganizationFormErrors } from './organizationValidation';
 import { getOrganizationInputClassName } from './organizationForm.helpers';
 import { legalFormLabels } from '@/utils/labels/legalFormLabels';
+import { requiresKrsForLegalForm } from '@/lib/organizations/organizationLegalForm';
+import OrganizationRegistryLookupCard from './OrganizationRegistryLookupCard';
+import type { GUSCompanyData } from '@/lib/gus';
 
 type BusinessType = 'company' | 'hotel' | 'restaurant' | 'venue' | 'freelancer' | 'other';
 type OrganizationType = 'client' | 'subcontractor';
@@ -55,6 +58,10 @@ interface Organization {
   legal_representative_id: string | null;
   legal_representative_title: string | null;
   contact_is_representative: boolean;
+  representation_type: 'sole' | 'joint' | 'joint_with_proxy' | 'proxy' | 'other' | null;
+  representation_rule: string | null;
+  representation_basis: string | null;
+  representation_verified_at: string | null;
 }
 
 const renderRating = (rating: number | null) => {
@@ -80,6 +87,7 @@ interface OrganizationDetailsSectionProps {
   formErrors: OrganizationFormErrors;
   setFormErrors: React.Dispatch<React.SetStateAction<OrganizationFormErrors>>;
   loadingGUS: boolean;
+  registryLookup: GUSCompanyData | null;
   handleFetchFromGUS: () => void;
   onOpenAddLocation: () => void;
   primaryContact: any;
@@ -89,6 +97,15 @@ interface OrganizationDetailsSectionProps {
   onRepresentativesUpdate: () => void;
 }
 
+const businessTypeLabels: Record<BusinessType, string> = {
+  company: 'Firma',
+  hotel: 'Hotel',
+  restaurant: 'Restauracja',
+  venue: 'Obiekt / sala eventowa',
+  freelancer: 'Freelancer',
+  other: 'Inny profil działalności',
+};
+
 export default function OrganizationDetailsSection({
   organization,
   editedData,
@@ -97,6 +114,7 @@ export default function OrganizationDetailsSection({
   formErrors,
   setFormErrors,
   loadingGUS,
+  registryLookup,
   handleFetchFromGUS,
   onOpenAddLocation,
   primaryContact,
@@ -105,6 +123,8 @@ export default function OrganizationDetailsSection({
   contactPersons,
   onRepresentativesUpdate,
 }: OrganizationDetailsSectionProps) {
+  const currentLegalForm = editedData.legal_form ?? organization.legal_form ?? '';
+  const legalFormRequiresKrs = requiresKrsForLegalForm(currentLegalForm);
   const renderFieldError = (field: keyof OrganizationFormErrors) => {
     if (!formErrors[field]) return null;
     return <p className="mt-1 text-sm text-red-400">{formErrors[field]}</p>;
@@ -179,14 +199,14 @@ export default function OrganizationDetailsSection({
                     type="button"
                     onClick={handleFetchFromGUS}
                     disabled={loadingGUS}
-                    className="flex items-center space-x-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#0f1119] transition-colors hover:bg-[#c4a859] disabled:opacity-50"
+                    className="flex h-11 shrink-0 self-center items-center space-x-2 whitespace-nowrap rounded-lg bg-[#d3bb73] px-5 text-[#0f1119] transition-colors hover:bg-[#c4a859] disabled:opacity-50"
                   >
                     {loadingGUS ? (
                       <Loader2 className="h-5 w-5 animate-spin" />
                     ) : (
                       <Search className="h-5 w-5" />
                     )}
-                    <span>GUS</span>
+                    <span>GUS / rejestry</span>
                   </button>
                 </div>
                 {renderFieldError('nip')}
@@ -196,21 +216,56 @@ export default function OrganizationDetailsSection({
             )}
           </div>
 
+          <OrganizationRegistryLookupCard data={registryLookup} />
+
           <div>
-            <label className="mb-1 block text-sm font-medium text-gray-400">Forma prawna</label>
+            <label className="mb-1 block text-sm font-medium text-gray-400">
+              Profil działalności *
+            </label>
             {editMode ? (
-              <select
-                value={editedData.legal_form || ''}
-                onChange={(e) => updateField('legal_form', e.target.value)}
-                className={getOrganizationInputClassName(formErrors)}
-              >
-                <option value="">-- Wybierz formę prawną --</option>
-                {Object.entries(legalFormLabels).map(([key, label]) => (
-                  <option key={key} value={key}>
-                    {label}
-                  </option>
-                ))}
-              </select>
+              <>
+                <select
+                  value={editedData.business_type || organization.business_type}
+                  onChange={(e) => updateField('business_type', e.target.value as BusinessType)}
+                  className={getOrganizationInputClassName(formErrors, 'business_type')}
+                >
+                  {Object.entries(businessTypeLabels).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+                {renderFieldError('business_type')}
+              </>
+            ) : (
+              <p className="text-white">{businessTypeLabels[organization.business_type]}</p>
+            )}
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-400">
+              Forma prawna / typ podmiotu *
+            </label>
+            {editMode ? (
+              <>
+                <select
+                  value={currentLegalForm}
+                  onChange={(e) => {
+                    const legalForm = e.target.value;
+                    updateField('legal_form', legalForm);
+                    if (!requiresKrsForLegalForm(legalForm)) updateField('krs', null);
+                  }}
+                  className={getOrganizationInputClassName(formErrors, 'legal_form')}
+                >
+                  <option value="">-- Wybierz formę prawną lub typ podmiotu --</option>
+                  {Object.entries(legalFormLabels).map(([key, label]) => (
+                    <option key={key} value={key}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+                {renderFieldError('legal_form')}
+              </>
             ) : (
               <p className="text-white">
                 {organization.legal_form
@@ -221,17 +276,19 @@ export default function OrganizationDetailsSection({
             )}
           </div>
 
-          {(!editMode || (editedData.legal_form || organization.legal_form) !== 'jdg') && (
+          {legalFormRequiresKrs && (
             <div>
-              <label className="mb-1 block text-sm font-medium text-gray-400">KRS</label>
+              <label className="mb-1 block text-sm font-medium text-gray-400">KRS *</label>
               {editMode ? (
-                <input
-                  type="text"
-                  value={editedData.krs || ''}
-                  onChange={(e) => updateField('krs', e.target.value)}
-                  disabled={(editedData.legal_form || organization.legal_form) === 'jdg'}
-                  className={`${getOrganizationInputClassName(formErrors)} disabled:opacity-50`}
-                />
+                <>
+                  <input
+                    type="text"
+                    value={editedData.krs || ''}
+                    onChange={(e) => updateField('krs', e.target.value)}
+                    className={getOrganizationInputClassName(formErrors, 'krs')}
+                  />
+                  {renderFieldError('krs')}
+                </>
               ) : (
                 <p className="text-white">{organization.krs || '-'}</p>
               )}
@@ -241,12 +298,15 @@ export default function OrganizationDetailsSection({
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-400">REGON</label>
             {editMode ? (
-              <input
-                type="text"
-                value={editedData.regon || ''}
-                onChange={(e) => updateField('regon', e.target.value)}
-                className={getOrganizationInputClassName(formErrors)}
-              />
+              <>
+                <input
+                  type="text"
+                  value={editedData.regon || ''}
+                  onChange={(e) => updateField('regon', e.target.value)}
+                  className={getOrganizationInputClassName(formErrors, 'regon')}
+                />
+                {renderFieldError('regon')}
+              </>
             ) : (
               <p className="text-white">{organization.regon || '-'}</p>
             )}
@@ -303,6 +363,20 @@ export default function OrganizationDetailsSection({
               </>
             ) : (
               <p className="text-white">{organization.city || '-'}</p>
+            )}
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-400">Kraj</label>
+            {editMode ? (
+              <input
+                type="text"
+                value={editedData.country || ''}
+                onChange={(e) => updateField('country', e.target.value)}
+                className={getOrganizationInputClassName(formErrors)}
+              />
+            ) : (
+              <p className="text-white">{organization.country || '-'}</p>
             )}
           </div>
 
@@ -446,6 +520,21 @@ export default function OrganizationDetailsSection({
               ? editedData.contact_is_representative
               : organization.contact_is_representative
           }
+          representationType={
+            editedData.representation_type ?? organization.representation_type ?? null
+          }
+          representationRule={
+            editedData.representation_rule ?? organization.representation_rule ?? null
+          }
+          representationBasis={
+            editedData.representation_basis ?? organization.representation_basis ?? null
+          }
+          representationVerifiedAt={
+            editedData.representation_verified_at ??
+            organization.representation_verified_at ??
+            null
+          }
+          legalForm={currentLegalForm}
           decisionMakers={decisionMakers}
           availableContacts={contactPersons.map((cp) => ({
             id: cp.id,

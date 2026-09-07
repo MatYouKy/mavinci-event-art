@@ -13,17 +13,17 @@ export const colors = {
 
   // Secondary colors
   secondary: {
-    burgundy: '#800020',    // Bordowy akcent
-    burgundyDark: '#5c0017',
-    burgundyLight: '#a6002a',
+    burgundy: '#650026',    // Bordowy akcent
+    burgundyDark: '#3a0c20',
+    burgundyLight: '#7f1734',
   },
 
-  // Background colors
+  // Tła zgodne z motywem brand-theme--crm aplikacji webowej.
   background: {
-    primary: '#0f1119',      // Główne tło (bardzo ciemne)
-    secondary: '#1c1f33',    // Wtórne tło (ciemne)
-    tertiary: '#252842',     // Karty/komponenty
-    elevated: '#2a2f4a',     // Podniesione elementy
+    primary: '#210811',      // Główne tło
+    secondary: '#2c0b18',    // Nawigacja i dolny pasek
+    tertiary: '#351020',     // Karty i pola
+    elevated: '#411326',     // Modale i podniesione elementy
   },
 
   // Text colors

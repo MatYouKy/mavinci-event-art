@@ -208,6 +208,7 @@ export default function OfferActions({
             body: JSON.stringify({
               offerId: offer.id,
               employeeId: employee.id,
+              resourceMode: attempt === 0 ? 'standard' : 'compact',
             }),
           },
         );
@@ -217,7 +218,7 @@ export default function OfferActions({
 
         const resourceLimit = result.code === 'WORKER_RESOURCE_LIMIT';
         if (resourceLimit && attempt === 0) {
-          showSnackbar('Generator potrzebuje więcej zasobów — ponawiam automatycznie...', 'info');
+          showSnackbar('Generator przekroczył limit zasobów — ponawiam w trybie zoptymalizowanym...', 'info');
           await new Promise((resolve) => setTimeout(resolve, 1200));
           continue;
         }
@@ -231,7 +232,10 @@ export default function OfferActions({
 
       if (!result?.success) throw new Error('Błąd generowania PDF');
 
-      showSnackbar(`PDF wygenerowany pomyślnie (${result.pageCount} stron)`, 'success');
+      showSnackbar(
+        `PDF wygenerowany pomyślnie (${result.pageCount} stron)${result.resourceMode === 'compact' ? ' — tryb zoptymalizowany' : ''}`,
+        'success',
+      );
 
       if (result.downloadUrl) {
         const pdfResponse = await fetch(result.downloadUrl);

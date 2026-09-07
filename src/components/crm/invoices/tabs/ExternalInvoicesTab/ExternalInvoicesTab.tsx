@@ -74,15 +74,24 @@ export interface Subscription {
 export interface InvoicePrefill {
   seller_name?: string;
   seller_nip?: string;
+  invoice_number?: string;
   label?: string;
+  amount_net?: string;
   amount_gross?: string;
   currency?: string;
   payment_method?: string;
   invoice_date?: string;
+  payment_status?: ExternalInvoice['payment_status'];
+  paid_amount?: string;
+  payment_date?: string;
   notes?: string;
+  my_company_id?: string;
+  category_id?: string;
+  event_id?: string;
   subscription_id?: string;
   period_year?: number;
   period_month?: number;
+  copied_from_number?: string;
 }
 
 export type InvoiceRow =
@@ -116,7 +125,7 @@ export const MONTH_NAMES = [
 export const BUCKET = 'external-invoices';
 
 export const inputClass =
-  'w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] outline-none focus:border-[#d3bb73]/60';
+  'crm-form-control w-full rounded-lg border border-white/10 bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] outline-none hover:border-white/20 focus:border-[#d3bb73]/35 focus:ring-0';
 export const labelClass = 'mb-1 block text-xs font-medium text-[#e5e4e2]/70';
 
 export function formatMoney(amount: number | null, currency: string) {
@@ -233,6 +242,33 @@ export function ExternalInvoicesTab() {
       open: true,
       prefill: null,
       invoice,
+    });
+  }, []);
+
+  const addSimilarInvoice = useCallback((invoice: ExternalInvoice) => {
+    setInvoiceModal({
+      open: true,
+      invoice: null,
+      prefill: {
+        seller_name: invoice.seller_name,
+        seller_nip: invoice.seller_nip || '',
+        invoice_number: '',
+        label: invoice.label || '',
+        invoice_date: '',
+        payment_method: invoice.payment_method || 'Przelew',
+        payment_status: invoice.payment_status,
+        paid_amount: invoice.paid_amount ? String(invoice.paid_amount) : '',
+        payment_date: '',
+        amount_net: invoice.amount_net == null ? '' : String(invoice.amount_net),
+        amount_gross: invoice.amount_gross == null ? '' : String(invoice.amount_gross),
+        currency: invoice.currency || 'PLN',
+        notes: invoice.notes || '',
+        my_company_id: invoice.my_company_id || '',
+        category_id: invoice.category_id || '',
+        event_id: invoice.event_id || undefined,
+        subscription_id: invoice.subscription_id || undefined,
+        copied_from_number: invoice.invoice_number,
+      },
     });
   }, []);
 
@@ -523,6 +559,7 @@ export function ExternalInvoicesTab() {
           onPreview={openFile}
           onDelete={deleteInvoice}
           onEdit={editInvoice}
+          onAddSimilar={addSimilarInvoice}
           onAddForPlaceholder={openPlaceholder}
           viewMode={viewMode}
           density={tablePreferences.density}

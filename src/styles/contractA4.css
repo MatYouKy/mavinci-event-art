@@ -98,6 +98,27 @@
   display: none !important;
 }
 
+.contract-content ol[data-contract-list-continuation='true'],
+.contract-content ul[data-contract-list-continuation='true'] {
+  list-style: none !important;
+}
+
+.contract-content li[data-contract-list-item-continuation='true']::marker {
+  content: '' !important;
+}
+
+.contract-content ol,
+.contract-content ul {
+  margin-left: 0 !important;
+  padding-left: 12.7mm !important;
+  list-style-position: outside !important;
+}
+
+.contract-content li {
+  margin-left: 0 !important;
+  padding-left: 0 !important;
+}
+
 /* Inline formatowanie musi pozostać inline */
 .contract-content strong,
 .contract-content b,
@@ -119,7 +140,7 @@
   white-space: pre-wrap;
   font-family: inherit;
   font-size: 12pt;
-  line-height: 1.6;
+  line-height: inherit;
   border: none;
   background: transparent;
   color: #000;
@@ -191,11 +212,23 @@
 .product-contract-clause ol,
 .product-contract-clause ul {
   margin: 0.35em 0 0.65em;
-  padding-left: 1.6em;
+  padding-left: 12.7mm !important;
 }
 
 .product-contract-clause ol {
   list-style-type: decimal;
+}
+
+/* Wielopoziomowa numeracja prawnicza: 1., 1.1, 1.1.1. Zwykłe listy
+   szablonu nie mają znacznika, a nowe listy klauzul używają jawnego
+   `outline-decimal`, dzięki czemu starsze listy a./i. pozostają bez zmian. */
+.product-contract-clause ol[data-clause-marker='outline-decimal'] {
+  list-style-type: decimal;
+}
+
+.contract-content ol:not([data-clause-marker]) ol:not([data-clause-marker]) > li::marker,
+.product-contract-clause ol[data-clause-marker='outline-decimal'] ol[data-clause-marker='outline-decimal'] > li::marker {
+  content: counters(list-item, '.') ' ';
 }
 
 .product-contract-clause ul {
@@ -214,12 +247,22 @@
   list-style-type: lower-alpha;
 }
 
+.product-contract-clause ol[data-clause-marker='lower-roman'] {
+  list-style-type: lower-roman;
+}
+
+/* Starsze snapshoty zachowują nazwy `*-paren`, ale wizualnie również
+   korzystają już z jednolitego separatora z kropką. */
 .product-contract-clause ol[data-clause-marker='decimal-paren'] > li::marker {
-  content: counter(list-item) ') ';
+  content: counter(list-item) '. ';
 }
 
 .product-contract-clause ol[data-clause-marker='lower-alpha-paren'] > li::marker {
-  content: counter(list-item, lower-alpha) ') ';
+  content: counter(list-item, lower-alpha) '. ';
+}
+
+.product-contract-clause ol[data-clause-marker='lower-roman-paren'] > li::marker {
+  content: counter(list-item, lower-roman) '. ';
 }
 
 .product-contract-clause ol[data-clause-marker='bullet'] {
@@ -236,10 +279,10 @@
   padding-left: 0.8em;
 }
 
-.product-contract-clause .ql-indent-1 { margin-left: 1.5em; }
-.product-contract-clause .ql-indent-2 { margin-left: 3em; }
-.product-contract-clause .ql-indent-3 { margin-left: 4.5em; }
-.product-contract-clause .ql-indent-4 { margin-left: 6em; }
+.product-contract-clause .ql-indent-1 { margin-left: 12.7mm; }
+.product-contract-clause .ql-indent-2 { margin-left: 25.4mm; }
+.product-contract-clause .ql-indent-3 { margin-left: 38.1mm; }
+.product-contract-clause .ql-indent-4 { margin-left: 50.8mm; }
 .product-contract-clause .ql-align-center { text-align: center; }
 .product-contract-clause .ql-align-right { text-align: right; }
 .product-contract-clause .ql-align-justify { text-align: justify; }
@@ -545,19 +588,35 @@
 
 .contract-content ul {
   list-style-type: disc;
-  padding-left: 28px;
+  padding-left: 12.7mm;
   margin: 8px 0;
 }
 
 .contract-content ol {
   list-style-type: decimal;
-  padding-left: 28px;
+  padding-left: 12.7mm;
   margin: 8px 0;
 }
 
 .contract-content li {
   display: list-item;
-  margin: 4px 0;
+  margin: 4px 0 4px 0;
+  padding-left: 0;
+}
+
+.contract-content li::marker {
+  font-family: inherit;
+  font-size: 1em;
+  font-weight: inherit;
+  line-height: inherit;
+}
+
+.contract-content li[data-contract-outline-number]:not([data-contract-list-item-continuation='true']):not([data-contract-outline-suppressed='true'])::marker {
+  content: attr(data-contract-outline-number) ' ' !important;
+}
+
+.contract-content li[data-contract-outline-suppressed='true']::marker {
+  content: '' !important;
 }
 
 .contract-content ul ul {

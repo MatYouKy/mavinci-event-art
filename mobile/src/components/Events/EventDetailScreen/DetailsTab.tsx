@@ -237,6 +237,7 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border.default,
   },
   sectionTitle: {
+    fontFamily: 'MBFAtom',
     fontSize: 12,
     fontWeight: '700',
     color: colors.primary.gold,

@@ -2,6 +2,7 @@ import { CalcItem, Category } from '@/components/crm/events/calculations/EventCa
 import { DEFAULT_VAT, fmt, round2, rowGross, rowNet } from '../helpers/calculations/calculations.helper';
 
 export function buildCalculationHtml(params: {
+  calculationNumber?: string;
   name: string;
   notes: string;
   eventName: string;
@@ -25,6 +26,7 @@ export function buildCalculationHtml(params: {
   } | null;
 }): string {
   const {
+    calculationNumber,
     name,
     notes,
     eventName,
@@ -178,9 +180,11 @@ export function buildCalculationHtml(params: {
 
   header h1 {
     margin: 0;
-    font-size: 18px;
-    font-weight: 300;
-    letter-spacing: 0.4px;
+    font-family: 'Atom', 'Montserrat', Arial, sans-serif;
+    font-size: 16px;
+    font-weight: 400;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
   }
 
   header .event-meta {
@@ -215,9 +219,12 @@ export function buildCalculationHtml(params: {
   }
 
   header .meta .company-name {
+    font-family: 'Atom', 'Montserrat', Arial, sans-serif;
     font-size: 11px;
     color: #1c1f33;
-    font-weight: 600;
+    font-weight: 400;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
   }
 
   section {
@@ -227,6 +234,7 @@ export function buildCalculationHtml(params: {
   }
 
   section h2 {
+    font-family: 'Atom', 'Montserrat', Arial, sans-serif;
     font-size: 11px;
     text-transform: uppercase;
     letter-spacing: 0.8px;
@@ -265,6 +273,7 @@ export function buildCalculationHtml(params: {
   }
 
   table.items th {
+    font-family: 'Atom', 'Montserrat', Arial, sans-serif;
     background: #f6f3ea;
     font-weight: 600;
     font-size: 8.8px;
@@ -320,6 +329,7 @@ export function buildCalculationHtml(params: {
 }
 
 .summary-table .label {
+  font-family: 'Atom', 'Montserrat', Arial, sans-serif;
   color: #555;
   font-size: 9px;
   text-transform: uppercase;
@@ -346,6 +356,7 @@ export function buildCalculationHtml(params: {
 }
 
 .technical-title {
+  font-family: 'Atom', 'Montserrat', Arial, sans-serif;
   margin-bottom: 8px;
   font-size: 10px;
   font-weight: 600;
@@ -407,6 +418,7 @@ export function buildCalculationHtml(params: {
   }
 
   .power-box .label {
+    font-family: 'Atom', 'Montserrat', Arial, sans-serif;
     font-size: 8.5px;
     text-transform: uppercase;
     letter-spacing: 0.8px;
@@ -449,6 +461,7 @@ export function buildCalculationHtml(params: {
 }
 
 .power-section-title {
+  font-family: 'Atom', 'Montserrat', Arial, sans-serif;
   font-size: 9px;
   text-transform: uppercase;
   letter-spacing: 0.8px;
@@ -514,6 +527,7 @@ export function buildCalculationHtml(params: {
     <div>
       <h1>${esc(name) || 'Kalkulacja'}</h1>
       <div class="event-meta">
+        ${calculationNumber ? `<div>Numer kalkulacji: <strong>${esc(calculationNumber)}</strong></div>` : ''}
         ${eventName ? `<div>Wydarzenie: <strong>${esc(eventName)}</strong></div>` : ''}
         ${formattedDate ? `<div>Data: <strong>${esc(formattedDate)}</strong></div>` : ''}
         ${contactPerson?.name ? `<div>Kalkulacja dla: <strong>${esc(contactPerson.name)}</strong></div>` : ''}

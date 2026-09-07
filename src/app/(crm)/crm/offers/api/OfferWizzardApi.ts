@@ -236,8 +236,18 @@ export const offerWizardApi = createApi({
               contact:contacts!contact_id(id, full_name, first_name, last_name, email, phone, mobile),
               contact_person:contacts!contact_id(id, full_name, first_name, last_name, email, phone, mobile),
               event:events!event_id(
+                id,
                 name,
                 event_date,
+                financial_source,
+                accepted_calculation_id,
+                accepted_calculation:event_calculations!accepted_calculation_id(
+                  id,
+                  name,
+                  created_at,
+                  is_accepted,
+                  event_calculation_items(quantity, unit_price, days, vat_rate)
+                ),
                 client_type,
                 organization_id,
                 contact_person_id
@@ -311,9 +321,20 @@ export const offerWizardApi = createApi({
               contact_person:contacts!contact_id(id, full_name, first_name, last_name, email, phone, mobile),
               inquiry:tasks!inquiry_id(id, title, description, inquiry_details, due_date),
               event:events!event_id(
+                id,
                 name,
                 event_date,
                 location,
+                financial_source,
+                accepted_calculation_id,
+                accepted_calculation:event_calculations!accepted_calculation_id(
+                  id,
+                  name,
+                  created_at,
+                  is_accepted,
+                  event_calculation_items(quantity, unit_price, days, vat_rate)
+                ),
+                category:event_categories(id, name, default_offer_template_category_id),
                 contact:contacts(email, first_name, last_name)
               ),
               last_generated_by_employee:employees!last_generated_by(
@@ -353,6 +374,8 @@ export const offerWizardApi = createApi({
                   offer_image_path,
                   offer_page_variant,
                   product_page_url,
+                  offer_requirements,
+                  offer_additional_requirements,
                   variants:offer_product_variants(
                     id, product_id, name, short_description, description, benefits,
                     price_net, price_gross, is_recommended, is_active, display_order,
@@ -394,9 +417,20 @@ export const offerWizardApi = createApi({
               contact_person:contacts!contact_id(id, full_name, first_name, last_name, email, phone, mobile),
               inquiry:tasks!inquiry_id(id, title, description, inquiry_details, due_date),
               event:events!event_id(
+                id,
                 name,
                 event_date,
                 location,
+                financial_source,
+                accepted_calculation_id,
+                accepted_calculation:event_calculations!accepted_calculation_id(
+                  id,
+                  name,
+                  created_at,
+                  is_accepted,
+                  event_calculation_items(quantity, unit_price, days, vat_rate)
+                ),
+                category:event_categories(id, name, default_offer_template_category_id),
                 contact:contacts(email, first_name, last_name)
               ),
               last_generated_by_employee:employees!last_generated_by(
@@ -433,6 +467,8 @@ export const offerWizardApi = createApi({
                   offer_image_path,
                   offer_page_variant,
                   product_page_url,
+                  offer_requirements,
+                  offer_additional_requirements,
                   variants:offer_product_variants(
                     id, product_id, name, short_description, description, benefits,
                     price_net, price_gross, is_recommended, is_active, display_order,

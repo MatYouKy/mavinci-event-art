@@ -20,11 +20,17 @@ interface OfferStep2Data {
 interface OfferStep2Props {
   offerData: OfferStep2Data;
   setOfferData: (data: OfferStep2Data) => void;
+  aiContext?: {
+    inquiryId?: string;
+    eventCategory?: string;
+    productNames?: string[];
+  };
 }
 
 export default function OfferStep2({
   offerData,
   setOfferData,
+  aiContext,
 }: OfferStep2Props) {
   return (
     <div className="mx-auto max-w-2xl space-y-4">
@@ -73,6 +79,7 @@ export default function OfferStep2({
 
       <EventAssumptionsEditor
         value={offerData.event_assumption_items}
+        aiContext={aiContext}
         onChange={(eventAssumptionItems) => setOfferData({
           ...offerData,
           event_assumption_items: eventAssumptionItems,

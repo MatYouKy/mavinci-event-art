@@ -12,6 +12,7 @@ const corsHeaders = {
 interface GenerateOfferPdfRequest {
   offerId: string;
   employeeId?: string;
+  resourceMode?: 'standard' | 'compact';
 }
 
 interface TextFieldConfig {
@@ -106,7 +107,12 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { offerId, employeeId }: GenerateOfferPdfRequest = await req.json();
+    const {
+      offerId,
+      employeeId,
+      resourceMode = 'standard',
+    }: GenerateOfferPdfRequest = await req.json();
+    const compactResourceMode = resourceMode === 'compact';
 
     if (!offerId) {
       throw new Error("offerId is required");
@@ -173,6 +179,46 @@ Deno.serve(async (req: Request) => {
     if (offerError || !offer) {
       throw new Error("Offer not found: " + offerError?.message);
     }
+
+    let acceptedCalculation: any = null;
+    const acceptedCalculationId = String(offer.event?.accepted_calculation_id || '').trim();
+    if (acceptedCalculationId) {
+      const { data } = await supabase
+        .from('event_calculations')
+        .select('id, name, created_at, is_accepted, event_calculation_items(*)')
+        .eq('id', acceptedCalculationId)
+        .maybeSingle();
+      acceptedCalculation = data || null;
+    } else {
+      const eventId = String(offer.event_id || '').trim();
+      const inquiryId = String(offer.inquiry_id || '').trim();
+      if (eventId || inquiryId) {
+        let calculationQuery = supabase
+          .from('event_calculations')
+          .select('id, name, created_at, is_accepted, event_calculation_items(*)')
+          .eq('is_accepted', true)
+          .order('created_at', { ascending: false })
+          .limit(1);
+        if (eventId && inquiryId) calculationQuery = calculationQuery.or(`event_id.eq.${eventId},inquiry_id.eq.${inquiryId}`);
+        else if (eventId) calculationQuery = calculationQuery.eq('event_id', eventId);
+        else calculationQuery = calculationQuery.eq('inquiry_id', inquiryId);
+        const { data } = await calculationQuery.maybeSingle();
+        acceptedCalculation = data || null;
+      }
+    }
+
+    const getCalculationNumber = (calculationId?: string | null, createdAt?: string | null) => {
+      if (!calculationId) return '';
+      const parsedDate = createdAt ? new Date(createdAt) : null;
+      const year = parsedDate && Number.isFinite(parsedDate.getTime())
+        ? parsedDate.getFullYear()
+        : new Date().getFullYear();
+      return `KAL/${year}/${calculationId.replace(/-/g, '').slice(0, 8).toLocaleUpperCase('pl-PL')}`;
+    };
+    const acceptedCalculationNumber = getCalculationNumber(
+      acceptedCalculation?.id,
+      acceptedCalculation?.created_at,
+    );
 
     let currentEmployee: any = null;
     if (employeeId) {
@@ -295,7 +341,7 @@ Deno.serve(async (req: Request) => {
           ? new Date(offer.valid_until).toLocaleDateString('pl-PL')
           : '',
 
-        event_name: event?.name || inquiryDetails.event_name || inquiry?.title?.replace(/^Zapytanie:\s*/i, '') || '',
+        event_name: offer.title || event?.name || inquiryDetails.event_name || inquiry?.title?.replace(/^Zapytanie:\s*/i, '') || '',
         event_category_id: event?.category?.id || event?.category_id || '',
         event_category_name: event?.category?.name || '',
         event_date: (event?.event_date || offer.event_date || inquiry?.inquiry_details?.termin || inquiry?.due_date)
@@ -745,14 +791,18 @@ Deno.serve(async (req: Request) => {
       return image;
     };
 
-    const createOptimizedSignedImageUrl = async (bucket: string, path: string, width = 1600) => {
+    const createOptimizedSignedImageUrl = async (
+      bucket: string,
+      path: string,
+      width = compactResourceMode ? 720 : 960,
+    ) => {
       const storage = supabase.storage.from(bucket);
       const [optimizedResult, originalResult] = await Promise.all([
         storage.createSignedUrl(path, 600, {
           transform: {
             width,
             resize: 'contain',
-            quality: 80,
+            quality: compactResourceMode ? 58 : 70,
             format: 'origin',
           },
         } as any),
@@ -1168,6 +1218,17 @@ Deno.serve(async (req: Request) => {
       offerData.company_logo = brandLogoUrl;
     }
 
+    // Tryb awaryjny musi realnie zmniejszać zużycie pamięci. Wcześniej omijał
+    // tła PDF, ale nadal osadzał logo, zdjęcie opiekuna, hero i osobne zdjęcia
+    // wszystkich produktów. Przy większej ofercie drugi przebieg kończył się
+    // więc tym samym limitem workera co pierwszy.
+    if (compactResourceMode) {
+      brandHeadingFontUrl = '';
+      brandLogoUrl = '';
+      offerData.company_logo = '';
+      offerData.employee_avatar_url = '';
+    }
+
     const { data: globalSocials } = await supabase
       .from('schema_org_global')
       .select('facebook_url, instagram_url, linkedin_url, youtube_url, twitter_url')
@@ -1234,6 +1295,11 @@ Deno.serve(async (req: Request) => {
       variantKey = 'default',
       requiredFieldPrefix?: string,
     ) => {
+      // Uploaded PDF backgrounds are considerably more expensive to parse and
+      // embed than the native fallback pages. The compact retry deliberately
+      // avoids them so a resource-limit error is not repeated with the same load.
+      if (compactResourceMode) return { success: false };
+
       try {
         const template = await loadDefaultTemplate(templateType, variantKey);
 
@@ -1355,7 +1421,7 @@ Deno.serve(async (req: Request) => {
       logo_scale: 1,
       cover_decorations_enabled: true,
       cover_primary_color: '#4A001F',
-      cover_decoration_color: '#69002C',
+      cover_decoration_color: '#2D0013',
       cover_accent_color: '#D5C489',
       assumptions_layout: 'cards',
       visual_image_height: 285,
@@ -1379,11 +1445,20 @@ Deno.serve(async (req: Request) => {
         parseInt(normalized.slice(4, 6), 16) / 255,
       );
     };
+    const darkenHex = (hex: string, factor = 0.62) => {
+      const normalized = String(hex || '').replace('#', '').slice(0, 6);
+      if (!/^[0-9a-f]{6}$/i.test(normalized)) return '#2D0013';
+      const channel = (start: number) => Math.max(
+        0,
+        Math.min(255, Math.round(parseInt(normalized.slice(start, start + 2), 16) * factor)),
+      ).toString(16).padStart(2, '0');
+      return `#${channel(0)}${channel(2)}${channel(4)}`;
+    };
     const cream = colorFromHex(categoryDesign.surface_color, [0.98, 0.97, 0.95]);
     const burgundy = colorFromHex(categoryDesign.primary_color, [0.357, 0, 0.122]);
     const accent = colorFromHex(categoryDesign.accent_color, [0.827, 0.733, 0.451]);
     const coverBurgundy = colorFromHex(categoryDesign.cover_primary_color, [0.29, 0, 0.122]);
-    const coverDecoration = colorFromHex(categoryDesign.cover_decoration_color, [0.412, 0, 0.173]);
+    const coverDecoration = colorFromHex(darkenHex(categoryDesign.cover_primary_color), [0.176, 0, 0.075]);
     const coverAccent = colorFromHex(categoryDesign.cover_accent_color, [0.835, 0.769, 0.537]);
 
     const crc32 = (bytes: Uint8Array) => {
@@ -1481,25 +1556,40 @@ Deno.serve(async (req: Request) => {
 
     const productImageUrlCache = new Map<string, string>();
     const getProductImageUrl = async (product: any) => {
+      if (compactResourceMode) return '';
       if (!product?.offer_image_path) return '';
       const cached = productImageUrlCache.get(product.offer_image_path);
       if (cached) return cached;
       const signedUrl = await createOptimizedSignedImageUrl(
         'offer-product-pages',
         product.offer_image_path,
+        compactResourceMode ? 720 : 960,
       );
       if (signedUrl) productImageUrlCache.set(product.offer_image_path, signedUrl);
       return signedUrl;
     };
 
-    const firstProductImage = await getProductImageUrl(
-      sortedOfferItems.find((item: any) => item.product?.offer_image_path)?.product,
-    );
+    const firstProductImage = compactResourceMode
+      ? ''
+      : await getProductImageUrl(
+          sortedOfferItems.find((item: any) => item.product?.offer_image_path)?.product,
+        );
     let categoryHeroImage = '';
-    if (selectedTemplateCategory?.hero_image_path) {
+    // Własne hero jest kluczową częścią oferty, dlatego zachowujemy je także
+    // w trybie oszczędnym. To pojedynczy, przeskalowany JPEG, więc nie niweczy
+    // redukcji pamięci wynikającej z pominięcia zdjęć wszystkich produktów.
+    if (offer.hero_image_path) {
+      categoryHeroImage = await createOptimizedSignedImageUrl(
+        'offer-template-pages',
+        offer.hero_image_path,
+        compactResourceMode ? 720 : 960,
+      );
+    }
+    if (!categoryHeroImage && selectedTemplateCategory?.hero_image_path) {
       categoryHeroImage = await createOptimizedSignedImageUrl(
         'offer-template-pages',
         selectedTemplateCategory.hero_image_path,
+        compactResourceMode ? 720 : 960,
       );
     }
     const recommendedScope = sortedOfferItems
@@ -1516,6 +1606,7 @@ Deno.serve(async (req: Request) => {
         : categoryHeroImage || firstProductImage;
       const imageSectionBottom = 210;
       const imageSectionHeight = Math.min(470, Math.max(320, Number(categoryDesign.hero_height || 395)));
+      const coverDecorationCenterX = 545;
       const coverDecorationRadius = 155;
       const coverDecorationGap = 34; // 1.2 cm on an A4 PDF page
       const coverDecorationCenterY = imageSectionBottom
@@ -1573,14 +1664,14 @@ Deno.serve(async (req: Request) => {
       // It is drawn after the hero image, so preview and exported PDF stay identical.
       if (categoryDesign.cover_decorations_enabled !== false) {
         page.drawCircle({
-          x: 575,
+          x: coverDecorationCenterX,
           y: coverDecorationCenterY,
           size: coverDecorationRadius,
           color: coverDecoration,
           opacity: 1,
         });
         page.drawCircle({
-          x: 530,
+          x: coverDecorationCenterX,
           y: coverDecorationCenterY,
           size: 90,
           borderColor: coverAccent,
@@ -1626,9 +1717,11 @@ Deno.serve(async (req: Request) => {
         cover_date_title: 'TERMIN I MIEJSCE',
         event_date_time: eventDateWithTime,
         cover_client_title: offer.client_type === 'business' ? 'ORGANIZACJA' : 'OFERTA DLA',
-        cover_client_name: offer.client_type === 'business'
-          ? String(offerData.organization_name || offerData.client_name).toLocaleUpperCase('pl-PL')
-          : offerData.client_name,
+        cover_client_name: String(
+          offer.client_type === 'business'
+            ? offerData.organization_name || offerData.client_name
+            : offerData.client_name,
+        ).toLocaleUpperCase('pl-PL'),
         cover_contact_title: offer.client_type === 'business' && offerData.contact_person_name
           ? 'OSOBA KONTAKTOWA'
           : '',
@@ -1735,14 +1828,14 @@ Deno.serve(async (req: Request) => {
         { field_name: 'about_title', label: 'Tytuł', x: 45, y: 52, font_size: 25, font_color: categoryDesign.primary_color, font_role: 'heading' },
         { field_name: 'about_subtitle', label: 'Podtytuł', x: 45, y: 105, font_size: 9.5, font_color: '#765f55', max_width: 505 },
         { field_name: 'stationary_value_title', label: 'Wartość', x: 65, y: assumptionTiles[0].tileY, font_size: assumptionTiles[0].tileFontSize, font_color: '#ffffff', max_width: 38, align: 'center', font_role: 'heading' },
-        { field_name: 'stationary_label', label: 'Etykieta', x: 125, y: assumptionTiles[0].labelY, font_size: 10, font_color: categoryDesign.primary_color, max_width: 395, font_role: 'heading' },
-        { field_name: 'stationary_detail', label: 'Szczegóły', x: 125, y: 240, font_size: 8.5, font_color: '#171717', max_width: 395 },
+        { field_name: 'stationary_label', label: 'Etykieta', x: 125, y: assumptionTiles[0].labelY, font_size: 10, font_color: categoryDesign.primary_color, max_width: 415, font_role: 'heading' },
+        { field_name: 'stationary_detail', label: 'Szczegóły', x: 125, y: 226, font_size: 8.3, line_height: 10.5, font_color: '#171717', max_width: 415 },
         { field_name: 'online_value_title', label: 'Wartość', x: 65, y: assumptionTiles[1].tileY, font_size: assumptionTiles[1].tileFontSize, font_color: '#ffffff', max_width: 38, align: 'center', font_role: 'heading' },
-        { field_name: 'online_label', label: 'Etykieta', x: 125, y: assumptionTiles[1].labelY, font_size: 10, font_color: categoryDesign.primary_color, max_width: 395, font_role: 'heading' },
-        { field_name: 'online_detail', label: 'Szczegóły', x: 125, y: 350, font_size: 8.5, font_color: '#171717', max_width: 395 },
+        { field_name: 'online_label', label: 'Etykieta', x: 125, y: assumptionTiles[1].labelY, font_size: 10, font_color: categoryDesign.primary_color, max_width: 415, font_role: 'heading' },
+        { field_name: 'online_detail', label: 'Szczegóły', x: 125, y: 336, font_size: 8.3, line_height: 10.5, font_color: '#171717', max_width: 415 },
         { field_name: 'duration_value_title', label: 'Wartość', x: 65, y: assumptionTiles[2].tileY, font_size: assumptionTiles[2].tileFontSize, font_color: '#ffffff', max_width: 38, align: 'center', font_role: 'heading' },
-        { field_name: 'duration_label', label: 'Etykieta', x: 125, y: assumptionTiles[2].labelY, font_size: 10, font_color: categoryDesign.primary_color, max_width: 395, font_role: 'heading' },
-        { field_name: 'duration_detail', label: 'Szczegóły', x: 125, y: 460, font_size: 8.5, font_color: '#171717', max_width: 395 },
+        { field_name: 'duration_label', label: 'Etykieta', x: 125, y: assumptionTiles[2].labelY, font_size: 10, font_color: categoryDesign.primary_color, max_width: 415, font_role: 'heading' },
+        { field_name: 'duration_detail', label: 'Szczegóły', x: 125, y: 446, font_size: 8.3, line_height: 10.5, font_color: '#171717', max_width: 415 },
         { field_name: 'goal_title', label: 'Cel', x: 45, y: 545, font_size: 8.5, font_color: categoryDesign.primary_color },
         { field_name: 'event_goal_short', label: 'Cel wydarzenia', x: 45, y: 575, font_size: 11.5, line_height: 17, font_color: '#111111', max_width: 505 },
         { field_name: 'scope_title', label: 'Zakres', x: 65, y: 678, font_size: 8.5, font_color: categoryDesign.accent_color },
@@ -1755,13 +1848,13 @@ Deno.serve(async (req: Request) => {
         about_subtitle: 'Najważniejsze parametry i potrzeby klienta przyjęte do przygotowania realizacji.',
         stationary_value_title: assumptionTiles[0].tileValue,
         stationary_label: assumptionCards[0].label.toLocaleUpperCase('pl-PL'),
-        stationary_detail: truncateAtWord(assumptionTiles[0].detail, 180),
+        stationary_detail: truncateAtWord(assumptionTiles[0].detail, 250),
         online_value_title: assumptionTiles[1].tileValue,
         online_label: assumptionCards[1].label.toLocaleUpperCase('pl-PL'),
-        online_detail: truncateAtWord(assumptionTiles[1].detail, 180),
+        online_detail: truncateAtWord(assumptionTiles[1].detail, 250),
         duration_value_title: assumptionTiles[2].tileValue,
         duration_label: assumptionCards[2].label.toLocaleUpperCase('pl-PL'),
-        duration_detail: truncateAtWord(assumptionTiles[2].detail, 180),
+        duration_detail: truncateAtWord(assumptionTiles[2].detail, 250),
         goal_title: 'CEL REALIZACJI',
         event_goal_short: truncateAtWord(offerData.event_goal, 280) || 'Cel zostanie doprecyzowany wspólnie przed akceptacją zakresu.',
         scope_title: 'REKOMENDOWANY ZESTAW',
@@ -1912,7 +2005,12 @@ Deno.serve(async (req: Request) => {
       return true;
     };
 
-    const coverResult = await addPdfFromTemplate('cover');
+    // Gotowy PDF okładki może zawierać obraz na stałe i nie mieć pola, które
+    // da się zastąpić. Własne hero oferty ma wyższy priorytet, więc w takim
+    // przypadku zawsze korzystamy z dynamicznej okładki.
+    const coverResult = offer.hero_image_path
+      ? { success: false }
+      : await addPdfFromTemplate('cover');
     if (!coverResult.success) await addBuiltInCover();
     const aboutResult = await addPdfFromTemplate('about');
     if (!aboutResult.success) await addBuiltInAbout();
@@ -2210,13 +2308,15 @@ Deno.serve(async (req: Request) => {
           height: 150,
           color: burgundy,
         });
-        page.drawRectangle({
-          x: 405,
-          y: height - top - 145,
-          width: 145,
-          height: 135,
-          color: rgb(1, 1, 1),
-        });
+        if (!compactResourceMode) {
+          page.drawRectangle({
+            x: 405,
+            y: height - top - 145,
+            width: 145,
+            height: 135,
+            color: rgb(1, 1, 1),
+          });
+        }
         page.drawLine({
           start: { x: 45, y: height - top - 188 },
           end: { x: 550, y: height - top - 188 },
@@ -2225,11 +2325,11 @@ Deno.serve(async (req: Request) => {
         });
 
         fields.push(
-          { field_name: `product_${slot}_name`, label: `Produkt ${slot}: nazwa`, x: 65, y: top + 8, font_size: 16, font_color: '#7f1734', max_width: 315 },
-          { field_name: `product_${slot}_short_description`, label: `Produkt ${slot}: lead`, x: 65, y: top + 44, font_size: 9.5, font_color: '#575c66', max_width: 315 },
-          { field_name: `product_${slot}_description`, label: `Produkt ${slot}: opis`, x: 65, y: top + 73, font_size: 9.3, line_height: 13, font_color: '#0c1a30', max_width: 315 },
-          { field_name: `product_${slot}_requirements`, label: `Produkt ${slot}: wymagania`, x: 65, y: top + 132, font_size: 7.2, line_height: 9, font_color: '#7f1734', max_width: 315 },
-          { field_name: `product_${slot}_image`, label: `Produkt ${slot}: zdjęcie`, type: 'image', x: 405, y: top + 10, width: 145, height: 135 },
+          { field_name: `product_${slot}_name`, label: `Produkt ${slot}: nazwa`, x: 65, y: top + 8, font_size: 16, font_color: '#7f1734', max_width: compactResourceMode ? 465 : 315 },
+          { field_name: `product_${slot}_short_description`, label: `Produkt ${slot}: lead`, x: 65, y: top + 44, font_size: 9.5, font_color: '#575c66', max_width: compactResourceMode ? 465 : 315 },
+          { field_name: `product_${slot}_description`, label: `Produkt ${slot}: opis`, x: 65, y: top + 73, font_size: 9.3, line_height: 13, font_color: '#0c1a30', max_width: compactResourceMode ? 465 : 315 },
+          { field_name: `product_${slot}_requirements`, label: `Produkt ${slot}: wymagania`, x: 65, y: top + 132, font_size: 7.2, line_height: 9, font_color: '#7f1734', max_width: compactResourceMode ? 465 : 315 },
+          ...(!compactResourceMode ? [{ field_name: `product_${slot}_image`, label: `Produkt ${slot}: zdjęcie`, type: 'image' as const, x: 405, y: top + 10, width: 145, height: 135 }] : []),
           ...(entry.data.product_page_url ? [{
             field_name: `product_${slot}_more`,
             label: `Produkt ${slot}: link`,
@@ -2551,6 +2651,17 @@ Deno.serve(async (req: Request) => {
       const product = item.product;
       if (!product) continue;
 
+      // W ponowieniu po przekroczeniu limitu wszystkie produkty trafiają na
+      // lekkie, tekstowe strony po trzy pozycje. Nie ładujemy statycznych PDF,
+      // porównań wariantów ani grafik produktowych. Zakres, opisy i ceny nadal
+      // pozostają w dokumencie, ale liczba stron i obiektów PDF mocno spada.
+      if (compactResourceMode) {
+        const entry = await prepareProductEntry(item);
+        compactBuffer.push(entry);
+        if (compactBuffer.length === 3) await flushCompactProducts();
+        continue;
+      }
+
       if (product.offer_page_enabled === false) {
         await flushCompactProducts();
         const staticPageAdded = await addStaticProductPdf(item);
@@ -2584,11 +2695,37 @@ Deno.serve(async (req: Request) => {
     }
     await flushCompactProducts();
 
-    const logisticsPriceNet = offerData.logistics_enabled
+    const usesAcceptedCalculation = Boolean(acceptedCalculation) && (
+      offer.event?.financial_source === 'calculation'
+      || Boolean(acceptedCalculationId)
+      || !offer.event_id
+    );
+    const calculationPricingItems = usesAcceptedCalculation
+      ? [...(acceptedCalculation.event_calculation_items || [])]
+          .sort((a: any, b: any) => Number(a.position || 0) - Number(b.position || 0))
+          .map((item: any) => {
+            const quantity = Number(item.quantity || 0);
+            const days = Math.max(1, Number(item.days || 1));
+            const unitPrice = Number(item.unit_price || 0);
+            const effectiveQuantity = quantity * days;
+            return {
+              id: item.id,
+              name: item.name,
+              description: [item.description, days > 1 ? `Okres realizacji: ${days} dni.` : ''].filter(Boolean).join(' '),
+              quantity: effectiveQuantity,
+              unit: item.unit || 'szt.',
+              unit_price: unitPrice,
+              vat_rate: Number(item.vat_rate ?? 23),
+              subtotal: effectiveQuantity * unitPrice,
+              total: effectiveQuantity * unitPrice,
+            };
+          })
+      : [];
+    const logisticsPriceNet = !usesAcceptedCalculation && offerData.logistics_enabled
       ? Number(offerData.logistics_price_net || 0)
       : 0;
     const pricingItems = [
-      ...offerData.offer_items,
+      ...(usesAcceptedCalculation ? calculationPricingItems : offerData.offer_items),
       ...(logisticsPriceNet > 0 ? [{
         id: 'offer-logistics',
         name: 'Logistyka',
@@ -2607,7 +2744,7 @@ Deno.serve(async (req: Request) => {
       ),
       0,
     );
-    const pricingDiscountAmount = Math.min(
+    const pricingDiscountAmount = usesAcceptedCalculation ? 0 : Math.min(
       pricingListNet,
       Math.max(0, Number(offerData.discount_amount || 0)),
     );
@@ -2627,6 +2764,9 @@ Deno.serve(async (req: Request) => {
     const packageComparisonRequested = Boolean(
       offerData.package_mode && (offerData.offer_packages || []).length > 0,
     );
+    const acceptedCalculationReference = usesAcceptedCalculation && acceptedCalculationNumber
+      ? `Integralną częścią niniejszej oferty jest zaakceptowana kalkulacja nr ${acceptedCalculationNumber}.`
+      : '';
     // Przy pakietach korzystamy z przewidywalnej strony kalkulacji bez pola sumy.
     // Szablon PDF może zawierać statyczne etykiety podsumowania, których nie da się usunąć.
     const pricingResult = packageComparisonRequested
@@ -2659,6 +2799,13 @@ Deno.serve(async (req: Request) => {
           total_gross: pricingTotalGross,
         },
       );
+      if (acceptedCalculationReference) {
+        await overlayTextOnPages(mergedPdf, pricingPageIndex, 1, [
+          { field_name: 'accepted_calculation_reference', label: 'Źródło wyceny', x: 45, y: 778, font_size: 7.4, font_color: categoryDesign.primary_color, max_width: 505 },
+        ], {
+          accepted_calculation_reference: acceptedCalculationReference,
+        });
+      }
     } else if (!pricingResult.success) {
       const page = mergedPdf.addPage([595.28, 841.89]);
       page.drawRectangle({ x: 0, y: 0, width: 595.28, height: 841.89, color: cream });
@@ -2696,6 +2843,8 @@ Deno.serve(async (req: Request) => {
         pricing_title: 'WYCENA',
         pricing_subtitle: packageComparisonRequested
           ? 'Ceny jednostkowe pozycji tworzących warianty pakietowe przedstawione na kolejnej stronie.'
+          : usesAcceptedCalculation
+            ? `Zakres i wartości wynikają z zaakceptowanej kalkulacji nr ${acceptedCalculationNumber}.`
           : 'Zakres i wartości wynikają bezpośrednio z pozycji zatwierdzonych w CRM.',
         total_label_title: 'ŁĄCZNA WARTOŚĆ OFERTY BRUTTO',
         total_net_summary: `WARTOŚĆ NETTO: ${formatMoney(pricingTotalNet)}`,
@@ -2704,6 +2853,8 @@ Deno.serve(async (req: Request) => {
           : '',
         pricing_note: packageComparisonRequested
           ? 'Ostateczna wartość zależy od wybranego pakietu. Kwoty pakietowe znajdują się na kolejnej stronie.'
+          : acceptedCalculationReference
+            ? acceptedCalculationReference
           : 'Ostateczny zakres potwierdzimy po akceptacji oferty i weryfikacji warunków technicznych obiektu.',
       });
 
@@ -2761,58 +2912,130 @@ Deno.serve(async (req: Request) => {
       if (!normalized) return '';
       return /[.!?]$/.test(normalized) ? normalized : `${normalized}.`;
     };
-    const inferTechnicalTitle = (description: string) => {
-      const normalized = description.toLocaleLowerCase('pl-PL');
-      if (/internet|łącze|ethernet|wi-?fi/.test(normalized)) return 'ŁĄCZE INTERNETOWE';
-      if (/zasil|230\s*v|400\s*v|prąd|przyłącze/.test(normalized)) return 'ZASILANIE I INFRASTRUKTURA';
-      if (/dostęp|sali|obiektu|montaż|demontaż/.test(normalized)) return 'DOSTĘP DO OBIEKTU';
-      if (/kontakt|technicz|koordyn/.test(normalized)) return 'KOORDYNACJA Z OBIEKTEM';
-      return 'WARUNEK TECHNICZNY';
-    };
     const requirementCategoryLabels: Record<string, string> = {
+      people: 'LUDZIE I OBSADA',
+      resources: 'SPRZĘT I ZASOBY',
+      place: 'MIEJSCE REALIZACJI',
+      time: 'CZAS I HARMONOGRAM',
+      power: 'ZASILANIE',
+      internet: 'ŁĄCZE INTERNETOWE',
+      access: 'DOSTĘP DO OBIEKTU',
+      coordination: 'KOORDYNACJA Z OBIEKTEM',
+      setup: 'MONTAŻ I PRÓBA',
+      schedule: 'HARMONOGRAM',
+      surface: 'MIEJSCE REALIZACJI',
+      venue_approval: 'ZGODA OBIEKTU',
+      safety: 'BEZPIECZEŃSTWO',
       technical: 'WARUNEK TECHNICZNY',
       accommodation: 'ZAKWATEROWANIE',
       backstage: 'ZAPLECZE / GARDEROBA',
       hospitality: 'GOŚCINNOŚĆ / CATERING',
       logistics: 'LOGISTYKA',
+      permissions: 'POZWOLENIA OBIEKTU',
       other: 'INNE WYMAGANIE',
     };
     type OfferRequirementEntry = {
+      key: string;
       title: string;
       description: string;
       category: string;
       sources: string[];
+      included: boolean;
+      priority: number;
+      origin: 'template' | 'product' | 'manual';
     };
-    const requirementEntries: OfferRequirementEntry[] = [];
     const requirementEntryByKey = new Map<string, OfferRequirementEntry>();
-    const addRequirementEntry = (entry: OfferRequirementEntry) => {
-      const title = entry.title.replace(/\s+/g, ' ').trim();
+    const normalizeRequirement = (value: string) => value
+      .toLocaleLowerCase('pl-PL')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/ł/g, 'l')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim();
+    const inferRequirementCategory = (description: string, preferred = 'technical') => {
+      const value = normalizeRequirement(description);
+      if (/zasil|230\s*v|230v|400\s*v|400v|3\s*faz|trojfaz|sila|gniazd|prad|obwod/.test(value)) return 'power';
+      if (/internet|lacze|ethernet|wi fi|wifi|sieciow/.test(value)) return 'internet';
+      if (/osob|technik|realizator|operator|obsluga|personel|ekipa/.test(value)) return 'people';
+      if (/sprzet|urzadzen|zasob|okablow|mikrofon|glosnik|ekran|projektor/.test(value)) return 'resources';
+      if (/zgod.*obiekt|akceptac.*obiekt|dopuszcz|czujek|przeciwpozar/.test(value)) return 'venue_approval';
+      if (/kontakt|koordyn|osob.*decyzyjn|osob.*technicz/.test(value)) return 'coordination';
+      if (/montaz|demontaz|proba|wczesniejsz.*wejsc|wyprzedzeniem/.test(value)) return 'setup';
+      if (/harmonogram|scenariusz|moment|program wydarzenia/.test(value)) return 'schedule';
+      if (/godzin|termin|czas realizac|okno czasow/.test(value)) return 'time';
+      if (/dostep|dojazd|wniesien|transportow/.test(value)) return 'access';
+      if (/rowne|stabilne|suche|podloze|stanowisko|powierzchni/.test(value)) return 'surface';
+      if (/miejsce|sala|scena|przestrzen/.test(value)) return 'place';
+      if (/bezpiecz|strefa|ewakuac|latwopal/.test(value)) return 'safety';
+      return requirementCategoryLabels[preferred] ? preferred : 'technical';
+    };
+    const requirementPriority = (category: string, description: string) => {
+      const value = normalizeRequirement(description);
+      let priority = Math.min(80, value.length);
+      if (category === 'power') {
+        if (/400\s*v|400v|3\s*faz|trojfaz|sila/.test(value)) priority += 500;
+        else if (/230\s*v|230v/.test(value)) priority += 300;
+        else priority += 100;
+        if (/32\s*a|32a|63\s*a|63a|kw/.test(value)) priority += 60;
+      }
+      if (category === 'internet') {
+        if (/ethernet|przewod/.test(value)) priority += 500;
+        else if (/stabiln|gwarantowan/.test(value)) priority += 300;
+        else if (/wi fi|wifi/.test(value)) priority += 100;
+        if (/mb\/s|mbps|gb\/s|gbps/.test(value)) priority += 80;
+      }
+      if (category === 'access' && /ciezar|bus|samochod|bezposredni dojazd/.test(value)) priority += 200;
+      return priority;
+    };
+    const requirementFingerprint = (value: string) => normalizeRequirement(value)
+      .split(' ')
+      .filter((word) => word.length > 2 && !['oraz', 'dla', 'przed', 'przez', 'jest', 'byc', 'miec'].includes(word))
+      .slice(0, 10)
+      .sort()
+      .join('-');
+    const requirementKey = (category: string, description: string) => [
+      'people', 'resources', 'place', 'time', 'power', 'internet', 'access',
+      'coordination', 'setup', 'schedule', 'surface', 'venue_approval', 'permissions',
+    ].includes(category)
+      ? category
+      : `${category}:${requirementFingerprint(description) || 'requirement'}`;
+    const addRequirementEntry = (entry: Partial<OfferRequirementEntry> & Pick<OfferRequirementEntry, 'description' | 'sources'>) => {
+      const title = String(entry.title || '').replace(/\s+/g, ' ').trim();
       const description = ensureSentence(entry.description || title);
       if (!title && !description) return;
-      const key = `${title}|${description}`.toLocaleLowerCase('pl-PL');
+      const requestedCategory = String(entry.category || '');
+      const category = requirementCategoryLabels[requestedCategory]
+        ? requestedCategory
+        : inferRequirementCategory(description, 'technical');
+      const key = entry.key || requirementKey(category, description);
+      const priority = Number.isFinite(entry.priority) ? Number(entry.priority) : requirementPriority(category, description);
       const existing = requirementEntryByKey.get(key);
-      if (existing) {
-        entry.sources.forEach((source) => {
-          if (source && !existing.sources.includes(source)) existing.sources.push(source);
-        });
-        return;
-      }
+      const sources = [...new Set([...(existing?.sources || []), ...entry.sources.filter(Boolean)])];
       const normalizedEntry = {
-        ...entry,
-        title: title || requirementCategoryLabels[entry.category] || 'WYMAGANIE',
+        key,
+        category,
+        title: title || requirementCategoryLabels[category] || 'WYMAGANIE',
         description,
-        sources: entry.sources.filter(Boolean),
+        sources,
+        included: entry.included !== false,
+        priority,
+        origin: entry.origin || 'product',
       };
-      requirementEntryByKey.set(key, normalizedEntry);
-      requirementEntries.push(normalizedEntry);
+      if (!existing || priority > existing.priority || (priority === existing.priority && description.length > existing.description.length)) {
+        requirementEntryByKey.set(key, normalizedEntry);
+      } else {
+        requirementEntryByKey.set(key, { ...existing, sources, included: entry.included ?? existing.included });
+      }
     };
 
     splitConfiguredLines(categoryDesign.technical_requirements_text).forEach((description) => {
       addRequirementEntry({
-        title: inferTechnicalTitle(description),
+        title: requirementCategoryLabels[inferRequirementCategory(description)],
         description,
-        category: 'technical',
-        sources: ['Warunki wspólne realizacji'],
+        category: inferRequirementCategory(description),
+        sources: ['Szablon główny oferty'],
+        origin: 'template',
+        included: true,
       });
     });
     sortedOfferItems.forEach((item: any) => {
@@ -2824,10 +3047,12 @@ Deno.serve(async (req: Request) => {
         .filter((requirement: unknown) => typeof requirement === 'string' && requirement.trim())
         .forEach((description: string) => {
           addRequirementEntry({
-            title: inferTechnicalTitle(description),
+            title: requirementCategoryLabels[inferRequirementCategory(description)],
             description,
-            category: 'technical',
+            category: inferRequirementCategory(description),
             sources: [productName],
+            origin: 'product',
+            included: true,
           });
         });
 
@@ -2847,78 +3072,252 @@ Deno.serve(async (req: Request) => {
           description,
           category,
           sources: [productName],
+          origin: 'product',
+          included: true,
         });
       });
     });
 
+    const storedRequirements = (() => {
+      if (Array.isArray(offer.offer_requirements)) return offer.offer_requirements;
+      if (typeof offer.offer_requirements === 'string') {
+        try {
+          const parsed = JSON.parse(offer.offer_requirements);
+          return Array.isArray(parsed) ? parsed : [];
+        } catch {
+          return [];
+        }
+      }
+      return [];
+    })();
+    // Wysłana lub zaakceptowana oferta zachowuje zatwierdzony snapshot. Szkic
+    // ma natomiast zawsze odzwierciedlać bieżące wymagania produktów; zapisane
+    // ręczne zmiany są poniżej scalane z aktualnie wyliczoną listą.
+    if (storedRequirements.length > 0 && offer.status !== 'draft') {
+      requirementEntryByKey.clear();
+    }
+    storedRequirements.forEach((entry: any) => {
+      if (!entry || typeof entry !== 'object') return;
+      const description = String(entry.description || entry.title || '').trim();
+      if (!description) return;
+      const storedCategory = String(entry.category || '');
+      const category = requirementCategoryLabels[storedCategory]
+        ? storedCategory
+        : inferRequirementCategory(description, 'technical');
+      const key = entry.origin === 'manual' && entry.key
+        ? String(entry.key)
+        : requirementKey(category, description);
+      const current = requirementEntryByKey.get(key);
+      const priority = requirementPriority(category, description);
+      const sources = [...new Set([...(current?.sources || []), ...(Array.isArray(entry.sources) ? entry.sources : [])].filter(Boolean))];
+      if (!current || entry.origin === 'manual' || priority >= current.priority) {
+        requirementEntryByKey.set(key, {
+          key,
+          category,
+          title: String(entry.title || requirementCategoryLabels[category] || 'WYMAGANIE').trim(),
+          description: ensureSentence(description),
+          sources,
+          included: entry.included !== false,
+          priority,
+          origin: entry.origin === 'manual' ? 'manual' : 'product',
+        });
+      } else {
+        requirementEntryByKey.set(key, { ...current, sources, included: entry.included !== false });
+      }
+    });
+
+    const requirementOrder = [
+      'people', 'resources', 'place', 'time', 'power', 'internet', 'access',
+      'setup', 'surface', 'venue_approval', 'permissions', 'coordination',
+      'schedule', 'safety', 'accommodation', 'backstage', 'hospitality',
+      'logistics', 'technical', 'other',
+    ];
+    const uniqueRequirementsByDescription = new Map<string, OfferRequirementEntry>();
+    requirementEntryByKey.forEach((entry) => {
+      const fingerprint = normalizeRequirement(entry.description);
+      const existing = uniqueRequirementsByDescription.get(fingerprint);
+      if (!existing) {
+        uniqueRequirementsByDescription.set(fingerprint, entry);
+        return;
+      }
+      uniqueRequirementsByDescription.set(fingerprint, {
+        ...(entry.priority > existing.priority ? entry : existing),
+        sources: [...new Set([...existing.sources, ...entry.sources])],
+        included: existing.included && entry.included,
+      });
+    });
+    const requirementGroupsByTitle = new Map<string, {
+      entry: OfferRequirementEntry;
+      descriptions: string[];
+    }>();
+    uniqueRequirementsByDescription.forEach((entry) => {
+      const groupKey = normalizeRequirement(entry.title) || entry.category;
+      const existing = requirementGroupsByTitle.get(groupKey);
+      if (!existing) {
+        requirementGroupsByTitle.set(groupKey, { entry, descriptions: [entry.description] });
+        return;
+      }
+      const descriptions = [...existing.descriptions];
+      if (!descriptions.some((description) => normalizeRequirement(description) === normalizeRequirement(entry.description))) {
+        descriptions.push(entry.description);
+      }
+      requirementGroupsByTitle.set(groupKey, {
+        entry: {
+          ...(entry.priority > existing.entry.priority ? entry : existing.entry),
+          sources: [...new Set([...existing.entry.sources, ...entry.sources])],
+          included: existing.entry.included && entry.included,
+        },
+        descriptions,
+      });
+    });
+    const requirementEntries = [...requirementGroupsByTitle.values()]
+      .map(({ entry, descriptions }) => ({
+        ...entry,
+        description: descriptions.length > 1
+          ? descriptions.map((description) => `• ${description}`).join('\n')
+          : descriptions[0],
+      }))
+      .filter((entry) => entry.included !== false)
+      .sort((a, b) => {
+        const aOrder = requirementOrder.indexOf(a.category);
+        const bOrder = requirementOrder.indexOf(b.category);
+        return (aOrder < 0 ? 99 : aOrder) - (bOrder < 0 ? 99 : bOrder)
+          || b.priority - a.priority
+          || a.title.localeCompare(b.title, 'pl');
+      });
+
     if (categoryDesign.info_page_enabled !== false) {
       const orderSteps = splitConfiguredLines(categoryDesign.order_process_text);
       const reservationTerms = splitConfiguredLines(categoryDesign.reservation_terms_text);
+      const storedInfoSections = Array.isArray(offer.info_page_sections)
+        ? offer.info_page_sections.slice(0, 3)
+        : [];
+      const automaticInfoSections = [
+        {
+          key: 'event_details',
+          title: 'TERMIN I MIEJSCE',
+          content: [offerData.event_date, offerData.event_location].filter(Boolean).join('\n'),
+        },
+        {
+          key: 'pricing_source',
+          title: 'ZAKRES I WYCENA',
+          content: [
+            acceptedCalculationReference || 'Wycena wynika z zakresu pozycji przedstawionych w ofercie.',
+            `Wartość: ${pricingTotalNet.toFixed(2)} PLN netto / ${pricingTotalGross.toFixed(2)} PLN brutto.`,
+          ].filter(Boolean).join('\n'),
+        },
+        {
+          key: 'coordination',
+          title: 'KONTAKT I KOORDYNACJA',
+          content: [
+            offerData.contact_person_name ? `Osoba kontaktowa: ${offerData.contact_person_name}.` : '',
+            offerData.contact_person_phone || offerData.contact_person_email
+              ? [offerData.contact_person_phone, offerData.contact_person_email].filter(Boolean).join(' / ')
+              : '',
+            'Szczegóły techniczne i zmiany zakresu wymagają potwierdzenia przed wydarzeniem.',
+          ].filter(Boolean).join('\n'),
+        },
+      ];
+      const additionalInfoSections = automaticInfoSections.map((fallback, index) => {
+        const stored = storedInfoSections[index];
+        return {
+          key: String(stored?.key || fallback.key),
+          title: String(stored?.title || fallback.title).trim(),
+          content: String(stored?.content || fallback.content).trim(),
+        };
+      });
+      const infoSections = [
+        {
+          key: 'order',
+          title: 'JAK WYGLĄDA ZAMÓWIENIE',
+          content: orderSteps.map((line, index) => `${index + 1}.  ${line}`).join('\n'),
+        },
+        {
+          key: 'reservation',
+          title: 'REZERWACJA I ZMIANY',
+          content: reservationTerms.map((line) => ensureSentence(line)).join('\n'),
+        },
+        ...additionalInfoSections,
+      ];
       const page = mergedPdf.addPage([595.28, 841.89]);
       page.drawRectangle({ x: 0, y: 0, width: 595.28, height: 841.89, color: cream });
       page.drawLine({ start: { x: 45, y: 700 }, end: { x: 550, y: 700 }, thickness: 0.8, color: burgundy });
-      drawRoundedRectangle(page, { x: 45, y: 410, width: 505, height: 255, radius: 9, color: rgb(1, 1, 1) });
-      drawRoundedRectangle(page, { x: 45, y: 130, width: 505, height: 255, radius: 9, color: rgb(1, 1, 1) });
-
-      await overlayTextOnPages(mergedPdf, mergedPdf.getPageCount() - 1, 1, [
+      const infoFields: TextFieldConfig[] = [
         { field_name: 'info_title', label: 'Tytuł', x: 45, y: 58, font_size: 24, font_color: categoryDesign.primary_color, font_role: 'heading', max_width: 505 },
         { field_name: 'info_subtitle', label: 'Opis', x: 45, y: 118, font_size: 9.5, font_color: '#765f55', max_width: 505 },
-        { field_name: 'order_number_title', label: 'Numer', x: 65, y: 205, font_size: 22, font_color: categoryDesign.accent_color, font_role: 'heading' },
-        { field_name: 'order_title', label: 'Sekcja', x: 125, y: 205, font_size: 10, font_color: categoryDesign.primary_color },
-        { field_name: 'order_content', label: 'Treść', x: 125, y: 244, font_size: 9, line_height: 19, font_color: '#171717', max_width: 395 },
-        { field_name: 'reservation_number_title', label: 'Numer', x: 65, y: 485, font_size: 22, font_color: categoryDesign.accent_color, font_role: 'heading' },
-        { field_name: 'reservation_title', label: 'Sekcja', x: 125, y: 485, font_size: 10, font_color: categoryDesign.primary_color },
-        { field_name: 'reservation_content', label: 'Treść', x: 125, y: 524, font_size: 9, line_height: 19, font_color: '#171717', max_width: 395 },
         { field_name: 'info_footer', label: 'Stopka', x: 45, y: 805, font_size: 7, font_color: categoryDesign.accent_color, max_width: 390 },
         { field_name: 'info_page_number', label: 'Numer strony', x: 505, y: 805, font_size: 8, font_color: categoryDesign.primary_color, max_width: 45, align: 'right', font_role: 'heading' },
-      ], {
+      ];
+      const infoPageData: Record<string, any> = {
         info_title: String(categoryDesign.info_page_title || 'INFORMACJE I WARUNKI').toLocaleUpperCase('pl-PL'),
         info_subtitle: 'Najważniejsze informacje organizacyjne przed potwierdzeniem realizacji.',
-        order_number_title: '01',
-        order_title: 'JAK WYGLĄDA ZAMÓWIENIE',
-        order_content: orderSteps.map((line, index) => `${index + 1}.  ${line}`).join('\n'),
-        reservation_number_title: '02',
-        reservation_title: 'REZERWACJA I ZMIANY',
-        reservation_content: reservationTerms.map((line) => ensureSentence(line)).join('\n\n'),
         info_footer: `${brandCompanyName.toLocaleUpperCase('pl-PL')} / OFERTA NR ${offerData.offer_number}`,
         info_page_number: String(mergedPdf.getPageCount()).padStart(2, '0'),
+      };
+      const infoCardHeight = 116;
+      const infoCardGap = 8;
+      const infoCardTop = 165;
+      infoSections.forEach((section, index) => {
+        const top = infoCardTop + index * (infoCardHeight + infoCardGap);
+        drawRoundedRectangle(page, {
+          x: 45,
+          y: 841.89 - top - infoCardHeight,
+          width: 505,
+          height: infoCardHeight,
+          radius: 8,
+          color: rgb(1, 1, 1),
+        });
+        const prefix = `info_section_${index}`;
+        infoFields.push(
+          { field_name: `${prefix}_number`, label: 'Numer', x: 65, y: top + 18, font_size: 18, font_color: categoryDesign.accent_color, font_role: 'heading' },
+          { field_name: `${prefix}_title`, label: 'Sekcja', x: 125, y: top + 18, font_size: 9.2, font_color: categoryDesign.primary_color },
+          { field_name: `${prefix}_content`, label: 'Treść', x: 125, y: top + 44, font_size: 7.8, line_height: 12.5, font_color: '#171717', max_width: 395 },
+        );
+        infoPageData[`${prefix}_number`] = String(index + 1).padStart(2, '0');
+        infoPageData[`${prefix}_title`] = section.title.toLocaleUpperCase('pl-PL');
+        infoPageData[`${prefix}_content`] = truncateAtWord(section.content, 360);
       });
+
+      await overlayTextOnPages(
+        mergedPdf,
+        mergedPdf.getPageCount() - 1,
+        1,
+        infoFields,
+        infoPageData,
+      );
     }
 
     if (categoryDesign.requirements_page_enabled !== false && requirementEntries.length > 0) {
       const estimateRequirementLines = (description: string) => description
         .split(/\r?\n/)
-        .reduce((sum, paragraph) => sum + Math.max(1, Math.ceil(paragraph.length / 78)), 0);
-      const requirementCards = requirementEntries.map((entry, index) => ({
+        .reduce((sum, paragraph) => sum + Math.max(1, Math.ceil(paragraph.length / 112)), 0);
+      const requirementRows = requirementEntries.map((entry) => ({
         ...entry,
-        number: String(index + 1).padStart(2, '0'),
-        height: Math.max(104, 76 + estimateRequirementLines(entry.description) * 13),
+        height: Math.min(150, Math.max(42, 25 + estimateRequirementLines(entry.description) * 10)),
       }));
-      const requirementPages: typeof requirementCards[] = [];
-      let currentPageCards: typeof requirementCards = [];
+      const requirementPages: typeof requirementRows[] = [];
+      let currentPageRows: typeof requirementRows = [];
       let usedHeight = 0;
-      requirementCards.forEach((card) => {
-        const cardHeight = Math.min(card.height, 310);
-        const requiredHeight = cardHeight + (currentPageCards.length > 0 ? 14 : 0);
-        if (currentPageCards.length > 0 && usedHeight + requiredHeight > 570) {
-          requirementPages.push(currentPageCards);
-          currentPageCards = [];
+      requirementRows.forEach((row) => {
+        if (currentPageRows.length > 0 && usedHeight + row.height > 598) {
+          requirementPages.push(currentPageRows);
+          currentPageRows = [];
           usedHeight = 0;
         }
-        currentPageCards.push({ ...card, height: cardHeight });
-        usedHeight += cardHeight + (currentPageCards.length > 1 ? 14 : 0);
+        currentPageRows.push(row);
+        usedHeight += row.height;
       });
-      if (currentPageCards.length > 0) requirementPages.push(currentPageCards);
+      if (currentPageRows.length > 0) requirementPages.push(currentPageRows);
 
       for (let requirementPageIndex = 0; requirementPageIndex < requirementPages.length; requirementPageIndex += 1) {
-        const pageCards = requirementPages[requirementPageIndex];
+        const pageRows = requirementPages[requirementPageIndex];
         const page = mergedPdf.addPage([595.28, 841.89]);
         page.drawRectangle({ x: 0, y: 0, width: 595.28, height: 841.89, color: cream });
         page.drawLine({ start: { x: 45, y: 700 }, end: { x: 550, y: 700 }, thickness: 0.8, color: burgundy });
 
         const fields: TextFieldConfig[] = [
-          { field_name: 'requirements_title', label: 'Tytuł', x: 45, y: 58, font_size: 22, font_color: categoryDesign.primary_color, font_role: 'heading', max_width: 505 },
-          { field_name: 'requirements_subtitle', label: 'Opis', x: 45, y: 112, font_size: 9.2, font_color: '#765f55', max_width: 505 },
+          { field_name: 'requirements_title', label: 'Tytuł', x: 45, y: 60, font_size: 18, font_color: categoryDesign.primary_color, font_role: 'heading', max_width: 505 },
+          { field_name: 'requirements_subtitle', label: 'Opis', x: 45, y: 106, font_size: 8.3, font_color: '#765f55', max_width: 505 },
           { field_name: 'requirements_footer', label: 'Stopka', x: 45, y: 805, font_size: 7, font_color: categoryDesign.accent_color, max_width: 390 },
           { field_name: 'requirements_page_number', label: 'Numer strony', x: 505, y: 805, font_size: 8, font_color: categoryDesign.primary_color, max_width: 45, align: 'right', font_role: 'heading' },
         ];
@@ -2931,26 +3330,27 @@ Deno.serve(async (req: Request) => {
           requirements_page_number: String(mergedPdf.getPageCount()).padStart(2, '0'),
         };
 
-        let cardTop = 176;
-        pageCards.forEach((card, cardIndex) => {
-          const fieldPrefix = `requirement_${cardIndex}`;
-          const cardBottom = 841.89 - cardTop - card.height;
-          drawRoundedRectangle(page, { x: 45, y: cardBottom, width: 505, height: card.height, radius: 9, color: rgb(1, 1, 1) });
-          page.drawRectangle({ x: 65, y: cardBottom + 18, width: 2.5, height: card.height - 36, color: accent });
+        let rowTop = 164;
+        pageRows.forEach((row, rowIndex) => {
+          const fieldPrefix = `requirement_${rowIndex}`;
+          const rowBottom = 841.89 - rowTop - row.height;
+          page.drawLine({
+            start: { x: 45, y: rowBottom + 1 },
+            end: { x: 550, y: rowBottom + 1 },
+            thickness: 0.45,
+            color: burgundy,
+            opacity: 0.18,
+          });
           fields.push(
-            { field_name: `${fieldPrefix}_number`, label: 'Numer wymagania', x: 78, y: cardTop + 22, font_size: 13, font_color: categoryDesign.accent_color, font_role: 'heading', max_width: 30 },
-            { field_name: `${fieldPrefix}_title`, label: 'Nazwa wymagania', x: 125, y: cardTop + 20, font_size: 10, font_color: categoryDesign.primary_color, max_width: 395 },
-            { field_name: `${fieldPrefix}_meta`, label: 'Kategoria i źródło', x: 125, y: cardTop + 39, font_size: 6.5, font_color: categoryDesign.accent_color, max_width: 395 },
-            { field_name: `${fieldPrefix}_description`, label: 'Opis wymagania', x: 125, y: cardTop + 58, font_size: 8.7, line_height: 13, font_color: '#171717', max_width: 395 },
+            { field_name: `${fieldPrefix}_title`, label: 'Nazwa wymagania', x: 45, y: rowTop + 3, font_size: 8.4, font_color: categoryDesign.primary_color, max_width: 505 },
+            { field_name: `${fieldPrefix}_description`, label: 'Opis wymagania', x: 45, y: rowTop + 19, font_size: 7.7, line_height: 9.8, font_color: '#3c3836', max_width: 505 },
           );
-          pageData[`${fieldPrefix}_number`] = card.number;
-          pageData[`${fieldPrefix}_title`] = card.title;
-          pageData[`${fieldPrefix}_meta`] = [
-            requirementCategoryLabels[card.category] || requirementCategoryLabels.other,
-            card.sources.length > 0 ? `DOTYCZY: ${card.sources.join(', ')}` : '',
-          ].filter(Boolean).join('  ·  ');
-          pageData[`${fieldPrefix}_description`] = card.description;
-          cardTop += card.height + 14;
+          pageData[`${fieldPrefix}_title`] = row.title.toLocaleUpperCase('pl-PL');
+          const description = String(row.description || '').trim();
+          pageData[`${fieldPrefix}_description`] = description.length > 900
+            ? `${description.slice(0, 897).trimEnd()}…`
+            : description;
+          rowTop += row.height;
         });
 
         await overlayTextOnPages(
@@ -3075,7 +3475,19 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const pdfBytes = await mergedPdf.save();
+    // Drop lookup references before serialization. The assets are already part
+    // of the PDF context, while the maps would otherwise keep additional JS
+    // objects alive during the most memory-intensive phase.
+    embeddedImageCache?.images.clear();
+    embeddedImageCache = null;
+    imageFallbackUrls.clear();
+    productImageUrlCache.clear();
+
+    const pdfBytes = await mergedPdf.save({
+      useObjectStreams: true,
+      addDefaultPage: false,
+      objectsPerTick: compactResourceMode ? 5 : 15,
+    });
 
     const sanitizeFileName = (name: string) => {
       return name
@@ -3246,6 +3658,7 @@ Deno.serve(async (req: Request) => {
         fileName: fileName,
         generationNumber,
         pageCount: mergedPdf.getPageCount(),
+        resourceMode,
         downloadUrl: signedUrlData?.signedUrl,
       }),
       {
@@ -3257,13 +3670,18 @@ Deno.serve(async (req: Request) => {
     );
   } catch (error) {
     console.error("Error generating offer PDF:", error);
+    const errorMessage = error instanceof Error ? error.message : String(error || "");
+    const resourceLimit = /memory|resource|allocation|array buffer|heap|out of memory/i.test(errorMessage);
     return new Response(
       JSON.stringify({
         success: false,
-        error: error.message || "Failed to generate offer PDF",
+        error: resourceLimit
+          ? "Generator PDF przekroczył dostępny limit zasobów"
+          : errorMessage || "Failed to generate offer PDF",
+        ...(resourceLimit ? { code: "WORKER_RESOURCE_LIMIT" } : {}),
       }),
       {
-        status: 500,
+        status: resourceLimit ? 503 : 500,
         headers: {
           ...corsHeaders,
           "Content-Type": "application/json",

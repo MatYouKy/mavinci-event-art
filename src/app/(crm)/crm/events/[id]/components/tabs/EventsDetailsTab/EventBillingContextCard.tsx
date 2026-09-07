@@ -47,10 +47,12 @@ interface Props {
   clientOrganizationName?: string | null;
   initialArrangement?: BillingArrangement | null;
   initialBillingOrganizationId?: string | null;
+  initialPurchaseOrderNumber?: string | null;
   canEdit: boolean;
   onSaved?: (value: {
     billing_arrangement: BillingArrangement;
     billing_organization_id: string | null;
+    purchase_order_number: string | null;
   }) => void | Promise<void>;
 }
 
@@ -67,6 +69,7 @@ export default function EventBillingContextCard({
   clientOrganizationName,
   initialArrangement = 'direct',
   initialBillingOrganizationId = null,
+  initialPurchaseOrderNumber = null,
   canEdit,
   onSaved,
 }: Props) {
@@ -76,6 +79,9 @@ export default function EventBillingContextCard({
   );
   const [billingOrganizationId, setBillingOrganizationId] = useState(
     initialBillingOrganizationId || '',
+  );
+  const [purchaseOrderNumber, setPurchaseOrderNumber] = useState(
+    initialPurchaseOrderNumber || '',
   );
   const [organizations, setOrganizations] = useState<OrganizationOption[]>([]);
   const [contacts, setContacts] = useState<BillingContact[]>([]);
@@ -97,6 +103,7 @@ export default function EventBillingContextCard({
     arrangement: BillingArrangement;
     organizationId: string;
     contactIds: string[];
+    purchaseOrderNumber: string;
   } | null>(null);
   const [editingSettlement, setEditingSettlement] = useState(false);
   const [settlementSnapshot, setSettlementSnapshot] = useState<{
@@ -111,7 +118,8 @@ export default function EventBillingContextCard({
   useEffect(() => {
     setArrangement(initialArrangement || 'direct');
     setBillingOrganizationId(initialBillingOrganizationId || '');
-  }, [initialArrangement, initialBillingOrganizationId]);
+    setPurchaseOrderNumber(initialPurchaseOrderNumber || '');
+  }, [initialArrangement, initialBillingOrganizationId, initialPurchaseOrderNumber]);
 
   useEffect(() => {
     let active = true;
@@ -345,6 +353,7 @@ export default function EventBillingContextCard({
       arrangement,
       organizationId: billingOrganizationId,
       contactIds: [...selectedContactIds],
+      purchaseOrderNumber,
     });
     setEditingBilling(true);
   };
@@ -354,6 +363,7 @@ export default function EventBillingContextCard({
       setArrangement(billingSnapshot.arrangement);
       setBillingOrganizationId(billingSnapshot.organizationId);
       setSelectedContactIds(billingSnapshot.contactIds);
+      setPurchaseOrderNumber(billingSnapshot.purchaseOrderNumber);
     }
     setBillingSnapshot(null);
     setEditingBilling(false);
@@ -379,12 +389,14 @@ export default function EventBillingContextCard({
     try {
       const storedBillingOrganizationId =
         arrangement === 'direct' ? null : billingOrganizationId;
+      const storedPurchaseOrderNumber = purchaseOrderNumber.trim() || null;
 
       const { error: eventError } = await supabase
         .from('events')
         .update({
           billing_arrangement: arrangement,
           billing_organization_id: storedBillingOrganizationId,
+          purchase_order_number: storedPurchaseOrderNumber,
         })
         .eq('id', eventId);
       if (eventError) throw eventError;
@@ -429,6 +441,7 @@ export default function EventBillingContextCard({
       await onSaved?.({
         billing_arrangement: arrangement,
         billing_organization_id: storedBillingOrganizationId,
+        purchase_order_number: storedPurchaseOrderNumber,
       });
       setBillingSnapshot(null);
       setEditingBilling(false);
@@ -528,6 +541,25 @@ export default function EventBillingContextCard({
                     </option>
                   ))}
                 </select>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">
+                  Numer PO / zamówienia klienta{' '}
+                  <span className="text-[#e5e4e2]/35">(opcjonalnie)</span>
+                </label>
+                <input
+                  type="text"
+                  value={purchaseOrderNumber}
+                  maxLength={200}
+                  disabled={!canEdit || saving}
+                  onChange={(event) => setPurchaseOrderNumber(event.target.value)}
+                  placeholder="np. Order No. 5501949741"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2] placeholder:text-[#e5e4e2]/25 focus:border-[#d3bb73] focus:outline-none disabled:opacity-60"
+                />
+                <p className="mt-2 text-xs text-[#e5e4e2]/40">
+                  Numer będzie dostępny w umowie jako zmienna „Numer PO / zamówienia klienta”.
+                </p>
               </div>
 
               {arrangement === 'direct' ? (
@@ -647,6 +679,20 @@ export default function EventBillingContextCard({
                       .join(', ')}
                   </p>
                 )}
+              </div>
+            </div>
+          )}
+
+          {!editingBilling && (
+            <div className="flex items-center gap-3 rounded-lg border border-[#d3bb73]/10 bg-[#0a0d1a] p-4">
+              <ReceiptText className="h-5 w-5 shrink-0 text-[#d3bb73]" />
+              <div className="min-w-0">
+                <p className="text-xs uppercase tracking-wide text-[#d3bb73]/60">
+                  Numer PO / zamówienia klienta
+                </p>
+                <p className="mt-1 break-words text-sm text-[#e5e4e2]">
+                  {purchaseOrderNumber || 'Nie podano — pole opcjonalne'}
+                </p>
               </div>
             </div>
           )}

@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import ResponsiveActionBar from './ResponsiveActionBar';
 import { applyBankTransactionMatchToDocument } from '@/lib/bankTransactionMatching';
+import { repairBrokenBankText } from '@/lib/bankTextEncoding';
 
 interface Transaction {
   id: string;
@@ -75,7 +76,7 @@ function normalizeText(text?: string | null): string {
 
 function formatMoney(value?: number | null, currency = 'PLN') {
   if (value == null || Number.isNaN(Number(value))) return '—';
-  return `${Number(value).toFixed(2)} ${currency}`;
+  return `${Number(value).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ' ')} ${currency}`;
 }
 
 function formatDate(value?: string | null) {
@@ -246,7 +247,11 @@ export default function BankMatchingSimple({ month, year, companyId, invoiceData
   
         if (transactionsError) throw transactionsError;
   
-        setTransactions((transactionsData || []) as Transaction[]);
+        setTransactions((transactionsData || []).map((transaction) => ({
+          ...transaction,
+          counterparty_name: repairBrokenBankText(transaction.counterparty_name) || null,
+          title: repairBrokenBankText(transaction.title) || null,
+        })) as Transaction[]);
       }
   
     } catch (error: any) {

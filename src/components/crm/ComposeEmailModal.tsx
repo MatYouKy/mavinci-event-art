@@ -11,6 +11,7 @@ import UnifiedEmailComposer, {
   plainTextToEmailHtml,
   type UnifiedEmailDraft,
 } from './UnifiedEmailComposer';
+import { resolveScheduledEmailDate } from '@/lib/emailScheduling';
 
 interface ComposeEmailModalProps {
   isOpen: boolean;
@@ -24,6 +25,7 @@ interface ComposeEmailModalProps {
     fromAccountId?: string;
     cc?: string;
     bcc?: string;
+    scheduledAt?: string | null;
   }) => Promise<void>;
   initialTo?: string;
   initialSubject?: string;
@@ -130,6 +132,8 @@ export default function ComposeEmailModal({
   const [loadingSignature, setLoadingSignature] = useState(false);
   const [signatureProfileLoaded, setSignatureProfileLoaded] = useState(false);
   const [improvingWithAI, setImprovingWithAI] = useState(false);
+  const [deliveryMode, setDeliveryMode] = useState<'now' | 'scheduled'>('now');
+  const [scheduledAt, setScheduledAt] = useState('');
   const replyQuoteHtml = useMemo(() => buildReplyQuoteHtml(replyContext), [replyContext]);
   const selectableEmailAccounts = emailAccounts.filter(
     (account) => account.id !== 'all' && account.id !== 'contact_form',
@@ -147,6 +151,8 @@ export default function ComposeEmailModal({
     bcc,
     subject,
     messageHtml: body,
+    deliveryMode,
+    scheduledAt,
   };
   const updateComposerDraft = (next: UnifiedEmailDraft) => {
     setFromAccountId(next.fromAccountId);
@@ -155,6 +161,8 @@ export default function ComposeEmailModal({
     setBcc(next.bcc);
     setSubject(next.subject);
     setBody(next.messageHtml);
+    setDeliveryMode(next.deliveryMode || 'now');
+    setScheduledAt(next.scheduledAt || '');
   };
 
   useEffect(() => {
@@ -165,6 +173,8 @@ export default function ComposeEmailModal({
       setCc('');
       setBcc('');
       setAttachments([]);
+      setDeliveryMode('now');
+      setScheduledAt('');
       setSignatureProfileLoaded(false);
       void fetchSignatureAndTemplate();
     }
@@ -322,6 +332,14 @@ export default function ComposeEmailModal({
       return;
     }
 
+    let resolvedScheduledAt: string | null;
+    try {
+      resolvedScheduledAt = resolveScheduledEmailDate(composerDraft);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Nieprawidłowy termin wysyłki');
+      return;
+    }
+
     setSending(true);
     try {
       const finalHtml = await buildCurrentMessageHtml();
@@ -337,6 +355,7 @@ export default function ComposeEmailModal({
         fromAccountId: effectiveAccountId || undefined,
         cc: cc.trim(),
         bcc: bcc.trim(),
+        scheduledAt: resolvedScheduledAt,
       });
       setTo('');
       setSubject('');
@@ -649,7 +668,7 @@ export default function ComposeEmailModal({
             {sending ? (
               <>
                 <RefreshCw className="h-5 w-5 animate-spin" />
-                Wysyłanie...
+                {deliveryMode === 'scheduled' ? 'Planowanie...' : 'Wysyłanie...'}
               </>
             ) : (
               <>
@@ -658,7 +677,7 @@ export default function ComposeEmailModal({
                 ) : (
                   <Send className="h-5 w-5" />
                 )}
-                Wyślij
+                {deliveryMode === 'scheduled' ? 'Zaplanuj wysyłkę' : 'Wyślij'}
               </>
             )}
           </button>

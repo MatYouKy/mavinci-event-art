@@ -6,6 +6,11 @@ import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { buildInvoicePdfHtml } from './invoices/helpers/buildInvoicePdfHtml';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import {
+  dispatchCrmEmail,
+  formatScheduledEmailDate,
+  resolveScheduledEmailDate,
+} from '@/lib/emailScheduling';
 import UnifiedEmailComposer, {
   buildUnifiedEmailContent,
   buildUnifiedEmailHtml,
@@ -488,6 +493,14 @@ W razie pytań proszę o kontakt.`),
       return;
     }
 
+    let scheduledAt: string | null;
+    try {
+      scheduledAt = resolveScheduledEmailDate(formData);
+    } catch (error) {
+      showSnackbar(error instanceof Error ? error.message : 'Nieprawidłowy termin wysyłki', 'error');
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -548,36 +561,36 @@ W razie pytań proszę o kontakt.`),
         recipientName: selectedRecipientName || clientName,
         companyId: invoiceCompanyId,
       });
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-invoice-email`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({
-            invoiceId,
-            emailAccountId: formData.fromAccountId,
-            to: formData.to,
-            cc: formData.cc,
-            bcc: formData.bcc,
-            subject: formData.subject,
-            message: unifiedEmailHtmlToPlainText(formData.messageHtml),
-            messageHtml: currentEmail.html,
-            signatureHtml: currentEmail.signatureHtml,
-            attachments,
-            recipientName: selectedRecipientName || clientName,
-          }),
+      const result = await dispatchCrmEmail({
+        accessToken: session.access_token,
+        functionName: 'send-invoice-email',
+        scheduledAt,
+        metadata: {
+          entityType: 'invoice',
+          entityId: invoiceId,
+          actionUrl: `/crm/invoices/${invoiceId}`,
         },
+        payload: {
+          invoiceId,
+          emailAccountId: formData.fromAccountId,
+          to: formData.to,
+          cc: formData.cc,
+          bcc: formData.bcc,
+          subject: formData.subject,
+          message: unifiedEmailHtmlToPlainText(formData.messageHtml),
+          messageHtml: currentEmail.html,
+          signatureHtml: currentEmail.signatureHtml,
+          attachments,
+          recipientName: selectedRecipientName || clientName,
+        },
+      });
+
+      showSnackbar(
+        result.scheduled && result.scheduledAt
+          ? `Faktura zostanie wysłana ${formatScheduledEmailDate(result.scheduledAt)}`
+          : 'Faktura wysłana przez email z załącznikiem PDF',
+        'success',
       );
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || error.message || 'Błąd podczas wysyłania email');
-      }
-
-      showSnackbar('Faktura wysłana przez email z załącznikiem PDF', 'success');
       onSent?.();
       onClose();
     } catch (error: unknown | Error) {
@@ -709,12 +722,12 @@ W razie pytań proszę o kontakt.`),
             {loading ? (
               <>
                 <Loader className="h-4 w-4 animate-spin" />
-                Wysyłanie...
+                {formData.deliveryMode === 'scheduled' ? 'Planowanie...' : 'Wysyłanie...'}
               </>
             ) : (
               <>
                 <Send className="h-4 w-4" />
-                Wyślij fakturę
+                {formData.deliveryMode === 'scheduled' ? 'Zaplanuj fakturę' : 'Wyślij fakturę'}
               </>
             )}
           </button>

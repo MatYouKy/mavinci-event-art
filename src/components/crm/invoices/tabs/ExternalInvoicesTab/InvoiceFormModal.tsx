@@ -13,6 +13,8 @@ import {
 import { uploadFile } from './uploadFile';
 import { Modal } from '@/components/UI/Modal';
 import { FileDropzone } from '@/components/UI/FileDropzone/FileDropzone';
+import { fetchCompanyDataFromGUS } from '@/lib/gus';
+import { Loader2, Search } from 'lucide-react';
 
 export function InvoiceFormModal({
   invoice,
@@ -27,32 +29,33 @@ export function InvoiceFormModal({
 }) {
   const { showSnackbar } = useSnackbar();
   const [saving, setSaving] = useState(false);
+  const [gusLoading, setGusLoading] = useState(false);
   const [removeExistingFile, setRemoveExistingFile] = useState(false);
   const [existingFileUrl, setExistingFileUrl] = useState<string | null>(null);
 
   const [form, setForm] = useState({
     seller_name: invoice?.seller_name ?? prefill?.seller_name ?? '',
-    seller_nip: invoice?.seller_nip ?? '',
-    invoice_number: invoice?.invoice_number ?? '',
-    label: invoice?.label ?? '',
+    seller_nip: invoice?.seller_nip ?? prefill?.seller_nip ?? '',
+    invoice_number: invoice?.invoice_number ?? prefill?.invoice_number ?? '',
+    label: invoice?.label ?? prefill?.label ?? '',
     invoice_date:
       invoice?.invoice_date ?? prefill?.invoice_date ?? new Date().toISOString().slice(0, 10),
 
     payment_method: invoice?.payment_method ?? prefill?.payment_method ?? 'Przelew',
 
-    amount_net: invoice?.amount_net ? String(invoice.amount_net) : '',
+    amount_net: invoice?.amount_net != null ? String(invoice.amount_net) : prefill?.amount_net ?? '',
 
-    amount_gross: invoice?.amount_gross ? String(invoice.amount_gross) : '',
+    amount_gross: invoice?.amount_gross != null ? String(invoice.amount_gross) : prefill?.amount_gross ?? '',
 
     currency: invoice?.currency ?? prefill?.currency ?? 'PLN',
 
-    notes: invoice?.notes ?? '',
-    my_company_id: invoice?.my_company_id ?? '',
-    category_id: invoice?.category_id ?? '',
-    payment_status: invoice?.payment_status ?? 'paid',
-    paid_amount: invoice?.paid_amount ? String(invoice.paid_amount) : '',
+    notes: invoice?.notes ?? prefill?.notes ?? '',
+    my_company_id: invoice?.my_company_id ?? prefill?.my_company_id ?? '',
+    category_id: invoice?.category_id ?? prefill?.category_id ?? '',
+    payment_status: invoice?.payment_status ?? prefill?.payment_status ?? 'paid',
+    paid_amount: invoice?.paid_amount ? String(invoice.paid_amount) : prefill?.paid_amount ?? '',
     payment_date:
-      invoice?.payment_date ?? invoice?.invoice_date ?? prefill?.invoice_date ?? new Date().toISOString().slice(0, 10),
+      invoice?.payment_date ?? invoice?.invoice_date ?? prefill?.payment_date ?? prefill?.invoice_date ?? new Date().toISOString().slice(0, 10),
   });
   const [file, setFile] = useState<File | null>(null);
   const [companies, setCompanies] = useState<Array<{ id: string; name: string }>>([]);
@@ -60,6 +63,39 @@ export function InvoiceFormModal({
   
 
   const isSubscriptionInvoice = !!prefill?.subscription_id;
+
+  const fetchSellerFromGUS = async () => {
+    const cleanNip = form.seller_nip.replace(/\D/g, '');
+
+    if (cleanNip.length !== 10) {
+      showSnackbar('Wprowadź poprawny NIP sprzedawcy (10 cyfr)', 'error');
+      return;
+    }
+
+    try {
+      setGusLoading(true);
+      const company = await fetchCompanyDataFromGUS(cleanNip);
+
+      if (!company?.name) {
+        showSnackbar('Nie znaleziono firmy w GUS ani na Białej Liście VAT', 'warning');
+        return;
+      }
+
+      setForm((current) => ({
+        ...current,
+        seller_nip: company.nip || cleanNip,
+        seller_name: company.name,
+      }));
+      showSnackbar('Pobrano dane sprzedawcy z rejestru publicznego', 'success');
+    } catch (error) {
+      showSnackbar(
+        error instanceof Error ? error.message : 'Nie udało się pobrać danych sprzedawcy',
+        'error',
+      );
+    } finally {
+      setGusLoading(false);
+    }
+  };
 
   const submit = async () => {
     if (!form.seller_name.trim() || !form.invoice_number.trim() || !form.invoice_date || !form.my_company_id) {
@@ -106,6 +142,12 @@ export function InvoiceFormModal({
       notes: form.notes.trim() || null,
       my_company_id: form.my_company_id || null,
       category_id: form.category_id || null,
+      event_id: invoice?.event_id ?? prefill?.event_id ?? null,
+      subscription_id: invoice?.subscription_id ?? prefill?.subscription_id ?? null,
+      period_year:
+        invoice?.period_year ?? prefill?.period_year ?? (prefill?.subscription_id ? Number(form.invoice_date.slice(0, 4)) : null),
+      period_month:
+        invoice?.period_month ?? prefill?.period_month ?? (prefill?.subscription_id ? Number(form.invoice_date.slice(5, 7)) : null),
       payment_status: form.payment_status,
       paid_amount:
         form.payment_status === 'paid'
@@ -176,8 +218,14 @@ export function InvoiceFormModal({
     <Modal
       open
       onClose={onClose}
-      title={isSubscriptionInvoice ? 'Dodaj fakturę do subskrypcji' : 'Dodaj fakturę spoza KSeF'}
+      title={prefill?.copied_from_number ? 'Dodaj podobną fakturę' : isSubscriptionInvoice ? 'Dodaj fakturę do subskrypcji' : invoice ? 'Edytuj fakturę spoza KSeF' : 'Dodaj fakturę spoza KSeF'}
     >
+      {prefill?.copied_from_number && (
+        <div className="mb-4 rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/5 px-3 py-2 text-xs leading-5 text-[#e5e4e2]/70">
+          Skopiowano dane z faktury <span className="font-medium text-[#d3bb73]">{prefill.copied_from_number}</span>.
+          {' '}Uzupełnij nowy numer, datę oraz dołącz właściwy plik.
+        </div>
+      )}
       {isSubscriptionInvoice && prefill?.period_year && prefill?.period_month && (
         <div className="mb-4 rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/5 px-3 py-2 text-xs text-[#e5e4e2]/70">
           Faktura zostanie przypisana do subskrypcji za okres{' '}
@@ -212,11 +260,26 @@ export function InvoiceFormModal({
         </div>
         <div>
           <label className={labelClass}>NIP sprzedającego</label>
-          <input
-            className={inputClass}
-            value={form.seller_nip}
-            onChange={(e) => setForm({ ...form, seller_nip: e.target.value })}
-          />
+          <div className="flex gap-2">
+            <input
+              className={`${inputClass} min-w-0 flex-1`}
+              value={form.seller_nip}
+              inputMode="numeric"
+              autoComplete="off"
+              placeholder="10 cyfr"
+              onChange={(e) => setForm({ ...form, seller_nip: e.target.value })}
+            />
+            <button
+              type="button"
+              onClick={fetchSellerFromGUS}
+              disabled={gusLoading}
+              title="Pobierz nazwę firmy z GUS lub Białej Listy VAT"
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-3 text-xs font-medium text-[#d3bb73] transition-colors hover:border-white/20 hover:bg-white/[0.07] disabled:cursor-wait disabled:opacity-60"
+            >
+              {gusLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+              <span>GUS</span>
+            </button>
+          </div>
         </div>
         <div>
           <label className={labelClass}>Numer faktury / paragonu *</label>

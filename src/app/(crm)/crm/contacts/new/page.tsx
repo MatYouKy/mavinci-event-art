@@ -20,13 +20,21 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
-import { fetchCompanyDataFromGUS, parseGoogleMapsUrl } from '@/lib/gus';
+import {
+  fetchCompanyDataFromGUS,
+  findExactRegistryRepresentativeContact,
+  parseGoogleMapsUrl,
+  type GUSCompanyData,
+} from '@/lib/gus';
 import OrganizationLocationPicker from '@/components/crm/contacts/organization/OrganizationLocationPicker';
+import OrganizationRegistryLookupCard from '@/components/crm/contacts/organization/OrganizationRegistryLookupCard';
 import {
   OrganizationFormValues,
   validateOrganizationForm,
 } from '@/components/crm/contacts/organization/organizationValidation';
 import { formatNip } from '@/components/crm/contacts/organization/organizationForm.helpers';
+import { legalFormLabels } from '@/utils/labels/legalFormLabels';
+import { requiresKrsForLegalForm } from '@/lib/organizations/organizationLegalForm';
 
 const cleanNip = (value: string) => value.replace(/\D/g, '');
 
@@ -35,6 +43,14 @@ const normalizePhone = (value?: string | null) => (value || '').replace(/\D/g, '
 const normalizeEmail = (value?: string | null) => (value || '').trim().toLowerCase();
 
 const hasValue = (v?: string | null) => !!v && v.trim().length > 0;
+
+const representationTypeLabels = {
+  sole: 'Samodzielna',
+  joint: 'Łączna',
+  joint_with_proxy: 'Łączna z prokurentem',
+  proxy: 'Pełnomocnik / prokurent',
+  other: 'Inny sposób',
+} as const;
 
 const isMissingAlternativeContactNameColumn = (error?: {
   code?: string;
@@ -53,6 +69,7 @@ interface ExistingContact {
   email: string | null;
   phone: string | null;
   mobile: string | null;
+  position?: string | null;
 }
 
 interface NewContactForm {
@@ -78,6 +95,7 @@ export default function NewContactPage() {
   const [contactType, setContactType] = useState<ContactType | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadingGUS, setLoadingGUS] = useState(false);
+  const [registryLookup, setRegistryLookup] = useState<GUSCompanyData | null>(null);
   const [loadingContacts, setLoadingContacts] = useState(false);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
@@ -111,6 +129,7 @@ export default function NewContactPage() {
     address: string;
     city: string;
     postalCode: string;
+    country: string;
     email: string;
     phone: string;
     website: string;
@@ -122,6 +141,12 @@ export default function NewContactPage() {
     hourlyRate: string;
     specialization: string[];
     location_id: string;
+    representationType: 'sole' | 'joint' | 'joint_with_proxy' | 'proxy' | 'other' | '';
+    representationRule: string;
+    representationBasis: string;
+    representationVerifiedAt: string;
+    legalRepresentativeId: string;
+    legalRepresentativeTitle: string;
   }
 
   const [formData, setFormData] = useState<OrganizationCreateForm>({
@@ -135,6 +160,7 @@ export default function NewContactPage() {
     address: '',
     city: '',
     postalCode: '',
+    country: 'Polska',
     email: '',
     phone: '',
     website: '',
@@ -146,6 +172,12 @@ export default function NewContactPage() {
     hourlyRate: '',
     specialization: [],
     location_id: '',
+    representationType: '',
+    representationRule: '',
+    representationBasis: '',
+    representationVerifiedAt: '',
+    legalRepresentativeId: '',
+    legalRepresentativeTitle: '',
   });
 
   const [specializationInput, setSpecializationInput] = useState('');
@@ -246,37 +278,78 @@ export default function NewContactPage() {
 
     try {
       setLoadingGUS(true);
+      const data = await fetchCompanyDataFromGUS(nip);
 
-      const response = await fetch('/bridge/gus/company', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ nip }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        showSnackbar(data.error || 'Błąd podczas pobierania danych firmy', 'error');
-        return;
+      if (!data) return;
+      setRegistryLookup(data);
+      const representativeMatch = findExactRegistryRepresentativeContact(data, availableContacts);
+      if (representativeMatch) {
+        setSelectedContactIds((prev) =>
+          prev.includes(representativeMatch.contact.id)
+            ? prev
+            : [...prev, representativeMatch.contact.id],
+        );
       }
 
       setFormData((prev) => ({
         ...prev,
+        businessType: data.businessType || prev.businessType,
         nip: data.nip ? cleanNip(data.nip) : nip,
         name: data.name || prev.name,
+        alias: data.alias || prev.alias,
         regon: data.regon || prev.regon,
-        krs: data.krs || prev.krs,
+        krs: requiresKrsForLegalForm(data.legalForm || prev.legalForm)
+          ? data.krs || prev.krs
+          : '',
+        legalForm: data.legalForm || prev.legalForm,
         address: data.address || prev.address,
         city: data.city || prev.city,
         postalCode: data.postalCode || prev.postalCode,
+        country: data.country || prev.country,
+        email: data.email || prev.email,
+        phone: data.phone || prev.phone,
+        website: data.website || prev.website,
+        representationType: data.representationType || prev.representationType,
+        representationRule: data.representationRule || prev.representationRule,
+        representationBasis: data.representationBasis || prev.representationBasis,
+        representationVerifiedAt:
+          data.representationVerifiedAt || prev.representationVerifiedAt,
+        legalRepresentativeId:
+          representativeMatch?.contact.id || prev.legalRepresentativeId,
+        legalRepresentativeTitle:
+          representativeMatch?.title || prev.legalRepresentativeTitle,
+      }));
+
+      setFormErrors((prev) => ({
+        ...prev,
+        name: '',
+        nip: '',
+        legal_form: '',
+        krs: '',
+        regon: '',
+        address: '',
+        city: '',
+        postal_code: '',
       }));
 
       if (data.source === 'gus') {
-        showSnackbar('Dane pobrane z GUS', 'success');
+        const representativesCount = data.representatives?.length || 0;
+        const registryRolesCount = data.registryRoles?.length || 0;
+        showSnackbar(
+          representativesCount > 0
+            ? `Pobrano dane GUS oraz sposób reprezentacji i ${representativesCount} osób z KRS`
+            : registryRolesCount > 0
+              ? `Pobrano dane GUS i KRS oraz ${registryRolesCount} role w reprezentacji`
+            : 'Dane pobrane z GUS',
+          'success',
+        );
       } else if (data.source === 'mf_whitelist') {
-        showSnackbar('Dane pobrane z białej listy VAT', 'warning');
+        showSnackbar(
+          data.registryRoles?.length
+            ? `Pobrano dane z białej listy VAT i KRS oraz ${data.registryRoles.length} role w reprezentacji`
+            : 'Dane pobrane z białej listy VAT',
+          'success',
+        );
       } else {
         showSnackbar('Dane firmy pobrane', 'success');
       }
@@ -368,19 +441,47 @@ export default function NewContactPage() {
       return;
     }
   
+    let validatedOrganizationData: OrganizationFormValues | null = null;
+
     try {
       setLoading(true);
   
       if (contactType === 'organization' || contactType === 'subcontractor') {
-        const isValid = await validateOrganizationForm(
-          formData as unknown as OrganizationFormValues,
-        );
+        const validationResult = await validateOrganizationForm({
+          name: formData.name,
+          alias: formData.alias,
+          business_type: formData.businessType,
+          nip: formData.nip,
+          legal_form: formData.legalForm,
+          krs: formData.krs,
+          regon: formData.regon,
+          address: formData.address,
+          city: formData.city,
+          postal_code: formData.postalCode,
+          country: formData.country,
+          email: formData.email,
+          phone: formData.phone,
+          website: formData.website,
+          location_id: formData.location_id,
+          representation_type: formData.representationType || null,
+          representation_rule: formData.representationRule,
+          representation_basis: formData.representationBasis,
+          representation_verified_at: formData.representationVerifiedAt,
+          legal_representative_id: formData.legalRepresentativeId || null,
+          legal_representative_title: formData.legalRepresentativeTitle,
+        });
   
-        if (!isValid) {
+        if (!validationResult.isValid || !validationResult.validatedData) {
+          setFormErrors(
+            Object.fromEntries(
+              Object.entries(validationResult.errors).map(([key, value]) => [key, value || '']),
+            ),
+          );
           showSnackbar('Popraw błędy formularza', 'error');
-          setLoading(false);
           return;
         }
+
+        validatedOrganizationData = validationResult.validatedData;
       }
   
       if (contactType === 'contact' || contactType === 'individual') {
@@ -475,22 +576,32 @@ export default function NewContactPage() {
         return;
       }
   
+      const organizationData = validatedOrganizationData!;
       const orgData: any = {
         organization_type: contactType === 'subcontractor' ? 'subcontractor' : 'client',
-        business_type: formData.businessType,
-        name: formData.name.trim(),
-        alias: formData.alias.trim() || null,
-        nip: cleanNip(formData.nip) || null,
-        regon: formData.regon.replace(/\D/g, '') || null,
-        krs: formData.krs.replace(/\D/g, '') || null,
-        legal_form: formData.legalForm || null,
-        address: formData.address.trim() || null,
-        city: formData.city.trim() || null,
-        postal_code: formData.postalCode.trim() || null,
-        email: normalizeEmail(formData.email) || null,
-        phone: normalizePhone(formData.phone) || null,
-        website: formData.website.trim() || null,
+        business_type: organizationData.business_type,
+        name: organizationData.name,
+        alias: organizationData.alias,
+        nip: organizationData.nip,
+        regon: organizationData.regon,
+        krs: requiresKrsForLegalForm(organizationData.legal_form)
+          ? organizationData.krs
+          : null,
+        legal_form: organizationData.legal_form,
+        address: organizationData.address,
+        city: organizationData.city,
+        postal_code: organizationData.postal_code,
+        country: organizationData.country,
+        email: organizationData.email,
+        phone: organizationData.phone,
+        website: organizationData.website,
         location_id: formData.location_id || null,
+        representation_type: organizationData.representation_type,
+        representation_rule: organizationData.representation_rule,
+        representation_basis: organizationData.representation_basis,
+        representation_verified_at: organizationData.representation_verified_at,
+        legal_representative_id: organizationData.legal_representative_id,
+        legal_representative_title: organizationData.legal_representative_title,
         google_maps_url: formData.googleMapsUrl.trim() || null,
         latitude: formData.latitude ? parseFloat(formData.latitude) : null,
         longitude: formData.longitude ? parseFloat(formData.longitude) : null,
@@ -512,8 +623,15 @@ export default function NewContactPage() {
   
       if (orgError) throw orgError;
   
-      if (selectedContactIds.length > 0) {
-        const contactOrgLinks = selectedContactIds.map((contactId) => ({
+      const linkedContactIds = Array.from(
+        new Set(
+          [...selectedContactIds, organizationData.legal_representative_id].filter(
+            (contactId): contactId is string => Boolean(contactId),
+          ),
+        ),
+      );
+      if (linkedContactIds.length > 0) {
+        const contactOrgLinks = linkedContactIds.map((contactId) => ({
           contact_id: contactId,
           organization_id: org.id,
           is_current: true,
@@ -714,18 +832,55 @@ export default function NewContactPage() {
                           type="button"
                           onClick={handleFetchFromGUS}
                           disabled={loadingGUS}
-                          className="flex items-center space-x-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#0f1119] transition-colors hover:bg-[#c4a859] disabled:opacity-50"
+                          className="flex h-11 shrink-0 self-center items-center space-x-2 whitespace-nowrap rounded-lg bg-[#d3bb73] px-5 text-[#0f1119] transition-colors hover:bg-[#c4a859] disabled:opacity-50"
                         >
                           {loadingGUS ? (
                             <Loader2 className="h-5 w-5 animate-spin" />
                           ) : (
                             <Search className="h-5 w-5" />
                           )}
-                          <span>GUS</span>
+                          <span>GUS / rejestry</span>
                         </button>
                       </div>
                     </div>
                   </div>
+
+                  <OrganizationRegistryLookupCard data={registryLookup} />
+
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-gray-300">
+                      Forma prawna / typ podmiotu <span className="text-red-400">*</span>
+                    </label>
+                    <select
+                      required
+                      value={formData.legalForm}
+                      onChange={(event) => {
+                        const legalForm = event.target.value;
+                        setFormData((prev) => ({
+                          ...prev,
+                          legalForm,
+                          krs: requiresKrsForLegalForm(legalForm) ? prev.krs : '',
+                        }));
+                        setFormErrors((prev) => ({ ...prev, legal_form: '', krs: '' }));
+                      }}
+                      className={`w-full rounded-lg border bg-[#0f1119] px-4 py-2 text-white focus:outline-none ${
+                        formErrors.legal_form
+                          ? 'border-red-500 focus:border-red-500'
+                          : 'border-gray-700 focus:border-[#d3bb73]'
+                      }`}
+                    >
+                      <option value="">-- Wybierz formę prawną lub typ podmiotu --</option>
+                      {Object.entries(legalFormLabels).map(([value, label]) => (
+                        <option key={value} value={value}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                    {formErrors.legal_form && (
+                      <p className="mt-1 text-sm text-red-400">{formErrors.legal_form}</p>
+                    )}
+                  </div>
+
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <div>
                       <label className="mb-2 block text-sm font-medium text-gray-300">REGON</label>
@@ -740,19 +895,27 @@ export default function NewContactPage() {
                       )}
                     </div>
 
-                    <div>
-                      <label className="mb-2 block text-sm font-medium text-gray-300">KRS</label>
-                      <input
-                        type="text"
-                        value={formData.krs}
-                        onChange={(e) => setFormData({ ...formData, krs: e.target.value })}
-                        className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                        placeholder="0000000000"
-                      />
-                      {formErrors.krs && (
-                        <p className="mt-1 text-sm text-red-400">{formErrors.krs}</p>
-                      )}
-                    </div>
+                    {requiresKrsForLegalForm(formData.legalForm) && (
+                      <div>
+                        <label className="mb-2 block text-sm font-medium text-gray-300">
+                          KRS <span className="text-red-400">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.krs}
+                          onChange={(e) => setFormData({ ...formData, krs: e.target.value })}
+                          className={`w-full rounded-lg border bg-[#0f1119] px-4 py-2 text-white focus:outline-none ${
+                            formErrors.krs
+                              ? 'border-red-500 focus:border-red-500'
+                              : 'border-gray-700 focus:border-[#d3bb73]'
+                          }`}
+                          placeholder="0000000000"
+                        />
+                        {formErrors.krs && (
+                          <p className="mt-1 text-sm text-red-400">{formErrors.krs}</p>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   <div>
@@ -804,6 +967,117 @@ export default function NewContactPage() {
                     </div>
                   </div>
 
+                  <div className="rounded-lg border border-gray-700 bg-[#0f1119]/60 p-4">
+                    <h3 className="mb-3 font-medium text-white">Reprezentacja podmiotu</h3>
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <div>
+                        <label className="mb-2 block text-sm font-medium text-gray-300">
+                          Sposób reprezentacji
+                        </label>
+                        <select
+                          value={formData.representationType}
+                          onChange={(event) =>
+                            setFormData({
+                              ...formData,
+                              representationType: event.target.value as OrganizationCreateForm['representationType'],
+                            })
+                          }
+                          className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                        >
+                          <option value="">-- Wybierz --</option>
+                          {Object.entries(representationTypeLabels).map(([value, label]) => (
+                            <option key={value} value={value}>{label}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="mb-2 block text-sm font-medium text-gray-300">
+                          Główny reprezentant / osoba uprawniona
+                        </label>
+                        <select
+                          value={formData.legalRepresentativeId}
+                          onChange={(event) => {
+                            const contactId = event.target.value;
+                            const selected = availableContacts.find((contact) => contact.id === contactId);
+                            setFormData((prev) => ({
+                              ...prev,
+                              legalRepresentativeId: contactId,
+                              legalRepresentativeTitle:
+                                selected?.position || prev.legalRepresentativeTitle,
+                            }));
+                            if (contactId) {
+                              setSelectedContactIds((prev) =>
+                                prev.includes(contactId) ? prev : [...prev, contactId],
+                              );
+                            }
+                          }}
+                          className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                        >
+                          <option value="">-- Wybierz spośród kontaktów --</option>
+                          {availableContacts.map((contact) => (
+                            <option key={contact.id} value={contact.id}>{contact.full_name}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="md:col-span-2">
+                        <label className="mb-2 block text-sm font-medium text-gray-300">
+                          Dokładna zasada reprezentacji
+                        </label>
+                        <textarea
+                          value={formData.representationRule}
+                          onChange={(event) =>
+                            setFormData({ ...formData, representationRule: event.target.value })
+                          }
+                          rows={2}
+                          className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-2 block text-sm font-medium text-gray-300">
+                          Stanowisko reprezentanta
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.legalRepresentativeTitle}
+                          onChange={(event) =>
+                            setFormData({ ...formData, legalRepresentativeTitle: event.target.value })
+                          }
+                          placeholder="np. Prezes Zarządu, Dyrektor, Prokurent"
+                          className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-2 block text-sm font-medium text-gray-300">
+                          Podstawa i data weryfikacji
+                        </label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <input
+                            type="text"
+                            value={formData.representationBasis}
+                            onChange={(event) =>
+                              setFormData({ ...formData, representationBasis: event.target.value })
+                            }
+                            placeholder="np. KRS, Dział 2"
+                            className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-3 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                          />
+                          <input
+                            type="date"
+                            value={formData.representationVerifiedAt}
+                            onChange={(event) =>
+                              setFormData({ ...formData, representationVerifiedAt: event.target.value })
+                            }
+                            className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-3 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    {registryLookup?.registryRoles?.some((role) => !role.nameAvailable) && (
+                      <p className="mt-3 text-xs leading-5 text-amber-300">
+                        KRS potwierdził stanowiska i prokurę, ale ukrył dane osobowe. Wybierz właściwą osobę z kontaktów; system nie przypisze jej na podstawie zgadywania.
+                      </p>
+                    )}
+                  </div>
+
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                     <div className="md:col-span-2">
                       <label className="mb-2 block text-sm font-medium text-gray-300">
@@ -831,7 +1105,7 @@ export default function NewContactPage() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                     <div>
                       <label className="mb-2 block text-sm font-medium text-gray-300">Miasto</label>
                       <input
@@ -840,6 +1114,15 @@ export default function NewContactPage() {
                         onChange={(e) => setFormData({ ...formData, city: e.target.value })}
                         className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
                         placeholder="np. Warszawa"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-gray-300">Kraj</label>
+                      <input
+                        type="text"
+                        value={formData.country}
+                        onChange={(e) => setFormData({ ...formData, country: e.target.value })}
+                        className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
                       />
                     </div>
                     <div>

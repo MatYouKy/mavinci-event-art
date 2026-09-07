@@ -1,5 +1,14 @@
 import { IEventCategory } from '../event-categories/types';
 
+export type ContractClauseCategory =
+  | 'conditions'
+  | 'requirements'
+  | 'obligations'
+  | 'risks'
+  | 'additional_requirements'
+  | 'general';
+export type ContractClausesByCategory = Partial<Record<ContractClauseCategory, string>>;
+
 export interface IProductVariant {
   id: string;
   product_id?: string;
@@ -21,7 +30,7 @@ export interface IProductVariant {
   overrides_mavinci_live?: boolean;
   overrides_contract_clauses?: boolean;
   recommended_contract_clauses?: string | null;
-  recommended_contract_clause_category?: 'requirements' | 'obligations' | 'risks' | 'general';
+  recommended_contract_clause_category?: ContractClauseCategory;
 }
 
 export interface IProduct {
@@ -39,7 +48,22 @@ export interface IProduct {
   offer_requirements?: string[] | null;
   offer_additional_requirements?: Array<{
     id: string;
-    category: 'accommodation' | 'backstage' | 'hospitality' | 'logistics' | 'other';
+    category:
+      | 'power'
+      | 'internet'
+      | 'access'
+      | 'setup'
+      | 'surface'
+      | 'venue_approval'
+      | 'coordination'
+      | 'schedule'
+      | 'safety'
+      | 'technical'
+      | 'accommodation'
+      | 'backstage'
+      | 'hospitality'
+      | 'logistics'
+      | 'other';
     title: string;
     description: string;
   }> | null;
@@ -49,6 +73,8 @@ export interface IProduct {
   offer_image_position_x?: number | null;
   offer_image_position_y?: number | null;
   offer_image_zoom?: number | null;
+  recommended_contract_clauses?: string | null;
+  recommended_contract_clause_category?: ContractClauseCategory;
   category?: IEventCategory | null;
   category_id?: string | null;
   variants?: IProductVariant[];
@@ -78,6 +104,17 @@ export interface IOfferItem {
   product_variant?: IProductVariant | null;
   product?: IProduct; // Ominąć
 }
+
+export type OfferRequirementEntry = {
+  key: string;
+  category: string;
+  title: string;
+  description: string;
+  sources: string[];
+  origin: 'template' | 'product' | 'manual';
+  included: boolean;
+  priority: number;
+};
 
 export interface IOfferItemDraft
   extends Omit<IOfferItem, 'discount_amount' | 'total' | 'product' | 'display_order'> {

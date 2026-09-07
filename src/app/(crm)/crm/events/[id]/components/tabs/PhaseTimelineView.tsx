@@ -4,7 +4,13 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Trash2, GripVertical, AlertTriangle } from 'lucide-react';
 import { EventPhase } from '@/store/api/eventPhasesApi';
 import { TimelineTooltip, TooltipContent } from './TimelineTooltip';
-import { generateTimeMarkers, getClippedTimelinePosition } from '@/lib/timeline';
+import {
+  DAY_MS,
+  generateTimeMarkers,
+  getClippedTimelinePosition,
+  getTimeMarkerInterval,
+} from '@/lib/timeline';
+import { useTimelineDrag, type DragMode } from './useTimelineDrag';
 
 interface PhaseTimelineViewProps {
   phases: EventPhase[];
@@ -14,13 +20,12 @@ interface PhaseTimelineViewProps {
   phaseConflicts: Record<string, boolean>;
   onPhaseClick: (phase: EventPhase) => void;
   onPhaseDoubleClick?: (phase: EventPhase) => void;
+  onPhaseContextMenu?: (phase: EventPhase) => void;
   onPhaseResize: (phaseId: string, newStart: Date, newEnd: Date) => void;
   onPhaseDelete: (phaseId: string) => void;
   eventStartDate?: string;
   eventEndDate?: string;
 }
-
-type ResizeHandle = 'start' | 'end' | null;
 
 export const PhaseTimelineView: React.FC<PhaseTimelineViewProps> = ({
   phases,
@@ -30,6 +35,7 @@ export const PhaseTimelineView: React.FC<PhaseTimelineViewProps> = ({
   phaseConflicts,
   onPhaseClick,
   onPhaseDoubleClick,
+  onPhaseContextMenu,
   onPhaseResize,
   onPhaseDelete,
   eventStartDate,
@@ -37,31 +43,56 @@ export const PhaseTimelineView: React.FC<PhaseTimelineViewProps> = ({
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const timeAxisRef = useRef<HTMLDivElement>(null);
-  const [resizing, setResizing] = useState<{ phaseId: string; handle: ResizeHandle }>({
-    phaseId: '',
-    handle: null,
-  });
-  const [resizePreview, setResizePreview] = useState<{
+  const [dragPreview, setDragPreview] = useState<{
     phaseId: string;
     start: Date;
     end: Date;
   } | null>(null);
-  const resizePreviewRef = useRef<typeof resizePreview>(null);
-  const resizeFrameRef = useRef<number | null>(null);
+  const [activePhaseId, setActivePhaseId] = useState<string | null>(null);
+  const activePhaseIdRef = useRef<string | null>(null);
+  const dragHasMovedRef = useRef(false);
+  const suppressClickRef = useRef(false);
   const [hoveredPhase, setHoveredPhase] = useState<string | null>(null);
   const [tooltipState, setTooltipState] = useState<{ x: number; y: number; phase: EventPhase | null }>({ x: 0, y: 0, phase: null });
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [trackWidth, setTrackWidth] = useState(1200);
 
   const totalDuration = timelineBounds.end.getTime() - timelineBounds.start.getTime();
 
+  const { dragMode, startDrag } = useTimelineDrag({
+    timelineBounds,
+    zoomLevel,
+    onDragMove: (start, end) => {
+      const phaseId = activePhaseIdRef.current;
+      if (!phaseId) return;
+      dragHasMovedRef.current = true;
+      setDragPreview({ phaseId, start, end });
+    },
+    onDragEnd: (start, end) => {
+      const phaseId = activePhaseIdRef.current;
+      if (phaseId && dragHasMovedRef.current) {
+        suppressClickRef.current = true;
+        onPhaseResize(phaseId, start, end);
+        window.setTimeout(() => {
+          suppressClickRef.current = false;
+        }, 0);
+      }
+      activePhaseIdRef.current = null;
+      dragHasMovedRef.current = false;
+      setActivePhaseId(null);
+      setDragPreview(null);
+    },
+  });
+
   const getPhasePosition = (phase: EventPhase) => {
-    const preview = resizePreview?.phaseId === phase.id ? resizePreview : null;
+    const preview = dragPreview?.phaseId === phase.id ? dragPreview : null;
+    const minimumWidthPercent = Math.min(1, (12 / Math.max(trackWidth, 1)) * 100);
     const position = getClippedTimelinePosition(
       preview?.start ?? new Date(phase.start_time),
       preview?.end ?? new Date(phase.end_time),
       timelineBounds,
       100,
-      1,
+      minimumWidthPercent,
     );
     return position
       ? { left: `${position.offset}%`, width: `${position.size}%` }
@@ -85,9 +116,36 @@ export const PhaseTimelineView: React.FC<PhaseTimelineViewProps> = ({
   };
 
   const timeMarkers = useMemo(
-    () => generateTimeMarkers(timelineBounds, zoomLevel),
-    [timelineBounds, zoomLevel],
+    () => generateTimeMarkers(timelineBounds, zoomLevel, trackWidth),
+    [timelineBounds, zoomLevel, trackWidth],
   );
+  const markerInterval = useMemo(
+    () => getTimeMarkerInterval(timelineBounds, zoomLevel, trackWidth),
+    [timelineBounds, zoomLevel, trackWidth],
+  );
+
+  const formatMarkerLabel = (date: Date): string => {
+    if (markerInterval >= DAY_MS) {
+      return date.toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit' });
+    }
+    if (totalDuration > DAY_MS && date.getHours() === 0 && date.getMinutes() === 0) {
+      return date.toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit' });
+    }
+    if (markerInterval < 60 * 60 * 1000 && date.getMinutes() !== 0) {
+      return `:${date.getMinutes().toString().padStart(2, '0')}`;
+    }
+    return date.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
+  };
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const updateWidth = () => setTrackWidth(container.getBoundingClientRect().width || 1200);
+    updateWidth();
+    const observer = new ResizeObserver(updateWidth);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
 
   // Update current time every 60 seconds
   useEffect(() => {
@@ -123,76 +181,32 @@ export const PhaseTimelineView: React.FC<PhaseTimelineViewProps> = ({
     });
   };
 
-  const handleResizeStart = (phaseId: string, handle: 'start' | 'end', e: React.MouseEvent) => {
+  const handlePhaseDragStart = (
+    phase: EventPhase,
+    mode: Exclude<DragMode, null>,
+    e: React.MouseEvent,
+  ) => {
+    if (e.button !== 0 || !containerRef.current) return;
+    e.preventDefault();
     e.stopPropagation();
-    setResizing({ phaseId, handle });
-    setHoveredPhase(null); // Zatrzymaj hover podczas resizing
+    activePhaseIdRef.current = phase.id;
+    dragHasMovedRef.current = false;
+    setActivePhaseId(phase.id);
+    setHoveredPhase(null);
+    setTooltipState({ x: 0, y: 0, phase: null });
+    startDrag(
+      mode,
+      e.clientX,
+      new Date(phase.start_time),
+      new Date(phase.end_time),
+      containerRef.current,
+    );
   };
 
-  useEffect(() => {
-    if (!resizing.phaseId || !resizing.handle || !containerRef.current) return;
-
-    const handleMouseMove = (e: MouseEvent) => {
-      const container = containerRef.current;
-      if (!container) return;
-
-      const rect = container.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const percent = Math.max(0, Math.min(1, x / rect.width));
-      const newTime = new Date(timelineBounds.start.getTime() + percent * totalDuration);
-
-      const phase = phases.find((p) => p.id === resizing.phaseId);
-      if (!phase) return;
-
-      const startTime = new Date(phase.start_time);
-      const endTime = new Date(phase.end_time);
-
-      if (resizing.handle === 'start') {
-        if (newTime < endTime) {
-          const preview = { phaseId: resizing.phaseId, start: newTime, end: endTime };
-          resizePreviewRef.current = preview;
-          if (resizeFrameRef.current === null) {
-            resizeFrameRef.current = requestAnimationFrame(() => {
-              setResizePreview(resizePreviewRef.current);
-              resizeFrameRef.current = null;
-            });
-          }
-        }
-      } else {
-        if (newTime > startTime) {
-          const preview = { phaseId: resizing.phaseId, start: startTime, end: newTime };
-          resizePreviewRef.current = preview;
-          if (resizeFrameRef.current === null) {
-            resizeFrameRef.current = requestAnimationFrame(() => {
-              setResizePreview(resizePreviewRef.current);
-              resizeFrameRef.current = null;
-            });
-          }
-        }
-      }
-    };
-
-    const handleMouseUp = () => {
-      const preview = resizePreviewRef.current;
-      if (preview) onPhaseResize(preview.phaseId, preview.start, preview.end);
-      resizePreviewRef.current = null;
-      setResizePreview(null);
-      setResizing({ phaseId: '', handle: null });
-    };
-
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-      if (resizeFrameRef.current !== null) cancelAnimationFrame(resizeFrameRef.current);
-    };
-  }, [resizing, phases, timelineBounds, totalDuration, onPhaseResize]);
-
   const getPhaseDuration = (phase: EventPhase): string => {
-    const start = new Date(phase.start_time);
-    const end = new Date(phase.end_time);
+    const preview = dragPreview?.phaseId === phase.id ? dragPreview : null;
+    const start = preview?.start ?? new Date(phase.start_time);
+    const end = preview?.end ?? new Date(phase.end_time);
     const duration = end.getTime() - start.getTime();
 
     const hours = Math.floor(duration / (1000 * 60 * 60));
@@ -247,105 +261,133 @@ export const PhaseTimelineView: React.FC<PhaseTimelineViewProps> = ({
   const containerHeight = 80;
 
   return (
-    <div ref={containerRef} className="relative h-full p-6">
-      {/* Time Axis - Sticky */}
-      <div ref={timeAxisRef} className="top-0 z-10 bg-[#0f1119] relative mb-6 h-10 border-b-2 border-[#d3bb73]/20">
-        {/* Główne godziny wydarzenia (agenda/deklaracja dla klienta) */}
-        {eventStartDate && eventEndDate && (
+    <div className="relative h-full py-6">
+      <div ref={containerRef} className="relative">
+        {/* Time Axis */}
+        <div
+          ref={timeAxisRef}
+          className="relative z-10 mb-6 h-10 border-b-2 border-[#d3bb73]/20 bg-[#0f1119]"
+        >
+          {eventStartDate && eventEndDate && (
+            <div
+              className="absolute top-0 h-full border-l-2 border-r-2 border-[#d3bb73]/30 bg-[#d3bb73]/5"
+              style={{
+                left: `${((new Date(eventStartDate).getTime() - timelineBounds.start.getTime()) / totalDuration) * 100}%`,
+                width: `${((new Date(eventEndDate).getTime() - new Date(eventStartDate).getTime()) / totalDuration) * 100}%`,
+              }}
+              title="Główne godziny wydarzenia (agenda dla klienta)"
+            >
+              <div className="absolute left-2 top-0 rounded-b bg-[#1c1f33] px-1 text-[10px] font-semibold text-[#d3bb73]">
+                Agenda
+              </div>
+            </div>
+          )}
+
+          {timeMarkers.map((marker) => {
+            const left =
+              ((marker.getTime() - timelineBounds.start.getTime()) / totalDuration) * 100;
+            return (
+              <div
+                key={marker.getTime()}
+                className="absolute top-0 h-full border-l border-[#d3bb73]/25"
+                style={{ left: `${left}%` }}
+              >
+                <span className="absolute left-1 top-2 whitespace-nowrap text-[11px] font-medium text-[#e5e4e2]/65">
+                  {formatMarkerLabel(marker)}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Linie skali przechodzą przez cały obszar faz */}
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 top-10 z-0">
+          {timeMarkers.map((marker) => {
+            const left =
+              ((marker.getTime() - timelineBounds.start.getTime()) / totalDuration) * 100;
+            return (
+              <div
+                key={`grid-${marker.getTime()}`}
+                className="absolute inset-y-0 border-l border-[#d3bb73]/10"
+                style={{ left: `${left}%` }}
+              />
+            );
+          })}
+        </div>
+
+        {nowPosition !== null && (
           <div
-            className="absolute top-0 h-full bg-[#d3bb73]/5 border-l-2 border-r-2 border-[#d3bb73]/30"
-            style={{
-              left: `${((new Date(eventStartDate).getTime() - timelineBounds.start.getTime()) / totalDuration) * 100}%`,
-              width: `${((new Date(eventEndDate).getTime() - new Date(eventStartDate).getTime()) / totalDuration) * 100}%`,
-            }}
-            title="Główne godziny wydarzenia (agenda dla klienta)"
+            className="pointer-events-none absolute bottom-0 top-0 z-40 w-[2px] bg-red-500"
+            style={{ left: `${nowPosition}%` }}
           >
-            <div className="absolute left-2 top-0 text-[10px] font-semibold text-[#d3bb73] bg-[#1c1f33] px-1 rounded-b">
-              Agenda
+            <div className="absolute left-1/2 top-2 -translate-x-1/2 whitespace-nowrap rounded bg-red-500 px-1 text-[10px] font-bold text-white">
+              Teraz
             </div>
           </div>
         )}
 
-        {timeMarkers.map((marker, index) => {
-          const left =
-            ((marker.getTime() - timelineBounds.start.getTime()) / totalDuration) * 100;
+        <div className="relative z-10" style={{ minHeight: `${containerHeight}px` }}>
+          {phases.map((phase, index) => {
+            const position = getPhasePosition(phase);
+            const isSelected = selectedPhase?.id === phase.id;
+            const isHovered = hoveredPhase === phase.id;
+            const isDragging = activePhaseId === phase.id && Boolean(dragMode);
+            const hasConflict = phaseConflicts[phase.id];
+            const phaseColor = phase.color || phase.phase_type?.color || '#3b82f6';
+            const overlappingPhases = getOverlappingPhases(phase);
+            const preview = dragPreview?.phaseId === phase.id ? dragPreview : null;
+            const displayedStart = preview?.start ?? new Date(phase.start_time);
+            const displayedEnd = preview?.end ?? new Date(phase.end_time);
 
-          // Grubsza linia dla głównych godzin w widoku minut
-          const isMainHour = zoomLevel === 'quarter_hours' && marker.getMinutes() % 15 === 0;
-          const borderOpacity = isMainHour ? '20' : '10';
-
-          return (
-            <div
-              key={index}
-              className={`absolute top-0 h-full border-l border-[#d3bb73]/${borderOpacity}`}
-              style={{ left: `${left}%` }}
-            >
-              <span className={`absolute left-1 top-2 text-xs ${isMainHour ? 'text-[#e5e4e2]/70 font-semibold' : 'text-[#e5e4e2]/50'}`}>
-                {formatTimeLabel(marker)}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* NOW Line - przez całą wysokość timeline */}
-      {nowPosition !== null && (
-        <div
-          className="absolute top-0 bottom-0 w-[2px] bg-red-500 z-20 pointer-events-none"
-          style={{ left: `calc(${nowPosition}% + 24px)` }}
-        >
-          <div className="absolute top-2 left-1/2 -translate-x-1/2 bg-red-500 text-white text-[10px] font-bold px-1 rounded whitespace-nowrap">
-            Teraz
-          </div>
-        </div>
-      )}
-
-      {/* Phases - wszystkie na jednej wysokości z nakładaniem */}
-      <div className="relative" style={{ minHeight: `${containerHeight}px` }}>
-        {phases.map((phase, index) => {
-          const position = getPhasePosition(phase);
-          const isSelected = selectedPhase?.id === phase.id;
-          const isHovered = hoveredPhase === phase.id;
-          const hasConflict = phaseConflicts[phase.id];
-          const phaseColor = phase.color || phase.phase_type?.color || '#3b82f6';
-          const overlappingPhases = getOverlappingPhases(phase);
-
-          return (
-            <div
-              key={phase.id}
-              onMouseEnter={(e) => {
-                if (!resizing.phaseId) {
-                  setHoveredPhase(phase.id);
-                  setTooltipState({ x: e.clientX, y: e.clientY, phase });
-                }
-              }}
-              onMouseMove={(e) => {
-                if (!resizing.phaseId && isHovered) {
-                  setTooltipState({ x: e.clientX, y: e.clientY, phase });
-                }
-              }}
-              onMouseLeave={() => {
-                if (!resizing.phaseId) {
-                  setHoveredPhase(null);
-                  setTooltipState({ x: 0, y: 0, phase: null });
-                }
-              }}
-              onClick={() => onPhaseClick(phase)}
-              onDoubleClick={() => onPhaseDoubleClick?.(phase)}
-              className={`absolute flex cursor-pointer items-center rounded-lg border-l-4 px-2 transition-all overflow-hidden ${
-                isSelected ? 'shadow-xl' : isHovered ? 'shadow-lg' : 'shadow'
-              } border-[var(--phase-color-border)] bg-[var(--phase-color)]`}
-              style={{
-                top: '10px',
-                left: position.left,
-                width: position.width,
-                height: '60px',
-                zIndex: isSelected ? 30 : isHovered ? 20 : 10 + index,
-                '--phase-color': `${phaseColor}20`,
-                '--phase-color-border': phaseColor,
-                borderLeftColor: phaseColor,
-              } as React.CSSProperties}
-            >
+            return (
+              <div
+                key={phase.id}
+                data-timeline-interactive="true"
+                onMouseDown={(event) => {
+                  if ((event.target as HTMLElement).closest('[data-phase-control="true"]')) return;
+                  handlePhaseDragStart(phase, 'move', event);
+                }}
+                onMouseEnter={(event) => {
+                  if (!dragMode) {
+                    setHoveredPhase(phase.id);
+                    setTooltipState({ x: event.clientX, y: event.clientY, phase });
+                  }
+                }}
+                onMouseMove={(event) => {
+                  if (!dragMode && isHovered) {
+                    setTooltipState({ x: event.clientX, y: event.clientY, phase });
+                  }
+                }}
+                onMouseLeave={() => {
+                  if (!dragMode) {
+                    setHoveredPhase(null);
+                    setTooltipState({ x: 0, y: 0, phase: null });
+                  }
+                }}
+                onClick={() => {
+                  if (!suppressClickRef.current) onPhaseClick(phase);
+                }}
+                onDoubleClick={() => onPhaseDoubleClick?.(phase)}
+                onContextMenu={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onPhaseContextMenu?.(phase);
+                }}
+                className={`absolute flex items-center overflow-hidden rounded-lg border-l-4 px-2 transition-[box-shadow,background-color] ${
+                  isDragging ? 'cursor-grabbing shadow-xl' : 'cursor-grab'
+                } ${isSelected ? 'shadow-xl' : isHovered ? 'shadow-lg' : 'shadow'} border-[var(--phase-color-border)] bg-[var(--phase-color)]`}
+                style={{
+                  top: '10px',
+                  left: position.left,
+                  width: position.width,
+                  height: '60px',
+                  zIndex: isSelected || isDragging ? 30 : isHovered ? 20 : 10 + index,
+                  '--phase-color': `${phaseColor}20`,
+                  '--phase-color-border': phaseColor,
+                  borderLeftColor: phaseColor,
+                } as React.CSSProperties}
+                title="Przeciągnij, aby przesunąć. Prawy przycisk otwiera edycję."
+              >
               {/* Overlapping areas - przekreślone */}
               {overlappingPhases.map(overlappingPhase => {
                 const phaseStart = new Date(phase.start_time).getTime();
@@ -385,7 +427,8 @@ export const PhaseTimelineView: React.FC<PhaseTimelineViewProps> = ({
 
               {/* Resize Handle - Start */}
               <div
-                onMouseDown={(e) => handleResizeStart(phase.id, 'start', e)}
+                data-phase-control="true"
+                onMouseDown={(event) => handlePhaseDragStart(phase, 'resize-start', event)}
                 className={`absolute left-0 top-0 bottom-0 flex w-2 cursor-ew-resize items-center justify-center transition-colors ${
                   isHovered ? 'bg-[var(--phase-color-60)]' : 'bg-transparent'
                 }`}
@@ -402,7 +445,7 @@ export const PhaseTimelineView: React.FC<PhaseTimelineViewProps> = ({
               </div>
 
               {/* Phase Content */}
-              <div className="flex-1 overflow-hidden px-2">
+              <div className="pointer-events-none flex-1 overflow-hidden px-2">
                 <div className="mb-1 flex items-center gap-1">
                   <span className="truncate text-sm font-bold text-[#e5e4e2]">{phase.name}</span>
                   {hasConflict && (
@@ -415,8 +458,7 @@ export const PhaseTimelineView: React.FC<PhaseTimelineViewProps> = ({
                   )}
                 </div>
                 <div className="text-xs text-[#e5e4e2]/70">
-                  {formatTimeLabel(new Date(phase.start_time))} -{' '}
-                  {formatTimeLabel(new Date(phase.end_time))}
+                  {formatTimeLabel(displayedStart)} - {formatTimeLabel(displayedEnd)}
                   <span className="ml-2 text-[#e5e4e2]/50">({getPhaseDuration(phase)})</span>
                 </div>
               </div>
@@ -424,6 +466,7 @@ export const PhaseTimelineView: React.FC<PhaseTimelineViewProps> = ({
               {/* Delete Button */}
               {isHovered && (
                 <button
+                  data-phase-control="true"
                   onClick={(e) => {
                     e.stopPropagation();
                     onPhaseDelete(phase.id);
@@ -436,7 +479,8 @@ export const PhaseTimelineView: React.FC<PhaseTimelineViewProps> = ({
 
               {/* Resize Handle - End */}
               <div
-                onMouseDown={(e) => handleResizeStart(phase.id, 'end', e)}
+                data-phase-control="true"
+                onMouseDown={(event) => handlePhaseDragStart(phase, 'resize-end', event)}
                 className={`absolute right-0 top-0 bottom-0 flex w-2 cursor-ew-resize items-center justify-center transition-colors ${
                   isHovered ? 'bg-[var(--phase-color-60)]' : 'bg-transparent'
                 }`}
@@ -451,24 +495,17 @@ export const PhaseTimelineView: React.FC<PhaseTimelineViewProps> = ({
                   />
                 )}
               </div>
-            </div>
-          );
-        })}
-
-        {/* NOW Line in phases area */}
-        {nowPosition !== null && (
-          <div
-            className="absolute top-0 w-[2px] bg-red-500 pointer-events-none z-30"
-            style={{ left: `${nowPosition}%`, height: `${containerHeight}px` }}
-          />
-        )}
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* Tooltip */}
       <TimelineTooltip
         x={tooltipState.x}
         y={tooltipState.y}
-        visible={!!tooltipState.phase && !resizing.phaseId}
+        visible={!!tooltipState.phase && !dragMode}
         content={
           tooltipState.phase ? (
             <TooltipContent

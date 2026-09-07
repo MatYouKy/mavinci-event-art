@@ -2,7 +2,7 @@
 
 import dynamic from 'next/dynamic';
 import { ReactNode, useEffect, useMemo, useState } from 'react';
-import { Code, Eye } from 'lucide-react';
+import { CalendarClock, Code, Eye, Send } from 'lucide-react';
 import 'react-quill/dist/quill.snow.css';
 import {
   buildCompanyEmailBody,
@@ -20,6 +20,8 @@ export interface UnifiedEmailDraft {
   bcc: string;
   subject: string;
   messageHtml: string;
+  deliveryMode?: 'now' | 'scheduled';
+  scheduledAt?: string;
 }
 
 export interface UnifiedEmailAccount {
@@ -251,6 +253,18 @@ const getAccountLabel = (account: UnifiedEmailAccount): string => {
   return `${name ? `${name} — ` : ''}${account.email_address}${shared}`;
 };
 
+const toLocalDateTimeInput = (date: Date): string => {
+  const offset = date.getTimezoneOffset() * 60_000;
+  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+};
+
+const getDefaultScheduledAt = (): string => {
+  const candidate = new Date();
+  candidate.setDate(candidate.getDate() + 1);
+  candidate.setHours(7, 30, 0, 0);
+  return toLocalDateTimeInput(candidate);
+};
+
 export default function UnifiedEmailComposer({
   draft,
   onChange,
@@ -442,7 +456,7 @@ export default function UnifiedEmailComposer({
               <label className="block text-sm text-[#e5e4e2]/70">Wiadomość</label>
               {editorAction}
             </div>
-            <div className="unified-email-editor overflow-hidden rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] focus-within:border-[#d3bb73]">
+            <div className="unified-email-editor overflow-hidden rounded-lg border border-[#d3bb73]/25 bg-[#2c0b18] focus-within:border-[#e2cd8d]">
               <ReactQuill
                 theme="snow"
                 value={draft.messageHtml}
@@ -460,6 +474,70 @@ export default function UnifiedEmailComposer({
             {afterEditor}
           </div>
 
+          <div className="rounded-xl border border-[#d3bb73]/20 bg-[#0f1119]/80 p-4">
+            <div className="mb-3 flex items-start gap-3">
+              <CalendarClock className="mt-0.5 h-5 w-5 shrink-0 text-[#d3bb73]" />
+              <div>
+                <p className="text-sm font-medium text-[#e5e4e2]">Termin wysyłki</p>
+                <p className="mt-1 text-xs text-[#e5e4e2]/50">
+                  Wiadomość zaplanowana na później zostanie wysłana także po zamknięciu CRM.
+                </p>
+              </div>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <button
+                type="button"
+                disabled={disabled}
+                onClick={() => change({ deliveryMode: 'now' })}
+                className={`flex items-center justify-center gap-2 rounded-lg border px-4 py-2.5 text-sm transition-colors disabled:opacity-50 ${
+                  (draft.deliveryMode || 'now') === 'now'
+                    ? 'border-[#d3bb73] bg-[#d3bb73]/15 text-[#f0dda0]'
+                    : 'border-[#d3bb73]/15 text-[#e5e4e2]/60 hover:border-[#d3bb73]/35'
+                }`}
+              >
+                <Send className="h-4 w-4" />
+                Wyślij teraz
+              </button>
+              <button
+                type="button"
+                disabled={disabled}
+                onClick={() =>
+                  change({
+                    deliveryMode: 'scheduled',
+                    scheduledAt: draft.scheduledAt || getDefaultScheduledAt(),
+                  })
+                }
+                className={`flex items-center justify-center gap-2 rounded-lg border px-4 py-2.5 text-sm transition-colors disabled:opacity-50 ${
+                  draft.deliveryMode === 'scheduled'
+                    ? 'border-[#d3bb73] bg-[#d3bb73]/15 text-[#f0dda0]'
+                    : 'border-[#d3bb73]/15 text-[#e5e4e2]/60 hover:border-[#d3bb73]/35'
+                }`}
+              >
+                <CalendarClock className="h-4 w-4" />
+                Wyślij później
+              </button>
+            </div>
+            {draft.deliveryMode === 'scheduled' && (
+              <div className="mt-3">
+                <label className="mb-2 block text-xs font-medium uppercase tracking-wide text-[#e5e4e2]/55">
+                  Dokładna data i godzina
+                </label>
+                <input
+                  type="datetime-local"
+                  step={60}
+                  value={draft.scheduledAt || ''}
+                  min={toLocalDateTimeInput(new Date(Date.now() + 60_000))}
+                  onChange={(event) => change({ scheduledAt: event.target.value })}
+                  disabled={disabled}
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#2c0b18] px-4 py-3 text-[#e5e4e2] [color-scheme:dark] focus:border-[#d3bb73] focus:outline-none disabled:opacity-50"
+                />
+                <p className="mt-2 text-xs text-[#e5e4e2]/45">
+                  Strefa czasowa: Europe/Warsaw. Możesz wpisać dowolną minutę, np. 07:43.
+                </p>
+              </div>
+            )}
+          </div>
+
           {children}
         </>
       )}
@@ -467,12 +545,14 @@ export default function UnifiedEmailComposer({
       <style jsx global>{`
         .unified-email-editor .ql-toolbar.ql-snow {
           border: 0;
-          border-bottom: 1px solid rgba(211, 187, 115, 0.2);
-          background: #0f1119;
+          border-bottom: 1px solid rgba(211, 187, 115, 0.28);
+          background: #351020;
         }
         .unified-email-editor .ql-container.ql-snow {
           border: 0;
-          background: #0a0d1a;
+          background:
+            radial-gradient(circle at 88% 0%, rgba(127, 23, 52, 0.18), transparent 18rem),
+            #2c0b18;
           font-family: Arial, sans-serif;
           font-size: 14px;
         }
@@ -487,7 +567,7 @@ export default function UnifiedEmailComposer({
           color: rgba(229, 228, 226, 0.35);
           font-style: normal;
         }
-        .unified-email-editor .ql-stroke { stroke: rgba(229, 228, 226, 0.75); }
+        .unified-email-editor .ql-stroke { stroke: rgba(240, 221, 160, 0.82); }
         .unified-email-editor .ql-fill { fill: rgba(229, 228, 226, 0.75); }
         .unified-email-editor .ql-picker { color: rgba(229, 228, 226, 0.75); }
         .unified-email-editor .ql-toolbar button:hover .ql-stroke,

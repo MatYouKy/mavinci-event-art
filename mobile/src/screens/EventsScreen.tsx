@@ -574,6 +574,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   eventName: {
+    fontFamily: 'MBFAtom',
+    textTransform: 'uppercase',
     fontSize: 14,
     fontWeight: '700',
     color: colors.text.primary,
@@ -679,6 +681,9 @@ const styles = StyleSheet.create({
   },
 
   pastEventsToggleTitle: {
+
+    fontFamily: 'MBFAtom',
+    textTransform: 'uppercase',
     fontSize: 12,
     fontWeight: '600',
     color: colors.text.primary,

@@ -346,6 +346,8 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
   },
   headerTitle: {
+    fontFamily: 'MBFAtom',
+    textTransform: 'uppercase',
     fontSize: typography.fontSizes.lg,
     fontWeight: typography.fontWeights.bold as any,
     color: colors.text.primary,

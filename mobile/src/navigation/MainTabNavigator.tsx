@@ -4,7 +4,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import * as Notifications from 'expo-notifications';
-import { colors } from '../theme';
+import { colors, typography } from '../theme';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { canView } from '../lib/permissions';
@@ -227,6 +227,12 @@ export default function MainTabNavigator() {
           },
           tabBarActiveTintColor: colors.primary.gold,
           tabBarInactiveTintColor: colors.text.tertiary,
+          tabBarLabelStyle: {
+            fontFamily: typography.fontFamilies.heading,
+            fontSize: 8,
+            fontWeight: typography.fontWeights.regular,
+            textTransform: 'uppercase',
+          },
         })}
         screenListeners={{
           state: (e) => {

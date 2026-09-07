@@ -1116,7 +1116,7 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   headerContent: { flex: 1 },
-  headerTitle: { fontSize: 16, fontWeight: '700', color: colors.text.primary },
+  headerTitle: { fontFamily: 'MBFAtom', textTransform: 'uppercase', fontSize: 16, fontWeight: '700', color: colors.text.primary },
   headerMeta: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
   headerDot: { width: 8, height: 8, borderRadius: 4 },
   headerCategory: { fontSize: 11, color: colors.text.secondary },

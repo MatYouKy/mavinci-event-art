@@ -4,7 +4,7 @@ import { navigationRef } from './navigationRef';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAuth } from '../contexts/AuthContext';
 import { ActivityIndicator, View } from 'react-native';
-import { colors } from '../theme';
+import { colors, typography } from '../theme';
 
 import LoginScreen from '../screens/LoginScreen';
 import MainTabNavigator from './MainTabNavigator';
@@ -54,7 +54,14 @@ export default function RootNavigator() {
         },
       }}
     >
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Navigator screenOptions={{
+        headerShown: false,
+        headerTitleStyle: {
+          fontFamily: typography.fontFamilies.heading,
+          fontWeight: '400',
+          textTransform: 'uppercase',
+        },
+      }}>
         {session ? (
           <>
             <Stack.Screen name="Main" component={MainTabNavigator} />

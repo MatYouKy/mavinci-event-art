@@ -20,6 +20,7 @@ interface CompanySelectorProps {
   className?: string;
   label?: string;
   requireIssue?: boolean;
+  emptyOptionLabel?: string;
 }
 
 export default function CompanySelector({
@@ -29,6 +30,7 @@ export default function CompanySelector({
   className = '',
   label = 'Firma',
   requireIssue = false,
+  emptyOptionLabel = 'Wszystkie firmy',
 }: CompanySelectorProps) {
   const [companies, setCompanies] = useState<MyCompany[]>([]);
   const [loading, setLoading] = useState(true);
@@ -101,7 +103,7 @@ export default function CompanySelector({
         disabled={loading}
         className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#252945] px-4 py-2.5 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none disabled:opacity-50"
       >
-        {showAllOption && <option value="">Wszystkie firmy</option>}
+        {showAllOption && <option value="">{emptyOptionLabel}</option>}
         {companies.map((company) => (
           <option key={company.id} value={company.id}>
             {company.name} (NIP: {company.nip})

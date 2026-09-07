@@ -7,7 +7,7 @@ import {
   validateOrganizationForm,
   type OrganizationFormErrors,
 } from '@/components/crm/contacts/organization/organizationValidation';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import {
   ArrowLeft,
   Building2,
@@ -40,7 +40,12 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
-import { parseGoogleMapsUrl, fetchCompanyDataFromGUS } from '@/lib/gus';
+import {
+  parseGoogleMapsUrl,
+  fetchCompanyDataFromGUS,
+  findExactRegistryRepresentativeContact,
+  type GUSCompanyData,
+} from '@/lib/gus';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import AddLocationModal from '@/components/crm/AddLocationModal';
 import SubcontractorServicesPanel from '@/components/crm/SubcontractorServicesPanel';
@@ -49,6 +54,13 @@ import Customer360Panel from '@/components/crm/contacts/Customer360Panel';
 import Organization360Panel from '@/components/crm/contacts/Organization360Panel';
 import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
 import ComposeEmailModal from '@/components/crm/ComposeEmailModal';
+import { dispatchCrmEmail, formatScheduledEmailDate } from '@/lib/emailScheduling';
+import { requiresKrsForLegalForm } from '@/lib/organizations/organizationLegalForm';
+import type { EventStatus } from '@/components/crm/Calendar/types';
+import {
+  EVENT_STATUS_BADGE_CLASSES,
+  EVENT_STATUS_LABELS,
+} from '@/components/crm/events/eventStatusPalette';
 
 export interface Organization {
   primary_contact: any;
@@ -86,6 +98,10 @@ export interface Organization {
   legal_representative_id: string | null;
   legal_representative_title: string | null;
   contact_is_representative: boolean;
+  representation_type: 'sole' | 'joint' | 'joint_with_proxy' | 'proxy' | 'other' | null;
+  representation_rule: string | null;
+  representation_basis: string | null;
+  representation_verified_at: string | null;
   subcontractor_id: string | null;
   created_at: string;
   updated_at: string;
@@ -213,6 +229,7 @@ const renderRating = (rating: number | null) => {
 export default function OrganizationDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { showSnackbar } = useSnackbar();
   const organizationId = params.id as string;
   const { currentEmployee } = useCurrentEmployee();
@@ -242,6 +259,7 @@ export default function OrganizationDetailPage() {
   const [formErrors, setFormErrors] = useState<OrganizationFormErrors>({});
 
   const [loadingGUS, setLoadingGUS] = useState(false);
+  const [registryLookup, setRegistryLookup] = useState<GUSCompanyData | null>(null);
   const [showAddContactModal, setShowAddContactModal] = useState(false);
   const [addContactMode, setAddContactMode] = useState<'select' | 'create'>('select');
   const [availableContacts, setAvailableContacts] = useState<any[]>([]);
@@ -469,14 +487,18 @@ export default function OrganizationDetailPage() {
         // To jest kontakt/osoba prywatna
         setEntityType('contact');
         setContact(entityData);
-        setActiveTab('customer360');
+        const requestedTab = searchParams.get('tab');
+        setActiveTab(
+          requestedTab === 'details' ? 'details' : 'customer360',
+        );
         setLoading(false);
         return; // Ważne - zakończ tutaj!
       } else if (entityType === 'organization') {
         // To jest organizacja
         setEntityType('organization');
         setOrganization(entityData);
-        setActiveTab('customer360');
+        const requestedTab = searchParams.get('tab');
+        setActiveTab(requestedTab === 'details' ? 'details' : 'customer360');
 
         // Mapuj kontakty
         const mappedContacts = (fullData.contacts || []).map((c: any) => ({
@@ -687,6 +709,9 @@ export default function OrganizationDetailPage() {
         .from('organizations')
         .update({
           ...validatedData,
+          krs: requiresKrsForLegalForm(validatedData.legal_form)
+            ? validatedData.krs
+            : null,
           updated_at: new Date().toISOString(),
         })
         .eq('id', organization.id);
@@ -739,25 +764,63 @@ export default function OrganizationDetailPage() {
       const data = await fetchCompanyDataFromGUS(nip);
 
       if (data) {
+        setRegistryLookup(data);
+        const representativeMatch = findExactRegistryRepresentativeContact(data, contactPersons);
         setEditedOrganizationData((prev) => ({
           ...prev,
+          business_type: data.businessType || prev.business_type,
+          nip: data.nip || prev.nip,
           name: data.name || prev.name,
+          alias: data.alias || prev.alias,
           regon: data.regon || prev.regon,
+          legal_form: data.legalForm || prev.legal_form,
+          krs: requiresKrsForLegalForm(data.legalForm || prev.legal_form)
+            ? data.krs || prev.krs
+            : null,
           address: data.address || prev.address,
           city: data.city || prev.city,
           postal_code: data.postalCode || prev.postal_code,
+          country: data.country || prev.country,
+          email: data.email || prev.email,
+          phone: data.phone || prev.phone,
+          website: data.website || prev.website,
+          representation_type: data.representationType || prev.representation_type,
+          representation_rule: data.representationRule || prev.representation_rule,
+          representation_basis: data.representationBasis || prev.representation_basis,
+          representation_verified_at:
+            data.representationVerifiedAt || prev.representation_verified_at,
+          legal_representative_id:
+            representativeMatch?.contact.id || prev.legal_representative_id,
+          legal_representative_title:
+            representativeMatch?.title || prev.legal_representative_title,
+          contact_is_representative: representativeMatch
+            ? representativeMatch.contact.id ===
+              (prev.primary_contact_id || organization?.primary_contact_id)
+            : prev.contact_is_representative,
         }));
 
         setFormErrors((prev) => ({
           ...prev,
           name: undefined,
           nip: undefined,
+          legal_form: undefined,
+          krs: undefined,
+          regon: undefined,
           address: undefined,
           city: undefined,
           postal_code: undefined,
         }));
 
-        showSnackbar('Dane pobrane z GUS', 'success');
+        const representativesCount = data.representatives?.length || 0;
+        const registryRolesCount = data.registryRoles?.length || 0;
+        showSnackbar(
+          representativesCount > 0
+            ? `Pobrano dane GUS oraz sposób reprezentacji i ${representativesCount} osób z KRS`
+            : registryRolesCount > 0
+              ? `Pobrano dane rejestrowe oraz ${registryRolesCount} role w reprezentacji KRS`
+            : 'Dane pobrane z GUS',
+          'success',
+        );
       }
     } catch (error: any) {
       showSnackbar(error.message || 'Błąd podczas pobierania danych z GUS', 'error');
@@ -982,6 +1045,7 @@ export default function OrganizationDetailPage() {
     fromAccountId?: string;
     cc?: string;
     bcc?: string;
+    scheduledAt?: string | null;
   }) => {
     try {
       const {
@@ -1008,15 +1072,21 @@ export default function OrganizationDetailPage() {
         }),
       );
 
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-email`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${session.access_token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
+      const result = await dispatchCrmEmail({
+        accessToken: session.access_token,
+        functionName: 'send-email',
+        scheduledAt: message.scheduledAt,
+        metadata: {
+          entityType: 'contact',
+          entityId: entityType === 'contact' ? contact?.id : organization?.id,
+          actionUrl:
+            entityType === 'contact' && contact?.id
+              ? `/crm/contacts/${contact.id}`
+              : organization?.id
+                ? `/crm/contacts/${organization.id}`
+                : '/crm/contacts',
+        },
+        payload: {
             emailAccountId: message.fromAccountId,
             to: message.to.trim(),
             subject: message.subject.trim(),
@@ -1024,16 +1094,15 @@ export default function OrganizationDetailPage() {
             attachments,
             cc: message.cc || '',
             bcc: message.bcc || '',
-          }),
         },
+      });
+
+      showSnackbar(
+        result.scheduled && result.scheduledAt
+          ? `Wiadomość zostanie wysłana ${formatScheduledEmailDate(result.scheduledAt)}`
+          : 'Wiadomość została wysłana',
+        'success',
       );
-
-      const result = await response.json().catch(() => null);
-      if (!response.ok || result?.success === false) {
-        throw new Error(result?.error || result?.message || 'Nie udało się wysłać wiadomości');
-      }
-
-      showSnackbar('Wiadomość została wysłana', 'success');
       setShowContactEmailModal(false);
     } catch (error: any) {
       console.error('Error sending contact email:', error);
@@ -1676,13 +1745,14 @@ export default function OrganizationDetailPage() {
             formErrors={formErrors}
             setFormErrors={setFormErrors}
             loadingGUS={loadingGUS}
+            registryLookup={registryLookup}
             handleFetchFromGUS={handleFetchFromGUS}
             onOpenAddLocation={() => setShowAddLocationModal(true)}
             primaryContact={primaryContact}
             legalRepresentative={legalRepresentative}
             decisionMakers={decisionMakers}
             contactPersons={contactPersons}
-            onRepresentativesUpdate={fetchData}
+            onRepresentativesUpdate={() => fetchDecisionMakers(organizationId)}
           />
         )}
 
@@ -1941,44 +2011,34 @@ export default function OrganizationDetailPage() {
                 <p className="py-8 text-center text-gray-400">Brak realizacji</p>
               ) : (
                 <div className="space-y-3">
-                  {events.map((event) => (
-                    <div
-                      key={event.id}
-                      onClick={() => router.push(`/crm/events/${event.id}`)}
-                      className="cursor-pointer rounded-lg border border-gray-700 bg-[#0f1119] p-4 transition-colors hover:border-[#d3bb73]/40"
-                    >
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <div className="mb-2 flex items-center gap-3">
-                            <h3 className="font-medium text-white">{event.name}</h3>
-                            <span
-                              className={`rounded px-2 py-1 text-xs ${
-                                event.status === 'completed'
-                                  ? 'bg-green-500/20 text-green-400'
-                                  : event.status === 'in_progress'
-                                    ? 'bg-blue-500/20 text-blue-400'
-                                    : event.status === 'planning'
-                                      ? 'bg-yellow-500/20 text-yellow-400'
-                                      : 'bg-gray-500/20 text-gray-400'
-                              }`}
-                            >
-                              {event.status === 'completed'
-                                ? 'Zakończone'
-                                : event.status === 'in_progress'
-                                  ? 'W trakcie'
-                                  : event.status === 'planning'
-                                    ? 'Planowanie'
-                                    : event.status}
-                            </span>
-                          </div>
-                          <div className="text-sm text-gray-400">
-                            Data wydarzenia:{' '}
-                            {new Date(event.event_date).toLocaleDateString('pl-PL')}
+                  {events.map((event) => {
+                    const eventStatus = event.status as EventStatus;
+                    const statusLabel = EVENT_STATUS_LABELS[eventStatus] || 'Nieznany status';
+                    const statusClasses = EVENT_STATUS_BADGE_CLASSES[eventStatus]
+                      || 'border-gray-500/20 bg-gray-500/10 text-gray-400';
+                    return (
+                      <div
+                        key={event.id}
+                        onClick={() => router.push(`/crm/events/${event.id}`)}
+                        className="cursor-pointer rounded-lg border border-gray-700 bg-[#0f1119] p-4 transition-colors hover:border-[#d3bb73]/40"
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="mb-2 flex items-center gap-3">
+                              <h3 className="font-medium text-white">{event.name}</h3>
+                              <span className={`rounded border px-2 py-1 text-xs ${statusClasses}`}>
+                                {statusLabel}
+                              </span>
+                            </div>
+                            <div className="text-sm text-gray-400">
+                              Data wydarzenia:{' '}
+                              {new Date(event.event_date).toLocaleDateString('pl-PL')}
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>

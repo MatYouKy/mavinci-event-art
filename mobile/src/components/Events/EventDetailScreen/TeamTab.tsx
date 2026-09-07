@@ -136,7 +136,7 @@ export function TeamTab({ employees, currentEmployeeId }: Props) {
 
 const styles = StyleSheet.create({
   container: { padding: spacing.md },
-  heading: { fontSize: 16, fontWeight: '700', color: colors.text.primary },
+  heading: { fontFamily: 'MBFAtom', textTransform: 'uppercase', fontSize: 16, fontWeight: '700', color: colors.text.primary },
   description: { marginTop: 4, fontSize: 12, lineHeight: 18, color: colors.text.tertiary },
   list: { marginTop: spacing.md, gap: 8 },
   employeeRow: {
@@ -174,5 +174,5 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary.gold + '12',
   },
   emptyState: { alignItems: 'center', justifyContent: 'center', gap: 12, paddingVertical: 60 },
-  emptyTitle: { fontSize: 14, color: colors.text.tertiary },
+  emptyTitle: { fontFamily: 'MBFAtom', textTransform: 'uppercase', fontSize: 14, color: colors.text.tertiary },
 });

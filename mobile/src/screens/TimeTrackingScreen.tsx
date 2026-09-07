@@ -502,6 +502,8 @@ const styles = StyleSheet.create({
     marginTop: 16,
   },
   activeTaskTitle: {
+    fontFamily: 'MBFAtom',
+    textTransform: 'uppercase',
     fontSize: 14,
     color: colors.text.primary,
     fontWeight: '600',
@@ -551,6 +553,8 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   startCardTitle: {
+    fontFamily: 'MBFAtom',
+    textTransform: 'uppercase',
     fontSize: 16,
     fontWeight: '700',
     color: colors.text.primary,
@@ -600,6 +604,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border.default,
   },
   summaryTitle: {
+    fontFamily: 'MBFAtom',
     fontSize: 13,
     fontWeight: '700',
     color: colors.text.secondary,
@@ -655,6 +660,7 @@ const styles = StyleSheet.create({
     marginHorizontal: spacing.md,
   },
   entriesSectionTitle: {
+    fontFamily: 'MBFAtom',
     fontSize: 12,
     fontWeight: '700',
     color: colors.text.secondary,
@@ -682,6 +688,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   entryTitle: {
+    fontFamily: 'MBFAtom',
+    textTransform: 'uppercase',
     fontSize: 13,
     fontWeight: '600',
     color: colors.text.primary,

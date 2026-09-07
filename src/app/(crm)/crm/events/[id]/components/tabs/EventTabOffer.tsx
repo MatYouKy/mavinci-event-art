@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import React, { Dispatch, SetStateAction, useState } from 'react';
 import ReserveEquipmentModal from '@/components/crm/ReserveEquipmentModal';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
-import { getOfferTotals } from '@/lib/CRM/Offers/offerTotals';
+import { getOfferPricingTotals } from '@/lib/CRM/Offers/offerTotals';
 
 interface EventTabOfferProps {
   offers: any[];
@@ -111,6 +111,7 @@ export default function EventTabOffer({
             {offers.map((offer) => {
               const isDeletingThis = deletingId === offer.id;
               const canDelete = offer.status === 'draft' || offer.status === 'sent' || isAdmin;
+              const totals = getOfferPricingTotals(offer);
 
               return (
                 <div
@@ -168,10 +169,10 @@ export default function EventTabOffer({
 
                       <div className="text-right">
                         <p className="text-2xl font-light text-[#d3bb73]">
-                          {getOfferTotals(offer).gross.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
+                          {totals.gross.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
                         </p>
                         <p className="text-xs text-[#e5e4e2]/50">
-                          netto: {getOfferTotals(offer).net.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
+                          netto: {totals.net.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
                         </p>
                         {offer.valid_until && (
                           <p className="mt-1 text-xs text-[#e5e4e2]/40">

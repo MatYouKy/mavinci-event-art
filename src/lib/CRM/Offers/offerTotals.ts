@@ -7,7 +7,24 @@ export type OfferTotalsInput = {
   total_amount?: number | string | null;
 };
 
+type CalculationPricingItem = {
+  quantity?: number | string | null;
+  unit_price?: number | string | null;
+  days?: number | string | null;
+  vat_rate?: number | string | null;
+};
+
+export type OfferPricingTotalsInput = OfferTotalsInput & {
+  event?: {
+    financial_source?: string | null;
+    accepted_calculation?: {
+      event_calculation_items?: CalculationPricingItem[] | null;
+    } | null;
+  } | null;
+};
+
 const asNumber = (value: unknown, fallback = 0) => {
+  if (value === null || value === undefined || value === '') return fallback;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
 };
@@ -30,8 +47,14 @@ export function getOfferTotals(offer: OfferTotalsInput) {
 
   const discountAmount = Math.min(listNet, storedDiscount);
   const net = Math.max(0, listNet - discountAmount);
-  const taxAmount = storedTax || roundMoney(net * taxPercent / 100);
-  const gross = storedGross || roundMoney(net + taxAmount);
+  const calculatedTax = roundMoney(net * taxPercent / 100);
+  const taxAmount = storedTax > 0 ? storedTax : calculatedTax;
+  const calculatedGross = roundMoney(net + taxAmount);
+  // Starsze oferty potrafią mieć w total_amount zapisaną kwotę netto i pusty
+  // tax_amount. Nie pozwalamy, by taki zapis zrównał brutto z netto.
+  const gross = storedGross > 0 && (taxPercent === 0 || storedGross >= calculatedGross - 0.01)
+    ? storedGross
+    : calculatedGross;
   const discountPercent = listNet > 0
     ? discountAmount / listNet * 100
     : Math.max(0, asNumber(offer.discount_percent));
@@ -44,5 +67,52 @@ export function getOfferTotals(offer: OfferTotalsInput) {
     taxPercent,
     taxAmount: roundMoney(taxAmount),
     gross: roundMoney(gross),
+  };
+}
+
+export function getOfferPricingTotals(offer: OfferPricingTotalsInput) {
+  const calculationItems = offer.event?.accepted_calculation?.event_calculation_items;
+  if (offer.event?.financial_source !== 'calculation' || !Array.isArray(calculationItems)) {
+    return {
+      ...getOfferTotals(offer),
+      source: 'offer' as const,
+      hasMixedVatRates: false,
+    };
+  }
+
+  let net = 0;
+  let taxAmount = 0;
+  const vatRates = new Set<number>();
+
+  calculationItems.forEach((item) => {
+    const quantity = Math.max(0, asNumber(item.quantity));
+    const unitPrice = Math.max(0, asNumber(item.unit_price));
+    const days = Math.max(1, asNumber(item.days, 1));
+    const vatRate = Math.max(0, asNumber(item.vat_rate, 23));
+    const rowNet = roundMoney(quantity * unitPrice * days);
+
+    net += rowNet;
+    taxAmount += roundMoney(rowNet * vatRate / 100);
+    vatRates.add(vatRate);
+  });
+
+  net = roundMoney(net);
+  taxAmount = roundMoney(taxAmount);
+  const taxPercent = vatRates.size === 1
+    ? [...vatRates][0]
+    : net > 0
+      ? taxAmount / net * 100
+      : 0;
+
+  return {
+    listNet: net,
+    discountAmount: 0,
+    discountPercent: 0,
+    net,
+    taxPercent,
+    taxAmount,
+    gross: roundMoney(net + taxAmount),
+    source: 'calculation' as const,
+    hasMixedVatRates: vatRates.size > 1,
   };
 }

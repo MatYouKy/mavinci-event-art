@@ -523,6 +523,7 @@ const styles = StyleSheet.create({
     flex: 1.3,
   },
   sectionTitle: {
+    fontFamily: 'MBFAtom',
     fontSize: 16,
     fontWeight: '700',
     color: colors.text.primary,
@@ -554,6 +555,8 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   eventTitle: {
+    fontFamily: 'MBFAtom',
+    textTransform: 'uppercase',
     fontSize: 15,
     fontWeight: '600',
     color: colors.text.primary,

@@ -1,7 +1,13 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+} from 'react';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import {
   ArrowLeft,
@@ -92,42 +98,31 @@ import { deleteEventSafely } from '@/lib/CRM/events/deleteEventSafely';
 import EventWorkflowReadinessPanel from '@/components/crm/events/EventWorkflowReadinessPanel';
 import EventPreflightPanel from '@/components/crm/events/EventPreflightPanel';
 import { useEventWorkspace } from '@/components/crm/events/EventWorkspaceProvider';
+import { EVENT_STATUS_BADGE_CLASSES } from '@/components/crm/events/eventStatusPalette';
+import { ADMIN_EVENT_TABS, CREATOR_EVENT_TABS } from '@/lib/CRM/events/eventTabs';
 
-export const ADMIN_EVENT_TABS = [
+const EVENT_DETAIL_TAB_IDS = [
   'overview',
   'phases',
-  'offer',
-  'agenda',
-  'finances',
-  'calculations',
-  'contract',
   'equipment',
   'team',
-  'logistics',
-  'subcontractors',
   'files',
   'tasks',
+  'offer',
+  'subcontractors',
+  'logistics',
+  'finances',
+  'contract',
+  'agenda',
+  'calculations',
   'history',
   'mavinci-live',
-];
+] as const;
 
-export const CREATOR_EVENT_TABS = [
-  'overview',
-  'phases',
-  'agenda',
-  'offer',
-  'finances',
-  'calculations',
-  'contract',
-  'equipment',
-  'team',
-  'logistics',
-  'subcontractors',
-  'files',
-  'tasks',
-  'history',
-  'mavinci-live',
-];
+type EventDetailTab = (typeof EVENT_DETAIL_TAB_IDS)[number];
+
+const isEventDetailTab = (value: string | null): value is EventDetailTab =>
+  Boolean(value && EVENT_DETAIL_TAB_IDS.includes(value as EventDetailTab));
 
 interface Equipment {
   kit_id: unknown;
@@ -161,17 +156,7 @@ interface ChecklistItem {
   notes?: string;
 }
 
-const statusColors: Record<string, string> = {
-  ready_for_live: 'bg-purple-500/10 text-purple-400 border-purple-500/20',
-  offer_sent: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
-  offer_accepted: 'bg-green-500/10 text-green-400 border-green-500/20',
-  in_preparation: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20',
-  in_progress: 'bg-purple-500/10 text-purple-400 border-purple-500/20',
-  completed: 'bg-green-500/10 text-green-400 border-green-500/20',
-  cancelled: 'bg-red-500/10 text-red-400 border-red-500/20',
-  invoiced: 'bg-[#d3bb73]/10 text-[#d3bb73] border-[#d3bb73]/20',
-  settled: 'bg-[#d3bb73]/10 text-[#d3bb73] border-[#d3bb73]/20',
-};
+const statusColors: Record<string, string> = { ...EVENT_STATUS_BADGE_CLASSES };
 
 export const statusLabels: Record<EventStatus, string> = {
   ready_for_live: 'Gotowy do realizacji',
@@ -379,28 +364,62 @@ export default function EventDetailPageClient({
 
   const [isConfirmed, setIsConfirmed] = useState(false);
   const requestedTab = searchParams.get('tab');
-  const [activeTab, setActiveTab] = useState<
-    | 'overview'
-    | 'phases'
-    | 'equipment'
-    | 'team'
-    | 'files'
-    | 'tasks'
-    | 'offer'
-    | 'subcontractors'
-    | 'logistics'
-    | 'finances'
-    | 'contract'
-    | 'agenda'
-    | 'calculations'
-    | 'history'
-    | 'mavinci-live'
-  >(requestedTab === 'contract' ? 'contract' : 'overview');
+  const [activeTab, setActiveTab] = useState<EventDetailTab>(
+    isEventDetailTab(requestedTab) ? requestedTab : 'overview',
+  );
+
+  const navigateToTab = useCallback(
+    (tab: EventDetailTab) => {
+      setActiveTab(tab);
+      const nextSearchParams = new URLSearchParams(searchParams.toString());
+      nextSearchParams.set('tab', tab);
+      router.replace(`/crm/events/${eventId}?${nextSearchParams.toString()}`, { scroll: false });
+    },
+    [eventId, router, searchParams],
+  );
+
+  const tabsWheelCleanupRef = useRef<(() => void) | null>(null);
+  const setTabsScrollElement = useCallback((tabList: HTMLDivElement | null) => {
+    tabsWheelCleanupRef.current?.();
+    tabsWheelCleanupRef.current = null;
+    if (!tabList) return;
+
+    const handleWheel = (event: WheelEvent) => {
+      // Nad paskiem zakładek blokujemy pionowe przewijanie strony niezależnie
+      // od tego, czy pasek jest już na początku lub na końcu.
+      event.preventDefault();
+      event.stopPropagation();
+
+      const rawDelta =
+        Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+      if (rawDelta === 0) return;
+
+      const deltaMultiplier =
+        event.deltaMode === 1 ? 18 : event.deltaMode === 2 ? tabList.clientWidth : 1;
+      const maxScrollLeft = Math.max(0, tabList.scrollWidth - tabList.clientWidth);
+      tabList.scrollLeft = Math.min(
+        maxScrollLeft,
+        Math.max(0, tabList.scrollLeft + rawDelta * deltaMultiplier),
+      );
+    };
+
+    tabList.addEventListener('wheel', handleWheel, { passive: false });
+    tabsWheelCleanupRef.current = () => {
+      tabList.removeEventListener('wheel', handleWheel);
+    };
+  }, []);
+
+  useEffect(
+    () => () => {
+      tabsWheelCleanupRef.current?.();
+    },
+    [],
+  );
 
   useEffect(() => {
-    if (searchParams.get('tab') === 'contract') {
-      setActiveTab('contract');
-    }
+    const tabFromUrl = searchParams.get('tab');
+    const nextTab = isEventDetailTab(tabFromUrl) ? tabFromUrl : 'overview';
+    setActiveTab((currentTab) => (currentTab === nextTab ? currentTab : nextTab));
   }, [searchParams]);
 
   const [showAddChecklistModal, setShowAddChecklistModal] = useState(false);
@@ -430,9 +449,19 @@ export default function EventDetailPageClient({
   // }, [eventId]);
 
   // ✅ jeśli masz RTK Query do ofert (polecam) – pobieraj tylko dla osób uprawnionych
-  const { data: offersData, isFetching: offersFetching } = useGetEventOffersQuery(eventId, {
+  const {
+    data: offersData,
+    isFetching: offersFetching,
+    refetch: refetchOffers,
+  } = useGetEventOffersQuery(eventId, {
     skip: !canViewCommercials,
   });
+
+  useEffect(() => {
+    if (activeTab === 'offer' && canViewCommercials) {
+      void refetchOffers();
+    }
+  }, [activeTab, canViewCommercials, refetchOffers]);
 
   const [requiredMavinciLiveModules, setRequiredMavinciLiveModules] = useState<
     MavinciLiveModuleRequirement[]
@@ -460,9 +489,9 @@ export default function EventDetailPageClient({
 
   useEffect(() => {
     if (activeTab === 'mavinci-live' && requiredMavinciLiveModules.length === 0) {
-      setActiveTab('overview');
+      navigateToTab('overview');
     }
-  }, [activeTab, requiredMavinciLiveModules.length]);
+  }, [activeTab, navigateToTab, requiredMavinciLiveModules.length]);
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const handleDeleteEvent = async () => {
@@ -853,7 +882,12 @@ export default function EventDetailPageClient({
         </div>
       </div>
 
-      <div className="flex gap-2 overflow-x-auto border-b border-[#d3bb73]/10">
+      <div
+        ref={setTabsScrollElement}
+        role="tablist"
+        data-crm-tabs="true"
+        className="flex gap-2 overflow-x-auto overscroll-x-contain border-b border-[#d3bb73]/10"
+      >
         {[
           { id: 'overview', label: 'Przegląd', icon: FileText },
           { id: 'phases', label: 'Timeline', icon: Clock },
@@ -895,7 +929,10 @@ export default function EventDetailPageClient({
             return (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)}
+                role="tab"
+                aria-selected={activeTab === tab.id}
+                data-crm-tab-active={activeTab === tab.id ? 'true' : 'false'}
+                onClick={() => navigateToTab(tab.id as EventDetailTab)}
                 className={`flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors ${
                   activeTab === tab.id
                     ? 'border-[#d3bb73] text-[#d3bb73]'
@@ -994,7 +1031,7 @@ export default function EventDetailPageClient({
               </div>
             )}
             {canEventManage && (
-              <EventPreflightPanel eventId={eventId} onNavigate={(tab) => setActiveTab(tab as any)} />
+              <EventPreflightPanel eventId={eventId} onNavigate={(tab) => navigateToTab(tab as EventDetailTab)} />
             )}
             {canEventManage && (
               <EventWorkflowReadinessPanel
@@ -1221,6 +1258,11 @@ export default function EventDetailPageClient({
           eventId={event.id}
           eventStartDate={event.event_date}
           eventEndDate={event.event_end_date || event.event_date}
+          initialPlannedSetupAt={event.planned_setup_at}
+          initialPlannedTeardownAt={event.planned_teardown_at}
+          onContractScheduleSaved={(schedule) =>
+            setEvent((current) => ({ ...current, ...schedule }))
+          }
         />
       )}
 
@@ -1706,7 +1748,7 @@ export default function EventDetailPageClient({
           clientType={event?.client_type || 'business'}
           onSuccess={() => {
             setShowCreateOfferModal(false);
-            setActiveTab('offer');
+            navigateToTab('offer');
           }}
         />
       )}

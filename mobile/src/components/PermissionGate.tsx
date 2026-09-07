@@ -64,6 +64,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background.primary,
   },
   title: {
+    fontFamily: 'MBFAtom',
+    textTransform: 'uppercase',
     fontSize: typography.fontSizes.lg,
     fontWeight: typography.fontWeights.bold as any,
     color: colors.text.primary,

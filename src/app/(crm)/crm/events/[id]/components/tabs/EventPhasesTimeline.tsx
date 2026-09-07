@@ -10,6 +10,9 @@ import {
   Save,
   RotateCcw,
   UserPlus,
+  ZoomIn,
+  ZoomOut,
+  MoveHorizontal,
 } from 'lucide-react';
 import {
   useGetEventPhasesQuery,
@@ -31,14 +34,25 @@ import {
   useGetEventEmployeesQuery,
   useGetEventVehiclesQuery,
   useGetEventEquipmentQuery,
+  useUpdateEventMutation,
 } from '../../../store/api/eventsApi';
 import { useAppDispatch } from '@/store/hooks';
 import { supabase } from '@/lib/supabase/client';
+import {
+  localDatetimeStringToUTC,
+  utcToLocalDatetimeString,
+} from '@/lib/utils/dateTimeUtils';
 
 interface EventPhasesTimelineProps {
   eventId: string;
   eventStartDate: string;
   eventEndDate: string;
+  initialPlannedSetupAt?: string | null;
+  initialPlannedTeardownAt?: string | null;
+  onContractScheduleSaved?: (schedule: {
+    planned_setup_at: string | null;
+    planned_teardown_at: string | null;
+  }) => void;
 }
 
 type ZoomLevel = 'days' | 'hours' | 'quarter_hours';
@@ -48,6 +62,9 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
   eventId,
   eventStartDate,
   eventEndDate,
+  initialPlannedSetupAt,
+  initialPlannedTeardownAt,
+  onContractScheduleSaved,
 }) => {
   const dispatch = useAppDispatch();
   const { data: phases = [], isLoading } = useGetEventPhasesQuery(eventId);
@@ -57,10 +74,18 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
 
   const [updatePhase] = useUpdatePhaseMutation();
   const [deletePhase] = useDeletePhaseMutation();
+  const [updateEvent, { isLoading: isSavingContractSchedule }] = useUpdateEventMutation();
   const { showSnackbar } = useSnackbar();
   const { showConfirm } = useDialog();
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const panStateRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startScrollLeft: number;
+  } | null>(null);
+  const zoomCenterRef = useRef(0.5);
+  const [isPanning, setIsPanning] = useState(false);
   const [zoomLevel, setZoomLevel] = useState<ZoomLevel>('hours');
   const [resourceFilter, setResourceFilter] = useState<ResourceFilter>('all');
   const [selectedPhase, setSelectedPhase] = useState<EventPhase | null>(null);
@@ -74,6 +99,53 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
   >({});
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [phaseAssignments, setPhaseAssignments] = useState<PhaseAssignmentsData[]>([]);
+  const initialSetupValue = utcToLocalDatetimeString(initialPlannedSetupAt);
+  const initialTeardownValue = utcToLocalDatetimeString(initialPlannedTeardownAt);
+  const [plannedSetupAt, setPlannedSetupAt] = useState(initialSetupValue);
+  const [plannedTeardownAt, setPlannedTeardownAt] = useState(initialTeardownValue);
+  const [savedPlannedSetupAt, setSavedPlannedSetupAt] = useState(initialSetupValue);
+  const [savedPlannedTeardownAt, setSavedPlannedTeardownAt] = useState(initialTeardownValue);
+
+  useEffect(() => {
+    const nextSetup = utcToLocalDatetimeString(initialPlannedSetupAt);
+    const nextTeardown = utcToLocalDatetimeString(initialPlannedTeardownAt);
+    setPlannedSetupAt(nextSetup);
+    setPlannedTeardownAt(nextTeardown);
+    setSavedPlannedSetupAt(nextSetup);
+    setSavedPlannedTeardownAt(nextTeardown);
+  }, [initialPlannedSetupAt, initialPlannedTeardownAt]);
+
+  const hasUnsavedContractSchedule =
+    plannedSetupAt !== savedPlannedSetupAt || plannedTeardownAt !== savedPlannedTeardownAt;
+
+  const handleSaveContractSchedule = async () => {
+    const setupUtc = localDatetimeStringToUTC(plannedSetupAt);
+    const teardownUtc = localDatetimeStringToUTC(plannedTeardownAt);
+
+    if (setupUtc && teardownUtc && new Date(teardownUtc) <= new Date(setupUtc)) {
+      showSnackbar('Planowany demontaż musi być później niż planowany montaż', 'error');
+      return;
+    }
+
+    try {
+      await updateEvent({
+        id: eventId,
+        data: {
+          planned_setup_at: setupUtc,
+          planned_teardown_at: teardownUtc,
+        },
+      }).unwrap();
+      onContractScheduleSaved?.({
+        planned_setup_at: setupUtc,
+        planned_teardown_at: teardownUtc,
+      });
+      setSavedPlannedSetupAt(plannedSetupAt);
+      setSavedPlannedTeardownAt(plannedTeardownAt);
+      showSnackbar('Planowane terminy zapisane', 'success');
+    } catch (error: any) {
+      showSnackbar(error?.message || 'Nie udało się zapisać planowanych terminów', 'error');
+    }
+  };
 
   // Realtime subscription dla przypisań pojazdów do faz
   useEffect(() => {
@@ -159,6 +231,16 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
     return { start: bufferedStart, end: bufferedEnd };
   }, [eventStartDate, eventEndDate, phases, phaseAssignments, eventVehicles]);
 
+  const timelineContentWidth = useMemo(() => {
+    if (zoomLevel === 'days') return '100%';
+    const durationHours = Math.max(
+      1,
+      (timelineBounds.end.getTime() - timelineBounds.start.getTime()) / (60 * 60 * 1000),
+    );
+    const pixelsPerHour = zoomLevel === 'hours' ? 72 : 192;
+    return `${Math.max(1200, Math.ceil(durationHours * pixelsPerHour))}px`;
+  }, [timelineBounds, zoomLevel]);
+
   const phaseConflicts = useMemo(() => {
     const conflicts: Record<string, boolean> = {};
     phases.forEach((phase, index) => {
@@ -182,37 +264,68 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
     return conflicts;
   }, [phases]);
 
-  // Zachowaj proporcjonalną pozycję scrolla przy zmianie zoomu
-  const previousScrollPercentageRef = useRef(0);
-
   useEffect(() => {
     const container = scrollContainerRef.current;
     if (!container) return;
 
-    // Zapisz bieżącą pozycję przed zmianą
-    const handleScroll = () => {
-      if (container.scrollWidth > container.clientWidth) {
-        previousScrollPercentageRef.current =
-          container.scrollLeft / (container.scrollWidth - container.clientWidth);
-      }
-    };
-
-    container.addEventListener('scroll', handleScroll);
-    return () => container.removeEventListener('scroll', handleScroll);
-  }, []);
-
-  useEffect(() => {
-    const container = scrollContainerRef.current;
-    if (!container) return;
-
-    // Po zmianie zoomu przywróć proporcjonalną pozycję
     requestAnimationFrame(() => {
-      if (container.scrollWidth > container.clientWidth) {
-        const newScrollLeft = previousScrollPercentageRef.current * (container.scrollWidth - container.clientWidth);
-        container.scrollLeft = newScrollLeft;
-      }
+      const target = zoomCenterRef.current * container.scrollWidth - container.clientWidth / 2;
+      container.scrollLeft = Math.max(
+        0,
+        Math.min(target, container.scrollWidth - container.clientWidth),
+      );
     });
   }, [zoomLevel]);
+
+  const changeZoom = (nextZoom: ZoomLevel) => {
+    const container = scrollContainerRef.current;
+    if (container?.scrollWidth) {
+      zoomCenterRef.current =
+        (container.scrollLeft + container.clientWidth / 2) / container.scrollWidth;
+    }
+    setZoomLevel(nextZoom);
+  };
+
+  const zoomOrder: ZoomLevel[] = ['days', 'hours', 'quarter_hours'];
+  const zoomIndex = zoomOrder.indexOf(zoomLevel);
+
+  const handleTimelinePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    const target = event.target as HTMLElement;
+    if (
+      target.closest(
+        '[data-timeline-interactive="true"], button, input, select, textarea, a',
+      )
+    ) {
+      return;
+    }
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    panStateRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startScrollLeft: container.scrollLeft,
+    };
+    container.setPointerCapture(event.pointerId);
+    setIsPanning(true);
+  };
+
+  const handleTimelinePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const pan = panStateRef.current;
+    const container = scrollContainerRef.current;
+    if (!pan || !container || pan.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    container.scrollLeft = pan.startScrollLeft - (event.clientX - pan.startX);
+  };
+
+  const stopTimelinePan = (event: React.PointerEvent<HTMLDivElement>) => {
+    const container = scrollContainerRef.current;
+    if (container?.hasPointerCapture(event.pointerId)) {
+      container.releasePointerCapture(event.pointerId);
+    }
+    panStateRef.current = null;
+    setIsPanning(false);
+  };
 
   const handlePhaseResizeDraft = (phaseId: string, newStart: Date, newEnd: Date) => {
     setDraftChanges((prev) => ({
@@ -278,13 +391,14 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
 
   const handlePhaseDoubleClick = (phase: EventPhase) => {
     setSelectedPhase(phase);
+    setShowResourcePanel(false);
     setShowEditModal(true);
   };
 
   const zoomLevels: { value: ZoomLevel; label: string }[] = [
-    { value: 'days', label: 'Dni' },
+    { value: 'days', label: 'Całość' },
     { value: 'hours', label: 'Godziny' },
-    { value: 'quarter_hours', label: 'Kwadrans' },
+    { value: 'quarter_hours', label: '15 min' },
   ];
 
   const resourceFilters: { value: ResourceFilter; label: string }[] = [
@@ -379,10 +493,20 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
 
           {/* Zoom Controls */}
           <div className="flex items-center gap-1 rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] p-1">
+            <button
+              type="button"
+              onClick={() => changeZoom(zoomOrder[Math.max(0, zoomIndex - 1)])}
+              disabled={zoomIndex === 0}
+              className="rounded p-1.5 text-[#e5e4e2]/70 transition-colors hover:bg-[#d3bb73]/10 hover:text-[#e5e4e2] disabled:cursor-not-allowed disabled:opacity-25"
+              title="Oddal widok"
+              aria-label="Oddal widok timeline"
+            >
+              <ZoomOut className="h-4 w-4" />
+            </button>
             {zoomLevels.map((level) => (
               <button
                 key={level.value}
-                onClick={() => setZoomLevel(level.value)}
+                onClick={() => changeZoom(level.value)}
                 className={`rounded px-3 py-1.5 text-xs font-medium transition-colors ${
                   zoomLevel === level.value
                     ? 'bg-[#d3bb73] text-[#1c1f33]'
@@ -392,6 +516,16 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
                 {level.label}
               </button>
             ))}
+            <button
+              type="button"
+              onClick={() => changeZoom(zoomOrder[Math.min(zoomOrder.length - 1, zoomIndex + 1)])}
+              disabled={zoomIndex === zoomOrder.length - 1}
+              className="rounded p-1.5 text-[#e5e4e2]/70 transition-colors hover:bg-[#d3bb73]/10 hover:text-[#e5e4e2] disabled:cursor-not-allowed disabled:opacity-25"
+              title="Zbliż widok"
+              aria-label="Zbliż widok timeline"
+            >
+              <ZoomIn className="h-4 w-4" />
+            </button>
           </div>
 
           {/* Resource Filter */}
@@ -448,6 +582,44 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
         </div>
       </div>
 
+      <div className="border-b border-[#d3bb73]/10 bg-[#171a2a] px-4 py-3">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="mr-auto min-w-[220px]">
+            <div className="text-sm font-semibold text-[#e5e4e2]">Planowane terminy do umowy</div>
+            <p className="mt-1 text-xs text-[#e5e4e2]/45">
+              Te daty są niezależne od czasu trwania faz na osi.
+            </p>
+          </div>
+          <label className="grid min-w-[230px] gap-1.5 text-xs font-medium text-[#e5e4e2]/65">
+            Planowany montaż — data i godzina
+            <input
+              type="datetime-local"
+              value={plannedSetupAt}
+              onChange={(event) => setPlannedSetupAt(event.target.value)}
+              className="h-10 rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-3 text-sm text-[#e5e4e2] outline-none transition-colors focus:border-[#d3bb73]"
+            />
+          </label>
+          <label className="grid min-w-[230px] gap-1.5 text-xs font-medium text-[#e5e4e2]/65">
+            Planowany demontaż — data i godzina
+            <input
+              type="datetime-local"
+              value={plannedTeardownAt}
+              onChange={(event) => setPlannedTeardownAt(event.target.value)}
+              className="h-10 rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-3 text-sm text-[#e5e4e2] outline-none transition-colors focus:border-[#d3bb73]"
+            />
+          </label>
+          <button
+            type="button"
+            onClick={handleSaveContractSchedule}
+            disabled={!hasUnsavedContractSchedule || isSavingContractSchedule}
+            className="flex h-10 items-center gap-2 rounded-lg border border-[#d3bb73]/30 bg-[#d3bb73] px-4 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Save className="h-4 w-4" />
+            {isSavingContractSchedule ? 'Zapisywanie…' : 'Zapisz terminy'}
+          </button>
+        </div>
+      </div>
+
       {/* Timeline View */}
       {phases.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-4 p-12">
@@ -471,18 +643,32 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
           {/* Scrollowalny kontener (X i Y) */}
           <div
             ref={scrollContainerRef}
-            className="flex-1 overflow-x-auto overflow-y-auto scroll-smooth"
+            onPointerDown={handleTimelinePointerDown}
+            onPointerMove={handleTimelinePointerMove}
+            onPointerUp={stopTimelinePan}
+            onPointerCancel={stopTimelinePan}
+            className={`flex-1 overflow-x-auto overflow-y-auto ${
+              isPanning ? 'cursor-grabbing select-none' : 'cursor-grab'
+            }`}
           >
-            <div style={{
-              minWidth: zoomLevel === 'days' ? '1200px' : zoomLevel === 'hours' ? '2400px' : '9600px',
-              paddingBottom: '24px'
-            }}>
+            <div
+              style={{
+                width: timelineContentWidth,
+                minWidth: '100%',
+                paddingBottom: '24px',
+              }}
+            >
               {/* Main Phase Timeline */}
               <div className="mb-6">
-                <div className="mb-2 px-6">
+                <div className="mb-2 flex items-center justify-between gap-4 px-6">
                   <h3 className="text-sm font-semibold uppercase tracking-wide text-[#e5e4e2]/70">
                     Fazy Główne
                   </h3>
+                  <span className="flex items-center gap-1.5 text-[11px] text-[#e5e4e2]/40">
+                    <MoveHorizontal className="h-3.5 w-3.5" />
+                    Przeciągnij tło, aby przesunąć widok · przeciągnij fazę, aby zmienić czas ·
+                    prawy klik edytuje
+                  </span>
                 </div>
                 <PhaseTimelineView
                   phases={displayPhases}
@@ -492,6 +678,7 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
                   phaseConflicts={phaseConflicts}
                   onPhaseClick={handlePhaseClick}
                   onPhaseDoubleClick={handlePhaseDoubleClick}
+                  onPhaseContextMenu={handlePhaseDoubleClick}
                   onPhaseResize={handlePhaseResizeDraft}
                   onPhaseDelete={handlePhaseDelete}
                   eventStartDate={eventStartDate}

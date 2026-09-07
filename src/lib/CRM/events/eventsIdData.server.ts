@@ -3,9 +3,9 @@ import { cookies } from 'next/headers';
 import { createSupabaseServerClient } from '@/lib/supabase/server.app';
 import type { CookieStoreLike } from '@/lib/supabase/server.app';
 import type { IEmployee } from '@/app/(crm)/crm/employees/type';
-import { ViewMode } from '@/app/(crm)/crm/settings/page';
-import { OrganizationRow } from '@/app/(crm)/crm/contacts/types';
-import { ADMIN_EVENT_TABS, CREATOR_EVENT_TABS } from '@/app/(crm)/crm/events/[id]/EventDetailPageClient';
+import type { ViewMode } from '@/app/(crm)/crm/settings/page';
+import type { OrganizationRow } from '@/app/(crm)/crm/contacts/types';
+import { ADMIN_EVENT_TABS, CREATOR_EVENT_TABS } from '@/lib/CRM/events/eventTabs';
 
 export function getCookieStore(): CookieStoreLike {
   const store = cookies();
@@ -60,6 +60,8 @@ export type EventRow = {
   name: string;
   event_date: string;
   event_end_date: string | null;
+  planned_setup_at: string | null;
+  planned_teardown_at: string | null;
   location: string | null;
   status: string;
   category_id: string | null;
@@ -71,6 +73,8 @@ export type EventRow = {
   organization_id: string | null;
   billing_arrangement: 'direct' | 'hotel' | 'agency' | 'other' | null;
   billing_organization_id: string | null;
+  purchase_order_number: string | null;
+  contract_clause_overrides: unknown;
 
   organizations: { name: string | null; alias: string | null } | null;
   contacts: { first_name: string | null; last_name: string | null } | null;

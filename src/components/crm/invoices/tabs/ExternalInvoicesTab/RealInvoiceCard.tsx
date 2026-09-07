@@ -1,4 +1,4 @@
-import { Eye, Pencil, Repeat, Trash2 } from 'lucide-react';
+import { Copy, Eye, Pencil, Repeat, Trash2 } from 'lucide-react';
 import { ExternalInvoice, formatDate, formatMoney } from './ExternalInvoicesTab';
 
 export function RealInvoiceCard({
@@ -7,12 +7,14 @@ export function RealInvoiceCard({
   onPreview,
   onDelete,
   onEdit,
+  onAddSimilar,
 }: {
   inv: ExternalInvoice;
   canManage: boolean;
   onPreview: (path: string | null) => void;
   onDelete: (inv: ExternalInvoice) => void;
   onEdit: (inv: ExternalInvoice) => void;
+  onAddSimilar: (inv: ExternalInvoice) => void;
 }) {
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -84,6 +86,16 @@ export function RealInvoiceCard({
             className="rounded-lg border border-[#d3bb73]/20 p-2 text-[#e5e4e2]/70 hover:text-[#d3bb73]"
           >
             <Pencil className="h-4 w-4" />
+          </button>
+        )}
+
+        {canManage && (
+          <button
+            onClick={() => onAddSimilar(inv)}
+            title="Dodaj podobną fakturę"
+            className="rounded-lg border border-[#d3bb73]/20 p-2 text-[#e5e4e2]/70 hover:text-[#d3bb73]"
+          >
+            <Copy className="h-4 w-4" />
           </button>
         )}
 

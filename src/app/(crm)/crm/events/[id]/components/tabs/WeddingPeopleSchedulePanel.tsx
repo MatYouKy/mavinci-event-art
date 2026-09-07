@@ -60,7 +60,7 @@ const VIEW_TITLES: Record<PanelView, { title: string; description: string }> = {
   all: { title: 'Osoby i harmonogram', description: 'Każda osoba oraz punkt dnia jest oddzielnym rekordem.' },
   bride: { title: 'Strona Panny Młodej', description: 'Panna Młoda, świadek, rodzice i inne bliskie osoby.' },
   groom: { title: 'Strona Pana Młodego', description: 'Pan Młody, świadek, rodzice i inne bliskie osoby.' },
-  shared: { title: 'Pozostałe osoby organizacyjne', description: 'Osoby po stronie sali i pozostali uczestnicy — wystarczą imiona.' },
+  shared: { title: 'Pozostałe osoby organizacyjne', description: 'Osoby po stronie sali i pozostali uczestnicy — zapisz imię, telefon oraz opcjonalny e-mail.' },
   schedule: { title: 'Harmonogram i posiłki', description: 'Wspólna kolejność dnia widoczna również w Strefie Pary Młodej.' },
 };
 
@@ -160,7 +160,20 @@ export default function WeddingPeopleSchedulePanel({ cardId, canManage, view = '
             <div className="space-y-3">{people.filter((person) => person.side === side).map((person) => (
               <div key={person.local_id} className="rounded-xl border border-white/5 bg-black/10 p-3">
                 <div className="mb-2 flex items-center justify-between"><span className="text-xs font-medium text-[#d3bb73]">{ROLE_LABELS[person.role]}</span>{editing && person.role === 'other' && <button onClick={() => setPeople((current) => current.filter((item) => item.local_id !== person.local_id))} className="text-red-300/60"><Trash2 className="h-4 w-4" /></button>}</div>
-                {editing ? <div className="grid gap-2 sm:grid-cols-2"><input placeholder="Imię" value={person.first_name} onChange={(event) => updatePerson(person.local_id, { first_name: event.target.value })} className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm sm:col-span-2" />{['bride', 'groom'].includes(person.role) && <><input placeholder="Telefon" value={person.phone} onChange={(event) => updatePerson(person.local_id, { phone: event.target.value })} className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm" /><input type="email" placeholder="E-mail" value={person.email} onChange={(event) => updatePerson(person.local_id, { email: event.target.value })} className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm" /><input placeholder="Instagram, np. @ania" value={person.instagram_handle} onChange={(event) => updatePerson(person.local_id, { instagram_handle: event.target.value.replace(/^@+/, '') })} className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm sm:col-span-2" /><label className="flex items-center gap-2 rounded-lg border border-white/10 bg-black/10 px-3 py-2 text-xs text-white/60 sm:col-span-2"><input type="checkbox" checked={person.instagram_tag_consent} onChange={(event) => updatePerson(person.local_id, { instagram_tag_consent: event.target.checked })} className="h-4 w-4 accent-[#d3bb73]" />Zgoda na oznaczanie profilu przez Event Rulers</label></>}</div> : <div><p className="text-sm text-white">{[person.first_name, person.last_name].filter(Boolean).join(' ') || 'Nie uzupełniono'}</p>{['bride', 'groom'].includes(person.role) && <>{person.phone && <p className="text-xs text-white/45">{person.phone}</p>}{person.email && <p className="text-xs text-white/45">{person.email}</p>}{person.instagram_handle && <p className="mt-1 text-xs text-[#d3bb73]">@{person.instagram_handle} · {person.instagram_tag_consent ? 'zgoda na oznaczanie' : 'bez zgody na oznaczanie'}</p>}</>}</div>}
+                {editing ? <div className="grid gap-2 sm:grid-cols-2">
+                  <input placeholder="Imię" value={person.first_name} onChange={(event) => updatePerson(person.local_id, { first_name: event.target.value })} className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm sm:col-span-2" />
+                  <input type="tel" placeholder="Telefon" value={person.phone} onChange={(event) => updatePerson(person.local_id, { phone: event.target.value })} className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm" />
+                  <input type="email" placeholder="E-mail (opcjonalnie)" value={person.email} onChange={(event) => updatePerson(person.local_id, { email: event.target.value })} className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm" />
+                  {['bride', 'groom'].includes(person.role) && <>
+                    <input placeholder="Instagram, np. @ania" value={person.instagram_handle} onChange={(event) => updatePerson(person.local_id, { instagram_handle: event.target.value.replace(/^@+/, '') })} className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm sm:col-span-2" />
+                    <label className="flex items-center gap-2 rounded-lg border border-white/10 bg-black/10 px-3 py-2 text-xs text-white/60 sm:col-span-2"><input type="checkbox" checked={person.instagram_tag_consent} onChange={(event) => updatePerson(person.local_id, { instagram_tag_consent: event.target.checked })} className="h-4 w-4 accent-[#d3bb73]" />Zgoda na oznaczanie profilu przez Event Rulers</label>
+                  </>}
+                </div> : <div>
+                  <p className="text-sm text-white">{[person.first_name, person.last_name].filter(Boolean).join(' ') || 'Nie uzupełniono'}</p>
+                  {person.phone && <p className="text-xs text-white/45">{person.phone}</p>}
+                  {person.email && <p className="text-xs text-white/45">{person.email}</p>}
+                  {['bride', 'groom'].includes(person.role) && person.instagram_handle && <p className="mt-1 text-xs text-[#d3bb73]">@{person.instagram_handle} · {person.instagram_tag_consent ? 'zgoda na oznaczanie' : 'bez zgody na oznaczanie'}</p>}
+                </div>}
               </div>
             ))}</div>
             {editing && <button onClick={() => setPeople((current) => [...current, blankPerson(side, side === 'shared' ? 'venue_contact' : 'godparent')])} className="mt-3 inline-flex items-center gap-2 text-xs text-[#d3bb73]"><Plus className="h-4 w-4" />Dodaj osobę</button>}

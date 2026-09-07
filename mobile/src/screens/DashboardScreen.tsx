@@ -512,6 +512,8 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   sectionTitle: {
+    fontFamily: 'MBFAtom',
+    textTransform: 'uppercase',
     fontSize: typography.fontSizes.xl,
     fontWeight: typography.fontWeights.semibold,
     color: colors.text.primary,
@@ -532,6 +534,8 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   cardTitle: {
+    fontFamily: 'MBFAtom',
+    textTransform: 'uppercase',
     flex: 1,
     fontSize: typography.fontSizes.md,
     fontWeight: typography.fontWeights.semibold,

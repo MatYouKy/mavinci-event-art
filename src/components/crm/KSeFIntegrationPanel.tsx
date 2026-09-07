@@ -32,6 +32,7 @@ import BankMatchingSimple from './BankMatchingSimple';
 import CompanySelector from './CompanySelector';
 import { useDialog } from '@/contexts/DialogContext';
 import FullScreenLoader from '../UI/Loader/CustomModalLoader';
+import { decodeTextEntities } from '@/lib/textEncoding';
 import {
   TableColumnOption,
   TablePreferencesControl,
@@ -295,6 +296,7 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
   const [paymentDueDate, setPaymentDueDate] = useState('');
   const [paymentsMap, setPaymentsMap] = useState<Record<string, KSeFInvoicePayment[]>>({});
   const [paymentReviewIds, setPaymentReviewIds] = useState<Set<string>>(new Set());
+  const [manualPaymentReviewNotes, setManualPaymentReviewNotes] = useState<Record<string, string>>({});
   const [editingPayments, setEditingPayments] = useState<KSeFInvoicePayment[]>([]);
   const [newPaymentAmount, setNewPaymentAmount] = useState('');
   const [newPaymentDate, setNewPaymentDate] = useState('');
@@ -500,13 +502,17 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
 
       if (error) throw error;
 
-      const normalizedIssued =
-        (data || []).filter((inv) => String(inv.invoice_type || '').toLowerCase() === 'issued') ||
-        [];
-
-      const normalizedReceived =
-        (data || []).filter((inv) => String(inv.invoice_type || '').toLowerCase() === 'received') ||
-        [];
+      const normalizedInvoices = (data || []).map((invoice) => ({
+        ...invoice,
+        seller_name: decodeTextEntities(invoice.seller_name) || null,
+        buyer_name: decodeTextEntities(invoice.buyer_name) || null,
+      }));
+      const normalizedIssued = normalizedInvoices.filter(
+        (inv) => String(inv.invoice_type || '').toLowerCase() === 'issued',
+      );
+      const normalizedReceived = normalizedInvoices.filter(
+        (inv) => String(inv.invoice_type || '').toLowerCase() === 'received',
+      );
 
       setIssuedInvoices(normalizedIssued);
       setReceivedInvoices(normalizedReceived);
@@ -528,15 +534,27 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
         }
         const { data: reviewData } = await supabase
           .from('financial_payment_review_issues')
-          .select('document_id')
+          .select('document_id,issue_code,details')
           .eq('document_source', 'ksef')
-          .eq('issue_code', 'payment_status_without_ledger')
+          .in('issue_code', [
+            'payment_status_without_ledger',
+            'manual_match_explanation_required',
+          ])
           .is('resolved_at', null)
           .in('document_id', allIds);
         setPaymentReviewIds(new Set((reviewData || []).map((issue) => issue.document_id)));
+        setManualPaymentReviewNotes(Object.fromEntries(
+          (reviewData || [])
+            .filter((issue) => issue.issue_code === 'manual_match_explanation_required')
+            .map((issue) => [
+              issue.document_id,
+              String((issue as { details?: { note?: unknown } }).details?.note || ''),
+            ]),
+        ));
       } else {
         setPaymentsMap({});
         setPaymentReviewIds(new Set());
+        setManualPaymentReviewNotes({});
       }
     } catch (error) {
       console.error('Error loading invoices:', error);
@@ -975,6 +993,30 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
     }
   };
 
+  const handleResolveManualPaymentReview = useCallback(async (invoice: KSeFInvoice) => {
+    try {
+      const { data, error } = await supabase
+        .from('financial_payment_review_issues')
+        .update({
+          resolved_at: new Date().toISOString(),
+          resolved_by: currentEmployee?.id ?? null,
+        })
+        .eq('document_source', 'ksef')
+        .eq('document_id', invoice.id)
+        .eq('issue_code', 'manual_match_explanation_required')
+        .is('resolved_at', null)
+        .select('id');
+
+      if (error) throw error;
+      if (!data?.length) throw new Error('Nie znaleziono aktywnej uwagi albo brak uprawnień do jej zamknięcia.');
+
+      showSnackbar('Faktura została oznaczona jako wyjaśniona.', 'success');
+      await loadInvoices();
+    } catch (error: any) {
+      showSnackbar(error?.message || 'Nie udało się zamknąć uwagi do faktury.', 'error');
+    }
+  }, [currentEmployee?.id, loadInvoices, showSnackbar]);
+
   const getInvoiceActions = useCallback(
     (invoice: KSeFInvoice) => {
       const actions = [
@@ -998,6 +1040,15 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
           disabled: invoice.sync_status !== 'synced',
         },
       ];
+
+      if (manualPaymentReviewNotes[invoice.id]) {
+        actions.push({
+          label: 'Oznacz uwagę jako wyjaśnioną',
+          onClick: () => handleResolveManualPaymentReview(invoice),
+          icon: <CheckCircle className="h-4 w-4" />,
+          variant: 'default' as const,
+        });
+      }
 
       if (invoice.payment_status === 'paid') {
         actions.push({
@@ -1042,6 +1093,8 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
       handleOpenMatchPayment,
       handleOpenEditPayment,
       handleViewInvoiceXml,
+      handleResolveManualPaymentReview,
+      manualPaymentReviewNotes,
     ],
   );
 
@@ -1488,8 +1541,13 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
                               <PaymentIcon className="mr-1 inline h-3 w-3" />
                               {paymentStatus.label}
                               {paymentReviewIds.has(invoice.id) && (
-                                <span className="ml-2 rounded bg-orange-500/15 px-1.5 py-0.5 text-[10px] text-orange-300">
-                                  do weryfikacji
+                                <span
+                                  title={manualPaymentReviewNotes[invoice.id] || undefined}
+                                  className="ml-2 rounded bg-orange-500/15 px-1.5 py-0.5 text-[10px] text-orange-300"
+                                >
+                                  {manualPaymentReviewNotes[invoice.id]
+                                    ? 'wymaga wyjaśnienia'
+                                    : 'do weryfikacji'}
                                 </span>
                               )}
                             </td>
@@ -1615,11 +1673,25 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
                           {paymentStatus.label}
                         </span>
                         {paymentReviewIds.has(invoice.id) && (
-                          <span className="rounded bg-orange-500/15 px-2 py-1 text-xs text-orange-300">
-                            Status bez wpisu wpłaty — zweryfikuj
+                          <span
+                            title={manualPaymentReviewNotes[invoice.id] || undefined}
+                            className="rounded bg-orange-500/15 px-2 py-1 text-xs text-orange-300"
+                          >
+                            {manualPaymentReviewNotes[invoice.id]
+                              ? 'Wymaga dodatkowego wyjaśnienia'
+                              : 'Status bez wpisu wpłaty — zweryfikuj'}
                           </span>
                         )}
                       </div>
+
+                      {manualPaymentReviewNotes[invoice.id] && (
+                        <div className="mb-4 rounded-lg border border-orange-400/20 bg-orange-400/5 px-3 py-2.5 text-xs leading-relaxed text-orange-100/85">
+                          <strong className="block text-orange-200">Uwaga do rozliczenia</strong>
+                          <span className="mt-1 block whitespace-pre-wrap">
+                            {manualPaymentReviewNotes[invoice.id]}
+                          </span>
+                        </div>
+                      )}
 
                       {renderActions(invoice)}
                     </div>

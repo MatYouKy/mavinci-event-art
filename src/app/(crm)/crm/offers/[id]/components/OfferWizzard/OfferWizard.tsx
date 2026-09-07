@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react';
 import { X, ChevronRight, ChevronLeft } from 'lucide-react';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
-import { IEventCategory } from '@/app/(crm)/crm/event-categories/types';
 import EquipmentConflictsSummary from './EquipmentConflictsSummary';
 import OfferStep2 from './Steps/OfferStep2';
 import OfferStep4, { CustomItem } from './Steps/OfferStep4';
@@ -227,7 +226,15 @@ export default function OfferWizard({
           )}
 
           {/* Step 2: Podstawowe dane */}
-          {step === 2 && <OfferStep2 offerData={offerData} setOfferData={setOfferData} />}
+          {step === 2 && (
+            <OfferStep2
+              offerData={offerData}
+              setOfferData={setOfferData}
+              aiContext={{
+                productNames: offerItems.map((item) => item.name).filter(Boolean),
+              }}
+            />
+          )}
 
           {/* Step 3: Katalog produktów */}
           {step === 3 && (

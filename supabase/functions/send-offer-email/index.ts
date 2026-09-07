@@ -219,21 +219,22 @@ Deno.serve(async (req: Request) => {
     let pdfStoragePath = '';
 
     try {
-      const pdfResponse = await fetch(`${supabaseUrl}/functions/v1/generate-offer-pdf`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': authHeader,
-        },
-        body: JSON.stringify({
-          offerId: offerId,
-          employeeId: employee.id,
-        }),
-      });
+      for (const resourceMode of ['standard', 'compact'] as const) {
+        const pdfResponse = await fetch(`${supabaseUrl}/functions/v1/generate-offer-pdf`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': authHeader,
+          },
+          body: JSON.stringify({
+            offerId: offerId,
+            employeeId: employee.id,
+            resourceMode,
+          }),
+        });
+        const pdfResult = await pdfResponse.json().catch(() => ({}));
 
-      if (pdfResponse.ok) {
-        const pdfResult = await pdfResponse.json();
-        if (pdfResult.success && pdfResult.fileName) {
+        if (pdfResponse.ok && pdfResult.success && pdfResult.fileName) {
           pdfStoragePath = pdfResult.fileName;
           const { data: signedUrlData } = await supabase.storage
             .from('generated-offers')
@@ -241,10 +242,11 @@ Deno.serve(async (req: Request) => {
           if (signedUrlData?.signedUrl) {
             pdfDownloadUrl = signedUrlData.signedUrl;
           }
+          break;
         }
-      } else {
-        const errorText = await pdfResponse.text();
-        console.error('[send-offer-email] PDF generation failed:', errorText);
+
+        console.error('[send-offer-email] PDF generation failed:', pdfResult);
+        if (pdfResult.code !== 'WORKER_RESOURCE_LIMIT') break;
       }
     } catch (pdfError) {
       console.error('[send-offer-email] Error generating PDF:', pdfError);

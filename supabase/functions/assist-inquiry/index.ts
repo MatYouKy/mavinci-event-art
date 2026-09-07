@@ -8,7 +8,7 @@ const corsHeaders = {
 };
 
 type JsonRecord = Record<string, unknown>;
-type Action = "recommend" | "improve_email" | "draft_product_offer_content";
+type Action = "recommend" | "improve_email" | "draft_product_offer_content" | "draft_offer_assumptions";
 
 const json = (body: JsonRecord, status = 200) => new Response(JSON.stringify(body), {
   status,
@@ -29,6 +29,12 @@ const asRecord = (value: unknown): JsonRecord | null =>
   value !== null && typeof value === "object" && !Array.isArray(value)
     ? value as JsonRecord
     : null;
+
+const sanitizeInquiryText = (value: unknown) => String(value || "")
+  .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[adres e-mail pominięty]")
+  .replace(/(?:\+?48[\s-]?)?(?:\d[\s-]?){9}\b/g, "[numer telefonu pominięty]")
+  .replace(/\b\d{11}\b/g, "[identyfikator pominięty]")
+  .slice(0, 12000);
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
@@ -73,8 +79,19 @@ Deno.serve(async (req: Request) => {
         benefits?: string[];
         image_alt?: string;
       };
+      context?: {
+        event_category?: string;
+        product_names?: string[];
+      };
     };
     if (!body.action) return json({ error: "Brak action" }, 400);
+
+    const permissions = Array.isArray(employee.permissions) ? employee.permissions : [];
+    const canManageOffers =
+      employee.role === "admin" ||
+      employee.access_level === "admin" ||
+      permissions.includes("admin") ||
+      permissions.includes("offers_manage");
 
     const recommendationSchema = {
       type: "object",
@@ -149,6 +166,37 @@ Deno.serve(async (req: Request) => {
       required: ["short_description", "description", "benefits", "image_alt"],
     };
 
+    const offerAssumptionsSchema = {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        assumptions: {
+          type: "array",
+          minItems: 3,
+          maxItems: 3,
+          items: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              key: {
+                type: "string",
+                enum: [
+                  "guest_count", "event_hours", "client_needs", "event_format", "agenda",
+                  "venue", "audience", "engagement", "brand_visibility", "guest_experience",
+                  "online_participants", "technical_scope", "special_requirements", "custom",
+                ],
+              },
+              label: { type: "string" },
+              value: { type: "string", maxLength: 250 },
+              badge_value: { type: "string" },
+            },
+            required: ["key", "label", "value", "badge_value"],
+          },
+        },
+      },
+      required: ["assumptions"],
+    };
+
     let systemInstruction = "";
     let userPayload: JsonRecord = {};
     let outputSchema: JsonRecord = recommendationSchema;
@@ -157,12 +205,6 @@ Deno.serve(async (req: Request) => {
     if (body.action === "draft_product_offer_content") {
       if (!body.productId) return json({ error: "Brak productId" }, 400);
 
-      const permissions = Array.isArray(employee.permissions) ? employee.permissions : [];
-      const canManageOffers =
-        employee.role === "admin" ||
-        employee.access_level === "admin" ||
-        permissions.includes("admin") ||
-        permissions.includes("offers_manage");
       if (!canManageOffers) {
         return json({ error: "Brak uprawnienia do edycji produktów ofertowych" }, 403);
       }
@@ -205,6 +247,64 @@ Deno.serve(async (req: Request) => {
       };
       outputSchema = productOfferContentSchema;
       outputName = "product_offer_content_draft";
+    } else if (body.action === "draft_offer_assumptions") {
+      if (!canManageOffers) {
+        return json({ error: "Brak uprawnienia do edycji ofert" }, 403);
+      }
+
+      const eventCategory = String(body.context?.event_category || '').trim().slice(0, 100);
+      const productNames = (Array.isArray(body.context?.product_names) ? body.context.product_names : [])
+        .map((name) => String(name).trim().slice(0, 120))
+        .filter(Boolean)
+        .slice(0, 30);
+      let inquiryContext: JsonRecord | null = null;
+      if (body.inquiryId) {
+        // Zapytanie pobieramy w kontekście zalogowanego pracownika. RLS rozstrzyga dostęp,
+        // a do modelu nie przekazujemy pól kontaktowych ani identyfikatorów klienta.
+        const { data: inquiry, error: inquiryError } = await authClient
+          .from("tasks")
+          .select("id, title, description, inquiry_details, inquiry_stage, estimated_value")
+          .eq("id", body.inquiryId)
+          .eq("is_inquiry", true)
+          .maybeSingle();
+        if (inquiryError || !inquiry) {
+          return json({ error: "Nie znaleziono zapytania lub brak dostępu" }, 404);
+        }
+        const details = asRecord(inquiry.inquiry_details) || {};
+        const detailKeys = [
+          "scope", "event_type", "termin", "location_text", "event_assumptions", "event_goal",
+          "estimated_budget", "participants", "guest_count", "hours", "requirements",
+        ];
+        inquiryContext = {
+          title: sanitizeInquiryText(inquiry.title),
+          description: sanitizeInquiryText(inquiry.description),
+          details: Object.fromEntries(detailKeys
+            .filter((key) => details[key] !== undefined && details[key] !== null && details[key] !== "")
+            .map((key) => [key, sanitizeInquiryText(details[key])])),
+          stage: inquiry.inquiry_stage,
+          estimated_value: inquiry.estimated_value,
+        };
+      }
+
+      systemInstruction = [
+        "Jesteś doświadczonym producentem wydarzeń i doradcą sprzedażowym firmy Mavinci.",
+        "Na podstawie dostępnego kontekstu zapytania, kategorii wydarzenia i nazw wybranych produktów przygotuj dokładnie trzy różne założenia biznesowe.",
+        "Założenia mają pomagać klientowi zrozumieć format realizacji, korzyść, priorytet albo ogólny zakres techniczny.",
+        "Pisz po polsku, konkretnie i językiem korzyści, bez pustych sloganów.",
+        "Nie wymyślaj liczby osób, godzin, miejsca, cen, parametrów technicznych ani szczegółów, których nie ma w danych.",
+        "Nie używaj w odpowiedzi nazwisk, adresów e-mail, numerów telefonu ani innych danych osobowych.",
+        "Treść każdego pola value musi być zwarta, mieć maksymalnie 250 znaków i mieścić się w czterech krótkich wierszach oferty PDF.",
+        "Nie powtarzaj kluczy. Preferuj event_format, client_needs, guest_experience, technical_scope, engagement albo brand_visibility.",
+        "badge_value może zawierać maksymalnie 7 znaków; bez potwierdzonej wartości zwróć pusty tekst.",
+        "Dla klucza custom podaj krótki własny label, dla pozostałych label może być pusty.",
+      ].join(" ");
+      userPayload = {
+        inquiry: inquiryContext,
+        event_category: eventCategory,
+        selected_product_names: productNames,
+      };
+      outputSchema = offerAssumptionsSchema;
+      outputName = "offer_business_assumptions_draft";
     } else {
       if (!body.inquiryId) return json({ error: "Brak inquiryId" }, 400);
 

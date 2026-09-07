@@ -10,14 +10,23 @@
     "splash": {
       "image": "./src/assets/splash-logo.png",
       "resizeMode": "contain",
-      "backgroundColor": "#DBF48C"
+      "backgroundColor": "#210811"
+    },
+    "androidStatusBar": {
+      "backgroundColor": "#210811",
+      "barStyle": "light-content",
+      "translucent": false
+    },
+    "androidNavigationBar": {
+      "backgroundColor": "#210811",
+      "barStyle": "light-content"
     },
     "android": {
       "package": "com.mavinci.crm",
       "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "foregroundImage": "./src/assets/adaptive-icon.png",
-        "backgroundColor": "#DBF48C"
+        "backgroundColor": "#210811"
       },
       "permissions": [
         "RECEIVE_BOOT_COMPLETED",

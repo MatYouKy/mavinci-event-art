@@ -393,6 +393,10 @@ const styles = StyleSheet.create({
 
 
   previewTitle:{
+
+
+    fontFamily: 'MBFAtom',
+    textTransform: 'uppercase',
     flex:1,
     fontSize:14,
     color:colors.text.primary,

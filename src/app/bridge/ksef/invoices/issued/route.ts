@@ -196,7 +196,13 @@ export async function POST(req: Request) {
                   .limit(1)
                   .maybeSingle();
       
-                if (localInvoice && !localInvoice.ksef_reference_number) {
+                if (
+                  localInvoice
+                  && (
+                    !localInvoice.ksef_reference_number
+                    || localInvoice.ksef_reference_number === ksefRef
+                  )
+                ) {
                   localLinks.push({ invoiceId: localInvoice.id, ksefRef });
                 }
               }
