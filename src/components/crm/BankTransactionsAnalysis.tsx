@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/lib/supabase/browser';
+import { BANK_STATEMENT_DEDUPLICATION_COLUMNS, deduplicateStatementTransactions, loadBankStatementTransactionPages } from '@/lib/bankStatementDeduplication';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import {
   CheckCircle,
@@ -20,6 +21,7 @@ import {
   MoreVertical,
   ReceiptText,
   UserRound,
+  Eye,
 } from 'lucide-react';
 import {
   applyBankTransactionMatchToDocument,
@@ -32,8 +34,13 @@ import BankTransactionAccountingModal from './BankTransactionAccountingModal';
 import type { AccountingTransaction, BankAccountingSubtype } from './BankTransactionAccountingModal';
 import BankTransactionDocumentPickerModal from './BankTransactionDocumentPickerModal';
 import type { DocumentPickerTransaction } from './BankTransactionDocumentPickerModal';
+import BankTransactionDetailsModal from './BankTransactionDetailsModal';
+import type { BankTransactionDetailsTransaction } from './BankTransactionDetailsModal';
 import { repairBrokenBankText } from '@/lib/bankTextEncoding';
 import { decodeTextEntities } from '@/lib/textEncoding';
+import { externalDocumentKindLabel } from '@/lib/invoices/externalDocumentKinds';
+import { isConfirmedInternalVatTransfer } from '@/lib/CRM/bankVatTransfers';
+import { taxPaymentExclusionReason } from '@/lib/CRM/bankTaxPayments';
 
 interface InvoiceRelation {
   id?: string;
@@ -49,36 +56,13 @@ interface InvoiceRelation {
   invoice_type?: 'issued' | 'received';
 }
 
-interface Transaction {
-  id: string;
-  statement_id: string;
-  company_id: string;
-  transaction_date: string;
-  posting_date: string;
-  amount: number;
-  currency: string;
-  transaction_type: 'debit' | 'credit';
-  counterparty_name?: string;
-  counterparty_account?: string;
-  title?: string;
-  reference_number?: string;
-  matched_invoice_id?: string;
-  match_confidence?: number;
-  manual_match: boolean;
-  match_status?: 'unmatched' | 'partial' | 'matched';
-  allocated_amount?: number;
-  matched_document_count?: number;
-  private_transfer_detected?: boolean;
-  private_transfer_owner?: string | null;
-  accounting_note?: string | null;
-  accounting_category?: string | null;
-  accounting_subtype?: string | null;
-  accounting_review_status?: 'pending' | 'explained' | null;
+interface Transaction extends BankTransactionDetailsTransaction {
   invoice?: InvoiceRelation | InvoiceRelation[];
 }
 
 interface KSeFInvoice {
   source: 'ksef' | 'external';
+  externalDocumentKind?: string;
   id: string;
   invoice_number?: string | null;
   ksef_reference_number?: string | null;
@@ -100,6 +84,11 @@ interface Props {
   year: number;
   companyId?: string | null;
   onClose: () => void;
+  embedded?: boolean;
+  initialFilter?: 'all' | 'matched' | 'unmatched' | 'explained' | 'private';
+  initialDocumentFilter?: 'all' | 'unpaid';
+  direction?: 'all' | 'credit' | 'debit';
+  onChanged?: () => void;
 }
 
 function getInvoiceObject(invoice?: InvoiceRelation | InvoiceRelation[]) {
@@ -194,15 +183,18 @@ function normalizeForSearch(text?: string | null) {
 type SortField = 'date' | 'amount' | 'counterparty' | 'title' | 'invoice_number' | 'invoice_date' | 'invoice_amount' | 'contractor';
 type SortDirection = 'asc' | 'desc';
 
-export default function BankTransactionsAnalysis({ month, year, companyId, onClose }: Props) {
+export default function BankTransactionsAnalysis({ month, year, companyId, onClose, embedded = false, initialFilter = 'all', initialDocumentFilter = 'all', direction = 'all', onChanged }: Props) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [ksefInvoices, setKsefInvoices] = useState<KSeFInvoice[]>([]);
   const [matchedDocumentKeys, setMatchedDocumentKeys] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
-  const [filterType, setFilterType] = useState<'all' | 'matched' | 'unmatched' | 'explained' | 'private'>('all');
+  const [filterType, setFilterType] = useState<'all' | 'matched' | 'unmatched' | 'explained' | 'private'>(initialFilter);
+  const [documentFilter, setDocumentFilter] = useState<'all' | 'unpaid'>(initialDocumentFilter);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [matchModalOpen, setMatchModalOpen] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<KSeFInvoice | null>(null);
   const [actionMenuId, setActionMenuId] = useState<string | null>(null);
+  const [detailsTransaction, setDetailsTransaction] = useState<Transaction | null>(null);
   const [documentPicker, setDocumentPicker] = useState<{
     transaction: Transaction;
     source: 'all' | 'personnel';
@@ -216,16 +208,21 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
   const { showSnackbar } = useSnackbar();
 
   useEffect(() => {
+    setDetailsTransaction(null);
+    setDocumentPicker(null);
+    setAccountingEditor(null);
+    setActionMenuId(null);
     loadData();
   }, [month, year, companyId]);
 
   const loadData = async ({ silent = false }: { silent?: boolean } = {}) => {
     try {
       if (!silent) setLoading(true);
+      setLoadError(null);
 
       let statementsQuery = supabase
         .from('bank_statements')
-        .select('id,my_company_id')
+        .select(BANK_STATEMENT_DEDUPLICATION_COLUMNS)
         .eq('statement_month', month)
         .eq('statement_year', year)
         .eq('processed', true)
@@ -244,7 +241,8 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
       } else {
         const statementIds = statements.map((s) => s.id);
 
-        const { data: transactionsData, error } = await supabase
+        const transactionsData = await loadBankStatementTransactionPages((from, to) =>
+          supabase
           .from('bank_transactions')
           .select(`
             *,
@@ -263,13 +261,19 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
             )
           `)
           .in('statement_id', statementIds)
-          .order('transaction_date', { ascending: false });
+          .order('transaction_date', { ascending: false })
+          .order('id', { ascending: true })
+          .range(from, to),
+        );
 
-        if (error) throw error;
         const statementCompanies = new Map(
           statements.map((statement) => [statement.id, statement.my_company_id || '']),
         );
-        setTransactions((transactionsData || []).map((transaction) => ({
+        const displayTransactions = deduplicateStatementTransactions(
+          transactionsData || [],
+          new Map(statements.map((statement) => [statement.id, statement])),
+        );
+        setTransactions(displayTransactions.map((transaction) => ({
           ...transaction,
           company_id: statementCompanies.get(transaction.statement_id) || '',
         })));
@@ -312,7 +316,7 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
 
       let externalInvoicesQuery = supabase
         .from('external_invoices')
-        .select('id,invoice_number,seller_name,invoice_date,amount_gross,amount_net,currency,payment_status,payment_method')
+        .select('id,document_kind,invoice_number,seller_name,invoice_date,amount_gross,amount_net,currency,payment_status,payment_method')
         .gte('invoice_date', monthStart)
         .lte('invoice_date', monthEnd)
         .neq('payment_status', 'cancelled')
@@ -336,6 +340,7 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
           .filter((invoice) => isBankStatementMatchablePaymentMethod(invoice.payment_method, 'external'))
           .map((invoice) => ({
             source: 'external' as const,
+            externalDocumentKind: invoice.document_kind || 'invoice',
             id: invoice.id,
             invoice_number: invoice.invoice_number,
             ksef_reference_number: null,
@@ -372,6 +377,7 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
       ]));
     } catch (error: any) {
       console.error('Error loading transactions/invoices:', error);
+      setLoadError('Nie udało się pobrać pełnych danych miesiąca. Odśwież dane przed dalszą kontrolą.');
       showSnackbar(error.message || 'Błąd podczas ładowania danych analizy', 'error');
     } finally {
       if (!silent) setLoading(false);
@@ -414,6 +420,7 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
       setMatchModalOpen(false);
       setSelectedInvoice(null);
       await loadData();
+      onChanged?.();
     } catch (error: any) {
       console.error('Error matching:', error);
       showSnackbar(error.message || 'Błąd podczas dopasowywania płatności', 'error');
@@ -440,6 +447,7 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
 
       showSnackbar('Dopasowanie zostało usunięte', 'success');
       await loadData();
+      onChanged?.();
     } catch (error: any) {
       console.error('Error unmatching:', error);
       showSnackbar(error.message || 'Błąd podczas usuwania dopasowania', 'error');
@@ -451,8 +459,14 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
     setMatchModalOpen(true);
   };
 
+  const scopedTransactions = useMemo(() => transactions.filter((transaction) => direction === 'all'
+    || (transaction.transaction_type === direction
+      && !isConfirmedInternalVatTransfer(transaction)
+      && !taxPaymentExclusionReason(transaction)
+      && !(transaction.accounting_category === 'own_transfer' && transaction.accounting_review_status === 'explained'))), [transactions, direction]);
+
   const filteredTransactions = useMemo(() => {
-    let filtered = transactions.filter((t) => {
+    let filtered = scopedTransactions.filter((t) => {
       if (filterType === 'matched') return isTransactionFullyMatched(t);
       if (filterType === 'unmatched') return !isTransactionResolved(t);
       if (filterType === 'explained') return t.accounting_review_status === 'explained';
@@ -477,10 +491,12 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
           return 0;
       }
     });
-  }, [transactions, filterType, transactionSort]);
+  }, [scopedTransactions, filterType, transactionSort]);
 
   const sortedInvoices = useMemo(() => {
-    return [...ksefInvoices].sort((a, b) => {
+    return ksefInvoices.filter((invoice) => direction === 'all' || getExpectedTransactionDirection(invoice) === direction)
+      .filter((invoice) => documentFilter === 'all'
+      || !['paid', 'cancelled', 'draft'].includes(String(invoice.payment_status || '').toLowerCase())).sort((a, b) => {
       const { field, direction } = invoiceSort;
       const multiplier = direction === 'asc' ? 1 : -1;
 
@@ -499,30 +515,30 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
           return 0;
       }
     });
-  }, [ksefInvoices, invoiceSort]);
+  }, [ksefInvoices, invoiceSort, documentFilter, direction]);
 
   const isDocumentMatched = (invoice: KSeFInvoice) => matchedDocumentKeys.has(`${invoice.source}:${invoice.id}`)
     || (invoice.source === 'ksef' && transactions.some((transaction) => transaction.matched_invoice_id === invoice.id));
 
   const stats = useMemo(
     () => ({
-      total: transactions.length,
-      matched: transactions.filter(isTransactionFullyMatched).length,
-      unmatched: transactions.filter((t) => !isTransactionResolved(t)).length,
-      explained: transactions.filter((t) => t.accounting_review_status === 'explained').length,
-      privateTransfers: transactions.filter((t) => t.private_transfer_detected).length,
-      totalAmount: transactions.reduce(
+      total: scopedTransactions.length,
+      matched: scopedTransactions.filter(isTransactionFullyMatched).length,
+      unmatched: scopedTransactions.filter((t) => !isTransactionResolved(t)).length,
+      explained: scopedTransactions.filter((t) => t.accounting_review_status === 'explained').length,
+      privateTransfers: scopedTransactions.filter((t) => t.private_transfer_detected).length,
+      totalAmount: scopedTransactions.reduce(
         (sum, t) => sum + (t.transaction_type === 'credit' ? t.amount : -t.amount),
         0,
       ),
-      creditAmount: transactions
+      creditAmount: scopedTransactions
         .filter((t) => t.transaction_type === 'credit')
         .reduce((sum, t) => sum + t.amount, 0),
-      debitAmount: transactions
+      debitAmount: scopedTransactions
         .filter((t) => t.transaction_type === 'debit')
         .reduce((sum, t) => sum + t.amount, 0),
     }),
-    [transactions],
+    [scopedTransactions],
   );
 
   const exportToCSV = () => {
@@ -542,7 +558,7 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
       'Dopasowanie ręczne',
     ].join(';');
 
-    const rows = transactions.map((t) => {
+    const rows = filteredTransactions.map((t) => {
       const invoice = getInvoiceObject(t.invoice);
 
       return [
@@ -580,22 +596,36 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
     showSnackbar('Raport został wyeksportowany', 'success');
   };
 
+  const currencyFlows = useMemo(() => {
+    const totals = new Map<string, { credit: number; debit: number }>();
+    for (const transaction of scopedTransactions) {
+      const currency = transaction.currency || 'PLN';
+      const total = totals.get(currency) || { credit: 0, debit: 0 };
+      total[transaction.transaction_type] += Math.round(Math.abs(Number(transaction.amount || 0)) * 100);
+      totals.set(currency, total);
+    }
+    return [...totals.entries()];
+  }, [scopedTransactions]);
+
   return (
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4"
+      className={embedded ? 'min-w-0' : 'fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4'}
       onClick={() => setActionMenuId(null)}
     >
-      <div className="flex h-[94vh] max-h-[94vh] w-full max-w-[1800px] flex-col overflow-hidden rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] shadow-xl">
+      <div className={embedded ? 'flex min-h-[680px] w-full flex-col overflow-hidden rounded-xl bg-[#1c1f33]' : 'flex h-[94vh] max-h-[94vh] w-full max-w-[1800px] flex-col overflow-hidden rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] shadow-xl'}>
         <div className="flex items-center justify-between border-b border-[#d3bb73]/10 p-6">
           <div>
             <h3 className="text-xl font-medium text-[#e5e4e2]">
-              Analiza transakcji bankowych — {month}/{year}
+              {direction === 'debit' ? 'Dopasowanie wydatków' : direction === 'credit' ? 'Dopasowanie wpływów' : embedded ? 'Dopasowanie płatności i dokumentów' : 'Analiza transakcji bankowych'} — {month}/{year}
             </h3>
             <p className="mt-1 text-sm text-[#e5e4e2]/60">
-              Transakcje z wyciągu oraz faktury z KSeF i spoza KSeF; dokumenty gotówkowe są pomijane
+              {direction === 'all' ? 'Transakcje z wyciągu oraz faktury z KSeF i spoza KSeF; dokumenty gotówkowe są pomijane.' : 'Dobierz dokumenty KSeF i spoza KSeF do przelewu. Podział uwzględnia kierunek płatności, również zwroty i korekty. Podatki, ZUS i potwierdzone transfery własne pozostają w osobnych krokach.'}
             </p>
           </div>
           <div className="flex items-center gap-3">
+            <button type="button" onClick={() => setDocumentFilter((current) => current === 'all' ? 'unpaid' : 'all')} className="rounded-lg bg-white/5 px-3 py-2 text-xs text-[#e5e4e2] hover:bg-white/10">
+              {documentFilter === 'unpaid' ? 'Dokumenty: kontrola płatności' : 'Dokumenty: wszystkie'}
+            </button>
             <button
               onClick={exportToCSV}
               className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 px-4 py-2 text-sm text-[#e5e4e2] hover:bg-[#252945]"
@@ -603,101 +633,45 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
               <Download className="h-4 w-4" />
               Eksportuj CSV
             </button>
-            <button onClick={onClose} className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]">
+            {!embedded && <button onClick={onClose} aria-label="Zamknij analizę transakcji" className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]">
               <X className="h-5 w-5" />
-            </button>
+            </button>}
           </div>
         </div>
 
+        {loadError && <div role="alert" className="flex flex-wrap items-center gap-3 bg-amber-500/10 p-4 text-sm text-amber-200">{loadError}<button type="button" onClick={() => void loadData()} className="rounded-lg bg-white/5 px-3 py-2">Spróbuj ponownie</button></div>}
         {loading ? (
           <div className="flex items-center justify-center p-12">
             <div className="text-[#e5e4e2]/60">Ładowanie danych...</div>
           </div>
-        ) : (
+        ) : loadError ? null : (
           <>
-            <div className="flex flex-wrap items-center gap-2 border-b border-[#d3bb73]/10 bg-[#252945] px-4 py-2.5">
-              {[
-                ['Wszystkie', stats.total, 'text-[#e5e4e2]'],
-                ['Dopasowane', stats.matched, 'text-green-400'],
-                ['Niedopasowane', stats.unmatched, 'text-orange-400'],
-                ['Wyjaśnione', stats.explained, 'text-sky-300'],
-                ['Prywatne', stats.privateTransfers, 'text-violet-300'],
-              ].map(([label, value, color]) => (
-                <div key={String(label)} className="flex items-baseline gap-1.5 rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] px-2.5 py-1.5">
-                  <span className="text-[10px] text-[#e5e4e2]/45">{label}</span>
-                  <strong className={`text-sm ${color}`}>{value}</strong>
-                </div>
-              ))}
-              <div className="ml-1 text-[11px] text-green-400">Wpłaty +{safeMoney(stats.creditAmount)}</div>
-              <div className="text-[11px] text-red-400">Wypłaty -{safeMoney(stats.debitAmount)}</div>
-
-              <div className="ml-auto flex gap-1.5">
-                <button
-                  onClick={() => setFilterType('all')}
-                  className={`rounded-lg px-2.5 py-1.5 text-xs font-medium ${
-                    filterType === 'all'
-                      ? 'bg-[#d3bb73] text-[#1c1f33]'
-                      : 'border border-[#d3bb73]/20 bg-[#1c1f33] text-[#e5e4e2]'
-                  }`}
-                >
-                  Wszystkie
-                </button>
-                <button
-                  onClick={() => setFilterType('matched')}
-                  className={`rounded-lg px-2.5 py-1.5 text-xs font-medium ${
-                    filterType === 'matched'
-                      ? 'bg-[#d3bb73] text-[#1c1f33]'
-                      : 'border border-[#d3bb73]/20 bg-[#1c1f33] text-[#e5e4e2]'
-                  }`}
-                >
-                  Dopasowane
-                </button>
-                <button
-                  onClick={() => setFilterType('unmatched')}
-                  className={`rounded-lg px-2.5 py-1.5 text-xs font-medium ${
-                    filterType === 'unmatched'
-                      ? 'bg-[#d3bb73] text-[#1c1f33]'
-                      : 'border border-[#d3bb73]/20 bg-[#1c1f33] text-[#e5e4e2]'
-                  }`}
-                >
-                  Niedopasowane
-                </button>
-                <button
-                  onClick={() => setFilterType('explained')}
-                  className={`rounded-lg px-2.5 py-1.5 text-xs font-medium ${
-                    filterType === 'explained'
-                      ? 'bg-sky-300 text-[#1c1f33]'
-                      : 'border border-sky-300/20 bg-[#1c1f33] text-sky-200'
-                  }`}
-                >
-                  Wyjaśnione
-                </button>
-                <button
-                  onClick={() => setFilterType('private')}
-                  className={`rounded-lg px-2.5 py-1.5 text-xs font-medium ${
-                    filterType === 'private'
-                      ? 'bg-violet-300 text-[#1c1f33]'
-                      : 'border border-violet-300/20 bg-[#1c1f33] text-violet-200'
-                  }`}
-                >
-                  Prywatne
-                </button>
-              </div>
+            <div className="flex flex-wrap items-center gap-2 bg-[var(--brand-burgundy-800)] px-4 py-3">
+              {([
+                { id: 'all', label: 'Wszystkie', count: stats.total },
+                { id: 'matched', label: 'Dopasowane', count: stats.matched },
+                { id: 'unmatched', label: 'Do dopasowania', count: stats.unmatched },
+                { id: 'explained', label: 'Wyjaśnione', count: stats.explained },
+                { id: 'private', label: 'Prywatne', count: stats.privateTransfers },
+              ] as const).map((filter) => <button key={filter.id} type="button" aria-pressed={filterType === filter.id} onClick={() => setFilterType(filter.id)} className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--crm-field-border-focus)] ${filterType === filter.id ? 'bg-[var(--brand-gold)] text-[var(--brand-burgundy-950)]' : 'bg-white/5 text-[var(--brand-platinum)]/70 hover:bg-white/10'}`}>
+                {filter.label}<strong className="tabular-nums">{filter.count}</strong>
+              </button>)}
+              {currencyFlows.map(([currency, total]) => <div key={currency} className="ml-auto flex flex-wrap gap-3 text-xs"><span className="text-green-300">Wpływy +{safeMoney(total.credit / 100, currency)}</span><span className="text-red-300">Wydatki −{safeMoney(total.debit / 100, currency)}</span></div>)}
             </div>
 
-            <BankAiAnalysisPanel
+            {!embedded && <BankAiAnalysisPanel
               month={month}
               year={year}
               companyId={companyId}
               onMatchApplied={() => loadData({ silent: true })}
-            />
+            />}
 
-            <div className="grid min-h-0 flex-1 gap-4 overflow-hidden p-4 xl:grid-cols-2">
+            <div className={`grid min-h-0 flex-1 gap-4 overflow-hidden p-4 xl:grid-cols-2 ${embedded ? 'h-[680px] max-h-[80vh]' : ''}`}>
               <div className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-[#d3bb73]/20 bg-[#252945]">
                 <div className="flex items-center justify-between border-b border-[#d3bb73]/10 px-4 py-3">
                   <div className="flex items-center gap-2 text-[#e5e4e2]">
                     <Calendar className="h-4 w-4 text-[#d3bb73]" />
-                    <span className="font-medium">Transakcje bankowe</span>
+                    <span className="font-medium">{direction === 'debit' ? 'Wydatki bankowe' : direction === 'credit' ? 'Wpływy bankowe' : 'Transakcje bankowe'}</span>
                   </div>
                   <span className="text-sm text-[#e5e4e2]/60">{filteredTransactions.length}</span>
                 </div>
@@ -882,6 +856,8 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
                                 <button
                                   type="button"
                                   aria-label="Działania dla transakcji"
+                                  aria-expanded={actionMenuId === transaction.id}
+                                  data-bank-transaction-actions={transaction.id}
                                   onClick={(event) => {
                                     event.stopPropagation();
                                     setActionMenuId((current) => current === transaction.id ? null : transaction.id);
@@ -896,6 +872,16 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
                                     className="absolute right-7 top-1 z-30 w-64 rounded-lg border border-white/10 bg-[#141827] p-1.5 text-left shadow-2xl"
                                     onClick={(event) => event.stopPropagation()}
                                   >
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setDetailsTransaction(transaction);
+                                        setActionMenuId(null);
+                                      }}
+                                      className="flex w-full items-center gap-2 rounded px-2.5 py-2 text-xs text-[#e5e4e2]/80 hover:bg-[#d3bb73]/10 hover:text-[#d3bb73]"
+                                    >
+                                      <Eye className="h-4 w-4" /> Szczegóły transakcji
+                                    </button>
                                     {!isTransactionFullyMatched(transaction) && transaction.accounting_review_status !== 'explained' && (
                                       <>
                                         <button
@@ -975,12 +961,12 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
                       <RefreshCw className="h-3.5 w-3.5" />
                       Odśwież
                     </button>
-                    <span className="text-sm text-[#e5e4e2]/60">{ksefInvoices.length}</span>
+                    <span className="text-sm text-[#e5e4e2]/60">{sortedInvoices.length}</span>
                   </div>
                 </div>
 
                 <div className="min-h-0 flex-1 overflow-auto">
-                  {ksefInvoices.length === 0 ? (
+                  {sortedInvoices.length === 0 ? (
                     <div className="p-8 text-center">
                       <AlertTriangle className="mx-auto mb-3 h-12 w-12 text-[#e5e4e2]/40" />
                       <p className="text-[#e5e4e2]/60">Brak faktur z KSeF i spoza KSeF w tym miesiącu</p>
@@ -1079,6 +1065,7 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
                                   </span>
                                 </div>
                                 {invoice.ksef_reference_number && <div className="mt-1 truncate text-[10px] text-[#e5e4e2]/35" title={invoice.ksef_reference_number}>{invoice.ksef_reference_number}</div>}
+                                {invoice.source === 'external' && <div className="mt-1 truncate text-[10px] text-[#e5e4e2]/50">{externalDocumentKindLabel(invoice.externalDocumentKind)}</div>}
                               </td>
                               <td className="px-2 py-2 text-xs text-[#e5e4e2]/80">
                                 <div className="line-clamp-2" title={contractor}>{contractor}</div>
@@ -1163,10 +1150,10 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
             <div className="flex items-center justify-between border-b border-[#d3bb73]/10 p-4">
               <div>
                 <h3 className="text-lg font-medium text-[#e5e4e2]">
-                  Dopasuj płatność do faktury
+                  Dopasuj płatność do dokumentu
                 </h3>
                 <p className="mt-1 text-sm text-[#e5e4e2]/60">
-                  Faktura: {selectedInvoice.invoice_number || selectedInvoice.ksef_reference_number}
+                  {selectedInvoice.source === 'external' ? externalDocumentKindLabel(selectedInvoice.externalDocumentKind) : 'Faktura'}: {selectedInvoice.invoice_number || selectedInvoice.ksef_reference_number}
                   {' • '}
                   {safeMoney(selectedInvoice.gross_amount, selectedInvoice.currency || 'PLN')}
                   {' • '}
@@ -1263,7 +1250,7 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
                     );
                   })}
 
-                {transactions.filter((t) => (
+                {scopedTransactions.filter((t) => (
                   !isTransactionResolved(t) &&
                   t.transaction_type === getExpectedTransactionDirection(selectedInvoice)
                 )).length === 0 && (
@@ -1289,6 +1276,19 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
         </div>
       )}
 
+      {detailsTransaction && !documentPicker && !accountingEditor && (
+        <BankTransactionDetailsModal
+          transaction={transactions.find((transaction) => transaction.id === detailsTransaction.id) || detailsTransaction}
+          onClose={() => setDetailsTransaction(null)}
+          onMatchDocuments={(transaction) => setDocumentPicker({ transaction, source: 'all' })}
+          onMatchPersonnel={(transaction) => setDocumentPicker({ transaction, source: 'personnel' })}
+          onExplain={(transaction) => setAccountingEditor({
+            transaction,
+            subtype: accountingSubtypeForTransaction(transaction),
+          })}
+        />
+      )}
+
       {documentPicker && (
         <BankTransactionDocumentPickerModal
           transaction={documentPicker.transaction as DocumentPickerTransaction}
@@ -1297,6 +1297,7 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
           onMatched={async () => {
             setDocumentPicker(null);
             await loadData({ silent: true });
+            onChanged?.();
           }}
         />
       )}
@@ -1309,6 +1310,7 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
           onSaved={() => {
             setAccountingEditor(null);
             void loadData({ silent: true });
+            onChanged?.();
           }}
         />
       )}

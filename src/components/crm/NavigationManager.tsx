@@ -9,6 +9,8 @@ import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useGetUnreadCountQuery } from '@/store/api/messagesApi';
 import { NavigationIcons } from '@/lib/CRM/navigation/registry.client';
 import { useGlobalLoader } from '@/contexts/GlobalLoaderContext';
+import { useSellerSidebarBadge } from '@/lib/seller/sidebarBadge';
+import { SellerCountBadge } from '@/components/seller/SellerInboxPanel';
 interface NavigationItem {
   key: string;
   name: string;
@@ -50,6 +52,11 @@ export default function NavigationManager({
 }: Props) {
   const { showSnackbar } = useSnackbar();
   const searchParams = useSearchParams();
+  const sellerBadge = useSellerSidebarBadge(navigation.some((item) => item.href === '/crm/salespeople' || item.children?.some((child) => child.href === '/crm/salespeople')));
+  const sellerNoticeCount = sellerBadge.employeeId === employeeId ? sellerBadge.count : 0;
+  const sellerBadgeLabel = sellerBadge.scope === 'all'
+    ? 'Nieodczytane powiadomienia — suma badge wszystkich sprzedawców'
+    : 'Nieodczytane powiadomienia — suma badge przypisanych mi sprzedawców';
 
   const { showLoader } = useGlobalLoader();
 
@@ -70,9 +77,30 @@ export default function NavigationManager({
     undefined,
     {
       pollingInterval: 60000, // co minutę
+      skipPollingIfUnfocused: true,
       refetchOnMountOrArgChange: true,
     },
   );
+
+  useEffect(() => {
+    let active = true;
+    let running = false;
+    let lastAttempt = 0;
+    const sync = async () => {
+      if (!active || document.hidden || running || Date.now() - lastAttempt < 120000) return;
+      running = true;
+      lastAttempt = Date.now();
+      try {
+        const result = await supabase.functions.invoke('sync-email-read-state', { body: { mode: 'sync' } });
+        if (active && !result.error && result.data?.updated > 0) void refetchUnreadMessagesCount();
+      } catch { /* Retry only on the next interval, never in response to Realtime. */ }
+      finally { running = false; }
+    };
+    void sync();
+    const timer = window.setInterval(() => void sync(), 120000);
+    document.addEventListener('visibilitychange', sync);
+    return () => { active = false; clearInterval(timer); document.removeEventListener('visibilitychange', sync); };
+  }, [refetchUnreadMessagesCount]);
 
   const [isEditMode, setIsEditMode] = useState(false);
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
@@ -101,6 +129,11 @@ export default function NavigationManager({
 
   // Realtime notifications dla nowych wiadomości
   useEffect(() => {
+    let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+    const scheduleCountRefresh = () => {
+      if (refreshTimer) clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(() => { void refetchUnreadMessagesCount(); }, 500);
+    };
     const contactChannel = supabase
       .channel('messages-notifications')
       .on(
@@ -112,7 +145,7 @@ export default function NavigationManager({
             `Nowa wiadomość z formularza: ${newMessage.subject || 'Wiadomość z formularza'}`,
             'info',
           );
-          void refetchUnreadMessagesCount();
+          scheduleCountRefresh();
         },
       )
       .subscribe();
@@ -125,7 +158,7 @@ export default function NavigationManager({
         (payload) => {
           const newEmail = payload.new as any;
           showSnackbar(`Nowy email: ${newEmail.subject || '(No subject)'}`, 'info');
-          void refetchUnreadMessagesCount();
+          scheduleCountRefresh();
         },
       )
       .subscribe();
@@ -135,16 +168,17 @@ export default function NavigationManager({
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'contact_messages' },
-        () => void refetchUnreadMessagesCount(),
+        () => scheduleCountRefresh(),
       )
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'received_emails' },
-        () => void refetchUnreadMessagesCount(),
+        () => scheduleCountRefresh(),
       )
       .subscribe();
 
     return () => {
+      if (refreshTimer) clearTimeout(refreshTimer);
       supabase.removeChannel(contactChannel);
       supabase.removeChannel(receivedChannel);
       supabase.removeChannel(readStateChannel);
@@ -289,7 +323,13 @@ export default function NavigationManager({
       return match !== null;
     }
 
+    if (targetPath === '/crm/employees') {
+      return /^\/crm\/employees\/[a-f0-9-]{36}$/.test(pathname) || pathname === '/crm/employees/signature';
+    }
+
     // Dla innych routes - sprawdź czy zaczyna się od href + '/'
+    if (targetPath === '/crm/tasks' && pathname === '/crm/tasks/mine') return false;
+
     return pathname.startsWith(targetPath + '/');
   };
 
@@ -452,6 +492,7 @@ export default function NavigationManager({
                             >
                               <ChildIcon className="h-4 w-4" />
                               <span>{child.name}</span>
+                              {child.href === '/crm/salespeople' && sellerNoticeCount > 0 && <SellerCountBadge count={sellerNoticeCount} label={sellerBadgeLabel} />}
                             </Link>
                           </li>
                         );
@@ -484,9 +525,11 @@ export default function NavigationManager({
                         {unreadMessagesCount > 99 ? '99+' : unreadMessagesCount}
                       </div>
                     )}
+                    {item.href === '/crm/salespeople' && sidebarCollapsed && sellerNoticeCount > 0 && <span className="absolute -right-3 -top-2"><SellerCountBadge count={sellerNoticeCount} label={sellerBadgeLabel} /></span>}
                   </div>
 
                   {!sidebarCollapsed && <span>{item.name}</span>}
+                  {item.href === '/crm/salespeople' && !sidebarCollapsed && sellerNoticeCount > 0 && <span className="ml-auto"><SellerCountBadge count={sellerNoticeCount} label={sellerBadgeLabel} /></span>}
                 </Link>
               )}
             </li>

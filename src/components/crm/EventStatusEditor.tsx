@@ -11,7 +11,6 @@ const EVENT_STATUSES: { value: EventStatus; label: string }[] = [
   { value: 'offer_to_send', label: 'Oferta do wysłania' },
   { value: 'offer_sent', label: 'Oferta wysłana' },
   { value: 'offer_accepted', label: 'Oferta zaakceptowana' },
-  { value: 'in_preparation', label: 'W przygotowaniu' },
   { value: 'in_progress', label: 'W trakcie' },
   { value: 'completed', label: 'Zrealizowany' },
   { value: 'cancelled', label: 'Anulowany' },
@@ -198,7 +197,12 @@ export default function EventStatusSelectModal({
           className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
           disabled={saving}
         >
-          {EVENT_STATUSES.map((s) => (
+          {['in_preparation', 'ready_for_live'].includes(currentStatus) && (
+              <option value={currentStatus} disabled>
+                {currentStatus === 'in_preparation' ? 'W przygotowaniu' : 'Gotowe do realizacji'} · status magazynu
+              </option>
+            )}
+            {EVENT_STATUSES.map((s) => (
             <option key={s.value} value={s.value}>
               {s.label}
             </option>

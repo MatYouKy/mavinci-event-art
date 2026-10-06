@@ -1,6 +1,7 @@
 import { createApi, fakeBaseQuery } from '@reduxjs/toolkit/query/react';
 import { supabase } from '@/lib/supabase/browser';
 import { sendTaskAssignmentPush } from '@/lib/CRM/tasks/sendTaskAssignmentPush';
+import { watchTaskChanges } from '@/lib/CRM/tasks/watchTaskChanges';
 
 export interface TaskListItem {
   id: string;
@@ -32,6 +33,8 @@ export interface TaskListItem {
     };
   }[];
   comments_count?: number;
+  inquiry_id?: string | null;
+  event_id?: string | null;
 }
 
 export interface TaskDetail extends TaskListItem {
@@ -83,10 +86,10 @@ export const tasksApi = createApi({
   tagTypes: ['TasksList', 'TaskDetail', 'TaskComments', 'TaskAttachments'],
   keepUnusedDataFor: 300,
   endpoints: (builder) => ({
-    getTasksList: builder.query<TaskListItem[], void>({
-      async queryFn() {
+    getTasksList: builder.query<TaskListItem[], { inquiryId?: string; employeeId?: string } | undefined>({
+      async queryFn(scope) {
         try {
-          const { data: tasks, error } = await supabase
+          let query = supabase
             .from('tasks')
             .select(
               `
@@ -102,12 +105,22 @@ export const tasksApi = createApi({
               created_at,
               updated_at,
               thumbnail_url,
-              currently_working_by
+              currently_working_by,
+              inquiry_id,
+              event_id,
+              assigned_filter:task_assignees(employee_id)
             `,
-            )
-            .eq('is_private', false)
-            .eq('is_inquiry', false)
-            .is('event_id', null);
+            );
+
+          if (scope?.employeeId) {
+            // Embedded non-null filter keeps unrelated tasks out without a large ID list.
+            query = query.eq('assigned_filter.employee_id', scope.employeeId)
+              .not('assigned_filter', 'is', null);
+          } else {
+            query = query.eq('is_private', false).eq('is_inquiry', false);
+            query = scope?.inquiryId ? query.eq('inquiry_id', scope.inquiryId) : query.is('event_id', null);
+          }
+          const { data: tasks, error } = await query;
 
           if (error) return { error: error as any };
 
@@ -171,6 +184,18 @@ export const tasksApi = createApi({
         } catch (error: any) {
           return { error: { status: 'CUSTOM_ERROR', error: error.message } };
         }
+      },
+      async onCacheEntryAdded(scope, { cacheDataLoaded, cacheEntryRemoved, dispatch }) {
+        let stop: (() => void) | undefined;
+        try {
+          await cacheDataLoaded;
+          stop = watchTaskChanges(`list:${scope?.employeeId ? `employee:${scope.employeeId}` : scope?.inquiryId || 'all'}`, () => {
+            return dispatch(tasksApi.endpoints.getTasksList.initiate(scope, { subscribe: false, forceRefetch: true })).unwrap();
+          });
+          await cacheEntryRemoved;
+        } catch {
+          // The cache entry can be removed before the initial request completes.
+        } finally { stop?.(); }
       },
       providesTags: (result) =>
         result
@@ -292,6 +317,18 @@ export const tasksApi = createApi({
           return { error: { status: 'CUSTOM_ERROR', error: error.message } };
         }
       },
+      async onCacheEntryAdded(id, { cacheDataLoaded, cacheEntryRemoved, dispatch }) {
+        let stop: (() => void) | undefined;
+        try {
+          await cacheDataLoaded;
+          stop = watchTaskChanges(`detail:${id}`, () => {
+            return dispatch(tasksApi.endpoints.getTaskById.initiate(id, { subscribe: false, forceRefetch: true })).unwrap();
+          }, id);
+          await cacheEntryRemoved;
+        } catch {
+          // The cache entry can be removed before the initial request completes.
+        } finally { stop?.(); }
+      },
       providesTags: (result, error, id) => [{ type: 'TaskDetail', id }],
     }),
 
@@ -307,6 +344,7 @@ export const tasksApi = createApi({
         owner_id: string | null;
         assigned_employees: string[];
         created_by?: string;
+        inquiry_id?: string;
       }
     >({
       async queryFn(taskData) {
@@ -319,9 +357,11 @@ export const tasksApi = createApi({
             priority: taskData.priority,
             board_column: taskData.board_column,
             due_date: taskData.due_date || null,
-            status: 'todo',
+            status: taskData.board_column === 'review' ? 'in_progress' : taskData.board_column,
             is_private: taskData.is_private ?? false,
             event_id: null,
+            inquiry_id: taskData.inquiry_id ?? null,
+            is_inquiry: false,
             owner_id: taskData.owner_id ?? taskData.created_by ?? null,
             created_by: taskData.created_by ?? null,
           })
@@ -331,7 +371,7 @@ export const tasksApi = createApi({
           if (error) return { error: error as any };
 
           if (taskData.assigned_employees.length > 0) {
-            const assignees = taskData.assigned_employees.map((employee_id) => ({
+            const assignees = [...new Set(taskData.assigned_employees)].map((employee_id) => ({
               task_id: task.id,
               employee_id,
               assigned_by: taskData.created_by,
@@ -339,7 +379,7 @@ export const tasksApi = createApi({
 
             const { data: insertedAssignments, error: assignError } = await supabase
               .from('task_assignees')
-              .insert(assignees)
+              .upsert(assignees, { onConflict: 'task_id,employee_id', ignoreDuplicates: true })
               .select('id');
 
             if (assignError) return { error: assignError as any };
@@ -363,6 +403,7 @@ export const tasksApi = createApi({
         description?: string | null;
         priority?: 'low' | 'medium' | 'high' | 'urgent';
         board_column?: string;
+        status?: string;
         due_date?: string | null;
         currently_working_by?: string | null;
         assigned_employees?: string[];
@@ -371,8 +412,11 @@ export const tasksApi = createApi({
     >({
       async queryFn({ id, assigned_employees, assigned_by, ...updates }) {
         try {
+          if (updates.board_column !== undefined) updates.status = updates.board_column === 'review' ? 'in_progress' : updates.board_column;
+          else if (updates.status !== undefined) updates.board_column = updates.status;
+          if (updates.board_column && updates.board_column !== 'in_progress') updates.currently_working_by = null;
           if (Object.keys(updates).length > 0) {
-            const { error } = await supabase.from('tasks').update(updates).eq('id', id);
+            const { error } = await supabase.from('tasks').update(updates).eq('id', id).select('id').single();
 
             if (error) return { error: error as any };
           }
@@ -392,7 +436,7 @@ export const tasksApi = createApi({
             const employeeIdsToRemove = [...currentEmployeeIds].filter(
               (employeeId) => !nextEmployeeIds.has(employeeId),
             );
-            const employeeIdsToAdd = assigned_employees.filter(
+            const employeeIdsToAdd = [...nextEmployeeIds].filter(
               (employeeId) => !currentEmployeeIds.has(employeeId),
             );
 
@@ -415,7 +459,7 @@ export const tasksApi = createApi({
 
               const { data: insertedAssignments, error: assignError } = await supabase
                 .from('task_assignees')
-                .insert(assignees)
+                .upsert(assignees, { onConflict: 'task_id,employee_id', ignoreDuplicates: true })
                 .select('id');
 
               if (assignError) return { error: assignError as any };
@@ -431,24 +475,23 @@ export const tasksApi = createApi({
           return { error: { status: 'CUSTOM_ERROR', error: error.message } };
         }
       },
-      async onQueryStarted({ id, ...updates }, { dispatch, queryFulfilled }) {
-        const patchResult = dispatch(
-          tasksApi.util.updateQueryData('getTasksList', undefined, (draft) => {
-            const task = draft.find((t) => t.id === id);
-            if (task && updates.board_column) {
-              task.board_column = updates.board_column as any;
-              if (updates.currently_working_by !== undefined) {
-                task.currently_working_by = updates.currently_working_by;
-              }
-            }
-          }),
+      async onQueryStarted({ id, ...updates }, { dispatch, getState, queryFulfilled }) {
+        const column = updates.board_column ?? updates.status;
+        const workingBy = column && column !== 'in_progress' ? null : updates.currently_working_by;
+        const patches = tasksApi.util.selectCachedArgsForQuery(getState(), 'getTasksList').map((scope) =>
+          dispatch(tasksApi.util.updateQueryData('getTasksList', scope, (draft) => {
+            const task = draft.find((item) => item.id === id);
+            if (!task) return;
+            if (column) { task.board_column = column; task.status = column === 'review' ? 'in_progress' : column; }
+            if (workingBy !== undefined) task.currently_working_by = workingBy;
+          })),
         );
-
-        try {
-          await queryFulfilled;
-        } catch {
-          patchResult.undo();
-        }
+        patches.push(dispatch(tasksApi.util.updateQueryData('getTaskById', id, (task) => {
+          if (column) { task.board_column = column; task.status = column === 'review' ? 'in_progress' : column; }
+          if (workingBy !== undefined) task.currently_working_by = workingBy;
+        })));
+        try { await queryFulfilled; }
+        catch { patches.forEach((patch) => patch.undo()); }
       },
       invalidatesTags: (result, error, { id }) => [
         { type: 'TasksList', id: 'LIST' },

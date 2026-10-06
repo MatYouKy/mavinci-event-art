@@ -14,7 +14,12 @@ export type NavKey =
   | 'marketing-campaigns'
   | 'inquiries'
   | 'tasks'
+  | 'tasks-company'
+  | 'tasks-mine'
   | 'employees'
+  | 'collaborators'
+  | 'personnel-contracts'
+  | 'salespeople'
   | 'offers'
   | 'contacts'
   | 'contracts'
@@ -123,16 +128,29 @@ export const allNavigation: NavigationItemDTO[] = [
     name: 'Zadania',
     href: '/crm/tasks',
     iconKey: 'tasks',
-    module: 'tasks',
-    permissions: ['tasks_view'],
+    children: [
+      { key: 'tasks-company', name: 'Zadania firmowe', href: '/crm/tasks', iconKey: 'tasks', module: 'tasks', permissions: ['tasks_view'] },
+      { key: 'tasks-mine', name: 'Moje zadania', href: '/crm/tasks/mine', iconKey: 'tasks' },
+    ],
   },
   {
     key: 'employees',
-    name: 'Pracownicy',
+    name: 'Zespół',
     href: '/crm/employees',
     iconKey: 'employees',
-    module: 'employees',
-    permissions: ['employees_view'],
+    children: [
+      { key: 'employees', name: 'Pracownicy CRM', href: '/crm/employees', iconKey: 'employees', module: 'employees', permissions: ['employees_view'] },
+      { key: 'collaborators', name: 'Współpracownicy', href: '/crm/employees/collaborators', iconKey: 'contacts', module: 'personnel', permissions: ['personnel_view'] },
+      { key: 'personnel-contracts', name: 'Umowy', href: '/crm/employees/contracts', iconKey: 'contracts', module: 'personnel', permissions: ['personnel_view'] },
+    ],
+  },
+  {
+    key: 'salespeople',
+    name: 'Sprzedawcy',
+    href: '/crm/salespeople',
+    iconKey: 'salespeople',
+    module: 'clients',
+    permissions: ['contacts_view'],
   },
   {
     key: 'offers',
@@ -186,7 +204,7 @@ export const allNavigation: NavigationItemDTO[] = [
   },
   {
     key: 'contracts',
-    name: 'Umowy',
+    name: 'Umowy z klientami',
     href: '/crm/contracts',
     iconKey: 'contracts',
     module: 'contracts',

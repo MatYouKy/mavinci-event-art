@@ -98,6 +98,7 @@ export default function NewEquipmentPage() {
 
   const handleFileDrop = (e: React.DragEvent) => {
     e.preventDefault();
+    if (!canCreate) return;
     e.stopPropagation();
     setIsDraggingFiles(false);
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
@@ -189,6 +190,7 @@ export default function NewEquipmentPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canCreate) return;
 
     if (!formData.name || !formData.category_id) {
       alert('Wypełnij wymagane pola: Nazwa i Kategoria');
@@ -346,6 +348,9 @@ export default function NewEquipmentPage() {
       setSaving(false);
     }
   };
+
+  if (employeeLoading) return <p>Ładowanie uprawnień…</p>;
+  if (!canCreate) return null;
 
   return (
     <div className="space-y-6">
@@ -782,16 +787,19 @@ export default function NewEquipmentPage() {
           <div
             onDragEnter={(e) => {
               e.preventDefault();
+    if (!canCreate) return;
               e.stopPropagation();
               setIsDraggingFiles(true);
             }}
             onDragLeave={(e) => {
               e.preventDefault();
+    if (!canCreate) return;
               e.stopPropagation();
               setIsDraggingFiles(false);
             }}
             onDragOver={(e) => {
               e.preventDefault();
+    if (!canCreate) return;
               e.stopPropagation();
             }}
             onDrop={handleFileDrop}

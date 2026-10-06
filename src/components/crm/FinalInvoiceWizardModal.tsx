@@ -1,6 +1,13 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { loadFinalInvoiceEventOrder, type FinalInvoiceEventOrder } from '@/lib/invoices/finalInvoiceEventOrder';
+import { systemLabel } from '@/lib/ui/systemLabels';
+import { calculateFinalInvoice } from '@/lib/invoices/finalInvoiceCalculation';
+import { inheritFinalInvoicePresentation } from '@/lib/invoices/inheritFinalInvoicePresentation';
+import { DEFAULT_INVOICE_PAYMENT_TERM_DAYS, getInvoicePaymentDueDate } from '@/lib/invoices/paymentTerm';
+import FinalInvoicePreview from '@/components/crm/invoices/FinalInvoicePreview';
+
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   X,
   FileText,
@@ -25,6 +32,7 @@ interface FinalInvoiceWizardModalProps {
   onCreated: (invoiceId: string) => void;
   initialEventId?: string | null;
   initialOrganizationId?: string | null;
+  initialAdvanceInvoiceId?: string | null;
 }
 
 interface CandidateInvoice {
@@ -36,12 +44,15 @@ interface CandidateInvoice {
   total_net: number;
   total_vat: number;
   total_gross: number;
+  paid_amount: number;
   event_id: string | null;
+  related_invoice_id: string | null;
   organization_id: string | null;
   billing_arrangement: 'direct' | 'hotel' | 'agency' | 'other' | null;
   service_recipient_organization_id: string | null;
   service_recipient_contact_id: string | null;
   buyer_name: string;
+  buyer_contact_id: string | null;
   buyer_nip: string | null;
   buyer_street: string | null;
   buyer_postal_code: string | null;
@@ -67,6 +78,7 @@ interface CandidateInvoice {
   invoice_items?: {
     id?: string;
     invoice_id?: string;
+    position_number?: number | null;
     name: string;
     unit?: string | null;
     quantity: number;
@@ -76,6 +88,117 @@ interface CandidateInvoice {
     vat_exemption_reason?: string | null;
   }[];
   invoice_order_items?: CandidateInvoice['invoice_items'];
+}
+
+const candidateSelect = `
+  id, invoice_number, invoice_type, status, issue_date,
+  total_net, total_vat, total_gross, paid_amount,
+  event_id, related_invoice_id, organization_id, billing_arrangement,
+  service_recipient_organization_id, service_recipient_contact_id,
+  buyer_name, buyer_contact_id, buyer_nip, buyer_street, buyer_postal_code, buyer_city, buyer_country,
+  buyer_email, buyer_phone, buyer_contact_person,
+  payment_method, bank_account, issue_place, my_company_id,
+  bank_name, currency_code,
+  seller_name, seller_nip, seller_street, seller_postal_code, seller_city, seller_country,
+  invoice_items (position_number, name, unit, quantity, price_net, vat_rate, vat_code, vat_exemption_reason),
+  invoice_order_items (position_number, name, unit, quantity, price_net, vat_rate, vat_code, vat_exemption_reason),
+  event:events(name),
+  organization:organizations!invoices_organization_id_fkey(id, name)
+`;
+
+const normalizedText = (value: string | null) => (value || '').trim().toLocaleLowerCase('pl-PL');
+const normalizedNip = (value: string | null) => (value || '').replace(/[^a-z\d]/gi, '').toUpperCase();
+
+const matchesAdvanceContext = (invoice: CandidateInvoice, source: CandidateInvoice) => {
+  const sourceNip = normalizedNip(source.buyer_nip);
+  const sameBuyer = sourceNip
+    ? normalizedNip(invoice.buyer_nip) === sourceNip
+    : source.buyer_contact_id
+      ? invoice.buyer_contact_id === source.buyer_contact_id
+      : !normalizedNip(invoice.buyer_nip) &&
+        normalizedText(invoice.buyer_name) === normalizedText(source.buyer_name) &&
+        normalizedText(invoice.buyer_street) === normalizedText(source.buyer_street) &&
+        normalizedText(invoice.buyer_postal_code) === normalizedText(source.buyer_postal_code) &&
+        normalizedText(invoice.buyer_city) === normalizedText(source.buyer_city);
+
+  return sameBuyer &&
+    invoice.my_company_id === source.my_company_id &&
+    normalizedNip(invoice.seller_nip) === normalizedNip(source.seller_nip) &&
+    (invoice.currency_code || 'PLN') === (source.currency_code || 'PLN') &&
+    invoice.organization_id === source.organization_id &&
+    invoice.billing_arrangement === source.billing_arrangement &&
+    invoice.service_recipient_organization_id === source.service_recipient_organization_id &&
+    invoice.service_recipient_contact_id === source.service_recipient_contact_id;
+};
+
+async function loadAdvanceOrder(sourceId: string) {
+  const { data, error } = await supabase
+    .from('invoices')
+    .select(candidateSelect)
+    .eq('id', sourceId)
+    .eq('invoice_type', 'advance')
+    .single();
+  if (error) throw error;
+  const source = data as unknown as CandidateInvoice;
+  let orderSnapshot = source.invoice_order_items?.length ? source.invoice_order_items : null;
+  let orderEventId = source.event_id;
+  const ancestors = new Set([source.id]);
+  let root = source;
+
+  // A shared customer or event is not enough to identify the same order.
+  while (root.related_invoice_id) {
+    if (ancestors.has(root.related_invoice_id) || ancestors.size >= 50) {
+      throw new Error('Nie udało się ustalić powiązań zamówienia. Sprawdź powiązane dokumenty.');
+    }
+    const { data: parentData, error: parentError } = await supabase
+      .from('invoices')
+      .select(candidateSelect)
+      .eq('id', root.related_invoice_id)
+      .maybeSingle();
+    if (parentError) throw parentError;
+    const parent = parentData as unknown as CandidateInvoice | null;
+    if (!parent || !['advance', 'proforma'].includes(parent.invoice_type)) break;
+    if (!orderSnapshot && parent.invoice_order_items?.length && matchesAdvanceContext(parent, source)) {
+      orderSnapshot = parent.invoice_order_items;
+    }
+    if (!orderEventId && matchesAdvanceContext(parent, source)) orderEventId = parent.event_id;
+    ancestors.add(parent.id);
+    root = parent;
+    if (root.invoice_type === 'proforma') break;
+  }
+
+  const family = new Map<string, CandidateInvoice>([[source.id, source]]);
+  if (root.invoice_type === 'advance') family.set(root.id, root);
+  const visited = new Set([root.id]);
+  let parentIds = [root.id];
+  let depth = 0;
+  while (parentIds.length) {
+    if (depth++ >= 50) {
+      throw new Error('Nie udało się ustalić wszystkich zaliczek zamówienia. Sprawdź powiązane dokumenty.');
+    }
+    const { data: children, error: childrenError } = await supabase
+      .from('invoices')
+      .select(candidateSelect)
+      .eq('invoice_type', 'advance')
+      .in('related_invoice_id', parentIds);
+    if (childrenError) throw childrenError;
+    parentIds = [];
+    for (const invoice of (children ?? []) as unknown as CandidateInvoice[]) {
+      if (visited.has(invoice.id)) continue;
+      visited.add(invoice.id);
+      family.set(invoice.id, invoice);
+      parentIds.push(invoice.id);
+    }
+  }
+
+  return {
+    source,
+    orderSnapshot,
+    eventId: orderEventId,
+    invoices: Array.from(family.values()).filter((invoice) =>
+      ['issued', 'sent', 'paid', 'overdue'].includes(invoice.status) && matchesAdvanceContext(invoice, source)
+    ),
+  };
 }
 
 interface EventOpt {
@@ -121,11 +244,6 @@ const formatDecimalInput = (value: number) => {
 };
 
 const today = () => new Date().toISOString().split('T')[0];
-const plus14 = () => {
-  const d = new Date();
-  d.setDate(d.getDate() + 14);
-  return d.toISOString().split('T')[0];
-};
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
 export default function FinalInvoiceWizardModal({
@@ -133,17 +251,27 @@ export default function FinalInvoiceWizardModal({
   onCreated,
   initialEventId = null,
   initialOrganizationId = null,
+  initialAdvanceInvoiceId = null,
 }: FinalInvoiceWizardModalProps) {
   const { showSnackbar } = useSnackbar();
 
-  const locked = Boolean(initialEventId || initialOrganizationId);
+  const locked = Boolean(initialEventId || initialOrganizationId || initialAdvanceInvoiceId);
   const [mode, setMode] = useState<ContextMode>(initialEventId ? 'event' : 'organization');
   const [eventId, setEventId] = useState<string | null>(initialEventId);
   const [organizationId, setOrganizationId] = useState<string | null>(initialOrganizationId);
-  const [offerNet, setOfferNet] = useState<number>(0);
-  const [offerVatAmount, setOfferVatAmount] = useState<number>(0);
-  const [lockedEventName, setLockedEventName] = useState<string | null>(null);
   const [lockedOrgName, setLockedOrgName] = useState<string | null>(null);
+  const [sourceAdvance, setSourceAdvance] = useState<CandidateInvoice | null>(null);
+  const [sourceOrderItems, setSourceOrderItems] = useState<CandidateInvoice['invoice_items'] | null>(null);
+  const [sourceEventId, setSourceEventId] = useState<string | null>(null);
+  const [eventOrderState, setEventOrderState] = useState<{
+    eventId: string;
+    order: FinalInvoiceEventOrder | null;
+    error: string | null;
+  } | null>(null);
+  const [showOrderItems, setShowOrderItems] = useState(false);
+  const [presentationMode, setPresentationMode] = useState<'inherited' | 'order'>('inherited');
+  const itemDraft = useRef({ context: '', mode: 'inherited', edited: false });
+  const [candidatesError, setCandidatesError] = useState<string | null>(null);
 
   const [eventOptions, setEventOptions] = useState<EventOpt[]>([]);
   const [orgOptions, setOrgOptions] = useState<OrgOpt[]>([]);
@@ -159,7 +287,8 @@ export default function FinalInvoiceWizardModal({
   const [useCustomNumber, setUseCustomNumber] = useState(false);
   const [issueDate, setIssueDate] = useState(today());
   const [saleDate, setSaleDate] = useState(today());
-  const [paymentDueDate, setPaymentDueDate] = useState(plus14());
+  const [paymentTermDays, setPaymentTermDays] = useState(String(DEFAULT_INVOICE_PAYMENT_TERM_DAYS));
+  const paymentDueDate = getInvoicePaymentDueDate(issueDate, paymentTermDays) || '';
   const [items, setItems] = useState<FinalInvoiceItemInput[]>([
     { name: '', unit: 'szt.', quantity: 1, price_net: 0, vat_rate: 23 },
   ]);
@@ -217,7 +346,7 @@ export default function FinalInvoiceWizardModal({
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      if (mode !== 'event') return;
+      if (initialAdvanceInvoiceId || mode !== 'event') return;
       const q = supabase
         .from('events')
         .select('id, name, event_date')
@@ -230,12 +359,12 @@ export default function FinalInvoiceWizardModal({
     return () => {
       cancelled = true;
     };
-  }, [mode, eventQuery]);
+  }, [mode, eventQuery, initialAdvanceInvoiceId]);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      if (mode !== 'organization') return;
+      if (initialAdvanceInvoiceId || mode !== 'organization') return;
       const q = supabase.from('organizations').select('id, name').order('name').limit(50);
       if (orgQuery.trim()) q.ilike('name', `%${orgQuery.trim()}%`);
       const { data } = await q;
@@ -244,11 +373,23 @@ export default function FinalInvoiceWizardModal({
     return () => {
       cancelled = true;
     };
-  }, [mode, orgQuery]);
+  }, [mode, orgQuery, initialAdvanceInvoiceId]);
 
   const fetchCandidates = async () => {
     setLoadingCandidates(true);
+    setCandidatesError(null);
+    setCandidates([]);
+    setSelectedIds(new Set());
     try {
+      let rawList: CandidateInvoice[];
+      if (initialAdvanceInvoiceId) {
+        const order = await loadAdvanceOrder(initialAdvanceInvoiceId);
+        setSourceAdvance(order.source);
+        setSourceOrderItems(order.orderSnapshot);
+        setSourceEventId(order.eventId);
+        if (order.source.my_company_id) setManualCompanyId(order.source.my_company_id);
+        rawList = order.invoices;
+      } else {
       let eventInvoiceIds: string[] = [];
       if (mode === 'event' && eventId) {
         const { data: settlementInvoices, error: settlementInvoicesError } = await supabase
@@ -266,37 +407,13 @@ export default function FinalInvoiceWizardModal({
         }
       }
 
-      const select = `
-      id, invoice_number, invoice_type, status, issue_date,
-      total_net, total_vat, total_gross,
-      event_id, organization_id, billing_arrangement,
-      service_recipient_organization_id, service_recipient_contact_id,
-      buyer_name, buyer_nip, buyer_street, buyer_postal_code, buyer_city, buyer_country,
-      buyer_email, buyer_phone, buyer_contact_person,
-      payment_method, bank_account, issue_place, my_company_id,
-      bank_name, currency_code,
-      seller_name, seller_nip, seller_street, seller_postal_code, seller_city, seller_country,
-      invoice_items (
-        name,
-        unit,
-        quantity,
-        price_net,
-        vat_rate,
-        vat_code,
-        vat_exemption_reason
-      ),
-      invoice_order_items (
-        name, unit, quantity, price_net, vat_rate, vat_code, vat_exemption_reason
-      ),
-      event:events(name),
-      organization:organizations!invoices_organization_id_fkey(id, name)
-    `;
       let query = supabase
         .from('invoices')
-        .select(select)
+        .select(candidateSelect)
         .eq('invoice_type', 'advance')
-        .in('status', ['issued', 'sent', 'paid'])
-        .order('issue_date', { ascending: false });
+        .in('status', ['issued', 'sent', 'paid', 'overdue'])
+        .order('issue_date', { ascending: false })
+        .order('id', { ascending: true });
       if (mode === 'event' && eventId) query = query.in('id', eventInvoiceIds);
       else if (mode === 'organization' && organizationId)
         query = query.or(
@@ -309,7 +426,8 @@ export default function FinalInvoiceWizardModal({
       }
       const { data, error } = await query;
       if (error) throw error;
-      const rawList = (data ?? []) as unknown as CandidateInvoice[];
+      rawList = (data ?? []) as unknown as CandidateInvoice[];
+      }
       const candidateIds = rawList.map((invoice) => invoice.id);
       const { data: settledRows, error: settledError } = candidateIds.length
         ? await supabase
@@ -319,13 +437,20 @@ export default function FinalInvoiceWizardModal({
         : { data: [], error: null };
       if (settledError) throw settledError;
       const settledIds = new Set((settledRows ?? []).map((row) => row.advance_invoice_id));
-      const list = rawList.filter((invoice) => !settledIds.has(invoice.id));
+      const list = rawList.filter((invoice) =>
+        !settledIds.has(invoice.id) &&
+        Number(invoice.total_gross) > 0
+      );
       setCandidates(list);
       if (locked && list.length) {
         setSelectedIds(new Set(list.map((c) => c.id)));
       } else {
         setSelectedIds(new Set());
       }
+    } catch (error: any) {
+      setCandidates([]);
+      setSelectedIds(new Set());
+      setCandidatesError(error.message || 'Nie udało się pobrać zaliczek do rozliczenia.');
     } finally {
       setLoadingCandidates(false);
     }
@@ -333,140 +458,98 @@ export default function FinalInvoiceWizardModal({
 
   useEffect(() => {
     fetchCandidates();
-  }, [mode, eventId, organizationId]);
-
-  useEffect(() => {
-    if (!locked) return;
-    (async () => {
-      if (initialEventId) {
-        const { data: ev } = await supabase
-          .from('events')
-          .select('name, my_company_id, budget_net')
-          .eq('id', initialEventId)
-          .maybeSingle();
-
-        setLockedEventName(ev?.name ?? null);
-
-        let settlementEventIds = [initialEventId];
-        const { data: membership } = await supabase
-          .from('event_settlement_group_members')
-          .select('group_id')
-          .eq('event_id', initialEventId)
-          .maybeSingle();
-
-        if (membership?.group_id) {
-          const { data: members } = await supabase
-            .from('event_settlement_group_members')
-            .select('event_id')
-            .eq('group_id', membership.group_id);
-          if (members?.length) settlementEventIds = members.map((member) => member.event_id);
-        }
-
-        const [{ data: settlementEvents }, { data: acceptedOffers }] = await Promise.all([
-          supabase.from('events').select('id,budget_net').in('id', settlementEventIds),
-          supabase
-            .from('offers')
-            .select('event_id,subtotal,tax_amount,created_at')
-            .in('event_id', settlementEventIds)
-            .eq('status', 'accepted')
-            .order('created_at', { ascending: false }),
-        ]);
-
-        const latestOfferByEvent = new Map<string, { subtotal: number; tax_amount: number }>();
-        (acceptedOffers || []).forEach((offer) => {
-          if (!latestOfferByEvent.has(offer.event_id)) {
-            latestOfferByEvent.set(offer.event_id, {
-              subtotal: Number(offer.subtotal || 0),
-              tax_amount: Number(offer.tax_amount || 0),
-            });
-          }
-        });
-
-        const totals = (settlementEvents || []).reduce(
-          (sum, settlementEvent) => {
-            const budgetNet = Number(settlementEvent.budget_net || 0);
-            const offer = latestOfferByEvent.get(settlementEvent.id);
-            const net = budgetNet > 0 ? budgetNet : Number(offer?.subtotal || 0);
-            const vat = budgetNet > 0 ? round2(budgetNet * 0.23) : Number(offer?.tax_amount || 0);
-            return { net: sum.net + net, vat: sum.vat + vat };
-          },
-          { net: 0, vat: 0 },
-        );
-
-        if (totals.net > 0) {
-          setOfferNet(round2(totals.net));
-          setOfferVatAmount(round2(totals.vat));
-        }
-      }
-      if (initialOrganizationId) {
-        const { data: org } = await supabase
-          .from('organizations')
-          .select('name')
-          .eq('id', initialOrganizationId)
-          .maybeSingle();
-        setLockedOrgName(org?.name ?? null);
-      }
-    })();
-  }, [locked, initialEventId, initialOrganizationId]);
+  }, [mode, eventId, organizationId, initialAdvanceInvoiceId]);
 
   const selectedInvoices = useMemo(
     () => candidates.filter((c) => selectedIds.has(c.id)),
     [candidates, selectedIds],
   );
 
-  const selectedInvoiceKey = useMemo(
-    () => selectedInvoices.map((i) => i.id).sort().join('|'),
-    [selectedInvoices],
-  );
+  const selectedEventIds = Array.from(new Set(selectedInvoices.map((invoice) => invoice.event_id).filter(Boolean)));
+  const linkedEventId = initialAdvanceInvoiceId
+    ? sourceEventId
+    : mode === 'event' ? eventId
+    : selectedEventIds.length === 1 ? selectedEventIds[0] ?? null : null;
+  const eventOrder = eventOrderState?.eventId === linkedEventId ? eventOrderState.order : null;
+  const loadingEventOrder = Boolean(linkedEventId && eventOrderState?.eventId !== linkedEventId);
+  const referenceInvoice = sourceAdvance ?? selectedInvoices[0];
+  const currencyCode = referenceInvoice?.currency_code || eventOrder?.currencyCode || 'PLN';
+  const eventOrderError = (eventOrderState?.eventId === linkedEventId ? eventOrderState.error : null)
+    || (eventOrder && referenceInvoice && eventOrder.currencyCode !== currencyCode
+      ? 'Waluta zamówienia wydarzenia różni się od waluty zaliczek. Sprawdź dokumenty przed rozliczeniem.' : null)
+    || (eventOrder?.myCompanyId && referenceInvoice?.my_company_id && eventOrder.myCompanyId !== referenceInvoice.my_company_id
+      ? 'Wydarzenie i zaliczki mają różne firmy wystawiające. Sprawdź rozliczenie wydarzenia.' : null);
 
   useEffect(() => {
-    if (!locked) return;
-    if (!selectedInvoices.length) return;
-  
-    const firstSelected = selectedInvoices[0];
-    const sourceItems = firstSelected.invoice_order_items?.length
-      ? firstSelected.invoice_order_items
-      : firstSelected.invoice_items ?? [];
-  
-    setEditingValues({});
-  
-    if (!sourceItems.length) {
-      setItems([
-        {
-          name: firstSelected.invoice_number
-            ? `Rozliczenie końcowe do ${firstSelected.invoice_number}`
-            : 'Rozliczenie usługi zgodnie z umową',
-          unit: 'szt.',
-          quantity: 1,
-          price_net: offerNet > 0 ? offerNet : 0,
-          vat_rate: 23,
-        },
-      ]);
+    let cancelled = false;
+    if (!linkedEventId) {
+      setEventOrderState(null);
       return;
     }
-  
-    const sourceTotalNet = round2(
-      sourceItems.reduce(
-        (sum, item) => sum + Number(item.quantity || 0) * Number(item.price_net || 0),
-        0,
-      ),
-    );
-  
-    const targetTotalNet = offerNet > 0 ? offerNet : sourceTotalNet;
-    const multiplier = sourceTotalNet > 0 ? targetTotalNet / sourceTotalNet : 1;
-  
-    setItems(
-      sourceItems.map((item) => ({
-        name: item.name || 'Rozliczenie usługi zgodnie z umową',
-        unit: item.unit || 'szt.',
-        quantity: Number(item.quantity || 1),
-        price_net: round2(Number(item.price_net || 0) * multiplier),
-        vat_rate: Number(item.vat_rate || 23),
-        vat_code: item.vat_code ?? String(item.vat_rate || 23) as FinalInvoiceItemInput['vat_code'],
-        vat_exemption_reason: item.vat_exemption_reason ?? null,
-      })),
-    );
-  }, [locked, selectedInvoiceKey, offerNet]);
+    setEventOrderState(null);
+    loadFinalInvoiceEventOrder(linkedEventId)
+      .then((order) => {
+        if (!cancelled) setEventOrderState({ eventId: linkedEventId, order, error: null });
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) setEventOrderState({
+          eventId: linkedEventId,
+          order: null,
+          error: error instanceof Error ? error.message : 'Nie udało się pobrać pełnego zamówienia wydarzenia.',
+        });
+      });
+    return () => { cancelled = true; };
+  }, [linkedEventId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (mode === 'organization' && organizationId) {
+      supabase.from('organizations').select('name').eq('id', organizationId).maybeSingle()
+        .then(({ data }) => { if (!cancelled) setLockedOrgName(data?.name ?? null); });
+    }
+    return () => { cancelled = true; };
+  }, [mode, organizationId]);
+
+  const snapshotInvoice = sourceAdvance ?? selectedInvoices[0];
+  const snapshotItems = sourceOrderItems?.length ? sourceOrderItems : snapshotInvoice?.invoice_order_items;
+  const fullValueItems = useMemo<FinalInvoiceItemInput[] | null>(() => {
+    if (linkedEventId) return eventOrder && !eventOrderError ? eventOrder.items : null;
+    if (!snapshotItems?.length) return null;
+    return [...snapshotItems].sort((a, b) => Number(a.position_number ?? 0) - Number(b.position_number ?? 0)).map((item) => ({
+      name: item.name || 'Rozliczenie usługi zgodnie z umową',
+      unit: item.unit || 'szt.',
+      quantity: Number(item.quantity ?? 1),
+      price_net: Number(item.price_net ?? 0),
+      vat_rate: Number(item.vat_rate ?? 23),
+      vat_code: item.vat_code ?? String(item.vat_rate ?? 23) as FinalInvoiceItemInput['vat_code'],
+      vat_exemption_reason: item.vat_exemption_reason ?? null,
+    }));
+  }, [linkedEventId, eventOrder, eventOrderError, snapshotItems]);
+
+  const inheritedPresentation = useMemo(() => {
+    if (!fullValueItems || !snapshotInvoice) return { items: fullValueItems, error: null };
+    return inheritFinalInvoicePresentation({
+      invoiceItems: snapshotInvoice.invoice_items || [],
+      fullOrderItems: fullValueItems,
+      snapshotItems,
+    });
+  }, [fullValueItems, snapshotInvoice, snapshotItems]);
+  const orderItems = presentationMode === 'order' ? fullValueItems : inheritedPresentation.items;
+  const presentationError = presentationMode === 'inherited' ? inheritedPresentation.error : null;
+  const draftContext = `${initialAdvanceInvoiceId || ''}:${mode}:${eventId || ''}:${organizationId || ''}`;
+
+  useEffect(() => {
+    if (itemDraft.current.context !== draftContext && presentationMode !== 'inherited') {
+      setPresentationMode('inherited');
+      itemDraft.current = { context: draftContext, mode: 'inherited', edited: false };
+      return;
+    }
+    if (itemDraft.current.context === draftContext && itemDraft.current.mode === presentationMode && itemDraft.current.edited) return;
+    itemDraft.current = { context: draftContext, mode: presentationMode, edited: false };
+    setEditingValues({});
+    setItems(orderItems ?? [{ name: '', unit: 'szt.', quantity: 1, price_net: 0, vat_rate: 23 }]);
+    setShowOrderItems(!orderItems && !linkedEventId);
+  }, [orderItems, linkedEventId, draftContext, presentationMode]);
 
   
 
@@ -509,17 +592,24 @@ export default function FinalInvoiceWizardModal({
     });
   };
 
-  const addItem = () =>
+  const addItem = () => {
+    itemDraft.current.edited = true;
     setItems((prev) => [
       ...prev,
       { name: '', unit: 'szt.', quantity: 1, price_net: 0, vat_rate: 23 },
     ]);
-  const removeItem = (idx: number) =>
+  };
+  const removeItem = (idx: number) => {
+    itemDraft.current.edited = true;
     setItems((prev) => (prev.length > 1 ? prev.filter((_, i) => i !== idx) : prev));
-  const updateItem = (idx: number, patch: Partial<FinalInvoiceItemInput>) =>
+  };
+  const updateItem = (idx: number, patch: Partial<FinalInvoiceItemInput>) => {
+    itemDraft.current.edited = true;
     setItems((prev) => prev.map((it, i) => (i === idx ? { ...it, ...patch } : it)));
+  };
 
   const updateGross = (idx: number, grossValue: number) => {
+    itemDraft.current.edited = true;
     setItems((prev) =>
       prev.map((it, i) => {
         if (i !== idx) return it;
@@ -538,49 +628,50 @@ export default function FinalInvoiceWizardModal({
     );
   };
 
-  const totals = useMemo(() => {
-    const net = round2(items.reduce((s, i) => s + i.quantity * i.price_net, 0));
-    const vat = round2(
-      items.reduce((s, i) => s + (i.quantity * i.price_net * i.vat_rate) / 100, 0),
-    );
-    const gross = round2(net + vat);
-    return { net, vat, gross };
-  }, [items]);
-
-  const settledGross = useMemo(
-    () => round2(selectedInvoices.reduce((s, i) => s + Number(i.total_gross), 0)),
-    [selectedInvoices],
+  const calculation = useMemo(
+    () => calculateFinalInvoice(items, selectedInvoices),
+    [items, selectedInvoices],
   );
-  const settledNet = useMemo(
-    () => round2(selectedInvoices.reduce((s, i) => s + Number(i.total_net), 0)),
-    [selectedInvoices],
-  );
-
-  const settledVat = useMemo(
-    () => round2(selectedInvoices.reduce((s, i) => s + Number(i.total_vat), 0)),
-    [selectedInvoices],
-  );
-
-  const remainingNet = round2(totals.net - settledNet);
-  const remainingVat = round2(totals.vat - settledVat);
-  const remainingGross = round2(totals.gross - settledGross);
-  const remaining = round2(totals.gross - settledGross);
-
-  const fillItemsFromOffer = () => {
-    if (!offerNet) return;
-
-    setItems([
-      {
-        name: 'Rozliczenie usługi zgodnie z umową',
-        unit: 'szt.',
-        quantity: 1,
-        price_net: offerNet,
-        vat_rate: 23,
-      },
-    ]);
+  const { totals } = calculation;
+  const { net: settledNet, vat: settledVat, gross: settledGross } = calculation.settled;
+  const { net: remainingNet, vat: remainingVat, gross: remainingGross } = calculation.remaining;
+  const formatAmount = (amount: number) => `${amount.toLocaleString('pl-PL', {
+    minimumFractionDigits: 2, maximumFractionDigits: 2,
+  })} ${currencyCode}`;
+  const orderUnavailable = loadingCandidates || loadingEventOrder || Boolean(eventOrderError || presentationError);
+  const eventOrderEdited = Boolean(orderItems && (
+    items.length !== orderItems.length || items.some((item, index) => {
+      const source = orderItems[index];
+      return !source || item.name !== source.name || item.unit !== source.unit || item.quantity !== source.quantity || item.price_net !== source.price_net || item.vat_rate !== source.vat_rate;
+    })
+  ));
+  const fillItemsFromOrder = () => {
+    if (!orderItems) return;
+    if (itemDraft.current.edited && !window.confirm('Przywrócić pozycje źródłowe? Zastąpi to zmiany wpisane w tym formularzu.')) return;
+    itemDraft.current.edited = false;
+    setEditingValues({});
+    setItems(orderItems);
+  };
+  const changePresentation = (next: 'inherited' | 'order') => {
+    if (itemDraft.current.edited && !window.confirm('Zmienić podstawę pozycji faktury? Zastąpi to zmiany wpisane w tym formularzu.')) return;
+    itemDraft.current.edited = false;
+    setPresentationMode(next);
   };
 
   const handleCreate = async () => {
+    if (!paymentDueDate) {
+      showSnackbar('Podaj poprawną datę wystawienia i termin płatności w pełnych dniach (0 lub więcej).', 'error');
+      return;
+    }
+    if (orderUnavailable) {
+      showSnackbar(eventOrderError || presentationError || 'Poczekaj na pobranie pełnego zamówienia i zaliczek.', 'error');
+      return;
+    }
+    if (!Number.isFinite(totals.gross) || totals.gross <= 0) {
+      showSnackbar('Uzupełnij pozycje pełnego zamówienia przed rozliczeniem zaliczek.', 'error');
+      return;
+    }
+
     if (!selectedInvoices.length) {
       showSnackbar('Wybierz co najmniej jedna fakture do rozliczenia', 'error');
       return;
@@ -600,12 +691,16 @@ export default function FinalInvoiceWizardModal({
     }
 
     const reference = selectedInvoices[0];
+    if (sourceAdvance && selectedInvoices.some((invoice) => !matchesAdvanceContext(invoice, sourceAdvance))) {
+      showSnackbar('Wybrane zaliczki muszą dotyczyć tego samego zamówienia, nabywcy i sprzedawcy.', 'error');
+      return;
+    }
     const normalizeNip = (value: string | null) => (value || '').replace(/\D/g, '');
     const incompatible = selectedInvoices.some((invoice) =>
       invoice.my_company_id !== reference.my_company_id ||
       normalizeNip(invoice.buyer_nip) !== normalizeNip(reference.buyer_nip) ||
       (invoice.currency_code || 'PLN') !== (reference.currency_code || 'PLN') ||
-      (mode !== 'event' && invoice.event_id !== reference.event_id) ||
+      (!initialAdvanceInvoiceId && mode !== 'event' && invoice.event_id !== reference.event_id) ||
       invoice.organization_id !== reference.organization_id
     );
     if (incompatible) {
@@ -641,7 +736,7 @@ export default function FinalInvoiceWizardModal({
       const selectedCompany = myCompanies.find((c) => c.id === myCompanyId);
 
       const result = await createFinalInvoice({
-        eventId: ref.event_id,
+        eventId: linkedEventId || ref.event_id,
         organizationId: ref.organization_id,
         billingArrangement: ref.billing_arrangement || 'direct',
         serviceRecipientOrganizationId: ref.service_recipient_organization_id,
@@ -687,7 +782,7 @@ export default function FinalInvoiceWizardModal({
         throw new Error(result.error || 'Blad tworzenia faktury');
       }
 
-      const settlementEventId = ref.event_id;
+      const settlementEventId = linkedEventId || ref.event_id;
       if (settlementEventId) {
         const { error: settlementLinkError } = await supabase.rpc(
           'link_invoice_to_event_settlement',
@@ -741,10 +836,16 @@ export default function FinalInvoiceWizardModal({
                 Kontekst faktury końcowej
               </div>
               <div className="flex flex-wrap items-center gap-4 text-sm text-[#e5e4e2]">
-                {initialEventId && (
+                {initialAdvanceInvoiceId && (
+                  <span className="flex items-center gap-2">
+                    <FileText className="h-4 w-4 text-[#d3bb73]" />
+                    Do zaliczki: <strong>{sourceAdvance?.invoice_number ?? 'Ładowanie…'}</strong>
+                  </span>
+                )}
+                {linkedEventId && (
                   <span className="flex items-center gap-2">
                     <Calendar className="h-4 w-4 text-[#d3bb73]" />
-                    Event: <strong>{lockedEventName ?? '...'}</strong>
+                    Wydarzenie: <strong>{eventOrder?.eventName ?? sourceAdvance?.event?.name ?? 'Ładowanie…'}</strong>
                   </span>
                 )}
                 {initialOrganizationId && (
@@ -753,18 +854,12 @@ export default function FinalInvoiceWizardModal({
                     Podmiot: <strong>{lockedOrgName ?? '...'}</strong>
                   </span>
                 )}
-                {offerNet > 0 && (
-                  <span className="ml-auto text-xs text-[#e5e4e2]/70">
-                    Suma z oferty (netto):{' '}
-                    <strong className="text-[#d3bb73]">{offerNet.toFixed(2)} PLN</strong>
-                    {offerVatAmount > 0 && (
-                      <span className="ml-2 text-[#e5e4e2]/50">
-                        (brutto: {round2(offerNet + offerVatAmount).toFixed(2)} PLN)
-                      </span>
-                    )}
-                  </span>
-                )}
               </div>
+              {initialAdvanceInvoiceId && (
+                <p className="mt-2 text-xs text-[#e5e4e2]/60">
+                  Wybrano nierozliczone zaliczki powiązane z tym zamówieniem. Możesz zmienić ich wybór poniżej.
+                </p>
+              )}
             </div>
           ) : (
             <>
@@ -905,6 +1000,7 @@ export default function FinalInvoiceWizardModal({
               </label>
               <select
                 value={manualCompanyId || ''}
+                disabled={Boolean(initialAdvanceInvoiceId)}
                 onChange={(e) => {
                   setCompanyTouched(true);
                   setManualCompanyId(e.target.value || null);
@@ -920,27 +1016,87 @@ export default function FinalInvoiceWizardModal({
             </div>
           )}
 
-          <div>
-            <div className="mb-2 flex items-center justify-between">
-              <div className="text-sm text-[#e5e4e2]/60">
-                Faktury do rozliczenia ({candidates.length})
-              </div>
-              {settledGross > 0 && (
+          <section aria-label="Podsumowanie rozliczenia" className="space-y-3">
+            {loadingEventOrder ? (
+              <p role="status" className="flex items-center gap-2 text-sm text-[#e5e4e2]/70">
+                <Loader className="h-4 w-4 animate-spin" /> Pobieranie pełnego zamówienia z wydarzenia…
+              </p>
+            ) : eventOrderError ? (
+              <p role="alert" className="rounded-lg bg-red-500/10 p-3 text-sm text-red-300">{eventOrderError}</p>
+            ) : (
+              <p className="text-sm text-[#e5e4e2]/65">
+                {eventOrder
+                  ? `Źródło kwot: ${eventOrder.sourceLabel}. Pełna wartość została pobrana z ${eventOrder.eventIds.length > 1 ? 'wydarzeń we wspólnym rozliczeniu' : 'powiązanego wydarzenia'} z uwzględnieniem uzgodnionych rabatów.`
+                  : orderItems
+                    ? 'Źródło kwot: pełne zamówienie zapisane przy dokumentach. Zaliczki pomniejszają wyłącznie kwotę do zapłaty.'
+                    : 'Brak powiązanego zamówienia. Uzupełnij jego pełne pozycje poniżej — kwota zaliczki nie określa wartości całej usługi.'}
+              </p>
+            )}
+            {snapshotInvoice && fullValueItems && !eventOrderError && (
+              <div className="space-y-2 rounded-lg bg-[#d3bb73]/5 p-3 text-sm">
+                <p className="text-[#e5e4e2]/70">
+                  {presentationMode === 'inherited'
+                    ? `Pozycje faktury: nazwy, jednostki i układ z zaliczki ${snapshotInvoice.invoice_number}. Kwoty obejmują pełne zamówienie, nie tylko wpłaconą zaliczkę.`
+                    : 'Pozycje faktury: wybrane jawnie z pełnego zamówienia. Zastępują układ zapisany na zaliczce.'}
+                </p>
+                {presentationError && <p role="alert" className="text-red-300">{presentationError}</p>}
                 <button
                   type="button"
-                  onClick={fillItemsFromOffer}
-                  className="rounded-md border border-[#d3bb73]/30 px-3 py-1 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/10"
+                  disabled={creating || loadingCandidates || loadingEventOrder}
+                  onClick={() => changePresentation(presentationMode === 'inherited' ? 'order' : 'inherited')}
+                  className="rounded-md bg-[#d3bb73]/10 px-3 py-1.5 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/15 disabled:opacity-50"
                 >
-                  Wypelnij pozycje na podstawie zaliczek
+                  {presentationMode === 'inherited'
+                    ? eventOrder ? 'Zamiast tego użyj pozycji z wydarzenia' : 'Zamiast tego użyj pozycji pełnego zamówienia'
+                    : 'Przywróć nazwy i układ z zaliczki'}
                 </button>
-              )}
+              </div>
+            )}
+            <div className="grid gap-3 sm:grid-cols-3" aria-live="polite">
+              <div className="rounded-lg bg-[#0a0d1a]/40 p-4">
+                <p className="text-sm text-[#e5e4e2]/65">Pełna wartość zamówienia</p>
+                <p className="mt-2 text-xl font-semibold text-[#e5e4e2]">{orderUnavailable ? '—' : formatAmount(totals.gross)}</p>
+                <p className="mt-1 text-xs text-[#e5e4e2]/50">{orderUnavailable ? 'Oczekiwanie na dane zamówienia' : `Netto ${formatAmount(totals.net)} · VAT ${formatAmount(totals.vat)}`}</p>
+              </div>
+              <div className="rounded-lg bg-[#0a0d1a]/40 p-4">
+                <p className="text-sm text-[#e5e4e2]/65">Wybrane zaliczki ({selectedInvoices.length})</p>
+                <p className="mt-2 text-xl font-semibold text-[#e5e4e2]">{loadingCandidates ? '—' : formatAmount(settledGross)}</p>
+                <p className="mt-1 text-xs text-[#e5e4e2]/50">Netto {formatAmount(settledNet)} · VAT {formatAmount(settledVat)}</p>
+              </div>
+              <div className="rounded-lg bg-[#d3bb73]/10 p-4">
+                <p className="text-sm text-[#d3bb73]">Pozostało do zapłaty</p>
+                <p className="mt-2 text-xl font-semibold text-[#d3bb73]">{orderUnavailable ? '—' : formatAmount(remainingGross)}</p>
+                <p className="mt-1 text-xs text-[#e5e4e2]/50">{orderUnavailable ? 'Wartość zamówienia minus zaliczki' : `Netto ${formatAmount(remainingNet)} · VAT ${formatAmount(remainingVat)}`}</p>
+              </div>
+            </div>
+            {!orderUnavailable && selectedInvoices.length > 0 && (
+              <p className={`text-sm ${remainingGross < -0.01 ? 'text-red-300' : 'text-[#e5e4e2]/65'}`}>
+                {remainingGross < -0.01
+                  ? 'Wybrane zaliczki przekraczają wartość zamówienia. Sprawdź wybór dokumentów i uzgodnioną kwotę.'
+                  : Math.abs(remainingGross) < 0.01
+                    ? 'Zaliczki pokrywają całość zamówienia. Faktura końcowa nie będzie wymagać dopłaty.'
+                    : 'Faktura końcowa obejmie całe zamówienie. Klient dopłaci tylko pozostałą kwotę.'}
+              </p>
+            )}
+            {eventOrderEdited && !orderUnavailable && (
+              <p className="text-sm text-[#d3bb73]">Zmieniono pozycje na fakturze. Podsumowanie uwzględnia te zmiany; wartość zapisana w wydarzeniu pozostaje bez zmian.</p>
+            )}
+          </section>
+
+          <div>
+            <div className="mb-2 text-sm text-[#e5e4e2]/60">
+              Wybierz zaliczki do rozliczenia ({candidates.length})
             </div>
             <div className="overflow-hidden rounded-lg border border-[#d3bb73]/10 bg-[#0a0d1a]">
-              {loadingCandidates ? (
+              {candidatesError ? (
+                <div role="alert" className="px-4 py-6 text-center text-sm text-red-300">
+                  {candidatesError}
+                </div>
+              ) : loadingCandidates ? (
                 <div className="px-4 py-6 text-center text-sm text-[#e5e4e2]/50">Ladowanie...</div>
               ) : candidates.length === 0 ? (
                 <div className="px-4 py-6 text-center text-sm text-[#e5e4e2]/50">
-                  Brak faktur zaliczkowych w tym kontekscie
+                  Brak nierozliczonych faktur zaliczkowych w tym kontekście
                 </div>
               ) : (
                 <table className="w-full text-sm">
@@ -969,16 +1125,24 @@ export default function FinalInvoiceWizardModal({
                             <input
                               type="checkbox"
                               checked={checked}
+                              onClick={(event) => event.stopPropagation()}
                               onChange={() => toggleSelect(c.id)}
                               className="h-4 w-4 accent-[#d3bb73]"
                             />
                           </td>
-                          <td className="px-3 py-2 text-[#e5e4e2]">{c.invoice_number}</td>
+                          <td className="px-3 py-2 text-[#e5e4e2]">
+                            {c.invoice_number}
+                            {Number(c.paid_amount || 0) < Number(c.total_gross) - 0.01 && (
+                              <div className="mt-1 text-xs text-[#e5e4e2]/50">
+                                Wpłata zostanie zweryfikowana przy wystawieniu
+                              </div>
+                            )}
+                          </td>
                           <td className="px-3 py-2 text-[#e5e4e2]/70">Zaliczkowa</td>
-                          <td className="px-3 py-2 text-[#e5e4e2]/70">{c.status}</td>
+                          <td className="px-3 py-2 text-[#e5e4e2]/70">{systemLabel(c.status)}</td>
                           <td className="px-3 py-2 text-[#e5e4e2]/70">{c.issue_date}</td>
                           <td className="px-3 py-2 text-right font-medium text-[#e5e4e2]">
-                            {Number(c.total_gross).toFixed(2)}
+                            {Number(c.total_gross).toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {c.currency_code || 'PLN'}
                           </td>
                         </tr>
                       );
@@ -989,18 +1153,43 @@ export default function FinalInvoiceWizardModal({
             </div>
           </div>
 
-          <div>
-            <div className="mb-2 flex items-center justify-between">
-              <div className="text-sm text-[#e5e4e2]/60">Pozycje faktury koncowej</div>
-              <button
+          <div className="rounded-lg bg-[#0a0d1a]/20 p-4">
+            <button
+              type="button"
+              onClick={() => setShowOrderItems((value) => !value)}
+              aria-expanded={showOrderItems}
+              aria-controls="final-invoice-order-items"
+              className="flex w-full items-center justify-between gap-3 text-left text-sm text-[#e5e4e2]"
+            >
+              <span>Edycja pozycji faktury — całe zamówienie ({items.length})</span>
+              <span className="text-[#d3bb73]">{showOrderItems ? 'Zwiń edycję' : 'Edytuj pozycje'}</span>
+            </button>
+            {showOrderItems && (
+              <fieldset id="final-invoice-order-items" disabled={creating || orderUnavailable} className="mt-4 min-w-0 space-y-3 disabled:opacity-60">
+              <p className="text-sm text-[#e5e4e2]/60">
+                {snapshotInvoice && presentationMode === 'inherited'
+                  ? `Zachowano pozycje z zaliczki ${snapshotInvoice.invoice_number} i przeliczono je do pełnej wartości zamówienia. Nie pomniejszaj ich o zaliczki — są odliczane automatycznie.`
+                  : 'Pozycje obejmują całą usługę, także część pokrytą zaliczkami. Zaliczki są odliczane automatycznie.'}
+              </p>
+              {eventOrder?.notice && <p className="text-xs text-[#e5e4e2]/50">{eventOrder.notice}</p>}
+              <div className="flex flex-wrap justify-end gap-2">
+                {orderItems && <button
+                  type="button"
+                  onClick={fillItemsFromOrder}
+                  data-crm-action="secondary"
+                  className="rounded-md bg-[#d3bb73]/10 px-3 py-1.5 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/15"
+                >
+                  {presentationMode === 'inherited' && snapshotInvoice ? 'Przywróć pozycje odziedziczone z zaliczki' : 'Przywróć pozycje pełnego zamówienia'}
+                </button>}
+                <button data-crm-action="secondary"
                 type="button"
                 onClick={addItem}
-                className="flex items-center gap-1 rounded-md border border-[#d3bb73]/30 px-3 py-1 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/10"
+                className="flex items-center gap-1 rounded-md bg-[#d3bb73]/10 px-3 py-1.5 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/15"
               >
-                <Plus className="h-3 w-3" /> Dodaj pozycje
+                <Plus className="h-3 w-3" /> Dodaj pozycję
               </button>
-            </div>
-            <div className="overflow-hidden rounded-lg border border-[#d3bb73]/10 bg-[#0a0d1a]">
+              </div>
+            <div className="overflow-x-auto rounded-lg border border-[#d3bb73]/10 bg-[#0a0d1a]">
               <table className="w-full text-sm">
                 <thead className="bg-[#1c1f33] text-xs uppercase text-[#e5e4e2]/50">
                   <tr>
@@ -1015,8 +1204,8 @@ export default function FinalInvoiceWizardModal({
                 </thead>
                 <tbody>
                   {items.map((it, idx) => {
-                    const valueNet = it.quantity * it.price_net;
-                    const valueGross = round2(valueNet * (1 + it.vat_rate / 100));
+                    const valueNet = round2(it.quantity * it.price_net);
+                    const valueGross = round2(valueNet + round2(valueNet * it.vat_rate / 100));
                     return (
                       <tr key={idx} className="border-t border-[#d3bb73]/5">
                         <td className="px-2 py-1">
@@ -1145,60 +1334,8 @@ export default function FinalInvoiceWizardModal({
                 </tbody>
               </table>
             </div>
-          </div>
-
-          <div className="overflow-hidden rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a]">
-            <table className="w-full text-sm">
-              <thead className="bg-[#1c1f33] text-xs uppercase tracking-wider text-[#e5e4e2]/40">
-                <tr>
-                  <th className="px-4 py-3 text-left">Rozliczenie</th>
-                  <th className="px-4 py-3 text-right">Netto</th>
-                  <th className="px-4 py-3 text-right">VAT</th>
-                  <th className="px-4 py-3 text-right">Brutto</th>
-                </tr>
-              </thead>
-
-              <tbody className="divide-y divide-[#d3bb73]/10">
-                <tr>
-                  <td className="px-4 py-3 font-medium text-[#e5e4e2]">Wartość faktury końcowej</td>
-                  <td className="px-4 py-3 text-right text-[#e5e4e2]">
-                    {totals.net.toFixed(2)} PLN
-                  </td>
-                  <td className="px-4 py-3 text-right text-[#e5e4e2]/70">
-                    {totals.vat.toFixed(2)} PLN
-                  </td>
-                  <td className="px-4 py-3 text-right font-semibold text-[#e5e4e2]">
-                    {totals.gross.toFixed(2)} PLN
-                  </td>
-                </tr>
-
-                <tr>
-                  <td className="px-4 py-3 font-medium text-[#e5e4e2]">Rozliczone zaliczki</td>
-                  <td className="px-4 py-3 text-right text-[#e5e4e2]">
-                    {settledNet.toFixed(2)} PLN
-                  </td>
-                  <td className="px-4 py-3 text-right text-[#e5e4e2]/70">
-                    {settledVat.toFixed(2)} PLN
-                  </td>
-                  <td className="px-4 py-3 text-right font-semibold text-[#e5e4e2]">
-                    {settledGross.toFixed(2)} PLN
-                  </td>
-                </tr>
-
-                <tr className="bg-[#d3bb73]/5">
-                  <td className="px-4 py-4 font-semibold text-[#d3bb73]">Do dopłaty</td>
-                  <td className="px-4 py-4 text-right font-semibold text-[#d3bb73]">
-                    {remainingNet.toFixed(2)} PLN
-                  </td>
-                  <td className="px-4 py-4 text-right font-semibold text-[#d3bb73]">
-                    {remainingVat.toFixed(2)} PLN
-                  </td>
-                  <td className="px-4 py-4 text-right text-lg font-bold text-[#d3bb73]">
-                    {remainingGross.toFixed(2)} PLN
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+              </fieldset>
+            )}
           </div>
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -1257,16 +1394,51 @@ export default function FinalInvoiceWizardModal({
                 />
               </div>
               <div>
-                <label className="mb-2 block text-xs text-[#e5e4e2]/60">Termin platnosci</label>
+                <label htmlFor="final-invoice-payment-days" className="mb-2 block text-xs text-[#e5e4e2]/60">Termin płatności (dni)</label>
                 <input
-                  type="date"
-                  value={paymentDueDate}
-                  onChange={(e) => setPaymentDueDate(e.target.value)}
-                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-2 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                  id="final-invoice-payment-days"
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  step={1}
+                  value={paymentTermDays}
+                  onChange={(e) => setPaymentTermDays(e.target.value)}
+                  aria-invalid={!paymentDueDate}
+                  aria-describedby="final-invoice-payment-days-description"
+                  className="w-full rounded-lg border border-[#d3bb73]/15 bg-[#0a0d1a] px-2 py-2 text-sm text-[#e5e4e2] focus:bg-[#d3bb73]/5 focus:outline-none focus-visible:ring-1 focus-visible:ring-[#d3bb73]/30"
                 />
+                <p id="final-invoice-payment-days-description" className={`mt-2 text-xs ${paymentDueDate ? 'text-[#e5e4e2]/60' : 'text-red-300'}`}>
+                  {paymentDueDate
+                    ? `Od daty wystawienia · do ${paymentDueDate.split('-').reverse().join('.')}`
+                    : 'Podaj pełną liczbę dni od 0 oraz poprawną datę wystawienia.'}
+                </p>
               </div>
             </div>
           </div>
+
+          <FinalInvoicePreview
+            calculation={calculation}
+            advances={selectedInvoices}
+            invoiceNumber={useCustomNumber ? customNumber : autoPreview}
+            automaticNumber={!useCustomNumber}
+            issueDate={issueDate}
+            saleDate={saleDate}
+            paymentDueDate={paymentDueDate}
+            currencyCode={currencyCode}
+            buyerName={selectedInvoices[0]?.buyer_name}
+            buyerNip={selectedInvoices[0]?.buyer_nip}
+            sellerName={selectedInvoices[0]?.seller_name}
+            sellerNip={selectedInvoices[0]?.seller_nip}
+            unavailableMessage={eventOrderError || presentationError || candidatesError || (orderUnavailable
+              ? 'Podgląd pojawi się po pobraniu pełnego zamówienia i zaliczek.'
+              : !selectedInvoices.length ? 'Wybierz zaliczki do rozliczenia, aby zobaczyć treść faktury końcowej.' : null)}
+            onEditItems={() => {
+              setShowOrderItems(true);
+              window.requestAnimationFrame(() => {
+                document.getElementById('final-invoice-order-items')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              });
+            }}
+          />
         </div>
 
         <div className="flex items-center justify-end gap-3 border-t border-[#d3bb73]/20 p-6">
@@ -1279,7 +1451,7 @@ export default function FinalInvoiceWizardModal({
           </button>
           <button
             onClick={handleCreate}
-            disabled={creating || !selectedInvoices.length}
+            disabled={creating || orderUnavailable || !paymentDueDate || !selectedInvoices.length || totals.gross <= 0 || remainingGross < -0.01}
             className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-2.5 font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:opacity-50"
           >
             {creating ? (

@@ -65,9 +65,8 @@ export function buildCalculationHtml(params: {
     ? `${esc(company.legal_name || company.name || '')}${company.nip ? ` &middot; NIP: ${esc(company.nip)}` : ''}${company.email ? ` &middot; ${esc(company.email)}` : ''}${company.phone ? ` &middot; ${esc(company.phone)}` : ''}${company.website ? ` &middot; ${esc(company.website)}` : ''}`
     : 'Kalkulacja wydarzenia';
 
-  const sections = (Object.keys(categoryLabel) as Category[])
-    .filter((cat) => grouped[cat].length > 0)
-    .map((cat) => {
+  const categories = (Object.keys(categoryLabel) as Category[]).filter(cat => grouped[cat].length > 0);
+  const sections = categories.map((cat, categoryIndex) => {
       const categoryNet = categoryTotals[cat] ?? grouped[cat].reduce((sum, item) => sum + rowNet(item), 0);
       const categoryGross = categoryTotalsGross[cat] ?? grouped[cat].reduce((sum, item) => sum + rowGross(item), 0);
 
@@ -85,14 +84,13 @@ export function buildCalculationHtml(params: {
           <td class="num strong accent">${fmt(rowGross(it))}</td>
         </tr>
       `,
-        )
-        .join('');
+        );
 
       return `
         <section>
-          <h2>${categoryLabel[cat]}</h2>
           <table class="items">
             <thead>
+              <tr><th colspan="8" class="category-heading">Kalkulacja · ${categoryLabel[cat]}</th></tr>
               <tr>
                 <th>Nazwa</th>
                 <th class="num">Ilość</th>
@@ -104,14 +102,21 @@ export function buildCalculationHtml(params: {
                 <th class="num">Brutto</th>
               </tr>
             </thead>
-            <tbody>${rows}</tbody>
-            <tfoot>
+            <tbody>${rows.slice(0, -1).join('')}</tbody>
+            <tbody class="table-ending">
+              ${rows[rows.length - 1]}
               <tr>
-                <td colspan="6" class="right">Suma częściowa ${categoryLabel[cat]}:</td>
+                <td colspan="6" class="right subtotal">Suma częściowa ${categoryLabel[cat]}:</td>
                 <td class="num strong">${fmt(categoryNet)} PLN</td>
                 <td class="num strong accent">${fmt(categoryGross)} PLN</td>
               </tr>
-            </tfoot>
+              ${categoryIndex === categories.length - 1 ? `
+              <tr class="grand-total">
+                <td colspan="6"><strong>RAZEM CAŁA KALKULACJA</strong><div>VAT razem: ${fmt(round2(grandTotalGross - grandTotal))} PLN</div></td>
+                <td class="num"><div>Netto razem</div><strong>${fmt(grandTotal)} PLN</strong></td>
+                <td class="num"><div>Brutto razem</div><strong>${fmt(grandTotalGross)} PLN</strong></td>
+              </tr>` : ''}
+            </tbody>
           </table>
         </section>
       `;
@@ -146,7 +151,22 @@ export function buildCalculationHtml(params: {
 <style>
   @page {
     size: A4;
-    margin: 12mm 12mm 12mm 12mm;
+    margin: 12mm 12mm 22mm 12mm;
+    @bottom-center {
+      content: "${footerContent.replace(/&middot;/g, '·').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/[\r\n]/g, ' ').replace(/</g, '\\3c ')}";
+      font-family: Arial, sans-serif;
+      font-size: 8px;
+      line-height: 1.2;
+      color: #999;
+      vertical-align: middle;
+      width: 80%;
+    }
+    @bottom-right {
+      content: "Strona " counter(page) " / " counter(pages);
+      font-family: Arial, sans-serif;
+      font-size: 8px;
+      color: #777;
+    }
   }
 
   * {
@@ -229,11 +249,13 @@ export function buildCalculationHtml(params: {
 
   section {
     margin-bottom: 16px;
-    page-break-inside: avoid;
-    break-inside: avoid;
+    page-break-inside: auto;
+    break-inside: auto;
   }
 
   section h2 {
+    page-break-after: avoid;
+    break-after: avoid;
     font-family: 'Atom', 'Montserrat', Arial, sans-serif;
     font-size: 11px;
     text-transform: uppercase;
@@ -255,8 +277,31 @@ export function buildCalculationHtml(params: {
     display: table-header-group;
   }
 
-  table.items tfoot {
-    display: table-row-group;
+  table.items .table-ending {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  table.items td:first-child {
+    overflow-wrap: anywhere;
+    word-break: normal;
+  }
+
+  table.items .category-heading {
+    background: #fff;
+    color: #680025;
+    padding: 8px 7px;
+  }
+
+  table.items .grand-total td {
+    background: #680025;
+    color: #fff;
+    padding: 10px 7px;
+  }
+
+  table.items .grand-total div {
+    font-size: 8px;
+    margin-bottom: 4px;
   }
 
   table.items tr {
@@ -308,44 +353,11 @@ export function buildCalculationHtml(params: {
     margin-top: 1px;
   }
 
-  table.items tfoot td {
+  table.items .table-ending tr:not(:first-child):not(.grand-total) td {
     border-top: 1px solid #d3bb73;
     border-bottom: none;
     background: #fafaf3;
   }
-
-.summary-table {
-  margin-top: 16px;
-  margin-left: auto;
-  width: 360px;
-  border-collapse: collapse;
-  page-break-inside: avoid;
-}
-
-.summary-table td {
-  padding: 6px 10px;
-  border-bottom: 1px solid #eee;
-  text-align: right;
-}
-
-.summary-table .label {
-  font-family: 'Atom', 'Montserrat', Arial, sans-serif;
-  color: #555;
-  font-size: 9px;
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
-}
-
-.summary-table .value {
-  font-size: 13px;
-  font-weight: 600;
-  color: #1c1f33;
-}
-
-.summary-table .gross .label,
-.summary-table .gross .value {
-  color: #b1963f;
-}
 
 .technical-section {
   margin-top: 18px;
@@ -512,12 +524,11 @@ export function buildCalculationHtml(params: {
 
   @media print {
     body {
-      padding: 0 0 10mm 0;
+      padding: 0;
     }
 
     footer {
-      position: fixed;
-      bottom: 3mm;
+      display: none;
     }
   }
 </style>
@@ -562,20 +573,7 @@ export function buildCalculationHtml(params: {
   <main>
     ${sections || '<p style="color:#888;text-align:center;padding:32px 0;">Brak pozycji</p>'}
 
-    <table class="summary-table">
-  <tr>
-    <td class="label">Netto</td>
-    <td class="value">${fmt(grandTotal)} PLN</td>
-  </tr>
-  <tr>
-    <td class="label">VAT</td>
-    <td class="value">${fmt(round2(grandTotalGross - grandTotal))} PLN</td>
-  </tr>
-  <tr class="gross">
-    <td class="label">Brutto</td>
-    <td class="value">${fmt(grandTotalGross)} PLN</td>
-  </tr>
-</table>
+
 
 ${
   totalPowerWatts > 0

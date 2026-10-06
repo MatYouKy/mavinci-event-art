@@ -21,10 +21,14 @@ import { utcToLocalDatetimeString, localDatetimeStringToUTC } from '@/lib/utils/
 import { useDialog } from '@/contexts/DialogContext';
 import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
 import Link from 'next/link';
+import MeetingRecurrenceFields from '@/components/crm/MeetingRecurrenceFields';
+import { meetingRecurrenceLabel } from '@/lib/meetings/recurrence';
 
 interface Meeting {
   event_id: any;
   events: any;
+  series_id: string | null;
+  recurrence_days: number;
   id: string;
   title: string;
   location_id: string | null;
@@ -78,6 +82,7 @@ interface EmployeeOption {
 }
 
 const ALERT_OPTIONS = [
+  { value: 0, label: 'W momencie rozpoczęcia' },
   { value: 5, label: '5 minut wcześniej' },
   { value: 10, label: '10 minut wcześniej' },
   { value: 15, label: '15 minut wcześniej' },
@@ -103,9 +108,11 @@ export default function MeetingDetailPage() {
   const [meeting, setMeeting] = useState<Meeting | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [editScope, setEditScope] = useState<'single' | 'future'>('single');
   const [isEditing, setIsEditing] = useState(false);
 
   const [formData, setFormData] = useState({
+    recurrence_days: 0,
     title: '',
     location_id: null as string | null,
     location_text: '',
@@ -178,6 +185,7 @@ export default function MeetingDetailPage() {
 
       setMeeting(data);
       setFormData({
+        recurrence_days: data.recurrence_days ?? 0,
         title: data.title,
         location_id: data.location_id,
         location_text: data.location_text || '',
@@ -236,9 +244,15 @@ export default function MeetingDetailPage() {
     try {
       setSaving(true);
 
-      const { error: updateError } = await supabase
-        .from('meetings')
-        .update({
+      const { error: updateError } = await supabase.rpc('save_meeting', {
+        p_id: meetingId,
+        p_recurrence_days: formData.recurrence_days,
+        p_scope: editScope,
+        p_participants: [
+          ...selectedParticipants.map((employee_id) => ({ employee_id })),
+          ...(meeting?.participants || []).filter((p) => p.contact_id).map((p) => ({ contact_id: p.contact_id })),
+        ],
+        p_data: {
           title: formData.title.trim(),
           location_id: formData.location_id,
           location_text: formData.location_text.trim() || null,
@@ -253,32 +267,10 @@ export default function MeetingDetailPage() {
           alert_critical_minutes: formData.alert_critical_minutes,
 
           updated_at: new Date().toISOString(),
-        })
-        .eq('id', meetingId);
+        },
+      });
 
       if (updateError) throw updateError;
-
-      const { error: deleteError } = await supabase
-        .from('meeting_participants')
-        .delete()
-        .eq('meeting_id', meetingId)
-        .not('employee_id', 'is', null);
-
-      if (deleteError) throw deleteError;
-
-      if (selectedParticipants.length > 0) {
-        const participantsData = selectedParticipants.map((employeeId) => ({
-          meeting_id: meetingId,
-          employee_id: employeeId,
-          contact_id: null,
-        }));
-
-        const { error: insertError } = await supabase
-          .from('meeting_participants')
-          .insert(participantsData);
-
-        if (insertError) throw insertError;
-      }
 
       showSnackbar('Spotkanie zostało zaktualizowane', 'success');
       setIsEditing(false);
@@ -319,14 +311,11 @@ export default function MeetingDetailPage() {
       : `${employee.name} ${employee.surname}`;
   };
 
-  const handleDelete = async () => {
-    if (!(await showConfirm('Czy na pewno chcesz usunąć to spotkanie?'))) return;
+  const handleDelete = async (scope: 'single' | 'future' = 'single') => {
+    if (!(await showConfirm(scope === 'future' ? 'Usunąć to i kolejne niezakończone spotkania w cyklu?' : 'Czy na pewno chcesz usunąć tylko to spotkanie?'))) return;
   
     try {
-      const { error } = await supabase
-        .from('meetings')
-        .delete()
-        .eq('id', meetingId);
+      const { error } = await supabase.rpc('delete_meeting_occurrences', { p_id: meetingId, p_scope: scope });
   
       if (error) throw error;
   
@@ -410,6 +399,7 @@ export default function MeetingDetailPage() {
                           if (!meeting) return;
 
                           setFormData({
+                            recurrence_days: meeting.recurrence_days ?? 0,
                             title: meeting.title,
                             location_id: meeting.location_id,
                             location_text: meeting.location_text || '',
@@ -433,12 +423,12 @@ export default function MeetingDetailPage() {
                   : [
                       {
                         label: 'Edytuj',
-                        onClick: () => setIsEditing(true),
+                        onClick: () => { setEditScope('single'); setIsEditing(true); },
                         icon: <Pencil className="h-4 w-4" />,
                       },
                       {
                         label: 'Usuń',
-                        onClick: handleDelete,
+                        onClick: () => { void handleDelete(); },
                         icon: <Trash2 className="h-4 w-4" />,
                         variant: 'danger',
                       },
@@ -502,6 +492,29 @@ export default function MeetingDetailPage() {
               )}
             </div>
           </div>
+
+          {isEditing ? (
+            <div className="space-y-3">
+              {meeting.series_id && <label className="block text-sm text-[#e5e4e2]">
+                Zakres zmian
+                <select value={editScope} onChange={(event) => {
+                  setEditScope(event.target.value as 'single' | 'future');
+                  setFormData((current) => ({ ...current, recurrence_days: meeting.recurrence_days }));
+                }} className="mt-2 w-full rounded-lg bg-[#13161f] px-3 py-2">
+                  <option value="single">Tylko to spotkanie</option>
+                  <option value="future">To i kolejne spotkania</option>
+                </select>
+              </label>}
+              <MeetingRecurrenceFields days={formData.recurrence_days} start={formData.datetime_start}
+                disabled={!!meeting.series_id && editScope === 'single'}
+                onChange={(recurrence_days) => setFormData((current) => ({ ...current, recurrence_days }))} />
+            </div>
+          ) : meeting.series_id ? (
+            <div className="flex flex-wrap items-center gap-3 rounded-lg bg-white/[0.035] p-3 text-sm">
+              <span className="text-[#d3bb73]">{meetingRecurrenceLabel(meeting.recurrence_days, meeting.datetime_start)} (czas polski)</span>
+              <button type="button" onClick={() => { void handleDelete('future'); }} className="rounded px-2 py-1 text-red-300 hover:bg-white/5">Usuń to i kolejne</button>
+            </div>
+          ) : null}
 
           {(isEditing ||
             meeting.alert_1_minutes !== null ||
@@ -691,7 +704,7 @@ export default function MeetingDetailPage() {
                     className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#13161f] px-4 py-2 pr-10 text-sm text-[#e5e4e2] placeholder:text-[#e5e4e2]/35 focus:border-[#d3bb73] focus:outline-none"
                   />
 
-                  <button
+                  <button data-crm-action="secondary"
                     type="button"
                     onClick={() => setIsParticipantDropdownOpen((current) => !current)}
                     className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md px-2 py-1 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/10"

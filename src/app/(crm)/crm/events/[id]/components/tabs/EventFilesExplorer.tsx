@@ -28,6 +28,7 @@ import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 import ResponsiveActionBar, { Action } from '@/components/crm/ResponsiveActionBar';
 import StorageFileThumbnail from '@/components/crm/StorageFileThumbnail';
+import MacFolderSyncPanel from '@/components/crm/events/MacFolderSyncPanel';
 
 interface FileItem {
   id: string;
@@ -63,6 +64,15 @@ interface ContextMenuState {
 }
 
 export default function EventFilesExplorer({ eventId }: { eventId: string }) {
+  return (
+    <div className="space-y-4">
+      <MacFolderSyncPanel key={eventId} eventId={eventId} />
+      <EventFilesExplorerContent key={eventId} eventId={eventId} />
+    </div>
+  );
+}
+
+function EventFilesExplorerContent({ eventId }: { eventId: string }) {
   const { showSnackbar } = useSnackbar();
   const { showConfirm } = useDialog();
   const [folders, setFolders] = useState<FolderItem[]>([]);

@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { cookies } from 'next/headers';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { createSupabaseServerClient } from '@/lib/supabase/server.app';
+import { loadInvoiceFinanceAccess } from '@/lib/invoices/financeAccess';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -354,6 +355,21 @@ export async function POST(request: NextRequest) {
     });
   }
 
+  const financeAccess = await loadInvoiceFinanceAccess(userClient).catch(() => null);
+  if (!financeAccess?.canIssueInvoices) {
+    return new Response(JSON.stringify({ error: 'Nie masz uprawnień do wystawiania faktur.' }), {
+      status: 403, headers: { 'Content-Type': 'application/json' },
+    });
+  }
+  if (financeAccess.scope === 'sales') {
+    const { data: ownInvoice, error: ownError } = await userClient.from('invoices')
+      .select('created_by').eq('id', invoiceId).maybeSingle();
+    if (ownError || !ownInvoice || ![financeAccess.employeeId, financeAccess.authUserId].includes(ownInvoice.created_by)) {
+      return new Response(JSON.stringify({ error: 'Możesz wysłać do KSeF tylko własną fakturę.' }), {
+        status: 403, headers: { 'Content-Type': 'application/json' },
+      });
+    }
+  }
   const { data: canManage, error: permissionError } = await userClient.rpc(
     'can_manage_invoice',
     { p_invoice_id: invoiceId },

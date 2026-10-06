@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   useGetEventEmployeesQuery,
   useAddEventEmployeeMutation,
@@ -18,6 +18,31 @@ export function useEventTeam(eventId: string) {
   } = useGetEventEmployeesQuery(eventId, {
     skip: !eventId,
   });
+
+  const [responsibilityTeam, setResponsibilityTeam] = useState<any[]>([]);
+  const loadResponsibilities = useCallback(async () => {
+    const { data, error } = await supabase.rpc('get_event_responsibility_team', { p_event_id: eventId });
+    if (!error) setResponsibilityTeam(data || []);
+  }, [eventId]);
+  useEffect(() => {
+    void loadResponsibilities();
+    const refresh = () => void loadResponsibilities();
+    window.addEventListener('focus', refresh);
+    window.addEventListener('realization-manager-changed', refresh);
+    const timer = setInterval(refresh, 60000);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener('focus', refresh);
+      window.removeEventListener('realization-manager-changed', refresh);
+    };
+  }, [loadResponsibilities]);
+  const mergedTeam: any[] = employees.map((member: any) => ({
+    ...member,
+    responsibility_roles: responsibilityTeam.find(person => person.employee_id === member.employee_id)?.responsibility_roles || [],
+  }));
+  for (const member of responsibilityTeam) {
+    if (!mergedTeam.some(person => person.employee_id === member.employee_id)) mergedTeam.push(member);
+  }
 
   const [addEmployee, { isLoading: isAdding }] = useAddEventEmployeeMutation();
   const [removeEmployee, { isLoading: isRemoving }] = useRemoveEventEmployeeMutation();
@@ -73,8 +98,10 @@ export function useEventTeam(eventId: string) {
   useEffect(() => {
     if (!eventId) return;
 
+    // Strona i modal używają tego hooka równocześnie. Każdy efekt musi
+    // posiadać własny kanał, również podczas ponownego montowania w StrictMode.
     const channel = supabase
-      .channel(`event_team_${eventId}`)
+      .channel(`event_team_${eventId}_${crypto.randomUUID()}`)
       .on(
         'postgres_changes',
         {
@@ -83,19 +110,23 @@ export function useEventTeam(eventId: string) {
           table: 'employee_assignments',
           filter: `event_id=eq.${eventId}`,
         },
-        (payload) => {
-          refetch();
+        () => {
+          void refetch();
+          void loadResponsibilities();
         }
-      )
-      .subscribe();
+      );
+    for (const table of ['event_vehicles', 'event_realizations', 'event_warehouse_handoffs', 'offers']) {
+      channel.on('postgres_changes', { event: '*', schema: 'public', table, filter: `event_id=eq.${eventId}` }, () => void loadResponsibilities());
+    }
+    channel.subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      void supabase.removeChannel(channel);
     };
-  }, [eventId, refetch]);
+  }, [eventId, refetch, loadResponsibilities]);
 
   return {
-    employees,
+    employees: mergedTeam,
     isLoading,
     error,
     refetch,

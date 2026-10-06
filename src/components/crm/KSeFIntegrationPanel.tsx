@@ -1305,7 +1305,7 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
       )}
 
       <div className="flex snap-x snap-mandatory gap-1 overflow-x-auto overscroll-x-contain rounded-lg border border-[#d3bb73]/20 bg-[#252945] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <button
+        <button data-crm-tab-active={activeTab === 'issued'}
           onClick={() => setActiveTab('issued')}
           className={`shrink-0 snap-start whitespace-nowrap rounded px-4 py-2 text-sm font-medium transition-colors sm:flex-1 ${
             activeTab === 'issued'
@@ -1317,7 +1317,7 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
           Wystawione ({issuedInvoices.length})
         </button>
 
-        <button
+        <button data-crm-tab-active={activeTab === 'received'}
           onClick={() => setActiveTab('received')}
           className={`shrink-0 snap-start whitespace-nowrap rounded px-4 py-2 text-sm font-medium transition-colors sm:flex-1 ${
             activeTab === 'received'
@@ -1329,7 +1329,7 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
           Otrzymane ({receivedInvoices.length})
         </button>
 
-        <button
+        <button data-crm-tab-active={activeTab === 'logs'}
           onClick={() => setActiveTab('logs')}
           className={`shrink-0 snap-start whitespace-nowrap rounded px-4 py-2 text-sm font-medium transition-colors sm:flex-1 ${
             activeTab === 'logs'

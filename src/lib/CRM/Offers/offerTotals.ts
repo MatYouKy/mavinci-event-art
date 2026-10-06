@@ -1,4 +1,7 @@
 export type OfferTotalsInput = {
+  logistics_enabled?: boolean;
+  logistics_price_net?: number | string | null;
+  totals_include_logistics?: boolean;
   subtotal?: number | string | null;
   discount_amount?: number | string | null;
   discount_percent?: number | string | null;
@@ -15,6 +18,8 @@ type CalculationPricingItem = {
 };
 
 export type OfferPricingTotalsInput = OfferTotalsInput & {
+  pricing_source?: string | null;
+  calculation_snapshot?: { event_calculation_items?: CalculationPricingItem[] | null } | null;
   event?: {
     financial_source?: string | null;
     accepted_calculation?: {
@@ -45,14 +50,20 @@ export function getOfferTotals(offer: OfferTotalsInput) {
     listNet = netAfterDiscount + storedDiscount;
   }
 
+  const addedLogisticsNet = offer.logistics_enabled && !offer.totals_include_logistics
+    ? Math.max(0, asNumber(offer.logistics_price_net)) : 0;
+  listNet += addedLogisticsNet;
+
   const discountAmount = Math.min(listNet, storedDiscount);
   const net = Math.max(0, listNet - discountAmount);
   const calculatedTax = roundMoney(net * taxPercent / 100);
-  const taxAmount = storedTax > 0 ? storedTax : calculatedTax;
+  // Legacy totals exclude logistics: their saved VAT and gross cannot be
+  // reused after adding the customer logistics price to the discount base.
+  const taxAmount = addedLogisticsNet > 0 ? calculatedTax : storedTax > 0 ? storedTax : calculatedTax;
   const calculatedGross = roundMoney(net + taxAmount);
   // Starsze oferty potrafią mieć w total_amount zapisaną kwotę netto i pusty
   // tax_amount. Nie pozwalamy, by taki zapis zrównał brutto z netto.
-  const gross = storedGross > 0 && (taxPercent === 0 || storedGross >= calculatedGross - 0.01)
+  const gross = addedLogisticsNet === 0 && storedGross > 0 && (taxPercent === 0 || storedGross >= calculatedGross - 0.01)
     ? storedGross
     : calculatedGross;
   const discountPercent = listNet > 0
@@ -71,8 +82,8 @@ export function getOfferTotals(offer: OfferTotalsInput) {
 }
 
 export function getOfferPricingTotals(offer: OfferPricingTotalsInput) {
-  const calculationItems = offer.event?.accepted_calculation?.event_calculation_items;
-  if (offer.event?.financial_source !== 'calculation' || !Array.isArray(calculationItems)) {
+  const calculationItems = offer.calculation_snapshot?.event_calculation_items;
+  if (offer.pricing_source !== 'calculation' || !Array.isArray(calculationItems)) {
     return {
       ...getOfferTotals(offer),
       source: 'offer' as const,

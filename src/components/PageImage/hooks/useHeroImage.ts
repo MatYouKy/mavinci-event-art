@@ -85,6 +85,7 @@ export function useHeroImage(
 
   // mapowanie sekcji -> tabela
   const getTableName = useCallback((sectionName: string) => {
+    if (pageSlug?.replace(/^\/+/, '').startsWith('oferta/quizy-teleturnieje/')) return 'service_hero_images';
     const cleanSection = sectionName.replace('-hero', '');
 
     const serviceMapping: Record<string, string> = {
@@ -101,7 +102,7 @@ export function useHeroImage(
     };
 
     return serviceMapping[cleanSection] || `${cleanSection}_page_images`;
-  }, []);
+  }, [pageSlug]);
 
   const loadImage = useCallback(async () => {
     setLoading(true);

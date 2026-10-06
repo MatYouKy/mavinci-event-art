@@ -17,6 +17,7 @@ import {
   handleInquiryFollowupNotificationAction,
 } from './src/services/pushNotifications';
 
+import { useMeetingReminderCleanup } from './src/services/meetingReminders';
 import { useRealtimePushNotifications } from './src/services/realtimeNotifications';
 import { useChatNotifications, setupChatNotificationFilter } from './src/services/chatNotifications';
 import { NotificationTargetData } from './src/navigation/navigationRef';
@@ -47,6 +48,7 @@ function AppContent() {
   const employeeId = employee?.id;
 
   useRealtimePushNotifications(employeeId);
+  useMeetingReminderCleanup(employeeId);
   useChatNotifications(employeeId);
 
   useEffect(() => {

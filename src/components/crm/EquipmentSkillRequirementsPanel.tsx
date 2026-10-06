@@ -1,5 +1,7 @@
 'use client';
 
+import { systemLabel } from '@/lib/ui/systemLabels';
+
 import { useState, useEffect } from 'react';
 import { Plus, Trash2, Brain, AlertCircle, User as UserIcon } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
@@ -179,7 +181,7 @@ export default function EquipmentSkillRequirementsPanel({
       advanced: 'Zaawansowany',
       expert: 'Ekspert',
     };
-    return labels[level as keyof typeof labels] || level;
+    return labels[level as keyof typeof labels] || systemLabel(level, 'skill');
   };
 
   const getProficiencyColor = (level: string) => {

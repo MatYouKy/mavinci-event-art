@@ -7,6 +7,8 @@ export interface IEmployee {
   position: any;
   permissions: any;
   my_company_ids?: string[] | null;
+  company_access_mode?: 'all' | 'selected';
+  role_permissions_inherited?: boolean;
   invoice_company_permissions?: Record<string, string[]> | null;
   sales_team_id?: string | null;
   is_sales_team_manager?: boolean;

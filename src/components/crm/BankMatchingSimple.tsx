@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase/browser';
+import { BANK_STATEMENT_DEDUPLICATION_COLUMNS, deduplicateStatementTransactions, loadBankStatementTransactionPages } from '@/lib/bankStatementDeduplication';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import {
   CheckCircle,
@@ -221,8 +222,10 @@ export default function BankMatchingSimple({ month, year, companyId, invoiceData
       // 1. Pobierz wszystkie wyciągi z danego roku
       let statementsQuery = supabase
         .from('bank_statements')
-        .select('id')
-        .eq('statement_year', year);
+        .select(BANK_STATEMENT_DEDUPLICATION_COLUMNS)
+        .eq('statement_year', year)
+        .eq('processed', true)
+        .eq('validation_status', 'valid');
   
       if (companyId) {
         statementsQuery = statementsQuery.eq('my_company_id', companyId);
@@ -237,21 +240,32 @@ export default function BankMatchingSimple({ month, year, companyId, invoiceData
       if (!allStatementIds.length) {
         setTransactions([]);
       } else {
-        const { data: transactionsData, error: transactionsError } = await supabase
-          .from('bank_transactions')
-          .select('*')
-          .in('statement_id', allStatementIds)
-          .neq('match_status', 'matched')
-          .eq('transaction_type', invoiceData.invoice_type === 'issued' ? 'credit' : 'debit')
-          .order('transaction_date', { ascending: false });
-  
-        if (transactionsError) throw transactionsError;
-  
-        setTransactions((transactionsData || []).map((transaction) => ({
-          ...transaction,
-          counterparty_name: repairBrokenBankText(transaction.counterparty_name) || null,
-          title: repairBrokenBankText(transaction.title) || null,
-        })) as Transaction[]);
+        const transactionsData = await loadBankStatementTransactionPages((from, to) =>
+          supabase
+            .from('bank_transactions')
+            .select('*')
+            .in('statement_id', allStatementIds)
+            .order('transaction_date', { ascending: false })
+            .order('id', { ascending: true })
+            .range(from, to),
+        );
+
+        const displayTransactions = deduplicateStatementTransactions(
+          transactionsData || [],
+          new Map((statements || []).map((statement) => [statement.id, statement])),
+        );
+        setTransactions(displayTransactions
+          .filter((transaction) =>
+            transaction.match_status !== 'matched'
+            && transaction.accounting_review_status !== 'explained'
+            && !transaction.private_transfer_detected
+            && transaction.transaction_type === (invoiceData.invoice_type === 'issued' ? 'credit' : 'debit'),
+          )
+          .map((transaction) => ({
+            ...transaction,
+            counterparty_name: repairBrokenBankText(transaction.counterparty_name) || null,
+            title: repairBrokenBankText(transaction.title) || null,
+          })) as Transaction[]);
       }
   
     } catch (error: any) {

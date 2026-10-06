@@ -1,11 +1,17 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { Eye, Loader2 } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { compactProductBlockReason, compactProductDescription } from '@/lib/CRM/Offers/productPresentation';
+import ProductPackagesPreview from '@/components/crm/offers/ProductPackagesPreview';
+import type { ProductSalesPackage } from '@/lib/CRM/Offers/productSalesPackages';
+import { paginateProductVariants } from '@/lib/CRM/Offers/productVariantPages';
+import { Eye, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import type { IProductVariant } from '@/app/(crm)/crm/offers/types';
 
 type PreviewProduct = {
+  sales_packages_enabled?: boolean;
+  sales_packages?: ProductSalesPackage[];
   category_id?: string | null;
   name: string;
   description?: string | null;
@@ -16,6 +22,8 @@ type PreviewProduct = {
   extension_price_net_per_hour?: number | null;
   offer_short_description?: string | null;
   offer_description?: string | null;
+  offer_compact_description?: string | null;
+  pricing_addons?: unknown[] | null;
   offer_benefits?: string[] | null;
   offer_requirements?: string[] | null;
   tags?: string[] | null;
@@ -54,6 +62,7 @@ type Props = {
   product: PreviewProduct;
   imageUrl: string | null;
   variantImageUrls?: Record<string, string>;
+  previewPage?: 'elements' | 'packages';
 };
 
 const normalizeOfferImageScale = (value: unknown) => {
@@ -61,6 +70,16 @@ const normalizeOfferImageScale = (value: unknown) => {
   if (!Number.isFinite(scale)) return 1;
   return Math.min(3, Math.max(0.5, scale));
 };
+
+function CroppedProductImage({ url, product, inherit = true }: { url: string; product: PreviewProduct; inherit?: boolean }) {
+  const x = inherit ? Number(product.offer_image_position_x ?? 50) : 50;
+  const y = inherit ? Number(product.offer_image_position_y ?? 25) : 50;
+  const zoom = inherit ? normalizeOfferImageScale(product.offer_image_zoom) : 1;
+  return <>
+    {zoom < 1 && <div className="absolute inset-0 bg-cover bg-no-repeat opacity-55" style={{ backgroundImage: `url(${url})`, backgroundPosition: `${x}% ${y}%` }} />}
+    <div className="absolute inset-0 bg-no-repeat" style={{ backgroundImage: `url(${url})`, backgroundPosition: `${x}% ${y}%`, backgroundSize: zoom < 1 ? 'contain' : 'cover', transform: `scale(${zoom})`, transformOrigin: `${x}% ${y}%` }} />
+  </>;
+}
 
 const defaultFallbackFields: PreviewField[] = [
   { field_name: 'product_name', x: 45, y: 55, font_size: 24, font_color: '#7f1734', max_width: 505 },
@@ -88,7 +107,7 @@ const visualFallbackFields: PreviewField[] = [
   { field_name: 'product_description', x: 45, y: 158, font_size: 9.5, line_height: 14, font_color: '#171717', max_width: 505 },
   { field_name: 'product_image', x: 82, y: 235, type: 'image', width: 431, height: 285 },
   { field_name: 'scope_title', x: 67, y: 620, font_size: 8.5, font_color: '#5b001f' },
-  { field_name: 'product_benefits', x: 67, y: 650, font_size: 9, line_height: 14, font_color: '#171717', max_width: 250 },
+  { field_name: 'product_benefits', x: 67, y: 650, font_size: 9, line_height: 14, font_color: '#171717', max_width: 460 },
 ];
 
 const DEFAULT_PREVIEW_DESIGN = {
@@ -138,7 +157,23 @@ const truncateAtWord = (value: string, limit: number) => {
   return `${shortened.slice(0, lastSpace > 0 ? lastSpace : limit)}…`;
 };
 
-export function ProductOfferCardPreview({ product, imageUrl, variantImageUrls = {} }: Props) {
+export function ProductOfferCardPreview({ product, imageUrl, variantImageUrls = {}, previewPage = 'elements' }: Props) {
+  const requestedVariant = product.offer_page_variant === 'compact' && compactProductBlockReason(product) ? 'default' : product.offer_page_variant || 'default';
+  const [variantPageIndex, setVariantPageIndex] = useState(0);
+  const previewContainer = useRef<HTMLDivElement>(null);
+  const [previewWidth, setPreviewWidth] = useState(320);
+  useEffect(() => {
+    const element = previewContainer.current;
+    if (!element) return;
+    const observer = new ResizeObserver(entries => {
+      // Ignore hidden previews and subpixel layout noise; only a new usable
+      // width should resize the scaled page and its surrounding scroll area.
+      const width = Math.floor(entries[0]?.contentRect.width ?? 0);
+      if (width > 0) setPreviewWidth(current => current === width ? current : width);
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
   const [categories, setCategories] = useState<EventCategory[]>([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState('');
   const [defaultTemplateCategoryId, setDefaultTemplateCategoryId] = useState<string | null>(null);
@@ -212,6 +247,7 @@ export function ProductOfferCardPreview({ product, imageUrl, variantImageUrls = 
       setLoading(true);
       setTemplate(null);
       setTemplatePdfUrl(null);
+      setCategoryDesign(DEFAULT_PREVIEW_DESIGN);
 
       const eventCategory = categories.find((item) => item.id === selectedCategoryId);
       const templateCategoryId =
@@ -257,7 +293,6 @@ export function ProductOfferCardPreview({ product, imageUrl, variantImageUrls = 
         return query.maybeSingle();
       };
 
-      const requestedVariant = product.offer_page_variant || 'default';
       const findForCategory = async (categoryId: string) => {
         let result = await findTemplate(categoryId, requestedVariant);
         // Pozwala pokazac podglad rowniez przed wdrozeniem kolumny variant_key.
@@ -293,7 +328,7 @@ export function ProductOfferCardPreview({ product, imageUrl, variantImageUrls = 
     return () => {
       cancelled = true;
     };
-  }, [categories, defaultTemplateCategoryId, product.offer_page_variant, selectedCategoryId]);
+  }, [categories, defaultTemplateCategoryId, requestedVariant, selectedCategoryId]);
 
   const previewData = useMemo<Record<string, string>>(() => {
     const price = Number(product.price_net ?? product.base_price ?? 0);
@@ -304,7 +339,7 @@ export function ProductOfferCardPreview({ product, imageUrl, variantImageUrls = 
           .join(', ')}. Dzięki temu rozwiązanie pozostaje spójne, czytelne dla uczestników i dopasowane do przebiegu wydarzenia.`
       : 'Zakres dobieramy do miejsca, liczby uczestników i ustalonego przebiegu wydarzenia.';
     return {
-      product_name: (product.name || 'Nazwa produktu').toLocaleUpperCase('pl-PL'),
+      product_name: (product.offer_page_variant === 'visual' ? truncateAtWord(product.name || 'Nazwa produktu', 42) : product.name || 'Nazwa produktu').toLocaleUpperCase('pl-PL'),
       product_short_description: product.offer_short_description || '',
       product_description: product.offer_page_variant === 'visual'
         ? truncateAtWord(product.offer_description || product.description || '', 235)
@@ -319,7 +354,7 @@ export function ProductOfferCardPreview({ product, imageUrl, variantImageUrls = 
       compact_page_title: 'ZAKRES OFERTY',
       product_1_name: (product.name || 'Nazwa produktu').toLocaleUpperCase('pl-PL'),
       product_1_short_description: product.offer_short_description || '',
-      product_1_description: product.offer_description || product.description || '',
+      product_1_description: compactProductDescription(product),
       product_1_requirements: '',
       product_1_image: imageUrl || '',
       product_image: imageUrl || '',
@@ -332,8 +367,7 @@ export function ProductOfferCardPreview({ product, imageUrl, variantImageUrls = 
 
   const pdfWidth = Number(template?.pdf_width || 595);
   const pdfHeight = Number(template?.pdf_height || 842);
-  const previewScale = Math.min(0.62, 360 / pdfWidth);
-  const requestedVariant = product.offer_page_variant || 'default';
+  const previewScale = Math.min(1, previewWidth / pdfWidth);
   const fallbackVariant = fallbackFieldsByVariant[requestedVariant] ? requestedVariant : 'default';
   const supportsRequestedLayout = requestedVariant !== 'compact'
     || template?.text_fields_config?.some((field: PreviewField) => field.field_name.startsWith('product_1_'));
@@ -345,29 +379,33 @@ export function ProductOfferCardPreview({ product, imageUrl, variantImageUrls = 
       font_color: field.font_color === '#5b001f' ? categoryDesign.primary_color : field.font_color,
     };
   });
+  const elementsOnly = product.sales_packages_enabled === true;
   const fields: PreviewField[] = templatePdfUrl && supportsRequestedLayout && Array.isArray(template?.text_fields_config) && template.text_fields_config.length > 0
     ? template.text_fields_config
     : fallbackFields;
   const selectedCategory = categories.find((item) => item.id === selectedCategoryId);
-  const productVariants = [...(product.offer_product_variants || [])]
+  const allProductVariants = [...(product.offer_product_variants || [])]
     .filter((variant) => variant.is_active !== false)
-    .sort((a, b) => a.display_order - b.display_order)
-    .slice(0, 3);
+    .sort((a, b) => a.display_order - b.display_order);
+  const variantPages = paginateProductVariants(allProductVariants);
+  const currentVariantPage = Math.min(variantPageIndex, Math.max(0, variantPages.length - 1));
+  const productVariants = variantPages[currentVariantPage] || [];
+  const variantOffset = variantPages.slice(0, currentVariantPage).reduce((total, page) => total + page.length, 0);
 
   return (
-    <div className="rounded-xl border border-[#7f1734]/35 bg-[#1c1f33] p-6 lg:col-span-2">
+    <div className="min-w-0 rounded-xl bg-[#1c1f33] p-4">
       {headingFontUrl && <style>{`@font-face{font-family:'OfferBrandHeading';src:url('${headingFontUrl}') format('truetype');font-weight:400;font-style:normal;font-display:swap;}`}</style>}
       <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
             <Eye className="h-5 w-5 text-[#b94b69]" />
-            <h2 className="text-lg font-medium text-[#e5e4e2]">Podgląd karty produktu</h2>
+            <h2 className="text-lg font-medium text-[#e5e4e2]">{previewPage === 'packages' ? 'Podgląd pakietów produktu' : 'Podgląd karty produktu'}</h2>
           </div>
           <p className="mt-1 text-sm text-[#e5e4e2]/50">
-            Dane aktualizują się na żywo. Cena i ilość są przykładowe; w ofercie poda je CRM.
+            {previewPage === 'packages' ? 'Ceny pakietów pochodzą z produktu. W ofercie wyróżnimy wybrany pakiet.' : 'Dane aktualizują się na żywo. Cena i ilość są przykładowe; w ofercie poda je CRM.'}
           </p>
         </div>
-        <div className="min-w-[240px]">
+        <div className="w-full min-w-0">
           <label className="mb-1 block text-xs text-[#e5e4e2]/50">Kategoria wydarzenia</label>
           <select
             value={selectedCategoryId}
@@ -383,11 +421,23 @@ export function ProductOfferCardPreview({ product, imageUrl, variantImageUrls = 
         </div>
       </div>
 
-      <div className="overflow-auto rounded-lg border border-[#e5e4e2]/10 bg-[#0a0d1a] p-4">
+      {previewPage === 'elements' && variantPages.length > 1 && <nav aria-label="Strony elementów produktu" className="mb-3 flex items-center justify-between gap-3 text-sm text-[#e5e4e2]/70">
+        <button type="button" aria-label="Poprzednia strona elementów" disabled={currentVariantPage === 0} onClick={()=>setVariantPageIndex(currentVariantPage-1)} className="rounded-lg bg-white/5 p-2 disabled:opacity-30"><ChevronLeft className="h-4 w-4"/></button>
+        <span>Strona {currentVariantPage+1} z {variantPages.length}</span>
+        <button type="button" aria-label="Następna strona elementów" disabled={currentVariantPage === variantPages.length-1} onClick={()=>setVariantPageIndex(currentVariantPage+1)} className="rounded-lg bg-white/5 p-2 disabled:opacity-30"><ChevronRight className="h-4 w-4"/></button>
+      </nav>}
+      <div ref={previewContainer} className="overflow-hidden rounded-lg bg-[#0a0d1a]">
         {loading ? (
           <div className="flex min-h-[360px] items-center justify-center text-[#e5e4e2]/50">
             <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Ładowanie podglądu...
           </div>
+        ) : previewPage === 'packages' ? (
+          <ProductPackagesPreview
+            name={product.name}
+            packages={product.sales_packages || []}
+            pageNumber={Math.max(1, variantPages.length) + 1}
+            design={categoryDesign}
+          />
         ) : (
           <div className="mx-auto" style={{ width: pdfWidth * previewScale, height: pdfHeight * previewScale }}>
             <div
@@ -438,7 +488,7 @@ export function ProductOfferCardPreview({ product, imageUrl, variantImageUrls = 
                   const value = previewData[field.field_name] || '';
                   if (!value) return null;
                   if (field.type === 'image') {
-                    const isProductImage = field.field_name === 'product_image';
+                    const isProductImage = /^product(?:_\d+)?_image$/.test(field.field_name);
                     const positionX = isProductImage ? Number(product.offer_image_position_x ?? 50) : 50;
                     const positionY = isProductImage ? Number(product.offer_image_position_y ?? 25) : 50;
                     const zoom = isProductImage ? normalizeOfferImageScale(product.offer_image_zoom) : 1;
@@ -446,7 +496,7 @@ export function ProductOfferCardPreview({ product, imageUrl, variantImageUrls = 
                     return (
                       <div
                         key={`${field.field_name}-${index}`}
-                        className={field.is_circular ? 'absolute overflow-hidden rounded-full' : 'absolute overflow-hidden rounded-[9px]'}
+                        className={field.is_circular ? 'absolute isolate overflow-hidden rounded-full' : 'absolute isolate overflow-hidden rounded-[9px]'}
                         style={{
                           left: field.x,
                           top: field.y,
@@ -456,7 +506,7 @@ export function ProductOfferCardPreview({ product, imageUrl, variantImageUrls = 
                       >
                         {isZoomedOutProductImage && (
                           <div
-                            className="absolute inset-0 scale-110 bg-cover bg-no-repeat opacity-55 blur-[7px]"
+                            className="absolute inset-0 bg-cover bg-no-repeat opacity-55"
                             style={{
                               backgroundImage: `url(${value})`,
                               backgroundPosition: `${positionX}% ${positionY}%`,
@@ -470,12 +520,27 @@ export function ProductOfferCardPreview({ product, imageUrl, variantImageUrls = 
                             backgroundPosition: `${positionX}% ${positionY}%`,
                             backgroundSize: isZoomedOutProductImage || field.image_fit === 'contain' ? 'contain' : 'cover',
                             transform: `scale(${zoom})`,
+                            transformOrigin: `${positionX}% ${positionY}%`,
                           }}
                         />
                       </div>
                     );
                   }
 
+                  if (field.field_name === 'product_description' && product.product_page_url) {
+                    const size = field.font_size || 12;
+                    const lineHeight = field.line_height || size * 1.2;
+                    const width = field.max_width || 245;
+                    const nextY = Math.min(750, ...fields.filter(other => other !== field && other.y > field.y
+                      && !/more|footer|page_number/.test(other.field_name)
+                      && other.x < field.x + width && other.x + (other.max_width || other.width || 1) > field.x).map(other => other.y - 10));
+                    const bottom = Math.min(nextY, field.y === 210 ? 420 : field.y === 158 ? 225 : field.y === 455 ? 575 : 750);
+                    const lineCount = Math.max(1, Math.floor((bottom - field.y - 37) / lineHeight));
+                    return <div key={`${field.field_name}-${index}`} className="absolute" style={{left:field.x,top:field.y,width}}>
+                      <div style={{fontSize:size,lineHeight:`${lineHeight}px`,color:field.font_color||'#171717',whiteSpace:'pre-wrap',display:'-webkit-box',WebkitBoxOrient:'vertical',WebkitLineClamp:lineCount,overflow:'hidden'}}>{value}</div>
+                      <span style={{display:'block',marginTop:8,width:150,boxSizing:'border-box',borderRadius:5,padding:'7px 10px',background:'#5b001f',color:'#fff',fontSize:8.5,lineHeight:'10px',fontWeight:700}}>CZYTAJ WIĘCEJ</span>
+                    </div>;
+                  }
                   return (
                     <div
                       key={`${field.field_name}-${index}`}
@@ -488,6 +553,7 @@ export function ProductOfferCardPreview({ product, imageUrl, variantImageUrls = 
                         fontSize: field.font_size || 12,
                         lineHeight: field.line_height ? `${field.line_height}px` : 1.2,
                         textAlign: field.align || 'left',
+                        ...(fallbackVariant === 'visual' && field.field_name === 'product_name' ? { whiteSpace: 'nowrap', textOverflow: 'ellipsis' } : {}),
                         fontWeight:
                           field.font_role === 'heading'
                             ? 400
@@ -501,17 +567,15 @@ export function ProductOfferCardPreview({ product, imageUrl, variantImageUrls = 
                     </div>
                   );
                 })}
-                {!templatePdfUrl && fallbackVariant === 'visual' && imageUrl && (
+                {!templatePdfUrl && fallbackVariant === 'visual' && imageUrl && Boolean(product.tags?.length || product.offer_benefits?.length) && (
                   <div
-                    className="absolute left-[45px] flex h-[92px] w-[505px] flex-col items-start justify-center gap-[12px] px-[22px] text-[13px] uppercase text-white"
+                    className="absolute left-[45px] z-10 flex h-[64px] w-[505px] items-center justify-center rounded-[9px] px-[25px] text-white"
                     style={{
-                      top: categoryDesign.visual_image_height + 175,
-                      backgroundColor: `${categoryDesign.primary_color}d1`,
-                      fontFamily: "'OfferBrandHeading', sans-serif",
+                      top: categoryDesign.visual_image_height + 199,
+                      backgroundColor: categoryDesign.primary_color,
                     }}
                   >
-                    <div>{product.name}</div>
-                    <div className="w-full truncate text-center font-sans text-[8px] font-medium text-white">
+                    <div className="w-full text-center font-sans text-[12px] leading-[15px] text-white">
                       {(product.tags?.length
                         ? product.tags
                         : (product.offer_benefits || []).map((benefit) =>
@@ -523,18 +587,12 @@ export function ProductOfferCardPreview({ product, imageUrl, variantImageUrls = 
                           ))
                         .filter(Boolean)
                         .slice(0, 5)
+                        .map(tag => truncateAtWord(tag, 24).toLocaleUpperCase('pl-PL'))
                         .join('  •  ')}
                     </div>
                   </div>
                 )}
-                {product.product_page_url && productVariants.length === 0 && (
-                  <div
-                    className="absolute left-[45px] top-[748px] text-[8.5px] font-medium uppercase tracking-wide"
-                    style={{ color: categoryDesign.primary_color }}
-                  >
-                    Zobacz więcej o tej usłudze&nbsp; →
-                  </div>
-                )}
+
               </div>
 
               {productVariants.length > 0 && (
@@ -558,12 +616,13 @@ export function ProductOfferCardPreview({ product, imageUrl, variantImageUrls = 
                     className="absolute left-[45px] top-[112px] h-px w-[505px]"
                     style={{ backgroundColor: categoryDesign.primary_color }}
                   />
-                  <div className="absolute left-[45px] top-[137px] w-[250px] text-[9px] leading-[14px] text-[#171717]">
-                    {product.offer_description || product.description}
+                  <div className="absolute left-[45px] top-[137px] w-[250px] text-[#171717]">
+                    <p style={{fontSize:8.3,lineHeight:'11.5px',display:'-webkit-box',WebkitBoxOrient:'vertical',WebkitLineClamp:10,overflow:'hidden'}}>{product.offer_description || product.description}</p>
+                    {product.product_page_url&&<span style={{display:'block',marginTop:8,width:150,boxSizing:'border-box',borderRadius:5,padding:'7px 10px',background:'#5b001f',color:'#fff',fontSize:8.5,lineHeight:'10px',fontWeight:700}}>CZYTAJ WIĘCEJ</span>}
                   </div>
                   {getServiceTerms(
                     product.service_duration_hours,
-                    product.extension_price_net_per_hour,
+                    null,
                   ) && (
                     <div
                       className="absolute left-[45px] top-[307px] w-[250px] text-[6.8px] font-medium uppercase"
@@ -571,14 +630,15 @@ export function ProductOfferCardPreview({ product, imageUrl, variantImageUrls = 
                     >
                       {getServiceTerms(
                         product.service_duration_hours,
-                        product.extension_price_net_per_hour,
+                        null,
                       )}
                     </div>
                   )}
                   <div
                     className="absolute left-[330px] top-[132px] h-[165px] w-[220px] overflow-hidden rounded-[8px] bg-black/10 bg-cover bg-center"
-                    style={{ backgroundImage: imageUrl ? `url(${imageUrl})` : undefined }}
-                  />
+                  >
+                    {imageUrl && <CroppedProductImage url={imageUrl} product={product} />}
+                  </div>
                   <div
                     className="absolute left-[45px] top-[330px] h-px w-[505px]"
                     style={{ backgroundColor: categoryDesign.primary_color }}
@@ -587,16 +647,14 @@ export function ProductOfferCardPreview({ product, imageUrl, variantImageUrls = 
                     className="absolute left-[45px] top-[350px] text-[12px] uppercase"
                     style={{ color: categoryDesign.primary_color, fontFamily: "'OfferBrandHeading', sans-serif" }}
                   >
-                    Warianty
+                    {elementsOnly ? 'Poznaj elementy' : 'Warianty'}{variantPages.length > 1 ? ` · ${currentVariantPage + 1}/${variantPages.length}` : ''}
                   </div>
                   <div className="absolute left-[45px] top-[382px] flex w-[505px] flex-col gap-[12px]">
                     {productVariants.map((variant, index) => {
-                      const highlighted = variant.is_recommended || (
-                        !productVariants.some((item) => item.is_recommended) && index === 0
-                      );
+                      const highlighted = Boolean(variant.is_recommended);
                       const serviceTerms = getServiceTerms(
                         variant.service_duration_hours ?? product.service_duration_hours,
-                        variant.extension_price_net_per_hour ?? product.extension_price_net_per_hour,
+                        elementsOnly ? null : variant.extension_price_net_per_hour,
                       );
                       return (
                         <div
@@ -614,7 +672,7 @@ export function ProductOfferCardPreview({ product, imageUrl, variantImageUrls = 
                               fontFamily: "'OfferBrandHeading', sans-serif",
                             }}
                           >
-                            {String(index + 1).padStart(2, '0')}
+                            {String(variantOffset + index + 1).padStart(2, '0')}
                           </div>
                           <div
                             className="absolute left-[72px] top-[14px] w-[285px] text-[12px] uppercase"
@@ -643,28 +701,22 @@ export function ProductOfferCardPreview({ product, imageUrl, variantImageUrls = 
                             className="absolute left-[285px] top-[66px] w-[72px] text-right text-[9px]"
                             style={{ color: categoryDesign.primary_color, fontFamily: "'OfferBrandHeading', sans-serif" }}
                           >
-                            {formatMoney(Number(variant.price_net || 0))}
+                            {elementsOnly ? '' : formatMoney(Number(variant.price_net || 0))}
                           </div>
-                          <div className="absolute left-[285px] top-[82px] w-[72px] text-right text-[5.3px] text-[#756f6b]">NETTO</div>
+                          <div className="absolute left-[285px] top-[82px] w-[72px] text-right text-[5.3px] text-[#756f6b]">{elementsOnly ? '' : 'NETTO'}</div>
                           <div
                             className="absolute right-[12px] top-[10px] h-[100px] w-[118px] overflow-hidden rounded-[6px] bg-black/10 bg-cover bg-center"
-                            style={{ backgroundImage: `url(${variantImageUrls[variant.id] || imageUrl || ''})` }}
-                          />
+                          >
+                            <CroppedProductImage url={variantImageUrls[variant.id] || imageUrl || ''} product={product} inherit={!variantImageUrls[variant.id]} />
+                          </div>
                         </div>
                       );
                     })}
                   </div>
                   <div className="absolute left-[45px] top-[782px] w-[360px] text-[7.5px] text-[#756f6b]">
-                    W kreatorze oferty możesz zdecydować, czy ceny wariantów będą widoczne w PDF.
+                    {currentVariantPage < variantPages.length - 1 ? 'Dalsze elementy znajdziesz na kolejnej stronie.' : elementsOnly ? 'Wybierz gotowy pakiet na kolejnej stronie.' : 'W kreatorze oferty możesz zdecydować, czy ceny wariantów będą widoczne w PDF.'}
                   </div>
-                  {product.product_page_url && (
-                    <div
-                      className="absolute right-[45px] top-[778px] text-[7.8px] font-medium uppercase"
-                      style={{ color: categoryDesign.primary_color }}
-                    >
-                      Zobacz więcej&nbsp; →
-                    </div>
-                  )}
+
                 </div>
               )}
             </div>
@@ -674,13 +726,15 @@ export function ProductOfferCardPreview({ product, imageUrl, variantImageUrls = 
 
       <p className="mt-3 text-xs text-[#e5e4e2]/40">
         Źródło szaty:{' '}
-        {templatePdfUrl && supportsRequestedLayout
+        {previewPage === 'packages'
+          ? `układ pakietów · szata kategorii ${selectedCategory?.name || 'domyślnej'}`
+          : templatePdfUrl && supportsRequestedLayout
           ? template?.template_category_id === defaultTemplateCategoryId &&
             selectedCategory?.default_offer_template_category_id !== defaultTemplateCategoryId
             ? 'domyślny zestaw szablonów'
             : `szablon kategorii ${selectedCategory?.name || ''}`
           : 'układ burgundowo-granatowy (fallback)'}.
-        {!templatePdfUrl && ` Wariant: ${fallbackVariant === 'visual' ? 'duża grafika' : fallbackVariant === 'compact' ? 'kompaktowy' : 'domyślny'}.`}
+        {previewPage === 'elements' && !templatePdfUrl && ` Wariant: ${fallbackVariant === 'visual' ? 'duża grafika' : fallbackVariant === 'compact' ? 'kompaktowy' : 'domyślny'}.`}
       </p>
     </div>
   );

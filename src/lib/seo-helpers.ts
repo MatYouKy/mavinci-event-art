@@ -35,7 +35,7 @@ export async function buildMetadataForSlug(
     ? rawOg
     : `${global.organization_url}${rawOg.startsWith('/') ? rawOg : `/${rawOg}`}`;
 
-  const pageUrl = `${global.organization_url}/${pageSlug}`;
+  const pageUrl = pageSlug === 'home' ? global.organization_url : `${global.organization_url}/${pageSlug}`;
 
   return {
     title,
@@ -78,14 +78,14 @@ export async function buildSchemaJsonLdForSlug(
     ? rawOg
     : `${global.organization_url}${rawOg.startsWith('/') ? rawOg : `/${rawOg}`}`;
 
-  const pageUrl = `${global.organization_url}/${pageSlug}`;
+  const pageUrl = pageSlug === 'home' ? global.organization_url : `${global.organization_url}/${pageSlug}`;
 
   const areaServed = seo.places.map((place) => ({
     '@type': 'Place',
     name: place.name,
     address: {
       '@type': 'PostalAddress',
-      addressLocality: place.locality,
+      addressLocality: place.name,
       postalCode: place.postal_code,
       addressRegion: place.region,
       addressCountry: { '@type': 'Country', name: place.country },
@@ -102,7 +102,7 @@ export async function buildSchemaJsonLdForSlug(
   }));
 
   return {
-    '@context': 'http://schema.org',
+    '@context': 'https://schema.org',
     '@type': seo.schemaType || 'LocalBusiness',
     name: title,
     description,

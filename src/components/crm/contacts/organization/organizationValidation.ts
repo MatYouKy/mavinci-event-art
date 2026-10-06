@@ -45,7 +45,8 @@ export type OrganizationFormErrors = Partial<
     | 'postal_code'
     | 'email'
     | 'phone'
-    | 'website',
+    | 'website'
+    | 'location_id',
     string
   >
 >;
@@ -180,7 +181,12 @@ export const organizationValidationSchema = yup.object({
 
   rating: yup.number().nullable(),
   status: yup.string().nullable(),
-  location_id: yup.string().nullable(),
+  location_id: yup.string().nullable().transform(normalizeOptionalString)
+    .uuid('Wybierz lokalizację z listy')
+    .when('business_type', {
+      is: 'hotel',
+      then: (schema) => schema.required('Hotel musi być powiązany z lokalizacją. Wybierz obiekt z listy lub dodaj nowy.'),
+    }),
   primary_contact_id: yup.string().nullable(),
   legal_representative_id: yup.string().nullable(),
   legal_representative_title: yup.string().nullable().transform(normalizeOptionalString),

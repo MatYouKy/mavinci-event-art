@@ -1,3 +1,8 @@
+import { externalDocumentKindLabel } from '@/lib/invoices/externalDocumentKinds';
+import { loadExternalDocumentKinds } from '@/lib/invoices/loadExternalDocumentKinds';
+import { loadPersonnelPaymentBreakdowns, salaryPaymentNeedsNetConfirmation } from '@/lib/personnel/payrollMatching';
+import { isConfirmedInternalVatTransfer } from '@/lib/CRM/bankVatTransfers';
+
 export type BankMatchDocumentSource = 'invoice' | 'ksef' | 'external' | 'personnel';
 
 export interface BankMatchCandidateRow {
@@ -13,6 +18,7 @@ export interface BankMatchCandidateRow {
   counterparty_nip: string | null;
   currency: string;
   expected_direction: 'credit' | 'debit';
+  document_kind?: string | null;
 }
 
 export interface BankMatchCandidate {
@@ -29,6 +35,7 @@ export interface BankMatchCandidate {
   currency: string;
   confidence: number;
   matchReason: string[];
+  externalDocumentKind?: string;
 }
 
 interface StoredBankTransaction {
@@ -44,6 +51,24 @@ interface StoredBankTransaction {
   raw_counterparty?: string | null;
   allocated_amount?: number | string | null;
   private_transfer_detected?: boolean | null;
+  paired_bank_transaction_id?: string | null;
+  accounting_category?: string | null;
+  accounting_subtype?: string | null;
+  accounting_review_status?: string | null;
+  source_index?: number | null;
+  source_balance_before?: number | string | null;
+  source_balance_after?: number | string | null;
+  source_verified?: boolean | null;
+}
+
+export async function assertBankTransactionCanMatchDocuments(supabase: any, transactionId: string) {
+  const { data, error } = await supabase.from('bank_transactions')
+    .select('id,statement_id,paired_bank_transaction_id,accounting_category,accounting_subtype,accounting_review_status')
+    .eq('id', transactionId).single();
+  if (error) throw error;
+  if (data?.paired_bank_transaction_id || (data && isConfirmedInternalVatTransfer(data))) {
+    throw new Error('To powiązany transfer między rachunkiem bieżącym i VAT, a nie płatność faktury. Pozostaje widoczny na wyciągach.');
+  }
 }
 
 interface BankCounterpartyMapping {
@@ -210,12 +235,15 @@ function scoreCandidate(
     currency: row.currency || 'PLN',
     confidence,
     matchReason: [...new Set(reasons)],
+    externalDocumentKind: row.document_source === 'external' ? row.document_kind || 'invoice' : undefined,
   } satisfies BankMatchCandidate;
 }
 
-export function getBankMatchSourceLabel(source: BankMatchDocumentSource) {
+export function getBankMatchSourceLabel(source: BankMatchDocumentSource, externalDocumentKind?: string | null) {
   if (source === 'ksef') return 'KSeF';
-  if (source === 'external') return 'Poza KSeF';
+  if (source === 'external') return externalDocumentKind
+    ? `${externalDocumentKindLabel(externalDocumentKind)} · poza KSeF`
+    : 'Poza KSeF';
   if (source === 'personnel') return 'Kadry';
   return 'CRM';
 }
@@ -230,7 +258,7 @@ export async function findBankTransactionMatchCandidates(
       supabase
         .from('bank_transactions')
         .select(
-          'id,statement_id,transaction_date,amount,currency,transaction_type,counterparty_name,title,raw_description,raw_counterparty,allocated_amount,private_transfer_detected',
+          'id,statement_id,transaction_date,amount,currency,transaction_type,counterparty_name,title,raw_description,raw_counterparty,allocated_amount,private_transfer_detected,paired_bank_transaction_id,accounting_category,accounting_subtype,accounting_review_status,source_index,source_balance_before,source_balance_after,source_verified',
         )
         .eq('id', transactionId)
         .single(),
@@ -241,9 +269,18 @@ export async function findBankTransactionMatchCandidates(
   if (candidatesError) throw candidatesError;
 
   const storedTransaction = transaction as StoredBankTransaction;
-  if (storedTransaction.private_transfer_detected) return [];
+  if (storedTransaction.private_transfer_detected || storedTransaction.paired_bank_transaction_id
+    || isConfirmedInternalVatTransfer(storedTransaction)) return [];
 
   const candidateRows = (rows || []) as BankMatchCandidateRow[];
+  const externalKinds = await loadExternalDocumentKinds(
+    supabase,
+    candidateRows.filter((row) => row.document_source === 'external').map((row) => row.document_id),
+  );
+  const personnelPayments = await loadPersonnelPaymentBreakdowns(
+    supabase,
+    candidateRows.filter((row) => row.document_source === 'personnel').map((row) => row.document_id),
+  );
   const ksefCandidateIds = candidateRows
     .filter((row) => row.document_source === 'ksef')
     .map((row) => row.document_id);
@@ -292,7 +329,18 @@ export async function findBankTransactionMatchCandidates(
 
   return candidateRows
     .filter((row) => row.document_source !== 'ksef' || !cashKsefIds.has(row.document_id))
-    .map((row) => scoreCandidate(storedTransaction, row, mapping))
+    .filter((row) => {
+      if (row.document_source !== 'personnel') return true;
+      const payment = personnelPayments.get(row.document_id);
+      return Boolean(payment && !payment.linkedTransactionId && !salaryPaymentNeedsNetConfirmation(payment));
+    })
+    .map((row) => {
+      const payment = row.document_source === 'personnel' ? personnelPayments.get(row.document_id) : null;
+      return payment ? { ...row, gross_amount: payment.amount, outstanding_amount: payment.amount } : row;
+    })
+    .map((row) => scoreCandidate(storedTransaction, row.document_source === 'external'
+      ? { ...row, document_kind: externalKinds.get(row.document_id) || 'invoice' }
+      : row, mapping))
     .filter((candidate): candidate is BankMatchCandidate => Boolean(candidate))
     .sort((left, right) => right.confidence - left.confidence);
 }
@@ -329,6 +377,7 @@ export async function applyBankTransactionMatchToDocument(
     reasons?: string[];
   },
 ) {
+  await assertBankTransactionCanMatchDocuments(supabase, input.transactionId);
   const { data, error } = await supabase.rpc('match_bank_transaction_to_document', {
     p_transaction_id: input.transactionId,
     p_document_source: input.documentSource,
@@ -352,6 +401,7 @@ export async function reconcilePaidKsefInvoiceWithBankTransaction(
     reasons?: string[];
   },
 ) {
+  await assertBankTransactionCanMatchDocuments(supabase, input.transactionId);
   const { data, error } = await supabase.rpc('reconcile_paid_ksef_invoice_with_bank_transaction', {
     p_transaction_id: input.transactionId,
     p_ksef_invoice_id: input.ksefInvoiceId,
@@ -375,6 +425,7 @@ export async function reconcileExternalInvoiceWithBankTransaction(
     reviewNote?: string | null;
   },
 ) {
+  await assertBankTransactionCanMatchDocuments(supabase, input.transactionId);
   const reviewNote = input.reviewNote?.trim() || null;
   const functionName = reviewNote
     ? 'reconcile_external_invoice_with_bank_transaction_with_review'
@@ -407,6 +458,16 @@ export async function reconcilePersonnelPaymentWithBankTransaction(
     reasons?: string[];
   },
 ) {
+  await assertBankTransactionCanMatchDocuments(supabase, input.transactionId);
+  const payments = await loadPersonnelPaymentBreakdowns(supabase, [input.personnelPaymentId]);
+  const payment = payments.get(input.personnelPaymentId);
+  if (!payment) throw new Error('Nie można odczytać aktualnej płatności kadrowej. Otwórz dokument ponownie.');
+  if (salaryPaymentNeedsNetConfirmation(payment)) {
+    throw new Error('Najpierw potwierdź kwotę netto na konto w Umowy personelu → Otwórz umowę → Uzupełnij netto. Łączna kwota umowy nie jest wypłatą dla pracownika.');
+  }
+  if (Math.abs(payment.amount - input.amount) > 0.01) {
+    throw new Error('Kwota wypłaty zmieniła się od czasu analizy. Otwórz ponownie wybór dokumentu, aby pobrać aktualną kwotę netto.');
+  }
   const { data, error } = await supabase.rpc('reconcile_personnel_payment_with_bank_transaction', {
     p_transaction_id: input.transactionId,
     p_personnel_payment_id: input.personnelPaymentId,
@@ -435,6 +496,7 @@ export async function matchBankTransactionToDocuments(
     reviewNote?: string | null;
   },
 ) {
+  await assertBankTransactionCanMatchDocuments(supabase, input.transactionId);
   const reviewNote = input.reviewNote?.trim() || null;
   const functionName = reviewNote
     ? 'match_bank_transaction_to_documents_with_review'

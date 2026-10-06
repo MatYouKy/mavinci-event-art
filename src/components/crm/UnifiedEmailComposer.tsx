@@ -106,6 +106,8 @@ interface UnifiedEmailComposerProps {
   onShowPreviewChange: (show: boolean) => void;
   previewHtml: string;
   previewLoading?: boolean;
+  recipientEditor?: ReactNode;
+  allowScheduling?: boolean;
   recipientHint?: ReactNode;
   recipientSuggestions?: ReactNode;
   editorAction?: ReactNode;
@@ -137,15 +139,15 @@ const emailEditorFormats = [
 
 export const plainTextToEmailHtml = (value: string): string => {
   const escaped = value
+    .replace(/\r\n?/g, '\n')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
-  return escaped
-    .split(/\n{2,}/)
-    .map((paragraph) => `<p>${paragraph.replace(/\n/g, '<br>') || '<br>'}</p>`)
-    .join('');
+    .replace(/'/g, '&#039;')
+    .replace(/\t/g, '    ')
+    .replace(/ {2,}/g, (spaces) => '&nbsp;'.repeat(spaces.length - 1) + ' ');
+  return escaped.split('\n').map((line) => `<p>${line || '<br>'}</p>`).join('');
 };
 
 export const normalizeUnifiedEmailHtml = (html: string): string => {
@@ -177,16 +179,28 @@ export const normalizeUnifiedEmailHtml = (html: string): string => {
   });
 
   documentNode.body.querySelectorAll<HTMLElement>('p').forEach((paragraph) => {
-    paragraph.style.margin = paragraph.textContent?.trim() ? '0 0 10px' : '0 0 8px';
+    paragraph.style.marginTop = '0';
+    paragraph.style.marginBottom = paragraph.textContent?.trim() ? '10px' : '8px';
+    paragraph.style.marginRight = '0';
   });
   documentNode.body.querySelectorAll<HTMLElement>('ol, ul').forEach((list) => {
     list.style.margin = '8px 0 12px';
     list.style.paddingLeft = '26px';
   });
   documentNode.body.querySelectorAll<HTMLElement>('li').forEach((item) => {
-    item.style.margin = '4px 0';
+    item.style.marginTop = '4px';
+    item.style.marginBottom = '4px';
+    item.style.marginRight = '0';
   });
 
+  // Email clients collapse ordinary runs of spaces even when the editor displays them.
+  const textNodes = documentNode.createTreeWalker(documentNode.body, NodeFilter.SHOW_TEXT);
+  let textNode: Node | null;
+  while ((textNode = textNodes.nextNode())) {
+    textNode.nodeValue = (textNode.nodeValue || '')
+      .replace(/\t/g, '    ')
+      .replace(/ {2,}/g, (spaces) => '\u00a0'.repeat(spaces.length - 1) + ' ');
+  }
   return documentNode.body.innerHTML;
 };
 
@@ -200,10 +214,27 @@ export const hasUnifiedEmailBody = (html: string): boolean => {
 };
 
 export const unifiedEmailHtmlToPlainText = (html: string): string => {
-  if (typeof window === 'undefined') {
-    return html.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]*>/g, ' ').trim();
-  }
-  return new DOMParser().parseFromString(html, 'text/html').body.textContent?.trim() || '';
+  // textContent alone joins adjacent paragraphs and discards every <br>.
+  const separated = html
+    .replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, '')
+    .replace(/<p\b[^>]*>\s*(?:<br\s*\/?>|&nbsp;|\u00a0)?\s*<\/p>/gi, '\n')
+    .replace(/<(?:p|div|li)\b[^>]*>/gi, (tag) => {
+      const indent = tag.match(/\bql-indent-(\d+)\b/);
+      return indent ? ' '.repeat(Math.min(8, Number(indent[1])) * 4) : '';
+    })
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(?:p|div|li|h[1-6]|blockquote|tr)>/gi, '\n')
+    .replace(/<\/(?:td|th)>/gi, '\t')
+    .replace(/<[^>]*>/g, '');
+  const decoded = typeof window !== 'undefined'
+    ? new DOMParser().parseFromString(separated, 'text/html').body.textContent || ''
+    : separated.replace(/&(#x[0-9a-f]+|#\d+|nbsp|amp|lt|gt|quot|apos);/gi, (entity, code: string) => {
+        const named: Record<string, string> = { nbsp: ' ', amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" };
+        if (!code.startsWith('#')) return named[code.toLowerCase()] ?? entity;
+        const number = code.toLowerCase().startsWith('#x') ? parseInt(code.slice(2), 16) : parseInt(code.slice(1), 10);
+        return number >= 0 && number <= 0x10ffff ? String.fromCodePoint(number) : entity;
+      });
+  return decoded.replace(/\u00a0/g, ' ').replace(/^\n+|\n+$/g, '');
 };
 
 interface BuildUnifiedEmailOptions {
@@ -275,6 +306,8 @@ export default function UnifiedEmailComposer({
   onShowPreviewChange,
   previewHtml,
   previewLoading = false,
+  recipientEditor,
+  allowScheduling = true,
   recipientHint,
   recipientSuggestions,
   editorAction,
@@ -396,6 +429,7 @@ export default function UnifiedEmailComposer({
             )}
           </div>
 
+          {recipientEditor ?? <>
           <div>
             <label className="mb-2 block text-sm text-[#e5e4e2]/70">
               Do <span className="text-red-400">*</span>
@@ -437,6 +471,8 @@ export default function UnifiedEmailComposer({
             </div>
           </div>
 
+          </>}
+
           <div>
             <label className="mb-2 block text-sm text-[#e5e4e2]/70">
               Temat <span className="text-red-400">*</span>
@@ -474,7 +510,7 @@ export default function UnifiedEmailComposer({
             {afterEditor}
           </div>
 
-          <div className="rounded-xl border border-[#d3bb73]/20 bg-[#0f1119]/80 p-4">
+          {allowScheduling&&<div className="rounded-xl border border-[#d3bb73]/20 bg-[#0f1119]/80 p-4">
             <div className="mb-3 flex items-start gap-3">
               <CalendarClock className="mt-0.5 h-5 w-5 shrink-0 text-[#d3bb73]" />
               <div>
@@ -536,7 +572,7 @@ export default function UnifiedEmailComposer({
                 </p>
               </div>
             )}
-          </div>
+          </div>}
 
           {children}
         </>

@@ -4,6 +4,7 @@ import { encryptMarketingCredentials } from '@/lib/marketing/crypto.server';
 import {
   GOOGLE_SCOPES,
   getGoogleAdsVersion,
+  googleAdsHeaders,
   getMetaGraphVersion,
   normaliseGoogleCustomerId,
   readJsonResponse,
@@ -12,7 +13,14 @@ import { getMarketingPublicUrl } from '@/lib/marketing/public-url.server';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin.server';
 import type { MarketingProvider } from '@/lib/marketing/types';
 
-const COOKIE_NAME = 'marketing_oauth_state';
+import {
+  LEGACY_MARKETING_OAUTH_COOKIE,
+  MARKETING_OAUTH_MAX_AGE_SECONDS,
+  marketingOAuthCookieName,
+  marketingOAuthCookieOptions,
+} from '@/lib/marketing/oauth-state.server';
+
+export const dynamic = 'force-dynamic';
 
 function redirectWithStatus(request: NextRequest, companyId: string, status: string) {
   const pathname = companyId
@@ -21,13 +29,19 @@ function redirectWithStatus(request: NextRequest, companyId: string, status: str
   const response = NextResponse.redirect(
     getMarketingPublicUrl(request, `${pathname}?oauth=${encodeURIComponent(status)}`),
   );
-  response.cookies.set(COOKIE_NAME, '', {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    path: '/bridge/marketing/oauth',
-    maxAge: 0,
-  });
+  response.headers.set('Cache-Control', 'no-store');
+  const state = request.nextUrl.searchParams.get('state') || '';
+  if (state) {
+    response.cookies.set(marketingOAuthCookieName(state), '', {
+      ...marketingOAuthCookieOptions(request), maxAge: 0,
+    });
+    // Support attempts started just before deployment, without erasing another tab's state.
+    if (request.cookies.get(LEGACY_MARKETING_OAUTH_COOKIE)?.value === state) {
+      response.cookies.set(LEGACY_MARKETING_OAUTH_COOKIE, '', {
+        ...marketingOAuthCookieOptions(request), maxAge: 0,
+      });
+    }
+  }
   return response;
 }
 
@@ -38,22 +52,46 @@ export async function GET(
   const provider = params.provider as MarketingProvider;
   const state = request.nextUrl.searchParams.get('state') || '';
   const code = request.nextUrl.searchParams.get('code') || '';
-  const cookieState = request.cookies.get(COOKIE_NAME)?.value || '';
+  const attemptCookie = state ? request.cookies.get(marketingOAuthCookieName(state))?.value : '';
+  const legacyCookie = request.cookies.get(LEGACY_MARKETING_OAUTH_COOKIE)?.value || '';
+  const cookieState = attemptCookie || legacyCookie;
   let companyId = '';
 
   try {
-    if (!state || state !== cookieState || !code) throw new Error('Nieprawidłowy stan autoryzacji.');
-    const payload = JSON.parse(Buffer.from(state, 'base64url').toString('utf8'));
-    companyId = String(payload.companyId || '');
-    if (
-      payload.provider !== provider ||
-      !companyId ||
-      Date.now() - Number(payload.createdAt || 0) > 10 * 60 * 1000
-    ) {
-      throw new Error('Autoryzacja wygasła.');
+    if (provider !== 'google' && provider !== 'meta') throw new Error('Nieobsługiwany dostawca.');
+    if (!state) throw new Error('Brak stanu logowania. Rozpocznij połączenie ponownie w CRM.');
+    if (!cookieState) {
+      throw new Error('Brak ciasteczka logowania. Otwórz CRM na domenie powrotu i połącz ponownie.');
     }
+    if (state !== cookieState) {
+      throw new Error('Ta próba logowania jest nieaktualna. Rozpocznij połączenie ponownie.');
+    }
+    let payload;
+    try {
+      payload = JSON.parse(Buffer.from(state, 'base64url').toString('utf8'));
+    } catch {
+      throw new Error('Nieprawidłowy stan logowania. Rozpocznij połączenie ponownie.');
+    }
+    const age = Date.now() - Number(payload?.createdAt);
+    const payloadCompanyId = typeof payload?.companyId === 'string' ? payload.companyId : '';
+    if (
+      payload?.provider !== provider ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(payloadCompanyId) ||
+      !Number.isFinite(age) || age < -60_000 ||
+      age > MARKETING_OAUTH_MAX_AGE_SECONDS * 1000
+    ) {
+      throw new Error('Autoryzacja wygasła lub jest nieprawidłowa. Połącz konto ponownie.');
+    }
+    companyId = payloadCompanyId;
+    const providerError = request.nextUrl.searchParams.get('error');
+    if (providerError === 'access_denied') throw new Error('Nie udzielono dostępu. Połącz konto ponownie i zaakceptuj uprawnienia.');
+    if (providerError) throw new Error('Dostawca przerwał logowanie. Rozpocznij połączenie ponownie.');
+    if (!code) throw new Error('Brak kodu autoryzacji. Rozpocznij połączenie ponownie.');
 
     const access = await getMarketingAccess('manage');
+    if (payload.employeeId && payload.employeeId !== access.employee?.id) {
+      throw new Error('Sesja CRM zmieniła się podczas logowania. Połącz konto ponownie.');
+    }
     if (!access.allowed || !access.employee || !canAccessMarketingCompany(access, companyId)) {
       return redirectWithStatus(request, companyId, 'forbidden');
     }
@@ -106,14 +144,9 @@ export async function GET(
         fetch('https://www.googleapis.com/webmasters/v3/sites', {
           headers: { Authorization: `Bearer ${accessToken}` },
         }).then((response) => readJsonResponse(response, 'Search Console')),
-        process.env.GOOGLE_ADS_DEVELOPER_TOKEN
-          ? fetch(`https://googleads.googleapis.com/${getGoogleAdsVersion()}/customers:listAccessibleCustomers`, {
-              headers: {
-                Authorization: `Bearer ${accessToken}`,
-                'developer-token': process.env.GOOGLE_ADS_DEVELOPER_TOKEN,
-              },
-            }).then((response) => readJsonResponse(response, 'Google Ads'))
-          : Promise.resolve({ resourceNames: [] }),
+        fetch(`https://googleads.googleapis.com/${getGoogleAdsVersion()}/customers:listAccessibleCustomers`, {
+          headers: googleAdsHeaders(accessToken),
+        }).then((response) => readJsonResponse(response, 'Google Ads')),
       ]);
       const profile = profileResult.status === 'fulfilled' ? profileResult.value : {};
       const sites = sitesResult.status === 'fulfilled' ? sitesResult.value?.siteEntry || [] : [];
@@ -135,10 +168,13 @@ export async function GET(
         google_email: profile.email || null,
         available_search_console_sites: sites,
         accessible_google_ads_customer_ids: customerIds,
+        google_ads_discovery_error: customersResult.status === 'rejected'
+          ? String(customersResult.reason?.message || 'Nie udało się pobrać kont Google Ads.').slice(0, 1000)
+          : null,
         search_console_site_url:
           currentSettings.search_console_site_url || sites[0]?.siteUrl || '',
         google_ads_customer_id:
-          currentSettings.google_ads_customer_id || customerIds[0] || '',
+          currentSettings.google_ads_customer_id || '',
       };
       displayName = profile.email || 'Google';
       externalAccountId =

@@ -1,5 +1,7 @@
 'use client';
 
+import { formatSystemSubject } from '@/lib/ui/systemLabels';
+
 import { useEffect, useMemo, useState } from 'react';
 import { CalendarClock, ListPlus, Loader2, UserRound, X } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -16,6 +18,7 @@ interface EmployeeOption {
 interface CreateTaskFromMessageModalProps {
   message: MessageListItem | MessageDetails;
   createdBy: string;
+  inquiryId?: string | null;
   onClose: () => void;
   onSuccess: (taskId: string) => void;
 }
@@ -41,7 +44,7 @@ const buildInitialDescription = (message: MessageListItem | MessageDetails) => {
     `Wiadomość źródłowa: ${buildSourceUrl(message)}`,
     `Nadawca: ${message.from || 'Nieznany'}`,
     `Data wiadomości: ${formattedDate}`,
-    `Temat wiadomości: ${message.subject || '(bez tematu)'}`,
+    `Temat wiadomości: ${formatSystemSubject(message.subject)}`,
     '',
     'Treść wiadomości:',
     content || 'Brak treści wiadomości',
@@ -53,6 +56,7 @@ const buildInitialDescription = (message: MessageListItem | MessageDetails) => {
 export default function CreateTaskFromMessageModal({
   message,
   createdBy,
+  inquiryId,
   onClose,
   onSuccess,
 }: CreateTaskFromMessageModalProps) {
@@ -60,7 +64,7 @@ export default function CreateTaskFromMessageModal({
   const [employees, setEmployees] = useState<EmployeeOption[]>([]);
   const [loadingEmployees, setLoadingEmployees] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [title, setTitle] = useState(`Obsłuż: ${message.subject || '(bez tematu)'}`);
+  const [title, setTitle] = useState(`Obsłuż: ${formatSystemSubject(message.subject)}`);
   const [description, setDescription] = useState(() => buildInitialDescription(message));
   const [assigneeId, setAssigneeId] = useState(createdBy);
   const [dueDate, setDueDate] = useState('');
@@ -107,6 +111,15 @@ export default function CreateTaskFromMessageModal({
 
     setSaving(true);
     try {
+      let linkedInquiry = inquiryId || null;
+      if (!linkedInquiry && message.type === 'contact_form') {
+        const result = await supabase.from('tasks').select('id').eq('is_inquiry', true)
+          .contains('inquiry_details', { source_message_id: message.id, source_message_type: 'contact_form' })
+          .order('created_at').limit(1).maybeSingle();
+        if (result.error) throw result.error;
+        linkedInquiry = result.data?.id || null;
+        if (!linkedInquiry) throw new Error('Najpierw otwórz zapytanie tego formularza w lejku. Jeśli go nie widzisz, sprawdź dostęp do zapytań i migrację źródeł.');
+      }
       const { data: task, error: taskError } = await supabase
         .from('tasks')
         .insert({
@@ -122,6 +135,7 @@ export default function CreateTaskFromMessageModal({
           owner_id: createdBy,
           is_private: false,
           is_inquiry: false,
+          inquiry_id: linkedInquiry,
         })
         .select('id')
         .single();

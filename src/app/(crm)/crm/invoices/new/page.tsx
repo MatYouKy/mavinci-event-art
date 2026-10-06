@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase/browser';
 import { ArrowLeft, CalendarDays, Link2, Plus, Trash2, Save } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import { useInvoiceFinanceAccess } from '@/hooks/useInvoiceFinanceAccess';
 import BuyerSearchInput from './components/BuyerSearchInput';
 import AddBuyerModal from './components/AddBuyerModal';
 import InvoiceNumberInput from './components/InvoiceNumberInput';
@@ -13,6 +14,10 @@ import InvoiceBillingContext, {
   type BillingArrangement,
 } from './components/InvoiceBillingContext';
 import { MyCompany } from '../../settings/my-companies/page';
+import { loadInvoiceItemSourceChoices, type InvoiceItemSourceChoice } from '@/lib/invoices/invoiceItemSourceChoices';
+import { getNextAdvanceContext, type NextAdvanceContext } from '@/lib/invoices/nextAdvancePrefill';
+import { DEFAULT_INVOICE_PAYMENT_TERM_DAYS, getInvoicePaymentDueDate } from '@/lib/invoices/paymentTerm';
+import { getCurrentInvoiceIssuer } from '@/lib/invoices/currentInvoiceIssuer';
 
 interface EventOption {
   id: string;
@@ -99,12 +104,22 @@ export default function NewInvoicePage() {
     loading: employeeLoading,
     canManageModule,
   } = useCurrentEmployee();
+  const { access: financeAccess, loading: financeAccessLoading, error: financeAccessError } = useInvoiceFinanceAccess();
+  const canUseInvoiceEvent = (id: string) => !id || Boolean(financeAccess && (
+    financeAccess.scope === 'company' || financeAccess.soldEventIds.includes(id)
+  ));
   const canManageInvoices = canManageModule('invoices');
   const searchParams = useSearchParams();
   const { showSnackbar } = useSnackbar();
   const eventId = searchParams.get('event');
   const urlType = searchParams.get('type');
   const urlRelated = searchParams.get('related');
+  const advanceFrom = urlType === 'advance' ? searchParams.get('advanceFrom') : null;
+  const [nextAdvanceContext, setNextAdvanceContext] = useState<NextAdvanceContext | null>(null);
+  const [advancePrefillLoading, setAdvancePrefillLoading] = useState(Boolean(advanceFrom));
+  const [advancePrefillError, setAdvancePrefillError] = useState<string | null>(null);
+  const currencyCode = nextAdvanceContext?.source.currency_code || 'PLN';
+  const currencyLabel = currencyCode === 'PLN' ? 'zł' : currencyCode;
 
   const [loading, setLoading] = useState(false);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
@@ -116,13 +131,13 @@ export default function NewInvoicePage() {
   const [invoiceNote, setInvoiceNote] = useState('');
 
   const [invoiceType, setInvoiceType] = useState<'vat' | 'proforma' | 'advance' | 'corrective'>(
-    urlType === 'corrective' ? 'corrective' : 'vat',
+    urlType === 'corrective' ? 'corrective' : urlType === 'advance' ? 'advance' : 'vat',
   );
   const [invoiceNumber, setInvoiceNumber] = useState<string>('');
   const [invoiceNumberIsAuto, setInvoiceNumberIsAuto] = useState(true);
   const [issueDate, setIssueDate] = useState(new Date().toISOString().split('T')[0]);
   const [saleDate, setSaleDate] = useState(new Date().toISOString().split('T')[0]);
-  const [paymentDays, setPaymentDays] = useState(7);
+  const [paymentDays, setPaymentDays] = useState(String(DEFAULT_INVOICE_PAYMENT_TERM_DAYS));
   const [paymentMethod, setPaymentMethod] = useState<'Przelew' | 'Gotówka' | 'Karta' | 'BLIK'>(
     'Przelew',
   );
@@ -141,7 +156,14 @@ export default function NewInvoicePage() {
     },
   ]);
   const [simplifiedInvoice, setSimplifiedInvoice] = useState(false);
+  const [acceptedPricing, setAcceptedPricing] = useState<{ label: string; net: number; gross: number; discount: number; notice: string } | null>(null);
+  const [pricingPrefillError, setPricingPrefillError] = useState<string | null>(null);
   const [simplifiedServiceName, setSimplifiedServiceName] = useState('Obsługa muzyczna');
+  const [itemSources, setItemSources] = useState<InvoiceItemSourceChoice[]>([]);
+  const [selectedItemSource, setSelectedItemSource] = useState<'calculation' | 'offer' | 'manual'>('manual');
+  const [preferredItemSource, setPreferredItemSource] = useState<'calculation' | 'offer' | null>(null);
+  const [itemSourcesLoading, setItemSourcesLoading] = useState(false);
+  const itemEditRevision = useRef(0);
 
   const [correctionReason, setCorrectionReason] = useState('');
   const [correctionType, setCorrectionType] = useState<1 | 2 | 3>(2);
@@ -185,11 +207,66 @@ export default function NewInvoicePage() {
   });
 
   useEffect(() => {
-    if (employeeLoading) return;
+    if (employeeLoading || financeAccessLoading || !financeAccess?.canIssueInvoices) return;
     fetchData();
-  }, [eventId, employeeLoading]);
+  }, [eventId, employeeLoading, advanceFrom, financeAccessLoading, financeAccess]);
 
   useEffect(() => {
+    if (advanceFrom || invoiceType === 'corrective' || employeeLoading || financeAccessLoading || !financeAccess?.canIssueInvoices || !canUseInvoiceEvent(selectedEventId)) return;
+    let active = true;
+    const revision = itemEditRevision.current;
+    setItemSources([]);
+    setSelectedItemSource('manual');
+    setPreferredItemSource(null);
+    setAcceptedPricing(null);
+    setPricingPrefillError(null);
+    if (!selectedEventId) {
+      setItemSourcesLoading(false);
+      return;
+    }
+    setItemSourcesLoading(true);
+    setItems([{ position_number: 1, name: '', unit: 'usł.', quantity: 1, price_net: 0, vat_rate: 23, vat_code: '23' }]);
+    (async () => {
+      try {
+        const result = await loadInvoiceItemSourceChoices(selectedEventId);
+        if (!active) return;
+        setItemSources(result.choices);
+        setPreferredItemSource(result.preferredId);
+        setPricingPrefillError(result.warning || null);
+        // Selecting a source or editing a title while loading is a user decision.
+        if (itemEditRevision.current !== revision) return;
+        const preferred = result.choices.find((choice) => choice.id === result.preferredId);
+        if (preferred) {
+          setItems(preferred.items.map((item) => ({ ...item })));
+          setSelectedItemSource(preferred.id);
+          setAcceptedPricing(preferred);
+        } else {
+          setItems([{ position_number: 1, name: `Obsługa techniczna — ${result.eventName}`, unit: 'usł.', quantity: 1, price_net: 0, vat_rate: 23, vat_code: '23' }]);
+        }
+      } catch (error) {
+        if (active) setPricingPrefillError(error instanceof Error ? error.message : 'Nie udało się odczytać źródła pozycji.');
+      } finally {
+        if (active) setItemSourcesLoading(false);
+      }
+    })();
+    return () => { active = false; };
+  }, [selectedEventId, advanceFrom, invoiceType === 'corrective', employeeLoading, financeAccessLoading, financeAccess]);
+
+  const selectItemSource = (sourceId: 'calculation' | 'offer' | 'manual') => {
+    itemEditRevision.current += 1;
+    setSelectedItemSource(sourceId);
+    if (sourceId === 'manual') {
+      setAcceptedPricing(null);
+      return; // Preserve the user's current lines and amounts for manual editing.
+    }
+    const choice = itemSources.find((source) => source.id === sourceId);
+    if (!choice) return;
+    setItems(choice.items.map((item) => ({ ...item })));
+    setAcceptedPricing(choice);
+  };
+
+  useEffect(() => {
+    if (financeAccessLoading || !financeAccess?.canIssueInvoices) return;
     if (!selectedOrgId) {
       setOrganizationEvents([]);
       if (!selectedEventId) setSelectedEventId(eventId || '');
@@ -197,9 +274,10 @@ export default function NewInvoicePage() {
     }
 
     fetchOrganizationEvents(selectedOrgId, selectedEventId || eventId || '');
-  }, [selectedOrgId]);
+  }, [selectedOrgId, financeAccessLoading, financeAccess]);
 
   useEffect(() => {
+    if (financeAccessLoading || !financeAccess?.canIssueInvoices || !canUseInvoiceEvent(selectedEventId)) return;
     let active = true;
 
     (async () => {
@@ -239,7 +317,9 @@ export default function NewInvoicePage() {
         return;
       }
 
-      const memberIds = membersResult.data.map((member) => member.event_id);
+      const memberIds = membersResult.data.map((member) => member.event_id)
+        .filter((id) => canUseInvoiceEvent(id));
+      if (!memberIds.length) { setSettlementGroup(null); return; }
       const { data: memberEvents } = await supabase
         .from('events')
         .select('id,name,event_date')
@@ -256,7 +336,7 @@ export default function NewInvoicePage() {
     return () => {
       active = false;
     };
-  }, [selectedEventId]);
+  }, [selectedEventId, financeAccessLoading, financeAccess]);
 
   const applyEventContext = (event: EventOption | null) => {
     setLinkedEvent(event);
@@ -265,6 +345,10 @@ export default function NewInvoicePage() {
   };
 
   const fetchEventContext = async (linkedEventId: string, syncRecipients = true) => {
+    if (!financeAccess?.canIssueInvoices || !canUseInvoiceEvent(linkedEventId)) {
+      applyEventContext(null);
+      return null;
+    }
     if (!linkedEventId) {
       applyEventContext(null);
       return null;
@@ -300,13 +384,20 @@ export default function NewInvoicePage() {
   };
 
   const fetchOrganizationEvents = async (organizationId: string, preservedEventId = '') => {
-    const { data, error } = await supabase
+    if (!financeAccess?.canIssueInvoices) return;
+    if (financeAccess.scope === 'sales' && !financeAccess.soldEventIds.length) {
+      setOrganizationEvents([]);
+      return;
+    }
+    let query = supabase
       .from('events')
       .select(
         'id,name,event_date,organization_id,contact_person_id,billing_arrangement,billing_organization_id',
       )
       .eq('organization_id', organizationId)
       .order('event_date', { ascending: false });
+    if (financeAccess.scope === 'sales') query = query.in('id', financeAccess.soldEventIds);
+    const { data, error } = await query;
 
     if (error) {
       console.error('Error fetching organization events:', error);
@@ -319,7 +410,7 @@ export default function NewInvoicePage() {
       const preserved =
         linkedEvent?.id === preservedEventId
           ? linkedEvent
-          : await fetchEventContext(preservedEventId);
+          : await fetchEventContext(preservedEventId, !advanceFrom);
       if (preserved) events.unshift(preserved);
     }
 
@@ -373,6 +464,7 @@ export default function NewInvoicePage() {
   }, [urlType, urlRelated, urlRelatedLoaded, organizations, myCompanies, availableInvoices]);
 
   const handleSelectOriginalInvoice = async (invoiceId: string) => {
+    if (!financeAccess?.canIssueInvoices) return;
     setRelatedInvoiceId(invoiceId);
     if (!invoiceId) {
       setCorrectedInvoiceNumber('');
@@ -382,11 +474,12 @@ export default function NewInvoicePage() {
       return;
     }
 
-    const { data: origInvoice } = await supabase
+    let originalQuery = supabase
       .from('invoices')
       .select('*, invoice_items(*)')
-      .eq('id', invoiceId)
-      .single();
+      .eq('id', invoiceId);
+    if (financeAccess.scope === 'sales') originalQuery = originalQuery.in('created_by', [financeAccess.employeeId, financeAccess.authUserId]);
+    const { data: origInvoice } = await originalQuery.maybeSingle();
 
     if (origInvoice) {
       setCorrectedInvoiceNumber(origInvoice.invoice_number || '');
@@ -470,7 +563,20 @@ export default function NewInvoicePage() {
   };
 
   const fetchData = async () => {
+    if (!financeAccess?.canIssueInvoices) return;
+    if (advanceFrom) {
+      setAdvancePrefillLoading(true);
+      setAdvancePrefillError(null);
+      setNextAdvanceContext(null);
+    }
     try {
+      let invoiceQuery = supabase
+        .from('invoices')
+        .select('id, invoice_number, invoice_type, issue_date, total_gross, buyer_name, status, my_company_id')
+        .neq('invoice_type', 'corrective')
+        .in('status', ['issued', 'sent', 'paid'])
+        .order('issue_date', { ascending: false });
+      if (financeAccess.scope === 'sales') invoiceQuery = invoiceQuery.in('created_by', [financeAccess.employeeId, financeAccess.authUserId]);
       const [settingsRes, businessClientsRes, companiesRes, allInvoicesRes, individualContactsRes] =
         await Promise.all([
           supabase.rpc('get_invoice_settings_for_creation'),
@@ -480,14 +586,7 @@ export default function NewInvoicePage() {
             .select('*')
             .eq('is_active', true)
             .order('is_default', { ascending: false }),
-          supabase
-            .from('invoices')
-            .select(
-              'id, invoice_number, invoice_type, issue_date, total_gross, buyer_name, status, my_company_id',
-            )
-            .neq('invoice_type', 'corrective')
-            .in('status', ['issued', 'sent', 'paid'])
-            .order('issue_date', { ascending: false }),
+          invoiceQuery,
           supabase
             .from('contacts')
             .select(
@@ -569,7 +668,7 @@ export default function NewInvoicePage() {
             companiesList = companiesList.filter(
               (c) => Array.isArray(invoicePerms[c.id]) && invoicePerms[c.id].includes('issue'),
             );
-          } else if (!canManageInvoices) {
+          } else if (!canManageInvoices && !financeAccess.canIssueInvoices) {
             companiesList = [];
           }
         }
@@ -594,120 +693,61 @@ export default function NewInvoicePage() {
         setAvailableInvoices(allInvoicesRes.data);
       }
 
+      if (advanceFrom) {
+        const context = await getNextAdvanceContext(advanceFrom);
+        const source = context.source;
+        if (!finalCompaniesList.some((company) => company.id === source.my_company_id)) {
+          throw new Error('Brak uprawnień do przygotowania kolejnej zaliczki dla firmy z dokumentu źródłowego.');
+        }
+        if (context.remainingGross <= 0) {
+          throw new Error('Zaliczki obejmują już pełną wartość zamówienia. Możesz przygotować fakturę końcową.');
+        }
+        await fetchEventContext(source.event_id || '', false);
+        setInvoiceType('advance');
+        setNextAdvanceContext(context);
+        setItems(context.orderItems.map((item) => ({ ...item, vat_code: item.vat_code as InvoiceItem['vat_code'] })));
+        setSelectedCompanyId(source.my_company_id);
+        setSelectedOrgId(source.organization_id || '');
+        setSelectedEventId(source.event_id || '');
+        setBillingArrangement(source.billing_arrangement || 'direct');
+        setServiceRecipientOrganizationId(source.service_recipient_organization_id || '');
+        setServiceRecipientContactId(source.service_recipient_contact_id || '');
+        setBuyerIsPrivatePerson(Boolean(source.buyer_is_private_person));
+        setSelectedIndividualId(source.buyer_contact_id || '');
+        const [firstName = '', ...lastName] = String(source.buyer_name || '').split(' ');
+        setPrivateBuyer({ firstName, lastName: lastName.join(' '), street: source.buyer_street || '',
+          postalCode: source.buyer_postal_code || '', city: source.buyer_city || '',
+          email: source.buyer_email || '', phone: source.buyer_phone || '' });
+        if (source.organization_id) {
+          setOrganizations((current) => [{
+            id: source.organization_id, name: source.buyer_name || '', nip: source.buyer_nip || null,
+            street: source.buyer_street || '', postal_code: source.buyer_postal_code || '',
+            city: source.buyer_city || '', email: source.buyer_email || '', phone: source.buyer_phone || '',
+            bank_name: '', bank_account: '',
+          }, ...current.filter((organization) => organization.id !== source.organization_id)]);
+        }
+        // A new deposit has its own amount and receipt confirmation.
+        setAdvancePercent(0);
+        setIsPaid(false);
+        setPaidDate(new Date().toISOString().split('T')[0]);
+        setSimplifiedInvoice(false);
+        setAcceptedPricing(null);
+        setPricingPrefillError(null);
+        if (source.sale_date) setSaleDate(source.sale_date.split('T')[0]);
+        return;
+      }
+
       if (eventId) {
         setSelectedEventId(eventId);
-        const [eventRes, financialInfoRes] = await Promise.all([
-          supabase
-            .from('events')
-            .select(
-              'id,name,event_date,organization_id,contact_person_id,billing_arrangement,billing_organization_id',
-            )
-            .eq('id', eventId)
-            .maybeSingle(),
-          supabase.rpc('get_event_financial_info', { p_event_id: eventId }),
-        ]);
-
-        if (eventRes.data) {
-          const eventContext = eventRes.data as EventOption;
-          applyEventContext(eventContext);
-          const eventBillingArrangement = eventContext.billing_arrangement || 'direct';
-          setBillingArrangement(eventBillingArrangement);
-          setSelectedOrgId(
-            eventBillingArrangement !== 'direct' && eventContext.billing_organization_id
-              ? eventContext.billing_organization_id
-              : eventContext.organization_id || '',
-          );
-
-          if (eventRes.data.event_date) {
-            setSaleDate(eventRes.data.event_date.split('T')[0]);
-          }
-        }
-
-        const financialInfo = financialInfoRes.data?.[0];
-
-        if (financialInfo && !financialInfo.can_invoice) {
-          showSnackbar(
-            'Uwaga: Ten klient nie ma uzupełnionego NIP. Nie będzie można zapisać faktury.',
-            'warning',
-          );
-        }
-
-        if (financialInfo?.accepted_offer_id) {
-          const { data: offerData } = await supabase
-            .from('offers')
-            .select(
-              `
-              tax_percent,
-              offer_items (
-                name,
-                quantity,
-                unit,
-                unit_price,
-                discount_percent,
-                total,
-                display_order
-              )
-            `,
-            )
-            .eq('id', financialInfo.accepted_offer_id)
-            .maybeSingle();
-
-          if (offerData?.offer_items && offerData.offer_items.length > 0) {
-            const vatRate = offerData.tax_percent ?? 23;
-
-            const sortedItems = [...offerData.offer_items].sort(
-              (a: any, b: any) => (a.display_order ?? 0) - (b.display_order ?? 0),
-            );
-
-            setItems(
-              sortedItems.map((oi: any, idx: number) => ({
-                position_number: idx + 1,
-                name: oi.name || '',
-                unit: oi.unit || 'szt.',
-                quantity: oi.quantity ?? 1,
-                price_net: Number(oi.total ?? 0) / Math.max(oi.quantity ?? 1, 1),
-                vat_rate: vatRate,
-                vat_code: String(vatRate) as InvoiceItem['vat_code'],
-                before_value_net: 0,
-                before_value_gross: 0,
-                before_vat_amount: 0,
-              })),
-            );
-
-            const totalNetto = sortedItems.reduce(
-              (sum: number, oi: any) => sum + Number(oi.total ?? 0),
-              0,
-            );
-
-            const totalBrutto = totalNetto * (1 + vatRate / 100);
-
-            showSnackbar(
-              `Pozycje wypełnione z oferty ${financialInfo.accepted_offer_number}: ${totalBrutto.toLocaleString(
-                'pl-PL',
-                { minimumFractionDigits: 2 },
-              )} zł brutto`,
-              'success',
-            );
-          }
-        } else if (eventRes.data) {
-          setItems([
-            {
-              position_number: 1,
-              name: `Obsługa techniczna - ${eventRes.data.name}`,
-              unit: 'szt.',
-              quantity: 1,
-              price_net: 0,
-              vat_rate: 23,
-              vat_code: '23',
-              before_value_net: 0,
-              before_vat_amount: 0,
-            },
-          ]);
-        }
+        const context = await fetchEventContext(eventId);
+        if (context?.event_date) setSaleDate(context.event_date.split('T')[0]);
       }
     } catch (err: any) {
       console.error('Error fetching data:', err);
+      if (advanceFrom) setAdvancePrefillError(err.message || 'Nie udało się przygotować kolejnej zaliczki.');
       showSnackbar(err.message || 'Błąd podczas ładowania danych', 'error');
+    } finally {
+      if (advanceFrom) setAdvancePrefillLoading(false);
     }
   };
 
@@ -732,13 +772,7 @@ export default function NewInvoicePage() {
     paymentMethod === 'Gotówka' || paymentMethod === 'Karta' || paymentMethod === 'BLIK';
 
   const calculatePaymentDueDate = () => {
-    if (!issueDate) return '';
-    const date = new Date(issueDate);
-    if (isNaN(date.getTime())) {
-      return '';
-    }
-    date.setDate(date.getDate() + paymentDays);
-    return date.toISOString().split('T')[0];
+    return getInvoicePaymentDueDate(issueDate, paymentDays) || '';
   };
 
   const calculateItemValues = (item: InvoiceItem) => {
@@ -784,9 +818,10 @@ export default function NewInvoicePage() {
     return { totalNet, totalVat, totalGross };
   };
 
-  const calculateTotals = () => calculateTotalsFor(items);
+  const calculateTotals = () => calculateTotalsFor(getItemsForInvoice());
 
   const addItem = () => {
+    itemEditRevision.current += 1;
     setItems([
       ...items,
       {
@@ -805,25 +840,36 @@ export default function NewInvoicePage() {
   };
 
   const removeItem = (index: number) => {
+    itemEditRevision.current += 1;
     const newItems = items.filter((_, i) => i !== index);
     newItems.forEach((item, i) => (item.position_number = i + 1));
     setItems(newItems);
   };
 
   const updateItem = (index: number, field: keyof InvoiceItem, value: any) => {
+    itemEditRevision.current += 1;
     const newItems = [...items];
     newItems[index] = { ...newItems[index], [field]: value };
     setItems(newItems);
   };
 
+  const getCombinedItemsError = () => {
+    if (!items.length) return 'Dodaj przynajmniej jedną pozycję stanowiącą podstawę kwoty.';
+    if (new Set(items.map((item) => `${item.vat_code}|${item.vat_rate}|${item.vat_exemption_reason || ''}`)).size > 1) {
+      return 'Jedna pozycja zbiorcza nie może łączyć różnych stawek lub podstaw VAT. Zachowaj pozycje szczegółowe.';
+    }
+    const source = calculateTotalsFor(items);
+    const combinedVat = round2(round2(source.totalNet) * Number(items[0].vat_rate) / 100);
+    if (Math.abs(combinedVat - round2(source.totalVat)) > 0.001) {
+      return 'Scalenie zmieniłoby VAT przez zaokrąglenia. Zachowaj pozycje szczegółowe, aby nie zmienić uzgodnionej kwoty.';
+    }
+    return null;
+  };
+
   const getItemsForInvoice = () => {
-    if (!simplifiedInvoice || items.length <= 1) {
+    if (invoiceType === 'corrective' || !simplifiedInvoice || getCombinedItemsError()) {
       return items;
     }
-
-    // Pozycji z różnymi stawkami VAT nie wolno księgowo scalać w jeden wiersz.
-    const vatCodes = new Set(items.map((item) => item.vat_code));
-    if (vatCodes.size > 1) return items;
 
     // Sumuj wszystkie pozycje w jedną
     const totalNet = items.reduce((sum, item) => {
@@ -880,6 +926,22 @@ export default function NewInvoicePage() {
   };
 
   const handleSubmit = async () => {
+    if (!financeAccess?.canIssueInvoices || !canUseInvoiceEvent(selectedEventId)) {
+      showSnackbar('Nie masz uprawnień do wystawienia faktury dla tego wydarzenia.', 'error');
+      return;
+    }
+    if (!isPaid && !calculatePaymentDueDate()) {
+      showSnackbar('Podaj poprawną datę wystawienia i termin płatności w pełnych dniach (0 lub więcej).', 'error');
+      return;
+    }
+    if (!advanceFrom && invoiceType !== 'corrective' && itemSourcesLoading) {
+      showSnackbar('Poczekaj na wczytanie źródeł pozycji i kwot wydarzenia.', 'warning');
+      return;
+    }
+    if (advanceFrom && (advancePrefillLoading || advancePrefillError || !nextAdvanceContext)) {
+      showSnackbar(advancePrefillError || 'Poczekaj na wczytanie zamówienia i wcześniejszych zaliczek.', 'error');
+      return;
+    }
     if (!selectedCompanyId) {
       showSnackbar('Wybierz firmę wystawiającą fakturę', 'error');
       return;
@@ -890,7 +952,7 @@ export default function NewInvoicePage() {
       return;
     }
 
-    if (buyerIsPrivatePerson) {
+    if (buyerIsPrivatePerson && !nextAdvanceContext) {
       if (
         !privateBuyer.firstName.trim() ||
         !privateBuyer.lastName.trim() ||
@@ -904,7 +966,7 @@ export default function NewInvoicePage() {
         );
         return;
       }
-    } else if (!selectedOrgId) {
+    } else if (!buyerIsPrivatePerson && !selectedOrgId && !nextAdvanceContext) {
       showSnackbar('Wybierz nabywcę', 'error');
       return;
     }
@@ -938,10 +1000,10 @@ export default function NewInvoicePage() {
         showSnackbar('Wypełnij nazwy wszystkich pozycji faktury', 'error');
         return;
       }
-    } else if (
+    } else if (!items.length ||
       items.some(
         (item) =>
-          !item.name.trim() ||
+          (!simplifiedInvoice && !item.name.trim()) ||
           !Number.isFinite(Number(item.quantity)) ||
           Number(item.quantity) <= 0 ||
           !Number.isFinite(Number(item.price_net)) ||
@@ -962,12 +1024,12 @@ export default function NewInvoicePage() {
       return;
     }
 
-    if (simplifiedInvoice && new Set(items.map((item) => item.vat_code)).size > 1) {
-      showSnackbar('Nie można scalić pozycji z różnymi stawkami VAT w jeden wiersz.', 'error');
+    if (invoiceType !== 'corrective' && simplifiedInvoice && (!simplifiedServiceName.trim() || getCombinedItemsError())) {
+      showSnackbar(getCombinedItemsError() || 'Wpisz własną nazwę pozycji zbiorczej.', 'error');
       return;
     }
 
-    if (invoiceType === 'advance' && (advancePercent <= 0 || advancePercent > 100)) {
+    if (invoiceType === 'advance' && (!Number.isFinite(advancePercent) || advancePercent <= 0 || advancePercent > 100)) {
       showSnackbar('Zaliczka musi być większa od 0% i nie może przekraczać 100%.', 'error');
       return;
     }
@@ -1000,29 +1062,16 @@ export default function NewInvoicePage() {
         ? null
         : organizations.find((o) => o.id === selectedOrgId);
 
-      if (!buyerIsPrivatePerson && !selectedOrg) {
+      if (!buyerIsPrivatePerson && !selectedOrg && !nextAdvanceContext) {
         throw new Error('Organization not found');
       }
 
       const selectedCompany = myCompanies.find((c) => c.id === selectedCompanyId);
       if (!selectedCompany) throw new Error('Company not found');
 
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const issuer = await getCurrentInvoiceIssuer();
 
-      const { data: employee } = await supabase
-        .from('employees')
-        .select('id, name, surname')
-        .eq('email', user?.email)
-        .maybeSingle();
-
-      const signatureName =
-        [employee?.name, employee?.surname].filter(Boolean).join(' ').trim() ||
-        selectedCompany.signature_name ||
-        '';
-
-        const footerNote = buildInvoiceFooterText();
+      const footerNote = buildInvoiceFooterText();
 
       const website = selectedCompany.website?.trim() || null;
 
@@ -1056,7 +1105,7 @@ export default function NewInvoicePage() {
         return;
       }
 
-      if (!buyerIsPrivatePerson && !selectedOrg?.nip) {
+      if (!buyerIsPrivatePerson && !(nextAdvanceContext?.source.buyer_nip || selectedOrg?.nip)) {
         showSnackbar(
           'Nabywca nie ma uzupełnionego NIP. Uzupełnij dane kontrahenta albo zaznacz fakturę dla osoby prywatnej.',
           'error',
@@ -1071,6 +1120,19 @@ export default function NewInvoicePage() {
       const orderTotals = calculateTotalsFor(orderItems);
       const documentTotals = calculateTotalsFor(documentItems);
 
+      if (advanceFrom) {
+        const freshContext = await getNextAdvanceContext(advanceFrom);
+        if (documentTotals.totalGross <= 0 || documentTotals.totalGross > freshContext.remainingGross + 0.001) {
+          setNextAdvanceContext((current) => current ? { ...current, reservedGross: freshContext.reservedGross, remainingGross: freshContext.remainingGross } : current);
+          throw new Error(`Kwota nowej zaliczki przekracza dostępne saldo zamówienia: ${freshContext.remainingGross.toFixed(2)} ${currencyLabel}. Wcześniejsze zaliczki i ich szkice są już uwzględnione.`);
+        }
+        if (JSON.stringify(freshContext.orderItems) !== JSON.stringify(nextAdvanceContext?.orderItems)) {
+          setAdvancePrefillError('Zamówienie źródłowe zmieniło się. Odśwież formularz przed przygotowaniem kolejnej zaliczki.');
+          throw new Error('Zamówienie źródłowe zmieniło się. Odśwież formularz przed przygotowaniem kolejnej zaliczki.');
+        }
+        setNextAdvanceContext(freshContext);
+      }
+
       const invoiceEventId = settlementGroup?.primary_event_id || selectedEventId || null;
 
       const invoiceData = {
@@ -1084,12 +1146,12 @@ export default function NewInvoicePage() {
         payment_status: isPaid ? 'paid' : 'unpaid',
         paid_amount: isPaid ? documentTotals.totalGross : 0,
         payment_due_date: isPaid ? paidDate : calculatePaymentDueDate(),
-        currency_code: 'PLN',
+        currency_code: currencyCode,
         order_total_net: invoiceType === 'advance' ? orderTotals.totalNet : null,
         order_total_vat: invoiceType === 'advance' ? orderTotals.totalVat : null,
         order_total_gross: invoiceType === 'advance' ? orderTotals.totalGross : null,
         footer_note: footerNote,
-        signature_name: signatureName,
+        signature_name: issuer.signatureName,
         website,
         issue_date: issueDate,
         sale_date: saleDate,
@@ -1103,20 +1165,20 @@ export default function NewInvoicePage() {
 
         buyer_name: buyerIsPrivatePerson
           ? `${privateBuyer.firstName} ${privateBuyer.lastName}`.trim()
-          : selectedOrg!.name,
+          : nextAdvanceContext?.source.buyer_name || selectedOrg!.name,
 
-        buyer_nip: buyerIsPrivatePerson ? null : selectedOrg!.nip,
+        buyer_nip: buyerIsPrivatePerson ? null : nextAdvanceContext?.source.buyer_nip || selectedOrg!.nip,
 
-        buyer_street: buyerIsPrivatePerson ? privateBuyer.street : selectedOrg!.street || '',
+        buyer_street: buyerIsPrivatePerson ? privateBuyer.street : nextAdvanceContext?.source.buyer_street || selectedOrg?.street || '',
 
         buyer_postal_code: buyerIsPrivatePerson
           ? privateBuyer.postalCode
-          : selectedOrg!.postal_code || '',
+          : nextAdvanceContext?.source.buyer_postal_code || selectedOrg?.postal_code || '',
 
-        buyer_city: buyerIsPrivatePerson ? privateBuyer.city : selectedOrg!.city || '',
-        buyer_country: 'Polska',
-        buyer_email: buyerIsPrivatePerson ? privateBuyer.email || null : selectedOrg!.email || null,
-        buyer_phone: buyerIsPrivatePerson ? privateBuyer.phone || null : selectedOrg!.phone || null,
+        buyer_city: buyerIsPrivatePerson ? privateBuyer.city : nextAdvanceContext?.source.buyer_city || selectedOrg?.city || '',
+        buyer_country: nextAdvanceContext?.source.buyer_country || 'Polska',
+        buyer_email: buyerIsPrivatePerson ? privateBuyer.email || null : selectedOrg?.email || null,
+        buyer_phone: buyerIsPrivatePerson ? privateBuyer.phone || null : selectedOrg?.phone || null,
 
         buyer_contact_id: buyerIsPrivatePerson ? selectedIndividualId || null : null,
         my_company_id: selectedCompanyId,
@@ -1134,7 +1196,14 @@ export default function NewInvoicePage() {
         bank_swift_code: selectedCompany.bank_swift_code || null,
         issue_place: selectedCompany.city,
         company_logo_url: selectedCompany.logo_url || null,
-        created_by: employee?.id,
+        created_by: issuer.employeeId,
+        ...(nextAdvanceContext ? {
+          related_invoice_id: nextAdvanceContext.source.id,
+          buyer_name: nextAdvanceContext.source.buyer_name,
+          buyer_email: nextAdvanceContext.source.buyer_email,
+          buyer_phone: nextAdvanceContext.source.buyer_phone,
+          buyer_contact_person: nextAdvanceContext.source.buyer_contact_person,
+        } : {}),
         ...(invoiceType === 'corrective'
           ? {
               related_invoice_id: relatedInvoiceId || null,
@@ -1308,6 +1377,13 @@ export default function NewInvoicePage() {
     return searchable.includes(search);
   });
 
+  if (financeAccessLoading || employeeLoading) {
+    return <div className="p-6 text-sm text-[#e5e4e2]/60">Sprawdzanie uprawnień do wystawienia faktury…</div>;
+  }
+  if (financeAccessError || !financeAccess?.canIssueInvoices) {
+    return <div role="alert" className="p-6 text-sm text-[#e5e4e2]/70">{financeAccessError || 'Brak uprawnień do wystawienia faktury.'}</div>;
+  }
+
   return (
     <div className="min-h-screen bg-[#0a0d1a] p-6">
       <div className="mx-auto max-w-5xl">
@@ -1320,7 +1396,18 @@ export default function NewInvoicePage() {
         </button>
 
         <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-8">
-          <h1 className="mb-8 text-2xl font-light text-[#e5e4e2]">Wystaw fakturę VAT</h1>
+          <h1 className="mb-8 text-2xl font-light text-[#e5e4e2]">{advanceFrom ? 'Kolejna faktura zaliczkowa' : { vat: 'Wystaw fakturę VAT', proforma: 'Wystaw proformę', advance: 'Wystaw fakturę zaliczkową', corrective: 'Wystaw fakturę korygującą' }[invoiceType]}</h1>
+          {advanceFrom && (
+            <div className="mb-6 rounded-lg bg-[#d3bb73]/5 p-4 text-sm text-[#e5e4e2]/70">
+              {advancePrefillLoading ? <p>Wczytywanie zamówienia i wcześniejszych zaliczek…</p>
+                : advancePrefillError ? <p role="alert" className="text-amber-200">{advancePrefillError}</p>
+                : nextAdvanceContext && <>
+                  <p>Kolejna zaliczka do zamówienia z faktury <span className="text-[#e5e4e2]">{nextAdvanceContext.source.invoice_number}</span>.</p>
+                  <p className="mt-1">Wcześniejsze zaliczki i szkice: {nextAdvanceContext.reservedGross.toFixed(2)} {currencyLabel} · Pozostało: <span className="text-[#d3bb73]">{nextAdvanceContext.remainingGross.toFixed(2)} {currencyLabel}</span></p>
+                  <p className="mt-1 text-xs">Wpisz procent tej zaliczki. Dane zamówienia i nabywcy są zachowane; potwierdzenie płatności dotyczy wyłącznie nowej zaliczki.</p>
+                </>}
+            </div>
+          )}
           {invoiceType !== 'corrective' && (
             <div className="mb-2 rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/5 p-4">
               <label className="flex cursor-pointer items-start gap-3">
@@ -1344,7 +1431,7 @@ export default function NewInvoicePage() {
                       phone: '',
                     });
                   }}
-                  disabled={Boolean(selectedEventId && billingArrangement !== 'direct')}
+                  disabled={Boolean(advanceFrom || (selectedEventId && billingArrangement !== 'direct'))}
                   className="mt-1 h-4 w-4 rounded border-[#d3bb73]/20 text-[#d3bb73]"
                 />
 
@@ -1370,7 +1457,7 @@ export default function NewInvoicePage() {
               <select
                 value={selectedCompanyId}
                 onChange={(e) => setSelectedCompanyId(e.target.value)}
-                disabled={invoiceType === 'corrective' && !!relatedInvoiceId}
+                disabled={Boolean(advanceFrom || (invoiceType === 'corrective' && relatedInvoiceId))}
                 className="w-full rounded-lg border border-[#d3bb73]/30 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <option value="">Wybierz firmę...</option>
@@ -1399,7 +1486,7 @@ export default function NewInvoicePage() {
                 <select
                   value={invoiceType}
                   onChange={(e) => setInvoiceType(e.target.value as any)}
-                  disabled={urlType === 'corrective' && !!urlRelated}
+                  disabled={Boolean(advanceFrom || (urlType === 'corrective' && urlRelated))}
                   className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2] disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <option value="vat">Faktura VAT</option>
@@ -1541,7 +1628,7 @@ export default function NewInvoicePage() {
             )}
 
             <div className="grid grid-cols-1 gap-6">
-              {selectedEventId && linkedEvent && (
+              {selectedEventId && linkedEvent && !advanceFrom && (
                 <InvoiceBillingContext
                   eventName={linkedEvent.name}
                   eventDate={linkedEvent.event_date}
@@ -1595,7 +1682,13 @@ export default function NewInvoicePage() {
                   </div>
                 </div>
               )}
-              {invoiceType === 'corrective' && relatedInvoiceId ? (
+              {nextAdvanceContext ? (
+                <div className="rounded-lg bg-white/[0.03] px-4 py-3 text-sm">
+                  <p className="text-[#e5e4e2]">{nextAdvanceContext.source.buyer_name}</p>
+                  <p className="mt-1 text-[#e5e4e2]/50">{nextAdvanceContext.source.buyer_nip ? `NIP: ${nextAdvanceContext.source.buyer_nip} · ` : ''}{nextAdvanceContext.source.buyer_street}, {nextAdvanceContext.source.buyer_postal_code} {nextAdvanceContext.source.buyer_city}</p>
+                  {linkedEvent && <p className="mt-1 text-[#e5e4e2]/50">Wydarzenie: {linkedEvent.name}</p>}
+                </div>
+              ) : invoiceType === 'corrective' && relatedInvoiceId ? (
                 <div>
                   <label className="mb-2 block text-sm text-[#e5e4e2]/60">Nabywca *</label>
                   <div className="rounded-lg border border-orange-500/20 bg-[#0a0d1a]/50 px-4 py-3 text-[#e5e4e2]">
@@ -1721,7 +1814,7 @@ export default function NewInvoicePage() {
                   onAddNew={() => setShowAddBuyerModal(true)}
                 />
               )}
-              {!buyerIsPrivatePerson && selectedOrgId && !eventId && (
+              {!buyerIsPrivatePerson && selectedOrgId && !eventId && !advanceFrom && (
                 <div className="rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/5 p-4">
                   <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
                     Powiązane wydarzenie
@@ -1807,7 +1900,7 @@ export default function NewInvoicePage() {
                     <div className="text-sm font-medium text-[#e5e4e2]">Faktura opłacona</div>
                     <div className="mt-1 text-xs text-[#e5e4e2]/60">
                       Po zaznaczeniu status faktury zostanie ustawiony jako opłacona, a do zapłaty
-                      będzie 0 zł.
+                      będzie 0 {currencyLabel}.
                     </div>
                   </div>
                 </label>
@@ -1829,12 +1922,16 @@ export default function NewInvoicePage() {
                 <>
                   <div>
                     <label className="mb-2 block text-sm text-[#e5e4e2]/60">
-                      Termin płatności (dni) *
+                      Termin płatności (dni od wystawienia) *
                     </label>
                     <input
                       type="number"
+                      min={0}
+                      step={1}
+                      inputMode="numeric"
                       value={paymentDays}
-                      onChange={(e) => setPaymentDays(parseInt(e.target.value))}
+                      onChange={(e) => setPaymentDays(e.target.value)}
+                      aria-invalid={!calculatePaymentDueDate()}
                       className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2]"
                     />
                   </div>
@@ -1843,7 +1940,7 @@ export default function NewInvoicePage() {
                     <label className="mb-2 block text-sm text-[#e5e4e2]/60">Data płatności</label>
                     <input
                       type="text"
-                      value={calculatePaymentDueDate()}
+                      value={calculatePaymentDueDate() ? calculatePaymentDueDate().split('-').reverse().join('.') : 'Podaj poprawną liczbę dni i datę wystawienia'}
                       disabled
                       className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0a0d1a]/50 px-4 py-3 text-[#e5e4e2]/60"
                     />
@@ -1917,7 +2014,7 @@ export default function NewInvoicePage() {
                 <div className="grid gap-4 md:grid-cols-[220px_1fr] md:items-end">
                   <div>
                     <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
-                      Wysokość zaliczki *
+                    {advanceFrom ? 'Procent tej zaliczki *' : 'Wysokość zaliczki *'}
                     </label>
                     <div className="relative">
                       <input
@@ -1944,9 +2041,9 @@ export default function NewInvoicePage() {
             <div className="border-t border-[#d3bb73]/10 pt-6">
               <div className="mb-4 flex items-center justify-between">
                 <h3 className="text-lg font-medium text-[#e5e4e2]">
-                  {invoiceType === 'corrective' ? 'Pozycje korekty' : 'Pozycje faktury'}
+                  {invoiceType === 'corrective' ? 'Pozycje korekty' : advanceFrom ? 'Pełne zamówienie' : 'Pozycje faktury'}
                 </h3>
-                {invoiceType !== 'corrective' && (
+                {invoiceType !== 'corrective' && !advanceFrom && (
                   <button
                     onClick={addItem}
                     className="flex items-center gap-2 text-sm text-[#d3bb73] hover:text-[#d3bb73]/80"
@@ -1957,6 +2054,56 @@ export default function NewInvoicePage() {
                 )}
               </div>
 
+              {invoiceType !== 'corrective' && !advanceFrom && (
+                <div className="mb-4 space-y-3 rounded-lg bg-[#d3bb73]/5 p-4">
+                  <label className="block text-sm font-medium text-[#e5e4e2]" htmlFor="invoice-item-source">Podstawa pozycji i kwot zamówienia</label>
+                  <select
+                    id="invoice-item-source"
+                    value={selectedItemSource}
+                    disabled={itemSourcesLoading}
+                    onChange={(event) => selectItemSource(event.target.value as 'calculation' | 'offer' | 'manual')}
+                    className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] disabled:opacity-50"
+                  >
+                    {(['calculation', 'offer'] as const).map((sourceId) => {
+                      const source = itemSources.find((candidate) => candidate.id === sourceId);
+                      return source ? (
+                        <option key={sourceId} value={sourceId}>
+                          {source.label} — {source.net.toFixed(2)} netto / {source.gross.toFixed(2)} {currencyCode} brutto{preferredItemSource === sourceId ? ' · źródło wydarzenia' : ''}
+                        </option>
+                      ) : (
+                        <option key={sourceId} value={sourceId} disabled>
+                          {sourceId === 'calculation' ? 'Kalkulacja' : 'Oferta'} — {itemSourcesLoading ? 'wczytywanie…' : !selectedEventId ? 'najpierw wybierz wydarzenie' : 'brak dostępnego zaakceptowanego źródła'}
+                        </option>
+                      );
+                    })}
+                    <option value="manual">Pozycje i kwoty wprowadzone ręcznie</option>
+                  </select>
+                  <p className="text-xs leading-relaxed text-[#e5e4e2]/60">
+                    Domyślnie korzystamy ze źródła finansowego wydarzenia po rabatach. Wybór innego źródła zastępuje bieżące pozycje i kwoty — ich podsumowanie widzisz przy każdej opcji. Nie zmienia to ustawień wydarzenia.
+                  </p>
+                  {selectedItemSource !== 'manual' && preferredItemSource && selectedItemSource !== preferredItemSource && (
+                    <p role="status" className="text-xs text-amber-200">Wybrano inne źródło niż finansowe źródło wydarzenia. Sprawdź kwotę zamówienia przed wystawieniem.</p>
+                  )}
+                  {selectedItemSource === 'manual' && <p className="text-xs text-[#e5e4e2]/60">Zachowano bieżące pozycje do edycji. Ich kwoty nie są automatycznie zastępowane danymi z katalogu.</p>}
+                </div>
+              )}
+              {invoiceType !== 'corrective' && advanceFrom && (
+                <div className="mb-4 rounded-lg bg-[#d3bb73]/5 p-4 text-sm text-[#e5e4e2]/75">
+                  Pozycje i ich nazwy są dziedziczone z zapisanego zamówienia poprzedniej zaliczki. Własna pozycja zbiorcza pozostaje jedną pozycją — nie zastępujemy jej listą z kalkulacji. Ustaw tylko kwotę nowej zaliczki.
+                </div>
+              )}
+              {invoiceType !== 'corrective' && acceptedPricing && (
+                <div className="mb-4 rounded-lg bg-emerald-400/5 p-3 text-xs leading-relaxed text-emerald-100/85">
+                  <p className="font-medium">Źródło cen: {acceptedPricing.label} — po rabatach.</p>
+                  <p>Uzgodniona kwota: {acceptedPricing.net.toFixed(2)} zł netto · {acceptedPricing.gross.toFixed(2)} zł brutto{acceptedPricing.discount > 0 ? ` · rabat całej oferty: ${acceptedPricing.discount.toFixed(2)} zł netto` : ''}.</p>
+                  {acceptedPricing.notice && <p className="mt-1">{acceptedPricing.notice}</p>}
+                  <p className="mt-1 text-[#e5e4e2]/55">Rabat jest już uwzględniony w cenach pozycji — nie odejmuj go ponownie. Ręczne zmiany pozycji zmienią kwotę faktury.</p>
+                </div>
+              )}
+              {invoiceType !== 'corrective' && pricingPrefillError && (
+                <p role="alert" className="mb-4 rounded-lg bg-amber-300/5 p-3 text-xs leading-relaxed text-amber-100">{pricingPrefillError}</p>
+              )}
+
               {invoiceType === 'corrective' && items.length > 0 && (
                 <div className="mb-4 rounded-lg border border-orange-500/20 bg-orange-500/5 p-3 text-sm text-orange-300">
                   Edytuj kolumnę &bdquo;Po korekcie&rdquo; aby zmienić wartości. Kolumna
@@ -1965,47 +2112,41 @@ export default function NewInvoicePage() {
                 </div>
               )}
 
-              {/* Checkbox uproszczonej faktury */}
-              {invoiceType !== 'corrective' && items.length > 1 && (
-                <div className="mb-4 rounded-lg border border-blue-500/20 bg-blue-500/10 p-4">
-                  <label className="flex cursor-pointer items-start gap-3">
-                    <input
-                      type="checkbox"
-                      checked={simplifiedInvoice}
-                      onChange={(e) => setSimplifiedInvoice(e.target.checked)}
-                      className="mt-1 h-4 w-4 rounded border-[#d3bb73]/20 text-[#d3bb73] focus:ring-[#d3bb73]"
-                    />
-                    <div className="flex-1">
-                      <div className="mb-1 text-sm font-medium text-[#e5e4e2]">
-                        Uproszczona faktura (jedna pozycja)
-                      </div>
-                      <div className="text-xs text-[#e5e4e2]/60">
-                        Wszystkie pozycje zostaną zsumowane w jedną z własną nazwą usługi
-                      </div>
-                    </div>
-                  </label>
-
+              {invoiceType !== 'corrective' && !advanceFrom && (
+                <div className="mb-4 space-y-3 rounded-lg bg-[#d3bb73]/5 p-4">
+                  <p className="text-sm font-medium text-[#e5e4e2]">Pozycje widoczne na fakturze</p>
+                  <div className="flex flex-wrap gap-4 text-sm text-[#e5e4e2]">
+                    <label className="flex cursor-pointer items-center gap-2">
+                      <input type="radio" name="invoice-item-presentation" checked={!simplifiedInvoice}
+                        onChange={() => setSimplifiedInvoice(false)} className="accent-[#d3bb73]" />
+                      Pozycje szczegółowe
+                    </label>
+                    <label className="flex cursor-pointer items-center gap-2">
+                      <input type="radio" name="invoice-item-presentation" checked={simplifiedInvoice}
+                        onChange={() => setSimplifiedInvoice(true)} className="accent-[#d3bb73]" />
+                      Własna pozycja zbiorcza
+                    </label>
+                  </div>
+                  <p className="text-xs text-[#e5e4e2]/60">Wybrany układ i wpisane przez Ciebie nazwy zostaną zapisane z zamówieniem. Faktura końcowa odziedziczy je z zaliczki.</p>
                   {simplifiedInvoice && (
-                    <div className="mt-3">
-                      <label className="mb-2 block text-xs text-[#e5e4e2]/60">
-                        Nazwa usługi na fakturze *
-                      </label>
-                      <input
-                        type="text"
-                        value={simplifiedServiceName}
-                        onChange={(e) => setSimplifiedServiceName(e.target.value)}
-                        placeholder="np. Obsługa muzyczna"
-                        className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-sm text-[#e5e4e2]"
-                      />
-                      <div className="mt-2 text-xs text-blue-400">
-                        {`Np. zamiast "DJ Standard 2500 zł + Konferansjer 3000 zł" → "Obsługa muzyczna 5500 zł"`}
-                      </div>
+                    <div>
+                      <label className="mb-2 block text-xs text-[#e5e4e2]/60" htmlFor="invoice-combined-name">Własna nazwa pozycji na fakturze *</label>
+                      <input id="invoice-combined-name" type="text" value={simplifiedServiceName}
+                        onChange={(event) => setSimplifiedServiceName(event.target.value)}
+                        placeholder="Np. Obsługa techniczna konferencji zgodnie z zamówieniem"
+                        className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0a0d1a] px-4 py-2 text-sm text-[#e5e4e2]" />
+                      <p className="mt-2 text-xs text-[#e5e4e2]/60">Ta nazwa zastąpi nazwy źródłowe, także gdy źródło zawiera tylko jedną pozycję. Kwoty pochodzą z pozycji poniżej.</p>
+                      {getCombinedItemsError() && <p role="alert" className="mt-2 text-xs text-amber-200">{getCombinedItemsError()}</p>}
                     </div>
                   )}
                 </div>
               )}
 
-              <div className="space-y-4">
+              <details open={!simplifiedInvoice || invoiceType === 'corrective'}>
+                <summary className="mb-3 cursor-pointer text-sm text-[#d3bb73]">
+                  {simplifiedInvoice && invoiceType !== 'corrective' ? 'Podstawa kwoty — pozycje źródłowe, niewidoczne osobno na fakturze' : 'Pozycje i kwoty do sprawdzenia'}
+                </summary>
+              <fieldset disabled={Boolean(advanceFrom)} className="space-y-4 disabled:opacity-75">
                 {invoiceType === 'corrective'
                   ? items.map((item, index) => {
                       const vatRate = Number(item.vat_rate ?? 0);
@@ -2388,23 +2529,24 @@ export default function NewInvoicePage() {
                           <div className="mt-3 grid grid-cols-3 gap-4 border-t border-[#d3bb73]/10 pt-3 text-sm">
                             <div>
                               <span className="text-[#e5e4e2]/40">Wartość netto:</span>
-                              <span className="ml-2 text-[#e5e4e2]">{valueNet.toFixed(2)} zł</span>
+                              <span className="ml-2 text-[#e5e4e2]">{valueNet.toFixed(2)} {currencyLabel}</span>
                             </div>
                             <div>
                               <span className="text-[#e5e4e2]/40">Kwota VAT:</span>
-                              <span className="ml-2 text-[#e5e4e2]">{vatAmount.toFixed(2)} zł</span>
+                              <span className="ml-2 text-[#e5e4e2]">{vatAmount.toFixed(2)} {currencyLabel}</span>
                             </div>
                             <div>
                               <span className="text-[#e5e4e2]/40">Wartość brutto:</span>
                               <span className="ml-2 font-medium text-[#d3bb73]">
-                                {valueGross.toFixed(2)} zł
+                                {valueGross.toFixed(2)} {currencyLabel}
                               </span>
                             </div>
                           </div>
                         </div>
                       );
                     })}
-              </div>
+              </fieldset>
+              </details>
             </div>
 
             <div className="border-t border-[#d3bb73]/10 pt-6">
@@ -2517,7 +2659,7 @@ export default function NewInvoicePage() {
                             Pełna wartość zamówienia brutto
                           </div>
                           <div className="mt-1 text-xl text-[#e5e4e2]">
-                            {totals.totalGross.toFixed(2)} zł
+                            {totals.totalGross.toFixed(2)} {currencyLabel}
                           </div>
                         </div>
                         <div>
@@ -2525,22 +2667,22 @@ export default function NewInvoicePage() {
                             Kwota tej zaliczki brutto ({advancePercent}%)
                           </div>
                           <div className="mt-1 text-xl font-medium text-[#d3bb73]">
-                            {advanceTotals.totalGross.toFixed(2)} zł
+                            {advanceTotals.totalGross.toFixed(2)} {currencyLabel}
                           </div>
                         </div>
                       </div>
                     )}
-                    {simplifiedInvoice && items.length > 1 && (
-                      <div className="mb-4 rounded-lg border border-blue-500/20 bg-blue-500/10 p-3">
-                        <div className="mb-2 text-xs font-medium text-blue-400">
-                          Podgląd uproszczonej faktury:
+                    {simplifiedInvoice && !getCombinedItemsError() && (
+                      <div className="mb-4 rounded-lg bg-[#d3bb73]/5 p-3">
+                        <div className="mb-2 text-xs font-medium text-[#d3bb73]">
+                          Pozycja, która zostanie zapisana na fakturze:
                         </div>
                         <div className="text-sm text-[#e5e4e2]">
-                          1. {simplifiedServiceName || 'Obsługa muzyczna'} -{' '}
-                          {totals.totalNet.toFixed(2)} zł netto
+                          1. {simplifiedServiceName || 'Wpisz nazwę pozycji'} —{' '}
+                          {(advanceTotals?.totalNet ?? totals.totalNet).toFixed(2)} {currencyLabel} netto
                         </div>
                         <div className="mt-2 text-xs text-[#e5e4e2]/60">
-                          Oryginalne pozycje ({items.length}): {items.map((i) => i.name).join(', ')}
+                          {invoiceType === 'advance' ? 'Faktura końcowa odziedziczy tę nazwę i pełną wartość zamówienia; odliczy zaliczki w rozliczeniu.' : 'Nazwy źródłowe nie zostaną dodane jako osobne pozycje faktury.'}
                         </div>
                       </div>
                     )}
@@ -2549,19 +2691,19 @@ export default function NewInvoicePage() {
                       <div>
                         <div className="mb-1 text-sm text-[#e5e4e2]/60">Suma netto</div>
                         <div className="text-2xl font-light text-[#e5e4e2]">
-                          {(advanceTotals?.totalNet ?? totals.totalNet).toFixed(2)} zł
+                          {(advanceTotals?.totalNet ?? totals.totalNet).toFixed(2)} {currencyLabel}
                         </div>
                       </div>
                       <div>
                         <div className="mb-1 text-sm text-[#e5e4e2]/60">Suma VAT</div>
                         <div className="text-2xl font-light text-[#e5e4e2]">
-                          {(advanceTotals?.totalVat ?? totals.totalVat).toFixed(2)} zł
+                          {(advanceTotals?.totalVat ?? totals.totalVat).toFixed(2)} {currencyLabel}
                         </div>
                       </div>
                       <div>
                         <div className="mb-1 text-sm text-[#e5e4e2]/60">Suma brutto</div>
                         <div className="text-2xl font-medium text-[#d3bb73]">
-                          {(advanceTotals?.totalGross ?? totals.totalGross).toFixed(2)} zł
+                          {(advanceTotals?.totalGross ?? totals.totalGross).toFixed(2)} {currencyLabel}
                         </div>
                       </div>
                     </div>
@@ -2570,7 +2712,7 @@ export default function NewInvoicePage() {
 
                 {isPaid && (
                   <div className="mt-4 rounded-lg border border-green-500/20 bg-green-500/10 p-3 text-sm text-green-400">
-                    Faktura opłacona. Do zapłaty: 0.00 zł
+                    Faktura opłacona. Do zapłaty: 0.00 {currencyLabel}
                   </div>
                 )}
               </div>
@@ -2585,7 +2727,7 @@ export default function NewInvoicePage() {
               </button>
               <button
                 onClick={handleSubmit}
-                disabled={loading}
+                disabled={loading || (invoiceType !== 'corrective' && itemSourcesLoading) || Boolean(advanceFrom && (advancePrefillLoading || advancePrefillError || !nextAdvanceContext))}
                 className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-3 font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-50"
               >
                 <Save className="h-5 w-5" />

@@ -1,5 +1,7 @@
 'use client';
 
+import { systemNotificationText } from '@/lib/ui/systemLabels';
+
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Bell,
@@ -21,6 +23,7 @@ import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { supabase } from '@/lib/supabase/browser';
 import { AbsenceRequestModal } from '@/components/crm/employee/modal/AbsenceRequestModal';
+import { refreshSellerSidebarBadge } from '@/lib/seller/sidebarBadge';
 
 const NOTIFICATION_CATEGORY_LABELS: Record<string, string> = {
   meeting_invitation: 'Spotkanie',
@@ -35,6 +38,7 @@ const NOTIFICATION_CATEGORY_LABELS: Record<string, string> = {
   email_received: 'Wiadomość e-mail',
   contact_form: 'Formularz kontaktowy',
   webhook: 'Webhook',
+  offer: 'Oferta',
   system: 'System',
 };
 
@@ -62,12 +66,48 @@ const getBannerIcon = (relatedEntityType: string | null) => {
 };
 
 function getNotificationActionUrl(notification: {
+  title?: string | null;
   action_url?: string | null;
   related_entity_type?: string | null;
   related_entity_id?: string | null;
   category?: string | null;
   metadata?: any;
 }): string | null {
+  // Older seller notices can have no action URL, or a URL without the review
+  // anchor. Resolve them here as well as notices created by the current backend.
+  const metadata = notification.metadata || {};
+  const isUuid = (value: unknown): value is string => typeof value === 'string' && /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value);
+  let storedUrl: URL | null = null;
+  try {
+    if (notification.action_url) storedUrl = new URL(notification.action_url, 'https://notification.local');
+  } catch { /* Use the related offer when a legacy URL is malformed. */ }
+  const linkedOffer = storedUrl?.pathname.match(/^\/(?:crm|seller)\/offers\/([^/]+)\/?$/)?.[1];
+  const offerId = notification.related_entity_type === 'offer' && isUuid(notification.related_entity_id)
+    ? notification.related_entity_id : isUuid(metadata.offer_id) ? metadata.offer_id : isUuid(linkedOffer) ? linkedOffer : null;
+  // Seller decisions must win over the generic sales_partner/document routing
+  // below, which is meant for incoming CRM review requests.
+  if (offerId && metadata.workflow === 'seller_review_result') {
+    return ['realization_accepted', 'realization_confirmed'].includes(metadata.event)
+      ? `/seller/realizations/${offerId}#seller-offer-review`
+      : `/seller/offers/${offerId}#seller-offer-review`;
+  }
+  const isSellerReview = notification.title === 'Zapytanie sprzedawcy: termin i zasoby'
+    || (metadata.workflow === 'seller_offer' && metadata.event === 'review_requested')
+    || (metadata.workflow === 'seller_offer' && storedUrl?.hash === '#seller-offer-review');
+  const isSellerOffer = isSellerReview || metadata.workflow === 'seller_offer'
+    || notification.title === 'Wygenerowano ofertę sprzedawcy'
+    || (metadata.sales_partner_id && metadata.document_id);
+  if (offerId && isSellerOffer) {
+    const linkedDocument = storedUrl?.searchParams.get('document');
+    const documentId = isUuid(metadata.document_id) ? metadata.document_id : isUuid(linkedDocument) ? linkedDocument : null;
+    const query = documentId ? `?document=${documentId}&preview=1` : '';
+    return `/crm/offers/${offerId}${query}${isSellerReview ? '#seller-offer-review' : ''}`;
+  }
+  if (isUuid(metadata.inquiry_id)
+    && (!['task', 'tasks'].includes(notification.related_entity_type || '')
+      || notification.related_entity_id === metadata.inquiry_id)) {
+    return `/crm/inquiries/${metadata.inquiry_id}`;
+  }
   if (notification.action_url) {
     return notification.action_url;
   }
@@ -80,6 +120,9 @@ function getNotificationActionUrl(notification: {
   }
 
   switch (entityType) {
+    case 'offer':
+      return `/crm/offers/${entityId}`;
+
     case 'event':
       return `/crm/events/${entityId}`;
 
@@ -90,7 +133,7 @@ function getNotificationActionUrl(notification: {
       return `/crm/tasks/${entityId}`;
 
     case 'inquiry':
-      return `/crm/tasks/${entityId}`;
+      return `/crm/inquiries/${entityId}`;
 
     case 'absence':
       return null;
@@ -126,6 +169,10 @@ const soundedNotificationIds = new Set<string>();
 
 function claimNotificationSound(notificationId: string): boolean {
   if (soundedNotificationIds.has(notificationId)) return false;
+  if (soundedNotificationIds.size >= 1000) {
+    const oldest = soundedNotificationIds.values().next().value;
+    if (oldest) soundedNotificationIds.delete(oldest);
+  }
   soundedNotificationIds.add(notificationId);
   return true;
 }
@@ -142,6 +189,7 @@ export interface Notification {
   related_entity_id: string | null;
   metadata: any;
   recipient_id: string;
+  recipient_created_at?: string | null;
   is_read: boolean;
   read_at: string | null;
 }
@@ -172,7 +220,14 @@ export default function NotificationCenter({
   const preferencesLoadedRef = useRef(false);
   const [absenceModalId, setAbsenceModalId] = useState<string | null>(null);
   const [banners, setBanners] = useState<NotificationBanner[]>([]);
-  const bannerTimeoutsRef = useRef<Record<string, NodeJS.Timeout>>({});
+  const bannerTimeoutsRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const refreshNotificationsRef = useRef<(() => Promise<void>) | null>(null);
+  const notificationsRef = useRef(notifications);
+  const announcedNotificationIdsRef = useRef(new Set<string>());
+
+  useEffect(() => {
+    notificationsRef.current = notifications;
+  }, [notifications]);
 
   const showBanner = useCallback((notification: Notification) => {
     const actionUrl = getNotificationActionUrl(notification);
@@ -193,12 +248,15 @@ export default function NotificationCenter({
       return [banner, ...prev].slice(0, 3);
     });
 
+    if (bannerTimeoutsRef.current[banner.id]) {
+      clearTimeout(bannerTimeoutsRef.current[banner.id]);
+    }
     const timeout = setTimeout(() => {
       setBanners((prev) => prev.filter((item) => item.id !== banner.id));
       delete bannerTimeoutsRef.current[banner.id];
     }, 8000);
 
-    bannerTimeoutsRef.current[banner.id] = timeout as unknown as NodeJS.Timeout;
+    bannerTimeoutsRef.current[banner.id] = timeout;
   }, []);
 
   const dismissBanner = useCallback((bannerId: string) => {
@@ -210,13 +268,53 @@ export default function NotificationCenter({
   }, []);
 
   useEffect(() => {
-    if (!sessionUserId) return;
+    setBanners([]);
+    announcedNotificationIdsRef.current.clear();
+    if (!sessionUserId) {
+      setNotifications([]);
+      setUnreadCount(0);
+      return;
+    }
+
+    const controller = new AbortController();
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+    let refreshInFlight = false;
+    let refreshAgain = false;
+    const scheduleRefresh = () => {
+      if (controller.signal.aborted || refreshTimer !== null) return;
+      refreshTimer = setTimeout(() => {
+        refreshTimer = null;
+        void refresh();
+      }, 250);
+    };
+    const refresh = async () => {
+      if (controller.signal.aborted) return;
+      if (refreshInFlight) {
+        refreshAgain = true;
+        return;
+      }
+      refreshInFlight = true;
+      try {
+        await loadNotifications(controller.signal);
+      } finally {
+        refreshInFlight = false;
+        if (refreshAgain) {
+          refreshAgain = false;
+          scheduleRefresh();
+        }
+      }
+    };
+    refreshNotificationsRef.current = refresh;
 
     soundSessionStartedAtRef.current = Date.now();
     realtimeReadyRef.current = false;
     preferencesLoadedRef.current = false;
-    fetchNotifications();
-    loadUserPreferences();
+    soundEnabledRef.current = true;
+    customSoundUrlRef.current = null;
+    setSoundEnabled(true);
+    setCustomSoundUrl(null);
+    void refresh();
+    void loadUserPreferences(controller.signal);
 
     // More than one responsive shell can briefly mount during hydration or a
     // breakpoint change. Every effect instance needs its own Realtime topic;
@@ -234,10 +332,10 @@ export default function NotificationCenter({
           filter: `user_id=eq.${sessionUserId}`,
         },
         (payload) => {
+          if (controller.signal.aborted) return;
+          scheduleRefresh();
           const newRow = payload.new as any;
           void (async () => {
-            await fetchNotifications();
-
             if (!newRow?.notification_id || newRow?.is_read) return;
 
             const { data: notifData, error: notifError } = await supabase
@@ -257,7 +355,10 @@ export default function NotificationCenter({
                 `,
               )
               .eq('id', newRow.notification_id)
-              .maybeSingle();
+              .maybeSingle()
+              .abortSignal(controller.signal);
+
+            if (controller.signal.aborted) return;
 
             if (notifError) {
               console.error('Błąd pobierania nowego powiadomienia:', notifError);
@@ -266,33 +367,16 @@ export default function NotificationCenter({
 
             if (!notifData) return;
 
-            const recipientCreatedAt = Date.parse(newRow.created_at || '');
-            const notificationCreatedAt = Date.parse(notifData.created_at || '');
-            const isNewInCurrentSession =
-              realtimeReadyRef.current &&
-              Number.isFinite(recipientCreatedAt) &&
-              Number.isFinite(notificationCreatedAt) &&
-              recipientCreatedAt >= soundSessionStartedAtRef.current &&
-              notificationCreatedAt >= soundSessionStartedAtRef.current;
-
-            if (!isNewInCurrentSession) return;
-
-            const isAudibleBrowserSession =
-              typeof document !== 'undefined' &&
-              document.visibilityState === 'visible' &&
-              document.hasFocus();
-
-            if (
-              isAudibleBrowserSession &&
-              preferencesLoadedRef.current &&
-              soundEnabledRef.current &&
-              claimNotificationSound(notifData.id)
-            ) {
-              playNotificationSound();
-            }
-
-            showBanner(notifData as Notification);
-          })();
+            announceNotification({
+              ...notifData,
+              recipient_id: newRow.id,
+              recipient_created_at: newRow.created_at,
+              is_read: false,
+              read_at: null,
+            } as Notification);
+          })().catch((error) => {
+            if (!controller.signal.aborted) console.error('Błąd odbierania powiadomienia:', error);
+          });
         },
       )
       .on(
@@ -304,7 +388,7 @@ export default function NotificationCenter({
           filter: `user_id=eq.${sessionUserId}`,
         },
         (payload) => {
-          fetchNotifications();
+          scheduleRefresh();
         },
       )
       .on(
@@ -316,11 +400,13 @@ export default function NotificationCenter({
           filter: `user_id=eq.${sessionUserId}`,
         },
         (payload) => {
-          fetchNotifications();
+          scheduleRefresh();
         },
       )
       .subscribe((status) => {
+        if (controller.signal.aborted) return;
         realtimeReadyRef.current = status === 'SUBSCRIBED';
+        if (status === 'SUBSCRIBED') scheduleRefresh();
       });
 
     const notificationsChannel = supabase
@@ -333,15 +419,48 @@ export default function NotificationCenter({
           table: 'notifications',
         },
         (payload) => {
-          fetchNotifications();
+          if (controller.signal.aborted) return;
+          const updated = payload.new;
+          if (!notificationsRef.current.some((notification) => notification.id === updated.id)) return;
+          // Apply the delivered row locally, rather than refetching every recipient.
+          setNotifications((current) => current.map((notification) =>
+            notification.id === updated.id
+              ? {
+                  ...notification,
+                  ...updated,
+                  recipient_id: notification.recipient_id,
+                  is_read: notification.is_read,
+                  read_at: notification.read_at,
+                }
+              : notification,
+          ));
+          // An older list response may still be in flight: refresh once after it finishes.
+          if (refreshInFlight) refreshAgain = true;
         },
       )
       .subscribe();
 
+    // Realtime can miss events on reconnect or while the browser sleeps.
+    // A visible tab catches up without requiring a page reload.
+    const catchUp = () => { if (document.visibilityState === 'visible') scheduleRefresh(); };
+    const catchUpTimer = window.setInterval(catchUp, 30000);
+    window.addEventListener('focus', catchUp);
+    window.addEventListener('online', catchUp);
+    document.addEventListener('visibilitychange', catchUp);
+
     return () => {
+      controller.abort();
+      if (refreshTimer !== null) clearTimeout(refreshTimer);
+      window.clearInterval(catchUpTimer);
+      window.removeEventListener('focus', catchUp);
+      window.removeEventListener('online', catchUp);
+      document.removeEventListener('visibilitychange', catchUp);
+      if (refreshNotificationsRef.current === refresh) refreshNotificationsRef.current = null;
+      Object.values(bannerTimeoutsRef.current).forEach(clearTimeout);
+      bannerTimeoutsRef.current = {};
       realtimeReadyRef.current = false;
-      supabase.removeChannel(recipientsChannel);
-      supabase.removeChannel(notificationsChannel);
+      void supabase.removeChannel(recipientsChannel).catch(() => {});
+      void supabase.removeChannel(notificationsChannel).catch(() => {});
     };
   }, [sessionUserId, showBanner]);
 
@@ -353,18 +472,18 @@ export default function NotificationCenter({
     customSoundUrlRef.current = customSoundUrl;
   }, [customSoundUrl]);
 
-  const loadUserPreferences = async () => {
+  const loadUserPreferences = async (signal: AbortSignal) => {
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!sessionUserId || signal.aborted) return;
 
       const { data, error } = await supabase
         .from('employees')
         .select('preferences')
-        .or(`id.eq.${user.id},auth_user_id.eq.${user.id}`)
-        .maybeSingle();
+        .or(`id.eq.${sessionUserId},auth_user_id.eq.${sessionUserId}`)
+        .maybeSingle()
+        .abortSignal(signal);
+
+      if (signal.aborted) return;
 
       if (error) throw error;
 
@@ -377,9 +496,9 @@ export default function NotificationCenter({
         setCustomSoundUrl(null);
       }
     } catch (error) {
-      console.error('Error loading user preferences:', error);
+      if (!signal.aborted) console.error('Error loading user preferences:', error);
     } finally {
-      preferencesLoadedRef.current = true;
+      if (!signal.aborted) preferencesLoadedRef.current = true;
     }
   };
 
@@ -417,11 +536,27 @@ export default function NotificationCenter({
   };
 
   const fetchNotifications = async () => {
+    await refreshNotificationsRef.current?.();
+  };
+
+  const announceNotification = (notification: Notification) => {
+    const deliveredAt = Date.parse(notification.recipient_created_at || notification.created_at);
+    if (notification.is_read || !Number.isFinite(deliveredAt)
+      || deliveredAt < soundSessionStartedAtRef.current
+      || document.visibilityState !== 'visible' || !document.hasFocus()
+      || announcedNotificationIdsRef.current.has(notification.id)) return;
+    // Both Realtime and catch-up reads pass here. A notice produces one banner,
+    // not another banner or sound on every periodic refresh.
+    announcedNotificationIdsRef.current.add(notification.id);
+    if (preferencesLoadedRef.current && soundEnabledRef.current && claimNotificationSound(notification.id)) {
+      playNotificationSound();
+    }
+    showBanner(notification);
+  };
+
+  const loadNotifications = async (signal: AbortSignal) => {
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!sessionUserId || signal.aborted) return;
 
       const { data, error } = await supabase
         .from('notification_recipients')
@@ -430,6 +565,7 @@ export default function NotificationCenter({
           id,
           is_read,
           read_at,
+          created_at,
           notifications (
             id,
             title,
@@ -444,23 +580,31 @@ export default function NotificationCenter({
           )
         `,
         )
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
+        .eq('user_id', sessionUserId)
+        .order('created_at', { ascending: false })
+        .abortSignal(signal);
+
+      if (signal.aborted) return;
 
       if (error) throw error;
 
       if (data) {
-        const formattedNotifications = data.map((recipient: any) => ({
+        const formattedNotifications = data.filter((recipient: any) => recipient.notifications).map((recipient: any) => ({
           ...recipient.notifications,
           recipient_id: recipient.id,
+          recipient_created_at: recipient.created_at,
           is_read: recipient.is_read,
           read_at: recipient.read_at,
         }));
+        notificationsRef.current = formattedNotifications;
         setNotifications(formattedNotifications);
         setUnreadCount(formattedNotifications.filter((n: any) => !n.is_read).length);
+        // Announce notices received since this session started, including ones
+        // recovered after a dropped WebSocket message. Old history stays quiet.
+        formattedNotifications.slice().reverse().forEach(announceNotification);
       }
     } catch (error) {
-      console.error('Error fetching notifications:', error);
+      if (!signal.aborted) console.error('Error fetching notifications:', error);
     }
   };
 
@@ -484,6 +628,7 @@ export default function NotificationCenter({
         ),
       );
       setUnreadCount((prev) => Math.max(0, prev - 1));
+      void refreshSellerSidebarBadge();
     } catch (error) {
       console.error('Error marking as read:', error);
     }
@@ -515,6 +660,7 @@ export default function NotificationCenter({
         prev.map((n) => ({ ...n, is_read: true, read_at: new Date().toISOString() })),
       );
       setUnreadCount(0);
+      void refreshSellerSidebarBadge();
     } catch (error) {
       console.error('Error marking all as read:', error);
     } finally {
@@ -538,6 +684,7 @@ export default function NotificationCenter({
       if (notificationToDelete && !notificationToDelete.is_read) {
         setUnreadCount((prev) => Math.max(0, prev - 1));
       }
+      void refreshSellerSidebarBadge();
     } catch (error) {
       console.error('Error deleting notification:', error);
     }
@@ -575,6 +722,7 @@ export default function NotificationCenter({
       setNotifications([]);
       setUnreadCount(0);
       showSnackbar(`Usunięto ${allRecipients.length} powiadomień`, 'success');
+      void refreshSellerSidebarBadge();
     } catch (error) {
       console.error('Error deleting all notifications:', error);
       showSnackbar('Błąd podczas usuwania powiadomień', 'error');
@@ -583,9 +731,22 @@ export default function NotificationCenter({
     }
   };
 
-  const handleNotificationClick = async (notification: Notification) => {
+  const navigateToNotification = (actionUrl: string) => {
+    const destination = new URL(actionUrl, window.location.origin);
+    const sellerSection = destination.hash === '#seller-offer-review' || destination.hash === '#seller-offer-conversation';
+    router.push(actionUrl, { scroll: !sellerSection });
+    // Pushing the same URL does not remount the offer or trigger its effects.
+    if (destination.origin === window.location.origin && destination.pathname === window.location.pathname && destination.hash) {
+      window.requestAnimationFrame(() => {
+        document.getElementById(destination.hash.slice(1))?.scrollIntoView({ block: 'start' });
+      });
+    }
+  };
+
+  const handleNotificationClick = (notification: Notification) => {
     if (!notification.is_read) {
-      await markAsRead(notification.recipient_id);
+      // A slow read receipt must not delay opening the actual inquiry.
+      void markAsRead(notification.recipient_id);
     }
 
     if (
@@ -602,7 +763,7 @@ export default function NotificationCenter({
 
     if (actionUrl) {
       setShowPanel(false);
-      router.push(actionUrl);
+      navigateToNotification(actionUrl);
     }
   };
 
@@ -706,7 +867,7 @@ export default function NotificationCenter({
             className="animate-slide-in-right flex w-80 cursor-pointer items-start gap-3 rounded-lg border border-[#d3bb73]/30 bg-[#1c1f33] p-4 shadow-2xl transition-all hover:border-[#d3bb73]/50"
             onClick={() => {
               if (banner.actionUrl) {
-                router.push(banner.actionUrl);
+                navigateToNotification(banner.actionUrl);
               }
               dismissBanner(banner.id);
             }}
@@ -736,7 +897,7 @@ export default function NotificationCenter({
 
       <div className="relative">
         <button
-          onClick={() => setShowPanel(!showPanel)}
+          onClick={() => { if (!showPanel) void fetchNotifications(); setShowPanel(!showPanel); }}
           className="relative rounded-lg p-1.5 transition-colors hover:bg-[#1c1f33] md:p-2"
         >
           <Bell className="h-5 w-5 text-[#e5e4e2] md:h-6 md:w-6" />
@@ -864,7 +1025,7 @@ export default function NotificationCenter({
                                   notification.is_read ? 'text-[#e5e4e2]/70' : 'text-[#e5e4e2]'
                                 }`}
                               >
-                                {notification.title}
+                                {systemNotificationText(notification.title)}
                               </h4>
                               {!notification.is_read && (
                                 <div className="h-2 w-2 flex-shrink-0 rounded-full bg-[#d3bb73]" />
@@ -876,7 +1037,7 @@ export default function NotificationCenter({
                                 notification.is_read ? 'text-[#e5e4e2]/50' : 'text-[#e5e4e2]/70'
                               }`}
                             >
-                              {notification.message}
+                              {systemNotificationText(notification.message)}
                             </p>
 
                             <div className="mt-2 flex items-center gap-2">

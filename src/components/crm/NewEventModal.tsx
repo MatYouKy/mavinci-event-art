@@ -4,6 +4,7 @@ import { X, Plus, Building2, User, Briefcase } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase/browser';
 import LocationSelector from './LocationSelector';
+import { EventRoomSelector } from './locations/EventRoomSelector';
 import { utcToLocalDatetimeString, localDatetimeStringToUTC } from '@/lib/utils/dateTimeUtils';
 
 interface MyCompany {
@@ -29,8 +30,8 @@ interface Organization {
 interface Contact {
   id: string;
   full_name: string;
-  organization_id?: string | null;
-  contact_type: 'individual' | 'organization_contact';
+  organization_ids: string[];
+  contact_type: 'individual' | 'contact';
 }
 
 interface EventCategory {
@@ -65,6 +66,9 @@ export default function NewEventModal({
     event_date: initialDate ? utcToLocalDatetimeString(initialDate.toISOString()) : '',
     event_end_date: '',
     location: '',
+    location_id: null as string | null,
+    location_room_ids: [] as string[],
+    stage_room_id: null as string | null,
     budget: '',
     description: '',
     status: 'inquiry',
@@ -90,15 +94,15 @@ export default function NewEventModal({
 
   // Filtruj kontakty na podstawie wybranej organizacji
   useEffect(() => {
-    if (formData.organization_id) {
-      const filtered = contacts.filter(
-        (c) => c.organization_id === formData.organization_id || c.contact_type === 'individual',
+    if (clientType === 'organization' && formData.organization_id) {
+      const filtered = contacts.filter((c) =>
+        c.organization_ids.includes(formData.organization_id),
       );
       setFilteredContacts(filtered);
     } else {
       setFilteredContacts(contacts);
     }
-  }, [formData.organization_id, contacts]);
+  }, [formData.organization_id, contacts, clientType]);
 
   const fetchOrganizations = async () => {
     try {
@@ -124,7 +128,9 @@ export default function NewEventModal({
     try {
       const { data, error } = await supabase
         .from('contacts')
-        .select('id, first_name, last_name, full_name, contact_type')
+        .select(
+          'id, first_name, last_name, full_name, contact_type, contact_organizations(organization_id, is_current)',
+        )
         .in('contact_type', ['contact', 'individual'])
         .order('full_name', { ascending: true });
 
@@ -138,11 +144,16 @@ export default function NewEventModal({
           id: c.id,
           full_name:
             c.full_name || `${c.first_name || ''} ${c.last_name || ''}`.trim() || 'Brak nazwy',
-          organization_id: null,
+          organization_ids: Array.from(
+            new Set(
+              (c.contact_organizations || [])
+                .filter((relation) => relation.is_current === true)
+                .map((relation) => relation.organization_id),
+            ),
+          ),
           contact_type: c.contact_type as 'contact' | 'individual',
         }));
         setContacts(formattedContacts);
-        setFilteredContacts(formattedContacts);
       }
     } catch (err) {
       console.error('Error:', err);
@@ -285,6 +296,9 @@ export default function NewEventModal({
       event_date: localDatetimeStringToUTC(formData.event_date),
       event_end_date: localDatetimeStringToUTC(formData.event_end_date),
       location: formData.location || null,
+      location_id: formData.location_id,
+      location_room_ids: formData.location_room_ids,
+      stage_room_id: formData.stage_room_id,
       budget: formData.budget ? parseFloat(formData.budget) : null,
       description: formData.description || null,
       status: formData.status,
@@ -301,6 +315,9 @@ export default function NewEventModal({
       event_date: '',
       event_end_date: '',
       location: '',
+      location_id: null as string | null,
+      location_room_ids: [] as string[],
+      stage_room_id: null as string | null,
       budget: '',
       description: '',
       status: 'inquiry',
@@ -586,8 +603,26 @@ export default function NewEventModal({
               <label className="mb-2 block text-sm text-[#e5e4e2]/70">Lokalizacja</label>
               <LocationSelector
                 value={formData.location}
-                onChange={(value) => setFormData({ ...formData, location: value })}
+                onChange={(value, locationData) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    location: value,
+                    location_id: locationData?.id || null,
+                    location_room_ids:
+                      prev.location_id === (locationData?.id || null) ? prev.location_room_ids : [],
+                    stage_room_id:
+                      prev.location_id === (locationData?.id || null) ? prev.stage_room_id : null,
+                  }))
+                }
                 placeholder="Wybierz z listy lub wyszukaj nową lokalizację..."
+              />
+              <EventRoomSelector
+                locationId={formData.location_id || null}
+                selected={formData.location_room_ids}
+                stage={formData.stage_room_id}
+                onChange={(ids, stage) =>
+                  setFormData((prev) => ({ ...prev, location_room_ids: ids, stage_room_id: stage }))
+                }
               />
             </div>
 
@@ -614,7 +649,6 @@ export default function NewEventModal({
                 <option value="offer_to_send">Oferta do wysłania</option>
                 <option value="offer_sent">Oferta wysłana</option>
                 <option value="offer_accepted">Oferta zaakceptowana</option>
-                <option value="in_preparation">W przygotowaniu</option>
                 <option value="in_progress">W trakcie</option>
                 <option value="completed">Zakończone</option>
                 <option value="cancelled">Anulowane</option>

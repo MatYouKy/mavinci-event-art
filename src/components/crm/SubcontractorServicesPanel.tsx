@@ -1,5 +1,10 @@
 'use client';
 
+import ServiceTerms, {
+  emptyServiceTerms,
+  validateServiceTerms,
+  type ServiceTermsValue,
+} from '@/components/crm/subcontractors/ServiceTerms';
 import { useState, useEffect, useRef } from 'react';
 import {
   Plus,
@@ -43,7 +48,7 @@ interface ServiceImage {
   isPrimary?: boolean;
 }
 
-interface ServiceCatalogItem {
+interface ServiceCatalogItem extends ServiceTermsValue {
   id: string;
   name: string;
   description: string | null;
@@ -87,7 +92,7 @@ const serviceTypeConfig = {
     catalogRoute: '/crm/contacts',
   },
   services: {
-    label: 'Uslugi',
+    label: 'Usługi',
     icon: Wrench,
     color: 'green',
     catalogRoute: '/crm/offers/products',
@@ -174,7 +179,8 @@ export default function SubcontractorServicesPanel({
   const [newItemName, setNewItemName] = useState('');
   const [newItemDescription, setNewItemDescription] = useState('');
   const [newItemPrice, setNewItemPrice] = useState<number>(0);
-  const [newItemUnit, setNewItemUnit] = useState('szt');
+  const [newItemUnit, setNewItemUnit] = useState('realizacja');
+  const [newItemTerms, setNewItemTerms] = useState<ServiceTermsValue>(emptyServiceTerms);
   const [newItemCategory, setNewItemCategory] = useState('');
   const [newItemQuantity, setNewItemQuantity] = useState<number>(1);
   const [newItemWeeklyPrice, setNewItemWeeklyPrice] = useState<number>(0);
@@ -227,7 +233,12 @@ export default function SubcontractorServicesPanel({
 
       if (error) throw error;
       setServices(data || []);
-      if (data && data.length > 0) setActiveTab(data[0].service_type as ServiceType);
+      if (data && data.length > 0)
+        setActiveTab(
+          data.some((s) => s.service_type === 'services')
+            ? 'services'
+            : (data[0].service_type as ServiceType),
+        );
     } catch (error: any) {
       showSnackbar('Blad podczas ladowania uslug', 'error');
     } finally {
@@ -418,6 +429,10 @@ export default function SubcontractorServicesPanel({
       switch (activeTab) {
         case 'services':
           tableName = 'subcontractor_service_catalog';
+          validateServiceTerms(newItemTerms);
+          if (!Number.isFinite(newItemPrice) || newItemPrice < 0)
+            throw new Error('Podaj poprawną nieujemną cenę usługi.');
+          Object.assign(insertData, newItemTerms);
           insertData.unit_price = newItemPrice;
           insertData.unit = newItemUnit;
           insertData.category = newItemCategory || null;
@@ -474,7 +489,8 @@ export default function SubcontractorServicesPanel({
     setNewItemName('');
     setNewItemDescription('');
     setNewItemPrice(0);
-    setNewItemUnit('szt');
+    setNewItemUnit('realizacja');
+    setNewItemTerms(emptyServiceTerms);
     setNewItemCategory('');
     setNewItemQuantity(1);
     setNewItemWeeklyPrice(0);
@@ -616,6 +632,7 @@ export default function SubcontractorServicesPanel({
               const Icon = config.icon;
               return (
                 <button
+                  data-crm-tab-active={activeTab === service.service_type}
                   key={service.id}
                   onClick={() => setActiveTab(service.service_type as ServiceType)}
                   className={`flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors ${
@@ -740,8 +757,12 @@ export default function SubcontractorServicesPanel({
                                 {item.warehouse_categories?.name || item.category}
                               </span>
                             )}
+                            {activeTab === 'services' && <ServiceTerms value={item} />}
                             <div className="mt-3 flex items-center justify-between border-t border-gray-700 pt-3 text-sm">
                               <div>
+                                {activeTab === 'services' && item.unit_price == null && (
+                                  <span className="text-[#d3bb73]">Cena do ustalenia</span>
+                                )}
                                 {item.unit_price != null && item.unit_price > 0 && (
                                   <span className="text-green-400">
                                     {item.unit_price} zl / {item.unit}
@@ -1094,16 +1115,18 @@ export default function SubcontractorServicesPanel({
                       )}
                     </>
                   )}
-                  <div>
-                    <label className="mb-2 block text-sm text-gray-400">Jednostka</label>
-                    <input
-                      type="text"
+                  <label className="block text-sm">
+                    Sposób wyceny
+                    <select
                       value={newItemUnit}
                       onChange={(e) => setNewItemUnit(e.target.value)}
-                      className="w-full rounded-lg border border-gray-700 bg-[#252837] p-3 text-white focus:border-[#d3bb73] focus:outline-none"
-                      placeholder="szt, godz, usluga"
-                    />
-                  </div>
+                      className="mt-1 w-full rounded-lg border border-white/10 bg-[#250914] p-3"
+                    >
+                      <option value="realizacja">Za realizację</option>
+                      <option value="godz">Za godzinę</option>
+                    </select>
+                  </label>
+                  <ServiceTerms value={newItemTerms} onChange={setNewItemTerms} />
                 </>
               )}
 

@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import { useRoute, useNavigation } from '@react-navigation/native';
+import React, { useEffect, useState } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { colors } from '../theme';
 import EquipmentScreen, { EquipmentListItem } from '../screens/EquipmentScreen';
@@ -8,6 +9,14 @@ import PermissionGate from '../components/PermissionGate';
 export default function EquipmentStackNavigator() {
   const [selectedItem, setSelectedItem] = useState<{ id: string; isKit: boolean } | null>(null);
 
+  const route = useRoute<any>();
+  const navigation = useNavigation<any>();
+  useEffect(() => {
+    if (route.params?.equipmentId) {
+      setSelectedItem({ id: route.params.equipmentId, isKit: false });
+      navigation.setParams({ equipmentId: undefined });
+    }
+  }, [route.params?.equipmentId, navigation]);
   return (
     <PermissionGate module="equipment">
       {selectedItem ? (

@@ -1,6 +1,9 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 'use client';
 
+import EventNavigation from '@/components/crm/events/EventNavigation';
+import { getOfferPricingTotals, roundMoney } from '@/lib/CRM/Offers/offerTotals';
+import { RealizationPanel } from '@/components/crm/events/RealizationPanel';
 import {
   useState,
   useEffect,
@@ -93,13 +96,16 @@ import { useEventAuditLog } from '@/app/(crm)/crm/events/hooks/useEventAuditLog'
 import { IEmployee } from '../../employees/type';
 import { hasScope } from './helpers/hasScope';
 import { EventCategoryRow } from '@/lib/CRM/events/eventsData.server';
+import EventPartnerArrangement from '@/components/crm/events/contract/EventPartnerArrangement';
 import { EventContractTab } from '@/components/crm/events/contract/EventContractTab';
 import { deleteEventSafely } from '@/lib/CRM/events/deleteEventSafely';
+import WarehouseHandoffPanel from '@/components/crm/events/WarehouseHandoffPanel';
 import EventWorkflowReadinessPanel from '@/components/crm/events/EventWorkflowReadinessPanel';
 import EventPreflightPanel from '@/components/crm/events/EventPreflightPanel';
 import { useEventWorkspace } from '@/components/crm/events/EventWorkspaceProvider';
 import { EVENT_STATUS_BADGE_CLASSES } from '@/components/crm/events/eventStatusPalette';
 import { ADMIN_EVENT_TABS, CREATOR_EVENT_TABS } from '@/lib/CRM/events/eventTabs';
+import EventSellerCorrespondence from '@/components/seller/EventSellerCorrespondence';
 
 const EVENT_DETAIL_TAB_IDS = [
   'overview',
@@ -113,6 +119,7 @@ const EVENT_DETAIL_TAB_IDS = [
   'logistics',
   'finances',
   'contract',
+  'seller-arrangements',
   'agenda',
   'calculations',
   'history',
@@ -302,8 +309,23 @@ export default function EventDetailPageClient({
     hasScope('invoices_manage', currentEmployee as IEmployee) ||
     hasScope('invoices_view', currentEmployee as IEmployee);
 
+  // Offer correspondence is commercial history, not a general team chat.
+  // The RPC additionally enforces event access and the seller's brand scope.
+  const canViewSellerCorrespondence = canViewCommercials && (
+    isCreator || isAdmin || ['offers_view', 'offers_manage', 'finances_view', 'finances_manage']
+      .some((scope) => hasScope(scope, currentEmployee as IEmployee))
+  );
+
   const [event, setEvent] = useState<IEvent>(initialData);
   const [deletingEvent, setDeletingEvent] = useState(false);
+
+  useEffect(() => {
+    if (!eventData || eventData.id !== eventId) return;
+    // Nagłówek i zakładki mają ten sam stan po aktualizacji statusu przez bazę.
+    setEvent((previous) => previous.id === eventData.id
+      ? { ...previous, ...eventData }
+      : eventData);
+  }, [eventData, eventId]);
 
   const isWeddingEvent = useMemo(() => {
     const categoryName =
@@ -450,12 +472,34 @@ export default function EventDetailPageClient({
 
   // ✅ jeśli masz RTK Query do ofert (polecam) – pobieraj tylko dla osób uprawnionych
   const {
-    data: offersData,
+    currentData: offersData,
     isFetching: offersFetching,
     refetch: refetchOffers,
   } = useGetEventOffersQuery(eventId, {
     skip: !canViewCommercials,
+    refetchOnMountOrArgChange: true,
   });
+
+  useEffect(() => {
+    if (!canViewCommercials) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const refresh = () => {
+      if (document.visibilityState !== 'visible') return;
+      clearTimeout(timer);
+      timer = setTimeout(() => { void refetchOffers(); }, 200);
+    };
+    const channel = supabase.channel(`event-budget-offers:${eventId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'offers', filter: `event_id=eq.${eventId}` }, refresh)
+      .subscribe();
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', refresh);
+      void supabase.removeChannel(channel);
+    };
+  }, [eventId, canViewCommercials, refetchOffers]);
 
   useEffect(() => {
     if (activeTab === 'offer' && canViewCommercials) {
@@ -531,7 +575,11 @@ export default function EventDetailPageClient({
     if (!confirmed) return;
 
     try {
+      if (!currentEmployee?.id) {
+        throw new Error('Nie można ustalić autora kopii wydarzenia. Odśwież stronę i spróbuj ponownie.');
+      }
       const duplicatedEvent: Record<string, unknown> = {
+        created_by: currentEmployee.id,
         name: `${event.name} (kopia)`,
         description: event.description || null,
         event_date: event.event_date,
@@ -713,20 +761,6 @@ export default function EventDetailPageClient({
     }
   }, [eventId, updateEventMutation, showSnackbar]);
 
-  useEffect(() => {
-    if (!canViewCommercials) return;
-    if (initialOffers?.length) {
-      dispatch(
-        eventsApi.util.upsertQueryData(
-          'getEventOffers',
-          eventId,
-          initialOffers,
-        ) as unknown as UnknownAction,
-      );
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [eventId, canViewCommercials, initialOffers]);
-
   const actions = useMemo<Action[]>(() => {
     return [
       {
@@ -754,25 +788,21 @@ export default function EventDetailPageClient({
   }, [setShowEditEventModal, handleDeleteEvent, handleDuplicateEvent, isAdmin, canEventManage]);
 
   const latestOffer = useMemo(() => {
-    if (!offersData?.length) return null;
+    if (event?.financial_source === 'calculation') return null;
+    const eligible = (offersData ?? initialOffers ?? [])
+      .filter(offer => ['accepted', 'sent', 'draft'].includes(offer.status));
+    return eligible.sort((a, b) => {
+      const acceptedPriority = Number(b.status === 'accepted') - Number(a.status === 'accepted');
+      if (acceptedPriority) return acceptedPriority;
+      return new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime();
+    })[0] || null;
+  }, [offersData, initialOffers, event?.financial_source]);
 
-    // Najprościej: po updated_at (lub created_at)
-    return [...offersData].sort((a, b) => {
-      const ta = new Date(a.updated_at || a.created_at || 0).getTime();
-      const tb = new Date(b.updated_at || b.created_at || 0).getTime();
-      return tb - ta;
-    })[0];
-  }, [offersData]);
-
-  const plannedRevenue = useMemo(() => {
-    if (latestOffer?.total_amount != null) {
-      const netto = Number(latestOffer.subtotal || latestOffer.total_amount || 0);
-      const vat = Number(latestOffer.tax_amount || 0);
-      return netto + vat;
-    }
-    if (event?.expected_revenue != null) return Number(event.expected_revenue);
-    return 0;
-  }, [latestOffer, event?.expected_revenue]);
+  const budgetOfferTotals = latestOffer ? getOfferPricingTotals(latestOffer) : null;
+  const plannedRevenue = budgetOfferTotals?.gross ?? Number(event?.expected_revenue || 0);
+  const offerCostNet = latestOffer?.total_cost == null ? null : Number(latestOffer.total_cost);
+  const offerProfitNet = budgetOfferTotals && offerCostNet != null
+    ? roundMoney(budgetOfferTotals.net - offerCostNet) : null;
 
   const actualRevenue = useMemo(() => {
     // tu zostawiasz swoje event.actual_revenue
@@ -882,18 +912,17 @@ export default function EventDetailPageClient({
         </div>
       </div>
 
-      <div
-        ref={setTabsScrollElement}
-        role="tablist"
-        data-crm-tabs="true"
-        className="flex gap-2 overflow-x-auto overscroll-x-contain border-b border-[#d3bb73]/10"
-      >
-        {[
+      <EventNavigation
+        scrollRef={setTabsScrollElement}
+        activeTab={activeTab}
+        onChange={(id) => navigateToTab(id as EventDetailTab)}
+        tabs={[
           { id: 'overview', label: 'Przegląd', icon: FileText },
           { id: 'phases', label: 'Timeline', icon: Clock },
           { id: 'offer', label: 'Oferta', icon: DollarSign },
           { id: 'finances', label: 'Finanse', icon: DollarSign },
           { id: 'contract', label: 'Umowa', icon: FileText },
+          { id: 'seller-arrangements', label: 'Ustalenia', icon: Icons.MessageSquare },
           {
             id: 'agenda',
             label: isWeddingEvent ? 'Karta weselna' : 'Agenda',
@@ -918,33 +947,17 @@ export default function EventDetailPageClient({
               return false;
             }
 
+            if (tab.id === 'seller-arrangements') {
+              return canViewSellerCorrespondence;
+            }
+
             if (tab.id === 'mavinci-live' && requiredMavinciLiveModules.length === 0) {
               return false;
             }
 
             return visibleEventTabs.includes(tab.id);
-          })
-          .map((tab) => {
-            const Icon = tab.icon;
-            return (
-              <button
-                key={tab.id}
-                role="tab"
-                aria-selected={activeTab === tab.id}
-                data-crm-tab-active={activeTab === tab.id ? 'true' : 'false'}
-                onClick={() => navigateToTab(tab.id as EventDetailTab)}
-                className={`flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors ${
-                  activeTab === tab.id
-                    ? 'border-[#d3bb73] text-[#d3bb73]'
-                    : 'border-transparent text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
-                }`}
-              >
-                <Icon className="h-4 w-4" />
-                {tab.label}
-              </button>
-            );
           })}
-      </div>
+      />
 
       {activeTab === 'overview' && (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -979,15 +992,17 @@ export default function EventDetailPageClient({
                             .maybeSingle();
 
                           if (assignment) {
-                            await supabase
+                            const { error: responseError } = await supabase
                               .from('employee_assignments')
                               .update({
                                 status: 'accepted',
                                 responded_at: new Date().toISOString(),
                               })
-                              .eq('id', assignment.id);
+                              .eq('id', assignment.id)
+                              .eq('status', 'pending');
 
-                            showSnackbar('Zaproszenie zostało zaakceptowane', 'success');
+                            if (responseError) { showSnackbar(responseError.message, 'error'); return; }
+                            showSnackbar('Status zaproszenia został odświeżony', 'success');
                             window.location.reload();
                           }
                         }}
@@ -1010,14 +1025,16 @@ export default function EventDetailPageClient({
                             .maybeSingle();
 
                           if (assignment) {
-                            await supabase
+                            const { error: responseError } = await supabase
                               .from('employee_assignments')
                               .update({
                                 status: 'rejected',
                                 responded_at: new Date().toISOString(),
                               })
-                              .eq('id', assignment.id);
+                              .eq('id', assignment.id)
+                              .eq('status', 'pending');
 
+                            if (responseError) { showSnackbar(responseError.message, 'error'); return; }
                             router.push('/crm/events');
                           }
                         }}
@@ -1030,6 +1047,8 @@ export default function EventDetailPageClient({
                 </div>
               </div>
             )}
+            <RealizationPanel eventId={eventId} />
+
             {canEventManage && (
               <EventPreflightPanel eventId={eventId} onNavigate={(tab) => navigateToTab(tab as EventDetailTab)} />
             )}
@@ -1041,6 +1060,7 @@ export default function EventDetailPageClient({
               />
             )}
             <EventsDetailsTab
+              canViewCommercials={canViewCommercials}
               initialEvent={event}
               location={location || null}
               organization={organization || null}
@@ -1054,7 +1074,12 @@ export default function EventDetailPageClient({
           </div>
 
           <div className="space-y-6">
-            <EventDetailsAction
+            <WarehouseHandoffPanel eventId={eventId} status={event.status} onAccepted={() => {
+              setEvent(current => ({ ...current, status: 'in_preparation' }));
+              void refetchTeam();
+              router.refresh();
+            }} />
+            {canViewCommercials && <EventDetailsAction
               event={event}
               categories={categories}
               hasOffers={!!offersData && offersData.length > 0}
@@ -1073,7 +1098,7 @@ export default function EventDetailPageClient({
                 alias: organization?.alias || '',
                 email: organization?.email || '',
               }}
-            />
+            />}
             {canViewCommercials && (
               <>
                 <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
@@ -1086,7 +1111,7 @@ export default function EventDetailPageClient({
                         ? 'Aktualizuję…'
                         : latestOffer
                           ? 'Źródło: oferta'
-                          : 'Źródło: event'}
+                          : event?.financial_source === 'calculation' ? 'Źródło: kalkulacja' : 'Źródło: wydarzenie'}
                     </div>
                   </div>
 
@@ -1097,36 +1122,20 @@ export default function EventDetailPageClient({
                         {plannedRevenue.toLocaleString('pl-PL')} zł
                       </p>
 
-                      {latestOffer && (
+                      {latestOffer && budgetOfferTotals && (
                         <div className="mt-2 space-y-1 text-xs text-[#e5e4e2]/50">
-                          <div>
-                            Netto:{' '}
-                            <span className="text-[#e5e4e2]/70">
-                              {Number(
-                                latestOffer.subtotal || latestOffer.total_amount || 0,
-                              ).toLocaleString('pl-PL', { minimumFractionDigits: 2 })}{' '}
-                              zł
-                            </span>
-                          </div>
-                          <div>
-                            VAT ({latestOffer.tax_percent ?? 23}%):{' '}
-                            <span className="text-[#e5e4e2]/70">
-                              {Number(latestOffer.tax_amount || 0).toLocaleString('pl-PL', {
-                                minimumFractionDigits: 2,
-                              })}{' '}
-                              zł
-                            </span>
-                          </div>
-                          <div>
-                            Brutto:{' '}
-                            <span className="text-[#e5e4e2]/70">
-                              {(
-                                Number(latestOffer.subtotal || latestOffer.total_amount || 0) +
-                                Number(latestOffer.tax_amount || 0)
-                              ).toLocaleString('pl-PL', { minimumFractionDigits: 2 })}{' '}
-                              zł
-                            </span>
-                          </div>
+                          <a href={`/crm/offers/${latestOffer.id}`} target="_blank" rel="noopener noreferrer" className="block text-[#d3bb73] underline">{latestOffer.status === 'accepted' ? 'Zaakceptowana oferta' : 'Wstępny plan z oferty'} {latestOffer.offer_number}</a>
+                          {budgetOfferTotals.discountAmount > 0 && <>
+                            <div>Przed rabatem netto: {budgetOfferTotals.listNet.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł</div>
+                            <div className="text-[#d3bb73]">Rabat: −{budgetOfferTotals.discountAmount.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł</div>
+                          </>}
+                          <div>Netto{budgetOfferTotals.discountAmount > 0 ? ' po rabacie' : ''}: <span className="text-[#e5e4e2]/70">{budgetOfferTotals.net.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł</span></div>
+                          <div>VAT ({budgetOfferTotals.hasMixedVatRates ? 'wg stawek pozycji' : `${budgetOfferTotals.taxPercent}%`}): <span className="text-[#e5e4e2]/70">{budgetOfferTotals.taxAmount.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł</span></div>
+                          <div>Brutto: <span className="text-[#e5e4e2]/70">{budgetOfferTotals.gross.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł</span></div>
+                          {latestOffer.logistics_enabled && Number(latestOffer.logistics_price_net) > 0 && <div>W cenie przed rabatem: logistyka {Number(latestOffer.logistics_price_net).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł netto.</div>}
+                          <div className="pt-3">Koszty zapisane w ofercie: <span className="text-[#e5e4e2]/70">{offerCostNet == null ? 'Nie określono' : `${offerCostNet.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł netto`}</span></div>
+                          {offerProfitNet != null && <div>Wynik po zapisanych kosztach: <span className={offerProfitNet < 0 ? 'text-red-300' : 'text-[#d3bb73]'}>{offerProfitNet.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł netto</span></div>}
+                          {latestOffer.logistics_cost_net == null && <p className="text-amber-200">Koszt logistyki nie został jeszcze określony — koszty mogą być niepełne.</p>}
                         </div>
                       )}
                     </div>
@@ -1219,6 +1228,7 @@ export default function EventDetailPageClient({
             </div>
           ) : (
             <TeamMembersList
+              eventId={eventId}
               employees={teamEmployees}
               onRemove={handleRemoveEmployee}
               canManageTeam={canManageTeam}
@@ -1245,7 +1255,7 @@ export default function EventDetailPageClient({
       {activeTab === 'logistics' && event && (
         <EventLogisticsPanel
           eventId={event.id}
-          eventLocation={event.location?.name || ''}
+          eventLocation={event.location?.formatted_address || [event.location?.name, event.location?.address, event.location?.city].filter(Boolean).join(', ')}
           eventDate={event.event_date}
           canManage={canEventManage}
         />
@@ -1272,7 +1282,11 @@ export default function EventDetailPageClient({
 
       {activeTab === 'finances' && canViewCommercials && <EventFinancesTab eventId={eventId} />}
 
-      {activeTab === 'contract' && <EventContractTab eventId={eventId} />}
+      {activeTab === 'contract' && <EventPartnerArrangement key={eventId} eventId={eventId} canManage={!!canEventManage}><EventContractTab eventId={eventId} /></EventPartnerArrangement>}
+
+      {activeTab === 'seller-arrangements' && canViewSellerCorrespondence && (
+        <EventSellerCorrespondence key={eventId} eventId={eventId} />
+      )}
 
       {activeTab === 'agenda' && isWeddingEvent && (
         <EventWeddingCardTab eventId={eventId} canManage={canEventManage} />

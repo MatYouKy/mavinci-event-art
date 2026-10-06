@@ -15,16 +15,18 @@ import {
   Calendar,
   FileText,
   Link as LinkIcon,
-  FilePlus2,
   FileDown,
   Loader,
   RefreshCw,
   Eye,
+  ChevronDown,
 } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import SendInvoiceEmailModal from '@/components/crm/SendInvoiceEmailModal';
 import ConvertProformaModal from '@/components/crm/ConvertProformaModal';
 import KSeFSendModal from '@/components/crm/KSeFSendModal';
+import FinalInvoiceWizardModal from '@/components/crm/FinalInvoiceWizardModal';
+import InvoiceDocumentActionsMenu, { type InvoiceDocumentAction } from '@/components/crm/invoices/InvoiceDocumentActionsMenu';
 import PermissionGuard from '@/components/crm/PermissionGuard';
 import { useDialog } from '@/contexts/DialogContext';
 import Image from 'next/image';
@@ -34,6 +36,15 @@ import {
   SettledInvoicePdfRef,
 } from '@/components/crm/invoices/helpers/buildInvoicePdfHtml';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import { useInvoiceFinanceAccess } from '@/hooks/useInvoiceFinanceAccess';
+import { resolveInvoiceIssuerName } from '@/lib/invoices/resolveInvoiceIssuerName';
+import { loadCanonicalBankPaymentDisplay, formatCanonicalBankPayment, type CanonicalBankPaymentDisplay } from '@/lib/invoices/canonicalBankPaymentDisplay';
+import { getPaymentAwareInvoiceFooterNote } from '@/lib/invoices/paymentAwareFooterNote';
+
+type KSeFSendSuccess = {
+  ksef_reference_number: string;
+  ksef_timestamp: string;
+};
 
 interface Invoice {
   buyer_is_private_person: boolean;
@@ -44,11 +55,13 @@ interface Invoice {
   } | null;
   id: string;
   invoice_number: string;
+  my_company_id: string | null;
   invoice_type: string;
   status: string;
   payment_status: 'unpaid' | 'partially_paid' | 'paid' | 'overdue' | 'refund_due' | 'partially_refunded' | 'refunded' | null;
   paid_amount: number | null;
   paid_at: string | null;
+  paid_date?: string | null;
   issue_date: string;
   sale_date: string;
   payment_due_date: string;
@@ -92,6 +105,7 @@ interface Invoice {
   ksef_sent_at: string | null;
   footer_note: string;
   signature_name: string;
+  created_by?: string | null;
   website: string;
   invoice_items?: InvoiceItem[];
   settled_invoices?: SettledInvoicePdfRef[];
@@ -176,13 +190,53 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
   const { showSnackbar } = useSnackbar();
   const { showConfirm } = useDialog();
   const { employee } = useCurrentEmployee();
+  const { access: financeAccess, loading: financeAccessLoading, error: financeAccessError } = useInvoiceFinanceAccess();
   const [invoice, setInvoice] = useState<Invoice | null>(null);
+  const [issuerPreview, setIssuerPreview] = useState<{
+    invoiceId: string;
+    name: string | null;
+    error: boolean;
+  } | null>(null);
+  const invoiceSignatureName = invoice?.signature_name?.trim()
+    || (issuerPreview?.invoiceId === invoice?.id ? issuerPreview?.name : null)
+    || '';
+
+  useEffect(() => {
+    let active = true;
+    setIssuerPreview(null);
+    if (invoice) {
+      resolveInvoiceIssuerName(supabase, invoice)
+        .then((name) => { if (active) setIssuerPreview({ invoiceId: invoice.id, name, error: false }); })
+        .catch(() => { if (active) setIssuerPreview({ invoiceId: invoice.id, name: null, error: true }); });
+    }
+    return () => { active = false; };
+  }, [invoice?.id, invoice?.signature_name, invoice?.created_by]);
+  const [canonicalBankPayment, setCanonicalBankPayment] = useState<CanonicalBankPaymentDisplay | null>(null);
+  const [bankPaymentReadError, setBankPaymentReadError] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    setCanonicalBankPayment(null);
+    setBankPaymentReadError(false);
+    if (invoice && financeAccess?.canViewCompanyFinance) {
+      loadCanonicalBankPaymentDisplay([invoice])
+        .then((payments) => { if (active) setCanonicalBankPayment(payments[invoice.id] || null); })
+        .catch(() => { if (active) setBankPaymentReadError(true); });
+    }
+    return () => { active = false; };
+  }, [invoice, financeAccess]);
   const [items, setItems] = useState<InvoiceItem[]>([]);
   const [relatedData, setRelatedData] = useState<RelatedData>({});
   const [loading, setLoading] = useState(true);
   const [showSendEmailModal, setShowSendEmailModal] = useState(false);
   const [showConvertProformaModal, setShowConvertProformaModal] = useState(false);
   const [showKSeFModal, setShowKSeFModal] = useState(false);
+  const [completedKsefSend, setCompletedKsefSend] = useState<{
+    invoiceId: string;
+    result: KSeFSendSuccess;
+  } | null>(null);
+  const [showFinalInvoiceModal, setShowFinalInvoiceModal] = useState(false);
+  const [showKsefDetails, setShowKsefDetails] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [pdfPath, setPdfPath] = useState<string | null>(null);
   const [lastBase64, setLastBase64] = useState<string | null>(null);
@@ -194,10 +248,19 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
     settlementSummary?: Invoice['settlement_summary'];
   } | null>(null);
 
-  const fetchInvoice = useCallback(async () => {
+  const fetchInvoice = useCallback(async ({ background = false }: { background?: boolean } = {}) => {
+    if (financeAccessLoading) return;
+    if (!financeAccess || financeAccess.scope === 'none') {
+      setInvoice(null);
+      setItems([]);
+      setRelatedData({});
+      setLoading(false);
+      return;
+    }
+    // Refreshing after KSeF success must not unmount the completed send modal.
+    if (!background) setLoading(true);
     try {
-      const [invoiceRes, itemsRes] = await Promise.all([
-        supabase
+      let invoiceQuery = supabase
           .from('invoices')
           .select(
             `
@@ -209,15 +272,23 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
             )
           `,
           )
-          .eq('id', params.id)
-          .single(),
-
-        supabase
+          .eq('id', params.id);
+      if (financeAccess.scope === 'sales') {
+        invoiceQuery = invoiceQuery.in('created_by', [financeAccess.employeeId, financeAccess.authUserId]);
+      }
+      const invoiceRes = await invoiceQuery.maybeSingle();
+      if (invoiceRes.error) throw invoiceRes.error;
+      if (!invoiceRes.data) {
+        setInvoice(null);
+        setItems([]);
+        setRelatedData({});
+        return;
+      }
+      const itemsRes = await supabase
           .from('invoice_items')
           .select('*')
           .eq('invoice_id', params.id)
-          .order('position_number'),
-      ]);
+          .order('position_number');
 
       if (invoiceRes.data) {
         setInvoice({ ...invoiceRes.data, invoice_items: itemsRes.data || [] });
@@ -359,9 +430,9 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
       console.error('Error fetching invoice:', err);
       showSnackbar('Blad podczas ladowania faktury', 'error');
     } finally {
-      setLoading(false);
+      if (!background) setLoading(false);
     }
-  }, [params.id]);
+  }, [params.id, financeAccess, financeAccessLoading]);
 
   useEffect(() => {
     fetchInvoice();
@@ -449,9 +520,14 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
     };
   };
 
-  const handleKsefSuccess = useCallback(async () => {
-    await fetchInvoice();
-  }, [fetchInvoice]);
+  const handleKsefSuccess = useCallback(async (result: KSeFSendSuccess) => {
+    // Keep the terminal result above the modal so an incidental remount cannot resend.
+    setCompletedKsefSend({ invoiceId: params.id, result });
+    setInvoice((current) => current?.id === params.id
+      ? { ...current, ksef_status: 'accepted', ksef_reference_number: result.ksef_reference_number, ksef_error: null }
+      : current);
+    await fetchInvoice({ background: true });
+  }, [fetchInvoice, params.id]);
 
   const handleKsefError = useCallback((error: string) => {
     console.error('[KSeF error]', error);
@@ -513,11 +589,12 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
       const html = buildInvoicePdfHtml({
         paymentStatus: normalizedPaymentStatus,
         paidAmount: normalizedPaidAmount,
-        paidAt: invoice.paid_at,
+        paidAt: invoice.paid_at || invoice.paid_date || null,
 
         buyerIsPrivatePerson: invoice.buyer_is_private_person,
         footerNote: invoice.footer_note || '',
-        signatureName: invoice.signature_name || 'Mateusz Kwiatkowski',
+        signatureName: invoiceSignatureName,
+        showPreviewWatermark: true,
         website: invoice.website || null,
         invoiceNumber: invoice.invoice_number,
         invoiceType:
@@ -791,13 +868,14 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
       updateData.payment_status = 'paid';
       updateData.paid_amount = Math.abs(Number(invoice.total_gross ?? 0));
       updateData.paid_at = new Date().toISOString();
-      updateData.payment_due_date = new Date().toISOString().split('T')[0];
+      updateData.paid_date = new Date().toISOString().split('T')[0];
     }
 
     if (safeStatus !== 'paid' && ['paid', 'refunded'].includes(invoice.payment_status || '')) {
       updateData.payment_status = 'unpaid';
       updateData.paid_amount = 0;
       updateData.paid_at = null;
+      updateData.paid_date = null;
     }
 
     try {
@@ -818,6 +896,10 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
   };
 
   const handleSendToKSeF = async () => {
+    if (!invoice || showKSeFModal || !financeAccess?.canIssueInvoices
+      || completedKsefSend?.invoiceId === invoice.id
+      || ['pending', 'sent', 'accepted'].includes(invoice.ksef_status?.trim().toLowerCase() || '')
+      || invoice.ksef_reference_number) return;
     const confirmed = await showConfirm(
       'Czy na pewno chcesz wyslac te fakture do KSeF? Tej operacji nie mozna cofnac.',
       'Tej operacji nie mozna cofnac.',
@@ -896,8 +978,10 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
     const normalizedKsefStatus = invoice?.ksef_status?.trim().toLowerCase() || '';
     const ksefSubmissionInProgressOrFinished =
       ['pending', 'sent', 'accepted'].includes(normalizedKsefStatus) ||
-      Boolean(invoice?.ksef_reference_number);
+      Boolean(invoice?.ksef_reference_number) ||
+      completedKsefSend?.invoiceId === invoice?.id;
     const canSendToKSeF =
+      financeAccess?.canIssueInvoices &&
       !invoice?.is_proforma &&
       invoice?.invoice_type !== 'proforma' &&
       invoice?.status !== 'cancelled' &&
@@ -914,21 +998,18 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
       });
     }
 
-    if (
-      (invoice?.status === 'issued' || invoice?.status === 'sent') &&
-      invoice.invoice_type !== 'corrective'
-    ) {
-      nextActions.push({
-        label: 'Wystaw korekte',
-        icon: <FilePlus2 className="h-4 w-4" />,
-        onClick: () => router.push(`/crm/invoices/new?type=corrective&related=${invoice.id}`),
-        variant: 'default',
-      });
-    }
-
     return nextActions;
-  }, [invoice, router, generating, pdfPath, emailButtonLabel]);
+  }, [invoice, router, generating, pdfPath, emailButtonLabel, financeAccess, completedKsefSend, showKSeFModal]);
 
+  if (financeAccessLoading) {
+    return <div className="p-6 text-sm text-[#e5e4e2]/60">Sprawdzanie dostępu do faktury…</div>;
+  }
+  if (financeAccessError || !financeAccess || financeAccess.scope === 'none') {
+    return <div role="alert" className="p-6 text-sm text-[#e5e4e2]/70">{financeAccessError || 'Brak dostępu do faktury.'}</div>;
+  }
+  if (financeAccess.scope === 'sales' && invoice && invoice.created_by !== financeAccess.employeeId && invoice.created_by !== financeAccess.authUserId) {
+    return <div role="alert" className="p-6 text-sm text-[#e5e4e2]/70">Możesz otwierać tylko faktury wystawione przez Ciebie.</div>;
+  }
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#0a0d1a]">
@@ -962,6 +1043,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
   }
 
   const paymentStatus = invoice.payment_status || (invoice.status === 'paid' ? 'paid' : 'unpaid');
+  const paymentDate = invoice.paid_at || invoice.paid_date || null;
 
 
   const previewSettlementSummary =
@@ -1034,6 +1116,12 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
   const paidAmount = Number(invoice.paid_amount ?? 0);
   const isRefund = invoice.invoice_type === 'corrective' && Number(invoice.total_gross ?? 0) < 0;
   const paymentBaseAmount = isRefund ? Math.abs(previewAmountToPay) : previewAmountToPay;
+  const footerNote = getPaymentAwareInvoiceFooterNote(invoice.footer_note, {
+    paymentStatus,
+    amountDue: previewAmountToPay,
+    paidAmount,
+    isRefund,
+  });
 
   const amountToDisplay =
     paymentStatus === 'paid' || paymentStatus === 'refunded'
@@ -1044,107 +1132,156 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
         ? Math.max(paymentBaseAmount - paidAmount, 0)
         : paymentBaseAmount;
 
+  const canCreateRelatedDocument = !invoice.is_proforma
+    && ['issued', 'sent', 'paid', 'overdue'].includes(invoice.status);
+  const documentActions: InvoiceDocumentAction[] = [];
+  if (canCreateRelatedDocument && invoice.invoice_type === 'advance') {
+    documentActions.push(
+      {
+        label: 'Kolejna faktura zaliczkowa',
+        description: 'Nowa zaliczka dla tego samego zamówienia, z osobną kwotą i wpłatą.',
+        onClick: () => router.push(`/crm/invoices/new?type=advance&advanceFrom=${invoice.id}`),
+      },
+      {
+        label: 'Faktura końcowa',
+        description: 'Rozlicz powiązane zaliczki i ustal pozostałą dopłatę.',
+        icon: <CheckCircle className="h-4 w-4" />,
+        onClick: () => setShowFinalInvoiceModal(true),
+      },
+    );
+  }
+  if (canCreateRelatedDocument && ['vat', 'advance', 'final'].includes(invoice.invoice_type)) {
+    documentActions.push({
+      label: 'Faktura korygująca',
+      description: 'Utwórz osobny dokument korygujący tę fakturę.',
+      icon: <Edit className="h-4 w-4" />,
+      onClick: () => router.push(`/crm/invoices/new?type=corrective&related=${invoice.id}`),
+    });
+  }
+  if (invoice.is_proforma && invoice.status !== 'cancelled' && !invoice.proforma_converted_to_invoice_id) {
+    documentActions.push({
+      label: 'Faktura z pro formy',
+      description: 'Utwórz fakturę VAT lub zaliczkową na podstawie tej pro formy.',
+      onClick: handleConvertToVAT,
+    });
+  }
+  const relationCount = [
+    relatedData.event, relatedData.organization, relatedData.serviceRecipientOrganization,
+    relatedData.relatedInvoice, ...(relatedData.settlementEvents ?? []), ...(relatedData.relatedInvoices ?? []),
+  ].filter(Boolean).length;
+  const ksefStatus = invoice.ksef_status?.trim().toLowerCase() || '';
+  const ksefLabel = ({
+    accepted: 'Zaakceptowana', rejected: 'Odrzucona', sent: 'Wysłana',
+    pending: 'W trakcie wysyłki', error: 'Błąd wysyłki', draft: 'Szkic', not_sent: 'Niewysłana',
+  } as Record<string, string>)[ksefStatus] || 'Status do sprawdzenia';
+
   return (
-    <PermissionGuard module="invoices">
+    <PermissionGuard module={financeAccess.scope === 'sales' ? undefined : 'invoices'}>
       <div className="min-h-screen bg-[#0a0d1a] p-6">
         <div className="mx-auto max-w-5xl">
           <button
             onClick={() => router.push('/crm/invoices')}
-            className="mb-6 flex items-center gap-2 text-[#e5e4e2]/60 hover:text-[#d3bb73]"
+            className="mb-4 flex items-center gap-2 text-sm text-[#e5e4e2]/60 hover:text-[#d3bb73] print:hidden"
           >
             <ArrowLeft className="h-5 w-5" />
-            Powrot
+            Powrót
           </button>
 
-          {invoice.is_proforma && (
-            <div className="mb-6 rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-6">
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <h3 className="mb-2 text-lg font-medium text-yellow-400">Faktura Proforma</h3>
-                  <p className="mb-4 text-sm text-[#e5e4e2]/80">
-                    Ta proforma nie zostanie wyslana do KSeF. Aby wystawic prawnie wiazaca fakture
-                    VAT, uzyj przycisku ponizej.
-                  </p>
-
-                  {!invoice.proforma_converted_to_invoice_id ? (
-                    <button
-                      onClick={handleConvertToVAT}
-                      className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90"
-                    >
-                      <CheckCircle className="h-4 w-4" />
-                      Wystaw fakture na podstawie proformy
-                    </button>
-                  ) : (
-                    <div className="rounded-lg border border-green-500/30 bg-green-500/10 p-3">
-                      <div className="mb-2 text-sm font-medium text-green-400">
-                        Faktura VAT zostala wystawiona
-                      </div>
-                      <button
-                        onClick={() =>
-                          router.push(`/crm/invoices/${invoice.proforma_converted_to_invoice_id}`)
-                        }
-                        className="text-sm text-[#d3bb73] hover:underline"
-                      >
-                        Zobacz fakture VAT
-                      </button>
-                    </div>
-                  )}
-                </div>
+          <section className="mb-5 rounded-xl bg-[#1c1f33] p-4 sm:p-5 print:hidden" aria-label="Informacje i akcje faktury">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="min-w-0">
+                <p className="mb-1 text-xs text-[#e5e4e2]/55">{getTypeLabel(invoice.invoice_type, invoice.invoice_number)}</p>
+                <h1 className="break-words text-2xl font-light uppercase text-[#e5e4e2] sm:text-3xl">
+                  {invoice.invoice_number}
+                </h1>
+                <p className="mt-1 max-w-lg truncate text-sm text-[#e5e4e2]/60" title={invoice.buyer_name}>
+                  {invoice.buyer_name}
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <InvoiceDocumentActionsMenu actions={documentActions} />
+                <ResponsiveActionBar disabledBackground compact actions={actions} mobileBreakpoint={900} />
               </div>
             </div>
-          )}
 
-          {!invoice.is_proforma &&
-            invoice.related_invoice_id &&
-            invoice.invoice_type !== 'corrective' && (
-              <div className="mb-6 rounded-xl border border-blue-500/30 bg-blue-500/10 p-4">
-                <div className="text-sm text-[#e5e4e2]/80">
-                  Wystawiona na podstawie proformy:
-                  <button
-                    onClick={() => router.push(`/crm/invoices/${invoice.related_invoice_id}`)}
-                    className="ml-2 text-[#d3bb73] hover:underline"
-                  >
-                    Zobacz proforme
-                  </button>
+            <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
+              {paymentStatus === 'paid' && <span className="inline-flex items-center gap-1.5 text-emerald-300"><CheckCircle className="h-3.5 w-3.5" />Opłacona</span>}
+              {pdfPath && <span className="inline-flex items-center gap-1.5 text-[#e5e4e2]/55"><FileText className="h-3.5 w-3.5" />PDF gotowy</span>}
+              {emailSentCount > 0 && <span className="text-[#e5e4e2]/55">Wysłano e-mail: {emailSentCount}×</span>}
+              {!invoice.is_proforma && invoice.related_invoice_id && (
+                <button
+                  type="button"
+                  onClick={() => router.push(`/crm/invoices/${invoice.related_invoice_id}`)}
+                  className="inline-flex items-center gap-1.5 text-[#d3bb73] hover:text-[#e5e4e2]"
+                >
+                  <LinkIcon className="h-3.5 w-3.5" />
+                  {invoice.invoice_type === 'corrective' ? 'Dokument korygowany' : relatedData.relatedInvoice?.invoice_type === 'proforma' ? 'Pro forma' : 'Dokument źródłowy'}
+                  {relatedData.relatedInvoice?.invoice_number && `: ${relatedData.relatedInvoice.invoice_number}`}
+                </button>
+              )}
+              {relationCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShowRelations((previous) => !previous)}
+                  aria-expanded={showRelations}
+                  aria-controls="invoice-relations"
+                  className="inline-flex items-center gap-1.5 text-[#d3bb73] hover:text-[#e5e4e2]"
+                >
+                  Powiązania ({relationCount})
+                  <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showRelations ? 'rotate-180' : ''}`} />
+                </button>
+              )}
+              {(ksefStatus || invoice.ksef_reference_number) && (
+                <button
+                  type="button"
+                  onClick={() => setShowKsefDetails((previous) => !previous)}
+                  aria-expanded={showKsefDetails}
+                  aria-controls="invoice-ksef-details"
+                  className={`inline-flex items-center gap-1.5 ${ksefStatus === 'accepted' ? 'text-emerald-300' : ['rejected', 'error'].includes(ksefStatus) ? 'text-red-300' : 'text-[#d3bb73]'}`}
+                >
+                  {ksefStatus === 'accepted' ? <CheckCircle className="h-3.5 w-3.5" /> : <Send className="h-3.5 w-3.5" />}
+                  KSeF: {ksefLabel}
+                  <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showKsefDetails ? 'rotate-180' : ''}`} />
+                </button>
+              )}
+            </div>
+
+            {invoice.is_proforma && (
+              <p className="mt-3 text-xs text-[#e5e4e2]/55">
+                Pro forma nie jest wysyłana do KSeF.
+                {invoice.proforma_converted_to_invoice_id && (
+                  <button type="button" onClick={() => router.push(`/crm/invoices/${invoice.proforma_converted_to_invoice_id}`)} className="ml-2 text-[#d3bb73] hover:underline">Zobacz wystawioną fakturę</button>
+                )}
+              </p>
+            )}
+            {showKsefDetails && (
+              <div id="invoice-ksef-details" className="mt-3 flex flex-wrap items-start justify-between gap-3 rounded-lg bg-black/15 p-3 text-xs text-[#e5e4e2]/65">
+                <div>
+                  <span className="block text-[#e5e4e2]/45">Numer KSeF</span>
+                  <span className="mt-1 block break-all select-text">{invoice.ksef_reference_number || 'Jeszcze nie nadano'}</span>
                 </div>
+                {invoice.ksef_sent_at && <div><span className="block text-[#e5e4e2]/45">Data wysyłki</span><span className="mt-1 block">{new Date(invoice.ksef_sent_at).toLocaleString('pl-PL')}</span></div>}
               </div>
             )}
+            {invoice.ksef_error && <p role="alert" className="mt-3 rounded-lg bg-red-500/10 p-3 text-sm text-red-300">{invoice.ksef_error}</p>}
+            {canonicalBankPayment && (
+              <details className="mt-3 text-xs text-emerald-200">
+                <summary className="cursor-pointer">{formatCanonicalBankPayment(canonicalBankPayment)}</summary>
+                <p className="mt-2 text-[#e5e4e2]/55">Potwierdzone dopasowanie przez powiązaną fakturę KSeF. Nie jest dodawane do ręcznych oznaczeń płatności; dane wystawionego dokumentu pozostają bez zmian.</p>
+              </details>
+            )}
+            {bankPaymentReadError && <p role="status" className="mt-3 text-xs text-amber-200">Nie udało się odczytać dopasowań do wyciągu przez KSeF. Nie oznacza to braku zapłaty.</p>}
+          </section>
 
-          {(relatedData.event ||
+          {showRelations && (relatedData.event ||
             relatedData.organization ||
             relatedData.serviceRecipientOrganization ||
             relatedData.relatedInvoice ||
             (relatedData.settlementEvents && relatedData.settlementEvents.length > 0) ||
             (relatedData.relatedInvoices && relatedData.relatedInvoices.length > 0)) && (
-            <div className="mb-6 overflow-hidden rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33]">
-              <button
-                type="button"
-                onClick={() => setShowRelations((prev) => !prev)}
-                className="flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-[#d3bb73]/5"
-              >
-                <div className="flex items-center gap-2">
-                  <LinkIcon className="h-4 w-4 text-[#d3bb73]" />
-                  <span className="text-sm font-medium text-[#e5e4e2]">Powiązania</span>
-
-                  <span className="rounded-full border border-[#d3bb73]/20 px-2 py-0.5 text-xs text-[#e5e4e2]/50">
-                    {
-                      [
-                        relatedData.event,
-                        relatedData.organization,
-                        relatedData.serviceRecipientOrganization,
-                        relatedData.relatedInvoice,
-                        ...(relatedData.settlementEvents ?? []),
-                        ...(relatedData.relatedInvoices ?? []),
-                      ].filter(Boolean).length
-                    }
-                  </span>
-                </div>
-
-                <span className="text-xs text-[#d3bb73]">{showRelations ? 'Ukryj' : 'Pokaż'}</span>
-              </button>
-
+            <div id="invoice-relations" className="mb-5 overflow-hidden rounded-xl bg-[#1c1f33] print:hidden">
               {showRelations && (
-                <div className="border-t border-[#d3bb73]/10 p-4">
+                <div className="p-4">
                   <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                     {relatedData.event && (
                       <button
@@ -1373,103 +1510,13 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
             </div>
           )}
 
-          <div className="mb-6 flex items-center justify-between">
-            <div>
-              <h1 className="mb-2 text-3xl font-light text-[#e5e4e2]">
-                Faktura {invoice.invoice_number}
-              </h1>
-              <div className="flex items-center gap-3">
-                <p className="text-[#e5e4e2]/60">
-                  {getTypeLabel(invoice.invoice_type, invoice.invoice_number)}
-                  {invoice.is_proforma ? ' (Faktura Proforma)' : ''}
-                </p>
-                {pdfPath && (
-                  <span className="rounded-full bg-green-500/20 px-2.5 py-0.5 text-xs font-medium text-green-400">
-                    PDF wygenerowany
-                  </span>
-                )}
-                {emailSentCount > 0 && (
-                  <span className="rounded-full bg-blue-500/20 px-2.5 py-0.5 text-xs font-medium text-blue-400">
-                    Email wyslany ({emailSentCount}x)
-                  </span>
-                )}
-              </div>
-            </div>
-            <ResponsiveActionBar disabledBackground actions={actions} mobileBreakpoint={900} />
-          </div>
-
-          {invoice.ksef_status && (
-            <div
-              className={`mb-6 rounded-xl border p-4 ${
-                invoice.ksef_status === 'accepted'
-                  ? 'border-green-500/30 bg-green-500/10'
-                  : invoice.ksef_status === 'rejected'
-                    ? 'border-red-500/30 bg-red-500/10'
-                    : invoice.ksef_status === 'sent'
-                      ? 'border-blue-500/30 bg-blue-500/10'
-                      : 'border-[#d3bb73]/20 bg-[#1c1f33]'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div
-                    className={`flex h-8 w-8 items-center justify-center rounded-full ${
-                      invoice.ksef_status === 'accepted'
-                        ? 'bg-green-500/20 text-green-400'
-                        : invoice.ksef_status === 'rejected'
-                          ? 'bg-red-500/20 text-red-400'
-                          : 'bg-blue-500/20 text-blue-400'
-                    }`}
-                  >
-                    {invoice.ksef_status === 'accepted' ? (
-                      <CheckCircle className="h-5 w-5" />
-                    ) : invoice.ksef_status === 'rejected' ? (
-                      <XCircle className="h-5 w-5" />
-                    ) : (
-                      <Send className="h-5 w-5" />
-                    )}
-                  </div>
-                  <div>
-                    <div className="text-sm font-medium text-[#e5e4e2]">
-                      KSeF:{' '}
-                      {invoice.ksef_status === 'accepted'
-                        ? 'Zaakceptowana'
-                        : invoice.ksef_status === 'rejected'
-                          ? 'Odrzucona'
-                          : invoice.ksef_status === 'sent'
-                            ? 'Wyslana'
-                            : 'Szkic'}
-                    </div>
-                    {invoice.ksef_reference_number && (
-                      <div className="text-xs text-[#e5e4e2]/60">
-                        Nr ref.: {invoice.ksef_reference_number}
-                      </div>
-                    )}
-                  </div>
-                </div>
-                {invoice.ksef_sent_at && (
-                  <div className="text-xs text-[#e5e4e2]/40">
-                    {new Date(invoice.ksef_sent_at).toLocaleString('pl-PL')}
-                  </div>
-                )}
-              </div>
-              {invoice.ksef_error && (
-                <div className="mt-3 rounded-lg border border-red-500/20 bg-red-500/5 p-3 text-sm text-red-400">
-                  {invoice.ksef_error}
-                </div>
-              )}
-            </div>
-          )}
-
           <div
             className="invoice-preview mx-auto mb-6 flex flex-col rounded-xl bg-white text-black"
             style={{ width: '794px', minHeight: '1123px', padding: '42px 48px' }}
           >
-            {!invoice.buyer_is_private_person && (
-              <div className="-mx-12 -mt-[42px] mb-6 bg-gray-500 py-1.5 text-center text-xs font-bold uppercase tracking-[0.35em] text-white">
-                Wizualizacja
-              </div>
-            )}
+            <div className="-mx-12 -mt-[42px] mb-6 bg-gray-100 py-1.5 text-center text-xs font-bold uppercase tracking-[0.15em] text-gray-600">
+              {invoice.is_proforma || invoice.invoice_type === 'proforma' ? 'Wizualizacja pro formy' : 'Wizualizacja faktury'}
+            </div>
             <div className="mb-6 flex items-start justify-between">
               <div className="flex items-center gap-4">
                 {companyLogoUrl ? (
@@ -1928,13 +1975,13 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
                 <div className="mb-2">
                   <span className="text-gray-600">Status płatności:</span>{' '}
                   {paymentStatus === 'refunded'
-                    ? `Zwrot wykonany${invoice.paid_at ? ` (${new Date(invoice.paid_at).toLocaleDateString('pl-PL')})` : ''}`
+                    ? `Zwrot wykonany${paymentDate ? ` (${new Date(paymentDate).toLocaleDateString('pl-PL')})` : ''}`
                     : paymentStatus === 'partially_refunded'
                       ? `Częściowo zwrócono: ${paidAmount.toFixed(2)} ${invoice.currency_code || 'PLN'}`
                       : paymentStatus === 'refund_due'
                         ? 'Do zwrotu nabywcy'
                   : paymentStatus === 'paid'
-                    ? `Zapłacono${invoice.paid_at ? ` (${new Date(invoice.paid_at).toLocaleDateString('pl-PL')})` : ''}`
+                    ? `Zapłacono${paymentDate ? ` (${new Date(paymentDate).toLocaleDateString('pl-PL')})` : ''}`
                     : paymentStatus === 'partially_paid'
                       ? `Częściowo zapłacono: ${paidAmount.toFixed(2)} ${invoice.currency_code || 'PLN'}`
                       : 'Do zapłaty'}
@@ -1973,21 +2020,24 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
             </div>
 
             <div className="mb-5 text-[10px] leading-snug text-gray-600">
-              {invoice.footer_note && (
+              {footerNote && (
                 <span style={{ whiteSpace: 'pre-wrap', fontWeight: '700' }}>Uwagi:</span>
               )}{' '}
-              {invoice.footer_note && (
-                <span style={{ whiteSpace: 'pre-wrap' }}>{invoice.footer_note}</span>
+              {footerNote && (
+                <span style={{ whiteSpace: 'pre-wrap' }}>{footerNote}</span>
               )}
             </div>
 
             <div className="flex justify-end">
               <div className="w-64 border-t border-gray-300 pt-2 text-center text-xs">
                 <div className="mb-1 text-sm">
-                  {invoice.signature_name || 'Mateusz Kwiatkowski'}
+                  {invoiceSignatureName || (issuerPreview?.invoiceId !== invoice.id
+                    ? 'Odczytywanie danych wystawcy…'
+                    : issuerPreview.error ? 'Nie udało się odczytać danych wystawcy'
+                    : 'Brak imienia i nazwiska wystawcy — uzupełnij jego profil')}
                 </div>
                 <div className="text-[10px] leading-snug text-gray-600">
-                  Podpis osoby upowazionej do wystawienia
+                  Podpis osoby upoważnionej do wystawienia
                 </div>
               </div>
             </div>
@@ -2105,6 +2155,16 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
             }}
           />
         )}
+        {showFinalInvoiceModal && invoice && (
+          <FinalInvoiceWizardModal
+            initialAdvanceInvoiceId={invoice.id}
+            onClose={() => setShowFinalInvoiceModal(false)}
+            onCreated={(newId) => {
+              setShowFinalInvoiceModal(false);
+              router.push(`/crm/invoices/${newId}`);
+            }}
+          />
+        )}
         {showSendEmailModal && invoice && (
           <SendInvoiceEmailModal
             invoiceId={invoice.id}
@@ -2123,8 +2183,9 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
           <KSeFSendModal
             invoiceId={invoice.id}
             invoiceNumber={invoice.invoice_number}
-            onSuccess={async () => {
-              await handleKsefSuccess();
+            completedResult={completedKsefSend?.invoiceId === invoice.id ? completedKsefSend.result : null}
+            onSuccess={async (result) => {
+              await handleKsefSuccess(result);
               await handleGeneratePDF();
             }}
             onError={handleKsefError}

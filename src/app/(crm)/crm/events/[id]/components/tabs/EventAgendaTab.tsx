@@ -1109,7 +1109,7 @@ export default function EventAgendaTab({
                   Brak etapów w harmonogramie
                   {canManage && (
                     <div className="mt-4">
-                      <button
+                      <button data-crm-action="secondary"
                         onClick={() => setEditMode(true)}
                         className="rounded-lg border border-[#d3bb73]/40 px-4 py-2 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/10"
                       >

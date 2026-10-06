@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { BookOpen, Building2, FilePlus2, FileText, Loader2, Plus, Search } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import { parseDecorativePages, parseComposer } from '@/lib/brochures/decorativePages';
+import { createHotelBrochureTemplate, HOTEL_TEMPLATE_PRODUCT_IDS } from '@/lib/brochures/hotelTemplate';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 
 type Brochure = {
@@ -17,7 +19,8 @@ type Brochure = {
   modified_after_generation: boolean;
   updated_at: string;
   organization?: { name: string } | null;
-  items?: Array<{ id: string }>;
+  brand_config?: Record<string, unknown>;
+  items?: Array<{ id: string; is_visible: boolean }>;
 };
 
 const audienceLabels: Record<string, string> = {
@@ -43,7 +46,7 @@ export default function BrochuresPage() {
     setLoading(true);
     const { data, error } = await supabase
       .from('sales_brochures')
-      .select('id,name,title,audience_type,status,current_pdf_version,modified_after_generation,updated_at,organization:organizations(name),items:sales_brochure_items(id)')
+      .select('id,name,title,audience_type,status,current_pdf_version,modified_after_generation,updated_at,brand_config,organization:organizations(name),items:sales_brochure_items(id,is_visible)')
       .neq('status', 'archived')
       .order('updated_at', { ascending: false });
     if (error) {
@@ -64,7 +67,7 @@ export default function BrochuresPage() {
     if (!employeeLoading) void load();
   }, [employeeLoading]);
 
-  const createBrochure = async () => {
+  const createBrochure = async (hotelTemplate = false) => {
     if (!employee || !canManage || creating) return;
     setCreating(true);
     try {
@@ -77,6 +80,16 @@ export default function BrochuresPage() {
         .maybeSingle();
       if (companyError || !company) throw companyError || new Error('Brak aktywnej działalności');
 
+      const productImages: Record<string, string> = {};
+      if (hotelTemplate) {
+        const { data: products, error: imageError } = await supabase.from('offer_products')
+          .select('id,offer_image_path').in('id', Object.values(HOTEL_TEMPLATE_PRODUCT_IDS));
+        if (imageError) throw new Error('Nie udało się pobrać aktualnych zdjęć usług do szablonu broszury. Spróbuj ponownie.');
+        for (const product of products || []) {
+          if (product.offer_image_path) productImages[product.id] = product.offer_image_path;
+        }
+      }
+
       const { data, error } = await supabase
         .from('sales_brochures')
         .insert({
@@ -84,6 +97,7 @@ export default function BrochuresPage() {
           title: 'Technika i produkcja wydarzeń dla hoteli',
           subtitle: 'Rozwiązania, które wspierają sprzedaż i realizację eventów',
           audience_type: 'hotel',
+          ...(hotelTemplate ? createHotelBrochureTemplate(productImages) : {}),
           my_company_id: company.id,
           contact_employee_id: employee.id,
           created_by: employee.id,
@@ -92,6 +106,9 @@ export default function BrochuresPage() {
         .select('id')
         .single();
       if (error) throw error;
+      if (hotelTemplate && Object.values(HOTEL_TEMPLATE_PRODUCT_IDS).some((id) => !productImages[id])) {
+        showSnackbar('Szablon utworzony. Część usług nie ma zdjęć — uzupełnij je w Studio stron przed generowaniem PDF.', 'warning');
+      }
       router.push(`/crm/brochures/${data.id}`);
     } catch (error: any) {
       showSnackbar(error?.message || 'Nie udało się utworzyć broszury', 'error');
@@ -119,10 +136,12 @@ export default function BrochuresPage() {
             </div>
             <h1 className="text-3xl font-light">Broszury</h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-[#e5e4e2]/50">
-              Buduj prezentacje z produktów katalogowych, personalizuj je dla hotelu i zapisuj niezmienne wersje PDF.
+              Zacznij od gotowego szablonu dla hoteli lub pustej broszury. W Studio stron zmienisz treść, zdjęcia i układ, a następnie zapiszesz PDF.
             </p>
           </div>
           {canManage && (
+            <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => void createBrochure(true)} disabled={creating} className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#d3bb73] px-5 py-3 font-medium text-[#1c1f33] disabled:opacity-50"><Building2 className="h-4 w-4" />Szablon Hotele · 24 strony</button>
             <button
               type="button"
               onClick={() => void createBrochure()}
@@ -130,8 +149,9 @@ export default function BrochuresPage() {
               className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#d3bb73] px-5 py-3 font-medium text-[#1c1f33] disabled:opacity-50"
             >
               {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-              Utwórz broszurę
+              Pusta broszura
             </button>
+            </div>
           )}
         </header>
 
@@ -158,7 +178,7 @@ export default function BrochuresPage() {
         ) : (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {filtered.map((brochure) => {
-              const itemCount = brochure.items?.length || 0;
+              const pageCount = (brochure.items || []).filter((i) => i.is_visible).length + parseDecorativePages(brochure.brand_config?.decorative_pages).filter((p) => p.isVisible).length + 3 - parseComposer(brochure.brand_config?.composer).hiddenPages.length;
               const ready = brochure.current_pdf_version > 0 && !brochure.modified_after_generation;
               return (
                 <button
@@ -178,8 +198,8 @@ export default function BrochuresPage() {
                   <h2 className="mt-5 text-lg font-medium transition group-hover:text-[#d3bb73]">{brochure.name}</h2>
                   <p className="mt-1 line-clamp-2 min-h-10 text-sm leading-5 text-[#e5e4e2]/50">{brochure.title}</p>
                   <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-[#d3bb73]/10 pt-4 text-xs text-[#e5e4e2]/45">
-                    <span>{audienceLabels[brochure.audience_type] || brochure.audience_type}</span>
-                    <span>{itemCount} usług</span>
+                    <span>{audienceLabels[brochure.audience_type] || 'Inny odbiorca'}</span>
+                    <span>{pageCount} stron</span>
                     {brochure.organization?.name && (
                       <span className="inline-flex items-center gap-1 text-[#d3bb73]">
                         <Building2 className="h-3.5 w-3.5" /> {brochure.organization.name}

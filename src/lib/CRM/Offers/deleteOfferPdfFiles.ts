@@ -8,6 +8,10 @@ import { supabase } from '@/lib/supabase/browser';
  */
 export async function deleteOfferPdfFiles(offerId: string): Promise<{ success: boolean; error?: string }> {
   try {
+    const { data: versions, error: historyError } = await supabase.from('sales_document_files').select('id').eq('offer_id', offerId).limit(1);
+    if (historyError) throw historyError;
+    if (versions?.length) return { success: false, error: 'Zachowujemy zapisane wersje dokumentów. Wygeneruj nową wersję PDF.' };
+
     // 1. Pobierz dane oferty aby uzyskać generated_pdf_url
     const { data: offer } = await supabase
       .from('offers')

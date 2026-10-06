@@ -1,5 +1,7 @@
 'use client';
 
+import { systemLabel } from '@/lib/ui/systemLabels';
+
 import { useState, useEffect, useRef } from 'react';
 import {
   Truck,
@@ -35,6 +37,7 @@ import { useAppDispatch } from '@/store/hooks';
 import { eventsApi } from '../../../store/api/eventsApi';
 import { eventPhasesApi } from '@/store/api/eventPhasesApi';
 import Image from 'next/image';
+import Link from 'next/link';
 
 interface EventLogisticsProps {
   eventId: string;
@@ -163,6 +166,8 @@ export default function EventLogisticsPanel({
   const { fetchLogistics, data, isLoading, isFetching, error } = useEventLogisticsLazy();
 
   const fetchLogisticsRef = useRef(fetchLogistics);
+  const vehicleSavingRef = useRef(false);
+  const realtimeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     fetchLogisticsRef.current = fetchLogistics;
@@ -179,25 +184,31 @@ export default function EventLogisticsPanel({
 
     fetchLogisticsRef.current(args);
 
+    const scheduleRefresh = () => {
+      if (vehicleSavingRef.current) return;
+      if (realtimeTimerRef.current) clearTimeout(realtimeTimerRef.current);
+      realtimeTimerRef.current = setTimeout(() => {
+        realtimeTimerRef.current = null;
+        if (!vehicleSavingRef.current) fetchLogisticsRef.current(args);
+      }, 300);
+    };
+
     const channel = supabase
-      .channel(`event_vehicles_changes_${eventId}`)
+      .channel(`event_vehicles_changes_${eventId}_${crypto.randomUUID()}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'event_vehicles', filter: `event_id=eq.${eventId}` },
-        () => {
-          fetchLogisticsRef.current(args);
-        },
+        scheduleRefresh,
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'event_phases', filter: `event_id=eq.${eventId}` },
-        () => {
-          fetchLogisticsRef.current(args);
-        },
+        scheduleRefresh,
       )
       .subscribe();
 
     return () => {
+      if (realtimeTimerRef.current) clearTimeout(realtimeTimerRef.current);
       supabase.removeChannel(channel);
     };
   }, [eventId, canManage, employee?.id]); // <-- bez fetchLogistics
@@ -265,7 +276,7 @@ export default function EventLogisticsPanel({
       breakdown: 'Demontaż',
       packing: 'Pakowanie',
     };
-    return labels[type] || type;
+    return labels[type] || systemLabel(type, 'phase');
   };
 
   const getActivityTypeColor = (type: string) => {
@@ -311,7 +322,7 @@ export default function EventLogisticsPanel({
     setExpandedSection(expandedSection === section ? '' : section);
   };
 
-  if (isLoading || isFetching) {
+  if (!data && (isLoading || isFetching)) {
     return (
       <div className="flex items-center justify-center p-8">
         <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-[#d3bb73]"></div>
@@ -321,7 +332,23 @@ export default function EventLogisticsPanel({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" aria-busy={isFetching}>
+      {isFetching && (
+        <p role="status" className="text-xs text-[#e5e4e2]/50">
+          Aktualizowanie danych logistycznych…
+        </p>
+      )}
+      {error && (
+        <p role="alert" className="text-sm text-red-300">
+          Nie udało się odświeżyć logistyki.{' '}
+          <button
+            className="underline"
+            onClick={() => fetchLogistics({ eventId, canManage, employeeId: employee?.id ?? null })}
+          >
+            Spróbuj ponownie
+          </button>
+        </p>
+      )}
       {/* Podsumowanie */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
         <div className="rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-4">
@@ -406,74 +433,138 @@ export default function EventLogisticsPanel({
                   const imageUrl = vehicle.vehicles?.thumb_url ?? null;
                   return (
                     <div key={vehicle.id} className="p-4 hover:bg-[#0f1119]/30">
-                      {/* Nagłówek z przyciskami akcji */}
-                      <div className="mb-3 flex items-start justify-between">
-                        <div className="flex flex-wrap items-center gap-3">
+                      {/* Tożsamość pojazdu, szczegóły i akcje w jednym wierszu. */}
+                      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-5 gap-y-3 xl:grid-cols-[minmax(220px,300px)_minmax(0,1fr)_auto]">
+                        <div className="flex min-w-0 items-center gap-3">
                           {imageUrl ? (
                             <Popover
                               trigger={
                                 <Image
-                                  width={40}
-                                  height={40}
+                                  width={80}
+                                  height={80}
                                   src={imageUrl}
                                   alt={vehicleName ?? 'Pojazd'}
-                                  className="h-10 w-10 rounded border border-[#d3bb73]/20 object-cover"
+                                  className="h-16 w-16 rounded-lg object-cover sm:h-20 sm:w-20"
                                   loading="lazy"
                                 />
                               }
                               content={
                                 <Image
-                                  width={40}
-                                  height={40}
+                                  width={480}
+                                  height={360}
                                   src={imageUrl}
                                   alt={vehicleName ?? 'Pojazd'}
-                                  className="h-auto cursor-pointer rounded-lg object-contain transition-all"
+                                  className="h-auto max-h-[60vh] w-[min(480px,calc(100vw-64px))] rounded-lg object-contain"
                                 />
                               }
-                              openOn="hover"
+                              openOn="auto"
+                              maxWidth={512}
+                              ariaLabel={`Podgląd zdjęcia: ${vehicleName || 'Pojazd'}`}
                             />
                           ) : (
-                            <div className="flex h-10 w-10 items-center justify-center rounded border border-[#d3bb73]/20 bg-[#1c1f33]">
+                            <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-[#1c1f33] sm:h-20 sm:w-20">
                               <TruckIcon className="h-5 w-5 text-[#e5e4e2]/60" />
                             </div>
                           )}
 
-                          <h4 className="font-semibold text-[#e5e4e2]">
-                            {vehicle.is_external
-                              ? `${vehicle.external_company_name || 'Zewnętrzny'}`
-                              : vehicle.vehicles?.name || 'Brak nazwy'}
-                          </h4>
-                          {!vehicle.is_external && vehicle.vehicles?.registration_number && (
-                            <span className="text-sm text-[#e5e4e2]/60">
-                              {vehicle.vehicles.registration_number}
-                            </span>
+                          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                            <h4 className="w-full break-words font-semibold text-[#e5e4e2]">
+                              {!vehicle.is_external && vehicle.vehicle_id ? (
+                                <Link
+                                  href={`/crm/fleet/${vehicle.vehicle_id}`}
+                                  className="text-[#d3bb73] underline decoration-[#d3bb73]/40 underline-offset-4 transition-colors hover:text-[#e5e4e2] focus-visible:outline focus-visible:outline-1"
+                                >
+                                  {vehicle.vehicles?.name || 'Pojazd'}
+                                </Link>
+                              ) : (
+                                vehicle.external_company_name || 'Zewnętrzny'
+                              )}
+                            </h4>
+                            {!vehicle.is_external && vehicle.vehicles?.registration_number && (
+                              <span className="text-sm text-[#e5e4e2]/60">
+                                {vehicle.vehicles.registration_number}
+                              </span>
+                            )}
+                            {vehicle.is_external && (
+                              <span className="rounded bg-purple-500/20 px-2 py-1 text-xs text-purple-400">
+                                Zewnętrzny
+                              </span>
+                            )}
+                            {vehicle.added_from_phase && (
+                              <span className="rounded bg-blue-500/20 px-2 py-1 text-xs text-blue-300">
+                                Dodano z fazy
+                              </span>
+                            )}
+                            {vehicle.is_in_use && (
+                              <span className="flex items-center gap-1 rounded bg-green-500/20 px-2 py-1 text-xs text-green-400">
+                                <CheckCircle className="h-3 w-3" />W użytkowaniu
+                              </span>
+                            )}
+                            {getStatusBadge(vehicle.status)}
+                            {Boolean(vehicle.conflicts_count && vehicle.conflicts_count > 0) && (
+                              <span className="flex items-center gap-1 rounded bg-orange-500/20 px-2 py-1 text-xs text-orange-400">
+                                <AlertCircle className="h-3 w-3" />
+                                Konflikt
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Szczegóły pojazdu */}
+                        <div className="col-span-2 row-start-2 grid min-w-0 grid-cols-2 gap-x-5 gap-y-2 text-sm sm:grid-cols-3 xl:col-span-1 xl:col-start-2 xl:row-start-1 xl:grid-cols-5">
+                          <div>
+                            <span className="text-[#e5e4e2]/60">Rola:</span>
+                            <p className="text-[#e5e4e2]">
+                              {vehicle.role === 'transport_equipment'
+                                ? 'Transport sprzętu'
+                                : vehicle.role === 'transport_crew'
+                                  ? 'Transport ekipy'
+                                  : 'Wsparcie'}
+                            </p>
+                          </div>
+                          {vehicle.driver && (
+                            <div>
+                              <span className="text-[#e5e4e2]/60">Kierowca:</span>
+                              <p className="text-[#e5e4e2]">
+                                {vehicle.driver.name} {vehicle.driver.surname}
+                              </p>
+                            </div>
                           )}
-                          {vehicle.is_external && (
-                            <span className="rounded bg-purple-500/20 px-2 py-1 text-xs text-purple-400">
-                              Zewnętrzny
-                            </span>
-                          )}
-                          {vehicle.added_from_phase && (
-                            <span className="rounded bg-blue-500/20 px-2 py-1 text-xs text-blue-300">
-                              Dodano z fazy
-                            </span>
-                          )}
-                          {vehicle.is_in_use && (
-                            <span className="flex items-center gap-1 rounded bg-green-500/20 px-2 py-1 text-xs text-green-400">
-                              <CheckCircle className="h-3 w-3" />W użytkowaniu
-                            </span>
-                          )}
-                          {getStatusBadge(vehicle.status)}
-                          {vehicle.conflicts_count && vehicle.conflicts_count > 0 && (
-                            <span className="flex items-center gap-1 rounded bg-orange-500/20 px-2 py-1 text-xs text-orange-400">
-                              <AlertCircle className="h-3 w-3" />
-                              Konflikt
-                            </span>
-                          )}
+                          <div>
+                            <span className="text-[#e5e4e2]/60">Wyjazd:</span>
+                            <p className="text-[#e5e4e2]">
+                              {vehicle.departure_time || vehicle.phase_assignment_from
+                                ? new Date(
+                                    vehicle.departure_time || vehicle.phase_assignment_from!,
+                                  ).toLocaleTimeString('pl-PL', {
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                  })
+                                : '-'}
+                            </p>
+                          </div>
+                          <div>
+                            <span className="text-[#e5e4e2]/60">Dystans:</span>
+                            <p className="text-[#e5e4e2]">
+                              {vehicle.estimated_distance_km || 0} km
+                            </p>
+                          </div>
+                          <div>
+                            <span className="text-[#e5e4e2]/60">Koszt szac.:</span>
+                            <p className="text-[#e5e4e2]">
+                              {(
+                                (vehicle.fuel_cost_estimate || 0) +
+                                (vehicle.toll_cost_estimate || 0) +
+                                (vehicle.external_rental_cost || 0) +
+                                (vehicle.external_trailer_rental_cost || 0)
+                              ).toFixed(0)}{' '}
+                              zł
+                            </p>
+                          </div>
                         </div>
 
                         {/* Przyciski akcji */}
-                        <div className="flex items-center gap-2">
+                        <div className="col-start-2 row-start-1 flex shrink-0 flex-wrap items-center justify-end gap-2 xl:col-start-3">
                           {/* Przycisk odbioru tylko dla kierowcy */}
                           {employee && vehicle.driver_id === employee.id && (
                             <button
@@ -515,57 +606,6 @@ export default function EventLogisticsPanel({
                               </button>
                             </>
                           )}
-                        </div>
-                      </div>
-
-                      {/* Szczegóły pojazdu */}
-                      <div className="grid grid-cols-2 gap-3 text-sm md:grid-cols-5">
-                        <div>
-                          <span className="text-[#e5e4e2]/60">Rola:</span>
-                          <p className="text-[#e5e4e2]">
-                            {vehicle.role === 'transport_equipment'
-                              ? 'Transport sprzętu'
-                              : vehicle.role === 'transport_crew'
-                                ? 'Transport ekipy'
-                                : 'Wsparcie'}
-                          </p>
-                        </div>
-                        {vehicle.driver && (
-                          <div>
-                            <span className="text-[#e5e4e2]/60">Kierowca:</span>
-                            <p className="text-[#e5e4e2]">
-                              {vehicle.driver.name} {vehicle.driver.surname}
-                            </p>
-                          </div>
-                        )}
-                        <div>
-                          <span className="text-[#e5e4e2]/60">Wyjazd:</span>
-                          <p className="text-[#e5e4e2]">
-                            {vehicle.departure_time || vehicle.phase_assignment_from
-                              ? new Date(
-                                  vehicle.departure_time || vehicle.phase_assignment_from!,
-                                ).toLocaleTimeString('pl-PL', {
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                })
-                              : '-'}
-                          </p>
-                        </div>
-                        <div>
-                          <span className="text-[#e5e4e2]/60">Dystans:</span>
-                          <p className="text-[#e5e4e2]">{vehicle.estimated_distance_km || 0} km</p>
-                        </div>
-                        <div>
-                          <span className="text-[#e5e4e2]/60">Koszt szac.:</span>
-                          <p className="text-[#e5e4e2]">
-                            {(
-                              (vehicle.fuel_cost_estimate || 0) +
-                              (vehicle.toll_cost_estimate || 0) +
-                              (vehicle.external_rental_cost || 0) +
-                              (vehicle.external_trailer_rental_cost || 0)
-                            ).toFixed(0)}{' '}
-                            zł
-                          </p>
                         </div>
                       </div>
 
@@ -737,15 +777,26 @@ export default function EventLogisticsPanel({
           eventLocation={eventLocation}
           existingVehicleIds={vehicles.map((v) => v.vehicle_id).filter(Boolean) as string[]}
           editingVehicleId={editingVehicleId || undefined}
+          onSavingChange={(saving) => {
+            vehicleSavingRef.current = saving;
+            if (saving && realtimeTimerRef.current) {
+              clearTimeout(realtimeTimerRef.current);
+              realtimeTimerRef.current = null;
+            }
+          }}
           onClose={() => {
             setShowVehicleModal(false);
             setEditingVehicleId(null);
           }}
           onSuccess={() => {
-            setShowVehicleModal(false); // ← KLUCZOWE
+            setShowVehicleModal(false);
             setEditingVehicleId(null);
-
-            fetchLogistics({ eventId, canManage, employeeId: employee?.id ?? null });
+            dispatch(
+              eventsApi.util.invalidateTags([
+                { type: 'EventVehicles', id: eventId },
+                { type: 'EventLogistics', id: eventId },
+              ]),
+            );
           }}
         />
       )}

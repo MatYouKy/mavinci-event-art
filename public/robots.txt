@@ -1,96 +1,21 @@
-# Mavinci.pl - Profesjonalna organizacja eventów
-# robots.txt dla optymalnej indeksacji przez wyszukiwarki
-
+# Public marketing pages are available to search and answer engines.
+# Private areas require authorization; robots.txt is not access control.
 User-agent: *
 Allow: /
-Allow: /portfolio/
-Allow: /oferta/
-Allow: /o-nas
-Allow: /zespol
-Disallow: /admin/
-Disallow: /crm/
+Disallow: /admin
+Disallow: /crm
+Disallow: /seller
 Disallow: /api/
-Disallow: /seller/
-Disallow: /*.json$
-Disallow: /*?*
+Disallow: /login
+Disallow: /reset-password
+Disallow: /invitation
+Disallow: /subcontractor-confirmation
+Disallow: /demo-sprzedawcy
 
-# Sitemaps
+# OAI-SearchBot, Googlebot, Bingbot and PerplexityBot inherit the rules above.
+# Existing access for training crawlers is unchanged.
 Sitemap: https://mavinci.pl/sitemap.xml
-Sitemap: https://mavinci.pl/image-sitemap.xml
 
-# Google (Googlebot, Google-Extended dla AI)
-User-agent: Googlebot
-Allow: /
-Allow: /portfolio/
-Allow: /oferta/
-Disallow: /admin/
-Disallow: /crm/
-Disallow: /api/
-Crawl-delay: 0
-
-User-agent: Google-Extended
-Allow: /
-Allow: /portfolio/
-Allow: /oferta/
-Allow: /o-nas
-Allow: /zespol
-
-# Bing
-User-agent: Bingbot
-Allow: /
-Allow: /portfolio/
-Allow: /oferta/
-Disallow: /admin/
-Disallow: /crm/
-Disallow: /api/
-Crawl-delay: 0
-
-# ChatGPT / OpenAI
-User-agent: GPTBot
-Allow: /
-Allow: /portfolio/
-Allow: /oferta/
-Allow: /o-nas
-Allow: /zespol
-
-# Claude AI / Anthropic
-User-agent: anthropic-ai
-Allow: /
-Allow: /portfolio/
-Allow: /oferta/
-Allow: /o-nas
-Allow: /zespol
-
-User-agent: Claude-Web
-Allow: /
-Allow: /portfolio/
-Allow: /oferta/
-Allow: /o-nas
-Allow: /zespol
-
-# Common Crawl (duży korpus danych dla AI)
-User-agent: CCBot
-Allow: /
-Allow: /portfolio/
-Allow: /oferta/
-
-# Perplexity AI
-User-agent: PerplexityBot
-Allow: /
-Allow: /portfolio/
-Allow: /oferta/
-
-# Inne AI crawlers
-User-agent: FacebookBot
-Allow: /
-
-User-agent: Applebot
-Allow: /
-
-User-agent: Slurp
-Allow: /
-
-# Blokuj scraping botów
 User-agent: AhrefsBot
 Disallow: /
 

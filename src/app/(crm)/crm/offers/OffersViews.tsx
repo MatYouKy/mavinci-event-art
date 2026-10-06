@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { FileText, Calendar, Building2, DollarSign, Eye, CreditCard as Edit, Trash2 } from 'lucide-react';
 import { getOfferPricingTotals } from '@/lib/CRM/Offers/offerTotals';
 
@@ -45,7 +46,7 @@ export function OffersListView({ offers, getClientName, onView, onDelete }: Omit
               <div className="flex-1">
                 <div className="flex items-center gap-3 mb-2">
                   <h3 className="text-lg font-medium text-[#e5e4e2]">
-                    {offer.offer_number || 'Brak numeru'}
+                    <Link href={`/crm/offers/${offer.id}`} className="hover:text-[#d3bb73] hover:underline focus-visible:underline">{offer.offer_number || 'Brak numeru'}</Link>
                   </h3>
                   <span
                     className={`px-2 py-1 rounded text-xs border ${
@@ -59,7 +60,7 @@ export function OffersListView({ offers, getClientName, onView, onDelete }: Omit
                   {(offer.title || offer.event?.name) && (
                     <div className="flex items-center gap-2 text-sm text-[#e5e4e2]/70">
                       <Calendar className="w-4 h-4" />
-                      <span>{getOfferTitle(offer)}</span>
+                      <Link href={`/crm/offers/${offer.id}`} className="hover:text-[#d3bb73] hover:underline focus-visible:underline">{getOfferTitle(offer)}</Link>
                     </div>
                   )}
                   <div className="flex items-center gap-2 text-sm text-[#e5e4e2]/60">
@@ -137,18 +138,23 @@ export function OffersTableView({ offers, getClientName, onView, onDelete }: Omi
             return (
             <tr
               key={offer.id}
-              className="border-b border-[#d3bb73]/10 hover:bg-[#0f1119] transition-colors"
+              onClick={(event) => {
+                if ((event.target as HTMLElement).closest('a, button, input, select, textarea')) return;
+                if (window.getSelection()?.toString()) return;
+                onView(offer.id);
+              }}
+              className="cursor-pointer border-b border-[#d3bb73]/10 hover:bg-[#0f1119] focus-within:bg-[#0f1119] transition-colors"
             >
               <td className="py-3 px-4">
-                <span className="text-[#e5e4e2] font-medium">
+                <Link href={`/crm/offers/${offer.id}`} className="text-[#e5e4e2] font-medium hover:text-[#d3bb73] hover:underline focus-visible:underline">
                   {offer.offer_number || 'Brak numeru'}
-                </span>
+                </Link>
               </td>
               <td className="py-3 px-4 text-[#e5e4e2]/70">
                 {getClientName(offer)}
               </td>
               <td className="py-3 px-4 text-[#e5e4e2]/70">
-                {getOfferTitle(offer)}
+                <Link href={`/crm/offers/${offer.id}`} className="hover:text-[#d3bb73] hover:underline focus-visible:underline">{getOfferTitle(offer)}</Link>
               </td>
               <td className="py-3 px-4">
                 <span className="text-[#d3bb73] font-medium">

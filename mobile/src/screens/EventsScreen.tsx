@@ -1,3 +1,9 @@
+import { canAcceptWarehouseHandoff, matchesWarehouseFilter, WarehouseFilter, WarehouseHandoff, warehouseOwnerLabel } from '../lib/warehouseHandoff';
+import { useOperationalStages } from '../hooks/useOperationalStages';
+import { OPERATIONAL_LABELS, usesOperationalStages } from '../lib/operationalStages';
+import { useFocusEffect, useIsFocused } from '@react-navigation/native';
+import { useForegroundEffect } from '../hooks/useForegroundEffect';
+import { createRefreshQueue } from '../lib/refreshQueue';
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
@@ -86,7 +92,14 @@ export const STATUS_COLORS: Record<string, string> = {
 
 export default function EventsScreen({ onEventPress }: Props) {
   const { employee } = useAuth();
+  const focused = useIsFocused();
+  const isWarehouseWorker = employee?.permissions?.includes('equipment_manage') === true;
+  const [warehouseFilter, setWarehouseFilter] = useState<WarehouseFilter>('all');
+  const [handoffs, setHandoffs] = useState<Record<string, WarehouseHandoff | null>>({});
+  const [warehouseError, setWarehouseError] = useState('');
   const [events, setEvents] = useState<EventListItem[]>([]);
+  const operational = usesOperationalStages(employee);
+  const {states: operationalStates, stage: displayStatus} = useOperationalStages(events, operational);
   const [filtered, setFiltered] = useState<EventListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -107,7 +120,8 @@ export default function EventsScreen({ onEventPress }: Props) {
         const isAdmin =
           employee.role === 'admin' ||
           employee.access_level === 'admin' ||
-          employee.permissions?.includes('events_manage') === true;
+          employee.permissions?.includes('events_manage') === true ||
+          employee.permissions?.includes('equipment_manage') === true || employee.has_realizations === true;
 
         let eventIds: string[] | null = null;
 
@@ -218,7 +232,25 @@ export default function EventsScreen({ onEventPress }: Props) {
           };
         });
 
-        setEvents(mapped);
+        const mine = await supabase.rpc('get_my_realizations');
+        const merged = new Map(mapped.map(e=>[e.id,e]));
+        for(const row of mine.data||[]) if(!merged.has(row.id))merged.set(row.id,row);
+        const nextEvents = [...merged.values()];
+        if (isWarehouseWorker && nextEvents.length) {
+          const { data: records, error: handoffError } = await supabase.from('event_warehouse_handoffs')
+            .select('event_id,accepted_at,accepted_by,accepted_by_name,ready_at,ready_by_name')
+            .in('event_id', nextEvents.map(item => item.id));
+          if (handoffError) {
+            setHandoffs({});
+            setWarehouseError('Nie udało się odczytać odpowiedzialności magazynu. Odśwież listę.');
+          } else {
+            const snapshot: Record<string, WarehouseHandoff | null> = Object.fromEntries(nextEvents.map(item => [item.id, null]));
+            for (const row of records || []) snapshot[row.event_id] = row;
+            setHandoffs(snapshot);
+            setWarehouseError('');
+          }
+        } else { setHandoffs({}); setWarehouseError(''); }
+        setEvents(nextEvents);
       } catch (error) {
         console.error('Error fetching events:', error);
         setLoadError('Nie udało się pobrać wydarzeń. Odśwież listę i spróbuj ponownie.');
@@ -227,18 +259,27 @@ export default function EventsScreen({ onEventPress }: Props) {
         setRefreshing(false);
       }
     },
-    [employee?.id, employee?.role],
+    [employee?.id, employee?.role, employee?.access_level, employee?.permissions, employee?.has_realizations, isWarehouseWorker],
   );
 
-  useEffect(() => {
-    fetchEvents();
-  }, [fetchEvents]);
+  useFocusEffect(useCallback(() => { void fetchEvents(); }, [fetchEvents]));
+  useForegroundEffect(signal => {
+    if (!isWarehouseWorker || !focused) return;
+    const queue = createRefreshQueue(signal, () => fetchEvents(true));
+    const channel = supabase.channel('mobile-warehouse-events')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'events' }, queue.schedule)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'event_warehouse_handoffs' }, queue.schedule)
+      .subscribe();
+    const timer = setInterval(queue.schedule, 30000);
+    return () => { clearInterval(timer); return supabase.removeChannel(channel); };
+  }, [fetchEvents, isWarehouseWorker, focused]);
 
   useEffect(() => {
     let result = [...events];
+    if (isWarehouseWorker) result = result.filter(event => matchesWarehouseFilter(warehouseFilter, event.status, handoffs[event.id], employee?.id));
 
     if (!showPastEvents) {
-      result = result.filter((event) => !isPastEvent(event));
+      result = result.filter((event) => operational ? !['settled','cancelled'].includes(displayStatus(event)) : !isPastEvent(event));
     }
 
     if (search.trim()) {
@@ -254,7 +295,7 @@ export default function EventsScreen({ onEventPress }: Props) {
     }
 
     if (statusFilter) {
-      result = result.filter((event) => event.status === statusFilter);
+      result = result.filter((event) => displayStatus(event) === statusFilter);
     }
 
     result.sort((a, b) => {
@@ -273,7 +314,7 @@ export default function EventsScreen({ onEventPress }: Props) {
     });
 
     setFiltered(result);
-  }, [events, search, statusFilter, showPastEvents]);
+  }, [events, search, statusFilter, showPastEvents, operationalStates, operational, isWarehouseWorker, warehouseFilter, handoffs, employee?.id]);
 
   const formatDate = (dateStr: string) => {
     const d = new Date(dateStr);
@@ -305,14 +346,18 @@ export default function EventsScreen({ onEventPress }: Props) {
         <View
           style={[
             styles.statusBadge,
-            { backgroundColor: (STATUS_COLORS[item.status] || '#6b7280') + '20' },
+            { backgroundColor: (STATUS_COLORS[displayStatus(item)] || '#6b7280') + '20' },
           ]}
         >
-          <Text style={[styles.statusText, { color: STATUS_COLORS[item.status] || '#6b7280' }]}>
-            {STATUS_LABELS[item.status] || item.status}
+          <Text style={[styles.statusText, { color: STATUS_COLORS[displayStatus(item)] || '#6b7280' }]}>
+            {(operational ? OPERATIONAL_LABELS : STATUS_LABELS)[displayStatus(item)] || 'Nowe wydarzenie'}
           </Text>
         </View>
       </View>
+      {isWarehouseWorker && handoffs[item.id] !== undefined && (handoffs[item.id]?.accepted_at || canAcceptWarehouseHandoff(item.status, handoffs[item.id])) && <Text style={{ color: colors.primary.gold, fontSize: 12, marginTop: 8 }}>
+        {handoffs[item.id]?.accepted_at ? warehouseOwnerLabel(handoffs[item.id]!, employee?.id) : 'Magazyn · do przejęcia'}
+        {handoffs[item.id]?.ready_at ? ' · Gotowość potwierdzona' : ''}
+      </Text>}
       <View style={styles.eventMeta}>
         <Feather name="calendar" size={12} color={colors.text.tertiary} />
         <Text style={styles.eventDate}>{formatDate(item.event_date)}</Text>
@@ -360,7 +405,7 @@ export default function EventsScreen({ onEventPress }: Props) {
     </TouchableOpacity>
   );
 
-  const statusFilters = [
+  const statusFilters = operational ? [{key:null,label:'Wszystkie'},...Object.entries(OPERATIONAL_LABELS).map(([key,label])=>({key,label}))] : [
     { key: null, label: 'Wszystkie' },
     { key: 'inquiry', label: 'Zapytania' },
     { key: 'offer_to_send', label: 'Do wysłania' },
@@ -402,6 +447,17 @@ export default function EventsScreen({ onEventPress }: Props) {
         )}
       </View>
 
+      {isWarehouseWorker && <View style={styles.filtersRow}>
+        <FlatList horizontal showsHorizontalScrollIndicator={false}
+          data={[{ key: 'all' as const, label: 'Wszystkie' }, { key: 'pending' as const, label: 'Do przejęcia' }, { key: 'mine' as const, label: 'Moje przygotowania' }]}
+          keyExtractor={item => item.key}
+          renderItem={({ item }) => <TouchableOpacity accessibilityRole="button" accessibilityState={{ selected: warehouseFilter === item.key }}
+            style={[styles.filterChip, warehouseFilter === item.key && styles.filterChipActive]}
+            onPress={() => setWarehouseFilter(item.key)}>
+            <Text style={[styles.filterChipText, warehouseFilter === item.key && styles.filterChipTextActive]}>{item.label}</Text>
+          </TouchableOpacity>} />
+      </View>}
+      {!!warehouseError && <Text accessibilityRole="alert" style={{ color: colors.status.error, paddingHorizontal: spacing.md }}>{warehouseError}</Text>}
       {/* Status filters */}
       <View style={styles.filtersRow}>
         <FlatList

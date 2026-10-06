@@ -1,7 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase/browser';
+import { loadStatementFinancialSummaries, type StatementFinancialSummary } from '@/lib/invoices/statementFinancialSummaries';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import {
   TrendingUp,
@@ -12,18 +14,21 @@ import {
   CheckCircle,
   AlertCircle,
   Clock,
-  Link as LinkIcon,
   ChevronUp,
   ChevronDown,
   Download,
   Trash2,
   List,
   Pencil,
+  RefreshCw,
 } from 'lucide-react';
 import { parseMT940, parseJPK_WB } from '@/lib/bankStatementParsers';
 import { readBankTextFile, repairBrokenBankText } from '@/lib/bankTextEncoding';
-import BankTransactionsAnalysis from './BankTransactionsAnalysis';
-import UnmatchedTransactionsModal from './UnmatchedTransactionsModal';
+import { bankStatementImportFormat, resolveStatementAccount } from '@/lib/bankStatementAccount';
+import { selectBankStatementsForUpload, validateBankStatementUploadAccount } from '@/lib/bankStatementUploadScope';
+import { assertBankStatementCanBeRemoved } from '@/lib/CRM/bankStatementRemovalGuard';
+import { linkDetectedVatTransfersForPeriod } from '@/lib/CRM/bankVatTransfers';
+import MonthlyAccountingDashboard from './invoices/tabs/MonthlyAccountingDashboard';
 import CompanySelector from './CompanySelector';
 import ResponsiveActionBar from './ResponsiveActionBar';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
@@ -31,25 +36,18 @@ import { useDialog } from '@/contexts/DialogContext';
 import BankStatementsListModal from './invoices/modal/BankStatementRecord';
 
 type AccountType = 'regular' | 'vat' | 'mt940';
+type UploadAccountType = 'regular' | 'vat';
+type UploadFormat = 'PDF' | 'MT940';
 
-interface MonthlySummary {
-  id: string;
-  month: number;
-  year: number;
-  total_income: number;
-  total_expenses: number;
-  invoices_issued_count: number;
-  invoices_received_count: number;
-  invoices_paid_count: number;
-  invoices_unpaid_count: number;
-  invoices_overdue_count: number;
-  bank_statement_uploaded: boolean;
-}
+type MonthlySummary = StatementFinancialSummary;
 
 interface BankStatementRecord {
   id: string;
   file_name: string;
   account_type: AccountType;
+  account_number?: string | null;
+  import_format?: string | null;
+  file_type?: string | null;
   statement_month: number;
   statement_year: number;
   my_company_id: string;
@@ -84,18 +82,6 @@ function formatFinancialAmount(value: number) {
     .replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 }
 
-function extractBankAccountNumber(...values: Array<string | null | undefined>) {
-  for (const value of values) {
-    const text = String(value || '');
-    const compactAccount = text.match(/(?:\d[\s-]?){26}/)?.[0]?.replace(/\D/g, '');
-    if (compactAccount?.length === 26) return compactAccount;
-
-    const digits = text.replace(/\D/g, '');
-    if (digits.length === 26) return digits;
-  }
-  return '';
-}
-
 function MonthActions({
   summary,
   selectedCompanyId,
@@ -128,7 +114,7 @@ function MonthActions({
     const check = async () => {
       let query = supabase
         .from('bank_statements')
-        .select('account_type, file_storage_path')
+        .select('account_type, import_format, file_type, file_name, file_storage_path')
         .eq('statement_month', summary.month)
         .eq('statement_year', summary.year)
         .eq('processed', true)
@@ -162,7 +148,7 @@ function MonthActions({
 
       setHasRegular(types.includes('regular'));
       setHasVat(types.includes('vat'));
-      setHasMt940(types.includes('mt940'));
+      setHasMt940((data || []).some((statement) => bankStatementImportFormat(statement) === 'MT940'));
     };
 
     void check();
@@ -182,24 +168,24 @@ function MonthActions({
       icon: <Upload className="h-4 w-4" />,
     },
     {
-      label: 'Szczegoly',
+      label: 'Otwórz miesiąc',
       onClick: onDetails,
       icon: <FileText className="h-4 w-4" />,
     },
     {
-      label: 'Pobierz wyciag',
+      label: 'Wyciągi konta bieżącego',
       onClick: () => onDownload('regular'),
       icon: <Download className="h-4 w-4" />,
       show: hasRegular,
     },
     {
-      label: 'Wyciag VAT',
+      label: 'Wyciągi konta VAT',
       onClick: () => onDownload('vat'),
       icon: <Download className="h-4 w-4" />,
       show: hasVat,
     },
     {
-      label: 'Pobierz wyciag MT940',
+      label: 'Pliki MT940',
       onClick: () => onDownload('mt940'),
       icon: <Download className="h-4 w-4" />,
       show: hasMt940,
@@ -214,29 +200,35 @@ interface KSeFFinancialDashboardProps {
 }
 
 export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinancialDashboardProps) {
-  const [summaries, setSummaries] = useState<MonthlySummary[]>([]);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [summaryRows, setSummaries] = useState<MonthlySummary[]>([]);
+  const [summaryCurrency, setSummaryCurrency] = useState('PLN');
+  const [summaryCurrencies, setSummaryCurrencies] = useState<string[]>(['PLN']);
+  const [summaryWarnings, setSummaryWarnings] = useState<string[]>([]);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
+  const summaryRequest = useRef(0);
+  const summaries = summaryRows.filter((summary) => summary.currency === summaryCurrency);
   const [loading, setLoading] = useState(true);
-  const [selectedMonth, setSelectedMonth] = useState<MonthlySummary | null>(null);
   const [uploadingFile, setUploadingFile] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({ step: '', current: 0, total: 0 });
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
-  const [availableYears, setAvailableYears] = useState<number[]>([]);
-  const [showUnmatchedModal, setShowUnmatchedModal] = useState(false);
-  const [showSimpleMatchModal, setShowSimpleMatchModal] = useState(false);
+  const [availableYears, setAvailableYears] = useState<number[]>([new Date().getFullYear()]);
   const [isDragOver, setIsDragOver] = useState(false);
   const [showYearSummary, setShowYearSummary] = useState(false);
-  const [unmatchedModalMonth, setUnmatchedModalMonth] = useState<{
-    month: number;
-    year: number;
-  } | null>(null);
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
-  const [uploadAccountType, setUploadAccountType] = useState<AccountType>('regular');
+  const [uploadAccountType, setUploadAccountType] = useState<UploadAccountType>('regular');
+  const [uploadFormat, setUploadFormat] = useState<UploadFormat>('PDF');
   const [uploadMonth, setUploadMonth] = useState<MonthlySummary | null>(null);
   const [showStatementsListModal, setShowStatementsListModal] = useState(false);
   const [allStatements, setAllStatements] = useState<BankStatementRecord[]>([]);
   const [loadingStatements, setLoadingStatements] = useState(false);
   const [uploadExistingStatements, setUploadExistingStatements] = useState<BankStatementRecord[]>([]);
   const [loadingUploadExistingStatements, setLoadingUploadExistingStatements] = useState(false);
+  const [uploadExistingScope, setUploadExistingScope] = useState('');
+  const [uploadExistingError, setUploadExistingError] = useState<string | null>(null);
+  const [deletingStatementId, setDeletingStatementId] = useState<string | null>(null);
+  const statementMutationInProgress = useRef(false);
   const [uploadStatementsRevision, setUploadStatementsRevision] = useState(0);
   const [renamingStatement, setRenamingStatement] = useState<{ id: string; name: string } | null>(
     null,
@@ -244,6 +236,30 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
   const { showSnackbar } = useSnackbar();
   const { showConfirm } = useDialog();
   const { employee: currentEmployee, isAdmin } = useCurrentEmployee();
+  const uploadScope = `${selectedCompanyId}:${uploadMonth?.year}:${uploadMonth?.month}:${uploadAccountType}:${uploadFormat}:${uploadStatementsRevision}`;
+  const uploadSelectionReady = uploadExistingScope === uploadScope
+    && !loadingUploadExistingStatements && !uploadExistingError;
+  const statementMutationBusy = uploadingFile || deletingStatementId !== null;
+  const queryMonth = Number(searchParams.get('statementMonth'));
+  const queryYear = Number(searchParams.get('statementYear'));
+  const selectedMonth: MonthlySummary | null = Number.isInteger(queryMonth) && queryMonth >= 1 && queryMonth <= 12
+    && Number.isInteger(queryYear) && queryYear >= 2000 && queryYear <= 2100
+    ? summaries.find((summary) => summary.month === queryMonth && summary.year === queryYear) || {
+      id: `${queryYear}-${queryMonth}`, month: queryMonth, year: queryYear, total_income: 0, total_expenses: 0,
+      invoices_issued_count: 0, invoices_received_count: 0, invoices_paid_count: 0, invoices_unpaid_count: 0,
+      invoices_overdue_count: 0, bank_statement_uploaded: false, currency: summaryCurrency, cash_document_count: 0,
+    } : null;
+  const setSelectedMonth = (summary: MonthlySummary | null) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (summary) {
+      params.set('statementMonth', String(summary.month));
+      params.set('statementYear', String(summary.year));
+    } else {
+      params.delete('statementMonth'); params.delete('statementYear');
+      void loadSummaries();
+    }
+    router.push(`/crm/invoices?${params.toString()}`, { scroll: false });
+  };
   const allowedCompanyIds: string[] | null = (() => {
     if (isAdmin) return null;
 
@@ -252,6 +268,10 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
     if (!Array.isArray(ids)) return [];
     return ids as string[];
   })();
+  const requestedSummaryCompanies = selectedCompanyId ? [selectedCompanyId] : filterCompanyIds ?? null;
+  const summaryCompanies = allowedCompanyIds === null ? requestedSummaryCompanies
+    : requestedSummaryCompanies === null ? allowedCompanyIds : requestedSummaryCompanies.filter((id) => allowedCompanyIds.includes(id));
+  const summaryCompanyKey = summaryCompanies === null ? '*' : [...new Set(summaryCompanies)].sort().join(',');
 
   useEffect(() => {
     if (filterCompanyIds && filterCompanyIds.length === 1) {
@@ -264,45 +284,67 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
   }, [filterCompanyIds]);
 
   useEffect(() => {
-    loadSummaries();
-  }, [selectedYear, selectedCompanyId]);
+    void loadSummaries();
+    return () => { summaryRequest.current += 1; };
+  }, [selectedYear, selectedCompanyId, summaryCompanyKey]);
 
   useEffect(() => {
     let cancelled = false;
 
     if (!uploadMonth || !selectedCompanyId) {
       setUploadExistingStatements([]);
+      setUploadExistingScope('');
+      setUploadExistingError(null);
       setLoadingUploadExistingStatements(false);
       return;
     }
 
     const loadExistingStatementsForUpload = async () => {
       setLoadingUploadExistingStatements(true);
-      const { data, error } = await supabase
-        .from('bank_statements')
-        .select('id,file_name,account_type,statement_month,statement_year,my_company_id,file_storage_path,transactions_count,processed,validation_status,validation_message,parser_version,created_at')
-        .eq('statement_month', uploadMonth.month)
-        .eq('statement_year', uploadMonth.year)
-        .eq('my_company_id', selectedCompanyId)
-        .eq('account_type', uploadAccountType)
-        .order('created_at', { ascending: false });
-
-      if (cancelled) return;
-      if (error) {
+      setUploadExistingStatements([]);
+      setUploadExistingError(null);
+      try {
+        // Read both account kinds before resolving legacy MT940 by account number.
+        const [statementsResult, companyResult] = await Promise.all([
+          supabase.from('bank_statements')
+            .select('id,file_name,account_type,account_number,import_format,file_type,statement_month,statement_year,my_company_id,file_storage_path,transactions_count,processed,validation_status,validation_message,parser_version,created_at')
+            .eq('statement_month', uploadMonth.month)
+            .eq('statement_year', uploadMonth.year)
+            .eq('my_company_id', selectedCompanyId)
+            .order('created_at', { ascending: false }),
+          supabase.from('my_companies').select('bank_account,vat_bank_account')
+            .eq('id', selectedCompanyId).single(),
+        ]);
+        if (statementsResult.error) throw statementsResult.error;
+        if (companyResult.error) throw companyResult.error;
+        if (cancelled) return;
+        setUploadExistingStatements(selectBankStatementsForUpload(
+          (statementsResult.data || []) as BankStatementRecord[],
+          uploadAccountType, uploadFormat, companyResult.data,
+        ));
+      } catch (error) {
+        if (cancelled) return;
         console.error('Error loading existing statement for upload:', error);
-        setUploadExistingStatements([]);
-      } else {
-        setUploadExistingStatements((data || []) as BankStatementRecord[]);
+        setUploadExistingError('Nie udało się sprawdzić plików i rachunków firmy. Odśwież listę przed importem.');
+      } finally {
+        if (!cancelled) {
+          setUploadExistingScope(uploadScope);
+          setLoadingUploadExistingStatements(false);
+        }
       }
-      setLoadingUploadExistingStatements(false);
     };
 
     void loadExistingStatementsForUpload();
     return () => { cancelled = true; };
-  }, [selectedCompanyId, uploadAccountType, uploadMonth, uploadStatementsRevision]);
+  }, [selectedCompanyId, uploadAccountType, uploadFormat, uploadMonth, uploadStatementsRevision]);
 
   const handleSelectedFile = async (file: File | null, month: number, year: number) => {
     if (!file) return;
+    if (statementMutationInProgress.current) return;
+    if (!uploadSelectionReady) {
+      showSnackbar(uploadExistingError || 'Poczekaj na sprawdzenie plików wybranego rachunku.', 'warning');
+      return;
+    }
     if (!selectedCompanyId) {
       showSnackbar('Najpierw wybierz działalność w oknie importu.', 'warning');
       return;
@@ -311,12 +353,12 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
     const lowerName = file.name.toLowerCase();
 
     const isValid =
-      uploadAccountType === 'mt940' ? lowerName.endsWith('.txt') : lowerName.endsWith('.pdf');
+      uploadFormat === 'MT940' ? /\.(txt|sta|mt940)$/.test(lowerName) : lowerName.endsWith('.pdf');
 
     if (!isValid) {
       showSnackbar(
-        uploadAccountType === 'mt940'
-          ? 'Dla MT940 dozwolony jest tylko plik TXT'
+        uploadFormat === 'MT940'
+          ? 'Dla MT940 wybierz plik TXT, STA lub MT940'
           : 'Dozwolony jest tylko plik PDF z wyciągiem bankowym',
         'error',
       );
@@ -327,77 +369,27 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
   };
 
   const loadSummaries = async () => {
+    const requestId = ++summaryRequest.current;
     try {
       setLoading(true);
-
-      const summariesPromises = [];
-      for (let month = 1; month <= 12; month++) {
-        summariesPromises.push(
-          supabase.rpc('update_monthly_summary', {
-            p_month: month,
-            p_year: selectedYear,
-            p_company_id: selectedCompanyId,
-          }),
-        );
-      }
-
-      await Promise.all(summariesPromises);
-
-      let query = supabase.from('monthly_financial_summaries').select('*').eq('year', selectedYear);
-
-      if (selectedCompanyId) {
-        query = query.eq('my_company_id', selectedCompanyId);
-      } else if (allowedCompanyIds) {
-        query = query.in('my_company_id', allowedCompanyIds);
-      } else {
-        query = query.is('my_company_id', null);
-      }
-
-      const { data, error } = await query.order('month', { ascending: true });
-
-      if (error) throw error;
-
-      const fullYearData: MonthlySummary[] = [];
-      for (let month = 1; month <= 12; month++) {
-        const existingMonth = data?.find((d) => d.month === month);
-        if (existingMonth) {
-          fullYearData.push(existingMonth);
-        } else {
-          fullYearData.push({
-            id: `${selectedYear}-${month}`,
-            month,
-            year: selectedYear,
-            total_income: 0,
-            total_expenses: 0,
-            invoices_issued_count: 0,
-            invoices_received_count: 0,
-            invoices_paid_count: 0,
-            invoices_unpaid_count: 0,
-            invoices_overdue_count: 0,
-            bank_statement_uploaded: false,
-          });
-        }
-      }
-
-      setSummaries(fullYearData);
-
-      const { data: yearsData } = await supabase
-        .from('monthly_financial_summaries')
-        .select('year')
-        .order('year', { ascending: false });
-
-      if (yearsData) {
-        const uniqueYears = [...new Set(yearsData.map((d) => d.year))];
-        if (!uniqueYears.includes(new Date().getFullYear())) {
-          uniqueYears.unshift(new Date().getFullYear());
-        }
-        setAvailableYears(uniqueYears);
-      }
+      setSummaryError(null); setSummaryWarnings([]); setSummaries([]);
+      const result = await loadStatementFinancialSummaries(supabase, {
+        year: selectedYear,
+        companyIds: summaryCompanyKey === '*' ? null : summaryCompanyKey.split(',').filter(Boolean),
+      });
+      if (requestId !== summaryRequest.current) return;
+      setSummaries(result.summaries);
+      const currencies = result.currencies.length ? result.currencies : ['PLN'];
+      setSummaryCurrencies(currencies);
+      setSummaryCurrency((current) => currencies.includes(current) ? current : currencies.includes('PLN') ? 'PLN' : currencies[0]);
+      setAvailableYears([...new Set([selectedYear, new Date().getFullYear(), ...result.availableYears])].sort((a, b) => b - a));
+      setSummaryWarnings(result.warnings);
     } catch (error: any) {
-      console.error('Error loading summaries:', error);
-      showSnackbar(error.message || 'Błąd podczas ładowania podsumowań', 'error');
+      if (requestId !== summaryRequest.current) return;
+      setSummaries([]);
+      setSummaryError(error.message || 'Nie udało się pobrać wszystkich rejestrów. Podsumowanie nie jest dostępne.');
     } finally {
-      setLoading(false);
+      if (requestId === summaryRequest.current) setLoading(false);
     }
   };
 
@@ -408,7 +400,7 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
       let query = supabase
         .from('bank_statements')
         .select(
-          'id, file_name, account_type, statement_month, statement_year, my_company_id, file_storage_path, transactions_count, processed, validation_status, validation_message, parser_version, created_at, my_companies(name)',
+          'id, file_name, account_type, account_number, import_format, file_type, statement_month, statement_year, my_company_id, file_storage_path, transactions_count, processed, validation_status, validation_message, parser_version, created_at, my_companies(name)',
         )
         .order('statement_year', { ascending: false })
         .order('statement_month', { ascending: false });
@@ -446,7 +438,7 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
     try {
       const { data: stmt } = await supabase
         .from('bank_statements')
-        .select('file_storage_path, file_name')
+        .select('file_storage_path, file_name, account_type, import_format, file_type')
         .eq('id', statementId)
         .maybeSingle();
 
@@ -463,7 +455,7 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
         throw new Error('Nie udało się wygenerować linku do pobrania');
       }
 
-      if (accountType !== 'mt940') {
+      if (bankStatementImportFormat(stmt) !== 'MT940') {
         window.open(signedUrl.signedUrl, '_blank', 'noopener,noreferrer');
         return;
       }
@@ -491,30 +483,44 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
   };
 
   const handleDeleteStatement = async (statementId: string) => {
-    const confirmed = await showConfirm({
-      title: 'Usuń wyciąg bankowy',
-      message:
-        'Czy na pewno chcesz usunąć ten wyciąg? Wszystkie powiązane transakcje i dopasowania zostaną usunięte.',
-      confirmText: 'Usuń',
-      cancelText: 'Anuluj',
-    });
-
-    if (!confirmed) return;
-
+    if (statementMutationInProgress.current) return;
+    statementMutationInProgress.current = true;
+    setDeletingStatementId(statementId);
     try {
-      const { data: stmt } = await supabase
+      const { data: stmt, error: statementError } = await supabase
         .from('bank_statements')
-        .select('file_storage_path, my_company_id, statement_month, statement_year')
+        .select('file_name,file_storage_path,my_company_id,statement_month,statement_year,account_type,account_number,import_format,file_type')
         .eq('id', statementId)
-        .maybeSingle();
-
-      if (stmt?.file_storage_path) {
-        await supabase.storage.from('bank-statements').remove([stmt.file_storage_path]);
-      }
-
-      const { error } = await supabase.from('bank_statements').delete().eq('id', statementId);
-
+        .single();
+      if (statementError) throw statementError;
+      await assertBankStatementCanBeRemoved(supabase, statementId);
+      const accountNumber = resolveStatementAccount(stmt).accountNumber;
+      const confirmed = await showConfirm({
+        title: 'Usuń ten plik wyciągu',
+        message: `Usunąć „${stmt.file_name}” (${bankStatementImportFormat(stmt)}, rachunek ${accountNumber || 'nierozpoznany'}, ${stmt.statement_month}/${stmt.statement_year}) i jego niepowiązane odczyty transakcji? Drugi format oraz pliki innych rachunków pozostaną bez zmian. Po usunięciu możesz wgrać nowy plik.`,
+        confirmText: 'Usuń ten plik',
+        cancelText: 'Zachowaj plik',
+      });
+      if (!confirmed) return;
+      // Recheck links after the user has reviewed the exact deletion target.
+      await assertBankStatementCanBeRemoved(supabase, statementId);
+      let deleteQuery = supabase.from('bank_statements').delete()
+        .eq('id', statementId).eq('my_company_id', stmt.my_company_id)
+        .eq('statement_month', stmt.statement_month).eq('statement_year', stmt.statement_year)
+        .eq('file_name', stmt.file_name).eq('account_type', stmt.account_type);
+      deleteQuery = stmt.file_storage_path
+        ? deleteQuery.eq('file_storage_path', stmt.file_storage_path)
+        : deleteQuery.is('file_storage_path', null);
+      const { data: deleted, error } = await deleteQuery.select('id');
       if (error) throw error;
+      if (deleted?.length !== 1) throw new Error('Plik zmienił się w trakcie operacji. Odśwież listę i spróbuj ponownie.');
+
+      // Never erase the original if the database refuses to remove its record.
+      let retainedOriginal = false;
+      if (stmt.file_storage_path) {
+        const { error: storageError } = await supabase.storage.from('bank-statements').remove([stmt.file_storage_path]);
+        retainedOriginal = Boolean(storageError);
+      }
 
       if (stmt?.my_company_id) {
         const { error: staleReportError } = await supabase
@@ -529,12 +535,19 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
         }
       }
 
-      showSnackbar('Wyciąg bankowy został usunięty', 'success');
+      showSnackbar(retainedOriginal
+        ? 'Usunięto wpis i niepowiązane odczyty. Oryginał pozostał w magazynie, ponieważ jego usunięcie się nie powiodło.'
+        : 'Usunięto wskazany plik i jego niepowiązane odczyty. Możesz teraz wgrać nowy plik.',
+      retainedOriginal ? 'warning' : 'success');
       setAllStatements((prev) => prev.filter((s) => s.id !== statementId));
+      setUploadStatementsRevision((current) => current + 1);
       await loadSummaries();
     } catch (error: any) {
       console.error('Delete error:', error);
       showSnackbar(error.message || 'Błąd usuwania wyciągu', 'error');
+    } finally {
+      statementMutationInProgress.current = false;
+      setDeletingStatementId(null);
     }
   };
 
@@ -568,11 +581,11 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
   const getStatementsForMonth = async (month: number, year: number, accountType: AccountType) => {
     let query = supabase
       .from('bank_statements')
-      .select('id, file_storage_path, file_name, account_type, my_company_id')
+      .select('id, file_storage_path, file_name, account_type, import_format, file_type, my_company_id')
       .eq('statement_month', month)
       .eq('statement_year', year)
-      .eq('account_type', accountType)
-      .not('file_storage_path', 'is', null);
+      .not('file_storage_path', 'is', null)
+      .order('created_at', { ascending: false });
 
     if (selectedCompanyId) {
       query = query.eq('my_company_id', selectedCompanyId);
@@ -588,7 +601,9 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
 
     if (error) throw error;
 
-    return data || [];
+    return (data || []).filter((statement) => accountType === 'mt940'
+      ? bankStatementImportFormat(statement) === 'MT940'
+      : statement.account_type === accountType);
   };
 
   const handleDownloadForMonth = async (month: number, year: number, accountType: AccountType) => {
@@ -596,17 +611,19 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
 
     if (!statements.length) {
       showSnackbar(
-        `Brak wyciągu ${accountType === 'vat' ? 'VAT' : 'bieżącego'} dla tego miesiąca`,
+        `Brak ${accountType === 'mt940' ? 'pliku MT940' : accountType === 'vat' ? 'wyciągu VAT' : 'wyciągu bieżącego'} dla tego miesiąca`,
         'warning',
       );
       return;
     }
 
-    if (statements.length > 1 && !selectedCompanyId) {
+    if (statements.length > 1) {
       showSnackbar(
-        'Dla tego miesiąca jest kilka wyciągów. Wybierz firmę albo użyj listy wyciągów.',
-        'warning',
+        'Wybierz konkretny plik z listy wyciągów — PDF i MT940 są dostępne osobno.',
+        'info',
       );
+      setShowStatementsListModal(true);
+      void loadAllStatements();
       return;
     }
 
@@ -616,6 +633,8 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
   };
 
   const handleFileUpload = async (file: File, month: number, year: number) => {
+    if (statementMutationInProgress.current) return;
+    statementMutationInProgress.current = true;
     try {
       if (!selectedCompanyId) {
         showSnackbar('Najpierw wybierz działalność w oknie importu.', 'warning');
@@ -626,11 +645,11 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
       setUploadProgress({ step: 'Wczytywanie pliku...', current: 0, total: 8 });
 
       const lowerName = file.name.toLowerCase();
-      const isMt940 = uploadAccountType === 'mt940';
+      const isMt940 = uploadFormat === 'MT940';
 
       if (isMt940) {
-        if (!lowerName.endsWith('.txt')) {
-          throw new Error('Dla MT940 obsługiwane są wyłącznie pliki TXT');
+        if (!/\.(txt|sta|mt940)$/.test(lowerName)) {
+          throw new Error('Dla MT940 wybierz plik TXT, STA lub MT940');
         }
       } else if (!lowerName.endsWith('.pdf')) {
         throw new Error('Obsługiwane są wyłącznie pliki PDF');
@@ -694,86 +713,43 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
 
       setUploadProgress({ step: 'Sprawdzanie poprzedniego importu...', current: 2, total: 8 });
 
-      const { data: statementsForMonth, error: existingStatementsError } = await supabase
-        .from('bank_statements')
-        .select('id, file_storage_path, file_name, account_type, account_number, transactions_count, processed, validation_status')
-        .eq('statement_month', month)
-        .eq('statement_year', year)
-        .eq('my_company_id', selectedCompanyId);
+      const [statementsResult, companyResult] = await Promise.all([
+        supabase.from('bank_statements')
+          .select('id,file_storage_path,file_name,account_type,account_number,import_format,file_type,transactions_count,processed,validation_status')
+          .eq('statement_month', month).eq('statement_year', year).eq('my_company_id', selectedCompanyId),
+        supabase.from('my_companies').select('bank_account,vat_bank_account').eq('id', selectedCompanyId).single(),
+      ]);
+      if (statementsResult.error) throw statementsResult.error;
+      if (companyResult.error) throw companyResult.error;
+      const statementsForMonth = statementsResult.data || [];
 
-      if (existingStatementsError) throw existingStatementsError;
-
-      const importedAccountNumber = extractBankAccountNumber(
-        parsedStatement?.accountNumber,
-        file.name,
-      );
-      const existingStatements = (statementsForMonth || []).filter((statement) => {
-        if (statement.account_type !== uploadAccountType) return false;
-
-        const existingAccountNumber = extractBankAccountNumber(
-          statement.account_number,
-          statement.file_name,
-        );
-
-        if (importedAccountNumber && existingAccountNumber) {
-          return importedAccountNumber === existingAccountNumber;
-        }
-
-        return true;
+      const resolvedAccount = resolveStatementAccount({
+        account_number: parsedStatement?.accountNumber,
+        file_name: file.name,
       });
-
-      const existingStatementIds = (existingStatements || []).map((s) => s.id);
-
-      if (existingStatementIds.length > 0) {
-        const { count: protectedTransactionsCount, error: protectedTransactionsError } = await supabase
-          .from('bank_transactions')
-          .select('id', { count: 'exact', head: true })
-          .in('statement_id', existingStatementIds)
-          .or('allocated_amount.gt.0,matched_document_count.gt.0,accounting_review_status.eq.explained');
-        if (protectedTransactionsError) throw protectedTransactionsError;
-        if (Number(protectedTransactionsCount || 0) > 0) {
-          throw new Error(
-            `Nie można zastąpić tego wyciągu, ponieważ zawiera ${protectedTransactionsCount} rozliczonych lub opisanych transakcji. Dotychczasowe dopasowania pozostają bez zmian. Jeśli plik jest innym źródłem, dodaj go jako osobny typ PDF, VAT albo MT940.`,
-          );
-        }
-
-        const existingFiles = existingStatements
-          .map((statement) => `${statement.file_name} (${statement.transactions_count || 0} transakcji)`)
-          .join(', ');
-        const confirmed = await showConfirm({
-          title: 'Ponowny import wyciągu',
-          message: `Dla ${MONTHS[month - 1].toLowerCase()} ${year} znaleziono już wyciąg tego samego typu: ${existingFiles}. Kontynuacja zastąpi wyłącznie ten import. Wyciąg bieżący, VAT i MT940 są przechowywane niezależnie, a wspólną analizę uruchomisz po dodaniu wszystkich plików.`,
-          confirmText: 'Zastąp ten wyciąg',
+      const importedAccountNumber = resolvedAccount.accountNumber;
+      const accountError = validateBankStatementUploadAccount({
+        accountType: uploadAccountType,
+        accountNumber: importedAccountNumber,
+        statements: statementsForMonth,
+        companyAccounts: companyResult.data,
+      });
+      if (accountError) throw new Error(accountError);
+      if (resolvedAccount.warning) {
+        const confirmedAccount = await showConfirm({
+          title: 'Sprawdź numer rachunku',
+          message: `${resolvedAccount.warning} Rachunek z treści: ${importedAccountNumber}. Czy zaimportować plik do ${uploadAccountType === 'vat' ? 'konta VAT' : 'konta bieżącego'}?`,
+          confirmText: 'Użyj rachunku z treści',
           cancelText: 'Anuluj import',
         });
-        if (!confirmed) {
-          showSnackbar('Import anulowany. Dotychczasowy wyciąg pozostał bez zmian.', 'info');
-          return;
-        }
-
-        setUploadProgress({ step: 'Czyszczenie starego wyciągu...', current: 3, total: 8 });
-
-        const oldStoragePaths = (existingStatements || [])
-          .map((s) => s.file_storage_path)
-          .filter(Boolean) as string[];
-
-        if (oldStoragePaths.length > 0) {
-          await supabase.storage.from('bank-statements').remove(oldStoragePaths);
-        }
-
-        const { error: deleteTransactionsError } = await supabase
-          .from('bank_transactions')
-          .delete()
-          .in('statement_id', existingStatementIds);
-
-        if (deleteTransactionsError) throw deleteTransactionsError;
-
-        const { error: deleteStatementsError } = await supabase
-          .from('bank_statements')
-          .delete()
-          .in('id', existingStatementIds);
-
-        if (deleteStatementsError) throw deleteStatementsError;
+        if (!confirmedAccount) return;
+      }
+      const existingStatements = selectBankStatementsForUpload(
+        statementsForMonth, uploadAccountType, fileType, companyResult.data,
+      ).filter((statement) => resolveStatementAccount(statement).accountNumber === importedAccountNumber);
+      if (existingStatements.length > 0) {
+        const existingFiles = existingStatements.map((statement) => `„${statement.file_name}”`).join(', ');
+        throw new Error(`${fileType} dla ${uploadAccountType === 'vat' ? 'konta VAT' : 'konta bieżącego'} ${importedAccountNumber} za ${month}/${year} jest już zapisany: ${existingFiles}. Jeśli chcesz wgrać nową wersję, najpierw użyj „Usuń ten plik” przy właściwym pliku na liście. Nie usuwaj drugiego formatu ani wyciągu innego konta.`);
       }
 
       setUploadProgress({ step: 'Przesyłanie pliku do magazynu...', current: 4, total: 8 });
@@ -781,7 +757,7 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
       const extension = isMt940 ? 'txt' : 'pdf';
       const contentType = isMt940 ? 'text/plain' : 'application/pdf';
 
-      const storagePath = `${selectedCompanyId}/${year}/${month}_${uploadAccountType}_${Date.now()}.${extension}`;
+      const storagePath = `${selectedCompanyId}/${year}/${month}_${uploadAccountType}_${fileType.toLowerCase()}_${Date.now()}.${extension}`;
 
       const { error: storageError } = await supabase.storage
         .from('bank-statements')
@@ -817,7 +793,7 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
           currency: parsedStatement?.currency || 'PLN',
           transactions_count: transactions.length,
           import_format: fileType,
-          parser_version: isMt940 ? 2 : Number(parsedStatement?.parserVersion || 2),
+          parser_version: isMt940 ? 4 : Number(parsedStatement?.parserVersion || 2),
           validation_status: 'pending',
           validation_message: null,
           uploaded_by: user?.id,
@@ -826,7 +802,14 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
         .select()
         .single();
 
-      if (statementError) throw statementError;
+      if (statementError) {
+        // This is only the freshly uploaded object, never an existing source file.
+        await supabase.storage.from('bank-statements').remove([storagePath]);
+        if (statementError.code === '23505') {
+          throw new Error('Baza zablokowała zapis. Odśwież listę, aby sprawdzić, czy ten sam plik nie został już dodany. Jeżeli zapisany jest tylko drugi format (PDF/MT940), potrzebna jest aktualizacja ograniczenia w bazie. Nie usuwaj drugiego formatu ani wyciągu innego rachunku — dotychczasowe pliki pozostały bez zmian.');
+        }
+        throw statementError;
+      }
 
       setUploadProgress({
         step: `Przetwarzanie transakcji (0/${transactions.length})...`,
@@ -860,6 +843,10 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
             reference_number: transaction.referenceNumber ?? null,
             raw_description: repairBrokenBankText(transaction.rawDescription) || null,
             raw_counterparty: repairBrokenBankText(transaction.rawCounterparty) || null,
+            source_index: transaction.sourceIndex ?? null,
+            source_balance_before: transaction.balanceBefore ?? null,
+            source_balance_after: transaction.balanceAfter ?? null,
+            source_verified: transaction.sourceVerified === true,
           });
 
         if (insertTransactionError) throw insertTransactionError;
@@ -879,6 +866,17 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
 
       if (finalizeStatementError) throw finalizeStatementError;
 
+      let vatPairingWarning = '';
+      try {
+        const pairing = await linkDetectedVatTransfersForPeriod(supabase, {
+          companyId: selectedCompanyId, month, year,
+        });
+        vatPairingWarning = pairing.warnings?.join(' ') || '';
+      } catch (error) {
+        console.warn('Wyciąg zapisano, ale nie udało się powiązać transferów między kontami VAT.', error);
+        vatPairingWarning = 'Automatyczne powiązanie transferów VAT wymaga ponowienia w analizie miesiąca.';
+      }
+
       const { error: staleReportError } = await supabase
         .from('bank_ai_reconciliation_reports')
         .update({ is_stale: true })
@@ -893,25 +891,17 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
       setUploadProgress({ step: 'Wyciąg gotowy. Oczekuje na wspólną analizę.', current: 8, total: 8 });
       await loadSummaries();
 
-      setSelectedMonth((prev) =>
-        prev
-          ? {
-              ...prev,
-              bank_statement_uploaded: true,
-            }
-          : prev,
-      );
-
       setIsDragOver(false);
       setUploadStatementsRevision((current) => current + 1);
       showSnackbar(
-        `${isMt940 ? 'Plik MT940' : uploadAccountType === 'vat' ? 'Wyciąg VAT' : 'Wyciąg PDF'} został dodany. Transakcji: ${transactions.length}. Dodaj pozostałe wyciągi, a następnie uruchom wspólną Analizę AI.`,
-        'success',
+        `${fileType} dla ${uploadAccountType === 'vat' ? 'konta VAT' : 'konta bieżącego'} został dodany. Transakcji: ${transactions.length}. ${vatPairingWarning || 'Dodaj pozostałe wyciągi, a następnie uruchom wspólną Analizę AI.'}`,
+        vatPairingWarning ? 'warning' : 'success',
       );
     } catch (error: any) {
       console.error('Error uploading bank statement:', error);
       showSnackbar(error.message || 'Błąd podczas importu wyciągu', 'error');
     } finally {
+      statementMutationInProgress.current = false;
       setUploadingFile(false);
       setUploadProgress({ step: '', current: 0, total: 0 });
     }
@@ -943,23 +933,26 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
       paid: acc.paid + s.invoices_paid_count,
       unpaid: acc.unpaid + s.invoices_unpaid_count,
       overdue: acc.overdue + s.invoices_overdue_count,
+      cash: acc.cash + s.cash_document_count,
     }),
 
-    { income: 0, expenses: 0, issued: 0, received: 0, paid: 0, unpaid: 0, overdue: 0 },
+    { income: 0, expenses: 0, issued: 0, received: 0, paid: 0, unpaid: 0, overdue: 0, cash: 0 },
   );
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      {!selectedMonth && <>
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-light text-[#e5e4e2]">Dashboard Finansowy KSeF</h2>
+          <h2 className="text-2xl font-light text-[#e5e4e2]">Wyciągi i rozliczenia miesięczne</h2>
           <p className="mt-1 text-sm text-[#e5e4e2]/60">
-            Wartości faktur według daty wystawienia. Wyciąg kontroluje płatności, ale nie ustala
-            miesiąca przychodu.
+            Otwórz miesiąc, aby sprawdzić wyciągi, braki i przygotować paczkę do Saldeo.
+            Podsumowanie obejmuje dokumenty z KSeF, CRM i spoza KSeF, także gotówkowe oraz bez dopasowanego przelewu. Połączone kopie są liczone raz.
+            Kwoty brutto według daty wystawienia pokazujemy osobno dla każdej waluty — nie są obrotami bankowymi ani wynikiem podatkowym.
           </p>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-3">
           {!filterCompanyIds && (
             <CompanySelector
               value={selectedCompanyId}
@@ -982,6 +975,12 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
               ))}
             </select>
           </div>
+          <label className="flex items-center gap-2 text-sm text-[#e5e4e2]/60">Waluta:
+            <select value={summaryCurrency} onChange={(event) => setSummaryCurrency(event.target.value)} className="rounded-lg border border-white/10 bg-[var(--brand-burgundy-800)] px-3 py-2 text-[#e5e4e2] outline-none focus:border-[var(--crm-field-border-focus)]">
+              {summaryCurrencies.map((currency) => <option key={currency} value={currency}>{currency}</option>)}
+            </select>
+          </label>
+          <button type="button" onClick={() => void loadSummaries()} disabled={loading} className="inline-flex items-center gap-2 rounded-lg bg-white/5 px-3 py-2 text-sm text-[#e5e4e2] hover:bg-white/10 disabled:opacity-40"><RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />Odśwież podsumowanie</button>
           <button
             onClick={() => {
               loadAllStatements();
@@ -995,7 +994,9 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33]">
+      {summaryError && <div role="alert" className="rounded-xl bg-amber-400/5 p-4 text-sm text-amber-200">{summaryError} Nie pokazujemy niepełnych danych jako zerowych kwot.</div>}
+      {!!summaryWarnings.length && <div role="status" className="rounded-xl bg-amber-400/5 p-4 text-sm text-amber-200"><p className="font-medium">Podsumowanie wymaga uwagi</p><ul className="mt-2 list-disc space-y-1 pl-5">{summaryWarnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul></div>}
+      {!loading && !summaryError && <div className="overflow-hidden rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33]">
         <button
           type="button"
           onClick={() => setShowYearSummary((prev) => !prev)}
@@ -1004,29 +1005,29 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
             <div className="flex items-center gap-2">
               <TrendingUp className="h-4 w-4 text-green-400" />
-              <span className="text-sm text-[#e5e4e2]/60">Przychody:</span>
+              <span className="text-sm text-[#e5e4e2]/60">Przychody brutto:</span>
               <span className="text-sm font-medium text-green-400">
-                {formatFinancialAmount(yearTotals.income)} PLN
+                {formatFinancialAmount(yearTotals.income)} {summaryCurrency}
               </span>
             </div>
 
             <div className="hidden items-center gap-2 sm:flex">
               <TrendingDown className="h-4 w-4 text-red-400" />
-              <span className="text-sm text-[#e5e4e2]/60">Wydatki:</span>
+              <span className="text-sm text-[#e5e4e2]/60">Koszty brutto:</span>
               <span className="text-sm font-medium text-red-400">
-                {formatFinancialAmount(yearTotals.expenses)} PLN
+                {formatFinancialAmount(yearTotals.expenses)} {summaryCurrency}
               </span>
             </div>
 
             <div className="hidden items-center gap-2 lg:flex">
               <FileText className="h-4 w-4 text-[#d3bb73]" />
-              <span className="text-sm text-[#e5e4e2]/60">Bilans:</span>
+              <span className="text-sm text-[#e5e4e2]/60">Różnica brutto:</span>
               <span
                 className={`text-sm font-medium ${
                   yearTotals.income - yearTotals.expenses >= 0 ? 'text-green-400' : 'text-red-400'
                 }`}
               >
-                {formatFinancialAmount(yearTotals.income - yearTotals.expenses)} PLN
+                {formatFinancialAmount(yearTotals.income - yearTotals.expenses)} {summaryCurrency}
               </span>
             </div>
           </div>
@@ -1044,29 +1045,29 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
         {showYearSummary && (
           <div className="grid gap-4 border-t border-[#d3bb73]/10 p-5 md:grid-cols-4">
             <div className="rounded-lg border border-green-500/20 bg-green-500/10 p-4">
-              <div className="text-sm text-[#e5e4e2]/60">Przychody</div>
+              <div className="text-sm text-[#e5e4e2]/60">Przychody brutto</div>
               <div className="mt-1 text-xl font-bold text-green-400">
-                {formatFinancialAmount(yearTotals.income)} PLN
+                {formatFinancialAmount(yearTotals.income)} {summaryCurrency}
               </div>
-              <div className="text-xs text-[#e5e4e2]/40">{yearTotals.issued} faktur</div>
+              <div className="text-xs text-[#e5e4e2]/40">{yearTotals.issued} dokumentów sprzedaży</div>
             </div>
 
             <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-4">
-              <div className="text-sm text-[#e5e4e2]/60">Wydatki</div>
+              <div className="text-sm text-[#e5e4e2]/60">Koszty brutto</div>
               <div className="mt-1 text-xl font-bold text-red-400">
-                {formatFinancialAmount(yearTotals.expenses)} PLN
+                {formatFinancialAmount(yearTotals.expenses)} {summaryCurrency}
               </div>
-              <div className="text-xs text-[#e5e4e2]/40">{yearTotals.received} faktur</div>
+              <div className="text-xs text-[#e5e4e2]/40">{yearTotals.received} dokumentów kosztowych</div>
             </div>
 
             <div className="rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/5 p-4">
-              <div className="text-sm text-[#e5e4e2]/60">Bilans</div>
+              <div className="text-sm text-[#e5e4e2]/60">Różnica brutto</div>
               <div
                 className={`mt-1 text-xl font-bold ${
                   yearTotals.income - yearTotals.expenses >= 0 ? 'text-green-400' : 'text-red-400'
                 }`}
               >
-                {formatFinancialAmount(yearTotals.income - yearTotals.expenses)} PLN
+                {formatFinancialAmount(yearTotals.income - yearTotals.expenses)} {summaryCurrency}
               </div>
               <div className="text-xs text-[#e5e4e2]/40">Rok {selectedYear}</div>
             </div>
@@ -1086,11 +1087,12 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
                   <AlertCircle className="h-4 w-4 text-red-400" />
                   <span className="text-red-400">{yearTotals.overdue} po terminie</span>
                 </div>
+                <p className="pt-2 text-xs text-[#e5e4e2]/55">Uwzględniono {yearTotals.cash} dokumentów z oznaczeniem gotówki. Sam sposób płatności nie potwierdza zapłaty.</p>
               </div>
             </div>
           </div>
         )}
-      </div>
+      </div>}
 
       {false && currentMonth && (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -1184,6 +1186,8 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
           <div className="flex items-center justify-center p-12">
             <div className="text-[#e5e4e2]/60">Ładowanie...</div>
           </div>
+        ) : summaryError ? (
+          <p className="p-6 text-sm text-[#e5e4e2]/60">Nie można wyświetlić pełnego podsumowania. Użyj „Odśwież podsumowanie”.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -1193,13 +1197,13 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
                     Miesiąc
                   </th>
                   <th className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
-                    Sprzedaż KSeF
+                    Przychody brutto — wszystkie źródła
                   </th>
                   <th className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
-                    Zakupy KSeF
+                    Koszty brutto — wszystkie źródła
                   </th>
                   <th className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
-                    Bilans
+                    Różnica brutto
                   </th>
                   <th className="px-6 py-3 text-center text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
                     Płatności
@@ -1224,25 +1228,25 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2">
                           <Calendar className="h-4 w-4 text-[#d3bb73]" />
-                          <span className="text-sm font-medium text-[#e5e4e2]">
+                          <button type="button" onClick={() => setSelectedMonth(summary)} className="rounded text-left text-sm font-medium text-[#e5e4e2] hover:text-[#d3bb73] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#d3bb73]/30">
                             {MONTHS[summary.month - 1]} {summary.year}
-                          </span>
+                          </button>
                         </div>
                       </td>
                       <td className="px-6 py-4 text-right">
                         <span className="text-sm text-green-400">
-                          +{formatFinancialAmount(summary.total_income)} PLN
+                          {formatFinancialAmount(summary.total_income)} {summaryCurrency}
                         </span>
                         <div className="text-xs text-[#e5e4e2]/40">
-                          {summary.invoices_issued_count} faktur
+                          {summary.invoices_issued_count} dokumentów
                         </div>
                       </td>
                       <td className="px-6 py-4 text-right">
                         <span className="text-sm text-red-400">
-                          -{formatFinancialAmount(summary.total_expenses)} PLN
+                          {formatFinancialAmount(summary.total_expenses)} {summaryCurrency}
                         </span>
                         <div className="text-xs text-[#e5e4e2]/40">
-                          {summary.invoices_received_count} faktur
+                          {summary.invoices_received_count} dokumentów
                         </div>
                       </td>
                       <td className="px-6 py-4 text-right">
@@ -1252,7 +1256,7 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
                           }`}
                         >
                           {balance >= 0 ? '+' : ''}
-                          {formatFinancialAmount(balance)} PLN
+                          {formatFinancialAmount(balance)} {summaryCurrency}
                         </span>
                       </td>
                       <td className="px-6 py-4">
@@ -1263,6 +1267,7 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
                           <span className="text-[#e5e4e2]/40">/</span>
                           <span className="text-red-400">{summary.invoices_overdue_count}</span>
                         </div>
+                        {summary.cash_document_count > 0 && <p className="mt-1 text-center text-[10px] text-[#e5e4e2]/50">Gotówka w dokumentach: {summary.cash_document_count}</p>}
                       </td>
                       <td className="px-6 py-4 text-center">
                         {summary.bank_statement_uploaded ? (
@@ -1292,139 +1297,19 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
           </div>
         )}
       </div>
+      </>}
 
-      {selectedMonth && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4">
-          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] shadow-xl">
-            <div className="flex items-center justify-between border-b border-[#d3bb73]/10 p-6">
-              <h3 className="text-xl font-medium text-[#e5e4e2]">
-                Podsumowanie: {MONTHS[selectedMonth.month - 1]} {selectedMonth.year}
-              </h3>
-              <button
-                onClick={() => setSelectedMonth(null)}
-                className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]"
-              >
-                x
-              </button>
-            </div>
-
-            <div className="space-y-6 p-6">
-              <div className="grid gap-4 md:grid-cols-3">
-                <div className="rounded-lg bg-[#252945] p-4">
-                  <div className="text-sm text-[#e5e4e2]/60">Sprzedaż KSeF</div>
-                  <div className="mt-1 text-xl font-bold text-green-400">
-                    {formatFinancialAmount(selectedMonth.total_income)} PLN
-                  </div>
-                  <div className="mt-1 text-xs text-[#e5e4e2]/40">
-                    {selectedMonth.invoices_issued_count} faktur
-                  </div>
-                </div>
-                <div className="rounded-lg bg-[#252945] p-4">
-                  <div className="text-sm text-[#e5e4e2]/60">Zakupy KSeF</div>
-                  <div className="mt-1 text-xl font-bold text-red-400">
-                    {formatFinancialAmount(selectedMonth.total_expenses)} PLN
-                  </div>
-                  <div className="mt-1 text-xs text-[#e5e4e2]/40">
-                    {selectedMonth.invoices_received_count} faktur
-                  </div>
-                </div>
-                <div className="rounded-lg bg-[#252945] p-4">
-                  <div className="text-sm text-[#e5e4e2]/60">Bilans</div>
-                  <div
-                    className={`mt-1 text-xl font-bold ${
-                      selectedMonth.total_income - selectedMonth.total_expenses >= 0
-                        ? 'text-green-400'
-                        : 'text-red-400'
-                    }`}
-                  >
-                    {formatFinancialAmount(selectedMonth.total_income - selectedMonth.total_expenses)} PLN
-                  </div>
-                </div>
-              </div>
-
-              <div className="rounded-lg border border-[#d3bb73]/20 bg-[#252945] p-4">
-                <h4 className="mb-3 text-sm font-medium text-[#e5e4e2]">Status platnosci</h4>
-                <div className="flex gap-6">
-                  <div className="flex items-center gap-2">
-                    <CheckCircle className="h-4 w-4 text-green-400" />
-                    <span className="text-sm text-green-400">
-                      {selectedMonth.invoices_paid_count} oplacone
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Clock className="h-4 w-4 text-orange-400" />
-                    <span className="text-sm text-orange-400">
-                      {selectedMonth.invoices_unpaid_count} nieoplacone
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <AlertCircle className="h-4 w-4 text-red-400" />
-                    <span className="text-sm text-red-400">
-                      {selectedMonth.invoices_overdue_count} po terminie
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {selectedMonth.bank_statement_uploaded && (
-                <div className="rounded-lg border border-green-500/20 bg-green-500/10 p-4 text-sm text-green-400">
-                  Wyciag bankowy zostal przeslany dla tego miesiaca
-                </div>
-              )}
-
-              {selectedMonth.bank_statement_uploaded && (
-                <div className="rounded-lg border border-[#d3bb73]/20 bg-[#252945] p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="text-sm font-medium text-[#e5e4e2]">Analiza transakcji</h4>
-                      <p className="mt-1 text-xs text-[#e5e4e2]/60">
-                        Przejrzyj wszystkie transakcje z wyciagu i zarzadzaj dopasowaniami
-                      </p>
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => {
-                          setUnmatchedModalMonth({
-                            month: selectedMonth.month,
-                            year: selectedMonth.year,
-                          });
-                          setShowSimpleMatchModal(true);
-                        }}
-                        className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90"
-                      >
-                        <LinkIcon className="h-4 w-4" />
-                        Dopasuj platnosci
-                      </button>
-                      <button
-                        onClick={() => {
-                          setUnmatchedModalMonth({
-                            month: selectedMonth.month,
-                            year: selectedMonth.year,
-                          });
-                          setShowUnmatchedModal(true);
-                        }}
-                        className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 px-4 py-2 text-sm font-medium text-[#e5e4e2] hover:bg-[#252945]"
-                      >
-                        <FileText className="h-4 w-4" />
-                        Szczegolowa analiza
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="flex justify-end border-t border-[#d3bb73]/10 p-6">
-              <button
-                onClick={() => setSelectedMonth(null)}
-                className="rounded-lg border border-[#d3bb73]/20 px-4 py-2 text-sm text-[#e5e4e2] hover:bg-[#252945]"
-              >
-                Zamknij
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {selectedMonth && (selectedCompanyId ? <MonthlyAccountingDashboard
+        key={`${selectedCompanyId}:${selectedMonth.year}:${selectedMonth.month}:${uploadStatementsRevision}`}
+        month={selectedMonth.month} year={selectedMonth.year} companyId={selectedCompanyId}
+        onBack={() => { setSelectedMonth(null); void loadSummaries(); }} onUpload={() => setUploadMonth(selectedMonth)}
+        onDownload={handleDownloadStatement}
+      /> : <div className="space-y-4 rounded-xl bg-[#1c1f33] p-6">
+        <button type="button" onClick={() => setSelectedMonth(null)} className="rounded-lg bg-white/5 px-3 py-2 text-sm text-[#e5e4e2]">← Wszystkie miesiące</button>
+        <h3 className="text-lg text-[#e5e4e2]">{MONTHS[selectedMonth.month - 1]} {selectedMonth.year} — wybierz działalność</h3>
+        <p className="text-sm text-[#e5e4e2]/60">Rozliczenie miesiąca i paczka do Saldeo muszą dotyczyć jednej firmy.</p>
+        <CompanySelector value={selectedCompanyId} onChange={setSelectedCompanyId} showAllOption={false} className="max-w-sm" />
+      </div>)}
 
       {uploadMonth && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4">
@@ -1434,9 +1319,9 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
                 Wgraj wyciag: {MONTHS[uploadMonth.month - 1]} {uploadMonth.year}
               </h3>
               <div className="flex items-center gap-2">
-                <button
+                <button data-crm-action="secondary"
                   type="button"
-                  disabled={loadingStatements}
+                  disabled={loadingStatements || statementMutationBusy}
                   onClick={() => {
                     setShowStatementsListModal(true);
                     void loadAllStatements();
@@ -1447,6 +1332,7 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
                   Lista wyciągów
                 </button>
                 <button
+                  disabled={statementMutationBusy}
                   onClick={() => setUploadMonth(null)}
                   className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]"
                 >
@@ -1456,7 +1342,7 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
             </div>
 
             <div className="space-y-6 p-6">
-              <div className="rounded-lg border border-[#d3bb73]/20 bg-[#252945] p-4">
+              <fieldset disabled={statementMutationBusy} className="rounded-lg bg-[#252945] p-4">
                 <CompanySelector
                   value={selectedCompanyId}
                   onChange={setSelectedCompanyId}
@@ -1469,11 +1355,12 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
                     Wybierz działalność przed dodaniem pliku. Dzięki temu wyciąg i transakcje zostaną zapisane we właściwym miejscu.
                   </p>
                 )}
-              </div>
+              </fieldset>
 
-              <div className="rounded-lg border border-[#d3bb73]/20 bg-[#252945] p-4">
-                <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Typ wyciagu</label>
-                <div className="flex gap-4">
+              <div className="space-y-4 rounded-lg bg-[var(--brand-burgundy-800)] p-4">
+                <fieldset disabled={statementMutationBusy}>
+                  <legend className="mb-2 text-sm font-medium text-[#e5e4e2]">Rachunek, którego dotyczy wyciąg</legend>
+                  <div className="flex flex-wrap gap-4">
                   <label className="flex cursor-pointer items-center gap-2">
                     <input
                       type="radio"
@@ -1483,7 +1370,7 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
                       onChange={() => setUploadAccountType('regular')}
                       className="h-4 w-4 accent-[#d3bb73]"
                     />
-                    <span className="text-sm text-[#e5e4e2]">Konto biezace</span>
+                    <span className="text-sm text-[#e5e4e2]">Konto bieżące</span>
                   </label>
                   <label className="flex cursor-pointer items-center gap-2">
                     <input
@@ -1496,26 +1383,52 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
                     />
                     <span className="text-sm text-[#e5e4e2]">Konto VAT</span>
                   </label>
+                  </div>
+                </fieldset>
+                <fieldset disabled={statementMutationBusy}>
+                  <legend className="mb-2 text-sm font-medium text-[#e5e4e2]">Format pliku</legend>
+                  <div className="flex flex-wrap gap-4">
                   <label className="flex cursor-pointer items-center gap-2">
                     <input
                       type="radio"
-                      name="uploadAccountType"
-                      value="mt940"
-                      checked={uploadAccountType === 'mt940'}
-                      onChange={() => setUploadAccountType('mt940')}
+                      name="uploadFormat"
+                      value="PDF"
+                      checked={uploadFormat === 'PDF'}
+                      onChange={() => setUploadFormat('PDF')}
+                      className="h-4 w-4 accent-[#d3bb73]"
+                    />
+                    <span className="text-sm text-[#e5e4e2]">PDF</span>
+                  </label>
+                  <label className="flex cursor-pointer items-center gap-2">
+                    <input
+                      type="radio"
+                      name="uploadFormat"
+                      value="MT940"
+                      checked={uploadFormat === 'MT940'}
+                      onChange={() => setUploadFormat('MT940')}
                       className="h-4 w-4 accent-[#d3bb73]"
                     />
                     <span className="text-sm text-[#e5e4e2]">MT940</span>
                   </label>
-                </div>
+                  </div>
+                </fieldset>
+                <p className="text-xs leading-relaxed text-[#e5e4e2]/60">
+                  Do każdego konta możesz dodać PDF i MT940. Pliki uzupełniają się w podglądzie transakcji; konto VAT pozostaje oddzielone od bieżącego.
+                </p>
               </div>
 
               {selectedCompanyId && (
                 <div className="rounded-lg border border-[#d3bb73]/20 bg-[#252945] p-4">
-                  {loadingUploadExistingStatements ? (
+                  {loadingUploadExistingStatements || uploadExistingScope !== uploadScope ? (
                     <div className="flex items-center gap-2 text-sm text-[#e5e4e2]/60">
                       <Clock className="h-4 w-4 animate-pulse text-[#d3bb73]" />
                       Sprawdzam wcześniej wgrane wyciągi…
+                    </div>
+                  ) : uploadExistingError ? (
+                    <div className="space-y-2 text-sm text-amber-200">
+                      <p>{uploadExistingError}</p>
+                      <button type="button" onClick={() => setUploadStatementsRevision((current) => current + 1)}
+                        className="rounded-lg bg-white/5 px-3 py-2 text-xs hover:bg-white/10">Odśwież listę</button>
                     </div>
                   ) : uploadExistingStatements.length > 0 ? (
                     <div>
@@ -1523,10 +1436,10 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
                         <CheckCircle className="mt-0.5 h-5 w-5 shrink-0 text-emerald-300" />
                         <div>
                           <p className="text-sm font-medium text-emerald-200">
-                            Ten wyciąg jest już wgrany
+                            {uploadFormat} — {uploadAccountType === 'vat' ? 'konto VAT' : 'konto bieżące'}: plik już dodany
                           </p>
                           <p className="mt-1 text-xs text-[#e5e4e2]/55">
-                            Możesz go zobaczyć albo wybrać nowy plik, aby zastąpić wyłącznie wyciąg tego samego typu i rachunku.
+                            Aby wgrać nową wersję, usuń konkretny plik przyciskiem poniżej i potwierdź operację. Drugiego formatu oraz wyciągów innych kont nie trzeba usuwać. Pliki z opisami lub powiązaniami są chronione.
                           </p>
                         </div>
                       </div>
@@ -1535,14 +1448,17 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
                         {uploadExistingStatements.map((statement) => (
                           <div key={statement.id} className="flex flex-col gap-3 rounded-lg border border-emerald-300/15 bg-[#1c1f33] p-3 sm:flex-row sm:items-center sm:justify-between">
                             <div className="min-w-0">
-                              <p className="truncate text-sm text-[#e5e4e2]">{statement.file_name}</p>
+                              <p className="break-all text-sm text-[#e5e4e2]">{statement.file_name}</p>
                               <p className="mt-1 text-xs text-[#e5e4e2]/45">
+                                {uploadAccountType === 'vat' ? 'Konto VAT' : 'Konto bieżące'} · {bankStatementImportFormat(statement)} · {' '}
                                 {statement.transactions_count || 0} transakcji • {statement.validation_status === 'valid' ? 'zweryfikowany' : statement.validation_status === 'rejected' ? 'wymaga ponownego importu' : 'oczekuje na weryfikację'}
                               </p>
+                              <p className="mt-1 break-all text-xs text-[#e5e4e2]/45">Rachunek: {resolveStatementAccount(statement).accountNumber || 'numer nie został odczytany'}</p>
                             </div>
-                            <button
+                            <div className="flex shrink-0 flex-wrap gap-2 sm:flex-col">
+                            <button data-crm-action="secondary"
                               type="button"
-                              disabled={!statement.file_storage_path}
+                              disabled={!statement.file_storage_path || statementMutationBusy}
                               onClick={() => void handleDownloadStatement(
                                 statement.id,
                                 statement.account_type,
@@ -1551,9 +1467,16 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
                               )}
                               className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-[#d3bb73]/25 px-3 py-2 text-xs font-medium text-[#d3bb73] hover:bg-[#d3bb73]/10 disabled:cursor-not-allowed disabled:opacity-40"
                             >
-                              {statement.account_type === 'mt940' ? <Download className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
-                              {statement.account_type === 'mt940' ? 'Pobierz' : 'Zobacz wyciąg'}
+                              {bankStatementImportFormat(statement) === 'MT940' ? <Download className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
+                              {bankStatementImportFormat(statement) === 'MT940' ? 'Pobierz MT940' : 'Zobacz PDF'}
                             </button>
+                            <button type="button" disabled={statementMutationBusy}
+                              onClick={() => void handleDeleteStatement(statement.id)}
+                              className="inline-flex items-center justify-center gap-2 rounded-lg bg-red-400/5 px-3 py-2 text-xs font-medium text-red-200 hover:bg-red-400/10 disabled:opacity-40">
+                              <Trash2 className="h-4 w-4" />
+                              {deletingStatementId === statement.id ? 'Sprawdzam…' : 'Usuń ten plik'}
+                            </button>
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -1561,7 +1484,7 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
                   ) : (
                     <div className="flex items-center gap-2 text-sm text-[#e5e4e2]/55">
                       <FileText className="h-4 w-4 text-[#d3bb73]/70" />
-                      Brak wgranego wyciągu tego typu dla wybranej działalności i miesiąca.
+                      Brak pliku {uploadFormat} dla wybranego konta, działalności i miesiąca.
                     </div>
                   )}
                 </div>
@@ -1571,12 +1494,12 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
                 onDragEnter={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  if (!uploadingFile && selectedCompanyId) setIsDragOver(true);
+                  if (!statementMutationBusy && selectedCompanyId && uploadSelectionReady) setIsDragOver(true);
                 }}
                 onDragOver={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  if (!uploadingFile && selectedCompanyId) {
+                  if (!statementMutationBusy && selectedCompanyId && uploadSelectionReady) {
                     e.dataTransfer.dropEffect = 'copy';
                     setIsDragOver(true);
                   }
@@ -1601,37 +1524,20 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
                   e.stopPropagation();
                   setIsDragOver(false);
 
-                  if (uploadingFile) return;
+                  if (statementMutationBusy || !uploadSelectionReady) return;
                   if (!selectedCompanyId) {
                     showSnackbar('Najpierw wybierz działalność w oknie importu.', 'warning');
                     return;
                   }
 
                   const file = e.dataTransfer.files?.[0] ?? null;
-                  if (
-                    file &&
-                    uploadAccountType === 'mt940' &&
-                    !file.name.toLowerCase().endsWith('.txt')
-                  ) {
-                    showSnackbar('Możesz upuscic tylko plik TXT', 'error');
-                    return;
-                  }
-                  if (
-                    file &&
-                    uploadAccountType !== 'mt940' &&
-                    !file.name.toLowerCase().endsWith('.pdf')
-                  ) {
-                    showSnackbar('Możesz upuscic tylko plik PDF', 'error');
-                    return;
-                  }
-
                   await handleSelectedFile(file, uploadMonth.month, uploadMonth.year);
                 }}
-                className={`rounded-lg border-2 border-dashed p-6 transition-all ${
+                className={`rounded-lg border border-dashed border-[var(--crm-field-border)] p-6 transition-colors ${
                   isDragOver
-                    ? 'border-[#d3bb73] bg-[#d3bb73]/10 shadow-[0_0_0_1px_rgba(211,187,115,0.35)]'
-                    : 'border-[#d3bb73]/20'
-                } ${uploadingFile || !selectedCompanyId ? 'opacity-60' : ''}`}
+                    ? 'bg-[#d3bb73]/10'
+                    : 'bg-black/5'
+                } ${statementMutationBusy || !selectedCompanyId || !uploadSelectionReady ? 'opacity-60' : ''}`}
               >
                 <div className="text-center">
                   <Upload
@@ -1645,16 +1551,16 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
                   </h4>
 
                   <p className="mt-1 text-xs text-[#e5e4e2]/60">
-                    {uploadAccountType === 'mt940' ? 'Format TXT (.txt)' : 'Format PDF (.pdf)'}
+                    {uploadFormat === 'MT940' ? 'MT940 (.txt, .sta, .mt940)' : 'PDF (.pdf)'} · {uploadAccountType === 'vat' ? 'konto VAT' : 'konto bieżące'}
                   </p>
 
-                  <label className={`mt-4 inline-flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#252945] px-4 py-2 text-sm text-[#e5e4e2] ${selectedCompanyId && !uploadingFile ? 'cursor-pointer hover:border-[#d3bb73]/40 hover:bg-[#2d3254]' : 'cursor-not-allowed'}`}>
+                  <label className={`mt-4 inline-flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#252945] px-4 py-2 text-sm text-[#e5e4e2] ${selectedCompanyId && !statementMutationBusy && uploadSelectionReady ? 'cursor-pointer hover:border-[#d3bb73]/40 hover:bg-[#2d3254]' : 'cursor-not-allowed'}`}>
                     <Upload className="h-4 w-4" />
                     Wybierz plik
                     <input
                       type="file"
-                      accept={uploadAccountType === 'mt940' ? '.txt' : '.pdf'}
-                      disabled={uploadingFile || !selectedCompanyId}
+                      accept={uploadFormat === 'MT940' ? '.txt,.sta,.mt940' : '.pdf'}
+                      disabled={statementMutationBusy || !selectedCompanyId || !uploadSelectionReady}
                       className="hidden"
                       onChange={async (e) => {
                         const input = e.currentTarget;
@@ -1703,6 +1609,7 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
 
             <div className="flex justify-end border-t border-[#d3bb73]/10 p-6">
               <button
+                disabled={statementMutationBusy}
                 onClick={() => setUploadMonth(null)}
                 className="rounded-lg border border-[#d3bb73]/20 px-4 py-2 text-sm text-[#e5e4e2] hover:bg-[#252945]"
               >
@@ -1711,32 +1618,6 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
             </div>
           </div>
         </div>
-      )}
-
-      {showUnmatchedModal && unmatchedModalMonth && (
-        <BankTransactionsAnalysis
-          month={unmatchedModalMonth.month}
-          year={unmatchedModalMonth.year}
-          companyId={selectedCompanyId}
-          onClose={() => {
-            setShowUnmatchedModal(false);
-            setUnmatchedModalMonth(null);
-            loadSummaries();
-          }}
-        />
-      )}
-
-      {showSimpleMatchModal && unmatchedModalMonth && (
-        <UnmatchedTransactionsModal
-          month={unmatchedModalMonth.month}
-          year={unmatchedModalMonth.year}
-          companyId={selectedCompanyId}
-          onClose={() => {
-            setShowSimpleMatchModal(false);
-            setUnmatchedModalMonth(null);
-            loadSummaries();
-          }}
-        />
       )}
 
       <BankStatementsListModal

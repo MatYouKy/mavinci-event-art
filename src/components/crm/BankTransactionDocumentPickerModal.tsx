@@ -1,12 +1,16 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, FileText, Loader2, Search, SlidersHorizontal, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { repairBrokenBankText } from '@/lib/bankTextEncoding';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import { externalDocumentKindLabel } from '@/lib/invoices/externalDocumentKinds';
+import { loadExternalDocumentKinds } from '@/lib/invoices/loadExternalDocumentKinds';
+import { loadPersonnelPaymentBreakdowns, salaryPaymentNeedsNetConfirmation, type PersonnelPaymentBreakdown } from '@/lib/personnel/payrollMatching';
 import {
   applyBankTransactionMatchToDocument,
+  assertBankTransactionCanMatchDocuments,
   isBankStatementMatchablePaymentMethod,
   reconcileExternalInvoiceWithBankTransaction,
   reconcilePaidKsefInvoiceWithBankTransaction,
@@ -29,6 +33,8 @@ type PickerDocument = {
   payment_method: string | null;
   is_matched: boolean;
   is_matchable: boolean;
+  document_kind?: string;
+  payroll?: PersonnelPaymentBreakdown;
 };
 
 export type DocumentPickerTransaction = {
@@ -78,6 +84,11 @@ export default function BankTransactionDocumentPickerModal({
   const [documents, setDocuments] = useState<PickerDocument[]>([]);
   const [loading, setLoading] = useState(true);
   const [matchingId, setMatchingId] = useState<string | null>(null);
+  const matchLock = useRef(false);
+  const exceptionNoteRef = useRef<HTMLTextAreaElement>(null);
+  const [exceptionDocument, setExceptionDocument] = useState<PickerDocument | null>(null);
+  const [exceptionNote, setExceptionNote] = useState('');
+  const [exceptionConfirmed, setExceptionConfirmed] = useState(false);
   const [search, setSearch] = useState('');
   const [sourceFilter, setSourceFilter] = useState<'all' | DocumentSource>(initialSource);
   const [paymentFilter, setPaymentFilter] = useState<'all' | 'paid' | 'unpaid'>('all');
@@ -90,14 +101,58 @@ export default function BankTransactionDocumentPickerModal({
 
   useEffect(() => {
     let cancelled = false;
+    setDocuments([]);
+    setExceptionDocument(null);
+    setExceptionNote('');
+    setExceptionConfirmed(false);
     const load = async () => {
       try {
         setLoading(true);
-        const { data, error } = await supabase.rpc('get_bank_transaction_document_picker_items', {
-          p_transaction_id: transaction.id,
-        });
-        if (error) throw error;
-        if (!cancelled) setDocuments((data || []) as PickerDocument[]);
+        await assertBankTransactionCanMatchDocuments(supabase, transaction.id);
+        if (cancelled) return;
+        const rows: PickerDocument[] = [];
+        const pageSize = 500;
+        for (let offset = 0; !cancelled; offset += pageSize) {
+          const { data, error } = await supabase
+            .rpc('get_bank_transaction_document_picker_items', {
+              p_transaction_id: transaction.id,
+            })
+            .order('document_source', { ascending: true })
+            .order('document_id', { ascending: true })
+            .range(offset, offset + pageSize - 1);
+          if (cancelled) return;
+          if (error) throw error;
+          const page = (data || []) as PickerDocument[];
+          rows.push(...page);
+          if (page.length < pageSize) break;
+        }
+        if (cancelled) return;
+        const [kinds, payroll] = await Promise.all([
+          loadExternalDocumentKinds(
+            supabase,
+            rows.filter((document) => document.document_source === 'external').map((document) => document.document_id),
+          ),
+          loadPersonnelPaymentBreakdowns(
+            supabase,
+            rows.filter((document) => document.document_source === 'personnel').map((document) => document.document_id),
+          ),
+        ]);
+        if (!cancelled) setDocuments(rows.map((document) => {
+          if (document.document_source === 'external') {
+            return { ...document, document_kind: kinds.get(document.document_id) || 'invoice' };
+          }
+          if (document.document_source !== 'personnel') return document;
+          const payment = payroll.get(document.document_id);
+          if (!payment) return { ...document, is_matchable: false };
+          return {
+            ...document,
+            payroll: payment,
+            gross_amount: payment.amount,
+            outstanding_amount: payment.linkedTransactionId ? 0 : payment.amount,
+            is_matched: Boolean(payment.linkedTransactionId),
+            is_matchable: document.is_matchable && !salaryPaymentNeedsNetConfirmation(payment),
+          };
+        }));
       } catch (error: any) {
         if (!cancelled) {
           showSnackbar(
@@ -115,6 +170,10 @@ export default function BankTransactionDocumentPickerModal({
     return () => { cancelled = true; };
   }, [transaction.id, showSnackbar]);
 
+  useEffect(() => {
+    if (exceptionDocument) exceptionNoteRef.current?.focus();
+  }, [exceptionDocument]);
+
   const visibleDocuments = useMemo(() => {
     const normalizedSearch = search.trim().toLocaleLowerCase('pl-PL');
     const numericSearch = Number(normalizedSearch.replace(/\s/g, '').replace(',', '.'));
@@ -125,7 +184,8 @@ export default function BankTransactionDocumentPickerModal({
       .filter((document) => !dateTo || Boolean(document.issue_date && document.issue_date <= dateTo))
       .filter((document) => {
         if (!normalizedSearch) return true;
-        const text = [document.document_number, document.counterparty_name, document.issue_date]
+        const text = [document.document_number, document.counterparty_name, document.issue_date,
+          document.document_source === 'external' ? externalDocumentKindLabel(document.document_kind) : sourceLabels[document.document_source]]
           .join(' ')
           .toLocaleLowerCase('pl-PL');
         return text.includes(normalizedSearch)
@@ -143,20 +203,49 @@ export default function BankTransactionDocumentPickerModal({
       });
   }, [dateFrom, dateTo, documents, paymentFilter, remainingAmount, search, sourceFilter]);
 
-  const canMatch = (document: PickerDocument) => {
-    if (!document.is_matchable || document.is_matched || remainingAmount <= 0.009) return false;
-    if (!isBankStatementMatchablePaymentMethod(document.payment_method, document.document_source)) return false;
+  const paymentMethodConflict = (document: PickerDocument) =>
+    !isBankStatementMatchablePaymentMethod(document.payment_method, document.document_source);
+
+  const blockingReason = (document: PickerDocument, allowKsefCashException = false): string | null => {
+    if (document.is_matched) return 'Dokument ma już zapisane powiązanie z płatnością. Sprawdź je przed kolejnym dopasowaniem.';
+    if (remainingAmount <= 0.009) return 'Ta płatność jest już w całości rozliczona.';
+    if (document.payroll && salaryPaymentNeedsNetConfirmation(document.payroll)) return 'Najpierw potwierdź kwotę netto w umowie personelu.';
+    if (!document.is_matchable) return 'Brak dostępnej kwoty do dopasowania lub dokument nie spełnia warunków rozliczenia.';
+    if (!Number.isFinite(Number(document.gross_amount)) || Math.abs(Number(document.gross_amount)) <= 0.009) return 'Dokument nie ma dodatniej kwoty do rozliczenia.';
     const sameCurrency = String(document.currency || 'PLN').toUpperCase()
       === String(transaction.currency || 'PLN').toUpperCase();
-    if (!sameCurrency && document.document_source !== 'external') return false;
+    if (!sameCurrency && document.document_source !== 'external') return 'Waluta dokumentu różni się od waluty płatności.';
     if (document.document_source === 'personnel') {
-      return sameCurrency && Number(document.gross_amount) <= remainingAmount + 0.01;
+      if (!document.payroll) return 'Nie odczytano danych płatności kadrowej.';
+      if (!sameCurrency || Number(document.gross_amount) > remainingAmount + 0.01) return 'Kwota wypłaty kadrowej przekracza pozostałą kwotę płatności lub ma inną walutę.';
     }
-    return true;
+    if (paymentMethodConflict(document) && !(allowKsefCashException && document.document_source === 'ksef')) {
+      return document.document_source === 'ksef'
+        ? 'Faktura wskazuje gotówkę. Powiązanie z wyciągiem wymaga świadomego potwierdzenia wyjątku.'
+        : 'Dokument wskazuje gotówkę. Zweryfikuj sposób zapłaty przed dopasowaniem do wyciągu.';
+    }
+    return null;
   };
 
-  const matchDocument = async (document: PickerDocument) => {
-    if (!canMatch(document)) return;
+  const canConfirmCashException = (document: PickerDocument) => document.document_source === 'ksef'
+    && paymentMethodConflict(document) && blockingReason(document, true) === null;
+
+  const openCashException = (document: PickerDocument) => {
+    if (matchLock.current || !canConfirmCashException(document)) return;
+    setExceptionNote('');
+    setExceptionConfirmed(false);
+    setExceptionDocument(document);
+  };
+
+  const matchDocument = async (document: PickerDocument, confirmedCashNote?: string) => {
+    if (matchLock.current) return;
+    const reviewNote = confirmedCashNote?.trim() || '';
+    const cashException = Boolean(reviewNote)
+      && exceptionDocument?.document_id === document.document_id
+      && exceptionDocument?.document_source === document.document_source
+      && exceptionConfirmed && canConfirmCashException(document);
+    if (blockingReason(document, cashException)) return;
+    if (paymentMethodConflict(document) && (!cashException || reviewNote.length < 3)) return;
     const grossAmount = Math.abs(Number(document.gross_amount || 0));
     const outstandingAmount = Math.abs(Number(document.outstanding_amount || 0));
     const documentAmount = outstandingAmount > 0.009 ? outstandingAmount : grossAmount;
@@ -168,7 +257,13 @@ export default function BankTransactionDocumentPickerModal({
         ? Math.min(remainingAmount, documentAmount)
         : remainingAmount;
 
+    const exceptionReasons = cashException ? [
+      'Świadomie potwierdzono ręczne dopasowanie do wyciągu mimo oznaczenia gotówki na fakturze KSeF. Oryginalny sposób płatności i XML pozostają bez zmian.',
+      `Uzasadnienie użytkownika: ${reviewNote}`,
+    ] : [];
+
     try {
+      matchLock.current = true;
       setMatchingId(document.document_id);
       if (document.document_source === 'personnel') {
         await reconcilePersonnelPaymentWithBankTransaction(supabase, {
@@ -193,7 +288,7 @@ export default function BankTransactionDocumentPickerModal({
           ksefInvoiceId: document.document_id,
           amount: allocationAmount,
           confidence: 1,
-          reasons: ['Opłacony dokument KSeF wybrany ręcznie ze szczegółowej analizy wyciągu'],
+          reasons: ['Opłacony dokument KSeF wybrany ręcznie ze szczegółowej analizy wyciągu', ...exceptionReasons],
         });
       } else {
         await applyBankTransactionMatchToDocument(supabase, {
@@ -203,7 +298,7 @@ export default function BankTransactionDocumentPickerModal({
           amount: allocationAmount,
           confidence: 1,
           method: 'manual',
-          reasons: ['Dokument wybrany ręcznie ze szczegółowej analizy wyciągu'],
+          reasons: ['Dokument wybrany ręcznie ze szczegółowej analizy wyciągu', ...exceptionReasons],
         });
       }
       showSnackbar(`Dopasowano ${document.document_number || 'wybrany dokument'}.`, 'success');
@@ -211,6 +306,7 @@ export default function BankTransactionDocumentPickerModal({
     } catch (error: any) {
       showSnackbar(error?.message || 'Nie udało się dopasować dokumentu.', 'error');
     } finally {
+      matchLock.current = false;
       setMatchingId(null);
     }
   };
@@ -225,7 +321,7 @@ export default function BankTransactionDocumentPickerModal({
               {new Date(transaction.transaction_date).toLocaleDateString('pl-PL')} · {money(remainingAmount, transaction.currency)} do rozliczenia · {repairBrokenBankText(transaction.counterparty_name) || 'bez kontrahenta'}
             </p>
           </div>
-          <button type="button" onClick={onClose} className="rounded p-2 text-[#e5e4e2]/55 hover:bg-white/5">
+          <button type="button" onClick={onClose} disabled={Boolean(matchingId)} aria-label="Zamknij wybór dokumentu" className="rounded p-2 text-[#e5e4e2]/55 hover:bg-white/5 disabled:opacity-40">
             <X className="h-5 w-5" />
           </button>
         </header>
@@ -263,6 +359,26 @@ export default function BankTransactionDocumentPickerModal({
         </div>
 
         <div className="min-h-0 flex-1 overflow-auto">
+          {exceptionDocument && <section role="region" aria-labelledby="cash-match-exception-title" className="m-4 space-y-3 rounded-xl bg-[var(--brand-burgundy-800)] p-4 text-sm text-[var(--brand-platinum)]">
+            <h4 id="cash-match-exception-title" className="flex items-center gap-2 font-medium text-[#d3bb73]"><AlertTriangle className="h-4 w-4" />Potwierdź rzeczywisty sposób zapłaty</h4>
+            <p><strong>{exceptionDocument.document_number}</strong> · {exceptionDocument.counterparty_name} · {money(exceptionDocument.gross_amount, exceptionDocument.currency)}</p>
+            <p className="text-xs leading-5 text-[#e5e4e2]/75">Faktura KSeF wskazuje gotówkę. Potwierdź wyjątek tylko jeśli sprawdziłeś, że wybrana płatność z wyciągu rzeczywiście dotyczy tego dokumentu, np. zakupu przez Allegro. Zgodna kwota sama w sobie nie wystarcza.</p>
+            <p className="break-words text-xs leading-5 text-[#e5e4e2]/65">Płatność: {new Date(transaction.transaction_date).toLocaleDateString('pl-PL')} · {money(remainingAmount, transaction.currency)} do rozliczenia · {repairBrokenBankText(transaction.counterparty_name) || 'bez kontrahenta'}{transaction.title ? ` · ${repairBrokenBankText(transaction.title)}` : ''}</p>
+            <p className="text-xs leading-5 text-[#e5e4e2]/65">Zapiszemy uzasadnienie przy powiązaniu. Nie zmienimy oryginalnej faktury ani jej XML. Wcześniejsze oznaczenie „Opłacona” zostanie powiązane z wyciągiem bez podwójnego naliczenia zapłaty.</p>
+            <label className="block text-xs text-[#e5e4e2]/75" htmlFor="cash-match-exception-note">Uzasadnienie powiązania *</label>
+            <textarea id="cash-match-exception-note" ref={exceptionNoteRef} rows={2} maxLength={1500} value={exceptionNote} disabled={Boolean(matchingId)}
+              placeholder="Wyjaśnij, skąd wiesz, że ta płatność dotyczy faktury (np. numer zamówienia lub potwierdzenie Allegro)."
+              onChange={(event) => { setExceptionNote(event.target.value); setExceptionConfirmed(false); }}
+              className="w-full rounded-lg border border-white/10 bg-black/15 px-3 py-2 text-sm outline-none focus:border-[var(--crm-field-border-focus)]" />
+            <label className="flex items-start gap-2 text-xs leading-5"><input type="checkbox" checked={exceptionConfirmed} disabled={Boolean(matchingId)} onChange={(event) => setExceptionConfirmed(event.target.checked)} className="mt-1 accent-[#d3bb73]" /><span>Sprawdziłem powiązanie. To ta sama zapłata, a nie dodatkowa płatność gotówką.</span></label>
+            <div className="flex flex-wrap justify-end gap-2">
+              <button type="button" disabled={Boolean(matchingId)} onClick={() => { setExceptionDocument(null); setExceptionNote(''); setExceptionConfirmed(false); }} className="rounded-lg bg-white/5 px-3 py-2 text-xs hover:bg-white/10 disabled:opacity-40">Anuluj wyjątek</button>
+              <button type="button" disabled={Boolean(matchingId) || !exceptionConfirmed || exceptionNote.trim().length < 3 || !canConfirmCashException(exceptionDocument)}
+                onClick={() => void matchDocument(exceptionDocument, exceptionNote)} className="rounded-lg bg-[#d3bb73] px-3 py-2 text-xs font-medium text-[#141827] disabled:cursor-not-allowed disabled:opacity-40">
+                {matchingId ? 'Zapisywanie…' : 'Potwierdź wyjątek i dopasuj'}
+              </button>
+            </div>
+          </section>}
           {loading ? (
             <div className="flex h-full items-center justify-center text-sm text-[#e5e4e2]/50"><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Pobieranie dokumentów…</div>
           ) : visibleDocuments.length === 0 ? (
@@ -285,31 +401,55 @@ export default function BankTransactionDocumentPickerModal({
               </thead>
               <tbody>
                 {visibleDocuments.map((document) => {
-                  const matchable = canMatch(document);
+                  const reason = blockingReason(document);
+                  const cashReviewAvailable = canConfirmCashException(document);
+                  const matchable = reason === null || cashReviewAvailable;
                   const paid = isPaid(document);
                   const wrongCurrency = document.document_source !== 'external'
                     && String(document.currency).toUpperCase() !== String(transaction.currency).toUpperCase();
                   return (
                     <tr key={`${document.document_source}:${document.document_id}`} className="border-b border-white/10 text-xs hover:bg-white/[0.03]">
-                      <td className="px-3 py-2"><span className="rounded bg-sky-400/10 px-2 py-1 text-[10px] text-sky-100">{sourceLabels[document.document_source]}</span></td>
+                      <td className="px-3 py-2"><span className="rounded bg-sky-400/10 px-2 py-1 text-[10px] text-sky-100">{sourceLabels[document.document_source]}</span>{document.document_source === 'external' && <span className="mt-1 block text-[10px] text-[#e5e4e2]/60">{externalDocumentKindLabel(document.document_kind)}</span>}</td>
                       <td className="truncate px-3 py-2 font-medium text-[#e5e4e2]" title={document.document_number}>{document.document_number || 'bez numeru'}</td>
                       <td className="truncate px-3 py-2 text-[#e5e4e2]/70" title={document.counterparty_name || ''}>{document.counterparty_name || '—'}</td>
                       <td className="px-3 py-2 text-[#e5e4e2]/60">{document.issue_date ? new Date(document.issue_date).toLocaleDateString('pl-PL') : '—'}</td>
-                      <td className="px-3 py-2 text-right font-medium text-[#d3bb73]">{money(document.gross_amount, document.currency)}</td>
+                      <td className="px-3 py-2 text-right font-medium text-[#d3bb73]">
+                        {document.payroll?.paymentType === 'salary' && (
+                          <span className="mb-1 block text-[10px] font-normal text-[#e5e4e2]/55">
+                            {document.payroll.netConfirmed ? 'Netto na konto' : 'Kwota do weryfikacji'}
+                          </span>
+                        )}
+                        {money(document.gross_amount, document.currency)}
+                        {document.payroll?.paymentType === 'salary' && document.payroll.totalAmount != null && (
+                          <span className="mt-1 block text-[10px] font-normal text-[#e5e4e2]/55">
+                            Łącznie: {money(document.payroll.totalAmount, document.currency)}
+                            {document.payroll.netConfirmed && document.payroll.totalAmount >= document.payroll.amount && (
+                              <span className="block">Pozostałe obciążenia: {money(document.payroll.totalAmount - document.payroll.amount, document.currency)}</span>
+                            )}
+                          </span>
+                        )}
+                      </td>
                       <td className="px-3 py-2">
                         <span className={paid ? 'text-green-300' : 'text-amber-200'}>{paid ? 'Opłacona' : 'Nieopłacona'}</span>
                         {document.is_matched && <span className="block text-[10px] text-[#e5e4e2]/35">już dopasowana</span>}
+                        {!document.is_matched && paid && <span className="mt-1 block text-[10px] text-[#e5e4e2]/50">bez powiązania z wyciągiem</span>}
+                        {paymentMethodConflict(document) && <span className="mt-1 block text-[10px] text-amber-200">Na dokumencie: gotówka</span>}
+                        {document.payroll && salaryPaymentNeedsNetConfirmation(document.payroll) && (
+                          <span className="mt-1 block text-[10px] text-amber-200">Uzupełnij netto w Umowy personelu → Otwórz umowę.</span>
+                        )}
                         {wrongCurrency && <span className="block text-[10px] text-red-300/70">inna waluta</span>}
                       </td>
                       <td className="px-3 py-2 text-right">
                         <button
                           type="button"
-                          disabled={!matchable || matchingId === document.document_id}
-                          onClick={() => void matchDocument(document)}
+                          disabled={!matchable || Boolean(matchingId)}
+                          title={reason || 'Dopasuj dokument do tej płatności'}
+                          onClick={() => cashReviewAvailable ? openCashException(document) : void matchDocument(document)}
                           className="inline-flex items-center justify-center rounded-lg bg-[#d3bb73] px-3 py-1.5 text-[11px] font-medium text-[#141827] disabled:cursor-not-allowed disabled:opacity-35"
                         >
-                          {matchingId === document.document_id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <><FileText className="mr-1.5 h-3.5 w-3.5" /> Dopasuj</>}
+                          {matchingId === document.document_id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <><FileText className="mr-1.5 h-3.5 w-3.5" />{cashReviewAvailable ? 'Potwierdź wyjątek' : 'Dopasuj'}</>}
                         </button>
+                        {reason && <p className="mt-1 text-left text-[10px] leading-4 text-[#e5e4e2]/55">{reason}</p>}
                       </td>
                     </tr>
                   );

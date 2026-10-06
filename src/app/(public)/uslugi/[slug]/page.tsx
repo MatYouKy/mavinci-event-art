@@ -1,5 +1,5 @@
 import { notFound, redirect } from 'next/navigation';
-import { unstable_noStore as noStore } from 'next/cache';
+import { cache } from 'react';
 import { Metadata } from 'next';
 import PageLayout from '@/components/Layout/PageLayout';
 import ServiceDetailClient from './ServiceDetailClient';
@@ -11,8 +11,7 @@ import { cookies } from 'next/headers';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-async function loadServiceData(slug: string) {
-  noStore(); // Prevent caching for dynamic data
+const loadServiceData = cache(async (slug: string) => {
 
   // Redirect special cases that should be under /oferta instead of /uslugi
   const ofertaRedirects: Record<string, string> = {
@@ -49,7 +48,7 @@ async function loadServiceData(slug: string) {
 
   // Jeśli usługa nieaktywna i użytkownik nie ma uprawnień - przekieruj
   if (!serviceData.is_active && !hasWebsiteEdit) {
-    redirect('/uslugi/inactive');
+    notFound();
   }
 
   const { data: categoryData } = await supabase
@@ -102,7 +101,7 @@ async function loadServiceData(slug: string) {
     gallery: gallery || [],
     hasWebsiteEdit,
   };
-}
+});
 
 // Generate metadata for SEO (SERVER SIDE)
 export async function generateMetadata({
@@ -232,7 +231,7 @@ export default async function ServiceDetailPage({ params }: { params: { slug: st
 
   return (
     <PageLayout pageSlug={`uslugi/${service.slug}`} customSchema={customSchema} cookieStore={cookies()}>
-      <div className="mt-28 min-h-screen bg-[#0f1119]">
+      <main className="mt-28 min-h-screen bg-[#0f1119]">
         <ServiceDetailClient
           service={service}
           category={category}
@@ -241,7 +240,7 @@ export default async function ServiceDetailPage({ params }: { params: { slug: st
           gallery={gallery}
           isAdmin={hasWebsiteEdit}
         />
-      </div>
+      </main>
     </PageLayout>
   );
 }

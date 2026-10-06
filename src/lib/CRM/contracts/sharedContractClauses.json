@@ -1,0 +1,135 @@
+[
+  {
+    "key": "materials_deadline",
+    "category": "obligations",
+    "topic": "information",
+    "title": "Termin informacji i materiałów",
+    "content": "<p>Zamawiający przekaże Wykonawcy kompletne, prawidłowe i ostateczne informacje, harmonogramy, materiały, decyzje, zgody oraz dane niezbędne do realizacji zamówionych usług w terminie: {{termin_dostarczenia_materialow}}. Termin ten dotyczy wszystkich zamówionych usług i zastępuje inne terminy przekazania materiałów w ofercie, kalkulacji oraz klauzulach produktów, chyba że Strony potwierdzą odrębny termin dla konkretnej pozycji. Strony mogą uzgodnić w korespondencji e-mail inny termin przekazania całości lub części informacji i materiałów, w tym termin bliższy rozpoczęciu wydarzenia. Termin potwierdzony przez obie Strony ma pierwszeństwo przed terminem wskazanym w umowie, ofercie, kalkulacji i klauzulach produktów w zakresie, którego dotyczy.</p>"
+  },
+  {
+    "key": "material_formats",
+    "category": "obligations",
+    "topic": "information",
+    "title": "Format i poprawność materiałów",
+    "content": "<p>Materiały, w szczególności prezentacje, filmy, plansze, podkłady muzyczne, grafiki i logotypy, należy przekazać w uzgodnionych formatach, rozdzielczości i proporcjach. Zamawiający odpowiada za ich merytoryczną poprawność.</p>"
+  },
+  {
+    "key": "material_rights",
+    "category": "obligations",
+    "topic": "approvals_duty",
+    "title": "Prawa do materiałów",
+    "content": "<p>Zamawiający oświadcza, że posiada prawa lub wymagane zgody na przekazanie i wykorzystanie grafik, logotypów, znaków, filmów, muzyki, utworów, danych i innych materiałów, w tym ich publiczne wyświetlanie lub odtwarzanie zgodnie z zamówieniem, oraz że takie wykorzystanie nie narusza praw osób trzecich.</p>"
+  },
+  {
+    "key": "site_access",
+    "category": "obligations",
+    "topic": "client_duties",
+    "title": "Dostęp, montaż i demontaż",
+    "content": "<p>Zamawiający zapewni Wykonawcy i jego personelowi bezpieczny oraz terminowy dostęp do miejsca realizacji i dróg transportowych w uzgodnionych godzinach, umożliwiający dostawę, wniesienie, montaż, konfigurację, próby, wykonanie usług, demontaż i odbiór sprzętu.</p>"
+  },
+  {
+    "key": "venue_permissions",
+    "category": "obligations",
+    "topic": "approvals_duty",
+    "title": "Uzgodnienia z obiektem",
+    "content": "<p>Zamawiający uzyska zgody właściciela lub zarządcy obiektu oraz inne zgody i zezwolenia pozostające po jego stronie. Uzgodni z obiektem miejsca ustawienia i montażu urządzeń, powierzchnie projekcji, przebieg zabezpieczonych tras kablowych, wykorzystanie instalacji elektrycznej, godziny pracy i dopuszczalny poziom głośności. Poinformuje Wykonawcę o ograniczeniach technicznych, przeciwpożarowych, akustycznych i organizacyjnych.</p>"
+  },
+  {
+    "key": "no_interference",
+    "category": "obligations",
+    "topic": "client_duties",
+    "title": "Zakaz samodzielnej ingerencji",
+    "content": "<p>Zamawiający zapewni, aby uczestnicy, dekoratorzy, personel obiektu i osoby działające po jego stronie nie uruchamiali, nie przestawiali, nie odłączali, nie zasłaniali ani nie modyfikowali sprzętu, konstrukcji, dekoracji, przewodów i instalacji bez zgody Wykonawcy. Mocowanie dodatkowych elementów oraz zmiana obciążenia konstrukcji również wymagają zgody Wykonawcy.</p>"
+  },
+  {
+    "key": "decision_maker",
+    "category": "obligations",
+    "topic": "cooperation",
+    "title": "Osoby decyzyjne",
+    "content": "<p>Zamawiający wskaże osoby uprawnione do podejmowania bieżących decyzji dotyczących realizacji, zatwierdzania miejsca ustawienia urządzeń i sposobu prezentacji treści oraz akceptacji dodatkowego zakresu i jego wyceny. Zamawiający niezwłocznie poinformuje Wykonawcę o zmianach programu. W razie sprzecznych poleceń Zamawiający przekaże Wykonawcy jedno spójne stanowisko.</p>"
+  },
+  {
+    "key": "power_230v",
+    "category": "requirements",
+    "topic": "power",
+    "title": "Zasilanie 230 V",
+    "content": "<p>Dla urządzeń wymagających zasilania Zamawiający zapewni sprawną instalację elektryczną i stabilne zasilanie 230 V w pobliżu stanowisk, z obwodami o parametrach zgodnych ze specyfikacją wybranej konfiguracji. Miejsca poboru energii powinny być dostępne, zabezpieczone i wolne od urządzeń mogących powodować przeciążenia lub zakłócenia. Przewody muszą być zabezpieczone przed dostępem uczestników i uszkodzeniem.</p>"
+  },
+  {
+    "key": "safe_placement",
+    "category": "requirements",
+    "topic": "place",
+    "title": "Bezpieczne miejsce realizacji",
+    "content": "<p>Zamawiający zapewni stabilne, równe, suche i uprzątnięte miejsce realizacji, odpowiednie do wymiarów, obciążeń i sposobu użytkowania zamówionych urządzeń oraz liczby uczestników. Rozmieszczenie wymaga akceptacji Wykonawcy i obiektu, nie może ograniczać dróg ewakuacyjnych, ciągów komunikacyjnych ani dostępu do urządzeń bezpieczeństwa.</p>"
+  },
+  {
+    "key": "internet",
+    "category": "requirements",
+    "topic": "internet",
+    "title": "Łącze internetowe",
+    "content": "<p>Treści internetowe, aktualizacje online i transmisje wymagają stabilnego łącza o uzgodnionych parametrach, odpowiednich do zamówionego zakresu. Łącze zapewnia Zamawiający, chyba że jego zapewnienie zostało odrębnie objęte ofertą Wykonawcy.</p>"
+  },
+  {
+    "key": "outdoor",
+    "category": "requirements",
+    "topic": "safety",
+    "title": "Realizacja plenerowa",
+    "content": "<p>Wykorzystanie urządzeń lub stanowisk na zewnątrz wymaga wcześniejszego pisemnego uzgodnienia odpowiedniej wersji urządzeń i warunków realizacji. Zamawiający zapewni stabilne podłoże oraz ochronę stanowisk, sprzętu, instrumentów i połączeń elektrycznych przed opadami, wilgocią, silnym wiatrem, skrajną temperaturą i bezpośrednim nasłonecznieniem, w tym zadaszenie, jeżeli wymaga go zamówiony zakres.</p>"
+  },
+  {
+    "key": "damage",
+    "category": "risks",
+    "topic": "property_damage",
+    "title": "Uszkodzenie i utrata mienia",
+    "content": "<p>Zamawiający odpowiada na zasadach ogólnych za uszkodzenie, zabrudzenie lub utratę sprzętu, konstrukcji i dekoracji spowodowane działaniem lub zaniechaniem Zamawiającego, jego personelu, uczestników, dekoratorów, obsługi obiektu lub osób działających po jego stronie, w zakresie, w jakim przepisy prawa przypisują mu odpowiedzialność.</p>"
+  },
+  {
+    "key": "safety",
+    "category": "risks",
+    "topic": "health_safety",
+    "title": "Bezpieczeństwo realizacji",
+    "content": "<p>Wykonawca może odmówić montażu lub uruchomienia, zmienić rozmieszczenie lub konfigurację, zmniejszyć poziom głośności albo ograniczyć lub wstrzymać realizację, w tym wyłączyć urządzenia lub zdemontować konstrukcję, w zakresie niezbędnym dla bezpieczeństwa ludzi i mienia, wykonania poleceń zarządcy obiektu lub służb bądź zachowania obowiązujących ograniczeń. Poinformuje o tym przedstawiciela Zamawiającego. Takie działanie nie stanowi nienależytego wykonania umowy w zakresie, w jakim jego przyczyna pozostaje poza kontrolą Wykonawcy.</p>"
+  },
+  {
+    "key": "external_failures",
+    "category": "risks",
+    "topic": "infrastructure",
+    "title": "Przerwy z przyczyn zewnętrznych",
+    "content": "<p>Wykonawca nie odpowiada za przerwy, zakłócenia lub ograniczenie efektu spowodowane awarią albo niewystarczającymi parametrami sprzętu, zasilania, internetu, instalacji lub źródeł sygnału zapewnionych przez Zamawiającego, obiekt lub innego dostawcę, ingerencją osób nieupoważnionych, zasłonięciem urządzeń, zadziałaniem instalacji bezpieczeństwa obiektu, zmianą układu sali, poleceniami administracji obiektu lub służb ani warunkami atmosferycznymi niespełniającymi wymagań bezpieczeństwa — w zakresie, w jakim przyczyny te nie leżą po stronie Wykonawcy ani osób, za które ponosi on odpowiedzialność.</p>"
+  },
+  {
+    "key": "reporting",
+    "category": "risks",
+    "topic": "technical_failure",
+    "title": "Zgłaszanie nieprawidłowości",
+    "content": "<p>Zamawiający zgłosi zauważone uszkodzenia, niestabilność urządzeń i nieprawidłowości niezwłocznie, w miarę możliwości podczas wydarzenia, aby umożliwić Wykonawcy ich ocenę i usunięcie. Osoby działające po stronie Zamawiającego powstrzymają się od samodzielnych napraw. Nie narusza to ustawowych uprawnień Zamawiającego.</p>"
+  },
+  {
+    "key": "scope_changes",
+    "category": "conditions",
+    "topic": "scope_condition",
+    "title": "Zmiany zakresu i dodatkowe koszty",
+    "content": "<p>Usługi, zmiany konfiguracji, dodatkowe uruchomienia, materiały lub czas pracy wykraczające poza zaakceptowany zakres wymagają potwierdzenia możliwości realizacji oraz uzgodnienia zakresu i wynagrodzenia z osobą decyzyjną w formie dokumentowej. Zmiany po rozpoczęciu przygotowań mogą wymagać dodatkowego sprzętu, personelu, transportu lub czasu i wpłynąć na termin realizacji.</p>"
+  },
+  {
+    "key": "program_delay",
+    "category": "risks",
+    "topic": "delay",
+    "title": "Opóźnienie programu",
+    "content": "<p>Opóźnienie programu z przyczyn niezależnych od Wykonawcy nie przedłuża automatycznie uzgodnionego czasu usługi lub dostępności artysty. W miarę możliwości uzgodnione wejścia mogą zostać przesunięte w ramach ustalonego czasu realizacji.</p>"
+  },
+  {
+    "key": "materials_late",
+    "category": "risks",
+    "topic": "delay",
+    "title": "Materiały po terminie",
+    "content": "<p>Materiały przekazane po terminie dostarczenia materiałów ustalonym w umowie lub potwierdzonym przez obie Strony w korespondencji e-mail mogą nie zostać wykorzystane. Naprawa, konwersja, dostosowanie lub zmiana takich materiałów może podlegać dodatkowej wycenie, wymagającej akceptacji Zamawiającego.</p>"
+  },
+  {
+    "key": "materials_invalid",
+    "category": "risks",
+    "topic": "technical_failure",
+    "title": "Nieprawidłowe materiały",
+    "content": "<p>Wykonawca nie odpowiada za brak możliwości prawidłowego odtworzenia materiałów uszkodzonych, niekompletnych, zabezpieczonych hasłem lub zapisanych w nieuzgodnionym formacie, w zakresie, w jakim przyczyna nie leży po stronie Wykonawcy.</p>"
+  }
+]

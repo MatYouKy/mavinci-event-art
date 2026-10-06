@@ -1,5 +1,7 @@
 'use client';
 
+import { systemLabel } from '@/lib/ui/systemLabels';
+
 import React, { useState, useEffect } from 'react';
 import { Plus, Calendar, CheckCircle, XCircle, Clock, Trash2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
@@ -115,7 +117,7 @@ const EmployeeTimelineTab: React.FC<EmployeeTimelineTabProps> = ({ employeeId, c
       remote_work: 'Praca zdalna',
       other: 'Inne',
     };
-    return labels[type] || type;
+    return labels[type] || systemLabel(type, 'absence');
   };
 
   const getAbsenceTypeColor = (type: string) => {

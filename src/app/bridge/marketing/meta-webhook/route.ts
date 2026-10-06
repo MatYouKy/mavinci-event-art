@@ -52,6 +52,19 @@ export async function POST(request: NextRequest) {
         .maybeSingle();
       if (integrationError || !integration) continue;
 
+      // Lead Ads notifications also remain visible for explicit qualification in the funnel.
+      for (const change of entry.changes || []) {
+        if (change.field !== 'leadgen' || !change.value?.leadgen_id) continue;
+        const lead = change.value;
+        const { error } = await admin.from('marketing_messages').upsert({
+          company_id: integration.company_id, integration_id: integration.id, provider: 'meta',
+          external_message_id: `leadgen:${lead.leadgen_id}`, message_preview: 'Nowe zgłoszenie z formularza Meta — uzupełnij dane kontaktowe z panelu reklamowego.',
+          received_at: lead.created_time ? new Date(Number(lead.created_time) * 1000).toISOString() : new Date().toISOString(),
+          metadata: { source: 'leadgen', leadgen_id: String(lead.leadgen_id), form_id: lead.form_id, page_id: pageId },
+        }, { onConflict: 'integration_id,external_message_id', ignoreDuplicates: true });
+        if (error) throw error;
+        inserted += 1;
+      }
       for (const event of entry.messaging || []) {
         const message = event.message;
         if (!message?.mid || message.is_echo) continue;
@@ -80,7 +93,8 @@ export async function POST(request: NextRequest) {
           },
           { onConflict: 'integration_id,external_message_id', ignoreDuplicates: true },
         );
-        if (!error) inserted += 1;
+        if (error) throw error;
+        inserted += 1;
       }
     }
 

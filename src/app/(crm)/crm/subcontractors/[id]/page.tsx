@@ -1,9 +1,16 @@
 'use client';
 
+import SubcontractorProfileForm from '@/components/crm/subcontractors/SubcontractorProfileForm';
+import { settlementLabels } from '@/components/crm/subcontractors/profileValidation';
+import SubcontractorServicesPanel from '@/components/crm/SubcontractorServicesPanel';
+import { systemLabel } from '@/lib/ui/systemLabels';
+
 import { useState, useEffect } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import {
   ArrowLeft,
+  ArrowUpRight,
   Users,
   Mail,
   Phone,
@@ -22,6 +29,7 @@ import {
   Upload,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
+import { PersonnelContractsPanel } from '@/components/crm/personnel/PersonnelContractsPanel';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 
 interface Subcontractor {
@@ -40,6 +48,8 @@ interface Subcontractor {
   rating: number | null;
   notes: string | null;
   created_at: string;
+  default_settlement_type?: string;
+  organization_id?: string;
 }
 
 interface Task {
@@ -79,15 +89,18 @@ interface Contract {
   events?: { name: string } | null;
 }
 
-type TabType = 'details' | 'tasks' | 'contracts';
+type TabType = 'details' | 'tasks' | 'contracts' | 'services';
 
 export default function SubcontractorDetailPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const router = useRouter();
   const { showSnackbar } = useSnackbar();
   const subcontractorId = params.id as string;
 
-  const [activeTab, setActiveTab] = useState<TabType>('details');
+  const [activeTab, setActiveTab] = useState<TabType>(
+    searchParams.get('tab') === 'contracts' ? 'contracts' : searchParams.get('tab') === 'services' ? 'services' : 'details',
+  );
   const [subcontractor, setSubcontractor] = useState<Subcontractor | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [contracts, setContracts] = useState<Contract[]>([]);
@@ -215,6 +228,21 @@ export default function SubcontractorDetailPage() {
     );
   }
 
+  if (editMode)
+    return (
+      <main className="mx-auto max-w-4xl p-4">
+        <SubcontractorProfileForm
+          initial={subcontractor}
+          onCancel={handleCancelEdit}
+          onSaved={(value) => {
+            setSubcontractor(value);
+            setEditMode(false);
+            if (value.default_settlement_type === 'civil_contract') setActiveTab('contracts');
+          }}
+        />
+      </main>
+    );
+
   const totalTasksCost = tasks.reduce((sum, task) => sum + (task.total_cost || 0), 0);
   const totalContractsValue = contracts.reduce(
     (sum, contract) => sum + (contract.total_value || 0),
@@ -244,7 +272,7 @@ export default function SubcontractorDetailPage() {
                 </h1>
                 <div className="flex items-center gap-4 text-sm text-[#e5e4e2]/60">
                   <span className={`rounded px-2 py-1 ${getStatusColor(subcontractor.status)}`}>
-                    {subcontractor.status}
+                    {systemLabel(subcontractor.status)}
                   </span>
                   {subcontractor.rating && (
                     <span className="flex items-center gap-1">
@@ -294,8 +322,16 @@ export default function SubcontractorDetailPage() {
           </div>
         </div>
 
-        <div className="mb-6 flex gap-4">
+        <div className="mb-6 flex flex-wrap gap-4">
           <button
+            data-crm-tab-active={activeTab === 'services'}
+            onClick={() => setActiveTab('services')}
+            className="rounded-lg px-4 py-2"
+          >
+            Zakres i usługi
+          </button>
+          <button
+            data-crm-tab-active={activeTab === 'details'}
             onClick={() => setActiveTab('details')}
             className={`rounded-lg px-4 py-2 font-medium transition-all ${
               activeTab === 'details'
@@ -306,6 +342,7 @@ export default function SubcontractorDetailPage() {
             Szczegóły
           </button>
           <button
+            data-crm-tab-active={activeTab === 'tasks'}
             onClick={() => setActiveTab('tasks')}
             className={`rounded-lg px-4 py-2 font-medium transition-all ${
               activeTab === 'tasks'
@@ -319,6 +356,7 @@ export default function SubcontractorDetailPage() {
             </div>
           </button>
           <button
+            data-crm-tab-active={activeTab === 'contracts'}
             onClick={() => setActiveTab('contracts')}
             className={`rounded-lg px-4 py-2 font-medium transition-all ${
               activeTab === 'contracts'
@@ -335,6 +373,20 @@ export default function SubcontractorDetailPage() {
           </button>
         </div>
 
+        {activeTab === 'services' && (
+          <SubcontractorServicesPanel
+            subcontractorId={subcontractorId}
+            organizationId={subcontractor.organization_id}
+          />
+        )}
+        <p className="mb-4 rounded-lg bg-white/5 p-3 text-sm">
+          Forma rozliczenia:{' '}
+          <strong>
+            {settlementLabels[subcontractor.default_settlement_type || ''] || 'Do ustalenia'}
+          </strong>
+          {subcontractor.default_settlement_type === 'civil_contract' &&
+            ' · Dane do umowy, oświadczenia i wynagrodzenie w zakładce Umowy.'}
+        </p>
         {activeTab === 'details' && (
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             <div className="rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] p-6">
@@ -471,20 +523,7 @@ export default function SubcontractorDetailPage() {
               </div>
             </div>
 
-            <div className="rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] p-6">
-              <h2 className="mb-4 text-xl font-bold text-[#e5e4e2]">Specjalizacje</h2>
-              <div className="flex flex-wrap gap-2">
-                {subcontractor.specialization && subcontractor.specialization.length > 0 ? (
-                  subcontractor.specialization.map((spec, idx) => (
-                    <span key={idx} className="rounded-lg bg-[#d3bb73]/20 px-3 py-1 text-[#d3bb73]">
-                      {spec}
-                    </span>
-                  ))
-                ) : (
-                  <span className="text-[#e5e4e2]/60">Brak specjalizacji</span>
-                )}
-              </div>
-            </div>
+            <section className="rounded-xl bg-white/5 p-4"><h2 className="mb-2 text-lg">Usługi i cennik</h2><p className="mb-3 text-sm opacity-70">Osobne usługi ze stawkami, kosztem przedłużenia, dojazdem i warunkami realizacji.</p><button data-crm-action="secondary" className="rounded-lg px-4 py-2" onClick={()=>setActiveTab('services')}>Otwórz listę usług</button></section>
 
             <div className="rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] p-6">
               <h2 className="mb-4 text-xl font-bold text-[#e5e4e2]">Statystyki</h2>
@@ -558,9 +597,16 @@ export default function SubcontractorDetailPage() {
                         <h3 className="mb-1 text-lg font-semibold text-[#e5e4e2]">
                           {task.task_name}
                         </h3>
-                        {task.events && (
+                        {task.event_id && (
                           <div className="text-sm text-[#e5e4e2]/60">
-                            Wydarzenie: {task.events.name}
+                            Wydarzenie:{' '}
+                            <Link
+                              href={`/crm/events/${task.event_id}?tab=subcontractors`}
+                              className="inline-flex items-center gap-1 text-[#d3bb73] underline-offset-4 hover:underline"
+                            >
+                              {task.events?.name || 'Przejdź do wydarzenia'}
+                              <ArrowUpRight aria-hidden="true" className="h-4 w-4 shrink-0" />
+                            </Link>
                           </div>
                         )}
                       </div>
@@ -568,12 +614,12 @@ export default function SubcontractorDetailPage() {
                         <span
                           className={`rounded px-2 py-1 text-xs ${getStatusColor(task.status)}`}
                         >
-                          {task.status}
+                          {systemLabel(task.status)}
                         </span>
                         <span
                           className={`rounded px-2 py-1 text-xs ${getStatusColor(task.payment_status)}`}
                         >
-                          {task.payment_status}
+                          {systemLabel(task.payment_status)}
                         </span>
                       </div>
                     </div>
@@ -624,9 +670,17 @@ export default function SubcontractorDetailPage() {
         )}
 
         {activeTab === 'contracts' && (
+          <div className="mb-6">
+            <PersonnelContractsPanel
+              startNew={searchParams.get('new') === '1'}
+              subcontractorId={subcontractorId}
+            />
+          </div>
+        )}
+        {activeTab === 'contracts' && (
           <div className="rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] p-6">
             <div className="mb-6 flex items-center justify-between">
-              <h2 className="text-xl font-bold text-[#e5e4e2]">Umowy</h2>
+              <h2 className="text-xl font-bold text-[#e5e4e2]">Umowy ramowe i projektowe</h2>
               <button
                 onClick={() => setShowAddContractModal(true)}
                 className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
@@ -661,7 +715,7 @@ export default function SubcontractorDetailPage() {
                       <span
                         className={`rounded px-2 py-1 text-xs ${getStatusColor(contract.status)}`}
                       >
-                        {contract.status}
+                        {systemLabel(contract.status)}
                       </span>
                     </div>
 

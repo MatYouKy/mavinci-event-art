@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Plus, Edit2, Trash2, ChevronRight, Save, X } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -48,6 +49,8 @@ function sanitizeProps(list: SpecialProperty[]): SpecialProperty[] {
 
 export default function CategoriesPage() {
   const router = useRouter();
+  const { canManageModule } = useCurrentEmployee();
+  const canManage = canManageModule('equipment');
   const { showSnackbar } = useSnackbar();
   const { showConfirm } = useDialog();
 
@@ -85,6 +88,7 @@ export default function CategoriesPage() {
   const [newPropName, setNewPropName] = useState('');
 
   const handleEdit = (category: WarehouseCategoryRow) => {
+    if (!canManage) return;
     setEditingId(category.id);
     setEditName(category.name);
     setEditDescription(category.description ?? '');
@@ -93,6 +97,7 @@ export default function CategoriesPage() {
   };
 
   const handleSave = async () => {
+    if (!canManage) return;
     if (!editingId || !editName.trim()) return;
     try {
       await updateCategory({
@@ -114,6 +119,7 @@ export default function CategoriesPage() {
   };
 
   const handleAddMain = async () => {
+    if (!canManage) return;
     if (!newName.trim()) return;
 
     try {
@@ -143,6 +149,7 @@ export default function CategoriesPage() {
   };
 
   const handleAddSub = async (parentId: string) => {
+    if (!canManage) return;
     if (!newName.trim()) return;
 
     try {
@@ -172,6 +179,7 @@ export default function CategoriesPage() {
   };
 
   const handleDelete = async (id: string, name: string, hasChildren: boolean) => {
+    if (!canManage) return;
     const message = hasChildren
       ? `Czy na pewno chcesz usunąć kategorię "${name}"? To usunie także wszystkie podkategorie i odłączy sprzęt.`
       : `Czy na pewno chcesz usunąć "${name}"?`;
@@ -221,7 +229,7 @@ export default function CategoriesPage() {
               key={mainCat.id}
               className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6"
             >
-              {editingId === mainCat.id ? (
+              {canManage && editingId === mainCat.id ? (
                 <div className="mb-6 space-y-4">
                   <TextField
                     label="Nazwa kategorii"
@@ -245,14 +253,14 @@ export default function CategoriesPage() {
                   />
 
                   <div className="flex gap-2">
-                    <button
+                    {canManage && (<button
                       onClick={handleSave}
                       disabled={updating}
                       className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-60"
                     >
                       <Save className="h-4 w-4" />
                       Zapisz
-                    </button>
+                    </button>)}
                     <button
                       onClick={() => {
                         setEditingId(null);
@@ -281,14 +289,14 @@ export default function CategoriesPage() {
                     </p>
                   </div>
                   <div className="flex gap-2">
-                    <button
+                    {canManage && (<button
                       onClick={() => handleEdit(mainCat)}
                       className="rounded-lg p-2 text-[#d3bb73] hover:bg-[#d3bb73]/10"
                       title="Edytuj kategorię"
                     >
                       <Edit2 className="h-4 w-4" />
-                    </button>
-                    <button
+                    </button>)}
+                    {canManage && (<button
                       onClick={() =>
                         handleDelete(mainCat.id, mainCat.name, subcategories.length > 0)
                       }
@@ -297,7 +305,7 @@ export default function CategoriesPage() {
                       title="Usuń kategorię"
                     >
                       <Trash2 className="h-4 w-4" />
-                    </button>
+                    </button>)}
                   </div>
                 </div>
               )}
@@ -307,7 +315,7 @@ export default function CategoriesPage() {
 
                 {subcategories.map((subCat) => (
                   <div key={subCat.id} className="rounded-lg bg-[#0f1119] p-4">
-                    {editingId === subCat.id ? (
+                    {canManage && editingId === subCat.id ? (
                       <div className="space-y-3">
                         <TextField
                           value={editName}
@@ -328,14 +336,14 @@ export default function CategoriesPage() {
                           compact
                         />
                         <div className="flex gap-2">
-                          <button
+                          {canManage && (<button
                             onClick={handleSave}
                             disabled={updating}
                             className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-3 py-1.5 text-sm text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-60"
                           >
                             <Save className="h-3.5 w-3.5" />
                             Zapisz
-                          </button>
+                          </button>)}
                           <button
                             onClick={() => {
                               setEditingId(null);
@@ -365,28 +373,28 @@ export default function CategoriesPage() {
                           </div>
                         </div>
                         <div className="flex gap-2">
-                          <button
+                          {canManage && (<button
                             onClick={() => handleEdit(subCat)}
                             className="rounded-lg p-1.5 text-[#d3bb73] hover:bg-[#d3bb73]/10"
                             title="Edytuj podkategorię"
                           >
                             <Edit2 className="h-3.5 w-3.5" />
-                          </button>
-                          <button
+                          </button>)}
+                          {canManage && (<button
                             onClick={() => handleDelete(subCat.id, subCat.name, false)}
                             disabled={deleting}
                             className="rounded-lg p-1.5 text-red-400 hover:bg-red-400/10 disabled:opacity-60"
                             title="Usuń podkategorię"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
-                          </button>
+                          </button>)}
                         </div>
                       </div>
                     )}
                   </div>
                 ))}
 
-                {addingSubFor === mainCat.id ? (
+                {canManage && addingSubFor === mainCat.id ? (
                   <div className="space-y-3 rounded-lg border-2 border-[#d3bb73]/20 bg-[#0f1119] p-4">
                     <TextField
                       value={newName}
@@ -407,14 +415,14 @@ export default function CategoriesPage() {
                       compact
                     />
                     <div className="flex gap-2">
-                      <button
+                      {canManage && (<button
                         onClick={() => handleAddSub(mainCat.id)}
                         disabled={creating}
                         className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-60"
                       >
                         <Plus className="h-4 w-4" />
                         Dodaj
-                      </button>
+                      </button>)}
                       <button
                         onClick={() => {
                           setAddingSubFor(null);
@@ -430,20 +438,20 @@ export default function CategoriesPage() {
                     </div>
                   </div>
                 ) : (
-                  <button
+                  (canManage && (<button
                     onClick={() => setAddingSubFor(mainCat.id)}
                     className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-[#d3bb73]/20 bg-[#0f1119] p-4 text-sm text-[#e5e4e2]/60 hover:border-[#d3bb73]/40 hover:text-[#e5e4e2]"
                   >
                     <Plus className="h-4 w-4" />
                     Dodaj podkategorię
-                  </button>
+                  </button>))
                 )}
               </div>
             </div>
           );
         })}
 
-        {addingMain ? (
+        {canManage && addingMain ? (
           <div className="space-y-4 rounded-xl border-2 border-[#d3bb73]/20 bg-[#1c1f33] p-6">
             <h3 className="text-lg font-medium text-[#e5e4e2]">Nowa kategoria główna</h3>
             <TextField
@@ -466,14 +474,14 @@ export default function CategoriesPage() {
               setNewName={setNewPropName}
             />
             <div className="flex gap-2">
-              <button
+              {canManage && (<button
                 onClick={handleAddMain}
                 disabled={creating}
                 className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-60"
               >
                 <Plus className="h-4 w-4" />
                 Dodaj kategorię
-              </button>
+              </button>)}
               <button
                 onClick={() => {
                   setAddingMain(false);
@@ -489,13 +497,13 @@ export default function CategoriesPage() {
             </div>
           </div>
         ) : (
-          <button
+          (canManage && (<button
             onClick={() => setAddingMain(true)}
             className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-[#d3bb73]/20 bg-[#1c1f33] p-6 text-[#e5e4e2]/60 hover:border-[#d3bb73]/40 hover:text-[#e5e4e2]"
           >
             <Plus className="h-5 w-5" />
             <span className="font-medium">Dodaj nową kategorię główną</span>
-          </button>
+          </button>))
         )}
       </div>
     </div>

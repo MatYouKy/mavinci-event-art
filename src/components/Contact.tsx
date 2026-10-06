@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Mail, Phone, MapPin, Facebook, Instagram, Linkedin } from 'lucide-react';
+import { Mail, Phone, MapPin } from 'lucide-react';
+import { SITE } from '@/lib/SEO/site';
 import ContactForm from './ContactForm';
 import CityMapEmbed from './CityMapEmbed/CityMapEmbed';
 
@@ -86,8 +87,8 @@ export default function Contact() {
                 </div>
                 <div>
                   <h3 className="text-[#e5e4e2] font-light text-lg mb-1">Telefon</h3>
-                  <a href="tel:+48123456789" className="text-[#e5e4e2]/70 hover:text-[#d3bb73] transition-colors duration-300">
-                    +48 698 212 279
+                  <a href={SITE.phoneHref} className="text-[#e5e4e2]/70 hover:text-[#d3bb73] transition-colors duration-300">
+                    {SITE.telephone}
                   </a>
                 </div>
               </div>
@@ -109,14 +110,34 @@ export default function Contact() {
                   <MapPin className="w-6 h-6 text-[#d3bb73]" />
                 </div>
                 <div>
-                  <h3 className="text-[#e5e4e2] font-light text-lg mb-1">Adres</h3>
+                  <h3 className="text-[#e5e4e2] font-light text-lg mb-1">Biuro i magazyn</h3>
                   <p className="text-[#e5e4e2]/70">
-                    ul. Towarowa 20b<br />
-                    11-417 Olsztyn, Polska
+                    {SITE.office.street}<br />
+                    {SITE.office.postalCode} {SITE.office.city}, Polska
                   </p>
                 </div>
               </div>
-              <CityMapEmbed query={`Olsztyn, Polska`} />
+              <p className="px-4 text-sm text-[#e5e4e2]/70">
+                Adres rejestrowy spółki: {SITE.registeredOffice.street}, {SITE.registeredOffice.postalCode} {SITE.registeredOffice.city}.
+              </p>
+              <p className="px-4 text-sm leading-relaxed text-[#e5e4e2]/70">
+                Pod adresem Towarowa 20B znajduje się kilka budynków. Kieruj się dokładną pinezką naszego biura i magazynu na mapie poniżej.
+              </p>
+              <CityMapEmbed
+                query={`${SITE.office.latitude},${SITE.office.longitude}`}
+                title="MAVINCI — dokładna lokalizacja biura i magazynu, Towarowa 20B"
+                zoom={18}
+              />
+              <div className="flex flex-wrap gap-4 px-4">
+                <a href={SITE.office.directionsUrl} target="_blank" rel="noopener noreferrer"
+                  className="rounded-full bg-[#d3bb73] px-6 py-3 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90">
+                  Wyznacz trasę do biura i magazynu
+                </a>
+                <a href={SITE.office.mapsUrl} target="_blank" rel="noopener noreferrer"
+                  className="py-3 text-sm text-[#d3bb73] underline underline-offset-4">
+                  Otwórz dokładną pinezkę w Mapach Google
+                </a>
+              </div>
             </div>
           </div>
 

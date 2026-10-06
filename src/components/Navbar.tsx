@@ -1,19 +1,17 @@
 'use client';
 
-import { ChevronDown, CreditCard as Edit3, Eye, LayoutDashboard, LogOut, Settings } from 'lucide-react';
+import { ChevronDown, CreditCard as Edit3, Eye, LayoutDashboard, LogOut, Settings, Store } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useEditMode } from '../contexts/EditModeContext';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { useAppSelector } from '../store/hooks';
 import { useMobile } from '@/hooks/useMobile';
 import NotificationCenter from './crm/NotificationCenter';
 import { canEditWebsite } from '@/lib/permissions';
 import { supabase } from '@/lib/supabase/browser';
 import { Notification } from './crm/NotificationCenter';
 import { IEmployee } from '@/app/(crm)/crm/employees/type';
-import { User } from '@supabase/supabase-js';
 import Image from 'next/image';
 
 const navLinks = [
@@ -73,7 +71,6 @@ interface NavbarProps {
 export default function Navbar({
   onAdminClick,
   initialNotifications,
-  initialEmployee,
 }: NavbarProps & { initialNotifications: Notification[]; initialEmployee: IEmployee }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -85,9 +82,10 @@ export default function Navbar({
   const navRef = useRef<HTMLElement>(null);
   const lastScrollY = useRef(0);
   const { signOut, authUser } = useAuth();
+  const authUserId: string | null = authUser?.id ?? null;
 
   const isMobile = useMobile();
-  const { isEditMode, toggleEditMode } = useEditMode();
+  const { isEditMode, toggleEditMode, setIsEditMode } = useEditMode();
   const router = useRouter();
   const pathname = usePathname();
 
@@ -98,43 +96,63 @@ export default function Navbar({
   };
 
   const isOfferActive = pathname.startsWith('/oferta');
-  const [crmUser, setCrmUser] = useState<User | null>(null);
-  const [employee, setEmployee] = useState<IEmployee>(initialEmployee);
+  const [accountAccess, setAccountAccess] = useState<{
+    userId: string;
+    kind: 'seller' | 'employee' | 'none';
+    employee: IEmployee | null;
+  } | null>(null);
+  // Do not reuse employee data from SSR, a previous account or an email match.
+  // Authentication alone grants neither CRM nor website editing controls.
+  const currentAccess = accountAccess?.userId === authUserId ? accountAccess : null;
+  const isSeller = currentAccess?.kind === 'seller';
+  const employee = currentAccess?.kind === 'employee' ? currentAccess.employee : null;
+  const canOpenCrm = Boolean(employee);
+  const canUseWebsiteEditor = canOpenCrm && canEditWebsite(employee);
 
   useEffect(() => {
-    const checkCrmAuth = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (session) {
-        setCrmUser(session.user);
-        const { data: employeeData } = await supabase
+    const controller = new AbortController();
+    setAccountAccess(null);
+    if (!authUserId) return () => controller.abort();
+
+    const resolveAccount = async () => {
+      try {
+        // Seller identity takes precedence, including a contact whose email
+        // happens to match an employee. Never infer an employee on RPC failure.
+        const seller = await supabase.rpc('current_session_is_seller_portal').abortSignal(controller.signal);
+        if (controller.signal.aborted) return;
+        if (seller.error) throw seller.error;
+        if (seller.data === true) {
+          setAccountAccess({ userId: authUserId, kind: 'seller', employee: null });
+          return;
+        }
+        if (seller.data !== false) throw new Error('Nie udało się ustalić rodzaju konta.');
+
+        const { data: employeeData, error } = await supabase
           .from('employees')
           .select(
             'id, name, surname, nickname, email, avatar_url, avatar_metadata, access_level, permissions, role',
           )
-          .eq('email', session.user.email)
-          .maybeSingle();
-        if (employeeData) {
-          setEmployee(employeeData as IEmployee);
+          .eq('auth_user_id', authUserId)
+          .eq('is_active', true)
+          .maybeSingle()
+          .abortSignal(controller.signal);
+        if (controller.signal.aborted) return;
+        if (error) throw error;
+        setAccountAccess({ userId: authUserId, kind: employeeData ? 'employee' : 'none', employee: employeeData as IEmployee | null });
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          console.error('[Navbar] account access lookup failed:', error);
+          setAccountAccess({ userId: authUserId, kind: 'none', employee: null });
         }
       }
     };
-    checkCrmAuth();
+    void resolveAccount();
+    return () => controller.abort();
+  }, [authUserId]);
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_OUT') {
-        setCrmUser(null);
-        setEmployee(initialEmployee);
-      } else if (session) {
-        setCrmUser(session.user);
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
+  useEffect(() => {
+    if (!canUseWebsiteEditor && isEditMode) setIsEditMode(false);
+  }, [canUseWebsiteEditor, isEditMode, setIsEditMode]);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -177,12 +195,18 @@ export default function Navbar({
     }
   }, [isDropdownOpen, isServicesOpen, isMenuOpen]);
 
+  // Portal sprzedawcy ma własny, aplikacyjny sidebar. Nie pokazujemy w nim
+  // nawigacji publicznej strony WWW.
+  if (pathname.startsWith('/seller')) {
+    return null;
+  }
+
   const handleLogout = async () => {
-    await supabase.auth.signOut({ scope: 'local' });
+    setIsEditMode(false);
+    setAccountAccess(null);
     await signOut();
     setIsDropdownOpen(false);
-    setCrmUser(null);
-    setEmployee(initialEmployee as IEmployee);
+    setIsMenuOpen(false);
     router.push('/');
   };
 
@@ -195,14 +219,14 @@ export default function Navbar({
     setIsDropdownOpen(false);
   };
 
-  const isAuthenticated = !!authUser || !!crmUser;
+  const isAuthenticated = Boolean(authUserId);
 
   const getDisplayName = () => {
     if (employee) {
       return employee.nickname || employee.name;
     }
-    if (crmUser?.email) {
-      return crmUser.email.split('@')[0];
+    if (authUser?.email) {
+      return authUser.email.split('@')[0];
     }
     if (authUser?.user_name) {
       return authUser.user_name;
@@ -214,8 +238,8 @@ export default function Navbar({
     if (employee) {
       return `${employee.name.charAt(0)}${employee.surname.charAt(0)}`.toUpperCase();
     }
-    if (crmUser?.email) {
-      return crmUser.email.charAt(0).toUpperCase();
+    if (authUser?.email) {
+      return authUser.email.charAt(0).toUpperCase();
     }
     if (authUser?.user_name) {
       return authUser.user_name.charAt(0).toUpperCase();
@@ -240,7 +264,7 @@ export default function Navbar({
     employee?.avatar_url ||
     authUser?.user_avatar?.image_metadata?.desktop?.src ||
     authUser?.user_avatar;
-  const userEmail = crmUser?.email || authUser?.user_email?.address;
+  const userEmail = authUser?.email || authUser?.user_email?.address;
   return (
     <>
       <div
@@ -341,7 +365,7 @@ export default function Navbar({
             </div>
 
             <div className="hidden items-center gap-3 md:flex">
-              {isAuthenticated && (
+              {canOpenCrm && (
                 <NotificationCenter initialNotifications={initialNotifications} />
               )}
               {isAuthenticated && (
@@ -410,7 +434,14 @@ export default function Navbar({
                         )}
                       </div>
                       <div className="py-2">
-                        {crmUser && (
+                        {isSeller && (
+                          <Link href="/seller" onClick={() => setIsDropdownOpen(false)}
+                            className="group flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/10 focus-visible:bg-[#d3bb73]/10 focus-visible:outline-none">
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#d3bb73]/10 transition-colors group-hover:bg-[#d3bb73]/20"><Store className="h-4 w-4 text-[#d3bb73]" /></div>
+                            <span className="text-sm font-medium uppercase">Wejdź do strefy sprzedawcy</span>
+                          </Link>
+                        )}
+                        {canOpenCrm && (
                           <button
                             onClick={() => {
                               router.push('/crm');
@@ -427,7 +458,7 @@ export default function Navbar({
                             </div>
                           </button>
                         )}
-                        {authUser && (
+                        {canUseWebsiteEditor && (
                           <button
                             onClick={handleDashboardClick}
                             className="group flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/10"
@@ -441,7 +472,7 @@ export default function Navbar({
                             </div>
                           </button>
                         )}
-                        {(authUser || canEditWebsite(employee)) && (
+                        {canUseWebsiteEditor && (
                           <>
                             <div className="my-2 h-px bg-[#d3bb73]/20" />
                             <button
@@ -615,9 +646,16 @@ export default function Navbar({
                       <p className="truncate text-xs font-medium text-[#e5e4e2]">{displayName}</p>
                       <p className="truncate text-[10px] text-[#e5e4e2]/60">{userEmail}</p>
                     </div>
-                    <NotificationCenter initialNotifications={initialNotifications} />
+                    {canOpenCrm && <NotificationCenter initialNotifications={initialNotifications} />}
                   </div>
-                  {crmUser && (
+                  {isSeller && (
+                    <Link href="/seller" onClick={() => setIsMenuOpen(false)}
+                      className="flex w-full items-center gap-3 rounded-lg px-4 py-2 text-sm uppercase text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/10 focus-visible:bg-[#d3bb73]/10 focus-visible:outline-none">
+                      <Store className="h-4 w-4 shrink-0 text-[#d3bb73]" />
+                      Wejdź do strefy sprzedawcy
+                    </Link>
+                  )}
+                  {canOpenCrm && (
                     <button
                       onClick={() => {
                         router.push('/crm');
@@ -629,7 +667,7 @@ export default function Navbar({
                       Panel CRM
                     </button>
                   )}
-                  {authUser && (
+                  {canUseWebsiteEditor && (
                     <button
                       onClick={() => {
                         handleDashboardClick();
@@ -641,7 +679,7 @@ export default function Navbar({
                       Panel Admina
                     </button>
                   )}
-                  {(authUser || canEditWebsite(employee)) && (
+                  {canUseWebsiteEditor && (
                     <button
                       onClick={() => {
                         toggleEditMode();

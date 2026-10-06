@@ -1,0 +1,13 @@
+.panel {
+  color: var(--brand-platinum);
+}
+
+/* Keep keyboard focus visible without the browser's blue outline. */
+.panel :where(button, a, summary, input[type='checkbox']):focus-visible {
+  outline: 1px solid var(--crm-field-border-focus, var(--app-field-border-focus));
+  outline-offset: 3px;
+}
+
+.primaryAction:not(:disabled):hover {
+  background-color: var(--brand-gold-hover);
+}

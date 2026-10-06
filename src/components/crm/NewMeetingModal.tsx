@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Bell, BellRing, Clock, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
+import MeetingRecurrenceFields from './MeetingRecurrenceFields';
 import LocationAutocomplete from './LocationAutocomplete';
 import RelatedEventsSelector from './RelatedEventsSelector';
 import { useCreateMeetingMutation } from '@/store/api/calendarApi';
@@ -40,6 +41,7 @@ interface AlertOption {
 }
 
 const ALERT_OPTIONS: AlertOption[] = [
+  { value: 0, label: 'W momencie rozpoczęcia' },
   { value: 5, label: '5 minut przed' },
   { value: 10, label: '10 minut przed' },
   { value: 15, label: '15 minut przed' },
@@ -81,6 +83,7 @@ export default function NewMeetingModal({
   const [dateEnd, setDateEnd] = useState('');
   const [timeEnd, setTimeEnd] = useState('10:00');
 
+  const [recurrenceDays, setRecurrenceDays] = useState(0);
   const [isAllDay, setIsAllDay] = useState(false);
   const [notes, setNotes] = useState('');
   const [relatedEventIds, setRelatedEventIds] = useState<string[]>([]);
@@ -220,6 +223,7 @@ export default function NewMeetingModal({
     setDateEnd('');
     setTimeEnd('10:00');
     setIsAllDay(false);
+    setRecurrenceDays(0);
     setNotes('');
     setRelatedEventIds([]);
     setColor('#d3bb73');
@@ -253,7 +257,7 @@ export default function NewMeetingModal({
 
     try {
       const datetimeStart = isAllDay
-        ? `${dateStart}T00:00:00Z`
+        ? localDatetimeStringToUTC(`${dateStart}T00:00:00`)
         : localDatetimeStringToUTC(`${dateStart}T${timeStart}`);
 
       if (!datetimeStart) {
@@ -262,7 +266,7 @@ export default function NewMeetingModal({
       }
 
       const datetimeEnd = isAllDay
-        ? `${dateEnd || dateStart}T23:59:59Z`
+        ? localDatetimeStringToUTC(`${dateEnd || dateStart}T23:59:59`)
         : dateEnd
           ? localDatetimeStringToUTC(`${dateEnd}T${timeEnd}`)
           : null;
@@ -284,6 +288,7 @@ export default function NewMeetingModal({
         datetime_start: datetimeStart,
         datetime_end: datetimeEnd,
         is_all_day: isAllDay,
+        recurrence_days: recurrenceDays,
         notes: notes.trim() || null,
         related_event_ids: relatedEventIds.length > 0 ? relatedEventIds : null,
         color,
@@ -545,6 +550,8 @@ export default function NewMeetingModal({
               </div>
             </div>
           )}
+
+          <MeetingRecurrenceFields days={recurrenceDays} start={`${dateStart}T${isAllDay ? '00:00' : timeStart}`} onChange={setRecurrenceDays} />
 
           <div>
             <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Kolor</label>

@@ -57,15 +57,17 @@ export default function ChatWidget({ employee }: { employee: IEmployee }) {
   const [isMinimized, setIsMinimized] = useState(false);
   const [view, setView] = useState<WidgetView>('list');
   const [activeConversation, setActiveConversation] = useState<Conversation | null>(null);
-  const [totalUnread, setTotalUnread] = useState(0);
+
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const totalUnread = conversations.reduce((sum, conversation) => sum + conversation.unread_count, 0);
   const [isLoading, setIsLoading] = useState(false);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const chatSessionStartedAtRef = useRef(Date.now());
   const realtimeReadyRef = useRef(false);
 
-  const currentEmployeeId = employeeId || employee.id;
+  // Never silently use another session's identity while CRM displays this employee.
+  const currentEmployeeId = employeeId === employee.id ? employeeId : null;
 
   // Request browser notification permission early
   useEffect(() => {
@@ -75,6 +77,7 @@ export default function ChatWidget({ employee }: { employee: IEmployee }) {
   }, []);
 
   const fetchConversations = useCallback(async () => {
+    if (!currentEmployeeId) return;
     setIsLoading(true);
     try {
       const { data: participations } = await supabase
@@ -84,7 +87,6 @@ export default function ChatWidget({ employee }: { employee: IEmployee }) {
 
       if (!participations || participations.length === 0) {
         setConversations([]);
-        setTotalUnread(0);
         setIsLoading(false);
         return;
       }
@@ -117,24 +119,39 @@ export default function ChatWidget({ employee }: { employee: IEmployee }) {
 
       const empMap = new Map((employees || []).map((e) => [e.id, e]));
 
-      let unreadTotal = 0;
+      // A conversation timestamp also advances for our own messages.
+      // Count unread incoming messages, using only this employee's read marker.
+      const unreadCounts = new Map<string, number>();
+      const candidates = convs.filter((conv) => {
+        const lastRead = lastReadMap.get(conv.id);
+        return conv.last_message_at && (!lastRead || new Date(conv.last_message_at) > new Date(lastRead));
+      });
+      let nextIndex = 0;
+      await Promise.all(Array.from({ length: Math.min(4, candidates.length) }, async () => {
+        while (nextIndex < candidates.length) {
+          const conv = candidates[nextIndex++];
+          let query = supabase.from('employee_messages')
+            .select('id', { count: 'exact', head: true })
+            .eq('conversation_id', conv.id)
+            .neq('sender_id', currentEmployeeId);
+          const lastRead = lastReadMap.get(conv.id);
+          if (lastRead) query = query.gt('created_at', lastRead);
+          const { count, error } = await query;
+          if (error) throw error;
+          unreadCounts.set(conv.id, count || 0);
+        }
+      }));
       const enriched: Conversation[] = convs.map((conv) => {
         const parts = (allParticipants || [])
           .filter((p) => p.conversation_id === conv.id)
           .map((p) => ({ ...p, employee: empMap.get(p.employee_id) }));
 
-        const lastRead = lastReadMap.get(conv.id);
-        let unreadCount = 0;
-        if (conv.last_message_at && (!lastRead || new Date(conv.last_message_at) > new Date(lastRead))) {
-          unreadCount = 1;
-        }
-        unreadTotal += unreadCount;
+        const unreadCount = unreadCounts.get(conv.id) || 0;
 
         return { ...conv, participants: parts, unread_count: unreadCount };
       });
 
       setConversations(enriched);
-      setTotalUnread(unreadTotal);
     } catch (err) {
       console.error('[ChatWidget] fetchConversations error:', err);
     } finally {
@@ -148,7 +165,7 @@ export default function ChatWidget({ employee }: { employee: IEmployee }) {
   }, [currentEmployeeId, fetchConversations]);
 
   const activeConversationRef = useRef<string | null>(null);
-  activeConversationRef.current = activeConversation?.id ?? null;
+  activeConversationRef.current = isOpen && !isMinimized && view === 'conversation' ? activeConversation?.id ?? null : null;
 
   // Preload only. Playing a silent fragment on the first click caused an
   // audible click in some browsers and made ordinary CRM actions sound.
@@ -228,7 +245,7 @@ export default function ChatWidget({ employee }: { employee: IEmployee }) {
         (payload) => {
           const msg = payload.new as ChatMessage;
           const isOwnMessage = msg.sender_id === currentEmployeeId;
-          const isActiveConv = activeConversationRef.current === msg.conversation_id;
+          const isActiveConv = activeConversationRef.current === msg.conversation_id && document.visibilityState === 'visible' && document.hasFocus();
           const messageCreatedAt = Date.parse(msg.created_at || '');
           const isNewInCurrentSession =
             realtimeReadyRef.current &&
@@ -258,7 +275,6 @@ export default function ChatWidget({ employee }: { employee: IEmployee }) {
           });
 
           if (!isOwnMessage && !isActiveConv && isNewInCurrentSession) {
-            setTotalUnread((u) => u + 1);
             if (document.visibilityState === 'visible' && document.hasFocus()) {
               playChatSound();
             }
@@ -283,7 +299,6 @@ export default function ChatWidget({ employee }: { employee: IEmployee }) {
     setConversations((prev) =>
       prev.map((c) => (c.id === conv.id ? { ...c, unread_count: 0 } : c)),
     );
-    setTotalUnread((u) => Math.max(0, u - conv.unread_count));
   };
 
   const handleBack = () => {
@@ -302,6 +317,12 @@ export default function ChatWidget({ employee }: { employee: IEmployee }) {
     fetchConversations();
   };
 
+  if (employeeId && employeeId !== employee.id) return (
+    <div role="alert" className="fixed bottom-4 right-4 z-50 max-w-sm rounded-xl bg-[#3a0c20] p-4 text-sm text-white shadow-lg">
+      Konto w sesji różni się od konta wyświetlanego w CRM. Odśwież stronę przed korzystaniem z komunikatora.
+      <button type="button" onClick={() => window.location.reload()} className="mt-3 block text-[#d3bb73]">Odśwież CRM</button>
+    </div>
+  );
   if (!currentEmployeeId) return null;
 
   return (

@@ -35,6 +35,7 @@ import {
 } from '@/components/crm/dashboard/DashboardCharts';
 import { IEmployee } from './employees/type';
 import { useRouter } from 'next/navigation';
+import SellerFinancialDashboard from '@/components/crm/SellerFinancialDashboard';
 
 interface DashboardStats {
   totalEvents: number;
@@ -71,6 +72,9 @@ export default function CRMDashboard({
 }) {
   const { employee, loading } = useCurrentEmployee();
   const router = useRouter();
+  if (analytics.accessError) return <div role="alert" className="rounded-xl bg-white/5 p-6 text-sm text-amber-200">{analytics.accessError} Dane firmy nie zostały pobrane.</div>;
+  if (analytics.scope === 'sales') return <SellerFinancialDashboard initialReport={analytics.sellerReport} />;
+  const companyDashboard = analytics.scope === 'company';
   const dashboardRange = dashboardPreferences.range ?? DEFAULT_DASHBOARD_RANGE;
   const visibleMonths = dashboardRange === '12m' ? analytics.months : analytics.months.slice(-6);
   const widgetEnabled = (widgetId: DashboardWidgetId) =>
@@ -201,6 +205,7 @@ export default function CRMDashboard({
 
   const statCards = allStatCards.filter((card) => {
     if (!employee || !card.module) return false;
+    if (!companyDashboard && !['events', 'tasks', 'offers'].includes(card.module)) return false;
     return canView(employee, card.module);
   });
 
@@ -269,6 +274,7 @@ export default function CRMDashboard({
     },
   ].filter((item) => {
     if (!employee) return false;
+    if (!companyDashboard && item.module !== 'events') return false;
     return canView(employee, item.module);
   });
 
@@ -305,7 +311,7 @@ export default function CRMDashboard({
         <div>
           <h2 className="text-2xl font-light text-[#e5e4e2]">Witaj w systemie CRM</h2>
           <p className="mt-1 text-sm text-[#e5e4e2]/60">
-            Przegląd działalności agencji eventowej Mavinci
+            {companyDashboard ? 'Przegląd działalności agencji eventowej Mavinci' : 'Twoje zadania, oferty i wydarzenia, do których jesteś przypisany'}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -347,7 +353,7 @@ export default function CRMDashboard({
         </div>
       )}
 
-      {widgetEnabled('financial-trends') && canView(employee, 'invoices') && (
+      {companyDashboard && widgetEnabled('financial-trends') && canView(employee, 'invoices') && (
         <TrendChart
           title="Wpływy, wydatki i wynik kasowy"
           description={`Rzeczywiste przepływy według daty płatności · zakres ${dashboardRange === '12m' ? '12 miesięcy' : '6 miesięcy'}`}
@@ -382,6 +388,7 @@ export default function CRMDashboard({
             <div className="space-y-4">
               {filteredActivity.map((activity) => {
                 const href = `/crm/${activity.type}s/${activity.id}`;
+                const ActivityIcon = activity.type === 'event' ? Calendar : activity.type === 'client' ? Users : activity.type === 'offer' ? FileText : Clock;
               return (  
                 <div
                   key={activity.id}
@@ -392,7 +399,7 @@ export default function CRMDashboard({
                   className="flex items-start gap-4 rounded-lg bg-[#0f1119] p-4 transition-colors hover:bg-[#0f1119]/50 cursor-pointer"
                 >
                   <div className={`${activity.color} mt-1`}>
-                    <activity.icon className="h-5 w-5" />
+                    <ActivityIcon className="h-5 w-5" />
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-light text-[#e5e4e2]">{activity.title}</p>

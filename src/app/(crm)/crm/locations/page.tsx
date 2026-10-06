@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import {
   MapPin,
   Plus,
@@ -350,7 +351,16 @@ function LocationCardGrid({
       <div className="mb-3 flex items-start justify-between">
         <div className="flex items-center gap-2">
           <MapPin className="h-5 w-5 flex-shrink-0 text-[#d3bb73]" />
-          <h3 className="line-clamp-1 font-semibold text-[#e5e4e2]">{location.name}</h3>
+          <div>
+            <h3 className="line-clamp-1 font-semibold text-[#e5e4e2]">{location.name}</h3>
+            <Link
+              href={`/crm/locations/${location.id}`}
+              onClick={(event) => event.stopPropagation()}
+              className="mt-1 inline-block rounded text-sm text-[#d3bb73] hover:underline focus-visible:outline focus-visible:outline-1"
+            >
+              Szczegóły i sale →
+            </Link>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -444,6 +454,13 @@ function LocationCardList({
 
           <div className="min-w-0 flex-1">
             <h3 className="truncate font-semibold text-[#e5e4e2]">{location.name}</h3>
+            <Link
+              href={`/crm/locations/${location.id}`}
+              onClick={(event) => event.stopPropagation()}
+              className="mt-1 inline-block rounded text-sm text-[#d3bb73] hover:underline focus-visible:outline focus-visible:outline-1"
+            >
+              Szczegóły i sale →
+            </Link>
             <div className="mt-1 flex items-center gap-4 text-sm text-[#e5e4e2]/60">
               {location.city && <span>{location.city}</span>}
               {location.address && <span className="truncate">{location.address}</span>}
@@ -545,7 +562,16 @@ function LocationTable({
               <td className="px-4 py-3 text-sm text-[#e5e4e2]">
                 <div className="flex items-center gap-2">
                   <MapPin className="h-4 w-4 flex-shrink-0 text-[#d3bb73]" />
-                  <span className="font-medium">{location.name}</span>
+                  <div>
+                    <span className="block font-medium">{location.name}</span>
+                    <Link
+                      href={`/crm/locations/${location.id}`}
+                      onClick={(event) => event.stopPropagation()}
+                      className="mt-1 inline-block rounded text-sm text-[#d3bb73] hover:underline focus-visible:outline focus-visible:outline-1"
+                    >
+                      Szczegóły i sale →
+                    </Link>
+                  </div>
                 </div>
               </td>
               <td className="px-4 py-3 text-sm text-[#e5e4e2]/70">{location.address || '-'}</td>

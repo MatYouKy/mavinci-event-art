@@ -1,5 +1,7 @@
 'use client';
 
+import SystemBadge from '@/components/UI/SystemBadge';
+
 import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
@@ -646,7 +648,7 @@ export default function VehicleDetailPage() {
             { id: 'history', label: 'Historia użytkowania', icon: Clock },
             { id: 'gallery', label: 'Galeria', icon: ImageIcon },
           ].map((tab) => (
-            <button
+            <button data-crm-tab-active={activeTab === tab.id}
               key={tab.id}
               onClick={() => setActiveTab(tab.id as any)}
               className={`flex shrink-0 snap-start items-center gap-2 whitespace-nowrap border-b-2 px-4 py-3 transition-colors ${
@@ -699,19 +701,19 @@ export default function VehicleDetailPage() {
 
                 <div>
                   <span className="text-sm text-[#e5e4e2]/60">Kategoria</span>
-                  <p className="font-medium text-[#e5e4e2]">{vehicle.category || '-'}</p>
+                  <div className="mt-1"><SystemBadge value={vehicle.category} domain="vehicle" preserveCustom /></div>
                 </div>
 
                 {vehicle.vehicle_type !== 'trailer' && (
                   <>
                     <div>
                       <span className="text-sm text-[#e5e4e2]/60">Typ paliwa</span>
-                      <p className="font-medium text-[#e5e4e2]">{vehicle.fuel_type || '-'}</p>
+                      <div className="mt-1"><SystemBadge value={vehicle.fuel_type} domain="fuel" preserveCustom /></div>
                     </div>
 
                     <div>
                       <span className="text-sm text-[#e5e4e2]/60">Skrzynia biegów</span>
-                      <p className="font-medium text-[#e5e4e2]">{vehicle.transmission || '-'}</p>
+                      <div className="mt-1"><SystemBadge value={vehicle.transmission} domain="transmission" preserveCustom /></div>
                     </div>
 
                     <div>
@@ -732,7 +734,7 @@ export default function VehicleDetailPage() {
 
                 <div>
                   <span className="text-sm text-[#e5e4e2]/60">Typ własności</span>
-                  <p className="font-medium text-[#e5e4e2]">{vehicle.ownership_type || '-'}</p>
+                  <div className="mt-1"><SystemBadge value={vehicle.ownership_type} domain="ownership" preserveCustom /></div>
                 </div>
 
                 <div>

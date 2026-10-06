@@ -10,7 +10,6 @@ import NotificationCenter from '@/components/crm/NotificationCenter';
 import UserMenu from '@/components/crm/UserMenu';
 import NavigationManager from '@/components/crm/NavigationManager';
 import ChatWidget from '@/components/crm/chat/ChatWidget';
-import { useActivityHeartbeat } from '@/hooks/useActivityHeartbeat';
 import { IEmployee } from './employees/type';
 import { TaskAccessWrapper } from './(providers)/TaskAccessWrapper';
 import { supabase } from '@/lib/supabase/browser';
@@ -47,8 +46,6 @@ export default function CRMClientLayout({
     '/crm/events/invitation/',
   );
   const isPublicPage = pathname === '/login' || isPublicInvitationPage;
-
-  useActivityHeartbeat();
 
   useEffect(() => {
     const savedState = localStorage.getItem('sidebarCollapsed');

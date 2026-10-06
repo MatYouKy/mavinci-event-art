@@ -144,7 +144,7 @@ export default function AdminCasinoPanel({ onClose }: AdminCasinoPanelProps) {
               { key: 'rules', label: 'Zasady' },
               { key: 'blocks', label: 'Bloki' },
             ].map((tab) => (
-              <button
+              <button data-crm-tab-active={activeTab === tab.key}
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key as any)}
                 className={`whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition-colors ${

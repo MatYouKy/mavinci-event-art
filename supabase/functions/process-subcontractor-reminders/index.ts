@@ -1,6 +1,17 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
+// Definicje lokalne: ta funkcja musi dać się wdrożyć z samego index.ts
+// w edytorze Supabase (bez dostępu do katalogu ../_shared).
+const EMAIL_BRAND = {
+  background: "#1b0710",
+  surface: "#351020",
+  panel: "#46172b",
+  gold: "#d3bb73",
+  text: "#f3e9ed",
+  cream: "#faf6f7",
+} as const;
+
 const response = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
   status, headers: { "Content-Type": "application/json" },
 });
@@ -50,8 +61,8 @@ Deno.serve(async (request) => {
       const when = new Date(task.scheduled_start).toLocaleString("pl-PL", {
         dateStyle: "long", timeStyle: "short", timeZone: "Europe/Warsaw",
       });
-      const body = `<div style="font-family:Arial,sans-serif;color:#1c1f33;max-width:620px;margin:auto">
-        <h2 style="background:#1c1f33;color:#d3bb73;padding:22px">Przypomnienie o realizacji</h2>
+      const body = `<div style="font-family:Arial,sans-serif;color:${EMAIL_BRAND.surface};max-width:620px;margin:auto">
+        <h2 style="background:${EMAIL_BRAND.surface};color:#d3bb73;padding:22px">Przypomnienie o realizacji</h2>
         <p>Dzień dobry ${escapeHtml(task.contact_name_snapshot || provider?.contact_person || provider?.company_name || "")},</p>
         <p>${kind === "week" ? "Za tydzień" : "Jutro"} realizujesz zlecenie <strong>${escapeHtml(task.task_name)}</strong> podczas wydarzenia <strong>${escapeHtml(event?.name || "")}</strong>.</p>
         <p><strong>Termin rozpoczęcia:</strong> ${escapeHtml(when)}</p>

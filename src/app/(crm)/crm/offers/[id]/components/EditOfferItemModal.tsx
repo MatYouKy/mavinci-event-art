@@ -1,10 +1,17 @@
 'use client';
+import ProductPackagePicker from '@/components/crm/offers/ProductPackagePicker';
+import { pricedPackageSelection, type ProductSalesPackage } from '@/lib/CRM/Offers/productSalesPackages';
+
+import ProductAddonsEditor from '@/components/crm/offers/ProductAddonsEditor';
+import { createConfiguration, configurationPrice, validateConfiguration, type ProductAddon } from '@/lib/CRM/Offers/offerAddons';
 
 import { useState } from 'react';
 import { X } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { IOfferItem } from '../../types';
+
+import { VariantPricesEditor } from './VariantPricesEditor';
 
 const VAT_RATES = [0, 5, 8, 23] as const;
 
@@ -27,23 +34,57 @@ export default function EditOfferItemModal({
 
   const [loading, setLoading] = useState(false);
 
-  const [quantity, setQuantity] = useState(item.quantity ?? 1);
-  const [unitPrice, setUnitPrice] = useState(item.unit_price ?? 0);
-  const [discountPercent, setDiscountPercent] = useState(item.discount_percent ?? 0);
+  const [variantPrices, setVariantPrices] = useState<Record<string, number>>(() => ({
+    ...(item?.variant_prices_net || {}),
+    ...(item?.product_variant_id ? { [item.product_variant_id]: item.pricing_configuration?.base_unit_price ?? item.unit_price ?? 0 } : {}),
+  }));
+  const [quantity, setQuantity] = useState(item?.quantity ?? 1);
+  const [unitPrice, setUnitPrice] = useState(item?.pricing_configuration?.base_unit_price ?? item?.unit_price ?? 0);
+  const [addons, setAddons] = useState<ProductAddon[]>(() => (item?.pricing_configuration?.addons || []).map(a => ({ ...a })));
+  const [packageOptions, setPackageOptions] = useState<ProductSalesPackage[]>(() => structuredClone(item?.pricing_configuration?.product_package?.options || (item?.product?.sales_packages_enabled ? item.product.sales_packages || [] : [])));
+  const [selectedPackageId, setSelectedPackageId] = useState(item?.pricing_configuration?.product_package?.selected_id || '');
+  const selectedPackage = packageOptions.find(p => p.id === selectedPackageId);
+  const configuration = createConfiguration(unitPrice, addons, selectedPackage ? pricedPackageSelection({ selected_id: selectedPackage.id, options: packageOptions }, unitPrice) : undefined);
+  const configuredPrice = configurationPrice(configuration);
+  const [discountPercent, setDiscountPercent] = useState(item?.discount_percent ?? 0);
   const [itemVatRate, setItemVatRate] = useState(vatRate);
-  const [name, setName] = useState(item.name || item.product?.name || '');
-  const [selectedVariantId, setSelectedVariantId] = useState(item.product_variant_id || '');
-  const [showVariantPricesInPdf, setShowVariantPricesInPdf] = useState(item.show_variant_prices_in_pdf !== false);
-  const [showProductVariantsInPdf, setShowProductVariantsInPdf] = useState(item.show_product_variants_in_pdf !== false);
+  const [name, setName] = useState(item?.name || item?.product?.name || '');
+  const [selectedVariantId, setSelectedVariantId] = useState(item?.product_variant_id || '');
+  const [showVariantPricesInPdf, setShowVariantPricesInPdf] = useState(item?.show_variant_prices_in_pdf !== false);
+  const [showProductVariantsInPdf, setShowProductVariantsInPdf] = useState(item?.show_product_variants_in_pdf !== false);
   if (!item) return null;
 
   const productVariants = (item.product?.variants || []).filter((variant) => variant.is_active !== false);
+  const missingPackageResources = selectedPackage && (!Array.isArray(selectedPackage.resources?.equipment) || !Array.isArray(selectedPackage.resources?.staff));
+  const catalogPackage = item.product?.sales_packages?.find(p => p.id === selectedPackageId);
+  const catalogResources = catalogPackage?.resources;
+  const canImportResources = Array.isArray(catalogResources?.equipment) && Array.isArray(catalogResources?.staff);
+
+  const handleSelectPackage = (id: string) => {
+    setSelectedPackageId(id);
+    const selected = packageOptions.find(option => option.id === id);
+    if (selected) {
+      setSelectedVariantId('');
+      setUnitPrice(selected.price_net);
+      setAddons([]);
+      setName(`${item.product?.name || item.name} — ${selected.name}`);
+      return;
+    }
+
+    const variant = productVariants[0];
+    setSelectedVariantId(variant?.id || '');
+    setUnitPrice(Number(variant?.price_net ?? item.product?.base_price ?? 0));
+    setAddons((item.product?.pricing_addons || []).map(addon => ({ ...addon })));
+    setName(variant
+      ? `${item.product?.name || item.name} — ${variant.name}`
+      : item.product?.name || item.name);
+  };
 
   const safeQuantity = Number.isFinite(quantity) ? quantity : 0;
   const safeUnitPrice = Number.isFinite(unitPrice) ? unitPrice : 0;
   const safeDiscountPercent = Number.isFinite(discountPercent) ? discountPercent : 0;
 
-  const netto = safeQuantity * safeUnitPrice;
+  const netto = safeQuantity * configuredPrice;
   const discountAmount = (netto * safeDiscountPercent) / 100;
   const nettoAfterDiscount = netto - discountAmount;
   const vatAmount = (nettoAfterDiscount * itemVatRate) / 100;
@@ -74,6 +115,11 @@ export default function EditOfferItemModal({
       return;
     }
 
+    if (Object.values(variantPrices).some(price => !Number.isFinite(price) || price < 0 || price > 999999999.99)) {
+      showSnackbar('Podaj poprawne, nieujemne ceny wszystkich wariantów.', 'error'); return;
+    }
+    const addonError = validateConfiguration(configuration);
+    if (addonError) { showSnackbar(addonError, 'error'); return; }
     setLoading(true);
 
     try {
@@ -81,10 +127,15 @@ export default function EditOfferItemModal({
         .from('offer_items')
         .update({
           name: safeName,
+          ...(selectedPackage ? { description: [selectedPackage.included_label, selectedPackage.bonus].filter(Boolean).join('. ') } : {}),
           quantity: safeQuantity,
-          unit_price: safeUnitPrice,
+          unit: selectedPackage ? 'pakiet' : item.product?.unit || item.unit,
+          unit_price: configuredPrice,
+          pricing_configuration: selectedPackage || addons.length || item.pricing_configuration ? configuration : null,
+          discount_amount: Math.round(discountAmount * 100) / 100,
           discount_percent: safeDiscountPercent,
           product_variant_id: selectedVariantId || null,
+          variant_prices_net: { ...variantPrices, ...(selectedVariantId ? { [selectedVariantId]: safeUnitPrice } : {}) },
           show_variant_prices_in_pdf: showVariantPricesInPdf,
           show_product_variants_in_pdf: showProductVariantsInPdf,
         })
@@ -110,10 +161,14 @@ export default function EditOfferItemModal({
         id: item.id,
         name: safeName,
         quantity: safeQuantity,
-        unit_price: safeUnitPrice,
+          unit: selectedPackage ? 'pakiet' : item.product?.unit || item.unit,
+        unit_price: configuredPrice,
+          pricing_configuration: selectedPackage || addons.length || item.pricing_configuration ? configuration : null,
+          discount_amount: Math.round(discountAmount * 100) / 100,
         discount_percent: safeDiscountPercent,
         product_variant_id: selectedVariantId || null,
-        show_variant_prices_in_pdf: showVariantPricesInPdf,
+        variant_prices_net: { ...variantPrices, ...(selectedVariantId ? { [selectedVariantId]: safeUnitPrice } : {}) },
+          show_variant_prices_in_pdf: showVariantPricesInPdf,
         show_product_variants_in_pdf: showProductVariantsInPdf,
       });
 
@@ -172,7 +227,21 @@ export default function EditOfferItemModal({
             )}
           </div>
 
-          {productVariants.length > 0 && (
+          {missingPackageResources && <div className="space-y-2 rounded-lg bg-[#d3bb73]/10 p-3 text-sm text-[#e5e4e2]">
+            <p>Pakiet „{selectedPackage.name}” w tej ofercie nie ma zapisanej konfiguracji sprzętu i obsady. Jest ona wymagana przed akceptacją.</p>
+            {canImportResources ? <>
+              <p className="text-xs text-[#e5e4e2]/65">Produkt ma już te dane. Możesz pobrać brakujące zasoby, sprawdzić je poniżej i zapisać pozycję. Stawki obsady wpłyną na wewnętrzny koszt realizacji.</p>
+              <button type="button" disabled={loading} onClick={() => setPackageOptions(options => options.map(p => p.id === selectedPackageId ? { ...p, resources: {
+                equipment: Array.isArray(p.resources?.equipment) ? p.resources.equipment : structuredClone(catalogResources!.equipment),
+                staff: Array.isArray(p.resources?.staff) ? p.resources.staff : structuredClone(catalogResources!.staff),
+              } } : p))} className="rounded-lg bg-[#d3bb73] px-3 py-2 text-[#1c1f33]">Pobierz sprzęt i obsadę z produktu</button>
+            </> : <p className="text-xs text-[#e5e4e2]/65">Użyj przycisku „Sprzęt i obsada” poniżej. Jeśli pakiet ich nie wymaga, zatwierdź puste listy.</p>}
+          </div>}
+          <ProductPackagePicker options={packageOptions.map(p=>p.id===selectedPackageId?{...p,price_net:unitPrice}:p)} selectedId={selectedPackageId} disabled={loading} discountPercent={discountPercent}
+            onChange={options=>{setPackageOptions(options);const p=options.find(p=>p.id===selectedPackageId);if(p)setUnitPrice(p.price_net);}}
+            onSelect={handleSelectPackage}
+          />
+          {!selectedPackage && productVariants.length > 0 && (
             <div>
               <label className="mb-2 block text-xs font-medium uppercase tracking-wide text-[#e5e4e2]/55">
                 Wariant produktu
@@ -184,7 +253,7 @@ export default function EditOfferItemModal({
                     type="button"
                     onClick={() => {
                       setSelectedVariantId(variant.id);
-                      setUnitPrice(Number(variant.price_net || 0));
+                      setUnitPrice(Number(variantPrices[variant.id] ?? variant.price_net ?? 0));
                       setName(`${item.product?.name || item.name} — ${variant.name}`);
                     }}
                     className={`rounded-lg border px-3 py-3 text-left ${
@@ -195,24 +264,30 @@ export default function EditOfferItemModal({
                   >
                     <span className="block text-sm font-medium text-[#e5e4e2]">{variant.name}</span>
                     <span className="mt-1 block text-xs text-[#d3bb73]">
-                      {Number(variant.price_net || 0).toFixed(2)} PLN netto
+                      {Number(variantPrices[variant.id] ?? variant.price_net ?? 0).toFixed(2)} PLN netto
                     </span>
                   </button>
                 ))}
               </div>
+              <VariantPricesEditor variants={productVariants} prices={variantPrices} disabled={loading} onChange={(id, price) => {
+                setVariantPrices(current => ({ ...current, [id]: price }));
+                if (id === selectedVariantId) setUnitPrice(price);
+              }} />
               <div className="mt-3 space-y-2">
                 <label className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] px-3 py-2.5">
-                  <span><span className="block text-sm text-[#e5e4e2]">Pokaż wszystkie warianty w PDF</span><span className="mt-0.5 block text-xs text-[#e5e4e2]/40">Po wyłączeniu drukowany jest tylko wybrany wariant</span></span>
-                  <input type="checkbox" checked={showProductVariantsInPdf} onChange={(event) => setShowProductVariantsInPdf(event.target.checked)} className="h-4 w-4 accent-[#d3bb73]" />
+                  <span><span className="block text-sm text-[#e5e4e2]">Pokaż wszystkie warianty w PDF</span><span className="mt-0.5 block text-xs text-[#e5e4e2]/40">{addons.length ? 'Przy dodatkach pokazujemy wybrany wariant i jego szczegółową kalkulację' : 'Po wyłączeniu drukowany jest tylko wybrany wariant'}</span></span>
+                  <input type="checkbox" checked={addons.length ? false : showProductVariantsInPdf} disabled={Boolean(addons.length)} onChange={(event) => setShowProductVariantsInPdf(event.target.checked)} className="h-4 w-4 accent-[#d3bb73]" />
                 </label>
                 <label className={`flex items-center justify-between gap-3 rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] px-3 py-2.5 ${showProductVariantsInPdf ? 'cursor-pointer' : 'cursor-not-allowed opacity-40'}`}>
                   <span><span className="block text-sm text-[#e5e4e2]">Pokaż ceny wariantów w PDF</span><span className="mt-0.5 block text-xs text-[#e5e4e2]/40">Cena netto i brutto VAT 23% przy każdym wariancie</span></span>
-                  <input type="checkbox" checked={showVariantPricesInPdf} disabled={!showProductVariantsInPdf} onChange={(event) => setShowVariantPricesInPdf(event.target.checked)} className="h-4 w-4 accent-[#d3bb73]" />
+                  <input type="checkbox" checked={showVariantPricesInPdf} disabled={!showProductVariantsInPdf || Boolean(addons.length)} onChange={(event) => setShowVariantPricesInPdf(event.target.checked)} className="h-4 w-4 accent-[#d3bb73]" />
                 </label>
               </div>
             </div>
           )}
 
+          <ProductAddonsEditor value={addons} onChange={setAddons} disabled={loading} />
+          {!item.pricing_configuration && !addons.length && Boolean(item.product?.pricing_addons?.length) && <button type="button" onClick={() => setAddons((item.product?.pricing_addons || []).map(a => ({ ...a })))} className="text-sm text-[#d3bb73]">Wczytaj obecne dodatki produktu do tej oferty</button>}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-[#e5e4e2]/55">
@@ -230,14 +305,18 @@ export default function EditOfferItemModal({
 
             <div>
               <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-[#e5e4e2]/55">
-                Cena netto / szt.
+                Cena bazowa netto / pakiet
               </label>
               <input
                 type="number"
                 min="0"
                 step="0.01"
                 value={unitPrice}
-                onChange={(e) => setUnitPrice(Number(e.target.value))}
+                onChange={(e) => {
+                  const price = e.target.value === '' ? NaN : Number(e.target.value);
+                  setUnitPrice(price);
+                  if (selectedVariantId) setVariantPrices(current => ({ ...current, [selectedVariantId]: price }));
+                }}
                 className={inputClass}
               />
             </div>

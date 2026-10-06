@@ -1,10 +1,12 @@
 import EventKit
 import Foundation
+import CryptoKit
 import os.log
 
 /// Service responsible for interacting with Apple Reminders via EventKit.
 /// Manages the "Mavinci CRM" reminders list and provides CRUD operations
 /// for syncing CRM tasks to native reminders.
+@MainActor
 final class RemindersService {
 
     // MARK: - Properties
@@ -30,16 +32,17 @@ final class RemindersService {
     /// - Returns: `true` if access was granted, `false` otherwise.
     func requestAccess() async -> Bool {
         do {
+            let granted: Bool
             if #available(macOS 14.0, *) {
-                let granted = try await eventStore.requestFullAccessToReminders()
-                logger.info("Reminders access (macOS 14+): \(granted)")
-                return granted
+                granted = try await eventStore.requestFullAccessToReminders()
             } else {
-                // macOS 13 fallback
-                let granted = try await eventStore.requestAccess(to: .reminder)
-                logger.info("Reminders access (macOS 13): \(granted)")
-                return granted
+                granted = try await eventStore.requestAccess(to: .reminder)
             }
+            // Called only at an operation boundary, never while EKObjects are being saved.
+            // The same store requests access AND fetches data. Discard pre-permission caches.
+            if granted { eventStore.reset() }
+            logger.info("Reminders access: \(granted)")
+            return granted
         } catch {
             logger.error("Failed to request reminders access: \(error.localizedDescription)")
             return false
@@ -52,65 +55,147 @@ final class RemindersService {
     /// Caches the list identifier in UserDefaults for fast lookup on subsequent launches.
     /// - Parameter name: The name of the list to find or create. Defaults to `targetListName`.
     /// - Returns: The `EKCalendar` representing the reminders list, or `nil` on failure.
-    func getOrCreateList(name: String? = nil) -> EKCalendar? {
-        let listName = name ?? targetListName
-
-        // Try to retrieve cached identifier first
-        if let cachedIdentifier = UserDefaults.standard.string(forKey: listIdentifierKey),
-           let calendar = eventStore.calendar(withIdentifier: cachedIdentifier),
-           calendar.title == listName {
-            logger.debug("Found cached reminders list: \(listName)")
-            return calendar
-        }
-
-        // Search existing calendars
+    func getOrCreateList(name: String? = nil, allowCreation: Bool = false) throws -> EKCalendar {
+        let listName = name ?? UserDefaults.standard.string(forKey: "selectedRemindersListName") ?? targetListName
         let calendars = eventStore.calendars(for: .reminder)
-        if let existing = calendars.first(where: { $0.title == listName }) {
-            UserDefaults.standard.set(existing.calendarIdentifier, forKey: listIdentifierKey)
-            logger.info("Found existing reminders list: \(listName)")
-            return existing
+        let choices = calendars.map { ReminderListChoice(id: $0.calendarIdentifier, title: $0.title, account: $0.source.title) }
+        let cachedName = UserDefaults.standard.string(forKey: "mavinci.cachedListName")
+        let cachedID = (name == nil && (cachedName == nil || cachedName == listName))
+            ? UserDefaults.standard.string(forKey: listIdentifierKey) : nil
+        do {
+            let selected = try ReminderListResolver.resolve(choices, cachedID: cachedID, name: listName)
+            return try selectList(identifier: selected.id)
+        } catch RemindersError.missingList where allowCreation {
+            // Only an explicit user request can create a list, never a failed sync read.
+        } catch RemindersError.noLists where allowCreation {
+            // First-time setup may have no lists yet, but must have a writable source.
         }
-
-        // Create new list
         let newCalendar = EKCalendar(for: .reminder, eventStore: eventStore)
         newCalendar.title = listName
-
-        // Use the default source for reminders
         guard let source = bestSourceForReminders() else {
-            logger.error("No suitable source found for creating reminders list")
-            return nil
+            throw RemindersError.noLists
         }
-
         newCalendar.source = source
+        try eventStore.saveCalendar(newCalendar, commit: true)
+        return try selectList(identifier: newCalendar.calendarIdentifier)
+    }
 
-        do {
-            try eventStore.saveCalendar(newCalendar, commit: true)
-            UserDefaults.standard.set(newCalendar.calendarIdentifier, forKey: listIdentifierKey)
-            logger.info("Created new reminders list: \(listName)")
-            return newCalendar
-        } catch {
-            logger.error("Failed to create reminders list: \(error.localizedDescription)")
-            return nil
+    func availableLists() -> [ReminderListChoice] {
+        eventStore.calendars(for: .reminder).map {
+            ReminderListChoice(id: $0.calendarIdentifier, title: $0.title, account: $0.source.title)
+        }.sorted { ($0.title, $0.account, $0.id) < ($1.title, $1.account, $1.id) }
+    }
+
+    @discardableResult
+    func selectList(identifier: String) throws -> EKCalendar {
+        guard let calendar = eventStore.calendar(withIdentifier: identifier), calendar.allowedEntityTypes.contains(.reminder) else {
+            throw RemindersError.missingList(UserDefaults.standard.string(forKey: "selectedRemindersListName") ?? targetListName)
         }
+        guard calendar.allowsContentModifications else { throw RemindersError.readOnly }
+        UserDefaults.standard.set(calendar.calendarIdentifier, forKey: listIdentifierKey)
+        UserDefaults.standard.set(calendar.title, forKey: "mavinci.cachedListName")
+        UserDefaults.standard.set(calendar.title, forKey: "selectedRemindersListName")
+        return calendar
     }
 
     // MARK: - Fetching Reminders
 
     /// Fetches all reminders from the Mavinci CRM list.
     /// - Returns: An array of `EKReminder` objects, or an empty array if the list is not found.
-    func getAllRemindersInList() async -> [EKReminder] {
-        guard let calendar = getOrCreateList() else {
-            logger.warning("Cannot fetch reminders — list not available")
-            return []
-        }
+    func getAllRemindersInList() async throws -> [EKReminder] {
+        let calendar = try getOrCreateList()
 
+        return try await reminders(in: calendar)
+    }
+
+    func reminders(in calendar: EKCalendar) async throws -> [EKReminder] {
         let predicate = eventStore.predicateForReminders(in: [calendar])
 
-        return await withCheckedContinuation { continuation in
+        return try await withCheckedThrowingContinuation { continuation in
             eventStore.fetchReminders(matching: predicate) { reminders in
-                continuation.resume(returning: reminders ?? [])
+                if let reminders { continuation.resume(returning: reminders) }
+                else { continuation.resume(throwing: RemindersError.fetchFailed) }
             }
         }
+    }
+
+    // MARK: - Recoverable archive (never delete or mark completed to tidy a list)
+
+    static let archiveListName = "Archiwum Mavinci"
+
+    func archiveList(for activeList: EKCalendar, scope: String, create: Bool) throws -> EKCalendar? {
+        guard activeList.title != Self.archiveListName else {
+            throw archiveError("Archiwum nie może być główną listą synchronizacji. Wybierz listę Mavinci CRM.")
+        }
+        let sourceID = activeList.source.sourceIdentifier
+        let hash = SHA256.hash(data: Data((scope + "|" + sourceID).utf8)).map { String(format: "%02x", $0) }.joined()
+        let key = "mavinci.archiveList." + hash
+        if let id = UserDefaults.standard.string(forKey: key) {
+            guard let calendar = eventStore.calendar(withIdentifier: id),
+                  calendar.source.sourceIdentifier == sourceID, calendar.calendarIdentifier != activeList.calendarIdentifier,
+                  calendar.allowsContentModifications else {
+                throw archiveError("Lista Archiwum Mavinci jest chwilowo niedostępna lub tylko do odczytu. Nie utworzono kolejnego archiwum.")
+            }
+            return calendar
+        }
+        let matches = eventStore.calendars(for: .reminder).filter {
+            $0.title == Self.archiveListName && $0.source.sourceIdentifier == sourceID
+        }
+        guard matches.count <= 1 else { throw archiveError("Znaleziono kilka list Archiwum Mavinci. Uporządkuj ich nazwy przed synchronizacją.") }
+        if let calendar = matches.first {
+            guard calendar.allowsContentModifications else { throw archiveError("Archiwum Mavinci jest tylko do odczytu.") }
+            UserDefaults.standard.set(calendar.calendarIdentifier, forKey: key)
+            return calendar
+        }
+        guard create else { return nil }
+        let calendar = EKCalendar(for: .reminder, eventStore: eventStore)
+        calendar.title = Self.archiveListName
+        calendar.source = activeList.source // Keep the reminder within the same iCloud/local account.
+        try eventStore.saveCalendar(calendar, commit: true)
+        UserDefaults.standard.set(calendar.calendarIdentifier, forKey: key)
+        return calendar
+    }
+
+    /// A title or stale taskMap entry is not sufficient authority to move a reminder.
+    func verifiedCRMTaskID(_ reminder: EKReminder, baseURL: String) -> String? {
+        guard let base = URL(string: baseURL), let link = reminder.url,
+              link.scheme?.lowercased() == "https", base.scheme?.lowercased() == "https",
+              link.host?.lowercased() == base.host?.lowercased(), (link.port ?? 443) == (base.port ?? 443),
+              link.user == nil, link.password == nil,
+              link.pathComponents.count == 4, link.pathComponents[1] == "crm", link.pathComponents[2] == "tasks",
+              let id = UUID(uuidString: link.pathComponents[3]) else { return nil }
+        guard let notes = reminder.notes, let range = notes.range(of: "MAVINCI_CRM_TASK_ID=") else { return nil }
+        let marked = notes[range.upperBound...].prefix { !$0.isNewline }.trimmingCharacters(in: .whitespaces)
+        guard UUID(uuidString: marked) == id else { return nil }
+        return id.uuidString.lowercased()
+    }
+
+    func movePreservingReminder(_ reminder: EKReminder, to target: EKCalendar, reason: String) throws {
+        guard let original = reminder.calendar else { throw archiveError("Przypomnienie nie ma dostępnej listy źródłowej.") }
+        guard original.calendarIdentifier != target.calendarIdentifier else { return }
+        guard original.source.sourceIdentifier == target.source.sourceIdentifier,
+              original.allowsContentModifications, target.allowsContentModifications else {
+            throw archiveError("Nie można przenieść przypomnienia między kontami lub listami tylko do odczytu.")
+        }
+        let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("MavinciReminders/ArchiveMoves", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let record: [String: Any] = [
+            "identifier": reminder.calendarItemIdentifier, "title": reminder.title ?? "", "notes": reminder.notes ?? "",
+            "url": reminder.url?.absoluteString ?? "", "completed": reminder.isCompleted,
+            "sourceCalendar": original.calendarIdentifier, "targetCalendar": target.calendarIdentifier,
+            "reason": reason, "preparedAt": ISO8601DateFormatter().string(from: Date())
+        ]
+        try JSONSerialization.data(withJSONObject: record, options: .prettyPrinted)
+            .write(to: directory.appendingPathComponent(UUID().uuidString + ".json"), options: .atomic)
+        reminder.calendar = target
+        do { try eventStore.save(reminder, commit: true) }
+        catch { reminder.calendar = original; throw error }
+        // Status, notes, dates and alarms are intentionally left untouched.
+    }
+
+    private func archiveError(_ message: String) -> Error {
+        NSError(domain: "MavinciArchive", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
     }
 
     // MARK: - Creating Reminders
@@ -120,11 +205,8 @@ final class RemindersService {
     ///   - task: The CRM task to convert into a reminder.
     ///   - crmBaseURL: The base URL of the CRM (e.g., "https://app.mavinci.pl").
     /// - Returns: The created `EKReminder`, or `nil` if the list is unavailable.
-    func createReminder(from task: CRMTask, crmBaseURL: String) -> EKReminder? {
-        guard let calendar = getOrCreateList() else {
-            logger.error("Cannot create reminder — list not available")
-            return nil
-        }
+    func createReminder(from task: CRMTask, crmBaseURL: String) throws -> EKReminder {
+        let calendar = try getOrCreateList()
 
         let reminder = EKReminder(eventStore: eventStore)
         reminder.calendar = calendar
@@ -180,7 +262,12 @@ final class RemindersService {
     /// Looks for the pattern `MAVINCI_CRM_TASK_ID=<uuid>` in the notes.
     /// - Parameter reminder: The reminder to extract the ID from.
     /// - Returns: The task ID string, or `nil` if not found.
-    func extractCRMTaskId(from reminder: EKReminder) -> String? {
+    func extractCRMTaskId(from reminder: EKReminder, crmBaseURL: String? = nil) -> String? {
+        if let link = reminder.url {
+            if let base = crmBaseURL, link.host?.lowercased() != URL(string: base)?.host?.lowercased() { return nil }
+            let parts = link.pathComponents
+            if parts.count >= 4, parts[1] == "crm", parts[2] == "tasks", UUID(uuidString: parts[3]) != nil { return parts[3].lowercased() }
+        }
         guard let notes = reminder.notes else { return nil }
 
         let pattern = "MAVINCI_CRM_TASK_ID="
@@ -196,7 +283,33 @@ final class RemindersService {
         }
 
         let trimmed = taskId.trimmingCharacters(in: .whitespaces)
-        return trimmed.isEmpty ? nil : trimmed
+        return UUID(uuidString: trimmed) == nil ? nil : trimmed.lowercased()
+    }
+
+    func isExactDuplicate(_ a: EKReminder, of b: EKReminder) -> Bool {
+        a.title == b.title && a.notes == b.notes && a.url == b.url &&
+        a.isCompleted == b.isCompleted && a.priority == b.priority &&
+        a.dueDateComponents == b.dueDateComponents && a.startDateComponents == b.startDateComponents &&
+        !(a.hasRecurrenceRules || b.hasRecurrenceRules) &&
+        !(a.alarms ?? []).contains(where: { $0.relativeOffset != 0 || $0.structuredLocation != nil }) &&
+        !(b.alarms ?? []).contains(where: { $0.relativeOffset != 0 || $0.structuredLocation != nil }) &&
+        (a.alarms ?? []).map { $0.absoluteDate } == (b.alarms ?? []).map { $0.absoluteDate }
+    }
+
+    func archiveAndDeleteDuplicate(_ reminder: EKReminder) throws {
+        let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("MavinciReminders/DuplicateBackups", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let backup: [String: Any] = [
+            "title": reminder.title ?? "", "notes": reminder.notes ?? "",
+            "url": reminder.url?.absoluteString ?? "", "completed": reminder.isCompleted,
+            "priority": reminder.priority, "calendar": reminder.calendar.title,
+            "due": reminder.dueDateComponents?.description ?? "",
+            "identifier": reminder.calendarItemIdentifier, "archivedAt": ISO8601DateFormatter().string(from: Date())
+        ]
+        try JSONSerialization.data(withJSONObject: backup, options: .prettyPrinted)
+            .write(to: directory.appendingPathComponent(UUID().uuidString + ".json"), options: .atomic)
+        try deleteReminder(reminder)
     }
 
     // MARK: - Private Helpers

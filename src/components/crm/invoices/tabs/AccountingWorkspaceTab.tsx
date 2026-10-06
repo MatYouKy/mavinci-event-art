@@ -1,5 +1,7 @@
 'use client';
 
+import { systemLabel } from '@/lib/ui/systemLabels';
+
 import { useCallback, useMemo, useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -21,6 +23,7 @@ import {
   WalletCards,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
+import { BANK_STATEMENT_DEDUPLICATION_COLUMNS, deduplicateStatementTransactions, loadBankStatementTransactionPages } from '@/lib/bankStatementDeduplication';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import KSeFFinancialDashboard from '@/components/crm/KSeFFinancialDashboard';
 import UnmatchedTransactionsModal from '@/components/crm/UnmatchedTransactionsModal';
@@ -29,6 +32,7 @@ import { PersonnelContractsRegistry } from './PersonnelContractsRegistry';
 import SaldeoDeliveryPanel from './SaldeoDeliveryPanel';
 import { repairBrokenBankText } from '@/lib/bankTextEncoding';
 import { decodeTextEntities } from '@/lib/textEncoding';
+import { externalDocumentKindLabel } from '@/lib/invoices/externalDocumentKinds';
 
 type WorkspaceSection =
   | 'control'
@@ -153,7 +157,7 @@ function statusBadge(status: string) {
             : 'bg-[#d3bb73]/10 text-[#d3bb73]'
       }`}
     >
-      {labels[normalized] || status || 'Brak statusu'}
+      {labels[normalized] || (status ? systemLabel(status) : 'Brak statusu')}
     </span>
   );
 }
@@ -286,6 +290,11 @@ export function AccountingWorkspaceTab({ filterCompanyIds = null }: Props) {
 
   const companyFilterKey =
     filterCompanyIds === null ? '*' : [...filterCompanyIds].sort().join(',');
+  const statementMonth = Number(searchParams.get('statementMonth'));
+  const statementYear = Number(searchParams.get('statementYear'));
+  const isStatementMonthOpen = section === 'statements'
+    && Number.isInteger(statementMonth) && statementMonth >= 1 && statementMonth <= 12
+    && Number.isInteger(statementYear) && statementYear >= 2000 && statementYear <= 2100;
 
   const changeSection = useCallback(
     (nextSection: WorkspaceSection) => {
@@ -315,35 +324,33 @@ export function AccountingWorkspaceTab({ filterCompanyIds = null }: Props) {
 
       let statementsQuery = supabase
         .from('bank_statements')
-        .select('id, statement_month, statement_year, my_company_id')
+        .select(BANK_STATEMENT_DEDUPLICATION_COLUMNS)
         .order('statement_year', { ascending: false })
         .order('statement_month', { ascending: false });
       if (companyIds) statementsQuery = statementsQuery.in('my_company_id', companyIds);
 
       const statementResult = await statementsQuery;
-      const statementRows = (statementResult.data || []) as Array<{
-        id: string;
-        statement_month: number;
-        statement_year: number;
-        my_company_id: string | null;
-      }>;
+      const statementRows = statementResult.data || [];
       const statementMap = new Map(statementRows.map((row) => [row.id, row]));
 
       if (statementRows.length > 0) {
-        const transactionResult = await supabase
-          .from('bank_transactions')
-          .select(
-            'id, statement_id, transaction_date, amount, currency, transaction_type, counterparty_name, title, match_status, allocated_amount, matched_document_count, matched_invoice_id',
-          )
-          .in(
-            'statement_id',
-            statementRows.map((row) => row.id),
-          )
-          .order('transaction_date', { ascending: false })
-          .limit(1500);
+        const transactionRows = await loadBankStatementTransactionPages((from, to) =>
+          supabase
+            .from('bank_transactions')
+            .select(
+              'id, statement_id, transaction_date, posting_date, amount, currency, transaction_type, counterparty_name, counterparty_account, title, raw_description, reference_number, match_status, allocated_amount, matched_document_count, matched_invoice_id, accounting_review_status, private_transfer_detected',
+            )
+            .in(
+              'statement_id',
+              statementRows.map((row) => row.id),
+            )
+            .order('transaction_date', { ascending: false })
+            .order('id', { ascending: true })
+            .range(from, to),
+        );
 
         setTransactions(
-          ((transactionResult.data || []) as BankTransaction[]).map((transaction) => {
+          deduplicateStatementTransactions(transactionRows, statementMap).map((transaction) => {
             const statement = statementMap.get(transaction.statement_id);
             return {
               ...transaction,
@@ -379,7 +386,7 @@ export function AccountingWorkspaceTab({ filterCompanyIds = null }: Props) {
       let externalQuery = supabase
         .from('external_invoices')
         .select(
-          'id, invoice_number, label, invoice_date, seller_name, amount_gross, currency, payment_status, my_company_id',
+          'id, document_kind, invoice_number, label, invoice_date, seller_name, amount_gross, currency, payment_status, my_company_id',
         )
         .order('invoice_date', { ascending: false })
         .limit(1000);
@@ -465,7 +472,7 @@ export function AccountingWorkspaceTab({ filterCompanyIds = null }: Props) {
           id: row.id,
           source: 'external' as const,
           number: row.invoice_number || 'Dokument kosztowy',
-          title: row.label || 'Faktura spoza KSeF',
+          title: `${externalDocumentKindLabel(row.document_kind)}${row.label ? ` · ${row.label}` : ' spoza KSeF'}`,
           counterparty: row.seller_name || 'Nieznany sprzedawca',
           date: row.invoice_date,
           amount: row.amount_gross == null ? null : Number(row.amount_gross),
@@ -615,21 +622,21 @@ export function AccountingWorkspaceTab({ filterCompanyIds = null }: Props) {
               połączone z kontrolą przepływów pieniężnych.
             </p>
           </div>
-          <button
+          {!isStatementMonthOpen && <button data-crm-action="secondary"
             type="button"
             onClick={() => void loadWorkspaceData()}
             disabled={loading}
             className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-[#d3bb73]/25 px-3 py-2 text-xs text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/10 disabled:opacity-50"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} /> Odśwież dane
-          </button>
+          </button>}
         </div>
 
         <div className="flex snap-x gap-0.5 overflow-x-auto border-t border-[#d3bb73]/10 px-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {SECTIONS.map((item) => {
             const Icon = item.icon;
             return (
-              <button
+              <button data-crm-tab-active={section === item.id}
                 key={item.id}
                 type="button"
                 onClick={() => changeSection(item.id)}
@@ -708,7 +715,7 @@ export function AccountingWorkspaceTab({ filterCompanyIds = null }: Props) {
                 </p>
               </div>
               <div className="flex gap-2">
-                <button
+                <button data-crm-action="secondary"
                   type="button"
                   onClick={exportMissingList}
                   className="inline-flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 px-3 py-2 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/10"
@@ -778,7 +785,7 @@ export function AccountingWorkspaceTab({ filterCompanyIds = null }: Props) {
                           )}
                         </td>
                         <td className="px-5 py-4 text-right">
-                          <button
+                          <button data-crm-action="secondary"
                             type="button"
                             onClick={() => openMatching(transaction)}
                             className="inline-flex items-center gap-1 rounded-lg border border-[#d3bb73]/20 px-3 py-2 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/10"
@@ -797,13 +804,13 @@ export function AccountingWorkspaceTab({ filterCompanyIds = null }: Props) {
       ) : section === 'documents' ? (
         <div className="space-y-5">
           <div className="flex flex-col gap-3 rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-4 lg:flex-row lg:items-center">
-            <div className="relative flex-1">
+            <div className="crm-search-field relative flex-1 rounded-lg border bg-[#0a0d1a]">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#e5e4e2]/35" />
               <input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder="Szukaj po numerze, kontrahencie lub nazwie…"
-                className="w-full rounded-lg border border-[#d3bb73]/15 bg-[#0a0d1a] py-2.5 pl-10 pr-4 text-sm text-[#e5e4e2] outline-none placeholder:text-[#e5e4e2]/30 focus:border-[#d3bb73]/45"
+                className="crm-search-input w-full rounded-lg bg-transparent py-2.5 pl-10 pr-4 text-sm text-[#e5e4e2] outline-none placeholder:text-[#e5e4e2]/30"
               />
             </div>
             <select
@@ -834,10 +841,10 @@ export function AccountingWorkspaceTab({ filterCompanyIds = null }: Props) {
         </div>
       ) : section === 'statements' ? (
         <div className="space-y-4">
-          <div className="rounded-xl border border-[#d3bb73]/15 bg-[#d3bb73]/[0.05] px-5 py-4 text-sm leading-6 text-[#e5e4e2]/65">
-            Tutaj ponownie dostępna jest sekcja wyciągów: import MT940, JPK_WB i PDF, historia plików,
-            analiza miesięcy oraz automatyczne i ręczne dopasowanie płatności.
-          </div>
+          {!isStatementMonthOpen && <div className="rounded-xl border border-[#d3bb73]/15 bg-[#d3bb73]/[0.05] px-5 py-4 text-sm leading-6 text-[#e5e4e2]/65">
+            Wybierz miesiąc, aby otworzyć jego dashboard: wyciągi, płatności, braki, kadry i podatki.
+            W tym samym miejscu przygotujesz paczkę dokumentów spoza KSeF oraz zestawienie płatności zbiorczych dla księgowej.
+          </div>}
           <KSeFFinancialDashboard filterCompanyIds={filterCompanyIds} />
         </div>
       ) : section === 'external' ? (
@@ -845,8 +852,8 @@ export function AccountingWorkspaceTab({ filterCompanyIds = null }: Props) {
           <div className="rounded-xl border border-[#d3bb73]/15 bg-[#d3bb73]/[0.05] px-5 py-4">
             <h3 className="font-medium text-[#e5e4e2]">Dokumenty spoza KSeF</h3>
             <p className="mt-1 text-sm leading-6 text-[#e5e4e2]/55">
-              Dotychczasowa tabela faktur spoza KSeF pozostaje bez zmian i jest częścią wspólnego rejestru.
-              Dodawaj tu także commercial invoice, rachunki, potwierdzenia zakupów oraz dokumenty importowe.
+              Wspólny rejestr dokumentów spoza KSeF obejmuje faktury, paragony, polisy ubezpieczeniowe,
+              umowy, noty oraz inne dokumenty potwierdzające koszt. Wybierz rodzaj dokumentu podczas dodawania.
             </p>
           </div>
           <ExternalInvoicesTab />

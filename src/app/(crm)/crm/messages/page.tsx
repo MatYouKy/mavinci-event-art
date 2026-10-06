@@ -19,14 +19,15 @@ export default async function MessagesPage() {
 
   const { data: employeeData } = await supabase
     .from('employees')
-    .select('permissions, can_receive_contact_forms')
-    .eq('id', user.id)
+    .select('permissions, can_receive_contact_forms, role, access_level')
+    .or(`id.eq.${user.id},auth_user_id.eq.${user.id}`)
+    .eq('is_active',true)
     .maybeSingle();
 
   if (!employeeData) redirect('/crm');
 
   const permissions = employeeData.permissions || [];
-  const canManage = permissions.includes('messages_manage') || permissions.includes('admin');
+  const canManage = permissions.includes('messages_manage') || permissions.includes('admin') || employeeData.role === 'admin' || employeeData.access_level === 'admin';
   const canView = permissions.includes('messages_view') || canManage;
 
   if (!canView && !canManage) redirect('/crm');

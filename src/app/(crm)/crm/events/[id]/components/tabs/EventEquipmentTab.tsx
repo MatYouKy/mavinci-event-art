@@ -44,6 +44,9 @@ import { EmployeeAvatar } from '@/components/EmployeeAvatar';
 import NextImage from 'next/image';
 import { RequiredComponentsWarning } from '@/components/crm/RequiredComponentsWarning';
 
+// Warehouse checklists always use MAVINCI branding, independently of the event's sales brand.
+const CHECKLIST_COMPANY_ID = 'd4474f90-5e61-4ba4-928e-c25c0f0659b5';
+
 const KitItemRow = ({
   thumb,
   name,
@@ -583,7 +586,7 @@ export const EventEquipmentTab: React.FC<{
   const handleUpdateQuantity = async (rowId: string, newQty: number, maxSet: number) => {
     const safe = Math.max(1, Math.min(newQty, maxSet));
 
-    if (safe !== newQty) {
+    if (!Number.isInteger(newQty) || newQty < 1 || newQty > maxSet || safe !== newQty) {
       showSnackbar(`Maksymalnie możesz ustawić: ${maxSet} szt.`, 'error');
       return;
     }
@@ -624,7 +627,7 @@ export const EventEquipmentTab: React.FC<{
       const currentQty = Number(existingRow?.quantity ?? used ?? 0);
       const finalQty = currentQty + Number(s.quantity || 0);
 
-      if (maxSet > 0 && finalQty > maxSet) {
+      if (!avail || finalQty > maxSet) {
         showSnackbar(
           `Brak dostępności: max ${maxSet} szt. (do dodania zostało ${maxAdd}).`,
           'error',
@@ -1047,6 +1050,7 @@ export const EventEquipmentTab: React.FC<{
   const allLoaded = totalCount > 0 && loadedCount === totalCount;
 
   const handleGenerateChecklist = async () => {
+    if (generatingPdf) return;
     if (!eventId || !equipment || equipment.length === 0) {
       showSnackbar('Brak sprzętu do wygenerowania checklisty', 'error');
       return;
@@ -1055,18 +1059,7 @@ export const EventEquipmentTab: React.FC<{
     try {
       setGeneratingPdf(true);
 
-      // 0. Usuń poprzedni PDF jeśli istnieje
-      if (checklistPdfPath) {
-        try {
-          // Usuń z storage
-          await supabase.storage.from('event-files').remove([checklistPdfPath]);
-
-          // Usuń z event_files
-          await supabase.from('event_files').delete().eq('file_path', checklistPdfPath);
-        } catch (deleteError) {
-          console.warn('Błąd podczas usuwania poprzedniego PDF checklisty:', deleteError);
-        }
-      }
+      // Keep the saved PDF until its replacement is successfully stored.
 
       const equipmentData = (equipment as any[])
         .filter((row) => !row?.removed_from_offer)
@@ -1105,30 +1098,32 @@ export const EventEquipmentTab: React.FC<{
       const eventDateFormatted = new Date(eventDate).toLocaleDateString('pl-PL');
 
       const resolveChecklistCompanyLogo = async (): Promise<string | null> => {
-        let companyQuery = supabase
+        const { data: company, error: companyError } = await supabase
           .from('my_companies')
-          .select('id, logo_url')
-          .eq('is_active', true);
+          .select('id, name')
+          .eq('id', CHECKLIST_COMPANY_ID)
+          .maybeSingle();
+        if (companyError) throw new Error('Nie udało się odczytać brandbooka Mavinci. Odśwież stronę i spróbuj ponownie.');
+        if (!company) throw new Error('Brak dostępu do firmowych ustawień Mavinci wymaganych do wydruku checklisty.');
 
-        if (event?.my_company_id) {
-          companyQuery = companyQuery.eq('id', event.my_company_id);
-        } else {
-          companyQuery = companyQuery.order('is_default', { ascending: false });
-        }
-
-        const { data: companies } = await companyQuery.limit(1);
-        const company = companies?.[0];
-        if (!company) return null;
-
-        const { data: logos } = await supabase
+        const { data: logos, error: logosError } = await supabase
           .from('company_brandbook_logos')
-          .select('url, is_default, order_index')
+          .select('url, label, variant, is_default, order_index')
           .eq('company_id', company.id)
           .order('is_default', { ascending: false })
           .order('order_index', { ascending: true });
+        if (logosError) throw new Error('Nie udało się pobrać logotypów Mavinci. Sprawdź dostęp do brandbooka i ponów wydruk.');
 
-        const rawLogo = logos?.find((logo) => logo.is_default)?.url || logos?.[0]?.url || company.logo_url;
-        if (!rawLogo) return null;
+        const normalizeLogoKey = (value: string | null | undefined) =>
+          (value || '').trim().toLowerCase().replace(/\.(svg|png|webp|jpe?g)$/i, '')
+            .replace(/[\s_]+/g, '-');
+        // The default logo may be white/gold and is unsuitable for white paper.
+        const printLogo = logos?.find((logo) => normalizeLogoKey(logo.label) === 'logo-horizontal-black')
+          || logos?.find((logo) => normalizeLogoKey(logo.variant) === 'logo-horizontal-black');
+        const rawLogo = printLogo?.url;
+        if (!rawLogo) {
+          throw new Error('W brandbooku Mavinci dodaj logo o nazwie logo-horizontal-black. Checklista zawsze używa marki Mavinci, niezależnie od marki wydarzenia.');
+        }
 
         const publicUrl = /^https?:\/\//i.test(rawLogo) || rawLogo.startsWith('data:')
           ? rawLogo
@@ -1176,8 +1171,12 @@ export const EventEquipmentTab: React.FC<{
       const html2pdfFn: any = (html2pdf as any) || html2pdf;
 
       // ✅ ważne: w html2pdf najlepiej przekazać element, nie “div wrapper”
-      const element = document.createElement('div');
-      element.innerHTML = html;
+      const printDocument = new DOMParser().parseFromString(html, 'text/html');
+      const printRoot = printDocument.getElementById('equipment-checklist-print');
+      const printStyles = printDocument.querySelector('style[data-equipment-checklist-styles]');
+      if (!printRoot || !printStyles) throw new Error('Nie udało się przygotować wyglądu checklisty.');
+      const element = document.importNode(printRoot, true);
+      element.prepend(document.importNode(printStyles, true));
 
       const opt: any = {
         margin: [10, 10, 1, 10],
@@ -1185,7 +1184,28 @@ export const EventEquipmentTab: React.FC<{
           .replace(/[^a-z0-9]/gi, '-')
           .toLowerCase()}.pdf`,
         image: { type: 'jpeg' as const, quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true },
+        html2canvas: {
+          scale: 2,
+          useCORS: true,
+          backgroundColor: '#ffffff',
+          onclone: async (clonedDocument: Document) => {
+            // Only the disposable html2canvas clone is changed, never the CRM page.
+            clonedDocument.querySelectorAll('style, link[rel="stylesheet"]').forEach((node) => {
+              if (!node.hasAttribute('data-equipment-checklist-styles')) node.remove();
+            });
+            clonedDocument.documentElement.removeAttribute('class');
+            clonedDocument.body.removeAttribute('class');
+            clonedDocument.body.style.background = '#ffffff';
+            clonedDocument.body.style.color = '#111827';
+            await clonedDocument.fonts.ready;
+            const logos = Array.from(clonedDocument.querySelectorAll<HTMLImageElement>(
+              '#equipment-checklist-print img',
+            ));
+            await Promise.all(logos.map((logo) => logo.decode().catch(() => {
+              throw new Error('Nie udało się wczytać logo logo-horizontal-black. Spróbuj ponownie.');
+            })));
+          },
+        },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
 
         // ✅ to jest kluczowe przy "nie tnij wierszy"
@@ -1219,7 +1239,7 @@ export const EventEquipmentTab: React.FC<{
         p_created_by: employee?.id ?? null,
       });
 
-      await supabase.from('event_files').insert([
+      const { error: fileRecordError } = await supabase.from('event_files').insert([
         {
           event_id: eventId,
           folder_id: folderId,
@@ -1234,8 +1254,10 @@ export const EventEquipmentTab: React.FC<{
         },
       ]);
 
+      if (fileRecordError) throw fileRecordError;
+
       // Zapisz ścieżkę PDF w tabeli events
-      await supabase
+      const { error: eventUpdateError } = await supabase
         .from('events')
         .update({
           equipment_checklist_pdf_path: storagePath,
@@ -1243,6 +1265,21 @@ export const EventEquipmentTab: React.FC<{
           equipment_checklist_modified: false,
         })
         .eq('id', eventId);
+
+      if (eventUpdateError) throw eventUpdateError;
+
+      // Remove the previous version only after the new file and event link are saved.
+      if (checklistPdfPath && checklistPdfPath !== storagePath) {
+        try {
+          const { error: removeError } = await supabase.storage.from('event-files').remove([checklistPdfPath]);
+          if (removeError) throw removeError;
+          const { error: recordError } = await supabase.from('event_files')
+            .delete().eq('event_id', eventId).eq('file_path', checklistPdfPath);
+          if (recordError) throw recordError;
+        } catch (error) {
+          console.warn('Nie udało się usunąć poprzedniej wersji checklisty:', error);
+        }
+      }
 
       // Odśwież dane wydarzenia
       await refetchEvent();
@@ -1252,10 +1289,10 @@ export const EventEquipmentTab: React.FC<{
         'success',
       );
 
-      worker.save();
+      await worker.save();
     } catch (error) {
       console.error('Error generating checklist:', error);
-      showSnackbar('Błąd podczas generowania checklisty', 'error');
+      showSnackbar(error instanceof Error ? error.message : 'Błąd podczas generowania checklisty', 'error');
     } finally {
       setGeneratingPdf(false);
     }
@@ -1963,8 +2000,15 @@ export const EventEquipmentTab: React.FC<{
         disabled: generatingPdf,
       });
     } else {
-      // PDF istnieje i nie ma zmian - pokaż przyciski pokaż i pobierz
+      // Allow regeneration after changes to print styling or the brandbook too.
       result.push(
+        {
+          label: generatingPdf ? 'Generowanie...' : 'Regeneruj checklistę',
+          onClick: handleGenerateChecklist,
+          icon: <Printer className="h-4 w-4" />,
+          variant: 'default',
+          disabled: generatingPdf,
+        },
         {
           label: 'Pokaż checklistę',
           onClick: handleShowChecklistPdf,
@@ -2338,7 +2382,7 @@ export const EventEquipmentTab: React.FC<{
                     {loadedCount}/{totalCount} załadowano
                   </span>
                   {isAdmin && (
-                    <button
+                    <button data-crm-action="secondary"
                       onClick={handleAdminUnlock}
                       className="rounded-lg border border-[#d3bb73]/30 px-3 py-1.5 text-xs font-medium text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/10"
                     >

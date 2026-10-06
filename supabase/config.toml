@@ -51,3 +51,9 @@ verify_jwt = false
 
 [functions.sync-ksef-daily]
 verify_jwt = true
+
+[functions.extract-external-invoice]
+verify_jwt = true
+
+[functions.generate-subcontractor-guidelines]
+verify_jwt = true

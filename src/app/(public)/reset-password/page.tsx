@@ -1,12 +1,26 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { Lock, Eye, EyeOff, CheckCircle } from 'lucide-react';
+import { CheckCircle2, Eye, EyeOff, Loader2, LockKeyhole } from 'lucide-react';
+
 import { supabase } from '@/lib/supabase/browser';
+import { PASSWORD_ACCESS_ORIGIN, passwordAccessUrl } from '@/lib/passwordAccess';
+import { verifyPasswordAccessToken } from '@/lib/passwordAccess.browser';
+
+const validatePassword = (password: string) => {
+  if (password.length < 8) return 'Hasło musi mieć minimum 8 znaków.';
+  if (!/[A-Z]/.test(password)) return 'Hasło musi zawierać co najmniej jedną wielką literę.';
+  if (!/[a-z]/.test(password)) return 'Hasło musi zawierać co najmniej jedną małą literę.';
+  if (!/[0-9]/.test(password)) return 'Hasło musi zawierać co najmniej jedną cyfrę.';
+  return null;
+};
 
 export default function ResetPasswordPage() {
   const router = useRouter();
+  const [checkingLink, setCheckingLink] = useState(true);
+  const [linkReady, setLinkReady] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showNewPassword, setShowNewPassword] = useState(false);
@@ -14,41 +28,68 @@ export default function ResetPasswordPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
-  const [validToken, setValidToken] = useState(false);
 
   useEffect(() => {
-    const checkSession = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+    let active = true;
+
+    const markReady = () => {
+      if (!active) return;
+      setLinkReady(true);
+      setCheckingLink(false);
+      setError('');
+    };
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+      if ((event === 'PASSWORD_RECOVERY' || event === 'SIGNED_IN') && session) markReady();
+    });
+
+    const verifyResetLink = async () => {
+      const params = new URLSearchParams(window.location.search);
+      const tokenHash = params.get('token_hash');
+      const type = params.get('type');
+
+      if (tokenHash && type === 'recovery') {
+        if (window.location.origin !== PASSWORD_ACCESS_ORIGIN) {
+          window.location.replace(passwordAccessUrl('crm', tokenHash, 'recovery'));
+          return;
+        }
+        const { error: verificationError } = await verifyPasswordAccessToken(tokenHash, 'recovery');
+
+        if (!active) return;
+        if (verificationError) {
+          setError('Link jest nieprawidłowy, został już wykorzystany albo wygasł. Wyślij nową prośbę o zmianę hasła.');
+          setCheckingLink(false);
+          return;
+        }
+
+        window.history.replaceState({}, '', '/reset-password');
+        markReady();
+        return;
+      }
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!active) return;
       if (session) {
-        setValidToken(true);
+        markReady();
       } else {
-        setError('Link resetowania hasła jest nieprawidłowy lub wygasł');
+        setError('W tym adresie brakuje prawidłowego linku do zmiany hasła. Wyślij nową prośbę z ekranu logowania.');
+        setCheckingLink(false);
       }
     };
 
-    checkSession();
+    void verifyResetLink().catch(() => {
+      if (!active) return;
+      setError('Nie udało się sprawdzić linku. Sprawdź połączenie i otwórz wiadomość ponownie.');
+      setCheckingLink(false);
+    });
+    return () => {
+      active = false;
+      authListener.subscription.unsubscribe();
+    };
   }, []);
 
-  const validatePassword = (password: string): string | null => {
-    if (password.length < 8) {
-      return 'Hasło musi mieć minimum 8 znaków';
-    }
-    if (!/[A-Z]/.test(password)) {
-      return 'Hasło musi zawierać co najmniej jedną wielką literę';
-    }
-    if (!/[a-z]/.test(password)) {
-      return 'Hasło musi zawierać co najmniej jedną małą literę';
-    }
-    if (!/[0-9]/.test(password)) {
-      return 'Hasło musi zawierać co najmniej jedną cyfrę';
-    }
-    return null;
-  };
-
-  const handleResetPassword = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleResetPassword = async (event: FormEvent) => {
+    event.preventDefault();
     setError('');
 
     const passwordError = validatePassword(newPassword);
@@ -56,183 +97,151 @@ export default function ResetPasswordPage() {
       setError(passwordError);
       return;
     }
-
     if (newPassword !== confirmPassword) {
-      setError('Hasła nie są identyczne');
+      setError('Podane hasła nie są identyczne.');
       return;
     }
 
-    try {
-      setLoading(true);
-
-      const { error: updateError } = await supabase.auth.updateUser({
-        password: newPassword,
-      });
-
-      if (updateError) throw updateError;
-
-      setSuccess(true);
-
-      setTimeout(() => {
-        router.push('/crm/login');
-      }, 3000);
-    } catch (err: any) {
-      setError(err.message || 'Wystąpił błąd podczas zmiany hasła');
+    setLoading(true);
+    const { error: updateError } = await supabase.auth.updateUser({ password: newPassword });
+    if (updateError) {
+      setError(updateError.message || 'Nie udało się zapisać nowego hasła.');
       setLoading(false);
+      return;
     }
+
+    setSuccess(true);
+    setLoading(false);
+
+    const [{ data: sellerContext }, { data: userData }] = await Promise.all([
+      supabase.rpc('get_seller_portal_context'),
+      supabase.auth.getUser(),
+    ]);
+    const isSellerAccount = userData.user?.user_metadata?.portal === 'seller';
+    const destination = sellerContext || isSellerAccount ? '/seller' : '/crm';
+
+    window.setTimeout(() => router.replace(destination), 2200);
   };
 
-  if (!validToken && !error) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-[#0f1119] px-4">
-        <div className="text-lg text-[#d3bb73]">Sprawdzanie linku...</div>
-      </div>
-    );
-  }
-
-  if (success) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-[#0f1119] px-4">
-        <div className="w-full max-w-md">
-          <div className="rounded-2xl border border-[#d3bb73]/20 bg-[#1c1f33] p-8 text-center shadow-2xl">
-            <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full bg-green-500/10">
-              <CheckCircle className="h-8 w-8 text-green-400" />
-            </div>
-            <h2 className="mb-2 text-2xl font-light text-[#e5e4e2]">Hasło zostało zmienione!</h2>
-            <p className="mb-6 text-[#e5e4e2]/60">
-              Możesz teraz zalogować się używając nowego hasła
-            </p>
-            <p className="text-sm text-[#e5e4e2]/40">
-              Za chwilę zostaniesz przekierowany na stronę logowania...
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#0f1119] px-4">
-      <div className="w-full max-w-md">
-        <div className="rounded-2xl border border-[#d3bb73]/20 bg-[#1c1f33] p-8 shadow-2xl">
-          <div className="mb-8 text-center">
-            <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full bg-[#d3bb73]/10">
-              <Lock className="h-8 w-8 text-[#d3bb73]" />
+    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#100a0e] px-4 py-10 text-[#f2eee9]">
+      <div className="pointer-events-none absolute -left-32 top-12 h-80 w-80 rounded-full bg-[#7a1738]/20 blur-3xl" />
+      <div className="pointer-events-none absolute -right-24 bottom-0 h-96 w-96 rounded-full bg-[#d3bb73]/10 blur-3xl" />
+
+      <section className="relative w-full max-w-md overflow-hidden rounded-3xl bg-[#1c1720] shadow-[0_28px_90px_rgba(0,0,0,0.45)]">
+        <div className="bg-[#290812] px-8 py-8 text-center">
+          <Image
+            src="/logo.png"
+            alt="MAVINCI Event & Art"
+            width={276}
+            height={64}
+            priority
+            className="mx-auto h-auto w-56"
+          />
+          <p className="mt-4 text-[10px] uppercase tracking-[0.28em] text-[#d3bb73]">Bezpieczeństwo konta</p>
+        </div>
+
+        <div className="p-7 sm:p-9">
+          {checkingLink ? (
+            <div className="py-12 text-center">
+              <Loader2 className="mx-auto h-8 w-8 animate-spin text-[#d3bb73]" />
+              <p className="mt-4 text-sm text-white/55">Sprawdzamy link do zmiany hasła…</p>
             </div>
-            <h2 className="mb-2 text-3xl font-light text-[#e5e4e2]">Ustaw nowe hasło</h2>
-            <p className="font-light text-[#e5e4e2]/60">Wprowadź nowe hasło dla swojego konta</p>
-          </div>
-
-          {error && !validToken ? (
-            <div className="space-y-6">
-              <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-4">
-                <p className="text-center text-sm text-red-400">{error}</p>
-              </div>
-
+          ) : success ? (
+            <div className="py-7 text-center">
+              <span className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-400/10 text-emerald-300">
+                <CheckCircle2 className="h-8 w-8" />
+              </span>
+              <h1 className="mt-6 text-2xl font-light">Hasło zostało zmienione</h1>
+              <p className="mt-3 text-sm leading-6 text-white/55">Za chwilę przejdziesz bezpośrednio do swojego panelu.</p>
+            </div>
+          ) : !linkReady ? (
+            <div className="py-7 text-center">
+              <span className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-red-400/10 text-red-200">
+                <LockKeyhole className="h-8 w-8" />
+              </span>
+              <h1 className="mt-6 text-2xl font-light">Nie można otworzyć linku</h1>
+              <p className="mt-3 text-sm leading-6 text-red-100/70">{error}</p>
               <button
-                onClick={() => router.push('/crm/login')}
-                className="w-full rounded-lg bg-[#d3bb73] py-3 font-medium text-[#1c1f33] transition-all duration-300 hover:bg-[#d3bb73]/90"
+                type="button"
+                onClick={() => router.replace('/login')}
+                className="mt-7 w-full rounded-xl bg-[#d3bb73] px-5 py-3.5 text-sm font-semibold text-[#20130f] shadow-[0_10px_30px_rgba(211,187,115,0.16)] transition hover:bg-[#dfca8b]"
               >
-                Powrót do logowania
+                Wyślij nowy link
               </button>
             </div>
           ) : (
             <>
-              <div className="mb-6 rounded-lg border border-blue-500/20 bg-blue-500/10 p-4">
-                <p className="mb-2 text-sm text-blue-200">
-                  Twoje hasło musi spełniać następujące wymagania:
-                </p>
-                <ul className="space-y-1 text-xs text-blue-200/80">
-                  <li>• Minimum 8 znaków</li>
-                  <li>• Co najmniej jedna wielka litera</li>
-                  <li>• Co najmniej jedna mała litera</li>
-                  <li>• Co najmniej jedna cyfra</li>
-                </ul>
+              <div className="mb-7">
+                <p className="text-xs uppercase tracking-[0.18em] text-[#d3bb73]">Reset hasła</p>
+                <h1 className="mt-2 text-3xl font-light">Ustaw nowe hasło</h1>
+                <p className="mt-3 text-sm leading-6 text-white/50">Minimum 8 znaków, w tym wielka i mała litera oraz cyfra.</p>
               </div>
 
-              <form onSubmit={handleResetPassword} className="space-y-6">
-                <div>
-                  <label
-                    htmlFor="newPassword"
-                    className="mb-2 block text-sm font-light text-[#e5e4e2]"
-                  >
-                    Nowe hasło
-                  </label>
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-[#d3bb73]/60" />
+              <form onSubmit={handleResetPassword} className="space-y-4">
+                <label className="block text-sm text-white/65">
+                  Nowe hasło
+                  <span className="relative mt-2 block">
+                    <LockKeyhole className="pointer-events-none absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#d3bb73]/55" />
                     <input
-                      id="newPassword"
                       type={showNewPassword ? 'text' : 'password'}
                       value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                      placeholder="Wprowadź nowe hasło"
+                      onChange={(event) => setNewPassword(event.target.value)}
+                      autoComplete="new-password"
                       required
-                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] py-3 pl-10 pr-12 text-[#e5e4e2] placeholder-[#e5e4e2]/40 transition-colors focus:border-[#d3bb73] focus:outline-none"
+                      className="w-full rounded-xl bg-[#100d13] py-3.5 pl-11 pr-12 text-white outline-none ring-1 ring-white/5 transition placeholder:text-white/20 focus:bg-[#131018] focus:ring-[#d3bb73]/35"
+                      placeholder="Wpisz nowe hasło"
                     />
                     <button
                       type="button"
-                      onClick={() => setShowNewPassword(!showNewPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[#e5e4e2]/40 transition-colors hover:text-[#e5e4e2]"
+                      onClick={() => setShowNewPassword((value) => !value)}
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-white/35 transition hover:text-white/70"
+                      aria-label={showNewPassword ? 'Ukryj hasło' : 'Pokaż hasło'}
                     >
-                      {showNewPassword ? (
-                        <EyeOff className="h-5 w-5" />
-                      ) : (
-                        <Eye className="h-5 w-5" />
-                      )}
+                      {showNewPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                     </button>
-                  </div>
-                </div>
+                  </span>
+                </label>
 
-                <div>
-                  <label
-                    htmlFor="confirmPassword"
-                    className="mb-2 block text-sm font-light text-[#e5e4e2]"
-                  >
-                    Potwierdź nowe hasło
-                  </label>
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-[#d3bb73]/60" />
+                <label className="block text-sm text-white/65">
+                  Powtórz hasło
+                  <span className="relative mt-2 block">
+                    <LockKeyhole className="pointer-events-none absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#d3bb73]/55" />
                     <input
-                      id="confirmPassword"
                       type={showConfirmPassword ? 'text' : 'password'}
                       value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      placeholder="Potwierdź nowe hasło"
+                      onChange={(event) => setConfirmPassword(event.target.value)}
+                      autoComplete="new-password"
                       required
-                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] py-3 pl-10 pr-12 text-[#e5e4e2] placeholder-[#e5e4e2]/40 transition-colors focus:border-[#d3bb73] focus:outline-none"
+                      className="w-full rounded-xl bg-[#100d13] py-3.5 pl-11 pr-12 text-white outline-none ring-1 ring-white/5 transition placeholder:text-white/20 focus:bg-[#131018] focus:ring-[#d3bb73]/35"
+                      placeholder="Wpisz hasło ponownie"
                     />
                     <button
                       type="button"
-                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[#e5e4e2]/40 transition-colors hover:text-[#e5e4e2]"
+                      onClick={() => setShowConfirmPassword((value) => !value)}
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-white/35 transition hover:text-white/70"
+                      aria-label={showConfirmPassword ? 'Ukryj hasło' : 'Pokaż hasło'}
                     >
-                      {showConfirmPassword ? (
-                        <EyeOff className="h-5 w-5" />
-                      ) : (
-                        <Eye className="h-5 w-5" />
-                      )}
+                      {showConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                     </button>
-                  </div>
-                </div>
+                  </span>
+                </label>
 
-                {error && (
-                  <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-3">
-                    <p className="text-center text-sm text-red-400">{error}</p>
-                  </div>
-                )}
+                {error && <p className="rounded-xl bg-red-400/10 px-4 py-3 text-sm leading-5 text-red-200">{error}</p>}
 
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full rounded-lg bg-[#d3bb73] py-3 font-medium text-[#1c1f33] transition-all duration-300 hover:bg-[#d3bb73]/90 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#d3bb73] px-5 py-3.5 text-sm font-semibold text-[#20130f] shadow-[0_10px_30px_rgba(211,187,115,0.16)] transition hover:bg-[#dfca8b] disabled:cursor-not-allowed disabled:opacity-55"
                 >
-                  {loading ? 'Zmieniam hasło...' : 'Zmień hasło'}
+                  {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+                  Zapisz nowe hasło
                 </button>
               </form>
             </>
           )}
         </div>
-      </div>
-    </div>
+      </section>
+    </main>
   );
 }

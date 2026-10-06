@@ -1,5 +1,7 @@
 'use client';
 
+import SystemBadge from '@/components/UI/SystemBadge';
+
 import { Mail, Phone, Globe, Search, Loader2 } from 'lucide-react';
 import OrganizationLocationPicker from '@/components/crm/contacts/organization/OrganizationLocationPicker';
 import OrganizationRepresentatives from '@/components/crm/contacts/organization/OrganizationRepresentatives';
@@ -89,7 +91,8 @@ interface OrganizationDetailsSectionProps {
   loadingGUS: boolean;
   registryLookup: GUSCompanyData | null;
   handleFetchFromGUS: () => void;
-  onOpenAddLocation: () => void;
+  onOpenAddLocation?: () => void;
+  onOpenHotelSpaces?: () => void;
   primaryContact: any;
   legalRepresentative: any;
   decisionMakers: DecisionMaker[];
@@ -117,6 +120,7 @@ export default function OrganizationDetailsSection({
   registryLookup,
   handleFetchFromGUS,
   onOpenAddLocation,
+  onOpenHotelSpaces,
   primaryContact,
   legalRepresentative,
   decisionMakers,
@@ -124,6 +128,7 @@ export default function OrganizationDetailsSection({
   onRepresentativesUpdate,
 }: OrganizationDetailsSectionProps) {
   const currentLegalForm = editedData.legal_form ?? organization.legal_form ?? '';
+  const isHotel = (editMode ? editedData.business_type ?? organization.business_type : organization.business_type) === 'hotel';
   const legalFormRequiresKrs = requiresKrsForLegalForm(currentLegalForm);
   const renderFieldError = (field: keyof OrganizationFormErrors) => {
     if (!formErrors[field]) return null;
@@ -483,20 +488,27 @@ export default function OrganizationDetailsSection({
                 <option value="archived">Zarchiwizowany</option>
               </select>
             ) : (
-              <p className="text-white">{organization.status}</p>
+              <SystemBadge value={organization.status} />
             )}
           </div>
         </div>
       </div>
 
-      <div className="rounded-lg border border-gray-700 bg-[#1a1d2e] p-6">
+      <div className="rounded-lg bg-[#1a1d2e] p-6">
+        <h2 className="mb-3 text-lg uppercase">{isHotel ? 'Lokalizacja hotelu i przestrzenie' : 'Powiązana lokalizacja'}</h2>
         <OrganizationLocationPicker
           organizationId={organization.id}
-          currentLocationId={organization.location_id}
+          currentLocationId={editMode && editedData.location_id !== undefined ? editedData.location_id : organization.location_id}
           onLocationChange={(locationId) => updateField('location_id', locationId)}
           editMode={editMode}
           onOpenAddLocation={onOpenAddLocation}
+          required={isHotel}
+          error={formErrors.location_id}
         />
+        {isHotel && !editMode && <div className="mt-3 space-y-2 text-sm">
+          <p className="text-white/60">Sale, wymiary, zasilanie, rzuty i zdjęcia pochodzą z powiązanej lokalizacji. Zmiany są wspólne dla CRM i portalu sprzedawcy.</p>
+          {onOpenHotelSpaces && <button type="button" onClick={onOpenHotelSpaces} className="rounded-lg bg-white/5 px-4 py-2 text-[#d3bb73] hover:bg-white/10">Sale i przestrzenie hotelu →</button>}
+        </div>}
       </div>
 
       <div className="rounded-lg border border-gray-700 bg-[#1a1d2e] p-6">

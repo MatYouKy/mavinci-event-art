@@ -1,3 +1,5 @@
+import { getPaymentAwareInvoiceFooterNote } from '@/lib/invoices/paymentAwareFooterNote';
+
 export type FA3VatCode = '23' | '8' | '5' | '0 KR' | '0 WDT' | '0 EX' | 'zw' | 'np I' | 'np II' | 'oo';
 
 export type FA3VatSummary = {
@@ -64,6 +66,7 @@ export type FA3PreparedInvoice = {
     email?: string;
     phone?: string;
     customerNumber?: string;
+    /** Opcjonalny klucz FA(3) IDNabywcy (do 32 znaków), nie nazwa ani alias. */
     internalId?: string;
     isJst: boolean;
   };
@@ -194,6 +197,20 @@ function normalizeCustomerToken(value?: string | null): string | undefined {
   return normalized || undefined;
 }
 
+function normalizeBuyerInternalId(value?: string | null): string | undefined {
+  // xs:token: normalizujemy wyłącznie białe znaki XML, bez obcinania klucza.
+  const normalized = (value || '').replace(/[\t\n\r ]+/g, ' ').replace(/^ +| +$/g, '');
+  return normalized || undefined;
+}
+
+function buyerInternalIdValidationError(value?: string | null): string | undefined {
+  const normalized = normalizeBuyerInternalId(value);
+  if (normalized && Array.from(normalized).length > 32) {
+    return 'Identyfikator nabywcy KSeF (IDNabywcy) może mieć maksymalnie 32 znaki. To opcjonalny klucz, nie nazwa organizacji. Pełnej nazwy nabywcy nie należy skracać.';
+  }
+  return undefined;
+}
+
 function normalizeKsefText(value?: string | null): string | undefined {
   const normalized = (value || '')
     .replace(/<br\s*\/?>/gi, ' ')
@@ -302,7 +319,10 @@ function buildPodmiot2Extra(data: FA3PreparedInvoice): string {
   const email = data.buyer.email?.trim();
   const phone = data.buyer.phone?.trim();
   const customerNumber = data.buyer.customerNumber?.trim();
-  const internalId = data.buyer.internalId?.trim();
+  const internalId = normalizeBuyerInternalId(data.buyer.internalId);
+  const internalIdError = buyerInternalIdValidationError(internalId);
+  // Chronimy także bezpośrednich użytkowników generatora, poza ścieżką walidacji API.
+  if (internalIdError) throw new Error(internalIdError);
 
   const chunks: string[] = [];
 
@@ -708,9 +728,9 @@ export function prepareFA3Invoice(invoice: any, organization: any): FA3PreparedI
       customerNumber: normalizeCustomerToken(
         pickFirstNonEmpty(organization?.alias, organization?.krs, organization?.regon),
       ),
-      internalId: normalizeCustomerToken(
-        pickFirstNonEmpty(organization?.alias, organization?.krs, organization?.regon),
-      ),
+      // CRM nie przechowuje osobnego klucza powiązania danych nabywcy w korektach.
+      // IDNabywcy jest fakultatywne: nie zastępujemy go nazwą, aliasem, KRS ani REGON.
+      internalId: undefined,
       isJst: organization?.is_jst ?? false,
       isGv: organization?.is_gv ?? false,
     },
@@ -734,7 +754,7 @@ export function prepareFA3Invoice(invoice: any, organization: any): FA3PreparedI
       issueDate: invoice?.issue_date || '',
       saleDate: invoice?.sale_date || '',
       paymentDueDate: invoice?.payment_due_date || '',
-      paymentDate: invoice?.paid_at || invoice?.payment_date || null,
+      paymentDate: invoice?.paid_at || invoice?.paid_date || invoice?.payment_date || null,
       paidAmount: Number(invoice?.paid_amount ?? 0),
       paymentStatus: invoice?.payment_status ?? null,
       paymentMethod: pickFirstNonEmpty(invoice?.payment_method) || 'przelew',
@@ -761,7 +781,13 @@ export function prepareFA3Invoice(invoice: any, organization: any): FA3PreparedI
           organization?.bankSwiftCode,
         ),
       ),
-      footerNote: normalizeKsefText(invoice?.footer_note),
+      footerNote: normalizeKsefText(getPaymentAwareInvoiceFooterNote(invoice?.footer_note, {
+        paymentStatus: invoice?.payment_status || (invoice?.status === 'paid' ? 'paid' : 'unpaid'),
+        amountDue: isFinalInvoice && settlementSummary
+          ? settlementSummary.remainingGross
+          : Number(invoice?.total_gross ?? 0),
+        paidAmount: Number(invoice?.paid_amount ?? 0),
+      })),
       correction:
         invoice?.invoice_type === 'corrective'
           ? {
@@ -808,6 +834,9 @@ export function validatePreparedFA3Invoice(
   if (!data.buyer.street) errors.push('Brak ulicy nabywcy');
   if (!data.buyer.postalCode) errors.push('Brak kodu pocztowego nabywcy');
   if (!data.buyer.city) errors.push('Brak miasta nabywcy');
+
+  const internalIdError = buyerInternalIdValidationError(data.buyer.internalId);
+  if (internalIdError) errors.push(internalIdError);
 
   if (!data.invoice.items.length) {
     errors.push('Brak pozycji faktury');

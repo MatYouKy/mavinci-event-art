@@ -319,44 +319,66 @@ export const buildEquipmentChecklistHtml = ({
 <head>
   <meta charset="UTF-8" />
   <title>Checklista sprzętu – ${esc(eventName)}</title>
-  <style>
+  <style data-equipment-checklist-styles="1">
+    /* html2pdf attaches a clone to the CRM document before pagination.
+       Keep the print palette and typography independent of its dark theme. */
+    #equipment-checklist-print, #equipment-checklist-print * {
+      color: #111827 !important;
+      -webkit-text-fill-color: currentColor !important;
+      opacity: 1 !important;
+      text-shadow: none !important;
+      filter: none !important;
+      mix-blend-mode: normal !important;
+      font-family: Arial, Helvetica, sans-serif !important;
+      background-image: none !important;
+    }
+
+    #equipment-checklist-print {
+      background-color: #fff !important;
+      color-scheme: light;
+      text-align: left;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+
     @page { size: A4; margin: 10mm 10mm 18mm 10mm; }
 
-    html, body {
+    #equipment-checklist-print {
       margin: 0;
       padding: 0;
     }
 
-    body {
+    #equipment-checklist-print {
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       color: #111827;
       font-size: 9.5px;
       line-height: 1.2;
     }
 
-    .page {
+    #equipment-checklist-print .page {
       min-height: 252mm;
       display: flex;
       flex-direction: column;
       box-sizing: border-box;
     }
 
-    .page-break {
+    #equipment-checklist-print .page-break {
       break-before: page;
       page-break-before: always;
     }
 
-    .page-top-spacer {
+    #equipment-checklist-print .page-top-spacer {
       height: 4mm;
     }
 
-    .cb {
+    #equipment-checklist-print .cb {
       width: 12px;
       height: 12px;
       border: 1.6px solid #111;
     }
 
-    .header {
+    #equipment-checklist-print .header {
       display: flex;
       justify-content: space-between;
       gap: 12px;
@@ -364,21 +386,21 @@ export const buildEquipmentChecklistHtml = ({
       margin-bottom: 8px;
     }
 
-    h1 {
+    #equipment-checklist-print h1 {
       font-size: 16px;
       margin: 0 0 6px;
       font-weight: 700;
     }
 
-    .meta {
+    #equipment-checklist-print .meta {
       font-size: 10px;
     }
 
-    .meta-row {
+    #equipment-checklist-print .meta-row {
       margin-bottom: 2px;
     }
 
-    .right {
+    #equipment-checklist-print .right {
       display: flex;
       flex-direction: column;
       align-items: flex-end;
@@ -386,7 +408,7 @@ export const buildEquipmentChecklistHtml = ({
       min-width: 160px;
     }
 
-    .logo {
+    #equipment-checklist-print .logo {
       max-width: 105px;
       max-height: 34mm;
       height: auto;
@@ -394,30 +416,31 @@ export const buildEquipmentChecklistHtml = ({
       object-fit: contain;
     }
 
-    table {
+    #equipment-checklist-print table {
       border-collapse: separate;
       border-spacing: 0;
       width: 100%;
       table-layout: fixed;
     }
 
-    thead {
+    #equipment-checklist-print thead {
       display: table-header-group;
     }
 
-    th, td {
+    #equipment-checklist-print th,
+    #equipment-checklist-print td {
       vertical-align: top;
       padding: 3px 4px;
       border-right: 1px solid #333;
       border-bottom: 1px solid #333;
     }
 
-    th:first-child,
-    td:first-child {
+    #equipment-checklist-print th:first-child,
+    #equipment-checklist-print td:first-child {
       border-left: 1px solid #333;
     }
 
-    thead th {
+    #equipment-checklist-print thead th {
       background: #f3f4f6;
       font-size: 9px;
       letter-spacing: 0.06em;
@@ -426,40 +449,40 @@ export const buildEquipmentChecklistHtml = ({
       border-top: 1px solid #333;
     }
 
-    tbody tr:first-child td {
+    #equipment-checklist-print tbody tr:first-child td {
       border-top: 1px solid #333;
     }
 
-    td.name {
+    #equipment-checklist-print td.name {
       padding-top: 1px;
       padding-bottom: 8px;
       line-height: 1.05;
     }
 
-    tr.row {
+    #equipment-checklist-print tr.row {
       break-inside: avoid;
       page-break-inside: avoid;
     }
 
-    .lp {
+    #equipment-checklist-print .lp {
       width: 9mm;
       text-align: center;
     }
 
-    .qty {
+    #equipment-checklist-print .qty {
       width: 9mm;
       text-align: center;
       font-weight: 700;
     }
 
-    .tick {
+    #equipment-checklist-print .tick {
       width: 12mm;
       padding: 0;
       text-align: center;
       vertical-align: middle;
     }
 
-    .tick .cb {
+    #equipment-checklist-print .tick .cb {
       display: inline-block;
       width: 12px;
       height: 12px;
@@ -467,43 +490,43 @@ export const buildEquipmentChecklistHtml = ({
       box-sizing: border-box;
     }
 
-    .notes {
+    #equipment-checklist-print .notes {
       width: 26mm;
     }
 
-    .bm {
+    #equipment-checklist-print .bm {
       font-weight: 800;
       line-height: 1.05;
       margin: 0;
     }
 
-    .nm {
+    #equipment-checklist-print .nm {
       margin-top: 1px;
       line-height: 1.05;
       margin: 0;
     }
 
-    .name > div {
+    #equipment-checklist-print .name > div {
       margin: 0;
       display: block;
       padding: 0;
     }
 
-    .muted {
-      color: #6b7280;
+    #equipment-checklist-print .muted {
+      color: #374151;
     }
 
-    .tag {
-      color: #6b7280;
+    #equipment-checklist-print .tag {
+      color: #374151;
       font-weight: 600;
       font-size: 9px;
     }
 
-    tr.kit td {
+    #equipment-checklist-print tr.kit td {
       background: #fafafa;
     }
 
-    .external-items-note {
+    #equipment-checklist-print .external-items-note {
       margin-top: 6mm;
       padding: 3mm 4mm;
       border: 1px solid #d97706;
@@ -513,7 +536,7 @@ export const buildEquipmentChecklistHtml = ({
       page-break-inside: avoid;
     }
 
-    .external-title {
+    #equipment-checklist-print .external-title {
       font-size: 9px;
       font-weight: 700;
       margin-bottom: 2mm;
@@ -522,7 +545,7 @@ export const buildEquipmentChecklistHtml = ({
       letter-spacing: 0.04em;
     }
 
-    .external-list {
+    #equipment-checklist-print .external-list {
       margin: 0;
       padding: 0 0 0 4mm;
       font-size: 9px;
@@ -530,11 +553,11 @@ export const buildEquipmentChecklistHtml = ({
       color: #78350f;
     }
 
-    .external-list li {
+    #equipment-checklist-print .external-list li {
       margin-bottom: 1px;
     }
 
-    .signatures {
+    #equipment-checklist-print .signatures {
       margin-top: 16mm;
       height: 10mm;
       display: flex;
@@ -544,36 +567,36 @@ export const buildEquipmentChecklistHtml = ({
       page-break-inside: avoid;
     }
 
-    .page-footer-meta {
+    #equipment-checklist-print .page-footer-meta {
       margin-top: auto;
       padding-top: 4mm;
       padding-bottom: 2mm;
       text-align: right;
       font-size: 9px;
-      color: #6b7280;
+      color: #374151;
     }
 
-    .page-number {
+    #equipment-checklist-print .page-number {
       border-top: 1px solid #d1d5db;
       padding-top: 2mm;
       box-sizing: border-box;
     }
 
-    .signature-box {
+    #equipment-checklist-print .signature-box {
       flex: 1;
       text-align: center;
     }
 
-    .signature-line {
+    #equipment-checklist-print .signature-line {
       margin-top: 4mm;
       border-top: 1px solid #333;
       font-size: 9px;
-      color: #666;
+      color: #374151;
     }
   </style>
 </head>
 <body>
-  ${pagesHtml}
+  <div id="equipment-checklist-print">${pagesHtml}</div>
 </body>
 </html>`;
 };

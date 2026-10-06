@@ -1,3 +1,5 @@
+import { utcToLocalDatetimeString, localDatetimeStringToUTC } from '@/lib/utils/dateTimeUtils';
+import { EventRooms } from '@/components/crm/locations/EventRooms';
 import {
   Building2,
   Calendar,
@@ -29,6 +31,7 @@ import { supabase } from '@/lib/supabase/browser';
 import EventBillingContextCard from './EventBillingContextCard';
 
 interface EventsDetailsTabProps {
+  canViewCommercials?: boolean;
   hasLimitedAccess: boolean;
   canManageTeam: boolean;
   isAdmin: boolean;
@@ -41,6 +44,7 @@ interface EventsDetailsTabProps {
 }
 
 export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
+  canViewCommercials = false,
   hasLimitedAccess,
   contact,
   organization,
@@ -72,9 +76,63 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
   }, [initialEvent]);
 
   const [showEditClientModal, setShowEditClientModal] = useState(false);
+  const [editingRooms, setEditingRooms] = useState(false);
+  const [editingDates, setEditingDates] = useState(false);
+  const [dateDraft, setDateDraft] = useState({ start: '', end: '' });
+  const [dateError, setDateError] = useState('');
+  const [savingDates, setSavingDates] = useState(false);
+  const dateSaveRef = React.useRef(false);
+  useEffect(() => {
+    setEditingDates(false);
+    setDateError('');
+  }, [initialEvent.id]);
+  useEffect(() => setEditingRooms(false), [initialEvent.id, initialEvent.location_id]);
   const router = useRouter();
   const canSeeFullDetails = isAdmin || isCreator || !hasLimitedAccess;
   const canEditEventDetails = isAdmin || isCreator || canEventManage;
+
+  const beginDateEdit = () => {
+    setDateDraft({
+      start: utcToLocalDatetimeString(event.event_date),
+      end: utcToLocalDatetimeString(event.event_end_date),
+    });
+    setDateError('');
+    setEditingDates(true);
+  };
+
+  const saveDates = async (submitEvent: React.FormEvent<HTMLFormElement>) => {
+    submitEvent.preventDefault();
+    if (!canEditEventDetails || dateSaveRef.current) return;
+    const start = localDatetimeStringToUTC(dateDraft.start);
+    const end = localDatetimeStringToUTC(dateDraft.end);
+    if (!start || utcToLocalDatetimeString(start) !== dateDraft.start ||
+      (dateDraft.end && (!end || utcToLocalDatetimeString(end) !== dateDraft.end))) {
+      setDateError('Podaj prawidłową datę i godzinę.');
+      return;
+    }
+    if (end && new Date(end).getTime() <= new Date(start).getTime()) {
+      setDateError('Zakończenie musi być późniejsze niż rozpoczęcie wydarzenia.');
+      return;
+    }
+    dateSaveRef.current = true;
+    setSavingDates(true);
+    setDateError('');
+    try {
+      const dates = { event_date: start, event_end_date: end };
+      const saved = await updateEvent(dates);
+      if (!saved) {
+        setDateError('Nie udało się zapisać terminu. Spróbuj ponownie.');
+        return;
+      }
+      setEvent((previous) => ({ ...previous, ...dates }));
+      setEditingDates(false);
+      await refetch(true);
+      router.refresh();
+    } finally {
+      dateSaveRef.current = false;
+      setSavingDates(false);
+    }
+  };
 
   const handleUpdateDescription = async (description: string) => {
     // optimistic UI
@@ -210,38 +268,65 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
               </div>
             </div>
           </div>
-          <div className="flex items-start gap-3">
-            <Calendar className="mt-0.5 h-5 w-5 text-[#d3bb73]" />
-            <div>
-              <p className="text-sm text-[#e5e4e2]/60">Data rozpoczęcia</p>
-              <p className="text-[#e5e4e2]">
-                {new Date(event.event_date).toLocaleString('pl-PL', {
-                  dateStyle: 'full',
-                  timeStyle: 'short',
-                })}
-              </p>
-            </div>
-          </div>
-
-          {event.event_end_date && (
-            <div className="flex items-start gap-3">
-              <Clock className="mt-0.5 h-5 w-5 text-[#d3bb73]" />
-              <div>
-                <p className="text-sm text-[#e5e4e2]/60">Data zakończenia</p>
-                <p className="text-[#e5e4e2]">
-                  {new Date(event.event_end_date).toLocaleString('pl-PL', {
-                    dateStyle: 'full',
-                    timeStyle: 'short',
-                  })}
-                </p>
+          {editingDates && canEditEventDetails ? (
+            <form onSubmit={saveDates} className="rounded-lg bg-white/5 p-3">
+              <fieldset disabled={savingDates} className="space-y-3">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="block text-sm text-[#e5e4e2]/60">
+                    Data rozpoczęcia
+                    <input type="datetime-local" lang="pl" required value={dateDraft.start}
+                      onChange={(e) => { setDateDraft((previous) => ({ ...previous, start: e.target.value })); setDateError(''); }}
+                      className="mt-1 w-full rounded-lg border border-white/10 bg-[#250914] px-3 py-2 text-[#e5e4e2]" />
+                  </label>
+                  <label className="block text-sm text-[#e5e4e2]/60">
+                    Data zakończenia (opcjonalnie)
+                    <input type="datetime-local" lang="pl" value={dateDraft.end}
+                      onChange={(e) => { setDateDraft((previous) => ({ ...previous, end: e.target.value })); setDateError(''); }}
+                      className="mt-1 w-full rounded-lg border border-white/10 bg-[#250914] px-3 py-2 text-[#e5e4e2]" />
+                  </label>
+                </div>
+                {dateError && <p role="alert" className="text-sm text-red-300">{dateError}</p>}
+                <div className="flex items-center gap-3">
+                  <button type="submit" className="rounded-lg bg-[#d3bb73] px-3 py-2 text-sm text-[#250914]">{savingDates ? 'Zapisywanie…' : 'Zapisz termin'}</button>
+                  <button type="button" onClick={() => { setEditingDates(false); setDateError(''); }} className="rounded-lg px-3 py-2 text-sm text-[#e5e4e2]/70 hover:bg-white/5">Anuluj</button>
+                </div>
+              </fieldset>
+            </form>
+          ) : (
+            <>
+              <div className="flex items-start gap-3">
+                <Calendar className="mt-0.5 h-5 w-5 text-[#d3bb73]" />
+                <div>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm text-[#e5e4e2]/60">Data rozpoczęcia</p>
+                    {canEditEventDetails && <button type="button" onClick={beginDateEdit} className="inline-flex items-center gap-1 text-xs text-[#d3bb73] hover:underline" aria-label="Edytuj termin wydarzenia"><Edit className="h-3 w-3" /> Edytuj</button>}
+                  </div>
+                  <p className="text-[#e5e4e2]">{new Date(event.event_date).toLocaleString('pl-PL', { dateStyle: 'full', timeStyle: 'short' })}</p>
+                </div>
               </div>
-            </div>
+              {event.event_end_date && (
+                <div className="flex items-start gap-3">
+                  <Clock className="mt-0.5 h-5 w-5 text-[#d3bb73]" />
+                  <div>
+                    <p className="text-sm text-[#e5e4e2]/60">Data zakończenia</p>
+                    <p className="text-[#e5e4e2]">{new Date(event.event_end_date).toLocaleString('pl-PL', { dateStyle: 'full', timeStyle: 'short' })}</p>
+                  </div>
+                </div>
+              )}
+            </>
           )}
 
           <div className="flex items-start gap-3">
             <MapPin className="mt-0.5 h-5 w-5 text-[#d3bb73]" />
             <div className="flex-1">
-              <p className="text-sm text-[#e5e4e2]/60">Lokalizacja</p>
+              <div className="flex items-center gap-2">
+                <p className="text-sm text-[#e5e4e2]/60">Lokalizacja</p>
+                {canEditEventDetails && event.location_id && !editingRooms && (
+                  <button type="button" onClick={() => setEditingRooms(true)} className="inline-flex items-center gap-1 text-xs text-[#d3bb73] hover:underline" aria-label="Edytuj sale realizacji">
+                    <Edit className="h-3 w-3" /> Edytuj
+                  </button>
+                )}
+              </div>
               {location?.name ? (
                 <div className="group relative inline-block">
                   <button
@@ -283,6 +368,14 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
               ) : (
                 <p className="text-[#e5e4e2]">Brak lokalizacji</p>
               )}
+              <EventRooms
+                key={`${event.id}:${event.location_id}:${event.location_room_ids?.join(',')}:${event.stage_room_id}`}
+                eventId={event.id}
+                locationId={event.location_id || null}
+                canEdit={canEditEventDetails}
+                editing={editingRooms}
+                onClose={() => setEditingRooms(false)}
+              />
             </div>
           </div>
 
@@ -498,7 +591,7 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
           onSave={handleChangeRealizationCompany}
         />
       )}
-      {hasEventBillingSchema && (
+      {canViewCommercials && hasEventBillingSchema && (
         <EventBillingContextCard
           eventId={event.id}
           clientOrganizationId={event.organization_id || null}

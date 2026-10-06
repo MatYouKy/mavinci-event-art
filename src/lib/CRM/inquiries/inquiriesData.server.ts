@@ -4,6 +4,9 @@ import { cookies } from 'next/headers';
 import { createSupabaseServerClient } from '@/lib/supabase/server.app';
 
 export type InquiryDetails = {
+  category?: string | null;
+  subject?: string | null;
+  source_message_type?: string | null;
   source_kind?: 'contact_form' | 'webhook' | string;
   source_name?: string | null;
   source_slug?: string | null;
@@ -84,7 +87,7 @@ export async function fetchInquiriesServer(): Promise<InquiryListItem[]> {
         inquiry_owner:employees!tasks_inquiry_owner_id_fkey(id, name, surname, avatar_url, sales_team_id, is_sales_team_manager)
       `,
     )
-    .eq('is_inquiry', true)
+    .eq('is_inquiry', true).is('archived_at', null)
     .order('created_at', { ascending: false });
 
   if (error) throw error;

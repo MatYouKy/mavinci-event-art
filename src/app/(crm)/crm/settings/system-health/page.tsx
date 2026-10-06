@@ -367,7 +367,7 @@ function HealthIssueRow({
                   <div className="mt-3 rounded-md border border-[#e5e4e2]/5 bg-[#0a0d1a] p-2.5">
                     <div className="flex items-start gap-2">
                       <code className="min-w-0 flex-1 whitespace-pre-wrap break-all text-[11px] leading-5 text-[#e5e4e2]/55">{item.sql}</code>
-                      <button type="button" onClick={() => void copySql(item)} className="inline-flex shrink-0 items-center gap-1 rounded px-2 py-1 text-[11px] text-[#d3bb73] hover:bg-[#d3bb73]/10">
+                      <button data-crm-action="secondary" type="button" onClick={() => void copySql(item)} className="inline-flex shrink-0 items-center gap-1 rounded px-2 py-1 text-[11px] text-[#d3bb73] hover:bg-[#d3bb73]/10">
                         <ClipboardCopy className="h-3 w-3" />{copiedSql === item.id ? 'Skopiowano' : 'Kopiuj SQL'}
                       </button>
                     </div>

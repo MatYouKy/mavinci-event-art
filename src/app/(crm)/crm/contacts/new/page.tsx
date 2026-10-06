@@ -1,6 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import {
+  ContactValidationField,
+  collectValidationErrors,
+  personContactSchema,
+} from '@/components/crm/contacts/contactValidation';
 import { useRouter } from 'next/navigation';
 import {
   Building2,
@@ -27,10 +32,13 @@ import {
   type GUSCompanyData,
 } from '@/lib/gus';
 import OrganizationLocationPicker from '@/components/crm/contacts/organization/OrganizationLocationPicker';
+import AddLocationModal from '@/components/crm/AddLocationModal';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import OrganizationRegistryLookupCard from '@/components/crm/contacts/organization/OrganizationRegistryLookupCard';
 import {
   OrganizationFormValues,
   validateOrganizationForm,
+  organizationValidationSchema,
 } from '@/components/crm/contacts/organization/organizationValidation';
 import { formatNip } from '@/components/crm/contacts/organization/organizationForm.helpers';
 import { legalFormLabels } from '@/utils/labels/legalFormLabels';
@@ -52,11 +60,12 @@ const representationTypeLabels = {
   other: 'Inny sposób',
 } as const;
 
-const isMissingAlternativeContactNameColumn = (error?: {
-  code?: string;
-  message?: string;
-} | null) =>
-  error?.code === 'PGRST204' && error.message?.includes('alternative_contact_name');
+const isMissingAlternativeContactNameColumn = (
+  error?: {
+    code?: string;
+    message?: string;
+  } | null,
+) => error?.code === 'PGRST204' && error.message?.includes('alternative_contact_name');
 
 type ContactType = 'organization' | 'contact' | 'subcontractor' | 'individual';
 type BusinessType = 'company' | 'hotel' | 'restaurant' | 'venue' | 'freelancer' | 'other';
@@ -91,6 +100,8 @@ interface NewContactForm {
 export default function NewContactPage() {
   const router = useRouter();
   const { showSnackbar } = useSnackbar();
+  const { canManageModule } = useCurrentEmployee();
+  const [showAddLocationModal, setShowAddLocationModal] = useState(false);
 
   const [contactType, setContactType] = useState<ContactType | null>(null);
   const [loading, setLoading] = useState(false);
@@ -98,6 +109,9 @@ export default function NewContactPage() {
   const [registryLookup, setRegistryLookup] = useState<GUSCompanyData | null>(null);
   const [loadingContacts, setLoadingContacts] = useState(false);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  const [submitted, setSubmitted] = useState(false);
+  const [personSubmitted, setPersonSubmitted] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
 
   const [availableContacts, setAvailableContacts] = useState<ExistingContact[]>([]);
   const [selectedContactIds, setSelectedContactIds] = useState<string[]>([]);
@@ -182,6 +196,75 @@ export default function NewContactPage() {
 
   const [specializationInput, setSpecializationInput] = useState('');
 
+  const getOrganizationValues = (): OrganizationFormValues => ({
+    name: formData.name,
+    alias: formData.alias,
+    business_type: formData.businessType,
+    nip: formData.nip,
+    legal_form: formData.legalForm,
+    krs: formData.krs,
+    regon: formData.regon,
+    address: formData.address,
+    city: formData.city,
+    postal_code: formData.postalCode,
+    country: formData.country,
+    email: formData.email,
+    phone: formData.phone,
+    website: formData.website,
+    location_id: formData.location_id,
+    representation_type: formData.representationType || null,
+    representation_rule: formData.representationRule,
+    representation_basis: formData.representationBasis,
+    representation_verified_at: formData.representationVerifiedAt,
+    legal_representative_id: formData.legalRepresentativeId || null,
+    legal_representative_title: formData.legalRepresentativeTitle,
+  });
+
+  const getPersonErrors = (inline = false) =>
+    collectValidationErrors(
+      personContactSchema,
+      {
+        firstName: newContact.firstName,
+        lastName: newContact.lastName,
+        email: newContact.email,
+        phone: newContact.phone,
+        mobile: newContact.mobile,
+        businessPhone: !inline && contactType === 'contact' ? newContact.businessPhone : '',
+        nip: !inline && contactType === 'contact' ? newContact.nip : '',
+        postalCode: inline ? '' : formData.postalCode,
+      },
+      'person.',
+    );
+
+  const showValidationErrors = (errors: Record<string, string>) => {
+    setFormErrors(errors);
+    requestAnimationFrame(() => {
+      const field = formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]');
+      field?.focus({ preventScroll: true });
+      field?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+    showSnackbar('Popraw pola oznaczone na czerwono — wyjaśnienia znajdziesz pod polami.', 'error');
+  };
+
+  useEffect(() => {
+    setSubmitted(false);
+    setPersonSubmitted(false);
+    setFormErrors({});
+  }, [contactType]);
+
+  useEffect(() => {
+    const organization = contactType === 'organization' || contactType === 'subcontractor';
+    const errors = submitted
+      ? organization
+        ? collectValidationErrors(organizationValidationSchema, getOrganizationValues())
+        : getPersonErrors()
+      : {};
+    if (organization && personSubmitted && showNewContactForm) {
+      Object.assign(errors, getPersonErrors(true));
+    }
+    setFormErrors(errors);
+  }, [submitted, personSubmitted, formData, newContact, contactType, showNewContactForm]);
+
   useEffect(() => {
     if (contactType === 'organization' || contactType === 'subcontractor') {
       fetchAvailableContacts();
@@ -217,8 +300,10 @@ export default function NewContactPage() {
   };
 
   const handleAddNewContact = async () => {
-    if (!newContact.firstName.trim() || !newContact.lastName.trim()) {
-      showSnackbar('Wprowadź imię i nazwisko kontaktu', 'error');
+    setPersonSubmitted(true);
+    const errors = getPersonErrors(true);
+    if (Object.keys(errors).length) {
+      showValidationErrors({ ...formErrors, ...errors });
       return;
     }
 
@@ -244,6 +329,7 @@ export default function NewContactPage() {
       setAvailableContacts([...availableContacts, data]);
       setSelectedContactIds([...selectedContactIds, data.id]);
       setShowNewContactForm(false);
+      setPersonSubmitted(false);
       setNewContact({
         ...newContact,
         firstName: '',
@@ -298,9 +384,7 @@ export default function NewContactPage() {
         name: data.name || prev.name,
         alias: data.alias || prev.alias,
         regon: data.regon || prev.regon,
-        krs: requiresKrsForLegalForm(data.legalForm || prev.legalForm)
-          ? data.krs || prev.krs
-          : '',
+        krs: requiresKrsForLegalForm(data.legalForm || prev.legalForm) ? data.krs || prev.krs : '',
         legalForm: data.legalForm || prev.legalForm,
         address: data.address || prev.address,
         city: data.city || prev.city,
@@ -312,12 +396,9 @@ export default function NewContactPage() {
         representationType: data.representationType || prev.representationType,
         representationRule: data.representationRule || prev.representationRule,
         representationBasis: data.representationBasis || prev.representationBasis,
-        representationVerifiedAt:
-          data.representationVerifiedAt || prev.representationVerifiedAt,
-        legalRepresentativeId:
-          representativeMatch?.contact.id || prev.legalRepresentativeId,
-        legalRepresentativeTitle:
-          representativeMatch?.title || prev.legalRepresentativeTitle,
+        representationVerifiedAt: data.representationVerifiedAt || prev.representationVerifiedAt,
+        legalRepresentativeId: representativeMatch?.contact.id || prev.legalRepresentativeId,
+        legalRepresentativeTitle: representativeMatch?.title || prev.legalRepresentativeTitle,
       }));
 
       setFormErrors((prev) => ({
@@ -340,7 +421,7 @@ export default function NewContactPage() {
             ? `Pobrano dane GUS oraz sposób reprezentacji i ${representativesCount} osób z KRS`
             : registryRolesCount > 0
               ? `Pobrano dane GUS i KRS oraz ${registryRolesCount} role w reprezentacji`
-            : 'Dane pobrane z GUS',
+              : 'Dane pobrane z GUS',
           'success',
         );
       } else if (data.source === 'mf_whitelist') {
@@ -435,64 +516,42 @@ export default function NewContactPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-  
+    setSubmitted(true);
+
     if (!contactType) {
       showSnackbar('Wybierz typ kontaktu', 'error');
       return;
     }
-  
+
     let validatedOrganizationData: OrganizationFormValues | null = null;
 
     try {
       setLoading(true);
-  
+
       if (contactType === 'organization' || contactType === 'subcontractor') {
-        const validationResult = await validateOrganizationForm({
-          name: formData.name,
-          alias: formData.alias,
-          business_type: formData.businessType,
-          nip: formData.nip,
-          legal_form: formData.legalForm,
-          krs: formData.krs,
-          regon: formData.regon,
-          address: formData.address,
-          city: formData.city,
-          postal_code: formData.postalCode,
-          country: formData.country,
-          email: formData.email,
-          phone: formData.phone,
-          website: formData.website,
-          location_id: formData.location_id,
-          representation_type: formData.representationType || null,
-          representation_rule: formData.representationRule,
-          representation_basis: formData.representationBasis,
-          representation_verified_at: formData.representationVerifiedAt,
-          legal_representative_id: formData.legalRepresentativeId || null,
-          legal_representative_title: formData.legalRepresentativeTitle,
-        });
-  
+        const validationResult = await validateOrganizationForm(getOrganizationValues());
+
         if (!validationResult.isValid || !validationResult.validatedData) {
-          setFormErrors(
+          showValidationErrors(
             Object.fromEntries(
               Object.entries(validationResult.errors).map(([key, value]) => [key, value || '']),
             ),
           );
-          showSnackbar('Popraw błędy formularza', 'error');
           return;
         }
 
         validatedOrganizationData = validationResult.validatedData;
       }
-  
+
       if (contactType === 'contact' || contactType === 'individual') {
-        if (!newContact.firstName.trim() || !newContact.lastName.trim()) {
-          showSnackbar('Wprowadź dane osoby kontaktowej', 'error');
-          setLoading(false);
+        const errors = getPersonErrors();
+        if (Object.keys(errors).length) {
+          showValidationErrors(errors);
           return;
         }
-  
+
         const existingContact = await findExistingContact();
-  
+
         if (existingContact) {
           showSnackbar(
             `Taki kontakt prawdopodobnie już istnieje: ${
@@ -504,7 +563,7 @@ export default function NewContactPage() {
           setLoading(false);
           return;
         }
-  
+
         const contactData: any = {
           contact_type: contactType,
           first_name: newContact.firstName.trim(),
@@ -518,13 +577,13 @@ export default function NewContactPage() {
           notes: formData.notes?.trim() || null,
           status: 'active' as const,
         };
-  
+
         if (contactType === 'contact') {
           contactData.nip = cleanNip(newContact.nip) || null;
           contactData.position = newContact.position?.trim() || null;
           contactData.business_phone = normalizePhone(newContact.businessPhone) || null;
         }
-  
+
         if (contactType === 'individual') {
           const alternativeContactName = newContact.alternativeContactName?.trim();
           if (alternativeContactName) {
@@ -535,7 +594,7 @@ export default function NewContactPage() {
           contactData.event_type = newContact.eventType?.trim() || null;
           contactData.event_details = newContact.eventDetails?.trim() || null;
         }
-  
+
         let { data: contact, error: contactError } = await supabase
           .from('contacts')
           .insert([contactData])
@@ -555,9 +614,9 @@ export default function NewContactPage() {
           contactError = retryResult.error;
           skippedAlternativeContactName = true;
         }
-  
+
         if (contactError) throw contactError;
-  
+
         if (skippedAlternativeContactName) {
           showSnackbar(
             'Osoba prywatna została dodana, ale opis kontaktu alternatywnego wymaga aktualizacji bazy danych',
@@ -571,11 +630,11 @@ export default function NewContactPage() {
             'success',
           );
         }
-  
+
         router.push(`/crm/contacts/${contact.id}`);
         return;
       }
-  
+
       const organizationData = validatedOrganizationData!;
       const orgData: any = {
         organization_type: contactType === 'subcontractor' ? 'subcontractor' : 'client',
@@ -584,9 +643,7 @@ export default function NewContactPage() {
         alias: organizationData.alias,
         nip: organizationData.nip,
         regon: organizationData.regon,
-        krs: requiresKrsForLegalForm(organizationData.legal_form)
-          ? organizationData.krs
-          : null,
+        krs: requiresKrsForLegalForm(organizationData.legal_form) ? organizationData.krs : null,
         legal_form: organizationData.legal_form,
         address: organizationData.address,
         city: organizationData.city,
@@ -595,7 +652,7 @@ export default function NewContactPage() {
         email: organizationData.email,
         phone: organizationData.phone,
         website: organizationData.website,
-        location_id: formData.location_id || null,
+        location_id: organizationData.location_id || null,
         representation_type: organizationData.representation_type,
         representation_rule: organizationData.representation_rule,
         representation_basis: organizationData.representation_basis,
@@ -614,15 +671,15 @@ export default function NewContactPage() {
             ? parseFloat(formData.hourlyRate)
             : null,
       };
-  
+
       const { data: org, error: orgError } = await supabase
         .from('organizations')
         .insert([orgData])
         .select()
         .single();
-  
+
       if (orgError) throw orgError;
-  
+
       const linkedContactIds = Array.from(
         new Set(
           [...selectedContactIds, organizationData.legal_representative_id].filter(
@@ -636,21 +693,21 @@ export default function NewContactPage() {
           organization_id: org.id,
           is_current: true,
         }));
-  
+
         const { error: linkError } = await supabase
           .from('contact_organizations')
           .insert(contactOrgLinks);
-  
+
         if (linkError) throw linkError;
       }
-  
+
       showSnackbar(
         contactType === 'organization'
           ? 'Organizacja dodana pomyślnie'
           : 'Podwykonawca dodany pomyślnie',
         'success',
       );
-  
+
       router.push(`/crm/contacts/${org.id}`);
     } catch (error: any) {
       console.error('Error creating contact:', error);
@@ -735,7 +792,7 @@ export default function NewContactPage() {
             </button>
 
             <button
-              onClick={() => setContactType('subcontractor')}
+              onClick={() => router.push('/crm/subcontractors/new')}
               className="group rounded-lg border-2 border-gray-700 bg-[#1a1d2e] p-8 transition-all hover:border-[#d3bb73]"
             >
               <UserCheck className="mx-auto mb-4 h-16 w-16 text-[#d3bb73] transition-transform group-hover:scale-110" />
@@ -754,9 +811,20 @@ export default function NewContactPage() {
           </div>
         ) : (
           <form
+            ref={formRef}
+            noValidate
             onSubmit={handleSubmit}
             className="rounded-lg border border-gray-700 bg-[#1a1d2e] p-6"
           >
+            {Object.values(formErrors).some(Boolean) && (
+              <div
+                role="alert"
+                className="mb-6 rounded-lg bg-red-500/10 px-4 py-3 text-sm text-red-300"
+              >
+                Nie zapisano formularza. Popraw pola oznaczone na czerwono — pod każdym znajdziesz
+                przyczynę błędu.
+              </div>
+            )}
             <div className="mb-6 flex items-center justify-between">
               <div className="flex items-center space-x-3">
                 {contactType === 'organization' && <Building2 className="h-8 w-8 text-[#d3bb73]" />}
@@ -788,14 +856,16 @@ export default function NewContactPage() {
                     <label className="mb-2 block text-sm font-medium text-gray-300">
                       Nazwa pełna <span className="text-red-400">*</span>
                     </label>
-                    <input
-                      type="text"
-                      required
-                      value={formData.name}
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                      className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                      placeholder="np. OMEGA HOTEL SPÓŁKA Z OGRANICZONĄ ODPOWIEDZIALNOŚCIĄ"
-                    />
+                    <ContactValidationField field={'name'} error={formErrors['name']}>
+                      <input
+                        type="text"
+                        required
+                        value={formData.name}
+                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                        className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                        placeholder="np. OMEGA HOTEL SPÓŁKA Z OGRANICZONĄ ODPOWIEDZIALNOŚCIĄ"
+                      />
+                    </ContactValidationField>
                   </div>
 
                   <div>
@@ -818,16 +888,20 @@ export default function NewContactPage() {
                     <div>
                       <label className="mb-2 block text-sm font-medium text-gray-300">NIP</label>
                       <div className="flex space-x-2">
-                        <input
-                          type="text"
-                          value={formatNip(formData.nip)}
-                          onChange={(e) => {
-                            const clean = e.target.value.replace(/\D/g, '');
-                            setFormData({ ...formData, nip: clean });
-                          }}
-                          className="flex-1 rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                          placeholder="0000000000"
-                        />
+                        <div className="min-w-0 flex-1">
+                          <ContactValidationField field="nip" error={formErrors.nip}>
+                            <input
+                              type="text"
+                              value={formatNip(formData.nip)}
+                              onChange={(e) => {
+                                const clean = e.target.value.replace(/\D/g, '');
+                                setFormData({ ...formData, nip: clean });
+                              }}
+                              className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                              placeholder="0000000000"
+                            />
+                          </ContactValidationField>
+                        </div>
                         <button
                           type="button"
                           onClick={handleFetchFromGUS}
@@ -851,48 +925,46 @@ export default function NewContactPage() {
                     <label className="mb-2 block text-sm font-medium text-gray-300">
                       Forma prawna / typ podmiotu <span className="text-red-400">*</span>
                     </label>
-                    <select
-                      required
-                      value={formData.legalForm}
-                      onChange={(event) => {
-                        const legalForm = event.target.value;
-                        setFormData((prev) => ({
-                          ...prev,
-                          legalForm,
-                          krs: requiresKrsForLegalForm(legalForm) ? prev.krs : '',
-                        }));
-                        setFormErrors((prev) => ({ ...prev, legal_form: '', krs: '' }));
-                      }}
-                      className={`w-full rounded-lg border bg-[#0f1119] px-4 py-2 text-white focus:outline-none ${
-                        formErrors.legal_form
-                          ? 'border-red-500 focus:border-red-500'
-                          : 'border-gray-700 focus:border-[#d3bb73]'
-                      }`}
-                    >
-                      <option value="">-- Wybierz formę prawną lub typ podmiotu --</option>
-                      {Object.entries(legalFormLabels).map(([value, label]) => (
-                        <option key={value} value={value}>
-                          {label}
-                        </option>
-                      ))}
-                    </select>
-                    {formErrors.legal_form && (
-                      <p className="mt-1 text-sm text-red-400">{formErrors.legal_form}</p>
-                    )}
+                    <ContactValidationField field={'legal_form'} error={formErrors['legal_form']}>
+                      <select
+                        required
+                        value={formData.legalForm}
+                        onChange={(event) => {
+                          const legalForm = event.target.value;
+                          setFormData((prev) => ({
+                            ...prev,
+                            legalForm,
+                            krs: requiresKrsForLegalForm(legalForm) ? prev.krs : '',
+                          }));
+                          setFormErrors((prev) => ({ ...prev, legal_form: '', krs: '' }));
+                        }}
+                        className={`w-full rounded-lg border bg-[#0f1119] px-4 py-2 text-white focus:outline-none ${
+                          formErrors.legal_form
+                            ? 'border-red-500 focus:border-red-500'
+                            : 'border-gray-700 focus:border-[#d3bb73]'
+                        }`}
+                      >
+                        <option value="">-- Wybierz formę prawną lub typ podmiotu --</option>
+                        {Object.entries(legalFormLabels).map(([value, label]) => (
+                          <option key={value} value={value}>
+                            {label}
+                          </option>
+                        ))}
+                      </select>
+                    </ContactValidationField>
                   </div>
 
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <div>
                       <label className="mb-2 block text-sm font-medium text-gray-300">REGON</label>
-                      <input
-                        type="text"
-                        value={formData.regon}
-                        onChange={(e) => setFormData({ ...formData, regon: e.target.value })}
-                        className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                      />
-                      {formErrors.regon && (
-                        <p className="mt-1 text-sm text-red-400">{formErrors.regon}</p>
-                      )}
+                      <ContactValidationField field={'regon'} error={formErrors['regon']}>
+                        <input
+                          type="text"
+                          value={formData.regon}
+                          onChange={(e) => setFormData({ ...formData, regon: e.target.value })}
+                          className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                        />
+                      </ContactValidationField>
                     </div>
 
                     {requiresKrsForLegalForm(formData.legalForm) && (
@@ -900,20 +972,19 @@ export default function NewContactPage() {
                         <label className="mb-2 block text-sm font-medium text-gray-300">
                           KRS <span className="text-red-400">*</span>
                         </label>
-                        <input
-                          type="text"
-                          value={formData.krs}
-                          onChange={(e) => setFormData({ ...formData, krs: e.target.value })}
-                          className={`w-full rounded-lg border bg-[#0f1119] px-4 py-2 text-white focus:outline-none ${
-                            formErrors.krs
-                              ? 'border-red-500 focus:border-red-500'
-                              : 'border-gray-700 focus:border-[#d3bb73]'
-                          }`}
-                          placeholder="0000000000"
-                        />
-                        {formErrors.krs && (
-                          <p className="mt-1 text-sm text-red-400">{formErrors.krs}</p>
-                        )}
+                        <ContactValidationField field={'krs'} error={formErrors['krs']}>
+                          <input
+                            type="text"
+                            value={formData.krs}
+                            onChange={(e) => setFormData({ ...formData, krs: e.target.value })}
+                            className={`w-full rounded-lg border bg-[#0f1119] px-4 py-2 text-white focus:outline-none ${
+                              formErrors.krs
+                                ? 'border-red-500 focus:border-red-500'
+                                : 'border-gray-700 focus:border-[#d3bb73]'
+                            }`}
+                            placeholder="0000000000"
+                          />
+                        </ContactValidationField>
                       </div>
                     )}
                   </div>
@@ -979,14 +1050,17 @@ export default function NewContactPage() {
                           onChange={(event) =>
                             setFormData({
                               ...formData,
-                              representationType: event.target.value as OrganizationCreateForm['representationType'],
+                              representationType: event.target
+                                .value as OrganizationCreateForm['representationType'],
                             })
                           }
                           className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
                         >
                           <option value="">-- Wybierz --</option>
                           {Object.entries(representationTypeLabels).map(([value, label]) => (
-                            <option key={value} value={value}>{label}</option>
+                            <option key={value} value={value}>
+                              {label}
+                            </option>
                           ))}
                         </select>
                       </div>
@@ -998,7 +1072,9 @@ export default function NewContactPage() {
                           value={formData.legalRepresentativeId}
                           onChange={(event) => {
                             const contactId = event.target.value;
-                            const selected = availableContacts.find((contact) => contact.id === contactId);
+                            const selected = availableContacts.find(
+                              (contact) => contact.id === contactId,
+                            );
                             setFormData((prev) => ({
                               ...prev,
                               legalRepresentativeId: contactId,
@@ -1015,7 +1091,9 @@ export default function NewContactPage() {
                         >
                           <option value="">-- Wybierz spośród kontaktów --</option>
                           {availableContacts.map((contact) => (
-                            <option key={contact.id} value={contact.id}>{contact.full_name}</option>
+                            <option key={contact.id} value={contact.id}>
+                              {contact.full_name}
+                            </option>
                           ))}
                         </select>
                       </div>
@@ -1040,7 +1118,10 @@ export default function NewContactPage() {
                           type="text"
                           value={formData.legalRepresentativeTitle}
                           onChange={(event) =>
-                            setFormData({ ...formData, legalRepresentativeTitle: event.target.value })
+                            setFormData({
+                              ...formData,
+                              legalRepresentativeTitle: event.target.value,
+                            })
                           }
                           placeholder="np. Prezes Zarządu, Dyrektor, Prokurent"
                           className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
@@ -1064,7 +1145,10 @@ export default function NewContactPage() {
                             type="date"
                             value={formData.representationVerifiedAt}
                             onChange={(event) =>
-                              setFormData({ ...formData, representationVerifiedAt: event.target.value })
+                              setFormData({
+                                ...formData,
+                                representationVerifiedAt: event.target.value,
+                              })
                             }
                             className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-3 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
                           />
@@ -1073,7 +1157,9 @@ export default function NewContactPage() {
                     </div>
                     {registryLookup?.registryRoles?.some((role) => !role.nameAvailable) && (
                       <p className="mt-3 text-xs leading-5 text-amber-300">
-                        KRS potwierdził stanowiska i prokurę, ale ukrył dane osobowe. Wybierz właściwą osobę z kontaktów; system nie przypisze jej na podstawie zgadywania.
+                        KRS potwierdził stanowiska i prokurę, ale ukrył dane osobowe. Wybierz
+                        właściwą osobę z kontaktów; system nie przypisze jej na podstawie
+                        zgadywania.
                       </p>
                     )}
                   </div>
@@ -1083,38 +1169,44 @@ export default function NewContactPage() {
                       <label className="mb-2 block text-sm font-medium text-gray-300">
                         Adres (ulica)
                       </label>
-                      <input
-                        type="text"
-                        value={formData.address}
-                        onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                        className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                        placeholder="np. ul. Chmielna 85/87"
-                      />
+                      <ContactValidationField field={'address'} error={formErrors['address']}>
+                        <input
+                          type="text"
+                          value={formData.address}
+                          onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                          className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                          placeholder="np. ul. Chmielna 85/87"
+                        />
+                      </ContactValidationField>
                     </div>
                     <div>
                       <label className="mb-2 block text-sm font-medium text-gray-300">
                         Kod pocztowy
                       </label>
-                      <input
-                        type="text"
-                        value={formData.postalCode}
-                        onChange={(e) => setFormData({ ...formData, postalCode: e.target.value })}
-                        className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                        placeholder="00-000"
-                      />
+                      <ContactValidationField field="postal_code" error={formErrors.postal_code}>
+                        <input
+                          type="text"
+                          value={formData.postalCode}
+                          onChange={(e) => setFormData({ ...formData, postalCode: e.target.value })}
+                          className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                          placeholder="00-000"
+                        />
+                      </ContactValidationField>
                     </div>
                   </div>
 
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                     <div>
                       <label className="mb-2 block text-sm font-medium text-gray-300">Miasto</label>
-                      <input
-                        type="text"
-                        value={formData.city}
-                        onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                        className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                        placeholder="np. Warszawa"
-                      />
+                      <ContactValidationField field={'city'} error={formErrors['city']}>
+                        <input
+                          type="text"
+                          value={formData.city}
+                          onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                          className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                          placeholder="np. Warszawa"
+                        />
+                      </ContactValidationField>
                     </div>
                     <div>
                       <label className="mb-2 block text-sm font-medium text-gray-300">Kraj</label>
@@ -1127,12 +1219,14 @@ export default function NewContactPage() {
                     </div>
                     <div>
                       <label className="mb-2 block text-sm font-medium text-gray-300">Email</label>
-                      <input
-                        type="email"
-                        value={formData.email}
-                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                        className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                      />
+                      <ContactValidationField field={'email'} error={formErrors['email']}>
+                        <input
+                          type="email"
+                          value={formData.email}
+                          onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                          className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                        />
+                      </ContactValidationField>
                     </div>
                   </div>
 
@@ -1141,24 +1235,28 @@ export default function NewContactPage() {
                       <label className="mb-2 block text-sm font-medium text-gray-300">
                         Telefon
                       </label>
-                      <input
-                        type="tel"
-                        value={formData.phone}
-                        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                        className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                      />
+                      <ContactValidationField field={'phone'} error={formErrors['phone']}>
+                        <input
+                          type="tel"
+                          value={formData.phone}
+                          onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                          className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                        />
+                      </ContactValidationField>
                     </div>
                     <div>
                       <label className="mb-2 block text-sm font-medium text-gray-300">
                         Strona WWW
                       </label>
-                      <input
-                        type="url"
-                        value={formData.website}
-                        onChange={(e) => setFormData({ ...formData, website: e.target.value })}
-                        className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                        placeholder="https://"
-                      />
+                      <ContactValidationField field={'website'} error={formErrors['website']}>
+                        <input
+                          type="url"
+                          value={formData.website}
+                          onChange={(e) => setFormData({ ...formData, website: e.target.value })}
+                          className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                          placeholder="https://"
+                        />
+                      </ContactValidationField>
                     </div>
                   </div>
                 </>
@@ -1274,49 +1372,69 @@ export default function NewContactPage() {
                               <label className="mb-1 block text-sm text-gray-400">
                                 Imię <span className="text-red-400">*</span>
                               </label>
-                              <input
-                                type="text"
-                                value={newContact.firstName}
-                                onChange={(e) =>
-                                  setNewContact({ ...newContact, firstName: e.target.value })
-                                }
-                                className="w-full rounded border border-gray-700 bg-[#1a1d2e] px-3 py-2 text-sm text-white focus:border-[#d3bb73] focus:outline-none"
-                              />
+                              <ContactValidationField
+                                field={'person.firstName'}
+                                error={formErrors['person.firstName']}
+                              >
+                                <input
+                                  type="text"
+                                  value={newContact.firstName}
+                                  onChange={(e) =>
+                                    setNewContact({ ...newContact, firstName: e.target.value })
+                                  }
+                                  className="w-full rounded border border-gray-700 bg-[#1a1d2e] px-3 py-2 text-sm text-white focus:border-[#d3bb73] focus:outline-none"
+                                />
+                              </ContactValidationField>
                             </div>
                             <div>
                               <label className="mb-1 block text-sm text-gray-400">
                                 Nazwisko <span className="text-red-400">*</span>
                               </label>
-                              <input
-                                type="text"
-                                value={newContact.lastName}
-                                onChange={(e) =>
-                                  setNewContact({ ...newContact, lastName: e.target.value })
-                                }
-                                className="w-full rounded border border-gray-700 bg-[#1a1d2e] px-3 py-2 text-sm text-white focus:border-[#d3bb73] focus:outline-none"
-                              />
+                              <ContactValidationField
+                                field={'person.lastName'}
+                                error={formErrors['person.lastName']}
+                              >
+                                <input
+                                  type="text"
+                                  value={newContact.lastName}
+                                  onChange={(e) =>
+                                    setNewContact({ ...newContact, lastName: e.target.value })
+                                  }
+                                  className="w-full rounded border border-gray-700 bg-[#1a1d2e] px-3 py-2 text-sm text-white focus:border-[#d3bb73] focus:outline-none"
+                                />
+                              </ContactValidationField>
                             </div>
                             <div>
                               <label className="mb-1 block text-sm text-gray-400">Email</label>
-                              <input
-                                type="email"
-                                value={newContact.email}
-                                onChange={(e) =>
-                                  setNewContact({ ...newContact, email: e.target.value })
-                                }
-                                className="w-full rounded border border-gray-700 bg-[#1a1d2e] px-3 py-2 text-sm text-white focus:border-[#d3bb73] focus:outline-none"
-                              />
+                              <ContactValidationField
+                                field={'person.email'}
+                                error={formErrors['person.email']}
+                              >
+                                <input
+                                  type="email"
+                                  value={newContact.email}
+                                  onChange={(e) =>
+                                    setNewContact({ ...newContact, email: e.target.value })
+                                  }
+                                  className="w-full rounded border border-gray-700 bg-[#1a1d2e] px-3 py-2 text-sm text-white focus:border-[#d3bb73] focus:outline-none"
+                                />
+                              </ContactValidationField>
                             </div>
                             <div>
                               <label className="mb-1 block text-sm text-gray-400">Telefon</label>
-                              <input
-                                type="tel"
-                                value={newContact.phone}
-                                onChange={(e) =>
-                                  setNewContact({ ...newContact, phone: e.target.value })
-                                }
-                                className="w-full rounded border border-gray-700 bg-[#1a1d2e] px-3 py-2 text-sm text-white focus:border-[#d3bb73] focus:outline-none"
-                              />
+                              <ContactValidationField
+                                field={'person.phone'}
+                                error={formErrors['person.phone']}
+                              >
+                                <input
+                                  type="tel"
+                                  value={newContact.phone}
+                                  onChange={(e) =>
+                                    setNewContact({ ...newContact, phone: e.target.value })
+                                  }
+                                  className="w-full rounded border border-gray-700 bg-[#1a1d2e] px-3 py-2 text-sm text-white focus:border-[#d3bb73] focus:outline-none"
+                                />
+                              </ContactValidationField>
                             </div>
                           </div>
 
@@ -1344,29 +1462,39 @@ export default function NewContactPage() {
                         <label className="mb-1 block text-sm text-gray-400">
                           Imię <span className="text-red-400">*</span>
                         </label>
-                        <input
-                          type="text"
-                          required
-                          value={newContact.firstName}
-                          onChange={(e) =>
-                            setNewContact({ ...newContact, firstName: e.target.value })
-                          }
-                          className="w-full rounded border border-gray-700 bg-[#0f1119] px-3 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                        />
+                        <ContactValidationField
+                          field={'person.firstName'}
+                          error={formErrors['person.firstName']}
+                        >
+                          <input
+                            type="text"
+                            required
+                            value={newContact.firstName}
+                            onChange={(e) =>
+                              setNewContact({ ...newContact, firstName: e.target.value })
+                            }
+                            className="w-full rounded border border-gray-700 bg-[#0f1119] px-3 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                          />
+                        </ContactValidationField>
                       </div>
                       <div>
                         <label className="mb-1 block text-sm text-gray-400">
                           Nazwisko <span className="text-red-400">*</span>
                         </label>
-                        <input
-                          type="text"
-                          required
-                          value={newContact.lastName}
-                          onChange={(e) =>
-                            setNewContact({ ...newContact, lastName: e.target.value })
-                          }
-                          className="w-full rounded border border-gray-700 bg-[#0f1119] px-3 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                        />
+                        <ContactValidationField
+                          field={'person.lastName'}
+                          error={formErrors['person.lastName']}
+                        >
+                          <input
+                            type="text"
+                            required
+                            value={newContact.lastName}
+                            onChange={(e) =>
+                              setNewContact({ ...newContact, lastName: e.target.value })
+                            }
+                            className="w-full rounded border border-gray-700 bg-[#0f1119] px-3 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                          />
+                        </ContactValidationField>
                       </div>
                     </div>
 
@@ -1391,15 +1519,20 @@ export default function NewContactPage() {
                             <label className="mb-1 block text-sm text-gray-400">
                               NIP <span className="text-xs text-gray-500">(dla JDG)</span>
                             </label>
-                            <input
-                              type="text"
-                              value={newContact.nip}
-                              onChange={(e) =>
-                                setNewContact({ ...newContact, nip: e.target.value })
-                              }
-                              className="w-full rounded border border-gray-700 bg-[#0f1119] px-3 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                              placeholder="0000000000"
-                            />
+                            <ContactValidationField
+                              field={'person.nip'}
+                              error={formErrors['person.nip']}
+                            >
+                              <input
+                                type="text"
+                                value={newContact.nip}
+                                onChange={(e) =>
+                                  setNewContact({ ...newContact, nip: e.target.value })
+                                }
+                                className="w-full rounded border border-gray-700 bg-[#0f1119] px-3 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                                placeholder="0000000000"
+                              />
+                            </ContactValidationField>
                           </div>
                         </div>
                       </>
@@ -1471,19 +1604,19 @@ export default function NewContactPage() {
                         </div>
 
                         <div>
-                            <label className="mb-1 block text-sm text-gray-400">
-                              Szczegóły uroczystości{' '}
-                              <span className="text-xs text-gray-500">(opcjonalne)</span>
-                            </label>
-                            <textarea
-                              value={newContact.eventDetails}
-                              onChange={(e) =>
-                                setNewContact({ ...newContact, eventDetails: e.target.value })
-                              }
-                              rows={3}
-                              className="w-full rounded border border-gray-700 bg-[#0f1119] px-3 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                              placeholder="Dodatkowe informacje o uroczystości..."
-                            />
+                          <label className="mb-1 block text-sm text-gray-400">
+                            Szczegóły uroczystości{' '}
+                            <span className="text-xs text-gray-500">(opcjonalne)</span>
+                          </label>
+                          <textarea
+                            value={newContact.eventDetails}
+                            onChange={(e) =>
+                              setNewContact({ ...newContact, eventDetails: e.target.value })
+                            }
+                            rows={3}
+                            className="w-full rounded border border-gray-700 bg-[#0f1119] px-3 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                            placeholder="Dodatkowe informacje o uroczystości..."
+                          />
                         </div>
                       </>
                     )}
@@ -1497,12 +1630,17 @@ export default function NewContactPage() {
                   <div className="space-y-4">
                     <div>
                       <label className="mb-2 block text-sm font-medium text-gray-300">Email</label>
-                      <input
-                        type="email"
-                        value={newContact.email}
-                        onChange={(e) => setNewContact({ ...newContact, email: e.target.value })}
-                        className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                      />
+                      <ContactValidationField
+                        field={'person.email'}
+                        error={formErrors['person.email']}
+                      >
+                        <input
+                          type="email"
+                          value={newContact.email}
+                          onChange={(e) => setNewContact({ ...newContact, email: e.target.value })}
+                          className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                        />
+                      </ContactValidationField>
                     </div>
 
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -1513,13 +1651,20 @@ export default function NewContactPage() {
                             <span className="text-xs text-gray-500">(opcjonalne)</span>
                           )}
                         </label>
-                        <input
-                          type="tel"
-                          value={newContact.phone}
-                          onChange={(e) => setNewContact({ ...newContact, phone: e.target.value })}
-                          className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                          placeholder="600 123 456"
-                        />
+                        <ContactValidationField
+                          field={'person.phone'}
+                          error={formErrors['person.phone']}
+                        >
+                          <input
+                            type="tel"
+                            value={newContact.phone}
+                            onChange={(e) =>
+                              setNewContact({ ...newContact, phone: e.target.value })
+                            }
+                            className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                            placeholder="600 123 456"
+                          />
+                        </ContactValidationField>
                       </div>
                       {contactType === 'contact' && (
                         <>
@@ -1528,30 +1673,40 @@ export default function NewContactPage() {
                               Telefon komórkowy{' '}
                               <span className="text-xs text-gray-500">(opcjonalne)</span>
                             </label>
-                            <input
-                              type="tel"
-                              value={newContact.mobile}
-                              onChange={(e) =>
-                                setNewContact({ ...newContact, mobile: e.target.value })
-                              }
-                              className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                              placeholder="600 123 456"
-                            />
+                            <ContactValidationField
+                              field={'person.mobile'}
+                              error={formErrors['person.mobile']}
+                            >
+                              <input
+                                type="tel"
+                                value={newContact.mobile}
+                                onChange={(e) =>
+                                  setNewContact({ ...newContact, mobile: e.target.value })
+                                }
+                                className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                                placeholder="600 123 456"
+                              />
+                            </ContactValidationField>
                           </div>
                           <div>
                             <label className="mb-2 block text-sm font-medium text-gray-300">
                               Telefon firmowy{' '}
                               <span className="text-xs text-gray-500">(opcjonalne)</span>
                             </label>
-                            <input
-                              type="tel"
-                              value={newContact.businessPhone}
-                              onChange={(e) =>
-                                setNewContact({ ...newContact, businessPhone: e.target.value })
-                              }
-                              className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                              placeholder="22 123 4567"
-                            />
+                            <ContactValidationField
+                              field={'person.businessPhone'}
+                              error={formErrors['person.businessPhone']}
+                            >
+                              <input
+                                type="tel"
+                                value={newContact.businessPhone}
+                                onChange={(e) =>
+                                  setNewContact({ ...newContact, businessPhone: e.target.value })
+                                }
+                                className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                                placeholder="22 123 4567"
+                              />
+                            </ContactValidationField>
                           </div>
                         </>
                       )}
@@ -1562,15 +1717,20 @@ export default function NewContactPage() {
                               Numer alternatywny{' '}
                               <span className="text-xs text-gray-500">(opcjonalne)</span>
                             </label>
-                            <input
-                              type="tel"
-                              value={newContact.mobile}
-                              onChange={(e) =>
-                                setNewContact({ ...newContact, mobile: e.target.value })
-                              }
-                              className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                              placeholder="600 123 456"
-                            />
+                            <ContactValidationField
+                              field={'person.mobile'}
+                              error={formErrors['person.mobile']}
+                            >
+                              <input
+                                type="tel"
+                                value={newContact.mobile}
+                                onChange={(e) =>
+                                  setNewContact({ ...newContact, mobile: e.target.value })
+                                }
+                                className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                                placeholder="600 123 456"
+                              />
+                            </ContactValidationField>
                           </div>
                           <div>
                             <label className="mb-2 block text-sm font-medium text-gray-300">
@@ -1605,34 +1765,43 @@ export default function NewContactPage() {
                       <label className="mb-2 block text-sm font-medium text-gray-300">
                         Ulica i numer
                       </label>
-                      <input
-                        type="text"
-                        value={formData.address}
-                        onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                        className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                        placeholder="np. Kwiatowa 12/3"
-                      />
+                      <ContactValidationField field={'address'} error={formErrors['address']}>
+                        <input
+                          type="text"
+                          value={formData.address}
+                          onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                          className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                          placeholder="np. Kwiatowa 12/3"
+                        />
+                      </ContactValidationField>
                     </div>
                     <div>
                       <label className="mb-2 block text-sm font-medium text-gray-300">Miasto</label>
-                      <input
-                        type="text"
-                        value={formData.city}
-                        onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                        className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                      />
+                      <ContactValidationField field={'city'} error={formErrors['city']}>
+                        <input
+                          type="text"
+                          value={formData.city}
+                          onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                          className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                        />
+                      </ContactValidationField>
                     </div>
                     <div>
                       <label className="mb-2 block text-sm font-medium text-gray-300">
                         Kod pocztowy
                       </label>
-                      <input
-                        type="text"
-                        value={formData.postalCode}
-                        onChange={(e) => setFormData({ ...formData, postalCode: e.target.value })}
-                        className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                        placeholder="00-000"
-                      />
+                      <ContactValidationField
+                        field="person.postalCode"
+                        error={formErrors['person.postalCode']}
+                      >
+                        <input
+                          type="text"
+                          value={formData.postalCode}
+                          onChange={(e) => setFormData({ ...formData, postalCode: e.target.value })}
+                          className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                          placeholder="00-000"
+                        />
+                      </ContactValidationField>
                     </div>
                   </div>
                 </div>
@@ -1646,6 +1815,9 @@ export default function NewContactPage() {
                     setFormData((s) => ({ ...s, location_id: locationId ?? '' }))
                   }
                   editMode={true}
+                  required={formData.businessType === 'hotel'}
+                  error={formErrors.location_id}
+                  onOpenAddLocation={canManageModule('locations') ? () => setShowAddLocationModal(true) : undefined}
                 />
               )}
               {contactType === 'subcontractor' && (
@@ -1748,6 +1920,11 @@ export default function NewContactPage() {
             </div>
           </form>
         )}
+        <AddLocationModal isOpen={showAddLocationModal} onClose={() => setShowAddLocationModal(false)}
+          onLocationAdded={(location) => {
+            setFormData((current) => ({ ...current, location_id: location.id }));
+            setShowAddLocationModal(false);
+          }}/>
       </div>
     </div>
   );

@@ -1,4 +1,5 @@
 'use client';
+import { validateConfiguration } from '@/lib/CRM/Offers/offerAddons';
 
 import { supabase } from '@/lib/supabase/browser';
 import { buildSubstitutionsForInsert, getRentalEquipmentFromSelectedAlt } from '../utils';
@@ -11,6 +12,7 @@ import {
 
 export async function submitOfferWizard(params: {
   eventId: string;
+  eventTitle?: string;
   employeeId: string;
 
   clientType: 'individual' | 'business';
@@ -42,8 +44,15 @@ export async function submitOfferWizard(params: {
     gross: number;
   };
 }) {
+  for (const item of params.offerItems) {
+    if (item.pricing_configuration) {
+      const error = validateConfiguration(item.pricing_configuration);
+      if (error) throw new Error(`${item.name}: ${error}`);
+    }
+  }
   const offerDataToInsert: any = {
     event_id: params.eventId,
+    title: params.eventTitle?.trim() || null,
     client_type: params.clientType,
     organization_id: params.clientType === 'business' ? params.organizationId || null : null,
     contact_id: params.contactId || null,
@@ -81,6 +90,7 @@ export async function submitOfferWizard(params: {
     offer_id: offerResult.id,
     product_id: item.product_id?.trim() ? item.product_id : null,
     product_variant_id: item.product_variant_id || null,
+    variant_prices_net: item.variant_prices_net || {},
     show_variant_prices_in_pdf: item.show_variant_prices_in_pdf !== false,
     show_product_variants_in_pdf: item.show_product_variants_in_pdf !== false,
     name: item.name,
@@ -88,6 +98,7 @@ export async function submitOfferWizard(params: {
     quantity: item.quantity,
     unit: item.unit,
     unit_price: item.unit_price,
+    pricing_configuration: item.pricing_configuration || null,
     unit_cost: 0,
     discount_percent: item.discount_percent || 0,
     discount_amount: Math.round(
@@ -150,76 +161,7 @@ export async function submitOfferWizard(params: {
     if (subsError) throw subsError;
   }
 
-  // Zamień konfliktowy sprzęt na rental equipment
-  const rentalEquipment = getRentalEquipmentFromSelectedAlt(combinedSubstitutions);
-
-  if (rentalEquipment.length > 0) {
-    for (const rental of rentalEquipment) {
-      // Znajdź wszystkie produkty w tej ofercie
-      const { data: offerItemsWithProducts } = await supabase
-        .from('offer_items')
-        .select('id, product_id')
-        .eq('offer_id', offerResult.id)
-        .not('product_id', 'is', null);
-
-      if (offerItemsWithProducts) {
-        for (const offerItem of offerItemsWithProducts) {
-          // Znajdź oryginalny sprzęt który ma być zastąpiony
-          const { data: existingEquipment } = await supabase
-            .from('offer_product_equipment')
-            .select('id')
-            .eq('product_id', offerItem.product_id)
-            .eq(
-              rental.originalItemType === 'item' ? 'equipment_item_id' : 'equipment_kit_id',
-              rental.originalItemId
-            )
-            .maybeSingle();
-
-          if (existingEquipment) {
-            // Dodaj rental equipment
-            const { data: rentalRecord, error: rentalError } = await supabase
-              .from('offer_product_equipment')
-              .insert({
-                product_id: offerItem.product_id,
-                rental_equipment_id: rental.rentalEquipmentId,
-                subcontractor_id: rental.subcontractorId,
-                quantity: rental.quantity,
-                is_rental: true,
-                is_optional: false,
-              })
-              .select('id')
-              .single();
-
-            if (rentalError) {
-              console.error('Error inserting rental equipment:', rentalError);
-            } else if (rentalRecord) {
-              // Oznacz oryginalny sprzęt jako zastąpiony
-              await supabase
-                .from('offer_product_equipment')
-                .update({ replaced_by_rental_id: rentalRecord.id })
-                .eq('id', existingEquipment.id);
-            }
-          } else {
-            // Jeśli nie znaleziono oryginalnego (np. już nie istnieje), po prostu dodaj rental
-            const { error: rentalError } = await supabase
-              .from('offer_product_equipment')
-              .insert({
-                product_id: offerItem.product_id,
-                rental_equipment_id: rental.rentalEquipmentId,
-                subcontractor_id: rental.subcontractorId,
-                quantity: rental.quantity,
-                is_rental: true,
-                is_optional: false,
-              });
-
-            if (rentalError) {
-              console.error('Error inserting rental equipment:', rentalError);
-            }
-          }
-        }
-      }
-    }
-  }
+  // Zamienniki są zapisane wyłącznie w offer_equipment_substitutions tej oferty.
 
   // Jeśli oferta ma braki sprzętowe, oznacz event
   if (params.hasEquipmentShortage) {

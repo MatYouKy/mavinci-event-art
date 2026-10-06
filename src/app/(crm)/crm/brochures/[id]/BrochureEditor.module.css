@@ -1,0 +1,5 @@
+.editor { --crm-field-border: rgba(229, 228, 226, .11); --crm-field-border-hover: rgba(229, 228, 226, .20); --crm-field-border-focus: rgba(211, 187, 115, .42); }
+.field { width: 100%; border: 1px solid rgba(229, 228, 226, .11) !important; box-shadow: none !important; outline: none !important; transition: border-color .15s ease; }
+.field:hover:not(:disabled) { border-color: rgba(229, 228, 226, .20) !important; }
+.field:focus { border-color: rgba(211, 187, 115, .42) !important; box-shadow: none !important; outline: none !important; }
+.search { border: 0 !important; box-shadow: none !important; outline: none !important; }

@@ -1,6 +1,6 @@
 'use client';
 
-import { Dispatch, SetStateAction, useEffect, useState } from 'react';
+import { Dispatch, SetStateAction, useEffect, useRef, useState } from 'react';
 import {
   Pencil,
   X,
@@ -12,7 +12,6 @@ import {
   Send,
   Eye,
   Lock,
-  Trash2,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -21,7 +20,9 @@ import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { IUser } from '@/types/auth.types';
 import { OfferStatus, offerStatusLabels } from '../../helpers/statusColors';
 import ReserveEquipmentModal from '@/components/crm/ReserveEquipmentModal';
-import { deleteOfferWithFiles } from '@/lib/CRM/Offers/deleteOfferWithFiles';
+import FullScreenLoader from '@/components/UI/Loader/CustomModalLoader';
+import { offerSource } from '@/lib/CRM/Offers/offerSource';
+import { offerPdfFileName } from '@/lib/CRM/Offers/offerPdfFileName';
 import { deleteOfferPdfFiles } from '@/lib/CRM/Offers/deleteOfferPdfFiles';
 
 interface OfferActionsProps {
@@ -30,6 +31,7 @@ interface OfferActionsProps {
   showSendEmailModal: boolean;
   setShowSendEmailModal: Dispatch<SetStateAction<boolean>>;
   onOfferUpdated?: () => void;
+  onEditOfferItem?: (itemId: string) => void;
 }
 
 export default function OfferActions({
@@ -38,17 +40,20 @@ export default function OfferActions({
   setShowSendEmailModal,
   showSendEmailModal,
   onOfferUpdated,
+  onEditOfferItem,
 }: OfferActionsProps) {
   const router = useRouter();
+  const source = offerSource(offer || {});
   const { showSnackbar } = useSnackbar();
   const [generatingPdf, setGeneratingPdf] = useState(false);
+  const generationInProgress = useRef(false);
+  const [pdfProgress, setPdfProgress] = useState('');
   const { employee } = useCurrentEmployee();
   const [downloadingPdf, setDownloadingPdf] = useState(false);
   const [canSendEmail, setCanSendEmail] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [currentStatus, setCurrentStatus] = useState<OfferStatus>(offer?.status || 'draft');
   const [showReserveModal, setShowReserveModal] = useState(false);
-  const [deleting, setDeleting] = useState(false);
   const [deletingPdf, setDeletingPdf] = useState(false);
 
   useEffect(() => {
@@ -58,30 +63,28 @@ export default function OfferActions({
   }, [offer?.status]);
 
   useEffect(() => {
-    if (offer && currentUser) {
-      const isAdmin = currentUser.permissions?.includes('admin');
-      const isCreator = offer.created_by === currentUser.id;
-      setCanSendEmail(isAdmin || isCreator);
-    }
+    let active = true;
+    if (offer?.id) void supabase.rpc('sales_can_manage_offer', { p_offer: offer.id }).then(({ data, error }) => { if (active) setCanSendEmail(!error && data === true); });
+    return () => { active = false; };
   }, [offer, currentUser]);
 
   const handleStatusChange = async (newStatus: OfferStatus) => {
     if (!offer?.id) return;
 
-    const isAdmin = currentUser.permissions?.includes('admin');
-    const isCreator = offer.created_by === currentUser.id;
-    const canChange = isAdmin || (isCreator && currentUser.permissions?.includes('offers_manage'));
+    const canChange = canSendEmail;
 
     if (!canChange) {
       showSnackbar('Nie masz uprawnień do zmiany statusu', 'error');
       return;
     }
 
-    // Jeśli zmiana na 'accepted' i poprzedni status to draft/sent, pokaż modal
+    if (newStatus === 'accepted' && offer.inquiry_id && !offer.event_id) { router.push(`/crm/inquiries/${offer.inquiry_id}?tab=offers`); return; }
+
+    // Event-linked acceptance always uses the existing reservation/acceptance workflow.
     if (
       newStatus === 'accepted' &&
       currentStatus !== 'accepted' &&
-      (currentStatus === 'draft' || currentStatus === 'sent')
+      offer.event_id
     ) {
       setShowReserveModal(true);
       return;
@@ -145,46 +148,22 @@ export default function OfferActions({
     }
   };
 
-  const handleDeleteOffer = async () => {
-    if (!offer?.id) return;
-
-    if (!confirm('Czy na pewno chcesz usunąć tę ofertę? Ta operacja jest nieodwracalna.')) {
+  const handleGeneratePdf = async () => {
+    if (!offer || generationInProgress.current) return;
+    if (offer.status !== 'accepted' && offer.logistics_cost_net == null) {
+      showSnackbar('Oszacuj logistykę w sekcji „Pakiety oferty”. Wpisz 0, jeśli nie ma dodatkowego kosztu.', 'error');
+      document.getElementById('offer-packages-logistics')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
     }
-
-    try {
-      setDeleting(true);
-
-      const result = await deleteOfferWithFiles(offer.id);
-
-      if (!result.success) {
-        throw new Error(result.error || 'Błąd podczas usuwania oferty');
-      }
-
-      showSnackbar('Oferta i wszystkie powiązane pliki zostały usunięte', 'success');
-
-      // Odśwież dane oferty aby zaktualizować widok
-      onOfferUpdated?.();
-
-      // Przekieruj do listy ofert (nie do eventu)
-      router.push('/crm/offers');
-    } catch (err: any) {
-      console.error('Error deleting offer:', err);
-      showSnackbar(err.message || 'Błąd podczas usuwania oferty', 'error');
-    } finally {
-      setDeleting(false);
-    }
-  };
-
-  const handleGeneratePdf = async () => {
-    if (!offer) return;
 
     if (!employee?.id) {
       showSnackbar('Musisz być zalogowany', 'error');
       return;
     }
 
+    generationInProgress.current = true;
     try {
+      setPdfProgress('Przygotowujemy strony oferty, zdjęcia i kalkulację. Proszę chwilę poczekać.');
       setGeneratingPdf(true);
 
       const {
@@ -216,8 +195,9 @@ export default function OfferActions({
         result = await response.json().catch(() => ({}));
         if (response.ok && result.success) break;
 
-        const resourceLimit = result.code === 'WORKER_RESOURCE_LIMIT';
+        const resourceLimit = response.status === 546 || ['WORKER_RESOURCE_LIMIT', 'WORKER_LIMIT'].includes(result.code);
         if (resourceLimit && attempt === 0) {
+          setPdfProgress('Przygotowanie dokumentu wymaga więcej czasu. Ponawiamy generowanie z zachowaniem jakości zdjęć i wybranego układu.');
           showSnackbar('Generator przekroczył limit zasobów — ponawiam w trybie zoptymalizowanym...', 'info');
           await new Promise((resolve) => setTimeout(resolve, 1200));
           continue;
@@ -238,13 +218,14 @@ export default function OfferActions({
       );
 
       if (result.downloadUrl) {
+        setPdfProgress('PDF jest gotowy. Przygotowujemy pobranie pliku…');
         const pdfResponse = await fetch(result.downloadUrl);
         const blob = await pdfResponse.blob();
         const blobUrl = window.URL.createObjectURL(blob);
 
         const link = document.createElement('a');
         link.href = blobUrl;
-        link.download = result.fileName || 'oferta.pdf';
+        link.download = result.downloadFileName || offerPdfFileName(offer.offer_number);
         link.style.display = 'none';
         document.body.appendChild(link);
         link.click();
@@ -260,6 +241,7 @@ export default function OfferActions({
       console.error('Error generating PDF:', err);
       showSnackbar(err.message || 'Błąd podczas generowania PDF', 'error');
     } finally {
+      generationInProgress.current = false;
       setGeneratingPdf(false);
     }
   };
@@ -283,7 +265,7 @@ export default function OfferActions({
 
       const link = document.createElement('a');
       link.href = blobUrl;
-      link.download = offer.generated_pdf_url;
+      link.download = offerPdfFileName(offer.offer_number);
       link.style.display = 'none';
       document.body.appendChild(link);
       link.click();
@@ -312,7 +294,7 @@ export default function OfferActions({
             <select
               value={currentStatus}
               onChange={(e) => handleStatusChange(e.target.value as OfferStatus)}
-              disabled={updatingStatus}
+              disabled={updatingStatus || !canSendEmail || (offer.inquiry_id && currentStatus === 'accepted')}
               className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1117] px-3 py-2 text-sm text-[#e5e4e2] transition-colors focus:border-[#d3bb73] focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
             >
               {Object.entries(offerStatusLabels).map(([value, label]) => (
@@ -324,7 +306,7 @@ export default function OfferActions({
           </div>
 
           {/* Przycisk Zarezerwuj Sprzęt - tylko dla draft/sent */}
-          {(currentStatus === 'draft' ||
+          {canSendEmail && offer.event_id && (currentStatus === 'draft' ||
             currentStatus === 'sent' ||
             currentStatus === 'accepted') && (
             <button
@@ -340,18 +322,14 @@ export default function OfferActions({
             </button>
           )}
 
-          <button
-            onClick={() => {
-              if (offer.event_id) {
-                router.push(`/crm/events/${offer.event_id}`);
-              }
-            }}
-            disabled={!offer.event_id}
-            className="flex w-full items-center gap-2 rounded-lg bg-[#d3bb73]/10 px-4 py-2 text-sm text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/20 disabled:cursor-not-allowed disabled:opacity-50"
+          {source && <button
+            type="button"
+            onClick={() => router.push(source.href)}
+            className="flex w-full items-center gap-2 rounded-lg bg-[#d3bb73]/10 px-4 py-2 text-sm text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/20"
           >
-            <Calendar className="h-4 w-4" />
-            Przejdź do eventu
-          </button>
+            {source.kind === 'event' ? <Calendar className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
+            {source.actionLabel}
+          </button>}
 
           {!offer.generated_pdf_url || offer.modified_after_generation ? (
             <button
@@ -367,7 +345,7 @@ export default function OfferActions({
               ) : (
                 <>
                   <FileText className="h-4 w-4" />
-                  {offer.modified_after_generation ? 'Regeneruj PDF' : 'Generuj PDF'}
+                  {offer.generated_pdf_url ? 'Regeneruj PDF' : 'Generuj PDF'}
                 </>
               )}
             </button>
@@ -463,31 +441,21 @@ export default function OfferActions({
             </button>
           )}
 
-          {/* Przycisk usuwania oferty */}
-          <button
-            onClick={handleDeleteOffer}
-            disabled={deleting}
-            className="flex w-full items-center gap-2 rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-2 text-sm text-red-400 transition-colors hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {deleting ? (
-              <>
-                <RefreshCw className="h-4 w-4 animate-spin" />
-                Usuwanie...
-              </>
-            ) : (
-              <>
-                <Trash2 className="h-4 w-4" />
-                Usuń ofertę
-              </>
-            )}
-          </button>
+
         </div>
       </div>
+
+      <FullScreenLoader
+        show={generatingPdf}
+        title="Generowanie oferty PDF"
+        description={pdfProgress}
+      />
 
       {/* Modal rezerwacji sprzętu */}
       <ReserveEquipmentModal
         offerId={offer?.id}
         open={showReserveModal}
+        onEditOfferItem={onEditOfferItem}
         onClose={() => setShowReserveModal(false)}
         onSuccess={() => {
           setCurrentStatus('accepted');

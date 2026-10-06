@@ -39,7 +39,7 @@ export interface AgendaData {
 export function AgendaTab({ agenda }: { agenda: AgendaData | null }) {
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  if (!agenda || agenda.items.length === 0) {
+  if (!agenda || (agenda.items.length === 0 && agenda.notes.length === 0)) {
     return (
       <View style={styles.emptyTab}>
         <Feather name="clock" size={40} color={colors.text.tertiary} />
@@ -50,6 +50,7 @@ export function AgendaTab({ agenda }: { agenda: AgendaData | null }) {
 
   const formatTime = (time: string | null) => {
     if (!time) return '';
+    if (/^\d{2}:\d{2}/.test(time)) return time.slice(0, 5);
 
     const date = new Date(time);
 

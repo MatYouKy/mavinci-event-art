@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { LocationTechnicalDetails } from '@/components/crm/locations/LocationTechnicalDetails';
+import { LocationRooms } from '@/components/crm/locations/LocationRooms';
 import { supabase } from '@/lib/supabase/browser';
 import { MapPin, ArrowLeft, Edit, ExternalLink, Building2, Mail, Phone, Globe } from 'lucide-react';
 
@@ -64,7 +66,7 @@ export default function LocationDetailsPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#0a0d1a]">
+      <div className="flex min-h-screen items-center justify-center bg-[#250914]">
         <div className="text-[#e5e4e2]">Ładowanie...</div>
       </div>
     );
@@ -72,7 +74,7 @@ export default function LocationDetailsPage() {
 
   if (error || !location) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-[#0a0d1a]">
+      <div className="flex min-h-screen flex-col items-center justify-center bg-[#250914]">
         <div className="mb-4 text-red-400">{error || 'Lokalizacja nie została znaleziona'}</div>
         <button onClick={() => router.back()} className="text-[#d3bb73] hover:underline">
           Wróć
@@ -82,13 +84,13 @@ export default function LocationDetailsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0a0d1a] p-6 text-[#e5e4e2]">
+    <div className="min-h-screen bg-[#250914] p-6 text-[#e5e4e2]">
       <div className="mx-auto max-w-6xl">
         {/* Header */}
         <div className="mb-6 flex items-center gap-4">
           <button
             onClick={() => router.back()}
-            className="rounded-lg p-2 transition-colors hover:bg-[#1c1f33]"
+            className="rounded-lg p-2 transition-colors hover:bg-[#351020]"
           >
             <ArrowLeft className="h-5 w-5" />
           </button>
@@ -100,7 +102,7 @@ export default function LocationDetailsPage() {
           </div>
           <button
             onClick={() => router.push(`/crm/locations`)}
-            className="flex items-center gap-2 rounded-lg bg-[#1c1f33] px-4 py-2 transition-colors hover:bg-[#1c1f33]/80"
+            className="flex items-center gap-2 rounded-lg bg-[#351020] px-4 py-2 transition-colors hover:bg-[#351020]/80"
           >
             <Edit className="h-4 w-4" />
             Edytuj
@@ -111,7 +113,7 @@ export default function LocationDetailsPage() {
           {/* Main Info */}
           <div className="space-y-6 lg:col-span-2">
             {/* Details Card */}
-            <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+            <div className="rounded-xl border border-[#d3bb73]/10 bg-[#351020] p-6">
               <h2 className="mb-4 text-lg font-light text-[#e5e4e2]">Szczegóły</h2>
               <div className="space-y-4">
                 {location.address && (
@@ -177,7 +179,7 @@ export default function LocationDetailsPage() {
 
             {/* Notes */}
             {location.notes && (
-              <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+              <div className="rounded-xl border border-[#d3bb73]/10 bg-[#351020] p-6">
                 <h2 className="mb-4 text-lg font-light text-[#e5e4e2]">Notatki</h2>
                 <p className="whitespace-pre-wrap leading-relaxed text-[#e5e4e2]/80">
                   {location.notes}
@@ -190,9 +192,9 @@ export default function LocationDetailsPage() {
           <div className="space-y-6">
             {/* Map */}
             {location.latitude && location.longitude && (
-              <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+              <div className="rounded-xl border border-[#d3bb73]/10 bg-[#351020] p-6">
                 <h2 className="mb-4 text-lg font-light text-[#e5e4e2]">Mapa</h2>
-                <div className="relative h-64 w-full overflow-hidden rounded-lg border border-[#d3bb73]/20 bg-[#0f1117]">
+                <div className="relative h-64 w-full overflow-hidden rounded-lg border border-[#d3bb73]/20 bg-[#250914]">
                   <iframe
                     src={`https://www.google.com/maps/embed/v1/place?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}&q=${location.latitude},${location.longitude}&zoom=15`}
                     className="h-full w-full border-0"
@@ -205,7 +207,7 @@ export default function LocationDetailsPage() {
             )}
 
             {/* Metadata */}
-            <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+            <div className="rounded-xl border border-[#d3bb73]/10 bg-[#351020] p-6">
               <h2 className="mb-4 text-lg font-light text-[#e5e4e2]">Informacje</h2>
               <div className="space-y-3 text-sm">
                 <div>
@@ -246,6 +248,8 @@ export default function LocationDetailsPage() {
             </div>
           </div>
         </div>
+        <LocationRooms locationId={locationId} />
+        <LocationTechnicalDetails locationId={locationId} />
       </div>
     </div>
   );

@@ -166,6 +166,12 @@ Deno.serve(async (request) => {
         scheduledEmailId: job.id,
       };
 
+      const documentKind = job.metadata?.entityType;
+      if (['offer', 'calculation', 'inquiry'].includes(documentKind)) {
+        const documentId = job.metadata?.entityId || job.metadata?.inquiryId;
+        const { data: allowed, error } = await service.rpc('sales_actor_can_manage', { p_kind: documentKind, p_document: documentId, p_user: job.created_by });
+        if (error || !allowed) throw new Error('Nadawca nie ma już uprawnień do zapytania lub dokumentu.');
+      }
       const response = await fetch(`${supabaseUrl}/functions/v1/${job.function_name}`, {
         method: 'POST',
         headers: {
@@ -182,23 +188,8 @@ Deno.serve(async (request) => {
 
       const metadata = (job.metadata || {}) as Record<string, unknown>;
       if (metadata.markEntitySent && metadata.entityType === 'offer' && metadata.entityId) {
-        await service.from('offers').update({ status: 'sent' }).eq('id', metadata.entityId);
-        const { data: offer } = await service
-          .from('offers')
-          .select('inquiry_id')
-          .eq('id', metadata.entityId)
-          .maybeSingle();
-        if (offer?.inquiry_id) {
-          await service
-            .from('tasks')
-            .update({
-              inquiry_stage: 'proposal',
-              linked_offer_id: metadata.entityId,
-              last_contact_at: new Date().toISOString(),
-            })
-            .eq('id', offer.inquiry_id)
-            .eq('is_inquiry', true);
-        }
+        const { error: activityError } = await service.rpc('record_sales_delivery', { p_kind: 'offer', p_document: metadata.entityId, p_delivery_key: `scheduled:${job.id}`, p_storage_path: payload.documentPath || null, p_recipient: payload.to });
+        if (activityError) console.error('Offer sent; delivery activity failed', activityError.code);
       }
       if (
         metadata.markEntitySent &&
@@ -214,19 +205,9 @@ Deno.serve(async (request) => {
           })
           .eq('id', metadata.entityId);
       }
-      if (metadata.inquiryId) {
-        const { data: inquiry } = await service
-          .from('tasks')
-          .select('inquiry_stage')
-          .eq('id', metadata.inquiryId)
-          .maybeSingle();
-        await service
-          .from('tasks')
-          .update({
-            last_contact_at: new Date().toISOString(),
-            inquiry_stage: inquiry?.inquiry_stage === 'new' ? 'contacted' : inquiry?.inquiry_stage,
-          })
-          .eq('id', metadata.inquiryId);
+      if (metadata.inquiryId && metadata.entityType === 'inquiry') {
+        const { error: activityError } = await service.rpc('record_inquiry_delivery', { p_inquiry: metadata.inquiryId, p_delivery_key: `scheduled:${job.id}`, p_recipient: payload.to });
+        if (activityError) console.error('Inquiry email sent; activity failed', activityError.code);
       }
 
       await service

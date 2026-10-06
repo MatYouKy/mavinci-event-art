@@ -1,6 +1,91 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { prepareInlineEmailImages } from "../_shared/emailInlineImages.ts";
+
+// Keep these helpers local: Supabase Dashboard deployments may include only index.ts.
+// When updating the equivalents in _shared, keep both send-email functions in sync.
+async function salesDeliveryActor(req: Request, body: any, service: any, functionName: string) {
+  const token = req.headers.get('Authorization')?.replace(/^Bearer\s+/i, '');
+  if (!token) throw new Error('Wymagane logowanie');
+  if (token === Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')) {
+    const id = body._scheduledDispatch?.scheduledEmailId;
+    if (!id) throw new Error('Brak zlecenia wysyłki');
+    const { data: job, error } = await service.from('scheduled_emails').select('created_by,status,function_name').eq('id', id).single();
+    if (error || job.status !== 'processing' || job.function_name !== functionName) throw new Error('Nieprawidłowe zlecenie wysyłki');
+    return { userId: job.created_by, scheduled: true, deliveryKey: `scheduled:${id}` };
+  }
+  const { data, error } = await service.auth.getUser(token);
+  if (error || !data.user) throw new Error('Sesja wygasła');
+  return { userId: data.user.id, scheduled: false, deliveryKey: null };
+}
+async function assertSalesDocumentPermission(service: any, kind: string, id: string, userId: string) {
+  const { data, error } = await service.rpc('sales_actor_can_manage', { p_kind: kind, p_document: id, p_user: userId });
+  if (error || !data) throw new Error('Brak uprawnień do dokumentu');
+}
+
+interface RelayEmailAttachment {
+  filename: string;
+  content: string;
+  contentType?: string;
+  contentDisposition?: "attachment" | "inline";
+  cid?: string;
+}
+
+interface PreparedEmail {
+  html: string;
+  attachments: RelayEmailAttachment[];
+}
+
+const extensionForMime = (mime: string): string => {
+  const normalized = mime.toLowerCase();
+  if (normalized === "image/jpeg") return "jpg";
+  if (normalized === "image/svg+xml") return "svg";
+  if (normalized === "image/gif") return "gif";
+  if (normalized === "image/webp") return "webp";
+  return "png";
+};
+
+/**
+ * Gmail usuwa data:image/... z HTML wiadomości. Zamieniamy je na obrazy MIME
+ * osadzone przez Content-ID, zachowując przy tym dotychczasowy szablon stopki.
+ */
+const prepareInlineEmailImages = (
+  html: string,
+  existingAttachments: RelayEmailAttachment[] = [],
+): PreparedEmail => {
+  if (!html || !/data:image\//i.test(html)) {
+    return { html, attachments: [...existingAttachments] };
+  }
+
+  const inlineAttachments: RelayEmailAttachment[] = [];
+  const knownImages = new Map<string, string>();
+  let imageIndex = 0;
+
+  const preparedHtml = html.replace(
+    /(<img\b[^>]*?\bsrc\s*=\s*)(["'])(data:(image\/[a-z0-9.+-]+)(?:;[^,]*)?;base64,([^"']+))\2/gi,
+    (_match, prefix: string, quote: string, dataUri: string, mime: string, base64: string) => {
+      const existingCid = knownImages.get(dataUri);
+      if (existingCid) return `${prefix}${quote}cid:${existingCid}${quote}`;
+
+      imageIndex += 1;
+      const cid = `mavinci-inline-${imageIndex}-${crypto.randomUUID()}@mavinci.pl`;
+      knownImages.set(dataUri, cid);
+      inlineAttachments.push({
+        filename: `mavinci-inline-${imageIndex}.${extensionForMime(mime)}`,
+        content: base64.replace(/\s+/g, ""),
+        contentType: mime,
+        contentDisposition: "inline",
+        cid,
+      });
+
+      return `${prefix}${quote}cid:${cid}${quote}`;
+    },
+  );
+
+  return {
+    html: preparedHtml,
+    attachments: [...existingAttachments, ...inlineAttachments],
+  };
+};
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -43,7 +128,7 @@ const renderTemplate = (template: string, values: Record<string, string>): strin
   let out = template;
   for (const [key, value] of Object.entries(values)) {
     const re = new RegExp(`{{\\s*${key}\\s*}}`, "g");
-    out = out.replace(re, value ?? "");
+    out = out.replace(re, () => value ?? "");
   }
   return out;
 };
@@ -51,15 +136,33 @@ const renderTemplate = (template: string, values: Record<string, string>): strin
 const hasTemplatePlaceholder = (template: string, key: string): boolean =>
   new RegExp(`{{\\s*${key}\\s*}}`, "i").test(template || "");
 
-const normalizeMessageText = (value: string): string =>
-  (value || "")
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/\s+/g, " ")
-    .trim();
+const decodeEmailEntities = (value: string): string => value.replace(
+  /&(#x[0-9a-f]+|#\d+|nbsp|amp|lt|gt|quot|apos);/gi,
+  (entity, code: string) => {
+    const named: Record<string, string> = { nbsp: ' ', amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" };
+    if (!code.startsWith('#')) return named[code.toLowerCase()] ?? entity;
+    const number = code.toLowerCase().startsWith('#x') ? parseInt(code.slice(2), 16) : parseInt(code.slice(1), 10);
+    return number >= 0 && number <= 0x10ffff ? String.fromCodePoint(number) : entity;
+  },
+);
+
+const normalizeMessageText = (value: string): string => decodeEmailEntities(
+  (value || '')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' '),
+).replace(/\s+/g, ' ').trim();
+
+const plainMessageToHtml = (value: string): string => value
+  .replace(/\r\n?/g, '\n')
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#039;')
+  .replace(/\t/g, '    ')
+  .replace(/ {2,}/g, (spaces) => '&nbsp;'.repeat(spaces.length - 1) + ' ')
+  .replace(/\n/g, '<br>');
 
 const fetchAsDataUri = async (url: string): Promise<string> => {
   if (!url || url.startsWith("data:")) return url;
@@ -102,6 +205,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
+    const requestBody = await req.json();
     const {
       offerId,
       emailAccountId,
@@ -113,7 +217,7 @@ Deno.serve(async (req: Request) => {
       messageHtml,
       signatureHtml,
       recipientName,
-    }: SendOfferEmailRequest = await req.json();
+    }: SendOfferEmailRequest = requestBody;
 
     if (!offerId || !to || !subject) {
       throw new Error("Missing required fields: offerId, to, subject");
@@ -128,20 +232,21 @@ Deno.serve(async (req: Request) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const { data: { user } } = await supabase.auth.getUser(
-      authHeader.replace("Bearer ", "")
-    );
+    const actor = await salesDeliveryActor(req, requestBody, supabase, 'send-offer-email');
+    const user = { id: actor.userId };
+    await assertSalesDocumentPermission(supabase, 'offer', offerId, user.id);
 
-    if (!user) {
-      throw new Error("Unauthorized");
-    }
-
-    const { data: offer } = await supabase
+    // Email delivery only needs offer fields; no event or organization is required.
+    const { data: offer, error: offerError } = await supabase
       .from("offers")
-      .select("*, organization:organizations(*), event:events(*)")
+      .select("*")
       .eq("id", offerId)
       .maybeSingle();
 
+    if (offerError) {
+      console.error('[send-offer-email] Offer lookup failed:', offerError);
+      throw new Error(`Nie udało się pobrać oferty: ${offerError.message}`);
+    }
     if (!offer) {
       throw new Error("Offer not found");
     }
@@ -161,9 +266,7 @@ Deno.serve(async (req: Request) => {
     const isAdmin = employee.permissions?.includes('admin');
     const isCreator = offer.created_by === user.id || offer.created_by === employee.id;
 
-    if (!isAdmin && !isCreator) {
-      throw new Error("Not authorized to send this offer");
-    }
+
 
     let emailAccount: any = null;
     if (emailAccountId) {
@@ -214,59 +317,12 @@ Deno.serve(async (req: Request) => {
       throw new Error("SMTP_RELAY_URL or SMTP_RELAY_SECRET not configured");
     }
 
-    console.log('[send-offer-email] Generating PDF for offer:', offerId);
-    let pdfDownloadUrl = '';
-    let pdfStoragePath = '';
-
-    try {
-      for (const resourceMode of ['standard', 'compact'] as const) {
-        const pdfResponse = await fetch(`${supabaseUrl}/functions/v1/generate-offer-pdf`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': authHeader,
-          },
-          body: JSON.stringify({
-            offerId: offerId,
-            employeeId: employee.id,
-            resourceMode,
-          }),
-        });
-        const pdfResult = await pdfResponse.json().catch(() => ({}));
-
-        if (pdfResponse.ok && pdfResult.success && pdfResult.fileName) {
-          pdfStoragePath = pdfResult.fileName;
-          const { data: signedUrlData } = await supabase.storage
-            .from('generated-offers')
-            .createSignedUrl(pdfResult.fileName, 60 * 60 * 24 * 7);
-          if (signedUrlData?.signedUrl) {
-            pdfDownloadUrl = signedUrlData.signedUrl;
-          }
-          break;
-        }
-
-        console.error('[send-offer-email] PDF generation failed:', pdfResult);
-        if (pdfResult.code !== 'WORKER_RESOURCE_LIMIT') break;
-      }
-    } catch (pdfError) {
-      console.error('[send-offer-email] Error generating PDF:', pdfError);
-    }
-
-    if (!pdfStoragePath && offer.generated_pdf_url) {
-      pdfStoragePath = offer.generated_pdf_url;
-    }
-
-    if (!pdfDownloadUrl && pdfStoragePath) {
-      const { data: signedUrlData } = await supabase.storage
-        .from('generated-offers')
-        .createSignedUrl(pdfStoragePath, 60 * 60 * 24 * 7);
-      if (signedUrlData?.signedUrl) {
-        pdfDownloadUrl = signedUrlData.signedUrl;
-      }
-    }
-
-    if (!pdfStoragePath) {
-      throw new Error("Nie udało się wygenerować pliku PDF oferty. Wiadomość nie została wysłana.");
+    const pdfStoragePath = String(requestBody.documentPath || offer.generated_pdf_url || '');
+    if (!pdfStoragePath) throw new Error('Najpierw wygeneruj PDF oferty.');
+    if (!actor.scheduled && (offer.modified_after_generation || pdfStoragePath !== offer.generated_pdf_url)) throw new Error('Oferta zmieniła się. Wygeneruj aktualny PDF przed wysyłką.');
+    if (actor.scheduled) {
+      const { data: file } = await supabase.from('sales_document_files').select('id').eq('offer_id', offerId).eq('storage_bucket', 'generated-offers').eq('storage_path', pdfStoragePath).maybeSingle();
+      if (!file) throw new Error('Brak zapisanej wersji oferty z chwili planowania wysyłki.');
     }
 
     const { data: pdfFile, error: pdfDownloadError } = await supabase.storage
@@ -345,27 +401,18 @@ Deno.serve(async (req: Request) => {
       accentColor = colors.find((c) => c.role === "accent")?.hex || "#d3bb73";
     }
 
-    const pdfLinkHtml = pdfDownloadUrl
-      ? `
-        <div style="margin: 24px 0; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px; background-color: #f9f9f9;">
-          <p style="margin: 0 0 12px 0; font-size: 14px; color: #555;">Oferta do pobrania:</p>
-          <a href="${pdfDownloadUrl}" target="_blank" style="display: inline-block; padding: 12px 24px; background-color: ${primaryColor}; color: #1c1f33; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 14px;">Pobierz ofertę PDF</a>
-          <p style="margin: 12px 0 0 0; font-size: 12px; color: #999;">Link jest ważny przez 7 dni.</p>
-        </div>
-      `
-      : '';
-
-    const contentHtml = message.replace(/\n/g, "<br>");
+    const contentHtml = plainMessageToHtml(message);
     const finalSignature = signatureHtml || emailAccount.signature || "";
-    const expectedMessageText = normalizeMessageText(message);
+    const expectedMessageText = message.replace(/\s+/g, ' ').trim();
     const preparedMessageText = normalizeMessageText(messageHtml || "");
     const messageHtmlContainsContent =
       Boolean(messageHtml) &&
-      (!expectedMessageText || preparedMessageText.includes(expectedMessageText));
+      (!expectedMessageText
+        || preparedMessageText.replace(/\s/g, '').includes(expectedMessageText.replace(/\s/g, '')));
 
     let htmlBody: string;
     if (messageHtmlContainsContent) {
-      htmlBody = `${messageHtml}${pdfLinkHtml}`;
+      htmlBody = messageHtml;
     } else if (useBodyTemplate) {
       const safeBodyTemplate =
         hasTemplatePlaceholder(bodyTemplate, "content") &&
@@ -385,13 +432,12 @@ Deno.serve(async (req: Request) => {
         brand_secondary_color: secondaryColor,
         brand_accent_color: accentColor,
         signature: finalSignature,
-        pdf_link: pdfLinkHtml,
+        pdf_link: "",
       });
     } else {
       htmlBody = `
         <div style="display:block;width:100%;max-width:none;margin:0;padding:0;box-sizing:border-box;font-family:Arial,sans-serif;">
           <div style="margin:0;padding:0;">${contentHtml}</div>
-          ${pdfLinkHtml}
           ${finalSignature}
         </div>
       `;
@@ -448,10 +494,14 @@ Deno.serve(async (req: Request) => {
       sent_at: new Date().toISOString(),
     });
 
+    const { error: deliveryError } = await supabase.rpc('record_sales_delivery', { p_kind: 'offer', p_document: offerId, p_delivery_key: actor.deliveryKey || `offer:${offerId}:${info.messageId || crypto.randomUUID()}`, p_storage_path: pdfStoragePath, p_recipient: to });
+    if (deliveryError) console.error('Offer delivered; activity write failed', deliveryError.code);
+
     return new Response(
       JSON.stringify({
         success: true,
         messageId: info.messageId,
+        warning: deliveryError ? 'Wiadomość wysłana, ale nie zapisano jej w historii zapytania. Nie ponawiaj wysyłki.' : null,
         message: "Offer email sent successfully"
       }),
       {

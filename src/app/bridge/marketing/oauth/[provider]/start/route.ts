@@ -5,7 +5,13 @@ import { GOOGLE_SCOPES, getMetaGraphVersion } from '@/lib/marketing/providers.se
 import { getMarketingPublicUrl } from '@/lib/marketing/public-url.server';
 import type { MarketingProvider } from '@/lib/marketing/types';
 
-const COOKIE_NAME = 'marketing_oauth_state';
+import {
+  isMarketingPublicOrigin,
+  marketingOAuthCookieName,
+  marketingOAuthCookieOptions,
+} from '@/lib/marketing/oauth-state.server';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(
   request: NextRequest,
@@ -13,9 +19,23 @@ export async function GET(
 ) {
   const provider = params.provider as MarketingProvider;
   const companyId = request.nextUrl.searchParams.get('companyId') || '';
+  if (provider !== 'google' && provider !== 'meta') {
+    return NextResponse.json({ error: 'Nieobsługiwany dostawca.' }, { status: 404 });
+  }
+
+  // Set the state cookie on the callback origin, before leaving for Google/Meta.
+  // A host-only cookie from localhost or www is not sent to mavinci.pl.
+  if (!isMarketingPublicOrigin(request)) {
+    const canonicalStart = getMarketingPublicUrl(request, `/bridge/marketing/oauth/${provider}/start`);
+    canonicalStart.searchParams.set('companyId', companyId);
+    const response = NextResponse.redirect(canonicalStart);
+    response.headers.set('Cache-Control', 'no-store');
+    return response;
+  }
+
   const access = await getMarketingAccess('manage');
 
-  if (!access.allowed || !companyId || !canAccessMarketingCompany(access, companyId)) {
+  if (!access.allowed || !access.employee || !companyId || !canAccessMarketingCompany(access, companyId)) {
     return NextResponse.redirect(
       getMarketingPublicUrl(request, '/crm/page?tab=marketing&oauth=forbidden'),
     );
@@ -33,6 +53,7 @@ export async function GET(
   const statePayload = {
     provider,
     companyId,
+    employeeId: access.employee.id,
     nonce: randomBytes(24).toString('base64url'),
     createdAt: Date.now(),
   };
@@ -86,12 +107,7 @@ export async function GET(
   }
 
   const response = NextResponse.redirect(authorizationUrl);
-  response.cookies.set(COOKIE_NAME, state, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    path: '/bridge/marketing/oauth',
-    maxAge: 10 * 60,
-  });
+  response.headers.set('Cache-Control', 'no-store');
+  response.cookies.set(marketingOAuthCookieName(state), state, marketingOAuthCookieOptions(request));
   return response;
 }

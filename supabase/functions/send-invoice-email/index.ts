@@ -100,6 +100,11 @@ Deno.serve(async (req: Request) => {
       headers: corsHeaders,
     });
   }
+  if (req.method !== "POST") {
+    return new Response(JSON.stringify({ success: false, error: "Niedozwolona metoda." }), {
+      status: 405, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
 
   try {
     const {
@@ -126,16 +131,30 @@ Deno.serve(async (req: Request) => {
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    const userClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
+      global: { headers: { Authorization: authHeader } },
+      auth: { persistSession: false },
+    });
+    const { data: { user }, error: authError } = await userClient.auth.getUser();
 
-    const { data: { user } } = await supabase.auth.getUser(
-      authHeader.replace("Bearer ", "")
-    );
-
-    if (!user) {
-      throw new Error("Unauthorized");
+    if (authError || !user) {
+      return new Response(JSON.stringify({ success: false, error: "Nieprawidłowa sesja." }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
+    // Check the invoice in the caller's authenticated scope before service-role
+    // reads. A valid login alone does not authorize sending another seller's PDF.
+    const { data: canManageInvoice, error: invoiceAccessError } = await userClient.rpc("can_manage_invoice", {
+      p_invoice_id: invoiceId,
+    });
+    if (invoiceAccessError || canManageInvoice !== true) {
+      return new Response(JSON.stringify({ success: false, error: "Brak uprawnień do wysłania tej faktury." }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const supabase = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, {
+      auth: { persistSession: false },
+    });
 
     const { data: invoice } = await supabase
       .from("invoices")

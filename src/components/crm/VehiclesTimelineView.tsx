@@ -1,5 +1,7 @@
 'use client';
 
+import { systemLabel } from '@/lib/ui/systemLabels';
+
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -551,7 +553,7 @@ export default function VehiclesTimelineView() {
                         onChange={() => toggleFilter('vehicleTypes', type)}
                         className="h-4 w-4 rounded border-[#d3bb73]/20 bg-[#0f1119] text-[#d3bb73] focus:ring-[#d3bb73]"
                       />
-                      <span className="text-sm text-[#e5e4e2]/80 capitalize">{type}</span>
+                      <span className="text-sm text-[#e5e4e2]/80 capitalize">{systemLabel(type, 'vehicle')}</span>
                     </label>
                   ))}
                 </div>

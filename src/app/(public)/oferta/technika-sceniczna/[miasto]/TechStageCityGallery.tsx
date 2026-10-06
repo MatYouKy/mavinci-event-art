@@ -121,7 +121,7 @@ export default function TechStageCityGallery({ images: initialImages, cityCases 
                   >
                     <Save className="h-4 w-4" />
                   </button>
-                  <button
+                  <button data-crm-action="secondary"
                     onClick={() => { setEditingAltId(null); setAltValue(''); }}
                     className="rounded-lg border border-[#d3bb73]/30 px-3 py-2 text-sm text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/10"
                   >

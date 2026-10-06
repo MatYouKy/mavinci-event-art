@@ -16,6 +16,7 @@ import {
   CheckCircle2,
   XCircle,
 } from 'lucide-react';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { IContractTemplate } from './type';
 import { printContractDraft } from './printDraft';
@@ -23,6 +24,8 @@ import ResponsiveActionBar, { Action } from '@/components/crm/ResponsiveActionBa
 
 export default function ContractTemplatesPage() {
   const router = useRouter();
+  const { canManageModule } = useCurrentEmployee();
+  const canManage = canManageModule('contracts');
   const { showSnackbar } = useSnackbar();
   const [templates, setTemplates] = useState<IContractTemplate[]>([]);
   const [filteredTemplates, setFilteredTemplates] = useState<IContractTemplate[]>([]);
@@ -205,13 +208,13 @@ export default function ContractTemplatesPage() {
             </p>
           </div>
   
-          <button
+          {canManage && (<button
             onClick={() => setShowCreateModal(true)}
             className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-3 font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
           >
             <Plus className="h-5 w-5" />
             Nowy szablon
-          </button>
+          </button>)}
         </div>
   
         <div className="mb-6 rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
@@ -242,13 +245,13 @@ export default function ContractTemplatesPage() {
               Utwórz pierwszy szablon umowy
             </p>
   
-            <button
+            {canManage && (<button
               onClick={() => setShowCreateModal(true)}
               className="inline-flex items-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-3 font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
             >
               <Plus className="h-5 w-5" />
               Nowy szablon
-            </button>
+            </button>)}
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4">
@@ -257,6 +260,7 @@ export default function ContractTemplatesPage() {
   
               const actions: Action[] = [
                 {
+                  show: canManage,
                   label: template.is_active
                     ? 'Dezaktywuj'
                     : 'Aktywuj',
@@ -293,6 +297,7 @@ export default function ContractTemplatesPage() {
                     ),
                 },
                 {
+                  show: canManage,
                   label: 'Edytor WYSIWYG',
                   icon: <Edit className="h-5 w-5" />,
                   onClick: () =>
@@ -301,11 +306,13 @@ export default function ContractTemplatesPage() {
                     ),
                 },
                 {
+                  show: canManage,
                   label: 'Duplikuj',
                   icon: <Copy className="h-5 w-5" />,
                   onClick: () => handleDuplicate(template),
                 },
                 {
+                  show: canManage,
                   label: 'Usuń',
                   icon: <Trash2 className="h-5 w-5" />,
                   onClick: () => handleDelete(template.id),
@@ -361,10 +368,10 @@ export default function ContractTemplatesPage() {
                         ) : (
                           <h3
                             onClick={() =>
-                              handleStartEdit(template)
+                              canManage && handleStartEdit(template)
                             }
                             className="cursor-pointer truncate text-lg font-light text-[#e5e4e2] transition-colors hover:text-[#d3bb73]"
-                            title="Kliknij, aby edytować nazwę"
+                            title={canManage ? "Kliknij, aby edytować nazwę" : undefined}
                           >
                             {template.name}
                           </h3>
@@ -414,7 +421,7 @@ export default function ContractTemplatesPage() {
         )}
       </div>
   
-      {showCreateModal && (
+      {canManage && showCreateModal && (
         <CreateTemplateModal
           isOpen={showCreateModal}
           onClose={() => setShowCreateModal(false)}

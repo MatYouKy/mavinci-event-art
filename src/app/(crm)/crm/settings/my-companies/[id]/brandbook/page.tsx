@@ -209,7 +209,7 @@ export default function CompanyBrandbookPage() {
             const Icon = tab.icon;
             const active = activeTab === tab.key;
             return (
-              <button
+              <button data-crm-tab-active={active}
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key)}
                 className={`flex items-center gap-2 border-b-2 px-4 py-3 text-sm transition-colors ${
@@ -746,7 +746,7 @@ function FontsPanel({
             <Upload className="h-4 w-4" />
             {uploadingFont ? 'Wgrywanie…' : 'Wgraj font'}
           </button>
-          <button
+          <button data-crm-action="secondary"
             onClick={addFont}
             className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 px-4 py-2 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/10"
           >

@@ -85,6 +85,7 @@ const buildReplyQuoteHtml = (context?: EmailReplyContext) => {
     ? sanitizeQuotedEmailHtml(context.bodyHtml)
     : escapeHtml(context.body || '').replace(/\n/g, '<br>');
   const formattedDate = new Date(context.date).toLocaleString('pl-PL', {
+    timeZone: 'Europe/Warsaw',
     dateStyle: 'long',
     timeStyle: 'short',
   });
@@ -136,11 +137,11 @@ export default function ComposeEmailModal({
   const [scheduledAt, setScheduledAt] = useState('');
   const replyQuoteHtml = useMemo(() => buildReplyQuoteHtml(replyContext), [replyContext]);
   const selectableEmailAccounts = emailAccounts.filter(
-    (account) => account.id !== 'all' && account.id !== 'contact_form',
+    (account) => account.id !== 'all' && account.id !== 'contact_form' && account.can_send !== false,
   );
   const emailAccountIdsKey = selectableEmailAccounts.map((account) => account.id).join('|');
   const selectedReplyAccountId =
-    selectedAccountId && !['all', 'contact_form'].includes(selectedAccountId)
+    selectedAccountId && selectableEmailAccounts.some((account) => account.id === selectedAccountId)
       ? selectedAccountId
       : '';
   const effectiveAccountId = fromAccountId || selectedReplyAccountId || null;

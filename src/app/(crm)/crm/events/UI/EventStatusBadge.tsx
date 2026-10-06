@@ -6,6 +6,7 @@ import { EVENT_STATUS_BADGE_CLASSES } from '@/components/crm/events/eventStatusP
 
 interface Props {
   status: EventStatus;
+  label?: string;
 }
 
 const STATUS_STYLES: Record<
@@ -58,7 +59,7 @@ const STATUS_STYLES: Record<
   },
 };
 
-export function EventStatusBadge({ status }: Props) {
+export function EventStatusBadge({ status, label }: Props) {
   const data = STATUS_STYLES[status];
 
   if (!data) {
@@ -80,7 +81,7 @@ export function EventStatusBadge({ status }: Props) {
       className={`inline-grid w-[168px] max-w-full grid-cols-[12px_minmax(0,1fr)_12px] items-center gap-1 whitespace-nowrap rounded-md border px-2.5 py-1 text-[10px] font-medium leading-tight ${data.className}`}
     >
       <Tag className="h-3 w-3 justify-self-start" />
-      <span className="min-w-0 text-center">{data.label}</span>
+      <span className="min-w-0 text-center">{label || data.label}</span>
       <span aria-hidden="true" />
     </span>
   );

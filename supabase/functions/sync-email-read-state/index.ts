@@ -22,6 +22,9 @@ Deno.serve(async (req: Request) => {
 
     const { messageId, mode = "sync" } = await req.json().catch(() => ({}));
 
+    if (!['sync', 'mark_read', 'mark_unread'].includes(mode)) return json({ success: false, error: 'Invalid mode' }, 400);
+    if (mode !== 'sync' && !messageId) return json({ success: false, error: 'messageId required' }, 400);
+
     const [{ data: personal }, { data: assigned }] = await Promise.all([
       supabase.from("employee_email_accounts").select("id").eq("employee_id", user.id).eq("is_active", true),
       supabase.from("employee_email_account_assignments").select("email_account_id").eq("employee_id", user.id),
@@ -35,7 +38,7 @@ Deno.serve(async (req: Request) => {
     const isDirectChange = mode === "mark_read" || mode === "mark_unread";
     let emailQuery = supabase
       .from("received_emails")
-      .select("id, message_id, email_account_id, imap_uid, imap_uidvalidity, imap_mailbox")
+      .select("id, message_id, email_account_id, imap_uid, imap_uidvalidity, imap_mailbox, imap_flags, is_read")
       .in("email_account_id", allowedAccountIds)
       .is("deleted_at", null)
       .order("received_date", { ascending: false })
@@ -85,24 +88,34 @@ Deno.serve(async (req: Request) => {
             mode === "mark_read" ? true : mode === "mark_unread" ? false : null,
           mailbox: "INBOX",
         }),
+        signal: AbortSignal.timeout(20000),
       });
       const relayResult = await relayResponse.json();
       if (!relayResponse.ok || !relayResult.success) throw new Error(relayResult.error || "IMAP relay error");
 
+      const knownEmails = new Map(emails.filter(email => email.email_account_id === accountId).map(email => [email.id, email]));
       for (const state of relayResult.states || []) {
-        if (!state.found) continue;
-        const { error } = await supabase
-          .from("received_emails")
-          .update({
-            is_read: state.isRead,
-            imap_uid: state.uid || null,
-            imap_uidvalidity: state.uidValidity || null,
-            imap_mailbox: state.mailbox || "INBOX",
-            imap_flags: state.flags || [],
-            imap_synced_at: new Date().toISOString(),
-          })
-          .eq("id", state.id);
-        if (!error) updated += 1;
+        const previous = knownEmails.get(state.id);
+        if (!state.found || !previous || typeof state.isRead !== 'boolean') continue;
+        const next = {
+          is_read: state.isRead,
+          imap_uid: state.uid || null,
+          imap_uidvalidity: state.uidValidity || null,
+          imap_mailbox: state.mailbox || 'INBOX',
+          imap_flags: Array.isArray(state.flags) ? [...new Set(state.flags)].sort() : [],
+        };
+        const sameFlags = JSON.stringify([...(previous.imap_flags || [])].sort()) === JSON.stringify(next.imap_flags);
+        if (previous.is_read === next.is_read && String(previous.imap_uid ?? '') === String(next.imap_uid ?? '')
+          && String(previous.imap_uidvalidity ?? '') === String(next.imap_uidvalidity ?? '')
+          && previous.imap_mailbox === next.imap_mailbox && sameFlags) continue;
+        let update = supabase.from('received_emails')
+          .update({ ...next, imap_synced_at: new Date().toISOString() })
+          .eq('id', previous.id).eq('email_account_id', accountId);
+        // A background snapshot must not undo a newer manual read/unread action.
+        if (!isDirectChange) update = previous.is_read === null ? update.is('is_read', null) : update.eq('is_read', previous.is_read);
+        const { error, data } = await update.select('id');
+        if (error) throw error;
+        updated += data?.length || 0;
       }
     }
 

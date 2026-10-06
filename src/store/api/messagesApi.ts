@@ -40,6 +40,7 @@ export interface MessageDetails extends MessageListItem {
   bodyHtml?: string;
   originalData: any;
   attachments?: EmailAttachment[];
+  attachmentsError?: string;
 }
 
 export interface MessageUnreadCounts {
@@ -399,6 +400,28 @@ export const messagesApi = api.injectEndpoints({
       keepUnusedDataFor: 7200,
     }),
 
+    getReceivedAttachments: builder.query<
+      { attachments: EmailAttachment[]; syncError?: string },
+      string
+    >({
+      queryFn: async (messageId, { signal }) => {
+        try {
+          const response = await fetch('/bridge/messages/attachments', {
+            method: 'POST', credentials: 'same-origin', signal,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ messageId }),
+          });
+          const result = await response.json();
+          if (!response.ok) return { error: { status: response.status, data: result } };
+          return { data: result };
+        } catch {
+          return { error: { status: 'CUSTOM_ERROR', error: 'Nie udało się pobrać załączników.' } };
+        }
+      },
+      // The server persists completion; dropping the UI cache also allows a new attempt after an error.
+      keepUnusedDataFor: 0,
+    }),
+
     getMessageDetails: builder.query<
       MessageDetails,
       { id: string; type: 'contact_form' | 'sent' | 'received' }
@@ -455,7 +478,7 @@ export const messagesApi = api.injectEndpoints({
               const bodyText = data.body.replace(/<[^>]*>/g, '');
 
               // Fetch attachments for sent emails
-              const { data: attachments } = await supabase
+              const { data: attachments, error: attachmentsError } = await supabase
                 .from('email_attachments')
                 .select('id, filename, content_type, size_bytes, storage_path')
                 .eq('email_id', id)
@@ -476,6 +499,7 @@ export const messagesApi = api.injectEndpoints({
                 email_account_id: data.email_account_id,
                 originalData: data,
                 attachments: attachments || [],
+                attachmentsError: attachmentsError ? 'Nie udało się odczytać listy załączników.' : undefined,
               };
             }
           } else if (type === 'received') {
@@ -491,7 +515,7 @@ export const messagesApi = api.injectEndpoints({
               .single();
 
             if (data) {
-              const { data: attachments } = await supabase
+              const { data: attachments, error: attachmentsError } = await supabase
                 .from('email_attachments')
                 .select('id, filename, content_type, size_bytes, storage_path')
                 .eq('email_id', id)
@@ -514,6 +538,7 @@ export const messagesApi = api.injectEndpoints({
                 email_account_id: data.email_account_id,
                 originalData: data,
                 attachments: attachments || [],
+                attachmentsError: attachmentsError ? 'Nie udało się odczytać listy załączników.' : undefined,
               };
             }
           }
@@ -923,6 +948,7 @@ export const messagesApi = api.injectEndpoints({
         from_name: string;
         account_type: 'personal' | 'shared' | 'system';
         department?: string;
+        can_send: boolean;
         display_name: string;
       }>;
       hasContactFormAccess: boolean;
@@ -940,39 +966,41 @@ export const messagesApi = api.injectEndpoints({
             return { data: { accounts: [], hasContactFormAccess: false, isAdmin: false } };
           }
 
+          const { data: actor, error: actorError } = await supabase.from('employees').select('id,permissions,can_receive_contact_forms,role,access_level').or(`id.eq.${user.id},auth_user_id.eq.${user.id}`).eq('is_active',true).maybeSingle();
+          if (actorError) throw actorError;
+          if (!actor) return { data: { accounts: [], hasContactFormAccess: false, isAdmin: false } };
           // Get personal accounts
-          const { data: personalAccounts } = await supabase
+          const { data: personalAccounts, error: personalError } = await supabase
             .from('employee_email_accounts')
-            .select('*')
-            .eq('employee_id', user.id)
+            .select('id,email_address,account_name,from_name,account_type,department,is_default,employee_id')
+            .eq('employee_id', actor.id)
             .eq('is_active', true);
 
+          if (personalError) throw personalError;
+
           // Get assigned shared accounts
-          const { data: assignments } = await supabase
+          const { data: assignments, error: assignmentsError } = await supabase
             .from('employee_email_account_assignments')
-            .select('email_account_id')
-            .eq('employee_id', user.id);
+            .select('email_account_id,can_send')
+            .eq('employee_id', actor.id);
+
+          if (assignmentsError) throw assignmentsError;
 
           const assignedAccountIds = assignments?.map((a) => a.email_account_id) || [];
 
-          // Get employee data for contact form access
-          const { data: employeeData } = await supabase
-            .from('employees')
-            .select('can_receive_contact_forms, permissions')
-            .eq('id', user.id)
-            .maybeSingle();
-
-          const hasContactFormAccess = employeeData?.can_receive_contact_forms || false;
-          const isAdmin = employeeData?.permissions?.includes('admin') || false;
+          const hasContactFormAccess = actor.can_receive_contact_forms || false;
+          const isAdmin = actor.permissions?.includes('admin') || actor.role === 'admin' || actor.access_level === 'admin';
+          const hasMessagesAccess = isAdmin || actor.permissions?.some((permission: string) => ['messages_view','messages_manage'].includes(permission));
 
           let assignedAccounts: any[] = [];
           if (assignedAccountIds.length > 0) {
-            const { data: assignedData } = await supabase
+            const { data: assignedData, error: assignedError } = await supabase
               .from('employee_email_accounts')
-              .select('*')
+              .select('id,email_address,account_name,from_name,account_type,department,is_default,employee_id')
               .in('id', assignedAccountIds)
               .eq('is_active', true);
 
+            if (assignedError) throw assignedError;
             assignedAccounts = assignedData || [];
           }
 
@@ -1009,6 +1037,7 @@ export const messagesApi = api.injectEndpoints({
 
           const formattedAccounts = sortedAccounts.map((acc) => ({
             ...acc,
+            can_send: Boolean(hasMessagesAccess && (acc.employee_id === actor.id || assignments?.some(a => a.email_account_id === acc.id && a.can_send === true))),
             display_name: formatAccountName(acc),
           }));
 
@@ -1023,6 +1052,7 @@ export const messagesApi = api.injectEndpoints({
                     account_name: 'Wszystkie konta',
                     display_name: '📧 Wszystkie konta',
                     account_type: 'system' as const,
+                    can_send: false,
                   },
                 ]
               : []),
@@ -1035,6 +1065,7 @@ export const messagesApi = api.injectEndpoints({
                     account_name: 'Formularz kontaktowy',
                     display_name: '📝 Formularz kontaktowy',
                     account_type: 'system' as const,
+                    can_send: false,
                   },
                 ]
               : []),
@@ -1148,15 +1179,8 @@ export const messagesApi = api.injectEndpoints({
             return { data: 0 };
           }
 
-          // Thunderbird i inne klienty zapisują stan na IMAP. Przed zliczeniem
-          // odświeżamy lokalny cache, aby badge pokazywał ten sam stan skrzynki.
-          const { error: syncError } = await supabase.functions.invoke('sync-email-read-state', {
-            body: { mode: 'sync' },
-          });
-          if (syncError) {
-            console.warn('Could not refresh read state from IMAP:', syncError);
-          }
-
+          // Counting is read-only. IMAP refresh runs on its own bounded timer;
+          // otherwise Realtime UPDATE -> count -> IMAP UPDATE forms a feedback loop.
           const [{ data: employee }, { data: personalAccounts }, { data: assignments }] =
             await Promise.all([
               supabase
@@ -1230,6 +1254,7 @@ export const messagesApi = api.injectEndpoints({
 export const {
   useGetMessagesListQuery,
   useGetMessageDetailsQuery,
+  useGetReceivedAttachmentsQuery,
   useLazyGetMessageDetailsQuery,
   useSearchMessagesQuery,
   useLazySearchMessagesQuery,

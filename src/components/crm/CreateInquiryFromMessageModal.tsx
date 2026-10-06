@@ -1,5 +1,8 @@
 'use client';
 
+import { LinkEmailToInquiry } from '@/components/crm/inquiries/InquiryCorrespondencePanel';
+import { formatSystemSubject } from '@/lib/ui/systemLabels';
+
 import { useState, useEffect } from 'react';
 import { X, User, ClipboardList } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -28,6 +31,8 @@ export default function CreateInquiryFromMessageModal({
   onClose,
   onSuccess,
 }: CreateInquiryFromMessageModalProps) {
+  const [mode, setMode] = useState<'create' | 'link'>('create');
+  const canLinkEmail = message.type === 'received' || message.type === 'sent';
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [selectedEmployee, setSelectedEmployee] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -79,7 +84,7 @@ export default function CreateInquiryFromMessageModal({
         return;
       }
 
-      const title = `Zapytanie: ${message.subject || 'Brak tematu'}`;
+      const title = `Zapytanie: ${formatSystemSubject(message.subject)}`;
 
       let body = '';
       let messageDate: string | null = null;
@@ -231,10 +236,17 @@ export default function CreateInquiryFromMessageModal({
           </button>
         </div>
 
+        {canLinkEmail && <div className="flex gap-2 px-5 pt-4">
+          <button type="button" disabled={saving} onClick={() => setMode('create')} className={`rounded-lg px-3 py-2 text-sm ${mode === 'create' ? 'bg-[#d3bb73]/15 text-[#d3bb73]' : 'text-white/60'}`}>Nowe zapytanie</button>
+          <button type="button" disabled={saving} onClick={() => setMode('link')} className={`rounded-lg px-3 py-2 text-sm ${mode === 'link' ? 'bg-[#d3bb73]/15 text-[#d3bb73]' : 'text-white/60'}`}>Dołącz do istniejącego zapytania</button>
+        </div>}
+        {mode === 'link' && canLinkEmail ? <LinkEmailToInquiry message={message} onSuccess={id => {
+          showSnackbar('Konwersacja została powiązana z zapytaniem.', 'success'); onSuccess(id); onClose();
+        }} /> : <>
         <div className="space-y-4 p-5">
           <div className="rounded-lg bg-[#1c1f33] p-3">
             <p className="mb-1 text-xs text-[#e5e4e2]/50">Tytuł zapytania</p>
-            <p className="text-sm text-[#e5e4e2]">Zapytanie: {message.subject || 'Brak tematu'}</p>
+            <p className="text-sm text-[#e5e4e2]">Zapytanie: {formatSystemSubject(message.subject)}</p>
           </div>
 
           <div className="rounded-lg bg-[#1c1f33] p-3">
@@ -311,6 +323,7 @@ export default function CreateInquiryFromMessageModal({
             {saving ? 'Tworzenie...' : 'Utwórz zapytanie'}
           </button>
         </div>
+        </>}
       </div>
     </div>
   );

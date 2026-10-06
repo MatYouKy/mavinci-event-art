@@ -1,4 +1,4 @@
-import React, { memo } from 'react';
+import React, { memo, useEffect, useState } from 'react';
 import { Mail } from 'lucide-react';
 import EmployeeAddressCardComponent from '../components/EmployeeAddressCardComponent';
 import EmployeeBasicInfoCardComponent from '../components/EmployeeBasicInfoCardComponent';
@@ -7,6 +7,9 @@ import EmployeeSkillsCardComponent from '../components/EmployeeSkillsCardCompone
 import EmployeeNotesCardComponent from '../components/EmployeeNotesCardComponent';
 import EmployeeEmailAccountsCardComponent from '../components/EmployeeEmailAccountsCardComponent';
 import EmployeeWebsiteVisibilityCardComponent from '../components/EmployeeWebsiteVisibilityCardComponent';
+import EmployeeCompensationCard from '@/components/crm/personnel/EmployeeCompensationCard';
+import { supabase } from '@/lib/supabase/browser';
+import CommissionAccountCard from '@/components/crm/commissions/CommissionAccountCard';
 
 interface EmployeeOverviewTabProps {
   employee: any;
@@ -27,6 +30,23 @@ export const EmployeeOverviewTab: React.FC<EmployeeOverviewTabProps> = ({
   accessLevels,
   emailAccounts,
 }) => {
+  const [sellerEmployeeId, setSellerEmployeeId] = useState<string | null>(null);
+  useEffect(() => {
+    let active = true;
+    setSellerEmployeeId(null);
+    supabase
+      .from('sales_partner_profiles')
+      .select('id')
+      .eq('employee_id', employee.id)
+      .in('status', ['active', 'onboarding'])
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (active && !error && data) setSellerEmployeeId(employee.id);
+      });
+    return () => {
+      active = false;
+    };
+  }, [employee.id]);
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
       <EmployeeBasicInfoCardComponent
@@ -67,6 +87,12 @@ export const EmployeeOverviewTab: React.FC<EmployeeOverviewTabProps> = ({
 
       {!!emailAccounts.length && (
         <EmployeeEmailAccountsCardComponent emailAccounts={emailAccounts} />
+      )}
+
+      {sellerEmployeeId === employee.id ? (
+        <CommissionAccountCard accountType="employee" accountId={employee.id} />
+      ) : (
+        <EmployeeCompensationCard key={employee.id} employeeId={employee.id} />
       )}
     </div>
   );

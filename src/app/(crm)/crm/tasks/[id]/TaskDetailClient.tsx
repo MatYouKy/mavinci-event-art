@@ -1,5 +1,7 @@
 'use client';
 
+import { formatSystemSubject } from '@/lib/ui/systemLabels';
+
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import {
@@ -1037,7 +1039,7 @@ export default function TaskDetailPage({ initialTask }: { initialTask: Task | nu
               {/* View Mode */}
               <div className={`${isMobile ? 'space-y-2' : 'space-y-4'}`}>
                 <h2 className={`${isMobile ? 'text-lg' : 'text-2xl'} font-bold text-[#e5e4e2]`}>
-                  {task.title}
+                  {formatSystemSubject(task.title)}
                 </h2>
 
                 {task.description && (

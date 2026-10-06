@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 import Image from 'next/image';
+import { normalizeTaxPaymentAccount } from '@/lib/CRM/bankTaxPayments';
 
 export interface MyCompany {
   signature_name: string;
@@ -30,6 +31,8 @@ export interface MyCompany {
   bank_swift_code?: string;
   vat_bank_account?: string;
   vat_bank_name?: string;
+  tax_office_bank_account?: string | null;
+  zus_bank_account?: string | null;
   private_bank_account?: string;
   private_bank_account_owner?: string;
   saldeo_document_email?: string;
@@ -429,6 +432,8 @@ function CompanyModal({
     bank_swift_code: company?.bank_swift_code || '',
     vat_bank_account: company?.vat_bank_account || '',
     vat_bank_name: company?.vat_bank_name || '',
+    tax_office_bank_account: company?.tax_office_bank_account || '',
+    zus_bank_account: company?.zus_bank_account || '',
     private_bank_account: company?.private_bank_account || '',
     private_bank_account_owner: company?.private_bank_account_owner || '',
     saldeo_document_email: company?.saldeo_document_email || '',
@@ -536,11 +541,35 @@ function CompanyModal({
       return;
     }
 
+    const taxAccountFields = ['tax_office_bank_account', 'zus_bank_account'] as const;
+    const ownAccounts = [formData.bank_account, formData.vat_bank_account, formData.private_bank_account]
+      .map(normalizeTaxPaymentAccount).filter(Boolean);
+    for (const field of taxAccountFields) {
+      const account = normalizeTaxPaymentAccount(formData[field]);
+      if (formData[field].trim() && !account) {
+        showSnackbar('Podaj prawidłowy rachunek ZUS / urzędu: 26 cyfr NRB lub IBAN PL z poprawną sumą kontrolną.', 'error');
+        return;
+      }
+      if (account && ownAccounts.includes(account)) {
+        showSnackbar('Rachunek ZUS / urzędu musi być rachunkiem odbiorcy, a nie własnym kontem firmy lub kontem VAT.', 'error');
+        return;
+      }
+    }
+    const taxAccountsChanged = taxAccountFields.some((field) =>
+      normalizeTaxPaymentAccount(company?.[field]) !== normalizeTaxPaymentAccount(formData[field]));
+
     setLoading(true);
     try {
       let savedId = company?.id;
+      const { tax_office_bank_account, zus_bank_account, ...baseFormData } = formData;
+      const taxAccountsAvailable = Boolean(tax_office_bank_account.trim() || zus_bank_account.trim()
+        || (company && ('tax_office_bank_account' in company || 'zus_bank_account' in company)));
       const companyPayload = {
-        ...formData,
+        ...baseFormData,
+        ...(taxAccountsAvailable ? {
+          tax_office_bank_account: normalizeTaxPaymentAccount(tax_office_bank_account) || null,
+          zus_bank_account: normalizeTaxPaymentAccount(zus_bank_account) || null,
+        } : {}),
         nip: formData.nip.trim() || null,
         regon: formData.regon.trim() || null,
         krs: formData.krs.trim() || null,
@@ -594,14 +623,20 @@ function CompanyModal({
       }
 
       showSnackbar(
-        privateAccountChanged
+        taxAccountsChanged
+          ? 'Zapisano rachunki ZUS / urzędu. Uruchom ponownie analizę bankową, aby uwzględnić zmianę.'
+          : privateAccountChanged
           ? 'Firma zaktualizowana. Przelewy prywatne zostały ponownie rozpoznane.'
           : company ? 'Firma zaktualizowana' : 'Firma dodana',
         'success',
       );
       onSave();
     } catch (error: any) {
-      showSnackbar(error.message || 'Błąd zapisu', 'error');
+      const missingTaxAccounts = ['PGRST204', '42703'].includes(String(error?.code))
+        && /tax_office_bank_account|zus_bank_account/.test(String(error?.message));
+      showSnackbar(missingTaxAccounts
+        ? 'Zapis rachunków ZUS / urzędu wymaga migracji 20260908150000 w Supabase.'
+        : error.message || 'Błąd zapisu', 'error');
     } finally {
       setLoading(false);
     }
@@ -819,6 +854,31 @@ function CompanyModal({
                 className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                 placeholder="PKO BP"
               />
+            </div>
+
+            <div className="col-span-2 rounded-xl bg-white/[0.03] p-4">
+              <h3 className="text-sm font-medium text-[#e5e4e2]">Rachunki odbiorców — podatki i ZUS</h3>
+              <p className="mt-2 text-xs leading-relaxed text-[#e5e4e2]/55">
+                Przelewy wychodzące na te rachunki nie będą analizowane pod kątem brakujących faktur
+                ani wymagały opisu w analizie AI. Pozostają w rejestrze i nie są automatycznie księgowane.
+                To nie jest własny rachunek VAT firmy. Numery nie są wysyłane do AI.
+              </p>
+              <div className="mt-4 grid gap-4">
+                <label className="block text-sm text-[#e5e4e2]">
+                  Rachunek urzędu skarbowego / mikrorachunek podatkowy (VAT, PIT, CIT)
+                  <input type="text" autoComplete="off" value={formData.tax_office_bank_account}
+                    onChange={(e) => setFormData({ ...formData, tax_office_bank_account: e.target.value })}
+                    placeholder="26 cyfr NRB lub IBAN PL"
+                    className="mt-2 w-full rounded-lg border border-white/10 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] outline-none focus:ring-2 focus:ring-[#d3bb73]/20" />
+                </label>
+                <label className="block text-sm text-[#e5e4e2]">
+                  Rachunek składkowy ZUS
+                  <input type="text" autoComplete="off" value={formData.zus_bank_account}
+                    onChange={(e) => setFormData({ ...formData, zus_bank_account: e.target.value })}
+                    placeholder="26 cyfr NRB lub IBAN PL"
+                    className="mt-2 w-full rounded-lg border border-white/10 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] outline-none focus:ring-2 focus:ring-[#d3bb73]/20" />
+                </label>
+              </div>
             </div>
 
             <div className="col-span-2 border-t border-[#d3bb73]/10 pt-4">

@@ -88,11 +88,11 @@ export default function Services({ categories }: { categories: CategoryWithFirst
               id="services-heading"
               className="mb-6 text-3xl font-light text-[#e5e4e2] sm:text-4xl md:text-5xl"
             >
-              Kompleksowa Obsługa Eventowa
+              Nagłośnienie, multimedia i obsługa eventów
             </h2>
             <p className="mx-auto max-w-2xl text-lg font-light text-[#e5e4e2]/70">
-              Obsługujemy eventy w województwach: warmińsko-mazurskim, kujawsko-pomorskim, pomorskim
-              i mazowieckim
+              Dobieramy dźwięk, obraz i ekipę realizatorów do miejsca, liczby uczestników i programu wydarzenia.
+              Z Olsztyna obsługujemy konferencje, gale oraz imprezy firmowe w regionie i całej Polsce.
             </p>
             <div className="mx-auto mt-6 h-1 w-24 bg-gradient-to-r from-transparent via-[#d3bb73] to-transparent"></div>
           </div>

@@ -2,726 +2,310 @@ import Foundation
 import EventKit
 import Network
 import Combine
-import os.log
 
-// MARK: - Connection Status
-
-/// Represents the current connection/sync status of the SyncManager.
 enum ConnectionStatus: String, CaseIterable {
-    case connected
-    case disconnected
-    case syncing
-    case error
-    case paused
+    case connected, disconnected, syncing, error, paused
 }
 
-// MARK: - SyncManager
-
-/// Central orchestrator that coordinates CRM API calls with EventKit operations.
-/// Manages bidirectional sync between the Mavinci CRM backend and Apple Reminders.
-@available(macOS 13.0, *)
+/// One actor and one process own EventKit, the queue and the persisted state.
+@MainActor
 final class SyncManager: ObservableObject {
-
-    // MARK: - Singleton
-
     static let shared = SyncManager()
-
-    // MARK: - Published Properties
-
-    @Published var isSyncing: Bool = false
-    @Published var isPaused: Bool = false
+    @Published var isSyncing = false
+    @Published var isPaused = false
     @Published var lastSyncDate: Date?
-    @Published var activeRemindersCount: Int = 0
-    @Published var errorCount: Int = 0
+    @Published var activeRemindersCount = 0
+    @Published var hasLoadedPersonalTasks = false
+    @Published var syncedEmployeeName = ""
+    @Published var archiveSummary = ""
+    @Published var errorCount = 0
     @Published var lastError: String?
     @Published var connectionStatus: ConnectionStatus = .disconnected
-    @Published var remindersAccessGranted: Bool = false
+    @Published var remindersAccessGranted = false
+    var startupAllowed = false
 
-    // MARK: - Private Properties
+    private let remindersService = RemindersService()
+    private let apiClient = CRMAPIClient.shared
+    private let monitor = NWPathMonitor()
+    private var timer: Timer?
+    private var online = false
+    private var state = SyncState.load()
+    private var taskMap: [String: String] = [:]
+    private static let mapURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("MavinciReminders/task_reminder_map.json")
 
-    private var syncTimer: Timer?
-    private var syncState: SyncState
-    private var taskReminderMap: [String: String] // crmTaskId -> reminderIdentifier
-    private var isSyncInProgress: Bool = false
-
-    private let remindersService: RemindersService
-    private let apiClient: CRMAPIClient
-    private let networkMonitor: NWPathMonitor
-    private let networkQueue = DispatchQueue(label: "com.mavinci.reminders.networkMonitor")
-    private let syncQueue = DispatchQueue(label: "com.mavinci.reminders.syncQueue")
-
-    private let logger = Logger(subsystem: "com.mavinci.reminders", category: "SyncManager")
-
-    private var isNetworkAvailable: Bool = false
-    private var retryCount: Int = 0
-    private static let maxRetries: Int = 3
-    private static let staleEntryTimeout: TimeInterval = 3600 // 1 hour
-
-    // MARK: - Persistence Paths
-
-    private static let mapFileURL: URL = {
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let appDirectory = appSupport.appendingPathComponent("MavinciReminders", isDirectory: true)
-        try? FileManager.default.createDirectory(at: appDirectory, withIntermediateDirectories: true)
-        return appDirectory.appendingPathComponent("task_reminder_map.json")
-    }()
-
-    // MARK: - Initialization
-
-    private init(
-        remindersService: RemindersService = RemindersService(),
-        apiClient: CRMAPIClient = CRMAPIClient.shared
-    ) {
-        self.remindersService = remindersService
-        self.apiClient = apiClient
-        self.syncState = SyncState.load()
-        self.taskReminderMap = Self.loadTaskReminderMap()
-        self.networkMonitor = NWPathMonitor()
-        self.lastSyncDate = syncState.lastSyncDate
-
-        setupNetworkMonitoring()
-    }
-
-    deinit {
-        syncTimer?.invalidate()
-        networkMonitor.cancel()
-    }
-
-    // MARK: - Network Monitoring
-
-    private func setupNetworkMonitoring() {
-        networkMonitor.pathUpdateHandler = { [weak self] path in
-            guard let self = self else { return }
-            let connected = path.status == .satisfied
-            Task { @MainActor in
-                self.handleNetworkChange(isConnected: connected)
-            }
+    private init() {
+        if let data = try? Data(contentsOf: Self.mapURL),
+           let map = try? JSONDecoder().decode([String: String].self, from: data) { taskMap = map }
+        lastSyncDate = state.lastSyncDate
+        monitor.pathUpdateHandler = { [weak self] path in
+            Task { @MainActor in self?.handleNetworkChange(isConnected: path.status == .satisfied) }
         }
-        networkMonitor.start(queue: networkQueue)
+        monitor.start(queue: DispatchQueue(label: "com.mavinci.sync.network"))
     }
 
-    // MARK: - Periodic Sync
+    var isConnected: Bool { connectionStatus == .connected || connectionStatus == .syncing }
 
-    /// Starts periodic sync at the given interval (default 5 minutes).
-    /// - Parameter interval: The time interval between sync cycles, in seconds.
+    /// All access requests and list operations use the same retained EventKit store.
+    func requestRemindersAccess() async -> Bool {
+        guard !isSyncing else { return remindersAccessGranted }
+        isSyncing = true
+        defer { isSyncing = false }
+        remindersAccessGranted = await remindersService.requestAccess()
+        return remindersAccessGranted
+    }
+
+    func loadReminderLists() async throws -> [ReminderListChoice] {
+        guard !isSyncing else { throw RemindersError.busy }
+        isSyncing = true
+        defer { isSyncing = false }
+        remindersAccessGranted = await remindersService.requestAccess()
+        guard remindersAccessGranted else { throw RemindersError.accessDenied }
+        return remindersService.availableLists()
+    }
+
+    func chooseReminderList(identifier: String?, newName: String? = nil) async throws {
+        guard !isSyncing else { throw RemindersError.busy }
+        isSyncing = true
+        defer { isSyncing = false }
+        remindersAccessGranted = await remindersService.requestAccess()
+        guard remindersAccessGranted else { throw RemindersError.accessDenied }
+        if let identifier {
+            try remindersService.selectList(identifier: identifier)
+        } else if let name = newName?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
+            _ = try remindersService.getOrCreateList(name: name, allowCreation: true)
+        } else { throw RemindersError.missingList("") }
+        // Keep pending completion changes and account scope; they must never be reset here.
+    }
+
     func startPeriodicSync(interval: TimeInterval = 300) {
         stopPeriodicSync()
-
-        logger.info("Starting periodic sync with interval: \(interval)s")
-
-        // Run an initial sync immediately
-        Task {
-            await syncNow()
+        timer = Timer.scheduledTimer(withTimeInterval: max(60, interval), repeats: true) { [weak self] _ in
+            Task { @MainActor in await self?.syncNow() }
         }
-
-        // Schedule periodic syncs on the main run loop
-        DispatchQueue.main.async { [weak self] in
-            self?.syncTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
-                Task {
-                    await self?.syncNow()
-                }
-            }
-        }
+        Task { await syncNow() }
     }
-
-    /// Stops the periodic sync timer.
-    func stopPeriodicSync() {
-        syncTimer?.invalidate()
-        syncTimer = nil
-        logger.info("Periodic sync stopped")
-    }
-
-    // MARK: - Computed Properties
-
-    /// Whether the manager currently has a working connection to CRM.
-    var isConnected: Bool {
-        connectionStatus == .connected || connectionStatus == .syncing
-    }
-
-    // MARK: - Pause / Resume
-
-    /// Toggles between paused and active state.
-    func togglePause() {
-        if isPaused {
-            resumeSync()
-        } else {
-            pauseSync()
-        }
-    }
-
-    /// Pauses sync operations. The timer continues but sync cycles are skipped.
-    func pauseSync() {
-        isPaused = true
-        connectionStatus = .paused
-        logger.info("Sync paused")
-    }
-
-    /// Resumes sync operations and triggers an immediate sync.
-    func resumeSync() {
-        isPaused = false
-        if isNetworkAvailable {
-            connectionStatus = .connected
-        }
-        logger.info("Sync resumed")
-
-        Task {
-            await syncNow()
-        }
-    }
-
-    // MARK: - Reset
-
-    /// Clears the local task-to-reminder mapping and triggers a full re-sync.
-    func resetMapping() {
-        syncQueue.sync {
-            taskReminderMap.removeAll()
-            syncState = SyncState()
-        }
-        saveTaskReminderMap()
-        syncState.save()
-        logger.info("Mapping reset — next sync will be a full re-sync")
-
-        Task {
-            await syncNow()
-        }
-    }
-
-    // MARK: - Network Change Handler
-
-    /// Handles network connectivity changes.
-    /// - Parameter isConnected: Whether the network is currently reachable.
-    @MainActor
+    func stopPeriodicSync() { timer?.invalidate(); timer = nil }
+    func togglePause() { isPaused ? resumeSync() : pauseSync() }
+    func pauseSync() { isPaused = true; connectionStatus = .paused }
+    func resumeSync() { isPaused = false; Task { await syncNow() } }
     func handleNetworkChange(isConnected: Bool) {
-        let wasDisconnected = !isNetworkAvailable
-        isNetworkAvailable = isConnected
-
-        if isConnected {
-            if !isPaused {
-                connectionStatus = .connected
-            }
-            // If coming back from disconnected state, trigger sync
-            // only after the first-run onboarding has been completed.
-            let onboardingCompleted = UserDefaults.standard.bool(
-                forKey: "onboardingCompleted"
-            )
-
-            if wasDisconnected && !isPaused && onboardingCompleted {
-                logger.info("Network restored — triggering sync")
-                Task {
-                    await syncNow()
-                }
-            } else if wasDisconnected && !onboardingCompleted {
-                logger.info("Network available — waiting for onboarding completion")
-            }
-        } else {
-            if !isPaused {
-                connectionStatus = .disconnected
-            }
-            logger.info("Network lost")
+        let restored = !online && isConnected
+        online = isConnected
+        if !isSyncing { connectionStatus = isPaused ? .paused : (!online ? .disconnected : (lastError == nil ? .connected : .error)) }
+        if restored && UserDefaults.standard.bool(forKey: "onboardingCompleted") {
+            Task { await syncNow() }
         }
     }
 
-    // MARK: - Main Sync Method
+    /// Rebuild from durable task markers; never erase pending offline changes.
+    func resetMapping() {
+        guard !isSyncing else { return }
+        taskMap.removeAll()
+        state.lastCRMModification.removeAll()
+        do { try persist() } catch { lastError = "Nie udało się utrwalić konfiguracji synchronizacji."; return }
+        Task { await syncNow() }
+    }
 
-    /// Performs a full bidirectional sync between the CRM and local Reminders.
-    /// Guarded against concurrent execution. Skips if paused or network unavailable.
     func syncNow() async {
-        print("[SyncManager] syncNow started")
-
-        // Guard: prevent concurrent syncs
-        let shouldProceed: Bool = syncQueue.sync {
-            if isSyncInProgress { return false }
-            isSyncInProgress = true
-            return true
-        }
-
-        guard shouldProceed else {
-            print("[SyncManager] Sync skipped — already in progress")
+        guard startupAllowed, !isSyncing, !isPaused else { return }
+        guard online else {
+            hasLoadedPersonalTasks = false
+            lastError = "Brak połączenia z internetem. Synchronizacja zostanie ponowiona."
+            errorCount = 1; connectionStatus = .disconnected
             return
         }
-
+        isSyncing = true
+        connectionStatus = .syncing
+        var errors: [String] = []
         defer {
-            syncQueue.sync {
-                isSyncInProgress = false
-            }
+            isSyncing = false
+            lastError = errors.isEmpty ? nil : errors.joined(separator: "\n")
+            errorCount = errors.count
+            connectionStatus = isPaused ? .paused : (!online ? .disconnected : (errors.isEmpty ? .connected : .error))
         }
-
-        // Guard: paused
-        guard !isPaused else {
-            print("[SyncManager] Sync skipped — paused")
-            return
+        remindersAccessGranted = await remindersService.requestAccess()
+        if remindersAccessGranted {
+            do { try await syncTasks() }
+            catch { errors.append("Zadania: " + error.localizedDescription) }
+        } else {
+            hasLoadedPersonalTasks = false
+            errors.append("Brak dostępu do Przypomnień. Zezwól aplikacji na dostęp w ustawieniach prywatności macOS i uruchom ją ponownie. Synchronizacja plików działa niezależnie.")
         }
-
-        // Guard: network
-        guard isNetworkAvailable else {
-            print("[SyncManager] Sync skipped — no network")
-            return
-        }
-
-        print("[SyncManager] Network available")
-
-        await MainActor.run {
-            isSyncing = true
-            connectionStatus = .syncing
-        }
-
-        defer {
-            Task { @MainActor in
-                self.isSyncing = false
-                if self.isPaused {
-                    self.connectionStatus = .paused
-                } else if !self.isNetworkAvailable {
-                    self.connectionStatus = .disconnected
-                } else if self.lastError != nil {
-                    self.connectionStatus = .error
-                } else {
-                    self.connectionStatus = .connected
-                }
-            }
-        }
-
-        do {
-            print("[SyncManager] Starting performSync")
-            try await performSync()
-            print("[SyncManager] performSync completed")
-            retryCount = 0
-            await MainActor.run {
-                self.lastError = nil
-            }
-        } catch {
-            await handleSyncError(error)
+        // Files remain usable even when Reminders access is not granted.
+        do { try await FolderSyncManager.shared.syncAll() }
+        catch { errors.append("Pliki: " + error.localizedDescription) }
+        if errors.isEmpty {
+            do { state.lastSyncDate = Date(); try persist(); lastSyncDate = state.lastSyncDate }
+            catch { errors.append("Nie udało się zapisać stanu synchronizacji na dysku.") }
         }
     }
 
-    // MARK: - Core Sync Logic
-
-    private func performSync() async throws {
-        // Step 1: Fetch tasks from CRM API (with retry)
-        print("[SyncManager] Fetching tasks from CRM")
-        let tasksResponse = try await fetchTasksWithRetry()
-        print("[SyncManager] CRM tasks fetched")
-
-        // Step 2: Validate response — if not success, do NOT mark reminders as completed
-        guard tasksResponse.success else {
-            let errorMessage = tasksResponse.error ?? "CRM API returned success=false"
-            logger.error("CRM API error: \(errorMessage)")
-            throw SyncError.apiError(errorMessage)
+    private func syncTasks() async throws {
+        hasLoadedPersonalTasks = false
+        let configuration = apiClient.configurationIdentity
+        let response = try await apiClient.fetchTasks()
+        guard configuration == apiClient.configurationIdentity else { throw CRMAPIError.configurationChanged }
+        guard response.success, let employee = response.employee_id, let tasks = response.tasks else {
+            throw CRMAPIError.invalidResponse
         }
-
-        let crmTasks = tasksResponse.tasks ?? []
-
-        // Step 3: Get all local reminders from the list
-        print("[SyncManager] Fetching local reminders")
-        let reminders = await remindersService.getAllRemindersInList()
-        print("[SyncManager] Local reminders fetched: \(reminders.count)")
-
-        // Step 4: Build lookup maps
-        var reminderByTaskId: [String: EKReminder] = [:]
-
-        // First pass: use taskReminderMap (persisted mapping)
-        var currentMap = syncQueue.sync { taskReminderMap }
-        for (taskId, reminderId) in currentMap {
-            if let reminder = reminders.first(where: { $0.calendarItemIdentifier == reminderId }) {
-                reminderByTaskId[taskId] = reminder
-            }
+        let scope = apiClient.baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "|" + employee
+        if let previous = state.accountScope, previous != scope {
+            // Never replay another account's offline queue.
+            throw NSError(domain: "MavinciSync", code: 1, userInfo: [NSLocalizedDescriptionKey:
+                "Zmieniono konto CRM. Przywróć poprzednie konto i dokończ synchronizację przed przeniesieniem konfiguracji."])
         }
-
-        // Second pass: fallback to MAVINCI_CRM_TASK_ID marker in notes
+        state.accountScope = scope
+        syncedEmployeeName = response.employee_name ?? employee
+        let base = apiClient.baseURL
+        let keepOnlyActive = UserDefaults.standard.object(forKey: "keepOnlyActiveCRMTasks") as? Bool ?? true
+        archiveSummary = ""
+        let activeList = try remindersService.getOrCreateList()
+        let reminders = try await remindersService.reminders(in: activeList)
+        var archiveList = try remindersService.archiveList(for: activeList, scope: scope, create: false)
+        let archived: [EKReminder]
+        if let archiveList { archived = try await remindersService.reminders(in: archiveList) } else { archived = [] }
+        guard configuration == apiClient.configurationIdentity else { throw CRMAPIError.configurationChanged }
+        let taskIds = Set(tasks.map(\.id))
+        let activeIDs = Set(tasks.filter { !$0.isCompleted }.map(\.id))
+        var groups: [String: [EKReminder]] = [:]
         for reminder in reminders {
-            if let taskId = remindersService.extractCRMTaskId(from: reminder),
-               reminderByTaskId[taskId] == nil {
-                reminderByTaskId[taskId] = reminder
-                // Persist this discovered mapping
-                syncQueue.sync {
-                    taskReminderMap[taskId] = reminder.calendarItemIdentifier
-                }
+            let id = remindersService.extractCRMTaskId(from: reminder, crmBaseURL: base)
+                ?? taskMap.first(where: { $0.value == reminder.calendarItemIdentifier })?.key
+            if let id, taskIds.contains(id) { groups[id, default: []].append(reminder) }
+        }
+        // Prefer a live copy. Reuse an archived copy only when no live copy exists.
+        let liveIDs = Set(groups.keys)
+        for reminder in archived {
+            if let id = remindersService.verifiedCRMTaskID(reminder, baseURL: base), activeIDs.contains(id), !liveIDs.contains(id) {
+                groups[id, default: []].append(reminder)
             }
         }
-
-        // Step 5: Build a set of CRM task IDs for quick lookup
-        let crmTaskIds = Set(crmTasks.map { $0.id })
-
-        // Step 6: Process each CRM task (CRM -> Apple)
-        let crmBaseURL = apiClient.baseURL
-        var syncedActiveCount = 0
-        var syncErrors: [String] = []
-
-        for task in crmTasks {
+        // Reject duplicate task rows instead of creating multiple reminders in one pass.
+        var seen = Set<String>()
+        let uniqueTasks = tasks.filter { seen.insert($0.id).inserted }
+        var protectedIDs = Set<String>()
+        var movedCount = 0
+        var restoredCount = 0
+        var deferredCount = 0
+        var failures: [String] = state.pendingCompletionUpdates.filter { !taskIds.contains($0.taskId) }
+            .map { "Oczekująca zmiana zadania \($0.taskId) nie mogła zostać wysłana: zadanie jest poza zakresem „Moje zadania” lub nie jest już przypisane. Zmianę zachowano lokalnie." }
+        for task in uniqueTasks {
+            guard configuration == apiClient.configurationIdentity else { throw CRMAPIError.configurationChanged }
             do {
-                if let existingReminder = reminderByTaskId[task.id] {
-                    // Reminder exists — check if update needed
-                    try updateReminderIfNeeded(existingReminder, from: task, crmBaseURL: crmBaseURL)
+                let candidates = (groups[task.id] ?? []).sorted {
+                    ($0.creationDate ?? .distantPast, $0.calendarItemIdentifier) <
+                    ($1.creationDate ?? .distantPast, $1.calendarItemIdentifier)
+                }
+                let reminder = candidates.first(where: { $0.calendarItemIdentifier == taskMap[task.id] }) ?? candidates.first
+                if let reminder {
+                    if reminder.calendar.calendarIdentifier != activeList.calendarIdentifier {
+                        // Archived edits are history, not new completion instructions for CRM.
+                        guard !state.pendingCompletionUpdates.contains(where: { $0.taskId == task.id }) else {
+                            protectedIDs.insert(task.id)
+                            failures.append("Zadanie „\(task.title)” w archiwum ma niewysłaną zmianę. Zachowano ją do wyjaśnienia.")
+                            continue
+                        }
+                        try remindersService.movePreservingReminder(reminder, to: activeList, reason: "Ponownie aktywne i przypisane w CRM")
+                        state.completionBaseline = (state.completionBaseline ?? [:]).merging([task.id: reminder.isCompleted]) { _, new in new }
+                        state.crmRevision?.removeValue(forKey: task.id)
+                        restoredCount += 1
+                    }
+                    taskMap[task.id] = reminder.calendarItemIdentifier
+                    // Duplicates are moved, not deleted. Unmarked reminders stay untouched.
+                    for duplicate in candidates where duplicate.calendarItemIdentifier != reminder.calendarItemIdentifier && duplicate.calendar.calendarIdentifier == activeList.calendarIdentifier {
+                        if remindersService.isExactDuplicate(duplicate, of: reminder),
+                           remindersService.verifiedCRMTaskID(duplicate, baseURL: base) == task.id {
+                            if archiveList == nil { archiveList = try remindersService.archiveList(for: activeList, scope: scope, create: true) }
+                            guard let archiveList else { throw RemindersError.missingList(RemindersService.archiveListName) }
+                            try remindersService.movePreservingReminder(duplicate, to: archiveList, reason: "Identyczna kopia zadania")
+                            movedCount += 1
+                        } else {
+                            failures.append("Zadanie „\(task.title)” ma różniące się kopie w Przypomnieniach — zachowano je do sprawdzenia.")
+                        }
+                    }
+                    let baseline = state.completionBaseline?[task.id]
+                    if let baseline, reminder.isCompleted != baseline {
+                        // Capture local intent BEFORE applying changes from CRM.
+                        state.pendingCompletionUpdates.removeAll { $0.taskId == task.id }
+                        state.pendingCompletionUpdates.append(PendingCompletionUpdate(
+                            taskId: task.id, completed: reminder.isCompleted, timestamp: Date(),
+                            expectedUpdatedAt: state.crmRevision?[task.id] ?? task.updated_at))
+                        try persist()
+                    }
+                    if let pending = state.pendingCompletionUpdates.first(where: { $0.taskId == task.id }) {
+                        protectedIDs.insert(task.id) // GET may be stale after the POST; do not archive this cycle.
+                        // A previous response may have been lost. Matching remote state is an acknowledgement.
+                        if task.isCompleted != pending.completed {
+                            let result = try await apiClient.pushCompletionUpdates([CompletionUpdate(
+                                task_id: task.id, completed: pending.completed,
+                                expected_updated_at: pending.expectedUpdatedAt ?? task.updated_at)])
+                            guard result.success, let acknowledgement = result.results?.first(where: { $0.task_id == task.id }),
+                                  acknowledgement.success else {
+                                let message = result.results?.first?.error ?? "Nie potwierdzono zapisu w CRM."
+                                failures.append("\(task.title): \(message)")
+                                continue // Keep BOTH the local value and the durable pending update.
+                            }
+                        }
+                        state.pendingCompletionUpdates.removeAll { $0.taskId == task.id }
+                        state.completionBaseline = (state.completionBaseline ?? [:]).merging([task.id: pending.completed]) { _, new in new }
+                        try persist()
+                        // Fetch the acknowledged remote revision next cycle; do not overwrite with the old GET.
+                        continue
+                    }
+                    if state.crmRevision?[task.id] != task.updated_at || baseline == nil {
+                        remindersService.updateReminder(reminder, from: task, crmBaseURL: base)
+                        try remindersService.saveReminder(reminder)
+                    }
                 } else {
-                    // No matching reminder — create new
-                    try createNewReminder(from: task, crmBaseURL: crmBaseURL)
+                    // Never import historical closed tasks just to move them into the archive.
+                    if keepOnlyActive && task.isCompleted { continue }
+                    // Do not create a second local copy while an offline update awaits reconciliation.
+                    guard !state.pendingCompletionUpdates.contains(where: { $0.taskId == task.id }) else {
+                        failures.append("Brak lokalnego przypomnienia dla oczekującej zmiany: \(task.title)")
+                        continue
+                    }
+                    let newReminder = try remindersService.createReminder(from: task, crmBaseURL: base)
+                    try remindersService.saveReminder(newReminder)
+                    taskMap[task.id] = newReminder.calendarItemIdentifier
                 }
-
-                if !task.isCompleted {
-                    syncedActiveCount += 1
-                }
-            } catch {
-                syncErrors.append("Task \(task.id): \(error.localizedDescription)")
-                logger.error("Error syncing task \(task.id): \(error.localizedDescription)")
-            }
+                state.completionBaseline = (state.completionBaseline ?? [:]).merging([task.id: task.isCompleted]) { _, new in new }
+                state.crmRevision = (state.crmRevision ?? [:]).merging([task.id: task.updated_at]) { _, new in new }
+                try persist() // Save after each commit, not only after the entire batch.
+            } catch { protectedIDs.insert(task.id); failures.append("\(task.title): \(error.localizedDescription)") }
         }
-
-        // Step 7: Handle reminders with no matching CRM task (orphaned reminders)
-        for reminder in reminders {
-            let taskId = remindersService.extractCRMTaskId(from: reminder)
-                ?? syncQueue.sync { taskReminderMap.first(where: { $0.value == reminder.calendarItemIdentifier })?.key }
-
-            guard let taskId = taskId else { continue }
-
-            if !crmTaskIds.contains(taskId) && !reminder.isCompleted {
-                // Task was unassigned or deleted from CRM — mark as completed
-                remindersService.markCompleted(reminder, completed: true)
+        // The user opted for an active-only list. A complete, validated personal response
+        // can authorize a reversible move, but never deletion or a completion POST.
+        if keepOnlyActive {
+            let pendingIDs = Set(state.pendingCompletionUpdates.map(\.taskId))
+            for reminder in reminders where reminder.calendar.calendarIdentifier == activeList.calendarIdentifier {
+                guard configuration == apiClient.configurationIdentity else { throw CRMAPIError.configurationChanged }
+                guard let id = remindersService.verifiedCRMTaskID(reminder, baseURL: base), !activeIDs.contains(id) else { continue }
+                let baseline = state.completionBaseline?[id]
+                let locallyChanged = baseline.map { $0 != reminder.isCompleted } ?? false
+                guard !protectedIDs.contains(id), !pendingIDs.contains(id), !locallyChanged else { deferredCount += 1; continue }
                 do {
-                    try remindersService.saveReminder(reminder)
-                    syncQueue.sync {
-                        syncState.lastChangeSource[taskId] = .crm
-                        syncState.lastReminderModification[reminder.calendarItemIdentifier] = Date()
-                    }
-                    logger.info("Marked orphaned reminder as completed: \(reminder.title ?? "untitled")")
-                } catch {
-                    logger.error("Failed to mark orphaned reminder as completed: \(error.localizedDescription)")
-                }
+                    if archiveList == nil { archiveList = try remindersService.archiveList(for: activeList, scope: scope, create: true) }
+                    guard let archiveList else { throw RemindersError.missingList(RemindersService.archiveListName) }
+                    try remindersService.movePreservingReminder(reminder, to: archiveList, reason: "Zakończone lub poza bieżącym zakresem Moje zadania")
+                    taskMap[id] = reminder.calendarItemIdentifier // Reuse this exact copy if the task becomes active again.
+                    try persist()
+                    movedCount += 1
+                } catch { failures.append("Archiwizacja „\(reminder.title ?? "zadanie")”: \(error.localizedDescription)") }
             }
         }
-
-        // Step 8: Check Apple -> CRM completion changes
-        var pendingUpdates: [PendingCompletionUpdate] = []
-
-        // Reload reminders to capture our changes
-        let updatedReminders = await remindersService.getAllRemindersInList()
-
-        for reminder in updatedReminders {
-            let taskId = remindersService.extractCRMTaskId(from: reminder)
-                ?? syncQueue.sync { taskReminderMap.first(where: { $0.value == reminder.calendarItemIdentifier })?.key }
-
-            guard let taskId = taskId else { continue }
-            guard crmTaskIds.contains(taskId) else { continue }
-
-            let changeSource = syncQueue.sync { syncState.lastChangeSource[taskId] }
-            let lastRecordedModification = syncQueue.sync { syncState.lastReminderModification[reminder.calendarItemIdentifier] }
-
-            // Determine if this is a user-initiated change
-            let isUserChange: Bool = {
-                guard changeSource == .crm else { return true }
-                // If modification date on the reminder is newer than our last recorded update,
-                // the user made a change after we synced from CRM.
-                if let lastMod = lastRecordedModification,
-                   let reminderMod = reminder.lastModifiedDate,
-                   reminderMod > lastMod.addingTimeInterval(2) { // 2s tolerance
-                    return true
-                }
-                return false
-            }()
-
-            guard isUserChange else { continue }
-
-            // Find matching CRM task
-            guard let crmTask = crmTasks.first(where: { $0.id == taskId }) else { continue }
-
-            if reminder.isCompleted && !crmTask.isCompleted {
-                // User completed in Reminders -> push completion to CRM
-                pendingUpdates.append(PendingCompletionUpdate(
-                    taskId: taskId,
-                    completed: true,
-                    timestamp: Date()
-                ))
-            } else if !reminder.isCompleted && crmTask.isCompleted {
-                // User unchecked in Reminders -> push reopening to CRM
-                pendingUpdates.append(PendingCompletionUpdate(
-                    taskId: taskId,
-                    completed: false,
-                    timestamp: Date()
-                ))
-            }
-        }
-
-        // Add any previously pending updates that weren't pushed
-        let existingPending = syncQueue.sync { syncState.pendingCompletionUpdates }
-        for pending in existingPending {
-            if !pendingUpdates.contains(where: { $0.taskId == pending.taskId }) {
-                pendingUpdates.append(pending)
-            }
-        }
-
-        // Step 9: Push pending completion updates to CRM
-        if !pendingUpdates.isEmpty {
-            await pushCompletionUpdates(pendingUpdates)
-        }
-
-        // Step 10: Clean stale entries from lastChangeSource
-        cleanStaleChangeSourceEntries()
-
-        // Step 11: Save sync state and mapping
-        syncQueue.sync {
-            syncState.lastSyncDate = Date()
-        }
-        syncState.save()
-        saveTaskReminderMap()
-
-        // Step 12: Update published properties
-        await MainActor.run {
-            self.lastSyncDate = Date()
-            self.activeRemindersCount = syncedActiveCount
-            if !syncErrors.isEmpty {
-                self.errorCount += syncErrors.count
-            }
-        }
-
-        logger.info("Sync completed: \(syncedActiveCount) active tasks, \(pendingUpdates.count) completion updates pushed")
-    }
-
-    // MARK: - CRM -> Reminders Helpers
-
-    /// Creates a new reminder from a CRM task and saves the mapping.
-    private func createNewReminder(from task: CRMTask, crmBaseURL: String) throws {
-        guard let reminder = remindersService.createReminder(from: task, crmBaseURL: crmBaseURL) else {
-            throw SyncError.reminderCreationFailed(task.id)
-        }
-
-        try remindersService.saveReminder(reminder)
-
-        let reminderId = reminder.calendarItemIdentifier
-        syncQueue.sync {
-            taskReminderMap[task.id] = reminderId
-            syncState.lastChangeSource[task.id] = .crm
-            syncState.lastReminderModification[reminderId] = Date()
-            if let updatedAt = parseISO8601(task.updated_at) {
-                syncState.lastCRMModification[task.id] = updatedAt
-            }
-        }
-
-        logger.debug("Created reminder for task: \(task.title)")
-    }
-
-    /// Updates an existing reminder if the CRM data has changed since last sync.
-    private func updateReminderIfNeeded(_ reminder: EKReminder, from task: CRMTask, crmBaseURL: String) throws {
-        let lastKnownModification = syncQueue.sync { syncState.lastCRMModification[task.id] }
-        let taskUpdatedAt = parseISO8601(task.updated_at)
-
-        // Check if CRM data actually changed
-        var needsUpdate = false
-        if let taskDate = taskUpdatedAt {
-            if let lastKnown = lastKnownModification {
-                needsUpdate = taskDate > lastKnown
-            } else {
-                // First time seeing this mapping — update to be safe
-                needsUpdate = true
-            }
-        } else {
-            // Can't determine — update anyway
-            needsUpdate = true
-        }
-
-        guard needsUpdate else { return }
-
-        remindersService.updateReminder(reminder, from: task, crmBaseURL: crmBaseURL)
-        try remindersService.saveReminder(reminder)
-
-        let reminderId = reminder.calendarItemIdentifier
-        syncQueue.sync {
-            syncState.lastChangeSource[task.id] = .crm
-            syncState.lastReminderModification[reminderId] = Date()
-            if let updatedAt = taskUpdatedAt {
-                syncState.lastCRMModification[task.id] = updatedAt
-            }
-        }
-
-        logger.debug("Updated reminder for task: \(task.title)")
-    }
-
-    // MARK: - Push Completion Updates
-
-    /// Pushes completion status changes to the CRM backend.
-    private func pushCompletionUpdates(_ updates: [PendingCompletionUpdate]) async {
-        let completionUpdates = updates.map { CompletionUpdate(task_id: $0.taskId, completed: $0.completed) }
-
-        do {
-            let response = try await apiClient.pushCompletionUpdates(completionUpdates)
-
-            if response.success {
-                // Mark source as local for pushed updates
-                syncQueue.sync {
-                    for update in updates {
-                        syncState.lastChangeSource[update.taskId] = .local
-                    }
-                    syncState.pendingCompletionUpdates.removeAll()
-                }
-                logger.info("Pushed \(updates.count) completion update(s) to CRM")
-            } else {
-                // Keep as pending for next sync
-                syncQueue.sync {
-                    syncState.pendingCompletionUpdates = updates
-                }
-                let errorMsg = response.error ?? "Unknown error pushing completions"
-                logger.error("Failed to push completions: \(errorMsg)")
-            }
-        } catch {
-            // Network/server error — keep as pending
-            syncQueue.sync {
-                syncState.pendingCompletionUpdates = updates
-            }
-            logger.error("Error pushing completions: \(error.localizedDescription)")
+        archiveSummary = "Do archiwum: \(movedCount). Przywrócono: \(restoredCount)."
+        if deferredCount > 0 { archiveSummary += " Pozostawiono \(deferredCount) z niewysłanymi zmianami lub błędem." }
+        activeRemindersCount = uniqueTasks.filter { !$0.isCompleted }.count
+        hasLoadedPersonalTasks = true
+        if !failures.isEmpty {
+            throw NSError(domain: "MavinciSync", code: 2, userInfo: [NSLocalizedDescriptionKey: failures.prefix(10).joined(separator: "\n")])
         }
     }
 
-    // MARK: - Retry Logic
-
-    /// Fetches tasks from the CRM with exponential backoff retry.
-    private func fetchTasksWithRetry() async throws -> CRMTasksResponse {
-        var lastError: Error?
-
-        for attempt in 0..<Self.maxRetries {
-            do {
-                let response = try await apiClient.fetchTasks()
-                return response
-            } catch let error as CRMAPIError {
-                lastError = error
-
-                // Only retry on transient failures
-                switch error {
-                case .networkError:
-                    let delay = pow(2.0, Double(attempt)) // 1s, 2s, 4s
-                    logger.warning("Fetch attempt \(attempt + 1) failed, retrying in \(delay)s: \(error.localizedDescription)")
-                    try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-                    continue
-
-                case .serverError(let code) where code >= 500:
-                    let delay = pow(2.0, Double(attempt)) // 1s, 2s, 4s
-                    logger.warning("Fetch attempt \(attempt + 1) failed, retrying in \(delay)s: \(error.localizedDescription)")
-                    try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-                    continue
-                default:
-                    // Non-transient errors: don't retry
-                    throw error
-                }
-            } catch {
-                lastError = error
-                let delay = pow(2.0, Double(attempt))
-                logger.warning("Fetch attempt \(attempt + 1) failed, retrying in \(delay)s: \(error.localizedDescription)")
-                try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-                continue
-            }
-        }
-
-        throw lastError ?? SyncError.unknownError
-    }
-
-    // MARK: - Error Handling
-
-    private func handleSyncError(_ error: Error) async {
-        let errorMessage: String
-
-        if let syncError = error as? SyncError {
-            errorMessage = syncError.localizedDescription
-        } else if let apiError = error as? CRMAPIError {
-            errorMessage = apiError.localizedDescription
-        } else {
-            errorMessage = error.localizedDescription
-        }
-
-        logger.error("Sync error: \(errorMessage)")
-
-        await MainActor.run {
-            self.lastError = errorMessage
-            self.errorCount += 1
-            self.connectionStatus = .error
-        }
-    }
-
-    // MARK: - Stale Entry Cleanup
-
-    /// Removes entries from lastChangeSource that are older than 1 hour.
-    private func cleanStaleChangeSourceEntries() {
-        let cutoff = Date().addingTimeInterval(-Self.staleEntryTimeout)
-
-        syncQueue.sync {
-            // Remove stale lastChangeSource entries by checking lastReminderModification dates
-            var keysToRemove: [String] = []
-            for (taskId, _) in syncState.lastChangeSource {
-                // Check associated modification date
-                if let reminderId = taskReminderMap[taskId],
-                   let lastMod = syncState.lastReminderModification[reminderId],
-                   lastMod < cutoff {
-                    keysToRemove.append(taskId)
-                } else if taskReminderMap[taskId] == nil {
-                    // No mapping exists — safe to remove
-                    keysToRemove.append(taskId)
-                }
-            }
-
-            for key in keysToRemove {
-                syncState.lastChangeSource.removeValue(forKey: key)
-            }
-
-            if !keysToRemove.isEmpty {
-                logger.debug("Cleaned \(keysToRemove.count) stale change source entries")
-            }
-        }
-    }
-
-    // MARK: - Persistence
-
-    /// Saves the task-to-reminder mapping to disk.
-    private func saveTaskReminderMap() {
-        let mapToSave = syncQueue.sync { taskReminderMap }
-
-        do {
-            let data = try JSONEncoder().encode(mapToSave)
-            try data.write(to: Self.mapFileURL, options: .atomic)
-            logger.debug("Saved task reminder map (\(mapToSave.count) entries)")
-        } catch {
-            logger.error("Failed to save task reminder map: \(error.localizedDescription)")
-        }
-    }
-
-    /// Loads the task-to-reminder mapping from disk.
-    private static func loadTaskReminderMap() -> [String: String] {
-        guard FileManager.default.fileExists(atPath: mapFileURL.path) else {
-            return [:]
-        }
-
-        do {
-            let data = try Data(contentsOf: mapFileURL)
-            let map = try JSONDecoder().decode([String: String].self, from: data)
-            return map
-        } catch {
-            print("[SyncManager] Failed to load task reminder map: \(error.localizedDescription)")
-            return [:]
-        }
-    }
-
-    // MARK: - Date Parsing
-
-    private func parseISO8601(_ string: String) -> Date? {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = formatter.date(from: string) {
-            return date
-        }
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter.date(from: string)
-    }
-}
-
-// MARK: - Sync Errors
-
-enum SyncError: LocalizedError {
-    case apiError(String)
-    case reminderCreationFailed(String)
-    case unknownError
-
-    var errorDescription: String? {
-        switch self {
-        case .apiError(let message):
-            return "CRM API error: \(message)"
-        case .reminderCreationFailed(let taskId):
-            return "Failed to create reminder for task: \(taskId)"
-        case .unknownError:
-            return "An unknown sync error occurred."
-        }
+    private func persist() throws {
+        try state.saveOrThrow()
+        try FileManager.default.createDirectory(at: Self.mapURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try JSONEncoder().encode(taskMap).write(to: Self.mapURL, options: .atomic)
     }
 }

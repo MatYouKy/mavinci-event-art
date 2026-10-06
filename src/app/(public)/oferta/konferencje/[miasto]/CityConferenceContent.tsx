@@ -1,74 +1,32 @@
-type Props = {
-  cityName: string;
-};
+import Link from 'next/link';
+import { SITE } from '@/lib/SEO/site';
 
-export default function CityConferenceContent({ cityName }: Props) {
-  return (
-    <div className="flex items-center justify-center bg-[#0f1119] p-6">
-      <div className="w-full max-w-4xl">
+type Props = { cityName: string; nearbyCities: { locality: string; name: string }[] };
 
-        <div className="relative overflow-hidden rounded-2xl border border-[#d3bb73]/30 bg-gradient-to-br from-[#d3bb73]/10 via-[#d3bb73]/5 to-transparent p-2 text-center md:p-3 lg:p-6">
-          <div className="absolute right-0 top-0 -z-10 h-64 w-64 rounded-full bg-[#d3bb73]/5 blur-3xl" />
-          <div className="absolute bottom-0 left-0 -z-10 h-48 w-48 rounded-full bg-[#d3bb73]/5 blur-3xl" />
-
-          <h2 className="mb-4 p-4 text-3xl font-light text-[#e5e4e2] md:text-4xl">
-            Gotowy na profesjonalną obsługę?
-          </h2>
-          <p className="mx-auto mb-8 max-w-2xl text-lg text-[#e5e4e2]/70">
-            Zobacz pełną ofertę obsługi konferencji, pakiety usług i nasze realizacje
-          </p>
-
-          <div className="flex w-full flex-col items-center justify-center gap-3 sm:flex-row sm:gap-4">
-            <a
-              href="/oferta/konferencje"
-              className="group inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-3 text-base font-medium text-[#1c1f33] shadow-md transition-all hover:scale-105 hover:bg-[#d3bb73]/90 hover:shadow-xl sm:w-auto sm:gap-3 sm:px-8 sm:py-4 sm:text-lg sm:shadow-lg"
-            >
-              Zobacz pełną ofertę
-              <span className="h-4 w-4 transition-transform group-hover:translate-x-1 sm:h-5 sm:w-5">→</span>
-            </a>
-
-            <a
-              href="/#kontakt"
-              className="inline-flex w-full items-center justify-center gap-2 rounded-lg border-2 border-[#d3bb73] bg-transparent px-6 py-3 text-base font-medium text-[#d3bb73] transition-all hover:bg-[#d3bb73]/10 sm:w-auto sm:px-8 sm:py-4 sm:text-lg"
-            >
-              Skontaktuj się
-            </a>
-          </div>
-
-          <div className="mt-12 border-t border-[#d3bb73]/20 pb-4 pt-8">
-            <div className="flex flex-wrap items-center justify-center gap-8 text-sm text-[#e5e4e2]/60">
-              <div className="flex items-center gap-2">
-                <div className="h-2 w-2 rounded-full bg-[#d3bb73]" />
-                Bezpłatna wycena
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="h-2 w-2 rounded-full bg-[#d3bb73]" />
-                Profesjonalny sprzęt
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="h-2 w-2 rounded-full bg-[#d3bb73]" />
-                Doświadczony zespół
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="h-2 w-2 rounded-full bg-[#d3bb73]" />
-                Realizacje w całej Polsce
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-12 space-y-1 text-center text-xs text-[#e5e4e2]/40">
-          <p>
-            Obsługa konferencji {cityName} | Nagłośnienie konferencyjne {cityName} | Technika AV {cityName} | Streaming konferencji {cityName}
-          </p>
-          <p>
-            Realizacja live {cityName} | Multimedia konferencje {cityName} | Wynajem sprzętu eventowego {cityName}
-          </p>
-          <p>
-            Profesjonalna obsługa eventów {cityName} | Konferencje biznesowe {cityName} | Eventy firmowe {cityName}
-          </p>
-        </div>
+export default function CityConferenceContent({ cityName, nearbyCities }: Props) {
+  const subject = encodeURIComponent(`Obsługa konferencji — ${cityName}`);
+  const body = encodeURIComponent(`Dzień dobry,\n\nPlanujemy konferencję.\nMiasto: ${cityName}\nData:\nObiekt i sala:\nLiczba uczestników:\nProgram wydarzenia:\nPotrzebny zakres (nagłośnienie / LED / światło / streaming):\nGodziny dostępu do sali:\n\nProsimy o kontakt w sprawie obsługi technicznej.`);
+  return <section id="wycena-konferencji" className="scroll-mt-28 bg-white/[0.03] px-5 py-14 sm:px-6 md:py-20" aria-labelledby="conference-contact-heading">
+    <div className="mx-auto max-w-5xl">
+      <p className="mb-3 text-sm text-[#d3bb73]">MAVINCI · {cityName}</p>
+      <h2 id="conference-contact-heading" className="text-2xl font-light uppercase text-[#e5e4e2] sm:text-4xl">Ustalmy technikę Twojej konferencji</h2>
+      <p className="mt-5 max-w-3xl leading-7 text-white/75">Podaj termin, obiekt, liczbę uczestników i program. Uzgodnimy nagłośnienie, obraz, oświetlenie, streaming oraz transport i montaż. Możesz zamówić pełną realizację lub wybrany zakres.</p>
+      <div className="mt-7 flex flex-col gap-3 sm:flex-row">
+        <a href={`mailto:${SITE.email}?subject=${subject}&body=${body}`} className="inline-flex min-h-12 items-center justify-center rounded-full bg-[#d3bb73] px-6 py-3 text-center font-medium text-[#1c1f33] hover:bg-[#e3cd8c]">Wyślij zapytanie o konferencję</a>
+        <a href={SITE.phoneHref} className="inline-flex min-h-12 items-center justify-center rounded-full bg-white/[0.07] px-6 py-3 text-center text-[#e5e4e2] hover:bg-white/10">Zadzwoń: {SITE.telephone}</a>
       </div>
+      <p className="mt-6 text-sm leading-6 text-white/60">Biuro i magazyn: {SITE.office.street}, {SITE.office.postalCode} {SITE.office.city}. Do miejsca konferencji przyjeżdżamy z techniką i zespołem. <a href={SITE.office.mapsUrl} className="text-[#d3bb73] underline underline-offset-4">Dojazd do naszego biura</a>.</p>
+      <div className="mt-8 flex flex-wrap gap-x-6 gap-y-4 text-sm text-[#d3bb73]">
+        <Link href="/dla-agencji-i-hoteli" className="underline underline-offset-4">Współpraca z agencjami i hotelami</Link>
+        <Link href="/oferta/integracje" className="underline underline-offset-4">Konferencja z integracją</Link>
+        <Link href="/oferta/konferencje" className="underline underline-offset-4">Pełna oferta konferencji</Link>
+      </div>
+      {nearbyCities.length > 0 && <nav aria-label="Inne lokalizacje konferencji w regionie" className="mt-10">
+        <p className="mb-3 text-sm text-white/60">Rozważasz inną lokalizację wydarzenia w regionie?</p>
+        <ul className="flex flex-wrap gap-2">
+          {nearbyCities.map(city => <li key={city.locality}><Link prefetch={false} href={`/oferta/konferencje/${city.locality}`} className="inline-flex min-h-11 items-center rounded-full bg-white/[0.04] px-4 py-2 text-sm text-[#e5e4e2] hover:bg-white/10">{city.name}</Link></li>)}
+        </ul>
+      </nav>}
     </div>
-  );
+  </section>;
 }

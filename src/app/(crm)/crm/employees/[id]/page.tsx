@@ -1,7 +1,9 @@
 'use client';
 
+import { systemLabel } from '@/lib/ui/systemLabels';
+
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import {
   ArrowLeft,
   User,
@@ -40,6 +42,7 @@ import ResponsiveActionBar, { Action } from '@/components/crm/ResponsiveActionBa
 import { AddDocumentModal } from '@/components/crm/employee/modal/AddDocumentModal';
 import EmployeeEventsTab from '@/components/crm/employee/tabs/EmployeeEventsTab';
 import { EmployeeDocumentsTab } from '@/components/crm/employee/tabs/EmployeeDocumentsTab';
+import { PersonnelContractsPanel } from '@/components/crm/personnel/PersonnelContractsPanel';
 import EmployeeOverviewTab from '@/components/crm/employee/tabs/EmployeeOverviewTab';
 import { useDialog } from '@/contexts/DialogContext';
 import { IEmployee } from '../../employees/type';
@@ -91,7 +94,8 @@ export default function EmployeeDetailPage() {
   const [events, setEvents] = useState<EventAssignment[]>([]);
   const [emailAccounts, setEmailAccounts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('overview');
+  const profileSearchParams = useSearchParams();
+  const [activeTab, setActiveTab] = useState(profileSearchParams.get('tab') === 'permissions' ? 'permissions' : 'overview');
   const [isEditing, setIsEditing] = useState(false);
   const [editedData, setEditedData] = useState<Partial<IEmployee>>({});
   const [showAddDocumentModal, setShowAddDocumentModal] = useState(false);
@@ -218,6 +222,7 @@ export default function EmployeeDetailPage() {
       const { data, error } = await supabase
         .from('access_levels')
         .select('id, name, description')
+        .eq('is_company_role', true)
         .order('order_index');
 
       if (!error && data) {
@@ -512,7 +517,7 @@ export default function EmployeeDetailPage() {
       assistant: 'Asystent',
       unassigned: 'Nieprzypisany',
     };
-    return labels[role] || role;
+    return labels[role] || systemLabel(role, 'role');
   };
 
   const getAccessLevelLabel = (level: string) => {
@@ -526,7 +531,7 @@ export default function EmployeeDetailPage() {
       unassigned: 'Nieprzypisany',
       instructor: 'Instruktor',
     };
-    return labels[level] || level;
+    return labels[level] || systemLabel(level, 'access');
   };
 
   if (loading) {
@@ -718,6 +723,7 @@ export default function EmployeeDetailPage() {
       <div className="flex gap-2 overflow-x-auto border-b border-[#d3bb73]/10">
         {[
           { id: 'overview', label: 'Przegląd', icon: User },
+          ...(isOwnProfile || canViewModule('personnel') ? [{id:'personnel',label:'Umowy i rozliczenia',icon:FileText}] : []),
           ...(isAdmin ? [{ id: 'qualifications', label: 'Kwalifikacje', icon: Award }] : []),
           ...(isAdmin ? [{ id: 'emails', label: 'Konta Email', icon: Mail }] : []),
           ...(isAdmin ? [{ id: 'permissions', label: 'Uprawnienia', icon: Lock }] : []),
@@ -730,7 +736,7 @@ export default function EmployeeDetailPage() {
           ...(canViewOwnProfile ? [{ id: 'events', label: 'Wydarzenia', icon: Calendar }] : []),
           ...(canViewOwnProfile ? [{ id: 'timeline', label: 'Oś czasu', icon: Clock }] : []),
         ].map((tab) => (
-          <button
+          <button data-crm-tab-active={activeTab === tab.id}
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
             className={`flex items-center gap-2 whitespace-nowrap border-b-2 px-4 py-3 transition-colors ${
@@ -766,6 +772,13 @@ export default function EmployeeDetailPage() {
         />
       )}
 
+      {activeTab === 'personnel' && <PersonnelContractsPanel employeeId={employeeId} onChanged={() => {
+        void supabase.from('employees').select('address_street,address_city,address_postal_code').eq('id', employeeId).single().then(({ data, error }) => {
+          if (error || !data) return;
+          setEmployee(current => current ? { ...current, ...data } : current);
+          if (!isEditing) setEditedData(current => ({ ...current, ...data }));
+        });
+      }}/>}
       {activeTab === 'overview' && (
         <EmployeeOverviewTab
           employee={employee}

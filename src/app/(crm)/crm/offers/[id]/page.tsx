@@ -1,8 +1,10 @@
 'use client';
 
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import SystemBadge from '@/components/UI/SystemBadge';
+import { offerSource } from '@/lib/CRM/Offers/offerSource';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Trash2, Pencil, X, Check } from 'lucide-react';
+import { ArrowLeft, Trash2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
@@ -13,7 +15,7 @@ import OfferActions from './components/OfferActions';
 import OfferItems from './components/OfferItems';
 import OfferHistory from './components/OfferHistory';
 import { OfferDetails } from './components/OfferDetails';
-import OfferBasicInfo, { OfferBasicInfoHandle } from './components/OfferBasicInfo';
+import OfferBasicInfo from './components/OfferBasicInfo';
 import AddOfferItemModal from './components/AddOfferItemModal';
 import EditOfferItemModal from './components/EditOfferItemModal';
 import { usePrefetchOffer } from '../hooks/usePrefetchOffer';
@@ -23,7 +25,11 @@ import { deleteOfferWithFiles } from '@/lib/CRM/Offers/deleteOfferWithFiles';
 import Image from 'next/image';
 import InquirySourceContextPanel from '@/components/crm/inquiries/InquirySourceContextPanel';
 import OfferPackagesEditor from './components/OfferPackagesEditor';
+import OfferRecommendationsEditor from './components/OfferRecommendationsEditor';
 import OfferRequirementsEditor from './components/OfferRequirementsEditor';
+import SellerOfferWorkflow from '@/components/seller/SellerOfferWorkflow';
+import { useDispatch } from 'react-redux';
+import { eventsApi } from '@/app/(crm)/crm/events/store/api/eventsApi';
 
 const statusColors: Record<string, string> = {
   draft: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
@@ -42,6 +48,7 @@ const statusLabels: Record<string, string> = {
 };
 
 export default function OfferDetailPage() {
+  const dispatch = useDispatch();
   const router = useRouter();
   const params = useParams();
   const offerId = params.id as string;
@@ -57,11 +64,9 @@ export default function OfferDetailPage() {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [canSendManage, setCanSendManage] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
-  const [isEditing, setIsEditing] = useState(false);
   const [isEditingStatus, setIsEditingStatus] = useState(false);
   const [selectedStatus, setSelectedStatus] = useState('draft');
 
-  const basicInfoRef = useRef<OfferBasicInfoHandle | null>(null);
 
   useEffect(() => {
     if (offerId) {
@@ -80,7 +85,7 @@ export default function OfferDetailPage() {
       const { data: employee } = await supabase
         .from('employees')
         .select('id, permissions')
-        .eq('id', user.id)
+        .or(`id.eq.${user.id},auth_user_id.eq.${user.id}`)
         .maybeSingle();
 
       setCurrentUser(employee);
@@ -90,11 +95,9 @@ export default function OfferDetailPage() {
   };
 
   useEffect(() => {
-    if (offer && currentUser) {
-      const isAdmin = currentUser.permissions?.includes('admin');
-      const isCreator = offer.created_by === currentUser.id;
-      setCanSendManage(isAdmin || isCreator);
-    }
+    let active = true;
+    if (offer?.id) void supabase.rpc('sales_can_manage_offer', { p_offer: offer.id }).then(({ data, error }) => { if (active) setCanSendManage(!error && data === true && offer.status !== 'accepted'); });
+    return () => { active = false; };
   }, [offer, currentUser]);
 
   useEffect(() => {
@@ -159,12 +162,17 @@ export default function OfferDetailPage() {
 
   const handleOfferUpdated = () => {
     refetch();
-    setIsEditing(false);
   };
 
   const handleUpdateStatus = async () => {
     if (!offer || selectedStatus === offer.status) {
       setIsEditingStatus(false);
+      return;
+    }
+
+    if (selectedStatus === 'accepted') {
+      showSnackbar('Użyj akceptacji wariantu w zapytaniu lub przycisku rezerwacji sprzętu.', 'warning');
+      if (offer.inquiry_id && !offer.event_id) router.push(`/crm/inquiries/${offer.inquiry_id}?tab=offers`);
       return;
     }
 
@@ -195,32 +203,6 @@ export default function OfferDetailPage() {
 
     const result: Action[] = [];
 
-    // Edytuj / Zapisz
-    result.push({
-      label: isEditing ? 'Zapisz' : 'Edytuj',
-      onClick: () => {
-        if (isEditing) {
-          basicInfoRef.current?.submit();
-        } else {
-          setIsEditing(true);
-        }
-      },
-      icon: isEditing ? <Check className="h-4 w-4" /> : <Pencil className="h-4 w-4" />,
-      variant: 'primary',
-      show: true,
-    });
-
-    // Anuluj w trybie edycji
-    if (isEditing) {
-      result.push({
-        label: 'Anuluj',
-        onClick: () => setIsEditing(false),
-        icon: <X className="h-4 w-4" />,
-        variant: 'danger',
-        show: true,
-      });
-    }
-
     // Usuń zawsze dostępny dla zarządzających
     result.push({
       label: 'Usuń',
@@ -231,7 +213,7 @@ export default function OfferDetailPage() {
     });
 
     return result;
-  }, [canSendManage, isEditing, handleDeleteOffer]);
+  }, [canSendManage, handleDeleteOffer]);
 
   if (isLoading) {
     return (
@@ -254,7 +236,7 @@ export default function OfferDetailPage() {
           <div className="max-w-xl text-center text-sm text-red-300/80">{errorMessage}</div>
         )}
         {!isMissing && (
-          <button
+          <button data-crm-action="secondary"
             onClick={() => refetch()}
             className="rounded-lg border border-[#d3bb73]/30 px-4 py-2 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/10"
           >
@@ -295,6 +277,55 @@ export default function OfferDetailPage() {
       || 'Bez tytułu',
   ).trim();
 
+  const source = offerSource(offer);
+
+  const offerContent = <>
+    <OfferBasicInfo offer={offer} canEdit={canSendManage && (offer as any).sales_channel !== 'seller_portal'} onUpdate={handleOfferUpdated} />
+    <OfferItems
+      items={offer.offer_items || []}
+      offerId={offer.id}
+      vatRate={offer.tax_percent ?? 23}
+      onItemsReordered={refetch}
+      onEditItem={(item) => { setEditingItem(item as IOfferItem); }}
+      onDeleteItem={handleDeleteItem}
+      onPreviewImage={setPreviewImage}
+      onAddItem={() => setShowAddItemModal(true)}
+    />
+    <OfferRequirementsEditor offer={offer} canEdit={canSendManage} onSaved={refetch} />
+    <OfferPackagesEditor offer={offer} canEdit={canSendManage} onSaved={refetch} />
+    <OfferRecommendationsEditor key={offer.id} offer={offer} canEdit={canSendManage} onSaved={refetch} />
+    <OfferHistory offerId={offer.id} />
+  </>;
+
+  const offerInformation = <>
+    {(offer as any).sales_channel !== 'seller_portal' && <OfferActions
+      offer={offer}
+      currentUser={currentUser}
+      showSendEmailModal={showSendEmailModal}
+      setShowSendEmailModal={setShowSendEmailModal}
+      onOfferUpdated={refetch}
+      onEditOfferItem={itemId => {
+        const item = offer.offer_items?.find((entry: IOfferItem) => entry.id === itemId);
+        if (item) setEditingItem(item);
+      }}
+    />}
+    {offer.inquiry && <InquirySourceContextPanel
+      inquiryTitle={offer.inquiry.title?.replace(/^Zapytanie:\s*/i, '') || offer.title || 'Zapytanie'}
+      message={inquiryDetails.source_message_content || offer.inquiry.description}
+      sourceLabel={inquiryDetails.source || inquiryDetails.source_name || 'Zapytanie'}
+      clientName={offerClientName}
+      clientEmail={offerClientEmail}
+      clientPhone={offerClientPhone}
+      sourceHref={inquirySourceHref}
+      items={[
+        { label: 'Termin', value: inquiryDetails.termin || offer.inquiry.due_date || offer.event?.event_date, kind: 'date' },
+        { label: 'Miejsce', value: inquiryDetails.location_text || offer.event?.location, kind: 'location' },
+        { label: 'Zakres', value: inquiryDetails.scope || inquiryDetails.event_type, kind: 'scope' },
+      ]}
+    />}
+    <OfferDetails offer={offer} canEdit={canSendManage} onSaved={refetch} />
+  </>;
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -306,78 +337,30 @@ export default function OfferDetailPage() {
             <ArrowLeft className="h-5 w-5" />
           </button>
           <div>
-            <h1 className="text-2xl font-light text-[#e5e4e2]">Oferta {offer.offer_number}</h1>
+            <div className="flex flex-wrap items-center gap-3">
+              <h1 className="text-2xl font-light text-[#e5e4e2]">Oferta {offer.offer_number}</h1>
+              {source && <SystemBadge value={source.kind} domain="source" />}
+            </div>
             <p className="mt-1 max-w-3xl text-sm text-[#e5e4e2]/60">{offerTitle}</p>
           </div>
         </div>
 
-        {canSendManage && <ResponsiveActionBar actions={actions} />}
+        {canSendManage && (offer as any).sales_channel !== 'seller_portal' && <ResponsiveActionBar actions={actions} alwaysDropdown />}
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <div className="space-y-6 lg:col-span-2">
-          <OfferBasicInfo
-            ref={basicInfoRef}
-            offer={offer}
-            isEditing={isEditing}
-            onUpdate={handleOfferUpdated}
-          />
-
-          <OfferItems
-            items={offer.offer_items || []}
-            offerId={offer.id}
-            vatRate={offer.tax_percent ?? 23}
-            onItemsReordered={refetch}
-            onEditItem={(item) => {
-              setEditingItem(item as IOfferItem);
-            }}
-            onDeleteItem={handleDeleteItem}
-            onPreviewImage={setPreviewImage}
-            onAddItem={() => setShowAddItemModal(true)}
-          />
-
-          <OfferRequirementsEditor
-            offer={offer}
-            canEdit={canSendManage}
-            onSaved={refetch}
-          />
-
-          <OfferPackagesEditor
-            offer={offer}
-            canEdit={canSendManage}
-            onSaved={refetch}
-          />
-
-          <OfferHistory offerId={offer.id} />
+      {(offer as any).sales_channel === 'seller_portal' ? (
+        <SellerOfferWorkflow key={offerId} offerId={offerId} crm sidebarContent={offerInformation} onChanged={() => {
+          void refetch();
+          dispatch(eventsApi.util.invalidateTags(['Events', 'EventDetails', 'EventOffers']));
+        }}>
+          {offerContent}
+        </SellerOfferWorkflow>
+      ) : (
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          <div className="space-y-6 lg:col-span-2">{offerContent}</div>
+          <div className="min-w-0 space-y-6 lg:sticky lg:top-6 lg:max-h-[calc(100dvh-3rem)] lg:self-start lg:overflow-y-auto lg:overscroll-contain">{offerInformation}</div>
         </div>
-
-        <div className="space-y-6">
-          {offer.inquiry && (
-            <InquirySourceContextPanel
-              inquiryTitle={offer.inquiry.title?.replace(/^Zapytanie:\s*/i, '') || offer.title || 'Zapytanie'}
-              message={inquiryDetails.source_message_content || offer.inquiry.description}
-              sourceLabel={inquiryDetails.source || inquiryDetails.source_name || 'Zapytanie'}
-              clientName={offerClientName}
-              clientEmail={offerClientEmail}
-              clientPhone={offerClientPhone}
-              sourceHref={inquirySourceHref}
-              items={[
-                { label: 'Termin', value: inquiryDetails.termin || offer.inquiry.due_date || offer.event?.event_date, kind: 'date' },
-                { label: 'Miejsce', value: inquiryDetails.location_text || offer.event?.location, kind: 'location' },
-                { label: 'Zakres', value: inquiryDetails.scope || inquiryDetails.event_type, kind: 'scope' },
-              ]}
-            />
-          )}
-          <OfferDetails offer={offer} />
-          <OfferActions
-            offer={offer}
-            currentUser={currentUser}
-            showSendEmailModal={showSendEmailModal}
-            setShowSendEmailModal={setShowSendEmailModal}
-            onOfferUpdated={refetch}
-          />
-        </div>
-      </div>
+      )}
 
       {showSendEmailModal && offer && (
         <SendOfferEmailModal
@@ -394,20 +377,6 @@ export default function OfferDetailPage() {
       {showAddItemModal && offer && (
         <AddOfferItemModal
           offerId={offer.id}
-          inquiryContext={offer.inquiry ? {
-            inquiryTitle: offer.inquiry.title?.replace(/^Zapytanie:\s*/i, '') || offer.title || 'Zapytanie',
-            message: inquiryDetails.source_message_content || offer.inquiry.description,
-            sourceLabel: inquiryDetails.source || inquiryDetails.source_name || 'Zapytanie',
-            clientName: offerClientName,
-            clientEmail: offerClientEmail,
-            clientPhone: offerClientPhone,
-            sourceHref: inquirySourceHref,
-            items: [
-              { label: 'Termin', value: inquiryDetails.termin || offer.inquiry.due_date || offer.event?.event_date, kind: 'date' },
-              { label: 'Miejsce', value: inquiryDetails.location_text || offer.event?.location, kind: 'location' },
-              { label: 'Zakres', value: inquiryDetails.scope || inquiryDetails.event_type, kind: 'scope' },
-            ],
-          } : undefined}
           onClose={() => setShowAddItemModal(false)}
           onSuccess={refetch}
         />

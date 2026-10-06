@@ -1,4 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
+import { useForegroundEffect } from '../hooks/useForegroundEffect';
+import { createRefreshQueue } from '../lib/refreshQueue';
 import {
   View,
   Text,
@@ -134,11 +136,13 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
   const [employeeSearch, setEmployeeSearch] = useState('');
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
-  useEffect(() => {
-    fetchTask();
-    fetchComments();
-    fetchAttachments();
-    fetchAssignees();
+  useForegroundEffect((signal) => {
+    void fetchTask();
+    void fetchAttachments();
+    const comments = createRefreshQueue(signal, () => fetchComments());
+    const assignees = createRefreshQueue(signal, () => fetchAssignees());
+    void comments.refresh();
+    void assignees.refresh();
 
     // Subscribe to realtime updates
     const commentsChannel = supabase
@@ -151,9 +155,7 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
           table: 'task_comments',
           filter: `task_id=eq.${taskId}`,
         },
-        () => {
-          fetchComments();
-        },
+        comments.schedule,
       )
       .subscribe();
 
@@ -167,15 +169,15 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
           table: 'task_assignees',
           filter: `task_id=eq.${taskId}`,
         },
-        () => {
-          fetchAssignees();
-        },
+        assignees.schedule,
       )
       .subscribe();
 
     return () => {
-      supabase.removeChannel(commentsChannel);
-      supabase.removeChannel(assigneesChannel);
+      return Promise.all([
+        supabase.removeChannel(commentsChannel),
+        supabase.removeChannel(assigneesChannel),
+      ]);
     };
   }, [taskId]);
 

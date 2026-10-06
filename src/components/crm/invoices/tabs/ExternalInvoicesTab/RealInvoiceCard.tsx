@@ -1,5 +1,6 @@
 import { Copy, Eye, Pencil, Repeat, Trash2 } from 'lucide-react';
 import { ExternalInvoice, formatDate, formatMoney } from './ExternalInvoicesTab';
+import { externalDocumentKindLabel } from '@/lib/invoices/externalDocumentKinds';
 
 export function RealInvoiceCard({
   inv,
@@ -22,6 +23,10 @@ export function RealInvoiceCard({
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-medium text-[#e5e4e2]">
             {inv.invoice_number}
+          </span>
+
+          <span className="rounded-full bg-white/5 px-2 py-0.5 text-xs text-[#e5e4e2]/65">
+            {externalDocumentKindLabel(inv.document_kind)}
           </span>
 
           {inv.subscription_id && (
@@ -72,7 +77,7 @@ export function RealInvoiceCard({
         {inv.file_url && (
           <button
             onClick={() => onPreview(inv.file_url)}
-            title="Podgląd faktury"
+            title="Podgląd dokumentu"
             className="rounded-lg border border-[#d3bb73]/20 p-2 text-[#e5e4e2]/70 hover:text-[#d3bb73]"
           >
             <Eye className="h-4 w-4" />
@@ -92,7 +97,7 @@ export function RealInvoiceCard({
         {canManage && (
           <button
             onClick={() => onAddSimilar(inv)}
-            title="Dodaj podobną fakturę"
+            title="Dodaj podobny dokument"
             className="rounded-lg border border-[#d3bb73]/20 p-2 text-[#e5e4e2]/70 hover:text-[#d3bb73]"
           >
             <Copy className="h-4 w-4" />

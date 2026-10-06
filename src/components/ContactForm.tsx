@@ -1,13 +1,15 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Formik, Form, Field, ErrorMessage } from 'formik';
 import * as Yup from 'yup';
 import { Send, Upload, FileText, X as XIcon } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
+import { trackMarketingLead } from '@/lib/marketing/trackLead.client';
 import confetti from 'canvas-confetti';
 import { useDialog } from '@/contexts/DialogContext';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import { formSubject } from '@/lib/ui/systemLabels';
 
 export interface ContactFormProps {
   category?: string;
@@ -67,7 +69,12 @@ export default function ContactForm({
     cvFile: null,
   };
 
+  const pendingSubmission = useRef<string | null>(null);
+  const submitLock = useRef(false);
   const handleSubmit = async (values: ContactFormData, { resetForm }: any) => {
+    if (submitLock.current) return;
+    submitLock.current = true;
+    pendingSubmission.current ||= crypto.randomUUID();
     setIsLoading(true);
     setIsError(false);
     try {
@@ -106,15 +113,17 @@ export default function ContactForm({
         }
       }
 
-      const { error } = await supabase.from('contact_messages').insert([
+      const { error } = await supabase.from('contact_messages').upsert([
         {
+          id: pendingSubmission.current,
+          intake_metadata: { event_type: values.eventType || null },
           name: values.name,
           email: values.email,
           phone: values.phone || null,
           company: values.company || null,
           category: category,
           source_page: sourcePage,
-          subject: subject || `${category} - ${values.eventType || 'Nowa wiadomość'}`,
+          subject: subject || formSubject(category, values.eventType),
           message: values.message,
           status: 'new',
           priority: category === 'event_inquiry' || category === 'team_join' ? 'high' : 'normal',
@@ -122,10 +131,14 @@ export default function ContactForm({
           cv_url: cvUrl,
           cv_filename: cvFilename,
         },
-      ]);
+      ], { onConflict: 'id', ignoreDuplicates: true });
 
       if (error) throw error;
 
+      if (category === 'event_inquiry') {
+        trackMarketingLead('event_inquiry', pendingSubmission.current);
+      }
+      pendingSubmission.current = null;
       setIsSuccess(true);
 
       // Trigger confetti animation
@@ -166,6 +179,7 @@ export default function ContactForm({
       showSnackbar('Błąd podczas wysyłania formularza: ' + (error as Error).message, 'error');
       setIsError(true);
     } finally {
+      submitLock.current = false;
       setIsLoading(false);
     }
   };
@@ -362,7 +376,7 @@ export default function ContactForm({
                   <option value="gala">Gala</option>
                   <option value="corporate">Event Korporacyjny</option>
                   <option value="trade">Targi</option>
-                  <option value="team">Team Building</option>
+                  <option value="team">Integracja zespołu</option>
                   <option value="integration">Integracja</option>
                   <option value="other">Inne</option>
                 </Field>

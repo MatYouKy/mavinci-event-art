@@ -1,27 +1,32 @@
+import PermissionGate from '../components/PermissionGate';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useRoute } from '@react-navigation/native';
 
 import ChatListScreen, { Conversation } from '../screens/ChatListScreen';
 import ChatScreen from '../screens/ChatScreen';
+import SellerChatScreen from '../screens/SellerChatScreen';
+import { Alert } from 'react-native';
 import NewChatModal from '../screens/NewChatModal';
 import { setActiveChatConversation } from '../services/chatNotifications';
-import { consumeNotificationTarget } from '../../App';
 import { supabase } from '../lib/supabase';
-import * as Notifications from 'expo-notifications';
 
-export default function MessagesStackNavigator() {
+function MessagesStackContent() {
   const route = useRoute<any>();
   const [activeConversation, setActiveConversation] = useState<Conversation | null>(null);
   const [showNewChat, setShowNewChat] = useState(false);
-  const hasCheckedTarget = useRef(false);
+  const [sellerConversationId, setSellerConversationId] = useState<string | null>(null);
+  const requestVersion = useRef(0);
   const lastNavigationRequest = useRef<string | null>(null);
 
   useEffect(() => {
-    setActiveChatConversation(activeConversation?.id ?? null);
+    setActiveChatConversation(sellerConversationId ? null : activeConversation?.id ?? null);
     return () => setActiveChatConversation(null);
-  }, [activeConversation?.id]);
+  }, [activeConversation?.id, sellerConversationId]);
 
   const navigateToConversation = useCallback(async (conversationId: string) => {
+    const version = ++requestVersion.current;
+    setSellerConversationId(null);
+    setActiveConversation(null);
     const [{ data }, { data: participantRows }] = await Promise.all([
       supabase
         .from('employee_conversations')
@@ -36,6 +41,7 @@ export default function MessagesStackNavigator() {
         .eq('conversation_id', conversationId),
     ]);
 
+    if (version !== requestVersion.current) return;
     if (data) {
       const employeeIds = (participantRows || []).map((participant) => participant.employee_id);
       const { data: employees } = employeeIds.length
@@ -46,9 +52,10 @@ export default function MessagesStackNavigator() {
         : { data: [] };
       const employeesById = new Map((employees || []).map((item) => [item.id, item]));
 
+      if (version !== requestVersion.current) return;
       setActiveConversation({
         id: data.id,
-        title: data.title || 'Rozmowa',
+        title: data.title,
         is_group: data.is_group ?? false,
         created_by: data.created_by ?? '',
         last_message_at: data.last_message_at ?? data.created_at,
@@ -60,52 +67,48 @@ export default function MessagesStackNavigator() {
         })),
         unread_count: 0,
       });
+    } else {
+      Alert.alert('Rozmowa niedostępna', 'Nie udało się otworzyć rozmowy. Sprawdź połączenie i uprawnienia.');
     }
   }, []);
 
-  // Handle conversationId passed via navigation params
+  // Notification routing is owned by MainTabNavigator, including cold starts.
   useEffect(() => {
     const convId = route.params?.conversationId;
+    const kind = route.params?.conversationKind || 'employee';
     const requestId = route.params?.chatRequestId ?? 'initial';
-    const requestKey = convId ? `${convId}:${requestId}` : null;
+    const requestKey = convId ? `${kind}:${convId}:${requestId}` : null;
     if (convId && requestKey !== lastNavigationRequest.current) {
       lastNavigationRequest.current = requestKey;
-      navigateToConversation(convId);
-    }
-  }, [route.params?.chatRequestId, route.params?.conversationId, navigateToConversation]);
-
-  // Check for pending notification target on mount
-  useEffect(() => {
-    if (hasCheckedTarget.current) return;
-    hasCheckedTarget.current = true;
-
-    const target = consumeNotificationTarget();
-    if (target?.type === 'chat_message' && target.conversation_id) {
-      navigateToConversation(target.conversation_id);
-    }
-  }, [navigateToConversation]);
-
-  // Listen for notification taps while this screen is active
-  useEffect(() => {
-    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
-      const data = response.notification.request.content.data;
-      if (data?.type === 'chat_message' && data?.conversation_id) {
-        navigateToConversation(data.conversation_id as string);
+      setShowNewChat(false);
+      if (kind === 'seller') {
+        requestVersion.current++;
+        setActiveConversation(null);
+        setSellerConversationId(convId);
+      } else {
+        void navigateToConversation(convId);
       }
-    });
-    return () => sub.remove();
-  }, [navigateToConversation]);
+    }
+  }, [route.params?.chatRequestId, route.params?.conversationId, route.params?.conversationKind, navigateToConversation]);
+
+  if (sellerConversationId) {
+    return <SellerChatScreen key={sellerConversationId} conversationId={sellerConversationId} onBack={() => setSellerConversationId(null)} />;
+  }
 
   if (activeConversation) {
     return (
-      <ChatScreen conversation={activeConversation} onBack={() => setActiveConversation(null)} />
+      <ChatScreen key={activeConversation.id} conversation={activeConversation} onBack={() => setActiveConversation(null)} />
     );
   }
 
   return (
     <>
       <ChatListScreen
-        onConversationPress={(conv) => setActiveConversation(conv)}
+        onConversationPress={(conv) => {
+          requestVersion.current++;
+          if (conv.sellerConversation) { setActiveConversation(null); setSellerConversationId(conv.id); }
+          else { setSellerConversationId(null); setActiveConversation(conv); }
+        }}
         onNewChat={() => setShowNewChat(true)}
       />
       <NewChatModal
@@ -118,4 +121,8 @@ export default function MessagesStackNavigator() {
       />
     </>
   );
+}
+
+export default function MessagesStackNavigator() {
+  return <PermissionGate module="chat"><MessagesStackContent /></PermissionGate>;
 }

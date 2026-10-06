@@ -2,19 +2,20 @@
 
 import { useEditMode } from '@/contexts/EditModeContext';
 import { usePathname } from 'next/navigation';
-import { Mail, Phone, MapPin, Facebook, Instagram, Linkedin, ArrowUp } from 'lucide-react';
+import { Mail, Phone, MapPin, Facebook, Instagram, Linkedin, Youtube, Globe, ArrowUp } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { SITE } from '@/lib/SEO/site';
 
-export default function Footer() {
+export default function Footer({ profiles = [SITE.facebook] }: { profiles?: string[] }) {
   const { isEditMode } = useEditMode();
   const pathname = usePathname();
   const scrollToTop = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // Ukryj footer w CRM
-  if (pathname.startsWith('/crm')) {
+  // CRM i portal sprzedawcy mają własną aplikacyjną strukturę.
+  if (pathname.startsWith('/crm') || pathname.startsWith('/seller')) {
     return null;
   }
 
@@ -59,18 +60,18 @@ export default function Footer() {
               </p>
             </div>
             <div className="flex gap-2.5 sm:gap-3">
-              {[
-                {
-                  icon: Facebook,
-                  href: 'https://www.facebook.com/Mavincieventart',
-                  label: 'Facebook',
-                },
-                { icon: Instagram, href: 'https://instagram.com', label: 'Instagram' },
-                { icon: Linkedin, href: 'https://linkedin.com', label: 'LinkedIn' },
-              ].map((social) => (
+              {profiles.map((href) => {
+                const host = new URL(href).hostname;
+                const social = host.includes('facebook') ? { icon: Facebook, label: 'Facebook' }
+                  : host.includes('instagram') ? { icon: Instagram, label: 'Instagram' }
+                  : host.includes('linkedin') ? { icon: Linkedin, label: 'LinkedIn' }
+                  : host.includes('youtube') ? { icon: Youtube, label: 'YouTube' }
+                  : { icon: Globe, label: host };
+                return (
+
                 <a
-                  key={social.label}
-                  href={social.href}
+                  key={href}
+                  href={href}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="group flex h-9 w-9 items-center justify-center rounded-full bg-[#d3bb73]/10 transition-all duration-300 hover:scale-110 hover:bg-[#d3bb73] sm:h-10 sm:w-10"
@@ -78,7 +79,7 @@ export default function Footer() {
                 >
                   <social.icon className="h-4 w-4 text-[#d3bb73] transition-colors duration-300 group-hover:text-[#1c1f33] sm:h-5 sm:w-5" />
                 </a>
-              ))}
+              ); })}
             </div>
           </div>
 
@@ -112,6 +113,7 @@ export default function Footer() {
             <ul className="space-y-2.5 sm:space-y-3">
               {[
                 { name: 'O Nas', href: '/o-nas' },
+                { name: 'Dla agencji i hoteli', href: '/dla-agencji-i-hoteli' },
                 { name: 'Portfolio', href: '/portfolio' },
                 { name: 'Zespół', href: '/zespol' },
                 { name: 'Kontakt', href: '/#kontakt' },
@@ -135,10 +137,10 @@ export default function Footer() {
               <li className="flex items-start gap-3">
                 <Phone className="mt-0.5 h-4 w-4 flex-shrink-0 text-[#d3bb73] sm:h-5 sm:w-5" />
                 <a
-                  href="tel:+48698212279"
+                  href={SITE.phoneHref}
                   className="text-xs font-light text-[#e5e4e2]/60 transition-colors duration-300 hover:text-[#d3bb73] sm:text-sm"
                 >
-                  +48 698 212 279
+                  {SITE.telephone}
                 </a>
               </li>
               <li className="flex items-start gap-3">
@@ -153,12 +155,19 @@ export default function Footer() {
               <li className="flex items-start gap-3">
                 <MapPin className="mt-0.5 h-4 w-4 flex-shrink-0 text-[#d3bb73] sm:h-5 sm:w-5" />
                 <span className="text-xs font-light leading-relaxed text-[#e5e4e2]/60 sm:text-sm">
-                  ul. Towarowa 20b
+                  Biuro i magazyn: {SITE.office.street}
                   <br />
-                  11-417 Olsztyn, Polska
+                  {SITE.office.postalCode} {SITE.office.city}, Polska
+                  <a href={SITE.office.mapsUrl} target="_blank" rel="noopener noreferrer"
+                    className="mt-2 block text-[#d3bb73] underline underline-offset-4">
+                    Dokładna lokalizacja biura i magazynu
+                  </a>
                 </span>
               </li>
             </ul>
+            <p className="mt-4 text-xs leading-relaxed text-[#e5e4e2]/60">
+              Adres rejestrowy: {SITE.registeredOffice.street}, {SITE.registeredOffice.postalCode} {SITE.registeredOffice.city}.
+            </p>
           </div>
         </div>
 

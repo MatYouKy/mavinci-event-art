@@ -445,7 +445,7 @@ export default function ClientDetailPage() {
         </div>
 
         <div className="mb-6 flex gap-4">
-          <button
+          <button data-crm-tab-active={activeTab === 'details'}
             onClick={() => setActiveTab('details')}
             className={`rounded-lg px-4 py-2 font-medium transition-all ${
               activeTab === 'details'
@@ -455,7 +455,7 @@ export default function ClientDetailPage() {
           >
             Szczegóły
           </button>
-          <button
+          <button data-crm-tab-active={activeTab === 'events'}
             onClick={() => setActiveTab('events')}
             className={`rounded-lg px-4 py-2 font-medium transition-all ${
               activeTab === 'events'
@@ -465,7 +465,7 @@ export default function ClientDetailPage() {
           >
             Wydarzenia ({events.length})
           </button>
-          <button
+          <button data-crm-tab-active={activeTab === 'offers'}
             onClick={() => setActiveTab('offers')}
             className={`rounded-lg px-4 py-2 font-medium transition-all ${
               activeTab === 'offers'
@@ -475,7 +475,7 @@ export default function ClientDetailPage() {
           >
             Oferty ({offers.length})
           </button>
-          <button
+          <button data-crm-tab-active={activeTab === 'portal'}
             onClick={() => setActiveTab('portal')}
             className={`rounded-lg px-4 py-2 font-medium transition-all ${
               activeTab === 'portal'

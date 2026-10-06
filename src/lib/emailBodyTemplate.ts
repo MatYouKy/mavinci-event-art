@@ -76,12 +76,19 @@ export function renderSafeEmailBodyTemplate(
   return renderEmailBodyTemplate(safeTemplate, values);
 }
 
-export const DEFAULT_EMAIL_BODY_TEMPLATE = `<div style="font-family: 'Helvetica Neue', Arial, sans-serif; background: #f5f5f5; padding: 24px 0; color: #1c1f33;">
-  <div style="max-width: 640px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
-    <div style="background: {{brand_primary_color}}; padding: 24px; text-align: center;">
+export const DEFAULT_EMAIL_BODY_TEMPLATE = `<style>
+@media (prefers-color-scheme: dark) {
+  .mavinci-message-shell { background:#191619 !important; color:#f3edf0 !important; }
+  .mavinci-message-card, .mavinci-message-content { background:#242024 !important; color:#f3edf0 !important; }
+  .mavinci-message-content div, .mavinci-message-content p { color:#f3edf0 !important; }
+  .mavinci-message-footer { color:#cdbfc6 !important; }
+}
+</style><div class="mavinci-message-shell" style="font-family: 'Helvetica Neue', Arial, sans-serif; background: #f5f5f5; padding: 24px 0; color: #1c1f33;">
+  <div class="mavinci-message-card" style="max-width: 640px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+    <div style="background: {{brand_primary_color}}; background-image:linear-gradient({{brand_primary_color}},{{brand_primary_color}}); padding: 24px; text-align: center;">
       <img src="{{company_logo}}" alt="{{company_name}}" height="48" style="display: inline-block; max-height: 48px;" />
     </div>
-    <div style="padding: 32px 28px; font-size: 14px; line-height: 1.6; color: #1c1f33;">
+    <div class="mavinci-message-content" style="padding: 32px 28px; font-size: 14px; line-height: 1.6; color: #1c1f33;">
       <div style="white-space: pre-wrap;">{{content}}</div>
       {{pdf_link}}
     </div>
@@ -89,7 +96,7 @@ export const DEFAULT_EMAIL_BODY_TEMPLATE = `<div style="font-family: 'Helvetica 
       {{signature}}
     </div>
   </div>
-  <div style="max-width: 640px; margin: 12px auto 0; text-align: center; font-size: 11px; color: #888;">
+  <div class="mavinci-message-footer" style="max-width: 640px; margin: 12px auto 0; text-align: center; font-size: 11px; color: #888;">
     Wiadomość wysłana z {{company_name}}
   </div>
 </div>`;

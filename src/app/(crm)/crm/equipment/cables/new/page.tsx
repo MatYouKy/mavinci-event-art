@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Save, Cable, ImagePlus, X } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -12,6 +13,8 @@ import Image from 'next/image';
 
 export default function NewCablePage() {
   const router = useRouter();
+  const { canCreateInModule, loading: permissionsLoading } = useCurrentEmployee();
+  const canCreate = canCreateInModule('equipment');
   const { showSnackbar } = useSnackbar();
   const [createCable] = useCreateCableMutation();
 
@@ -90,6 +93,7 @@ export default function NewCablePage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canCreate) return;
 
     if (!form.name.trim()) {
       showSnackbar('Podaj nazwę przewodu', 'error');
@@ -148,6 +152,9 @@ export default function NewCablePage() {
       showSnackbar(error?.message || 'Nie udało się przesłać miniatury', 'error');
     }
   };
+
+  if (permissionsLoading) return <p>Ładowanie uprawnień…</p>;
+  if (!canCreate) return <p>Brak uprawnień do dodawania przewodów.</p>;
 
   return (
     <div className="min-h-screen bg-[#0f1117] p-6 text-[#e5e4e2]">

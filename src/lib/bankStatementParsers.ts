@@ -1,3 +1,5 @@
+import { extractBankStatementAccountNumber } from './bankStatementAccount';
+
 export type BankStatementFileType = 'MT940' | 'JPK_WB' | 'PDF';
 export interface BankTransaction {
   transactionDate: string;
@@ -12,6 +14,10 @@ export interface BankTransaction {
 
   rawDescription?: string;
   rawCounterparty?: string;
+  sourceIndex?: number;
+  balanceBefore?: number;
+  balanceAfter?: number;
+  sourceVerified?: boolean;
 }
 
 export interface BankStatement {
@@ -267,7 +273,25 @@ export function parseMT940(content: string): BankStatement {
   let closingBalance: number | undefined;
   let currency = 'PLN';
 
-  const lines = content.replace(/\r/g, '').split('\n');
+  const lines = content.replace(/\r\n?/g, '\n').replace(/^\uFEFF/, '').split('\n');
+  const accountFields: string[] = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const match = lines[index].trim().match(/^(?:\{4:)?\s*:25[A-Z]?:(.*)$/);
+    if (!match) continue;
+    const parts = [match[1].trim()];
+    for (let next = index + 1; next < lines.length; next += 1) {
+      const continuation = lines[next].trim();
+      if (/^:\d{2}[A-Z]?:/.test(continuation) || /^-?\}/.test(continuation)) break;
+      if (continuation) parts.push(continuation);
+    }
+    accountFields.push(parts.join(' '));
+  }
+  const accountNumbers = [...new Set(accountFields.map(extractBankStatementAccountNumber)
+    .filter((value): value is string => Boolean(value)))];
+  if (accountNumbers.length > 1) {
+    throw new Error('Plik MT940 zawiera więcej niż jeden rachunek. Dodaj osobny plik dla każdego konta.');
+  }
+  accountNumber = accountNumbers[0] || accountFields[0] || undefined;
   let currentTransaction: Partial<BankTransaction> = {};
   let current86Buffer = '';
 
@@ -318,8 +342,7 @@ export function parseMT940(content: string): BankStatement {
       flushCurrent86();
     }
 
-    if (trimmed.startsWith(':25:')) {
-      accountNumber = trimmed.substring(4).trim();
+    if (/^(?:\{4:)?\s*:25[A-Z]?:/.test(trimmed)) {
       continue;
     }
 
@@ -362,7 +385,9 @@ export function parseMT940(content: string): BankStatement {
         if (match[2]) {
           const postMonth = match[2].substring(0, 2);
           const postDay = match[2].substring(2, 4);
-          currentTransaction.postingDate = `${year}-${postMonth}-${postDay}`;
+          const postingYear = Number(month) === 12 && Number(postMonth) === 1 ? year + 1
+            : Number(month) === 1 && Number(postMonth) === 12 ? year - 1 : year;
+          currentTransaction.postingDate = `${postingYear}-${postMonth}-${postDay}`;
         }
 
         currentTransaction.type = match[3] === 'C' ? 'credit' : 'debit';
@@ -391,6 +416,30 @@ export function parseMT940(content: string): BankStatement {
   }
 
   flushCurrentTransaction();
+
+  // Preserve the bank's original order and independently reconcile its balances.
+  // These are source facts used to unite PDF/MT940 copies, not invoice matches.
+  const sourceCount = lines.filter((line) => line.trim().startsWith(':61:')).length;
+  const signedCents = transactions.reduce((sum, transaction) => sum
+    + Math.round(transaction.amount * 100) * (transaction.type === 'credit' ? 1 : -1), 0);
+  const balancesVerified = typeof openingBalance === 'number' && Number.isFinite(openingBalance)
+    && typeof closingBalance === 'number' && Number.isFinite(closingBalance)
+    && sourceCount === transactions.length
+    && Math.round(openingBalance * 100) + signedCents === Math.round(closingBalance * 100);
+  if (sourceCount !== transactions.length) throw new Error('Nie odczytano wszystkich operacji MT940. Wyciąg wymaga sprawdzenia.');
+  if (openingBalance !== undefined && closingBalance !== undefined && !balancesVerified) {
+    throw new Error('Suma operacji MT940 nie zgadza się z saldem początkowym i końcowym. Import został zatrzymany.');
+  }
+  if (balancesVerified) {
+    let runningCents = Math.round(openingBalance! * 100);
+    transactions.forEach((transaction, index) => {
+      transaction.sourceIndex = index;
+      transaction.balanceBefore = runningCents / 100;
+      runningCents += Math.round(transaction.amount * 100) * (transaction.type === 'credit' ? 1 : -1);
+      transaction.balanceAfter = runningCents / 100;
+      transaction.sourceVerified = true;
+    });
+  }
 
   return {
     accountNumber,

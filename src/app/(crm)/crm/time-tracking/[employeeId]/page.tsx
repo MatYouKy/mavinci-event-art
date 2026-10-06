@@ -1,5 +1,7 @@
 'use client';
 
+import EmployeeTimeSettlements from '@/components/crm/personnel/EmployeeTimeSettlements';
+
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { Clock, ArrowLeft, Calendar, Tag, DollarSign, TrendingUp, User, History, Trash2, CreditCard as Edit3, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, AlertTriangle, List, Table as TableIcon, Check } from 'lucide-react';
@@ -7,6 +9,7 @@ import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { EmployeeAvatar } from '@/components/EmployeeAvatar';
+import { PersonnelEarnings } from '@/components/crm/personnel/PersonnelEarnings';
 import { IEmployee } from '../../employees/type';
 
 interface TimeEntry {
@@ -21,6 +24,8 @@ interface TimeEntry {
   duration_minutes: number | null;
   is_billable: boolean;
   hourly_rate: number | null;
+  personnel_contract_id?: string | null;
+  personnel_rate_snapshot?: { currency?: string; rate_basis?: string } | null;
   tags: string[];
   edit_count?: number;
   tasks?: {
@@ -89,6 +94,7 @@ export default function EmployeeTimeTrackingPage() {
   const { employee: currentEmployee, isAdmin } = useCurrentEmployee();
 
   const [loading, setLoading] = useState(true);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [employee, setEmployee] = useState<Employee | null>(null);
   const [entries, setEntries] = useState<TimeEntry[]>([]);
   const [taskStats, setTaskStats] = useState<TaskStats[]>([]);
@@ -372,6 +378,7 @@ export default function EmployeeTimeTrackingPage() {
       showSnackbar('Błąd podczas ładowania danych', 'error');
     } finally {
       setLoading(false);
+      setHasLoaded(true);
     }
   };
 
@@ -460,12 +467,12 @@ export default function EmployeeTimeTrackingPage() {
     .reduce((sum, e) => sum + (e.duration_minutes || 0), 0);
 
   const totalRevenue = entries
-    .filter((e) => e.is_billable && e.hourly_rate && e.duration_minutes)
+    .filter((e) => !e.personnel_contract_id && e.hourly_rate && e.duration_minutes)
     .reduce((sum, e) => sum + ((e.duration_minutes || 0) / 60) * (e.hourly_rate || 0), 0);
 
   const filteredHistory = showDeletedOnly ? history.filter((h) => h.action === 'deleted') : history;
 
-  if (loading) {
+  if (loading && !hasLoaded) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#0f1119]">
         <div className="text-[#e5e4e2]/60">Ładowanie...</div>
@@ -480,6 +487,8 @@ export default function EmployeeTimeTrackingPage() {
   return (
     <div className="min-h-screen bg-[#0f1119] p-6">
       <div className="mx-auto max-w-7xl space-y-6">
+        <EmployeeTimeSettlements key={employeeId} employeeId={employeeId} dateTo={dateTo} refreshKey={entries.length} />
+        <PersonnelEarnings employeeId={employeeId} refreshKey={entries.length}/>
         <button
           onClick={() => router.push('/crm/time-tracking')}
           className="mb-4 flex items-center gap-2 text-[#e5e4e2]/60 transition-colors hover:text-[#e5e4e2]"
@@ -541,7 +550,7 @@ export default function EmployeeTimeTrackingPage() {
                 <div className="text-3xl font-bold text-green-400">{liveTime}</div>
                 {activeEntry.hourly_rate && (
                   <div className="mt-2 text-sm text-[#e5e4e2]/60">
-                    Stawka: {activeEntry.hourly_rate} zł/h
+                    Stawka: {activeEntry.hourly_rate} {activeEntry.personnel_rate_snapshot?.currency || 'PLN'}/h
                   </div>
                 )}
                 {activeEntry.is_billable && (
@@ -654,7 +663,7 @@ export default function EmployeeTimeTrackingPage() {
             <div className="rounded-lg bg-[#0f1119] p-4">
               <div className="mb-2 flex items-center gap-3">
                 <TrendingUp className="h-5 w-5 text-purple-400" />
-                <span className="text-sm text-[#e5e4e2]/60">Przychód</span>
+                <span className="text-sm text-[#e5e4e2]/60">Wpisy bez umowy — wartość orientacyjna</span>
               </div>
               <div className="text-2xl font-bold text-[#e5e4e2]">
                 {formatCurrency(totalRevenue)}
@@ -807,7 +816,7 @@ export default function EmployeeTimeTrackingPage() {
                       {formatHours(entry.duration_minutes || 0)}
                     </div>
                     {entry.hourly_rate && (
-                      <div className="text-xs text-[#e5e4e2]/40">{entry.hourly_rate} zł/h</div>
+                      <div className="text-xs text-[#e5e4e2]/40">{entry.hourly_rate} {entry.personnel_rate_snapshot?.currency || 'PLN'}/h {entry.personnel_rate_snapshot?.rate_basis === 'gross' ? 'brutto' : entry.personnel_rate_snapshot?.rate_basis === 'net' ? 'netto' : ''}</div>
                     )}
                     {isAdmin && (
                       <button
@@ -913,7 +922,7 @@ export default function EmployeeTimeTrackingPage() {
                       </td>
                       <td className="px-3 py-3 text-center text-[#e5e4e2]/60">
                         {entry.hourly_rate ? (
-                          <span className="text-xs">{entry.hourly_rate} zł/h</span>
+                          <span className="text-xs">{entry.hourly_rate} {entry.personnel_rate_snapshot?.currency || 'PLN'}/h {entry.personnel_rate_snapshot?.rate_basis === 'gross' ? 'brutto' : entry.personnel_rate_snapshot?.rate_basis === 'net' ? 'netto' : ''}</span>
                         ) : (
                           <span className="text-xs text-[#e5e4e2]/40">-</span>
                         )}

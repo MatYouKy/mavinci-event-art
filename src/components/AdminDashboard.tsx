@@ -41,7 +41,7 @@ export default function AdminDashboard() {
           </div>
 
           <div className="flex gap-4">
-            <button
+            <button data-crm-tab-active={activeTab === 'team'}
               onClick={() => setActiveTab('team')}
               className={`flex items-center gap-2 px-6 py-3 border-b-2 transition-colors ${
                 activeTab === 'team'
@@ -52,7 +52,7 @@ export default function AdminDashboard() {
               <Users className="w-5 h-5" />
               Zespół
             </button>
-            <button
+            <button data-crm-tab-active={activeTab === 'portfolio'}
               onClick={() => setActiveTab('portfolio')}
               className={`flex items-center gap-2 px-6 py-3 border-b-2 transition-colors ${
                 activeTab === 'portfolio'
@@ -63,7 +63,7 @@ export default function AdminDashboard() {
               <Briefcase className="w-5 h-5" />
               Portfolio
             </button>
-            <button
+            <button data-crm-tab-active={activeTab === 'images'}
               onClick={() => setActiveTab('images')}
               className={`flex items-center gap-2 px-6 py-3 border-b-2 transition-colors ${
                 activeTab === 'images'
@@ -74,7 +74,7 @@ export default function AdminDashboard() {
               <Image className="w-5 h-5" />
               Obrazy Strony
             </button>
-            <button
+            <button data-crm-tab-active={activeTab === 'naglosnienia'}
               onClick={() => setActiveTab('naglosnienia')}
               className={`flex items-center gap-2 px-6 py-3 border-b-2 transition-colors ${
                 activeTab === 'naglosnienia'

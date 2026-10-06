@@ -2,229 +2,107 @@ import SwiftUI
 import ServiceManagement
 import EventKit
 
-// MARK: - Settings View
-
-/// The main Settings window with two tabs: General and Connection.
-/// Replaces the placeholder SettingsView in MavinciRemindersApp.swift.
-@available(macOS 13.0, *)
+@MainActor
 struct SettingsView: View {
     @ObservedObject var viewModel: SettingsViewModel
-
     var body: some View {
         TabView {
-            GeneralTab(viewModel: viewModel)
-                .tabItem {
-                    Label("General", systemImage: "gear")
-                }
-
-            ConnectionTab(viewModel: viewModel)
-                .tabItem {
-                    Label("Connection", systemImage: "network")
-                }
-        }
-        .frame(width: 520, height: 420)
+            ScrollView { GeneralTab(viewModel: viewModel) }.tabItem { Label("Ogólne", systemImage: "gear") }
+            ScrollView { ConnectionTab(viewModel: viewModel) }.tabItem { Label("Połączenie", systemImage: "network") }
+            FolderSyncSettingsView().tabItem { Label("Pliki", systemImage: "folder") }
+        }.frame(width: 660, height: 580)
     }
 }
 
-// MARK: - General Tab
-
-@available(macOS 13.0, *)
+@MainActor
 struct GeneralTab: View {
     @ObservedObject var viewModel: SettingsViewModel
-    @ObservedObject private var syncManager = SyncManager.shared
-
-    @AppStorage("launchAtLogin") private var launchAtLogin: Bool = false
-    @AppStorage("syncIntervalMinutes") private var syncIntervalMinutes: Int = 5
-    @AppStorage("showErrorNotifications") private var showErrorNotifications: Bool = true
-    @AppStorage("selectedRemindersListName") private var selectedRemindersListName: String = "Mavinci CRM"
-
-    @State private var showingListPicker = false
-    @State private var showingResetConfirmation = false
-    @State private var availableLists: [String] = []
-
-    private let syncIntervalOptions: [(label: String, value: Int)] = [
-        ("1 min", 1),
-        ("2 min", 2),
-        ("5 min", 5),
-        ("10 min", 10),
-        ("15 min", 15),
-        ("30 min", 30)
-    ]
-
+    @ObservedObject private var sync = SyncManager.shared
+    @ObservedObject private var login = LoginItemManager.shared
+    @AppStorage("syncIntervalMinutes") private var minutes = 5
+    @AppStorage("selectedRemindersListName") private var listName = "Mavinci CRM"
+    @AppStorage("keepOnlyActiveCRMTasks") private var keepOnlyActive = true
+    @State private var showLists = false
+    @State private var lists: [ReminderListChoice] = []
+    @State private var listError: String?
     var body: some View {
         Form {
-            // Launch at Login
-            Section {
-                Toggle("Launch at login", isOn: $launchAtLogin)
-                    .onChange(of: launchAtLogin) { newValue in
-                        updateLoginItem(enabled: newValue)
+            Toggle("Uruchamiaj przy logowaniu do macOS", isOn: Binding(
+                get: { login.enabled }, set: { login.setEnabled($0) }))
+            Text(login.message).font(.caption).foregroundStyle(.secondary)
+            Button("Otwórz ustawienia autostartu") { login.openSettings() }
+            Picker("Synchronizacja co:", selection: $minutes) {
+                ForEach([1, 2, 5, 10, 15, 30], id: \.self) { Text("\($0) min").tag($0) }
+            }.onChange(of: minutes) { value in sync.startPeriodicSync(interval: TimeInterval(value * 60)) }
+            HStack {
+                Text("Lista przypomnień: \(listName)")
+                Button("Zmień…") {
+                    Task {
+                        do {
+                            lists = try await sync.loadReminderLists()
+                            listError = nil
+                            showLists = true
+                        } catch { listError = error.localizedDescription }
                     }
+                }.disabled(sync.isSyncing)
             }
-
-            // Sync Interval
-            Section {
-                Picker("Sync interval:", selection: $syncIntervalMinutes) {
-                    ForEach(syncIntervalOptions, id: \.value) { option in
-                        Text(option.label).tag(option.value)
-                    }
-                }
-                .pickerStyle(.menu)
-                .frame(maxWidth: 200)
-            }
-
-            // Notifications
-            Section {
-                Toggle("Show notifications on errors", isOn: $showErrorNotifications)
-            }
-
-            // Reminders List
-            Section {
-                HStack {
-                    Text("Reminders list:")
-                        .foregroundColor(.secondary)
-                    Text(selectedRemindersListName)
-                        .fontWeight(.medium)
-                    Spacer()
-                    Button("Change List…") {
-                        loadAvailableLists()
-                        showingListPicker = true
-                    }
-                }
-            }
-
-            // Reset Sync Mapping
-            Section {
-                HStack {
-                    Button("Reset Sync Mapping") {
-                        showingResetConfirmation = true
-                    }
-                    .foregroundColor(.red)
-
-                    Text("Clears all task↔reminder associations")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-            }
-
-            Divider()
-
-            // Status Info
-            Section {
-                HStack {
-                    Text("Last sync:")
-                        .foregroundColor(.secondary)
-                    if let lastSync = syncManager.lastSyncDate {
-                        Text(lastSync, style: .relative)
-                        Text("(\(lastSync, formatter: Self.dateFormatter))")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    } else {
-                        Text("Never")
-                            .foregroundColor(.secondary)
-                    }
-                }
-
-                if syncManager.errorCount > 0 {
-                    HStack {
-                        Text("Last error:")
-                            .foregroundColor(.secondary)
-                        Text("\(syncManager.errorCount) error(s) during last sync")
-                            .foregroundColor(.red)
-                            .font(.caption)
-                    }
-                }
-            }
+            if let listError { Text(listError).font(.caption).foregroundStyle(.red) }
+            Button("Odbuduj powiązania bez tworzenia kopii") { sync.resetMapping() }.disabled(sync.isSyncing)
+            Toggle("Na głównej liście tylko moje aktywne zadania", isOn: $keepOnlyActive)
+                .disabled(sync.isSyncing)
+                .onChange(of: keepOnlyActive) { _ in Task { await sync.syncNow() } }
+            Text("Zakończone i wcześniejsze zadania CRM spoza zakresu przenosimy do listy Archiwum Mavinci, bez kasowania i bez oznaczania ich jako wykonane. Ponownie aktywne zadanie wraca na główną listę. Ręczne przypomnienia i niewysłane zmiany pozostają nietknięte.")
+                .font(.caption).foregroundStyle(.secondary)
+            if !sync.archiveSummary.isEmpty { Text(sync.archiveSummary).font(.caption) }
+            if let date = sync.lastSyncDate { Text("Ostatnia synchronizacja: \(date.formatted())") }
+            if let error = sync.lastError { Text(error).foregroundStyle(.red).font(.caption).textSelection(.enabled) }
         }
         .padding()
-        .sheet(isPresented: $showingListPicker) {
-            ListPickerSheet(
-                availableLists: availableLists,
-                selectedListName: $selectedRemindersListName,
-                isPresented: $showingListPicker
-            )
-        }
-        .alert("Reset Sync Mapping?", isPresented: $showingResetConfirmation) {
-            Button("Cancel", role: .cancel) {}
-            Button("Reset", role: .destructive) {
-                resetSyncMapping()
-            }
-        } message: {
-            Text("This will clear all task↔reminder associations. The next sync will recreate reminders from scratch. Existing reminders will not be deleted.")
-        }
+        .onAppear { login.refresh() }
+        .sheet(isPresented: $showLists) { ListPickerSheet(availableLists: lists, isPresented: $showLists) }
     }
-
-    // MARK: - Helpers
-
-    private func updateLoginItem(enabled: Bool) {
-        let service = SMAppService.mainApp
-        do {
-            if enabled {
-                try service.register()
-            } else {
-                try service.unregister()
-            }
-        } catch {
-            print("[SettingsView] Failed to update login item: \(error.localizedDescription)")
-        }
-    }
-
-    private func loadAvailableLists() {
-        let store = EKEventStore()
-        let calendars = store.calendars(for: .reminder)
-        availableLists = calendars.map { $0.title }
-    }
-
-    private func resetSyncMapping() {
-        // Reset the persisted sync state
-        var state = SyncState()
-        state.save()
-        print("[SettingsView] Sync mapping reset")
-    }
-
-    private static let dateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .short
-        formatter.timeStyle = .short
-        return formatter
-    }()
 }
 
 // MARK: - List Picker Sheet
 
 @available(macOS 13.0, *)
 struct ListPickerSheet: View {
-    let availableLists: [String]
-    @Binding var selectedListName: String
+    @State var availableLists: [ReminderListChoice]
     @Binding var isPresented: Bool
 
     @State private var selection: String = ""
     @State private var newListName: String = ""
     @State private var isCreatingNew: Bool = false
+    @State private var isWorking = false
+    @State private var errorMessage: String?
 
     var body: some View {
         VStack(spacing: 16) {
-            Text("Choose Reminders List")
+            Text("Wybierz listę Przypomnień")
                 .font(.headline)
 
             if availableLists.isEmpty {
-                Text("No reminders lists found. Create a new one below.")
+                Text(RemindersError.noLists.localizedDescription)
                     .foregroundColor(.secondary)
                     .font(.caption)
             } else {
-                List(availableLists, id: \.self, selection: $selection) { listName in
+                List(availableLists, selection: $selection) { list in
                     HStack {
                         Image(systemName: "list.bullet")
-                        Text(listName)
-                        if listName == selectedListName {
+                        VStack(alignment: .leading) {
+                            Text(list.title)
+                            Text(list.account).font(.caption).foregroundStyle(.secondary)
+                        }
+                        if list.id == UserDefaults.standard.string(forKey: "com.mavinci.reminders.listIdentifier") {
                             Spacer()
                             Image(systemName: "checkmark")
                                 .foregroundColor(.accentColor)
                         }
                     }
-                    .tag(listName)
+                    .tag(list.id)
                     .contentShape(Rectangle())
                     .onTapGesture {
-                        selection = listName
+                        selection = list.id
                     }
                 }
                 .frame(height: 150)
@@ -234,50 +112,63 @@ struct ListPickerSheet: View {
 
             // Create new list option
             HStack {
-                Toggle("Create new list:", isOn: $isCreatingNew)
-                TextField("List name", text: $newListName)
+                Toggle("Utwórz nową listę:", isOn: $isCreatingNew)
+                TextField("Nazwa listy", text: $newListName)
                     .textFieldStyle(.roundedBorder)
                     .disabled(!isCreatingNew)
                     .frame(maxWidth: 200)
             }
 
             HStack {
-                Button("Cancel") {
+                Button("Anuluj") {
                     isPresented = false
                 }
                 .keyboardShortcut(.cancelAction)
 
                 Spacer()
 
-                Button("Select") {
-                    if isCreatingNew && !newListName.isEmpty {
-                        selectedListName = newListName
-                        createNewRemindersList(name: newListName)
-                    } else if !selection.isEmpty {
-                        selectedListName = selection
+                Button("Wybierz") {
+                    isWorking = true
+                    Task {
+                        defer { isWorking = false }
+                        do {
+                            try await SyncManager.shared.chooseReminderList(
+                                identifier: isCreatingNew ? nil : selection,
+                                newName: isCreatingNew ? newListName : nil)
+                            isPresented = false
+                            await SyncManager.shared.syncNow()
+                        } catch { errorMessage = error.localizedDescription }
                     }
-                    isPresented = false
                 }
                 .keyboardShortcut(.defaultAction)
-                .disabled(!isCreatingNew && selection.isEmpty)
+                .disabled(isCreatingNew ? newListName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty : !availableLists.contains(where: { $0.id == selection }))
             }
+            Button("Odśwież listy") {
+                isWorking = true
+                Task {
+                    defer { isWorking = false }
+                    do {
+                        availableLists = try await SyncManager.shared.loadReminderLists()
+                        errorMessage = nil
+                    } catch { errorMessage = error.localizedDescription }
+                }
+            }
+            if let errorMessage { Text(errorMessage).foregroundStyle(.red).font(.caption) }
+            if isWorking { ProgressView() }
         }
+        .disabled(isWorking)
         .padding()
-        .frame(width: 380, height: 320)
+        .frame(width: 460, height: 450)
         .onAppear {
-            selection = selectedListName
+            selection = UserDefaults.standard.string(forKey: "com.mavinci.reminders.listIdentifier") ?? ""
         }
-    }
-
-    private func createNewRemindersList(name: String) {
-        let service = RemindersService(targetListName: name)
-        _ = service.getOrCreateList(name: name)
     }
 }
 
 // MARK: - Connection Tab
 
 @available(macOS 13.0, *)
+@MainActor
 struct ConnectionTab: View {
     @ObservedObject var viewModel: SettingsViewModel
 
@@ -412,10 +303,10 @@ struct ConnectionTab: View {
     private func connectionResultView(_ result: ConnectionTestResult) -> some View {
         HStack(spacing: 6) {
             switch result {
-            case .success(let taskCount, let employeeName):
+            case .success(let taskCount, let closedTaskCount, let employeeName):
                 Image(systemName: "checkmark.circle.fill")
                     .foregroundColor(.green)
-                Text("Connected! Found \(taskCount) tasks for \(employeeName)")
+                Text("Konto: \(employeeName). Moje zadania: \(taskCount) aktywnych, \(closedTaskCount) zakończonych lub anulowanych. Bez zadań wydarzeń i zapytań.")
                     .font(.caption)
                     .foregroundColor(.green)
 
@@ -479,7 +370,7 @@ struct ConnectionTab: View {
             do {
                 let result = try await CRMAPIClient.shared.testConnection()
                 await MainActor.run {
-                    connectionResult = .success(taskCount: result.taskCount, employeeName: result.employeeName)
+                    connectionResult = .success(taskCount: result.taskCount, closedTaskCount: result.closedTaskCount, employeeName: result.employeeName)
                     isTesting = false
                 }
             } catch {
@@ -495,6 +386,6 @@ struct ConnectionTab: View {
 // MARK: - Connection Test Result
 
 enum ConnectionTestResult {
-    case success(taskCount: Int, employeeName: String)
+    case success(taskCount: Int, closedTaskCount: Int, employeeName: String)
     case failure(errorMessage: String)
 }

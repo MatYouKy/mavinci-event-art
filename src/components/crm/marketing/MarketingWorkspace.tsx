@@ -30,6 +30,7 @@ import type {
   MarketingOverviewDTO,
 } from '@/lib/marketing/types';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import MarketingTrafficTest from './MarketingTrafficTest';
 
 type WorkspaceTab = 'overview' | 'campaigns' | 'messages' | 'ai';
 
@@ -52,8 +53,10 @@ const statusLabel = (status: string) => {
   if (value === 'PAUSED') return 'Wstrzymana';
   if (value === 'CONNECTED') return 'Połączona';
   if (value === 'SYNCING') return 'Synchronizacja';
-  if (value === 'ERROR') return 'Wymaga uwagi';
-  return status || 'Brak danych';
+  if (['ERROR', 'NEEDS_ATTENTION'].includes(value)) return 'Wymaga uwagi';
+  if (value === 'REMOVED') return 'Usunięta';
+  if (value === 'NOT_CONNECTED') return 'Niepołączona';
+  return 'Brak danych';
 };
 
 type MarketingChartKey = 'meta' | 'google' | 'organic';
@@ -152,10 +155,10 @@ export default function MarketingWorkspace({ initialCompanyId }: { initialCompan
         throw new Error(firstError || data?.error || 'Część źródeł nie została zsynchronizowana.');
       }
       showSnackbar('Dane marketingowe zostały zsynchronizowane', 'success');
-      await loadOverview(selectedCompanyId);
     } catch (error: any) {
       showSnackbar(error?.message || 'Błąd synchronizacji', 'error');
     } finally {
+      await loadOverview(selectedCompanyId);
       setSyncing(false);
     }
   };
@@ -306,13 +309,13 @@ export default function MarketingWorkspace({ initialCompanyId }: { initialCompan
             <select value={selectedCompanyId} onChange={(event) => void selectCompany(event.target.value)} className="min-w-52 rounded-lg border border-[#d3bb73]/25 bg-[#210811] px-3 py-2 text-sm text-[#e5e4e2] outline-none focus:border-[#d3bb73]">
               {overview.companies.map((company) => <option key={company.id} value={company.id}>{company.name}{company.is_default ? ' · domyślna' : ''}</option>)}
             </select>
-            {canManage && <button onClick={() => void runSync()} disabled={syncing || connectedCount === 0} className="inline-flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 bg-[#d3bb73]/10 px-4 py-2 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/20 disabled:opacity-40"><RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />{syncing ? 'Synchronizuję' : 'Synchronizuj'}</button>}
+            {canManage && <button onClick={() => void runSync()} disabled={syncing || !overview.integrations.some((item) => item.status !== 'not_connected')} className="inline-flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 bg-[#d3bb73]/10 px-4 py-2 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/20 disabled:opacity-40"><RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />{syncing ? 'Synchronizuję' : 'Synchronizuj'}</button>}
             {selectedCompanyId && <Link href={`/crm/settings/my-companies/${selectedCompanyId}/marketing`} className="inline-flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#210811] hover:bg-[#e2cd8d]"><Settings2 className="h-4 w-4" /> Integracje</Link>}
           </div>
         </div>
         <div className="mt-5 flex flex-wrap gap-2">
           {(['overview', 'campaigns', 'messages', 'ai'] as WorkspaceTab[]).map((item) => (
-            <button key={item} onClick={() => setTab(item)} className={`rounded-t-xl border px-4 py-2 text-xs transition-colors ${tab === item ? 'border-[#d3bb73]/45 bg-[#6a2340] text-white' : 'border-transparent bg-[#210811]/50 text-[#e5e4e2]/55 hover:bg-[#5a1d37] hover:text-white'}`}>
+            <button data-crm-tab-active={tab === item} key={item} onClick={() => setTab(item)} className={`rounded-t-xl border px-4 py-2 text-xs transition-colors ${tab === item ? 'border-[#d3bb73]/45 bg-[#6a2340] text-white' : 'border-transparent bg-[#210811]/50 text-[#e5e4e2]/55 hover:bg-[#5a1d37] hover:text-white'}`}>
               {item === 'overview' ? 'Przegląd' : item === 'campaigns' ? 'Kampanie' : item === 'messages' ? `Wiadomości (${overview.unreadMessages})` : 'Analiza AI'}
             </button>
           ))}
@@ -321,6 +324,7 @@ export default function MarketingWorkspace({ initialCompanyId }: { initialCompan
 
       {tab === 'overview' && (
         <>
+          <MarketingTrafficTest integrations={overview.integrations} />
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm text-[#e5e4e2]/65">Najważniejsze wyniki marketingowe</p>
             <span className="text-[11px] uppercase tracking-wide text-[#e5e4e2]/35">Ostatnie 30 dni</span>
@@ -556,7 +560,30 @@ function ChannelSummaryCard({
 }
 
 function CampaignList({ campaigns, canManage, updatingId, onToggle }: { campaigns: MarketingCampaignDTO[]; canManage: boolean; updatingId: string | null; onToggle: (campaign: MarketingCampaignDTO) => void }) {
-  return <div className="overflow-hidden rounded-xl border border-[#d3bb73]/18 bg-[#351020]"><div className="border-b border-[#d3bb73]/15 px-5 py-4"><h3 className="text-base text-[#e5e4e2]">Kampanie reklamowe</h3><p className="mt-1 text-xs text-[#e5e4e2]/45">Wyniki z ostatnich 30 dni. Uruchomienie i pauza są zapisywane bezpośrednio u dostawcy.</p></div>{campaigns.length ? <div className="divide-y divide-[#d3bb73]/15">{campaigns.map((campaign) => { const active = ['ACTIVE', 'ENABLED'].includes(campaign.status.toUpperCase()); const ctr = campaign.impressions ? campaign.clicks / campaign.impressions * 100 : 0; return <div key={campaign.id} className="grid gap-3 px-5 py-4 transition-colors hover:bg-[#5a1d37] lg:grid-cols-[minmax(240px,1fr)_100px_110px_110px_110px_120px] lg:items-center"><div className="min-w-0"><div className="flex items-center gap-2"><span className="rounded bg-[#d3bb73]/10 px-2 py-1 text-[10px] text-[#d3bb73]">{campaign.provider === 'meta_ads' ? 'META' : 'GOOGLE'}</span><p className="truncate text-sm text-[#e5e4e2]">{campaign.name}</p></div><p className="mt-1 text-xs text-[#e5e4e2]/40">{campaign.objective || 'Kampania reklamowa'}</p></div><Metric label="Status" value={statusLabel(campaign.status)} /><Metric label="Wydatki" value={formatMoney(campaign.spend)} /><Metric label="Kliknięcia" value={formatNumber(campaign.clicks)} /><Metric label="CTR" value={`${formatNumber(ctr, 2)}%`} /><div className="flex justify-end">{canManage && <button onClick={() => onToggle(campaign)} disabled={updatingId === campaign.id} className="inline-flex min-w-28 items-center justify-center gap-2 rounded-lg border border-[#d3bb73]/25 px-3 py-2 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/12 disabled:opacity-40">{updatingId === campaign.id ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : active ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}{active ? 'Wstrzymaj' : 'Uruchom'}</button>}</div></div>; })}</div> : <div className="p-10 text-center text-sm text-[#e5e4e2]/40">Brak zsynchronizowanych kampanii.</div>}</div>;
+  const channelLabels: Record<string, string> = { SEARCH: 'Wyszukiwarka', DISPLAY: 'Sieć reklamowa', VIDEO: 'Wideo', SHOPPING: 'Zakupy', PERFORMANCE_MAX: 'Performance Max', DEMAND_GEN: 'Generowanie popytu', OUTCOME_LEADS: 'Pozyskiwanie kontaktów', OUTCOME_SALES: 'Sprzedaż', OUTCOME_TRAFFIC: 'Ruch', OUTCOME_AWARENESS: 'Rozpoznawalność', OUTCOME_ENGAGEMENT: 'Zaangażowanie' };
+  return <div className="overflow-hidden rounded-xl bg-[#351020]">
+    <div className="px-5 py-4"><h3 className="text-base text-[#e5e4e2]">Kampanie reklamowe</h3><p className="mt-1 text-xs text-[#e5e4e2]/55">Wyniki z ostatnich 30 dni. Konwersje pochodzą z konfiguracji Google Ads lub Meta i nie muszą oznaczać pozyskanych klientów. Uruchomienie kampanii włącza emisję i wydatki u dostawcy.</p></div>
+    {campaigns.length ? <div className="space-y-2 p-3">{campaigns.map((campaign) => {
+      const active = ['ACTIVE', 'ENABLED'].includes(campaign.status.toUpperCase());
+      const money = (value: number) => new Intl.NumberFormat('pl-PL', { style: 'currency', currency: campaign.currency || 'PLN' }).format(value);
+      return <div key={campaign.id} className="rounded-lg bg-[#411326] p-4">
+        <div className="flex items-center justify-between gap-3"><div><p className="text-sm text-[#e5e4e2]">{campaign.name}</p><p className="mt-1 text-xs text-[#e5e4e2]/50">{campaign.provider === 'google_ads' ? 'Google Ads' : 'Meta Ads'} · {channelLabels[campaign.objective || ''] || 'Kampania reklamowa'} · {statusLabel(campaign.status)}</p></div>
+          {canManage && ['ACTIVE', 'ENABLED', 'PAUSED'].includes(campaign.status.toUpperCase()) && <button data-crm-action="secondary" onClick={() => onToggle(campaign)} disabled={updatingId === campaign.id} className="inline-flex items-center gap-2 rounded-lg bg-[#d3bb73]/10 px-3 py-2 text-xs text-[#d3bb73] disabled:opacity-40">{updatingId === campaign.id ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : active ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}{active ? 'Wstrzymaj' : 'Uruchom'}</button>}
+        </div>
+        <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-7">
+          <Metric label="Wyświetlenia" value={formatNumber(campaign.impressions)} />
+          <Metric label="Kliknięcia" value={formatNumber(campaign.clicks)} />
+          <Metric label="CTR" value={campaign.impressions ? formatPercent(campaign.clicks / campaign.impressions * 100) : '—'} />
+          <Metric label="Wydatki" value={money(campaign.spend)} />
+          <Metric label="Śr. koszt kliknięcia" value={campaign.clicks ? money(campaign.spend / campaign.clicks) : '—'} />
+          <Metric label="Konwersje" value={formatNumber(campaign.conversions, 1)} />
+          <Metric label="Koszt konwersji" value={campaign.conversions ? money(campaign.spend / campaign.conversions) : '—'} />
+        </div>
+        {(campaign.budget_lifetime != null || campaign.budget_daily != null) && <p className="mt-3 text-xs text-[#e5e4e2]/60">{campaign.budget_lifetime != null ? `Budżet całkowity kampanii: ${money(campaign.budget_lifetime)}` : `Średni budżet dzienny: ${money(campaign.budget_daily || 0)}`}</p>}
+        <p className="mt-3 text-[10px] text-[#e5e4e2]/40">Ostatnia synchronizacja: {formatDateTime(campaign.synced_at)}</p>
+      </div>;
+    })}</div> : <div className="p-10 text-center text-sm text-[#e5e4e2]/50">Brak zsynchronizowanych kampanii. Sprawdź stan integracji i wybrane konto reklamowe. Nowe kampanie pojawią się po synchronizacji również przed pierwszym wyświetleniem.</div>}
+  </div>;
 }
 
 function Metric({ label, value }: { label: string; value: string }) { return <div><p className="text-[10px] uppercase tracking-wide text-[#e5e4e2]/35">{label}</p><p className="mt-1 text-xs text-[#e5e4e2]">{value}</p></div>; }

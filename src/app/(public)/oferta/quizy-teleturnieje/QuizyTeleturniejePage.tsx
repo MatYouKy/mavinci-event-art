@@ -1,37 +1,29 @@
-import { Metadata } from 'next';
+import type { QuizGalleryImage, QuizShowFormat } from '@/lib/quiz-shows/types';
+import type { QuizCity } from '@/lib/quiz-shows/content';
 import QuizShowsIntro from './sections/QuizShowsIntro';
 import QuizShowsTypes from './sections/QuizShowsTypes';
 import QuizShowsFeatures from './sections/QuizShowsFeatures';
 import QuizShowsGallery from './sections/QuizShowsGallery';
 import QuizPopularPackages from './sections/QuizPopularPackages';
 import QuizShowsCTA from './sections/QuizShowsCTA';
+import QuizShowsPlanning from './sections/QuizShowsPlanning';
+import QuizShowsFAQ from './sections/QuizShowsFAQ';
+import QuizShowsRegion from './sections/QuizShowsRegion';
 
-export const metadata: Metadata = {
-  title: 'Quizy i Teleturnieje | Mavinci',
-  description: 'Profesjonalne teleturnieje i quizy na eventy firmowe i gale premium. Od prostych quizów po multimedialne widowiska z pilotami i buzzerami. Integracje firmowe przez rywalizację.',
-  keywords: 'teleturnieje, quizy firmowe, teleturnieje multimedialne, piloty do głosowania, buzzery, integracje firmowe, gale premium, eventy korporacyjne',
-};
-
-export default function QuizyTeleturniejePage() {
-  return (
-    <main className="min-h-screen bg-[#0f1119]">
-      {/* Intro Section - Opis oferty */}
-      <QuizShowsIntro />
-
-      {/* Types Section - 6 formatów teleturniejów */}
-      <QuizShowsTypes />
-
-      {/* Features Section - Co zapewniamy */}
-      <QuizShowsFeatures />
-
-      {/* Gallery Section - Realizacje */}
-      <QuizShowsGallery />
-
-      {/* Popular Packages Section - Karuzela */}
-      <QuizPopularPackages />
-
-      {/* CTA Section - Kontakt */}
-      <QuizShowsCTA />
-    </main>
-  );
+export default function QuizyTeleturniejePage({ formats, gallery, city }: {
+  formats: QuizShowFormat[]; gallery: QuizGalleryImage[]; city?: QuizCity;
+}) {
+  return <>
+    <nav aria-label="Sekcje oferty teleturniejów" className="mx-auto flex max-w-7xl flex-wrap gap-3 px-5 pt-7 sm:px-6"><a href="#formaty" className="quiz-button-primary">Wybierz format</a><a href="#zapytaj-o-teleturniej" className="quiz-button-secondary">Zaplanuj wydarzenie</a></nav>
+    {city && <QuizShowsRegion city={city} />}
+    <QuizShowsIntro />
+    <QuizShowsTypes initialFormats={formats} />
+    <QuizShowsFeatures />
+    <QuizShowsPlanning />
+    <QuizShowsGallery initialImages={gallery} />
+    <QuizPopularPackages />
+    <QuizShowsFAQ city={city} />
+    {!city && <QuizShowsRegion />}
+    <QuizShowsCTA location={city?.location} />
+  </>;
 }

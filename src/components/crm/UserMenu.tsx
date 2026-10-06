@@ -1,5 +1,7 @@
 'use client';
 
+import { systemLabel } from '@/lib/ui/systemLabels';
+
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
@@ -89,12 +91,12 @@ export default function UserMenu({ initialEmployee }: { initialEmployee: IEmploy
   const getRoleName = (role: string) => {
     const roleNames: Record<string, string> = {
       admin: 'Administrator',
-      manager: 'Manager',
+      manager: 'Menedżer',
       employee: 'Pracownik',
       technician: 'Technik',
       salesperson: 'Handlowiec',
     };
-    return roleNames[role] || role;
+    return roleNames[role] || systemLabel(role, 'role');
   };
 
   const getAccessLevelColor = (level: string) => {

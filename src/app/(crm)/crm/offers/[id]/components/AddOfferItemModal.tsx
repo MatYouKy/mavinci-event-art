@@ -1,17 +1,31 @@
 'use client';
+import ProductPackagePicker from '@/components/crm/offers/ProductPackagePicker';
+import { pricedPackageSelection, type ProductSalesPackage } from '@/lib/CRM/Offers/productSalesPackages';
 
-import { useState, useEffect, type ComponentProps } from 'react';
+import ProductAddonsEditor from '@/components/crm/offers/ProductAddonsEditor';
+import { createConfiguration, configurationPrice, validateConfiguration, type ProductAddon } from '@/lib/CRM/Offers/offerAddons';
+import { useDialog } from '@/contexts/DialogContext';
+import { VariantPricesEditor } from './VariantPricesEditor';
+
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { X, Plus, Search, Package } from 'lucide-react';
+import Image from 'next/image';
+import type { OfferRecommendation } from './offerRecommendation';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
-import InquirySourceContextPanel from '@/components/crm/inquiries/InquirySourceContextPanel';
 import type { IProductVariant } from '@/app/(crm)/crm/offers/types';
 
 interface Product {
+  sales_packages?: ProductSalesPackage[];
+  sales_packages_enabled?: boolean;
+  pricing_addons?: ProductAddon[];
   id: string;
   name: string;
   description: string;
   base_price: number;
+  pdf_thumbnail_url?: string | null;
+  offer_image_path?: string | null;
+  thumbnailSrc?: string | null;
   unit: string;
   category?: {
     name: string;
@@ -19,22 +33,60 @@ interface Product {
   variants?: IProductVariant[];
 }
 
+export function ProductThumbnail({ src }: { src?: string | null }) {
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+
+  return (
+    <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-md bg-[#d3bb73]/10">
+      {src && failedSrc !== src ? (
+        <Image
+          src={src}
+          alt=""
+          width={48}
+          height={48}
+          sizes="48px"
+          quality={60}
+          unoptimized={false}
+          loading="lazy"
+          className="h-full w-full object-cover"
+          onError={() => setFailedSrc(src)}
+        />
+      ) : (
+        <Package className="h-5 w-5 text-[#d3bb73]" />
+      )}
+    </div>
+  );
+}
+
 interface AddOfferItemModalProps {
   offerId: string;
   onClose: () => void;
   onSuccess: () => void;
-  inquiryContext?: ComponentProps<typeof InquirySourceContextPanel>;
+  onAddRecommendation?: (item: OfferRecommendation) => Promise<void>;
+  excludedProductIds?: ReadonlySet<string>;
 }
 
-export default function AddOfferItemModal({ offerId, onClose, onSuccess, inquiryContext }: AddOfferItemModalProps) {
+export default function AddOfferItemModal({ offerId, onClose, onSuccess, onAddRecommendation, excludedProductIds }: AddOfferItemModalProps) {
   const { showSnackbar } = useSnackbar();
+  const { showConfirm } = useDialog();
+  const saveLock = useRef(false);
+  const [mainProductIds,setMainProductIds] = useState<string[]>([]);
+  const [recommendations,setRecommendations] = useState<OfferRecommendation[]>([]);
+  const blockedProductIds = useMemo(()=>new Set([...mainProductIds,...Array.from(excludedProductIds || []),...(onAddRecommendation ? recommendations.map(r=>r.product_id) : [])]),[mainProductIds,excludedProductIds,recommendations,onAddRecommendation]);
   const [loading, setLoading] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [selectedVariant, setSelectedVariant] = useState<IProductVariant | null>(null);
+  const [variantPrices, setVariantPrices] = useState<Record<string, number>>({});
   const [quantity, setQuantity] = useState(1);
   const [unitPrice, setUnitPrice] = useState(0);
+  const [addons, setAddons] = useState<ProductAddon[]>([]);
+  const [packageOptions, setPackageOptions] = useState<ProductSalesPackage[]>([]);
+  const [selectedPackageId, setSelectedPackageId] = useState('');
+  const selectedPackage = packageOptions.find(p => p.id === selectedPackageId);
+  const configuration = createConfiguration(unitPrice, addons, selectedPackage ? pricedPackageSelection({ selected_id: selectedPackage.id, options: packageOptions }, unitPrice) : undefined);
+  const configuredPrice = configurationPrice(configuration);
   const [discountPercent, setDiscountPercent] = useState(0);
   const [showVariantPricesInPdf, setShowVariantPricesInPdf] = useState(true);
   const [showProductVariantsInPdf, setShowProductVariantsInPdf] = useState(true);
@@ -46,20 +98,53 @@ export default function AddOfferItemModal({ offerId, onClose, onSuccess, inquiry
   useEffect(() => {
     if (selectedProduct) {
       const variants = selectedProduct.variants || [];
-      const defaultVariant = variants.find((variant) => variant.is_recommended) || variants[0] || null;
+      setVariantPrices({});
+      const recommendation = !onAddRecommendation ? recommendations.find(r=>r.product_id===selectedProduct.id) : undefined;
+      // A saved proposal owns its prices and scope; do not replace them with catalog defaults.
+      setAddons((recommendation ? recommendation.pricing_configuration?.addons || [] : selectedProduct.pricing_addons || []).map(a => ({ ...a })));
+      const defaultVariant = recommendation ? variants.find(v=>v.id===recommendation.product_variant_id) || null : variants.find((variant) => variant.is_recommended) || variants[0] || null;
       setSelectedVariant(defaultVariant);
-      setUnitPrice(defaultVariant ? Number(defaultVariant.price_net || 0) : selectedProduct.base_price);
+      setUnitPrice(recommendation ? Number(recommendation.pricing_configuration?.base_unit_price ?? recommendation.unit_price) : defaultVariant ? Number(defaultVariant.price_net || 0) : selectedProduct.base_price);
+      setQuantity(recommendation?.quantity || 1);
+      setDiscountPercent(recommendation?.pricing_configuration ? Number(recommendation.discount_percent || 0) : 0);
+      const copied = recommendation?.pricing_configuration?.product_package;
+      const options = copied?.options || (selectedProduct.sales_packages_enabled ? selectedProduct.sales_packages || [] : []);
+      setPackageOptions(structuredClone(options));
+      const pkg = copied ? options.find(p => p.id === copied.selected_id) : recommendation ? null : options[0];
+      setSelectedPackageId(pkg?.id || '');
+      if (pkg) {
+        setSelectedVariant(null);
+        setAddons(recommendation?.pricing_configuration?.addons || []);
+        setUnitPrice(recommendation?.pricing_configuration?.base_unit_price ?? pkg.price_net);
+        setShowVariantPricesInPdf(false);
+      }
+
     }
   }, [selectedProduct]);
 
+  useEffect(() => {
+    if (selectedProduct && blockedProductIds.has(selectedProduct.id)) {
+      setSelectedProduct(null);
+      setSelectedVariant(null);
+    }
+  }, [blockedProductIds, selectedProduct]);
+
   const fetchProducts = async () => {
     try {
+      const [main, extras] = await Promise.all([
+        supabase.from('offer_items').select('product_id').eq('offer_id',offerId),
+        supabase.from('offers').select('recommended_items').eq('id',offerId).single(),
+      ]);
+      if(main.error) throw main.error;
+      if(extras.error) throw extras.error;
+      setMainProductIds((main.data||[]).map(row=>row.product_id).filter(Boolean));
+      setRecommendations(extras.data.recommended_items||[]);
       const { data, error } = await supabase
         .from('offer_products')
         .select(
           `
           *,
-          variants:offer_product_variants(id, product_id, name, short_description, description, benefits, price_net, price_gross, is_recommended, is_active, display_order),
+          variants:offer_product_variants(id, product_id, name, short_description, description, benefits, price_net, price_gross, offer_image_path, is_recommended, is_active, display_order),
           category:event_categories(name)
         `,
         )
@@ -67,8 +152,25 @@ export default function AddOfferItemModal({ offerId, onClose, onSuccess, inquiry
         .order('name');
 
       if (error) throw error;
+      const imagePaths = Array.from(new Set<string>((data || [])
+        .map((product) => product.pdf_thumbnail_url || product.offer_image_path)
+        .filter((path): path is string => Boolean(path))));
+      const thumbnailUrls = new Map<string, string>();
+      if (imagePaths.length > 0) {
+        // Sign in one request; Next Image resizes and compresses before delivery.
+        const { data: signedImages, error: imageError } = await supabase.storage
+          .from('offer-product-pages')
+          .createSignedUrls(imagePaths, 3600);
+        if (imageError) console.error('Error preparing product thumbnails:', imageError);
+        for (const image of signedImages || []) {
+          if (image.path && image.signedUrl && !image.error) {
+            thumbnailUrls.set(image.path, image.signedUrl);
+          }
+        }
+      }
       setProducts((data || []).map((product: any) => ({
         ...product,
+        thumbnailSrc: thumbnailUrls.get(product.pdf_thumbnail_url || product.offer_image_path) || null,
         variants: [...(product.variants || [])]
           .filter((variant: IProductVariant) => variant.is_active !== false)
           .sort((a: IProductVariant, b: IProductVariant) => a.display_order - b.display_order),
@@ -81,37 +183,78 @@ export default function AddOfferItemModal({ offerId, onClose, onSuccess, inquiry
 
   const filteredProducts = products.filter(
     (p) =>
-      p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.description?.toLowerCase().includes(searchQuery.toLowerCase()),
+      !blockedProductIds.has(p.id) && (
+        p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        p.description?.toLowerCase().includes(searchQuery.toLowerCase())
+      ),
   );
 
   const handleAddItem = async () => {
+    if (saveLock.current) return;
     if (!selectedProduct) {
       showSnackbar('Wybierz produkt', 'error');
       return;
     }
-
-    if (quantity <= 0) {
-      showSnackbar('Ilość musi być większa od 0', 'error');
+    if (blockedProductIds.has(selectedProduct.id)) {
+      showSnackbar('Ten produkt jest już dodany. Wybierz inną pozycję.', 'error');
       return;
     }
 
+    if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(unitPrice) || unitPrice < 0 || !Number.isFinite(discountPercent) || discountPercent < 0 || discountPercent > 100) {
+      showSnackbar('Podaj poprawną ilość, cenę i rabat od 0 do 100%.', 'error');
+      return;
+    }
+
+    if (Object.values(variantPrices).some(price => !Number.isFinite(price) || price < 0 || price > 999999999.99)) {
+      showSnackbar('Podaj poprawne, nieujemne ceny wszystkich wariantów.', 'error'); return;
+    }
+    const addonError = validateConfiguration(configuration);
+    if (addonError) { showSnackbar(addonError, 'error'); return; }
+    saveLock.current = true;
     setLoading(true);
 
     try {
-      const calculatedDiscountAmount = (quantity * unitPrice * discountPercent) / 100;
+      const calculatedDiscountAmount = Math.round(quantity * configuredPrice * discountPercent) / 100;
 
-      const { error } = await supabase.from('offer_items').insert({
+      if (onAddRecommendation) {
+        await onAddRecommendation({
+          id: crypto.randomUUID(),
+          product_id: selectedProduct.id,
+          product_variant_id: selectedVariant?.id || null,
+          name: selectedPackage ? `${selectedProduct.name} — ${selectedPackage.name}` : selectedVariant ? `${selectedProduct.name} — ${selectedVariant.name}` : selectedProduct.name,
+          description: selectedPackage ? [selectedPackage.included_label, selectedPackage.bonus].filter(Boolean).join('. ') : selectedVariant?.short_description || selectedVariant?.description || selectedProduct.description || '',
+          quantity,
+          unit: selectedPackage ? 'pakiet' : selectedProduct.unit,
+          unit_price: Math.round(configuredPrice * (1 - discountPercent / 100) * 100) / 100,
+          pricing_configuration: configuration,
+          discount_percent: discountPercent,
+          image_path: selectedPackage?.image_path || selectedVariant?.offer_image_path || selectedProduct.offer_image_path || selectedProduct.pdf_thumbnail_url || null,
+        });
+        showSnackbar('Propozycja dodana do edycji — zatwierdź przyciskiem Zapisz w sekcji propozycji', 'success');
+        onSuccess();
+        onClose();
+        return;
+      }
+
+      const {data: current, error: currentError} = await supabase.from('offers').select('recommended_items').eq('id',offerId).single();
+      if(currentError) throw currentError;
+      const proposal = (current.recommended_items || []).find((r: OfferRecommendation)=>r.product_id===selectedProduct.id) as OfferRecommendation | undefined;
+      const moving = Boolean(proposal);
+      if(proposal && JSON.stringify(proposal) !== JSON.stringify(recommendations.find(r=>r.product_id===selectedProduct.id))) throw new Error('Propozycja została zmieniona. Zamknij i otwórz ponownie dodawanie, aby wczytać jej aktualne dane.');
+      if(moving && !await showConfirm({title:'Przenieść produkt do oferty?',message:`„${selectedProduct.name}” jest już w sekcji „Zobacz, co warto dobrać do takiego wydarzenia”. Przenieść go do głównej listy? Zniknie z propozycji i będzie uwzględniony w wycenie.`,confirmText:'Przenieś do oferty',cancelText:'Anuluj'})) return;
+      const { error } = await supabase.rpc('add_offer_item_without_duplicate', {p_offer_id:offerId,p_move_recommendation:moving,p_expected_recommendations:current.recommended_items,p_item:{
         offer_id: offerId,
         product_id: selectedProduct.id,
         product_variant_id: selectedVariant?.id || null,
+        variant_prices_net: { ...variantPrices, ...(selectedVariant ? { [selectedVariant.id]: unitPrice } : {}) },
         show_variant_prices_in_pdf: showVariantPricesInPdf,
         show_product_variants_in_pdf: showProductVariantsInPdf,
-        name: selectedVariant ? `${selectedProduct.name} — ${selectedVariant.name}` : selectedProduct.name,
-        description: selectedVariant?.description || selectedVariant?.short_description || selectedProduct.description,
+        name: selectedPackage ? `${selectedProduct.name} — ${selectedPackage.name}` : proposal && proposal.product_variant_id === (selectedVariant?.id || null) ? proposal.name : selectedVariant ? `${selectedProduct.name} — ${selectedVariant.name}` : selectedProduct.name,
+        description: selectedPackage ? [selectedPackage.included_label, selectedPackage.bonus].filter(Boolean).join('. ') : proposal && proposal.product_variant_id === (selectedVariant?.id || null) ? proposal.description : selectedVariant?.description || selectedVariant?.short_description || selectedProduct.description,
         quantity,
-        unit: selectedProduct.unit,
-        unit_price: unitPrice,
+        unit: selectedPackage ? 'pakiet' : selectedProduct.unit,
+        unit_price: configuredPrice,
+        pricing_configuration: configuration,
         unit_cost: 0,
         discount_percent: discountPercent,
         discount_amount: calculatedDiscountAmount,
@@ -119,7 +262,7 @@ export default function AddOfferItemModal({ offerId, onClose, onSuccess, inquiry
         logistics_cost: 0,
         display_order: 999,
         notes: null,
-      });
+      }});
 
       if (error) throw error;
 
@@ -128,21 +271,24 @@ export default function AddOfferItemModal({ offerId, onClose, onSuccess, inquiry
       onClose();
     } catch (error: any) {
       console.error('Error adding item:', error);
-      showSnackbar('Błąd podczas dodawania pozycji', 'error');
+      showSnackbar(error.message || 'Błąd podczas dodawania pozycji', 'error');
     } finally {
+      saveLock.current = false;
       setLoading(false);
     }
   };
 
-  const subtotal = quantity * unitPrice;
-  const discountAmount = (subtotal * discountPercent) / 100;
-  const total = subtotal - discountAmount;
+  const subtotal = quantity * configuredPrice;
+  const total = onAddRecommendation
+    ? Math.round(quantity * (Math.round(configuredPrice * (1 - discountPercent / 100) * 100) / 100) * 100) / 100
+    : Math.round((subtotal - Math.round(subtotal * discountPercent) / 100) * 100) / 100;
+  const discountAmount = Math.round((subtotal - total) * 100) / 100;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="flex max-h-[90vh] w-full max-w-5xl flex-col rounded-xl border border-[#d3bb73]/20 bg-[#0f1119]">
         <div className="flex items-center justify-between border-b border-[#d3bb73]/20 p-6">
-          <h2 className="text-xl font-light text-[#e5e4e2]">Dodaj pozycję do oferty</h2>
+          <h2 className="text-xl font-light text-[#e5e4e2]">{onAddRecommendation ? 'Dodaj proponowany produkt' : 'Dodaj pozycję do oferty'}</h2>
           <button
             onClick={onClose}
             className="text-[#e5e4e2]/60 transition-colors hover:text-[#e5e4e2]"
@@ -152,7 +298,6 @@ export default function AddOfferItemModal({ offerId, onClose, onSuccess, inquiry
         </div>
 
         <div className="flex-1 space-y-6 overflow-y-auto p-6">
-          {inquiryContext && <InquirySourceContextPanel {...inquiryContext} />}
           <div>
             <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
               Wyszukaj produkt
@@ -181,9 +326,7 @@ export default function AddOfferItemModal({ offerId, onClose, onSuccess, inquiry
                 }`}
               >
                 <div className="flex items-start gap-3">
-                  <div className="rounded bg-[#d3bb73]/10 p-2">
-                    <Package className="h-5 w-5 text-[#d3bb73]" />
-                  </div>
+                  <ProductThumbnail src={product.thumbnailSrc} />
                   <div className="min-w-0 flex-1">
                     <h3 className="truncate text-sm font-medium text-[#e5e4e2]">{product.name}</h3>
                     <p className="mt-1 line-clamp-2 text-xs text-[#e5e4e2]/60">
@@ -203,12 +346,16 @@ export default function AddOfferItemModal({ offerId, onClose, onSuccess, inquiry
               </button>
             ))}
           </div>
+          {!filteredProducts.length && <p className="text-center text-sm text-[#e5e4e2]/45">{onAddRecommendation ? 'Brak pasujących propozycji. Produkty obecne w głównej ofercie są ukryte.' : 'Nie znaleziono pasujących produktów.'}</p>}
 
           {selectedProduct && (
             <div className="space-y-4 rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
               <h3 className="text-lg font-medium text-[#e5e4e2]">Szczegóły pozycji</h3>
 
-              {(selectedProduct.variants || []).length > 0 && (
+              <ProductPackagePicker options={packageOptions.map(p => p.id === selectedPackageId ? { ...p, price_net: unitPrice } : p)} selectedId={selectedPackageId} disabled={loading} discountPercent={discountPercent}
+                onChange={options => { setPackageOptions(options); const p = options.find(p => p.id === selectedPackageId); if(p) setUnitPrice(p.price_net); }}
+                onSelect={id => { setSelectedPackageId(id); const p = packageOptions.find(p => p.id === id); if(p) { setSelectedVariant(null); setUnitPrice(p.price_net); setAddons([]); } else { const v = selectedProduct.variants?.[0] || null; setSelectedVariant(v); setUnitPrice(Number(v?.price_net ?? selectedProduct.base_price)); setAddons((selectedProduct.pricing_addons || []).map(a=>({...a}))); } }} />
+              {!selectedPackage && (selectedProduct.variants || []).length > 0 && (
                 <div>
                   <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
                     Wariant produktu
@@ -220,7 +367,7 @@ export default function AddOfferItemModal({ offerId, onClose, onSuccess, inquiry
                         type="button"
                         onClick={() => {
                           setSelectedVariant(variant);
-                          setUnitPrice(Number(variant.price_net || 0));
+                          setUnitPrice(Number(variantPrices[variant.id] ?? variant.price_net ?? 0));
                         }}
                         className={`rounded-lg border px-3 py-3 text-left ${
                           selectedVariant?.id === variant.id
@@ -230,21 +377,21 @@ export default function AddOfferItemModal({ offerId, onClose, onSuccess, inquiry
                       >
                         <span className="block text-sm font-medium text-[#e5e4e2]">{variant.name}</span>
                         <span className="mt-1 block text-sm text-[#d3bb73]">
-                          {Number(variant.price_net || 0).toFixed(2)} PLN
+                          {Number(variantPrices[variant.id] ?? variant.price_net ?? 0).toFixed(2)} PLN
                         </span>
                       </button>
                     ))}
                   </div>
-                  <div className="mt-3 space-y-2">
+                  {!onAddRecommendation && <div className="mt-3 space-y-2">
                     <label className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-[#d3bb73]/10 bg-[#0d0f1a] px-3 py-2.5">
                       <span><span className="block text-sm text-[#e5e4e2]">Pokaż wszystkie warianty w PDF</span><span className="mt-0.5 block text-xs text-[#e5e4e2]/40">Po wyłączeniu drukowany jest tylko wybrany wariant</span></span>
-                      <input type="checkbox" checked={showProductVariantsInPdf} onChange={(event) => setShowProductVariantsInPdf(event.target.checked)} className="h-4 w-4 accent-[#d3bb73]" />
+                      <input type="checkbox" checked={addons.length ? false : showProductVariantsInPdf} disabled={Boolean(addons.length)} onChange={(event) => setShowProductVariantsInPdf(event.target.checked)} className="h-4 w-4 accent-[#d3bb73]" />
                     </label>
                     <label className={`flex items-center justify-between gap-3 rounded-lg border border-[#d3bb73]/10 bg-[#0d0f1a] px-3 py-2.5 ${showProductVariantsInPdf ? 'cursor-pointer' : 'cursor-not-allowed opacity-40'}`}>
                       <span><span className="block text-sm text-[#e5e4e2]">Pokaż ceny wariantów w PDF</span><span className="mt-0.5 block text-xs text-[#e5e4e2]/40">Cena netto i brutto VAT 23% przy każdym wariancie</span></span>
-                      <input type="checkbox" checked={showVariantPricesInPdf} disabled={!showProductVariantsInPdf} onChange={(event) => setShowVariantPricesInPdf(event.target.checked)} className="h-4 w-4 accent-[#d3bb73]" />
+                      <input type="checkbox" checked={showVariantPricesInPdf} disabled={!showProductVariantsInPdf || Boolean(addons.length)} onChange={(event) => setShowVariantPricesInPdf(event.target.checked)} className="h-4 w-4 accent-[#d3bb73]" />
                     </label>
-                  </div>
+                  </div>}
                 </div>
               )}
 
@@ -263,12 +410,16 @@ export default function AddOfferItemModal({ offerId, onClose, onSuccess, inquiry
 
                 <div>
                   <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
-                    Cena jednostkowa (PLN)
+                    {addons.length ? 'Cena bazowa netto (PLN)' : 'Cena jednostkowa netto (PLN)'}
                   </label>
                   <input
                     type="number"
-                    value={unitPrice}
-                    onChange={(e) => setUnitPrice(Number(e.target.value))}
+                    value={Number.isFinite(unitPrice) ? unitPrice : ''}
+                    onChange={(e) => {
+                      const price = e.target.value === '' ? NaN : Number(e.target.value);
+                      setUnitPrice(price);
+                      if (selectedVariant) setVariantPrices(current => ({ ...current, [selectedVariant.id]: price }));
+                    }}
                     min="0"
                     step="0.01"
                     className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0d0f1a] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
@@ -289,9 +440,16 @@ export default function AddOfferItemModal({ offerId, onClose, onSuccess, inquiry
                 </div>
               </div>
 
+              <ProductAddonsEditor value={addons} onChange={setAddons} disabled={loading} />
+
+              {!selectedPackage && !onAddRecommendation && !!selectedProduct.variants?.length && <VariantPricesEditor variants={selectedProduct.variants} prices={variantPrices} disabled={loading} onChange={(id, price) => {
+                setVariantPrices(current => ({ ...current, [id]: price }));
+                if (id === selectedVariant?.id) setUnitPrice(price);
+              }} />}
+
               <div className="border-t border-[#d3bb73]/10 pt-4">
                 <div className="mb-2 flex items-center justify-between">
-                  <span className="text-[#e5e4e2]/60">Wartość brutto:</span>
+                  <span className="text-[#e5e4e2]/60">Wartość netto przed rabatem:</span>
                   <span className="text-[#e5e4e2]">{subtotal.toFixed(2)} PLN</span>
                 </div>
                 {discountPercent > 0 && (
@@ -301,7 +459,7 @@ export default function AddOfferItemModal({ offerId, onClose, onSuccess, inquiry
                   </div>
                 )}
                 <div className="flex items-center justify-between text-lg font-medium">
-                  <span className="text-[#e5e4e2]">Razem:</span>
+                  <span className="text-[#e5e4e2]">Razem netto:</span>
                   <span className="text-[#d3bb73]">{total.toFixed(2)} PLN</span>
                 </div>
               </div>
@@ -318,10 +476,10 @@ export default function AddOfferItemModal({ offerId, onClose, onSuccess, inquiry
           </button>
           <button
             onClick={handleAddItem}
-            disabled={loading || !selectedProduct}
+            disabled={loading || !selectedProduct || blockedProductIds.has(selectedProduct.id)}
             className="rounded-lg bg-[#d3bb73] px-6 py-2 font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {loading ? 'Dodawanie...' : 'Dodaj pozycję'}
+            {loading ? 'Dodawanie...' : onAddRecommendation ? 'Dodaj propozycję' : 'Dodaj pozycję'}
           </button>
         </div>
       </div>

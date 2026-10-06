@@ -21,7 +21,8 @@ export interface CalcItem {
   quantity: number;
   unit_price: number;
   days: number;
-  source: 'manual' | 'offer' | 'warehouse';
+  source: 'manual' | 'offer' | 'warehouse' | 'product' | 'vehicle';
+  source_label?: string | null;
   source_ref?: string | null;
   position: number;
   vat_rate: number;

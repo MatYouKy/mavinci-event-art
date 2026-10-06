@@ -4,6 +4,13 @@ import { createClient } from '@supabase/supabase-js';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+const json = (body: unknown, init?: { status?: number }) => NextResponse.json(body, {
+  ...init, headers: { 'Cache-Control': 'no-store' },
+});
+const tokenFor = (req: Request) => req.headers.get('authorization')?.replace(/^Bearer\s+/i, '') || new URL(req.url).searchParams.get('token');
+// Same /crm/tasks board as fetchTasksServer, restricted further to the token owner's assignment.
+const TASK_SCOPE = 'tasks_board_assigned_v1';
+
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
@@ -21,11 +28,6 @@ async function resolveEmployeeFromToken(token: string) {
   if (error) throw error;
   if (!data?.employee_id) return null;
 
-  admin
-    .from('calendar_feed_tokens')
-    .update({ last_used_at: new Date().toISOString() })
-    .eq('token', token)
-    .then(() => {});
 
   return data.employee_id as string;
 }
@@ -43,11 +45,10 @@ async function verifyEmployee(employeeId: string) {
 
 export async function GET(req: Request) {
   try {
-    const url = new URL(req.url);
-    const token = url.searchParams.get('token');
+    const token = tokenFor(req);
 
     if (!token) {
-      return NextResponse.json(
+      return json(
         { error: 'Missing token', success: false },
         { status: 401 },
       );
@@ -55,32 +56,33 @@ export async function GET(req: Request) {
 
     const employeeId = await resolveEmployeeFromToken(token);
     if (!employeeId) {
-      return NextResponse.json(
+      return json(
         { error: 'Invalid token', success: false },
         { status: 401 },
       );
     }
 
     const employee = await verifyEmployee(employeeId);
-    if (!employee || employee.is_active === false) {
-      return NextResponse.json(
+    if (!employee || employee.is_active !== true) {
+      return json(
         { error: 'Employee inactive or not found', success: false },
         { status: 403 },
       );
     }
 
-    const { data: assignedRows, error: assErr } = await admin
-      .from('task_assignees')
-      .select('task_id')
-      .eq('employee_id', employeeId);
-
-    if (assErr) throw assErr;
-
-    const assignedTaskIds = (assignedRows ?? []).map((r: any) => r.task_id);
+    const assignedTaskIds: string[] = [];
+    for (let offset = 0; ; offset += 500) {
+      const { data: rows, error } = await admin.from('task_assignees').select('task_id')
+        .eq('employee_id', employeeId).order('task_id').range(offset, offset + 499);
+      if (error) throw error;
+      assignedTaskIds.push(...(rows || []).map((r: any) => r.task_id));
+      if (!rows || rows.length < 500) break;
+    }
 
     if (assignedTaskIds.length === 0) {
-      return NextResponse.json({
+      return json({
         success: true,
+        task_scope: TASK_SCOPE,
         employee_id: employeeId,
         employee_name: `${employee.name ?? ''} ${employee.surname ?? ''}`.trim(),
         tasks: [],
@@ -88,15 +90,17 @@ export async function GET(req: Request) {
       });
     }
 
-    const { data: tasks, error: tasksErr } = await admin
-      .from('tasks')
-      .select(
-        `id, title, description, priority, status, board_column, 
-         due_date, created_at, updated_at, event_id, is_private`,
-      )
-      .in('id', assignedTaskIds);
-
-    if (tasksErr) throw tasksErr;
+    const tasks: any[] = [];
+    const uniqueIds = [...new Set(assignedTaskIds)];
+    for (let offset = 0; offset < uniqueIds.length; offset += 200) {
+      const { data, error } = await admin.from('tasks')
+        .select('id,title,description,priority,status,board_column,due_date,created_at,updated_at,event_id,is_private,task_assignees!inner(employee_id)')
+        .eq('is_private', false).eq('is_inquiry', false).is('event_id', null)
+        .eq('task_assignees.employee_id', employeeId)
+        .in('id', uniqueIds.slice(offset, offset + 200)).order('id');
+      if (error) throw error;
+      tasks.push(...(data || []));
+    }
 
     const eventIds = (tasks ?? [])
       .map((t: any) => t.event_id)
@@ -116,21 +120,23 @@ export async function GET(req: Request) {
 
     const formattedTasks = (tasks ?? []).map((t: any) => ({
       id: t.id,
+      assigned_employee_id: employeeId,
       title: t.title,
       description: t.description || null,
-      priority: t.priority,
-      status: t.status,
-      board_column: t.board_column,
+      priority: t.priority || 'medium',
+      status: t.status || 'todo',
+      board_column: t.board_column || 'todo',
       due_date: t.due_date || null,
       event_id: t.event_id || null,
       event_name: t.event_id ? (eventNames[t.event_id] || null) : null,
-      is_private: t.is_private,
+      is_private: Boolean(t.is_private),
       created_at: t.created_at,
       updated_at: t.updated_at,
     }));
 
-    return NextResponse.json({
+    return json({
       success: true,
+      task_scope: TASK_SCOPE,
       employee_id: employeeId,
       employee_name: `${employee.name ?? ''} ${employee.surname ?? ''}`.trim(),
       tasks: formattedTasks,
@@ -138,7 +144,7 @@ export async function GET(req: Request) {
     });
   } catch (e: any) {
     console.error('Tasks sync GET error:', e);
-    return NextResponse.json(
+    return json(
       { error: 'Internal server error', success: false },
       { status: 500 },
     );
@@ -147,11 +153,10 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const url = new URL(req.url);
-    const token = url.searchParams.get('token');
+    const token = tokenFor(req);
 
     if (!token) {
-      return NextResponse.json(
+      return json(
         { error: 'Missing token', success: false },
         { status: 401 },
       );
@@ -159,25 +164,25 @@ export async function POST(req: Request) {
 
     const employeeId = await resolveEmployeeFromToken(token);
     if (!employeeId) {
-      return NextResponse.json(
+      return json(
         { error: 'Invalid token', success: false },
         { status: 401 },
       );
     }
 
     const employee = await verifyEmployee(employeeId);
-    if (!employee || employee.is_active === false) {
-      return NextResponse.json(
+    if (!employee || employee.is_active !== true) {
+      return json(
         { error: 'Employee inactive or not found', success: false },
         { status: 403 },
       );
     }
 
     const body = await req.json();
-    const updates: Array<{ task_id: string; completed: boolean }> = body.updates;
+    const updates: Array<{ task_id: string; completed: boolean; expected_updated_at?: string }> = body.updates;
 
-    if (!Array.isArray(updates) || updates.length === 0) {
-      return NextResponse.json(
+    if (!Array.isArray(updates) || updates.length === 0 || updates.length > 200 || updates.some((u) => !u || typeof u.completed !== 'boolean' || !/^[0-9a-f-]{36}$/i.test(u.task_id) || (u.expected_updated_at !== undefined && !Number.isFinite(Date.parse(u.expected_updated_at))))) {
+      return json(
         { error: 'Missing updates array', success: false },
         { status: 400 },
       );
@@ -207,37 +212,42 @@ export async function POST(req: Request) {
         continue;
       }
 
-      const newColumn = update.completed ? 'completed' : 'todo';
-      const newStatus = update.completed ? 'completed' : 'todo';
-
-      const { error: updateErr } = await admin
-        .from('tasks')
-        .update({
-          board_column: newColumn,
-          status: newStatus,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', update.task_id);
+      const { data: current, error: readError } = await admin.from('tasks')
+        .select('status, board_column, updated_at').eq('id', update.task_id)
+        .eq('is_private', false).eq('is_inquiry', false).is('event_id', null).maybeSingle();
+      if (readError || !current) { results.push({ task_id: update.task_id, success: false, error: 'Zadanie nie jest dostępne w Twoim zakresie synchronizacji zakładki Zadania.' }); continue; }
+      const completed = current.status === 'completed' || current.status === 'cancelled' || current.board_column === 'completed';
+      if (completed === update.completed) { results.push({ task_id: update.task_id, success: true }); continue; }
+      if (current.status === 'cancelled' || (update.expected_updated_at && Date.parse(update.expected_updated_at) !== Date.parse(current.updated_at))) {
+        results.push({ task_id: update.task_id, success: false, error: 'Konflikt zmian. Zadanie zmieniło się w CRM; sprawdź jego stan. Lokalnej zmiany nie usunięto.' }); continue;
+      }
+      // Preserve the assignment allow-list above AND recheck assignment transactionally.
+      const { data: written, error: updateErr } = await admin.rpc('set_personal_synced_task_completion', {
+        p_employee_id: employeeId, p_task_id: update.task_id, p_completed: update.completed,
+        p_expected_updated_at: current.updated_at,
+      });
+      if (!updateErr && written !== true) { results.push({ task_id: update.task_id, success: false, error: 'Zmieniono zadanie lub jego przypisanie. Odśwież zadanie w CRM.' }); continue; }
 
       if (updateErr) {
         results.push({
           task_id: update.task_id,
           success: false,
-          error: updateErr.message,
+          error: ['PGRST202', '42883'].includes(updateErr.code)
+            ? 'Wymagana migracja personal_task_sync w bazie CRM.' : 'Nie udało się zapisać statusu zadania.',
         });
       } else {
         results.push({ task_id: update.task_id, success: true });
       }
     }
 
-    return NextResponse.json({
+    return json({
       success: true,
       results,
       synced_at: new Date().toISOString(),
     });
   } catch (e: any) {
     console.error('Tasks sync POST error:', e);
-    return NextResponse.json(
+    return json(
       { error: 'Internal server error', success: false },
       { status: 500 },
     );

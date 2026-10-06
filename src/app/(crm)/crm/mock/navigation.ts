@@ -41,7 +41,7 @@ export const allNavigation: NavigationItem[] = [
   },
   {
     key: 'contracts',
-    name: 'Umowy',
+    name: 'Umowy z klientami',
     href: '/crm/contracts',
     iconKey: 'contracts',
     module: 'contracts',
@@ -51,7 +51,11 @@ export const allNavigation: NavigationItem[] = [
     ],
   },
   { key: 'invoices', name: 'Finanse', href: '/crm/invoices', iconKey: 'invoices', module: 'finances' },
-  { key: 'employees', name: 'Pracownicy', href: '/crm/employees', iconKey: 'employees', module: 'employees' },
+  { key: 'employees', name: 'Zespół', href: '/crm/employees', iconKey: 'employees', children: [
+    { key: 'employees', name: 'Pracownicy CRM', href: '/crm/employees', iconKey: 'employees', module: 'employees' },
+    { key: 'collaborators', name: 'Współpracownicy', href: '/crm/employees/collaborators', iconKey: 'contacts', module: 'personnel' },
+    { key: 'personnel-contracts', name: 'Umowy', href: '/crm/employees/contracts', iconKey: 'contracts', module: 'personnel' },
+  ] },
   { key: 'equipment', name: 'Magazyn', href: '/crm/equipment', iconKey: 'equipment', module: 'equipment' },
   { key: 'fleet', name: 'Flota', href: '/crm/fleet', iconKey: 'fleet', module: 'fleet' },
   { key: 'inquiries', name: 'Zapytania', href: '/crm/inquiries', iconKey: 'tasks', module: 'tasks' },

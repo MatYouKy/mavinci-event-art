@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { MoreVertical } from 'lucide-react';
+import type { DropdownPosition } from '@/hooks/usePortalDropdown';
 import { PortalDropdownMenu } from '@/components/UI/PortalDropdownMenu/PortalDropdownMenu';
 
 export interface Action {
@@ -20,6 +21,9 @@ interface ResponsiveActionBarProps {
   mobileBreakpoint?: number;
   disabledBackground?: boolean;
   compact?: boolean;
+  alwaysDropdown?: boolean;
+  menuZIndex?: number;
+  portalWithinDialog?: boolean;
 }
 
 export default function ResponsiveActionBar({
@@ -27,14 +31,14 @@ export default function ResponsiveActionBar({
   mobileBreakpoint = 768,
   disabledBackground = false,
   compact = false,
+  alwaysDropdown = false,
+  menuZIndex,
+  portalWithinDialog = false,
 }: ResponsiveActionBarProps) {
   const [isMobile, setIsMobile] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
-  const [position, setPosition] = useState<{
-    top: number;
-    left: number;
-    width?: number;
-  } | null>(null);
+  const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(null);
+  const [position, setPosition] = useState<DropdownPosition | null>(null);
 
   const buttonRef = useRef<HTMLButtonElement>(null);
   const portalMenuRef = useRef<HTMLDivElement | null>(null);
@@ -60,6 +64,7 @@ export default function ResponsiveActionBar({
 
     const handleScroll = (event: Event) => {
       const target = event.target as Node | null;
+      if (target instanceof Element && target.closest('[data-portal-dropdown="true"]')) return;
 
       if (target && portalMenuRef.current && portalMenuRef.current.contains(target)) {
         return;
@@ -88,6 +93,17 @@ export default function ResponsiveActionBar({
       document.removeEventListener('mousedown', close);
     };
   }, [showMenu]);
+
+  useEffect(() => {
+    if (!showMenu || !portalWithinDialog) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault(); event.stopPropagation();
+      setShowMenu(false); buttonRef.current?.focus();
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [showMenu, portalWithinDialog]);
 
   if (filteredActions.length === 0) return null;
 
@@ -123,23 +139,22 @@ export default function ResponsiveActionBar({
   const pinnedActions = filteredActions.filter((action) => action.pin);
   const overflowActions = filteredActions.filter((action) => !action.pin);
   const usePinnedDesktopLayout =
-    !isMobile && pinnedActions.length > 0 && overflowActions.length > 0;
+    !alwaysDropdown && !isMobile && pinnedActions.length > 0 && overflowActions.length > 0;
   const menuActions = usePinnedDesktopLayout ? overflowActions : filteredActions;
-  const shouldUseDropdown = isMobile || (filteredActions.length > 4 && !usePinnedDesktopLayout);
+  const shouldUseDropdown = alwaysDropdown || isMobile || (filteredActions.length > 4 && !usePinnedDesktopLayout);
 
   const openMenu = (e: React.MouseEvent<HTMLButtonElement>) => {
+    setPortalContainer(portalWithinDialog ? e.currentTarget.closest<HTMLDialogElement>('dialog') : null);
     e.preventDefault();
     e.stopPropagation();
 
     const rect = e.currentTarget.getBoundingClientRect();
     const menuWidth = 224;
-    const menuHeight = Math.min(menuActions.length * 44 + 8, 260);
-
-    const spaceBelow = window.innerHeight - rect.bottom;
-    const openUpward = spaceBelow < menuHeight && rect.top > menuHeight;
-
     setPosition({
-      top: openUpward ? rect.top - menuHeight - 8 : rect.bottom + 8,
+      top: rect.bottom + 8,
+      anchorTop: rect.top,
+      anchorBottom: rect.bottom,
+      offsetY: 8,
       left: Math.max(8, Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 8)),
       width: menuWidth,
     });
@@ -151,11 +166,13 @@ export default function ResponsiveActionBar({
     <PortalDropdownMenu
       open={showMenu}
       position={position}
+      zIndex={menuZIndex}
+      portalContainer={portalContainer}
       className="rounded-xl"
       content={
         <div
           ref={portalMenuRef}
-          className="max-h-[260px] overflow-y-auto"
+          className="py-1"
           onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
         >

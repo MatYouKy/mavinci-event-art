@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { systemLabel } from '@/lib/ui/systemLabels';
+import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase/browser';
 import { X, Mail, Send } from 'lucide-react';
 import { EmployeeAvatar } from '@/components/EmployeeAvatar';
-import { Bitcoin as EditIcon, Trash2, User, ChevronUp, ChevronDown, AlertCircle } from 'lucide-react';
+import { Pencil as EditIcon, UserCheck, UserMinus, Trash2, User, ChevronUp, ChevronDown, AlertCircle } from 'lucide-react';
 import { Employee } from '@/lib/permissions';
 import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
 import { IEmployee } from '@/app/(crm)/crm/employees/type';
@@ -10,6 +11,7 @@ import { EmployeeAssignment } from '@/components/crm/Calendar';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 
 interface TeamMembersListProps {
+  eventId: string;
   employees: Employee[] | any[];
   onRemove: (id: string) => void;
   canManageTeam?: boolean;
@@ -29,6 +31,7 @@ const getEmployeeLabel = (employee?: any) => {
 };
 
 export function TeamMembersList({
+  eventId,
   employees,
   onRemove,
   canManageTeam = false,
@@ -41,6 +44,46 @@ export function TeamMembersList({
   const [editRole, setEditRole] = useState('');
   const [editResponsibilities, setEditResponsibilities] = useState('');
   const [sendingInvitation, setSendingInvitation] = useState<string | null>(null);
+  const [leadership, setLeadership] = useState<any>(null);
+  const [leaderBusy, setLeaderBusy] = useState(false);
+  const [leaderError, setLeaderError] = useState('');
+  const loadLeadership = useCallback(async () => {
+    const { data, error } = await supabase.rpc('get_event_realization_assignment', {
+      p_event_id: eventId,
+    });
+    if (error) {
+      console.error('Nie udało się odczytać kierownika realizacji:', error);
+      setLeaderError('Nie udało się odczytać kierownika realizacji. Spróbuj ponownie.');
+      setLeadership(null);
+    } else {
+      setLeadership(data);
+      setLeaderError('');
+    }
+  }, [eventId]);
+  useEffect(() => {
+    void loadLeadership();
+    window.addEventListener('focus', loadLeadership);
+    return () => window.removeEventListener('focus', loadLeadership);
+  }, [loadLeadership]);
+  const changeLeader = async (employeeId: string, revoke: boolean) => {
+    if (leaderBusy) return;
+    setLeaderBusy(true);
+    try {
+      const { error } = await supabase.rpc(
+        revoke ? 'revoke_realization_manager' : 'appoint_realization_manager',
+        { p_event_id: eventId, p_employee_id: employeeId },
+      );
+      if (error) throw error;
+      await loadLeadership();
+      window.dispatchEvent(new Event('realization-manager-changed'));
+      showSnackbar(revoke ? 'Odebrano rolę kierownika realizacji.' : 'Wyznaczono kierownika realizacji.', 'success');
+    } catch (error: any) {
+      showSnackbar(error.message || 'Nie udało się zmienić kierownika realizacji.', 'error');
+    } finally {
+      setLeaderBusy(false);
+    }
+  };
+
 
   const [permissionsModal, setPermissionsModal] = useState<{
     isOpen: boolean;
@@ -190,10 +233,12 @@ export function TeamMembersList({
       }
 
       showSnackbar(
-        options.mode === 'timeline_update'
+        result.data?.skipped
+          ? 'Zaproszenie nie jest potrzebne — nie wysłano wiadomości.'
+          : options.mode === 'timeline_update'
           ? 'Uzupełniony harmonogram został wysłany'
           : 'Zaproszenie zostało wysłane',
-        'success',
+        result.data?.skipped ? 'info' : 'success',
       );
       window.location.reload();
     } catch (error) {
@@ -208,10 +253,19 @@ export function TeamMembersList({
 
   return (
     <>
-      <div className="space-y-3">
+      <div className="space-y-3" aria-busy={leaderBusy}>
+        {leaderError && (
+          <p role="alert" className="text-sm text-red-300">
+            {leaderError}{' '}
+            <button type="button" onClick={() => void loadLeadership()} className="underline">Ponów odczyt</button>
+          </p>
+        )}
+        {leaderBusy && <p role="status" className="text-sm text-[#d3bb73]">Zapisywanie roli kierownika…</p>}
         {employees.length > 0 ? (
           employees.map((item) => {
             const isEditing = editingId === item.id;
+            const employeeId = item.employee_id || item.employee?.id;
+            const isLeader = leadership?.realization?.manager_id === employeeId;
             const isExpanded = expandedId === item.id;
             {!item.employee && <div>Brak danych pracownika (RLS / relacja)</div>}
             return item.employee && (
@@ -238,20 +292,32 @@ export function TeamMembersList({
                     <h3 className="font-medium text-[#e5e4e2]">
                       {getEmployeeLabel(item.employee)}
                     </h3>
+                    {item.responsibility_roles?.length > 0 && <p className="text-sm text-[#d3bb73]">{item.responsibility_roles.join(' · ')}</p>}
                     {item.role && !isEditing && (
-                      <p className="text-sm text-[#d3bb73]">{item.role}</p>
+                      <p className="text-sm text-[#d3bb73]">{systemLabel(item.role, 'role', { preserveCustom: true })}</p>
                     )}
-                    <div className="mt-1 flex items-center gap-2">
+                    <div className="mt-1 flex flex-wrap items-center gap-2">
                       {getStatusBadge(item.status || 'pending')}
+                      {isLeader && <span className="rounded-full bg-[#d3bb73]/15 px-2 py-1 text-xs text-[#d3bb73]">Kierownik realizacji</span>}
                     </div>
                   </div>
 
                   <div className="flex items-center gap-2">
-                    {!isEditing && canManageTeam && (
+                    {!isEditing && !item.automatic_member && (canManageTeam || leadership?.can_manage) && (
                       <div onClick={(e) => e.stopPropagation()}>
                         <ResponsiveActionBar
+                          alwaysDropdown
+                          compact
                           disabledBackground
                           actions={[
+                            {
+                              label: isLeader ? 'Odbierz uprawnienia kierownika' : 'Mianuj kierownikiem realizacji',
+                              onClick: () => void changeLeader(employeeId, isLeader),
+                              icon: isLeader ? <UserMinus className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />,
+                              variant: isLeader ? 'danger' : 'default',
+                              show: !!leadership?.can_manage && (isLeader || item.status === 'accepted'),
+                              disabled: leaderBusy || !leadership?.can_change,
+                            },
                             {
                               label: 'Wyślij zaproszenie',
                               onClick: () => sendInvitation(item.id, { includePhases: false }),
@@ -261,7 +327,7 @@ export function TeamMembersList({
                                 <Send className="h-4 w-4" />
                               ),
                               variant: 'default',
-                              show: item.status === 'pending' && !item.invitation_email_sent,
+                              show: canManageTeam && item.status === 'pending' && !item.invitation_email_sent,
                               disabled: sendingInvitation === item.id,
                             },
                             {
@@ -278,29 +344,29 @@ export function TeamMembersList({
                                   <Mail className="h-4 w-4" />
                                 ),
                               variant: 'default',
-                              show: item.status !== 'rejected',
+                              show: canManageTeam && item.status !== 'rejected',
                               disabled: sendingInvitation === item.id,
                             },
                             {
-                              label: '',
+                              label: 'Edytuj rolę i obowiązki',
                               onClick: () => startEdit(item),
                               icon: <EditIcon className="h-4 w-4" />,
                               variant: 'primary',
-                              show: true,
+                              show: canManageTeam,
                             },
                             {
-                              label: '',
+                              label: 'Uprawnienia w wydarzeniu',
                               onClick: () => openPermissionsModal(item),
                               icon: <User className="h-4 w-4" />,
                               variant: 'default',
-                              show: true,
+                              show: canManageTeam,
                             },
                             {
-                              label: ``,
+                              label: 'Usuń z zespołu',
                               onClick: () => onRemove(item.id),
                               icon: <Trash2 className="h-4 w-4" />,
                               variant: 'danger',
-                              show: true,
+                              show: canManageTeam,
                             },
                           ]}
                         />

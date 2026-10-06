@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { getCredentials, supabase } from '@/lib/ksef/db';
 import { createSupabaseServerClient } from '@/lib/supabase/server.app';
+import { loadInvoiceFinanceAccess } from '@/lib/invoices/financeAccess';
 import { getKSeFInvoiceXml } from '../../client';
 import { parseFA3InvoiceXml } from '../../parseInvoiceXml';
 import { parsePaymentData } from '../../parsePaymentData';
@@ -28,7 +29,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: 'Wymagane logowanie.' }, { status: 401 });
     }
 
-    const { data: invoiceRow, error: fetchErr } = await supabase
+    const financeAccess = await loadInvoiceFinanceAccess(userClient);
+    if (financeAccess.scope === 'none') {
+      return NextResponse.json({ success: false, error: 'Brak dostępu do faktur.' }, { status: 403 });
+    }
+    // Apply row policies before the privileged KSeF fetch/cache operations below.
+    const { data: invoiceRow, error: fetchErr } = await userClient
       .from('ksef_invoices')
       .select('*')
       .eq(invoiceId ? 'id' : 'ksef_reference_number', invoiceId || ksefRef)
@@ -41,11 +47,19 @@ export async function POST(req: Request) {
       );
     }
 
+    if (financeAccess.scope === 'sales') {
+      const { data: localInvoice, error: localError } = invoiceRow.invoice_id
+        ? await userClient.from('invoices').select('created_by').eq('id', invoiceRow.invoice_id).maybeSingle()
+        : { data: null, error: null };
+      if (localError || !localInvoice || ![financeAccess.employeeId, financeAccess.authUserId].includes(localInvoice.created_by)) {
+        return NextResponse.json({ success: false, error: 'Możesz otworzyć tylko KSeF własnej faktury.' }, { status: 403 });
+      }
+    }
     const { data: canViewCompany, error: permissionError } = await userClient.rpc(
       'can_view_invoice_company',
       { p_company_id: invoiceRow.my_company_id },
     );
-    if (permissionError || !canViewCompany) {
+    if (permissionError || (!canViewCompany && financeAccess.scope !== 'sales')) {
       return NextResponse.json(
         { success: false, error: 'Brak uprawnień do faktur tej spółki.' },
         { status: 403 },

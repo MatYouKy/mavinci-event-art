@@ -1,4 +1,6 @@
 'use client';
+import { pricedPackageSelection, type ProductSalesPackage } from '@/lib/CRM/Offers/productSalesPackages';
+import { createConfiguration, configurationPrice } from '@/lib/CRM/Offers/offerAddons';
 
 import { useMemo, useRef, useState } from 'react';
 import { calcSubtotal, calcTotal } from '../utils';
@@ -36,61 +38,42 @@ export function useOfferWizardItems() {
   };
 
   // ✅ teraz addProduct zwraca nextItems
-  const addProduct = (product: IProduct, variant?: IProductVariant) => {
+  const addProduct = (product: IProduct, variant?: IProductVariant, salesPackage?: ProductSalesPackage) => {
+    const options = product.sales_packages_enabled ? product.sales_packages || [] : [];
+    const selectedPackage = variant ? undefined : salesPackage || options[0];
+    const basePrice = Number(selectedPackage?.price_net ?? variant?.price_net ?? product.base_price ?? 0);
+    const initialConfiguration = createConfiguration(basePrice, selectedPackage ? [] : product.pricing_addons || [],
+      selectedPackage ? { selected_id: selectedPackage.id, options: structuredClone(options) } : undefined);
+    const initialPrice = configurationPrice(initialConfiguration);
+    const name = selectedPackage ? `${product.name} — ${selectedPackage.name}` : variant ? `${product.name} — ${variant.name}` : product.name;
+    const description = selectedPackage ? [selectedPackage.included_label, selectedPackage.bonus].filter(Boolean).join('. ')
+      : variant?.description || variant?.short_description || product.description || '';
+    const selection = {
+      unit: selectedPackage ? 'pakiet' : product.unit,
+      name, description, product, product_variant_id: selectedPackage ? null : variant?.id || null,
+      product_variant: selectedPackage ? null : variant || null,
+      pricing_configuration: initialConfiguration, unit_price: initialPrice,
+      show_variant_prices_in_pdf: !selectedPackage,
+      show_product_variants_in_pdf: selectedPackage ? true : product.sales_packages_enabled ? false : true,
+    };
     const prev = offerItemsRef.current;
-
-    const existing = prev.find((i) => i.product_id === product.id);
+    const existing = prev.find(item => item.product_id === product.id);
     let next: IOfferItem[];
-
-    if (existing && variant) {
-      next = prev.map((item) => item.id === existing.id
-        ? {
-            ...item,
-            product_variant_id: variant.id,
-            product_variant: variant,
-            name: `${product.name} — ${variant.name}`,
-            description: variant.description || variant.short_description || product.description || '',
-            unit_price: Number(variant.price_net || 0),
-            subtotal: calcSubtotal(item.quantity, Number(variant.price_net || 0), item.discount_percent),
-          }
-        : item);
+    if (existing && (variant || selectedPackage)) {
+      next = prev.map(item => item.id === existing.id ? { ...item, ...selection,
+        subtotal: calcSubtotal(item.quantity, initialPrice, item.discount_percent || 0),
+      } : item);
     } else if (existing) {
-      next = prev.map((i) =>
-        i.id === existing.id
-          ? {
-              ...i,
-              quantity: i.quantity + 1,
-              subtotal: calcSubtotal(i.quantity + 1, i.unit_price, i.discount_percent),
-              discount_amount: 0,
-              total: 0,
-              display_order: 0,
-            }
-          : i,
-      );
+      next = prev.map(item => item.id === existing.id ? { ...item, quantity: item.quantity + 1,
+        subtotal: calcSubtotal(item.quantity + 1, item.unit_price, item.discount_percent || 0),
+      } : item);
     } else {
-      const newItem: IOfferItem = {
-        id: `temp-${Date.now()}`,
-        product_id: product.id,
-        name: variant ? `${product.name} — ${variant.name}` : product.name,
-        description: product.description || '',
-        quantity: 1,
-        unit: product.unit,
-        unit_price: variant ? Number(variant.price_net || 0) : product.base_price,
-        product_variant_id: variant?.id || null,
-        product_variant: variant || null,
-        product,
-        show_variant_prices_in_pdf: true,
-        show_product_variants_in_pdf: true,
-        discount_percent: 0,
-        subtotal: variant ? Number(variant.price_net || 0) : product.base_price,
-        discount_amount: 0,
-        total: 0,
-        display_order: 0,
-      };
-
-      next = [...prev, newItem];
+      next = [...prev, {
+        id: `temp-${crypto.randomUUID()}`, product_id: product.id, ...selection,
+        quantity: 1, discount_percent: 0, subtotal: initialPrice,
+        discount_amount: 0, total: 0, display_order: prev.length,
+      }];
     }
-
     setOfferItemsSafe(next);
     return next;
   };
@@ -110,6 +93,17 @@ export function useOfferWizardItems() {
     const next = prev.map((i) => {
       if (i.id !== id) return i;
       const updated: any = { ...i, ...patch };
+      if (updated.pricing_configuration) {
+        if (patch.unit_price !== undefined && patch.pricing_configuration === undefined) {
+          const extras = configurationPrice(updated.pricing_configuration) - updated.pricing_configuration.base_unit_price;
+          updated.pricing_configuration = { ...updated.pricing_configuration, base_unit_price: patch.unit_price - extras };
+        }
+        if (updated.pricing_configuration.product_package) {
+          updated.unit = 'pakiet';
+          updated.pricing_configuration = { ...updated.pricing_configuration, product_package: pricedPackageSelection(updated.pricing_configuration.product_package, updated.pricing_configuration.base_unit_price) };
+        }
+        updated.unit_price = configurationPrice(updated.pricing_configuration);
+      }
       updated.subtotal = calcSubtotal(
         updated.quantity,
         updated.unit_price,

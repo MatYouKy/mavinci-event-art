@@ -1,4 +1,8 @@
 'use client';
+import type { ProductSalesPackage } from '@/lib/CRM/Offers/productSalesPackages';
+import ProductAddonsEditor from '@/components/crm/offers/ProductAddonsEditor';
+import { createConfiguration, configurationPrice, validateConfiguration } from '@/lib/CRM/Offers/offerAddons';
+import { Fragment } from 'react';
 
 import Image from 'next/image';
 import { useEffect, useMemo, useState } from 'react';
@@ -22,6 +26,8 @@ interface ProductCategory {
 }
 
 type CatalogViewMode = 'list' | 'table';
+type CatalogChoice = { id: string; name: string; price_net: number; price_gross?: number; scope?: string; bonus?: string; variant?: IProductVariant; salesPackage?: ProductSalesPackage };
+
 
 interface OfferStep3Props {
   offerItems: IOfferItem[];
@@ -32,7 +38,7 @@ interface OfferStep3Props {
   setSelectedCategory: (value: string) => void;
   categories: ProductCategory[];
   filteredProducts: IProduct[];
-  addProductToOffer: (product: IProduct, variant?: IProductVariant) => void;
+  addProductToOffer: (product: IProduct, variant?: IProductVariant, salesPackage?: ProductSalesPackage) => void;
   updateOfferItem: (itemId: string, patch: Partial<IOfferItem>) => void;
   removeOfferItem: (itemId: string) => void;
 }
@@ -206,6 +212,7 @@ export default function OfferStep3({
   const savedPreference = preferences.offerWizard?.catalogViewMode;
   const storageKey = `crm:offer-wizard:catalog-view:${employeeId}`;
   const [viewMode, setViewMode] = useState<CatalogViewMode>(savedPreference || 'list');
+  const [selectionModes, setSelectionModes] = useState<Record<string, 'packages' | 'elements'>>({});
   const [variantSelections, setVariantSelections] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -250,16 +257,45 @@ export default function OfferStep3({
       (variant) => variant.is_active !== false,
     );
 
-  const getSelectedVariant = (product: IProduct) => {
-    const variants = getVariants(product);
-    return (
-      variants.find((variant) => variant.id === variantSelections[product.id]) ||
-      variants.find((variant) => variant.is_recommended) ||
-      variants[0]
-    );
+  const getPackages = (product: IProduct) => product.sales_packages_enabled ? product.sales_packages || [] : [];
+  const getSelectionMode = (product: IProduct) => getPackages(product).length ? selectionModes[product.id] || 'packages' : 'elements';
+  const getChoices = (product: IProduct): CatalogChoice[] => getSelectionMode(product) === 'packages'
+    ? getPackages(product).map(p => ({ id: p.id, name: p.name, price_net: p.price_net, scope: p.included_label, bonus: p.bonus, salesPackage: p }))
+    : getVariants(product).map(v => ({ id: v.id, name: v.name, price_net: v.price_net, price_gross: v.price_gross, variant: v }));
+  const getSelectedChoice = (product: IProduct) => {
+    const choices = getChoices(product);
+    return choices.find(c => c.id === variantSelections[product.id]) || choices.find(c => c.variant?.is_recommended) || choices[0];
+  };
+  const addChoice = (product: IProduct, choice?: CatalogChoice) => addProductToOffer(product, choice?.variant, choice?.salesPackage);
+  const renderSelectionMode = (product: IProduct) => {
+    if (!getPackages(product).length) return null;
+    const mode = getSelectionMode(product);
+    return <div role="group" aria-label={`Sposób wyceny: ${product.name}`} className="my-2 inline-flex rounded-lg bg-black/15 p-1">
+      {(['packages','elements'] as const).map(value => <button key={value} type="button" aria-pressed={mode === value} disabled={value==='elements'&&!getVariants(product).length}
+        onClick={()=>setSelectionModes(current=>({...current,[product.id]:value}))}
+        className={`rounded-md px-3 py-1.5 text-xs transition-colors disabled:opacity-30 ${mode===value?'bg-[#d3bb73]/15 text-[#d3bb73]':'text-[#e5e4e2]/55 hover:bg-white/5'}`}>{value==='packages'?'Pakiety':'Elementy'}</button>)}
+    </div>;
+  };
+  const renderAddedSelection = (item: IOfferItem, product?: IProduct) => {
+    if (!product || !getPackages(product).length) return null;
+    const selection = item.pricing_configuration?.product_package;
+    return <label className="block py-2 text-[#e5e4e2]/70">Wybrany zakres
+      <select aria-label={`Wybrany zakres: ${product.name}`} value={selection ? `package:${selection.selected_id}` : item.product_variant_id ? `element:${item.product_variant_id}` : ''}
+        onChange={event=>{
+          const [mode,id]=event.target.value.split(':');
+          if(mode==='package'){const p=getPackages(product).find(p=>p.id===id);if(p)addProductToOffer(product,undefined,p);}
+          else {const v=getVariants(product).find(v=>v.id===id);if(v)addProductToOffer(product,v);}
+        }} className="mt-1 w-full rounded-lg border border-white/10 bg-black/15 p-2 text-[#e5e4e2]">
+        {!selection&&!item.product_variant_id&&<option value="">Wybierz zakres</option>}
+        <optgroup label="Pakiety">{getPackages(product).map(p=><option key={p.id} value={`package:${p.id}`}>{p.name} · {formatMoney(p.price_net)} zł netto</option>)}</optgroup>
+        {!!getVariants(product).length&&<optgroup label="Elementy">{getVariants(product).map(v=><option key={v.id} value={`element:${v.id}`}>{v.name} · {formatMoney(v.price_net)} zł netto + dodatki</option>)}</optgroup>}
+      </select><span className="mt-1 block text-[11px] text-[#e5e4e2]/45">Zmiana zakresu przywróci jego cenę katalogową i dodatki. Ilość oraz rabat pozostaną zachowane.</span>
+    </label>;
   };
 
   const renderVariantPdfSettings = (item: IOfferItem, product?: IProduct) => {
+    if (item.pricing_configuration?.product_package) return <span className="text-[11px] text-[#d3bb73]">Elementy bez cen + pakiety</span>;
+    if (item.pricing_configuration?.addons.length) return <span className="text-[11px] text-[#e5e4e2]/60">Wybrany zakres + kalkulacja dodatków</span>;
     if (!product || getVariants(product).length === 0) return null;
 
     return (
@@ -374,15 +410,10 @@ export default function OfferStep3({
             {availableProducts.length > 0 && viewMode === 'list' && (
               <div className="space-y-3">
           {availableProducts.map((product) => {
-            const variants = getVariants(product);
-            const lowestVariant = variants.reduce<IProductVariant | undefined>(
-              (lowest, variant) =>
-                !lowest || Number(variant.price_net || 0) < Number(lowest.price_net || 0)
-                  ? variant
-                  : lowest,
-              undefined,
-            );
-            const lowestPrice = Number(lowestVariant?.price_net ?? product.base_price ?? 0);
+            const choices = getChoices(product);
+            const packageMode = getSelectionMode(product) === 'packages';
+            const lowestChoice = choices.reduce<CatalogChoice | undefined>((lowest, choice) => !lowest || choice.price_net < lowest.price_net ? choice : lowest, undefined);
+            const lowestPrice = Number(lowestChoice?.price_net ?? product.base_price ?? 0);
 
             return (
               <article
@@ -393,8 +424,8 @@ export default function OfferStep3({
                   <ProductThumbnail
                     product={product}
                     priceNet={lowestPrice}
-                    priceGross={lowestVariant?.price_gross}
-                    pricePrefix={variants.length > 0 ? 'od ' : ''}
+                    priceGross={lowestChoice?.price_gross}
+                    pricePrefix={choices.length > 0 ? 'od ' : ''}
                   />
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
@@ -405,8 +436,8 @@ export default function OfferStep3({
                         )}
                       </div>
                       <span className="whitespace-nowrap font-medium text-[#d3bb73]">
-                        {variants.length > 0 && 'od '}
-                        {formatMoney(lowestPrice)} zł
+                        {choices.length > 0 && 'od '}
+                        {formatMoney(lowestPrice)} zł netto
                       </span>
                     </div>
                     {product.description && (
@@ -415,31 +446,17 @@ export default function OfferStep3({
                       </p>
                     )}
 
-                    {variants.length > 0 ? (
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {variants.map((variant) => (
-                          <button
-                            key={variant.id}
-                            type="button"
-                            onClick={() => addProductToOffer(product, variant)}
-                            className="rounded-lg border border-[#d3bb73]/20 bg-[#0d0f1a]/60 px-3 py-2 text-left text-sm text-[#e5e4e2] hover:border-[#d3bb73] hover:bg-[#d3bb73]/10"
-                          >
-                            <span className="font-medium">{variant.name}</span>
-                            <span className="ml-2 text-[#d3bb73]">
-                              {formatMoney(variant.price_net)} zł
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => addProductToOffer(product)}
-                        className="mt-3 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90"
-                      >
-                        Dodaj do oferty
-                      </button>
-                    )}
+                    {renderSelectionMode(product)}
+                    {choices.length > 0 ? <div className="mt-2 space-y-2">
+                      <div className={packageMode?'space-y-2':'flex flex-wrap gap-2'}>{choices.map(choice=><button key={choice.id} type="button" onClick={()=>addChoice(product,choice)}
+                        className={`rounded-lg bg-black/15 px-3 py-2 text-left text-sm text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/10 ${packageMode?'w-full':''}`}>
+                        <span className="flex flex-wrap justify-between gap-2"><span className="font-medium">{choice.name}</span><span className="text-[#d3bb73]">{formatMoney(choice.price_net)} zł netto</span></span>
+                        {choice.scope&&<span className="mt-1 block text-xs text-[#e5e4e2]/60">{choice.scope}</span>}
+                        {choice.bonus&&<span className="mt-1 block text-xs text-[#d3bb73]">{choice.bonus}</span>}
+                      </button>)}</div>
+                      {getPackages(product).length>0&&<p className="text-[11px] text-[#e5e4e2]/45">{packageMode?'Pełne ceny pakietów. Kliknij pakiet, aby dodać go do oferty.':'Ceny elementów. Skonfigurowane dodatki, np. logistykę, zobaczysz po dodaniu.'}</p>}
+                    </div> : <button type="button" onClick={()=>addChoice(product)} className="mt-3 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33]">Dodaj do oferty</button>}
+
                   </div>
                 </div>
               </article>
@@ -457,21 +474,21 @@ export default function OfferStep3({
                 <th className="w-[25%] px-2 py-2">Produkt</th>
                 <th className="w-[14%] px-2 py-2">Kategoria</th>
                 <th className="w-[15%] px-2 py-2">Cena netto</th>
-                <th className="px-2 py-2 text-right">Wariant / dodaj</th>
+                <th className="px-2 py-2 text-right">Zakres / dodaj</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#d3bb73]/10 bg-[#151827]">
               {availableProducts.map((product) => {
-                const variants = getVariants(product);
-                const selectedVariant = getSelectedVariant(product);
+                const choices = getChoices(product);
+                const selectedChoice = getSelectedChoice(product);
                 return (
                   <tr key={product.id} className="hover:bg-[#1c1f33]/80">
                     <td className="px-2 py-2">
                       <ProductThumbnail
                         product={product}
                         size="small"
-                        priceNet={selectedVariant?.price_net}
-                        priceGross={selectedVariant?.price_gross}
+                        priceNet={selectedChoice?.price_net}
+                        priceGross={selectedChoice?.price_gross}
                       />
                     </td>
                     <td className="min-w-0 px-2 py-2">
@@ -488,13 +505,14 @@ export default function OfferStep3({
                       {product.category?.name || '—'}
                     </td>
                     <td className="whitespace-nowrap px-2 py-2 font-medium text-[#d3bb73]">
-                      {formatMoney(selectedVariant?.price_net ?? product.base_price)} zł
+                      {formatMoney(selectedChoice?.price_net ?? product.base_price)} zł
                     </td>
                     <td className="px-2 py-2">
+                      {renderSelectionMode(product)}
                       <div className="flex min-w-0 items-center justify-end gap-1.5">
-                        {variants.length > 0 && (
+                        {choices.length > 0 && (
                           <select
-                            value={selectedVariant?.id || ''}
+                            value={selectedChoice?.id || ''}
                             onChange={(event) =>
                               setVariantSelections((current) => ({
                                 ...current,
@@ -503,7 +521,7 @@ export default function OfferStep3({
                             }
                             className="min-w-0 flex-1 rounded-md border border-[#d3bb73]/20 bg-[#0d0f1a] px-2 py-1.5 text-xs text-[#e5e4e2]"
                           >
-                            {variants.map((variant) => (
+                            {choices.map((variant) => (
                               <option key={variant.id} value={variant.id}>
                                 {variant.name}
                               </option>
@@ -512,7 +530,7 @@ export default function OfferStep3({
                         )}
                         <button
                           type="button"
-                          onClick={() => addProductToOffer(product, selectedVariant)}
+                          onClick={() => addChoice(product, selectedChoice)}
                           className="shrink-0 whitespace-nowrap rounded-md bg-[#d3bb73] px-2.5 py-1.5 font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90"
                         >
                           Dodaj
@@ -567,7 +585,7 @@ export default function OfferStep3({
                 {addedCatalogItems.map((item) => {
                   const product = productById.get(item.product_id);
                   return (
-                    <tr key={item.id} className="h-[51px] hover:bg-[#1c1f33]/70">
+                    <Fragment key={item.id}><tr className="h-[51px] hover:bg-[#1c1f33]/70">
                       <td className="truncate px-3 font-medium text-[#e5e4e2]" title={item.name}>
                         {item.name}
                       </td>
@@ -593,6 +611,18 @@ export default function OfferStep3({
                         </button>
                       </td>
                     </tr>
+                    <tr><td colSpan={6} className="px-3 pb-3"><details><summary className="cursor-pointer py-2 text-[#d3bb73]">Konfiguruj zakres i dodatki{item.pricing_configuration?.addons.length ? ` (${item.pricing_configuration.addons.length})` : ''}</summary>
+                      {renderAddedSelection(item, product)}
+                      <label className="block py-2">Cena bazowa netto / pakiet<input type="number" min="0" step="0.01" value={item.pricing_configuration?.base_unit_price ?? item.unit_price} onChange={e => {
+                        const c = { ...(item.pricing_configuration || createConfiguration(item.unit_price)), base_unit_price: Number(e.target.value) };
+                        updateOfferItem(item.id, { pricing_configuration: c, unit_price: configurationPrice(c) });
+                      }} className="ml-3 rounded bg-black/20 p-2" /></label>
+                      <ProductAddonsEditor value={item.pricing_configuration?.addons || []} onChange={addons => {
+                        const c = { ...(item.pricing_configuration || createConfiguration(item.unit_price)), addons };
+                        updateOfferItem(item.id, { pricing_configuration: c, unit_price: configurationPrice(c) });
+                      }} />
+                      {item.pricing_configuration && validateConfiguration(item.pricing_configuration) && <p role="alert" className="py-2 text-red-300">{validateConfiguration(item.pricing_configuration)}</p>}
+                    </details></td></tr></Fragment>
                   );
                 })}
               </tbody>

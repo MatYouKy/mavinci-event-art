@@ -14,7 +14,7 @@ const Stack = createNativeStackNavigator<InquiriesStackParamList>();
 
 export default function InquiriesStackNavigator() {
   return (
-    <PermissionGate module="tasks">
+    <PermissionGate module="inquiries">
       <Stack.Navigator
         screenOptions={{
           headerShown: false,

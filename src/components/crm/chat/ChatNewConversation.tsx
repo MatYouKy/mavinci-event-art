@@ -1,5 +1,7 @@
 'use client';
 
+import { systemLabel } from '@/lib/ui/systemLabels';
+
 import { useState, useEffect } from 'react';
 import { ArrowLeft, Search, Users, Check } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
@@ -265,7 +267,7 @@ export default function ChatNewConversation({ currentEmployeeId, onBack, onConve
                     </span>
                   )}
                   {emp.role && (
-                    <span className="truncate text-[10px] text-[#e5e4e2]/30">{emp.role}</span>
+                    <span className="truncate text-[10px] text-[#e5e4e2]/30">{systemLabel(emp.role, 'role')}</span>
                   )}
                 </div>
                 {/* Checkbox */}

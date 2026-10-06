@@ -1,13 +1,17 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 'use client';
 
+import { systemLabel } from '@/lib/ui/systemLabels';
+
 import { useState, useEffect, useMemo, useRef } from 'react';
 import OrganizationDetailsSection from '@/components/crm/contacts/organization/OrganizationDetailsSection';
+import OrganizationHotelSpaces from '@/components/crm/contacts/organization/OrganizationHotelSpaces';
 import {
   validateOrganizationForm,
   type OrganizationFormErrors,
 } from '@/components/crm/contacts/organization/organizationValidation';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import {
   ArrowLeft,
   Building2,
@@ -37,6 +41,7 @@ import {
   Check,
   Wrench,
   Search,
+  BadgePercent,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -51,9 +56,11 @@ import AddLocationModal from '@/components/crm/AddLocationModal';
 import SubcontractorServicesPanel from '@/components/crm/SubcontractorServicesPanel';
 import { formatNip } from '@/components/crm/contacts/organization/organizationForm.helpers';
 import Customer360Panel from '@/components/crm/contacts/Customer360Panel';
+import ContactOrganizationLinks from '@/components/crm/contacts/ContactOrganizationLinks';
 import Organization360Panel from '@/components/crm/contacts/Organization360Panel';
 import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
 import ComposeEmailModal from '@/components/crm/ComposeEmailModal';
+import ContactQuickActions from '@/components/crm/contacts/ContactQuickActions';
 import { dispatchCrmEmail, formatScheduledEmailDate } from '@/lib/emailScheduling';
 import { requiresKrsForLegalForm } from '@/lib/organizations/organizationLegalForm';
 import type { EventStatus } from '@/components/crm/Calendar/types';
@@ -61,6 +68,12 @@ import {
   EVENT_STATUS_BADGE_CLASSES,
   EVENT_STATUS_LABELS,
 } from '@/components/crm/events/eventStatusPalette';
+import CommissionAccountCard from '@/components/crm/commissions/CommissionAccountCard';
+import CommissionSettlementsPanel from '@/components/crm/commissions/CommissionSettlementsPanel';
+import CrmSellerWorkspace from '@/components/seller/CrmSellerWorkspace';
+import CrmOfferBrandingPanel from '@/components/seller/CrmOfferBrandingPanel';
+import { SellerCountBadge } from '@/components/seller/SellerInboxPanel';
+import { sellerInboxCounts, useSellerInbox } from '@/lib/seller/inbox';
 
 export interface Organization {
   primary_contact: any;
@@ -192,6 +205,10 @@ type TabType =
   | 'history'
   | 'invoices'
   | 'events'
+  | 'seller'
+  | 'settlements'
+  | 'branding'
+  | 'venue'
   | 'services';
 
 const businessTypeLabels = {
@@ -232,12 +249,28 @@ export default function OrganizationDetailPage() {
   const searchParams = useSearchParams();
   const { showSnackbar } = useSnackbar();
   const organizationId = params.id as string;
-  const { currentEmployee } = useCurrentEmployee();
+  const { currentEmployee, canManageModule, canViewModule } = useCurrentEmployee();
 
   const [activeTab, setActiveTab] = useState<TabType>('details');
   const [entityType, setEntityType] = useState<'organization' | 'contact' | null>(null);
   const [organization, setOrganization] = useState<Organization | null>(null);
   const [contact, setContact] = useState<Contact | null>(null);
+  const [sellerProfile, setSellerProfile] = useState<{ id: string; contactId: string } | null>(null);
+  const sellerProfileId = sellerProfile?.contactId === organizationId ? sellerProfile.id : null;
+  const canViewSellerSettlements = Boolean(sellerProfileId) && canViewModule('finances');
+  const sellerInbox = useSellerInbox(Boolean(sellerProfileId));
+  const sellerAlerts = sellerProfileId ? sellerInboxCounts(sellerInbox.items, sellerProfileId).total : 0;
+  useEffect(() => {
+    const requestedTab = searchParams.get('tab');
+    if (requestedTab === 'seller') setActiveTab(sellerProfileId ? 'seller' : 'customer360');
+    else if (requestedTab === 'customer360') setActiveTab('customer360');
+    else if (requestedTab === 'venue' && organization?.business_type === 'hotel') setActiveTab('venue');
+    else if (requestedTab === 'settlements') setActiveTab(canViewSellerSettlements ? 'settlements' : 'customer360');
+    else setActiveTab((current) =>
+      (current === 'settlements' && !canViewSellerSettlements) || (current === 'seller' && !sellerProfileId)
+        ? 'customer360' : current,
+    );
+  }, [sellerProfileId, canViewSellerSettlements, searchParams, organization?.id, organization?.business_type]);
   const [contactPersons, setContactPersons] = useState<ContactPerson[]>([]);
   const [organizationNotes, setOrganizationNotes] = useState<OrganizationNote[]>([]);
   const [history, setHistory] = useState<ContactHistory[]>([]);
@@ -278,6 +311,7 @@ export default function OrganizationDetailPage() {
   const [addingNote, setAddingNote] = useState(false);
 
   const [isAdmin, setIsAdmin] = useState(false);
+  const canManageSalespeople = isAdmin || canManageModule('contacts') || canManageModule('finances');
   const [allowedContactTabs, setAllowedContactTabs] = useState<string[]>(['details']);
   const [allowedOrganizationTabs, setAllowedOrganizationTabs] = useState<string[]>([
     'customer360',
@@ -487,18 +521,29 @@ export default function OrganizationDetailPage() {
         // To jest kontakt/osoba prywatna
         setEntityType('contact');
         setContact(entityData);
+        const { data: sellerProfile } = await supabase.from('sales_partner_profiles')
+          .select('id').eq('contact_id', entityData.id).maybeSingle();
+        setSellerProfile(sellerProfile ? { id: sellerProfile.id, contactId: entityData.id } : null);
         const requestedTab = searchParams.get('tab');
         setActiveTab(
-          requestedTab === 'details' ? 'details' : 'customer360',
+          requestedTab === 'seller' && sellerProfile ? 'seller'
+            : requestedTab === 'settlements' && sellerProfile && canViewModule('finances') ? 'settlements'
+            : requestedTab === 'details' ? 'details' : 'customer360',
         );
         setLoading(false);
         return; // Ważne - zakończ tutaj!
       } else if (entityType === 'organization') {
+        if (entityData.organization_type === 'subcontractor') {
+          const { data: linked } = await supabase.from('organizations').select('subcontractor_id').eq('id', organizationId).maybeSingle();
+          const subcontractorId = entityData.subcontractor_id || linked?.subcontractor_id;
+          router.replace(subcontractorId ? `/crm/subcontractors/${subcontractorId}` : '/crm/subcontractors');
+          return;
+        }
         // To jest organizacja
         setEntityType('organization');
         setOrganization(entityData);
         const requestedTab = searchParams.get('tab');
-        setActiveTab(requestedTab === 'details' ? 'details' : 'customer360');
+        setActiveTab(requestedTab === 'venue' && entityData.business_type === 'hotel' ? 'venue' : requestedTab === 'branding' ? 'branding' : requestedTab === 'details' ? 'details' : requestedTab === 'contacts' ? 'contacts' : 'customer360');
 
         // Mapuj kontakty
         const mappedContacts = (fullData.contacts || []).map((c: any) => ({
@@ -701,6 +746,7 @@ export default function OrganizationDetailPage() {
 
       if (!isValid || !validatedData) {
         setFormErrors(errors);
+        setActiveTab('details');
         showSnackbar('Popraw wymagane pola formularza', 'error');
         return;
       }
@@ -1151,10 +1197,12 @@ export default function OrganizationDetailPage() {
                 {!isIndividual && contact.position && (
                   <p className="mt-1 text-gray-400">{contact.position}</p>
                 )}
+                <ContactOrganizationLinks key={contact.id} contactId={contact.id} />
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
+              {!editMode&&<ContactQuickActions key={contact.id} context={{type:'contact',id:contact.id,name:contact.full_name,email:contact.email}}/>}
               {!editMode ? (
                 <ResponsiveActionBar
                   disabledBackground
@@ -1192,6 +1240,12 @@ export default function OrganizationDetailPage() {
                         label: 'Oferty',
                         icon: <FileText className="h-4 w-4" />,
                         onClick: () => router.push('/crm/offers?tab=offers'),
+                      },
+                      {
+                        label: sellerProfileId ? 'Sprzedaż sprzedawcy' : 'Mianuj sprzedawcą',
+                        icon: <BadgePercent className="h-4 w-4" />,
+                        onClick: () => sellerProfileId ? setActiveTab('seller') : router.push(`/crm/salespeople?new=1&contactId=${contact.id}`),
+                        show: canManageSalespeople,
                       },
                       {
                         label: 'Edytuj',
@@ -1240,8 +1294,10 @@ export default function OrganizationDetailPage() {
             {[
               { key: 'customer360' as TabType, label: 'Klient 360°', icon: History },
               { key: 'details' as TabType, label: 'Dane kontaktowe', icon: FileText },
+              ...(canViewSellerSettlements ? [{ key: 'settlements' as TabType, label: 'Rozliczenia prowizji', icon: CreditCard }] : []),
+              ...(sellerProfileId ? [{ key: 'seller' as TabType, label: 'Sprzedaż sprzedawcy', icon: BadgePercent }] : []),
             ].map(({ key, label, icon: TabIcon }) => (
-              <button
+              <button data-crm-tab-active={activeTab === key}
                 key={key}
                 onClick={() => setActiveTab(key)}
                 className={`flex shrink-0 items-center gap-2 px-4 py-3 font-medium transition-colors ${
@@ -1252,11 +1308,21 @@ export default function OrganizationDetailPage() {
               >
                 <TabIcon className="h-4 w-4" />
                 {label}
+                {key === 'seller' && <SellerCountBadge count={sellerAlerts} label="Sprawy sprzedawcy" />}
               </button>
             ))}
           </div>
 
-          {activeTab === 'customer360' && <Customer360Panel contact={contact} />}
+          {activeTab === 'customer360' && (
+            <div className="space-y-6">
+              <Customer360Panel contact={contact} onOwnerSaved={(ownerId)=>setContact((current)=>current && current.owner_id!==ownerId ? {...current,owner_id:ownerId} : current)} />
+              {canViewSellerSettlements && <button type="button" onClick={() => setActiveTab('settlements')} className="rounded-xl bg-white/5 px-5 py-4 text-sm text-[#d3bb73] hover:bg-white/10">Zobacz rozliczenia prowizji, wypłaty i pozostałe saldo →</button>}
+            </div>
+          )}
+
+          {activeTab === 'seller' && sellerProfileId && <CrmSellerWorkspace key={sellerProfileId} partnerId={sellerProfileId} contactId={contact.id} />}
+
+          {activeTab === 'settlements' && canViewSellerSettlements && <CommissionSettlementsPanel key={contact.id} mode="crm" accountType="contact" accountId={contact.id} />}
 
           <ComposeEmailModal
             isOpen={showContactEmailModal}
@@ -1604,7 +1670,7 @@ export default function OrganizationDetailPage() {
                     'bg-gray-800/30 text-gray-400'
                   }`}
                 >
-                  {organization.status}
+                  {systemLabel(organization.status)}
                 </span>
               </div>
               <p className="mt-1 text-gray-400">
@@ -1616,9 +1682,12 @@ export default function OrganizationDetailPage() {
               )}
             </div>
           </div>
+          <div className="flex shrink-0 items-center gap-3">
+          {!editMode&&<ContactQuickActions key={organization.id} context={{type:'organization',id:organization.id,name:displayName,email:organization.email}}/>}
           {!editMode ? (
             <ResponsiveActionBar
               disabledBackground
+              alwaysDropdown
               actions={[
                 {
                   label: 'Zadzwoń',
@@ -1656,6 +1725,7 @@ export default function OrganizationDetailPage() {
           ) : (
             <ResponsiveActionBar
               disabledBackground
+              alwaysDropdown
               actions={[
                 {
                   label: saving ? 'Zapisywanie…' : 'Zapisz',
@@ -1677,6 +1747,7 @@ export default function OrganizationDetailPage() {
               ]}
             />
           )}
+          </div>
         </div>
 
         <ComposeEmailModal
@@ -1694,6 +1765,7 @@ export default function OrganizationDetailPage() {
           {[
             { key: 'customer360' as TabType, label: 'Klient 360°', icon: History },
             { key: 'details' as TabType, label: 'Szczegóły', icon: FileText },
+            ...(organization.business_type === 'hotel' ? [{ key: 'venue' as TabType, label: 'Sale i przestrzenie', icon: Building2 }] : []),
             {
               key: 'contacts' as TabType,
               label: `Kontakty (${contactPersons.length})`,
@@ -1701,6 +1773,7 @@ export default function OrganizationDetailPage() {
             },
             { key: 'invoices' as TabType, label: `Faktury (${invoices.length})`, icon: Receipt },
             { key: 'events' as TabType, label: `Realizacje (${events.length})`, icon: Calendar },
+            { key: 'branding' as TabType, label: 'Branding ofert', icon: FileText },
             {
               key: 'notes' as TabType,
               label: `Notatki (${organizationNotes.length})`,
@@ -1711,9 +1784,9 @@ export default function OrganizationDetailPage() {
               ? [{ key: 'services' as TabType, label: 'Usługi', icon: Wrench }]
               : []),
           ]
-            .filter(({ key }) => allowedOrganizationTabs.includes(key))
+            .filter(({ key }) => key === 'branding' ? canManageSalespeople : allowedOrganizationTabs.includes(key === 'venue' ? 'details' : key))
             .map(({ key, label, icon: Icon }) => (
-              <button
+              <button data-crm-tab-active={activeTab === key}
                 key={key}
                 onClick={() => setActiveTab(key)}
                 className={`flex items-center space-x-2 px-4 py-3 font-medium transition-colors ${
@@ -1729,7 +1802,21 @@ export default function OrganizationDetailPage() {
         </div>
 
         {activeTab === 'customer360' && (
-          <Organization360Panel organization={organization} />
+          <div className="space-y-6">
+            <Organization360Panel organization={organization} />
+            <CommissionAccountCard accountType="organization" accountId={organization.id} />
+          </div>
+        )}
+
+        {activeTab === 'branding' && (
+          <CrmOfferBrandingPanel key={organization.id} organizationId={organization.id}
+            hotelSpacesHref={organization.business_type === 'hotel' ? `/crm/contacts/${organization.id}?tab=venue` : undefined}/>
+        )}
+
+        {activeTab === 'venue' && organization.business_type === 'hotel' && allowedOrganizationTabs.includes('details') && (
+          <OrganizationHotelSpaces organizationId={organization.id} locationId={organization.location_id}
+            canEditLocation={canManageModule('locations')} canChangeLink={canManageModule('contacts')}
+            editingOrganization={editMode} onChangeLink={() => { if (!editMode) handleEdit(); setActiveTab('details'); }}/>
         )}
 
         {activeTab === 'details' && (
@@ -1747,7 +1834,8 @@ export default function OrganizationDetailPage() {
             loadingGUS={loadingGUS}
             registryLookup={registryLookup}
             handleFetchFromGUS={handleFetchFromGUS}
-            onOpenAddLocation={() => setShowAddLocationModal(true)}
+            onOpenAddLocation={canManageModule('locations') ? () => setShowAddLocationModal(true) : undefined}
+            onOpenHotelSpaces={() => setActiveTab('venue')}
             primaryContact={primaryContact}
             legalRepresentative={legalRepresentative}
             decisionMakers={decisionMakers}
@@ -1782,11 +1870,15 @@ export default function OrganizationDetailPage() {
                     key={contact.id}
                     className="flex items-start justify-between rounded-lg border border-gray-700 bg-[#0f1119] p-4"
                   >
-                    <div className="flex items-start space-x-3">
+                    <Link
+                      href={`/crm/contacts/${contact.id}`}
+                      className="group flex min-w-0 flex-1 items-start space-x-3 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-[#d3bb73]/60"
+                      title="Otwórz kartę kontaktu"
+                    >
                       <User className="mt-1 h-5 w-5 text-[#d3bb73]" />
                       <div>
                         <div className="flex items-center space-x-2">
-                          <h3 className="font-medium text-white">
+                          <h3 className="font-medium text-white transition-colors group-hover:text-[#d3bb73]">
                             {contact.full_name || `${contact.first_name} ${contact.last_name}`}
                           </h3>
                           {contact.is_primary && (
@@ -1819,7 +1911,7 @@ export default function OrganizationDetailPage() {
                           )}
                         </div>
                       </div>
-                    </div>
+                    </Link>
                     <button
                       onClick={() => handleDeleteContact(contact.relation_id!)}
                       className="p-1 text-red-400 hover:text-red-300"
@@ -2190,7 +2282,7 @@ export default function OrganizationDetailPage() {
                 </div>
 
                 <div className="border-t border-gray-700 pt-4">
-                  <button
+                  <button data-crm-action="secondary"
                     onClick={() => setAddContactMode('create')}
                     className="flex w-full items-center justify-center space-x-2 rounded-lg border border-[#d3bb73] px-4 py-2 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/10"
                   >

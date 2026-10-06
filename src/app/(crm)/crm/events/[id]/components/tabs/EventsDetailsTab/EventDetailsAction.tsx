@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ChevronDown,
   CheckCircle2,
@@ -26,6 +26,8 @@ import { EventStatus } from '@/components/crm/Calendar/types';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { EventCategoryRow } from '@/lib/CRM/events/eventsData.server';
 import { EVENT_STATUS_BADGE_CLASSES } from '@/components/crm/events/eventStatusPalette';
+import EventAcceptanceConfirmationPreview, { useEventAcceptanceConfirmationPreview } from '@/components/crm/events/EventAcceptanceConfirmationPreview';
+import { sendEventAcceptanceConfirmation } from '@/lib/CRM/events/eventAcceptanceConfirmation';
 
 export const eventStatusLabels: Record<EventStatus, string> = {
   inquiry: 'Zapytanie',
@@ -125,6 +127,12 @@ export default function EventDetailsAction({
   const [savingStatus, setSavingStatus] = useState(false);
   const [showSendConfirmation, setShowSendConfirmation] = useState(false);
   const [sendingConfirmationEmail, setSendingConfirmationEmail] = useState(false);
+  const sendingConfirmationRef = useRef(false);
+  const [confirmationDelivery, setConfirmationDelivery] = useState<{ recipient: string; sentAt: string } | null>(null);
+  const [confirmationHistoryError, setConfirmationHistoryError] = useState(false);
+  const [confirmationHistoryLoading, setConfirmationHistoryLoading] = useState(true);
+  const [confirmationHistoryVersion, setConfirmationHistoryVersion] = useState(0);
+  const confirmationPreview = useEventAcceptanceConfirmationPreview(showSendConfirmation ? event?.id || null : null);
 
   useEffect(() => {
     if (event?.status) {
@@ -256,6 +264,10 @@ export default function EventDetailsAction({
 
   const handleStatusChange = async () => {
     if (!event?.id) return;
+    if (draftStatus !== currentStatus && ['in_preparation', 'ready_for_live'].includes(draftStatus)) {
+      showSnackbar('Ten status ustawia magazyn podczas przygotowania realizacji.', 'info');
+      return;
+    }
 
     try {
       setSavingStatus(true);
@@ -308,67 +320,26 @@ export default function EventDetailsAction({
   };
 
   const handleSendAcceptedEmail = async () => {
-    const recipientEmail =
-      contact?.email ||
-      (event as any).contact_person?.email ||
-      organization?.email ||
-      (event as any).organization?.email ||
-      null;
-
-    if (!recipientEmail) {
-      showSnackbar('Brak adresu e-mail osoby kontaktowej / klienta', 'error');
+    if (sendingConfirmationRef.current) return;
+    const recipientEmail = confirmationPreview.preview?.recipientEmail;
+    if (!event?.id || !recipientEmail) {
+      showSnackbar('Brak potwierdzonego odbiorcy wiadomości dla tego wydarzenia.', 'error');
       return;
     }
-
+    sendingConfirmationRef.current = true;
     setSendingConfirmationEmail(true);
     try {
-      const { data: sessionData } = await supabase.auth.getSession();
-      const token = sessionData?.session?.access_token;
-      if (!token) {
-        showSnackbar('Brak sesji - nie można wysłać maila', 'error');
-        return;
-      }
-
-      const resolvedEventId = event?.id;
-
-      console.log('[EventDetailsAction] event:', event);
-      console.log('[EventDetailsAction] resolvedEventId:', resolvedEventId);
-
-      if (!resolvedEventId) {
-        showSnackbar('Brak ID wydarzenia - nie można wysłać potwierdzenia', 'error');
-        return;
-      }
-
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-event-confirmation`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-
-          body: JSON.stringify({
-            eventId: event.id,
-            acceptedById: employee?.id ?? null,
-          }),
-        },
-      );
-
-      const result = await response.json();
-      if (result.success === true) {
-        showSnackbar(`Wysłano potwierdzenie do ${result.recipientEmail}`, 'success');
-      } else {
-        showSnackbar(
-          result.message || result.error || 'Nie udało się wysłać potwierdzenia',
-          'error',
-        );
-      }
+      const result = await sendEventAcceptanceConfirmation({ eventId: event.id, expectedRecipientEmail: recipientEmail });
+      setConfirmationDelivery({ recipient: result.recipientEmail, sentAt: result.sentAt });
+      setConfirmationHistoryError(false);
+      showSnackbar(`Wysłano potwierdzenie do ${result.recipientEmail}`, 'success');
+      if (!result.historyRecorded) showSnackbar('Wiadomość wysłana, ale nie zapisano historii potwierdzenia. Nie wysyłaj ponownie bez sprawdzenia wiadomości wysłanych.', 'warning');
     } catch (err: any) {
       console.error('[EventDetailsAction] Error sending confirmation email:', err);
       showSnackbar(err?.message || 'Nie udało się wysłać potwierdzenia', 'error');
     } finally {
       setSendingConfirmationEmail(false);
+      sendingConfirmationRef.current = false;
       setShowSendConfirmation(false);
       router.refresh();
     }
@@ -377,6 +348,28 @@ export default function EventDetailsAction({
   const canManageStatus =
     canEditStatus ??
     (employee?.permissions?.includes('events_manage') || employee?.permissions?.includes('admin'));
+
+  const acceptedForConfirmation = ['offer_accepted', 'in_preparation', 'ready_for_live', 'in_progress', 'completed', 'invoiced', 'settled'].includes(currentStatus);
+  useEffect(() => {
+    let active = true;
+    setConfirmationDelivery(null);
+    setConfirmationHistoryError(false);
+    if (!event.id || !canManageStatus || !acceptedForConfirmation) {
+      setConfirmationHistoryLoading(false);
+      return;
+    }
+    setConfirmationHistoryLoading(true);
+    supabase.from('event_audit_log').select('new_value,created_at')
+      .eq('event_id', event.id).eq('field_name', 'acceptance_confirmation_email').eq('action', 'email_sent')
+      .order('created_at', { ascending: false }).limit(1).maybeSingle()
+      .then(({ data, error }) => {
+        if (!active) return;
+        setConfirmationHistoryLoading(false);
+        setConfirmationHistoryError(Boolean(error));
+        if (data) setConfirmationDelivery({ recipient: data.new_value || '', sentAt: data.created_at });
+      });
+    return () => { active = false; };
+  }, [event.id, canManageStatus, acceptedForConfirmation, confirmationHistoryVersion]);
 
   const handleShowPdf = async () => {
     const { data: agenda, error: agendaError } = await supabase
@@ -593,7 +586,10 @@ export default function EventDetailsAction({
                     autoFocus
                     className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1117] px-3 py-2 text-sm text-[#e5e4e2] transition-colors focus:border-[#d3bb73] focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {Object.entries(eventStatusLabels).map(([value, label]) => (
+                    {['in_preparation', 'ready_for_live'].includes(currentStatus) && (
+                      <option value={currentStatus} disabled>{eventStatusLabels[currentStatus]} · status magazynu</option>
+                    )}
+                    {Object.entries(eventStatusLabels).filter(([value]) => !['in_preparation', 'ready_for_live'].includes(value)).map(([value, label]) => (
                       <option key={value} value={value}>
                         {label}
                       </option>
@@ -617,6 +613,30 @@ export default function EventDetailsAction({
                   </div>
                 </div>
               </div>
+            )}
+          </div>
+        )}
+
+        {canManageStatus && acceptedForConfirmation && (
+          <div className="space-y-2">
+            {confirmationHistoryLoading ? (
+              <p className="text-xs text-[#e5e4e2]/50">Sprawdzam potwierdzenie e-mail…</p>
+            ) : confirmationHistoryError ? (
+              <p role="alert" className="text-xs text-amber-300">Nie udało się sprawdzić historii wysyłki. <button type="button" onClick={() => setConfirmationHistoryVersion((value) => value + 1)} className="underline">Ponów</button></p>
+            ) : (
+              <>
+                <button type="button" onClick={() => setShowSendConfirmation(true)} disabled={sendingConfirmationEmail}
+                  className="flex w-full items-center gap-2 rounded-lg bg-[#d3bb73]/10 px-3 py-2 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/20 disabled:opacity-50">
+                  <Mail className="h-4 w-4" />
+                  {confirmationDelivery ? 'Wyślij potwierdzenie ponownie' : 'Wyślij potwierdzenie do klienta'}
+                </button>
+                {confirmationDelivery && (
+                  <div>
+                    <span className="inline-flex items-center gap-1.5 rounded-md bg-emerald-500/10 px-2 py-1 text-xs text-emerald-300"><CheckCircle2 className="h-3.5 w-3.5" />Potwierdzenie wysłane e-mailem</span>
+                    <p className="mt-1 break-all text-xs text-[#e5e4e2]/50">{new Date(confirmationDelivery.sentAt).toLocaleString('pl-PL')} · {confirmationDelivery.recipient}</p>
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}
@@ -669,23 +689,15 @@ export default function EventDetailsAction({
             </div>
 
             <p className="mb-6 text-sm leading-relaxed text-[#e5e4e2]/80">
-              Status został zmieniony na{' '}
-              <span className="font-medium text-[#d3bb73]">Oferta zaakceptowana</span>.
-              <br />
-              Czy wysłać maila z potwierdzeniem realizacji do klienta?
+              {confirmationDelivery ? 'Potwierdzenie zostało już wysłane. Czy wysłać je ponownie do klienta?' : 'Czy wysłać e-mail z potwierdzeniem realizacji do klienta?'}
             </p>
 
-            {(contact?.email || organization?.email) && (
-              <div className="mb-4 rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] px-3 py-2 text-xs text-[#e5e4e2]/60">
-                Odbiorca:{' '}
-                <span className="text-[#e5e4e2]">{contact?.email || organization?.email}</span>
-              </div>
-            )}
+            <div className="mb-4"><EventAcceptanceConfirmationPreview {...confirmationPreview} /></div>
 
             <div className="flex gap-3">
               <button
                 onClick={handleSendAcceptedEmail}
-                disabled={sendingConfirmationEmail}
+                disabled={sendingConfirmationEmail || confirmationPreview.loading || !confirmationPreview.preview?.recipientEmail}
                 className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-50"
               >
                 {sendingConfirmationEmail ? (

@@ -1,5 +1,10 @@
 'use client';
 
+import CustomerInquiryHistory from './CustomerInquiryHistory';
+
+import { formatSystemSubject } from '@/lib/ui/systemLabels';
+import SystemBadge from '@/components/UI/SystemBadge';
+
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
@@ -113,7 +118,7 @@ const matchesInquiry = (details: any, email: string, phones: string[]) => {
   return Boolean((email && inquiryEmail === email) || (inquiryPhone && phones.includes(inquiryPhone)));
 };
 
-export default function Customer360Panel({ contact }: { contact: Contact360 }) {
+export default function Customer360Panel({ contact, onOwnerSaved }: { contact: Contact360; onOwnerSaved?: (ownerId: string | null) => void }) {
   const router = useRouter();
   const { showSnackbar } = useSnackbar();
   const [data, setData] = useState<Customer360State>(EMPTY_STATE);
@@ -127,6 +132,12 @@ export default function Customer360Panel({ contact }: { contact: Contact360 }) {
   const [mergeSource, setMergeSource] = useState<Customer360State['duplicates'][number] | null>(null);
   const [mergePreview, setMergePreview] = useState<any>(null);
   const [mergeLoading, setMergeLoading] = useState(false);
+
+  useEffect(() => {
+    if (loading || error || window.location.hash !== '#contact-responsibility') return;
+    const frame = window.requestAnimationFrame(() => document.getElementById('contact-responsibility')?.scrollIntoView({ block: 'start' }));
+    return () => window.cancelAnimationFrame(frame);
+  }, [loading, error, contact.id]);
 
   useEffect(() => {
     let active = true;
@@ -258,10 +269,10 @@ export default function Customer360Panel({ contact }: { contact: Contact360 }) {
           ...inquiries.map((inquiry: any) => ({
             id: `inquiry-${inquiry.id}`,
             kind: 'inquiry' as const,
-            title: inquiry.title,
+            title: formatSystemSubject(inquiry.title),
             description: inquiry.description || inquiry.inquiry_details?.source_message_content,
             date: inquiry.created_at,
-            href: `/crm/tasks/${inquiry.id}`,
+            href: `/crm/inquiries/${inquiry.id}`,
             status: inquiry.inquiry_stage || inquiry.status,
           })),
           ...(meetingsResult.data || [])
@@ -355,6 +366,8 @@ export default function Customer360Panel({ contact }: { contact: Contact360 }) {
       .eq('id', contact.id);
     setSavingOwnership(false);
     if (saveError) return showSnackbar(saveError.message || 'Nie udało się zapisać opiekuna', 'error');
+    onOwnerSaved?.(ownerId || null);
+    window.dispatchEvent(new Event('seller-workspace-changed'));
     showSnackbar('Opiekun i etap relacji zostały zapisane', 'success');
   };
 
@@ -414,6 +427,7 @@ export default function Customer360Panel({ contact }: { contact: Contact360 }) {
 
   return (
     <div className="space-y-5">
+      <CustomerInquiryHistory contactId={contact.id} />
       {data.duplicates.length > 0 && (
         <section className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
           <div className="flex items-start gap-3">
@@ -460,7 +474,7 @@ export default function Customer360Panel({ contact }: { contact: Contact360 }) {
                 return (
                   <button key={item.id} disabled={!item.href} onClick={() => item.href && router.push(item.href)} className="flex w-full items-start gap-3 px-5 py-4 text-left transition-colors enabled:hover:bg-white/[0.03] disabled:cursor-default">
                     <div className={`mt-0.5 rounded-lg p-2 ${config.className}`}><Icon className="h-4 w-4" /></div>
-                    <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-x-2 gap-y-1"><span className="font-medium text-gray-100">{item.title}</span><span className={`rounded-full px-2 py-0.5 text-[11px] ${config.className}`}>{config.label}</span>{item.status && <span className="text-xs text-gray-500">{item.status}</span>}</div>{item.description && <p className="mt-1 line-clamp-2 text-sm text-gray-400">{cleanText(item.description)}</p>}<p className="mt-1.5 text-xs text-gray-500">{formatDate(item.date)}</p></div>
+                    <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-x-2 gap-y-1"><span className="font-medium text-gray-100">{item.title}</span><span className={`rounded-full px-2 py-0.5 text-[11px] ${config.className}`}>{config.label}</span>{item.status && <SystemBadge value={item.status} />}</div>{item.description && <p className="mt-1 line-clamp-2 text-sm text-gray-400">{cleanText(item.description)}</p>}<p className="mt-1.5 text-xs text-gray-500">{formatDate(item.date)}</p></div>
                   </button>
                 );
               })}
@@ -474,7 +488,7 @@ export default function Customer360Panel({ contact }: { contact: Contact360 }) {
             <p className="mt-3 text-sm leading-6 text-gray-200">{recommendation}</p>
           </section>
 
-          <section className="rounded-xl border border-gray-800 bg-[#1a1d2e] p-5">
+          <section id="contact-responsibility" className="scroll-mt-6 rounded-xl bg-[#1a1d2e] p-5">
             <h2 className="font-semibold text-white">Odpowiedzialność za klienta</h2>
             <div className="mt-4 space-y-3">
               <label className="block text-xs text-gray-400">Opiekun

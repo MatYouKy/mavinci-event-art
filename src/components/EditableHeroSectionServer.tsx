@@ -29,7 +29,15 @@ async function getHeroImageServer(section: string, pageSlug: string, citySlug?: 
 
   query = isUniversalTable ? query.eq('page_slug', pageSlug) : query.eq('section', 'hero');
 
-  const { data: pageImage, error } = await query.maybeSingle();
+  let { data: pageImage, error } = await query.maybeSingle();
+  if (cleanSection === 'quizy-teleturnieje' && pageSlug.replace(/^\/+/, '').startsWith('oferta/quizy-teleturnieje/')) {
+    const { data: local } = await supabase.from('service_hero_images').select('*')
+      .eq('page_slug', pageSlug.replace(/^\/+/, '')).eq('is_active', true).maybeSingle();
+    if (local) {
+      pageImage = { ...pageImage, ...local, image_url: local.image_url || pageImage?.image_url };
+      error = null;
+    }
+  }
 
   if (error) {
     console.error(`Hero fetch error for section=${section} table=${pageTableName}`, error);

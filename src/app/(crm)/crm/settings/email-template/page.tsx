@@ -504,7 +504,7 @@ export default function EmailTemplateSettingsPage() {
               ...(editingId ? [{ key: 'editor' as Tab, label: 'Edytor' }] : []),
             ]
           ).map((t) => (
-            <button
+            <button data-crm-tab-active={tab === t.key}
               key={t.key}
               onClick={() => setTab(t.key)}
               className={`px-4 py-2 text-sm transition-colors ${

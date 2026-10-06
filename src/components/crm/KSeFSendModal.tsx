@@ -17,6 +17,7 @@ import {
 interface KSeFSendModalProps {
   invoiceId: string;
   invoiceNumber: string;
+  completedResult?: { ksef_reference_number: string; ksef_timestamp: string } | null;
   onSuccess: (result: { ksef_reference_number: string; ksef_timestamp: string }) => void;
   onError: (error: string) => void;
   onClose: () => void;
@@ -82,18 +83,22 @@ const STEPS_CONFIG: Omit<Step, 'status'>[] = [
 export default function KSeFSendModal({
   invoiceId,
   invoiceNumber,
+  completedResult,
   onSuccess,
   onError,
   onClose,
 }: KSeFSendModalProps) {
   const [steps, setSteps] = useState<Step[]>(
-    STEPS_CONFIG.map((step) => ({ ...step, status: 'pending' as StepStatus })),
+    STEPS_CONFIG.map((step) => ({
+      ...step,
+      status: (completedResult ? 'completed' : 'pending') as StepStatus,
+    })),
   );
 
-  const [currentStepIndex, setCurrentStepIndex] = useState(-1);
-  const [finished, setFinished] = useState(false);
+  const [currentStepIndex, setCurrentStepIndex] = useState(completedResult ? STEPS_CONFIG.length - 1 : -1);
+  const [finished, setFinished] = useState(Boolean(completedResult));
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [ksefRef, setKsefRef] = useState<string | null>(null);
+  const [ksefRef, setKsefRef] = useState<string | null>(completedResult?.ksef_reference_number ?? null);
   const [elapsedTime, setElapsedTime] = useState(0);
   const [pollAttempt, setPollAttempt] = useState(0);
   const [pollMaxAttempts, setPollMaxAttempts] = useState(MAX_POLL_ATTEMPTS);
@@ -101,7 +106,7 @@ export default function KSeFSendModal({
   const startTimeRef = useRef(Date.now());
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const currentStepRef = useRef(-1);
-  const resultReceivedRef = useRef(false);
+  const resultReceivedRef = useRef(Boolean(completedResult));
 
   const onSuccessRef = useRef(onSuccess);
   const onErrorRef = useRef(onError);
@@ -116,6 +121,26 @@ export default function KSeFSendModal({
   }, [onError]);
 
   useEffect(() => {
+    if (finished && timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  }, [finished]);
+
+  useEffect(() => {
+    // A completed invoice may be remounted while its parent refreshes the data.
+    // Restore the receipt instead of treating that mount as a new send request.
+    if (completedResult) {
+      requestStartedRef.current = true;
+      resultReceivedRef.current = true;
+      setKsefRef(completedResult.ksef_reference_number);
+      setErrorMessage(null);
+      setSteps(STEPS_CONFIG.map((step) => ({ ...step, status: 'completed' as StepStatus })));
+      setCurrentStepIndex(STEPS_CONFIG.length - 1);
+      setFinished(true);
+      return;
+    }
+
     if (requestStartedRef.current) return;
 
     requestStartedRef.current = true;
@@ -127,6 +152,9 @@ export default function KSeFSendModal({
     }, 500);
 
     const processEvent = (data: any) => {
+      // Terminal results are final, even if the stream emits a later progress/error event.
+      if (resultReceivedRef.current) return;
+
       if (data.type === 'progress') {
         const progressIndex = STEPS_CONFIG.findIndex((step) => step.id === data.step);
         if (progressIndex === -1) return;
@@ -160,10 +188,16 @@ export default function KSeFSendModal({
           setSteps((old) => old.map((step) => ({ ...step, status: 'completed' as StepStatus })));
           setCurrentStepIndex(STEPS_CONFIG.length - 1);
           setFinished(true);
-          onSuccessRef.current({
+          const result = {
             ksef_reference_number: data.ksef_reference_number,
             ksef_timestamp: data.ksef_timestamp,
-          });
+          };
+          // Refresh failures in the parent must not turn an accepted invoice into a send error.
+          void Promise.resolve()
+            .then(() => onSuccessRef.current(result))
+            .catch((error) => {
+              console.error('[KSeF modal] post-success refresh error', error);
+            });
         } else {
           const msg = data.error || 'Nieznany błąd KSeF';
           const details = Array.isArray(data.details) ? data.details.join(', ') : data.details;
@@ -226,7 +260,7 @@ export default function KSeFSendModal({
         const decoder = new TextDecoder();
         let buffer = '';
 
-        while (true) {
+        while (!resultReceivedRef.current) {
           const { done, value } = await reader.read();
           if (done) break;
 
@@ -262,6 +296,8 @@ export default function KSeFSendModal({
           onErrorRef.current(msg);
         }
       } catch (err: any) {
+        if (resultReceivedRef.current) return;
+
         console.error('[KSeF modal] fetch error', {
           name: err?.name,
           message: err?.message,
@@ -285,7 +321,7 @@ export default function KSeFSendModal({
         timerRef.current = null;
       }
     };
-  }, [invoiceId]);
+  }, [invoiceId, completedResult]);
 
   const formatTime = (seconds: number) => {
     const minutes = Math.floor(seconds / 60);

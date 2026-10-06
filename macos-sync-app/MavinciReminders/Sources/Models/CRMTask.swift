@@ -4,17 +4,29 @@ import Foundation
 
 struct CRMTasksResponse: Codable {
     let success: Bool
+    let task_scope: String?
     let employee_id: String?
     let employee_name: String?
     let tasks: [CRMTask]?
     let synced_at: String?
     let error: String?
+
+    /// Pure validation: do not touch EventKit, credentials or local state before this succeeds.
+    func validatePersonalScope() throws {
+        guard success, task_scope == "tasks_board_assigned_v1",
+              let employee = employee_id, UUID(uuidString: employee) != nil,
+              let tasks,
+              tasks.allSatisfy({ $0.assigned_employee_id == employee && $0.event_id == nil && !$0.is_private }) else {
+            throw CRMAPIError.unsupportedTaskScope
+        }
+    }
 }
 
 // MARK: - CRM Task
 
 struct CRMTask: Codable, Identifiable {
     let id: String
+    let assigned_employee_id: String?
     let title: String
     let description: String?
     let priority: String  // low, medium, high, urgent
@@ -37,6 +49,7 @@ struct CRMTask: Codable, Identifiable {
 struct CompletionUpdate: Codable {
     let task_id: String
     let completed: Bool
+    var expected_updated_at: String? = nil
 }
 
 struct CompletionRequest: Codable {

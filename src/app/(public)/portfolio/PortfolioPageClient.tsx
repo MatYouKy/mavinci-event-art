@@ -14,12 +14,12 @@ import { uploadImage } from '@/lib/storage';
 import { IUploadImage } from '@/types/image';
 import { supabase } from '@/lib/supabase/browser';
 import { CategoryBreadcrumb } from '@/components/CategoryBreadcrumb';
+import cardStyles from '@/components/PortfolioCard.module.css';
 
 export default function PortfolioPageClient() {
   const router = useRouter();
   const { isEditMode } = useEditMode();
   const { showSnackbar } = useSnackbar();
-  const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [projects, setProjects] = useState<PortfolioProject[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -294,21 +294,20 @@ export default function PortfolioPageClient() {
                   return (
                     <div
                       key={projectId}
-                      className="group relative overflow-hidden rounded-2xl"
-                      onMouseEnter={() => setHoveredId(projectId)}
-                      onMouseLeave={() => setHoveredId(null)}
+                      className={`${cardStyles.card} group relative overflow-hidden rounded-2xl`}
+
                     >
                       <a href={`/portfolio/${projectSlug}`} className="block">
-                        <div className="relative aspect-[4/5] overflow-hidden">
+                        <div className={cardStyles.frame}>
                           <img
                             src={project.image_metadata?.desktop?.src || project.image}
                             alt={project.alt || project.title}
-                            className="h-full w-full object-cover transition-all duration-700 group-hover:scale-110"
+                            className={`${cardStyles.image} transition-transform duration-700 motion-safe:group-hover:scale-110`}
                           />
 
                           <div className="absolute inset-0 bg-gradient-to-t from-[#1c1f33] via-[#1c1f33]/60 to-transparent opacity-80 transition-opacity duration-500 group-hover:opacity-95"></div>
 
-                          <div className="absolute right-4 top-4 flex translate-y-[-10px] transform gap-2 opacity-0 transition-all duration-500 group-hover:translate-y-0 group-hover:opacity-100">
+                          <div className={cardStyles.actions}>
                             {isEditMode ? (
                               <>
                                 <a
@@ -340,29 +339,27 @@ export default function PortfolioPageClient() {
                             )}
                           </div>
 
-                          <div className="absolute bottom-0 left-0 right-0 transform p-6 transition-all duration-500">
+                          <div className={cardStyles.caption}>
                             <div className="mb-3">
                               <span className="inline-block rounded-full border border-[#d3bb73]/40 bg-[#d3bb73]/20 px-3 py-1 text-xs font-light tracking-wide text-[#d3bb73] backdrop-blur-md">
                                 {project.category}
                               </span>
                             </div>
 
-                            <h3 className="mb-2 transform text-xl font-light text-[#e5e4e2] transition-all duration-500 group-hover:translate-x-2 md:text-2xl">
+                            <h3 className={cardStyles.title}>
                               {project.title}
                             </h3>
 
-                            <p
-                              className={`text-sm font-light leading-relaxed text-[#e5e4e2]/70 transition-all duration-500 ${
-                                hoveredId === projectId
-                                  ? 'max-h-20 translate-y-0 opacity-100'
-                                  : 'max-h-0 translate-y-4 opacity-0'
-                              }`}
-                            >
-                              {project.description}
-                            </p>
+                            {project.description && (
+                    <div className={cardStyles.description}>
+                      <div className={cardStyles.descriptionInner}>
+                        <p className={cardStyles.descriptionText}>{project.description}</p>
+                      </div>
+                    </div>
+                  )}
                           </div>
 
-                          <div className="pointer-events-none absolute inset-0 rounded-2xl border-2 border-transparent transition-all duration-500 group-hover:border-[#d3bb73]/30"></div>
+                          <div className="pointer-events-none absolute inset-0 rounded-2xl border border-white/5 transition-all duration-500 group-hover:border-[#d3bb73]/15"></div>
                         </div>
                       </a>
                     </div>

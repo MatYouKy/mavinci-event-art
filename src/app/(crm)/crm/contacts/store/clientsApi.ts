@@ -72,6 +72,7 @@ export const clientsApi = createApi({
               .order('created_at', { ascending: false });
 
             if (orgTypeFilter) orgQuery = orgQuery.eq('organization_type', orgTypeFilter);
+            else orgQuery = orgQuery.or('organization_type.is.null,organization_type.neq.subcontractor');
 
             const { data: orgs, error: orgErr } = await orgQuery;
             if (orgErr) return { error: toErr('CUSTOM_ERROR', orgErr.message) };

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { getCredentials, supabase } from '@/lib/ksef/db';
 import { createSupabaseServerClient } from '@/lib/supabase/server.app';
+import { loadInvoiceFinanceAccess } from '@/lib/invoices/financeAccess';
 import { getKSeFInvoices, getKSeFInvoiceXml } from '../../client';
 import { parsePaymentData } from '../../parsePaymentData';
 import { parseFA3InvoiceXml } from '../../parseInvoiceXml';
@@ -81,6 +82,10 @@ export async function POST(req: Request) {
     const { data: authData } = await userClient.auth.getUser();
     if (!authData.user) {
       return NextResponse.json({ success: false, error: 'Wymagane logowanie.' }, { status: 401 });
+    }
+    const financeAccess = await loadInvoiceFinanceAccess(userClient);
+    if (!financeAccess.canManageCompanyFinance) {
+      return NextResponse.json({ success: false, error: 'Synchronizacja kosztów KSeF jest dostępna tylko dla finansów firmy.' }, { status: 403 });
     }
     const { data: canManageCompany, error: permissionError } = await userClient.rpc(
       'can_manage_invoice_company',

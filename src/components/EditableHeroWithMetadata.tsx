@@ -11,7 +11,7 @@ import { useMobile } from '@/hooks/useMobile';
 import { useHeroImage } from './PageImage/hooks/useHeroImage';
 import { supabase } from '@/lib/supabase/browser';
 import { IconGridSelector } from './IconGridSelector';
-import Image from 'next/image';
+import { conferenceHeroImage } from '@/lib/conferenceHeroImage';
 
 interface EditableHeroWithMetadataProps {
   section: string;
@@ -89,7 +89,7 @@ export default function EditableHeroWithMetadata({
     if (!pathname) return '/';
     const segments = pathname.split('/').filter(Boolean);
     if (segments.length <= 1) return '/';
-    const parent = '/' + segments.slice(0, -2).join('/');
+    const parent = '/' + segments.slice(0, -1).join('/');
     return parent || '/';
   }, [pathname]);
 
@@ -123,12 +123,13 @@ export default function EditableHeroWithMetadata({
   };
 
   useEffect(() => {
-    if (imageUrl && imageUrl !== initialImageUrl) {
+    if (isEditMode && imageUrl && imageUrl !== initialImageUrl) {
       updateMetadataOgImage(imageUrl);
     }
-  }, [imageUrl]);
+  }, [imageUrl, isEditMode]);
 
   const getTableName = () => {
+    if (pageSlug.replace(/^\/+/, '').startsWith('oferta/quizy-teleturnieje/')) return 'service_hero_images';
     const cleanSection = section.replace('-hero', '');
 
     const dedicatedTables: Record<string, string> = {
@@ -336,6 +337,7 @@ export default function EditableHeroWithMetadata({
     <div className="relative">
       <PageHeroImage
         section={section}
+        pageSlug={pageSlug}
         defaultImage={resolvedDefaultImage}
         defaultOpacity={initialOpacity}
       >
@@ -481,7 +483,7 @@ export default function EditableHeroWithMetadata({
 
                     <div className="flex flex-wrap gap-4">
                       <a
-                        href="/#kontakt"
+                        href={/^oferta\/konferencje\/[^/]+$/.test(pageSlug) ? '#wycena-konferencji' : '/#kontakt'}
                         className={`${isMobile ? 'w-full justify-center' : ''} inline-flex items-center gap-2 rounded-full bg-[#d3bb73] px-8 py-3 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 md:w-auto`}
                       >
                         Zapytaj o wycenę
@@ -504,12 +506,15 @@ export default function EditableHeroWithMetadata({
                 <div className="relative">
                   <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-[#d3bb73]/20 to-[#800020]/20 blur-3xl" />
                   <div className="relative overflow-hidden rounded-3xl border border-[#d3bb73]/20">
-                    <Image
-                      src={resolvedDefaultImage}
-                      alt={title || 'Hero image'}
-                      className="h-full max-h-[300px] w-full object-cover"
-                      width={100}
-                      height={100}
+                    <img
+                      {...conferenceHeroImage(resolvedDefaultImage)}
+                      sizes="(min-width: 1280px) 600px, (min-width: 1024px) 46vw, calc(100vw - 40px)"
+                      alt={section === 'konferencje-hero' ? 'Przykład oprawy konferencji MAVINCI' : title || 'Oprawa wydarzenia MAVINCI'}
+                      className="aspect-[3/2] max-h-[360px] w-full object-cover"
+                      width={1280}
+                      height={854}
+                      loading="eager"
+                      decoding="async"
                     />
                   </div>
                 </div>

@@ -36,11 +36,9 @@ export async function GET() {
     },
     google: {
       oauthConfigured: googleMissing.length === 0,
-      adsConfigured: Boolean(process.env.GOOGLE_ADS_DEVELOPER_TOKEN),
-      missing: [
-        ...googleMissing,
-        ...(!process.env.GOOGLE_ADS_DEVELOPER_TOKEN ? ['GOOGLE_ADS_DEVELOPER_TOKEN'] : []),
-      ],
+      // Local configuration only; production API access is checked during sync.
+      adsConfigured: googleMissing.length === 0,
+      missing: googleMissing,
     },
   });
 }

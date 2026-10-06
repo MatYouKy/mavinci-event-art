@@ -345,7 +345,7 @@ export function EventEquipmentRow({
             <Trash2 className="h-4 w-4" />
           </button>
         ) : (
-          <button
+          <button data-crm-action="secondary"
             onClick={() => onRestore(row)}
             className="rounded border border-[#d3bb73]/30 px-3 py-1 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/10"
             title="Przywróć z oferty"

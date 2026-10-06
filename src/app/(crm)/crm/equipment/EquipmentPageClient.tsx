@@ -1,5 +1,7 @@
 'use client';
 
+import { catalogViewMode, type CatalogViewMode } from '@/lib/CRM/equipment/catalogViewMode';
+
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
@@ -67,22 +69,22 @@ interface EquipmentListItem {
   equipment_units?: EquipmentUnit[];
 }
 
-export default function EquipmentPageClient({ viewMode: initialViewMode }: { viewMode: ViewMode }) {
+export default function EquipmentPageClient({ viewMode: initialViewMode }: { viewMode?: ViewMode | null }) {
   const router = useRouter();
   const { showSnackbar } = useSnackbar();
   const { showConfirm } = useDialog();
-  const { canCreateInModule, canManageModule } = useCurrentEmployee();
+  const { canCreateInModule, canManageModule, canViewModule } = useCurrentEmployee();
 
   // UI
   const [activeTab, setActiveTab] = useState<string>('all'); // 'all' | categoryId | 'cables'
   const [searchTerm, setSearchTerm] = useState('');
-  const [viewMode, setLocalViewMode] = useState<ViewMode>(initialViewMode);
+  const [viewMode, setLocalViewMode] = useState<CatalogViewMode>(() => catalogViewMode(initialViewMode));
   const [itemTypeFilter, setItemTypeFilter] = useState<'all' | 'equipment' | 'kits'>('all');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
 
   const { setViewMode: setGlobalViewMode } = useUserPreferences();
-  const handleViewModeChange = async (mode: ViewMode) => {
+  const handleViewModeChange = async (mode: CatalogViewMode) => {
     setLocalViewMode(mode);
     await setGlobalViewMode('equipment', mode);
   };
@@ -299,7 +301,7 @@ export default function EquipmentPageClient({ viewMode: initialViewMode }: { vie
   const equipmentActions = useMemo(() => {
     const actions: Action[] = [];
 
-    if (canManageModule('equipment')) {
+    if (canViewModule('equipment')) {
       actions.push(
         {
           label: 'Kategorie',
@@ -343,7 +345,7 @@ export default function EquipmentPageClient({ viewMode: initialViewMode }: { vie
     }
 
     return actions;
-  }, [router, canManageModule, canCreateInModule]);
+  }, [router, canViewModule, canManageModule, canCreateInModule]);
 
   const canManageEquipment = useMemo(() => canManageModule('equipment'), [canManageModule]);
 

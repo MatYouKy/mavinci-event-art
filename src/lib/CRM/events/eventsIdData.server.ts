@@ -276,7 +276,12 @@ export async function fetchEventByIdServer(
   const isAdmin =
     currentEmployee?.role === 'admin' ||
     (Array.isArray((currentEmployee as any)?.permissions) &&
-      (currentEmployee as any).permissions.includes('events_manage'));
+      (currentEmployee as any).permissions.includes('admin'));
+
+  const canManageEvents =
+    !isAdmin &&
+    Array.isArray((currentEmployee as any)?.permissions) &&
+    (currentEmployee as any).permissions.includes('events_manage');
 
   const isCreator = creatorId === currentUserId;
 
@@ -284,6 +289,16 @@ export async function fetchEventByIdServer(
     !isAdmin &&
     Array.isArray((currentEmployee as any)?.permissions) &&
     (currentEmployee as any).permissions.includes('calendar_view_accepted_only');
+
+  const hasPlanningEventView =
+    !isAdmin &&
+    Array.isArray((currentEmployee as any)?.permissions) &&
+    (currentEmployee as any).permissions.includes('events_view_planning');
+
+  const hasOperationalEventView =
+    !isAdmin &&
+    Array.isArray((currentEmployee as any)?.permissions) &&
+    (currentEmployee as any).permissions.includes('events_view_operational');
 
   let permissionContext: EventPermissionContext = {
     canManageTeam: false,
@@ -306,12 +321,38 @@ export async function fetchEventByIdServer(
       isCreator,
       currentUserId,
     };
-  } else if (hasAcceptedOnlyCalendarView && !isCreator && assignment?.status !== 'accepted') {
+  } else if (canManageEvents) {
+    const employeeTabs = (currentEmployee as any)?.event_tabs;
+    const accessLevelTabs = (currentEmployee as any)?.access_levels?.event_tabs;
+
+    permissionContext = {
+      canManageTeam: true,
+      allowedEventTabs: normalizeTabs(
+        employeeTabs && employeeTabs.length > 0 ? employeeTabs : accessLevelTabs,
+        CREATOR_EVENT_TABS,
+      ),
+      userAssignmentStatus: (assignment?.status as any) ?? null,
+      hasLimitedAccess: false,
+      isAdmin: false,
+      isCreator,
+      currentUserId,
+    };
+  } else if (
+    (hasPlanningEventView || hasOperationalEventView || hasAcceptedOnlyCalendarView) &&
+    !isCreator &&
+    assignment?.status !== 'accepted'
+  ) {
+    const employeeTabs = (currentEmployee as any)?.event_tabs;
+    const accessLevelTabs = (currentEmployee as any)?.access_levels?.event_tabs;
+
     permissionContext = {
       canManageTeam: false,
-      allowedEventTabs: ['overview'],
+      allowedEventTabs: normalizeTabs(
+        employeeTabs && employeeTabs.length > 0 ? employeeTabs : accessLevelTabs,
+        ['overview'],
+      ),
       userAssignmentStatus: (assignment?.status as any) ?? null,
-      hasLimitedAccess: true,
+      hasLimitedAccess: false,
       isAdmin: false,
       isCreator,
       currentUserId,

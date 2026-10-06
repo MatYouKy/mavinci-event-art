@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react';
 import { Plus, X, Trash2, Package, Search, CreditCard as Edit, Eye, Printer, Copy } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
+import { saveEquipmentKit } from '@/lib/CRM/equipment/saveEquipmentKit';
+import { checkKitInventory } from '@/lib/CRM/equipment/kitInventory';
 import { uploadImage } from '@/lib/storage';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
@@ -19,6 +21,7 @@ interface Equipment {
   brand: string | null;
   model: string | null;
   thumbnail_url: string | null;
+  total_quantity?: number;
   equipment_units?: EquipmentUnit[];
 }
 
@@ -268,6 +271,11 @@ export default function KitsManagementModal({
     setKitItems(updated);
   };
 
+  const kitInventoryPreview = (() => {
+    try { return checkKitInventory(editingKit?.id || null, kitForm.quantity, kitItems, kits, equipment, cables); }
+    catch { return null; }
+  })();
+
   const handleSaveKit = async () => {
     if (!kitForm.name.trim()) {
       showSnackbar('Nazwa zestawu jest wymagana', 'warning');
@@ -281,75 +289,14 @@ export default function KitsManagementModal({
 
     setSaving(true);
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const kitId = await saveEquipmentKit(editingKit?.id || null, kitForm, kitItems);
 
-      let kitId = editingKit?.id;
-
-      if (editingKit) {
-        // Aktualizacja istniejącego zestawu
-        const { error: updateError } = await supabase
-          .from('equipment_kits')
-          .update({
-            name: kitForm.name,
-            description: kitForm.description || null,
-            thumbnail_url: kitForm.thumbnail_url || null,
-            warehouse_category_id: kitForm.warehouse_category_id || null,
-            quantity: kitForm.quantity || 1,
-          })
-          .eq('id', editingKit.id);
-
-        if (updateError) throw updateError;
-
-        // Usuń stare pozycje
-        const { error: deleteError } = await supabase
-          .from('equipment_kit_items')
-          .delete()
-          .eq('kit_id', editingKit.id);
-
-        if (deleteError) throw deleteError;
-      } else {
-        // Tworzenie nowego zestawu
-        const { data: newKit, error: insertError } = await supabase
-          .from('equipment_kits')
-          .insert({
-            name: kitForm.name,
-            description: kitForm.description || null,
-            thumbnail_url: kitForm.thumbnail_url || null,
-            warehouse_category_id: kitForm.warehouse_category_id || null,
-            quantity: kitForm.quantity || 1,
-            created_by: user?.id || null,
-          })
-          .select()
-          .single();
-
-        if (insertError) throw insertError;
-        kitId = newKit.id;
-      }
-
-      // Dodaj nowe pozycje
-      const itemsToInsert = kitItems.map((item, index) => ({
-        kit_id: kitId,
-        equipment_id:
-          item.equipment_id && item.equipment_id.trim() !== '' ? item.equipment_id : null,
-        cable_id: item.cable_id && item.cable_id.trim() !== '' ? item.cable_id : null,
-        quantity: item.quantity,
-        notes: item.notes || null,
-        order_index: index,
-      }));
-
-      const { error: itemsError } = await supabase
-        .from('equipment_kit_items')
-        .insert(itemsToInsert);
-
-      if (itemsError) throw itemsError;
 
       setShowAddForm(false);
       fetchKits();
     } catch (error) {
       console.error('Error saving kit:', error);
-      showSnackbar('Błąd podczas zapisywania zestawu', 'error');
+      showSnackbar(error instanceof Error ? error.message : 'Błąd podczas zapisywania zestawu', 'error');
     } finally {
       setSaving(false);
     }
@@ -376,40 +323,14 @@ export default function KitsManagementModal({
     try {
       const newKitName = `${kit.name} (duplikat)`;
 
-      const { data: newKit, error: kitError } = await supabase
-        .from('equipment_kits')
-        .insert({
-          name: newKitName,
-          description: kit.description,
-          thumbnail_url: kit.thumbnail_url,
-          is_active: true,
-        })
-        .select()
-        .single();
+      await saveEquipmentKit(null, { ...kit, name: newKitName }, kit.equipment_kit_items);
 
-      if (kitError) throw kitError;
-
-      const itemsToInsert = kit.equipment_kit_items.map((item, index) => ({
-        kit_id: newKit.id,
-        equipment_id:
-          item.equipment_id && item.equipment_id.trim() !== '' ? item.equipment_id : null,
-        cable_id: item.cable_id && item.cable_id.trim() !== '' ? item.cable_id : null,
-        quantity: item.quantity,
-        notes: item.notes,
-        order_index: index,
-      }));
-
-      const { error: itemsError } = await supabase
-        .from('equipment_kit_items')
-        .insert(itemsToInsert);
-
-      if (itemsError) throw itemsError;
 
       fetchKits();
       showSnackbar(`Zestaw "${newKitName}" został zduplikowany`, 'success');
     } catch (error) {
       console.error('Error duplicating kit:', error);
-      showSnackbar('Błąd podczas duplikowania zestawu', 'error');
+      showSnackbar(error instanceof Error ? error.message : 'Błąd podczas duplikowania zestawu', 'error');
     }
   };
 
@@ -677,7 +598,8 @@ export default function KitsManagementModal({
                     <input
                       type="number"
                       min="1"
-                      value={kitForm.quantity}
+                      max={kitInventoryPreview?.maxQuantity}
+                    value={kitForm.quantity}
                       onChange={(e) =>
                         setKitForm((prev) => ({
                           ...prev,
@@ -686,6 +608,13 @@ export default function KitsManagementModal({
                       }
                       className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
                     />
+                  <p className="mt-2 text-xs text-[#e5e4e2]/60">
+                    Maksymalnie {kitInventoryPreview?.maxQuantity ?? '—'} kompletów ze sprawnych składników,
+                    po uwzględnieniu innych zestawów.
+                  </p>
+                  {!!kitInventoryPreview?.shortages.length && (
+                    <p role="alert" className="mt-2 text-xs text-red-400">{kitInventoryPreview.shortages.join(' ')}</p>
+                  )}
                   </div>
                 </div>
               </div>

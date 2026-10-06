@@ -25,8 +25,8 @@
       "package": "com.mavinci.crm",
       "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
-        "foregroundImage": "./src/assets/adaptive-icon.png",
-        "backgroundColor": "#210811"
+        "foregroundImage": "./src/assets/app-icon.png",
+        "backgroundColor": "#4a001f"
       },
       "permissions": [
         "RECEIVE_BOOT_COMPLETED",
@@ -42,7 +42,7 @@
         "expo-notifications",
         {
           "icon": "./src/assets/notification-icon.png",
-          "color": "#d3bb73",
+          "color": "#4a001f",
           "defaultChannel": "default",
           "sounds": []
         }
@@ -54,7 +54,15 @@
           "contactsPermission": "Mavinci CRM synchronizuje wyłącznie kontakty służbowe dostępne dla Ciebie w CRM, aby telefon rozpoznawał klientów podczas połączeń."
         }
       ],
-      "expo-font"
+      "expo-font",
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Mavinci CRM korzysta ze zdjęć wybranych do rozmowy.",
+          "savePhotosPermission": "Mavinci CRM zapisuje wybrane zdjęcia z komunikatora w Twojej galerii.",
+          "granularPermissions": []
+        }
+      ]
     ],
     "ios": {
       "supportsTablet": true,
@@ -75,7 +83,7 @@
     },
     "notification": {
       "iosDisplayInForeground": true,
-      "color": "#d3bb73"
+      "color": "#4a001f"
     },
     "extra": {
       "eas": {

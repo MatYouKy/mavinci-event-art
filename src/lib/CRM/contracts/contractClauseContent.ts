@@ -1,3 +1,5 @@
+import { getSharedContractClause } from './sharedContractClauses';
+
 const HTML_TAG_PATTERN = /<\/?[a-z][\s\S]*?>/i;
 const ESCAPED_HTML_PATTERN = /&lt;\/?(?:p|div|h[1-6]|ol|ul|li|strong|em|blockquote)\b/i;
 
@@ -22,6 +24,8 @@ export type ContractClauseEntry = {
   topic: string;
   title: string;
   content: string;
+  sharedKey?: string;
+  legacyId?: string;
 };
 
 export const CONTRACT_CLAUSE_CATEGORIES: ContractClauseCategory[] = [
@@ -230,19 +234,22 @@ export const parseContractClauseEntries = (
       return parsed.entries.flatMap((entry: unknown, index: number) => {
         if (!entry || typeof entry !== 'object') return [];
         const candidate = entry as Partial<ContractClauseEntry>;
-        const category = asPrimaryCategory(candidate.category);
-        const content = String(candidate.content || '').trim();
+        const shared = getSharedContractClause(candidate.sharedKey);
+        const category = asPrimaryCategory(shared?.category || candidate.category);
+        const content = String(shared?.content || candidate.content || '').trim();
         if (!category || !content) return [];
         const allowedTopics = getContractClauseTopicOptions(category).map((topic) => topic.value);
-        const topic = allowedTopics.includes(String(candidate.topic || ''))
-          ? String(candidate.topic)
+        const topic = allowedTopics.includes(String(shared?.topic || candidate.topic || ''))
+          ? String(shared?.topic || candidate.topic)
           : inferContractClauseTopic(category, content);
         return [{
           id: String(candidate.id || stableClauseEntryId(category, content, index)),
           category,
           topic,
-          title: String(candidate.title || getContractClauseTopicLabel(topic)).trim(),
+          title: String(shared?.title || candidate.title || getContractClauseTopicLabel(topic)).trim(),
           content,
+          ...(shared ? { sharedKey: shared.key } : {}),
+          ...(typeof candidate.legacyId === 'string' ? { legacyId: candidate.legacyId } : {}),
         }];
       });
     }
@@ -284,6 +291,8 @@ export const serializeContractClauseEntries = (entries: ContractClauseEntry[]) =
           topic,
           title: String(entry.title || getContractClauseTopicLabel(topic)).trim(),
           content: entry.content.trim(),
+          ...(getSharedContractClause(entry.sharedKey) ? { sharedKey: entry.sharedKey } : {}),
+          ...(entry.legacyId ? { legacyId: entry.legacyId } : {}),
         };
       }),
   });

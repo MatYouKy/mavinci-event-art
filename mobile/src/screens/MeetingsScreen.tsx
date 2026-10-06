@@ -16,6 +16,8 @@ import {
   Keyboard,
   KeyboardAvoidingView,
 } from 'react-native';
+import { MEETING_RECURRENCE_OPTIONS, meetingRecurrenceLabel } from '../lib/meetingRecurrence';
+import { cancelObsoleteMeetingAlerts } from '../services/meetingReminders';
 import SwipeableRow from '../components/SwipeableRow';
 
 import * as Notifications from 'expo-notifications';
@@ -43,6 +45,9 @@ interface Location {
 }
 
 interface Meeting {
+  series_id: string | null;
+  recurrence_days: number;
+  server_reminders: boolean;
   id: string;
   title: string;
   location_text: string | null;
@@ -59,6 +64,7 @@ interface Meeting {
 }
 
 interface NewMeetingForm {
+  recurrence_days: number;
   title: string;
   color: string;
   location_text: string;
@@ -89,6 +95,7 @@ const MEETING_COLORS = [
 ];
 
 const ALERT_OPTIONS = [
+  { value: 0, label: 'W momencie rozpoczęcia' },
   { value: 15, label: '15 min' },
   { value: 30, label: '30 min' },
   { value: 60, label: '1 godz.' },
@@ -102,6 +109,7 @@ const ALERT_OPTIONS = [
 ];
 
 function minutesToLabel(minutes: number): string {
+  if (minutes === 0) return 'w momencie rozpoczęcia';
   if (minutes >= 1440) {
     const days = Math.round(minutes / 1440);
     return days === 1 ? '1 dzień' : `${days} dni`;
@@ -126,6 +134,8 @@ async function scheduleMeetingAlerts(meeting: Meeting) {
     }
   }
 
+  if (meeting.server_reminders) return;
+
   const meetingTime = new Date(meeting.datetime_start || '').getTime();
   const now = Date.now();
 
@@ -148,7 +158,7 @@ async function scheduleMeetingAlerts(meeting: Meeting) {
   ];
 
   for (const alert of alerts) {
-    if (!alert.minutes || alert.minutes <= 0) continue;
+    if (alert.minutes == null || alert.minutes < 0) continue;
 
     const triggerTime = meetingTime - alert.minutes * 60 * 1000;
 
@@ -159,7 +169,7 @@ async function scheduleMeetingAlerts(meeting: Meeting) {
     await Notifications.scheduleNotificationAsync({
       content: {
         title: `${alert.label}: ${meeting.title}`,
-        body: `Spotkanie za ${minutesToLabel(alert.minutes)}`,
+        body: alert.minutes === 0 ? 'Spotkanie właśnie się rozpoczyna' : `Spotkanie za ${minutesToLabel(alert.minutes)}`,
         sound: true,
         priority: alert.priority,
         data: {
@@ -187,10 +197,12 @@ async function requestNotificationPermissions() {
 
 interface MeetingsScreenProps {
   initialMeetingId?: string | null;
+  route?: { params?: { meetingId?: string } };
   onBack?: () => void;
 }
 
-export default function MeetingsScreen({ initialMeetingId, onBack }: MeetingsScreenProps) {
+export default function MeetingsScreen({ initialMeetingId: initialId, route, onBack }: MeetingsScreenProps) {
+  const initialMeetingId = initialId || route?.params?.meetingId;
   const { employee } = useAuth();
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -199,6 +211,7 @@ export default function MeetingsScreen({ initialMeetingId, onBack }: MeetingsScr
   const [showNewMeeting, setShowNewMeeting] = useState(false);
   const [selectedMeeting, setSelectedMeeting] = useState<Meeting | null>(null);
   const [editingMeeting, setEditingMeeting] = useState<Meeting | null>(null);
+  const [editScope, setEditScope] = useState<'single' | 'future'>('single');
 
   const createInitialForm = (): NewMeetingForm => {
     const start = new Date();
@@ -214,6 +227,7 @@ export default function MeetingsScreen({ initialMeetingId, onBack }: MeetingsScr
     }
 
     return {
+      recurrence_days: 0,
       title: '',
       color: DEFAULT_MEETING_COLOR,
       location_text: '',
@@ -326,8 +340,9 @@ export default function MeetingsScreen({ initialMeetingId, onBack }: MeetingsScr
 
           setMeetings(myMeetings);
 
+          await cancelObsoleteMeetingAlerts().catch((error) => console.warn('[Meetings] Alert cleanup:', error));
           for (const meeting of myMeetings) {
-            if (meeting.datetime_start && new Date(meeting.datetime_start).getTime() > Date.now()) {
+            if (!meeting.server_reminders && meeting.datetime_start && new Date(meeting.datetime_start).getTime() > Date.now()) {
               await scheduleMeetingAlerts(meeting);
             }
           }
@@ -382,6 +397,7 @@ export default function MeetingsScreen({ initialMeetingId, onBack }: MeetingsScr
       : new Date(start.getTime() + 60 * 60 * 1000);
 
     setForm({
+      recurrence_days: meeting.recurrence_days ?? 0,
       title: meeting.title || '',
       color: meeting.color || DEFAULT_MEETING_COLOR,
       location_text: matchedLocation?.name || meeting.location_text || '',
@@ -396,6 +412,7 @@ export default function MeetingsScreen({ initialMeetingId, onBack }: MeetingsScr
       alert_critical_minutes: meeting.alert_critical_minutes ?? 15,
     });
 
+    setEditScope('single');
     setEditingMeeting(meeting);
     setSelectedMeeting(null);
     setShowNewMeeting(true);
@@ -451,62 +468,17 @@ export default function MeetingsScreen({ initialMeetingId, onBack }: MeetingsScr
     };
 
     try {
-      if (editingMeeting) {
-        const { data, error } = await supabase
-          .from('meetings')
-          .update(payload)
-          .eq('id', editingMeeting.id)
-          .select()
-          .single();
-
-        if (error) throw error;
-
-        if (data) {
-          // Update participants: delete existing and re-insert
-          await supabase.from('meeting_participants').delete().eq('meeting_id', editingMeeting.id);
-          const participantsToInsert = selectedParticipants.map((p) => ({
-            meeting_id: editingMeeting.id,
-            employee_id: p.id,
-          }));
-          if (!selectedParticipants.some((p) => p.id === employee.id)) {
-            participantsToInsert.push({ meeting_id: editingMeeting.id, employee_id: employee.id });
-          }
-          if (participantsToInsert.length > 0) {
-            await supabase.from('meeting_participants').insert(participantsToInsert);
-          }
-          await scheduleMeetingAlerts(data as Meeting);
-        }
-      } else {
-        const { data, error } = await supabase
-          .from('meetings')
-          .insert({
-            ...payload,
-            created_by: employee.id,
-          })
-          .select()
-          .single();
-
-        if (error) throw error;
-
-        if (data) {
-          const participantsToInsert = selectedParticipants.map((p) => ({
-            meeting_id: data.id,
-            employee_id: p.id,
-          }));
-          // Always include creator
-          if (!selectedParticipants.some((p) => p.id === employee.id)) {
-            participantsToInsert.push({ meeting_id: data.id, employee_id: employee.id });
-          }
-          const { error: participantError } = await supabase
-            .from('meeting_participants')
-            .insert(participantsToInsert);
-
-          if (participantError) throw participantError;
-
-          await scheduleMeetingAlerts(data as Meeting);
-
-        }
-      }
+      const participantIds = [...new Set([...selectedParticipants.map((p) => p.id), employee.id])];
+      const { error } = await supabase.rpc('save_meeting', {
+        p_id: editingMeeting?.id || null,
+        p_data: payload,
+        p_participants: participantIds.map((employee_id) => ({ employee_id })),
+        p_recurrence_days: form.recurrence_days,
+        p_scope: editingMeeting?.series_id ? editScope : 'single',
+      });
+      if (error) throw error;
+      // Persistence succeeded; local cleanup must not turn it into a failed save.
+      void cancelObsoleteMeetingAlerts().catch((error) => console.warn('[Meetings] Alert cleanup:', error));
 
       setShowNewMeeting(false);
       setEditingMeeting(null);
@@ -525,28 +497,23 @@ export default function MeetingsScreen({ initialMeetingId, onBack }: MeetingsScr
   };
 
   const handleDeleteMeeting = async (meetingId: string) => {
-    Alert.alert('Usunąć spotkanie?', 'Tej operacji nie można cofnąć.', [
+    const meeting = meetings.find((item) => item.id === meetingId);
+    const remove = async (scope: 'single' | 'future') => {
+      try {
+        const { error } = await supabase.rpc('delete_meeting_occurrences', { p_id: meetingId, p_scope: scope });
+        if (error) throw error;
+        setSelectedMeeting(null);
+        await fetchMeetings();
+      } catch (error: any) {
+        Alert.alert('Błąd', error.message || 'Nie udało się usunąć spotkania');
+      }
+    };
+    Alert.alert('Usunąć spotkanie?', meeting?.series_id
+      ? 'Wybierz tylko ten termin albo ten i kolejne niezakończone terminy cyklu.'
+      : 'Tej operacji nie można cofnąć.', [
       { text: 'Anuluj', style: 'cancel' },
-      {
-        text: 'Usuń',
-        style: 'destructive',
-        onPress: async () => {
-          await supabase
-            .from('meetings')
-            .update({ deleted_at: new Date().toISOString() })
-            .eq('id', meetingId);
-
-          const scheduled = await Notifications.getAllScheduledNotificationsAsync();
-          for (const notif of scheduled) {
-            if (notif.content.data?.meetingId === meetingId) {
-              await Notifications.cancelScheduledNotificationAsync(notif.identifier);
-            }
-          }
-
-          setSelectedMeeting(null);
-          fetchMeetings();
-        },
-      },
+      { text: meeting?.series_id ? 'Tylko ten termin' : 'Usuń', style: 'destructive', onPress: () => { void remove('single'); } },
+      ...(meeting?.series_id ? [{ text: 'To i kolejne', style: 'destructive' as const, onPress: () => { void remove('future'); } }] : []),
     ]);
   };
 
@@ -572,11 +539,7 @@ export default function MeetingsScreen({ initialMeetingId, onBack }: MeetingsScr
 
 const renderMeetingCard = ({ item }: { item: Meeting }) => {
   const upcoming = isUpcoming(item.datetime_start || '');
-  const hasAlerts = !!(
-    item.alert_1_minutes ||
-    item.alert_2_minutes ||
-    item.alert_critical_minutes
-  );
+  const hasAlerts = [item.alert_1_minutes, item.alert_2_minutes, item.alert_critical_minutes].some((minutes) => minutes != null);
 
   return (
     <SwipeableRow onDelete={() => handleDeleteMeeting(item.id)}>
@@ -601,6 +564,7 @@ const renderMeetingCard = ({ item }: { item: Meeting }) => {
               {item.title}
             </Text>
 
+            {!!item.series_id && <Feather name="repeat" size={14} color={colors.primary.gold} accessibilityLabel="Spotkanie cykliczne" />}
             {hasAlerts && upcoming && (
               <Feather
                 name="bell"
@@ -696,7 +660,7 @@ const renderMeetingCard = ({ item }: { item: Meeting }) => {
             </Text>
             {enabled && (
               <Text style={[styles.alertCurrentValue, isCritical && styles.alertCriticalText]}>
-                {minutesToLabel(value)} przed
+                {minutesToLabel(value)}{value > 0 ? ' przed' : ''}
               </Text>
             )}
           </View>
@@ -740,7 +704,7 @@ const renderMeetingCard = ({ item }: { item: Meeting }) => {
                   activeOpacity={0.75}
                   accessibilityRole="button"
                   accessibilityState={{ selected }}
-                  accessibilityLabel={`${label}: ${option.label} przed spotkaniem`}
+                  accessibilityLabel={`${label}: ${option.label}${option.value > 0 ? ' przed spotkaniem' : ''}`}
                 >
                   <Text
                     style={[
@@ -1187,6 +1151,36 @@ const renderMeetingCard = ({ item }: { item: Meeting }) => {
               })}
             </View>
 
+            <View style={styles.alertsSection}>
+              <Text style={styles.fieldLabel}>Powtarzanie spotkania</Text>
+              {!!editingMeeting?.series_id && (
+                <View style={styles.participantChips}>
+                  {([{ value: 'single', label: 'Tylko to spotkanie' }, { value: 'future', label: 'To i kolejne' }] as const).map((option) => (
+                    <TouchableOpacity key={option.value} accessibilityRole="button" accessibilityState={{ selected: editScope === option.value }}
+                      onPress={() => { setEditScope(option.value); setForm((current) => ({ ...current, recurrence_days: editingMeeting.recurrence_days })); }}
+                      style={[styles.alertOption, editScope === option.value && styles.alertOptionSelected]}>
+                      <Text style={styles.alertOptionText}>{option.label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+              <View style={styles.participantChips}>
+                {MEETING_RECURRENCE_OPTIONS.map((option) => (
+                  <TouchableOpacity key={option.value} accessibilityRole="button"
+                    accessibilityState={{ selected: form.recurrence_days === option.value, disabled: !!editingMeeting?.series_id && editScope === 'single' }}
+                    disabled={!!editingMeeting?.series_id && editScope === 'single'}
+                    onPress={() => setForm((current) => ({ ...current, recurrence_days: option.value }))}
+                    style={[styles.alertOption, form.recurrence_days === option.value && styles.alertOptionSelected]}>
+                    <Text style={[styles.alertOptionText, form.recurrence_days === option.value && styles.alertOptionTextSelected]}>{option.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              {form.recurrence_days > 0 && <Text style={styles.alertsSectionDescription}>
+                {meetingRecurrenceLabel(form.recurrence_days, form.datetime_start.toISOString())} (czas polski). Przypomnienia dotyczą każdego terminu.
+              </Text>}
+              {!!editingMeeting?.series_id && editScope === 'single' && <Text style={styles.alertsSectionDescription}>Aby zmienić cykl, wybierz „To i kolejne”.</Text>}
+            </View>
+
             {/* Alerts */}
             <View style={styles.alertsSection}>
               <View style={styles.alertsSectionHeader}>
@@ -1307,6 +1301,10 @@ const renderMeetingCard = ({ item }: { item: Meeting }) => {
               onScrollBeginDrag={() => setOpenedDropdown(null)}
             >
               <Text style={styles.detailTitle}>{selectedMeeting.title}</Text>
+              {!!selectedMeeting.series_id && <View style={styles.detailRow}>
+                <Feather name="repeat" size={16} color={colors.primary.gold} />
+                <Text style={styles.detailText}>{meetingRecurrenceLabel(selectedMeeting.recurrence_days, selectedMeeting.datetime_start)} (czas polski)</Text>
+              </View>}
 
               <View style={styles.detailRow}>
                 <Feather name="clock" size={16} color={colors.primary.gold} />
@@ -1353,33 +1351,33 @@ const renderMeetingCard = ({ item }: { item: Meeting }) => {
 
               <View style={styles.detailAlertsSection}>
                 <Text style={styles.detailSectionLabel}>Alerty</Text>
-                {selectedMeeting.alert_1_minutes ? (
+                {selectedMeeting.alert_1_minutes != null ? (
                   <View style={styles.alertRow}>
                     <Feather name="bell" size={14} color={colors.text.secondary} />
                     <Text style={styles.alertRowText}>
-                      Alert 1: {minutesToLabel(selectedMeeting.alert_1_minutes)} przed
+                      Alert 1: {minutesToLabel(selectedMeeting.alert_1_minutes)}{selectedMeeting.alert_1_minutes > 0 ? ' przed' : ''}
                     </Text>
                   </View>
                 ) : null}
-                {selectedMeeting.alert_2_minutes ? (
+                {selectedMeeting.alert_2_minutes != null ? (
                   <View style={styles.alertRow}>
                     <Feather name="bell" size={14} color={colors.text.secondary} />
                     <Text style={styles.alertRowText}>
-                      Alert 2: {minutesToLabel(selectedMeeting.alert_2_minutes)} przed
+                      Alert 2: {minutesToLabel(selectedMeeting.alert_2_minutes)}{selectedMeeting.alert_2_minutes > 0 ? ' przed' : ''}
                     </Text>
                   </View>
                 ) : null}
-                {selectedMeeting.alert_critical_minutes ? (
+                {selectedMeeting.alert_critical_minutes != null ? (
                   <View style={styles.alertRow}>
                     <Feather name="alert-triangle" size={14} color={colors.status.error} />
                     <Text style={[styles.alertRowText, { color: colors.status.error }]}>
-                      Krytyczny: {minutesToLabel(selectedMeeting.alert_critical_minutes)} przed
+                      Krytyczny: {minutesToLabel(selectedMeeting.alert_critical_minutes)}{selectedMeeting.alert_critical_minutes > 0 ? ' przed' : ''}
                     </Text>
                   </View>
                 ) : null}
-                {!selectedMeeting.alert_1_minutes &&
-                  !selectedMeeting.alert_2_minutes &&
-                  !selectedMeeting.alert_critical_minutes && (
+                {selectedMeeting.alert_1_minutes == null &&
+                  selectedMeeting.alert_2_minutes == null &&
+                  selectedMeeting.alert_critical_minutes == null && (
                     <Text style={styles.alertRowText}>Brak alertów</Text>
                   )}
               </View>

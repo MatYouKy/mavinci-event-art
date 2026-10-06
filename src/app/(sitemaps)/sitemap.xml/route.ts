@@ -10,15 +10,12 @@ function escapeXml(s: string) {
 }
 
 export async function GET() {
-  // Możesz dać stały lastmod albo build-time/now.
-  // Dla indexu spokojnie może być "now" — i tak sitemap-y niżej mają własne lastmod.
-  const lastmod = new Date().toISOString();
-
   const sitemaps = [
     `${BASE_URL}/sitemap-pages.xml`,
     `${BASE_URL}/sitemap-portfolio.xml`,
     `${BASE_URL}/sitemap-uslugi.xml`,
     `${BASE_URL}/sitemap-konferencje.xml`,
+    `${BASE_URL}/sitemap-quizy.xml`,
     `${BASE_URL}/image-sitemap.xml`,
   ];
 
@@ -26,7 +23,6 @@ export async function GET() {
     .map(
       (loc) => `  <sitemap>
     <loc>${escapeXml(loc)}</loc>
-    <lastmod>${escapeXml(lastmod)}</lastmod>
   </sitemap>`
     )
     .join('\n');

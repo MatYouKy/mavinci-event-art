@@ -1,10 +1,14 @@
 'use client';
 
+import { systemLabel } from '@/lib/ui/systemLabels';
+
 import { useEffect, useMemo, useState } from 'react';
-import { Users, X, AlertCircle, CheckCircle, RotateCcw } from 'lucide-react';
+import { Users, X, AlertCircle, CheckCircle, RotateCcw, Pencil, Eye } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { ProductStaffRow } from '../../types';
+import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
+import { packageCostLineNet, staffCostItem, packageCostSettlementLabels } from '@/lib/CRM/Offers/productSalesPackages';
 import { AddStaffModal } from '../modal/AddStuffModal';
 
 type DraftStaff = Omit<ProductStaffRow, 'id' | 'product_id'> & { tempId: string };
@@ -34,6 +38,7 @@ export function ProductStaffSection({
   setDraftStaff,
   onCustomizeVariant,
   onResetInheritance,
+  onCostChange,
 }: {
   productId: string | null;
   productVariantId?: string | null;
@@ -44,12 +49,20 @@ export function ProductStaffSection({
   setDraftStaff: (next: DraftStaff[]) => void;
   onCustomizeVariant?: () => Promise<void>;
   onResetInheritance?: () => Promise<void>;
+  onCostChange?: (cost: number | null) => void;
 }) {
   const { showSnackbar } = useSnackbar();
   const [staff, setStaff] = useState<ProductStaffRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [showAddStaffModal, setShowAddStaffModal] = useState(false);
   const [requiredSkills, setRequiredSkills] = useState<RequiredSkill[]>([]);
+  const [editingRow, setEditingRow] = useState<any>(null);
+  const [previewRow, setPreviewRow] = useState(false);
+  const staffCost = (row: any): number | null => {
+    if (row.is_optional) return 0;
+    if (row.compensation) { const line = staffCostItem({ ...row, notes: row.notes || '' }); return line ? packageCostLineNet(line) : null; }
+    return row.hourly_rate != null && row.estimated_hours != null ? Math.round(Number(row.hourly_rate)*Number(row.estimated_hours)*Number(row.quantity)*100)/100 : null;
+  };
   const [loadingSkills, setLoadingSkills] = useState(false);
 
   const isNew = !productId;
@@ -58,6 +71,11 @@ export function ProductStaffSection({
     if (isNew) return draftStaff;
     return staff;
   }, [isNew, draftStaff, staff]);
+
+  useEffect(() => {
+    const costs = list.map(staffCost);
+    onCostChange?.(loading || costs.some(c => c == null) ? null : costs.reduce<number>((sum,c) => sum + (c ?? 0),0));
+  }, [list, loading, onCostChange]);
 
   useEffect(() => {
     if (!productId) return;
@@ -109,7 +127,7 @@ export function ProductStaffSection({
   const handleAdd = async (payload: Omit<ProductStaffRow, 'id' | 'product_id'>) => {
     if (!canEdit) return;
 
-    // NEW: zapis do draft
+    // NEW: zapis do Wersja robocza
     if (!productId) {
       setDraftStaff([{ ...payload, tempId: makeTempId() }, ...draftStaff]);
       showSnackbar('Dodano rolę (wersja robocza). Zapisz produkt, aby utrwalić.', 'success');
@@ -130,6 +148,7 @@ export function ProductStaffSection({
       await fetchStaff(productId, productVariantId);
     } catch (e: any) {
       showSnackbar(e?.message || 'Błąd podczas dodawania roli', 'error');
+      throw e;
     } finally {
       setLoading(false);
     }
@@ -175,7 +194,7 @@ export function ProductStaffSection({
           </div>
           {isNew && (
             <span className="ml-2 rounded bg-[#d3bb73]/15 px-2 py-0.5 text-xs text-[#d3bb73]">
-              draft
+              Wersja robocza
             </span>
           )}
           {requiredSkills.length > 0 && (
@@ -286,20 +305,20 @@ export function ProductStaffSection({
                 className="flex items-center justify-between rounded-lg bg-[#0a0d1a] p-3"
               >
                 <div>
-                  <div className="font-medium text-[#e5e4e2]">{item.role}</div>
+                  <div className="font-medium text-[#e5e4e2]">{systemLabel(item.role, 'role', { preserveCustom: true })}</div>
 
                   <div className="mt-1 text-xs text-[#e5e4e2]/60">
                     {item.notes ? item.notes : '—'}
                   </div>
                 </div>
 
-                <div className="flex items-center gap-4 text-sm">
+                <div className="flex flex-wrap items-center justify-end gap-3 text-sm">
                   <span className="text-[#e5e4e2]/80">Ilość: {item.quantity}</span>
 
-                  {item.hourly_rate != null && (
+                  {!item.compensation && item.hourly_rate != null && (
                     <span className="text-[#e5e4e2]/80">{item.hourly_rate} zł/h</span>
                   )}
-                  {item.estimated_hours != null && (
+                  {!item.compensation && item.estimated_hours != null && (
                     <span className="text-[#e5e4e2]/80">~{item.estimated_hours}h</span>
                   )}
 
@@ -309,15 +328,13 @@ export function ProductStaffSection({
                     </span>
                   )}
 
-                  {canEdit && !isInherited && (
-                    <button
-                      onClick={() => handleDelete(key)}
-                      className="rounded p-1 text-[#e5e4e2]/50 hover:bg-white/5 hover:text-red-400"
-                      title="Usuń"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  )}
+                  <span className="text-[#d3bb73]">{staffCost(item) == null ? 'Koszt nieustalony' : `${staffCost(item)!.toLocaleString('pl-PL')} zł kosztu`}</span>
+                  {item.compensation && <span className="text-xs text-[#e5e4e2]/50">{packageCostSettlementLabels[item.compensation.settlement_method as keyof typeof packageCostSettlementLabels]}</span>}
+                  <ResponsiveActionBar alwaysDropdown compact actions={[
+                    { label: 'Podgląd', icon: <Eye className="h-4 w-4"/>, onClick: () => {setEditingRow(item);setPreviewRow(true);} },
+                    { label: 'Edytuj', icon: <Pencil className="h-4 w-4"/>, show: canEdit && !isInherited, onClick: () => {setEditingRow(item);setPreviewRow(false);} },
+                    { label: 'Usuń', icon: <X className="h-4 w-4"/>, show: canEdit && !isInherited, variant: 'danger', onClick: () => void handleDelete(key) },
+                  ]}/>
                 </div>
               </div>
             );
@@ -325,6 +342,15 @@ export function ProductStaffSection({
         </div>
       )}
 
+      {editingRow && <AddStaffModal productId={productId || ''} productVariantName={productVariantName} initialValue={editingRow} readOnly={previewRow}
+        onClose={() => setEditingRow(null)} onSubmit={async payload => {
+          if (!canEdit || isInherited) throw new Error('Brak uprawnień do edycji tej obsady.');
+          if (!productId) { setDraftStaff(draftStaff.map(row => row.tempId === editingRow.tempId ? { ...row, ...payload } : row)); return; }
+          const { id, product_id, ...values } = payload;
+          const { error } = await supabase.from('offer_product_staff').update(values).eq('id',editingRow.id).eq('product_id',productId);
+          if (error) throw error;
+          await fetchStaff(productId, productVariantId); showSnackbar('Zapisano rolę i koszt','success');
+        }}/>}
       {showAddStaffModal && (
         <AddStaffModal
           productId={productId as string}

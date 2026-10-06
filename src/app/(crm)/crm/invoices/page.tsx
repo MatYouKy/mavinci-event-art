@@ -33,18 +33,22 @@ import {
   ChevronDown,
   Receipt,
   WalletCards,
+  Banknote,
 } from 'lucide-react';
 import KSeFIntegrationPanel from '@/components/crm/KSeFIntegrationPanel';
 import CanonicalFinancialDashboard from '@/components/crm/CanonicalFinancialDashboard';
 import FinancialEntriesTab from '@/components/crm/FinancialEntriesTab';
 import PermissionGuard from '@/components/crm/PermissionGuard';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import { useInvoiceFinanceAccess } from '@/hooks/useInvoiceFinanceAccess';
 import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
 import { useDialog } from '@/contexts/DialogContext';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { InvoiceSettingsTab } from '@/components/crm/invoices/tabs/InvoiceSettingsTab';
 import { AccountingWorkspaceTab } from '@/components/crm/invoices/tabs/AccountingWorkspaceTab';
 import FinalInvoiceWizardModal from '@/components/crm/FinalInvoiceWizardModal';
+import CommissionRegisterPanel from '@/components/crm/commissions/CommissionRegisterPanel';
+import { loadCanonicalBankPaymentDisplay, formatCanonicalBankPayment, type CanonicalBankPaymentDisplay } from '@/lib/invoices/canonicalBankPaymentDisplay';
 
 type SortKey =
   | 'invoice_number'
@@ -211,6 +215,9 @@ export default function InvoicesPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [canonicalBankPayments, setCanonicalBankPayments] = useState<Record<string, CanonicalBankPaymentDisplay>>({});
+  const [bankPaymentReadError, setBankPaymentReadError] = useState(false);
+
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<string>('all');
@@ -219,7 +226,7 @@ export default function InvoicesPage() {
   const [showCompanyDropdown, setShowCompanyDropdown] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [activeTab, setActiveTab] = useState<
-    'dashboard' | 'local' | 'ksef' | 'external' | 'expenses' | 'settings'
+    'dashboard' | 'local' | 'ksef' | 'external' | 'expenses' | 'commissions' | 'settings'
   >('dashboard');
   const [viewMode, setViewMode] = useState<'table' | 'cards'>('table');
   const [myCompanies, setMyCompanies] = useState<any[]>([]);
@@ -242,22 +249,40 @@ export default function InvoicesPage() {
     sessionUserId,
     loading: permissionsLoading,
   } = useCurrentEmployee();
+  const { access: financeAccess, loading: financeAccessLoading, error: financeAccessError } = useInvoiceFinanceAccess();
+  const isSalesView = financeAccess?.scope === 'sales';
+  const visibleTab = isSalesView && !['dashboard', 'local', 'commissions'].includes(activeTab)
+    ? 'dashboard' : activeTab;
 
-  const canAccessKSeF = useMemo(() => canViewModule('invoices'), [canViewModule]);
+  useEffect(() => {
+    let active = true;
+    setCanonicalBankPayments({});
+    setBankPaymentReadError(false);
+    if (financeAccess?.canViewCompanyFinance && invoices.length) {
+      loadCanonicalBankPaymentDisplay(invoices)
+        .then((payments) => { if (active) setCanonicalBankPayments(payments); })
+        .catch(() => { if (active) setBankPaymentReadError(true); });
+    }
+    return () => { active = false; };
+  }, [invoices, financeAccess]);
+
+  const canAccessKSeF = Boolean(financeAccess?.canViewCompanyFinance && canViewModule('invoices'));
   const canManageInvoices = useMemo(() => canManageModule('invoices'), [canManageModule]);
+  const canManageFinances = useMemo(() => canManageModule('finances'), [canManageModule]);
 
   const handleTabChange = useCallback(
     (tab: typeof activeTab) => {
+      if (isSalesView && !['dashboard', 'local', 'commissions'].includes(tab)) return;
       setActiveTab(tab);
       const params = new URLSearchParams(searchParams.toString());
       params.set('tab', tab);
       router.push(`/crm/invoices?${params.toString()}`, { scroll: false });
     },
-    [router, searchParams],
+    [router, searchParams, isSalesView],
   );
 
   useEffect(() => {
-    if (permissionsLoading) return;
+    if (permissionsLoading || financeAccessLoading || !financeAccess) return;
 
     const requestedTab = searchParams.get('tab');
     const supportedTabs = new Set([
@@ -266,10 +291,20 @@ export default function InvoicesPage() {
       'ksef',
       'external',
       'expenses',
+      'commissions',
       'settings',
     ]);
 
     if (!requestedTab || !supportedTabs.has(requestedTab)) return;
+
+    if (isSalesView && !['dashboard', 'local', 'commissions'].includes(requestedTab)) {
+      setActiveTab('dashboard');
+      const params = new URLSearchParams(searchParams.toString());
+      params.set('tab', 'dashboard');
+      params.delete('section');
+      router.replace(`/crm/invoices?${params.toString()}`, { scroll: false });
+      return;
+    }
 
     if (requestedTab === 'ksef' && !canAccessKSeF) {
       setActiveTab('dashboard');
@@ -282,7 +317,7 @@ export default function InvoicesPage() {
     }
 
     setActiveTab(requestedTab as typeof activeTab);
-  }, [canAccessKSeF, canManageInvoices, permissionsLoading, searchParams]);
+  }, [canAccessKSeF, canManageInvoices, permissionsLoading, financeAccessLoading, financeAccess, isSalesView, router, searchParams]);
 
   const allowedCompanyIds = useMemo<string[] | null>(() => {
     if (isAdmin) return null;
@@ -338,7 +373,7 @@ export default function InvoicesPage() {
     return [];
   }, [isAdmin, invoiceCompanyPerms, allowedCompanyIds, myCompanies, canManageModule]);
 
-  const canIssueAny = isAdmin || issuableCompanyIds.length > 0;
+  const canIssueAny = Boolean(financeAccess?.canIssueInvoices && (isSalesView || isAdmin || issuableCompanyIds.length > 0));
   const { showConfirm } = useDialog();
   const { showSnackbar } = useSnackbar();
 
@@ -412,11 +447,18 @@ export default function InvoicesPage() {
   }, [showCompanyDropdown]);
 
   useEffect(() => {
-    if (permissionsLoading) return;
+    if (permissionsLoading || financeAccessLoading) return;
+    if (!financeAccess || financeAccess.scope === 'none') {
+      setInvoices([]);
+      setMyCompanies([]);
+      setLoading(false);
+      return;
+    }
+    setInvoices([]);
     fetchInvoices();
     fetchMyCompanies();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allowedCompanyIds, permissionsLoading]);
+  }, [allowedCompanyIds, permissionsLoading, financeAccessLoading, financeAccess]);
 
   const fetchMyCompanies = async () => {
     try {
@@ -442,6 +484,7 @@ export default function InvoicesPage() {
   };
 
   const fetchInvoices = async () => {
+    if (!financeAccess || financeAccess.scope === 'none') return;
     try {
       let query = supabase
         .from('invoices')
@@ -458,6 +501,9 @@ export default function InvoicesPage() {
 
       if (allowedCompanyIds) {
         query = query.in('my_company_id', allowedCompanyIds);
+      }
+      if (financeAccess.scope === 'sales') {
+        query = query.in('created_by', [financeAccess.employeeId, financeAccess.authUserId]);
       }
 
       const { data, error } = await query;
@@ -567,6 +613,7 @@ export default function InvoicesPage() {
 
   const filteredInvoices = useMemo(() => {
     const filtered = invoices.filter((invoice) => {
+      if (isSalesView && invoice.created_by !== financeAccess?.employeeId && invoice.created_by !== financeAccess?.authUserId) return false;
       const matchesSearch =
         invoice.invoice_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
         invoice.buyer_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -577,7 +624,7 @@ export default function InvoicesPage() {
       const matchesCompany =
         selectedCompanyIds.size === 0 || selectedCompanyIds.has((invoice as any).my_company_id);
 
-      if (!isAdmin) {
+      if (!isAdmin && !isSalesView) {
         const cid = invoice.my_company_id;
         if (allowedCompanyIds && (!cid || !allowedCompanyIds.includes(cid))) return false;
 
@@ -640,6 +687,8 @@ export default function InvoicesPage() {
     filterStatus,
     selectedCompanyIds,
     isAdmin,
+    isSalesView,
+    financeAccess,
     allowedCompanyIds,
     hasAnyInvoiceCompanyPerm,
     invoiceCompanyPerms,
@@ -659,6 +708,12 @@ export default function InvoicesPage() {
     .filter((inv) => inv.status === 'paid')
     .reduce((sum, inv) => sum + Number(inv.total_gross), 0);
 
+  if (financeAccessLoading || permissionsLoading) {
+    return <div className="p-6 text-sm text-[#e5e4e2]/60">Sprawdzanie dostępu do finansów…</div>;
+  }
+  if (financeAccessError || !financeAccess || financeAccess.scope === 'none') {
+    return <div role="alert" className="p-6 text-sm text-[#e5e4e2]/70">{financeAccessError || 'Brak dostępu do faktur i wyników sprzedaży.'}</div>;
+  }
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -668,14 +723,14 @@ export default function InvoicesPage() {
   }
 
   return (
-    <PermissionGuard module="invoices">
+    <PermissionGuard module={isSalesView ? undefined : 'invoices'}>
       <div className="min-h-screen min-w-0 overflow-x-hidden bg-[#0a0d1a] p-3 sm:p-6">
         <div className="mx-auto min-w-0 max-w-[1800px]">
           {/* Header */}
           <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
             <div>
-              <h1 className="mb-2 text-3xl font-light text-[#e5e4e2]">Finanse</h1>
-              <p className="text-[#e5e4e2]/60">Analizuj wyniki, przepływy, koszty i dokumenty finansowe</p>
+              <h1 className="mb-2 text-3xl font-light text-[#e5e4e2]">{isSalesView ? 'Moja sprzedaż i faktury' : 'Finanse'}</h1>
+              <p className="text-[#e5e4e2]/60">{isSalesView ? 'Wyniki Twojej sprzedaży, wystawione przez Ciebie faktury i sprzedawcy pod Twoją opieką.' : 'Analizuj wyniki, przepływy, koszty i dokumenty finansowe'}</p>
             </div>
 
             <div className="ml-auto flex w-full min-w-0 items-center justify-end gap-2 sm:w-auto sm:gap-3">
@@ -772,7 +827,7 @@ export default function InvoicesPage() {
                 <ResponsiveActionBar
                   mobileBreakpoint={1180}
                   actions={
-                    canManageInvoices || canIssueAny
+                    canIssueAny
                       ? [
                           {
                             label: 'Faktura końcowa',
@@ -798,24 +853,26 @@ export default function InvoicesPage() {
             {[
               { id: 'dashboard', label: 'Przegląd finansowy', icon: DollarSign },
               { id: 'ksef', label: 'KSeF', icon: FileText },
-              { id: 'local', label: 'Lokalne faktury', icon: Building },
+              { id: 'local', label: isSalesView ? 'Moje faktury' : 'Lokalne faktury', icon: Building },
               { id: 'external', label: 'Dokumenty i rozliczenia', icon: Receipt },
               { id: 'expenses', label: 'Koszty i wypłaty', icon: WalletCards },
-              ...(canManageInvoices
+              { id: 'commissions', label: 'Sprzedawcy i prowizje', icon: Banknote },
+              ...(canManageInvoices && !isSalesView
                 ? [{ id: 'settings', label: 'Ustawienia faktur', icon: Settings }]
                 : []),
             ]
               .filter((tab) => {
+                if (isSalesView) return ['dashboard', 'local', 'commissions'].includes(tab.id);
                 return tab.id !== 'ksef' || canAccessKSeF;
               })
               .map((tab) => {
                 const Icon = tab.icon;
                 return (
-                  <button
+                  <button data-crm-tab-active={visibleTab === tab.id}
                     key={tab.id}
                     onClick={() => handleTabChange(tab.id as typeof activeTab)}
                     className={`flex shrink-0 snap-start items-center gap-2 whitespace-nowrap border-b-2 px-4 py-3 text-sm font-medium transition-colors ${
-                      activeTab === tab.id
+                      visibleTab === tab.id
                         ? 'border-[#d3bb73] text-[#d3bb73]'
                         : 'border-transparent text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
                     }`}
@@ -827,23 +884,28 @@ export default function InvoicesPage() {
               })}
           </div>
 
-          {activeTab === 'dashboard' ? (
+          {visibleTab === 'dashboard' ? (
             <CanonicalFinancialDashboard
               filterCompanyIds={selectedCompanyIds.size > 0 ? Array.from(selectedCompanyIds) : null}
             />
-          ) : activeTab === 'ksef' ? (
+          ) : visibleTab === 'ksef' && financeAccess.canViewCompanyFinance ? (
             <KSeFIntegrationPanel
               filterCompanyIds={selectedCompanyIds.size > 0 ? Array.from(selectedCompanyIds) : null}
             />
-          ) : activeTab === 'external' ? (
+          ) : visibleTab === 'external' && financeAccess.canViewCompanyFinance ? (
             <AccountingWorkspaceTab
               filterCompanyIds={
                 selectedCompanyIds.size > 0 ? Array.from(selectedCompanyIds) : allowedCompanyIds
               }
             />
-          ) : activeTab === 'expenses' ? (
+          ) : visibleTab === 'expenses' && financeAccess.canViewCompanyFinance ? (
             <FinancialEntriesTab />
-          ) : activeTab === 'settings' ? (
+          ) : visibleTab === 'commissions' ? (
+            <CommissionRegisterPanel
+              filterCompanyIds={selectedCompanyIds.size > 0 ? Array.from(selectedCompanyIds) : allowedCompanyIds}
+              canManage={canManageFinances && financeAccess.canManageCompanyFinance}
+            />
+          ) : visibleTab === 'settings' && financeAccess.canViewCompanyFinance ? (
             <InvoiceSettingsTab />
           ) : (
             <>
@@ -938,14 +1000,14 @@ export default function InvoicesPage() {
               <div className="mb-6 rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
                 <div className="flex flex-col gap-4 lg:flex-row">
                   <div className="flex-1">
-                    <div className="relative">
+                    <div className="crm-search-field relative rounded-lg border bg-[#0a0d1a]">
                       <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#e5e4e2]/40" />
                       <input
                         type="text"
                         placeholder="Szukaj po numerze, nazwie lub NIP..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] py-3 pl-12 pr-4 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                        className="crm-search-input w-full rounded-lg bg-transparent py-3 pl-12 pr-4 text-[#e5e4e2] outline-none"
                       />
                     </div>
                   </div>
@@ -1180,6 +1242,14 @@ export default function InvoicesPage() {
                                   </span>
                                 )}
                               </div>
+                              {canonicalBankPayments[invoice.id] && (
+                                <div className="mt-1 max-w-xs whitespace-normal text-xs text-emerald-300">
+                                  {formatCanonicalBankPayment(canonicalBankPayments[invoice.id])}
+                                </div>
+                              )}
+                              {bankPaymentReadError && invoice.ksef_status === 'accepted' && (
+                                <div className="mt-1 text-xs text-amber-300">Nie odczytano rozliczeń z wyciągu.</div>
+                              )}
                             </td>
                             <td className="whitespace-nowrap px-6 py-3.5 text-right">
                               <div className="flex items-center justify-end">
@@ -1276,6 +1346,14 @@ export default function InvoicesPage() {
                           <div className="text-xs text-[#e5e4e2]/40">NIP: {invoice.buyer_nip}</div>
                         )}
                       </div>
+                      {canonicalBankPayments[invoice.id] && (
+                        <div className="mb-3 text-xs text-emerald-300">
+                          {formatCanonicalBankPayment(canonicalBankPayments[invoice.id])}
+                        </div>
+                      )}
+                      {bankPaymentReadError && invoice.ksef_status === 'accepted' && (
+                        <div className="mb-3 text-xs text-amber-300">Nie odczytano rozliczeń z wyciągu.</div>
+                      )}
 
                       {invoice.event && (
                         <div className="mb-3 truncate text-xs text-[#e5e4e2]/40">

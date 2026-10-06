@@ -7,6 +7,7 @@ import { DollarSign, TrendingUp, TrendingDown, Receipt, Plus, Trash2, CreditCard
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import FinalInvoiceWizardModal from '@/components/crm/FinalInvoiceWizardModal';
 import EventFinancialControls from '@/components/crm/events/EventFinancialControls';
+import { timeEntryCompanyRate, type CompensationSnapshot } from '@/lib/personnel/compensation';
 import { getOfferTotals } from '@/lib/CRM/Offers/offerTotals';
 
 interface FinancialSummary {
@@ -104,6 +105,8 @@ interface ProfitabilitySubcontractorTask {
 }
 
 interface ProfitabilityTimeEntry {
+  personnel_contract_id?: string | null;
+  compensation_snapshot?: CompensationSnapshot | null;
   id: string;
   duration_minutes: number | null;
   hourly_rate: number | null;
@@ -126,6 +129,9 @@ interface EventCommission {
   rate: number;
   base_amount: number;
   amount: number;
+  payment_method?: 'cash_dividend' | 'invoice' | 'payroll' | 'other';
+  dividend_tax_rate?: number;
+  company_cost_amount?: number | null;
   status: 'planned' | 'approved' | 'paid' | 'cancelled';
 }
 
@@ -152,6 +158,8 @@ export default function EventFinancesTab({ eventId }: Props) {
   const [financialSource, setFinancialSource] = useState<'offer' | 'calculation'>('offer');
   const [acceptedCalcName, setAcceptedCalcName] = useState<string | null>(null);
   const [profitabilitySubcontractors, setProfitabilitySubcontractors] = useState<ProfitabilitySubcontractorTask[]>([]);
+  const [personnelCost,setPersonnelCost]=useState<{confirmed:number;estimated:number;incomplete:number;foreign_currency:number;covered_subcontractor_tasks:string[]} | null>(null);
+  const [personnelCostError,setPersonnelCostError]=useState(false);
   const [profitabilityTimeEntries, setProfitabilityTimeEntries] = useState<ProfitabilityTimeEntry[]>([]);
   const [eventSalesperson, setEventSalesperson] = useState<EventSalesperson | null>(null);
   const [assignedEmployeeCount, setAssignedEmployeeCount] = useState(0);
@@ -202,7 +210,7 @@ export default function EventFinancesTab({ eventId }: Props) {
 
   const fetchFinancialData = async () => {
     try {
-      const [summaryRes, sharedSummaryRes, invoicesRes, costsRes, categoriesRes, clientInfoRes, offerRes, subcontractorsRes, timeEntriesRes, commissionsRes, assignmentsRes] = await Promise.all([
+      const [summaryRes, sharedSummaryRes, invoicesRes, costsRes, categoriesRes, clientInfoRes, offerRes, subcontractorsRes, timeEntriesRes, commissionsRes, assignmentsRes, personnelCostRes] = await Promise.all([
         supabase.rpc('get_event_financial_summary', { p_event_id: eventId }),
         supabase.rpc('get_event_shared_invoice_summary', { p_event_id: eventId }),
         supabase
@@ -239,12 +247,12 @@ export default function EventFinancesTab({ eventId }: Props) {
           .neq('status', 'cancelled'),
         supabase
           .from('time_entries')
-          .select('id, duration_minutes, hourly_rate, employee:employees(name, surname)')
+          .select('id, duration_minutes, hourly_rate, compensation_snapshot, personnel_contract_id, employee:employees(name, surname)')
           .eq('event_id', eventId)
           .not('end_time', 'is', null),
         supabase
           .from('event_commissions')
-          .select('id, beneficiary_type, beneficiary_name, calculation_type, rate, base_amount, amount, status')
+          .select('id, beneficiary_type, beneficiary_name, calculation_type, rate, base_amount, amount, payment_method, dividend_tax_rate, company_cost_amount, status')
           .eq('event_id', eventId)
           .neq('status', 'cancelled')
           .order('created_at', { ascending: false }),
@@ -252,6 +260,7 @@ export default function EventFinancesTab({ eventId }: Props) {
           .from('employee_assignments')
           .select('employee_id')
           .eq('event_id', eventId),
+        supabase.rpc('personnel_event_cost',{p_event:eventId}),
       ]);
 
       if (summaryRes.data?.[0]) {
@@ -279,6 +288,8 @@ export default function EventFinancesTab({ eventId }: Props) {
       if (invoicesRes.data) setInvoices(invoicesRes.data);
       if (clientInfoRes.data?.[0]) setClientInfo(clientInfoRes.data[0]);
       setAcceptedOffer(offerRes.data || null);
+      setPersonnelCost(personnelCostRes.data || null);
+      setPersonnelCostError(!!personnelCostRes.error);
       setProfitabilitySubcontractors(subcontractorsRes.data || []);
       setProfitabilityTimeEntries((timeEntriesRes.data || []) as ProfitabilityTimeEntry[]);
       setEventCommissions((commissionsRes.data || []) as EventCommission[]);
@@ -425,7 +436,7 @@ export default function EventFinancesTab({ eventId }: Props) {
     }
 
     const currentExpectedRevenue = acceptedOffer
-      ? getOfferTotals(acceptedOffer).gross
+      ? getOfferTotals(acceptedOffer).net
       : Number(summary?.expected_revenue || 0);
     const baseAmount = commissionForm.calculation_type === 'percent' ? currentExpectedRevenue : 0;
     const amount = commissionForm.calculation_type === 'percent'
@@ -532,25 +543,26 @@ export default function EventFinancesTab({ eventId }: Props) {
   const plannedEmployeeCostsFromRegister = costs
     .filter((cost) => cost.status !== 'rejected' && isEmployeeCost(cost))
     .reduce((sum, cost) => sum + Number(cost.amount || 0), 0);
-  const actualEmployeeCosts = profitabilityTimeEntries.reduce((sum, entry) => {
-    const hourlyRate = Number(entry.hourly_rate || 0);
+  const actualEmployeeCosts = profitabilityTimeEntries.filter(entry=>!entry.personnel_contract_id).reduce((sum, entry) => {
+    const hourlyRate = timeEntryCompanyRate(entry);
     return sum + (Number(entry.duration_minutes || 0) / 60) * hourlyRate;
-  }, 0);
+  }, 0) + Number(personnelCost?.confirmed || 0) + Number(personnelCost?.estimated || 0);
   const plannedEmployeeCosts = plannedEmployeeCostsFromRegister || actualEmployeeCosts;
-  const plannedSubcontractorCosts = profitabilitySubcontractors.reduce(
+  const uncoveredSubcontractors = profitabilitySubcontractors.filter(task=>!personnelCost?.covered_subcontractor_tasks?.includes(task.id));
+  const plannedSubcontractorCosts = uncoveredSubcontractors.reduce(
     (sum, task) => sum + Number(task.agreed_cost || task.total_cost || 0),
     0,
   );
-  const actualSubcontractorCosts = profitabilitySubcontractors
+  const actualSubcontractorCosts = uncoveredSubcontractors
     .filter((task) => task.payment_status === 'paid' || task.status === 'completed')
     .reduce((sum, task) => sum + Number(task.agreed_cost || task.total_cost || 0), 0);
   const hasExplicitSalesCommission = eventCommissions.some((commission) => commission.beneficiary_type === 'salesperson');
   const explicitPlannedCommissions = eventCommissions
     .filter((commission) => commission.status !== 'cancelled')
-    .reduce((sum, commission) => sum + Number(commission.amount || 0), 0);
+    .reduce((sum, commission) => sum + Number(commission.company_cost_amount ?? commission.amount ?? 0), 0);
   const explicitActualCommissions = eventCommissions
     .filter((commission) => ['approved', 'paid'].includes(commission.status))
-    .reduce((sum, commission) => sum + Number(commission.amount || 0), 0);
+    .reduce((sum, commission) => sum + Number(commission.company_cost_amount ?? commission.amount ?? 0), 0);
   const plannedCommissions = explicitPlannedCommissions;
   const actualCommissions = explicitActualCommissions;
   const plannedTotalCosts = registeredPlannedCosts + plannedEmployeeCosts + plannedSubcontractorCosts + plannedCommissions;
@@ -563,17 +575,21 @@ export default function EventFinancesTab({ eventId }: Props) {
     { label: 'Pozostałe koszty', planned: registeredPlannedCosts, actual: registeredActualCosts, color: '#ef4444' },
     { label: 'Pracownicy', planned: plannedEmployeeCosts, actual: actualEmployeeCosts, color: '#3b82f6' },
     { label: 'Podwykonawcy', planned: plannedSubcontractorCosts, actual: actualSubcontractorCosts, color: '#f59e0b' },
-    { label: 'Prowizje', planned: plannedCommissions, actual: actualCommissions, color: '#8b5cf6' },
+    { label: 'Prowizje (koszt dla spółki)', planned: plannedCommissions, actual: actualCommissions, color: '#8b5cf6' },
   ];
   const maxProfitabilityCost = Math.max(...profitabilityRows.map((row) => Math.max(row.planned, row.actual)), 1);
   const missingSubcontractorCosts = profitabilitySubcontractors.filter(
     (task) => Number(task.agreed_cost || task.total_cost || 0) <= 0,
   ).length;
   const missingEmployeeRates = profitabilityTimeEntries.filter(
-    (entry) => Number(entry.hourly_rate || 0) <= 0,
+    (entry) => !entry.personnel_contract_id && Number(entry.hourly_rate || 0) <= 0,
   ).length;
   const pendingCosts = costs.filter((cost) => cost.status === 'pending').length;
   const profitabilityIssues = [
+    personnelCostError ? 'Nie udało się pobrać kosztów umów personelu — wynik jest niepełny' : null,
+    Number(personnelCost?.incomplete || 0)>0 ? 'Nie wszystkie godziny personelu mają określony koszt firmy' : null,
+    Number(personnelCost?.foreign_currency || 0)>0 ? 'Koszty personelu w walucie obcej wymagają przeliczenia — nie dodano ich do PLN' : null,
+    Number(personnelCost?.estimated || 0)>0 ? 'Część kosztów personelu jest szacunkiem przed zatwierdzeniem rozliczenia' : null,
     missingSubcontractorCosts > 0 ? `${missingSubcontractorCosts} zleceń podwykonawców bez kosztu` : null,
     missingEmployeeRates > 0 ? `${missingEmployeeRates} wpisów czasu bez stawki` : null,
     assignedEmployeeCount > 0 && profitabilityTimeEntries.length === 0
@@ -861,7 +877,7 @@ export default function EventFinancesTab({ eventId }: Props) {
                 <div className="mt-0.5 text-[11px] text-[#e5e4e2]/35">Sprzedawcy, hotele, sale, partnerzy i pozostali beneficjenci.</div>
               </div>
               {isAdmin && commissionsAvailable && (
-                <button
+                <button data-crm-action="secondary"
                   type="button"
                   onClick={() => setShowAddCommission((visible) => !visible)}
                   className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/25 px-3 py-2 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/10"
@@ -944,7 +960,10 @@ export default function EventFinancesTab({ eventId }: Props) {
                   <div className="flex items-center gap-3">
                     <span className="text-[#d3bb73]">
                       {commission.calculation_type === 'percent' ? `${commission.rate}% · ` : ''}
-                      {Number(commission.amount || 0).toLocaleString('pl-PL')} zł
+                      dla osoby {Number(commission.amount || 0).toLocaleString('pl-PL')} zł
+                      {Number(commission.company_cost_amount ?? commission.amount ?? 0) > Number(commission.amount || 0)
+                        ? ` · koszt spółki ${Number(commission.company_cost_amount).toLocaleString('pl-PL')} zł`
+                        : ''}
                     </span>
                     {isAdmin && (
                       <>
@@ -983,7 +1002,7 @@ export default function EventFinancesTab({ eventId }: Props) {
             </h3>
             <div className="flex items-center gap-2">
               {invoices.some((i) => i.invoice_type === 'advance') && (
-                <button
+                <button data-crm-action="secondary"
                   onClick={() => setShowFinalInvoiceModal(true)}
                   className="flex items-center gap-2 rounded-lg border border-[#d3bb73] px-4 py-2 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/10"
                 >

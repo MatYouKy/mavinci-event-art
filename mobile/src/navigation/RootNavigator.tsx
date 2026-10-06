@@ -59,7 +59,6 @@ export default function RootNavigator() {
         headerTitleStyle: {
           fontFamily: typography.fontFamilies.heading,
           fontWeight: '400',
-          textTransform: 'uppercase',
         },
       }}>
         {session ? (
@@ -70,7 +69,7 @@ export default function RootNavigator() {
               component={NotificationsScreen}
               options={{
                 headerShown: true,
-                title: 'Powiadomienia',
+                title: 'Powiadomienia'.toLocaleUpperCase('pl-PL'),
                 headerStyle: {
                   backgroundColor: colors.background.secondary,
                 },
@@ -82,7 +81,7 @@ export default function RootNavigator() {
               component={EmailMessageDetailScreen}
               options={{
                 headerShown: true,
-                title: 'Wiadomość e-mail',
+                title: 'Wiadomość e-mail'.toLocaleUpperCase('pl-PL'),
                 headerStyle: { backgroundColor: colors.background.secondary },
                 headerTintColor: colors.text.primary,
               }}
@@ -92,7 +91,7 @@ export default function RootNavigator() {
               component={InboundEventDetailScreen}
               options={{
                 headerShown: true,
-                title: 'Wiadomość z formularza',
+                title: 'Wiadomość z formularza'.toLocaleUpperCase('pl-PL'),
                 headerStyle: { backgroundColor: colors.background.secondary },
                 headerTintColor: colors.text.primary,
               }}
@@ -102,7 +101,7 @@ export default function RootNavigator() {
               component={ContactMessageDetailScreen}
               options={{
                 headerShown: true,
-                title: 'Wiadomość kontaktowa',
+                title: 'Wiadomość kontaktowa'.toLocaleUpperCase('pl-PL'),
                 headerStyle: { backgroundColor: colors.background.secondary },
                 headerTintColor: colors.text.primary,
               }}

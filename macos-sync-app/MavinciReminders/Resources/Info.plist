@@ -7,7 +7,9 @@
 	<key>CFBundleExecutable</key>
 	<string>MavinciReminders</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.mavinci.crm-reminders</string>
+	<string>pl.mavinci.reminders</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
 	<key>CFBundleName</key>
 	<string>Mavinci Reminders</string>
 	<key>CFBundleDisplayName</key>
@@ -15,9 +17,9 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.0.0</string>
+	<string>1.4</string>
 	<key>CFBundleVersion</key>
-	<string>1</string>
+	<string>4</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>13.0</string>
 	<key>LSUIElement</key>

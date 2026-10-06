@@ -1,5 +1,6 @@
 'use client';
 
+import OverlayPortal from '@/components/UI/OverlayPortal';
 import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
 import { X, AlertCircle, CheckCircle, Info, AlertTriangle } from 'lucide-react';
 
@@ -19,7 +20,9 @@ interface DialogConfig {
 
 interface ConfirmOptions {
   title?: string;
-  message: string;
+  message: string | ReactNode;
+  /** Keep the modal open when its input is invalid. */
+  validate?: () => boolean;
   confirmText?: string;
   cancelText?: string;
 }
@@ -93,6 +96,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
           {
             label: config.confirmText,
             onClick: () => {
+              if (typeof options !== 'string' && options.validate && !options.validate()) return;
               hideDialog();
               resolve(true);
             },
@@ -134,7 +138,8 @@ export function DialogProvider({ children }: { children: ReactNode }) {
       {children}
 
       {dialog && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center">
+        <OverlayPortal>
+        <div data-app-overlay="true" className="fixed inset-0 z-[9999] flex items-center justify-center">
           <div
             className="absolute inset-0 bg-black/60 backdrop-blur-sm"
             onClick={hideDialog}
@@ -176,6 +181,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
             </div>
           </div>
         </div>
+        </OverlayPortal>
       )}
     </DialogContext.Provider>
   );

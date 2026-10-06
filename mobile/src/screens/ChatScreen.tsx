@@ -1,4 +1,6 @@
+import { saveChatPhoto, PhotoPermissionError } from '../services/saveChatPhoto';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useForegroundEffect } from '../hooks/useForegroundEffect';
 import {
   View,
   Text,
@@ -14,6 +16,7 @@ import {
   Modal,
   Pressable,
   Dimensions,
+  Linking,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
@@ -103,6 +106,30 @@ export default function ChatScreen({ conversation, onBack }: Props) {
   const [isTyping, setIsTyping] = useState(false);
   const [pendingAttachment, setPendingAttachment] = useState<PendingAttachment | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [savingPhoto, setSavingPhoto] = useState(false);
+  const savingPhotoRef = useRef(false);
+  const savePreviewPhoto = async () => {
+    if (!previewImage || savingPhotoRef.current) return;
+    savingPhotoRef.current = true;
+    setSavingPhoto(true);
+    try {
+      await saveChatPhoto(previewImage);
+      Alert.alert('Zapisano zdjęcie', 'Zdjęcie znajdziesz w galerii telefonu.');
+    } catch (error) {
+      if (error instanceof PhotoPermissionError) {
+        Alert.alert('Dostęp do zdjęć', 'Zezwól aplikacji na dodawanie zdjęć w ustawieniach telefonu.', [
+          { text: 'Anuluj', style: 'cancel' },
+          { text: 'Otwórz ustawienia', onPress: () => { void Linking.openSettings().catch(() => {}); } },
+        ]);
+      } else {
+        Alert.alert('Nie zapisano zdjęcia', 'Sprawdź połączenie i wolne miejsce w telefonie, a następnie spróbuj ponownie.');
+      }
+    } finally {
+      savingPhotoRef.current = false;
+      setSavingPhoto(false);
+    }
+  };
+
   const [previewPdf, setPreviewPdf] = useState<string | null>(null);
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -172,7 +199,6 @@ export default function ChatScreen({ conversation, onBack }: Props) {
       const { data: sendersData } = await supabase
         .from('employees')
         .select('id, name, surname, nickname, avatar_url, avatar_metadata')
-        .eq('is_active', true)
         .in('id', senderIds);
 
       if (sendersData) {
@@ -219,7 +245,6 @@ export default function ChatScreen({ conversation, onBack }: Props) {
         const { data: sendersData } = await supabase
           .from('employees')
           .select('id, name, surname, nickname, avatar_url, avatar_metadata')
-          .eq('is_active', true)
           .in('id', missingSenderIds);
 
         if (sendersData) {
@@ -280,7 +305,7 @@ export default function ChatScreen({ conversation, onBack }: Props) {
     }
   }, [conversation.id]);
 
-  useEffect(() => {
+  useForegroundEffect((signal) => {
     setActiveChatConversation(conversation.id);
     userHasScrolledRef.current = false;
     setHasOlderMessages(true);
@@ -293,17 +318,16 @@ export default function ChatScreen({ conversation, onBack }: Props) {
         markAsRead(),
         markAsDelivered(),
       ]);
-      setIsLoading(false);
+      if (!signal.aborted) setIsLoading(false);
     };
-    load();
+    void load();
 
     return () => {
-      markAsRead();
       setActiveChatConversation(null);
     };
   }, [fetchMessages, fetchParticipantsState, markAsRead, markAsDelivered]);
 
-  useEffect(() => {
+  useForegroundEffect((signal) => {
     const channel = supabase
       .channel(`chat-${conversation.id}`)
       .on(
@@ -315,6 +339,7 @@ export default function ChatScreen({ conversation, onBack }: Props) {
           filter: `conversation_id=eq.${conversation.id}`,
         },
         async (payload) => {
+          if (signal.aborted) return;
           const newMsg = payload.new as Message;
           setMessages((prev) => {
             if (prev.some((m) => m.id === newMsg.id)) {
@@ -328,8 +353,8 @@ export default function ChatScreen({ conversation, onBack }: Props) {
               .from('employees')
               .select('id, name, surname, nickname, avatar_url, avatar_metadata')
               .eq('id', newMsg.sender_id)
-              .eq('is_active', true)
-              .maybeSingle();
+              .abortSignal(signal).maybeSingle();
+            if (signal.aborted) return;
             if (data) {
               setSenders((prev) => {
                 const next = new Map(prev).set(data.id, data);
@@ -344,6 +369,7 @@ export default function ChatScreen({ conversation, onBack }: Props) {
             markAsDelivered();
           }
           setTimeout(() => {
+            if (signal.aborted) return;
             flatListRef.current?.scrollToEnd({ animated: true });
           }, 100);
         },
@@ -403,7 +429,7 @@ export default function ChatScreen({ conversation, onBack }: Props) {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      return supabase.removeChannel(channel);
     };
   }, [conversation.id, markAsRead, markAsDelivered, employee?.id]);
 
@@ -498,6 +524,17 @@ export default function ChatScreen({ conversation, onBack }: Props) {
     if (!employee || isSending) return;
 
     setIsSending(true);
+    try {
+      const { data: auth, error: authError } = await supabase.auth.getUser();
+      if (authError || !auth.user) throw new Error('Nie udało się potwierdzić zalogowanego konta.');
+      const { data: actor, error: actorError } = await supabase.from('employees').select('id')
+        .eq('auth_user_id', auth.user.id).eq('is_active', true).maybeSingle();
+      if (actorError || actor?.id !== employee.id) throw new Error('Konto czatu nie odpowiada zalogowanemu użytkownikowi. Zaloguj się ponownie.');
+    } catch (cause: any) {
+      setIsSending(false);
+      Alert.alert('Nie wysłano wiadomości', cause?.message || 'Sprawdź zalogowane konto.');
+      return;
+    }
     setInputText('');
     setPendingAttachment(null);
     Keyboard.dismiss();
@@ -986,11 +1023,12 @@ export default function ChatScreen({ conversation, onBack }: Props) {
 
   const renderMessage = ({ item, index }: { item: Message; index: number }) => {
     const isMine = item.sender_id === employee?.id;
-    const sender = senders.get(item.sender_id);
+    const sender = senders.get(item.sender_id) || conversation.participants.find(participant => participant.employee_id === item.sender_id)?.employee;
     const showAvatar =
       !isMine &&
       (index === visibleMessages.length - 1 ||
-        item.sender_id !== visibleMessages[index + 1]?.sender_id);
+        item.sender_id !== visibleMessages[index + 1]?.sender_id ||
+        new Date(visibleMessages[index + 1].created_at).getTime() - new Date(item.created_at).getTime() >= 60000);
     const isLastMine = isMine && index === lastMineIndex;
     const receiptStatus = isLastMine ? getReceiptStatus(item) : null;
     const showDateSep =
@@ -1043,11 +1081,11 @@ export default function ChatScreen({ conversation, onBack }: Props) {
 
           {!isMine && !isSelectMode && (
             <View style={styles.avatarSlot}>
-              {showAvatar && sender ? (
+              {showAvatar ? (
                 <EmployeeAvatar
-                  avatarUrl={sender.avatar_url}
-                  avatarMetadata={sender.avatar_metadata}
-                  employeeName={sender.nickname || sender.name}
+                  avatarUrl={sender?.avatar_url}
+                  avatarMetadata={sender?.avatar_metadata}
+                  employeeName={sender?.nickname || sender?.name || 'Pracownik'}
                   size={28}
                 />
               ) : (
@@ -1236,6 +1274,7 @@ export default function ChatScreen({ conversation, onBack }: Props) {
         <FlatList
           ref={flatListRef}
           data={visibleMessages}
+          extraData={{ employeeId: employee?.id, senders, participantsState, selectedIds }}
           renderItem={renderMessage}
           initialNumToRender={MESSAGE_PAGE_SIZE}
           onScrollBeginDrag={() => {
@@ -1335,7 +1374,7 @@ export default function ChatScreen({ conversation, onBack }: Props) {
         animationType="fade"
         onRequestClose={() => setPreviewImage(null)}
       >
-        <Pressable style={styles.previewOverlay} onPress={() => setPreviewImage(null)}>
+        <View style={styles.previewOverlay}>
           {previewImage && (
             <Image
               source={{ uri: previewImage }}
@@ -1344,10 +1383,23 @@ export default function ChatScreen({ conversation, onBack }: Props) {
             />
           )}
 
-          <TouchableOpacity style={styles.previewClose} onPress={() => setPreviewImage(null)}>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Zamknij podgląd" style={[styles.previewClose, { top: insets.top + 12 }]} onPress={() => setPreviewImage(null)}>
             <Feather name="x" size={28} color="#fff" />
           </TouchableOpacity>
-        </Pressable>
+          <TouchableOpacity
+            accessibilityRole="button" accessibilityLabel="Zapisz zdjęcie w galerii"
+            accessibilityState={{ disabled: savingPhoto, busy: savingPhoto }}
+            disabled={savingPhoto} onPress={() => void savePreviewPhoto()}
+            style={{ position: 'absolute', bottom: insets.bottom + 24, flexDirection: 'row',
+              alignItems: 'center', gap: 10, backgroundColor: colors.primary.gold,
+              paddingHorizontal: 20, paddingVertical: 14, borderRadius: 24, opacity: savingPhoto ? 0.6 : 1 }}>
+            {savingPhoto ? <ActivityIndicator color={colors.background.primary} /> :
+              <Feather name="download" size={20} color={colors.background.primary} />}
+            <Text style={{ color: colors.background.primary, fontWeight: '600' }}>
+              {savingPhoto ? 'Zapisywanie…' : 'Zapisz zdjęcie'}
+            </Text>
+          </TouchableOpacity>
+        </View>
       </Modal>
 
       <Modal
@@ -1548,7 +1600,7 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 4,
   },
   bubbleTheirs: {
-    backgroundColor: colors.background.tertiary,
+    backgroundColor: colors.secondary.burgundyLight,
     borderBottomLeftRadius: 4,
   },
   bubbleWithAttachment: {
@@ -1564,7 +1616,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   messageTextMine: {
-    color: '#fff',
+    color: colors.background.primary,
   },
   messageTime: {
     fontSize: 10,

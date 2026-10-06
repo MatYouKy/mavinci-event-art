@@ -1,3 +1,5 @@
+import type { ProductSalesPackage } from '@/lib/CRM/Offers/productSalesPackages';
+import type { ProductAddon, OfferConfiguration } from '@/lib/CRM/Offers/offerAddons';
 import { IEventCategory } from '../event-categories/types';
 
 export type ContractClauseCategory =
@@ -34,6 +36,12 @@ export interface IProductVariant {
 }
 
 export interface IProduct {
+  related_service_ids?: string[];
+  related_service_url?: string | null;
+  related_service_label?: string | null;
+  sales_packages?: ProductSalesPackage[];
+  sales_packages_enabled?: boolean;
+  pricing_addons?: ProductAddon[];
   id: string;
   name: string;
   description: string;
@@ -45,6 +53,7 @@ export interface IProduct {
   service_duration_hours?: number | null;
   extension_price_net_per_hour?: number | null;
   offer_description?: string | null;
+  offer_compact_description?: string | null;
   offer_requirements?: string[] | null;
   offer_additional_requirements?: Array<{
     id: string;
@@ -82,6 +91,7 @@ export interface IProduct {
 }
 
 export interface IOfferItem {
+  pricing_configuration?: OfferConfiguration | null;
   id: string;
   product_id: string;
   name: string;
@@ -99,6 +109,7 @@ export interface IOfferItem {
   needs_subcontractor?: boolean;
   product_variant_id?: string | null;
   offer_page_variant_override?: 'compact' | 'default' | 'visual' | null;
+  variant_prices_net?: Record<string, number>;
   show_variant_prices_in_pdf?: boolean;
   show_product_variants_in_pdf?: boolean;
   product_variant?: IProductVariant | null;
@@ -136,7 +147,7 @@ export type IOfferWizardCustomItem = {
   subtotal?: number;
 };
 
-export type StaffPaymentType = 'invoice_with_vat' | 'invoice_no_vat' | 'cash_no_receipt';
+export type StaffPaymentType = 'invoice_with_vat' | 'invoice_no_vat' | 'cash_no_receipt' | 'cash_documented';
 
 export type ProductStaffRow = {
   id: string;
@@ -152,6 +163,7 @@ export type ProductStaffRow = {
   notes: string | null;
 
   payment_type: StaffPaymentType;
+  compensation?: import('@/lib/CRM/Offers/productSalesPackages').PackageStaffCompensation | null;
 };
 
 export type ProductEquipmentMode = 'item' | 'kit' | 'rental';

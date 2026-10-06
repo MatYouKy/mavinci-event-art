@@ -1,3 +1,7 @@
+import RealizationWorkspace from '@/components/crm/events/RealizationWorkspace';
+import { getOfferPricingTotals } from '@/lib/CRM/Offers/offerTotals';
+import { createSupabaseServerClient } from '@/lib/supabase/server.app';
+import { getCookieStore } from '@/lib/CRM/events/eventsIdData.server';
 // src/app/(crm)/crm/events/[id]/page.tsx
 import { fetchEventByIdServer } from '@/lib/CRM/events/eventsIdData.server';
 import EventDetailPageClient from './EventDetailPageClient';
@@ -11,6 +15,9 @@ import { EventWorkspaceProvider } from '@/components/crm/events/EventWorkspacePr
 import { notFound } from 'next/navigation';
 
 export default async function EventPage({ params }: { params: { id: string } }) {
+  const client = createSupabaseServerClient(getCookieStore());
+  const { data: realization } = await client.rpc('get_realization_workspace', { p_event_id: params.id });
+  if (realization?.operational_only) return <RealizationWorkspace initialData={realization} />;
   const event = await fetchEventByIdServer(params.id);
 
   if (!event) {
@@ -29,7 +36,7 @@ export default async function EventPage({ params }: { params: { id: string } }) 
       event.financial_source === 'calculation'
         ? event.expected_revenue
         : acceptedOffer
-          ? Number(acceptedOffer.subtotal ?? acceptedOffer.total_amount ?? 0)
+          ? getOfferPricingTotals(acceptedOffer).gross
           : event.expected_revenue,
   };
 

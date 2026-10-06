@@ -365,9 +365,13 @@ export function EditEventModal({
                 onChange={(e) => setFormData({ ...formData, status: e.target.value })}
                 className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
               >
+                {['in_preparation', 'ready_for_live'].includes(formData.status) && (
+                  <option value={formData.status} disabled>
+                    {formData.status === 'in_preparation' ? 'W przygotowaniu' : 'Gotowe do realizacji'} · status magazynu
+                  </option>
+                )}
                 <option value="offer_sent">Oferta wysłana</option>
                 <option value="offer_accepted">Oferta zaakceptowana</option>
-                <option value="in_preparation">W przygotowaniu</option>
                 <option value="in_progress">W trakcie</option>
                 <option value="completed">Zakończony</option>
                 <option value="cancelled">Anulowany</option>

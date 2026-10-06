@@ -17,6 +17,12 @@ interface AccessLevel {
   id: string;
   name: string;
   description: string | null;
+  slug: string;
+}
+
+interface CompanyOption {
+  id: string;
+  name: string;
 }
 
 export default function AddEmployeeModal({ onClose, onSuccess, isOpen }: AddEmployeeModalProps) {
@@ -24,6 +30,7 @@ export default function AddEmployeeModal({ onClose, onSuccess, isOpen }: AddEmpl
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [accessLevels, setAccessLevels] = useState<AccessLevel[]>([]);
+  const [companies, setCompanies] = useState<CompanyOption[]>([]);
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -33,6 +40,8 @@ export default function AddEmployeeModal({ onClose, onSuccess, isOpen }: AddEmpl
     phone_number: '',
     role: 'unassigned',
     access_level_id: '',
+    company_access_mode: 'selected' as 'all' | 'selected',
+    my_company_ids: [] as string[],
     occupation: '',
   });
   const [error, setError] = useState('');
@@ -48,11 +57,19 @@ export default function AddEmployeeModal({ onClose, onSuccess, isOpen }: AddEmpl
     try {
       const { data, error } = await supabase
         .from('access_levels')
-        .select('id, name, description')
-        .order('name');
+        .select('id, name, description, slug')
+        .eq('is_company_role', true)
+        .order('order_index');
 
       if (error) throw error;
       setAccessLevels(data || []);
+
+      const { data: companyData, error: companyError } = await supabase
+        .from('my_companies')
+        .select('id, name')
+        .order('name');
+      if (companyError) throw companyError;
+      setCompanies(companyData || []);
     } catch (err: any) {
       console.error('Error fetching access levels:', err);
     }
@@ -99,6 +116,18 @@ export default function AddEmployeeModal({ onClose, onSuccess, isOpen }: AddEmpl
       // Validate required fields
       if (!formData.email || !formData.password || !formData.name || !formData.surname) {
         setError('Wypełnij wszystkie wymagane pola');
+        setLoading(false);
+        return;
+      }
+
+      if (!formData.access_level_id) {
+        setError('Wybierz rolę firmową');
+        setLoading(false);
+        return;
+      }
+
+      if (formData.company_access_mode === 'selected' && formData.my_company_ids.length === 0) {
+        setError('Wybierz przynajmniej jedną markę albo dostęp do wszystkich marek');
         setLoading(false);
         return;
       }
@@ -209,21 +238,6 @@ export default function AddEmployeeModal({ onClose, onSuccess, isOpen }: AddEmpl
       setLoading(false);
     }
   };
-
-  const roles = [
-    { value: 'admin', label: 'Administrator' },
-    { value: 'manager', label: 'Menedżer' },
-    { value: 'event_manager', label: 'Menedżer eventów' },
-    { value: 'sales', label: 'Sprzedaż' },
-    { value: 'logistics', label: 'Logistyka' },
-    { value: 'technician', label: 'Technik' },
-    { value: 'support', label: 'Wsparcie' },
-    { value: 'freelancer', label: 'Freelancer' },
-    { value: 'dj', label: 'DJ' },
-    { value: 'mc', label: 'Konferansjer' },
-    { value: 'assistant', label: 'Asystent' },
-    { value: 'unassigned', label: 'Nieprzypisany' },
-  ];
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -341,41 +355,87 @@ export default function AddEmployeeModal({ onClose, onSuccess, isOpen }: AddEmpl
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div>
-              <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Rola</label>
-              <select
-                value={formData.role}
-                onChange={(e) => setFormData((prev) => ({ ...prev, role: e.target.value }))}
-                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1019] px-3 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
-              >
-                {roles.map((role) => (
-                  <option key={role.value} value={role.value}>
-                    {role.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
+          <div className="rounded-xl border border-[#d3bb73]/15 bg-[#0f1019]/55 p-4">
             <div>
               <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
-                Poziom dostępu
+                Rola firmowa <span className="text-red-400">*</span>
               </label>
               <select
                 value={formData.access_level_id}
-                onChange={(e) =>
-                  setFormData((prev) => ({ ...prev, access_level_id: e.target.value }))
-                }
+                onChange={(e) => {
+                  const accessLevel = accessLevels.find((level) => level.id === e.target.value);
+                  setFormData((prev) => ({
+                    ...prev,
+                    access_level_id: e.target.value,
+                    role: ['admin', 'company-admin'].includes(accessLevel?.slug || '') ? 'admin' : 'employee',
+                    company_access_mode:
+                      ['admin', 'company-admin'].includes(accessLevel?.slug || '') ? 'all' : prev.company_access_mode,
+                    my_company_ids:
+                      ['admin', 'company-admin'].includes(accessLevel?.slug || '') ? [] : prev.my_company_ids,
+                  }));
+                }}
                 className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1019] px-3 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
+                required
               >
-                <option value="">Wybierz poziom dostępu</option>
+                <option value="">Wybierz rolę firmową</option>
                 {accessLevels.map((level) => (
                   <option key={level.id} value={level.id}>
                     {level.name}
                   </option>
                 ))}
               </select>
+              {formData.access_level_id && (
+                <p className="mt-2 text-xs leading-5 text-[#e5e4e2]/55">
+                  {accessLevels.find((level) => level.id === formData.access_level_id)?.description}
+                </p>
+              )}
             </div>
+          </div>
+
+          <div className="rounded-xl border border-[#d3bb73]/15 bg-[#0f1019]/55 p-4">
+            <div className="text-sm font-medium text-[#e5e4e2]">Dostęp do marek</div>
+            <p className="mt-1 text-xs leading-5 text-[#e5e4e2]/55">
+              Rola określa co pracownik może robić, a marki określają, których wydarzeń i dokumentów może używać.
+            </p>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-[#d3bb73]/15 p-3">
+                <input
+                  type="radio"
+                  name="company-access"
+                  checked={formData.company_access_mode === 'all'}
+                  onChange={() => setFormData((prev) => ({ ...prev, company_access_mode: 'all', my_company_ids: [] }))}
+                />
+                <span className="text-sm text-[#e5e4e2]">Wszystkie marki</span>
+              </label>
+              <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-[#d3bb73]/15 p-3">
+                <input
+                  type="radio"
+                  name="company-access"
+                  checked={formData.company_access_mode === 'selected'}
+                  onChange={() => setFormData((prev) => ({ ...prev, company_access_mode: 'selected' }))}
+                />
+                <span className="text-sm text-[#e5e4e2]">Wybrane marki</span>
+              </label>
+            </div>
+            {formData.company_access_mode === 'selected' && (
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                {companies.map((company) => (
+                  <label key={company.id} className="flex cursor-pointer items-center gap-3 rounded-lg border border-[#d3bb73]/10 bg-[#0f1019] p-3">
+                    <input
+                      type="checkbox"
+                      checked={formData.my_company_ids.includes(company.id)}
+                      onChange={() => setFormData((prev) => ({
+                        ...prev,
+                        my_company_ids: prev.my_company_ids.includes(company.id)
+                          ? prev.my_company_ids.filter((id) => id !== company.id)
+                          : [...prev.my_company_ids, company.id],
+                      }))}
+                    />
+                    <span className="text-sm text-[#e5e4e2]">{company.name}</span>
+                  </label>
+                ))}
+              </div>
+            )}
           </div>
 
           <div>

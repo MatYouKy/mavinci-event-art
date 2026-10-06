@@ -1,4 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { fetchUnreadChatCounts } from '../services/unreadChat';
+import React, { useState, useCallback } from 'react';
+import { useForegroundEffect } from '../hooks/useForegroundEffect';
+import { createRefreshQueue } from '../lib/refreshQueue';
 import {
   View,
   Text,
@@ -20,8 +23,10 @@ import { useAuth } from '../contexts/AuthContext';
 import PermissionGate from '../components/PermissionGate';
 import EmployeeAvatar from '../components/EmployeeAvatar';
 import SwipeableRow from '../components/SwipeableRow';
+import { listSellerConversations, SellerConversation, sellerConversationLabel } from '../lib/sellerChat';
 
 export interface Conversation {
+  sellerConversation?: SellerConversation;
   id: string;
   title: string | null;
   is_group: boolean;
@@ -58,6 +63,21 @@ function ChatListContent({ onConversationPress, onNewChat }: Props) {
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
+  const [sellerConversations, setSellerConversations] = useState<Conversation[]>([]);
+  const [sellerError, setSellerError] = useState('');
+  const fetchSellerConversations = useCallback(async () => {
+    try {
+      const rows = await listSellerConversations();
+      setSellerConversations(rows.map(row => ({
+        id: row.id, sellerConversation: row,
+        title: row.event_name || row.offer_title || row.title,
+        is_group: false, created_by: '', created_at: row.last_at || '',
+        last_message_at: row.last_at || '', last_message_preview: row.last_message,
+        participants: [], unread_count: Number(row.unread),
+      })));
+      setSellerError('');
+    } catch { setSellerError('Nie udało się wczytać rozmów ze sprzedawcami. Przeciągnij listę w dół, aby ponowić.'); }
+  }, []);
   const fetchConversations = useCallback(async () => {
     if (!employee) return;
 
@@ -72,7 +92,7 @@ function ChatListContent({ onConversationPress, onNewChat }: Props) {
     }
 
     const conversationIds = participations.map((p) => p.conversation_id);
-    const lastReadMap = new Map(participations.map((p) => [p.conversation_id, p.last_read_at]));
+    const unreadCounts = await fetchUnreadChatCounts(supabase, employee.id);
 
     const { data: convos } = await supabase
       .from('employee_conversations')
@@ -108,17 +128,7 @@ function ChatListContent({ onConversationPress, onNewChat }: Props) {
           .filter((p) => p.conversation_id === conv.id)
           .map((p) => ({ ...p, employee: employeeMap.get(p.employee_id) }));
 
-        const lastRead = lastReadMap.get(conv.id);
-        let unreadCount = 0;
-        if (lastRead) {
-          const { count } = await supabase
-            .from('employee_messages')
-            .select('*', { count: 'exact', head: true })
-            .eq('conversation_id', conv.id)
-            .neq('sender_id', employee.id)
-            .gt('created_at', lastRead);
-          unreadCount = count || 0;
-        }
+        const unreadCount = unreadCounts.get(conv.id) || 0;
 
         return { ...conv, participants: parts, unread_count: unreadCount };
       })
@@ -130,46 +140,49 @@ function ChatListContent({ onConversationPress, onNewChat }: Props) {
   const loadAll = useCallback(
     async (isRefresh = false) => {
       if (isRefresh) setRefreshing(true);
-      else setIsLoading(true);
+      // Keep the visible list mounted during background refreshes.
       try {
-        await fetchConversations();
+        await Promise.all([fetchConversations(), fetchSellerConversations()]);
       } finally {
         setIsLoading(false);
         setRefreshing(false);
       }
     },
-    [fetchConversations]
+    [fetchConversations, fetchSellerConversations]
   );
 
-  useEffect(() => {
-    loadAll();
-  }, [loadAll]);
-
-  // Realtime subscription for new messages
-  useEffect(() => {
+  // Realtime subscription for new messages; refresh missed changes on resume.
+  useForegroundEffect((signal) => {
+    if (!employee?.id) return;
+    const queue = createRefreshQueue(signal, () => loadAll());
+    void queue.refresh();
     const channel = supabase
       .channel('chat-list-updates')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'seller_messages' }, queue.schedule)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'seller_message_reads' }, queue.schedule)
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'employee_messages' },
         () => {
-          fetchConversations();
+          queue.schedule();
         }
       )
       .on(
         'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'employee_conversation_participants' },
+        { event: 'UPDATE', schema: 'public', table: 'employee_conversation_participants', filter: `employee_id=eq.${employee.id}` },
         (payload) => {
           const row = payload.new as { employee_id?: string };
           if (employee && row.employee_id === employee.id) {
-            fetchConversations();
+            queue.schedule();
           }
         }
       )
       .subscribe();
 
+    const sellerTimer = setInterval(queue.schedule, 15000);
     return () => {
-      supabase.removeChannel(channel);
+      clearInterval(sellerTimer);
+      return supabase.removeChannel(channel);
     };
   }, [fetchConversations]);
 
@@ -210,15 +223,16 @@ function ChatListContent({ onConversationPress, onNewChat }: Props) {
     return date.toLocaleDateString('pl-PL', { day: 'numeric', month: 'short' });
   };
 
-  const filteredConversations = conversations.filter((conv) => {
+  const filteredConversations = [...conversations, ...sellerConversations].sort((a, b) => (Date.parse(b.last_message_at) || 0) - (Date.parse(a.last_message_at) || 0)).filter((conv) => {
     if (!search.trim()) return true;
     const name = getConversationName(conv).toLowerCase();
     const preview = conv.last_message_preview?.toLowerCase() || '';
     const q = search.toLowerCase();
-    return name.includes(q) || preview.includes(q);
+    return name.includes(q) || preview.includes(q) || [conv.sellerConversation?.brand_name, conv.sellerConversation?.title].some(value => value?.toLowerCase().includes(q));
   });
 
   const deleteConversation = async (conversation: Conversation) => {
+    if (conversation.sellerConversation) return;
     try {
       const { data: files, error: listError } = await supabase.storage
         .from('chat-attachments')
@@ -284,6 +298,7 @@ function ChatListContent({ onConversationPress, onNewChat }: Props) {
 
     return (
       <SwipeableRow
+        disabled={!!item.sellerConversation}
         onDelete={() => confirmDeleteConversation(item, name)}
       >
         <TouchableOpacity
@@ -292,7 +307,9 @@ function ChatListContent({ onConversationPress, onNewChat }: Props) {
           activeOpacity={0.7}
         >
           <View style={styles.avatarContainer}>
-            {item.is_group ? (
+            {item.sellerConversation ? (
+              <View style={styles.groupAvatar}><Feather name={item.sellerConversation.has_event ? 'calendar' : 'file-text'} size={22} color={colors.primary.gold} /></View>
+            ) : item.is_group ? (
               <View style={styles.groupAvatar}>
                 <Feather name="users" size={22} color={colors.primary.gold} />
               </View>
@@ -309,7 +326,7 @@ function ChatListContent({ onConversationPress, onNewChat }: Props) {
               </View>
             )}
             {/* Online indicator */}
-            {!item.is_group && (
+            {!item.is_group && !item.sellerConversation && (
               <View
                 style={[
                   styles.onlineIndicator,
@@ -325,9 +342,10 @@ function ChatListContent({ onConversationPress, onNewChat }: Props) {
                 {name}
               </Text>
               <Text style={[styles.timeText, hasUnread && styles.timeUnread]}>
-                {formatTime(item.last_message_at)}
+                {item.last_message_at ? formatTime(item.last_message_at) : ''}
               </Text>
             </View>
+            {item.sellerConversation && <Text style={{ color: colors.primary.gold, fontSize: 11, marginBottom: 5 }} numberOfLines={1}>{sellerConversationLabel(item.sellerConversation)} · {item.sellerConversation.brand_name}</Text>}
             <View style={styles.conversationFooter}>
               <Text
                 style={[styles.previewText, hasUnread && styles.previewUnread]}
@@ -408,6 +426,7 @@ function ChatListContent({ onConversationPress, onNewChat }: Props) {
             colors={[colors.primary.gold]}
           />
         }
+        ListHeaderComponent={sellerError ? <Text style={{ color: colors.text.secondary, padding: 12 }}>{sellerError}</Text> : null}
         ListEmptyComponent={
           <View style={styles.emptyState}>
             <Feather name="message-circle" size={48} color={colors.text.tertiary} />
@@ -502,7 +521,7 @@ function OnlineStrip({
 
 export default function ChatListScreen(props: Props) {
   return (
-    <PermissionGate module="messages">
+    <PermissionGate module="chat">
       <ChatListContent {...props} />
     </PermissionGate>
   );

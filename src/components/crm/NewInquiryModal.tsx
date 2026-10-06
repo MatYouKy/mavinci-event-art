@@ -9,7 +9,8 @@ interface NewInquiryModalProps {
   isOpen: boolean;
   onClose: () => void;
   initialDate?: Date;
-  onSaved?: () => void | Promise<void>;
+  onSaved?: (inquiryId: string) => void | Promise<void>;
+  initialClient?: { contactId?: string; organizationId?: string; name: string; email?: string | null; phone?: string | null };
 }
 
 type OrgRow = { id: string; name: string; alias?: string | null };
@@ -30,9 +31,11 @@ function toLocalDateTimeInput(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-export default function NewInquiryModal({ isOpen, onClose, initialDate, onSaved }: NewInquiryModalProps) {
+export default function NewInquiryModal({ isOpen, onClose, initialDate, onSaved, initialClient }: NewInquiryModalProps) {
   const { employee, loading: employeeLoading } = useCurrentEmployee();
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+  const inquiryIdRef = useRef<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const [subject, setSubject] = useState('');
@@ -62,6 +65,7 @@ export default function NewInquiryModal({ isOpen, onClose, initialDate, onSaved 
 
   useEffect(() => {
     if (!isOpen) return;
+    inquiryIdRef.current = crypto.randomUUID();
     setError(null);
     setSubject('');
     setSource('phone');
@@ -69,11 +73,11 @@ export default function NewInquiryModal({ isOpen, onClose, initialDate, onSaved 
     setScope('');
     setBudget('');
     setExpectations('');
-    setClientText('');
-    setClientOrgId(null);
-    setClientContactId(null);
-    setClientPhone('');
-    setClientEmail('');
+    setClientText(initialClient?.name || '');
+    setClientOrgId(initialClient?.organizationId || null);
+    setClientContactId(initialClient?.contactId || null);
+    setClientPhone(initialClient?.phone || '');
+    setClientEmail(initialClient?.email || '');
     setLocationText('');
     setLocationId(null);
 
@@ -87,7 +91,7 @@ export default function NewInquiryModal({ isOpen, onClose, initialDate, onSaved 
       setContacts((contactsRes.data as ContactRow[]) || []);
       setLocations((locsRes.data as LocationRow[]) || []);
     })();
-  }, [isOpen, initialDate]);
+  }, [isOpen, initialDate, initialClient?.contactId, initialClient?.organizationId, initialClient?.name, initialClient?.phone, initialClient?.email]);
 
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
@@ -139,6 +143,7 @@ export default function NewInquiryModal({ isOpen, onClose, initialDate, onSaved 
   };
 
   const handleSave = async () => {
+    if (savingRef.current) return;
     setError(null);
 
     if (!subject.trim()) {
@@ -151,6 +156,7 @@ export default function NewInquiryModal({ isOpen, onClose, initialDate, onSaved 
       return;
     }
 
+    savingRef.current = true;
     setSaving(true);
     try {
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
@@ -207,8 +213,11 @@ export default function NewInquiryModal({ isOpen, onClose, initialDate, onSaved 
         client_email: clientEmail.trim() || null,
       };
 
-      const { error: insertError } = await supabase.from('tasks').insert([
+      const inquiryId = inquiryIdRef.current ?? crypto.randomUUID();
+      inquiryIdRef.current = inquiryId;
+      const { error: insertError } = await supabase.from('tasks').upsert([
         {
+          id: inquiryId,
           title,
           description: descParts.join('\n'),
           priority: 'urgent',
@@ -218,6 +227,7 @@ export default function NewInquiryModal({ isOpen, onClose, initialDate, onSaved 
           due_date: termin ? new Date(termin).toISOString() : null,
           created_by: employee.id,
           is_inquiry: true,
+          is_private: false,
           inquiry_stage: 'new',
           inquiry_owner_id: null,
           win_probability: 10,
@@ -226,7 +236,7 @@ export default function NewInquiryModal({ isOpen, onClose, initialDate, onSaved 
           organization_id: clientOrgId,
           inquiry_details: inquiryDetails,
         },
-      ]);
+      ], { onConflict: 'id', ignoreDuplicates: true });
 
       if (insertError) {
         setError('Błąd zapisu: ' + insertError.message);
@@ -234,11 +244,12 @@ export default function NewInquiryModal({ isOpen, onClose, initialDate, onSaved 
         return;
       }
 
-      await onSaved?.();
-      setSaving(false);
       onClose();
+      await onSaved?.(inquiryId);
     } catch (e: any) {
       setError(e?.message || 'Nieznany błąd');
+    } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   };

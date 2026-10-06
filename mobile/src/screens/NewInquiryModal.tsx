@@ -1,3 +1,4 @@
+import { canCreateInquiry } from '../lib/permissions';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   View,
@@ -65,6 +66,7 @@ export default function NewInquiryModal({
   onSaved,
 }: NewInquiryModalProps) {
   const { employee } = useAuth();
+  const allowed = canCreateInquiry(employee);
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
   const formScrollRef = useRef<ScrollView>(null);
@@ -108,7 +110,7 @@ export default function NewInquiryModal({
   const [expectations, setExpectations] = useState('');
 
   useEffect(() => {
-    if (!visible) return;
+    if (!visible || !allowed) return;
     (async () => {
       const [orgsRes, contactsRes, locsRes, empsRes] = await Promise.all([
         supabase.from('organizations').select('id, name, alias').order('name').limit(200),
@@ -130,7 +132,7 @@ export default function NewInquiryModal({
       setLocations((locsRes.data as LocationItem[]) || []);
       setEmployees((empsRes.data as unknown as EmployeeItem[]) || []);
     })();
-  }, [visible]);
+  }, [visible, allowed]);
 
   const resetForm = () => {
     setClientName('');
@@ -170,6 +172,7 @@ export default function NewInquiryModal({
   };
 
   const handleSave = async () => {
+    if (!allowed) return;
     if (savingRef.current) return;
 
     if (
@@ -337,7 +340,7 @@ export default function NewInquiryModal({
 
   return (
     <Modal
-      visible={visible}
+      visible={visible && allowed}
       animationType="slide"
       presentationStyle="pageSheet"
       onRequestClose={handleClose}

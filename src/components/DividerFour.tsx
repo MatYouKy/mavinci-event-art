@@ -166,7 +166,7 @@ export default function DividerFour() {
 
           <div className="animate-[fadeIn_1.6s_ease-out]">
             <a
-              href="#contact"
+              href="/#kontakt"
               className="group inline-flex items-center gap-3 px-10 py-5 bg-[#d3bb73] text-[#1c1f33] rounded-full text-base md:text-lg font-medium hover:bg-[#d3bb73]/90 transition-all duration-300 hover:scale-105 hover:shadow-2xl hover:shadow-[#d3bb73]/50"
             >
               Skontaktuj się z Nami

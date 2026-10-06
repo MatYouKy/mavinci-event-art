@@ -13,7 +13,7 @@ export async function fetchInquiryWorkspaceServer(inquiryId: string) {
     .select(`
       id, title, description, priority, status, board_column, due_date, created_at, updated_at,
       inquiry_details, inquiry_stage, inquiry_owner_id, next_action_at, last_contact_at,
-      estimated_value, win_probability, lost_reason, linked_offer_id, event_id,
+      estimated_value, win_probability, lost_reason, lost_reason_category, linked_offer_id, event_id, archived_at, accepted_offer_id, accepted_calculation_id, brief_revision,
       contact_id, organization_id,
       inquiry_owner:employees!tasks_inquiry_owner_id_fkey(id, name, surname, avatar_url, sales_team_id),
       contact:contacts(id, first_name, last_name, full_name, email, phone, mobile),
@@ -31,22 +31,23 @@ export async function fetchInquiryWorkspaceServer(inquiryId: string) {
     ? getEmailAccounts(currentEmployee.id)
     : Promise.resolve({ accounts: [] as any[] });
 
-  const [tasksResult, offersResult, calculationsResult, historyResult, emailAccountsResult, categoriesResult, companiesResult, employeesResult] = await Promise.all([
+  const [tasksResult, offersResult, calculationsResult, historyResult, emailAccountsResult, categoriesResult, companiesResult, employeesResult, analysesResult, activityResult, teamResult] = await Promise.all([
     supabase
       .from('tasks')
       .select(`
-        id, title, description, priority, status, board_column, due_date, created_at, assigned_to,
+        id, title, description, priority, status, board_column, due_date, created_at, updated_at, assigned_to, created_by, order_index, thumbnail_url, currently_working_by, event_id, inquiry_id,
         task_assignees(
           employee_id,
-          employee:employees!task_assignees_employee_id_fkey(id, name, surname)
+          employees:employees!task_assignees_employee_id_fkey(id, name, surname, avatar_url, avatar_metadata)
         )
       `)
       .eq('inquiry_id', inquiryId)
       .eq('is_inquiry', false)
+      .eq('is_private', false)
       .order('created_at', { ascending: false }),
     supabase
       .from('offers')
-      .select('id, offer_number, status, total_amount, valid_until, created_at, updated_at')
+      .select('id, title, event_id, offer_number, status, total_amount, subtotal, tax_amount, tax_percent, discount_amount, discount_percent, pricing_source, calculation_snapshot, package_mode, accepted_package_id, offer_packages!offer_packages_offer_id_fkey(id,name,price_net), valid_until, created_at, updated_at')
       .eq('inquiry_id', inquiryId)
       .order('created_at', { ascending: false }),
     supabase
@@ -77,22 +78,23 @@ export async function fetchInquiryWorkspaceServer(inquiryId: string) {
       .eq('is_active', true)
       .order('surname')
       .order('name'),
+    supabase.from('inquiry_analyses').select('*').eq('inquiry_id', inquiryId).order('created_at', { ascending: false }).order('id', { ascending: false }).limit(30),
+    supabase.from('inquiry_activity').select('*').eq('inquiry_id', inquiryId).order('created_at', { ascending: false }).limit(200),
+    supabase.rpc('get_inquiry_team', { p_inquiry_id: inquiryId }),
   ]);
 
-  for (const result of [tasksResult, offersResult, calculationsResult, historyResult, categoriesResult, companiesResult, employeesResult]) {
+  for (const result of [tasksResult, offersResult, calculationsResult, historyResult, categoriesResult, companiesResult, employeesResult, analysesResult, activityResult]) {
     if (result.error) throw result.error;
   }
 
   return {
     inquiry,
-    tasks: (tasksResult.data || []).map((task: any) => {
-      const assigned = (task.task_assignees || []).find(
-        (entry: any) => entry.employee_id === task.assigned_to,
-      ) || task.task_assignees?.[0];
-      const taskData = { ...task };
-      delete taskData.task_assignees;
-      return { ...taskData, assignee: assigned?.employee || null };
-    }),
+    team: teamResult.error ? null : teamResult.data,
+    teamError: teamResult.error ? (teamResult.error.code === 'PGRST202' ? 'Zakładka Zespół wymaga aktualizacji bazy danych.' : 'Nie udało się pobrać zespołu zapytania.') : '',
+    viewerId: currentEmployee?.id || '',
+    analyses: analysesResult.data || [],
+    activity: activityResult.data || [],
+    tasks: tasksResult.data || [],
     offers: offersResult.data || [],
     calculations: calculationsResult.data || [],
     history: historyResult.data || [],

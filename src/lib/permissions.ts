@@ -61,7 +61,10 @@ export const hasPermission = (employee: PermissionEmployee, scope: string): bool
 export const canView = (employee: PermissionEmployee, module: string): boolean => {
   if (!employee) return false;
   if (isAdmin(employee)) return true;
-  return hasPermission(employee, `${module}_view`) || hasPermission(employee, `${module}_manage`);
+  return hasPermission(employee, `${module}_view`) || hasPermission(employee, `${module}_manage`)
+    || (['contracts', 'offers', 'events'].includes(module) && hasPermission(employee, `${module}_create`))
+    || (['events', 'calendar'].includes(module) && hasPermission(employee, 'equipment_manage'))
+    || (module === 'time_tracking' && hasPermission(employee, 'time_tracking_view_own'));
 };
 
 /**
@@ -97,7 +100,9 @@ export const canManagePermissions = (employee: PermissionEmployee): boolean => {
  * Zwraca listę wszystkich dostępnych scope dla danego modułu
  */
 export const getModuleScopes = (module: string): string[] => {
-  return [`${module}_view`, `${module}_manage`];
+  return module === 'time_tracking'
+    ? ['time_tracking_view_own', 'time_tracking_view', 'time_tracking_manage']
+    : [`${module}_view`, `${module}_manage`];
 };
 
 /**

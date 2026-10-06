@@ -15,6 +15,8 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import EventCommissionsPanel from './EventCommissionsPanel';
+import SearchCombobox from '@/components/crm/SearchCombobox';
 
 type BillingArrangement = 'direct' | 'hotel' | 'agency' | 'other';
 
@@ -30,6 +32,15 @@ type BillingContact = {
   email: string | null;
   phone: string | null;
   position: string | null;
+};
+
+type ReferralSellerOption = {
+  id: string;
+  label: string;
+  description: string;
+  keywords: string;
+  status: string;
+  commissionReady: boolean;
 };
 
 type SettlementEvent = {
@@ -86,6 +97,14 @@ export default function EventBillingContextCard({
   const [organizations, setOrganizations] = useState<OrganizationOption[]>([]);
   const [contacts, setContacts] = useState<BillingContact[]>([]);
   const [selectedContactIds, setSelectedContactIds] = useState<string[]>([]);
+  const [referralEnabled, setReferralEnabled] = useState(false);
+  const [referralPartnerId, setReferralPartnerId] = useState('');
+  const [savedReferralPartnerId, setSavedReferralPartnerId] = useState('');
+  const [referralSellers, setReferralSellers] = useState<ReferralSellerOption[]>([]);
+  const [referralLoading, setReferralLoading] = useState(true);
+  const [referralError, setReferralError] = useState('');
+  const [referralReload, setReferralReload] = useState(0);
+  const [referralSchemaUnavailable, setReferralSchemaUnavailable] = useState(false);
   const [loading, setLoading] = useState(true);
   const [contactsLoading, setContactsLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -104,6 +123,8 @@ export default function EventBillingContextCard({
     organizationId: string;
     contactIds: string[];
     purchaseOrderNumber: string;
+    referralEnabled: boolean;
+    referralPartnerId: string;
   } | null>(null);
   const [editingSettlement, setEditingSettlement] = useState(false);
   const [settlementSnapshot, setSettlementSnapshot] = useState<{
@@ -120,6 +141,75 @@ export default function EventBillingContextCard({
     setBillingOrganizationId(initialBillingOrganizationId || '');
     setPurchaseOrderNumber(initialPurchaseOrderNumber || '');
   }, [initialArrangement, initialBillingOrganizationId, initialPurchaseOrderNumber]);
+
+  useEffect(() => {
+    let active = true;
+    setReferralLoading(true);
+    setReferralError('');
+    setReferralSchemaUnavailable(false);
+    setReferralSellers([]);
+    setReferralEnabled(false);
+    setReferralPartnerId('');
+    setSavedReferralPartnerId('');
+    void (async () => {
+      try {
+        const { data: event, error: eventError } = await supabase.from('events')
+          .select('my_company_id,referring_sales_partner_id').eq('id', eventId).single();
+        if (eventError && ['42703', 'PGRST204'].includes(eventError.code)) {
+          if (active) setReferralSchemaUnavailable(true);
+          return;
+        }
+        if (eventError) throw eventError;
+        const selectedId = event.referring_sales_partner_id || '';
+        const options: ReferralSellerOption[] = [];
+        // Page the seller catalogue; a search must not silently omit later records.
+        for (let from = 0; ; from += 200) {
+          let query = supabase.from('sales_partner_profiles')
+            .select('id,organization_id,status,employee:employees!employee_id(name,surname,email),contact:contacts!contact_id(full_name,email),organization:organizations!organization_id(name,alias)');
+          query = selectedId ? query.or(`status.eq.active,id.eq.${selectedId}`) : query.eq('status', 'active');
+          const { data: profiles, error: profilesError } = await query.order('id').range(from, from + 199);
+          if (profilesError) throw profilesError;
+          if (!active) return;
+          const rows = profiles || [];
+          const termsResult = event.my_company_id && rows.length
+            ? await supabase.from('sales_partner_brand_terms')
+                .select('sales_partner_id,is_active,commission_enabled,default_commission_rate')
+                .eq('my_company_id', event.my_company_id).in('sales_partner_id', rows.map((row) => row.id))
+            : { data: [], error: null };
+          if (termsResult.error) throw termsResult.error;
+          if (!active) return;
+          for (const row of rows as any[]) {
+            const employee = Array.isArray(row.employee) ? row.employee[0] : row.employee;
+            const contact = Array.isArray(row.contact) ? row.contact[0] : row.contact;
+            const organization = Array.isArray(row.organization) ? row.organization[0] : row.organization;
+            const term = termsResult.data?.find((item) => item.sales_partner_id === row.id);
+            const label = employee ? [employee.name, employee.surname].filter(Boolean).join(' ') : contact?.full_name;
+            const commissionReady = Boolean(term?.is_active && term.commission_enabled && Number(term.default_commission_rate) > 0);
+            const termsLabel = !event.my_company_id ? 'Wybierz markę wydarzenia'
+              : commissionReady ? `Domyślna prowizja: ${Number(term!.default_commission_rate)}%`
+              : 'Warunki prowizji wymagają uzupełnienia';
+            options.push({
+              id: row.id, label: label || 'Sprzedawca — dane osoby niedostępne',
+              description: [organization?.alias || organization?.name, row.status === 'active' ? termsLabel : 'Profil nieaktywny — wcześniejsze przypisanie'].filter(Boolean).join(' · '),
+              keywords: [employee?.email, contact?.email, organization?.name, organization?.alias].filter(Boolean).join(' '),
+              status: row.status, commissionReady,
+            });
+          }
+          if (rows.length < 200) break;
+        }
+        if (!active) return;
+        setReferralSellers(options.sort((a, b) => a.label.localeCompare(b.label, 'pl')));
+        setReferralPartnerId(selectedId);
+        setSavedReferralPartnerId(selectedId);
+        setReferralEnabled(Boolean(selectedId));
+      } catch {
+        if (active) setReferralError('Nie udało się wczytać przypisanego sprzedawcy i jego warunków. Odśwież dane przed zapisem.');
+      } finally {
+        if (active) setReferralLoading(false);
+      }
+    })();
+    return () => { active = false; };
+  }, [eventId, referralReload]);
 
   useEffect(() => {
     let active = true;
@@ -262,6 +352,18 @@ export default function EventBillingContextCard({
     () => organizations.find((organization) => organization.id === effectiveOrganizationId),
     [effectiveOrganizationId, organizations],
   );
+  const selectedReferralSeller = referralSellers.find((seller) => seller.id === referralPartnerId);
+
+  const billingOrganizationOptions = useMemo(
+    () => organizations
+      .filter((organization) => organization.id !== clientOrganizationId)
+      .map((organization) => ({
+        id: organization.id,
+        label: organization.alias || organization.name,
+        description: organization.alias ? organization.name : null,
+      })),
+    [clientOrganizationId, organizations],
+  );
 
   const selectedSettlementEvents = useMemo(
     () =>
@@ -354,6 +456,8 @@ export default function EventBillingContextCard({
       organizationId: billingOrganizationId,
       contactIds: [...selectedContactIds],
       purchaseOrderNumber,
+      referralEnabled,
+      referralPartnerId,
     });
     setEditingBilling(true);
   };
@@ -364,12 +468,28 @@ export default function EventBillingContextCard({
       setBillingOrganizationId(billingSnapshot.organizationId);
       setSelectedContactIds(billingSnapshot.contactIds);
       setPurchaseOrderNumber(billingSnapshot.purchaseOrderNumber);
+      setReferralEnabled(billingSnapshot.referralEnabled);
+      setReferralPartnerId(billingSnapshot.referralPartnerId);
     }
     setBillingSnapshot(null);
     setEditingBilling(false);
   };
 
   const handleSave = async () => {
+    if (!canEdit || saving) return;
+    if (editingBilling && (referralLoading || referralError)) {
+      showSnackbar('Poczekaj na wczytanie danych sprzedawcy lub odśwież je przed zapisem.', 'error');
+      return;
+    }
+    if (editingBilling && referralEnabled && !referralPartnerId) {
+      showSnackbar('Wybierz sprzedawcę, który pozyskał wydarzenie, albo odznacz pole polecenia.', 'error');
+      return;
+    }
+    if (editingBilling && referralEnabled && referralPartnerId !== savedReferralPartnerId
+      && (!selectedReferralSeller || selectedReferralSeller.status !== 'active')) {
+      showSnackbar('Wybierz aktywnego sprzedawcę z kartoteki.', 'error');
+      return;
+    }
     if (arrangement !== 'direct' && !billingOrganizationId) {
       showSnackbar('Wybierz organizację, która będzie rozliczać wydarzenie', 'error');
       return;
@@ -391,15 +511,25 @@ export default function EventBillingContextCard({
         arrangement === 'direct' ? null : billingOrganizationId;
       const storedPurchaseOrderNumber = purchaseOrderNumber.trim() || null;
 
-      const { error: eventError } = await supabase
+      const storedReferralPartnerId = referralEnabled ? referralPartnerId || null : null;
+      let eventUpdate = supabase
         .from('events')
         .update({
           billing_arrangement: arrangement,
           billing_organization_id: storedBillingOrganizationId,
           purchase_order_number: storedPurchaseOrderNumber,
+        ...(editingBilling && !referralSchemaUnavailable ? { referring_sales_partner_id: storedReferralPartnerId } : {}),
         })
         .eq('id', eventId);
+      if (editingBilling && !referralSchemaUnavailable) {
+        eventUpdate = savedReferralPartnerId
+          ? eventUpdate.eq('referring_sales_partner_id', savedReferralPartnerId)
+          : eventUpdate.is('referring_sales_partner_id', null);
+      }
+      const { data: savedEvent, error: eventError } = await eventUpdate.select('id').maybeSingle();
       if (eventError) throw eventError;
+      if (!savedEvent) throw new Error('Przypisanie sprzedawcy zmieniło się w innej karcie albo brak dostępu do zapisu. Odśwież dane przed ponowieniem.');
+      if (editingBilling && !referralSchemaUnavailable) setSavedReferralPartnerId(storedReferralPartnerId || '');
 
       const { error: deleteError } = await supabase
         .from('event_billing_contacts')
@@ -493,10 +623,10 @@ export default function EventBillingContextCard({
           </div>
         </div>
         {canEdit && !editingBilling && !editingSettlement && (
-          <button
+          <button data-crm-action="secondary"
             type="button"
             onClick={beginBillingEditing}
-            disabled={saving}
+            disabled={saving || referralLoading || Boolean(referralError)}
             className="flex shrink-0 items-center gap-2 rounded-lg border border-[#d3bb73]/20 px-3 py-2 text-xs text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/10 disabled:opacity-50"
           >
             <Pencil className="h-3.5 w-3.5" />
@@ -577,26 +707,57 @@ export default function EventBillingContextCard({
                   <label className="mb-2 block text-sm text-[#e5e4e2]/60">
                     Organizacja będąca nabywcą faktur
                   </label>
-                  <select
+                  <SearchCombobox
                     value={billingOrganizationId}
                     disabled={!canEdit || saving}
-                    onChange={(event) => {
-                      setBillingOrganizationId(event.target.value);
+                    onChange={(organizationId) => {
+                      setBillingOrganizationId(organizationId);
                       setSelectedContactIds([]);
                     }}
-                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none disabled:opacity-60"
-                  >
-                    <option value="">Wybierz hotel lub inną organizację...</option>
-                    {organizations
-                      .filter((organization) => organization.id !== clientOrganizationId)
-                      .map((organization) => (
-                        <option key={organization.id} value={organization.id}>
-                          {organization.alias || organization.name}
-                        </option>
-                      ))}
-                  </select>
+                    options={billingOrganizationOptions}
+                    placeholder="Wyszukaj hotel lub inną organizację..."
+                    emptyLabel="Brak pasującej organizacji"
+                  />
                 </div>
               )}
+
+              <div className="rounded-lg bg-white/[0.035] p-4">
+                <label className="flex cursor-pointer items-start gap-3 text-sm text-[#e5e4e2]">
+                  <input
+                    type="checkbox"
+                  checked={referralEnabled}
+                  title={referralSchemaUnavailable ? 'Wybór sprzedawcy oczekuje na włączenie zapisu w bazie. Pozostałe dane rozliczenia możesz zapisać.' : undefined}
+                  disabled={!canEdit || saving || referralLoading || referralSchemaUnavailable || Boolean(referralError)}
+                    onChange={(event) => setReferralEnabled(event.target.checked)}
+                    className="mt-0.5 h-4 w-4 shrink-0 accent-[#d3bb73]"
+                  />
+                  <span>Wydarzenie pozyskane przez sprzedawcę</span>
+                </label>
+                <p className="mt-2 text-xs leading-5 text-[#e5e4e2]/50">
+                  Sprzedawca może otrzymać prowizję także wtedy, gdy klient rozlicza się bezpośrednio. Przypisanie nie zmienia nabywcy faktury ani osoby kontaktowej klienta.
+                </p>
+                {referralEnabled && <div className="mt-3 space-y-2">
+                  <SearchCombobox
+                    value={referralPartnerId}
+                    options={referralSellers}
+                    onChange={setReferralPartnerId}
+                    disabled={!canEdit || saving || referralLoading || Boolean(referralError)}
+                    placeholder="Wyszukaj sprzedawcę po nazwisku, firmie lub e-mailu…"
+                    ariaLabel="Sprzedawca, który pozyskał wydarzenie"
+                    emptyLabel="Brak sprzedawcy — dodaj profil w kartotece sprzedawców"
+                  />
+                  {selectedReferralSeller && <p className="text-xs text-[#d3bb73]/80">{selectedReferralSeller.description}</p>}
+                  {selectedReferralSeller && !selectedReferralSeller.commissionReady && <p className="text-xs leading-5 text-amber-200/80">
+                    Przypisanie osoby nie ustala kwoty do wypłaty. Uzupełnij warunki dla marki lub ustal prowizję ręcznie w sekcji „Sprzedawcy i prowizje”.
+                  </p>}
+                  <p className="text-xs leading-5 text-[#e5e4e2]/45">
+                    Po zapisie obowiązują warunki sprzedawcy dla marki wydarzenia, z uwzględnieniem uzgodnień zaakceptowanej oferty. Prowizję umowną możesz edytować poniżej. Bez zaakceptowanej oferty naliczenie oczekuje na podstawę netto po rabacie.
+                  </p>
+                </div>}
+                {savedReferralPartnerId && (!referralEnabled || referralPartnerId !== savedReferralPartnerId) && <p className="mt-3 text-xs leading-5 text-amber-200/80">
+                  Zmiana lub usunięcie przypisania nie kasuje wcześniejszej prowizji ani wypłaty. Sprawdź dotychczasowe naliczenie w sekcji „Sprzedawcy i prowizje”.
+                </p>}
+              </div>
 
               {arrangement !== 'direct' && effectiveOrganizationId && (
                 <div>
@@ -606,6 +767,9 @@ export default function EventBillingContextCard({
                       Opiekunowie rozliczenia po stronie {selectedOrganization?.alias || selectedOrganization?.name || 'organizacji'}
                     </p>
                   </div>
+                  <p className="mb-3 text-xs leading-5 text-[#e5e4e2]/50">
+                    Jeśli zaznaczona osoba jest sprzedawcą z aktywną prowizją dla marki wydarzenia, zapis doda ją automatycznie do sekcji „Sprzedawcy i prowizje”. Kwota jest liczona od wartości netto zaakceptowanej oferty. Bez niej zapisujemy stawkę i oczekiwanie na podstawę.
+                  </p>
 
                   {contactsLoading ? (
                     <div className="flex items-center gap-2 py-4 text-sm text-[#e5e4e2]/50">
@@ -682,6 +846,17 @@ export default function EventBillingContextCard({
               </div>
             </div>
           )}
+
+          {referralLoading && <p className="flex items-center gap-2 text-xs text-[#e5e4e2]/50"><Loader2 className="h-4 w-4 animate-spin" />Wczytuję przypisanie sprzedawcy…</p>}
+          {referralError && <div className="rounded-lg bg-amber-400/5 p-3 text-xs text-amber-200">
+            <p>{referralError}</p>
+            <button type="button" disabled={saving} onClick={() => setReferralReload((value) => value + 1)} className="mt-2 rounded-md bg-white/5 px-3 py-1.5 text-[#d3bb73]">Odśwież sprzedawców</button>
+          </div>}
+          {!editingBilling && !referralLoading && !referralError && savedReferralPartnerId && <div className="rounded-lg bg-white/[0.035] p-4">
+            <p className="text-xs uppercase tracking-wide text-[#d3bb73]/60">Sprzedawca pozyskujący wydarzenie</p>
+            <p className="mt-1 text-sm text-[#e5e4e2]">{referralSellers.find((seller) => seller.id === savedReferralPartnerId)?.label || 'Przypisany sprzedawca'}</p>
+            <p className="mt-1 text-xs text-[#e5e4e2]/45">Prowizja niezależna od nabywcy faktury — szczegóły poniżej.</p>
+          </div>}
 
           {!editingBilling && (
             <div className="flex items-center gap-3 rounded-lg border border-[#d3bb73]/10 bg-[#0a0d1a] p-4">
@@ -889,7 +1064,7 @@ export default function EventBillingContextCard({
               <button
                 type="button"
                 onClick={handleSave}
-                disabled={saving}
+                disabled={saving || (editingBilling && (referralLoading || Boolean(referralError)))}
                 className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2.5 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-60"
               >
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
@@ -897,6 +1072,8 @@ export default function EventBillingContextCard({
               </button>
             </div>
           )}
+
+          {!editingBilling && !editingSettlement && <EventCommissionsPanel eventId={eventId} />}
         </div>
       )}
     </div>

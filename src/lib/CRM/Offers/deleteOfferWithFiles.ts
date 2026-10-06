@@ -1,60 +1,22 @@
 import { supabase } from '@/lib/supabase/browser';
 
-/**
- * Usuwa ofertę wraz z wszystkimi powiązanymi plikami ze storage
- *
- * @param offerId - ID oferty do usunięcia
- * @returns Promise z wynikiem operacji
- */
+/** Delete the row first: a rejected deletion must never remove an accepted document. */
 export async function deleteOfferWithFiles(offerId: string): Promise<{ success: boolean; error?: string }> {
   try {
-    // 1. Pobierz dane oferty aby uzyskać generated_pdf_url
-    const { data: offer } = await supabase
-      .from('offers')
-      .select('generated_pdf_url')
-      .eq('id', offerId)
-      .maybeSingle();
-
-    // 2. Usuń plik główny PDF z storage 'generated-offers'
-    if (offer?.generated_pdf_url) {
-      const { error: storageError } = await supabase.storage
-        .from('generated-offers')
-        .remove([offer.generated_pdf_url]);
-
-      if (storageError) {
-        console.warn('Failed to delete main PDF from storage:', storageError);
-      }
-    }
-
-    // 3. Pobierz i usuń wszystkie pliki z event_files
-    const { data: eventFiles } = await supabase
-      .from('event_files')
-      .select('file_path')
-      .eq('offer_id', offerId);
-
-    if (eventFiles && eventFiles.length > 0) {
-      const filePaths = eventFiles.map(f => f.file_path).filter(Boolean);
-      if (filePaths.length > 0) {
-        const { error: eventStorageError } = await supabase.storage
-          .from('event-files')
-          .remove(filePaths);
-
-        if (eventStorageError) {
-          console.warn('Failed to delete event files from storage:', eventStorageError);
-        }
-      }
-    }
-
-    // 4. Usuń ofertę z bazy (CASCADE usunie rekordy z event_files)
-    const { error } = await supabase.from('offers').delete().eq('id', offerId);
-
-    if (error) {
-      return { success: false, error: error.message };
-    }
-
+    const { data: offer, error: readError } = await supabase.from('offers').select('generated_pdf_url,inquiry_id,status').eq('id', offerId).single();
+    if (readError) throw readError;
+    const { data: allowed, error: permissionError } = await supabase.rpc('sales_can_manage_offer', { p_offer: offerId });
+    if (permissionError || !allowed) throw new Error('Brak uprawnień do usunięcia oferty.');
+    const { data: versions, error: versionsError } = await supabase.from('sales_document_files').select('id').eq('offer_id', offerId).limit(1);
+    if (versionsError) throw versionsError;
+    if (offer.status === 'accepted' || (offer.inquiry_id && versions?.length)) throw new Error('Zachowujemy ofertę i historię dokumentów. Możesz odrzucić wariant lub utworzyć jego kopię.');
+    const { data: files, error: filesError } = await supabase.from('event_files').select('file_path').eq('offer_id', offerId);
+    if (filesError) throw filesError;
+    const { error: deleteError } = await supabase.from('offers').delete().eq('id', offerId).select('id').single();
+    if (deleteError) throw deleteError;
+    if (offer.generated_pdf_url) await supabase.storage.from('generated-offers').remove([offer.generated_pdf_url]);
+    const paths = (files || []).map(file => file.file_path).filter(Boolean);
+    if (paths.length) await supabase.storage.from('event-files').remove(paths);
     return { success: true };
-  } catch (err: any) {
-    console.error('Error deleting offer with files:', err);
-    return { success: false, error: err.message || 'Błąd podczas usuwania oferty' };
-  }
+  } catch (error: any) { return { success: false, error: error.message || 'Nie udało się usunąć oferty.' }; }
 }

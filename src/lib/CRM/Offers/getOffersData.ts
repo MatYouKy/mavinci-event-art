@@ -13,7 +13,7 @@ export const getOffersData = cache(async () => {
       `
       *,
       organization:organizations!organization_id(id, name, alias, email),
-      contact:contacts!contact_id(id, full_name, first_name, last_name, email),
+      contact:contacts!contact_id(id, full_name, first_name, last_name, company_name, email, phone, mobile),
       event:events!event_id(
         name,
         event_date,
@@ -37,12 +37,12 @@ export const getOffersData = cache(async () => {
 
   const [orgRes, contactRes] = await Promise.all([
     uniqueOrgIds.length
-      ? supabase.from('organizations').select('id, name').in('id', uniqueOrgIds)
+      ? supabase.from('organizations').select('id, name, alias, email').in('id', uniqueOrgIds)
       : Promise.resolve({ data: [] as any[], error: null as any }),
     uniqueContactIds.length
       ? supabase
           .from('contacts')
-          .select('id, first_name, last_name, company_name')
+          .select('id, full_name, first_name, last_name, company_name, email, phone, mobile')
           .in('id', uniqueContactIds)
       : Promise.resolve({ data: [] as any[], error: null as any }),
   ]);

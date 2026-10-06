@@ -1,42 +1,17 @@
 import 'server-only';
-import { createClient } from '@supabase/supabase-js';
-import { PolishCityCases } from '../polishCityCases';
+import { cache } from 'react';
+import { publicSupabase } from '@/lib/SEO/publicData';
+import type { PolishCityCases } from '../polishCityCases';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
-
-type CityCaseRow = {
-  city_key: string;
-  nominative: string;
-  genitive: string;
-  locative: string;
-  is_active: boolean;
-  locative_preposition?: 'w' | 'we';
-};
-
-export async function loadCityCasesFromDb(): Promise<Record<string, PolishCityCases>> {
-  const { data, error } = await supabase
-    .from('polish_city_cases')
-    .select('city_key, nominative, genitive, locative, locative_preposition, is_active')
-    .eq('is_active', true);
-
-  if (error) {
-    console.error('[loadCityCasesFromDb]', error);
-    return {};
-  }
-
+export const loadCityCasesFromDb = cache(async (): Promise<Record<string, PolishCityCases>> => {
+  const { data, error } = await publicSupabase().from('polish_city_cases')
+    .select('id, city_key, nominative, genitive, locative, locative_preposition').eq('is_active', true);
+  if (error) throw new Error('Nie udało się pobrać odmiany nazw miejscowości.');
   const result: Record<string, PolishCityCases> = {};
-
-  for (const row of (data || []) as CityCaseRow[]) {
-    result[row.city_key] = {
-      nominative: row.nominative,
-      genitive: row.genitive,
-      locative: row.locative,
-      locative_preposition: row.locative_preposition,
-    };
+  for (const row of data || []) {
+    const value: PolishCityCases = { ...row, locative_preposition: row.locative_preposition === 'we' ? 'we' : 'w' };
+    result[row.city_key.toLowerCase()] = value;
+    result[row.nominative.toLowerCase()] = value;
   }
-
   return result;
-}
+});

@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { useForegroundEffect } from '../hooks/useForegroundEffect';
+import { createRefreshQueue } from '../lib/refreshQueue';
 import { TouchableOpacity, View, Text, Image } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useNavigation } from '@react-navigation/native';
@@ -41,7 +43,7 @@ export type MainTabParamList = {
   Events: undefined;
   Tasks: undefined;
   Inquiries: undefined;
-  Equipment: undefined;
+  Equipment: { equipmentId?: string } | undefined;
   TimeTracking: undefined;
   Employees: undefined;
   Fleet: undefined;
@@ -57,53 +59,32 @@ export default function MainTabNavigator() {
   const [currentScreen, setCurrentScreen] = useState('Dashboard');
   const [unreadCount, setUnreadCount] = useState(0);
   const [pendingMeetingId, setPendingMeetingId] = useState<string | null>(null);
-  const { unreadCount: unreadChatCount } = useUnreadChatCount(employee?.id);
+  const { unreadCount: unreadChatCount } = useUnreadChatCount(canView(employee, 'chat') ? employee?.id : undefined);
 
-  useEffect(() => {
-    if (employee?.id) {
-      fetchUnreadNotifications();
-
-      const channel = supabase
-        .channel('notification_recipients_changes')
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'notification_recipients',
-            filter: `user_id=eq.${employee.id}`,
-          },
-          () => {
-            fetchUnreadNotifications();
-          },
-        )
-        .subscribe();
-
-      return () => {
-        supabase.removeChannel(channel);
-      };
+  useForegroundEffect((signal) => {
+    if (!employee?.id) {
+      setUnreadCount(0);
+      return;
     }
-  }, [employee?.id]);
-
-  const fetchUnreadNotifications = async () => {
-    if (!employee?.id) return;
-
-    try {
-      const { count } = await supabase
-        .from('notification_recipients')
-        .select('*, notifications!inner(related_entity_type)', {
-          count: 'exact',
-          head: true,
-        })
-        .eq('user_id', employee.id)
-        .eq('is_read', false)
-        .neq('notifications.related_entity_type', 'event_phase_assignment');
-
+    const queue = createRefreshQueue(signal, async (requestSignal) => {
+      const { count, error } = await supabase.from('notification_recipients')
+        .select('*, notifications!inner(related_entity_type)', { count: 'exact', head: true })
+        .eq('user_id', employee.id).eq('is_read', false)
+        .neq('notifications.related_entity_type', 'event_phase_assignment')
+        .abortSignal(requestSignal);
+      if (signal.aborted || requestSignal.aborted) return;
+      if (error) throw error;
       setUnreadCount(count || 0);
-    } catch (error) {
-      console.error('Error fetching notifications:', error);
-    }
-  };
+    });
+    void queue.refresh();
+    const channel = supabase.channel(`notification_recipients_changes_${employee.id}`)
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'notification_recipients',
+        filter: `user_id=eq.${employee.id}`,
+      }, queue.schedule)
+      .subscribe((status) => { if (status === 'SUBSCRIBED') queue.schedule(); });
+    return () => supabase.removeChannel(channel);
+  }, [employee?.id]);
 
   // Open a meeting on the Calendar tab (meetings live in the Calendar screen state).
   const openMeeting = (meetingId: string) => {
@@ -258,6 +239,7 @@ export default function MainTabNavigator() {
           options={{
             title: 'Kalendarz',
             tabBarButton: canView(employee, 'calendar') ? undefined : () => null,
+            tabBarItemStyle: canView(employee, 'calendar') ? undefined : { display: 'none' },
             tabBarIcon: ({ color, size }) => <Feather name="calendar" color={color} size={size} />,
           }}
         >
@@ -275,6 +257,7 @@ export default function MainTabNavigator() {
             title: 'Spotkania',
             headerShown: false,
             tabBarButton: canView(employee, 'calendar') ? undefined : () => null,
+            tabBarItemStyle: canView(employee, 'calendar') ? undefined : { display: 'none' },
             tabBarIcon: ({ color, size }) => <Feather name="users" color={color} size={size} />,
           }}
         />
@@ -284,6 +267,7 @@ export default function MainTabNavigator() {
           options={{
             title: 'Komunikator',
             tabBarButton: canView(employee, 'chat') ? undefined : () => null,
+            tabBarItemStyle: canView(employee, 'chat') ? undefined : { display: 'none' },
             tabBarIcon: ({ color, size }) => (
               <Feather name="message-circle" color={color} size={size} />
             ),
@@ -353,7 +337,8 @@ export default function MainTabNavigator() {
           component={InquiriesStackNavigator}
           options={{
             title: 'Zapytania',
-            tabBarButton: canView(employee, 'inquiries') ? undefined : () => null,  
+            tabBarButton: canView(employee, 'inquiries') ? undefined : () => null,
+            tabBarItemStyle: canView(employee, 'inquiries') ? undefined : { display: 'none' },
             tabBarIcon: ({ color, size }) => <Feather name="phone-call" color={color} size={size} />,
           }}
         />

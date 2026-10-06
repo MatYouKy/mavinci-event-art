@@ -14,10 +14,11 @@ import LocationSelector from '@/components/crm/LocationSelector';
 import { getOfferPricingTotals } from '@/lib/CRM/Offers/offerTotals';
 import { getCalculationNumber } from '@/lib/CRM/calculations/calculationNumber';
 import { optimizeOfferImage } from '@/lib/optimizeOfferImage';
+import { localDatetimeStringToUTC, utcToLocalDatetimeString } from '@/lib/utils/dateTimeUtils';
 
 export interface OfferBasicInfoProps {
   offer: any;
-  isEditing?: boolean;
+  canEdit?: boolean;
   onUpdate: () => void;
 }
 
@@ -52,9 +53,11 @@ const normalizeInfoPageSections = (value: unknown): OfferInfoPageSection[] => {
 };
 
 const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
-  ({ offer, isEditing = false, onUpdate }, ref) => {
+  ({ offer, canEdit = false, onUpdate }, ref) => {
     const { showSnackbar } = useSnackbar();
     const [loading, setLoading] = useState(false);
+    const [isEditing, setIsEditing] = useState(false);
+    const [refreshCalculation, setRefreshCalculation] = useState(false);
     const [events, setEvents] = useState<any[]>([]);
     const [heroFile, setHeroFile] = useState<File | null>(null);
     const [heroPreviewUrl, setHeroPreviewUrl] = useState('');
@@ -88,7 +91,8 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
       eventLocationFromRelation ||
       offer.inquiry?.inquiry_details?.location_text ||
       '';
-    const resolvedClientType = (offer.client_type === 'individual'
+    const isSellerOffer = offer.sales_channel === 'seller_portal';
+    const resolvedClientType = (isSellerOffer ? (offer.portal_client_company ? 'business' : 'individual') : offer.client_type === 'individual'
       ? 'individual'
       : offer.client_type === 'business' || offer.organization_id
         ? 'business'
@@ -98,6 +102,12 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
     const inheritedOfferTitle = offer.event?.name
       || offer.inquiry?.title?.replace(/^Zapytanie:\s*/i, '')
       || '';
+    const offerEventDate = offer.event_date
+      || offer.event?.event_date
+      || offer.inquiry?.inquiry_details?.termin
+      || offer.inquiry?.due_date
+      || '';
+    const resolvedEventDate = offerEventDate;
 
     const [formData, setFormData] = useState({
       title: offer.title || inheritedOfferTitle,
@@ -105,20 +115,25 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
       organization_id: offer.organization_id || '',
       contact_id: offer.contact_id || '',
       event_id: offer.event_id || '',
+      event_date: utcToLocalDatetimeString(offerEventDate),
       event_location: resolvedEventLocation,
-      valid_until: offer.valid_until || '',
+      valid_until: String(offer.valid_until || '').slice(0, 10),
       notes: offer.notes || '',
       event_assumptions: legacyEventAssumptions,
       event_assumption_items: normalizeEventAssumptionItems(
-        offer.event_assumption_items,
+        (Array.isArray(offer.event_assumption_items) && offer.event_assumption_items.some((item: any) => item?.value?.trim()))
+          ? offer.event_assumption_items
+          : offer.inquiry?.inquiry_details?.event_assumption_items,
         legacyEventAssumptions,
       ),
       event_goal: offer.event_goal || offer.inquiry?.inquiry_details?.event_goal || '',
       hero_image_alt: offer.hero_image_alt || '',
       info_page_sections: normalizeInfoPageSections(offer.info_page_sections),
-      pricing_source: offer.event?.financial_source === 'calculation' ? 'calculation' : 'offer',
-      accepted_calculation_id: offer.event?.accepted_calculation_id || '',
+      pricing_source: offer.pricing_source === 'calculation' ? 'calculation' : 'offer',
+      accepted_calculation_id: offer.source_calculation_id || '',
     });
+    const selectedEvent = events.find((event) => event.id === formData.event_id)
+      || (formData.event_id === offer.event_id ? offer.event : null);
 
     useEffect(() => {
       if (isEditing) {
@@ -157,46 +172,42 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
           is_accepted: boolean;
         }>;
         setEventCalculations(calculations);
-        const accepted = calculations.find((calculation) => calculation.is_accepted)
-          || calculations.find((calculation) => calculation.id === offer.event?.accepted_calculation_id);
-        if (accepted) {
-          setFormData((current) => ({
-            ...current,
-            pricing_source: 'calculation',
-            accepted_calculation_id: accepted.id,
-          }));
-        }
+
       };
       void loadCalculations();
       return () => { cancelled = true; };
-    }, [formData.event_id, offer.inquiry?.id, offer.inquiry_id, offer.event?.accepted_calculation_id]);
+    }, [formData.event_id, offer.inquiry?.id, offer.inquiry_id, offer.source_calculation_id]);
 
     useEffect(() => {
+      if (isEditing) return;
       setFormData({
         title: offer.title || inheritedOfferTitle,
         client_type: resolvedClientType,
         organization_id: offer.organization_id || '',
         contact_id: offer.contact_id || '',
         event_id: offer.event_id || '',
+        event_date: utcToLocalDatetimeString(offerEventDate),
         event_location: resolvedEventLocation,
-        valid_until: offer.valid_until || '',
+        valid_until: String(offer.valid_until || '').slice(0, 10),
         notes: offer.notes || '',
         event_assumptions: legacyEventAssumptions,
         event_assumption_items: normalizeEventAssumptionItems(
-          offer.event_assumption_items,
+          (Array.isArray(offer.event_assumption_items) && offer.event_assumption_items.some((item: any) => item?.value?.trim()))
+          ? offer.event_assumption_items
+          : offer.inquiry?.inquiry_details?.event_assumption_items,
           legacyEventAssumptions,
         ),
         event_goal: offer.event_goal || offer.inquiry?.inquiry_details?.event_goal || '',
         hero_image_alt: offer.hero_image_alt || '',
         info_page_sections: normalizeInfoPageSections(offer.info_page_sections),
-        pricing_source: offer.event?.financial_source === 'calculation' ? 'calculation' : 'offer',
-        accepted_calculation_id: offer.event?.accepted_calculation_id || '',
+        pricing_source: offer.pricing_source === 'calculation' ? 'calculation' : 'offer',
+        accepted_calculation_id: offer.source_calculation_id || '',
       });
       setHeroFile(null);
       setRemoveHero(false);
       setHeroDragActive(false);
       heroDragDepth.current = 0;
-    }, [offer, legacyEventAssumptions, resolvedClientType]);
+    }, [offer, legacyEventAssumptions, resolvedClientType, isEditing]);
 
     useEffect(() => {
       let active = true;
@@ -253,6 +264,7 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
 
     // 👇 opakowujemy w useCallback, żeby ref miał stabilną funkcję
     const handleSave = useCallback(async () => {
+      if (!canEdit || loading) return;
       try {
         if (formData.client_type === 'individual' && !formData.contact_id) {
           showSnackbar('Wybierz klienta indywidualnego', 'warning');
@@ -267,42 +279,28 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
           return;
         }
 
-        setLoading(true);
-
-        const calculationIds = eventCalculations.map((calculation) => calculation.id);
-        if (formData.pricing_source === 'calculation') {
-          const otherCalculationIds = calculationIds.filter((id) => id !== formData.accepted_calculation_id);
-          if (otherCalculationIds.length > 0) {
-            const { error: clearCalculationError } = await supabase
-              .from('event_calculations')
-              .update({ is_accepted: false })
-              .in('id', otherCalculationIds);
-            if (clearCalculationError) throw clearCalculationError;
-          }
-          const { error: acceptCalculationError } = await supabase
-            .from('event_calculations')
-            .update({ is_accepted: true })
-            .eq('id', formData.accepted_calculation_id);
-          if (acceptCalculationError) throw acceptCalculationError;
-        } else if (calculationIds.length > 0) {
-          const { error: clearCalculationError } = await supabase
-            .from('event_calculations')
-            .update({ is_accepted: false })
-            .in('id', calculationIds);
-          if (clearCalculationError) throw clearCalculationError;
+        const eventDate = localDatetimeStringToUTC(formData.event_date);
+        if (formData.event_date && !eventDate) {
+          showSnackbar('Podaj prawidłowy termin wydarzenia', 'warning');
+          return;
         }
 
-        if (formData.event_id) {
-          const { error: eventFinancialError } = await supabase
-            .from('events')
-            .update({
-              financial_source: formData.pricing_source,
-              accepted_calculation_id: formData.pricing_source === 'calculation'
-                ? formData.accepted_calculation_id
-                : null,
-            })
-            .eq('id', formData.event_id);
-          if (eventFinancialError) throw eventFinancialError;
+        setLoading(true);
+        const eventDateChanged = formData.event_date !== utcToLocalDatetimeString(offerEventDate);
+        if (eventDateChanged) {
+          // Sprawdzamy dostępność kolumny przed zmianą kalkulacji, wydarzenia lub plików.
+          const { error: eventDateError } = await supabase
+            .from('offers')
+            .select('event_date')
+            .eq('id', offer.id)
+            .limit(1);
+          if (eventDateError) {
+            if (['PGRST204', '42703'].includes(eventDateError.code)
+              && eventDateError.message.includes('event_date')) {
+              throw new Error('Zapis terminu wymaga migracji 20260908160000 w Supabase (kolumna offers.event_date i odświeżenie schematu). Wpisany termin pozostaje w formularzu.');
+            }
+            throw eventDateError;
+          }
         }
 
         let heroImagePath = removeHero ? null : offer.hero_image_path || null;
@@ -333,11 +331,15 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
           .from('offers')
           .update({
             client_type: formData.client_type,
+            pricing_source: formData.pricing_source,
+            source_calculation_id: formData.pricing_source === 'calculation' ? formData.accepted_calculation_id : null,
+            ...(refreshCalculation && formData.pricing_source === 'calculation' ? { calculation_snapshot: null } : {}),
             title: formData.title.trim() || null,
             organization_id:
               formData.client_type === 'business' ? formData.organization_id || null : null,
             contact_id: formData.contact_id || null,
             event_id: formData.event_id || null,
+            event_date: eventDate,
             event_location: formData.event_location.trim() || null,
             valid_until: formData.valid_until || null,
             notes: formData.notes || '',
@@ -352,11 +354,14 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
               content: section.content.trim(),
             })),
           })
-          .eq('id', offer.id);
+          .eq('id', offer.id)
+          .select('id, event_date, event_location, valid_until')
+          .single();
 
         if (error) throw error;
 
-        showSnackbar('Oferta zaktualizowana', 'success');
+        showSnackbar('Informacje podstawowe zapisane', 'success');
+        setIsEditing(false);
         onUpdate();
       } catch (err: any) {
         console.error('Error updating offer:', err);
@@ -364,7 +369,7 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
       } finally {
         setLoading(false);
       }
-    }, [eventCalculations, formData, heroFile, offer.hero_image_path, offer.id, onUpdate, removeHero, showSnackbar]);
+    }, [canEdit, loading, eventCalculations, formData, heroFile, offer.hero_image_path, offer.id, offerEventDate, onUpdate, removeHero, showSnackbar]);
 
     // 👇 tu udostępniamy submit() na zewnątrz
     useImperativeHandle(
@@ -385,9 +390,14 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
     const selectedContact = resolvedClientType === 'business'
       ? businessContact || fallbackEventContact
       : individualContact || fallbackEventContact;
-    const selectedContactName = selectedContact?.full_name ||
-      [selectedContact?.first_name, selectedContact?.last_name].filter(Boolean).join(' ');
-    const organizationName = offer.organization?.alias || offer.organization?.name || '';
+    const selectedContactName = isSellerOffer
+      ? offer.portal_client_name || ''
+      : selectedContact?.full_name || [selectedContact?.first_name, selectedContact?.last_name].filter(Boolean).join(' ');
+    const organizationName = isSellerOffer
+      ? offer.portal_client_company || ''
+      : offer.organization?.alias || offer.organization?.name || '';
+    const contactEmail = isSellerOffer ? offer.portal_client_email : selectedContact?.email;
+    const contactPhone = isSellerOffer ? offer.portal_client_phone : selectedContact?.mobile || selectedContact?.phone;
     const editingContact = formData.client_type === 'business'
       ? offer.contact_person || offer.contact
       : offer.contact;
@@ -397,16 +407,22 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
       legacyEventAssumptions,
     ).filter((item) => item.value.trim() || item.badge_value?.trim());
     const totals = getOfferPricingTotals(offer);
-    const selectedPricingCalculation = eventCalculations.find((calculation) =>
-      calculation.id === offer.event?.accepted_calculation_id || calculation.is_accepted,
+    const selectedPricingCalculation = offer.calculation_snapshot || eventCalculations.find((calculation) =>
+      calculation.id === offer.source_calculation_id,
     );
-    const usesCalculationPricing = offer.event?.financial_source === 'calculation'
-      || Boolean(selectedPricingCalculation);
+    const usesCalculationPricing = offer.pricing_source === 'calculation';
 
     if (!isEditing) {
       return (
         <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
-          <h2 className="mb-4 text-lg font-light text-[#e5e4e2]">Informacje podstawowe</h2>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-lg font-light text-[#e5e4e2]">Informacje podstawowe</h2>
+            {canEdit && <button type="button" onClick={() => setIsEditing(true)} className="rounded-lg bg-[#d3bb73]/10 px-3 py-2 text-sm text-[#d3bb73]">Edytuj</button>}
+          </div>
+          {isSellerOffer && <div className="mb-5 rounded-lg bg-[#d3bb73]/10 p-3 text-sm text-[#d3bb73]">
+            Oferta z portalu sprzedawcy. Poniżej dane klienta zapisane przez sprzedawcę — nie wymagają powiązania z kartoteką CRM.
+            <a href="#seller-offer-review" className="mt-2 block underline underline-offset-4">Przejdź do zapytania i akceptacji terminu / zasobów</a>
+          </div>}
           <div className="space-y-4">
             <div className="flex items-start gap-3">
               <FileText className="mt-0.5 h-5 w-5 text-[#d3bb73]" />
@@ -428,7 +444,7 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
                   <p className="text-sm font-medium text-[#e5e4e2]">
                     {organizationName || 'Brak organizacji'}
                   </p>
-                  {offer.organization?.alias && offer.organization?.name && (
+                  {!isSellerOffer && offer.organization?.alias && offer.organization?.name && (
                     <p className="mt-1 text-xs text-[#e5e4e2]/45">
                       Nazwa prawna: {offer.organization.name}
                     </p>
@@ -437,8 +453,8 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
                   <p className="text-sm font-medium text-[#e5e4e2]">
                     {selectedContactName || 'Nie wybrano osoby kontaktowej'}
                   </p>
-                  {selectedContact?.email && (
-                    <p className="mt-1 text-xs text-[#e5e4e2]/60">{selectedContact.email}</p>
+                  {contactEmail && (
+                    <p className="mt-1 text-xs text-[#e5e4e2]/60">{contactEmail}</p>
                   )}
                 </div>
               </div>
@@ -450,19 +466,21 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
                   <p className="text-sm font-medium text-[#e5e4e2]">
                     {selectedContactName || 'Brak klienta'}
                   </p>
-                  {selectedContact?.email && (
-                    <p className="mt-1 text-xs text-[#e5e4e2]/60">{selectedContact.email}</p>
+                  {contactEmail && (
+                    <p className="mt-1 text-xs text-[#e5e4e2]/60">{contactEmail}</p>
                   )}
                 </div>
               </div>
             )}
 
+            {contactPhone && <div className="text-sm text-[#e5e4e2]"><p className="text-xs text-[#e5e4e2]/60">Telefon klienta</p>{contactPhone}</div>}
+            {isSellerOffer && offer.description && <div><p className="text-xs text-[#e5e4e2]/60">Opis od sprzedawcy</p><p className="whitespace-pre-wrap text-sm text-[#e5e4e2]">{offer.description}</p></div>}
             <div className="flex items-start gap-3">
               <FileText className="mt-0.5 h-5 w-5 text-[#d3bb73]" />
               <div className="flex-1">
                 <p className="text-xs text-[#e5e4e2]/60">Wydarzenie / zapytanie</p>
                 <p className="text-sm font-medium text-[#e5e4e2]">
-                  {offer.event?.name || offer.inquiry?.title?.replace(/^Zapytanie:\s*/i, '') || '-'}
+                  {offer.event?.name || offer.inquiry?.title?.replace(/^Zapytanie:\s*/i, '') || (isSellerOffer ? 'Samodzielna oferta sprzedawcy — bez powiązanego wydarzenia CRM' : '-')}
                 </p>
               </div>
             </div>
@@ -487,7 +505,7 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
               <div className="min-w-0 flex-1">
                 <p className="text-xs text-[#e5e4e2]/60">Grafika hero oferty</p>
                 <p className="text-sm font-medium text-[#e5e4e2]">
-                  {offer.hero_image_path ? 'Indywidualna grafika tej oferty' : 'Domyślna grafika szablonu'}
+                  {isSellerOffer && offer.partner_branding_snapshot?.hotel_cover_image_url ? 'Okładka z profilu sprzedawcy' : offer.hero_image_path ? 'Indywidualna grafika tej oferty' : 'Domyślna grafika szablonu'}
                 </p>
                 {offer.hero_image_path && heroPreviewUrl && (
                   <div className="mt-3 overflow-hidden rounded-xl border border-[#d3bb73]/15 bg-[#0f1118]">
@@ -506,9 +524,9 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
               <div className="flex-1">
                 <p className="text-xs text-[#e5e4e2]/60">Data wydarzenia</p>
                 <p className="text-sm text-[#e5e4e2]">
-                  {offer.event?.event_date || offer.inquiry?.due_date
-                    ? new Date(offer.event?.event_date || offer.inquiry?.due_date).toLocaleDateString('pl-PL')
-                    : '-'}
+                  {resolvedEventDate
+                    ? new Date(resolvedEventDate).toLocaleDateString('pl-PL')
+                    : isSellerOffer ? 'Sprzedawca nie podał terminu' : '-'}
                 </p>
               </div>
             </div>
@@ -652,7 +670,7 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
           <h2 className="text-lg font-light text-[#e5e4e2]">Edytuj informacje podstawowe</h2>
         </div>
 
-        <div className="space-y-4">
+        <fieldset disabled={loading} className="space-y-4">
           <div>
             <label className="mb-2 block text-xs text-[#e5e4e2]/60">
               <FileText className="mr-1 inline h-4 w-4" />
@@ -700,56 +718,7 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
             />
           </div>
 
-          <div className="rounded-xl border border-[#d3bb73]/15 bg-[#0f1118] p-4">
-            <div className="flex items-start gap-3">
-              <FileText className="mt-0.5 h-4 w-4 flex-shrink-0 text-[#d3bb73]" />
-              <div>
-                <p className="text-xs font-medium text-[#e5e4e2]/75">Dodatkowe sekcje „Informacje i warunki”</p>
-                <p className="mt-1 text-[11px] leading-5 text-[#e5e4e2]/40">
-                  Te trzy karty uzupełniają dwie sekcje szablonu. Pusta treść zostanie automatycznie wypełniona danymi wydarzenia, wyceny i kontaktu.
-                </p>
-              </div>
-            </div>
 
-            <div className="mt-4 space-y-4">
-              {formData.info_page_sections.map((section, index) => (
-                <div key={section.key} className="rounded-lg border border-[#d3bb73]/10 bg-[#090b13] p-3">
-                  <div className="mb-2 flex items-center gap-2">
-                    <span className="flex h-6 w-6 items-center justify-center rounded-md bg-[#6b0024] text-[11px] font-medium text-[#f3e7bd]">
-                      {String(index + 3).padStart(2, '0')}
-                    </span>
-                    <input
-                      type="text"
-                      value={section.title}
-                      onChange={(event) => setFormData((current) => ({
-                        ...current,
-                        info_page_sections: current.info_page_sections.map((item, itemIndex) => (
-                          itemIndex === index ? { ...item, title: event.target.value } : item
-                        )),
-                      }))}
-                      className="min-w-0 flex-1 rounded-md border border-[#d3bb73]/15 bg-[#121625] px-3 py-2 text-xs font-medium uppercase tracking-wide text-[#d3bb73] outline-none focus:border-[#d3bb73]/50"
-                    />
-                  </div>
-                  <textarea
-                    rows={3}
-                    value={section.content}
-                    onChange={(event) => setFormData((current) => ({
-                      ...current,
-                      info_page_sections: current.info_page_sections.map((item, itemIndex) => (
-                        itemIndex === index ? { ...item, content: event.target.value } : item
-                      )),
-                    }))}
-                    className="w-full resize-y rounded-md border border-[#d3bb73]/15 bg-[#121625] px-3 py-2 text-sm leading-relaxed text-[#e5e4e2] outline-none focus:border-[#d3bb73]/50"
-                    placeholder={index === 0
-                      ? 'Automatycznie: termin i lokalizacja wydarzenia'
-                      : index === 1
-                        ? 'Automatycznie: źródło i podsumowanie wyceny'
-                        : 'Automatycznie: osoba kontaktowa i sposób koordynacji'}
-                  />
-                </div>
-              ))}
-            </div>
-          </div>
 
           <div>
             <label className="mb-2 block text-xs text-[#e5e4e2]/60">
@@ -771,6 +740,24 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
                 </option>
               ))}
             </select>
+          </div>
+
+          <div>
+            <label htmlFor="offer-event-date" className="mb-2 flex items-center gap-2 text-xs text-[#e5e4e2]/60">
+              <Calendar className="h-4 w-4 text-[#d3bb73]" />
+              Termin wydarzenia
+            </label>
+            <input
+              id="offer-event-date"
+              type="datetime-local"
+              value={formData.event_date}
+              onChange={(event) => setFormData((current) => ({ ...current, event_date: event.target.value }))}
+              disabled={loading}
+              className="w-full rounded-lg border border-white/10 bg-[#0f1118] px-3 py-2.5 text-sm text-[#e5e4e2] outline-none focus:ring-2 focus:ring-[#d3bb73]/20 disabled:cursor-not-allowed disabled:opacity-60"
+            />
+            <p className="mt-1.5 text-[11px] leading-5 text-[#e5e4e2]/45">
+              Termin zapisuje się w tej ofercie i jest używany w jej PDF. Nie zmienia terminu powiązanego wydarzenia.
+            </p>
           </div>
 
           <div className="rounded-xl border border-[#d3bb73]/15 bg-[#0f1118] p-4">
@@ -795,6 +782,7 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
               </option>
             </select>
 
+            {formData.pricing_source === 'calculation' && offer.source_calculation_id && <label className="my-3 block text-xs text-[#e5e4e2]/70"><input type="checkbox" checked={refreshCalculation} onChange={e => setRefreshCalculation(e.target.checked)} className="mr-2" />Zastąp zapisaną wycenę aktualną wersją kalkulacji przy zapisie tej oferty</label>}
             {formData.pricing_source === 'calculation' && (
               <div className="mt-3">
                 <label className="mb-1.5 block text-xs text-[#d3bb73]">Kalkulacja stanowiąca integralną część oferty</label>
@@ -811,7 +799,7 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
                   ))}
                 </select>
                 <p className="mt-2 text-[11px] leading-5 text-[#e5e4e2]/40">
-                  Po zapisaniu wybrana kalkulacja zostanie oznaczona jako zaakceptowana, a jej numer pojawi się w PDF.
+                  Przy wyborze kalkulacji oferta zachowa jej własną wersję. Późniejsze zmiany kalkulacji nie zmienią tej oferty.
                 </p>
               </div>
             )}
@@ -929,6 +917,7 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
               Miejsce wydarzenia
             </label>
             <LocationSelector
+              allowFreeText
               value={formData.event_location}
               onChange={(value) => setFormData({ ...formData, event_location: value })}
               placeholder="Wyszukaj miejsce lub wpisz własną lokalizację..."
@@ -967,6 +956,56 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
             })}
           />
 
+          {formData.info_page_sections.some((section, index) => section.content.trim()
+            || section.title !== DEFAULT_INFO_PAGE_SECTIONS[index].title) && (
+          <details className="rounded-xl bg-white/[0.025] p-4">
+            <summary className="cursor-pointer text-xs text-[#e5e4e2]/65">Zapisane dodatkowe warunki ze starszej wersji</summary>
+            <div className="flex items-start gap-3">
+              <FileText className="mt-0.5 h-4 w-4 flex-shrink-0 text-[#d3bb73]" />
+              <div>
+                <p className="text-xs font-medium text-[#e5e4e2]/75">Zachowane indywidualne ustalenia</p>
+                <p className="mt-1 text-[11px] leading-5 text-[#e5e4e2]/40">
+                  Wcześniej zapisane warunki pozostają w PDF. Nowe założenia edytuj w trzech kartach powyżej. Puste dodatkowe karty nie będą drukowane.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-4 space-y-4">
+              {formData.info_page_sections.map((section, index) => (
+                <div key={section.key} className="rounded-lg border border-[#d3bb73]/10 bg-[#090b13] p-3">
+                  <div className="mb-2 flex items-center gap-2">
+                    <span className="flex h-6 w-6 items-center justify-center rounded-md bg-[#6b0024] text-[11px] font-medium text-[#f3e7bd]">
+                      {String(index + 3).padStart(2, '0')}
+                    </span>
+                    <input
+                      type="text"
+                      value={section.title}
+                      onChange={(event) => setFormData((current) => ({
+                        ...current,
+                        info_page_sections: current.info_page_sections.map((item, itemIndex) => (
+                          itemIndex === index ? { ...item, title: event.target.value } : item
+                        )),
+                      }))}
+                      className="min-w-0 flex-1 rounded-md border border-[#d3bb73]/15 bg-[#121625] px-3 py-2 text-xs font-medium uppercase tracking-wide text-[#d3bb73] outline-none focus:border-[#d3bb73]/50"
+                    />
+                  </div>
+                  <textarea
+                    rows={3}
+                    value={section.content}
+                    onChange={(event) => setFormData((current) => ({
+                      ...current,
+                      info_page_sections: current.info_page_sections.map((item, itemIndex) => (
+                        itemIndex === index ? { ...item, content: event.target.value } : item
+                      )),
+                    }))}
+                    className="w-full resize-y rounded-md border border-[#d3bb73]/15 bg-[#121625] px-3 py-2 text-sm leading-relaxed text-[#e5e4e2] outline-none focus:border-[#d3bb73]/50"
+                    placeholder="Dodatkowe ustalenie ze starszej oferty. Puste pole nie będzie drukowane."
+                  />
+                </div>
+              ))}
+            </div>
+          </details>)}
+
           <div>
             <label className="mb-2 block text-xs text-[#e5e4e2]/60">Cel wydarzenia</label>
             <textarea
@@ -989,9 +1028,12 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
             />
           </div>
 
-          {/* Brak lokalnego przycisku Zapisz – zapis obsługuje ActionBar */}
+          <div className="flex gap-2 pt-4">
+            <button type="button" disabled={loading} onClick={() => void handleSave()} className="rounded-lg bg-[#d3bb73] px-4 py-2 text-sm text-[#250914] disabled:opacity-50">{loading ? 'Zapisywanie…' : 'Zapisz'}</button>
+            <button type="button" disabled={loading} onClick={() => { setIsEditing(false); setHeroFile(null); setRemoveHero(false); setRefreshCalculation(false); }} className="rounded-lg bg-white/5 px-4 py-2 text-sm text-[#e5e4e2] disabled:opacity-50">Anuluj</button>
+          </div>
           {loading && <p className="pt-1 text-xs text-[#e5e4e2]/60">Zapisywanie zmian...</p>}
-        </div>
+        </fieldset>
       </div>
     );
   },

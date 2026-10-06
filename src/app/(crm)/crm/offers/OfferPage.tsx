@@ -1,5 +1,6 @@
 'use client';
 
+import { matchesOfferSearch } from '@/lib/CRM/Offers/offerSearch';
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -126,7 +127,17 @@ export function OfferPage({
   const [filteredOffers, setFilteredOffers] = useState<Offer[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [offersViewMode, setOffersViewMode] = useState<'list' | 'table' | 'grid'>('list');
+  const [offersViewMode, setOffersViewMode] = useState<'list' | 'table' | 'grid'>('table');
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem('crm-offers-view');
+      if (saved === 'list' || saved === 'table' || saved === 'grid') setOffersViewMode(saved);
+    } catch { /* The default view remains available when storage is blocked. */ }
+  }, []);
+  const changeOffersView = (mode: 'list' | 'table' | 'grid') => {
+    setOffersViewMode(mode);
+    try { window.localStorage.setItem('crm-offers-view', mode); } catch { /* Keep the current view usable. */ }
+  };
 
   // Katalog produktów
   const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
@@ -161,13 +172,7 @@ export function OfferPage({
     let filtered = [...offers];
 
     if (searchQuery) {
-      filtered = filtered.filter(
-        (offer) =>
-          offer.offer_number?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          offer.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          offer.client?.company_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          offer.event?.name?.toLowerCase().includes(searchQuery.toLowerCase()),
-      );
+      filtered = filtered.filter(offer => matchesOfferSearch(offer, searchQuery));
     }
 
     if (statusFilter !== 'all') {
@@ -349,7 +354,7 @@ export function OfferPage({
           getClientName={getClientName}
           router={router}
           viewMode={offersViewMode}
-          setViewMode={setOffersViewMode}
+          setViewMode={changeOffersView}
           onDelete={handleDeleteOffer}
           onNewOffer={handleNewOffer}
         />
@@ -548,7 +553,7 @@ function OffersTab({
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Szukaj oferty..."
+              placeholder="Szukaj oferty, klienta, kontaktu, e-maila lub telefonu…"
               className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] py-2 pl-10 pr-4 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
             />
           </div>

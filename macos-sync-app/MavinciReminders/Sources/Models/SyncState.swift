@@ -4,6 +4,9 @@ import Foundation
 
 /// Tracks the synchronization state between the CRM backend and local Reminders.
 struct SyncState: Codable {
+    var accountScope: String?
+    var completionBaseline: [String: Bool]?
+    var crmRevision: [String: String]?
     /// The last time a successful sync was performed.
     var lastSyncDate: Date?
 
@@ -47,6 +50,7 @@ struct PendingCompletionUpdate: Codable, Equatable {
     let taskId: String
     let completed: Bool
     let timestamp: Date
+    var expectedUpdatedAt: String? = nil
 }
 
 // MARK: - Persistence Helpers
@@ -76,6 +80,14 @@ extension SyncState {
     }
 
     /// Persist the current sync state to disk.
+    func saveOrThrow() throws {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let data = try encoder.encode(self)
+        try FileManager.default.createDirectory(at: Self.stateFileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try data.write(to: Self.stateFileURL, options: .atomic)
+    }
+
     func save() {
         do {
             let encoder = JSONEncoder()

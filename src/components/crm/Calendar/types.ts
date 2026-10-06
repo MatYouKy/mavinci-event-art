@@ -4,6 +4,7 @@ export interface CalendarEvent {
   event_date: string;
   event_end_date: string | null;
   status: string;
+  operational_label?: string;
   created_by?: string | null;
   color?: string;
   location?: string;

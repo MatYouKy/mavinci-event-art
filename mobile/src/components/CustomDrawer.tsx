@@ -64,7 +64,11 @@ export default function CustomDrawer({ visible, onClose, navigation, currentScre
 
   const handleNavigate = (screen: string) => {
     onClose();
-    navigation.navigate(screen);
+    if (screen === 'Tasks') {
+      navigation.navigate('Tasks', { screen: 'TasksList', initial: false });
+    } else {
+      navigation.navigate(screen);
+    }
   };
 
 

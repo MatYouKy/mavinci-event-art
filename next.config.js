@@ -1,3 +1,5 @@
+const { PHASE_DEVELOPMENT_SERVER } = require('next/constants');
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'standalone',
@@ -39,4 +41,8 @@ const nextConfig = {
   },
 };
 
-module.exports = nextConfig;
+// next dev and next build must never overwrite each other's manifests.
+module.exports = (phase) => ({
+  ...nextConfig,
+  distDir: phase === PHASE_DEVELOPMENT_SERVER ? '.next' : '.next-build',
+});

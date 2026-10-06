@@ -121,6 +121,17 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    // Recheck membership, including queued notifications created before access changed.
+    const { data: allowed, error: accessError } = await supabase.rpc('mailbox_notification_allowed', {
+      p_notification: recipient.notification_id,
+      p_user: recipient.user_id,
+    });
+    if (accessError) throw new Error('Unable to verify notification mailbox access');
+    if (allowed !== true) return new Response(
+      JSON.stringify({ success: true, sent: 0, reason: 'mailbox_not_assigned' }),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+    );
+
     // Claim delivery before any external request. A database trigger and a
     // legacy explicit caller may arrive at the same time; only one can win.
     const { error: claimError } = await supabase
@@ -279,6 +290,10 @@ Deno.serve(async (req: Request) => {
       typeof metadata.initial_tab === "string"
     ) {
       data.initial_tab = metadata.initial_tab;
+    } else if (typeof metadata?.warehouse_key === "string") {
+      data.initial_tab = "warehouse";
+    } else if (metadata?.kind === "vehicle_pickup") {
+      data.initial_tab = "fleet";
     }
     if (invitationAssignmentId) {
       data.assignment_id = invitationAssignmentId;

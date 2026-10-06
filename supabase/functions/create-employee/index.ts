@@ -16,6 +16,8 @@ interface CreateEmployeeRequest {
   phone_number?: string;
   role?: string;
   access_level_id?: string;
+  company_access_mode?: 'all' | 'selected';
+  my_company_ids?: string[];
   occupation?: string;
 }
 
@@ -91,12 +93,13 @@ Deno.serve(async (req: Request) => {
       event_tabs: string[] | null;
       contact_tabs: string[] | null;
       organization_tabs: string[] | null;
+      slug: string;
     } | null = null;
 
     if (body.access_level_id) {
       const { data: accessLevel, error: accessLevelError } = await supabaseAdmin
         .from('access_levels')
-        .select('default_permissions, event_tabs, contact_tabs, organization_tabs')
+        .select('default_permissions, event_tabs, contact_tabs, organization_tabs, slug')
         .eq('id', body.access_level_id)
         .maybeSingle();
 
@@ -114,6 +117,19 @@ Deno.serve(async (req: Request) => {
       accessLevelDefaults = accessLevel;
     }
 
+    const companyAccessMode = body.company_access_mode === 'selected' ? 'selected' : 'all';
+    const companyIds = companyAccessMode === 'all'
+      ? []
+      : Array.from(new Set((body.my_company_ids || []).filter(Boolean)));
+
+    if (companyAccessMode === 'selected' && companyIds.length === 0) {
+      await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
+      return new Response(
+        JSON.stringify({ error: 'Wybierz przynajmniej jedną markę' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
+
     // Step 2: Insert employee data
     const employeeData = {
       id: authData.user.id,
@@ -122,12 +138,15 @@ Deno.serve(async (req: Request) => {
       surname: body.surname,
       nickname: body.nickname || null,
       phone_number: body.phone_number || null,
-      role: body.role || 'unassigned',
+      role: ['admin', 'company-admin'].includes(accessLevelDefaults?.slug || '') ? 'admin' : 'employee',
       access_level_id: body.access_level_id || null,
       permissions: accessLevelDefaults?.default_permissions || [],
       event_tabs: accessLevelDefaults?.event_tabs || null,
       contact_tabs: accessLevelDefaults?.contact_tabs || null,
       organization_tabs: accessLevelDefaults?.organization_tabs || null,
+      role_permissions_inherited: Boolean(body.access_level_id),
+      company_access_mode: ['admin', 'company-admin'].includes(accessLevelDefaults?.slug || '') ? 'all' : companyAccessMode,
+      my_company_ids: ['admin', 'company-admin'].includes(accessLevelDefaults?.slug || '') ? [] : companyIds,
       occupation: body.occupation || null,
       is_active: true,
       show_on_website: false,

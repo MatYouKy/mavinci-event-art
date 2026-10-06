@@ -8,6 +8,7 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 type Body = {
+  expectedRevision: number;
   eventId?: string | null;
   inquiryId?: string | null;
   calculationId: string;
@@ -139,7 +140,7 @@ export async function POST(req: Request) {
 
     const { data: calculation, error: calculationError } = await supabaseForUser
       .from('event_calculations')
-      .select('id, event_id, inquiry_id')
+      .select('id, event_id, inquiry_id, content_revision')
       .eq('id', calculationId)
       .maybeSingle();
 
@@ -153,6 +154,10 @@ export async function POST(req: Request) {
     ) {
       return NextResponse.json({ error: 'Kalkulacja nie należy do wskazanego rekordu' }, { status: 403 });
     }
+
+    const { data: canManage, error: permissionError } = await supabaseForUser.rpc('sales_can_manage_calculation', { p_calculation: calculationId });
+    if (permissionError || !canManage) return NextResponse.json({ error: 'Brak uprawnień do zmiany kalkulacji' }, { status: 403 });
+    if (body.expectedRevision !== calculation.content_revision) return NextResponse.json({ error: 'Kalkulacja zmieniła się. Zapisz i wygeneruj dokument ponownie.' }, { status: 409 });
 
     const { data: brandTheme } = await supabaseForUser.rpc('get_public_brand_theme');
     const headingFontCss = buildCalculationHeadingFontCss(
@@ -199,11 +204,6 @@ export async function POST(req: Request) {
 
       const supabase = getSupabaseAdmin();
 
-      if (previousPdfPath) {
-        await supabase.storage.from('event-files').remove([previousPdfPath]);
-        await supabase.from('event_files').delete().eq('file_path', previousPdfPath);
-      }
-
       const folderId = eventId
         ? await getOrCreateCalculationFolderId({
             supabase,
@@ -218,7 +218,7 @@ export async function POST(req: Request) {
         .replace(/-+/g, '-')
         .replace(/^-|-$/g, '');
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-      const finalFileName = fileName || `kalkulacja-${slug || 'event'}-${timestamp}.pdf`;
+      const finalFileName = `kalkulacja-${slug || 'event'}-${timestamp}-${crypto.randomUUID()}.pdf`;
 
       const storagePath = eventId
         ? `${eventId}/documents/calculations/${finalFileName}`
@@ -254,16 +254,12 @@ export async function POST(req: Request) {
         }
       }
 
-      const upd = await supabase
-        .from('event_calculations')
-        .update({
-          generated_pdf_path: storagePath,
-          generated_pdf_at: new Date().toISOString(),
-        })
-        .eq('id', calculationId);
+      const upd = await supabase.rpc('publish_calculation_pdf', { p_calculation: calculationId, p_revision: body.expectedRevision, p_path: storagePath });
 
       if (upd.error) {
-        console.error('event_calculations update error:', upd.error);
+        await supabase.storage.from('event-files').remove([storagePath]);
+        await supabase.from('event_files').delete().eq('file_path', storagePath);
+        return NextResponse.json({ error: 'Kalkulacja zmieniła się podczas generowania. Wygeneruj PDF ponownie.' }, { status: 409 });
       }
 
       return NextResponse.json({

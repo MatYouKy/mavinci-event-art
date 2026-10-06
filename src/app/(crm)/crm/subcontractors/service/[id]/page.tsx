@@ -1,5 +1,6 @@
 'use client';
 
+import ServiceTerms, { validateServiceTerms } from '@/components/crm/subcontractors/ServiceTerms';
 import { useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import {
@@ -19,6 +20,7 @@ import {
 
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import { canManage } from '@/lib/permissions';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import {
   calculateSubcontractorSettlementCost,
@@ -122,7 +124,7 @@ export default function ServiceCatalogDetailPage() {
   const [updateServiceMutation] = useUpdateServiceCatalogMutation();
   const [deleteServiceMutation] = useDeleteServiceCatalogMutation();
 
-  const canEdit = employee?.permissions?.includes('equipment_manage');
+  const canEdit = canManage(employee, 'contacts') || employee?.permissions?.includes('equipment_manage');
 
   const handleEdit = () => {
     setEditForm({ ...service });
@@ -138,6 +140,7 @@ export default function ServiceCatalogDetailPage() {
     if (!editForm) return;
 
     try {
+      validateServiceTerms(editForm);
       const primaryImg = (editForm.images || []).find((img: ServiceImage) => img.isPrimary);
       const settlementMethod = (editForm.settlement_method ||
         'invoice') as SubcontractorSettlementMethod;
@@ -158,6 +161,10 @@ export default function ServiceCatalogDetailPage() {
           description: editForm.description,
           category: editForm.category,
           unit: editForm.unit,
+          included_hours: editForm.included_hours ?? null,
+          overtime_hourly_rate: editForm.overtime_hourly_rate ?? null,
+          travel_rate_per_km: editForm.travel_rate_per_km ?? null,
+          performance_requirements: editForm.performance_requirements || null,
           unit_price: editForm.unit_price,
           vat_rate: editForm.vat_rate,
           price_net: editForm.price_net,
@@ -522,18 +529,36 @@ export default function ServiceCatalogDetailPage() {
                 )}
               </div>
 
+              <div className="sm:col-span-2">
+                <ServiceTerms
+                  value={displayData}
+                  onChange={
+                    isEditing ? (value) => setEditForm({ ...editForm, ...value }) : undefined
+                  }
+                />
+              </div>
               <div>
-                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Jednostka</label>
+                <label>Sposób wyceny</label>
                 {isEditing ? (
-                  <input
-                    type="text"
-                    value={editForm.unit || ''}
+                  <select
+                    value={editForm.unit || 'realizacja'}
                     onChange={(e) => handleChange('unit', e.target.value)}
-                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2]"
-                    placeholder="szt, godz, usluga"
-                  />
+                    className="block w-full rounded-lg bg-[#250914] p-3"
+                  >
+                    <option value="realizacja">Za realizację</option>
+                    <option value="godz">Za godzinę</option>
+                    {!['godz', 'realizacja'].includes(editForm.unit) && (
+                      <option value={editForm.unit}>{editForm.unit || 'Nie określono'}</option>
+                    )}
+                  </select>
                 ) : (
-                  <div className="text-[#e5e4e2]">{displayData.unit || '-'}</div>
+                  <p>
+                    {displayData.unit === 'godz'
+                      ? 'Za godzinę'
+                      : displayData.unit === 'realizacja'
+                        ? 'Za realizację'
+                        : displayData.unit || 'Nie określono'}
+                  </p>
                 )}
               </div>
 

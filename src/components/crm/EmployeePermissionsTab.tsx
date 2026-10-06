@@ -1,8 +1,10 @@
 'use client';
 
+import RecordScopeSelect from '@/components/crm/settings/RecordScopeSelect';
 import { useState, useEffect } from 'react';
-import { Shield, Save, RefreshCw, ChevronDown, ChevronRight, Bell, Webhook, Car } from 'lucide-react';
+import { Shield, Save, RefreshCw, ChevronDown, ChevronRight, Bell, Webhook, Car, Building2, RotateCcw } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
+import { ACCESS_SECTIONS } from '@/lib/accessSections';
 import { getAllScopes } from '@/lib/permissions';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
@@ -25,6 +27,14 @@ interface WebhookSourceOption {
 interface SalesTeamOption {
   id: string;
   name: string;
+}
+
+interface AccessLevelPackage {
+  name: string;
+  default_permissions: string[] | null;
+  event_tabs: string[] | null;
+  contact_tabs: string[] | null;
+  organization_tabs: string[] | null;
 }
 
 interface ExtraPermission {
@@ -102,242 +112,11 @@ const availableOrganizationTabs = [
   { value: 'history', label: 'Historia', description: 'Historia zmian i kontaktów' },
 ];
 
-const permissionCategories: PermissionCategory[] = [
-  {
-    key: 'equipment',
-    label: 'Magazyn',
-  },
-  {
-    key: 'employees',
-    label: 'Pracownicy',
-    extraPermissions: [
-      {
-        key: 'employees_permissions',
-        label: 'Uprawnienia',
-        description: 'Może zmieniać uprawnienia pracowników',
-      },
-    ],
-  },
-  {
-    key: 'contacts',
-    label: 'Kontakty',
-    extraPermissions: [
-      {
-        key: 'contacts_manage',
-        label: 'Przypisywanie kontaktów',
-        description: 'Może przypisywać kontakty do pracowników',
-      },
-    ],
-  },
-  {
-    key: 'events',
-    label: 'Eventy',
-    extraPermissions: [
-      {
-        key: 'event_categories_manage',
-        label: 'Zarządzanie kategoriami wydarzeń',
-        description: 'Może dodawać, edytować i usuwać kategorie wydarzeń',
-      },
-      {
-        key: 'events_create',
-        label: 'Tworzenie wydarzeń',
-        description: 'Może tworzyć nowe wydarzenia',
-      }
-    ],
-  },
-  {
-    key: 'calendar',
-    label: 'Kalendarz',
-    extraPermissions: [
-      {
-        key: 'calendar_view_accepted_only',
-        label: 'Tylko zaakceptowane wydarzenia (przegląd)',
-        description:
-          'Pracownik widzi wszystkie zaakceptowane wydarzenia w kalendarzu, ale w szczegółach wydarzenia ma dostęp wyłącznie do zakładki Przegląd. Spotkania oraz inne zakładki są ukryte.',
-      },
-    ],
-  },
-  {
-    key: 'tasks',
-    label: 'Zadania',
-  },
-  {
-    key: 'inquiries',
-    label: 'Zapytania i sprzedaż',
-    extraPermissions: [
-      {
-        key: 'inquiries_view_pool',
-        label: 'Wspólna kolejka',
-        description: 'Widzi nowe, jeszcze nieprzypisane zapytania sprzedażowe.',
-      },
-      {
-        key: 'inquiries_view_own',
-        label: 'Własne zapytania',
-        description: 'Widzi zapytania, których jest opiekunem.',
-      },
-      {
-        key: 'inquiries_manage_own',
-        label: 'Obsługa własnych zapytań',
-        description: 'Może zmieniać etapy, terminy i dane swoich zapytań.',
-      },
-      {
-        key: 'inquiries_view_team',
-        label: 'Podgląd zespołu',
-        description: 'Widzi zapytania opiekunów z tego samego zespołu sprzedaży.',
-      },
-      {
-        key: 'inquiries_manage_team',
-        label: 'Zarządzanie zespołem',
-        description: 'Jako menedżer może obsługiwać zapytania swojego zespołu.',
-      },
-      {
-        key: 'inquiries_view_all',
-        label: 'Podgląd wszystkich',
-        description: 'Widzi zapytania wszystkich zespołów.',
-      },
-      {
-        key: 'inquiries_manage_all',
-        label: 'Zarządzanie wszystkimi',
-        description: 'Może obsługiwać zapytania wszystkich zespołów.',
-      },
-      {
-        key: 'inquiries_assign',
-        label: 'Przejmowanie i przypisywanie',
-        description: 'Może przejąć zapytanie z kolejki lub przypisać opiekuna.',
-      },
-    ],
-  },
-  {
-    key: 'offers',
-    label: 'Oferty',
-  },
-  {
-    key: 'contracts',
-    label: 'Umowy',
-  },
-  {
-    key: 'messages',
-    label: 'Wiadomości',
-    extraPermissions: [
-      {
-        key: 'messages_assign',
-        label: 'Przypisywanie wiadomości',
-        description: 'Może przypisywać wiadomości do pracowników',
-      },
-    ],
-  },
-  {
-    key: 'marketing_campaigns',
-    label: 'Marketing, reklamy i social media',
-    extraPermissions: [
-      {
-        key: 'marketing_campaigns_approve',
-        label: 'Zatwierdzanie kampanii e-mail',
-        description: 'Może zatwierdzić przygotowaną i przetestowaną kampanię e-mail przed wysyłką.',
-      },
-    ],
-  },
-  {
-    key: 'chat',
-    label: 'Komunikator',
-    extraPermissions: [
-      {
-        key: 'chat_create_group',
-        label: 'Tworzenie grup',
-        description: 'Może tworzyć konwersacje grupowe',
-      },
-    ],
-  },
-  {
-    key: 'fleet',
-    label: 'Flota',
-  },
-  {
-    key: 'databases',
-    label: 'Bazy danych',
-  },
-  {
-    key: 'mavinci_live',
-    label: 'Mavinci LIVE',
-    extraPermissions: [
-      {
-        key: 'mavinci_live_light_magic',
-        label: 'Light Magic (dostęp podstawowy)',
-        description: 'Obowiązkowa sekcja każdego użytkownika Mavinci LIVE: sterowanie CUE, EXEC, faderami i MIDI.',
-      },
-      {
-        key: 'mavinci_live_quiz_show',
-        label: 'Quiz Show',
-        description: 'Prowadzenie quizów, kategorie, pytania i ekran widowni.',
-      },
-      {
-        key: 'mavinci_live_familiada',
-        label: 'Familiada',
-        description: 'Prowadzenie Familiady i dostęp do przypisanych baz pytań.',
-      },
-      {
-        key: 'mavinci_live_wedding_show',
-        label: 'Wedding Show',
-        description: 'Scenariusze weselne, muzyka, ekrany i automatyka realizacji.',
-      },
-      {
-        key: 'mavinci_live_streaming',
-        label: 'Streaming',
-        description: 'Transmisje prywatne i zarządzanie dostępem uczestników.',
-      },
-    ],
-  },
-  {
-    key: 'time_tracking',
-    label: 'Czas pracy',
-  },
-  {
-    key: 'invoices',
-    label: 'Faktury',
-    extraPermissions: [
-      {
-        key: 'invoices_view',
-        label: 'Podgląd faktur KSeF',
-        description: 'Może przeglądać faktury pobrane z KSeF',
-      },
-      {
-        key: 'invoices_manage',
-        label: 'Zarządzanie fakturami KSeF',
-        description: 'Może konfigurować integrację z KSeF i zarządzać fakturami',
-      },
-    ],
-  },
-  {
-    key: 'page',
-    label: 'Zarządzanie stroną',
-  },
-  {
-    key: 'locations',
-    label: 'Lokalizacje',
-  },
-  {
-    key: 'website',
-    label: 'Edycja strony WWW',
-    extraPermissions: [
-      {
-        key: 'website_edit',
-        label: 'Edycja treści strony',
-        description: 'Może edytować zawartość strony publicznej (portfolio, usługi, zespół)',
-      },
-    ],
-  },
-  {
-    key: 'tenders',
-    label: 'Przetargi',
-    extraPermissions: [
-      {
-        key: 'tenders_view',
-        label: 'Podgląd przetargów',
-        description: 'Może przeglądać przetargi',
-      },
-    ],
-  },
-];
+const permissionCategories: PermissionCategory[] = ACCESS_SECTIONS.map(section => ({
+  key: section.key,
+  label: section.label,
+  extraPermissions: section.scopes.filter(scope => !scope.key.endsWith('_own_only') && scope.key !== `${section.key}_view` && scope.key !== `${section.key}_manage`),
+}));
 
 export default function EmployeePermissionsTab({
   employeeId,
@@ -349,10 +128,15 @@ export default function EmployeePermissionsTab({
   const { showConfirm } = useDialog();
   const { refresh: refreshCurrentEmployee } = useCurrentEmployee();
   const [permissions, setPermissions] = useState<string[]>([]);
+  const [loadedUpdatedAt, setLoadedUpdatedAt] = useState<string | null>(null);
+  const [permissionsLoaded, setPermissionsLoaded] = useState(false);
   const [eventTabs, setEventTabs] = useState<string[]>([]);
   const [contactTabs, setContactTabs] = useState<string[]>([]);
   const [organizationTabs, setOrganizationTabs] = useState<string[]>([]);
   const [myCompanyIds, setMyCompanyIds] = useState<string[]>([]);
+  const [companyAccessMode, setCompanyAccessMode] = useState<'all' | 'selected'>('all');
+  const [rolePermissionsInherited, setRolePermissionsInherited] = useState(false);
+  const [accessLevelPackage, setAccessLevelPackage] = useState<AccessLevelPackage | null>(null);
   const [myCompanies, setMyCompanies] = useState<Array<{ id: string; name: string }>>([]);
   const [invoiceCompanyPerms, setInvoiceCompanyPerms] = useState<Record<string, string[]>>({});
   const [contactFormNotifications, setContactFormNotifications] = useState(false);
@@ -380,7 +164,15 @@ export default function EmployeePermissionsTab({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [employeeId]);
 
+  useEffect(() => {
+    const reload = () => { if (!hasChanges && !saving) void fetchPermissions(); };
+    window.addEventListener('focus', reload);
+    return () => window.removeEventListener('focus', reload);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [employeeId, hasChanges, saving]);
+
   const fetchPermissions = async () => {
+    setPermissionsLoaded(false);
     try {
       setLoading(true);
 
@@ -395,7 +187,7 @@ export default function EmployeePermissionsTab({
         supabase
           .from('employees')
           .select(
-            'role, access_level, permissions, event_tabs, contact_tabs, organization_tabs, my_company_ids, invoice_company_permissions, sales_team_id, is_sales_team_manager',
+            'updated_at, role, access_level, access_level_id, permissions, event_tabs, contact_tabs, organization_tabs, my_company_ids, company_access_mode, role_permissions_inherited, invoice_company_permissions, sales_team_id, is_sales_team_manager, access_levels(name, default_permissions, event_tabs, contact_tabs, organization_tabs)',
           )
           .eq('id', employeeId)
           .maybeSingle(),
@@ -424,10 +216,18 @@ export default function EmployeePermissionsTab({
       if (salesTeamsRes.error) throw salesTeamsRes.error;
 
       setPermissions(data?.permissions || []);
+      setLoadedUpdatedAt(data?.updated_at || null);
+      setPermissionsLoaded(Boolean(data));
       setEventTabs(data?.event_tabs || []);
       setContactTabs(data?.contact_tabs || []);
       setOrganizationTabs(data?.organization_tabs || []);
       setMyCompanyIds(data?.my_company_ids || []);
+      setCompanyAccessMode(data?.company_access_mode === 'selected' ? 'selected' : 'all');
+      setRolePermissionsInherited(Boolean(data?.role_permissions_inherited));
+      const relatedAccessLevel = data?.access_levels as unknown;
+      setAccessLevelPackage(
+        (Array.isArray(relatedAccessLevel) ? relatedAccessLevel[0] : relatedAccessLevel) as AccessLevelPackage | null,
+      );
       setMyCompanies(companiesRes.data || []);
       setInvoiceCompanyPerms(
         (data?.invoice_company_permissions as Record<string, string[]>) || {},
@@ -497,23 +297,26 @@ export default function EmployeePermissionsTab({
     });
   };
 
-  const getPermissionLevel = (module: string): 'none' | 'view' | 'manage' => {
+  const getPermissionLevel = (module: string): 'none' | 'own' | 'view' | 'manage' => {
     if (targetIsAdmin) return 'manage';
     if (permissions.includes(`${module}_manage`)) return 'manage';
     if (permissions.includes(`${module}_view`)) return 'view';
+    if (module === 'time_tracking' && permissions.includes('time_tracking_view_own')) return 'own';
     return 'none';
   };
 
-  const setPermissionLevel = (module: string, level: 'none' | 'view' | 'manage') => {
+  const setPermissionLevel = (module: string, level: 'none' | 'own' | 'view' | 'manage') => {
     if (!canEditThisEmployee || targetIsAdmin) return;
 
     setPermissions((prev) => {
       const filtered = prev.filter((p) =>
         p !== `${module}_view`
         && p !== `${module}_manage`
+        && !(module === 'time_tracking' && p === 'time_tracking_view_own')
         && !(module === 'mavinci_live' && level === 'none' && mavinciLiveSectionScopes.includes(p as typeof mavinciLiveSectionScopes[number]))
       );
 
+      if (level === 'own' && module === 'time_tracking') return [...filtered, 'time_tracking_view_own'];
       if (level === 'view') {
         return module === 'mavinci_live'
           ? Array.from(new Set([...filtered, `${module}_view`, 'mavinci_live_light_magic']))
@@ -525,6 +328,7 @@ export default function EmployeePermissionsTab({
       }
       return filtered;
     });
+    setRolePermissionsInherited(false);
     setHasChanges(true);
   };
 
@@ -543,6 +347,7 @@ export default function EmployeePermissionsTab({
         return [...prev, permissionKey];
       }
     });
+    setRolePermissionsInherited(false);
     setHasChanges(true);
   };
 
@@ -556,6 +361,7 @@ export default function EmployeePermissionsTab({
         return [...prev, tabValue];
       }
     });
+    setRolePermissionsInherited(false);
     setHasChanges(true);
   };
 
@@ -569,6 +375,7 @@ export default function EmployeePermissionsTab({
         return [...prev, tabValue];
       }
     });
+    setRolePermissionsInherited(false);
     setHasChanges(true);
   };
 
@@ -582,6 +389,7 @@ export default function EmployeePermissionsTab({
         return [...prev, tabValue];
       }
     });
+    setRolePermissionsInherited(false);
     setHasChanges(true);
   };
 
@@ -651,6 +459,11 @@ export default function EmployeePermissionsTab({
       return;
     }
 
+    if (companyAccessMode === 'selected' && myCompanyIds.length === 0) {
+      showSnackbar('Wybierz przynajmniej jedną markę albo dostęp do wszystkich marek', 'warning');
+      return;
+    }
+
     const confirmed = await showConfirm({
       title: 'Zapisać zmiany?',
       message: 'Czy na pewno chcesz zapisać zmiany w uprawnieniach tego pracownika?',
@@ -663,21 +476,30 @@ export default function EmployeePermissionsTab({
     try {
       setSaving(true);
 
-      const { error } = await supabase
+      if (!permissionsLoaded) throw new Error('Odśwież uprawnienia przed zapisem.');
+      const { data: savedEmployee, error } = await supabase
         .from('employees')
         .update({
           permissions,
+          updated_at: new Date().toISOString(),
           event_tabs: eventTabs.length > 0 ? eventTabs : null,
           contact_tabs: contactTabs.length > 0 ? contactTabs : null,
           organization_tabs: organizationTabs.length > 0 ? organizationTabs : null,
-          my_company_ids: myCompanyIds,
+          company_access_mode: companyAccessMode,
+          my_company_ids: companyAccessMode === 'all' ? [] : myCompanyIds,
+          role_permissions_inherited: rolePermissionsInherited,
           invoice_company_permissions: invoiceCompanyPerms,
           sales_team_id: salesTeamId || null,
           is_sales_team_manager: isSalesTeamManager,
         })
-        .eq('id', employeeId);
+        .eq('id', employeeId)
+        .filter('updated_at', loadedUpdatedAt ? 'eq' : 'is', loadedUpdatedAt)
+        .select('id,updated_at')
+        .maybeSingle();
 
       if (error) throw error;
+      if (!savedEmployee) throw new Error('Dane pracownika zmieniono w innym oknie. Odśwież uprawnienia przed zapisem.');
+      setLoadedUpdatedAt(savedEmployee.updated_at);
 
       const { error: notificationSettingsError } = await supabase
         .from('employee_notification_settings')
@@ -733,11 +555,23 @@ export default function EmployeePermissionsTab({
     if (!canEditThisEmployee) return;
 
     if (value) {
-      setPermissions(getAllScopes());
+      setPermissions(getAllScopes().filter(scope => !scope.endsWith('_own_only')));
     } else {
       setPermissions([]);
     }
+    setRolePermissionsInherited(false);
     setHasChanges(true);
+  };
+
+  const restoreRolePackage = () => {
+    if (!accessLevelPackage || !canEditThisEmployee) return;
+    setPermissions(accessLevelPackage.default_permissions || []);
+    setEventTabs(accessLevelPackage.event_tabs || []);
+    setContactTabs(accessLevelPackage.contact_tabs || []);
+    setOrganizationTabs(accessLevelPackage.organization_tabs || []);
+    setRolePermissionsInherited(true);
+    setHasChanges(true);
+    showSnackbar(`Przywrócono pakiet roli „${accessLevelPackage.name}”`, 'info');
   };
 
   const getCategoryStatus = (category: PermissionCategory): string => {
@@ -762,7 +596,12 @@ export default function EmployeePermissionsTab({
       return `${level === 'manage' ? 'Zarządzanie' : 'Dostęp'} · ${selectedCount} sekcji`;
     }
 
+    if (['events', 'offers', 'contracts'].includes(category.key)) {
+      const action = level === 'manage' ? 'Zarządzanie' : level === 'view' ? 'Przeglądanie' : permissions.includes(`${category.key}_create`) ? 'Tworzenie' : 'Brak dostępu';
+      return `${action} · ${permissions.includes(`${category.key}_own_only`) ? 'tylko własne' : 'wszystkie dostępne'}`;
+    }
     if (level === 'none') return 'Brak';
+    if (level === 'own') return 'Przeglądanie — własny czas';
     if (level === 'view') return 'Przeglądanie';
     if (level === 'manage') {
       if (category.extraPermissions) {
@@ -829,6 +668,33 @@ export default function EmployeePermissionsTab({
         </div>
       )}
 
+      {accessLevelPackage && (
+        <div className={`rounded-xl border p-4 ${rolePermissionsInherited ? 'border-emerald-400/20 bg-emerald-400/10' : 'border-amber-400/25 bg-amber-400/10'}`}>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="text-sm font-medium text-[#e5e4e2]">
+                Rola firmowa: {accessLevelPackage.name}
+              </div>
+              <p className="mt-1 text-xs leading-5 text-[#e5e4e2]/60">
+                {rolePermissionsInherited
+                  ? 'Uprawnienia i zakładki są synchronizowane z pakietem tej roli.'
+                  : 'Ten pracownik ma indywidualne odstępstwa od pakietu roli.'}
+              </p>
+            </div>
+            {canEditThisEmployee && !rolePermissionsInherited && (
+              <button
+                type="button"
+                onClick={restoreRolePackage}
+                className="inline-flex items-center justify-center gap-2 rounded-lg border border-amber-300/25 bg-black/10 px-3 py-2 text-xs text-amber-100 hover:bg-amber-300/10"
+              >
+                <RotateCcw className="h-4 w-4" />
+                Przywróć pakiet roli
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {canEditThisEmployee && (
         <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-4">
           <div className="flex items-center justify-between">
@@ -850,6 +716,66 @@ export default function EmployeePermissionsTab({
           </div>
         </div>
       )}
+
+      <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-5">
+        <div className="flex items-start gap-3">
+          <Building2 className="mt-0.5 h-5 w-5 text-[#d3bb73]" />
+          <div>
+            <h4 className="font-medium text-[#e5e4e2]">Marki i spółki</h4>
+            <p className="mt-1 text-xs leading-5 text-[#e5e4e2]/60">
+              To ograniczenie działa niezależnie od roli. Obejmuje wydarzenia, kalendarz, oferty, umowy i dane finansowe powiązane z marką.
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-2 sm:grid-cols-2">
+          <label className={`flex cursor-pointer items-center gap-3 rounded-lg border p-3 ${companyAccessMode === 'all' ? 'border-[#d3bb73]/35 bg-[#d3bb73]/10' : 'border-[#d3bb73]/10 bg-[#0f1119]'}`}>
+            <input
+              type="radio"
+              name={`company-access-${employeeId}`}
+              checked={companyAccessMode === 'all'}
+              onChange={() => {
+                if (!canEditThisEmployee) return;
+                setCompanyAccessMode('all');
+                setMyCompanyIds([]);
+                setHasChanges(true);
+              }}
+              disabled={!canEditThisEmployee}
+            />
+            <span><span className="block text-sm text-[#e5e4e2]">Wszystkie marki</span><span className="mt-0.5 block text-xs text-[#e5e4e2]/45">Dostęp zgodny z rolą bez ograniczenia marki.</span></span>
+          </label>
+          <label className={`flex cursor-pointer items-center gap-3 rounded-lg border p-3 ${companyAccessMode === 'selected' ? 'border-[#d3bb73]/35 bg-[#d3bb73]/10' : 'border-[#d3bb73]/10 bg-[#0f1119]'}`}>
+            <input
+              type="radio"
+              name={`company-access-${employeeId}`}
+              checked={companyAccessMode === 'selected'}
+              onChange={() => {
+                if (!canEditThisEmployee) return;
+                setCompanyAccessMode('selected');
+                setHasChanges(true);
+              }}
+              disabled={!canEditThisEmployee}
+            />
+            <span><span className="block text-sm text-[#e5e4e2]">Wybrane marki</span><span className="mt-0.5 block text-xs text-[#e5e4e2]/45">Pracownik zobaczy tylko zaznaczone marki.</span></span>
+          </label>
+        </div>
+
+        {companyAccessMode === 'selected' && (
+          <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+            {myCompanies.map((company) => (
+              <label key={company.id} className={`flex cursor-pointer items-center gap-3 rounded-lg border p-3 ${myCompanyIds.includes(company.id) ? 'border-blue-400/25 bg-blue-400/10' : 'border-[#d3bb73]/10 bg-[#0f1119]'}`}>
+                <input
+                  type="checkbox"
+                  checked={myCompanyIds.includes(company.id)}
+                  onChange={() => toggleMyCompanyId(company.id)}
+                  disabled={!canEditThisEmployee}
+                />
+                <span className="text-sm text-[#e5e4e2]">{company.name}</span>
+              </label>
+            ))}
+          </div>
+        )}
+      </div>
 
       <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-5">
         <div className="mb-4 flex items-start gap-3">
@@ -1026,18 +952,22 @@ export default function EmployeePermissionsTab({
                         onChange={(e) =>
                           setPermissionLevel(
                             category.key,
-                            e.target.value as 'none' | 'view' | 'manage',
+                            e.target.value as 'none' | 'own' | 'view' | 'manage',
                           )
                         }
                         disabled={!canEditThisEmployee || targetIsAdmin}
                         className="w-full rounded-lg border border-[#d3bb73]/30 bg-[#0f1119] px-3 py-2 text-sm text-[#e5e4e2] focus:outline-none focus:ring-2 focus:ring-[#d3bb73]/50 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         <option value="none">Brak</option>
+                        {category.key === 'time_tracking' && <option value="own">Przeglądanie i raportowanie własnego czasu</option>}
                         <option value="view">Przeglądanie</option>
                         <option value="manage">Zarządzanie</option>
                       </select>
                     </div>
                   )}
+
+                  <RecordScopeSelect module={category.key} permissions={permissions} disabled={!canEditThisEmployee || targetIsAdmin}
+                    onChange={next => { setPermissions(next); setRolePermissionsInherited(false); setHasChanges(true); }} />
 
                   {category.key === 'invoices' && (
                     <div className="rounded-lg border border-blue-500/20 bg-blue-500/10 p-3">
@@ -1061,41 +991,31 @@ export default function EmployeePermissionsTab({
                   {category.key === 'invoices' && myCompanies.length > 0 && (
                     <div className="space-y-3 border-t border-[#d3bb73]/10 pt-3">
                       <div className="mb-2 text-sm font-medium text-[#e5e4e2]/80">
-                        Dostęp do działalności (my_companies)
+                        Szczegółowe uprawnienia do faktur według marki
                         <span className="mt-1 block text-xs font-normal text-[#e5e4e2]/60">
-                          Zaznacz działalność, aby rozwinąć i skonfigurować jej uprawnienia. Brak
-                          zaznaczeń = dostęp do wszystkich działalności bez dodatkowych ograniczeń.
+                          Zakres marek ustawiasz wyżej. Tutaj określasz tylko czynności finansowe w każdej dostępnej marce.
                         </span>
                       </div>
                       <div className="space-y-2">
-                        {myCompanies.map((c) => {
-                          const isSelected = myCompanyIds.includes(c.id);
+                        {myCompanies.filter((company) => companyAccessMode === 'all' || myCompanyIds.includes(company.id)).map((c) => {
                           const scopes = invoiceCompanyPerms[c.id] || [];
                           return (
                             <div
                               key={c.id}
                               className="rounded-lg border border-[#d3bb73]/20 bg-[#0f1119]"
                             >
-                              <label className="flex cursor-pointer items-center gap-3 p-3">
-                                <input
-                                  type="checkbox"
-                                  checked={isSelected}
-                                  onChange={() => toggleMyCompanyId(c.id)}
-                                  disabled={!canEditThisEmployee}
-                                  className="h-4 w-4 rounded border-[#d3bb73]/30 bg-[#0f1119] text-[#d3bb73] focus:ring-[#d3bb73]/50 focus:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50"
-                                />
+                              <div className="flex items-center gap-3 p-3">
                                 <span className="text-sm font-medium text-[#e5e4e2]">
                                   {c.name}
                                 </span>
-                                {isSelected && scopes.length > 0 && (
+                                {scopes.length > 0 && (
                                   <span className="ml-auto text-xs text-[#d3bb73]">
                                     {scopes.length} uprawnień
                                   </span>
                                 )}
-                              </label>
-                              {isSelected && (
-                                <div className="space-y-2 border-t border-[#d3bb73]/10 p-3">
-                                  {invoiceCompanyScopes.map((scope) => (
+                              </div>
+                              <div className="space-y-2 border-t border-[#d3bb73]/10 p-3">
+                                {invoiceCompanyScopes.map((scope) => (
                                     <label
                                       key={scope.key}
                                       className="group flex cursor-pointer items-start gap-3"
@@ -1118,9 +1038,8 @@ export default function EmployeePermissionsTab({
                                         </div>
                                       </div>
                                     </label>
-                                  ))}
-                                </div>
-                              )}
+                                ))}
+                              </div>
                             </div>
                           );
                         })}

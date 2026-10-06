@@ -1,6 +1,14 @@
 'use client';
 
+import { STAGES, LOST_REASON_CATEGORIES } from '@/lib/CRM/inquiries/pipeline';
+
+import { inquiryTitleLabel, inquirySourceLabel, inquiryTypeLabels } from '@/lib/ui/systemLabels';
+import InquiryTypeBadges from '@/components/crm/inquiries/InquiryTypeBadges';
+
+import { confirmAndRemoveInquiry } from '@/lib/CRM/inquiries/removeInquiry';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
+import InquiryIntakeReview from '@/components/crm/inquiries/InquiryIntakeReview';
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import {
   DragDropContext,
@@ -23,6 +31,7 @@ import {
   Phone,
   Plus,
   RefreshCw,
+  Trash2,
   Save,
   Search,
   Settings,
@@ -33,8 +42,10 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import { useDialog } from '@/contexts/DialogContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import NewInquiryModal from '@/components/crm/NewInquiryModal';
+import InquiryHandoffModal from '@/components/crm/inquiries/InquiryHandoffModal';
 import type {
   InquiryEmployee,
   InquiryListItem,
@@ -43,7 +54,7 @@ import type {
 
 type Filter = 'open' | 'completed' | 'all';
 type ViewMode = 'pipeline' | 'list';
-type ScopeFilter = 'mine' | 'pool' | 'team' | 'all';
+type ScopeFilter = 'mine' | 'pool' | 'team' | 'all' | 'collaborating';
 type AttentionFilter = 'all' | 'unassigned' | 'first_contact' | 'overdue' | 'missing_next';
 
 type InquirySlaSettings = {
@@ -61,44 +72,11 @@ type InquirySlaSettings = {
   auto_promote_customer_lifecycle: boolean;
 };
 
-const STAGES: Array<{
-  id: InquiryStage;
-  label: string;
-  shortLabel: string;
-  className: string;
-  dot: string;
-  defaultProbability: number;
-}> = [
-  { id: 'new', label: 'Nowe zapytanie', shortLabel: 'Nowe', className: 'border-amber-400/30 bg-amber-400/10 text-amber-300', dot: 'bg-amber-400', defaultProbability: 10 },
-  { id: 'contacted', label: 'Kontakt podjęty', shortLabel: 'Kontakt', className: 'border-sky-400/30 bg-sky-400/10 text-sky-300', dot: 'bg-sky-400', defaultProbability: 20 },
-  { id: 'qualified', label: 'Zakwalifikowane', shortLabel: 'Kwalifikacja', className: 'border-blue-400/30 bg-blue-400/10 text-blue-300', dot: 'bg-blue-400', defaultProbability: 40 },
-  { id: 'proposal', label: 'Oferta wysłana', shortLabel: 'Oferta', className: 'border-violet-400/30 bg-violet-400/10 text-violet-300', dot: 'bg-violet-400', defaultProbability: 60 },
-  { id: 'negotiation', label: 'Negocjacje', shortLabel: 'Negocjacje', className: 'border-fuchsia-400/30 bg-fuchsia-400/10 text-fuchsia-300', dot: 'bg-fuchsia-400', defaultProbability: 75 },
-  { id: 'won', label: 'Wygrane', shortLabel: 'Wygrane', className: 'border-emerald-400/30 bg-emerald-400/10 text-emerald-300', dot: 'bg-emerald-400', defaultProbability: 100 },
-  { id: 'lost', label: 'Przegrane', shortLabel: 'Przegrane', className: 'border-red-400/30 bg-red-400/10 text-red-300', dot: 'bg-red-400', defaultProbability: 0 },
-];
-
 const stageConfig = (stage: InquiryStage) => STAGES.find((item) => item.id === stage) ?? STAGES[0];
 const isOpenInquiry = (inquiry: InquiryListItem) => inquiry.inquiry_stage !== 'won' && inquiry.inquiry_stage !== 'lost';
 
-const LOST_REASON_CATEGORIES = [
-  ['price', 'Cena'],
-  ['availability', 'Brak dostępnego terminu'],
-  ['competitor', 'Wybrano konkurencję'],
-  ['no_response', 'Brak odpowiedzi klienta'],
-  ['scope', 'Zakres poza ofertą'],
-  ['timing', 'Odłożona decyzja'],
-  ['market_research', 'Badanie rynku'],
-  ['duplicate', 'Duplikat zapytania'],
-  ['other', 'Inny powód'],
-] as const;
-
 const getSourceLabel = (inquiry: InquiryListItem) => {
-  const details = inquiry.inquiry_details;
-  if (details?.source_kind === 'webhook') return details.source_name || details.source_slug || 'Zewnętrzne źródło';
-  if (details?.source_page) return details.source_page;
-  if (details?.source_kind === 'manual') return details.source_name || 'Wprowadzone ręcznie';
-  return details?.source_kind === 'contact_form' ? 'Formularz WWW' : 'Wprowadzone ręcznie';
+  return inquirySourceLabel(inquiry.inquiry_details);
 };
 
 const formatMoney = (value: number | null) => value === null ? null : new Intl.NumberFormat('pl-PL', {
@@ -129,10 +107,12 @@ const getInquiryWarnings = (inquiry: InquiryListItem) => {
   return warnings;
 };
 
-function InquiryCard({ inquiry, onEdit, onClaim, onCompleteContact, onSnooze, canEdit, canClaim, claiming, actionPending, compact = false }: {
+function InquiryCard({ inquiry, onDelete, onEdit, onClaim, onHandoff, onCompleteContact, onSnooze, canEdit, canClaim, claiming, actionPending, compact = false }: {
   inquiry: InquiryListItem;
+  onDelete: (inquiry: InquiryListItem) => void;
   onEdit: (inquiry: InquiryListItem) => void;
   onClaim: (inquiry: InquiryListItem) => void;
+  onHandoff: (inquiry: InquiryListItem) => void;
   onCompleteContact: (inquiry: InquiryListItem) => void;
   onSnooze: (inquiry: InquiryListItem) => void;
   canEdit: boolean;
@@ -150,19 +130,32 @@ function InquiryCard({ inquiry, onEdit, onClaim, onCompleteContact, onSnooze, ca
     <article className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-4 transition-colors hover:border-[#d3bb73]/30">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="truncate text-sm font-medium text-[#e5e4e2]">{inquiry.title.replace(/^Zapytanie:\s*/i, '')}</div>
+          <Link
+            href={`/crm/inquiries/${inquiry.id}`}
+            draggable={false}
+            title={inquiryTitleLabel(inquiry.title)}
+            className="block truncate text-sm font-medium text-[#e5e4e2] transition-colors hover:text-[#d3bb73] hover:underline focus-visible:text-[#d3bb73] focus-visible:underline"
+          >
+            {inquiryTitleLabel(inquiry.title)}
+          </Link>
           <div className="mt-1 truncate text-xs text-[#e5e4e2]/40">{getSourceLabel(inquiry)}</div>
         </div>
         {canEdit && (
-          <button type="button" onClick={() => onEdit(inquiry)} className="shrink-0 rounded-md p-1.5 text-[#e5e4e2]/35 hover:bg-[#d3bb73]/10 hover:text-[#d3bb73]" aria-label="Edytuj zapytanie">
-            <Pencil className="h-4 w-4" />
-          </button>
+          <div className="flex shrink-0 items-center gap-1">
+            <button type="button" onClick={() => onEdit(inquiry)} disabled={actionPending} className="rounded-md p-1.5 text-[#e5e4e2]/35 hover:bg-[#d3bb73]/10 hover:text-[#d3bb73] disabled:opacity-40" aria-label="Edytuj zapytanie">
+              <Pencil className="h-4 w-4" />
+            </button>
+            <button type="button" onClick={(event) => { event.stopPropagation(); onDelete(inquiry); }} disabled={actionPending} className="rounded-md p-1.5 text-red-400 hover:bg-red-400/10 hover:text-red-300 disabled:opacity-40" aria-label={`Archiwizuj zapytanie: ${inquiryTitleLabel(inquiry.title)}`} title="Archiwizuj zapytanie">
+              <Trash2 className="h-4 w-4" />
+            </button>
+          </div>
         )}
       </div>
 
       {!compact && <p className="mt-3 line-clamp-2 text-xs leading-5 text-[#e5e4e2]/50">{details?.source_message_content || inquiry.description || 'Brak dodatkowej treści'}</p>}
 
       <div className="mt-3 flex flex-wrap gap-2">
+        <InquiryTypeBadges title={inquiry.title} details={details} />
         <span className={`rounded-full border px-2 py-1 text-[11px] ${stage.className}`}>{stage.shortLabel}</span>
         <span className="rounded-full border border-[#d3bb73]/15 bg-[#0f1119] px-2 py-1 text-[11px] text-[#e5e4e2]/55">{inquiry.win_probability}%</span>
       </div>
@@ -190,6 +183,11 @@ function InquiryCard({ inquiry, onEdit, onClaim, onCompleteContact, onSnooze, ca
         </div>
       )}
 
+      {canEdit && inquiry.inquiry_owner_id && isOpenInquiry(inquiry) && <button
+        type="button" disabled={actionPending} onClick={event => { event.stopPropagation(); onHandoff(inquiry); }}
+        className="mt-3 rounded-lg bg-[#d3bb73]/10 px-3 py-2 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/15 disabled:opacity-50">
+        Przekaż / oddaj
+      </button>}
       <div className="mt-4 flex items-center justify-between gap-2 border-t border-[#d3bb73]/10 pt-3">
         <Link href={`/crm/inquiries/${inquiry.id}`} className="inline-flex items-center gap-1 text-xs text-[#d3bb73] hover:text-[#d3bb73]/80">Otwórz szczegóły <ChevronRight className="h-3.5 w-3.5" /></Link>
         {canEdit && inquiry.inquiry_owner_id && isOpenInquiry(inquiry) && (
@@ -290,11 +288,6 @@ function InquiryEditorModal({ inquiry, employees, canAssign, onClose, onSaved }:
       win_probability: Math.max(0, Math.min(100, Number(probability) || 0)),
       lost_reason: stage === 'lost' ? lostReason.trim() : null,
       lost_reason_category: stage === 'lost' ? lostReasonCategory : null,
-      inquiry_details: {
-        ...(inquiry.inquiry_details || {}),
-        event_assumptions: eventAssumptions.trim() || null,
-        event_goal: eventGoal.trim() || null,
-      },
       contact_id: customerType === 'contact' ? customerId : null,
       organization_id: customerType === 'organization' ? customerId : null,
     }).eq('id', inquiry.id).select(`
@@ -320,7 +313,7 @@ function InquiryEditorModal({ inquiry, employees, canAssign, onClose, onSaved }:
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4" onMouseDown={onClose}>
       <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] shadow-2xl" onMouseDown={(event) => event.stopPropagation()}>
         <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[#d3bb73]/10 bg-[#1c1f33] px-5 py-4">
-          <div className="min-w-0"><h2 className="truncate text-lg font-light text-[#e5e4e2]">Obsługa zapytania</h2><p className="mt-0.5 truncate text-xs text-[#e5e4e2]/45">{inquiry.title.replace(/^Zapytanie:\s*/i, '')}</p></div>
+          <div className="min-w-0"><h2 className="truncate text-lg font-light text-[#e5e4e2]">Obsługa zapytania</h2><p className="mt-0.5 truncate text-xs text-[#e5e4e2]/45">{inquiryTitleLabel(inquiry.title)}</p></div>
           <button type="button" onClick={onClose} className="rounded-lg p-2 text-[#e5e4e2]/45 hover:bg-[#0f1119] hover:text-[#e5e4e2]"><X className="h-5 w-5" /></button>
         </div>
 
@@ -340,7 +333,7 @@ function InquiryEditorModal({ inquiry, employees, canAssign, onClose, onSaved }:
             <label className="block"><span className="mb-2 block text-xs text-[#e5e4e2]/50">Prawdopodobieństwo wygranej</span><div className="relative"><Percent className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#e5e4e2]/30" /><input type="number" min="0" max="100" value={probability} onChange={(event) => setProbability(event.target.value)} disabled={stage === 'won' || stage === 'lost'} className="w-full rounded-lg border border-[#d3bb73]/15 bg-[#0f1119] py-2.5 pl-10 pr-3 text-sm text-[#e5e4e2] outline-none focus:border-[#d3bb73]/50 disabled:opacity-40" /></div></label>
           </div>
 
-          <div className="rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-4"><div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"><label className="block flex-1"><span className="mb-2 block text-xs text-[#e5e4e2]/50">Ostatni kontakt</span><input type="datetime-local" value={lastContactAt} onChange={(event) => setLastContactAt(event.target.value)} className="w-full rounded-lg border border-[#d3bb73]/15 bg-[#1c1f33] px-3 py-2.5 text-sm text-[#e5e4e2] outline-none focus:border-[#d3bb73]/50" /></label><button type="button" onClick={() => setLastContactAt(toDateTimeLocal(new Date().toISOString()))} className="rounded-lg border border-[#d3bb73]/20 px-4 py-2.5 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/10">Kontakt teraz</button></div></div>
+          <div className="rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-4"><div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"><label className="block flex-1"><span className="mb-2 block text-xs text-[#e5e4e2]/50">Ostatni kontakt</span><input type="datetime-local" value={lastContactAt} onChange={(event) => setLastContactAt(event.target.value)} className="w-full rounded-lg border border-[#d3bb73]/15 bg-[#1c1f33] px-3 py-2.5 text-sm text-[#e5e4e2] outline-none focus:border-[#d3bb73]/50" /></label><button data-crm-action="secondary" type="button" onClick={() => setLastContactAt(toDateTimeLocal(new Date().toISOString()))} className="rounded-lg border border-[#d3bb73]/20 px-4 py-2.5 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/10">Kontakt teraz</button></div></div>
 
           <div className="space-y-4 rounded-lg border border-[#7f1734]/25 bg-[#7f1734]/5 p-4">
             <div>
@@ -349,11 +342,11 @@ function InquiryEditorModal({ inquiry, employees, canAssign, onClose, onSaved }:
             </div>
             <label className="block">
               <span className="mb-2 block text-xs text-[#e5e4e2]/55">Założenia wydarzenia</span>
-              <textarea value={eventAssumptions} onChange={(event) => setEventAssumptions(event.target.value)} rows={4} placeholder="Format, liczba uczestników, układ sali, godziny, sposób realizacji…" className="w-full resize-y rounded-lg border border-[#d3bb73]/15 bg-[#0f1119] px-3 py-2.5 text-sm text-[#e5e4e2] outline-none placeholder:text-[#e5e4e2]/25 focus:border-[#d3bb73]/50" />
+              <textarea disabled title="Założenia edytuj w obszarze zapytania" value={eventAssumptions} onChange={(event) => setEventAssumptions(event.target.value)} rows={4} placeholder="Format, liczba uczestników, układ sali, godziny, sposób realizacji…" className="w-full resize-y rounded-lg border border-[#d3bb73]/15 bg-[#0f1119] px-3 py-2.5 text-sm text-[#e5e4e2] outline-none placeholder:text-[#e5e4e2]/25 focus:border-[#d3bb73]/50" />
             </label>
             <label className="block">
               <span className="mb-2 block text-xs text-[#e5e4e2]/55">Cel wydarzenia</span>
-              <textarea value={eventGoal} onChange={(event) => setEventGoal(event.target.value)} rows={3} placeholder="Co klient chce osiągnąć dzięki wydarzeniu?" className="w-full resize-y rounded-lg border border-[#d3bb73]/15 bg-[#0f1119] px-3 py-2.5 text-sm text-[#e5e4e2] outline-none placeholder:text-[#e5e4e2]/25 focus:border-[#d3bb73]/50" />
+              <textarea disabled title="Cel edytuj w obszarze zapytania" value={eventGoal} onChange={(event) => setEventGoal(event.target.value)} rows={3} placeholder="Co klient chce osiągnąć dzięki wydarzeniu?" className="w-full resize-y rounded-lg border border-[#d3bb73]/15 bg-[#0f1119] px-3 py-2.5 text-sm text-[#e5e4e2] outline-none placeholder:text-[#e5e4e2]/25 focus:border-[#d3bb73]/50" />
             </label>
           </div>
 
@@ -450,18 +443,24 @@ function InquirySlaSettingsModal({ onClose }: { onClose: () => void }) {
 
 export default function InquiriesPageClient({ initialInquiries, employees }: { initialInquiries: InquiryListItem[]; employees: InquiryEmployee[] }) {
   const { showSnackbar } = useSnackbar();
+  const { showConfirm } = useDialog();
   const { employee: currentEmployee, isAdmin, hasScope } = useCurrentEmployee();
   const [inquiries, setInquiries] = useState(initialInquiries);
   const [filter, setFilter] = useState<Filter>('open');
   const [viewMode, setViewMode] = useState<ViewMode>('pipeline');
   const [search, setSearch] = useState('');
   const [refreshing, setRefreshing] = useState(false);
-  const [editingInquiry, setEditingInquiry] = useState<InquiryListItem | null>(null);
+  const inquiryLoadSequence = useRef(0);
+  const searchParams = useSearchParams();
+  const [editingInquiry, setEditingInquiry] = useState<InquiryListItem | null>(() => initialInquiries.find(item => item.id === searchParams.get('edit')) || null);
+  const [collaboratingIds, setCollaboratingIds] = useState<string[]>([]);
+  const [membershipError, setMembershipError] = useState('');
   const [scope, setScope] = useState<ScopeFilter>('pool');
   const [claimingId, setClaimingId] = useState<string | null>(null);
   const [actionPendingId, setActionPendingId] = useState<string | null>(null);
   const [showSlaSettings, setShowSlaSettings] = useState(false);
   const [showNewInquiry, setShowNewInquiry] = useState(false);
+  const [handoffInquiry, setHandoffInquiry] = useState<InquiryListItem | null>(null);
   const [attentionFilter, setAttentionFilter] = useState<AttentionFilter>('all');
   const pipelineScrollRef = useRef<HTMLDivElement>(null);
   const pipelinePanRef = useRef<{
@@ -498,11 +497,27 @@ export default function InquiriesPageClient({ initialInquiries, employees }: { i
     );
   }, [currentEmployee?.is_sales_team_manager, currentEmployeeId, currentSalesTeamId, hasScope, isAdmin]);
 
+  const deleteInquiry = async (inquiry: InquiryListItem) => {
+    if (!canManageInquiry(inquiry) || actionPendingId) return;
+    setActionPendingId(inquiry.id);
+    try {
+      const result = await confirmAndRemoveInquiry(inquiry.id, showConfirm);
+      if (!result) return;
+      setInquiries(current => current.filter(item => item.id !== inquiry.id));
+      setEditingInquiry(current => current?.id === inquiry.id ? null : current);
+      showSnackbar(result === 'deleted' ? 'Zapytanie usunięte trwale' : 'Zapytanie zarchiwizowane', 'success');
+    } catch (error: any) {
+      showSnackbar(error?.code === '23503'
+        ? 'Nie udało się usunąć zapytania. Jego historia została zachowana.'
+        : 'Nie udało się usunąć zapytania. Sprawdź uprawnienia i spróbuj ponownie.', 'error');
+    } finally { setActionPendingId(null); }
+  };
+
   useEffect(() => {
     const saved = window.localStorage.getItem('crm-inquiries-view');
     if (saved === 'pipeline' || saved === 'list') setViewMode(saved);
     const savedScope = window.localStorage.getItem('crm-inquiries-scope');
-    if (savedScope === 'mine' || savedScope === 'pool' || savedScope === 'team' || savedScope === 'all') {
+    if (savedScope === 'mine' || savedScope === 'pool' || savedScope === 'team' || savedScope === 'all' || savedScope === 'collaborating') {
       setScope(savedScope);
     }
   }, []);
@@ -525,7 +540,11 @@ export default function InquiriesPageClient({ initialInquiries, employees }: { i
   };
 
   const reload = useCallback(async () => {
+    const request = ++inquiryLoadSequence.current;
     setRefreshing(true);
+    const membershipPromise = currentEmployeeId
+      ? supabase.from('inquiry_team_members').select('inquiry_id').eq('employee_id', currentEmployeeId).eq('is_active', true)
+      : Promise.resolve({ data: [], error: null });
     const { data, error } = await supabase.from('tasks').select(`
       id, title, description, priority, status, board_column, due_date, created_at, updated_at,
       inquiry_details, inquiry_stage, inquiry_owner_id, next_action_at, last_contact_at,
@@ -533,14 +552,30 @@ export default function InquiriesPageClient({ initialInquiries, employees }: { i
       estimated_value, win_probability, lost_reason, lost_reason_category,
       linked_offer_id, event_id, contact_id, organization_id,
       inquiry_owner:employees!tasks_inquiry_owner_id_fkey(id, name, surname, avatar_url, sales_team_id, is_sales_team_manager)
-    `).eq('is_inquiry', true).order('created_at', { ascending: false });
+    `).eq('is_inquiry', true).is('archived_at', null).order('created_at', { ascending: false });
+    const memberships = await membershipPromise;
+    if (request !== inquiryLoadSequence.current) return;
+    setCollaboratingIds((memberships.data || []).map(row => row.inquiry_id));
+    setMembershipError(memberships.error ? 'Nie udało się pobrać zapytań zespołu. Sprawdź, czy baza danych została zaktualizowana, i odśwież listę.' : '');
     if (!error) setInquiries((data ?? []) as unknown as InquiryListItem[]);
     setRefreshing(false);
-  }, []);
+  }, [currentEmployeeId]);
+
+  useEffect(() => { if (currentEmployeeId) void reload(); }, [currentEmployeeId, reload]);
 
   useEffect(() => {
     const channel = supabase.channel('web-inquiries-pipeline').on('postgres_changes', { event: '*', schema: 'public', table: 'tasks', filter: 'is_inquiry=eq.true' }, () => void reload()).subscribe();
-    return () => { void supabase.removeChannel(channel); };
+    const catchUp = () => { if (document.visibilityState === 'visible') void reload(); };
+    const timer = window.setInterval(catchUp, 30000);
+    window.addEventListener('focus', catchUp);
+    document.addEventListener('visibilitychange', catchUp);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', catchUp);
+      document.removeEventListener('visibilitychange', catchUp);
+      inquiryLoadSequence.current += 1;
+      void supabase.removeChannel(channel);
+    };
   }, [reload]);
 
   const counts = useMemo(() => ({
@@ -552,6 +587,7 @@ export default function InquiriesPageClient({ initialInquiries, employees }: { i
   const visibleInquiries = useMemo(() => {
     const normalizedSearch = search.trim().toLocaleLowerCase('pl-PL');
     return inquiries.filter((inquiry) => {
+      if (scope === 'collaborating' && (!collaboratingIds.includes(inquiry.id) || inquiry.inquiry_owner_id === currentEmployeeId)) return false;
       if (scope === 'mine' && inquiry.inquiry_owner_id !== currentEmployeeId) return false;
       if (scope === 'pool' && inquiry.inquiry_owner_id !== null) return false;
       if (
@@ -567,18 +603,19 @@ export default function InquiriesPageClient({ initialInquiries, employees }: { i
       if (attentionFilter === 'missing_next' && (!isOpenInquiry(inquiry) || !inquiry.first_contact_at || inquiry.next_action_at)) return false;
       if (!normalizedSearch) return true;
       const details = inquiry.inquiry_details;
-      return [inquiry.title, inquiry.description, details?.client_text, details?.client_company, details?.client_email, details?.client_phone, details?.location_text, details?.scope, details?.source_name, details?.source_slug, inquiry.inquiry_owner?.name, inquiry.inquiry_owner?.surname, inquiry.lost_reason].some((value) => String(value ?? '').toLocaleLowerCase('pl-PL').includes(normalizedSearch));
+      return [inquiry.title, inquiryTitleLabel(inquiry.title), inquiryTypeLabels(inquiry.title, inquiry.inquiry_details).join(' '), getSourceLabel(inquiry), inquiry.description, details?.client_text, details?.client_company, details?.client_email, details?.client_phone, details?.location_text, details?.scope, details?.source_name, details?.source_slug, inquiry.inquiry_owner?.name, inquiry.inquiry_owner?.surname, inquiry.lost_reason].some((value) => String(value ?? '').toLocaleLowerCase('pl-PL').includes(normalizedSearch));
     });
-  }, [attentionFilter, currentEmployeeId, currentSalesTeamId, filter, inquiries, scope, search]);
+  }, [attentionFilter, currentEmployeeId, currentSalesTeamId, filter, inquiries, scope, search, collaboratingIds]);
 
   const scopeCounts = useMemo(() => ({
+    collaborating: inquiries.filter(inquiry => collaboratingIds.includes(inquiry.id) && inquiry.inquiry_owner_id !== currentEmployeeId).length,
     mine: inquiries.filter((inquiry) => inquiry.inquiry_owner_id === currentEmployeeId).length,
     pool: inquiries.filter((inquiry) => inquiry.inquiry_owner_id === null).length,
     team: inquiries.filter((inquiry) => Boolean(
       currentSalesTeamId && inquiry.inquiry_owner?.sales_team_id === currentSalesTeamId,
     )).length,
     all: inquiries.length,
-  }), [currentEmployeeId, currentSalesTeamId, inquiries]);
+  }), [currentEmployeeId, currentSalesTeamId, inquiries, collaboratingIds]);
 
   const assignableEmployees = useMemo(() => {
     if (isAdmin || hasScope('inquiries_manage_all') || hasScope('inquiries_view_all')) return employees;
@@ -758,12 +795,15 @@ export default function InquiriesPageClient({ initialInquiries, employees }: { i
       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-2">
         <span className="px-2 text-xs font-medium uppercase tracking-wide text-[#e5e4e2]/35">Zakres</span>
         <button type="button" onClick={() => changeScope('mine')} className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${scope === 'mine' ? 'bg-[#d3bb73] text-[#1c1f33]' : 'text-[#e5e4e2]/60 hover:bg-[#0f1119]'}`}><UserRound className="h-4 w-4" />Moje <span className="opacity-60">{scopeCounts.mine}</span></button>
+        <button type="button" onClick={() => changeScope('collaborating')} className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${scope === 'collaborating' ? 'bg-[#d3bb73] text-[#1c1f33]' : 'text-[#e5e4e2]/60 hover:bg-[#0f1119]'}`}><UsersRound className="h-4 w-4" />Współpracuję <span className="opacity-60">{scopeCounts.collaborating}</span></button>
+        {scope === 'collaborating' && membershipError && <p role="alert" className="w-full text-sm text-amber-200">{membershipError}</p>}
         {canViewPool && <button type="button" onClick={() => changeScope('pool')} className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${scope === 'pool' ? 'bg-[#d3bb73] text-[#1c1f33]' : 'text-[#e5e4e2]/60 hover:bg-[#0f1119]'}`}><Inbox className="h-4 w-4" />Nieprzypisane <span className="opacity-60">{scopeCounts.pool}</span></button>}
         {canViewTeam && <button type="button" onClick={() => changeScope('team')} className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${scope === 'team' ? 'bg-[#d3bb73] text-[#1c1f33]' : 'text-[#e5e4e2]/60 hover:bg-[#0f1119]'}`}><UsersRound className="h-4 w-4" />Zespół <span className="opacity-60">{scopeCounts.team}</span></button>}
         {canViewAll && <button type="button" onClick={() => changeScope('all')} className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${scope === 'all' ? 'bg-[#d3bb73] text-[#1c1f33]' : 'text-[#e5e4e2]/60 hover:bg-[#0f1119]'}`}><LayoutGrid className="h-4 w-4" />Wszystkie <span className="opacity-60">{scopeCounts.all}</span></button>}
       </div>
 
       <div className="relative"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#e5e4e2]/35" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Szukaj po kliencie, firmie, e-mailu, telefonie, źródle lub opiekunie…" className="w-full rounded-lg border border-[#d3bb73]/15 bg-[#1c1f33] py-3 pl-10 pr-4 text-sm text-[#e5e4e2] outline-none placeholder:text-[#e5e4e2]/30 focus:border-[#d3bb73]/50" /></div>
+      <p className="text-xs leading-5 text-[#e5e4e2]/45">Formularze WWW i webhooki trafiają do etapu „Nowe” w kolejce „Nieprzypisane”. Przejmij zapytanie, aby prowadzić je w „Moich”. Zadania to dalsze działania powiązane z zapytaniem, nie drugi lejek.</p>
 
       {visibleInquiries.length === 0 ? (
         <div className="rounded-xl border border-dashed border-[#d3bb73]/20 bg-[#1c1f33]/50 px-6 py-16 text-center"><Inbox className="mx-auto h-10 w-10 text-[#e5e4e2]/25" /><div className="mt-4 text-[#e5e4e2]">Brak zapytań w tym widoku</div><div className="mt-1 text-sm text-[#e5e4e2]/45">Zmień filtr lub wyszukiwaną frazę.</div></div>
@@ -787,11 +827,13 @@ export default function InquiriesPageClient({ initialInquiries, employees }: { i
           <div className="flex min-w-max items-start gap-4">{STAGES.map((stage) => {
           const items = visibleInquiries.filter((inquiry) => inquiry.inquiry_stage === stage.id);
           const value = items.reduce((sum, inquiry) => sum + Number(inquiry.estimated_value ?? 0), 0);
-          return <section key={stage.id} className="w-[310px] shrink-0 rounded-xl border border-[#d3bb73]/10 bg-[#0f1119]/70 p-3"><div className="mb-3 flex items-start justify-between gap-2 px-1"><div><div className="flex items-center gap-2 text-sm font-medium text-[#e5e4e2]"><span className={`h-2.5 w-2.5 rounded-full ${stage.dot}`} />{stage.label}</div><div className="mt-1 text-xs text-[#e5e4e2]/35">{formatMoney(value) || '0 zł'}</div></div><span className="rounded-full bg-[#1c1f33] px-2 py-1 text-xs text-[#e5e4e2]/55">{items.length}</span></div><Droppable droppableId={stage.id}>{(dropProvided, dropSnapshot) => <div ref={dropProvided.innerRef} {...dropProvided.droppableProps} className={`min-h-24 space-y-3 rounded-lg transition-colors ${dropSnapshot.isDraggingOver ? 'bg-[#d3bb73]/5 ring-1 ring-[#d3bb73]/30' : ''}`}>{items.length === 0 && !dropSnapshot.isDraggingOver ? <div className="rounded-lg border border-dashed border-[#d3bb73]/10 px-3 py-8 text-center text-xs text-[#e5e4e2]/25">Przeciągnij tutaj</div> : items.map((inquiry, index) => <Draggable key={inquiry.id} draggableId={inquiry.id} index={index} isDragDisabled={!canManageInquiry(inquiry)}>{(dragProvided, dragSnapshot) => <div data-inquiry-card ref={dragProvided.innerRef} {...dragProvided.draggableProps} {...dragProvided.dragHandleProps} className={`${canManageInquiry(inquiry) ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'} ${dragSnapshot.isDragging ? 'rotate-1 opacity-95 shadow-2xl' : ''}`}><InquiryCard inquiry={inquiry} onEdit={setEditingInquiry} onClaim={(item) => void claimInquiry(item)} onCompleteContact={(item) => void completeContact(item)} onSnooze={(item) => void snoozeFollowup(item)} canEdit={canManageInquiry(inquiry)} canClaim={canClaim && !inquiry.inquiry_owner_id} claiming={claimingId === inquiry.id} actionPending={actionPendingId === inquiry.id} compact /></div>}</Draggable>)}{dropProvided.placeholder}</div>}</Droppable></section>;
+          return <section key={stage.id} className="w-[310px] shrink-0 rounded-xl border border-[#d3bb73]/10 bg-[#0f1119]/70 p-3"><div className="mb-3 flex items-start justify-between gap-2 px-1"><div><div className="flex items-center gap-2 text-sm font-medium text-[#e5e4e2]"><span className={`h-2.5 w-2.5 rounded-full ${stage.dot}`} />{stage.label}</div><div className="mt-1 text-xs text-[#e5e4e2]/35">{formatMoney(value) || '0 zł'}</div></div><span className="rounded-full bg-[#1c1f33] px-2 py-1 text-xs text-[#e5e4e2]/55">{items.length}</span></div><Droppable droppableId={stage.id}>{(dropProvided, dropSnapshot) => <div ref={dropProvided.innerRef} {...dropProvided.droppableProps} className={`min-h-24 space-y-3 rounded-lg transition-colors ${dropSnapshot.isDraggingOver ? 'bg-[#d3bb73]/5 ring-1 ring-[#d3bb73]/30' : ''}`}>{items.length === 0 && !dropSnapshot.isDraggingOver ? <div className="rounded-lg border border-dashed border-[#d3bb73]/10 px-3 py-8 text-center text-xs text-[#e5e4e2]/25">Przeciągnij tutaj</div> : items.map((inquiry, index) => <Draggable key={inquiry.id} draggableId={inquiry.id} index={index} isDragDisabled={!canManageInquiry(inquiry)}>{(dragProvided, dragSnapshot) => <div data-inquiry-card ref={dragProvided.innerRef} {...dragProvided.draggableProps} {...dragProvided.dragHandleProps} className={`${canManageInquiry(inquiry) ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'} ${dragSnapshot.isDragging ? 'rotate-1 opacity-95 shadow-2xl' : ''}`}><InquiryCard inquiry={inquiry} onDelete={(item) => void deleteInquiry(item)} onEdit={setEditingInquiry} onClaim={(item) => void claimInquiry(item)} onHandoff={setHandoffInquiry} onCompleteContact={(item) => void completeContact(item)} onSnooze={(item) => void snoozeFollowup(item)} canEdit={canManageInquiry(inquiry)} canClaim={canClaim && !inquiry.inquiry_owner_id} claiming={claimingId === inquiry.id} actionPending={actionPendingId === inquiry.id} compact /></div>}</Draggable>)}{dropProvided.placeholder}</div>}</Droppable></section>;
         })}</div></div>
         </DragDropContext>
-      ) : <div className="grid gap-3 lg:grid-cols-2">{visibleInquiries.map((inquiry) => <InquiryCard key={inquiry.id} inquiry={inquiry} onEdit={setEditingInquiry} onClaim={(item) => void claimInquiry(item)} onCompleteContact={(item) => void completeContact(item)} onSnooze={(item) => void snoozeFollowup(item)} canEdit={canManageInquiry(inquiry)} canClaim={canClaim && !inquiry.inquiry_owner_id} claiming={claimingId === inquiry.id} actionPending={actionPendingId === inquiry.id} />)}</div>}
+      ) : <div className="grid gap-3 lg:grid-cols-2">{visibleInquiries.map((inquiry) => <InquiryCard key={inquiry.id} inquiry={inquiry} onDelete={(item) => void deleteInquiry(item)} onEdit={setEditingInquiry} onClaim={(item) => void claimInquiry(item)} onHandoff={setHandoffInquiry} onCompleteContact={(item) => void completeContact(item)} onSnooze={(item) => void snoozeFollowup(item)} canEdit={canManageInquiry(inquiry)} canClaim={canClaim && !inquiry.inquiry_owner_id} claiming={claimingId === inquiry.id} actionPending={actionPendingId === inquiry.id} />)}</div>}
 
+      {(isAdmin || hasScope('inquiries_manage_all')) && <InquiryIntakeReview inquiries={inquiries} onChanged={() => window.location.reload()} />}
+      {handoffInquiry?.inquiry_owner_id && <InquiryHandoffModal inquiryId={handoffInquiry.id} ownerId={handoffInquiry.inquiry_owner_id} title={inquiryTitleLabel(handoffInquiry.title)} onClose={() => setHandoffInquiry(null)} onSaved={async () => { await reload(); }} />}
       {editingInquiry && <InquiryEditorModal inquiry={editingInquiry} employees={assignableEmployees} canAssign={canAssign} onClose={() => setEditingInquiry(null)} onSaved={updateInquiry} />}
       <NewInquiryModal
         isOpen={showNewInquiry}

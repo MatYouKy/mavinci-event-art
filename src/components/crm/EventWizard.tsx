@@ -24,6 +24,7 @@ import {
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import LocationSelector from './LocationSelector';
+import { EventRoomSelector } from './locations/EventRoomSelector';
 import OfferWizard from '../../app/(crm)/crm/offers/[id]/components/OfferWizzard/OfferWizard';
 import { EquipmentStep, TeamStep } from './EventWizardSteps';
 import ParticipantsAutocomplete from './ParticipantsAutocomplete';
@@ -106,6 +107,8 @@ interface EventWizardProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  initialOrganizationId?: string;
+  initialContactId?: string;
   initialDate?: Date;
   initialClientType?: ClientType | null;
 }
@@ -120,7 +123,7 @@ interface Contact {
   contact_type: string;
   id: string;
   full_name: string;
-  organization_id?: string | null;
+  organization_ids: string[];
 }
 
 interface EventCategory {
@@ -134,6 +137,8 @@ export default function EventWizard({
   isOpen,
   onClose,
   onSuccess,
+  initialOrganizationId = '',
+  initialContactId = '',
   initialDate,
   initialClientType,
 }: EventWizardProps) {
@@ -151,8 +156,8 @@ export default function EventWizard({
   // Krok 1: Szczegóły eventu
   const [eventData, setEventData] = useState({
     name: '',
-    organization_id: '',
-    contact_person_id: '',
+    organization_id: initialOrganizationId,
+    contact_person_id: initialContactId,
     category_id: '',
     event_date: initialDate ? utcToLocalDatetimeString(initialDate.toISOString()) : '',
     event_end_date: '',
@@ -161,6 +166,8 @@ export default function EventWizard({
     description: '',
     status: 'inquiry',
     location_id: '' as string | null,
+    location_room_ids: [] as string[],
+    stage_room_id: null as string | null,
     my_company_id: '',
   });
 
@@ -237,7 +244,9 @@ export default function EventWizard({
 
   useEffect(() => {
     if (clientType === 'business' && eventData.organization_id) {
-      const filtered = contacts.filter((c) => c.organization_id === eventData.organization_id);
+      const filtered = contacts.filter((c) =>
+        c.organization_ids.includes(eventData.organization_id),
+      );
       setFilteredContacts(filtered);
 
       // Auto-select jeśli tylko jedna osoba kontaktowa
@@ -247,7 +256,7 @@ export default function EventWizard({
     } else if (clientType === 'individual') {
       // Dla klienta indywidualnego - kontakty bez organizacji
       const filtered = contacts.filter(
-        (c) => !c.organization_id || c.contact_type === 'individual',
+        (c) => c.organization_ids.length === 0 || c.contact_type === 'individual' || c.id === initialContactId,
       );
       setFilteredContacts(filtered);
     } else {
@@ -291,7 +300,7 @@ export default function EventWizard({
   }, [isOpen]);
 
   const fetchContacts = async () => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('contacts')
       .select(
         `
@@ -307,15 +316,28 @@ export default function EventWizard({
       )
       .order('full_name');
 
+    if (error) {
+      setContacts([]);
+      showSnackbar(
+        'Nie udało się wczytać kontaktów i ich organizacji. Otwórz kreator ponownie.',
+        'error',
+      );
+      return;
+    }
+
     if (data) {
       const mappedContacts = data.map((contact) => ({
         ...contact,
-        organization_id:
-          contact.contact_organizations?.find((co: any) => co.is_current)?.organization_id ||
-          contact.contact_organizations?.[0]?.organization_id ||
-          null,
+        // Kontakt może jednocześnie reprezentować kilka organizacji.
+        organization_ids: Array.from(
+          new Set(
+            (contact.contact_organizations || [])
+              .filter((relation) => relation.is_current === true)
+              .map((relation) => relation.organization_id),
+          ),
+        ),
       }));
-      setContacts(mappedContacts as any);
+      setContacts(mappedContacts);
     }
   };
 
@@ -492,7 +514,7 @@ export default function EventWizard({
         last_name: newContact.last_name,
         email: newContact.email || null,
         phone: newContact.phone || null,
-        contact_type: clientType === 'individual' ? 'individual' : 'organization_contact',
+        contact_type: clientType === 'individual' ? 'individual' : 'contact',
       };
 
       const { data: newContactData, error } = await supabase
@@ -634,6 +656,8 @@ export default function EventWizard({
         created_by: session.user.id,
         participants: participants.length > 0 ? participants : [],
         location_id: eventData.location_id || null,
+        location_room_ids: eventData.location_room_ids,
+        stage_room_id: eventData.stage_room_id,
         my_company_id: eventData.my_company_id || null,
       };
 
@@ -705,6 +729,8 @@ export default function EventWizard({
           status: eventData.status,
           participants: participants.length > 0 ? participants : [],
           location_id: eventData.location_id || null,
+          location_room_ids: eventData.location_room_ids,
+          stage_room_id: eventData.stage_room_id,
           my_company_id: eventData.my_company_id || null,
         })
         .eq('id', createdEventId);
@@ -738,7 +764,8 @@ export default function EventWizard({
             client_type: clientType,
             organization_id: clientType === 'business' ? eventData.organization_id || null : null,
             contact_id: clientType === 'individual' ? eventData.contact_person_id || null : null,
-            contact_person_id: clientType === 'business' ? eventData.contact_person_id || null : null,
+            contact_person_id:
+              clientType === 'business' ? eventData.contact_person_id || null : null,
             offer_number: offerData.offer_number || null,
             valid_until: offerData.valid_until || null,
             notes: offerData.notes || null,
@@ -845,6 +872,8 @@ export default function EventWizard({
       description: '',
       status: 'offer_sent',
       location_id: null,
+      location_room_ids: [] as string[],
+      stage_room_id: null as string | null,
       my_company_id: '',
     });
     setShowNewContactForm(false);
@@ -1215,9 +1244,23 @@ export default function EventWizard({
                       ...prev,
                       location: value,
                       location_id: locId,
+                      location_room_ids: prev.location_id === locId ? prev.location_room_ids : [],
+                      stage_room_id: prev.location_id === locId ? prev.stage_room_id : null,
                     }));
                   }}
                   placeholder="Wybierz z listy lub wyszukaj nową lokalizację..."
+                />
+                <EventRoomSelector
+                  locationId={eventData.location_id || null}
+                  selected={eventData.location_room_ids}
+                  stage={eventData.stage_room_id}
+                  onChange={(ids, stage) =>
+                    setEventData((prev) => ({
+                      ...prev,
+                      location_room_ids: ids,
+                      stage_room_id: stage,
+                    }))
+                  }
                 />
                 <p className="mt-1 text-xs text-[#e5e4e2]/50">
                   Wybierz z zapisanych lokalizacji lub wyszukaj nową w Google Maps

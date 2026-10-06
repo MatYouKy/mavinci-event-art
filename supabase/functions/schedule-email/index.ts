@@ -118,43 +118,13 @@ Deno.serve(async (request) => {
       const offerId = String(payload.offerId || '');
       if (!offerId) return json({ error: 'Brak identyfikatora oferty' }, 400);
 
-      let pdfStoragePath = '';
-      for (const resourceMode of ['standard', 'compact']) {
-        const pdfResponse = await fetch(`${supabaseUrl}/functions/v1/generate-offer-pdf`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ offerId, employeeId: employee.id, resourceMode }),
-        });
-        const pdfResult = await pdfResponse.json().catch(() => ({}));
-        if (pdfResponse.ok && pdfResult?.success && pdfResult?.fileName) {
-          pdfStoragePath = String(pdfResult.fileName);
-          break;
-        }
-        if (pdfResult?.code !== 'WORKER_RESOURCE_LIMIT') {
-          throw new Error(
-            pdfResult?.error || pdfResult?.message || 'Nie udało się przygotować PDF oferty',
-          );
-        }
-      }
-      if (!pdfStoragePath) throw new Error('Nie udało się przygotować PDF oferty');
-
-      const [{ data: offer }, { data: pdfFile, error: pdfError }] = await Promise.all([
-        service.from('offers').select('offer_number').eq('id', offerId).maybeSingle(),
-        service.storage.from('generated-offers').download(pdfStoragePath),
-      ]);
-      if (pdfError || !pdfFile) throw pdfError || new Error('Nie udało się pobrać PDF oferty');
-      const offerNumber = safeFilename(String(offer?.offer_number || offerId));
-      preparedAttachments.push({
-        filename: `Oferta_${offerNumber}.pdf`,
-        content: bytesToBase64(new Uint8Array(await pdfFile.arrayBuffer())),
-        contentType: 'application/pdf',
-        contentDisposition: 'attachment',
-      });
-      payload.body = String(payload.messageHtml || payload.message || '');
-      functionName = 'send-email';
+      const { data: allowed, error: permissionError } = await service.rpc('sales_actor_can_manage', { p_kind: 'offer', p_document: offerId, p_user: authData.user.id });
+      if (permissionError || !allowed) throw new Error('Brak uprawnień do wysyłki oferty');
+      const { data: offer, error: offerError } = await service.from('offers').select('generated_pdf_url,modified_after_generation').eq('id', offerId).single();
+      if (offerError || !offer?.generated_pdf_url || offer.modified_after_generation || payload.documentPath !== offer.generated_pdf_url) throw new Error('Wygeneruj aktualny PDF przed zaplanowaniem wysyłki.');
+      const { data: file } = await service.from('sales_document_files').select('id').eq('offer_id', offerId).eq('storage_path', offer.generated_pdf_url).eq('storage_bucket', 'generated-offers').maybeSingle();
+      if (!file) throw new Error('Wygeneruj PDF ponownie, aby zapisać wersję dokumentu.');
+      // Keep the document sender and immutable storage path; it rechecks current permissions at dispatch.
     } else if (functionName === 'send-invoice-email') {
       payload.body = String(payload.messageHtml || payload.message || '');
       functionName = 'send-email';

@@ -1,7 +1,17 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 'use client';
+import { COMPACT_PRODUCT_DESCRIPTION_LIMIT, compactProductBlockReason } from '@/lib/CRM/Offers/productPresentation';
+import ProductRelatedServicesSection from '@/components/crm/offers/ProductRelatedServicesSection';
+import { ProductPackageCostSummary } from '@/components/crm/offers/ProductPackageCostsEditor';
+import ProductSalesPackagesSection from '@/components/crm/offers/ProductSalesPackagesSection';
+import { validateSalesPackages, type ProductSalesPackage } from '@/lib/CRM/Offers/productSalesPackages';
+import ProductAddonsSection from '@/components/crm/offers/ProductAddonsSection';
+import ProductSettingsDrawer from '@/components/crm/offers/ProductSettingsDrawer';
+import ProductDataSection from '@/components/crm/offers/ProductDataSection';
+import ProductRequirementsSection, { type OfferAdditionalRequirement } from '@/components/crm/offers/ProductRequirementsSection';
+import { validateAddons, type ProductAddon } from '@/lib/CRM/Offers/offerAddons';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import {
   ArrowLeft,
@@ -15,7 +25,6 @@ import {
   Trash2,
   FileText,
   Upload,
-  Eye,
   Loader2,
   Sparkles,
   Image as ImageIcon,
@@ -37,7 +46,6 @@ import { ProductOfferCardPreview } from '../components/ProductOfferCardPreview';
 import { ProductVariantsEditor } from '../components/ProductVariantsEditor';
 import { AddEquipmentModal } from '../modal/AddEquipmentModal';
 import { useManageProduct } from '../hooks/useManageProduct';
-import ResponsiveActionBar, { Action } from '@/components/crm/ResponsiveActionBar';
 import type {
   ContractClauseCategory,
   IProductVariant,
@@ -61,6 +69,9 @@ const normalizeOfferImageScale = (value: unknown) => {
 };
 
 interface IProduct {
+  related_service_ids?: string[];
+  related_service_url?: string | null;
+  related_service_label?: string | null;
   id: string;
   category_id: string;
   name: string;
@@ -89,11 +100,13 @@ interface IProduct {
   requires_driver: boolean;
   tags: string[];
   is_active: boolean;
+  is_personnel_service?: boolean;
   display_order: number;
   pdf_page_url?: string | null;
   pdf_thumbnail_url?: string | null;
   offer_short_description?: string | null;
   offer_description?: string | null;
+  offer_compact_description?: string | null;
   offer_benefits?: string[] | null;
   offer_requirements?: string[] | null;
   offer_additional_requirements?: OfferAdditionalRequirement[] | null;
@@ -103,6 +116,9 @@ interface IProduct {
   offer_image_position_y?: number | null;
   offer_image_zoom?: number | null;
   product_page_url?: string | null;
+  sales_packages?: ProductSalesPackage[];
+  sales_packages_enabled?: boolean;
+  pricing_addons?: ProductAddon[];
   offer_page_variant?: string | null;
   offer_page_enabled?: boolean;
   recommended_contract_clauses?: string | null;
@@ -115,57 +131,6 @@ interface IProduct {
   subcontractor_economic_cost?: number | null;
   offer_product_variants?: IProductVariant[];
 }
-
-type OfferAdditionalRequirement = {
-  id: string;
-  category:
-    | 'people'
-    | 'resources'
-    | 'place'
-    | 'time'
-    | 'power'
-    | 'internet'
-    | 'access'
-    | 'setup'
-    | 'surface'
-    | 'venue_approval'
-    | 'coordination'
-    | 'schedule'
-    | 'safety'
-    | 'technical'
-    | 'accommodation'
-    | 'backstage'
-    | 'hospitality'
-    | 'logistics'
-    | 'other';
-  title: string;
-  description: string;
-};
-
-const PRODUCT_REQUIREMENT_CATEGORIES: Array<{
-  value: OfferAdditionalRequirement['category'];
-  label: string;
-}> = [
-  { value: 'people', label: 'Ludzie i obsada' },
-  { value: 'resources', label: 'Sprzęt i zasoby' },
-  { value: 'place', label: 'Miejsce realizacji' },
-  { value: 'time', label: 'Czas i harmonogram' },
-  { value: 'power', label: 'Zasilanie' },
-  { value: 'internet', label: 'Łącze internetowe' },
-  { value: 'access', label: 'Dostęp i rozładunek' },
-  { value: 'setup', label: 'Montaż i próba' },
-  { value: 'surface', label: 'Miejsce realizacji' },
-  { value: 'venue_approval', label: 'Zgoda obiektu' },
-  { value: 'coordination', label: 'Koordynacja z obiektem' },
-  { value: 'schedule', label: 'Harmonogram i materiały' },
-  { value: 'safety', label: 'Bezpieczeństwo' },
-  { value: 'technical', label: 'Inny warunek techniczny' },
-  { value: 'accommodation', label: 'Zakwaterowanie' },
-  { value: 'backstage', label: 'Zaplecze / garderoba' },
-  { value: 'hospitality', label: 'Gościnność / catering' },
-  { value: 'logistics', label: 'Logistyka' },
-  { value: 'other', label: 'Inne' },
-];
 
 const normalizeRequirementText = (value: string) => value
   .toLocaleLowerCase('pl-PL')
@@ -221,12 +186,15 @@ function ProductPricingPanel({
   canEdit,
   onChange,
   className = '',
+  hideHeading = false,
 }: {
+  hideHeading?: boolean;
   product: IProduct;
   canEdit: boolean;
   onChange: (next: IProduct) => void;
   className?: string;
 }) {
+  const packagePricing = Boolean(product.sales_packages_enabled && product.sales_packages?.length);
   const roundPrice = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
   const vatMultiplier = 1 + Number(product.vat_rate || 0) / 100;
   const priceNet = Number(product.price_net ?? product.base_price ?? 0);
@@ -244,10 +212,10 @@ function ProductPricingPanel({
 
   return (
     <section className={`rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6 ${className}`}>
-      <div className="mb-4 flex items-center gap-2">
+      {!hideHeading && <div className="mb-4 flex items-center gap-2">
         <DollarSign className="h-5 w-5 text-[#d3bb73]" />
         <h2 className="text-lg font-medium text-[#e5e4e2]">Ceny i koszty (netto/brutto)</h2>
-      </div>
+      </div>}
 
       <div className="space-y-4">
         <div>
@@ -273,6 +241,7 @@ function ProductPricingPanel({
           />
         </div>
 
+        {packagePricing ? <p className="text-sm text-[#e5e4e2]/60">Ceny i koszty ustalisz oddzielnie w edycji każdego pakietu. Tutaj ustawiasz wspólną stawkę VAT.</p> : <>
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="mb-2 block text-sm text-[#e5e4e2]/60">Cena netto</label>
@@ -412,6 +381,7 @@ function ProductPricingPanel({
             </span>
           </div>
         </div>
+        </>}
       </div>
     </section>
   );
@@ -427,6 +397,7 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
 
   const productId = params.id as string;
   const [configurationVariantId, setConfigurationVariantId] = useState<string | null>(null);
+  const [staffCostNet, setStaffCostNet] = useState<number | null>(null);
   const [draftStaff, setDraftStaff] = useState<any[]>([]);
   const [showAddEquipmentModal, setShowAddEquipmentModal] = useState(false);
 
@@ -443,6 +414,26 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
       (a, b) => a.display_order - b.display_order,
     ),
   );
+  const [variantDraft, setVariantDraft] = useState<IProductVariant[] | null>(null);
+  const [savingVariants, setSavingVariants] = useState(false);
+  const [addonsEditing, setAddonsEditing] = useState(false);
+  const [savingAddons, setSavingAddons] = useState(false);
+  const [requirementsEditing, setRequirementsEditing] = useState(false);
+  const [savingRequirements, setSavingRequirements] = useState(false);
+  const [editingProductSections, setEditingProductSections] = useState<string[]>([]);
+  const [savingProductSection, setSavingProductSection] = useState<string | null>(null);
+  const [previewPage, setPreviewPage] = useState<'elements' | 'packages'>('elements');
+  const [basicPreview, setBasicPreview] = useState<Partial<IProduct> | null>(null);
+  const setSectionEditing = (key: string, editing: boolean) => setEditingProductSections(current => editing ? [...new Set([...current, key])] : current.filter(item => item !== key));
+  const visibleVariants = variantDraft ?? productVariants;
+  const compactBlockReason = compactProductBlockReason({ ...product, offer_product_variants: visibleVariants });
+  const hasIndividualExtensionRates = visibleVariants.some(v => v.is_active !== false)
+    || Boolean(product?.sales_packages_enabled && product.sales_packages?.length);
+  const effectivePageVariant = product?.offer_page_variant === 'compact' && compactBlockReason
+    ? 'default' : product?.offer_page_variant || 'default';
+  const variantsEditing = variantDraft !== null;
+  const variantImageSnapshot = useRef<Record<string, string>>({});
+  const variantDraftImageSnapshot = useRef(new Map<string, { file: File; preview: string }>());
   const persistedProductVariants = useMemo(
     () => productVariants.filter((variant) => !variant.id.startsWith('temp-')),
     [productVariants],
@@ -465,16 +456,32 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
   });
   const [configuringSection, setConfiguringSection] = useState<string | null>(null);
 
-  const [uploadingPdf, setUploadingPdf] = useState(false);
-  const [pdfFile, setPdfFile] = useState<File | null>(null);
 
-  const [uploadingThumbnail, setUploadingThumbnail] = useState(false);
-  const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
   const [uploadingOfferImage, setUploadingOfferImage] = useState(false);
   const [offerImageFile, setOfferImageFile] = useState<File | null>(null);
   const [offerImageSrc, setOfferImageSrc] = useState<string | null>(null);
   const [draggingOfferImage, setDraggingOfferImage] = useState(false);
   const [variantImageUrls, setVariantImageUrls] = useState<Record<string, string>>({});
+  const draftVariantImages = useRef(new Map<string, { file: File; preview: string }>());
+  const createdProductId = useRef<string | null>(null);
+
+  useEffect(() => () => {
+    draftVariantImages.current.forEach(({ preview }) => URL.revokeObjectURL(preview));
+    draftVariantImages.current.clear();
+    variantDraftImageSnapshot.current.forEach(({ preview }) => URL.revokeObjectURL(preview));
+    variantDraftImageSnapshot.current.clear();
+  }, []);
+
+  useEffect(() => {
+    const activeIds = new Set(visibleVariants.map(variant => variant.id));
+    draftVariantImages.current.forEach(({ preview }, id) => {
+      if (!activeIds.has(id)) {
+        if (variantDraftImageSnapshot.current.get(id)?.preview !== preview) URL.revokeObjectURL(preview);
+        draftVariantImages.current.delete(id);
+      }
+    });
+  }, [visibleVariants]);
+
   const [uploadingVariantImageId, setUploadingVariantImageId] = useState<string | null>(null);
   const [generatingOfferCopy, setGeneratingOfferCopy] = useState(false);
   const [offerAiDraft, setOfferAiDraft] = useState<ProductOfferAiDraft | null>(null);
@@ -529,47 +536,6 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
       setSelectedService('');
     }
   }, [selectedSubcontractor]);
-
-  // Auto-update pricing when service is selected
-  useEffect(() => {
-    if (selectedService && subcontractorServices.length > 0) {
-      const service = subcontractorServices.find((s) => s.id === selectedService);
-      if (service && product) {
-        const isEquipment = (service as any)._type === 'equipment';
-        const isCashWithoutTaxDocument =
-          !isEquipment && (service as any).settlement_method === 'cash_non_deductible';
-        const supplierGross = isEquipment
-          ? (service as any).daily_price_gross || (service as any).rental_price_per_day
-          : (service as any).price_gross || (service as any).unit_price;
-        const supplierNet = isEquipment
-          ? (service as any).daily_price_net
-          : (service as any).price_net;
-        const supplierVatRate = Number((service as any).vat_rate ?? 23);
-        const vatRate =
-          !isEquipment && (service as any).settlement_method !== 'invoice'
-            ? Number(product.vat_rate ?? 23) || 23
-            : supplierVatRate;
-        const calculatedNet =
-          supplierNet || (supplierGross ? supplierGross / (1 + supplierVatRate / 100) : 0);
-        const defaultSaleGross = Number((calculatedNet * (1 + vatRate / 100)).toFixed(2));
-        const economicCost = Number((service as any).economic_cost ?? calculatedNet);
-
-        setProduct({
-          ...product,
-          base_price: calculatedNet,
-          price_gross: defaultSaleGross,
-          price_net: calculatedNet,
-          cost_gross: isCashWithoutTaxDocument ? economicCost : supplierGross || 0,
-          cost_net: economicCost,
-          vat_rate: vatRate,
-          subcontractor_settlement_method: isEquipment
-            ? null
-            : (service as any).settlement_method || 'invoice',
-          subcontractor_economic_cost: isEquipment ? null : economicCost,
-        });
-      }
-    }
-  }, [selectedService, subcontractorServices]);
 
   const fetchSubcontractors = async () => {
     try {
@@ -743,6 +709,7 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
         display_order: 0,
         offer_short_description: '',
         offer_description: '',
+        offer_compact_description: '',
         service_duration_hours: null,
         extension_price_net_per_hour: null,
         offer_benefits: [],
@@ -778,18 +745,6 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
   // -----------------------------
   const bucket = useMemo(() => supabase.storage.from('offer-product-pages'), []);
 
-  const thumbPublicUrl = useMemo(() => {
-    if (!product?.pdf_thumbnail_url) return null;
-    return bucket.getPublicUrl(product.pdf_thumbnail_url).data.publicUrl;
-  }, [bucket, product?.pdf_thumbnail_url]);
-
-  const [thumbSrc, setThumbSrc] = useState<string | null>(thumbPublicUrl);
-
-  // ważne: aktualizuj thumbSrc tylko gdy zmieni się pdf_thumbnail_url (np po upload/delete)
-  useEffect(() => {
-    setThumbSrc(thumbPublicUrl);
-  }, [thumbPublicUrl]);
-
   useEffect(() => {
     let cancelled = false;
 
@@ -811,8 +766,8 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
 
   const variantImageSignature = useMemo(
     () =>
-      productVariants.map((variant) => `${variant.id}:${variant.offer_image_path || ''}`).join('|'),
-    [productVariants],
+      visibleVariants.map((variant) => `${variant.id}:${variant.offer_image_path || ''}`).join('|'),
+    [visibleVariants],
   );
 
   useEffect(() => {
@@ -820,14 +775,17 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
 
     const loadVariantImages = async () => {
       const entries = await Promise.all(
-        productVariants.map(async (variant) => {
+        visibleVariants.map(async (variant) => {
           if (!variant.offer_image_path || variant.id.startsWith('temp-')) return null;
           const { data } = await bucket.createSignedUrl(variant.offer_image_path, 3600);
           return data?.signedUrl ? ([variant.id, data.signedUrl] as const) : null;
         }),
       );
       if (!cancelled) {
-        setVariantImageUrls(Object.fromEntries(entries.filter(Boolean) as Array<[string, string]>));
+        setVariantImageUrls({
+          ...Object.fromEntries(entries.filter(Boolean) as Array<[string, string]>),
+          ...Object.fromEntries(Array.from(draftVariantImages.current, ([id, image]) => [id, image.preview])),
+        });
       }
     };
 
@@ -989,117 +947,6 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
     }
   };
 
-  // -----------------------------
-  // PDF OPEN
-  // -----------------------------
-  const handleOpenPdf = async () => {
-    if (!product?.pdf_page_url) return;
-
-    const { data, error } = await bucket.createSignedUrl(product.pdf_page_url, 3600);
-    if (error) {
-      showSnackbar(error.message, 'error');
-      return;
-    }
-    if (data?.signedUrl) window.open(data.signedUrl, '_blank');
-  };
-
-  // -----------------------------
-  // UPLOAD PDF
-  // -----------------------------
-  const handleUploadPdf = async () => {
-    if (!pdfFile || !product || productId === 'new') return;
-
-    if (pdfFile.type !== 'application/pdf') {
-      showSnackbar('Tylko pliki PDF są dozwolone', 'error');
-      return;
-    }
-
-    try {
-      setUploadingPdf(true);
-
-      const filePath = `${product.id}.pdf`;
-
-      // usuwanie starego pdf (jeśli był)
-      if (product.pdf_page_url) {
-        await bucket.remove([product.pdf_page_url]);
-      }
-
-      const { error: uploadError } = await bucket.upload(filePath, pdfFile, {
-        upsert: true,
-        contentType: 'application/pdf',
-      });
-      if (uploadError) throw uploadError;
-
-      const { error: updateError } = await supabase
-        .from('offer_products')
-        .update({ pdf_page_url: filePath })
-        .eq('id', product.id);
-
-      if (updateError) throw updateError;
-
-      // lokalnie od razu ustaw (bez fetch) – a fetch ewentualnie tylko po to, by dograć miniaturkę
-      setProduct((p) => (p ? { ...p, pdf_page_url: filePath } : p));
-
-      showSnackbar('Strona PDF została przesłana', 'success');
-      setPdfFile(null);
-
-      // jeśli generujesz miniaturkę asynchronicznie po stronie server/edge — tu możesz zrobić polling
-      // na razie: refresh po akcji (ale tylko w tej akcji, nie na starcie)
-      await fetchProduct();
-    } catch (err: any) {
-      showSnackbar(err.message || 'Błąd przesyłania pliku', 'error');
-    } finally {
-      setUploadingPdf(false);
-    }
-  };
-
-  // -----------------------------
-  // UPLOAD THUMBNAIL (manual / optional)
-  // -----------------------------
-  const handleUploadThumbnail = async () => {
-    if (!thumbnailFile || !product || productId === 'new') return;
-
-    if (!thumbnailFile.type.startsWith('image/')) {
-      showSnackbar('Tylko pliki graficzne są dozwolone', 'error');
-      return;
-    }
-
-    try {
-      setUploadingThumbnail(true);
-
-      const ext = thumbnailFile.name.split('.').pop() || 'png';
-      const filePath = `thumbnails/${product.id}-thumbnail.${ext}`;
-
-      if (product.pdf_thumbnail_url) {
-        await bucket.remove([product.pdf_thumbnail_url]);
-      }
-
-      const { error: uploadError } = await bucket.upload(filePath, thumbnailFile, {
-        upsert: true,
-        contentType: thumbnailFile.type,
-      });
-      if (uploadError) throw uploadError;
-
-      const { error: updateError } = await supabase
-        .from('offer_products')
-        .update({ pdf_thumbnail_url: filePath })
-        .eq('id', product.id);
-
-      if (updateError) throw updateError;
-
-      setProduct((p) => (p ? { ...p, pdf_thumbnail_url: filePath } : p));
-      setThumbnailFile(null);
-
-      showSnackbar('Miniaturka została przesłana', 'success');
-      // odśwież tylko jeśli chcesz – ale nie jest konieczne
-      // await fetchProduct();
-    } catch (err: any) {
-      showSnackbar(err.message || 'Błąd przesyłania miniaturki', 'error');
-    } finally {
-      setUploadingThumbnail(false);
-    }
-  };
-
   const handleUploadOfferImage = async (selectedFile?: File | null) => {
     const file = selectedFile || offerImageFile;
     if (!file || !product || productId === 'new') return;
@@ -1140,7 +987,6 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
       });
       if (uploadError) throw uploadError;
 
-      const previousPath = product.offer_image_path;
       const { error: updateError } = await supabase
         .from('offer_products')
         .update({ offer_image_path: filePath })
@@ -1150,7 +996,8 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
         throw updateError;
       }
 
-      if (previousPath) await bucket.remove([previousPath]);
+      // Older images may still be referenced by brochures and offer snapshots.
+      // Replacing a catalog image must not delete those immutable assets.
       const { data } = await bucket.createSignedUrl(filePath, 3600);
       setOfferImageSrc(data?.signedUrl || null);
       setOfferImageFile(null);
@@ -1175,123 +1022,56 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
   };
 
   const handleUploadVariantImage = async (variant: IProductVariant, file: File) => {
-    if (!product || productId === 'new' || variant.id.startsWith('temp-')) return;
-    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
-      showSnackbar('Zdjęcie wariantu musi być plikiem PNG, JPG lub WebP', 'error');
+    if (!product || !canEdit || !variantsEditing || saving || savingVariants || uploadingVariantImageId) return;
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type) || file.size > 10 * 1024 * 1024) {
+      showSnackbar('Wybierz zdjęcie PNG, JPG lub WebP o wielkości do 10 MB', 'error');
       return;
     }
-    if (file.size > 10 * 1024 * 1024) {
-      showSnackbar('Zdjęcie wariantu nie może być większe niż 10 MB', 'error');
-      return;
-    }
-
-    const previousUrl = variantImageUrls[variant.id];
-    let localPreview = '';
     try {
       setUploadingVariantImageId(variant.id);
-      const optimizedFile = await optimizeOfferImage(file, {
-        maxWidth: 1800,
-        maxHeight: 1800,
-        quality: 0.82,
-      });
-      localPreview = URL.createObjectURL(optimizedFile);
-      setVariantImageUrls((current) => ({ ...current, [variant.id]: localPreview }));
-
-      const extension =
-        optimizedFile.type === 'image/png'
-          ? 'png'
-          : optimizedFile.type === 'image/webp'
-            ? 'webp'
-            : 'jpg';
-      const filePath = `assets/${product.id}/variants/${variant.id}-${Date.now()}.${extension}`;
-      const { error: uploadError } = await bucket.upload(filePath, optimizedFile, {
-        contentType: optimizedFile.type,
-        upsert: false,
-      });
-      if (uploadError) throw uploadError;
-
-      const { error: updateError } = await supabase
-        .from('offer_product_variants')
-        .update({ offer_image_path: filePath })
-        .eq('id', variant.id);
-      if (updateError) {
-        await bucket.remove([filePath]);
-        throw updateError;
-      }
-
-      if (variant.offer_image_path) await bucket.remove([variant.offer_image_path]);
-      const { data } = await bucket.createSignedUrl(filePath, 3600);
-      setVariantImageUrls((current) => ({
-        ...current,
-        [variant.id]: data?.signedUrl || localPreview,
-      }));
-      setProductVariants((current) =>
-        current.map((item) =>
-          item.id === variant.id ? { ...item, offer_image_path: filePath } : item,
-        ),
-      );
-      showSnackbar('Zdjęcie wariantu zostało zapisane', 'success');
+      const optimizedFile = await optimizeOfferImage(file, { maxWidth: 1800, maxHeight: 1800, quality: 0.82 });
+      const previous = draftVariantImages.current.get(variant.id);
+      if (previous && variantDraftImageSnapshot.current.get(variant.id)?.preview !== previous.preview) URL.revokeObjectURL(previous.preview);
+      const preview = URL.createObjectURL(optimizedFile);
+      draftVariantImages.current.set(variant.id, { file: optimizedFile, preview });
+      setVariantImageUrls(current => ({ ...current, [variant.id]: preview }));
     } catch (err: any) {
-      setVariantImageUrls((current) => {
-        const next = { ...current };
-        if (previousUrl) next[variant.id] = previousUrl;
-        else delete next[variant.id];
-        return next;
-      });
-      showSnackbar(err.message || 'Błąd przesyłania zdjęcia wariantu', 'error');
+      showSnackbar(err.message || 'Nie udało się przygotować zdjęcia', 'error');
+      throw err;
     } finally {
-      if (localPreview) URL.revokeObjectURL(localPreview);
       setUploadingVariantImageId(null);
     }
   };
 
   const handleDeleteVariantImage = async (variant: IProductVariant) => {
-    if (!variant.offer_image_path || variant.id.startsWith('temp-')) return;
-    if (!confirm(`Usunąć zdjęcie wariantu „${variant.name}”?`)) return;
-
-    try {
-      setUploadingVariantImageId(variant.id);
-      const { error } = await supabase
-        .from('offer_product_variants')
-        .update({ offer_image_path: null })
-        .eq('id', variant.id);
-      if (error) throw error;
-      await bucket.remove([variant.offer_image_path]);
-      setProductVariants((current) =>
-        current.map((item) =>
-          item.id === variant.id ? { ...item, offer_image_path: null } : item,
-        ),
-      );
-      setVariantImageUrls((current) => {
-        const next = { ...current };
-        delete next[variant.id];
-        return next;
-      });
-      showSnackbar('Zdjęcie wariantu zostało usunięte', 'success');
-    } catch (err: any) {
-      showSnackbar(err.message || 'Nie udało się usunąć zdjęcia wariantu', 'error');
-    } finally {
-      setUploadingVariantImageId(null);
-    }
+    if (!canEdit || !variantsEditing || saving || savingVariants || uploadingVariantImageId) return;
+    const draft = draftVariantImages.current.get(variant.id);
+    if (draft && variantDraftImageSnapshot.current.get(variant.id)?.preview !== draft.preview) URL.revokeObjectURL(draft.preview);
+    draftVariantImages.current.delete(variant.id);
+    setVariantDraft(current => current?.map(item => item.id === variant.id ? { ...item, offer_image_path: null } : item) ?? null);
+    setVariantImageUrls(current => {
+      const next = { ...current };
+      delete next[variant.id];
+      return next;
+    });
   };
 
   const handleDeleteOfferImage = async () => {
     if (!product?.offer_image_path || productId === 'new') return;
-    if (!confirm('Czy na pewno chcesz usunąć grafikę używaną w ofercie?')) return;
+    if (!confirm('Odłączyć grafikę od produktu? Plik pozostanie dostępny w broszurach i wcześniej przygotowanych ofertach.')) return;
 
     try {
       setUploadingOfferImage(true);
-      const imagePath = product.offer_image_path;
       const { error: updateError } = await supabase
         .from('offer_products')
         .update({ offer_image_path: null })
         .eq('id', product.id);
       if (updateError) throw updateError;
 
-      await bucket.remove([imagePath]);
+      // Keep shared files so existing brochures and snapshots remain usable.
       setOfferImageSrc(null);
       setProduct((current) => (current ? { ...current, offer_image_path: null } : current));
-      showSnackbar('Grafika produktu została usunięta', 'success');
+      showSnackbar('Grafikę odłączono od produktu. Zachowano ją dla istniejących materiałów.', 'success');
     } catch (err: any) {
       showSnackbar(err.message || 'Błąd usuwania grafiki', 'error');
     } finally {
@@ -1360,77 +1140,6 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
   };
 
   // -----------------------------
-  // DELETE THUMBNAIL
-  // -----------------------------
-  const handleDeleteThumbnail = async () => {
-    if (!product || !product.pdf_thumbnail_url || productId === 'new') return;
-
-    if (!confirm('Czy na pewno chcesz usunąć miniaturkę?')) return;
-
-    try {
-      setSaving(true);
-
-      const { error: storageError } = await bucket.remove([product.pdf_thumbnail_url]);
-      if (storageError) throw storageError;
-
-      const { error: updateError } = await supabase
-        .from('offer_products')
-        .update({ pdf_thumbnail_url: null })
-        .eq('id', product.id);
-
-      if (updateError) throw updateError;
-
-      setProduct((p) => (p ? { ...p, pdf_thumbnail_url: null } : p));
-      setThumbSrc(null);
-
-      showSnackbar('Miniaturka została usunięta', 'success');
-    } catch (err: any) {
-      showSnackbar(err.message || 'Błąd usuwania miniaturki', 'error');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  // -----------------------------
-  // DELETE PDF (also thumbnail)
-  // -----------------------------
-  const handleDeletePdf = async () => {
-    if (!product || !product.pdf_page_url || productId === 'new') return;
-
-    if (!confirm('Czy na pewno chcesz usunąć stronę PDF tego produktu (wraz z miniaturką)?'))
-      return;
-
-    try {
-      setSaving(true);
-
-      const paths = [product.pdf_page_url, product.pdf_thumbnail_url].filter(
-        (p): p is string => !!p,
-      );
-
-      if (paths.length) {
-        const { error: storageError } = await bucket.remove(paths);
-        if (storageError) throw storageError;
-      }
-
-      const { error: updateError } = await supabase
-        .from('offer_products')
-        .update({ pdf_page_url: null, pdf_thumbnail_url: null })
-        .eq('id', product.id);
-
-      if (updateError) throw updateError;
-
-      setProduct((p) => (p ? { ...p, pdf_page_url: null, pdf_thumbnail_url: null } : p));
-      setThumbSrc(null);
-
-      showSnackbar('Strona PDF została usunięta', 'success');
-    } catch (err: any) {
-      showSnackbar(err.message || 'Błąd usuwania pliku', 'error');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  // -----------------------------
   // SAVE PRODUCT
   // -----------------------------
   const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
@@ -1490,8 +1199,238 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
     setProduct({ ...product, cost_net: net, cost_gross: gross });
   };
 
+  const persistVariants = async (savedProductId: string, source: IProductVariant[]) => {
+    const variants = source.map((variant, index) => ({
+      id: variant.id,
+      offer_image_path: variant.offer_image_path || null,
+      offer_image_alt: variant.offer_image_alt || null,
+      name: variant.name.trim(),
+      short_description: variant.short_description?.trim() || null,
+      description: variant.description?.trim() || null,
+      benefits: (variant.benefits || []).map((item) => item.trim()).filter(Boolean),
+      price_net: Number(variant.price_net || 0),
+      price_gross: Number(variant.price_gross || 0),
+      service_duration_hours: variant.service_duration_hours == null
+        ? null
+        : Number(variant.service_duration_hours),
+      extension_price_net_per_hour: variant.extension_price_net_per_hour == null
+        ? null
+        : Number(variant.extension_price_net_per_hour),
+      is_recommended: Boolean(variant.is_recommended),
+      is_active: variant.is_active !== false,
+      display_order: index,
+    }));
+
+    if ((product?.sales_packages || []).some(p => p.element_ids.some(id => !source.some(v => v.id === id)))) {
+      throw new Error('Najpierw usuń element ze składu pakietów, aby usunąć go z produktu.');
+    }
+    if (variants.some((variant) => !variant.name)) {
+      throw new Error('Każdy wariant musi mieć nazwę');
+    }
+    const normalizedNames = variants.map((variant) => variant.name.toLocaleLowerCase('pl-PL'));
+    if (new Set(normalizedNames).size !== normalizedNames.length) {
+      throw new Error('Nazwy wariantów produktu muszą być unikalne');
+    }
+
+    const { data: existingVariants, error: existingError } = await supabase
+      .from('offer_product_variants')
+      .select('id')
+      .eq('product_id', savedProductId);
+    if (existingError) throw existingError;
+
+    const persistedIds = variants
+      .map((variant) => variant.id.startsWith('temp-') ? variant.id.slice(5) : variant.id);
+    const removedIds = (existingVariants || [])
+      .map((variant) => variant.id)
+      .filter((id) => !persistedIds.includes(id));
+
+    if (removedIds.length > 0) {
+      const { error } = await supabase
+        .from('offer_product_variants')
+        .delete()
+        .in('id', removedIds);
+      if (error) throw error;
+    }
+
+    const existingPayload = variants
+      .filter((variant) => !variant.id.startsWith('temp-'))
+      .map(({ id, ...variant }) => ({ ...variant, id, product_id: savedProductId }));
+    const newPayload = variants
+      .filter((variant) => variant.id.startsWith('temp-'))
+      .map(({ id, ...variant }) => ({ ...variant, id: id.slice(5), product_id: savedProductId }));
+
+    const uploadedPaths: string[] = [];
+    try {
+      for (const payload of [...existingPayload, ...newPayload]) {
+        const draft = draftVariantImages.current.get(payload.id) || draftVariantImages.current.get(`temp-${payload.id}`);
+        if (!draft) continue;
+        const extension = draft.file.type === 'image/png' ? 'png' : draft.file.type === 'image/webp' ? 'webp' : 'jpg';
+        const path = `assets/${savedProductId}/variants/${payload.id}-${crypto.randomUUID()}.${extension}`;
+        const { error } = await bucket.upload(path, draft.file, { contentType: draft.file.type, upsert: false });
+        if (error) throw error;
+        uploadedPaths.push(path);
+        payload.offer_image_path = path;
+      }
+      const payload = [...existingPayload, ...newPayload];
+      if (payload.length > 0) {
+        const { data, error } = await supabase.from('offer_product_variants').upsert(payload, { onConflict: 'id' }).select('*');
+        if (error) throw error;
+        return (data as IProductVariant[]).sort((a, b) => a.display_order - b.display_order);
+      }
+      return [];
+    } catch (error) {
+      if (uploadedPaths.length) await bucket.remove(uploadedPaths);
+      throw error;
+    }
+  };
+
+  const beginVariantEdit = () => {
+    if (!canEdit || saving || savingVariants || uploadingVariantImageId) return;
+    variantImageSnapshot.current = { ...variantImageUrls };
+    variantDraftImageSnapshot.current = new Map(draftVariantImages.current);
+    setVariantDraft(structuredClone(productVariants));
+  };
+
+  const cancelVariantEdit = () => {
+    if (savingVariants || uploadingVariantImageId) return;
+    draftVariantImages.current.forEach(({ preview }, id) => {
+      if (variantDraftImageSnapshot.current.get(id)?.preview !== preview) URL.revokeObjectURL(preview);
+    });
+    draftVariantImages.current = new Map(variantDraftImageSnapshot.current);
+    variantDraftImageSnapshot.current.clear();
+    setVariantImageUrls(variantImageSnapshot.current);
+    setVariantDraft(null);
+  };
+
+  const saveVariantSection = async () => {
+    if (!product || !canEdit || !variantDraft || saving || savingVariants || savingAddons || savingRequirements || savingProductSection || uploadingVariantImageId) return;
+    try {
+      setSavingVariants(true);
+      if (variantDraft.some(variant => !variant.name.trim())) throw new Error('Każdy wariant musi mieć nazwę');
+      const names = variantDraft.map(variant => variant.name.trim().toLocaleLowerCase('pl-PL'));
+      if (new Set(names).size !== names.length) throw new Error('Nazwy wariantów produktu muszą być unikalne');
+      if (variantDraft.some(variant => [variant.price_net, variant.price_gross, variant.service_duration_hours, variant.extension_price_net_per_hour].some(value => value != null && (!Number.isFinite(Number(value)) || Number(value) < 0)))) {
+        throw new Error('Ceny i czas usługi muszą być nieujemnymi liczbami');
+      }
+      const saved = productId === 'new' ? structuredClone(variantDraft) : await persistVariants(product.id, variantDraft);
+      setProductVariants(saved);
+      setProduct(current => current ? { ...current, offer_product_variants: saved } : current);
+      variantDraftImageSnapshot.current.forEach(({ preview }, id) => {
+        if (draftVariantImages.current.get(id)?.preview !== preview) URL.revokeObjectURL(preview);
+      });
+      variantDraftImageSnapshot.current.clear();
+      if (productId !== 'new') {
+        draftVariantImages.current.forEach(({ preview }) => URL.revokeObjectURL(preview));
+        draftVariantImages.current.clear();
+      }
+      setVariantDraft(null);
+      showSnackbar(productId === 'new' ? 'Warianty zatwierdzone. Zapisz produkt, aby dodać go do katalogu.' : 'Zapisano warianty produktu', 'success');
+    } catch (err: any) {
+      showSnackbar(err.message || 'Nie udało się zapisać wariantów', 'error');
+    } finally {
+      setSavingVariants(false);
+    }
+  };
+
+  const saveAddonSection = async (pricing_addons: ProductAddon[]) => {
+    if (!product || !canEdit || saving || savingVariants || savingAddons || savingRequirements || savingProductSection) throw new Error('Zapis jest chwilowo niedostępny. Spróbuj ponownie.');
+    const validation = validateAddons(pricing_addons);
+    if (validation) throw new Error(validation);
+    const patch = { pricing_addons, ...(pricing_addons.length ? { offer_page_variant: 'default' as const } : {}) };
+    try {
+      setSavingAddons(true);
+      if (productId !== 'new') {
+        const { data, error } = await supabase.from('offer_products').update(patch).eq('id', product.id).select('id').single();
+        if (error || !data) throw new Error(error?.message || 'Nie udało się zapisać dodatków');
+      }
+      setProduct(current => current ? { ...current, ...patch } : current);
+      showSnackbar(productId === 'new' ? 'Dodatki zatwierdzone. Zapisz produkt, aby dodać go do katalogu.' : 'Zapisano dodatki i limity pakietu', 'success');
+    } finally {
+      setSavingAddons(false);
+    }
+  };
+
+  const saveRequirementSection = async (requirements: OfferAdditionalRequirement[]) => {
+    if (!product || !canEdit || saving || savingVariants || savingAddons || savingRequirements || savingProductSection) throw new Error('Zapis jest chwilowo niedostępny. Spróbuj ponownie.');
+    const patch = {
+      offer_requirements: [],
+      offer_additional_requirements: requirements.map(requirement => ({
+        ...requirement,
+        id: requirement.id || crypto.randomUUID(),
+        category: requirement.category || 'other' as const,
+        title: requirement.title.trim(),
+        description: requirement.description.trim(),
+      })).filter(requirement => requirement.title || requirement.description),
+    };
+    try {
+      setSavingRequirements(true);
+      if (productId !== 'new') {
+        const { data, error } = await supabase.from('offer_products').update(patch).eq('id', product.id).select('id').single();
+        if (error || !data) throw new Error(error?.message || 'Nie udało się zapisać wymagań');
+      }
+      setProduct(current => current ? { ...current, ...patch } : current);
+      showSnackbar(productId === 'new' ? 'Wymagania zatwierdzone. Zapisz produkt, aby dodać go do katalogu.' : 'Zapisano wymagania produktu', 'success');
+    } finally {
+      setSavingRequirements(false);
+    }
+  };
+
+  const saveProductSection = async (section: string, patch: Partial<IProduct>) => {
+    if (!product || !canEdit || saving || savingVariants || savingAddons || savingRequirements || savingProductSection) throw new Error('Trwa zapis innej sekcji. Spróbuj ponownie.');
+    const normalized = { ...patch };
+    if (section === 'basic') {
+      normalized.name = String(patch.name || '').trim();
+      if (!normalized.name) throw new Error('Podaj nazwę produktu');
+    }
+    if (section === 'pricing_units') {
+      normalized.unit = String(patch.unit || '').trim();
+      if (!normalized.unit) throw new Error('Podaj jednostkę produktu');
+      if (!Number.isFinite(patch.min_quantity) || Number(patch.min_quantity) <= 0) throw new Error('Minimalna ilość musi być większa od zera');
+    }
+    const nextProduct = { ...product, ...normalized };
+    if (nextProduct.sales_packages_enabled && nextProduct.sales_packages?.length) {
+      normalized.unit = 'pakiet';
+      normalized.min_quantity = 1;
+    }
+    if (section === 'tags') normalized.tags = (patch.tags || []).map(tag => tag.trim()).filter(Boolean);
+    const numericKeys: (keyof IProduct)[] = ['vat_rate', 'price_net', 'price_gross', 'cost_net', 'cost_gross', 'transport_cost_net', 'transport_cost_gross', 'logistics_cost_net', 'logistics_cost_gross', 'min_quantity', 'max_quantity', 'setup_time_hours', 'teardown_time_hours'];
+    if (numericKeys.some(key => normalized[key] != null && (!Number.isFinite(Number(normalized[key])) || Number(normalized[key]) < 0))) throw new Error('Ilości, czas i kwoty muszą być nieujemnymi liczbami');
+    try {
+      setSavingProductSection(section);
+      if (productId !== 'new') {
+        const { data, error } = await supabase.from('offer_products').update({ ...normalized, ...('category_id' in normalized ? { category_id: normalized.category_id || null } : {}) }).eq('id', product.id).select('id').single();
+        if (error || !data) throw new Error(error?.message || 'Nie udało się zapisać sekcji');
+      }
+      setProduct(current => current ? { ...current, ...normalized } : current);
+      showSnackbar(productId === 'new' ? 'Sekcja zatwierdzona. Zapisz produkt, aby dodać go do katalogu.' : 'Zapisano sekcję produktu', 'success');
+    } finally { setSavingProductSection(null); }
+  };
+
+  const applySupplierService = (current: IProduct, serviceId: string): IProduct => {
+    const service = subcontractorServices.find(item => item.id === serviceId) as any;
+    if (!service) return { ...current, subcontractor_service_catalog_id: serviceId || null };
+    const isEquipment = service._type === 'equipment';
+    const cash = !isEquipment && service.settlement_method === 'cash_non_deductible';
+    const gross = Number(isEquipment ? service.daily_price_gross || service.rental_price_per_day || 0 : service.price_gross || service.unit_price || 0);
+    const supplierVat = Number(service.vat_rate ?? 23);
+    const net = Number((isEquipment ? service.daily_price_net : service.price_net) || gross / (1 + supplierVat / 100));
+    const vat = !isEquipment && service.settlement_method !== 'invoice' ? Number(current.vat_rate ?? 23) || 23 : supplierVat;
+    const cost = Number(service.economic_cost ?? net);
+    return { ...current, subcontractor_service_catalog_id: serviceId, base_price: net, price_net: net, price_gross: Math.round(net * (1 + vat / 100) * 100) / 100, cost_net: cost, cost_gross: cash ? cost : gross, vat_rate: vat, subcontractor_settlement_method: isEquipment ? null : service.settlement_method || 'invoice', subcontractor_economic_cost: isEquipment ? null : cost };
+  };
+
+  const saveSalesPackages = async (packages: ProductSalesPackage[], enabled: boolean) => {
+    const error = validateSalesPackages(packages);
+    if (error) throw new Error(error);
+    await saveProductSection('sales_packages', { sales_packages: packages, sales_packages_enabled: enabled });
+  };
+
   const handleSave = async () => {
-    if (!product || !canEdit) return;
+    if (!product || !canEdit || saving || savingVariants || savingAddons || savingRequirements || savingProductSection || uploadingVariantImageId) return;
+    if (variantsEditing || addonsEditing || requirementsEditing || editingProductSections.length > 0) {
+      showSnackbar('Najpierw zapisz lub anuluj zmiany w edytowanych sekcjach produktu', 'error');
+      return;
+    }
 
     try {
       setSaving(true);
@@ -1506,8 +1445,14 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
         }
       }
 
+      const addonError = validateAddons(product.pricing_addons || []);
+      if (addonError) throw new Error(addonError);
       const productData = {
+        pricing_addons: product.pricing_addons || [],
         category_id: product.category_id || null,
+        related_service_ids: product.related_service_ids || [],
+        related_service_url: product.related_service_url || null,
+        related_service_label: product.related_service_label || null,
         name: product.name,
         description: product.description,
         vat_rate: product.vat_rate,
@@ -1521,16 +1466,18 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
         logistics_cost_gross: product.logistics_cost_gross,
         setup_time_hours: product.setup_time_hours,
         teardown_time_hours: product.teardown_time_hours,
-        unit: product.unit,
-        min_quantity: product.min_quantity,
+        unit: product.sales_packages_enabled && product.sales_packages?.length ? 'pakiet' : product.unit,
+        min_quantity: product.sales_packages_enabled && product.sales_packages?.length ? 1 : product.min_quantity,
         max_quantity: product.max_quantity,
         requires_vehicle: product.requires_vehicle,
         requires_driver: product.requires_driver,
         tags: product.tags,
         is_active: product.is_active,
+        is_personnel_service: Boolean(product.is_personnel_service),
         display_order: product.display_order,
         offer_short_description: product.offer_short_description || null,
         offer_description: product.offer_description || null,
+        offer_compact_description: product.offer_compact_description?.trim() || null,
         service_duration_hours: product.service_duration_hours == null
           ? null
           : Number(product.service_duration_hours),
@@ -1555,8 +1502,8 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
         offer_image_position_y: Number(product.offer_image_position_y ?? 25),
         offer_image_zoom: normalizeOfferImageScale(product.offer_image_zoom),
         product_page_url: productPageUrl || null,
-        offer_page_variant: product.offer_page_variant || 'default',
-        offer_page_enabled: product.offer_page_enabled !== false,
+        offer_page_variant: product.pricing_addons?.length ? 'default' : effectivePageVariant,
+        offer_page_enabled: true,
         is_subcontractor_service: product.is_subcontractor_service || false,
         subcontractor_id: product.subcontractor_id || null,
         subcontractor_service_catalog_id: product.subcontractor_service_catalog_id || null,
@@ -1564,86 +1511,15 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
         subcontractor_economic_cost: product.subcontractor_economic_cost ?? null,
       };
 
-      const persistVariants = async (savedProductId: string) => {
-        const variants = productVariants.slice(0, 3).map((variant, index) => ({
-          ...variant,
-          name: variant.name.trim(),
-          short_description: variant.short_description?.trim() || null,
-          description: variant.description?.trim() || null,
-          benefits: (variant.benefits || []).map((item) => item.trim()).filter(Boolean),
-          price_net: Number(variant.price_net || 0),
-          price_gross: Number(variant.price_gross || 0),
-          service_duration_hours: variant.service_duration_hours == null
-            ? null
-            : Number(variant.service_duration_hours),
-          extension_price_net_per_hour: variant.extension_price_net_per_hour == null
-            ? null
-            : Number(variant.extension_price_net_per_hour),
-          is_recommended: productVariants.some((item) => item.is_recommended)
-            ? variant.is_recommended
-            : index === 0,
-          is_active: true,
-          display_order: index,
-        }));
-
-        if (variants.some((variant) => !variant.name)) {
-          throw new Error('Każdy wariant musi mieć nazwę');
-        }
-        const normalizedNames = variants.map((variant) => variant.name.toLocaleLowerCase('pl-PL'));
-        if (new Set(normalizedNames).size !== normalizedNames.length) {
-          throw new Error('Nazwy wariantów produktu muszą być unikalne');
-        }
-
-        const { data: existingVariants, error: existingError } = await supabase
-          .from('offer_product_variants')
-          .select('id')
-          .eq('product_id', savedProductId);
-        if (existingError) throw existingError;
-
-        const persistedIds = variants
-          .map((variant) => variant.id)
-          .filter((id) => id && !id.startsWith('temp-'));
-        const removedIds = (existingVariants || [])
-          .map((variant) => variant.id)
-          .filter((id) => !persistedIds.includes(id));
-
-        if (removedIds.length > 0) {
-          const { error } = await supabase
-            .from('offer_product_variants')
-            .delete()
-            .in('id', removedIds);
-          if (error) throw error;
-        }
-
-        const existingPayload = variants
-          .filter((variant) => !variant.id.startsWith('temp-'))
-          .map(({ id, ...variant }) => ({ ...variant, id, product_id: savedProductId }));
-        const newPayload = variants
-          .filter((variant) => variant.id.startsWith('temp-'))
-          .map(({ id: _temporaryId, ...variant }) => ({ ...variant, product_id: savedProductId }));
-
-        if (existingPayload.length > 0) {
-          const { error } = await supabase
-            .from('offer_product_variants')
-            .upsert(existingPayload, { onConflict: 'id' });
-          if (error) throw error;
-        }
-        if (newPayload.length > 0) {
-          const { error } = await supabase.from('offer_product_variants').insert(newPayload);
-          if (error) throw error;
-        }
-      };
 
       if (productId === 'new') {
-        const { data, error } = await supabase
-          .from('offer_products')
-          .insert(productData)
-          .select()
-          .single();
-
-        if (error) throw error;
-
-        await persistVariants(data.id);
+        const result = createdProductId.current
+          ? await supabase.from('offer_products').update(productData).eq('id', createdProductId.current).select().single()
+          : await supabase.from('offer_products').insert(productData).select().single();
+        if (result.error) throw result.error;
+        const data = result.data;
+        createdProductId.current = data.id;
+        await persistVariants(data.id, productVariants);
 
         showSnackbar('Produkt został dodany', 'success');
         router.push(`/crm/offers/products/${data.id}`);
@@ -1654,7 +1530,6 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
           .eq('id', product.id);
         if (error) throw error;
 
-        await persistVariants(product.id);
 
         showSnackbar('Zapisano zmiany', 'success');
         // tylko po akcji
@@ -1692,55 +1567,6 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
     }
   };
 
-  const pdfSectionActions = useMemo<Action[]>(() => {
-    const actions: Action[] = [];
-
-    // 1) Brak PDF -> upload PDF
-    if (canEdit && !product?.pdf_page_url) {
-      actions.push({
-        label: uploadingPdf ? 'Przesyłanie...' : 'Prześlij PDF',
-        onClick: handleUploadPdf,
-        icon: <Upload className="h-4 w-4" />,
-        variant: 'primary',
-        show: true,
-      });
-      return actions;
-    }
-
-    // 2) PDF istnieje -> miniaturka tylko gdy null
-    if (canEdit && product?.pdf_page_url && !product?.pdf_thumbnail_url) {
-      actions.push({
-        label: uploadingThumbnail ? 'Przesyłanie...' : 'Prześlij miniaturkę',
-        onClick: handleUploadThumbnail,
-        icon: <Upload className="h-4 w-4" />,
-        variant: 'primary',
-        show: true,
-      });
-    }
-
-    // 3) PDF istnieje -> delete PDF
-    if (canEdit && product?.pdf_page_url) {
-      actions.push({
-        label: '',
-        onClick: handleDeletePdf,
-        icon: <Trash2 className="h-4 w-4" />,
-        variant: 'danger',
-        show: true,
-      });
-    }
-
-    return actions;
-  }, [
-    canEdit,
-    product?.pdf_page_url,
-    product?.pdf_thumbnail_url,
-    uploadingPdf,
-    uploadingThumbnail,
-    handleUploadPdf,
-    handleUploadThumbnail,
-    handleDeletePdf,
-  ]);
-
   // -----------------------------
   // RENDER
   // -----------------------------
@@ -1763,8 +1589,8 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex min-w-0 items-center gap-4">
           <button
             onClick={() => router.push('/crm/offers?tab=catalog')}
             className="rounded-lg p-2 transition-colors hover:bg-[#1c1f33]"
@@ -1795,7 +1621,7 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
             )}
             <button
               onClick={handleSave}
-              disabled={saving || uploadingOfferImage}
+              disabled={saving || uploadingOfferImage || !!uploadingVariantImageId}
               className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:opacity-50"
             >
               <Save className="h-4 w-4" />
@@ -1811,415 +1637,19 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
         )}
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-5">
-          <div className="mb-2 flex items-center gap-3">
-            <DollarSign className="h-5 w-5 text-[#d3bb73]" />
-            <div>
-              <div className="text-2xl font-light text-[#e5e4e2]">
-                {priceNet.toLocaleString('pl-PL')} zł
-              </div>
-              <div className="text-xs text-[#e5e4e2]/40">
-                brutto: {priceGross.toLocaleString('pl-PL')} zł
-              </div>
-            </div>
-          </div>
-          <p className="text-sm text-[#e5e4e2]/60">Cena netto</p>
-        </div>
-
-        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-5">
-          <div className="mb-2 flex items-center gap-3">
-            <DollarSign className="h-5 w-5 text-red-400" />
-            <div>
-              <div className="text-2xl font-light text-[#e5e4e2]">
-                {costNet.toLocaleString('pl-PL')} zł
-              </div>
-              <div className="text-xs text-[#e5e4e2]/40">
-                brutto: {costGross.toLocaleString('pl-PL')} zł
-              </div>
-            </div>
-          </div>
-          <p className="text-sm text-[#e5e4e2]/60">Koszt netto</p>
-        </div>
-
-        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-5">
-          <div className="mb-2 flex items-center gap-3">
-            <DollarSign className="h-5 w-5 text-green-400" />
-            <div>
-              <div className="text-2xl font-light text-[#e5e4e2]">{margin.toFixed(1)}%</div>
-              <div className="text-xs text-[#e5e4e2]/40">
-                {(priceNet - costNet).toLocaleString('pl-PL')} zł netto
-              </div>
-            </div>
-          </div>
-          <p className="text-sm text-[#e5e4e2]/60">Marża</p>
-        </div>
-
-        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-5">
-          <div className="mb-2 flex items-center gap-3">
-            <Package className="h-5 w-5 text-blue-400" />
-            <div>
-              <div className="text-2xl font-light text-[#e5e4e2]">
-                {totalPriceNet.toLocaleString('pl-PL')} zł
-              </div>
-              <div className="text-xs text-[#e5e4e2]/40">
-                brutto: {totalPriceGross.toLocaleString('pl-PL')} zł
-              </div>
-            </div>
-          </div>
-          <p className="text-sm text-[#e5e4e2]/60">Cena całkowita netto</p>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {/* Subcontractor Import (tylko w trybie NEW) */}
-        {productId === 'new' && (
-          <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
-            <div className="mb-4 flex items-center gap-2">
-              <Building2 className="h-5 w-5 text-[#d3bb73]" />
-              <h2 className="text-lg font-medium text-[#e5e4e2]">Import usługi od podwykonawcy</h2>
-            </div>
-
-            <div className="space-y-4">
-              <p className="text-sm text-[#e5e4e2]/60">
-                Zaznacz poniżej, jeśli chcesz stworzyć produkt bazujący na usłudze podwykonawcy
-              </p>
-
-              <div>
-                <label className="mb-2 flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={product?.is_subcontractor_service || false}
-                    onChange={(e) => {
-                      setProduct({ ...product!, is_subcontractor_service: e.target.checked });
-                      if (!e.target.checked) {
-                        setSelectedSubcontractor('');
-                        setSelectedService('');
-                      }
-                    }}
-                    disabled={!canEdit}
-                    className="h-4 w-4 rounded border-[#d3bb73]/20 bg-[#0a0d1a] text-[#d3bb73] focus:ring-[#d3bb73]"
-                  />
-                  <span className="text-sm text-[#e5e4e2]">To jest usługa od podwykonawcy</span>
-                </label>
-              </div>
-
-              {product?.is_subcontractor_service && (
-                <>
-                  <div>
-                    <label className="mb-2 block text-sm text-[#e5e4e2]/60">
-                      Wybierz podwykonawcę
-                    </label>
-                    <select
-                      value={selectedSubcontractor}
-                      onChange={(e) => setSelectedSubcontractor(e.target.value)}
-                      disabled={!canEdit || loadingSubcontractors}
-                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
-                    >
-                      <option value="">-- Wybierz podwykonawcę --</option>
-                      {subcontractors.map((org) => (
-                        <option key={org.id} value={org.id}>
-                          {org.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {selectedSubcontractor && (
-                    <div>
-                      <label className="mb-2 block text-sm text-[#e5e4e2]/60">Wybierz usługę</label>
-                      <select
-                        value={selectedService}
-                        onChange={(e) => setSelectedService(e.target.value)}
-                        disabled={!canEdit}
-                        className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
-                      >
-                        <option value="">-- Wybierz usługę --</option>
-                        {subcontractorServices.map((item) => {
-                          const isEquipment = (item as any)._type === 'equipment';
-                          const price = isEquipment
-                            ? (item as any).rental_price_per_day
-                            : (item as any).unit_price;
-                          const unit = isEquipment ? 'dzień' : (item as any).unit || 'szt';
-                          const badge = isEquipment ? '[WYNAJEM] ' : '[USŁUGA] ';
-
-                          return (
-                            <option key={item.id} value={item.id}>
-                              {badge}
-                              {item.name} - {price?.toLocaleString('pl-PL') || '0'} zł / {unit}
-                            </option>
-                          );
-                        })}
-                      </select>
-                    </div>
-                  )}
-
-                  {selectedService && (
-                    <button
-                      onClick={handleImportServiceFromSubcontractor}
-                      className="w-full rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
-                    >
-                      Importuj usługę
-                    </button>
-                  )}
-
-                  {selectedSubcontractor && (
-                    <a
-                      href={`/crm/contacts/${selectedSubcontractor}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-2 text-sm text-[#d3bb73] transition-colors hover:text-[#d3bb73]/80"
-                    >
-                      <ExternalLink className="h-4 w-4" />
-                      Otwórz kartę podwykonawcy
-                    </a>
-                  )}
-                </>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Basic Info */}
-        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
-          <div className="mb-4 flex items-center gap-2">
-            <Settings className="h-5 w-5 text-[#d3bb73]" />
-            <h2 className="text-lg font-medium text-[#e5e4e2]">Podstawowe informacje</h2>
-          </div>
-
-          <div className="space-y-4">
-            <div>
-              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Nazwa produktu</label>
-              <input
-                type="text"
-                value={product.name}
-                onChange={(e) => setProduct({ ...product, name: e.target.value })}
-                disabled={!canEdit}
-                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
-              />
-            </div>
-
-            <div>
-              <label className="mb-2 flex items-center gap-2 text-sm text-[#e5e4e2]/60">
-                <span>Kategoria</span>
-              </label>
-
-              <select
-                value={product.category_id ?? ''}
-                onChange={(e) =>
-                  setProduct({
-                    ...product,
-                    category_id: e.target.value === '' ? '' : e.target.value,
-                  })
-                }
-                disabled={!canEdit}
-                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
-              >
-                <option value="">-- Wybierz kategorię --</option>
-                {initialCategories.map((cat) => (
-                  <option key={cat.id} value={cat.id}>
-                    {cat.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Sekcja Podwykonawcy */}
-            <div className="space-y-3 rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] p-4">
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={product?.is_subcontractor_service || false}
-                  onChange={(e) => {
-                    const isChecked = e.target.checked;
-                    setProduct({
-                      ...product,
-                      is_subcontractor_service: isChecked,
-                      subcontractor_id: isChecked ? product.subcontractor_id : null,
-                      subcontractor_service_catalog_id: isChecked
-                        ? product.subcontractor_service_catalog_id
-                        : null,
-                      subcontractor_settlement_method: isChecked
-                        ? product.subcontractor_settlement_method
-                        : null,
-                      subcontractor_economic_cost: isChecked
-                        ? product.subcontractor_economic_cost
-                        : null,
-                    });
-                    if (!isChecked) {
-                      setSelectedSubcontractor('');
-                      setSelectedService('');
-                    }
-                  }}
-                  disabled={!canEdit}
-                  className="h-4 w-4 rounded border-[#d3bb73]/20 bg-[#0f1119] text-[#d3bb73]"
-                />
-                <span className="text-sm font-medium text-[#e5e4e2]">Usługa od podwykonawcy</span>
-              </label>
-
-              {product?.is_subcontractor_service && (
-                <div className="space-y-3">
-                  <div>
-                    <label className="mb-1 block text-xs text-[#e5e4e2]/60">Podwykonawca</label>
-                    <select
-                      value={selectedSubcontractor}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setSelectedSubcontractor(val);
-                        setProduct({ ...product, subcontractor_id: val || null });
-                      }}
-                      disabled={!canEdit || loadingSubcontractors}
-                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-2 text-sm text-[#e5e4e2]"
-                    >
-                      <option value="">-- Wybierz podwykonawcę --</option>
-                      {subcontractors.map((org) => (
-                        <option key={org.id} value={org.id}>
-                          {org.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {selectedSubcontractor && (
-                    <div>
-                      <label className="mb-1 block text-xs text-[#e5e4e2]/60">Usługa</label>
-                      <select
-                        value={selectedService}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setSelectedService(val);
-                          setProduct({ ...product, subcontractor_service_catalog_id: val || null });
-                        }}
-                        disabled={!canEdit}
-                        className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-2 text-sm text-[#e5e4e2]"
-                      >
-                        <option value="">-- Wybierz usługę --</option>
-                        {subcontractorServices.map((item) => {
-                          const isEquip = (item as any)._type === 'equipment';
-                          const price = isEquip
-                            ? (item as any).rental_price_per_day
-                            : (item as any).unit_price;
-                          const unit = isEquip ? 'dzień' : (item as any).unit || 'szt';
-                          const badge = isEquip ? '[WYNAJEM] ' : '[USŁUGA] ';
-                          const economicCost = Number((item as any).economic_cost ?? price ?? 0);
-                          const cashCostLabel =
-                            !isEquip && (item as any).settlement_method === 'cash_non_deductible'
-                              ? ` · koszt firmy ${economicCost.toLocaleString('pl-PL')} zł`
-                              : '';
-                          return (
-                            <option key={item.id} value={item.id}>
-                              {badge}
-                              {item.name} - {price?.toLocaleString('pl-PL') || '0'} zł / {unit}
-                              {cashCostLabel}
-                            </option>
-                          );
-                        })}
-                      </select>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            <div>
-              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Opis</label>
-              <textarea
-                value={product.description || ''}
-                onChange={(e) => setProduct({ ...product, description: e.target.value })}
-                disabled={!canEdit}
-                className="min-h-[100px] w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Jednostka</label>
-                <input
-                  type="text"
-                  value={product.unit}
-                  onChange={(e) => setProduct({ ...product, unit: e.target.value })}
-                  disabled={!canEdit}
-                  placeholder="szt, komplet, dzień"
-                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
-                />
-              </div>
-              <div>
-                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Min. ilość</label>
-                <input
-                  type="number"
-                  value={Number.isFinite(product.min_quantity) ? product.min_quantity : 0}
-                  onChange={(e) =>
-                    setProduct({ ...product, min_quantity: toNumber(e.target.value) })
-                  }
-                  disabled={!canEdit}
-                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
-                />
-              </div>
-            </div>
-
-            <div className="flex items-center gap-4">
-              <label className="flex cursor-pointer items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={product.is_active}
-                  onChange={(e) => setProduct({ ...product, is_active: e.target.checked })}
-                  disabled={!canEdit}
-                  className="h-4 w-4 rounded border-[#d3bb73]/20 bg-[#0a0d1a] text-[#d3bb73] focus:ring-[#d3bb73] disabled:opacity-50"
-                />
-                <span className="text-sm text-[#e5e4e2]">Aktywny</span>
-              </label>
-
-              <label className="flex cursor-pointer items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={product.requires_vehicle}
-                  onChange={(e) => setProduct({ ...product, requires_vehicle: e.target.checked })}
-                  disabled={!canEdit}
-                  className="h-4 w-4 rounded border-[#d3bb73]/20 bg-[#0a0d1a] text-[#d3bb73] focus:ring-[#d3bb73] disabled:opacity-50"
-                />
-                <span className="text-sm text-[#e5e4e2]">Wymaga pojazdu</span>
-              </label>
-
-              <label className="flex cursor-pointer items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={product.requires_driver}
-                  onChange={(e) => setProduct({ ...product, requires_driver: e.target.checked })}
-                  disabled={!canEdit}
-                  className="h-4 w-4 rounded border-[#d3bb73]/20 bg-[#0a0d1a] text-[#d3bb73] focus:ring-[#d3bb73] disabled:opacity-50"
-                />
-                <span className="text-sm text-[#e5e4e2]">Wymaga kierowcy</span>
-              </label>
-            </div>
-          </div>
-        </div>
-
-        <ProductPricingPanel
-          product={product}
-          canEdit={canEdit}
-          onChange={setProduct}
-          className="hidden lg:block"
-        />
-
+      <div className="grid items-start gap-6 lg:grid-cols-12">
+        <div className="min-w-0 space-y-6 lg:col-span-8">
+<ProductDataSection<IProduct>
+              title="Podstawowe informacje" value={product} fields={["name", "category_id", "description", "is_active"]}
+              canEdit={canEdit} disabled={saving || savingVariants || savingAddons || savingRequirements || Boolean(savingProductSection)}
+              onEditingChange={editing => setSectionEditing('basic', editing)}
+              onSave={patch => saveProductSection('basic', patch)}
+              onDraftChange={setBasicPreview}
+              renderView={(product) => (<div className="space-y-4"><div className="flex flex-wrap items-center justify-between gap-3"><h3 className="text-xl font-medium text-[#e5e4e2]">{product.name || 'Nowy produkt'}</h3><span className="rounded-full bg-[#d3bb73]/10 px-3 py-1 text-xs text-[#d3bb73]">{product.is_active ? 'Aktywny' : 'Nieaktywny'}</span></div><p className="text-sm text-[#d3bb73]">{initialCategories.find(category => category.id === product.category_id)?.name || 'Bez kategorii'}</p><p className="whitespace-pre-line text-sm leading-relaxed text-[#e5e4e2]/65">{product.description || 'Brak opisu produktu.'}</p></div>)}
+              renderEditor={(product, setProduct) => (<div className="grid gap-4 sm:grid-cols-2"><label className="text-sm text-[#e5e4e2]/65 sm:col-span-2">Nazwa produktu<input value={product.name} onChange={e => setProduct({ ...product, name: e.target.value })} className="mt-1 w-full rounded-lg border border-white/10 bg-black/15 px-3 py-2 text-sm text-[#e5e4e2]" /></label><label className="text-sm text-[#e5e4e2]/65 sm:col-span-2">Kategoria<select value={product.category_id || ''} onChange={e => setProduct({ ...product, category_id: e.target.value })} className="mt-1 w-full rounded-lg border border-white/10 bg-black/15 px-3 py-2 text-sm text-[#e5e4e2]"><option value="">Bez kategorii</option>{initialCategories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label><label className="text-sm text-[#e5e4e2]/65 sm:col-span-2">Opis produktu<textarea rows={4} value={product.description || ''} onChange={e => setProduct({ ...product, description: e.target.value })} className="mt-1 w-full rounded-lg border border-white/10 bg-black/15 px-3 py-2 text-sm text-[#e5e4e2]" /></label><label className="flex items-center gap-2 text-sm text-[#e5e4e2]"><input type="checkbox" checked={product.is_active} onChange={e => setProduct({ ...product, is_active: e.target.checked })} className="accent-[#d3bb73]" />Produkt aktywny</label></div>)}
+            />
         {/* Presentation in generated offer */}
-        <div className="lg:col-span-2">
-          <ProductVariantsEditor
-            variants={productVariants}
-            vatRate={product.vat_rate}
-            defaultServiceDurationHours={product.service_duration_hours}
-            defaultExtensionPriceNetPerHour={product.extension_price_net_per_hour}
-            disabled={!canEdit}
-            onChange={setProductVariants}
-            imageUrls={variantImageUrls}
-            uploadingImageId={uploadingVariantImageId}
-            onImageUpload={handleUploadVariantImage}
-            onImageDelete={handleDeleteVariantImage}
-          />
-        </div>
-
-        {/* Presentation in generated offer */}
-        <div className="rounded-xl border border-[#7f1734]/40 bg-[#1c1f33] p-6 lg:col-span-2">
+        <div className="rounded-xl border border-[#7f1734]/40 bg-[#1c1f33] p-6 ">
           <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <ImageIcon className="h-5 w-5 text-[#b94b69]" />
@@ -2245,13 +1675,6 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
             Te zatwierdzone dane z CRM zasilają dynamiczną kartę produktu. AI przygotowuje wyłącznie
             roboczą propozycję tekstu i nie zmienia cen, ilości ani terminów.
           </p>
-
-          {product.pdf_page_url && (
-            <div className="mb-5 rounded-lg border border-amber-400/25 bg-amber-400/10 p-3 text-sm text-amber-200">
-              Ten produkt ma własną stronę PDF, więc generator użyje jej w pierwszej kolejności.
-              Usuń statyczny PDF w sekcji poniżej, aby przełączyć produkt na kartę dynamiczną.
-            </div>
-          )}
 
           {offerAiDraft && (
             <div className="mb-5 rounded-lg border border-violet-400/30 bg-violet-400/10 p-4">
@@ -2293,23 +1716,12 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
             </div>
           )}
 
-          <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_320px]">
+          <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_260px]">
             <div className="space-y-4">
-              <label className="flex cursor-pointer items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={product.offer_page_enabled !== false}
-                  onChange={(e) => setProduct({ ...product, offer_page_enabled: e.target.checked })}
-                  disabled={!canEdit}
-                  className="h-4 w-4 rounded border-[#d3bb73]/20 bg-[#0a0d1a] text-[#7f1734]"
-                />
-                <span className="text-sm text-[#e5e4e2]">
-                  Dodawaj dynamiczną kartę tego produktu
-                </span>
-              </label>
+
 
               <div>
-                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Krótki opis / lead</label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Lead — wspólne zdanie pod tytułem</label>
                 <input
                   type="text"
                   value={product.offer_short_description || ''}
@@ -2324,7 +1736,7 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
               </div>
 
               <div>
-                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Opis dla klienta</label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Opis rozszerzony — osobna strona i duża grafika</label>
                 <textarea
                   value={product.offer_description || ''}
                   onChange={(e) => setProduct({ ...product, offer_description: e.target.value })}
@@ -2332,6 +1744,27 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
                   className="min-h-[140px] w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
                   placeholder="Zakres, sposób realizacji i najważniejsze informacje dla klienta"
                 />
+              </div>
+
+              <div>
+                <label htmlFor="product-compact-description" className="mb-2 block text-sm text-[#e5e4e2]/60">Krótki opis do oferty kompaktowej</label>
+                <textarea
+                  id="product-compact-description"
+                  rows={4}
+                  value={product.offer_compact_description || ''}
+                  onChange={e => setProduct({ ...product, offer_compact_description: e.target.value })}
+                  maxLength={COMPACT_PRODUCT_DESCRIPTION_LIMIT}
+                  disabled={!canEdit || Boolean(compactBlockReason)}
+                  aria-describedby="product-compact-description-help"
+                  placeholder="Samodzielny, zwięzły opis produktu i najważniejszej korzyści"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:cursor-not-allowed disabled:opacity-40"
+                />
+                <p id="product-compact-description-help" className="mt-1 text-xs text-[#e5e4e2]/50">
+                  {compactBlockReason
+                    ? `${compactBlockReason} Krótki opis nie jest używany. Zachowamy go na wypadek zmiany konfiguracji.`
+                    : `${(product.offer_compact_description || '').length}/${COMPACT_PRODUCT_DESCRIPTION_LIMIT} znaków. Tylko dla układu do 3 produktów na stronie; podgląd uwzględnia miejsce w szablonie.`}
+                </p>
+                {!compactBlockReason && !product.offer_compact_description?.trim() && <p className="mt-2 text-xs text-[#d3bb73]">Uzupełnij osobny krótki opis. Do tego czasu wersja kompaktowa korzysta ze skróconego opisu rozszerzonego, tak jak dotychczas.</p>}
               </div>
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -2370,15 +1803,16 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
                         ? null
                         : Number(event.target.value),
                     })}
-                    disabled={!canEdit}
+                    disabled={!canEdit || hasIndividualExtensionRates}
                     placeholder="np. 500"
                     className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
                   />
                 </div>
               </div>
               <p className="-mt-2 text-xs leading-5 text-[#e5e4e2]/40">
-                Wartości główne dotyczą całej usługi. W wariancie możesz je nadpisać,
-                jeśli Standard, Premium lub VIP mają inne warunki.
+                {hasIndividualExtensionRates
+                  ? 'Wspólna stawka przedłużenia jest wyłączona. Ustaw ją osobno w elemencie, wariancie lub pakiecie. Dotychczasowa wartość pozostaje zachowana. Czas usługi nadal jest domyślny dla produktu.'
+                  : 'Stawka dotyczy każdej dodatkowej godziny całej usługi. Pozostaw puste pole, jeśli nie chcesz podawać kosztu przedłużenia.'}
               </p>
 
               <div>
@@ -2404,118 +1838,7 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
                 />
               </div>
 
-              <div className="rounded-xl border border-[#d3bb73]/15 bg-[#0a0d1a]/55 p-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-medium text-[#e5e4e2]">Wymagania produktu</p>
-                    <p className="mt-1 max-w-2xl text-xs leading-5 text-[#e5e4e2]/40">
-                      Przypisz każdemu warunkowi kategorię, np. zasilanie, internet, dostęp,
-                      montaż, bezpieczeństwo lub zaplecze. Generator połączy wymagania wszystkich
-                      produktów, usunie powtórzenia i wybierze mocniejszy wariant.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    disabled={!canEdit}
-                    onClick={() => setProduct({
-                      ...product,
-                      offer_additional_requirements: [
-                        ...(product.offer_additional_requirements || []),
-                        {
-                          id: crypto.randomUUID(),
-                          category: 'other',
-                          title: '',
-                          description: '',
-                        },
-                      ],
-                    })}
-                    className="rounded-lg border border-[#d3bb73]/25 px-3 py-2 text-xs text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/10 disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    + Dodaj wymaganie produktu
-                  </button>
-                </div>
 
-                {(product.offer_additional_requirements || []).length === 0 ? (
-                  <div className="mt-4 rounded-lg border border-dashed border-[#d3bb73]/15 px-4 py-5 text-center text-xs text-[#e5e4e2]/35">
-                    Brak wymagań dla tego produktu.
-                  </div>
-                ) : (
-                  <div className="mt-4 space-y-3">
-                    {(product.offer_additional_requirements || []).map((requirement, index) => (
-                      <div
-                        key={requirement.id || index}
-                        className="grid gap-3 rounded-lg border border-[#d3bb73]/10 bg-[#111522] p-3 lg:grid-cols-[180px_minmax(180px,0.8fr)_minmax(260px,1.5fr)_auto]"
-                      >
-                        <select
-                          value={requirement.category || 'other'}
-                          disabled={!canEdit}
-                          onChange={(event) => {
-                            const category = event.target.value as OfferAdditionalRequirement['category'];
-                            const oldDefaultTitle = getOfferRequirementLabel(requirement.category || 'other');
-                            setProduct({
-                              ...product,
-                              offer_additional_requirements: (product.offer_additional_requirements || []).map((item, itemIndex) => (
-                                itemIndex === index
-                                  ? {
-                                    ...item,
-                                    category,
-                                    title: !item.title || item.title === oldDefaultTitle
-                                      ? getOfferRequirementLabel(category)
-                                      : item.title,
-                                  }
-                                  : item
-                              )),
-                            });
-                          }}
-                          className="rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] disabled:opacity-50"
-                        >
-                          {PRODUCT_REQUIREMENT_CATEGORIES.map((category) => (
-                            <option key={category.value} value={category.value}>{category.label}</option>
-                          ))}
-                        </select>
-                        <input
-                          type="text"
-                          value={requirement.title || ''}
-                          disabled={!canEdit}
-                          onChange={(event) => setProduct({
-                            ...product,
-                            offer_additional_requirements: (product.offer_additional_requirements || []).map((item, itemIndex) => (
-                              itemIndex === index ? { ...item, title: event.target.value } : item
-                            )),
-                          })}
-                          placeholder="Np. Pokój dwuosobowy"
-                          className="rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] disabled:opacity-50"
-                        />
-                        <textarea
-                          rows={2}
-                          value={requirement.description || ''}
-                          disabled={!canEdit}
-                          onChange={(event) => setProduct({
-                            ...product,
-                            offer_additional_requirements: (product.offer_additional_requirements || []).map((item, itemIndex) => (
-                              itemIndex === index ? { ...item, description: event.target.value } : item
-                            )),
-                          })}
-                          placeholder="Opisz dokładnie, dla kogo, kiedy i na jakich warunkach wymaganie ma być zapewnione."
-                          className="min-h-[42px] resize-y rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] disabled:opacity-50"
-                        />
-                        <button
-                          type="button"
-                          disabled={!canEdit}
-                          onClick={() => setProduct({
-                            ...product,
-                            offer_additional_requirements: (product.offer_additional_requirements || []).filter((_, itemIndex) => itemIndex !== index),
-                          })}
-                          className="self-start rounded-lg border border-red-400/15 p-2 text-red-300/70 transition-colors hover:bg-red-400/10 hover:text-red-200 disabled:opacity-40"
-                          title="Usuń wymaganie"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
 
               <div>
                 <label className="mb-2 block text-sm text-[#e5e4e2]/60">Link „Zobacz więcej”</label>
@@ -2536,18 +1859,17 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
                 <div>
                   <label className="mb-2 block text-sm text-[#e5e4e2]/60">Wariant strony</label>
                   <select
-                    value={product.offer_page_variant || 'default'}
+                    value={effectivePageVariant}
                     onChange={(e) => setProduct({ ...product, offer_page_variant: e.target.value })}
                     disabled={!canEdit}
                     className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
                   >
                     <option value="default">Domyślny</option>
-                    <option value="compact">Kompaktowy - do 3 produktów na stronie</option>
+                    <option value="compact" disabled={Boolean(compactBlockReason)}>Kompaktowy - do 3 produktów na stronie</option>
                     <option value="visual">Duża grafika</option>
                   </select>
                   <p className="mt-1 text-xs text-[#e5e4e2]/40">
-                    Wariant kompaktowy grupuje kolejne produkty po maksymalnie trzy na jednej
-                    stronie PDF.
+                    {compactBlockReason || 'Wariant kompaktowy grupuje kolejne produkty po maksymalnie trzy na jednej stronie PDF.'}
                   </p>
                 </div>
                 <div>
@@ -2593,7 +1915,7 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
                         fill
                         unoptimized
                         aria-hidden
-                        className="scale-110 object-cover opacity-55 blur-lg"
+                        className="object-cover opacity-55"
                         style={{
                           objectPosition: `${Number(product.offer_image_position_x ?? 50)}% ${Number(product.offer_image_position_y ?? 25)}%`,
                         }}
@@ -2612,6 +1934,7 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
                       style={{
                         objectPosition: `${Number(product.offer_image_position_x ?? 50)}% ${Number(product.offer_image_position_y ?? 25)}%`,
                         transform: `scale(${normalizeOfferImageScale(product.offer_image_zoom)})`,
+                        transformOrigin: `${Number(product.offer_image_position_x ?? 50)}% ${Number(product.offer_image_position_y ?? 25)}%`,
                       }}
                     />
                   </div>
@@ -2721,7 +2044,7 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
                         </label>
                         <div className="flex items-center justify-between gap-3 text-[11px] text-[#e5e4e2]/35">
                           <span>50% — pomniejszenie</span>
-                          <button
+                          <button data-crm-action="secondary"
                             type="button"
                             onClick={() => setProduct({ ...product, offer_image_zoom: 1 })}
                             className="rounded border border-[#d3bb73]/20 px-2 py-1 text-[#d3bb73] hover:bg-[#d3bb73]/10"
@@ -2764,15 +2087,119 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
           </div>
         </div>
 
-        <ProductOfferCardPreview
-          product={{ ...product, offer_product_variants: productVariants }}
-          imageUrl={offerImageSrc}
-          variantImageUrls={variantImageUrls}
-        />
 
-        {persistedProductVariants.length > 0 && (
-          <section className="rounded-xl border border-[#d3bb73]/25 bg-[#1c1f33] p-6 lg:col-span-2">
-            <div className="grid gap-4 lg:grid-cols-[minmax(280px,420px)_1fr] lg:items-end">
+        {/* Presentation in generated offer */}
+        <div className="lg:col-span-2">
+          <div className="mb-6"><ProductRelatedServicesSection
+            value={product.related_service_ids || []}
+            pageUrl={product.related_service_url}
+            pageLabel={product.related_service_label}
+            canEdit={canEdit}
+            disabled={saving || savingVariants || savingAddons || savingRequirements || Boolean(savingProductSection)}
+            onSave={(ids, url, label) => saveProductSection('related_services', { related_service_ids: ids, related_service_url: url, related_service_label: label })}
+            onEditingChange={editing => setSectionEditing('related_services', editing)}
+          /></div>
+          <ProductVariantsEditor
+            elementMode={Boolean(product.sales_packages_enabled)}
+            productName={product.name}
+            variants={visibleVariants}
+            editing={variantsEditing}
+            sectionActions={canEdit ? (
+              <div className="flex flex-wrap items-center gap-2">
+                {variantsEditing ? <>
+                  <button type="button" onClick={cancelVariantEdit} disabled={saving || savingVariants || savingAddons || savingRequirements || Boolean(savingProductSection) || !!uploadingVariantImageId} className="rounded-lg bg-white/5 px-4 py-2 text-sm text-[#e5e4e2] hover:bg-white/10 disabled:opacity-40">Anuluj</button>
+                  <button type="button" onClick={saveVariantSection} disabled={saving || savingVariants || savingAddons || savingRequirements || Boolean(savingProductSection) || !!uploadingVariantImageId} className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] disabled:opacity-40">
+                    {savingVariants ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                    {savingVariants ? 'Zapisywanie…' : product.sales_packages_enabled ? 'Zapisz elementy' : 'Zapisz warianty'}
+                  </button>
+                </> : <button type="button" onClick={beginVariantEdit} disabled={saving || savingVariants || savingRequirements || Boolean(savingProductSection)} className="rounded-lg bg-[#d3bb73]/10 px-4 py-2 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/20 disabled:opacity-40">Edytuj warianty</button>}
+              </div>
+            ) : undefined}
+            vatRate={product.vat_rate}
+            defaultServiceDurationHours={product.service_duration_hours}
+            defaultExtensionPriceNetPerHour={hasIndividualExtensionRates ? null : product.extension_price_net_per_hour}
+            disabled={!canEdit || !variantsEditing || saving || savingVariants || !!uploadingVariantImageId}
+            onChange={setVariantDraft}
+            imageUrls={variantImageUrls}
+            uploadingImageId={uploadingVariantImageId}
+            onImageUpload={handleUploadVariantImage}
+            onImageDelete={handleDeleteVariantImage}
+          />
+        </div>
+
+
+        <ProductSalesPackagesSection productId={productId} value={product.sales_packages || []}
+          enabled={Boolean(product.sales_packages_enabled)} elements={persistedProductVariants}
+          canEdit={canEdit} disabled={saving || savingVariants || savingAddons || savingRequirements || Boolean(savingProductSection)}
+          onSave={saveSalesPackages} onEditingChange={editing => setSectionEditing('sales_packages', editing)} />
+        <div className="lg:col-span-2">
+          <ProductAddonsSection
+            value={product.pricing_addons || []}
+            canEdit={canEdit}
+            disabled={saving || savingVariants || savingRequirements || Boolean(savingProductSection)}
+            saving={savingAddons}
+            onSave={saveAddonSection}
+            onEditingChange={setAddonsEditing}
+          />
+        </div>
+
+
+<ProductRequirementsSection
+                value={withCategorizedProductRequirements(product).offer_additional_requirements || []}
+                canEdit={canEdit}
+                disabled={saving || savingVariants || savingAddons || Boolean(savingProductSection)}
+                saving={savingRequirements}
+                onSave={saveRequirementSection}
+                onEditingChange={setRequirementsEditing}
+              />
+
+{!(product.sales_packages_enabled && product.sales_packages?.length) && <ProductSettingsDrawer title="Ustawienia wyceny" description="Jednostka rozliczenia i minimalna ilość produktu.">
+            <ProductDataSection<IProduct>
+              title="Ustawienia wyceny" value={product} fields={["unit", "min_quantity"]}
+              canEdit={canEdit} disabled={saving || savingVariants || savingAddons || savingRequirements || Boolean(savingProductSection)}
+              onEditingChange={editing => setSectionEditing('pricing_units', editing)}
+              onSave={patch => saveProductSection('pricing_units', patch)}
+              renderView={product => (<dl className="flex flex-wrap gap-6 text-sm"><div><dt className="text-xs text-[#e5e4e2]/45">Jednostka</dt><dd className="mt-1 text-[#e5e4e2]">{product.unit || '—'}</dd></div><div><dt className="text-xs text-[#e5e4e2]/45">Minimalna ilość</dt><dd className="mt-1 text-[#e5e4e2]">{product.min_quantity}</dd></div></dl>)}
+              renderEditor={(product, setProduct) => (<div className="grid gap-4 sm:grid-cols-2"><label className="text-sm text-[#e5e4e2]/65">Jednostka<input value={product.unit} onChange={e => setProduct({ ...product, unit: e.target.value })} className="mt-1 w-full rounded-lg border border-white/10 bg-black/15 px-3 py-2 text-sm text-[#e5e4e2]" /></label><label className="text-sm text-[#e5e4e2]/65">Minimalna ilość<input type="number" min={0.01} step="0.01" value={Number.isFinite(product.min_quantity) ? product.min_quantity : ''} onChange={e => setProduct({ ...product, min_quantity: e.target.valueAsNumber })} className="mt-1 w-full rounded-lg border border-white/10 bg-black/15 px-3 py-2 text-sm text-[#e5e4e2]" /></label><p className="text-xs text-[#e5e4e2]/45 sm:col-span-2">Jednostka pojawia się w kalkulacji, np. szt., godz. lub usługa. Domyślna minimalna ilość wynosi 1.</p></div>)}
+            />
+          </ProductSettingsDrawer>}
+
+<ProductSettingsDrawer title="Ceny i koszty" description={product.sales_packages_enabled && product.sales_packages?.length ? "Ceny i koszty poszczególnych pakietów oraz wspólna stawka VAT." : "Cena sprzedaży, koszty realizacji, transport i logistyka."}><ProductDataSection<IProduct>
+              title="Ceny i koszty" value={product} fields={["vat_rate", "price_net", "price_gross", "cost_net", "cost_gross", "transport_cost_net", "transport_cost_gross", "logistics_cost_net", "logistics_cost_gross"]}
+              canEdit={canEdit} disabled={saving || savingVariants || savingAddons || savingRequirements || Boolean(savingProductSection)}
+              onEditingChange={editing => setSectionEditing('pricing', editing)}
+              onSave={patch => saveProductSection('pricing', patch)}
+              
+              renderView={(product) => product.sales_packages_enabled && product.sales_packages?.length ? <div className="space-y-3">
+                <p className="text-sm text-[#e5e4e2]/60">VAT: {product.vat_rate}%. Cena i koszty zależą od wybranego pakietu — zmienisz je przez menu pakietu → „Edytuj”. Koszty bazowe nie są dziedziczone przez pakiety.</p>
+                {product.sales_packages.map(p => <div key={p.id} className="space-y-2 rounded-lg bg-black/10 p-3"><h3 className="text-sm text-[#e5e4e2]">{p.name}</h3><p className="text-sm text-[#d3bb73]">Cena: {p.price_net.toLocaleString('pl-PL')} zł netto</p><ProductPackageCostSummary value={p}/></div>)}
+              </div> : (<dl className="grid gap-4 sm:grid-cols-2">{[
+ ['Cena sprzedaży', `${Number(product.price_net || 0).toLocaleString('pl-PL')} zł netto / ${Number(product.price_gross || 0).toLocaleString('pl-PL')} zł brutto`],
+ ['Pozostały koszt realizacji (bez obsady)', `${Number(product.cost_net || 0).toLocaleString('pl-PL')} zł netto / ${Number(product.cost_gross || 0).toLocaleString('pl-PL')} zł brutto`],
+ ['Transport', `${Number(product.transport_cost_net || 0).toLocaleString('pl-PL')} zł netto`],
+ ['Logistyka', `${Number(product.logistics_cost_net || 0).toLocaleString('pl-PL')} zł netto`],
+ ['VAT', `${product.vat_rate}%`],
+ ['Obsada — koszt dla firmy', staffCostNet == null ? 'Uzupełnij rozliczenie obsady' : `${staffCostNet.toLocaleString('pl-PL')} zł`],
+ ['Marża po koszcie realizacji i obsady', staffCostNet == null ? 'Nieustalona' : `${product.price_net > 0 ? (((product.price_net - (product.cost_net || 0) - staffCostNet) / product.price_net) * 100).toFixed(1) : '0'}%`],
+ ['Cena z transportem i logistyką', `${((product.price_net || 0) + (product.transport_cost_net || 0) + (product.logistics_cost_net || 0)).toLocaleString('pl-PL')} zł netto`],
+ ['Koszt łącznie z obsadą, transportem i logistyką', staffCostNet == null ? 'Nieustalony — uzupełnij obsadę' : `${((product.cost_net || 0) + staffCostNet + (product.transport_cost_net || 0) + (product.logistics_cost_net || 0)).toLocaleString('pl-PL')} zł`],
+].map(([label, value]) => <div key={label}><dt className="text-xs text-[#e5e4e2]/45">{label}</dt><dd className="mt-1 text-sm text-[#e5e4e2]">{value}</dd></div>)}</dl>)}
+              renderEditor={(product, setProduct) => (<ProductPricingPanel product={product} canEdit={canEdit} onChange={setProduct} className="!bg-transparent !p-0 !border-0" hideHeading />)}
+            /></ProductSettingsDrawer>
+          <div className="pt-4"><h2 className="text-sm font-semibold uppercase tracking-wider text-[#d3bb73]">Realizacja i ustawienia dodatkowe</h2><p className="mt-1 text-sm text-[#e5e4e2]/45">Rozwiń wybraną sekcję, aby sprawdzić lub zmienić konfigurację.</p></div>
+
+<ProductSettingsDrawer title="Warunki techniczne i logistyka" description="Transport, montaż, demontaż i ograniczenia realizacji."><ProductDataSection<IProduct>
+              title="Ustawienia realizacji" value={product} fields={["requires_vehicle", "requires_driver", "is_personnel_service", "setup_time_hours", "teardown_time_hours", "max_quantity"]}
+              canEdit={canEdit} disabled={saving || savingVariants || savingAddons || savingRequirements || Boolean(savingProductSection)}
+              onEditingChange={editing => setSectionEditing('technical', editing)}
+              onSave={patch => saveProductSection('technical', patch)}
+              
+              renderView={(product) => (<dl className="grid gap-4 sm:grid-cols-2">{[['Pojazd', product.requires_vehicle ? 'Wymagany' : 'Niewymagany'], ['Kierowca', product.requires_driver ? 'Wymagany' : 'Niewymagany'], ['Usługa personelu bez sprzętu', product.is_personnel_service ? 'Tak' : 'Nie'], ['Montaż', `${product.setup_time_hours || 0} h`], ['Demontaż', `${product.teardown_time_hours || 0} h`], ['Maksymalna ilość', product.max_quantity == null ? 'Bez limitu' : String(product.max_quantity)]].map(([label, value]) => <div key={label}><dt className="text-xs text-[#e5e4e2]/45">{label}</dt><dd className="mt-1 text-sm text-[#e5e4e2]">{value}</dd></div>)}</dl>)}
+              renderEditor={(product, setProduct) => (<div className="space-y-4">{([['requires_vehicle', 'Wymaga pojazdu'], ['requires_driver', 'Wymaga kierowcy'], ['is_personnel_service', 'Usługa personelu — bez sprzętu']] as const).map(([key, label]) => <label key={key} className="flex items-center gap-2 text-sm text-[#e5e4e2]"><input type="checkbox" checked={Boolean(product[key])} onChange={e => setProduct({ ...product, [key]: e.target.checked })} className="accent-[#d3bb73]" />{label}</label>)}<div className="grid gap-4 sm:grid-cols-2">{([['setup_time_hours', 'Montaż (h)'], ['teardown_time_hours', 'Demontaż (h)']] as const).map(([key, label]) => <label key={key} className="text-sm text-[#e5e4e2]/65">{label}<input type="number" min="0" step="0.25" value={product[key] || 0} onChange={e => setProduct({ ...product, [key]: Number(e.target.value) })} className="mt-1 w-full rounded-lg border border-white/10 bg-black/15 px-3 py-2 text-sm text-[#e5e4e2]" /></label>)}<label className="text-sm text-[#e5e4e2]/65">Maksymalna ilość<input type="number" min="0" step="0.01" value={product.max_quantity ?? ''} onChange={e => setProduct({ ...product, max_quantity: e.target.value === '' ? null : Number(e.target.value) })} placeholder="Bez limitu" className="mt-1 w-full rounded-lg border border-white/10 bg-black/15 px-3 py-2 text-sm text-[#e5e4e2]" /></label></div></div>)}
+            /></ProductSettingsDrawer>
+{persistedProductVariants.length > 0 && (<ProductSettingsDrawer title="Zakres konfiguracji wariantu" description="Wybierz produkt bazowy lub wariant dla sprzętu, obsady i klauzul.">        {persistedProductVariants.length > 0 && (
+          <section className="rounded-xl border border-[#d3bb73]/25 bg-[#1c1f33] p-6 ">
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_1fr] lg:items-end">
               <div>
                 <label className="mb-2 block text-xs font-semibold uppercase tracking-[.16em] text-[#d3bb73]">
                   Konfigurowany zakres produktu
@@ -2823,408 +2250,8 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
           </section>
         )}
 
-        {/* Pricing */}
-        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6 lg:hidden">
-          <div className="mb-4 flex items-center gap-2">
-            <DollarSign className="h-5 w-5 text-[#d3bb73]" />
-            <h2 className="text-lg font-medium text-[#e5e4e2]">Ceny i koszty (netto/brutto)</h2>
-          </div>
-
-          <div className="space-y-4">
-            <div>
-              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Stawka VAT (%)</label>
-              <input
-                type="number"
-                value={Number.isFinite(product?.vat_rate) ? product?.vat_rate : 0}
-                onChange={(e) => {
-                  const vat = toNumber(e.target.value);
-                  setProduct({
-                    ...product,
-                    vat_rate: vat,
-                    price_gross: round2(priceNet * (1 + vat / 100)),
-                    cost_gross: round2(costNet * (1 + vat / 100)),
-                    transport_cost_gross: round2(transportNet * (1 + vat / 100)),
-                    logistics_cost_gross: round2(logisticsNet * (1 + vat / 100)),
-                  });
-                }}
-                disabled={!canEdit}
-                step="0.01"
-                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Cena netto</label>
-                <input
-                  type="number"
-                  value={Number(priceNet.toFixed(2))}
-                  onChange={(e) => updateNetPrice(parseFloat(e.target.value))}
-                  disabled={!canEdit}
-                  step="0.01"
-                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
-                />
-              </div>
-              <div>
-                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Cena brutto</label>
-                <input
-                  type="number"
-                  value={Number(priceGross.toFixed(2))}
-                  onChange={(e) => updateGrossPrice(parseFloat(e.target.value))}
-                  disabled={!canEdit}
-                  step="0.01"
-                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Koszt netto</label>
-                <input
-                  type="number"
-                  value={Number(costNet.toFixed(2))}
-                  onChange={(e) => updateNetCost(parseFloat(e.target.value))}
-                  disabled={!canEdit}
-                  step="0.01"
-                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
-                />
-              </div>
-              <div>
-                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Koszt brutto</label>
-                <input
-                  type="number"
-                  value={Number(costGross.toFixed(2))}
-                  onChange={(e) => updateGrossCost(parseFloat(e.target.value))}
-                  disabled={!canEdit}
-                  step="0.01"
-                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Transport netto</label>
-                <input
-                  type="number"
-                  value={Number(transportNet.toFixed(2))}
-                  onChange={(e) => {
-                    const net = parseFloat(e.target.value);
-                    setProduct({
-                      ...product,
-                      transport_cost_net: net,
-                      transport_cost_gross: net * (1 + product?.vat_rate / 100),
-                    });
-                  }}
-                  disabled={!canEdit}
-                  step="0.01"
-                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
-                />
-              </div>
-              <div>
-                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Logistyka netto</label>
-                <input
-                  type="number"
-                  value={Number(logisticsNet.toFixed(2))}
-                  onChange={(e) => {
-                    const net = parseFloat(e.target.value);
-                    setProduct({
-                      ...product,
-                      logistics_cost_net: net,
-                      logistics_cost_gross: net * (1 + product?.vat_rate / 100),
-                    });
-                  }}
-                  disabled={!canEdit}
-                  step="0.01"
-                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2 border-t border-[#d3bb73]/10 pt-4">
-              <div className="flex justify-between text-sm">
-                <span className="text-[#e5e4e2]/60">Marża:</span>
-                <span
-                  className={`font-medium ${
-                    margin > 50
-                      ? 'text-green-400'
-                      : margin > 30
-                        ? 'text-yellow-400'
-                        : 'text-red-400'
-                  }`}
-                >
-                  {margin.toFixed(1)}% (
-                  {Number((priceNet - costNet).toFixed(2)).toLocaleString('pl-PL')} zł netto)
-                </span>
-              </div>
-
-              <div className="flex justify-between text-sm">
-                <span className="text-[#e5e4e2]/60">Całkowity koszt:</span>
-                <span className="text-[#e5e4e2]">
-                  {Number(totalCostNet.toFixed(2)).toLocaleString('pl-PL')} zł netto /{' '}
-                  {Number(totalCostGross.toFixed(2)).toLocaleString('pl-PL')} zł brutto
-                </span>
-              </div>
-
-              <div className="flex justify-between text-sm">
-                <span className="text-[#e5e4e2]/60">Całkowita cena:</span>
-                <span className="font-medium text-[#d3bb73]">
-                  {Number(totalPriceNet.toFixed(2)).toLocaleString('pl-PL')} zł netto /{' '}
-                  {Number(totalPriceGross.toFixed(2)).toLocaleString('pl-PL')} zł brutto
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-        {/* PDF Upload Section */}
-        {productId !== 'new' && (
-          <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
-            <div className="mb-4 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <FileText className="h-5 w-5 text-[#d3bb73]" />
-                <h2 className="text-lg font-medium text-[#e5e4e2]">Strona PDF produktu</h2>
-              </div>
-
-              {/* JEDEN ActionBar */}
-              <ResponsiveActionBar actions={pdfSectionActions} />
-            </div>
-
-            <div className="space-y-4">
-              <p className="text-sm text-[#e5e4e2]/60">
-                Upload pojedynczej strony PDF dla tego produktu. Strona zostanie automatycznie
-                dołączona do finalnej oferty.
-              </p>
-
-              {product.pdf_page_url ? (
-                <div className="rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] p-4">
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-[200px_1fr] md:items-start">
-                    {/* Miniaturka / placeholder */}
-                    <div className="relative">
-                      {product.pdf_thumbnail_url ? (
-                        <div
-                          className="group relative cursor-pointer"
-                          onClick={handleOpenPdf}
-                          title="Otwórz PDF"
-                        >
-                          <Image
-                            src={
-                              thumbSrc ??
-                              bucket.getPublicUrl(product.pdf_thumbnail_url).data.publicUrl
-                            }
-                            alt="Podgląd PDF"
-                            className="w-full rounded-lg border border-[#d3bb73]/20 transition-colors hover:border-[#d3bb73]/40"
-                            width={400}
-                            height={520}
-                            sizes="200px"
-                            priority
-                            onError={async () => {
-                              // fallback tylko jeśli publicUrl nie działa (np. prywatny bucket)
-                              const { data } = await bucket.createSignedUrl(
-                                product.pdf_thumbnail_url!,
-                                3600,
-                              );
-                              if (data?.signedUrl) setThumbSrc(data.signedUrl);
-                            }}
-                          />
-                          {/* Oczko na hover */}
-                          <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
-                            <Eye className="h-8 w-8 text-white" />
-                          </div>
-                        </div>
-                      ) : (
-                        <div
-                          className="flex aspect-[3/4] w-full items-center justify-center rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33]"
-                          title="Brak miniaturki"
-                        >
-                          <FileText className="h-12 w-12 text-[#e5e4e2]/20" />
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Informacje + (warunkowo) wybór miniaturki */}
-                    <div className="flex flex-col justify-center">
-                      <div className="mb-2 flex items-center gap-2">
-                        <FileText className="h-5 w-5 text-[#d3bb73]" />
-                        <div className="font-medium text-[#e5e4e2]">Strona PDF przesłana</div>
-                      </div>
-
-                      <div className="text-sm text-[#e5e4e2]/60">
-                        {product.pdf_thumbnail_url
-                          ? 'Kliknij miniaturkę aby otworzyć PDF w nowej karcie'
-                          : 'PDF jest dostępny, ale nie ma miniaturki'}
-                      </div>
-
-                      {/* WYBÓR MINIATURKI: tylko gdy thumbnail === null */}
-                      {canEdit && !product.pdf_thumbnail_url && (
-                        <div className="mt-4 space-y-2">
-                          <p className="text-xs text-[#e5e4e2]/60">
-                            Dodaj miniaturkę aby zobaczyć podgląd zawartości PDF
-                          </p>
-
-                          <input
-                            type="file"
-                            accept="image/*"
-                            onChange={(e) => {
-                              const file = e.target.files?.[0];
-                              if (!file) return;
-                              if (!file.type.startsWith('image/')) {
-                                showSnackbar('Tylko pliki graficzne są dozwolone', 'error');
-                                return;
-                              }
-                              setThumbnailFile(file);
-                            }}
-                            className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] file:mr-4 file:rounded-lg file:border-0 file:bg-[#d3bb73] file:px-4 file:py-2 file:text-sm file:text-[#1c1f33] hover:file:bg-[#d3bb73]/90"
-                          />
-
-                          {thumbnailFile && (
-                            <p className="text-xs text-[#d3bb73]">
-                              Wybrany plik: {thumbnailFile.name} (
-                              {(thumbnailFile.size / 1024).toFixed(2)} KB)
-                            </p>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ) : canEdit ? (
-                <div className="space-y-3">
-                  <div>
-                    <label className="mb-2 block text-sm text-[#e5e4e2]/60">Wybierz plik PDF</label>
-                    <input
-                      type="file"
-                      accept=".pdf,application/pdf"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-                        if (file.type !== 'application/pdf') {
-                          showSnackbar('Tylko pliki PDF są dozwolone', 'error');
-                          return;
-                        }
-                        setPdfFile(file);
-                      }}
-                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] file:mr-4 file:rounded-lg file:border-0 file:bg-[#d3bb73] file:px-4 file:py-2 file:text-sm file:text-[#1c1f33] hover:file:bg-[#d3bb73]/90"
-                    />
-
-                    {pdfFile && (
-                      <p className="mt-2 text-xs text-[#d3bb73]">
-                        Wybrany plik: {pdfFile.name} ({(pdfFile.size / 1024).toFixed(2)} KB)
-                      </p>
-                    )}
-                  </div>
-
-                  {/* ActionBar już jest w headerze, więc tu nie dajemy przycisku */}
-                  <p className="text-xs text-[#e5e4e2]/40">
-                    Kliknij “Prześlij PDF” w prawym górnym rogu sekcji.
-                  </p>
-                </div>
-              ) : null}
-
-              {!canEdit && !product.pdf_page_url && (
-                <p className="py-4 text-center text-sm text-[#e5e4e2]/40">
-                  Brak strony PDF dla tego produktu
-                </p>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Tags */}
-        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
-          <div className="mb-4 flex items-center gap-2">
-            <Tag className="h-5 w-5 text-[#d3bb73]" />
-            <h2 className="text-lg font-medium text-[#e5e4e2]">Tagi</h2>
-          </div>
-
-          <div>
-            <label className="mb-2 block text-sm text-[#e5e4e2]/60">
-              Tagi (oddzielone przecinkami)
-              <span className="ml-2 text-xs text-[#e5e4e2]/40">np: dj, wesele, premium</span>
-            </label>
-
-            <input
-              type="text"
-              value={tagsInput}
-              onChange={(e) => setTagsInput(e.target.value)}
-              onBlur={() => {
-                const tags = parseTags(tagsInput);
-                setProduct((p) => (p ? { ...p, tags } : p));
-                setTagsInput(tags.join(', '));
-              }}
-              disabled={!canEdit}
-              placeholder="Wpisz tagi oddzielone przecinkami..."
-              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] placeholder:text-[#e5e4e2]/30 disabled:opacity-50"
-            />
-
-            <p className="mt-1 text-xs text-[#e5e4e2]/40">
-              Tagi pomagają w wyszukiwaniu produktów w ofercie
-            </p>
-          </div>
-
-          {product.tags?.length > 0 && (
-            <div className="mt-4 flex flex-wrap gap-2">
-              {product.tags.map((tag, idx) => (
-                <div
-                  key={`${tag}-${idx}`}
-                  className="flex items-center gap-1 rounded-full bg-[#d3bb73]/20 px-3 py-1 text-sm text-[#d3bb73]"
-                >
-                  <span>{tag}</span>
-                  {canEdit && (
-                    <button
-                      onClick={() =>
-                        setProduct({
-                          ...product,
-                          tags: product.tags.filter((_, i) => i !== idx),
-                        })
-                      }
-                      className="ml-1 text-[#d3bb73]/60 transition-colors hover:text-[#d3bb73]"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Subcontractor Info (w trybie edycji) */}
-      {productId !== 'new' && product?.is_subcontractor_service && (
-        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
-          <div className="mb-4 flex items-center gap-2">
-            <Building2 className="h-5 w-5 text-[#d3bb73]" />
-            <h2 className="text-lg font-medium text-[#e5e4e2]">Informacje o podwykonawcy</h2>
-          </div>
-
-          <div className="space-y-4">
-            <div className="rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] p-4">
-              <div className="mb-2 flex items-center gap-2">
-                <Building2 className="h-5 w-5 text-[#d3bb73]" />
-                <span className="text-sm font-medium text-[#e5e4e2]">Usługa od podwykonawcy</span>
-              </div>
-              <p className="text-sm text-[#e5e4e2]/60">
-                Ten produkt jest powiązany z usługą świadczoną przez podwykonawcę
-              </p>
-            </div>
-
-            {product.subcontractor_id && (
-              <a
-                href={`/crm/contacts/${product.subcontractor_id}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 text-sm text-[#d3bb73] transition-colors hover:text-[#d3bb73]/80"
-              >
-                <ExternalLink className="h-4 w-4" />
-                Otwórz kartę podwykonawcy
-              </a>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Equipment */}
+</ProductSettingsDrawer>)}
+{productId !== 'new' && !(product.sales_packages_enabled && product.sales_packages?.length) && (<ProductSettingsDrawer title="Sprzęt i zasoby" description="Wyposażenie potrzebne do realizacji." canEdit={canEdit} render={(canEdit) => (<>      {/* Equipment */}
       {productId !== 'new' && (
         <ProductEquipment
           canEdit={canEdit}
@@ -3239,7 +2266,27 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
         />
       )}
 
-      {/* Mavinci LIVE */}
+</>)} />)}
+{productId !== 'new' && !(product.sales_packages_enabled && product.sales_packages?.length) && (<ProductSettingsDrawer title="Obsada i personel" description="Role, liczba osób i koszty, również za realizację oraz przy wypłacie gotówką." canEdit={canEdit} render={(canEdit) => (<>      {/* Staff */}
+      {productId !== 'new' && (
+        <ProductStaffSection
+          productId={productId === 'new' ? null : productId}
+          productVariantId={selectedConfigurationVariant?.id || null}
+          productVariantName={selectedConfigurationVariant?.name || null}
+          isInherited={Boolean(
+            selectedConfigurationVariant && !selectedConfigurationVariant.overrides_staff,
+          )}
+          canEdit={canEdit}
+          draftStaff={draftStaff}
+          setDraftStaff={setDraftStaff}
+          onCostChange={setStaffCostNet}
+          onCustomizeVariant={() => handleCustomizeVariantSection('staff')}
+          onResetInheritance={() => handleResetVariantSection('staff')}
+        />
+      )}
+
+</>)} />)}
+{productId !== 'new' && (<ProductSettingsDrawer title="Mavinci LIVE" description="Moduły uruchamiane przy realizacji produktu." canEdit={canEdit} render={(canEdit) => (<>      {/* Mavinci LIVE */}
       {productId !== 'new' && (
         <ProductMavinciLiveModules
           productId={productId}
@@ -3254,24 +2301,8 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
         />
       )}
 
-      {/* Staff */}
-      {productId !== 'new' && (
-        <ProductStaffSection
-          productId={productId === 'new' ? null : productId}
-          productVariantId={selectedConfigurationVariant?.id || null}
-          productVariantName={selectedConfigurationVariant?.name || null}
-          isInherited={Boolean(
-            selectedConfigurationVariant && !selectedConfigurationVariant.overrides_staff,
-          )}
-          canEdit={canEdit}
-          draftStaff={draftStaff}
-          setDraftStaff={setDraftStaff}
-          onCustomizeVariant={() => handleCustomizeVariantSection('staff')}
-          onResetInheritance={() => handleResetVariantSection('staff')}
-        />
-      )}
-
-      {/* Contract Clauses */}
+</>)} />)}
+{productId !== 'new' && (<ProductSettingsDrawer title="Klauzule i warunki umowy" description="Stałe ustalenia wykorzystywane w dokumentach.">      {/* Contract Clauses */}
       {productId !== 'new' && product && (
         <ProductContractClauses
           productId={productId}
@@ -3366,6 +2397,247 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
           }
         />
       )}
+
+</ProductSettingsDrawer>)}
+<ProductSettingsDrawer title="Podwykonawca" description="Powiązanie produktu z zewnętrzną usługą."><ProductDataSection<IProduct>
+              title="Podwykonawca" value={product} fields={["is_subcontractor_service", "subcontractor_id", "subcontractor_service_catalog_id", "subcontractor_settlement_method", "subcontractor_economic_cost", "vat_rate", "price_net", "price_gross", "cost_net", "cost_gross", "transport_cost_net", "transport_cost_gross", "logistics_cost_net", "logistics_cost_gross", "base_price"]}
+              canEdit={canEdit} disabled={saving || savingVariants || savingAddons || savingRequirements || Boolean(savingProductSection)}
+              onEditingChange={editing => setSectionEditing('supplier', editing)}
+              onSave={patch => saveProductSection('supplier', patch)}
+              
+              renderView={(product) => (<div className="space-y-2 text-sm text-[#e5e4e2]/65"><p>{product.is_subcontractor_service ? 'Usługa realizowana przez podwykonawcę' : 'Realizacja własna'}</p>{product.subcontractor_id && <a href={`/crm/contacts/${product.subcontractor_id}`} target="_blank" rel="noopener noreferrer" className="text-[#d3bb73]">{subcontractors.find(item => item.id === product.subcontractor_id)?.name || 'Otwórz kartę podwykonawcy'}</a>}</div>)}
+              renderEditor={(product, setProduct) => (<>            {/* Sekcja Podwykonawcy */}
+            <div className="space-y-3 rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] p-4">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={product?.is_subcontractor_service || false}
+                  onChange={(e) => {
+                    const isChecked = e.target.checked;
+                    setProduct({
+                      ...product,
+                      is_subcontractor_service: isChecked,
+                      subcontractor_id: isChecked ? product.subcontractor_id : null,
+                      subcontractor_service_catalog_id: isChecked
+                        ? product.subcontractor_service_catalog_id
+                        : null,
+                      subcontractor_settlement_method: isChecked
+                        ? product.subcontractor_settlement_method
+                        : null,
+                      subcontractor_economic_cost: isChecked
+                        ? product.subcontractor_economic_cost
+                        : null,
+                    });
+                    if (!isChecked) {
+                      
+                      
+                    }
+                  }}
+                  disabled={!canEdit}
+                  className="h-4 w-4 rounded border-[#d3bb73]/20 bg-[#0f1119] text-[#d3bb73]"
+                />
+                <span className="text-sm font-medium text-[#e5e4e2]">Usługa od podwykonawcy</span>
+              </label>
+
+              {product?.is_subcontractor_service && (
+                <div className="space-y-3">
+                  <div>
+                    <label className="mb-1 block text-xs text-[#e5e4e2]/60">Podwykonawca</label>
+                    <select
+                      value={product.subcontractor_id || ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setSelectedSubcontractor(val);
+                        setProduct({ ...product, subcontractor_id: val || null });
+                      }}
+                      disabled={!canEdit || loadingSubcontractors}
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-2 text-sm text-[#e5e4e2]"
+                    >
+                      <option value="">-- Wybierz podwykonawcę --</option>
+                      {subcontractors.map((org) => (
+                        <option key={org.id} value={org.id}>
+                          {org.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {product.subcontractor_id && (
+                    <div>
+                      <label className="mb-1 block text-xs text-[#e5e4e2]/60">Usługa</label>
+                      <select
+                        value={product.subcontractor_service_catalog_id || ''}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          
+                          setProduct(applySupplierService(product, val));
+                        }}
+                        disabled={!canEdit}
+                        className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-2 text-sm text-[#e5e4e2]"
+                      >
+                        <option value="">-- Wybierz usługę --</option>
+                        {subcontractorServices.map((item) => {
+                          const isEquip = (item as any)._type === 'equipment';
+                          const price = isEquip
+                            ? (item as any).rental_price_per_day
+                            : (item as any).unit_price;
+                          const unit = isEquip ? 'dzień' : (item as any).unit || 'szt';
+                          const badge = isEquip ? '[WYNAJEM] ' : '[USŁUGA] ';
+                          const economicCost = Number((item as any).economic_cost ?? price ?? 0);
+                          const cashCostLabel =
+                            !isEquip && (item as any).settlement_method === 'cash_non_deductible'
+                              ? ` · koszt firmy ${economicCost.toLocaleString('pl-PL')} zł`
+                              : '';
+                          return (
+                            <option key={item.id} value={item.id}>
+                              {badge}
+                              {item.name} - {price?.toLocaleString('pl-PL') || '0'} zł / {unit}
+                              {cashCostLabel}
+                            </option>
+                          );
+                        })}
+                      </select>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+</>)}
+            /></ProductSettingsDrawer>
+<ProductSettingsDrawer title="Tagi i wyszukiwanie" description="Słowa ułatwiające odnalezienie produktu."><ProductDataSection<IProduct>
+              title="Tagi" value={product} fields={["tags"]}
+              canEdit={canEdit} disabled={saving || savingVariants || savingAddons || savingRequirements || Boolean(savingProductSection)}
+              onEditingChange={editing => setSectionEditing('tags', editing)}
+              onSave={patch => saveProductSection('tags', patch)}
+              
+              renderView={(product) => (<div className="flex flex-wrap gap-2">{product.tags?.length ? product.tags.map((tag, index) => <span key={index} className="rounded-full bg-[#d3bb73]/10 px-3 py-1 text-sm text-[#d3bb73]">{tag}</span>) : <p className="text-sm text-[#e5e4e2]/50">Brak tagów.</p>}</div>)}
+              renderEditor={(product, setProduct) => (<label className="text-sm text-[#e5e4e2]/65">Tagi oddzielone przecinkami<input value={(product.tags || []).join(',')} onChange={e => setProduct({ ...product, tags: e.target.value.split(',') })} className="mt-1 w-full rounded-lg border border-white/10 bg-black/15 px-3 py-2 text-sm text-[#e5e4e2]" /></label>)}
+            /></ProductSettingsDrawer>
+{productId === 'new' && (<ProductSettingsDrawer title="Import usługi od podwykonawcy" description="Utworzenie produktu na podstawie istniejącej usługi." canEdit={canEdit} render={(canEdit) => (<>      {/* Subcontractor Import (tylko w trybie NEW) */}
+      {productId === 'new' && (
+        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+          <div className="mb-4 flex items-center gap-2">
+            <Building2 className="h-5 w-5 text-[#d3bb73]" />
+            <h2 className="text-lg font-medium text-[#e5e4e2]">Import usługi od podwykonawcy</h2>
+          </div>
+
+          <div className="space-y-4">
+            <p className="text-sm text-[#e5e4e2]/60">
+              Zaznacz poniżej, jeśli chcesz stworzyć produkt bazujący na usłudze podwykonawcy
+            </p>
+
+            <div>
+              <label className="mb-2 flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={product?.is_subcontractor_service || false}
+                  onChange={(e) => {
+                    setProduct({ ...product!, is_subcontractor_service: e.target.checked });
+                    if (!e.target.checked) {
+                      setSelectedSubcontractor('');
+                      setSelectedService('');
+                    }
+                  }}
+                  disabled={!canEdit}
+                  className="h-4 w-4 rounded border-[#d3bb73]/20 bg-[#0a0d1a] text-[#d3bb73] focus:ring-[#d3bb73]"
+                />
+                <span className="text-sm text-[#e5e4e2]">To jest usługa od podwykonawcy</span>
+              </label>
+            </div>
+
+            {product?.is_subcontractor_service && (
+              <>
+                <div>
+                  <label className="mb-2 block text-sm text-[#e5e4e2]/60">
+                    Wybierz podwykonawcę
+                  </label>
+                  <select
+                    value={selectedSubcontractor}
+                    onChange={(e) => setSelectedSubcontractor(e.target.value)}
+                    disabled={!canEdit || loadingSubcontractors}
+                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
+                  >
+                    <option value="">-- Wybierz podwykonawcę --</option>
+                    {subcontractors.map((org) => (
+                      <option key={org.id} value={org.id}>
+                        {org.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {selectedSubcontractor && (
+                  <div>
+                    <label className="mb-2 block text-sm text-[#e5e4e2]/60">Wybierz usługę</label>
+                    <select
+                      value={selectedService}
+                      onChange={(e) => setSelectedService(e.target.value)}
+                      disabled={!canEdit}
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
+                    >
+                      <option value="">-- Wybierz usługę --</option>
+                      {subcontractorServices.map((item) => {
+                        const isEquipment = (item as any)._type === 'equipment';
+                        const price = isEquipment
+                          ? (item as any).rental_price_per_day
+                          : (item as any).unit_price;
+                        const unit = isEquipment ? 'dzień' : (item as any).unit || 'szt';
+                        const badge = isEquipment ? '[WYNAJEM] ' : '[USŁUGA] ';
+
+                        return (
+                          <option key={item.id} value={item.id}>
+                            {badge}
+                            {item.name} - {price?.toLocaleString('pl-PL') || '0'} zł / {unit}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+                )}
+
+                {selectedService && (
+                  <button
+                    onClick={handleImportServiceFromSubcontractor}
+                    className="w-full rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
+                  >
+                    Importuj usługę
+                  </button>
+                )}
+
+                {selectedSubcontractor && (
+                  <a
+                    href={`/crm/contacts/${selectedSubcontractor}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 text-sm text-[#d3bb73] transition-colors hover:text-[#d3bb73]/80"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    Otwórz kartę podwykonawcy
+                  </a>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+</>)} />)}
+        </div>
+        <aside className="min-w-0 order-first lg:order-last lg:sticky lg:top-6 lg:col-span-4 lg:max-h-[calc(100dvh-3rem)] lg:overflow-y-auto lg:[scrollbar-gutter:stable]">
+          {product.sales_packages_enabled && Boolean(product.sales_packages?.length) && <div className="mb-3 flex gap-2 rounded-lg bg-[#1c1f33] p-2">
+            <button type="button" aria-pressed={previewPage === 'elements'} onClick={() => setPreviewPage('elements')} className={`flex-1 rounded-md px-3 py-2 text-sm ${previewPage === 'elements' ? 'bg-[#d3bb73]/15 text-[#d3bb73]' : 'text-white/60'}`}>Elementy</button>
+            <button type="button" aria-pressed={previewPage === 'packages'} onClick={() => setPreviewPage('packages')} className={`flex-1 rounded-md px-3 py-2 text-sm ${previewPage === 'packages' ? 'bg-[#d3bb73]/15 text-[#d3bb73]' : 'text-white/60'}`}>Pakiety</button>
+          </div>}
+          <ProductOfferCardPreview
+            previewPage={product.sales_packages_enabled && product.sales_packages?.length ? previewPage : 'elements'}
+            product={{ ...product, ...basicPreview, offer_product_variants: visibleVariants }}
+            imageUrl={offerImageSrc}
+            variantImageUrls={variantImageUrls}
+          />
+
+        </aside>
+      </div>
 
       {/* Add Equipment/Kit Modal */}
       {showAddEquipmentModal && (

@@ -1,5 +1,7 @@
 'use client';
 
+import { systemLabel } from '@/lib/ui/systemLabels';
+
 import { useState, useEffect, useRef } from 'react';
 import { Calendar, Plus, X, Search } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
@@ -150,7 +152,7 @@ export default function RelatedEventsSelector({
       completed: 'Zakończony',
       cancelled: 'Anulowany',
     };
-    return statusMap[status] || status;
+    return statusMap[status] || systemLabel(status);
   };
 
   return (

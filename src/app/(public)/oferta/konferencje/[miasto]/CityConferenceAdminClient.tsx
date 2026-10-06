@@ -2,46 +2,17 @@
 
 import { useState } from 'react';
 import { Settings } from 'lucide-react';
-import CityPageSEOModal from '@/components/CityPageSEOModal';
+import { PageMetadataModal } from '@/components/PageMetadataModal';
 
-type Props = {
-  isAdmin: boolean;
-  cityLocality: string;
-  cityName: string;
-  defaultTitle: string;
-  defaultDescription: string;
-};
+type Props = { isAdmin: boolean; pageSlug: string; cityName: string };
 
-export default function CityConferenceAdminClient({
-  isAdmin,
-  cityLocality,
-  cityName,
-  defaultTitle,
-  defaultDescription,
-}: Props) {
-  const [isSEOModalOpen, setIsSEOModalOpen] = useState(false);
-
+export default function CityConferenceAdminClient({ isAdmin, pageSlug, cityName }: Props) {
+  const [isOpen, setIsOpen] = useState(false);
   if (!isAdmin) return null;
-
-  return (
-    <>
-      <button
-        onClick={() => setIsSEOModalOpen(true)}
-        className="fixed bottom-24 right-6 z-40 flex items-center gap-2 rounded-full bg-[#d3bb73] px-4 py-3 text-sm font-medium text-[#1c1f33] shadow-lg transition-all hover:scale-105 hover:bg-[#d3bb73]/90"
-      >
-        <Settings className="h-4 w-4" />
-        Metadane SEO
-      </button>
-
-      <CityPageSEOModal
-        isOpen={isSEOModalOpen}
-        onClose={() => setIsSEOModalOpen(false)}
-        pageType="konferencje"
-        citySlug={cityLocality}
-        cityName={cityName}
-        defaultTitle={defaultTitle}
-        defaultDescription={defaultDescription}
-      />
-    </>
-  );
+  return <>
+    <button type="button" onClick={() => setIsOpen(true)} className="fixed bottom-24 right-6 z-40 flex items-center gap-2 rounded-full bg-[#d3bb73] px-4 py-3 text-sm font-medium text-[#1c1f33] shadow-lg hover:bg-[#e3cd8c]">
+      <Settings className="h-4 w-4" aria-hidden="true" /> Metadane SEO
+    </button>
+    {isOpen && <PageMetadataModal isOpen={isOpen} onClose={() => setIsOpen(false)} pageSlug={pageSlug} pageName={`Konferencje — ${cityName}`} />}
+  </>;
 }

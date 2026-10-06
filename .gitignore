@@ -16,6 +16,7 @@ deploy.sh
 *.local
 
 .next
+.next-build/
 .bolt
 .vscode/*
 !.vscode/extensions.json

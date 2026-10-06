@@ -1,5 +1,7 @@
 'use client';
 
+import { systemLabel } from '@/lib/ui/systemLabels';
+
 import { useState, useEffect } from 'react';
 import {
   Plus,
@@ -15,6 +17,8 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import EmployeeDrivingLicensesPanel from './EmployeeDrivingLicensesPanel';
+import { isDrivingLicenseCertification } from '@/lib/CRM/employees/drivingLicenses';
+import { useSnackbar } from '@/contexts/SnackbarContext';
 
 interface Certification {
   id: string;
@@ -80,6 +84,7 @@ export default function EmployeeQualificationsTab({
   employeeId,
   canEdit,
 }: EmployeeQualificationsTabProps) {
+  const { showSnackbar } = useSnackbar();
   const [certifications, setCertifications] = useState<Certification[]>([]);
   const [skills, setSkills] = useState<Skill[]>([]);
   const [availableCertTypes, setAvailableCertTypes] = useState<CertificationType[]>([]);
@@ -174,6 +179,10 @@ export default function EmployeeQualificationsTab({
   };
 
   const handleAddCertification = async (formData: any) => {
+    if (isDrivingLicenseCertification(availableCertTypes.find((type) => type.id === formData.certification_type_id)?.name)) {
+      showSnackbar('Prawo jazdy dodaj w sekcji Prawa jazdy — to jedyne źródło kategorii dla floty.', 'info');
+      return;
+    }
     const { error } = await supabase.from('employee_certifications').insert([
       {
         employee_id: employeeId,
@@ -210,6 +219,10 @@ export default function EmployeeQualificationsTab({
   };
 
   const handleUpdateCertification = async (id: string, formData: any) => {
+    if (isDrivingLicenseCertification(availableCertTypes.find((type) => type.id === formData.certification_type_id)?.name)) {
+      showSnackbar('Prawo jazdy edytuj w sekcji Prawa jazdy.', 'info');
+      return;
+    }
     const { error } = await supabase.from('employee_certifications').update(formData).eq('id', id);
 
     if (error) {
@@ -283,7 +296,7 @@ export default function EmployeeQualificationsTab({
       advanced: 'Zaawansowany',
       expert: 'Ekspert',
     };
-    return labels[level as keyof typeof labels] || level;
+    return labels[level as keyof typeof labels] || systemLabel(level, 'skill');
   };
 
   const getProficiencyColor = (level: string) => {
@@ -295,6 +308,10 @@ export default function EmployeeQualificationsTab({
     };
     return colors[level as keyof typeof colors] || 'bg-gray-500/20 text-gray-400';
   };
+
+  const legacyDrivingCertificates = certifications.filter((cert) => isDrivingLicenseCertification(cert.certification_type?.name));
+  const otherCertificates = certifications.filter((cert) => !isDrivingLicenseCertification(cert.certification_type?.name));
+  const otherCertTypes = availableCertTypes.filter((type) => !isDrivingLicenseCertification(type.name));
 
   if (loading) {
     return <div className="p-6 text-center text-[#e5e4e2]/60">Ładowanie...</div>;
@@ -321,10 +338,10 @@ export default function EmployeeQualificationsTab({
         </div>
 
         <div className="grid gap-3">
-          {certifications.length === 0 ? (
+          {otherCertificates.length === 0 ? (
             <div className="py-8 text-center text-[#e5e4e2]/40">Brak certyfikatów</div>
           ) : (
-            certifications.map((cert) => (
+            otherCertificates.map((cert) => (
               <div
                 key={cert.id}
                 className={`rounded-lg border bg-[#252842] p-4 ${
@@ -485,12 +502,12 @@ export default function EmployeeQualificationsTab({
       </div>
 
       {/* Prawa jazdy */}
-      <EmployeeDrivingLicensesPanel employeeId={employeeId} canEdit={canEdit} />
+      <EmployeeDrivingLicensesPanel employeeId={employeeId} canEdit={canEdit} legacyCertificates={legacyDrivingCertificates} />
 
       {/* Modal dodawania certyfikatu */}
       {showAddCertModal && (
         <AddCertificationModal
-          availableTypes={availableCertTypes}
+          availableTypes={otherCertTypes}
           onSave={handleAddCertification}
           onClose={() => setShowAddCertModal(false)}
         />
@@ -509,7 +526,7 @@ export default function EmployeeQualificationsTab({
       {editingCert && (
         <EditCertificationModal
           certification={certifications.find((c) => c.id === editingCert)!}
-          availableTypes={availableCertTypes}
+          availableTypes={otherCertTypes}
           onSave={(data) => handleUpdateCertification(editingCert, data)}
           onClose={() => setEditingCert(null)}
         />

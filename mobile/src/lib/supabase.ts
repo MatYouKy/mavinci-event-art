@@ -18,6 +18,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 
 // Types shared with web application
 export interface Employee {
+  has_realizations?: boolean;
   id: string;
   name: string;
   surname: string;

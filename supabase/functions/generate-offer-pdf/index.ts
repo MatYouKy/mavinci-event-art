@@ -1,7 +1,17 @@
+import { compactProductBlockReason, compactProductDescription } from '../_shared/productPresentation.ts';
+import { paginateProductVariants } from '../_shared/productVariantPages.ts';
+import { PACKAGE_LAYOUT as packageLayout, PACKAGE_COPY as packageCopy, validateSalesPackages, packageExtensionLabel, type ProductSalesPackage } from '../_shared/productSalesPackages.ts';
+import { expandConfiguredItems, hasOfferAddons, configurationPrice, validateConfiguration, addonMoney, createConfiguration, addonQuantity } from '../_shared/offerAddons.ts';
+import { offerPdfFileName } from '../_shared/offerPdfFileName.ts';
+import { publicProductUrl } from '../_shared/publicProductUrl.ts';
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { PDFDocument, rgb, pushGraphicsState, popGraphicsState, moveTo, lineTo, appendBezierCurve, closePath, clip, endPath, PDFName, PDFDict, PDFString, PDFArray, PDFNumber } from "npm:pdf-lib@1.17.1";
 import fontkit from "npm:@pdf-lib/fontkit@1.1.1";
+
+import { drawPaginatedOfferPricingTable } from './offerPricingTable.ts';
+
+import { createSellerDemoOffer } from '../_shared/sellerDemoOffer.ts';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -9,9 +19,14 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
+const sellerFontError = (message: string) => Object.assign(new Error(message), { code: 'SELLER_FONT_ERROR' });
+
 interface GenerateOfferPdfRequest {
   offerId: string;
   employeeId?: string;
+  outputMode?: 'crm' | 'seller_binary' | 'demo_binary' | 'demo_cover';
+  demo?: unknown;
+  expectedSourceKey?: string;
   resourceMode?: 'standard' | 'compact';
 }
 
@@ -33,6 +48,7 @@ interface TextFieldConfig {
   clickable?: boolean;
   line_height?: number;
   font_role?: 'heading' | 'body';
+  cta_button?: boolean;
   image_fit?: 'cover' | 'contain';
   image_position_x?: number;
   image_position_y?: number;
@@ -102,15 +118,35 @@ Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, {
       status: 200,
-      headers: corsHeaders,
+      headers: { ...corsHeaders, 'X-Offer-Renderer': 'seller-v1', 'X-Offer-Identity': 'organization-v1', 'X-Offer-Fonts': 'catalog-v1', 'X-Offer-Demo': 'demo-v2', 'X-Offer-Demo-Cover': 'cover-v1' },
     });
   }
+
+  const startedAt = performance.now();
+  const timings: Record<string, number> = {};
+  const assetStats = { images: 0, imageCacheHits: 0, png: 0, jpeg: 0, maxImagePixels: 0, templates: 0, templateCacheHits: 0 };
+  const timed = async <T>(stage: string, task: () => Promise<T>): Promise<T> => {
+    const start = performance.now();
+    try { return await task(); }
+    finally { timings[stage] = (timings[stage] || 0) + performance.now() - start; }
+  };
+  const reportStage = (stage: string, extra: Record<string, unknown> = {}) => {
+    const memory = Deno.memoryUsage();
+    console.info(JSON.stringify({ event: 'offer_pdf_performance', stage,
+      elapsed_ms: Math.round(performance.now() - startedAt),
+      heap_mb: Math.round(memory.heapUsed / 1048576), external_mb: Math.round(memory.external / 1048576),
+      timings_ms: Object.fromEntries(Object.entries(timings).map(([key,value]) => [key,Math.round(value)])),
+      assets: assetStats, ...extra }));
+  };
 
   try {
     const {
       offerId,
       employeeId,
       resourceMode = 'standard',
+      outputMode = 'crm',
+      expectedSourceKey,
+      demo,
     }: GenerateOfferPdfRequest = await req.json();
     const compactResourceMode = resourceMode === 'compact';
 
@@ -120,13 +156,24 @@ Deno.serve(async (req: Request) => {
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    if (!['crm','seller_binary','demo_binary','demo_cover'].includes(outputMode)) throw new Error('Nieprawidłowy tryb dokumentu.');
+    const demoCoverOnly = outputMode === 'demo_cover';
+    const demoMode = outputMode === 'demo_binary' || demoCoverOnly;
+    const sellerMode = outputMode === 'seller_binary' || demoMode;
+    // Only the authorized Next.js bridge may request a private seller PDF.
+    // Never accept branding, prices, storage paths or employee overrides from a seller.
+    if (sellerMode && req.headers.get('Authorization') !== 'Bearer ' + supabaseKey) {
+      return new Response(JSON.stringify({ error: 'Brak uprawnień' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const { data: offer, error: offerError } = await supabase
+    const { data: offer, error: offerError } = demoMode
+      ? { data: await createSellerDemoOffer(supabase, demo, offerId), error: null }
+      : await supabase
       .from("offers")
       .select(`
         *,
-        organization:organizations(*, location:locations(*), primary_contact:contacts!organizations_primary_contact_id_fkey(*)),
+        organization:organizations!offers_organization_id_fkey(*, location:locations(*), primary_contact:contacts!organizations_primary_contact_id_fkey(*)),
         contact:contacts!contact_id(*),
         contact_person:contacts!contact_id(*),
         inquiry:tasks!inquiry_id(id, title, description, due_date, inquiry_details),
@@ -180,32 +227,74 @@ Deno.serve(async (req: Request) => {
       throw new Error("Offer not found: " + offerError?.message);
     }
 
-    let acceptedCalculation: any = null;
-    const acceptedCalculationId = String(offer.event?.accepted_calculation_id || '').trim();
-    if (acceptedCalculationId) {
-      const { data } = await supabase
-        .from('event_calculations')
-        .select('id, name, created_at, is_accepted, event_calculation_items(*)')
-        .eq('id', acceptedCalculationId)
-        .maybeSingle();
-      acceptedCalculation = data || null;
-    } else {
-      const eventId = String(offer.event_id || '').trim();
-      const inquiryId = String(offer.inquiry_id || '').trim();
-      if (eventId || inquiryId) {
-        let calculationQuery = supabase
-          .from('event_calculations')
-          .select('id, name, created_at, is_accepted, event_calculation_items(*)')
-          .eq('is_accepted', true)
-          .order('created_at', { ascending: false })
-          .limit(1);
-        if (eventId && inquiryId) calculationQuery = calculationQuery.or(`event_id.eq.${eventId},inquiry_id.eq.${inquiryId}`);
-        else if (eventId) calculationQuery = calculationQuery.eq('event_id', eventId);
-        else calculationQuery = calculationQuery.eq('inquiry_id', inquiryId);
-        const { data } = await calculationQuery.maybeSingle();
-        acceptedCalculation = data || null;
+    if ((offer.sales_channel === 'seller_portal') !== sellerMode) {
+      return new Response(JSON.stringify({ error: 'Oferta sprzedawcy wymaga prywatnego generatora portalu.' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+    // Drafts may be incomplete; a customer document requires a deliberate logistics estimate.
+    // Historical accepted offers remain reproducible without editing their frozen content.
+    if (!sellerMode && offer.status !== 'accepted' && offer.logistics_cost_net == null) {
+      return new Response(JSON.stringify({ error: 'Oszacuj koszt logistyki w sekcji „Pakiety oferty”. Wpisz 0, jeśli nie ma dodatkowego kosztu.' }), { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+    const ensureSellerSource = async () => {
+      if (!sellerMode || demoMode) return;
+      const { data, error } = await supabase.rpc('seller_offer_source_key', { p_offer_id: offerId });
+      if (error || !expectedSourceKey || data !== expectedSourceKey) throw new Error('Oferta zmieniła się podczas generowania. Ponów generowanie.');
+    };
+    await ensureSellerSource();
+    const sellerBranding = sellerMode ? offer.partner_branding_snapshot || {} : {};
+    let sellerCoverUrl = '';
+    let sellerOrganizationName = '';
+    if (sellerMode) {
+      // Separate portal data from CRM relationships, calculations and base-price variants.
+      offer.event = null;
+      offer.event_id = null;
+      offer.inquiry = null;
+      offer.inquiry_id = null;
+      offer.organization = null;
+      offer.contact = null;
+      offer.contact_person = null;
+      offer.created_by_employee = {};
+      offer.packages = [];
+      offer.package_mode = false;
+      offer.logistics_enabled = false;
+      offer.hero_image_path = null;
+      offer.discount_amount = 0;
+      offer.discount_percent = 0;
+      offer.client_type = offer.portal_client_company ? 'business' : 'individual';
+      offer.offer_items = (offer.offer_items || []).map((item: any) => {
+        const price = Number(item.client_unit_price);
+        const quantity = Number(item.quantity);
+        if (!Number.isFinite(price) || price < 0 || !Number.isFinite(quantity) || quantity <= 0) throw new Error('Nieprawidłowa cena lub ilość w ofercie.');
+        return {
+          ...item, unit_price: price, final_price: price,
+          subtotal: price * quantity, total: price * quantity,
+          vat_rate: Number(offer.tax_percent ?? 23),
+          show_product_variants_in_pdf: false,
+          product: {
+            ...(item.product || {}), name: item.name,
+            description: item.description, variants: [], pdf_page_url: null,
+            offer_page_enabled: true, vat_rate: Number(offer.tax_percent ?? 23),
+            offer_image_path: item.partner_source_snapshot?.image_path || item.product?.offer_image_path,
+          },
+        };
+      });
+      const net = offer.offer_items.reduce((sum: number, item: any) => sum + item.subtotal, 0);
+      offer.subtotal = net;
+      offer.tax_amount = Math.round(net * Number(offer.tax_percent ?? 23)) / 100;
+      offer.total_amount = Math.round((net + offer.tax_amount) * 100) / 100;
+      offer.total_price = offer.total_amount;
+      if (sellerBranding.identity_version === 2) {
+        sellerOrganizationName = String(sellerBranding.organization_name || '');
+      } else {
+        const { data: profile } = await supabase.from('sales_partner_profiles').select('organization_id').eq('id', offer.sales_partner_id).single();
+        if (profile?.organization_id) {
+          const { data: organization } = await supabase.from('organizations').select('name,alias').eq('id', profile.organization_id).single();
+          sellerOrganizationName = organization?.alias || organization?.name || '';
+        }
       }
     }
+
+    const acceptedCalculation = offer.pricing_source === 'calculation' ? offer.calculation_snapshot : null;
 
     const getCalculationNumber = (calculationId?: string | null, createdAt?: string | null) => {
       if (!calculationId) return '';
@@ -221,7 +310,7 @@ Deno.serve(async (req: Request) => {
     );
 
     let currentEmployee: any = null;
-    if (employeeId) {
+    if (employeeId && !sellerMode) {
       const { data: empData } = await supabase
         .from("employees")
         .select("id, name, surname, email, phone_number, avatar_url, signature_thumb, avatar_metadata, linkedin_url, instagram_url, facebook_url")
@@ -233,12 +322,12 @@ Deno.serve(async (req: Request) => {
 
     if (!currentEmployee) {
       currentEmployee = offer.created_by_employee || {};
-      console.log('Using offer creator employee (fallback):', currentEmployee.id);
+
     } else {
-      console.log('Using logged-in employee:', currentEmployee.id);
+
     }
 
-    const getPdfAvatarUrl = (rawValue: unknown) => {
+    const getPdfAvatarUrl = (rawValue: unknown, targetWidth = 640) => {
       const value = String(rawValue || '').trim();
       if (!value) return '';
       try {
@@ -246,10 +335,12 @@ Deno.serve(async (req: Request) => {
         const publicObjectPath = '/storage/v1/object/public/';
         if (!url.pathname.includes(publicObjectPath)) return value;
         url.pathname = url.pathname.replace(publicObjectPath, '/storage/v1/render/image/public/');
-        url.searchParams.set('width', '480');
-        url.searchParams.set('height', '480');
+        url.searchParams.set('width', String(targetWidth));
+        url.searchParams.set('height', String(targetWidth));
         url.searchParams.set('resize', 'contain');
-        url.searchParams.set('quality', '78');
+        url.searchParams.set('quality', '90');
+        url.searchParams.set('format', 'origin');
+        imageFallbackUrls.set(url.toString(), value);
         return url.toString();
       } catch {
         return value;
@@ -344,13 +435,17 @@ Deno.serve(async (req: Request) => {
         event_name: offer.title || event?.name || inquiryDetails.event_name || inquiry?.title?.replace(/^Zapytanie:\s*/i, '') || '',
         event_category_id: event?.category?.id || event?.category_id || '',
         event_category_name: event?.category?.name || '',
-        event_date: (event?.event_date || offer.event_date || inquiry?.inquiry_details?.termin || inquiry?.due_date)
-          ? new Date(event?.event_date || offer.event_date || inquiry?.inquiry_details?.termin || inquiry?.due_date).toLocaleDateString('pl-PL')
+        event_date: (offer.event_date || event?.event_date || inquiry?.inquiry_details?.termin || inquiry?.due_date)
+          ? new Date(offer.event_date || event?.event_date || inquiry?.inquiry_details?.termin || inquiry?.due_date).toLocaleDateString('pl-PL')
           : '',
         event_location: firstLocationValue(offer.event_location, eventLocationText, inquiryLocationText),
         event_brief: inquiry?.description || inquiry?.inquiry_details?.description || inquiryText || '',
         event_assumptions: offer.event_assumptions || inquiryDetails.event_assumptions || inquiryDetails.scope || inquiry?.description || '',
-        event_assumption_items: normalizeOfferAssumptionItems(offer.event_assumption_items),
+        event_assumption_items: normalizeOfferAssumptionItems(
+          normalizeOfferAssumptionItems(offer.event_assumption_items).some((item) => item.value)
+            ? offer.event_assumption_items
+            : offer.inquiry?.inquiry_details?.event_assumption_items,
+        ),
         event_goal: offer.event_goal || inquiryDetails.event_goal || '',
         event_participants_stationary: stationaryMatch?.[1] || '',
         event_participants_online: onlineMatch?.[1] || '',
@@ -391,11 +486,16 @@ Deno.serve(async (req: Request) => {
         logistics_description: offer.logistics_description || '',
       };
 
-      console.log('Prepared offer data:', JSON.stringify(data, null, 2));
       return data;
     };
 
+    const wrappedTextCache = new WeakMap<object, Map<string, string[]>>();
     const wrapText = (text: string, font: any, fontSize: number, maxWidth: number): string[] => {
+      let cache = wrappedTextCache.get(font);
+      if (!cache) { cache = new Map(); wrappedTextCache.set(font, cache); }
+      const key = JSON.stringify([text,fontSize,maxWidth]);
+      const hit = cache.get(key);
+      if (hit) return [...hit];
       const lines: string[] = [];
       const paragraphs = String(text).split(/\r?\n/);
 
@@ -419,6 +519,8 @@ Deno.serve(async (req: Request) => {
         if (!paragraph && paragraphIndex < paragraphs.length - 1) lines.push('');
       });
 
+      if (cache.size >= 512) cache.clear();
+      cache.set(key, [...lines]);
       return lines;
     };
 
@@ -431,317 +533,9 @@ Deno.serve(async (req: Request) => {
     ) => {
       if (!offerItems || offerItems.length === 0) return;
 
-      let regularFont: any;
-      let boldFont: any;
-      if (overlayFontCache?.pdfDoc === pdfDoc) {
-        regularFont = overlayFontCache.regularFont;
-        boldFont = overlayFontCache.boldFont;
-      } else {
-        pdfDoc.registerFontkit(fontkit);
-        const regularFontUrl = 'https://cdn.jsdelivr.net/gh/notofonts/notofonts.github.io/fonts/NotoSans/hinted/ttf/NotoSans-Regular.ttf';
-        const boldFontUrl = 'https://cdn.jsdelivr.net/gh/notofonts/notofonts.github.io/fonts/NotoSans/hinted/ttf/NotoSans-Bold.ttf';
-        const [regularFontBytes, boldFontBytes] = await Promise.all([
-          fetch(regularFontUrl).then((res) => res.arrayBuffer()),
-          fetch(boldFontUrl).then((res) => res.arrayBuffer()),
-        ]);
-        regularFont = await pdfDoc.embedFont(regularFontBytes);
-        boldFont = await pdfDoc.embedFont(boldFontBytes);
-      }
+      const { regularFont, boldFont } = await ensureFonts(pdfDoc);
 
-      const pages = pdfDoc.getPages();
-      const page = pages[pageIndex];
-      const { width, height } = page.getSize();
-
-      const hexToRgb = (hex: string) => {
-        const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-        return result ? rgb(
-          parseInt(result[1], 16) / 255,
-          parseInt(result[2], 16) / 255,
-          parseInt(result[3], 16) / 255
-        ) : rgb(0.827, 0.733, 0.451);
-      };
-
-      const startY = config.start_y || 200;
-      const marginLeft = config.margin_left ?? 50;
-      const marginRight = config.margin_right ?? 50;
-      const showUnitPriceNet = config.show_unit_price_net !== false;
-      const showValueNet = config.show_value_net !== false;
-      const showValueGross = config.show_value_gross !== false;
-      const showVatColumn = config.show_vat_column === true;
-      const showDescription = config.show_description === true;
-      const defaultVatRate = config.vat_rate || 23;
-      const rowHeight = config.row_height || 25;
-      const headerHeight = config.header_height || 30;
-      const fontSize = config.body_font_size || 10;
-      const headerFontSize = config.header_font_size || 11;
-      const summaryThickness = config.summary_separator_thickness ?? 2;
-      const showSummary = config.show_summary !== false;
-
-      const headerColor = config.header_color ? hexToRgb(config.header_color) : rgb(0.827, 0.733, 0.451);
-      const headerTextColor = config.header_text_color ? hexToRgb(config.header_text_color) : rgb(1, 1, 1);
-      const textColor = config.text_color ? hexToRgb(config.text_color) : rgb(0.11, 0.12, 0.2);
-      const rowBgColor = config.row_bg_color ? hexToRgb(config.row_bg_color) : rgb(0.95, 0.95, 0.95);
-      const rowOddBgColor = config.row_odd_bg_color ? hexToRgb(config.row_odd_bg_color) : rgb(1, 1, 1);
-      const summaryColor = config.summary_color ? hexToRgb(config.summary_color) : headerColor;
-      const summaryLabelColor = config.summary_label_color ? hexToRgb(config.summary_label_color) : textColor;
-
-      const showBorders = config.show_borders === true;
-      const showHBorders = config.show_horizontal_borders !== false;
-      const showVBorders = config.show_vertical_borders === true;
-      const showOuterBorder = config.show_outer_border === true;
-      const borderWidth = config.border_width ?? 0.5;
-      const borderColor = config.border_color ? hexToRgb(config.border_color) : rgb(0.8, 0.8, 0.8);
-
-      const configTableWidth = config.table_width || 0;
-      const tableWidth = configTableWidth > 0 ? configTableWidth : (width - marginLeft - marginRight);
-
-      const colWidths: Record<string, number> = {
-        lp: config.col_lp_width || 22,
-        name: 0,
-        quantity: config.col_qty_width || 34,
-        unit: config.col_unit_width || 32,
-        unitPriceNet: showUnitPriceNet ? (config.col_unit_price_width || 56) : 0,
-        vat: showVatColumn ? (config.col_vat_width || 34) : 0,
-        valueNet: showValueNet ? (config.col_value_net_width || 66) : 0,
-        valueGross: showValueGross ? (config.col_value_gross_width || 66) : 0,
-      };
-
-      const fixedWidth = colWidths.lp + colWidths.quantity + colWidths.unit +
-                         colWidths.unitPriceNet + colWidths.vat + colWidths.valueNet + colWidths.valueGross;
-      colWidths.name = Math.max(80, tableWidth - fixedWidth);
-
-      let y = height - startY;
-
-      const drawBorderLine = (x1: number, y1: number, x2: number, y2: number) => {
-        if (!showBorders) return;
-        page.drawLine({ start: { x: x1, y: y1 }, end: { x: x2, y: y2 }, thickness: borderWidth, color: borderColor });
-      };
-
-      page.drawRectangle({
-        x: marginLeft,
-        y: y - headerHeight,
-        width: tableWidth,
-        height: headerHeight,
-        color: headerColor,
-      });
-
-      const headerDefs: { text: string; colKey: string; align: 'left' | 'right' | 'center' }[] = [
-        { text: 'Lp.', colKey: 'lp', align: 'left' },
-        { text: 'Nazwa pozycji', colKey: 'name', align: 'left' },
-        { text: 'Ilość', colKey: 'quantity', align: 'center' },
-        { text: 'Jedn.', colKey: 'unit', align: 'center' },
-      ];
-      if (showUnitPriceNet) headerDefs.push({ text: 'Cena jedn.\nnetto', colKey: 'unitPriceNet', align: 'right' });
-      if (showVatColumn) headerDefs.push({ text: 'VAT', colKey: 'vat', align: 'center' });
-      if (showValueNet) headerDefs.push({ text: 'Wartość\nnetto', colKey: 'valueNet', align: 'right' });
-      if (showValueGross) headerDefs.push({ text: 'Wartość\nbrutto', colKey: 'valueGross', align: 'right' });
-
-      let hx = marginLeft;
-      for (let hi = 0; hi < headerDefs.length; hi++) {
-        const hd = headerDefs[hi];
-        const cw = colWidths[hd.colKey];
-        const headerLines = hd.text.split('\n');
-        const headerLineHeight = headerFontSize + 1;
-        const headerTextBlockHeight = headerFontSize + (headerLines.length - 1) * headerLineHeight;
-        const firstLineY = y - (headerHeight - headerTextBlockHeight) / 2 - headerFontSize + 2;
-        headerLines.forEach((headerLine, lineIndex) => {
-          const textY = firstLineY - lineIndex * headerLineHeight;
-          const tw = boldFont.widthOfTextAtSize(headerLine, headerFontSize);
-          const textX = hd.align === 'right'
-            ? hx + cw - tw - 4
-            : hd.align === 'center'
-              ? hx + (cw - tw) / 2
-              : hx + 5;
-          page.drawText(headerLine, { x: textX, y: textY, size: headerFontSize, font: boldFont, color: headerTextColor });
-        });
-        if (showBorders && showVBorders && hi < headerDefs.length - 1) {
-          drawBorderLine(hx + cw, y, hx + cw, y - headerHeight);
-        }
-        hx += cw;
-      }
-
-      if (showBorders && showOuterBorder) {
-        page.drawRectangle({ x: marginLeft, y: y - headerHeight, width: tableWidth, height: headerHeight, borderColor, borderWidth, color: undefined as any });
-      }
-      if (showBorders && showHBorders) {
-        drawBorderLine(marginLeft, y - headerHeight, marginLeft + tableWidth, y - headerHeight);
-      }
-
-      y -= headerHeight;
-
-      let totalNet = 0;
-      let totalGross = 0;
-
-      offerItems.forEach((item, index) => {
-        const isEven = index % 2 === 0;
-        const bgColor = isEven ? rowBgColor : rowOddBgColor;
-
-        const descFontSize = Math.max(fontSize - 2, 7);
-        const effectiveRowHeight = showDescription ? rowHeight + descFontSize + 4 : rowHeight;
-
-        page.drawRectangle({
-          x: marginLeft,
-          y: y - effectiveRowHeight,
-          width: tableWidth,
-          height: effectiveRowHeight,
-          color: bgColor,
-        });
-
-        const itemName = item.name || item.product?.name || 'Pozycja';
-        const itemDesc = item.description || item.product?.description || '';
-        const quantity = item.quantity;
-        const unit = item.unit || 'szt';
-        const unitPrice = item.unit_price || item.final_price || 0;
-        const vatRate = item.product?.vat_rate || item.vat_rate || defaultVatRate;
-
-        const valueNet = quantity * unitPrice;
-        const valueGross = valueNet * (1 + vatRate / 100);
-
-        totalNet += valueNet;
-        totalGross += valueGross;
-
-        const textY = y - fontSize - (effectiveRowHeight - fontSize) / 2 + 3;
-        let cx = marginLeft;
-
-        page.drawText(`${index + 1}.`, { x: cx + 5, y: textY, size: fontSize, font: regularFont, color: textColor });
-        if (showBorders && showVBorders) drawBorderLine(cx + colWidths.lp, y, cx + colWidths.lp, y - effectiveRowHeight);
-        cx += colWidths.lp;
-
-        const maxNameWidth = colWidths.name - 10;
-        let truncatedName = itemName;
-        while (regularFont.widthOfTextAtSize(truncatedName, fontSize) > maxNameWidth && truncatedName.length > 1) {
-          truncatedName = truncatedName.slice(0, -1);
-        }
-        page.drawText(truncatedName, { x: cx + 5, y: showDescription ? y - fontSize - 4 : textY, size: fontSize, font: regularFont, color: textColor });
-        if (showDescription && itemDesc) {
-          let truncDesc = itemDesc;
-          while (regularFont.widthOfTextAtSize(truncDesc, descFontSize) > maxNameWidth && truncDesc.length > 1) {
-            truncDesc = truncDesc.slice(0, -1);
-          }
-          page.drawText(truncDesc, { x: cx + 5, y: y - fontSize - descFontSize - 6, size: descFontSize, font: regularFont, color: textColor });
-        }
-        if (showBorders && showVBorders) drawBorderLine(cx + colWidths.name, y, cx + colWidths.name, y - effectiveRowHeight);
-        cx += colWidths.name;
-
-        const qtyText = quantity.toString();
-        const qtyW = regularFont.widthOfTextAtSize(qtyText, fontSize);
-        page.drawText(qtyText, { x: cx + (colWidths.quantity - qtyW) / 2, y: textY, size: fontSize, font: regularFont, color: textColor });
-        if (showBorders && showVBorders) drawBorderLine(cx + colWidths.quantity, y, cx + colWidths.quantity, y - effectiveRowHeight);
-        cx += colWidths.quantity;
-
-        const unitW = regularFont.widthOfTextAtSize(unit, fontSize);
-        page.drawText(unit, { x: cx + (colWidths.unit - unitW) / 2, y: textY, size: fontSize, font: regularFont, color: textColor });
-        if (showBorders && showVBorders) drawBorderLine(cx + colWidths.unit, y, cx + colWidths.unit, y - effectiveRowHeight);
-        cx += colWidths.unit;
-
-        if (showUnitPriceNet) {
-          const upText = `${unitPrice.toFixed(2)}`;
-          const upW = regularFont.widthOfTextAtSize(upText, fontSize);
-          page.drawText(upText, { x: cx + colWidths.unitPriceNet - upW - 5, y: textY, size: fontSize, font: regularFont, color: textColor });
-          if (showBorders && showVBorders) drawBorderLine(cx + colWidths.unitPriceNet, y, cx + colWidths.unitPriceNet, y - effectiveRowHeight);
-          cx += colWidths.unitPriceNet;
-        }
-
-        if (showVatColumn) {
-          const vatText = `${vatRate}%`;
-          const vatW = regularFont.widthOfTextAtSize(vatText, fontSize);
-          page.drawText(vatText, { x: cx + (colWidths.vat - vatW) / 2, y: textY, size: fontSize, font: regularFont, color: textColor });
-          if (showBorders && showVBorders) drawBorderLine(cx + colWidths.vat, y, cx + colWidths.vat, y - effectiveRowHeight);
-          cx += colWidths.vat;
-        }
-
-        if (showValueNet) {
-          const vnText = `${valueNet.toFixed(2)}`;
-          const vnW = regularFont.widthOfTextAtSize(vnText, fontSize);
-          page.drawText(vnText, { x: cx + colWidths.valueNet - vnW - 5, y: textY, size: fontSize, font: regularFont, color: textColor });
-          if (showBorders && showVBorders) drawBorderLine(cx + colWidths.valueNet, y, cx + colWidths.valueNet, y - effectiveRowHeight);
-          cx += colWidths.valueNet;
-        }
-
-        if (showValueGross) {
-          const vgText = `${valueGross.toFixed(2)}`;
-          const vgW = regularFont.widthOfTextAtSize(vgText, fontSize);
-          page.drawText(vgText, { x: cx + colWidths.valueGross - vgW - 5, y: textY, size: fontSize, font: regularFont, color: textColor });
-        }
-
-        if (showBorders && showHBorders) {
-          drawBorderLine(marginLeft, y - effectiveRowHeight, marginLeft + tableWidth, y - effectiveRowHeight);
-        }
-
-        y -= effectiveRowHeight;
-      });
-
-      if (showBorders && showOuterBorder) {
-        const tableTop = height - startY;
-        const totalTableHeight = tableTop - y + headerHeight;
-        drawBorderLine(marginLeft, y, marginLeft, tableTop);
-        drawBorderLine(marginLeft + tableWidth, y, marginLeft + tableWidth, tableTop);
-        if (!showHBorders) {
-          drawBorderLine(marginLeft, y, marginLeft + tableWidth, y);
-        }
-      }
-
-      if (showSummary) {
-        y -= 10;
-        page.drawLine({
-          start: { x: marginLeft, y },
-          end: { x: marginLeft + tableWidth, y },
-          thickness: summaryThickness,
-          color: summaryColor,
-        });
-
-        y -= 15;
-
-        let colX = marginLeft + colWidths.lp + colWidths.name + colWidths.quantity + colWidths.unit;
-        if (showUnitPriceNet) colX += colWidths.unitPriceNet;
-        if (showVatColumn) colX += colWidths.vat;
-
-        const labelY = y;
-        const valueY = y - (headerFontSize + 4);
-
-        const discountAmount = Math.max(0, Number(config.discount_amount || 0));
-        const discountPercent = Math.max(0, Number(config.discount_percent || 0));
-        if (discountAmount > 0) {
-          page.drawText(
-            `RABAT ${discountPercent.toFixed(2)}% · -${discountAmount.toFixed(2)} PLN NETTO`,
-            {
-              x: marginLeft + 5,
-              y: valueY,
-              size: headerFontSize - 1,
-              font: boldFont,
-              color: summaryColor,
-            },
-          );
-        }
-
-        if (showValueNet) {
-          const labelText = 'SUMA NETTO:';
-          const labelW = boldFont.widthOfTextAtSize(labelText, headerFontSize - 1);
-          page.drawText(labelText, { x: colX + colWidths.valueNet - labelW - 5, y: labelY, size: headerFontSize - 1, font: boldFont, color: summaryLabelColor });
-
-          const displayedTotalNet = Number.isFinite(Number(totalPrice)) ? Number(totalPrice) : totalNet;
-          const totalNetText = `${displayedTotalNet.toFixed(2)} PLN`;
-          const totalNetWidth = boldFont.widthOfTextAtSize(totalNetText, headerFontSize);
-          page.drawText(totalNetText, { x: colX + colWidths.valueNet - totalNetWidth - 5, y: valueY, size: headerFontSize, font: boldFont, color: summaryColor });
-          colX += colWidths.valueNet;
-        }
-
-        if (showValueGross) {
-          const labelText = 'SUMA BRUTTO:';
-          const labelW = boldFont.widthOfTextAtSize(labelText, headerFontSize - 1);
-          page.drawText(labelText, { x: colX + colWidths.valueGross - labelW - 5, y: labelY, size: headerFontSize - 1, font: boldFont, color: summaryLabelColor });
-
-          const displayedTotalNet = Number.isFinite(Number(totalPrice)) ? Number(totalPrice) : totalNet;
-          const displayedTotalGross = Number.isFinite(Number(config.total_gross))
-            ? Number(config.total_gross)
-            : displayedTotalNet * (1 + defaultVatRate / 100);
-          const totalGrossText = `${displayedTotalGross.toFixed(2)} PLN`;
-          const totalGrossWidth = boldFont.widthOfTextAtSize(totalGrossText, headerFontSize);
-          page.drawText(totalGrossText, { x: colX + colWidths.valueGross - totalGrossWidth - 5, y: valueY, size: headerFontSize, font: boldFont, color: summaryColor });
-        }
-      }
-
-      console.log(`Drew offer items table with ${offerItems.length} items, total net: ${totalNet.toFixed(2)} PLN, total gross: ${totalGross.toFixed(2)} PLN`);
+      drawPaginatedOfferPricingTable(pdfDoc, pageIndex, offerItems, totalPrice, regularFont, boldFont, config);
     };
 
     let overlayFontCache: {
@@ -757,18 +551,90 @@ Deno.serve(async (req: Request) => {
     } | null = null;
     const imageFallbackUrls = new Map<string, string>();
     let brandHeadingFontUrl = '';
+    let brandHeadingFontFamily = '';
     let brandLogoUrl = '';
     let brandCompanyName = 'MAVINCI';
+
+    const cacheFontWidths = (font: any) => {
+      const measure = font.widthOfTextAtSize.bind(font);
+      const widths = new Map<string, number>();
+      font.widthOfTextAtSize = (text: string, size: number) => {
+        const key = JSON.stringify([text,size]);
+        const cached = widths.get(key);
+        if (cached !== undefined) return cached;
+        const result = measure(text,size);
+        if (widths.size >= 2048) widths.clear();
+        widths.set(key,result);
+        return result;
+      };
+      return font;
+    };
+    const fetchFont = async (url: string, required: boolean, restrictRedirects = false) => {
+      try {
+        const response = await fetch(url, { signal: AbortSignal.timeout(20000), ...(restrictRedirects ? { redirect: 'error' as const } : {}) });
+        if (!response.ok) throw new Error('Nie udało się pobrać czcionki PDF.');
+        const bytes = await response.arrayBuffer();
+        if (bytes.byteLength > 10 * 1024 * 1024) throw new Error('Plik czcionki przekracza 10 MB.');
+        return bytes;
+      } catch (error) {
+        if (required) throw error;
+        return null;
+      }
+    };
+    const ensureFonts = async (pdfDoc: PDFDocument) => {
+      if (overlayFontCache?.pdfDoc === pdfDoc) return overlayFontCache;
+      pdfDoc.registerFontkit(fontkit);
+      const base = 'https://cdn.jsdelivr.net/gh/notofonts/notofonts.github.io/fonts/';
+      const [regularBytes, boldBytes, headingBytes] = await timed('font_fetch', () => Promise.all([
+        fetchFont(base + 'NotoSans/hinted/ttf/NotoSans-Regular.ttf', true),
+        fetchFont(base + 'NotoSans/hinted/ttf/NotoSans-Bold.ttf', true),
+        brandHeadingFontUrl ? fetchFont(brandHeadingFontUrl, false, sellerMode) : Promise.resolve(null),
+      ]));
+      if (sellerMode && brandHeadingFontUrl && !headingBytes) {
+        throw sellerFontError('Nie udało się pobrać wybranej czcionki marki. Sprawdź plik w brandbooku.');
+      }
+      const embed = (bytes: ArrayBuffer) => timed('font_embed', async () => cacheFontWidths(await pdfDoc.embedFont(bytes, { subset: true })));
+      const regularFont = await embed(regularBytes!);
+      const boldFont = await embed(boldBytes!);
+      let headingFont = regularFont;
+      if (headingBytes) {
+        try { headingFont = await embed(headingBytes); }
+        catch (error) {
+          if (sellerMode) throw sellerFontError('Nie można osadzić wybranej czcionki w PDF. Wgraj prawidłowy font lub wybierz inny z biblioteki.');
+          throw error;
+        }
+      }
+      overlayFontCache = { pdfDoc, regularFont, boldFont, headingFont, symbolsFont: null };
+      reportStage('fonts_ready');
+      return overlayFontCache;
+    };
+    const ensureSymbolsFont = async (pdfDoc: PDFDocument) => {
+      const fonts = await ensureFonts(pdfDoc);
+      if (fonts.symbolsFont) return fonts.symbolsFont;
+      const bytes = await timed('font_fetch', () => fetchFont('https://cdn.jsdelivr.net/gh/notofonts/notofonts.github.io/fonts/NotoSansSymbols2/hinted/ttf/NotoSansSymbols2-Regular.ttf', false));
+      fonts.symbolsFont = bytes
+        ? await timed('font_embed', async () => cacheFontWidths(await pdfDoc.embedFont(bytes, { subset: true })))
+        : fonts.regularFont;
+      return fonts.symbolsFont;
+    };
+
 
     const embedImageFromUrl = async (pdfDoc: PDFDocument, imageUrl: string) => {
       if (!embeddedImageCache || embeddedImageCache.pdfDoc !== pdfDoc) {
         embeddedImageCache = { pdfDoc, images: new Map() };
       }
 
-      const cacheKey = imageUrl.split('?')[0];
+      let cacheKey = imageUrl;
+      try {
+        const cacheUrl = new URL(imageUrl);
+        cacheUrl.searchParams.delete('token');
+        cacheUrl.searchParams.sort();
+        cacheKey = cacheUrl.toString();
+      } catch { /* Validated inline demo assets are keyed by their complete data URL. */ }
       const cached = embeddedImageCache.images.get(cacheKey);
-      if (cached) return cached;
+      if (cached) { assetStats.imageCacheHits += 1; return cached; }
 
+      const fetchStarted = performance.now();
       let resolvedUrl = imageUrl;
       let imageResponse = await fetch(resolvedUrl);
       let imageType = imageResponse.headers.get('content-type') || '';
@@ -782,11 +648,15 @@ Deno.serve(async (req: Request) => {
       }
       if (!imageResponse.ok) throw new Error(`Failed to fetch image: ${imageResponse.status}`);
       const imageBytes = await imageResponse.arrayBuffer();
+      timings.image_fetch = (timings.image_fetch || 0) + performance.now() - fetchStarted;
       const resolvedPath = resolvedUrl.split('?')[0];
       const isPng = imageType.includes('png') || resolvedPath.toLowerCase().endsWith('.png');
-      const image = isPng
-        ? await pdfDoc.embedPng(imageBytes)
-        : await pdfDoc.embedJpg(imageBytes);
+      const image = await timed('image_embed', () => isPng
+        ? pdfDoc.embedPng(imageBytes)
+        : pdfDoc.embedJpg(imageBytes));
+      assetStats.images += 1;
+      if (isPng) assetStats.png += 1; else assetStats.jpeg += 1;
+      assetStats.maxImagePixels = Math.max(assetStats.maxImagePixels, image.width * image.height);
       embeddedImageCache.images.set(cacheKey, image);
       return image;
     };
@@ -794,15 +664,16 @@ Deno.serve(async (req: Request) => {
     const createOptimizedSignedImageUrl = async (
       bucket: string,
       path: string,
-      width = compactResourceMode ? 720 : 960,
+      width = 1440,
     ) => {
       const storage = supabase.storage.from(bucket);
       const [optimizedResult, originalResult] = await Promise.all([
         storage.createSignedUrl(path, 600, {
           transform: {
             width,
+            height: width,
             resize: 'contain',
-            quality: compactResourceMode ? 58 : 70,
+            quality: 88,
             format: 'origin',
           },
         } as any),
@@ -814,40 +685,115 @@ Deno.serve(async (req: Request) => {
       return optimizedUrl || originalUrl;
     };
 
+    // Key by page object: calculation pagination can insert pages in the middle.
+    // Store layout preferences, then draw document furniture only after assembly.
+    const documentFurniture = new Map<ReturnType<PDFDocument['getPage']>, {
+      number?: TextFieldConfig;
+      footer?: { field: TextFieldConfig; value: string };
+    }>();
+    const isPageNumberField = (name: string) => /(?:^|_)(?:page_number|page_num|page_no|page)$/.test(name);
+
     const overlayTextOnPages = async (
       pdfDoc: PDFDocument,
       startPageIndex: number,
       pageCount: number,
       textFields: TextFieldConfig[],
-      data: Record<string, any>
+      data: Record<string, any>,
+      renderDocumentFurniture = false,
     ) => {
       if (!textFields || textFields.length === 0) return;
 
-      if (!overlayFontCache || overlayFontCache.pdfDoc !== pdfDoc) {
-        pdfDoc.registerFontkit(fontkit);
+      const { regularFont, boldFont, headingFont } = await ensureFonts(pdfDoc);
+      let symbolsFont = overlayFontCache!.symbolsFont;
 
-        const regularFontUrl = 'https://cdn.jsdelivr.net/gh/notofonts/notofonts.github.io/fonts/NotoSans/hinted/ttf/NotoSans-Regular.ttf';
-        const boldFontUrl = 'https://cdn.jsdelivr.net/gh/notofonts/notofonts.github.io/fonts/NotoSans/hinted/ttf/NotoSans-Bold.ttf';
-        const symbolsFontUrl = 'https://cdn.jsdelivr.net/gh/notofonts/notofonts.github.io/fonts/NotoSansSymbols2/hinted/ttf/NotoSansSymbols2-Regular.ttf';
-
-        const regularFontBytes = await fetch(regularFontUrl).then(res => res.arrayBuffer());
-        const boldFontBytes = await fetch(boldFontUrl).then(res => res.arrayBuffer());
-        const symbolsFontBytes = await fetch(symbolsFontUrl).then(res => res.arrayBuffer()).catch(() => null);
-        const regularFont = await pdfDoc.embedFont(regularFontBytes);
-        const headingFontBytes = brandHeadingFontUrl
-          ? await fetch(brandHeadingFontUrl).then((res) => res.ok ? res.arrayBuffer() : null).catch(() => null)
-          : null;
-
-        overlayFontCache = {
-          pdfDoc,
-          regularFont,
-          boldFont: await pdfDoc.embedFont(boldFontBytes),
-          symbolsFont: symbolsFontBytes ? await pdfDoc.embedFont(symbolsFontBytes) : regularFont,
-          headingFont: headingFontBytes ? await pdfDoc.embedFont(headingFontBytes) : regularFont,
-        };
+      // Keep the product CTA with its main copy, including custom template layouts.
+      let displayFields = textFields;
+      let displayData = data;
+      const descriptionField = textFields.find(field => field.field_name === 'product_description' || field.field_name === 'variant_page_description');
+      const productUrl = typeof data.product_page_url === 'string' ? data.product_page_url : '';
+      if (descriptionField && productUrl) {
+        const descriptionSize = descriptionField.font_size || 12;
+        const descriptionLineHeight = descriptionField.line_height || descriptionSize * 1.2;
+        const descriptionWidth = descriptionField.max_width || 245;
+        const descriptionFont = descriptionField.font_role === 'heading' ? headingFont : regularFont;
+        const nextFieldY = Math.min(750, ...textFields.filter(field =>
+          field !== descriptionField && !/more|footer|page_number/.test(field.field_name)
+          && field.y > descriptionField.y
+          && field.x < descriptionField.x + descriptionWidth
+          && field.x + (field.max_width || field.width || 1) > descriptionField.x
+        ).map(field => field.y - 10));
+        const layoutBottom = descriptionField.field_name === 'variant_page_description' ? 295
+          : descriptionField.y === 210 ? 420 : descriptionField.y === 158 ? 225
+          : descriptionField.y === 455 ? 575 : 750;
+        const bottom = Math.min(nextFieldY, layoutBottom);
+        const originalLines = wrapText(String(data[descriptionField.field_name] || ''), descriptionFont, descriptionSize, descriptionWidth);
+        const availableLines = Math.max(1, Math.floor((bottom - descriptionField.y - 37) / descriptionLineHeight));
+        const fittedLines = originalLines.slice(0, availableLines);
+        if (originalLines.length > availableLines && fittedLines.length) {
+          let last = fittedLines[fittedLines.length - 1].trimEnd();
+          while (last && descriptionFont.widthOfTextAtSize(last + '…', descriptionSize) > descriptionWidth) last = last.slice(0, -1).trimEnd();
+          fittedLines[fittedLines.length - 1] = last + '…';
+        }
+        const ctaTop = descriptionField.y + fittedLines.length * descriptionLineHeight + 8;
+        displayFields = textFields.filter(field => !['product_more_link', 'variant_more_link'].includes(field.field_name));
+        displayFields = [...displayFields, {
+          field_name: 'product_description_cta', label: 'Czytaj więcej i zobacz zdjęcia',
+          type: 'url', show_icon: false, link_url: productUrl, cta_button: true,
+          x: descriptionField.x + 10, y: ctaTop + 7, font_size: 8.5,
+          font_color: '#ffffff', max_width: 130,
+        }];
+        displayData = { ...data, [descriptionField.field_name]: fittedLines.join('\n'), product_description_cta: 'CZYTAJ WIĘCEJ' };
       }
 
-      const { regularFont, boldFont, symbolsFont, headingFont } = overlayFontCache;
+      // Visual titles have one reserved line; truncate the presentation, not the product name in the catalog.
+      if (data.product_visual_layout) {
+        const title = textFields.find(field => field.field_name === 'product_name');
+        if (title) {
+          const font = title.font_role === 'heading' ? headingFont : boldFont;
+          const size = title.font_size || 24;
+          const width = title.max_width || 505;
+          let value = String(displayData.product_name || '').toLocaleUpperCase('pl-PL').replace(/\s+/g, ' ').trim();
+          if (font.widthOfTextAtSize(value, size) > width) {
+            value = value.replace(/…$/, '').trimEnd();
+            while (value && font.widthOfTextAtSize(value + '…', size) > width) value = value.slice(0, -1).trimEnd();
+            value += '…';
+          }
+          displayData = { ...displayData, product_name: value };
+        }
+      }
+
+      // Fit compact copy using the actual font, leaving a separate row for its CTA.
+      for (const field of textFields) {
+        const match = /^product_([1-3])_description$/.exec(field.field_name);
+        if (!match) continue;
+        const slot = Number(match[1]);
+        const prefix = `product_${slot}`;
+        const url = data[`${prefix}_page_url`];
+        if (typeof url !== 'string' || !url) continue;
+        const top = 145 + (slot - 1) * 215;
+        const size = field.font_size || 9.3;
+        const lineHeight = field.line_height || size * 1.2;
+        const width = field.max_width || 315;
+        const font = field.font_role === 'heading' ? headingFont : regularFont;
+        const requirements = textFields.find(candidate => candidate.field_name === `${prefix}_requirements` && data[candidate.field_name]);
+        const bottom = Math.min(top + 146, requirements ? requirements.y - 5 : Infinity);
+        const maxLines = Math.max(0, Math.floor((bottom - field.y - size) / lineHeight) + 1);
+        const lines = wrapText(String(data[field.field_name] || ''), font, size, width);
+        const fitted = lines.slice(0, maxLines);
+        if (lines.length > maxLines && fitted.length) {
+          let last = fitted[fitted.length - 1].trimEnd();
+          while (last && font.widthOfTextAtSize(last + '…', size) > width) last = last.slice(0, -1).trimEnd();
+          fitted[fitted.length - 1] = last + '…';
+        }
+        const linkField = `${prefix}_more`;
+        displayFields = displayFields.filter(candidate => ![linkField, `${prefix}_more_link`].includes(candidate.field_name));
+        displayFields.push({
+          field_name: linkField, label: 'Czytaj więcej', type: 'url', cta_button: true,
+          show_icon: false, link_url: url, x: field.x + width - 100, y: top + 160,
+          font_size: 7.5, font_color: '#ffffff', max_width: 90, align: 'center',
+        });
+        displayData = { ...displayData, [field.field_name]: fitted.join('\n'), [linkField]: 'CZYTAJ WIĘCEJ' };
+      }
 
       const pages = pdfDoc.getPages();
 
@@ -855,13 +801,27 @@ Deno.serve(async (req: Request) => {
         const page = pages[i];
         const { height } = page.getSize();
 
-        for (const field of textFields) {
-          const value = data[field.field_name] || '';
+        for (const field of displayFields) {
+          const rawValue = displayData[field.field_name] || '';
+          if (!renderDocumentFurniture && field.type !== 'image') {
+            const number = isPageNumberField(field.field_name);
+            const footer = /(?:^|_)footer$/.test(field.field_name);
+            if (number || footer) {
+              const saved = documentFurniture.get(page) || {};
+              if (number) saved.number = field;
+              if (footer && rawValue) saved.footer = { field, value: String(rawValue) };
+              documentFurniture.set(page, saved);
+              continue;
+            }
+          }
+          // Brand rule: Atom always uses uppercase, before measuring/wrapping.
+          const usesAtom = field.type !== 'image' && field.font_role === 'heading'
+            && /atom/i.test(`${brandHeadingFontFamily} ${headingFont?.name || ''}`);
+          const value = usesAtom ? String(rawValue).toLocaleUpperCase('pl-PL') : rawValue;
 
-          console.log(`Processing field ${field.field_name}: type=${field.type}, value="${value}"`);
 
           if (!value) {
-            console.log(`Skipping field ${field.field_name} - no value`);
+
             continue;
           }
 
@@ -878,7 +838,6 @@ Deno.serve(async (req: Request) => {
               // być automatycznie przycinany do koła tylko ze względu na nazwę.
               const isCircular = field.is_circular === true;
 
-              console.log(`Drawing image at x=${field.x}, y=${y}, width=${imgWidth}, height=${imgHeight}, circular=${isCircular}`);
 
               if (isCircular) {
                 const size = Math.min(imgWidth, imgHeight);
@@ -902,7 +861,6 @@ Deno.serve(async (req: Request) => {
                     }
                   }
 
-                  console.log('Raw metadata:', JSON.stringify(metadata, null, 2));
                 }
 
                 const positionData = metadata?.desktop?.position;
@@ -911,7 +869,6 @@ Deno.serve(async (req: Request) => {
                 const posXPercent = positionData?.posX !== undefined ? positionData.posX : 0;
                 const posYPercent = positionData?.posY !== undefined ? positionData.posY : 0;
 
-                console.log(`Avatar positioning: baseScale=${baseScale}, finalScale=${scale}, posX=${posXPercent}%, posY=${posYPercent}%, raw position data:`, positionData);
 
                 let drawWidth = size * scale;
                 let drawHeight = size * scale;
@@ -970,10 +927,10 @@ Deno.serve(async (req: Request) => {
 
               } else {
                 const imageDimensions = image.scale(1);
-                const baseScale = field.image_fit === 'contain'
+                const imageZoom = Math.min(3, Math.max(0.5, Number(field.image_zoom ?? 1)));
+                const baseScale = field.image_fit === 'contain' || imageZoom < 1
                   ? Math.min(imgWidth / imageDimensions.width, imgHeight / imageDimensions.height)
                   : Math.max(imgWidth / imageDimensions.width, imgHeight / imageDimensions.height);
-                const imageZoom = Math.min(3, Math.max(1, Number(field.image_zoom || 1)));
                 const coverScale = baseScale * imageZoom;
                 const drawWidth = imageDimensions.width * coverScale;
                 const drawHeight = imageDimensions.height * coverScale;
@@ -982,26 +939,31 @@ Deno.serve(async (req: Request) => {
                 const drawX = field.x + (imgWidth - drawWidth) * positionX;
                 const drawY = y + (imgHeight - drawHeight) * (1 - positionY);
 
-                if (field.image_fit !== 'contain') {
+                const shouldClip = imageZoom < 1 || field.image_fit !== 'contain' || Number(field.border_radius || 0) > 0;
+                const clipX = field.image_fit === 'contain' && imageZoom >= 1 ? Math.max(field.x, drawX) : field.x;
+                const clipY = field.image_fit === 'contain' && imageZoom >= 1 ? Math.max(y, drawY) : y;
+                const clipWidth = field.image_fit === 'contain' && imageZoom >= 1 ? Math.min(field.x + imgWidth, drawX + drawWidth) - clipX : imgWidth;
+                const clipHeight = field.image_fit === 'contain' && imageZoom >= 1 ? Math.min(y + imgHeight, drawY + drawHeight) - clipY : imgHeight;
+                if (shouldClip) {
                   const radius = Math.max(0, Math.min(
                     Number(field.border_radius || 8),
-                    imgWidth / 2,
-                    imgHeight / 2,
+                    clipWidth / 2,
+                    clipHeight / 2,
                   ));
                   if (radius > 0) {
                     const kappa = 0.5522847498;
                     const offset = radius * kappa;
                     page.pushOperators(
                       pushGraphicsState(),
-                      moveTo(field.x + radius, y),
-                      lineTo(field.x + imgWidth - radius, y),
-                      appendBezierCurve(field.x + imgWidth - radius + offset, y, field.x + imgWidth, y + radius - offset, field.x + imgWidth, y + radius),
-                      lineTo(field.x + imgWidth, y + imgHeight - radius),
-                      appendBezierCurve(field.x + imgWidth, y + imgHeight - radius + offset, field.x + imgWidth - radius + offset, y + imgHeight, field.x + imgWidth - radius, y + imgHeight),
-                      lineTo(field.x + radius, y + imgHeight),
-                      appendBezierCurve(field.x + radius - offset, y + imgHeight, field.x, y + imgHeight - radius + offset, field.x, y + imgHeight - radius),
-                      lineTo(field.x, y + radius),
-                      appendBezierCurve(field.x, y + radius - offset, field.x + radius - offset, y, field.x + radius, y),
+                      moveTo(clipX + radius, clipY),
+                      lineTo(clipX + clipWidth - radius, clipY),
+                      appendBezierCurve(clipX + clipWidth - radius + offset, clipY, clipX + clipWidth, clipY + radius - offset, clipX + clipWidth, clipY + radius),
+                      lineTo(clipX + clipWidth, clipY + clipHeight - radius),
+                      appendBezierCurve(clipX + clipWidth, clipY + clipHeight - radius + offset, clipX + clipWidth - radius + offset, clipY + clipHeight, clipX + clipWidth - radius, clipY + clipHeight),
+                      lineTo(clipX + radius, clipY + clipHeight),
+                      appendBezierCurve(clipX + radius - offset, clipY + clipHeight, clipX, clipY + clipHeight - radius + offset, clipX, clipY + clipHeight - radius),
+                      lineTo(clipX, clipY + radius),
+                      appendBezierCurve(clipX, clipY + radius - offset, clipX + radius - offset, clipY, clipX + radius, clipY),
                       closePath(),
                       clip(),
                       endPath(),
@@ -1009,15 +971,25 @@ Deno.serve(async (req: Request) => {
                   } else {
                     page.pushOperators(
                       pushGraphicsState(),
-                      moveTo(field.x, y),
-                      lineTo(field.x + imgWidth, y),
-                      lineTo(field.x + imgWidth, y + imgHeight),
-                      lineTo(field.x, y + imgHeight),
+                      moveTo(clipX, clipY),
+                      lineTo(clipX + clipWidth, clipY),
+                      lineTo(clipX + clipWidth, clipY + clipHeight),
+                      lineTo(clipX, clipY + clipHeight),
                       closePath(),
                       clip(),
                       endPath(),
                     );
                   }
+                }
+                if (imageZoom < 1) {
+                  const backgroundScale = Math.max(imgWidth / imageDimensions.width, imgHeight / imageDimensions.height);
+                  const backgroundWidth = imageDimensions.width * backgroundScale;
+                  const backgroundHeight = imageDimensions.height * backgroundScale;
+                  page.drawImage(image, {
+                    x: field.x + (imgWidth - backgroundWidth) * positionX,
+                    y: y + (imgHeight - backgroundHeight) * (1 - positionY),
+                    width: backgroundWidth, height: backgroundHeight, opacity: 0.55,
+                  });
                 }
                 page.drawImage(image, {
                   x: drawX,
@@ -1025,7 +997,7 @@ Deno.serve(async (req: Request) => {
                   width: drawWidth,
                   height: drawHeight,
                 });
-                if (field.image_fit !== 'contain') page.pushOperators(popGraphicsState());
+                if (shouldClip) page.pushOperators(popGraphicsState());
               }
             } catch (error) {
               console.error(`Error drawing image ${field.field_name}:`, error);
@@ -1035,14 +1007,19 @@ Deno.serve(async (req: Request) => {
 
           const fontSize = field.font_size || 12;
           const autoBold = /(^|_)(name|title)$/.test(field.field_name);
-          const font = field.font_role === 'heading'
-            ? headingFont
-            : autoBold
-              ? boldFont
-              : regularFont;
+          // Use the real bold face for every product CTA, including custom templates.
+          // Font selection happens before wrapping and measuring the clickable area.
+          const isReadMoreLink = field.type === 'url' && /^czytaj więcej(?:\s|$)/i.test(String(value).trim());
+          const font = isReadMoreLink
+            ? boldFont
+            : field.font_role === 'heading'
+              ? headingFont
+              : autoBold
+                ? boldFont
+                : regularFont;
 
           const colorMatch = field.font_color?.match(/^#([0-9A-F]{2})([0-9A-F]{2})([0-9A-F]{2})$/i);
-          const color = colorMatch
+          const color = field.cta_button ? rgb(1, 1, 1) : colorMatch
             ? rgb(
                 parseInt(colorMatch[1], 16) / 255,
                 parseInt(colorMatch[2], 16) / 255,
@@ -1063,11 +1040,20 @@ Deno.serve(async (req: Request) => {
             iconSymbol = '☎';
           }
 
+          if (iconSymbol && !symbolsFont) symbolsFont = await ensureSymbolsFont(pdfDoc);
           const lines = field.max_width
             ? wrapText(value, font, fontSize, field.max_width)
             : [value];
 
           const lineHeight = field.line_height || fontSize * 1.2;
+
+          if (field.cta_button && isUrl) {
+            drawRoundedRectangle(page, {
+              x: field.x - 10, y: height - field.y - fontSize - 8,
+              width: (field.max_width || 130) + 20, height: fontSize + 15,
+              radius: 5, color: rgb(91 / 255, 0, 31 / 255),
+            });
+          }
 
           for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
             const line = lines[lineIndex];
@@ -1115,7 +1101,6 @@ Deno.serve(async (req: Request) => {
               }
             }
 
-            console.log(`Drawing line ${lineIndex + 1}/${lines.length}: "${line}" at x=${x}, y=${y}`);
 
             page.drawText(line, {
               x,
@@ -1138,7 +1123,9 @@ Deno.serve(async (req: Request) => {
                 const linkAnnotation = pdfDoc.context.obj({
                   Type: 'Annot',
                   Subtype: 'Link',
-                  Rect: [x, y - 2, x + textWidth, y + fontSize],
+                  Rect: field.cta_button
+                    ? [field.x - 10, y - 8, field.x + (field.max_width || 130) + 10, y + fontSize + 7]
+                    : [x, y - 2, x + textWidth, y + fontSize],
                   Border: [0, 0, 0],
                   C: [0, 0, 1],
                   A: {
@@ -1201,6 +1188,7 @@ Deno.serve(async (req: Request) => {
         : '';
 
       const headingFont = (brandFonts || []).find((item: any) => item.role === 'heading' && (item.file_url || item.storage_path));
+      brandHeadingFontFamily = String(headingFont?.family || '');
       if (headingFont?.file_url) {
         brandHeadingFontUrl = headingFont.file_url;
       } else if (headingFont?.storage_path) {
@@ -1218,15 +1206,131 @@ Deno.serve(async (req: Request) => {
       offerData.company_logo = brandLogoUrl;
     }
 
-    // Tryb awaryjny musi realnie zmniejszać zużycie pamięci. Wcześniej omijał
-    // tła PDF, ale nadal osadzał logo, zdjęcie opiekuna, hero i osobne zdjęcia
-    // wszystkich produktów. Przy większej ofercie drugi przebieg kończył się
-    // więc tym samym limitem workera co pierwszy.
-    if (compactResourceMode) {
-      brandHeadingFontUrl = '';
-      brandLogoUrl = '';
-      offerData.company_logo = '';
-      offerData.employee_avatar_url = '';
+    // Retain the brand identity, caretaker and image quality on resource retries.
+    if (sellerMode) {
+      // Version 2 snapshots are resolved by the database, never from a portal payload.
+      const organizationIdentity = sellerBranding.identity_version === 2
+        && sellerBranding.organization_id
+        && sellerBranding.organization_id === offer.partner_organization_id;
+      const sellerAsset = async (raw: unknown, kind: 'visual' | 'portrait' = 'visual') => {
+        if (!raw) return '';
+        if (demoMode) {
+          // The service-only demo factory validates bounded PNG assets and JPEG portraits; never sign user paths.
+          if (kind === 'visual' && (raw === sellerBranding.hotel_logo_url || raw === sellerBranding.hotel_cover_image_url) && /^data:image\/png;base64,[a-z0-9+/]+={0,2}$/i.test(String(raw))) return String(raw);
+          if (kind === 'portrait' && raw === sellerBranding.portrait_url && /^data:image\/jpeg;base64,[a-z0-9+/]+={0,2}$/i.test(String(raw))) return String(raw);
+          throw new Error('Nieprawidłowa grafika demonstracji.');
+        }
+        let path = String(raw);
+        if (kind === 'portrait' && sellerBranding.identity_version === 2 && sellerBranding.portrait_source === 'contact') {
+          // Contact photos may already be public. Never sign arbitrary buckets
+          // or fetch external URLs with the renderer's service credentials.
+          try {
+            const url = new URL(path);
+            if (url.origin === new URL(supabaseUrl).origin && url.pathname.startsWith('/storage/v1/object/public/')) return url.toString();
+          } catch { /* A private upload uses the owner-scoped branch below. */ }
+          return '';
+        }
+        if (/^https?:/i.test(path)) {
+          const url = new URL(path);
+          const prefix = /^\/storage\/v1\/object\/(?:public|sign)\/seller-brand-assets\//;
+          if (url.origin !== new URL(supabaseUrl).origin || !prefix.test(url.pathname)) throw new Error('Nieprawidłowy adres grafiki sprzedawcy.');
+          path = decodeURIComponent(url.pathname.replace(prefix, ''));
+        }
+        path = path.replace(/^\/+/, '').replace(/^(?:public\/)?seller-brand-assets\//, '');
+        const allowedPrefixes = [offer.sales_partner_id + '/' + offer.my_company_id + '/'];
+        if (kind === 'visual' && organizationIdentity) {
+          allowedPrefixes.push('organizations/' + sellerBranding.organization_id + '/' + offer.my_company_id + '/');
+          if (sellerBranding.organization_asset_partner_id) {
+            allowedPrefixes.push(sellerBranding.organization_asset_partner_id + '/' + offer.my_company_id + '/');
+          }
+        }
+        if (!allowedPrefixes.some((prefix) => path.startsWith(prefix)) || path.split('/').some((part) => part === '..' || part === '.')) throw new Error('Plik nie należy do sprzedawcy ani jego organizacji.');
+        const { data, error } = await supabase.storage.from('seller-brand-assets').createSignedUrl(path, 600);
+        if (error || !data?.signedUrl) throw new Error('Nie udało się pobrać grafiki sprzedawcy.');
+        return data.signedUrl;
+      };
+      const sellerHeadingFont = async () => {
+        const family = String(sellerBranding.heading_font_family || 'Noto Sans').split(',')[0].replace(/["']/g, '').trim();
+        if (sellerBranding.heading_font_catalog_id) {
+          const font = sellerBranding.heading_font_catalog_snapshot;
+          if (sellerBranding.identity_version !== 2 || !font || font.id !== sellerBranding.heading_font_catalog_id
+            || font.company_id !== offer.my_company_id) {
+            throw sellerFontError('Wybrana czcionka wymaga aktualizacji bazy lub nie należy do marki tej oferty.');
+          }
+          let path = String(font.storage_path || '');
+          if (!path && font.file_url) {
+            let url: URL;
+            try { url = new URL(String(font.file_url)); }
+            catch { throw sellerFontError('Nieprawidłowy adres czcionki w CRM. Wgraj plik ponownie.'); }
+            const prefix = '/storage/v1/object/public/company-logos/';
+            if (url.origin !== new URL(supabaseUrl).origin || !url.pathname.startsWith(prefix)) {
+              throw sellerFontError('Czcionka z CRM musi mieć plik w bibliotece tej marki. Wgraj font zamiast zewnętrznego adresu.');
+            }
+            try { path = decodeURIComponent(url.pathname.slice(prefix.length)); }
+            catch { throw sellerFontError('Nieprawidłowa ścieżka czcionki w CRM.'); }
+          }
+          if (path) {
+            if (!path.startsWith('brandbook/' + offer.my_company_id + '/fonts/')
+              || path.split('/').some((part) => part === '.' || part === '..')
+              || !/\.(ttf|otf|woff2?)$/i.test(path)) {
+              throw sellerFontError('Plik czcionki nie należy do biblioteki tej marki lub ma nieobsługiwany format.');
+            }
+            // Public CRM brandbook fonts only. Never sign another tenant's
+            // bucket/path using the service role or follow external redirects.
+            return supabase.storage.from('company-logos').getPublicUrl(path).data.publicUrl;
+          }
+        } else if (sellerBranding.heading_font_path) {
+          return sellerAsset(sellerBranding.heading_font_path);
+        }
+        if ((sellerBranding.heading_font_catalog_id || sellerBranding.heading_font_selection_version === 1)
+          && family.toLocaleLowerCase('pl-PL') !== 'noto sans') {
+          throw sellerFontError('Wybrana czcionka nie ma pliku do PDF. Wgraj ją w brandingu albo wybierz czcionkę oznaczoną jako wgrana.');
+        }
+        return '';
+      };
+      const [logo, portrait, cover, headingFont] = await Promise.all([
+        sellerAsset(sellerBranding.hotel_logo_url),
+        sellerAsset(sellerBranding.portrait_url, 'portrait'),
+        sellerAsset(sellerBranding.hotel_cover_image_url || sellerBranding.venue_image_urls?.[0]),
+        sellerHeadingFont(),
+      ]);
+      brandLogoUrl = logo;
+      sellerCoverUrl = cover;
+      // A supplied heading font uses the same private, owner-scoped asset
+      // resolver as the logo. Never fetch a caller-provided external font URL.
+      if (headingFont) {
+        brandHeadingFontUrl = headingFont;
+        brandHeadingFontFamily = String(sellerBranding.heading_font_family || '');
+      } else if (sellerBranding.identity_version === 2) {
+        brandHeadingFontUrl = '';
+        brandHeadingFontFamily = 'Noto Sans';
+      }
+      brandCompanyName = sellerOrganizationName || sellerBranding.display_name || 'Oferta';
+      const name = String(sellerBranding.display_name || '').trim().split(/\s+/);
+      Object.assign(offerData, {
+        client_name: offer.portal_client_company || offer.portal_client_name || '',
+        organization_name: offer.portal_client_company || '',
+        organization_legal_name: offer.portal_client_company || '',
+        contact_person_name: offer.portal_client_name || '',
+        contact_person_email: offer.portal_client_email || '',
+        contact_person_phone: offer.portal_client_phone || '',
+        client_address: '', client_nip: '', client_city: '', client_postal_code: '', client_street: '',
+        event_brief: offer.description || '', event_assumptions: offer.description || '',
+        employee_first_name: name[0] || '', employee_last_name: name.slice(1).join(' '),
+        employee_full_name: sellerBranding.display_name || '',
+        employee_email: sellerBranding.contact_email || '', employee_phone: sellerBranding.contact_phone || '',
+        employee_avatar_url: portrait, employee_avatar_metadata: null,
+        employee_facebook_url: '', employee_instagram_url: '', employee_linkedin_url: '',
+        seller_name: brandCompanyName, seller_address: sellerBranding.organization_address || '', seller_nip: '',
+        seller_email: sellerBranding.contact_email || '', seller_phone: sellerBranding.contact_phone || '',
+        seller_website: sellerBranding.organization_website || '', company_logo: logo,
+      });
+    }
+
+    if (brandLogoUrl && !sellerMode) {
+      // 768px gives over 300 dpi at the largest native logo size. Keep PNG alpha.
+      brandLogoUrl = getPdfAvatarUrl(brandLogoUrl, 768);
+      offerData.company_logo = brandLogoUrl;
     }
 
     const { data: globalSocials } = await supabase
@@ -1240,6 +1344,14 @@ Deno.serve(async (req: Request) => {
     offerData.social_youtube_url = globalSocials?.youtube_url || '';
     offerData.social_twitter_url = globalSocials?.twitter_url || '';
 
+    if (sellerMode) {
+      offerData.social_facebook_url = '';
+      offerData.social_instagram_url = '';
+      offerData.social_linkedin_url = '';
+      offerData.social_youtube_url = '';
+      offerData.social_twitter_url = '';
+    }
+
     const { data: defaultCategory } = await supabase
       .from('offer_template_categories')
       .select('id, hero_image_path, hero_image_alt, design_config')
@@ -1251,8 +1363,12 @@ Deno.serve(async (req: Request) => {
       offer.event?.category?.default_offer_template_category_id || null;
     const templateCategoryId = eventTemplateCategoryId || defaultTemplateCategoryId;
 
+    const templateLookupCache = new Map<string, any>();
+    const embeddedTemplateCache = new Map<string, { page: any; width: number; height: number }>();
     const loadDefaultTemplate = async (templateType: string, variantKey = 'default') => {
       const findTemplate = async (categoryId: string | null, requestedVariant: string) => {
+        const key = JSON.stringify([categoryId,templateType,requestedVariant]);
+        if (templateLookupCache.has(key)) return templateLookupCache.get(key);
         let query = supabase
           .from('offer_page_templates')
           .select('id, pdf_url, text_fields_config, table_config, template_category_id, variant_key')
@@ -1264,7 +1380,9 @@ Deno.serve(async (req: Request) => {
           .limit(1);
 
         if (categoryId) query = query.eq('template_category_id', categoryId);
-        const { data } = await query.maybeSingle();
+        const { data, error } = await query.maybeSingle();
+        if (error) throw error;
+        templateLookupCache.set(key, data);
         return data;
       };
 
@@ -1298,7 +1416,9 @@ Deno.serve(async (req: Request) => {
       // Uploaded PDF backgrounds are considerably more expensive to parse and
       // embed than the native fallback pages. The compact retry deliberately
       // avoids them so a resource-limit error is not repeated with the same load.
-      if (compactResourceMode) return { success: false };
+      // Static CRM backgrounds can contain baked-in logos, colors and prices.
+      // Seller PDFs use the same dynamic page builders with seller-specific data.
+      if (compactResourceMode || sellerMode) return { success: false };
 
       try {
         const template = await loadDefaultTemplate(templateType, variantKey);
@@ -1318,31 +1438,36 @@ Deno.serve(async (req: Request) => {
           .every((fieldName) => configuredFieldNames.has(fieldName));
 
         if (template?.pdf_url && supportsRequiredFields && supportsDynamicCrmData) {
-          const { data: pdfData } = await supabase.storage
-            .from('offer-template-pages')
-            .download(template.pdf_url);
-
-          if (pdfData) {
-            const arrayBuffer = await pdfData.arrayBuffer();
-            const templatePdf = await PDFDocument.load(arrayBuffer);
-
-            if (templatePdf.getPageCount() === 0) {
-              return { success: false };
-            }
-
-            // A page template is a single logical A4 page. Older uploads can be
-            // complete multi-page offers, so only their first page belongs here.
+          let background = embeddedTemplateCache.get(template.pdf_url);
+          if (background) assetStats.templateCacheHits += 1;
+          if (!background) {
+            const { data: pdfData, error } = await timed('template_fetch', () => supabase.storage
+              .from('offer-template-pages').download(template.pdf_url));
+            if (error) throw error;
+            if (!pdfData) return { success: false };
+            const bytes = await pdfData.arrayBuffer();
+            const source = await timed('template_parse', () => PDFDocument.load(bytes));
+            if (source.getPageCount() === 0) return { success: false };
+            const sourcePage = source.getPage(0);
+            const size = sourcePage.getSize();
+            // Reuse the already parsed page, rather than parsing the bytes again via embedPdf.
+            const embedded = await timed('template_embed', () => mergedPdf.embedPage(sourcePage));
+            background = { page: embedded, width: size.width, height: size.height };
+            embeddedTemplateCache.set(template.pdf_url, background);
+            assetStats.templates += 1;
+          }
+          if (background) {
             const a4Width = 595.28;
             const a4Height = 841.89;
-            const sourcePage = templatePdf.getPage(0);
-            const { width: sourceWidth, height: sourceHeight } = sourcePage.getSize();
+            const sourceWidth = background.width;
+            const sourceHeight = background.height;
             const scale = Math.min(a4Width / sourceWidth, a4Height / sourceHeight);
             const renderedWidth = sourceWidth * scale;
             const renderedHeight = sourceHeight * scale;
             const offsetX = (a4Width - renderedWidth) / 2;
             const offsetY = (a4Height - renderedHeight) / 2;
             const topOffset = a4Height - offsetY - renderedHeight;
-            const [embeddedPage] = await mergedPdf.embedPdf(arrayBuffer, [0]);
+            const embeddedPage = background.page;
 
             const startPageIndex = mergedPdf.getPageCount();
             const page = mergedPdf.addPage([a4Width, a4Height]);
@@ -1363,14 +1488,14 @@ Deno.serve(async (req: Request) => {
               height: field.height ? field.height * scale : field.height,
               border_radius: field.border_radius ? field.border_radius * scale : field.border_radius,
               line_height: field.line_height ? field.line_height * scale : field.line_height,
-              image_position_x: field.field_name === 'product_image'
-                ? Number(data.product_image_position_x ?? 50)
+              image_position_x: /^product(?:_\d+)?_image$/.test(field.field_name)
+                ? Number(data[`${field.field_name}_position_x`] ?? 50)
                 : field.image_position_x,
-              image_position_y: field.field_name === 'product_image'
-                ? Number(data.product_image_position_y ?? 25)
+              image_position_y: /^product(?:_\d+)?_image$/.test(field.field_name)
+                ? Number(data[`${field.field_name}_position_y`] ?? 25)
                 : field.image_position_y,
-              image_zoom: field.field_name === 'product_image'
-                ? Number(data.product_image_zoom ?? 1)
+              image_zoom: /^product(?:_\d+)?_image$/.test(field.field_name)
+                ? Number(data[`${field.field_name}_zoom`] ?? 1)
                 : field.image_zoom,
             }));
 
@@ -1436,6 +1561,25 @@ Deno.serve(async (req: Request) => {
       reservation_terms_text: 'Termin rezerwujemy po akceptacji oferty i podpisaniu umowy\nZakres końcowy potwierdzamy po weryfikacji warunków technicznych\nDodatkowe usługi i zmiany wymagają potwierdzenia przed wydarzeniem',
       ...(selectedTemplateCategory?.design_config || defaultCategory?.design_config || {}),
     };
+    if (sellerMode) {
+      const color = (value: unknown, fallback: string) => /^#[0-9a-f]{6}$/i.test(String(value || '')) ? String(value) : fallback;
+      const primary = color(sellerBranding.brand_primary_color, '#2d0918');
+      const secondary = color(sellerBranding.brand_secondary_color, '#d3bb73');
+      const shade = (hex: string, factor: number) => '#' + [1, 3, 5]
+        .map((offset) => Math.round(parseInt(hex.slice(offset, offset + 2), 16) * factor).toString(16).padStart(2, '0')).join('');
+      Object.assign(categoryDesign, {
+        primary_color: primary, secondary_color: shade(primary, 0.82), accent_color: secondary,
+        surface_color: color(sellerBranding.brand_surface_color, categoryDesign.surface_color),
+        cover_primary_color: primary, cover_decoration_color: shade(primary, 0.7), cover_accent_color: secondary,
+        info_page_enabled: true,
+        reservation_terms_text: [
+          offer.partner_approval_status === 'approved'
+            ? 'Termin i zasoby potwierdzone przez MAVINCI. Oferta nie stanowi rezerwacji ani zawartej umowy.'
+            : 'Termin, sprzęt i dostępność zespołu wymagają potwierdzenia MAVINCI. Oferta nie stanowi rezerwacji.',
+          sellerBranding.disclosure_text || '',
+        ].filter(Boolean).join('\n'),
+      });
+    }
     const colorFromHex = (hex: string, fallback: [number, number, number]) => {
       const normalized = String(hex || '').replace('#', '').slice(0, 6);
       if (!/^[0-9a-f]{6}$/i.test(normalized)) return rgb(...fallback);
@@ -1445,20 +1589,19 @@ Deno.serve(async (req: Request) => {
         parseInt(normalized.slice(4, 6), 16) / 255,
       );
     };
-    const darkenHex = (hex: string, factor = 0.62) => {
-      const normalized = String(hex || '').replace('#', '').slice(0, 6);
-      if (!/^[0-9a-f]{6}$/i.test(normalized)) return '#2D0013';
-      const channel = (start: number) => Math.max(
-        0,
-        Math.min(255, Math.round(parseInt(normalized.slice(start, start + 2), 16) * factor)),
-      ).toString(16).padStart(2, '0');
-      return `#${channel(0)}${channel(2)}${channel(4)}`;
-    };
+    // Product subheadings and compact product names must follow the resolved
+    // organization/seller palette, just like the main product title. Preserve
+    // the established subsection color for regular CRM offers.
+    const productSectionColor = sellerMode ? categoryDesign.primary_color : '#7f1734';
     const cream = colorFromHex(categoryDesign.surface_color, [0.98, 0.97, 0.95]);
     const burgundy = colorFromHex(categoryDesign.primary_color, [0.357, 0, 0.122]);
     const accent = colorFromHex(categoryDesign.accent_color, [0.827, 0.733, 0.451]);
     const coverBurgundy = colorFromHex(categoryDesign.cover_primary_color, [0.29, 0, 0.122]);
-    const coverDecoration = colorFromHex(darkenHex(categoryDesign.cover_primary_color), [0.176, 0, 0.075]);
+    const coverDecoration = rgb(
+      coverBurgundy.red * 0.94 + 0.06,
+      coverBurgundy.green * 0.94 + 0.06,
+      coverBurgundy.blue * 0.94 + 0.06,
+    );
     const coverAccent = colorFromHex(categoryDesign.cover_accent_color, [0.835, 0.769, 0.537]);
 
     const crc32 = (bytes: Uint8Array) => {
@@ -1556,40 +1699,38 @@ Deno.serve(async (req: Request) => {
 
     const productImageUrlCache = new Map<string, string>();
     const getProductImageUrl = async (product: any) => {
-      if (compactResourceMode) return '';
-      if (!product?.offer_image_path) return '';
-      const cached = productImageUrlCache.get(product.offer_image_path);
+      const imagePath = product?.offer_image_path || product?.pdf_thumbnail_url;
+      if (!imagePath) return '';
+      const cached = productImageUrlCache.get(imagePath);
       if (cached) return cached;
       const signedUrl = await createOptimizedSignedImageUrl(
         'offer-product-pages',
-        product.offer_image_path,
-        compactResourceMode ? 720 : 960,
+        imagePath,
+        1440,
       );
-      if (signedUrl) productImageUrlCache.set(product.offer_image_path, signedUrl);
+      if (signedUrl) productImageUrlCache.set(imagePath, signedUrl);
       return signedUrl;
     };
 
-    const firstProductImage = compactResourceMode
-      ? ''
-      : await getProductImageUrl(
-          sortedOfferItems.find((item: any) => item.product?.offer_image_path)?.product,
-        );
+    const firstProductImage = await getProductImageUrl(
+      sortedOfferItems.find((item: any) => item.product?.offer_image_path)?.product,
+    );
     let categoryHeroImage = '';
     // Własne hero jest kluczową częścią oferty, dlatego zachowujemy je także
     // w trybie oszczędnym. To pojedynczy, przeskalowany JPEG, więc nie niweczy
-    // redukcji pamięci wynikającej z pominięcia zdjęć wszystkich produktów.
+    // Wszystkie tryby zachowują tę samą rozdzielczość zdjęć produktów.
     if (offer.hero_image_path) {
       categoryHeroImage = await createOptimizedSignedImageUrl(
         'offer-template-pages',
         offer.hero_image_path,
-        compactResourceMode ? 720 : 960,
+        1440,
       );
     }
     if (!categoryHeroImage && selectedTemplateCategory?.hero_image_path) {
       categoryHeroImage = await createOptimizedSignedImageUrl(
         'offer-template-pages',
         selectedTemplateCategory.hero_image_path,
-        compactResourceMode ? 720 : 960,
+        1440,
       );
     }
     const recommendedScope = sortedOfferItems
@@ -1601,18 +1742,19 @@ Deno.serve(async (req: Request) => {
     const addBuiltInCover = async () => {
       const page = mergedPdf.addPage([595.28, 841.89]);
       page.drawRectangle({ x: 0, y: 0, width: 595.28, height: 841.89, color: coverBurgundy });
-      const coverImage = eventTemplateCategoryId
+      const coverImage = demoMode ? sellerCoverUrl || categoryHeroImage || firstProductImage : sellerMode ? sellerCoverUrl || firstProductImage : eventTemplateCategoryId
         ? categoryHeroImage
         : categoryHeroImage || firstProductImage;
       const imageSectionBottom = 210;
       const imageSectionHeight = Math.min(470, Math.max(320, Number(categoryDesign.hero_height || 395)));
-      const coverDecorationCenterX = 545;
-      const coverDecorationRadius = 155;
-      const coverDecorationGap = 34; // 1.2 cm on an A4 PDF page
-      const coverDecorationCenterY = imageSectionBottom
-        + imageSectionHeight
-        + coverDecorationGap
-        + coverDecorationRadius;
+      // Anchor both circles at the page corner so only a quarter is visible.
+      const coverDecorationCenterX = page.getWidth();
+      const coverDecorationCenterY = page.getHeight();
+      const coverDecorationGap = 34; // Keep the decoration clear of the hero image.
+      const coverDecorationRadius = Math.min(
+        155,
+        coverDecorationCenterY - imageSectionBottom - imageSectionHeight - coverDecorationGap,
+      );
 
       if (coverImage) {
         try {
@@ -1673,7 +1815,7 @@ Deno.serve(async (req: Request) => {
         page.drawCircle({
           x: coverDecorationCenterX,
           y: coverDecorationCenterY,
-          size: 90,
+          size: coverDecorationRadius * (90 / 155),
           borderColor: coverAccent,
           borderWidth: 1.15,
           opacity: 1,
@@ -1729,7 +1871,7 @@ Deno.serve(async (req: Request) => {
           ? offerData.contact_person_name
           : '',
         category_hero_image: categoryHeroImage,
-        cover_footer_title: 'OFERTA PRZYGOTOWANA NA PODSTAWIE ZAPYTANIA',
+        cover_footer_title: sellerMode ? String(sellerBranding.footer_text || 'OFERTA PRZYGOTOWANA NA PODSTAWIE ZAPYTANIA') : 'OFERTA PRZYGOTOWANA NA PODSTAWIE ZAPYTANIA',
         cover_valid_until: offerData.offer_valid_until
           ? `OFERTA WAŻNA DO ${offerData.offer_valid_until}`
           : '',
@@ -1894,7 +2036,7 @@ Deno.serve(async (req: Request) => {
       const cardWidth = (505 - gap * (packages.length - 1)) / packages.length;
       const cardTop = 176;
       const maxPackageItems = Math.max(...packages.map((pkg: any) => (pkg.items || []).length), 1);
-      const cardHeight = Math.min(430, Math.max(350, 300 + maxPackageItems * 18));
+      const cardHeight = Math.max(350, 270 + Math.min(8, maxPackageItems) * 30);
       const fallbackRecommendedId = packages.find((pkg: any) => pkg.is_recommended)?.id
         || packages[Math.min(1, packages.length - 1)].id;
       const packageNotes: string[] = [];
@@ -1960,10 +2102,10 @@ Deno.serve(async (req: Request) => {
         }
 
         const prefix = `package_${index + 1}`;
-        const itemLabels = [...(pkg.items || [])]
+        const visiblePackageItems = [...(pkg.items || [])]
           .sort((a: any, b: any) => Number(a.display_order || 0) - Number(b.display_order || 0))
-          .slice(0, 8)
-          .map((item: any) => {
+          .slice(0, 8);
+        const itemLabels = visiblePackageItems.map((item: any) => {
             const productName = item.product?.name || 'Pozycja oferty';
             const variantName = item.selected_variant?.name;
             const quantity = Number(item.quantity || 1);
@@ -1984,7 +2126,6 @@ Deno.serve(async (req: Request) => {
           { field_name: `${prefix}_price_label`, label: 'Rodzaj ceny', x: x + 15, y: cardTop + 176, font_size: 6.8, font_color: mutedColor, max_width: cardWidth - 30, align: 'center' },
           { field_name: `${prefix}_benefit`, label: 'Korzyść klienta', x: x + 15, y: cardTop + 194, font_size: 7.2, font_color: isRecommended ? categoryDesign.accent_color : categoryDesign.primary_color, max_width: cardWidth - 30, align: 'center' },
           { field_name: `${prefix}_scope_title`, label: 'Zakres', x: x + 15, y: cardTop + 224, font_size: 7, font_color: isRecommended ? categoryDesign.accent_color : categoryDesign.primary_color, max_width: cardWidth - 30 },
-          { field_name: `${prefix}_items`, label: 'Produkty', x: x + 15, y: cardTop + 248, font_size: 7.8, line_height: 18, font_color: bodyColor, max_width: cardWidth - 30 },
         );
         pageData[`${prefix}_badge`] = isRecommended ? 'NAJLEPSZY WYBÓR' : `PAKIET ${index + 1}`;
         pageData[`${prefix}_name`] = String(pkg.name || '').toLocaleUpperCase('pl-PL');
@@ -1993,16 +2134,34 @@ Deno.serve(async (req: Request) => {
           ? `WARTOŚĆ PRODUKTÓW: ${formatPackageMoney(listPriceWithLogistics)}`
           : '';
         pageData[`${prefix}_price`] = formatPackageMoney(priceWithLogistics);
-        pageData[`${prefix}_price_label`] = `${formatPackageMoney(priceWithLogistics * 1.23)} BRUTTO · VAT 23%`;
+        pageData[`${prefix}_price_label`] = `${formatPackageMoney(priceWithLogistics * (1 + Number(offer.tax_percent ?? 23) / 100))} BRUTTO · VAT ${Number(offer.tax_percent ?? 23)}%`;
         pageData[`${prefix}_benefit`] = packageBenefit > 0
           ? `OSZCZĘDZASZ ${formatPackageMoney(packageBenefit)} · ${Number(pkg.discount_percent || 0).toLocaleString('pl-PL')}%`
           : 'CENA WYNIKA Z SUMY WYBRANYCH PRODUKTÓW';
         pageData[`${prefix}_scope_title`] = 'W PAKIECIE';
-        pageData[`${prefix}_items`] = itemLabels.join('\n');
+        visiblePackageItems.forEach((item: any, itemIndex: number) => {
+          const field = `${prefix}_item_${itemIndex}`;
+          const top = cardTop + 248 + itemIndex * 30;
+          const label = itemLabels[itemIndex];
+          const font = overlayFontCache?.regularFont;
+          let shortLabel = label;
+          while (shortLabel.length > 1 && (font ? font.widthOfTextAtSize(shortLabel + '…', 7.8) : shortLabel.length * 4.5) > cardWidth - 30) shortLabel = shortLabel.slice(0, -1);
+          fields.push({ field_name: field, label: 'Produkt w pakiecie', x: x + 15, y: top, font_size: 7.8, font_color: bodyColor, max_width: cardWidth - 30 });
+          pageData[field] = shortLabel === label ? label : shortLabel.trimEnd() + '…';
+          const url = publicProductUrl(item.product_id || item.product?.id);
+          if (url) {
+            fields.push({ field_name: `${field}_more`, label: 'Czytaj więcej', type: 'url', show_icon: false, link_url: url, x: x + 15, y: top + 12, font_size: 7, font_color: mutedColor, max_width: cardWidth - 30 });
+            pageData[`${field}_more`] = 'CZYTAJ WIĘCEJ';
+          }
+        });
       });
 
       await overlayTextOnPages(mergedPdf, mergedPdf.getPageCount() - 1, 1, fields, pageData);
       return true;
+    };
+
+    const addDemoNotice = async (index: number, dark: boolean) => {
+      await overlayTextOnPages(mergedPdf,index,1,[{field_name:'demo_notice',label:'Oznaczenie demonstracji',x:45,y:824,font_size:6,font_color:dark?'#ffffff':categoryDesign.primary_color,max_width:505}],{demo_notice:'DEMO / KALKULACJA TESTOWA / DOKUMENT TESTOWY'});
     };
 
     // Gotowy PDF okładki może zawierać obraz na stałe i nie mieć pola, które
@@ -2012,34 +2171,21 @@ Deno.serve(async (req: Request) => {
       ? { success: false }
       : await addPdfFromTemplate('cover');
     if (!coverResult.success) await addBuiltInCover();
+    reportStage('cover_ready');
+    // Preview uses the actual cover builder and embedded fonts/images. Never
+    // create or return service/pricing pages before the full-PDF action.
+    if (demoCoverOnly) {
+      await addDemoNotice(0, true);
+      mergedPdf.setTitle('Okładka przykładowej oferty');
+      const coverBytes = await timed('serialization', () => mergedPdf.save({ useObjectStreams: !compactResourceMode, addDefaultPage: false }));
+      reportStage('cover_pdf_ready', { bytes: coverBytes.byteLength });
+      return new Response(coverBytes, { headers: { ...corsHeaders,
+        'Content-Type': 'application/pdf', 'Cache-Control': 'no-store',
+        'X-Offer-Demo-Cover': 'cover-v1',
+      } });
+    }
     const aboutResult = await addPdfFromTemplate('about');
     if (!aboutResult.success) await addBuiltInAbout();
-
-    const addStaticProductPdf = async (item: any): Promise<boolean> => {
-      if (!item.product?.pdf_page_url) return false;
-      try {
-        const pdfPath = item.product.pdf_page_url;
-
-        const { data: pdfData, error: downloadError } = await supabase.storage
-          .from('offer-product-pages')
-          .download(pdfPath);
-
-        if (downloadError || !pdfData) {
-          console.error(`Failed to download PDF for product ${item.product.name}:`, downloadError);
-          return false;
-        }
-
-        const arrayBuffer = await pdfData.arrayBuffer();
-        const productPdf = await PDFDocument.load(arrayBuffer);
-
-        const copiedPages = await mergedPdf.copyPages(productPdf, productPdf.getPageIndices());
-        copiedPages.forEach((page) => mergedPdf.addPage(page));
-        return true;
-      } catch (error) {
-        console.error(`Error processing PDF for product ${item.product.name}:`, error);
-        return false;
-      }
-    };
 
     const addFallbackProductPage = async (
       data: Record<string, any>,
@@ -2055,53 +2201,33 @@ Deno.serve(async (req: Request) => {
       if (variant !== 'visual') {
         page.drawLine({ start: { x: 45, y: height - 142 }, end: { x: 550, y: height - 142 }, thickness: 0.8, color: burgundy });
       }
+      // Images are clipped to rounded paths by overlayTextOnPages. Leave the
+      // page surface visible behind them; a white rectangle leaks at corners.
       if (variant === 'default') {
-        page.drawRectangle({
-          x: 325,
-          y: height - 370,
-          width: 225,
-          height: 190,
-          color: rgb(1, 1, 1),
-        });
         page.drawLine({ start: { x: 45, y: height - 430 }, end: { x: 550, y: height - 430 }, thickness: 0.8, color: rgb(0.82, 0.78, 0.74) });
       } else if (variant === 'compact') {
-        page.drawRectangle({
-          x: 45,
-          y: height - 385,
-          width: 505,
-          height: 220,
-          color: rgb(1, 1, 1),
-        });
         page.drawLine({ start: { x: 45, y: height - 585 }, end: { x: 550, y: height - 585 }, thickness: 0.8, color: rgb(0.82, 0.78, 0.74) });
       } else {
-        const visualImageHeight = Math.min(330, Math.max(220, Number(categoryDesign.visual_image_height || 285)));
         page.drawLine({ start: { x: 45, y: height - 120 }, end: { x: 550, y: height - 120 }, thickness: 0.8, color: burgundy });
-        page.drawRectangle({
-          x: 82,
-          y: height - 235 - visualImageHeight,
-          width: 431,
-          height: visualImageHeight,
-          color: rgb(1, 1, 1),
-        });
         drawRoundedRectangle(page, { x: 45, y: 80, width: 505, height: 165, radius: 9, color: rgb(1, 1, 1) });
       }
 
       const defaultFields: TextFieldConfig[] = [
         { field_name: 'product_name', label: 'Nazwa produktu', type: 'text', x: 45, y: 55, font_size: 24, font_color: categoryDesign.primary_color, max_width: 505, font_role: 'heading' },
         { field_name: 'product_short_description', label: 'Krótki opis', type: 'text', x: 45, y: 108, font_size: 11, font_color: '#575c66', max_width: 505 },
-        { field_name: 'scope_title', label: 'Zakres', type: 'text', x: 45, y: 175, font_size: 12, font_color: '#7f1734' },
+        { field_name: 'scope_title', label: 'Zakres', type: 'text', x: 45, y: 175, font_size: 12, font_color: productSectionColor },
         { field_name: 'product_description', label: 'Opis', type: 'text', x: 45, y: 210, font_size: 10.5, line_height: 15, font_color: '#0c1a30', max_width: 245 },
         { field_name: 'product_image', label: 'Grafika', type: 'image', x: 325, y: 180, width: 225, height: 190 },
-        { field_name: 'reason_title', label: 'Korzyści', type: 'text', x: 45, y: 455, font_size: 12, font_color: '#7f1734' },
+        { field_name: 'reason_title', label: 'Korzyści', type: 'text', x: 45, y: 455, font_size: 12, font_color: productSectionColor },
         { field_name: 'product_benefits_narrative', label: 'Korzyści', type: 'text', x: 45, y: 490, font_size: 9.5, line_height: 14, font_color: '#0c1a30', max_width: 245 },
       ];
       const compactFields: TextFieldConfig[] = [
         { field_name: 'product_name', label: 'Nazwa produktu', type: 'text', x: 45, y: 55, font_size: 24, font_color: categoryDesign.primary_color, max_width: 505, font_role: 'heading' },
         { field_name: 'product_short_description', label: 'Krótki opis', type: 'text', x: 45, y: 108, font_size: 11, font_color: '#575c66', max_width: 505 },
         { field_name: 'product_image', label: 'Grafika', type: 'image', x: 45, y: 165, width: 505, height: 220 },
-        { field_name: 'scope_title', label: 'Zakres', type: 'text', x: 45, y: 420, font_size: 12, font_color: '#7f1734' },
+        { field_name: 'scope_title', label: 'Zakres', type: 'text', x: 45, y: 420, font_size: 12, font_color: productSectionColor },
         { field_name: 'product_description', label: 'Opis', type: 'text', x: 45, y: 455, font_size: 10.5, line_height: 16, font_color: '#0c1a30', max_width: 505 },
-        { field_name: 'reason_title', label: 'Korzyści', type: 'text', x: 45, y: 610, font_size: 12, font_color: '#7f1734' },
+        { field_name: 'reason_title', label: 'Korzyści', type: 'text', x: 45, y: 610, font_size: 12, font_color: productSectionColor },
         { field_name: 'product_benefits_narrative', label: 'Korzyści', type: 'text', x: 45, y: 645, font_size: 9.5, line_height: 14, font_color: '#0c1a30', max_width: 245 },
       ];
       const visualImageHeight = Math.min(330, Math.max(220, Number(categoryDesign.visual_image_height || 285)));
@@ -2112,7 +2238,7 @@ Deno.serve(async (req: Request) => {
         { field_name: 'product_description', label: 'Opis', type: 'text', x: 45, y: 158, font_size: 8.8, line_height: 12, font_color: '#171717', max_width: 505 },
         { field_name: 'product_image', label: 'Grafika', type: 'image', x: 82, y: 235, width: 431, height: visualImageHeight, border_radius: 9 },
         { field_name: 'scope_title', label: 'Zakres', type: 'text', x: 67, y: 620, font_size: 8.5, font_color: categoryDesign.primary_color },
-        { field_name: 'product_benefits', label: 'Korzyści', type: 'text', x: 67, y: 650, font_size: 7.6, line_height: 10.5, font_color: '#171717', max_width: 250 },
+        { field_name: 'product_benefits', label: 'Korzyści', type: 'text', x: 67, y: 650, font_size: 7.6, line_height: 10.5, font_color: '#171717', max_width: 460 },
       ];
       const fallbackFields = (variant === 'compact'
         ? compactFields
@@ -2128,7 +2254,7 @@ Deno.serve(async (req: Request) => {
           : field);
 
       const fallbackData = variant === 'visual'
-        ? { ...data, product_description: truncateAtWord(data.product_description || '', 235) }
+        ? { ...data, product_visual_layout: true, product_name: truncateAtWord(data.product_name || '', 42), product_description: truncateAtWord(data.product_description || '', 235) }
         : data;
 
       await overlayTextOnPages(
@@ -2148,14 +2274,6 @@ Deno.serve(async (req: Request) => {
 
       if (variant === 'visual' && data.product_image) {
         const visualImageBottom = height - 235 - visualImageHeight;
-        page.drawRectangle({
-          x: 45,
-          y: visualImageBottom - 32,
-          width: 505,
-          height: 92,
-          color: burgundy,
-          opacity: 0.82,
-        });
         const hasProductTags = Array.isArray(data.product_tags) && data.product_tags.length > 0;
         const rawTags = hasProductTags
           ? data.product_tags
@@ -2176,43 +2294,25 @@ Deno.serve(async (req: Request) => {
           })
           .filter(Boolean)
           .slice(0, 5);
-        const tagFont = overlayFontCache?.boldFont || overlayFontCache?.regularFont;
-        const displayTags = productTags.map((tag: string) => {
-          let displayTag = tag;
-          let measuredWidth = tagFont?.widthOfTextAtSize(displayTag, 7.2) || displayTag.length * 4.2;
-          const words = displayTag.split(/\s+/);
-          while (measuredWidth > 95 && words.length > 1) {
-            words.pop();
-            displayTag = words.join(' ');
-            measuredWidth = tagFont?.widthOfTextAtSize(displayTag, 7.2) || displayTag.length * 4.2;
-          }
-          return displayTag;
-        });
-        let productTagsLine = displayTags.join('  •  ');
-        let productTagsFontSize = 8;
-        while (
-          productTagsLine &&
-          tagFont &&
-          tagFont.widthOfTextAtSize(productTagsLine, productTagsFontSize) > 455 &&
-          productTagsFontSize > 6.5
-        ) {
-          productTagsFontSize -= 0.5;
+        if (productTags.length) {
+          const font = overlayFontCache!.regularFont;
+          const fontSize = 12;
+          const lineHeight = 15;
+          const tagLines = wrapText(productTags.join('  •  '), font, fontSize, 455);
+          // Five concise tags fit in at most three lines without shrinking the text.
+          const lines = tagLines.slice(0, 3);
+          const panelHeight = 64;
+          const panelTop = 235 + visualImageHeight - 36;
+          drawRoundedRectangle(page, {
+            x: 45, y: visualImageBottom - 28, width: 505, height: panelHeight,
+            radius: 9, color: burgundy,
+          });
+          await overlayTextOnPages(mergedPdf, mergedPdf.getPageCount() - 1, 1, [
+            { field_name: 'product_tags_line', label: 'Tagi produktu', x: 70,
+              y: panelTop + (panelHeight - (fontSize + (lines.length - 1) * lineHeight)) / 2,
+              font_size: fontSize, line_height: lineHeight, font_color: '#ffffff', max_width: 455, align: 'center' },
+          ], { product_tags_line: lines.join('\n') });
         }
-        while (
-          displayTags.length > 1 &&
-          tagFont &&
-          tagFont.widthOfTextAtSize(productTagsLine, productTagsFontSize) > 455
-        ) {
-          displayTags.pop();
-          productTagsLine = displayTags.join('  •  ');
-        }
-        await overlayTextOnPages(mergedPdf, mergedPdf.getPageCount() - 1, 1, [
-          { field_name: 'product_image_caption', label: 'Podpis zdjęcia', x: 67, y: visualImageHeight + 200, font_size: 13, font_color: '#ffffff', max_width: 455, font_role: 'heading' },
-          { field_name: 'product_tags_line', label: 'Tagi produktu', x: 67, y: visualImageHeight + 240, font_size: productTagsFontSize, font_color: '#ffffff', max_width: 455, align: 'center' },
-        ], {
-          product_image_caption: String(data.product_name || '').toLocaleUpperCase('pl-PL'),
-          product_tags_line: productTagsLine,
-        });
       }
     };
 
@@ -2264,6 +2364,7 @@ Deno.serve(async (req: Request) => {
           product_name: String(item.name || selectedVariant?.name || product.name || '').toLocaleUpperCase('pl-PL'),
           product_short_description: selectedVariant?.short_description || product.offer_short_description || '',
           product_description: item.description || selectedVariant?.description || product.offer_description || product.description || '',
+          product_compact_description: compactProductDescription(product, item.description || ''),
           product_benefits: benefits.map((benefit: string) => `• ${benefit}`).join('\n'),
           product_requirements: '',
           product_requirements_inline: '',
@@ -2272,14 +2373,14 @@ Deno.serve(async (req: Request) => {
           product_benefits_narrative: benefitsNarrative,
           product_image: productImage,
           product_image_alt: selectedVariant?.offer_image_alt || product.offer_image_alt || '',
-          product_image_position_x: Number(product.offer_image_position_x ?? 50),
-          product_image_position_y: Number(product.offer_image_position_y ?? 25),
-          product_image_zoom: Number(product.offer_image_zoom ?? 1),
-          product_page_url: product.product_page_url || '',
+          product_image_position_x: selectedVariant?.offer_image_path ? 50 : Number(product.offer_image_position_x ?? 50),
+          product_image_position_y: selectedVariant?.offer_image_path ? 50 : Number(product.offer_image_position_y ?? 25),
+          product_image_zoom: selectedVariant?.offer_image_path ? 1 : Number(product.offer_image_zoom ?? 1),
+          product_page_url: publicProductUrl(product.id),
           product_quantity: quantity.toLocaleString('pl-PL'),
           product_unit: item.unit || product.unit || 'szt',
-          product_unit_price: formatMoney(unitPrice),
-          product_total: formatMoney(itemTotal),
+          product_unit_price: demoMode && item.demo_price_entered === false ? '' : formatMoney(unitPrice),
+          product_total: demoMode && item.demo_price_entered === false ? '' : formatMoney(itemTotal),
         },
       };
     };
@@ -2291,7 +2392,7 @@ Deno.serve(async (req: Request) => {
       page.drawLine({ start: { x: 45, y: height - 112 }, end: { x: 550, y: height - 112 }, thickness: 2, color: burgundy });
 
       const fields: TextFieldConfig[] = [
-        { field_name: 'compact_page_title', label: 'Tytuł strony', x: 45, y: 55, font_size: 23, font_color: '#7f1734', max_width: 505 },
+        { field_name: 'compact_page_title', label: 'Tytuł strony', x: 45, y: 55, font_size: 23, font_color: productSectionColor, max_width: 505 },
       ];
       const compactData: Record<string, any> = {
         ...offerData,
@@ -2303,20 +2404,11 @@ Deno.serve(async (req: Request) => {
         const top = 145 + index * 215;
         page.drawRectangle({
           x: 45,
-          y: height - top - 150,
+          y: height - top - 176,
           width: 4,
-          height: 150,
+          height: 176,
           color: burgundy,
         });
-        if (!compactResourceMode) {
-          page.drawRectangle({
-            x: 405,
-            y: height - top - 145,
-            width: 145,
-            height: 135,
-            color: rgb(1, 1, 1),
-          });
-        }
         page.drawLine({
           start: { x: 45, y: height - top - 188 },
           end: { x: 550, y: height - top - 188 },
@@ -2325,32 +2417,26 @@ Deno.serve(async (req: Request) => {
         });
 
         fields.push(
-          { field_name: `product_${slot}_name`, label: `Produkt ${slot}: nazwa`, x: 65, y: top + 8, font_size: 16, font_color: '#7f1734', max_width: compactResourceMode ? 465 : 315 },
-          { field_name: `product_${slot}_short_description`, label: `Produkt ${slot}: lead`, x: 65, y: top + 44, font_size: 9.5, font_color: '#575c66', max_width: compactResourceMode ? 465 : 315 },
-          { field_name: `product_${slot}_description`, label: `Produkt ${slot}: opis`, x: 65, y: top + 73, font_size: 9.3, line_height: 13, font_color: '#0c1a30', max_width: compactResourceMode ? 465 : 315 },
-          { field_name: `product_${slot}_requirements`, label: `Produkt ${slot}: wymagania`, x: 65, y: top + 132, font_size: 7.2, line_height: 9, font_color: '#7f1734', max_width: compactResourceMode ? 465 : 315 },
-          ...(!compactResourceMode ? [{ field_name: `product_${slot}_image`, label: `Produkt ${slot}: zdjęcie`, type: 'image' as const, x: 405, y: top + 10, width: 145, height: 135 }] : []),
-          ...(entry.data.product_page_url ? [{
-            field_name: `product_${slot}_more`,
-            label: `Produkt ${slot}: link`,
-            type: 'url' as const,
-            link_url: entry.data.product_page_url,
-            x: 65,
-            y: top + 164,
-            font_size: 7.8,
-            font_color: categoryDesign.primary_color,
-            max_width: 315,
-          }] : []),
+          { field_name: `product_${slot}_name`, label: `Produkt ${slot}: nazwa`, x: 65, y: top + 8, font_size: 16, font_color: productSectionColor, max_width: entry.data.product_image ? 315 : 465 },
+          { field_name: `product_${slot}_short_description`, label: `Produkt ${slot}: lead`, x: 65, y: top + 44, font_size: 9.5, font_color: '#575c66', max_width: entry.data.product_image ? 315 : 465 },
+          { field_name: `product_${slot}_description`, label: `Produkt ${slot}: opis`, x: 65, y: top + 73, font_size: 9.3, line_height: 13, font_color: '#0c1a30', max_width: entry.data.product_image ? 315 : 465 },
+          { field_name: `product_${slot}_requirements`, label: `Produkt ${slot}: wymagania`, x: 65, y: top + 132, font_size: 7.2, line_height: 9, font_color: productSectionColor, max_width: entry.data.product_image ? 315 : 465 },
+          ...(entry.data.product_image ? [{ field_name: `product_${slot}_image`, label: `Produkt ${slot}: zdjęcie`, type: 'image' as const, x: 405, y: top + 10, width: 145, height: 135, image_position_x: Number(entry.data.product_image_position_x ?? 50), image_position_y: Number(entry.data.product_image_position_y ?? 25), image_zoom: Number(entry.data.product_image_zoom ?? 1), border_radius: 10 }] : []),
+
         );
 
+        compactData[`product_${slot}_page_url`] = entry.data.product_page_url;
         compactData[`product_${slot}_name`] = entry.data.product_name;
         compactData[`product_${slot}_short_description`] = entry.data.product_short_description;
-        compactData[`product_${slot}_description`] = truncateAtWord(entry.data.product_description, 330);
+        compactData[`product_${slot}_description`] = truncateAtWord(entry.data.product_compact_description || entry.data.product_description, 330);
         compactData[`product_${slot}_requirements`] = entry.data.product_requirements_inline
           ? `WYMAGANIA: ${truncateAtWord(entry.data.product_requirements_inline, 110)}`
           : '';
         compactData[`product_${slot}_image`] = entry.data.product_image;
-        compactData[`product_${slot}_more`] = entry.data.product_page_url ? 'ZOBACZ WIĘCEJ  →' : '';
+        compactData[`product_${slot}_image_zoom`] = entry.data.product_image_zoom;
+        compactData[`product_${slot}_image_position_y`] = entry.data.product_image_position_y;
+        compactData[`product_${slot}_image_position_x`] = entry.data.product_image_position_x;
+        compactData[`product_${slot}_more`] = entry.data.product_page_url ? 'CZYTAJ WIĘCEJ' : '';
       });
 
       await overlayTextOnPages(
@@ -2370,13 +2456,17 @@ Deno.serve(async (req: Request) => {
       const groupedData: Record<string, any> = { ...offerData };
       entries.forEach((entry, index) => {
         const slot = index + 1;
+        groupedData[`product_${slot}_page_url`] = entry.data.product_page_url;
         groupedData[`product_${slot}_name`] = entry.data.product_name;
         groupedData[`product_${slot}_short_description`] = entry.data.product_short_description;
-        groupedData[`product_${slot}_description`] = truncateAtWord(entry.data.product_description, 330);
+        groupedData[`product_${slot}_description`] = truncateAtWord(entry.data.product_compact_description || entry.data.product_description, 330);
         groupedData[`product_${slot}_requirements`] = entry.data.product_requirements_inline
           ? `WYMAGANIA: ${truncateAtWord(entry.data.product_requirements_inline, 110)}`
           : '';
         groupedData[`product_${slot}_image`] = entry.data.product_image;
+        groupedData[`product_${slot}_image_zoom`] = entry.data.product_image_zoom;
+        groupedData[`product_${slot}_image_position_y`] = entry.data.product_image_position_y;
+        groupedData[`product_${slot}_image_position_x`] = entry.data.product_image_position_x;
       });
 
       const compactResult = await addPdfFromTemplate(
@@ -2388,34 +2478,13 @@ Deno.serve(async (req: Request) => {
       if (!compactResult.success) await addFallbackCompactProductPage(entries);
 
       if (compactResult.success) {
-        const compactLinkFields: TextFieldConfig[] = [];
-        const compactLinkData: Record<string, any> = {};
+        const compactPage = mergedPdf.getPage(mergedPdf.getPageCount() - 1);
         entries.forEach((entry, index) => {
           if (!entry.data.product_page_url) return;
           const top = 145 + index * 215;
-          const fieldName = `product_${index + 1}_more_link`;
-          compactLinkFields.push({
-            field_name: fieldName,
-            label: 'Zobacz więcej',
-            type: 'url',
-            link_url: entry.data.product_page_url,
-            x: 65,
-            y: top + 164,
-            font_size: 7.8,
-            font_color: categoryDesign.primary_color,
-            max_width: 315,
-          });
-          compactLinkData[fieldName] = 'ZOBACZ WIĘCEJ  →';
+          // Extend the separator to include the dedicated CTA row.
+          compactPage.drawRectangle({ x: 45, y: compactPage.getHeight() - top - 176, width: 4, height: 26, color: burgundy });
         });
-        if (compactLinkFields.length > 0) {
-          await overlayTextOnPages(
-            mergedPdf,
-            mergedPdf.getPageCount() - 1,
-            1,
-            compactLinkFields,
-            compactLinkData,
-          );
-        }
       }
 
       entries.forEach((entry, index) => generatedProductPages.push({
@@ -2440,31 +2509,15 @@ Deno.serve(async (req: Request) => {
     };
 
     const addSingleProductPage = async (entry: PreparedProductEntry) => {
-      const variant = entry.item.offer_page_variant_override
-        || entry.product.offer_page_variant
-        || 'default';
-      const productResult = await addPdfFromTemplate('product', entry.data, variant);
-      if (!productResult.success) await addFallbackProductPage(entry.data, variant);
+      const requestedVariant = entry.item.offer_page_variant_override || entry.product.offer_page_variant || 'default';
+      const variant = hasOfferAddons(entry.item) || (requestedVariant === 'compact' && compactProductBlockReason(entry.product))
+        ? 'default' : requestedVariant;
+      const pageData = variant === 'visual'
+        ? { ...entry.data, product_visual_layout: true, product_name: truncateAtWord(entry.data.product_name || '', 42) }
+        : entry.data;
+      const productResult = await addPdfFromTemplate('product', pageData, variant);
+      if (!productResult.success) await addFallbackProductPage(pageData, variant);
 
-      if (entry.data.product_page_url) {
-        await overlayTextOnPages(
-          mergedPdf,
-          mergedPdf.getPageCount() - 1,
-          1,
-          [{
-            field_name: 'product_more_link',
-            label: 'Zobacz więcej',
-            type: 'url',
-            link_url: entry.data.product_page_url,
-            x: 45,
-            y: 748,
-            font_size: 8.5,
-            font_color: categoryDesign.primary_color,
-            max_width: 505,
-          }],
-          { product_more_link: 'ZOBACZ WIĘCEJ O TEJ USŁUDZE  →' },
-        );
-      }
 
       generatedProductPages.push({
         offer_item_id: entry.item.id,
@@ -2490,16 +2543,7 @@ Deno.serve(async (req: Request) => {
       });
     };
 
-    const addVariantComparisonPage = async (entry: PreparedProductEntry) => {
-      const variants = [...(entry.product.variants || [])]
-        .filter((variant: any) => variant.is_active !== false)
-        .sort((a: any, b: any) => Number(a.display_order || 0) - Number(b.display_order || 0))
-        .slice(0, 3);
-      if (variants.length === 0) {
-        await addSingleProductPage(entry);
-        return;
-      }
-
+    const addVariantComparisonSheet = async (entry: PreparedProductEntry, variants: any[], variantOffset: number, pageIndex: number, pageCount: number) => {
       const page = mergedPdf.addPage([595.28, 841.89]);
       const { width, height } = page.getSize();
       page.drawRectangle({ x: 0, y: 0, width, height, color: cream });
@@ -2507,9 +2551,10 @@ Deno.serve(async (req: Request) => {
       page.drawLine({ start: { x: 45, y: height - 330 }, end: { x: 550, y: height - 330 }, thickness: 0.8, color: burgundy });
 
       const selectedVariantId = entry.item.product_variant_id || entry.item.selected_variant?.id || '';
-      const fallbackRecommendedId = variants.find((variant: any) => variant.is_recommended)?.id || variants[0].id;
+      const fallbackRecommendedId = variants.find((variant: any) => variant.is_recommended)?.id || '';
       const highlightedId = selectedVariantId || fallbackRecommendedId;
-      const showVariantPrices = entry.item.show_variant_prices_in_pdf !== false;
+      const elementsOnly = entry.elementsOnly === true;
+      const showVariantPrices = !elementsOnly && entry.item.show_variant_prices_in_pdf !== false;
       const productImageUrl = await getProductImageUrl(entry.product) || entry.data.product_image;
       const variantImageUrls = await Promise.all(
         variants.map((variant: any) => getProductImageUrl(variant)),
@@ -2537,12 +2582,12 @@ Deno.serve(async (req: Request) => {
         { field_name: 'variant_page_lead', label: 'Opis skrócony', x: 45, y: 82, font_size: 9.5, font_color: '#756f6b', max_width: 505 },
         { field_name: 'variant_page_description', label: 'Opis produktu', x: 45, y: 137, font_size: 8.3, line_height: 11.5, font_color: '#171717', max_width: 250 },
         { field_name: 'variant_page_service_terms', label: 'Czas i przedłużenie usługi', x: 45, y: 307, font_size: 6.8, font_color: categoryDesign.primary_color, max_width: 250 },
-        { field_name: 'variant_page_image', label: 'Zdjęcie produktu', type: 'image', x: 330, y: 132, width: 220, height: 165, border_radius: 8 },
+        { field_name: 'variant_page_image', label: 'Zdjęcie produktu', type: 'image', x: 330, y: 132, width: 220, height: 165, image_position_x: Number(entry.product.offer_image_position_x ?? 50), image_position_y: Number(entry.product.offer_image_position_y ?? 25), image_zoom: Number(entry.product.offer_image_zoom ?? 1), border_radius: 8 },
         { field_name: 'variant_section_title', label: 'Sekcja wariantów', x: 45, y: 350, font_size: 12, font_color: categoryDesign.primary_color, max_width: 505, font_role: 'heading' },
         { field_name: 'variant_page_note', label: 'Nota', x: 45, y: 782, font_size: 7.5, font_color: '#756f6b', max_width: 360 },
         ...(entry.data.product_page_url ? [{
           field_name: 'variant_more_link',
-          label: 'Zobacz więcej',
+          label: 'Czytaj więcej',
           type: 'url' as const,
           link_url: entry.data.product_page_url,
           x: 420,
@@ -2561,17 +2606,25 @@ Deno.serve(async (req: Request) => {
         variant_page_description: truncateAtWord(entry.product.offer_description || entry.product.description || entry.data.product_description || '', 720),
         variant_page_service_terms: getServiceTerms(
           entry.product.service_duration_hours,
-          entry.product.extension_price_net_per_hour,
+          null,
         ),
         variant_page_image: productImageUrl,
-        variant_section_title: 'WARIANTY',
-        variant_page_note: showVariantPrices
+        variant_section_title: `${elementsOnly ? 'POZNAJ ELEMENTY' : 'WARIANTY'}${pageCount > 1 ? ` · ${pageIndex + 1}/${pageCount}` : ''}`,
+        variant_page_note: pageIndex < pageCount - 1 ? 'Dalsze elementy znajdziesz na kolejnej stronie.' : elementsOnly ? 'Wybierz gotowy pakiet na kolejnej stronie.' : showVariantPrices
           ? 'Ceny wariantów są wartościami netto; obok podano wartość brutto z VAT 23%.'
           : 'Zakres wariantu można doprecyzować przed akceptacją oferty.',
-        variant_more_link: entry.data.product_page_url ? 'ZOBACZ WIĘCEJ  →' : '',
+        product_page_url: entry.data.product_page_url,
+        variant_more_link: entry.data.product_page_url ? 'CZYTAJ WIĘCEJ' : '',
       };
 
-      variants.forEach((variant: any, index: number) => {
+      variants.forEach((catalogVariant: any, index: number) => {
+        const override = entry.item.variant_prices_net?.[catalogVariant.id];
+        const selectedPrice = catalogVariant.id === selectedVariantId ? Number(entry.item.unit_price) : undefined;
+        const priceNet = selectedPrice !== undefined && Number.isFinite(selectedPrice) && selectedPrice >= 0
+          ? selectedPrice : typeof override === 'number' && Number.isFinite(override) && override >= 0 ? override : Number(catalogVariant.price_net || 0);
+        const variantVat = Number(offer.tax_percent ?? 23);
+        const variant = { ...catalogVariant, price_net: priceNet, price_gross: Math.round(priceNet * (1 + variantVat / 100) * 100) / 100 };
+
         const x = 45;
         const rowTop = 382 + index * 132;
         const rowHeight = 120;
@@ -2602,23 +2655,23 @@ Deno.serve(async (req: Request) => {
           { field_name: `${fieldPrefix}_service_terms`, label: 'Czas i przedłużenie wariantu', x: x + 72, y: rowTop + 103, font_size: 5.8, font_color: categoryDesign.primary_color, max_width: 205 },
           { field_name: `${fieldPrefix}_price`, label: 'Cena netto', x: x + 280, y: rowTop + 50, font_size: 9.4, font_color: categoryDesign.primary_color, max_width: 77, align: 'right', font_role: 'heading' },
           { field_name: `${fieldPrefix}_price_label`, label: 'Cena brutto', x: x + 270, y: rowTop + 72, font_size: 5.2, font_color: '#756f6b', max_width: 87, align: 'right' },
-          { field_name: `${fieldPrefix}_image`, label: 'Zdjęcie wariantu', type: 'image', x: x + 375, y: rowTop + 10, width: 118, height: rowHeight - 20, border_radius: 6 },
+          { field_name: `${fieldPrefix}_image`, label: 'Zdjęcie wariantu', type: 'image', x: x + 375, y: rowTop + 10, width: 118, height: rowHeight - 20, image_position_x: variantImageUrls[index] ? 50 : Number(entry.product.offer_image_position_x ?? 50), image_position_y: variantImageUrls[index] ? 50 : Number(entry.product.offer_image_position_y ?? 25), image_zoom: variantImageUrls[index] ? 1 : Number(entry.product.offer_image_zoom ?? 1), border_radius: 6 },
         );
-        pageData[`${fieldPrefix}_number`] = String(index + 1).padStart(2, '0');
-        pageData[`${fieldPrefix}_badge`] = isHighlighted || variant.is_recommended
+        pageData[`${fieldPrefix}_number`] = String(variantOffset + index + 1).padStart(2, '0');
+        pageData[`${fieldPrefix}_badge`] = variant.is_recommended
           ? 'REKOMENDOWANY'
-          : '';
+          : variant.id === selectedVariantId ? 'WYBRANY DO WYCENY' : '';
         pageData[`${fieldPrefix}_name`] = String(variant.name || '').toLocaleUpperCase('pl-PL');
         pageData[`${fieldPrefix}_short`] = truncateAtWord(variant.short_description || '', 95);
         pageData[`${fieldPrefix}_image`] = variantImageUrls[index] || productImageUrl;
         pageData[`${fieldPrefix}_price`] = showVariantPrices ? `${formatMoney(Number(variant.price_net || 0))} NETTO` : '';
         pageData[`${fieldPrefix}_price_label`] = showVariantPrices
-          ? `${formatMoney(Number(variant.price_gross || Number(variant.price_net || 0) * 1.23))} BRUTTO · VAT 23%`
+          ? `${formatMoney(Number(variant.price_gross || Number(variant.price_net || 0) * 1.23))} BRUTTO · VAT ${variantVat}%`
           : '';
         pageData[`${fieldPrefix}_description`] = truncateAtWord(variant.description || '', 205);
         pageData[`${fieldPrefix}_service_terms`] = getServiceTerms(
           variant.service_duration_hours ?? entry.product.service_duration_hours,
-          variant.extension_price_net_per_hour ?? entry.product.extension_price_net_per_hour,
+          elementsOnly ? null : variant.extension_price_net_per_hour,
         );
       });
 
@@ -2639,7 +2692,9 @@ Deno.serve(async (req: Request) => {
         variants: variants.map((variant: any) => ({
           id: variant.id,
           name: variant.name,
-          price_net: Number(variant.price_net || 0),
+          price_net: variant.id === selectedVariantId
+            ? Number(entry.item.unit_price ?? variant.price_net ?? 0)
+            : Number(entry.item.variant_prices_net?.[variant.id] ?? variant.price_net ?? 0),
           selected: variant.id === highlightedId,
         })),
         show_variant_prices_in_pdf: showVariantPrices,
@@ -2647,45 +2702,135 @@ Deno.serve(async (req: Request) => {
       });
     };
 
+    const addVariantComparisonPage = async (entry: PreparedProductEntry) => {
+      const variants = [...(entry.product.variants || [])]
+        .filter((variant: any) => variant.is_active !== false)
+        .sort((a: any, b: any) => Number(a.display_order || 0) - Number(b.display_order || 0));
+      const pages = paginateProductVariants(variants);
+      if (!pages.length) { await addSingleProductPage(entry); return; }
+      let offset = 0;
+      for (const [index, page] of pages.entries()) {
+        await addVariantComparisonSheet(entry, page, offset, index, pages.length);
+        offset += page.length;
+      }
+    };
+
+    const addProductPackagesPage = async (entry: any, sourcePackages: ProductSalesPackage[]) => {
+      const error = validateSalesPackages(sourcePackages);
+      if (error) throw new Error(error);
+      const options = sourcePackages.map(p => ({ ...p }));
+      const chosen = entry.item.pricing_configuration?.product_package?.selected_id;
+      const selected = options.find(p => p.id === chosen);
+      if (selected) selected.price_net = Number(entry.item.pricing_configuration?.base_unit_price ?? entry.item.unit_price);
+      const hexToRgb = (hex: string) => rgb(parseInt(hex.slice(1,3),16)/255,parseInt(hex.slice(3,5),16)/255,parseInt(hex.slice(5,7),16)/255);
+      const L = packageLayout;
+      const page = mergedPdf.addPage([L.width, L.height]);
+      const H = L.height;
+      const primary = hexToRgb(categoryDesign.primary_color);
+      const accent = hexToRgb(categoryDesign.accent_color);
+      page.drawRectangle({ x: 0, y: 0, width: L.width, height: H, color: hexToRgb(categoryDesign.surface_color) });
+      const fields: TextFieldConfig[] = [];
+      const data: Record<string, any> = { ...offerData };
+      const text = (key: string, value: string, x: number, y: number, size: number, color: string, width: number, heading = false, align: 'left'|'center'|'right' = 'left') => {
+        fields.push({ field_name: key, label: key, x, y, font_size: size, font_color: color, max_width: width, line_height: size * 1.25, ...(heading ? { font_role: 'heading' as const } : {}), align });
+        data[key] = value;
+      };
+      const line = (x1: number,y1: number,x2: number,y2: number,color=primary,thickness=.8) => page.drawLine({ start:{x:x1,y:H-y1},end:{x:x2,y:H-y2},color,thickness });
+      const gift = (x:number,y:number) => {
+        const scale = .6;
+        const stroke = (x1:number,y1:number,x2:number,y2:number) => line(x+x1*scale,y+y1*scale,x+x2*scale,y+y2*scale,accent,.7);
+        stroke(0,8,18,8);stroke(0,8,0,23);stroke(18,8,18,23);stroke(0,23,18,23);stroke(9,3,9,23);
+        for (const cx of [5,13]) page.drawEllipse({x:x+cx*scale,y:H-y-4*scale,xScale:4*scale,yScale:3*scale,borderColor:accent,borderWidth:.7});
+      };
+      text('pp_overline', `${entry.product.name} / PAKIETY`,36,32,8,categoryDesign.primary_color,523,true);
+      text('pp_title', packageCopy.title,36,57,27,categoryDesign.primary_color,523,true);
+      text('pp_lead', String(entry.product.name).toLocaleLowerCase('pl-PL').includes('kasyn') ? 'Od wspólnej gry przy dwóch stołach po kompletną strefę z dekoracją.' : packageCopy.lead,36,132,10,'#756f6b',523);
+      line(36,160,559,160);
+      for (const [i,p] of options.entries()) {
+        const top=L.tops[i], h=L.heights[i], dark=p.id===chosen;
+        const extension = packageExtensionLabel(p);
+        const priceOffset = extension ? 12 : 0;
+        const color=dark?'#faf7f2':categoryDesign.primary_color, muted=dark?'#eee7df':'#756f6b';
+        drawRoundedRectangle(page,{x:L.x,y:H-top-h,width:L.widthCard,height:h,radius:9,color:dark?primary:rgb(1,1,1)});
+        drawRoundedRectangle(page,{x:L.x+12,y:H-top-h+12,width:3,height:h-24,radius:1.5,color:dark?accent:primary});
+        const prefix=`pp_${i}`;
+        text(prefix+'_number',String(i+1).padStart(2,'0'),61,top+16,18,categoryDesign.accent_color,30,true);
+        text(prefix+'_name',p.name,107,top+14,14,color,245,true);
+        text(prefix+'_description',p.description,107,top+44,8.5,muted,242);
+        text(prefix+'_included',p.included_label,107,top+72,8,color,245,true);
+        line(107,top+92,342,top+92,dark?accent:primary,.6);
+        text(prefix+'_price',`${Number(p.price_net).toLocaleString('pl-PL')} zł`,107,top+h-43-priceOffset,27,color,153);
+        line(270,top+h-39-priceOffset,270,top+h-13-priceOffset,dark?accent:primary,.6);
+        text(prefix+'_net','NETTO / PAKIET',281,top+h-31-priceOffset,7,muted,75);
+        if (extension) text(prefix+'_extension',extension,107,top+h-15,6.6,muted,245);
+        if(p.image_path){
+          const url=await getProductImageUrl({offer_image_path:p.image_path});
+          fields.push({field_name:prefix+'_image',label:'Zdjęcie pakietu',type:'image',x:L.imageX,y:top+12,width:L.imageWidth,height:h-24,border_radius:7});data[prefix+'_image']=url;
+        }
+      }
+      [125,317,509].forEach((cx,i)=>{
+        page.drawCircle({x:cx,y:H-727,size:18.5,color:hexToRgb('#f2eae1')});
+        if(i===0){line(cx-7,717,cx+6,717);line(cx-7,717,cx-7,736);line(cx+6,717,cx+6,736);line(cx-7,736,cx+6,736);[723,728,732].forEach(y=>line(cx-3,y,cx+3,y));}
+        else if(i===1){[719,726,733].forEach((y,j)=>{line(cx-9,y,cx+9,y);page.drawCircle({x:cx+(j===1?4:-3),y:H-y,size:2,borderColor:primary,borderWidth:.8,color:hexToRgb('#f2eae1')});});}
+        else {page.drawCircle({x:cx,y:H-726,size:10,borderColor:primary,borderWidth:1});line(cx-5,726,cx-1,730);line(cx-1,730,cx+6,722);}
+        text(`pp_step_${i}`,packageCopy.steps[i],cx-65,755,7,categoryDesign.primary_color,130,true,'center');
+      });
+      line(163,727,269,727,accent,.6);line(355,727,461,727,accent,.6);
+      text('pp_note',packageCopy.note,36,780,7,'#756f6b',523,false,'center');
+      line(36,801,559,801,primary,.6);
+      text('pp_footer',`${brandCompanyName.toLocaleUpperCase('pl-PL')} / OFERTA NR ${offerData.offer_number}`,36,812,7,categoryDesign.primary_color,460,true);
+      text('pp_page_number',String(mergedPdf.getPageCount()).padStart(2,'0'),515,812,7,categoryDesign.primary_color,44,false,'right');
+      await overlayTextOnPages(mergedPdf,mergedPdf.getPageCount()-1,1,fields,data);
+      // Bonus badges overlap the lower image edge without changing the card height.
+      for (const [i,p] of options.entries()) {
+        if (!p.bonus) continue;
+        const y = L.tops[i] + L.heights[i] - 34;
+        const x = L.imageX + L.imageWidth - 144;
+        drawRoundedRectangle(page,{x,y:H-y-26,width:144,height:26,radius:6,color:primary});
+        gift(x+7,y+6);
+        await overlayTextOnPages(mergedPdf,mergedPdf.getPageCount()-1,1,[{field_name:'pp_bonus_badge',label:'Bonus w cenie',x:x+27,y:y+4,font_size:7,font_color:'#faf7f2',max_width:110,line_height:8.5}],{pp_bonus_badge:p.bonus});
+      }
+      // Selection belongs to this offer item, never to the catalog's promotional highlight.
+      for (const [i,p] of options.entries()) {
+        if (p.id !== chosen) continue;
+        const y = L.tops[i] + 7;
+        drawRoundedRectangle(page,{x:426,y:H-y-28,width:130,height:28,radius:14,color:accent});
+        page.drawCircle({x:440,y:H-y-14,size:6,borderColor:primary,borderWidth:1});
+        line(437,y+14,439,y+16,primary,1);line(439,y+16,443,y+11,primary,1);
+        await overlayTextOnPages(mergedPdf,mergedPdf.getPageCount()-1,1,[{field_name:'pp_selected_badge',label:'Wybrany pakiet',x:451,y:y+9,font_size:8,font_color:categoryDesign.primary_color,max_width:98,line_height:10,font_role:'heading',align:'center'}],{pp_selected_badge:'WYBRANY PAKIET'});
+      }
+      generatedProductPages.push({offer_item_id:entry.item.id,product_id:entry.product.id,source:'product_packages',packages:options});
+    };
+
     for (const item of sortedOfferItems) {
       const product = item.product;
       if (!product) continue;
-
-      // W ponowieniu po przekroczeniu limitu wszystkie produkty trafiają na
-      // lekkie, tekstowe strony po trzy pozycje. Nie ładujemy statycznych PDF,
-      // porównań wariantów ani grafik produktowych. Zakres, opisy i ceny nadal
-      // pozostają w dokumencie, ale liczba stron i obiektów PDF mocno spada.
-      if (compactResourceMode) {
-        const entry = await prepareProductEntry(item);
-        compactBuffer.push(entry);
-        if (compactBuffer.length === 3) await flushCompactProducts();
-        continue;
-      }
-
-      if (product.offer_page_enabled === false) {
+      const packageSnapshot = item.pricing_configuration?.product_package;
+      const productPackages = packageSnapshot?.options || (product.sales_packages_enabled && !item.product_variant_id ? product.sales_packages || [] : []);
+      if (!sellerMode && productPackages.length > 0) {
         await flushCompactProducts();
-        const staticPageAdded = await addStaticProductPdf(item);
-        if (staticPageAdded) {
-          generatedProductPages.push({
-            offer_item_id: item.id,
-            product_id: product.id,
-            source: 'static_pdf',
-            pdf_page_url: product.pdf_page_url,
-          });
-        }
+        const entry = { ...await prepareProductEntry(item), elementsOnly: true };
+        if (product.variants?.some((variant: any) => variant.is_active !== false)) await addVariantComparisonPage(entry);
+        else await addSingleProductPage(entry);
+        await addProductPackagesPage(entry, productPackages);
         continue;
       }
 
+      // Product pages are always generated from catalog and offer data.
+      // Legacy uploaded product PDFs and offer_page_enabled no longer select a rendering path.
       const entry = await prepareProductEntry(item);
       const activeProductVariants = (product.variants || []).filter((variant: any) => variant.is_active !== false);
       const showAllProductVariants = item.show_product_variants_in_pdf !== false;
       const requestedPageVariant = item.offer_page_variant_override
         || product.offer_page_variant
         || 'default';
-      if (activeProductVariants.length > 0 && showAllProductVariants) {
+      if (hasOfferAddons(item)) {
+        await flushCompactProducts();
+        await addSingleProductPage(entry);
+      } else if (activeProductVariants.length > 0 && showAllProductVariants) {
         await flushCompactProducts();
         await addVariantComparisonPage(entry);
-      } else if (requestedPageVariant === 'compact') {
+      } else if (requestedPageVariant === 'compact' && !compactProductBlockReason(product)) {
         compactBuffer.push(entry);
         if (compactBuffer.length === 3) await flushCompactProducts();
       } else {
@@ -2694,12 +2839,9 @@ Deno.serve(async (req: Request) => {
       }
     }
     await flushCompactProducts();
+    reportStage('products_ready', { pages: mergedPdf.getPageCount() });
 
-    const usesAcceptedCalculation = Boolean(acceptedCalculation) && (
-      offer.event?.financial_source === 'calculation'
-      || Boolean(acceptedCalculationId)
-      || !offer.event_id
-    );
+    const usesAcceptedCalculation = offer.pricing_source === 'calculation' && Boolean(acceptedCalculation);
     const calculationPricingItems = usesAcceptedCalculation
       ? [...(acceptedCalculation.event_calculation_items || [])]
           .sort((a: any, b: any) => Number(a.position || 0) - Number(b.position || 0))
@@ -2710,6 +2852,7 @@ Deno.serve(async (req: Request) => {
             const effectiveQuantity = quantity * days;
             return {
               id: item.id,
+              product_id: item.product_id,
               name: item.name,
               description: [item.description, days > 1 ? `Okres realizacji: ${days} dni.` : ''].filter(Boolean).join(' '),
               quantity: effectiveQuantity,
@@ -2724,52 +2867,50 @@ Deno.serve(async (req: Request) => {
     const logisticsPriceNet = !usesAcceptedCalculation && offerData.logistics_enabled
       ? Number(offerData.logistics_price_net || 0)
       : 0;
-    const pricingItems = [
+    const roundPricingMoney = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
+    const originalPricingItems = [
       ...(usesAcceptedCalculation ? calculationPricingItems : offerData.offer_items),
       ...(logisticsPriceNet > 0 ? [{
-        id: 'offer-logistics',
-        name: 'Logistyka',
-        description: offerData.logistics_description || '',
-        quantity: 1,
-        unit: 'usł.',
-        unit_price: logisticsPriceNet,
-        vat_rate: 23,
-        subtotal: logisticsPriceNet,
-        total: logisticsPriceNet,
+        id: 'offer-logistics', name: 'Logistyka', description: offerData.logistics_description || '',
+        quantity: 1, unit: 'usł.', unit_price: logisticsPriceNet, vat_rate: Number(offer.tax_percent ?? 23),
+        subtotal: logisticsPriceNet, total: logisticsPriceNet,
       }] : []),
     ];
-    const pricingListNet = pricingItems.reduce(
-      (sum: number, item: any) => sum + Number(
-        item.subtotal ?? Number(item.quantity || 0) * Number(item.unit_price || 0),
-      ),
-      0,
-    );
-    const pricingDiscountAmount = usesAcceptedCalculation ? 0 : Math.min(
-      pricingListNet,
-      Math.max(0, Number(offerData.discount_amount || 0)),
-    );
-    const pricingDiscountPercent = pricingListNet > 0
-      ? pricingDiscountAmount / pricingListNet * 100
-      : 0;
-    const pricingTotalNet = Math.max(0, pricingListNet - pricingDiscountAmount);
-    const pricingDiscountFactor = pricingListNet > 0 ? pricingTotalNet / pricingListNet : 0;
-    const pricingTotalGross = pricingItems.reduce((sum: number, item: any) => {
-      const itemNet = Number(
-        item.subtotal ?? Number(item.quantity || 0) * Number(item.unit_price || 0),
-      );
-      const vatRate = Number(item.product?.vat_rate ?? item.vat_rate ?? 23);
-      return sum + itemNet * pricingDiscountFactor * (1 + vatRate / 100);
-    }, 0);
+    // Use undiscounted component prices. All discounts are shown below the entire table.
+    const rawPricingItems = originalPricingItems.map((item: any) => ({
+      ...item,
+      product: item.product ? { ...item.product, vat_rate: Number(offer.tax_percent ?? 23) } : undefined,
+      vat_rate: usesAcceptedCalculation ? Number(item.vat_rate ?? 23) : Number(offer.tax_percent ?? 23),
+      subtotal: roundPricingMoney(Number(item.quantity ?? 1) * Number(item.unit_price ?? 0)),
+    }));
+    const pricingItems = expandConfiguredItems(rawPricingItems);
+    // Legacy line transport/logistics costs are still payable and must not disappear.
+    if (!usesAcceptedCalculation) for (const item of originalPricingItems) {
+      const extra = roundPricingMoney(Number(item.transport_cost || 0) + Number(item.logistics_cost || 0));
+      if (extra > 0) pricingItems.push({ id: `${item.id}:logistics`, name: `${item.name} / transport i logistyka`, quantity: 1, unit: 'usł.', unit_price: extra, subtotal: extra, vat_rate: Number(offer.tax_percent ?? 23) });
+    }
+    const pricingListNet = roundPricingMoney(pricingItems.reduce((sum: number, item: any) => sum + Number(item.subtotal || 0), 0));
+    const lineDiscount = usesAcceptedCalculation ? 0 : roundPricingMoney(originalPricingItems.reduce((sum: number, item: any) => sum + Number(item.discount_amount || 0), 0));
+    const pricingDiscountAmount = usesAcceptedCalculation ? 0 : Math.min(pricingListNet,
+      Math.max(0, roundPricingMoney(Number(offerData.discount_amount || 0) + lineDiscount)));
+    const pricingDiscountPercent = pricingListNet > 0 ? pricingDiscountAmount / pricingListNet * 100 : 0;
+    const pricingTotalNet = roundPricingMoney(Math.max(0, pricingListNet - pricingDiscountAmount));
+    const pricingListGross = roundPricingMoney(pricingItems.reduce((sum: number, item: any) => sum + roundPricingMoney(Number(item.subtotal) * (1 + Number(item.vat_rate ?? 23) / 100)), 0));
+    // Offer rows share its VAT rate; accepted calculations may retain mixed VAT rates.
+    const pricingTotalGross = usesAcceptedCalculation ? pricingListGross
+      : roundPricingMoney(pricingTotalNet * (1 + Number(offer.tax_percent ?? 23) / 100));
 
     const packageComparisonRequested = Boolean(
       offerData.package_mode && (offerData.offer_packages || []).length > 0,
     );
     const acceptedCalculationReference = usesAcceptedCalculation && acceptedCalculationNumber
-      ? `Integralną częścią niniejszej oferty jest zaakceptowana kalkulacja nr ${acceptedCalculationNumber}.`
+      ? `Integralną częścią niniejszej oferty jest kalkulacja w wersji zapisanej przy ofercie, nr ${acceptedCalculationNumber}.`
       : '';
     // Przy pakietach korzystamy z przewidywalnej strony kalkulacji bez pola sumy.
     // Szablon PDF może zawierać statyczne etykiety podsumowania, których nie da się usunąć.
-    const pricingResult = packageComparisonRequested
+    const demoHasPrices = demoMode && pricingItems.some((item: any) => item.demo_price_entered);
+    const demoPartialPrices = demoMode && pricingItems.some((item: any) => !item.demo_price_entered);
+    const pricingResult = packageComparisonRequested || demoMode || pricingDiscountAmount > 0 || originalPricingItems.some(hasOfferAddons)
       ? { success: false, tableConfig: null }
       : await addPdfFromTemplate('pricing');
     if (pricingResult.success && pricingItems.length > 0) {
@@ -2781,6 +2922,7 @@ Deno.serve(async (req: Request) => {
         pricingTotalNet,
         {
           ...(pricingResult.tableConfig || {}),
+          continuation_background_color: '#faf7f2',
           col_lp_width: 22,
           col_qty_width: 34,
           col_unit_width: 32,
@@ -2795,6 +2937,8 @@ Deno.serve(async (req: Request) => {
           show_vat_column: true,
           show_summary: !packageComparisonRequested,
           discount_amount: pricingDiscountAmount,
+          list_net: pricingListNet,
+          list_gross: pricingListGross,
           discount_percent: pricingDiscountPercent,
           total_gross: pricingTotalGross,
         },
@@ -2811,47 +2955,34 @@ Deno.serve(async (req: Request) => {
       page.drawRectangle({ x: 0, y: 0, width: 595.28, height: 841.89, color: cream });
       page.drawLine({ start: { x: 45, y: 700 }, end: { x: 550, y: 700 }, thickness: 0.8, color: burgundy });
 
-      const pricingCardEnabled = !packageComparisonRequested && categoryDesign.pricing_style !== 'minimal';
-      if (!packageComparisonRequested) {
-        if (categoryDesign.pricing_style === 'minimal') {
-          page.drawLine({ start: { x: 45, y: 150 }, end: { x: 550, y: 150 }, thickness: 1.2, color: burgundy });
-        } else {
-          drawRoundedRectangle(page, { x: 45, y: 72, width: 505, height: 108, radius: 9, color: burgundy });
-        }
-      }
-
+      // The total belongs to the final table row, never to a fixed block that
+      // a longer table could overlap or leave behind on its first page.
       const pricingFields: TextFieldConfig[] = [
         { field_name: 'pricing_title', label: 'Tytuł', x: 45, y: 58, font_size: 24, font_color: categoryDesign.primary_color, font_role: 'heading' },
         { field_name: 'pricing_subtitle', label: 'Opis', x: 45, y: 108, font_size: 10.5, font_color: '#575c66', max_width: 505 },
+        { field_name: 'pricing_note', label: 'Nota', x: 45, y: 774, font_size: 7.5, font_color: '#575c66', max_width: 505 },
       ];
-      if (packageComparisonRequested) {
-        pricingFields.push({ field_name: 'pricing_note', label: 'Nota', x: 45, y: 748, font_size: 8, font_color: '#575c66', max_width: 505 });
-      } else {
-        pricingFields.push(
-          { field_name: 'total_label_title', label: 'Razem', x: 70, y: 678, font_size: 9, font_color: pricingCardEnabled ? categoryDesign.accent_color : categoryDesign.primary_color },
-          { field_name: 'discount_summary', label: 'Rabat', x: 70, y: 691, font_size: 7.5, font_color: pricingCardEnabled ? '#f0c8d3' : categoryDesign.primary_color },
-          { field_name: 'total_price', label: 'Wartość', x: 70, y: 704, font_size: 22, font_color: pricingCardEnabled ? '#ffffff' : categoryDesign.primary_color, max_width: 455, font_role: 'heading' },
-          { field_name: 'total_net_summary', label: 'Wartość netto', x: 70, y: 733, font_size: 7.5, font_color: pricingCardEnabled ? '#f0c8d3' : '#575c66', max_width: 455 },
-          { field_name: 'pricing_note', label: 'Nota', x: 70, y: 750, font_size: 7.5, font_color: pricingCardEnabled ? '#f0c8d3' : '#575c66', max_width: 455 },
-        );
-      }
 
       await overlayTextOnPages(mergedPdf, mergedPdf.getPageCount() - 1, 1, pricingFields, {
         ...offerData,
-        total_price: formatMoney(pricingTotalGross),
+        total_price: demoMode && !demoHasPrices ? '—' : formatMoney(pricingTotalGross),
         total_price_numeric: pricingTotalGross,
-        pricing_title: 'WYCENA',
-        pricing_subtitle: packageComparisonRequested
+        pricing_title: demoMode ? 'PRÓBNA KALKULACJA' : 'WYCENA',
+        pricing_subtitle: demoMode
+          ? 'Twoje przykładowe ceny netto za 1 usługę. VAT: 23%. Puste pola nie są wycenione.'
+          : packageComparisonRequested
           ? 'Ceny jednostkowe pozycji tworzących warianty pakietowe przedstawione na kolejnej stronie.'
           : usesAcceptedCalculation
-            ? `Zakres i wartości wynikają z zaakceptowanej kalkulacji nr ${acceptedCalculationNumber}.`
+            ? `Zakres i wartości wynikają z kalkulacji w wersji zapisanej przy ofercie, nr ${acceptedCalculationNumber}.`
           : 'Zakres i wartości wynikają bezpośrednio z pozycji zatwierdzonych w CRM.',
-        total_label_title: 'ŁĄCZNA WARTOŚĆ OFERTY BRUTTO',
-        total_net_summary: `WARTOŚĆ NETTO: ${formatMoney(pricingTotalNet)}`,
+        total_label_title: demoMode ? (demoPartialPrices ? 'SUMA WPISANYCH CEN BRUTTO' : 'PRÓBNA WARTOŚĆ BRUTTO') : 'ŁĄCZNA WARTOŚĆ OFERTY BRUTTO',
+        total_net_summary: `WARTOŚĆ NETTO: ${demoMode && !demoHasPrices ? '—' : formatMoney(pricingTotalNet)}`,
         discount_summary: pricingDiscountAmount > 0
           ? `RABAT ${pricingDiscountPercent.toFixed(2)}% · ${formatMoney(pricingDiscountAmount)}`
           : '',
-        pricing_note: packageComparisonRequested
+        pricing_note: demoMode
+          ? 'Kwoty wpisane przez użytkownika. Dokument testowy, bez zobowiązań.'
+          : packageComparisonRequested
           ? 'Ostateczna wartość zależy od wybranego pakietu. Kwoty pakietowe znajdują się na kolejnej stronie.'
           : acceptedCalculationReference
             ? acceptedCalculationReference
@@ -2881,7 +3012,11 @@ Deno.serve(async (req: Request) => {
             show_value_gross: true,
             show_vat_column: true,
             show_summary: !packageComparisonRequested,
+            table_bottom_margin: 110,
+            demo_mode: demoMode,
             discount_amount: pricingDiscountAmount,
+          list_net: pricingListNet,
+          list_gross: pricingListGross,
             discount_percent: pricingDiscountPercent,
             show_borders: false,
             col_lp_width: 22,
@@ -2902,6 +3037,130 @@ Deno.serve(async (req: Request) => {
 
     // Porównanie pakietów zawsze następuje po kalkulacji jednostkowej.
     await addBuiltInPackageComparison();
+
+    // Optional recommendations are deliberately never part of pricingItems,
+    // offer_items, equipment reservations or the accepted calculation.
+    let recommendations = Array.isArray(offer.recommended_items) ? offer.recommended_items : [];
+    const recommendationProductIds = [...new Set(recommendations.map((item: any) => item.product_id).filter(Boolean))];
+    const recommendationCatalog = new Map<string, any>();
+    if (recommendationProductIds.length > 0) {
+      const { data: catalogProducts, error: catalogError } = await supabase
+        .from('offer_products')
+        .select('id, name, description, offer_description, pricing_addons, offer_image_path, pdf_thumbnail_url, variants:offer_product_variants(id, offer_image_path)')
+        .in('id', recommendationProductIds);
+      if (catalogError) throw new Error(`Nie można pobrać zdjęć proponowanych produktów: ${catalogError.message}`);
+      for (const product of catalogProducts || []) recommendationCatalog.set(product.id, product);
+    }
+    // Older CRM proposals only saved a flat price. Keep that negotiated price;
+    // catalog rules supplement the scope without silently enabling new charges.
+    recommendations = recommendations.map((item: any) => {
+      if (sellerMode || item.pricing_configuration) return item;
+      const product = recommendationCatalog.get(item.product_id);
+      if (!Array.isArray(product?.pricing_addons) || !product.pricing_addons.length) return item;
+      return { ...item, legacy_addon_rates: true, discount_percent: 0,
+        pricing_configuration: createConfiguration(Number(item.unit_price), product.pricing_addons.map((addon: any) => ({
+          ...addon, enabled: false, quantity: addon.kind === 'over_limit' ? addon.included_quantity : 0,
+        }))),
+      };
+    });
+    // Recommendations are product cards only. Never pass them to the calculation
+    // renderer: even a configured proposal remains outside the quoted line items.
+    let recommendationTop = 155;
+    let recommendationPage: any = null;
+    const startRecommendationPage = async () => {
+      recommendationPage = mergedPdf.addPage([595.28, 841.89]);
+      recommendationTop = 155;
+      recommendationPage.drawRectangle({ x: 0, y: 0, width: 595.28, height: 841.89, color: cream });
+      recommendationPage.drawLine({ start: { x: 45, y: 709.89 }, end: { x: 550, y: 709.89 }, thickness: 0.8, color: burgundy });
+      await overlayTextOnPages(mergedPdf, mergedPdf.getPageCount() - 1, 1, [
+        { field_name: 'recommendations_title', label: 'Tytuł', x: 45, y: 48, font_size: 22, line_height: 29, font_color: categoryDesign.primary_color, max_width: 505, font_role: 'heading' },
+        { field_name: 'recommendations_note', label: 'Informacja', x: 45, y: 111, font_size: 9, font_color: '#756f6b', max_width: 505 },
+        { field_name: 'recommendations_footer', label: 'Stopka', x: 45, y: 805, font_size: 7, font_color: categoryDesign.accent_color, max_width: 445 },
+        { field_name: 'recommendations_page', label: 'Strona', x: 505, y: 805, font_size: 8, font_color: categoryDesign.primary_color, max_width: 45, align: 'right' },
+      ], {
+        recommendations_title: 'ZOBACZ, CO WARTO DOBRAĆ\nDO TAKIEGO WYDARZENIA',
+        recommendations_note: 'Opcjonalne propozycje — poza kalkulacją i wartością oferty.',
+        recommendations_footer: `${brandCompanyName.toLocaleUpperCase('pl-PL')} / OFERTA NR ${offerData.offer_number}`,
+        recommendations_page: String(mergedPdf.getPageCount()).padStart(2, '0'),
+      });
+    };
+    for (const item of recommendations) {
+      if (!recommendationPage) await startRecommendationPage();
+      const configuration = item.pricing_configuration;
+      if (configuration) {
+        const error = validateConfiguration(configuration);
+        if (error) throw new Error(`${item.name}: ${error}`);
+      }
+      const quantity = Number(item.quantity);
+      const discount = configuration ? Number(item.discount_percent ?? 0) : 0;
+      if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(discount) || discount < 0 || discount > 100) throw new Error('Nieprawidłowa ilość lub rabat propozycji.');
+      const unitPrice = configuration ? addonMoney(configurationPrice(configuration) * (1 - discount / 100)) : Number(item.unit_price);
+      if (!Number.isFinite(unitPrice) || unitPrice < 0) throw new Error('Nieprawidłowa cena propozycji.');
+      const net = addonMoney(quantity * unitPrice);
+      const vatRate = Number(offer.tax_percent ?? 23);
+      const catalogProduct = recommendationCatalog.get(item.product_id);
+      const catalogVariant = catalogProduct?.variants?.find((variant: any) => variant.id === item.product_variant_id);
+      const imagePath = item.image_path || catalogVariant?.offer_image_path || catalogProduct?.offer_image_path || catalogProduct?.pdf_thumbnail_url;
+      const imageUrl = imagePath ? await createOptimizedSignedImageUrl('offer-product-pages', imagePath, 320) : '';
+      const textX = imageUrl ? 185 : 60;
+      const textWidth = imageUrl ? 350 : 475;
+      const regular = overlayFontCache!.regularFont;
+      const heading = overlayFontCache!.headingFont || overlayFontCache!.boldFont;
+      const fitLines = (text: string, font: any, size: number, width: number, limit: number) => {
+        const lines = wrapText(text, font, size, width);
+        if (lines.length <= limit) return lines.join('\n');
+        const clipped = lines.slice(0, limit);
+        let last = clipped[limit - 1];
+        while (last && font.widthOfTextAtSize(last + '…', size) > width) last = last.slice(0, -1);
+        clipped[limit - 1] = last.trimEnd() + '…';
+        return clipped.join('\n');
+      };
+      const title = fitLines(String(item.name || '').toLocaleUpperCase('pl-PL'), heading, 13, textWidth, 2);
+      const description = fitLines(String(item.description || catalogProduct?.offer_description || catalogProduct?.description || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' '), regular, 9, textWidth, 4);
+      const rateTexts: string[] = [];
+      if (configuration?.addons?.length) {
+        rateTexts.push(`Pakiet bazowy: ${formatMoney(configuration.base_unit_price)} netto.${discount > 0 ? ` Rabat propozycji: ${discount}%. Poniższe stawki przed rabatem.` : ''}`);
+        for (const addon of configuration.addons) {
+          const price = addon.price_on_request && addon.unit_price <= 0 ? 'wycena indywidualna' : `${formatMoney(addon.unit_price)} netto / ${addon.unit}`;
+          const allowance = addon.kind === 'over_limit' ? `W pakiecie ${addon.included_quantity} ${addon.unit}; dopłata ponad limit: ` : '';
+          const selected = addonQuantity(addon);
+          rateTexts.push(`${addon.name}: ${allowance}${price}. ${selected > 0 ? `W cenie propozycji: ${selected} ${addon.unit} / pakiet.` : 'Opcja do wyboru — poza podaną ceną.'}`);
+        }
+        if (item.legacy_addon_rates) rateTexts.push('Stawki rozszerzeń z aktualnego katalogu; zakres wymaga potwierdzenia. Cena zapisanej propozycji pozostaje bez zmian.');
+      }
+      const rateLines = rateTexts.flatMap(text => wrapText(text, regular, 8, 475));
+      // Long lists continue as product cards, with repeated product identity and link.
+      const chunkSize = 32;
+      const chunks = rateLines.length ? Array.from({ length: Math.ceil(rateLines.length / chunkSize) }, (_, index) => rateLines.slice(index * chunkSize, (index + 1) * chunkSize)) : [[]];
+      for (const [chunkIndex, lines] of chunks.entries()) {
+        const cardHeight = lines.length ? 222 + lines.length * 12 : 184;
+        if (recommendationTop + cardHeight > 780) await startRecommendationPage();
+        const top = recommendationTop;
+        drawRoundedRectangle(recommendationPage, { x: 45, y: 841.89 - top - cardHeight, width: 505, height: cardHeight, radius: 8, color: rgb(1, 1, 1) });
+        const fields: TextFieldConfig[] = [
+          { field_name: 'rec_name', label: 'Produkt', x: textX, y: top + 18, font_size: 13, line_height: 17, font_color: categoryDesign.primary_color, max_width: textWidth, font_role: 'heading' },
+          { field_name: 'rec_description', label: 'Opis', x: textX, y: top + 58, font_size: 9, line_height: 13, font_color: '#756f6b', max_width: textWidth },
+          { field_name: 'rec_quantity', label: 'Cena jednostkowa', x: textX, y: top + 118, font_size: 8, font_color: '#756f6b', max_width: textWidth },
+          { field_name: 'rec_price', label: 'Cena propozycji', x: textX, y: top + 137, font_size: 12, font_color: categoryDesign.primary_color, max_width: textWidth, font_role: 'heading' },
+          { field_name: 'rec_gross', label: 'Cena brutto', x: textX, y: top + 158, font_size: 8, font_color: '#756f6b', max_width: textWidth - 110 },
+          { field_name: 'rec_more', label: 'Czytaj więcej', type: 'url', show_icon: false, x: 430, y: top + 158, font_size: 9, font_color: categoryDesign.primary_color, max_width: 105, link_url: publicProductUrl(item.product_id) },
+        ];
+        if (imageUrl) fields.push({ field_name: 'rec_image', label: 'Zdjęcie', type: 'image', x: 60, y: top + 22, width: 110, height: 110, image_fit: 'contain', border_radius: 8 });
+        if (lines.length) {
+          fields.push({ field_name: 'rec_rates_title', label: 'Możliwe rozszerzenia', x: 60, y: top + 185, font_size: 9, font_color: categoryDesign.primary_color, max_width: 475 });
+          fields.push({ field_name: 'rec_rates', label: 'Stawki dodatków', x: 60, y: top + 205, font_size: 8, line_height: 12, font_color: '#756f6b', max_width: 475 });
+        }
+        await overlayTextOnPages(mergedPdf, mergedPdf.getPageCount() - 1, 1, fields, {
+          rec_name: title, rec_description: description, rec_image: imageUrl,
+          rec_quantity: `${quantity.toLocaleString('pl-PL')} ${item.unit || 'szt.'} × ${formatMoney(unitPrice)} netto${discount > 0 ? ' · po rabacie' : ''}`,
+          rec_price: `${formatMoney(net)} NETTO`, rec_gross: `${formatMoney(net * (1 + vatRate / 100))} brutto · VAT ${vatRate}%`,
+          rec_more: 'CZYTAJ WIĘCEJ',
+          rec_rates_title: chunkIndex ? 'MOŻLIWE ROZSZERZENIA — CIĄG DALSZY' : 'ZAKRES I MOŻLIWE ROZSZERZENIA',
+          rec_rates: lines.join('\n'),
+        });
+        recommendationTop += cardHeight + 15;
+      }
+    }
 
     const splitConfiguredLines = (value: unknown) => String(value || '')
       .split(/\r?\n/)
@@ -3192,40 +3451,19 @@ Deno.serve(async (req: Request) => {
       const storedInfoSections = Array.isArray(offer.info_page_sections)
         ? offer.info_page_sections.slice(0, 3)
         : [];
-      const automaticInfoSections = [
-        {
-          key: 'event_details',
-          title: 'TERMIN I MIEJSCE',
-          content: [offerData.event_date, offerData.event_location].filter(Boolean).join('\n'),
-        },
-        {
-          key: 'pricing_source',
-          title: 'ZAKRES I WYCENA',
-          content: [
-            acceptedCalculationReference || 'Wycena wynika z zakresu pozycji przedstawionych w ofercie.',
-            `Wartość: ${pricingTotalNet.toFixed(2)} PLN netto / ${pricingTotalGross.toFixed(2)} PLN brutto.`,
-          ].filter(Boolean).join('\n'),
-        },
-        {
-          key: 'coordination',
-          title: 'KONTAKT I KOORDYNACJA',
-          content: [
-            offerData.contact_person_name ? `Osoba kontaktowa: ${offerData.contact_person_name}.` : '',
-            offerData.contact_person_phone || offerData.contact_person_email
-              ? [offerData.contact_person_phone, offerData.contact_person_email].filter(Boolean).join(' / ')
-              : '',
-            'Szczegóły techniczne i zmiany zakresu wymagają potwierdzenia przed wydarzeniem.',
-          ].filter(Boolean).join('\n'),
-        },
-      ];
-      const additionalInfoSections = automaticInfoSections.map((fallback, index) => {
-        const stored = storedInfoSections[index];
-        return {
-          key: String(stored?.key || fallback.key),
-          title: String(stored?.title || fallback.title).trim(),
-          content: String(stored?.content || fallback.content).trim(),
-        };
-      });
+      // Założenia mają jedno źródło: event_assumption_items i stronę trzech kart.
+      // Nie powielamy ich automatycznymi kartami. Zachowujemy jawnie wpisane
+      // warunki starych ofert, nie usuwając żadnych danych z bazy.
+      const assumptionContent = normalizeOfferAssumptionItems(offerData.event_assumption_items)
+        .map((item) => item.value.trim().replace(/\s+/g, ' ').toLocaleLowerCase('pl-PL'));
+      const additionalInfoSections = storedInfoSections
+        .map((section: any) => ({
+          key: String(section?.key || 'custom'),
+          title: String(section?.title || 'DODATKOWE USTALENIA').trim(),
+          content: String(section?.content || '').trim(),
+        }))
+        .filter((section: { content: string }) => section.content
+          && !assumptionContent.includes(section.content.replace(/\s+/g, ' ').toLocaleLowerCase('pl-PL')));
       const infoSections = [
         {
           key: 'order',
@@ -3367,8 +3605,8 @@ Deno.serve(async (req: Request) => {
     // Dzięki temu stary, częściowo skonfigurowany PDF nie może zastąpić nowego układu.
     {
       const page = mergedPdf.addPage([595.28, 841.89]);
-      const finalLeft = colorFromHex('#69102d', [0.412, 0.063, 0.176]);
-      const finalRight = colorFromHex('#470018', [0.278, 0, 0.094]);
+      const finalLeft = colorFromHex(sellerMode ? categoryDesign.primary_color : '#69102d', [0.412, 0.063, 0.176]);
+      const finalRight = colorFromHex(sellerMode ? categoryDesign.secondary_color : '#470018', [0.278, 0, 0.094]);
       page.drawRectangle({ x: 0, y: 0, width: 595.28, height: 841.89, color: finalRight });
       page.drawRectangle({ x: 0, y: 0, width: 286, height: 841.89, color: finalLeft });
       if (!offerData.employee_avatar_url) {
@@ -3389,7 +3627,7 @@ Deno.serve(async (req: Request) => {
       // a odstęp 18 pt odpowiada dokładnie odstępowi między wierszami tekstu.
       page.drawSvgPath('M256,0C114.609,0,0,114.609,0,256s114.609,256,256,256s256-114.609,256-256S397.391,0,256,0z M256,472c-119.297,0-216-96.703-216-216S136.703,40,256,40s216,96.703,216,216S375.297,472,256,472z M327.125,383.969c5.703,0.016,56.875-37.828,56.875-42.656s-57.266-40.906-62.219-40.906s-21.578,19.938-26.062,22.156c-4.5,2.219-32.5,1.422-63.703-29.781c-31.219-31.188-41.875-67.109-41.875-72.75s26.031-23.062,26.75-27.156S182.578,128,176.891,128S128,180.5,128,184.875s3.953,60.656,75.219,131.906S321.422,383.938,327.125,383.969z', { x: 45, y: 140, scale: 0.0234375, color: accent });
       page.drawSvgPath('M27.9999,51.9063C41.0546,51.9063,51.9063,41.0781,51.9063,28C51.9063,14.9453,41.0312,4.0937,27.9765,4.0937C14.8983,4.0937,4.0937,14.9453,4.0937,28C4.0937,41.0781,14.9218,51.9063,27.9999,51.9063z M27.9999,47.9219C16.9374,47.9219,8.1014,39.0625,8.1014,28C8.1014,16.9609,16.914,8.0781,27.9765,8.0781C39.0155,8.0781,47.8983,16.9609,47.9219,28C47.9454,39.0625,39.039,47.9219,27.9999,47.9219z M27.9765,29.289C28.3749,29.289,28.8202,29.125,29.2655,28.6797L39.6014,18.3437C39.3202,18.1094,38.6405,17.875,37.6327,17.875L18.2968,17.875C17.3124,17.875,16.6093,18.1094,16.328,18.3437L26.664,28.6797C27.1327,29.1484,27.578,29.289,27.9765,29.289z M23.3358,28.0469L15.1796,19.8906C15.039,20.125,14.9687,20.6875,14.9687,21.5078L14.9687,34.4922C14.9687,35.3125,15.039,35.8984,15.203,36.1797z M32.5234,28.0469L40.6562,36.1797C40.8202,35.8984,40.8905,35.3125,40.8905,34.4922L40.8905,21.5078C40.8905,20.6875,40.8202,20.125,40.703,19.8906z M27.953,31.1406C27.1093,31.1406,26.453,30.8359,25.539,29.9922L24.789,29.289L16.3749,37.7031C16.6562,37.9609,17.3124,38.125,18.2968,38.125L37.6093,38.125C38.5936,38.125,39.2499,37.9609,39.5312,37.7031L31.1171,29.289L30.3671,29.9922C29.453,30.8359,28.7968,31.1406,27.953,31.1406z', { x: 45, y: 122, scale: 0.2142857, color: accent });
-      page.drawSvgPath('M336.5,160C322,70.7,287.8,8,248,8s-74,62.7-88.5,152h177z M152,256c0,22.2,1.2,43.5,3.3,64h185.3c2.1-20.5,3.3-41.8,3.3-64s-1.2-43.5-3.3-64H155.3c-2.1,20.5-3.3,41.8-3.3,64z M476.7,160c-28.6-67.9-86.5-120.4-158-141.6c24.4,33.8,41.2,84.7,50,141.6h108z M177.2,18.4C105.8,39.6,47.8,92.1,19.3,160h108c8.7-56.9,25.5-107.8,49.9-141.6z M487.4,192H372.7c2.1,21,3.3,42.5,3.3,64s-1.2,43-3.3,64h114.6c5.5-20.5,8.6-41.8,8.6-64s-3.1-43.5-8.5-64z M120,256c0-21.5,1.2-43,3.3-64H8.6C3.2,212.5,0,233.8,0,256s3.2,43.5,8.6,64h114.6c-2-21-3.2-42.5-3.2-64z M159.5,352c14.5,89.3,48.7,152,88.5,152s74-62.7,88.5-152h-177z M318.8,493.6c71.4-21.2,129.4-73.7,158-141.6h-108c-8.8,56.9-25.6,108-50,141.6z M19.3,352c28.6,67.9,86.5,120.4,158,141.6c-24.4-33.8-41.2-84.7-50-141.6h-108z', { x: 45.2, y: 104, scale: 0.0234375, color: accent });
+      if (String(offerData.seller_website || '').trim()) page.drawSvgPath('M336.5,160C322,70.7,287.8,8,248,8s-74,62.7-88.5,152h177z M152,256c0,22.2,1.2,43.5,3.3,64h185.3c2.1-20.5,3.3-41.8,3.3-64s-1.2-43.5-3.3-64H155.3c-2.1,20.5-3.3,41.8-3.3,64z M476.7,160c-28.6-67.9-86.5-120.4-158-141.6c24.4,33.8,41.2,84.7,50,141.6h108z M177.2,18.4C105.8,39.6,47.8,92.1,19.3,160h108c8.7-56.9,25.5-107.8,49.9-141.6z M487.4,192H372.7c2.1,21,3.3,42.5,3.3,64s-1.2,43-3.3,64h114.6c5.5-20.5,8.6-41.8,8.6-64s-3.1-43.5-8.5-64z M120,256c0-21.5,1.2-43,3.3-64H8.6C3.2,212.5,0,233.8,0,256s3.2,43.5,8.6,64h114.6c-2-21-3.2-42.5-3.2-64z M159.5,352c14.5,89.3,48.7,152,88.5,152s74-62.7,88.5-152h-177z M318.8,493.6c71.4-21.2,129.4-73.7,158-141.6h-108c-8.8,56.9-25.6,108-50,141.6z M19.3,352c28.6,67.9,86.5,120.4,158,141.6c-24.4-33.8-41.2-84.7-50-141.6h-108z', { x: 45.2, y: 104, scale: 0.0234375, color: accent });
 
       const socialItems = [
         { key: 'facebook', url: offerData.social_facebook_url },
@@ -3438,7 +3676,7 @@ Deno.serve(async (req: Request) => {
         { field_name: 'final_last_name', label: 'Nazwisko', x: lastNameX, y: 670, font_size: nameSize, font_color: categoryDesign.accent_color, max_width: 128, font_role: 'heading' },
         { field_name: 'employee_phone', label: 'Telefon', type: 'phone', show_icon: false, x: 63, y: 702, font_size: 10, font_color: '#ffffff', max_width: 178 },
         { field_name: 'employee_email', label: 'E-mail', type: 'email', show_icon: false, x: 63, y: 720, font_size: 9, font_color: '#ffffff', max_width: 178 },
-        { field_name: 'seller_website', label: 'Strona WWW', x: 63, y: 738, font_size: 9, font_color: '#ffffff', max_width: 128 },
+        { field_name: 'seller_website', label: 'Strona WWW', type: 'url', show_icon: false, x: 63, y: 738, font_size: 9, font_color: '#ffffff', max_width: 128 },
         { field_name: 'company_logo', label: 'Logo firmy', type: 'image', image_fit: 'contain', x: 358, y: 65, width: 165, height: 115 },
         { field_name: 'brand_title', label: 'Marka', x: 358, y: 80, font_size: 16, font_color: '#ffffff', font_role: 'heading' },
         { field_name: 'thanks_title', label: 'Podziękowanie', x: 344, y: 440, font_size: 11, font_color: categoryDesign.accent_color },
@@ -3449,12 +3687,12 @@ Deno.serve(async (req: Request) => {
         ...offerData,
         brand_title: brandLogoUrl ? '' : brandCompanyName.toLocaleUpperCase('pl-PL'),
         closing_title: 'ZAPRASZAMY\nDO WSPÓŁPRACY',
-        caretaker_title: 'OPIEKUN OFERTY',
+        caretaker_title: sellerMode ? String(sellerBranding.position_title || 'OPIEKUN OFERTY') : 'OPIEKUN OFERTY',
         avatar_placeholder_label: offerData.employee_avatar_url ? '' : 'MIEJSCE NA ZDJĘCIE OPIEKUNA',
         final_first_name: finalFirstName,
         final_last_name: finalLastName,
         thanks_title: 'DZIĘKUJEMY ZA ZAPYTANIE.',
-        closing_text: 'Jesteśmy gotowi doprecyzować zakres oraz zaplanować realizację.',
+        closing_text: sellerMode ? String(sellerBranding.footer_text || 'Jesteśmy gotowi doprecyzować zakres oraz zaplanować realizację.') : 'Jesteśmy gotowi doprecyzować zakres oraz zaplanować realizację.',
         final_footer: `${brandCompanyName.toLocaleUpperCase('pl-PL')} / OFERTA NR ${offerData.offer_number}`,
         final_page_number: String(mergedPdf.getPageCount()).padStart(2, '0'),
       });
@@ -3465,14 +3703,40 @@ Deno.serve(async (req: Request) => {
     }
 
     const totalPages = mergedPdf.getPageCount();
-    for (let pageIndex = 2; pageIndex < totalPages - 1; pageIndex += 1) {
-      await overlayTextOnPages(mergedPdf, pageIndex, 1, [
-        { field_name: 'document_footer', label: 'Stopka dokumentu', x: 45, y: 805, font_size: 7, font_color: categoryDesign.accent_color, max_width: 400 },
-        { field_name: 'document_page_number', label: 'Numer strony', x: 505, y: 805, font_size: 8, font_color: categoryDesign.primary_color, max_width: 45, align: 'right', font_role: 'heading' },
-      ], {
-        document_footer: `${brandCompanyName.toLocaleUpperCase('pl-PL')} / OFERTA NR ${offerData.offer_number}`,
+    for (let pageIndex = 0; pageIndex < totalPages; pageIndex += 1) {
+      const page = mergedPdf.getPage(pageIndex);
+      const saved = documentFurniture.get(page);
+      const boundaryPage = pageIndex === 0 || pageIndex === totalPages - 1;
+      const right = page.getWidth() - 45;
+      const footerY = page.getHeight() - 37;
+      const numberStyle: TextFieldConfig = boundaryPage && saved?.number ? saved.number : {
+        field_name: 'document_page_number', label: 'Numer strony',
+        x: right - 45, y: footerY, font_size: 8,
+        font_color: boundaryPage ? categoryDesign.accent_color : categoryDesign.primary_color,
+        max_width: 45, align: 'right',
+      };
+      const fields: TextFieldConfig[] = [{
+        ...numberStyle, field_name: 'document_page_number', font_role: 'body',
+      }];
+      const data: Record<string, any> = {
         document_page_number: String(pageIndex + 1).padStart(2, '0'),
-      });
+      };
+      if (boundaryPage && saved?.footer) {
+        fields.push({ ...saved.footer.field, field_name: 'document_footer' });
+        data.document_footer = saved.footer.value;
+      } else if (!boundaryPage) {
+        fields.push({ field_name: 'document_footer', label: 'Stopka dokumentu', x: 45, y: footerY, font_size: 7, font_color: categoryDesign.accent_color, max_width: Math.min(400, right - 100) });
+        data.document_footer = `${brandCompanyName.toLocaleUpperCase('pl-PL')} / OFERTA NR ${offerData.offer_number}`;
+      }
+      await overlayTextOnPages(mergedPdf, pageIndex, 1, fields, data, true);
+    }
+    documentFurniture.clear();
+
+    if (demoMode) {
+      for (let index = 0; index < mergedPdf.getPageCount(); index++) {
+        await addDemoNotice(index, index === 0 || index === mergedPdf.getPageCount() - 1);
+      }
+      mergedPdf.setTitle('Przykładowa oferta — demonstracja strefy sprzedawcy');
     }
 
     // Drop lookup references before serialization. The assets are already part
@@ -3483,26 +3747,34 @@ Deno.serve(async (req: Request) => {
     imageFallbackUrls.clear();
     productImageUrlCache.clear();
 
-    const pdfBytes = await mergedPdf.save({
-      useObjectStreams: true,
+    reportStage('serialization_start', { pages: mergedPdf.getPageCount() });
+    const pdfBytes = await timed('serialization', () => mergedPdf.save({
+      // On a retry skip only object-stream compression, never image quality or layout.
+      useObjectStreams: !compactResourceMode,
       addDefaultPage: false,
-      objectsPerTick: compactResourceMode ? 5 : 15,
-    });
+      objectsPerTick: 15,
+    }));
+    reportStage('pdf_ready', { pages: mergedPdf.getPageCount(), bytes: pdfBytes.byteLength });
 
-    const sanitizeFileName = (name: string) => {
-      return name
-        .replace(/[^a-zA-Z0-9\u0105\u0107\u0119\u0142\u0144\u00f3\u015b\u017a\u017c\u0104\u0106\u0118\u0141\u0143\u00d3\u015a\u0179\u017b\s\-_]/g, '')
-        .replace(/\s+/g, '-')
-        .toLowerCase();
-    };
+    if (sellerMode) {
+      await ensureSellerSource();
+      // The bridge owns private storage/versioning/notifications. Do not run any
+      // CRM upload, pdf_url, offer history or event_files mutations below.
+      return new Response(pdfBytes, {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/pdf', 'Cache-Control': 'no-store',
+          'X-Offer-Renderer': 'seller-v1', 'X-Offer-Identity': 'organization-v1', 'X-Offer-Fonts': 'catalog-v1', ...(demoMode ? { 'X-Offer-Demo': 'demo-v2', 'X-Offer-Demo-Cover': 'cover-v1' } : { 'X-Offer-Source-Key': expectedSourceKey! }) },
+      });
+    }
 
-    const offerName = offer.name ? sanitizeFileName(offer.name) : (offer.offer_number || offerId);
-    const fileName = `oferta-${offerName}.pdf`;
+    const downloadFileName = offerPdfFileName(offer.offer_number);
+    // Each generated version retains its own private path and friendly basename.
+    const fileName = `${offer.id}/${crypto.randomUUID()}/${downloadFileName}`;
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from('generated-offers')
       .upload(fileName, pdfBytes, {
         contentType: 'application/pdf',
-        upsert: true,
+        upsert: false,
       });
 
     if (uploadError) {
@@ -3567,6 +3839,7 @@ Deno.serve(async (req: Request) => {
         quantity: Number(item.quantity || 0),
         unit: item.unit || item.product?.unit || 'szt',
         unit_price: Number(item.unit_price || item.final_price || 0),
+        pricing_configuration: item.pricing_configuration || null,
         discount_percent: Number(item.discount_percent || 0),
         discount_amount: Number(item.discount_amount || 0),
         transport_cost: Number(item.transport_cost || 0),
@@ -3595,21 +3868,24 @@ Deno.serve(async (req: Request) => {
     const { error: updateError } = await supabase
       .from('offers')
       .update({
+        generated_pdf_revision: offer.content_revision,
         generated_pdf_url: fileName,
         modified_after_generation: false,
         last_generated_by: currentEmployee?.id || offer.created_by || null,
         last_generated_at: generatedAt,
       })
-      .eq('id', offerId);
+      .eq('id', offerId).eq('content_revision', offer.content_revision).select('id').single();
 
     if (updateError) {
-      throw new Error("Failed to update offer: " + updateError.message);
+      throw new Error("Oferta zmieniła się podczas generowania. Wygeneruj PDF ponownie: " + updateError.message);
     }
 
+    const { error: fileHistoryError } = await supabase.from('sales_document_files').insert({ offer_id: offerId, inquiry_id: offer.inquiry_id, storage_bucket: 'generated-offers', storage_path: fileName, revision: offer.content_revision });
+    if (fileHistoryError) throw new Error('Nie udało się zapisać wersji PDF: ' + fileHistoryError.message);
+
     if (offer.event_id) {
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-      const eventFileName = `oferta-${offerName}-${timestamp}.pdf`;
-      const eventFilePath = `${offer.event_id}/${eventFileName}`;
+      const eventFileName = downloadFileName;
+      const eventFilePath = `${offer.event_id}/${crypto.randomUUID()}/${eventFileName}`;
 
       const { error: eventUploadError } = await supabase.storage
         .from('event-files')
@@ -3641,7 +3917,7 @@ Deno.serve(async (req: Request) => {
             uploaded_by: currentEmployee?.id || offer.created_by,
           },
         ]);
-        console.log('Offer PDF saved to event files');
+
       } else {
         console.error('Failed to save offer PDF to event files:', eventUploadError);
       }
@@ -3649,13 +3925,14 @@ Deno.serve(async (req: Request) => {
 
     const { data: signedUrlData } = await supabase.storage
       .from('generated-offers')
-      .createSignedUrl(fileName, 3600);
+      .createSignedUrl(fileName, 3600, { download: downloadFileName });
 
     return new Response(
       JSON.stringify({
         success: true,
         message: "Offer PDF generated successfully",
         fileName: fileName,
+        downloadFileName,
         generationNumber,
         pageCount: mergedPdf.getPageCount(),
         resourceMode,
@@ -3669,9 +3946,10 @@ Deno.serve(async (req: Request) => {
       }
     );
   } catch (error) {
+    reportStage('failed');
     console.error("Error generating offer PDF:", error);
     const errorMessage = error instanceof Error ? error.message : String(error || "");
-    const resourceLimit = /memory|resource|allocation|array buffer|heap|out of memory/i.test(errorMessage);
+    const resourceLimit = /memory|resource|allocation|array buffer|heap|out of memory|cpu time/i.test(errorMessage);
     return new Response(
       JSON.stringify({
         success: false,
@@ -3679,6 +3957,7 @@ Deno.serve(async (req: Request) => {
           ? "Generator PDF przekroczył dostępny limit zasobów"
           : errorMessage || "Failed to generate offer PDF",
         ...(resourceLimit ? { code: "WORKER_RESOURCE_LIMIT" } : {}),
+        ...((error as { code?: string })?.code === 'SELLER_FONT_ERROR' ? { code: 'SELLER_FONT_ERROR' } : {}),
       }),
       {
         status: resourceLimit ? 503 : 500,

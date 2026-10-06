@@ -13,14 +13,17 @@ import {
   GripVertical,
   Play,
   Clock,
-  Image as ImageIcon,
+  Paperclip,
+  FileText,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
+import { shouldAutomateTaskTimer } from '@/lib/CRM/tasks/taskTimerPreference';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useMobile } from '@/hooks/useMobile';
 import TaskCard from '@/components/crm/TaskCard';
+import SellerDatePicker from '@/app/(public)/seller/_components/SellerDatePicker';
 import {
   useGetTasksListQuery,
   useCreateTaskMutation,
@@ -37,12 +40,26 @@ type TaskPriority = 'low' | 'medium' | 'high' | 'urgent';
 type TaskStatus = 'todo' | 'in_progress' | 'review' | 'completed' | 'cancelled';
 type TaskBoardColumn = 'todo' | 'in_progress' | 'review' | 'completed';
 
+function TaskAttachmentPreview({ file }: { file: File }) {
+  const [preview, setPreview] = useState<string | null>(null);
+  useEffect(() => {
+    if (!file.type.startsWith('image/')) { setPreview(null); return; }
+    const url = URL.createObjectURL(file);
+    setPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
+  return preview
+    ? <img src={preview} alt={file.name} className="h-12 w-12 shrink-0 rounded object-cover" />
+    : <FileText className="h-12 w-12 shrink-0 p-2 text-[#d3bb73]" />;
+}
+
 interface TaskColumnProps {
   column: { id: string; label: string; color: string };
   tasks: any[];
   draggedTask: any | null;
   dragOverColumn: TaskBoardColumn | null;
   canManage: boolean;
+  canMove: boolean;
   canCreate: boolean;
   activeTimer: any;
   isMobile: boolean;
@@ -62,6 +79,7 @@ const TaskColumn = memo(function TaskColumn({
   draggedTask,
   dragOverColumn,
   canManage,
+  canMove,
   canCreate,
   activeTimer,
   isMobile,
@@ -79,8 +97,8 @@ const TaskColumn = memo(function TaskColumn({
       onDragOver={(e) => onDragOver(e, column.id)}
       onDragLeave={onDragLeave}
       onDrop={() => onDrop(column.id)}
-      className={`flex flex-col border-2 bg-[#1c1f33] transition-all ${
-        dragOverColumn === column.id ? 'border-[#d3bb73] bg-[#d3bb73]/5' : column.color
+      className={`flex flex-col border bg-[#1c1f33] transition-all ${
+        dragOverColumn === column.id ? 'border-[#d3bb73]/20 bg-[#d3bb73]/10' : column.color
       } ${isMobile ? 'w-full rounded-lg p-2' : 'flex-shrink-0 rounded-xl p-4'}`}
       style={{
         width: isMobile ? '100%' : '320px',
@@ -112,7 +130,7 @@ const TaskColumn = memo(function TaskColumn({
           return (
             <div
               key={task.id}
-              draggable
+              draggable={canMove}
               onDragStart={() => onDragStart(task)}
               onDragEnd={onDragEnd}
               className="cursor-move"
@@ -121,10 +139,10 @@ const TaskColumn = memo(function TaskColumn({
                 task={task}
                 isDragging={draggedTask?.id === task.id}
                 canManage={canManage}
-                showDragHandle={true}
+                showDragHandle={canManage}
                 onEdit={onEdit}
                 onDelete={onDelete}
-                additionalActions={
+                additionalActions={canMove ? (
                   <button
                     onClick={() => onStartTimer(task)}
                     disabled={activeTimer?.task_id === task.id}
@@ -149,7 +167,7 @@ const TaskColumn = memo(function TaskColumn({
                       </>
                     )}
                   </button>
-                }
+                ) : undefined}
               />
             </div>
           );
@@ -194,17 +212,24 @@ interface Employee {
   email: string;
 }
 
-export function TasksPageClient({ initialTasks }: { initialTasks: Task[] }) {
+export function TasksPageClient({ initialTasks, inquiryId, employeeId, canManageInquiry, openCreateModal = false, onCreateModalHandled }: {
+  initialTasks: Task[];
+  inquiryId?: string;
+  employeeId?: string;
+  canManageInquiry?: boolean;
+  openCreateModal?: boolean;
+  onCreateModalHandled?: () => void;
+}) {
   const { showSnackbar } = useSnackbar();
   const { showConfirm } = useDialog();
-  const { canCreateInModule, canManageModule, canViewModule, currentEmployee } =
+  const { canCreateInModule, canManageModule, canViewModule, currentEmployee, isAdmin } =
     useCurrentEmployee();
 
-  const canCreateTasks = canCreateInModule('tasks');
-  const canManageTasks = canManageModule('tasks');
-  const canViewTasks = canViewModule('tasks');
+  const canCreateTasks = inquiryId ? Boolean(canManageInquiry) : canCreateInModule('tasks');
+  const canManageTasks = inquiryId ? Boolean(canManageInquiry) : canManageModule('tasks');
+  const canMoveTasks = inquiryId ? Boolean(canManageInquiry) : canViewModule('tasks');
 
-  const { data: tasks = initialTasks, isLoading: loading, refetch } = useGetTasksListQuery();
+  const { currentData: tasks = initialTasks, isLoading: loading, isError, refetch } = useGetTasksListQuery(employeeId ? { employeeId } : inquiryId ? { inquiryId } : undefined, { refetchOnMountOrArgChange: true });
   const [createTask] = useCreateTaskMutation();
   const [updateTask] = useUpdateTaskMutation();
   const [deleteTask] = useDeleteTaskMutation();
@@ -226,11 +251,14 @@ export function TasksPageClient({ initialTasks }: { initialTasks: Task[] }) {
     assigned_employees: [] as string[],
   });
 
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+  const [dueDateValid, setDueDateValid] = useState(true);
   const [employeeSearch, setEmployeeSearch] = useState('');
   const [filteredEmployees, setFilteredEmployees] = useState<Employee[]>([]);
-  const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
-  const [thumbnailPreview, setThumbnailPreview] = useState<string | null>(null);
-  const [uploadingThumbnail, setUploadingThumbnail] = useState(false);
+  const [attachmentFiles, setAttachmentFiles] = useState<File[]>([]);
+  const [savedTaskId, setSavedTaskId] = useState<string | null>(null);
+  const savedTaskIdRef = useRef<string | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<TaskBoardColumn | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const autoScrollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -242,10 +270,10 @@ export function TasksPageClient({ initialTasks }: { initialTasks: Task[] }) {
   const [isTransitioning, setIsTransitioning] = useState(false);
 
   const columns = [
-    { id: 'todo', label: 'Do zrobienia', color: 'border-yellow-500/30' },
-    { id: 'in_progress', label: 'W trakcie', color: 'border-blue-500/30' },
-    { id: 'review', label: 'Sprawdzenie', color: 'border-purple-500/30' },
-    { id: 'completed', label: 'Zakończone', color: 'border-green-500/30' },
+    { id: 'todo', label: 'Do zrobienia', color: 'border-yellow-500/10' },
+    { id: 'in_progress', label: 'W trakcie', color: 'border-blue-500/10' },
+    { id: 'review', label: 'Sprawdzenie', color: 'border-purple-500/10' },
+    { id: 'completed', label: 'Zakończone', color: 'border-green-500/10' },
   ];
 
   const priorityColors = {
@@ -272,50 +300,6 @@ export function TasksPageClient({ initialTasks }: { initialTasks: Task[] }) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentEmployee]);
-
-  useEffect(() => {
-    const tasksChannel = supabase
-      .channel('tasks_realtime')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'tasks',
-          filter: 'is_private=eq.false',
-        },
-        () => {
-          refetch();
-        },
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'task_assignees',
-        },
-        () => {
-          refetch();
-        },
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'task_comments',
-        },
-        () => {
-          refetch();
-        },
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(tasksChannel);
-    };
-  }, [refetch]);
 
   const fetchEmployees = async () => {
     try {
@@ -402,6 +386,8 @@ export function TasksPageClient({ initialTasks }: { initialTasks: Task[] }) {
   };
 
   const handleOpenModal = (task?: Task, defaultColumn?: string) => {
+    if (task ? !canManageTasks : !canCreateTasks) return;
+    setDueDateValid(true);
     if (task) {
       setEditingTask(task);
       setFormData({
@@ -420,61 +406,64 @@ export function TasksPageClient({ initialTasks }: { initialTasks: Task[] }) {
         priority: 'medium',
         board_column: (defaultColumn || 'todo') as TaskBoardColumn,
         due_date: '',
-        assigned_employees: [],
+        assigned_employees: currentEmployee?.id ? [currentEmployee.id] : [],
       });
     }
-    setThumbnailFile(null);
-    setThumbnailPreview(null);
+    setAttachmentFiles([]);
+    setSavedTaskId(null);
+    savedTaskIdRef.current = null;
     setShowModal(true);
   };
 
   const handleCloseModal = () => {
+    if (savingRef.current) return;
     setShowModal(false);
     setEditingTask(null);
     setEmployeeSearch('');
     setFilteredEmployees([]);
-    setThumbnailFile(null);
-    setThumbnailPreview(null);
+    setAttachmentFiles([]);
+    setSavedTaskId(null);
+    savedTaskIdRef.current = null;
   };
 
-  const handleThumbnailSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setThumbnailFile(file);
-    setThumbnailPreview(URL.createObjectURL(file));
+  useEffect(() => {
+    if (!openCreateModal || !canCreateTasks) return;
+    handleOpenModal();
+    onCreateModalHandled?.();
+    // This flag is an explicit request from the inquiry toolbar.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openCreateModal, canCreateTasks]);
+
+  const handleAttachmentSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = Array.from(e.target.files || []);
+    setAttachmentFiles((previous) => [...previous, ...selected.filter((file) =>
+      !previous.some((existing) => existing.name === file.name && existing.size === file.size && existing.lastModified === file.lastModified),
+    )]);
+    e.target.value = '';
   };
 
-  const handleRemoveThumbnailSelection = () => {
-    setThumbnailFile(null);
-    if (thumbnailPreview) URL.revokeObjectURL(thumbnailPreview);
-    setThumbnailPreview(null);
-  };
-
-  const uploadTaskThumbnail = async (taskId: string, file: File): Promise<string | null> => {
-    try {
-      setUploadingThumbnail(true);
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${Math.random()}.${fileExt}`;
-      const filePath = `task-thumbnails/${taskId}/${fileName}`;
-      const { error: uploadError } = await supabase.storage
-        .from('event-files')
-        .upload(filePath, file);
-      if (uploadError) throw uploadError;
-      const {
-        data: { publicUrl },
-      } = supabase.storage.from('event-files').getPublicUrl(filePath);
-      const { error: updateError } = await supabase
-        .from('tasks')
-        .update({ thumbnail_url: publicUrl })
-        .eq('id', taskId);
-      if (updateError) throw updateError;
-      return publicUrl;
-    } catch (error) {
-      console.error('Error uploading thumbnail:', error);
-      showSnackbar('Błąd podczas przesyłania zdjęcia', 'error');
-      return null;
-    } finally {
-      setUploadingThumbnail(false);
+  const uploadTaskAttachments = async (taskId: string) => {
+    if (!currentEmployee) throw new Error('Brak zalogowanego pracownika');
+    for (const file of attachmentFiles) {
+      const extension = file.name.includes('.') ? file.name.split('.').pop()?.replace(/[^a-zA-Z0-9]/g, '') : '';
+      const filePath = `task-attachments/${taskId}/${crypto.randomUUID()}${extension ? `.${extension}` : ''}`;
+      const { error: uploadError } = await supabase.storage.from('event-files').upload(filePath, file);
+      if (uploadError) throw new Error(`Nie udało się przesłać pliku „${file.name}”.`);
+      const { data: { publicUrl } } = supabase.storage.from('event-files').getPublicUrl(filePath);
+      const { error } = await supabase.from('task_attachments').insert({
+        task_id: taskId,
+        file_name: file.name,
+        file_url: publicUrl,
+        file_type: file.type || 'application/octet-stream',
+        file_size: file.size,
+        uploaded_by: currentEmployee.id,
+      });
+      if (error) {
+        await supabase.storage.from('event-files').remove([filePath]);
+        throw new Error(`Nie udało się zapisać załącznika „${file.name}”.`);
+      }
+      // Remove completed uploads so retrying never duplicates them.
+      setAttachmentFiles((previous) => previous.filter((pending) => pending !== file));
     }
   };
 
@@ -485,7 +474,7 @@ export function TasksPageClient({ initialTasks }: { initialTasks: Task[] }) {
         (emp) =>
           !formData.assigned_employees.includes(emp.id) &&
           (`${emp.name} ${emp.surname}`.toLowerCase().includes(value.toLowerCase()) ||
-            emp.email.toLowerCase().includes(value.toLowerCase())),
+            (emp.email || '').toLowerCase().includes(value.toLowerCase())),
       );
       setFilteredEmployees(filtered.slice(0, 5));
     } else {
@@ -496,7 +485,7 @@ export function TasksPageClient({ initialTasks }: { initialTasks: Task[] }) {
   const handleAddEmployee = (employeeId: string) => {
     setFormData({
       ...formData,
-      assigned_employees: [...formData.assigned_employees, employeeId],
+      assigned_employees: [...new Set([...formData.assigned_employees, employeeId])],
     });
     setEmployeeSearch('');
     setFilteredEmployees([]);
@@ -511,14 +500,19 @@ export function TasksPageClient({ initialTasks }: { initialTasks: Task[] }) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (savingRef.current || (editingTask ? !canManageTasks : !canCreateTasks)) return;
+    if (!dueDateValid) { showSnackbar('Podaj poprawną datę w formacie DD.MM.RRRR.', 'warning'); return; }
 
     if (!formData.title.trim()) {
       showSnackbar('Tytuł zadania jest wymagany', 'warning');
       return;
     }
 
+    if (!currentEmployee) { showSnackbar('Poczekaj na załadowanie danych pracownika.', 'warning'); return; }
+    savingRef.current = true;
+    setSaving(true);
     try {
-      if (editingTask) {
+      if (!savedTaskIdRef.current && editingTask) {
         await updateTask({
           id: editingTask.id,
           title: formData.title,
@@ -530,12 +524,9 @@ export function TasksPageClient({ initialTasks }: { initialTasks: Task[] }) {
           assigned_by: currentEmployee?.id,
         }).unwrap();
 
-        if (thumbnailFile) {
-          await uploadTaskThumbnail(editingTask.id, thumbnailFile);
-        }
-
-        showSnackbar('Zadanie zostało zaktualizowane', 'success');
-      } else {
+        savedTaskIdRef.current = editingTask.id;
+        setSavedTaskId(editingTask.id);
+      } else if (!savedTaskIdRef.current) {
         const created = await createTask({
           title: formData.title,
           description: formData.description || null,
@@ -546,24 +537,31 @@ export function TasksPageClient({ initialTasks }: { initialTasks: Task[] }) {
           created_by: currentEmployee?.id || undefined,
           owner_id: currentEmployee?.id || null,
           is_private: false,
+          inquiry_id: inquiryId,
         }).unwrap();
 
-        if (thumbnailFile && created?.id) {
-          await uploadTaskThumbnail(created.id, thumbnailFile);
-        }
-
-        showSnackbar('Zadanie zostało utworzone', 'success');
+        savedTaskIdRef.current = created.id;
+        setSavedTaskId(created.id);
       }
 
+      if (savedTaskIdRef.current) await uploadTaskAttachments(savedTaskIdRef.current);
+      showSnackbar(editingTask ? 'Zadanie zostało zaktualizowane' : 'Zadanie zostało utworzone', 'success');
+      savingRef.current = false;
       handleCloseModal();
     } catch (error) {
       console.error('Error saving task:', error);
-      showSnackbar('Błąd podczas zapisywania zadania', 'error');
+      showSnackbar(savedTaskIdRef.current
+        ? `Zadanie zapisane. ${error instanceof Error ? error.message : 'Nie udało się przesłać załączników.'} Ponów przesyłanie pozostałych plików.`
+        : 'Błąd podczas zapisywania zadania', 'error');
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
     }
   };
 
   const handleDeleteTask = useCallback(
     async (taskId: string) => {
+      if (!canManageTasks) return;
       const confirmed = await showConfirm(
         'Czy na pewno chcesz usunąć to zadanie? Usunięte zostaną również wszystkie powiązane wpisy czasu pracy. Ta operacja jest nieodwracalna.',
         'Usuń zadanie',
@@ -579,7 +577,7 @@ export function TasksPageClient({ initialTasks }: { initialTasks: Task[] }) {
         showSnackbar(error.message || 'Błąd podczas usuwania zadania', 'error');
       }
     },
-    [deleteTask, showConfirm, showSnackbar],
+    [deleteTask, showConfirm, showSnackbar, canManageTasks],
   );
 
   const handleAutoScroll = useCallback((e: React.DragEvent) => {
@@ -633,6 +631,7 @@ export function TasksPageClient({ initialTasks }: { initialTasks: Task[] }) {
   }, []);
 
   const handleDrop = async (columnId: string) => {
+    if (!canMoveTasks) return;
     if (!draggedTask || draggedTask.board_column === columnId) {
       setDraggedTask(null);
       return;
@@ -641,7 +640,21 @@ export function TasksPageClient({ initialTasks }: { initialTasks: Task[] }) {
     const oldColumn = draggedTask.board_column;
     const taskId = draggedTask.id;
 
-    if (columnId === 'in_progress' && oldColumn !== 'in_progress') {
+    let automateTimer = true;
+    if (columnId === 'in_progress' || oldColumn === 'in_progress') {
+      try {
+        automateTimer = await shouldAutomateTaskTimer(currentEmployee?.id, isAdmin);
+      } catch (error) {
+        console.error('Error reading task timer preference:', error);
+        setDraggedTask(null);
+        setDragOverColumn(null);
+        stopAutoScroll();
+        showSnackbar('Nie udało się wczytać ustawień czasu pracy. Spróbuj ponownie.', 'error');
+        return;
+      }
+    }
+
+    if (automateTimer && columnId === 'in_progress' && oldColumn !== 'in_progress') {
       if (activeTimer && activeTimer.task_id !== taskId) {
         setDraggedTask(null);
         setDragOverColumn(null);
@@ -675,7 +688,7 @@ export function TasksPageClient({ initialTasks }: { initialTasks: Task[] }) {
       }
     }
 
-    if ((columnId === 'review' || columnId === 'completed') && oldColumn === 'in_progress') {
+    if (automateTimer && (columnId === 'review' || columnId === 'completed') && oldColumn === 'in_progress') {
       if (activeTimer && activeTimer.task_id === taskId) {
         const shouldStopTimer = await showConfirm(
           'Zatrzymać czas pracy?',
@@ -762,7 +775,11 @@ export function TasksPageClient({ initialTasks }: { initialTasks: Task[] }) {
     }
   };
 
-  if (loading) {
+  if (isError) {
+    return <div role="alert" className="rounded-xl bg-[#1c1f33] p-6 text-sm text-[#e5e4e2]">Nie udało się wczytać zadań. <button type="button" onClick={() => void refetch()} className="ml-2 text-[#d3bb73]">Spróbuj ponownie</button></div>;
+  }
+
+  if (loading && !initialTasks.length) {
     return (
       <div className="flex items-center justify-center p-8">
         <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-[#d3bb73]"></div>
@@ -771,14 +788,13 @@ export function TasksPageClient({ initialTasks }: { initialTasks: Task[] }) {
   }
 
   return (
-    <div className="mx-auto flex h-full min-h-0 w-full max-w-[1400px] flex-col overflow-hidden">
+    <div className={`mx-auto flex min-h-0 w-full max-w-[1400px] flex-col overflow-hidden ${inquiryId ? 'h-[650px] max-h-[80vh] min-h-[420px]' : 'h-full'}`}>
       <div
         className={`mb-3 flex flex-shrink-0 flex-wrap items-center justify-between gap-3 ${isMobile ? 'px-2' : 'px-2'}`}
       >
-        {!isMobile && <h2 className="text-2xl font-light text-[#e5e4e2]">Zadania</h2>}
+        {!isMobile && <h2 className="text-2xl font-light text-[#e5e4e2]">{employeeId ? 'Moje zadania' : inquiryId ? 'Działania sprzedażowe' : 'Zadania firmowe'}</h2>}
 
-        {canCreateTasks ||
-          (canViewTasks && (
+        {canCreateTasks && (
             <button
               onClick={() => handleOpenModal()}
               className={`flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 ${isMobile ? 'ml-auto' : ''}`}
@@ -786,7 +802,7 @@ export function TasksPageClient({ initialTasks }: { initialTasks: Task[] }) {
               <Plus className="h-4 w-4" />
               {isMobile ? '+' : 'Nowe zadanie'}
             </button>
-          ))}
+          )}
       </div>
 
       <div
@@ -812,6 +828,7 @@ export function TasksPageClient({ initialTasks }: { initialTasks: Task[] }) {
               draggedTask={draggedTask}
               dragOverColumn={dragOverColumn}
               canManage={canManageTasks}
+              canMove={canMoveTasks}
               canCreate={canCreateTasks}
               activeTimer={activeTimer}
               isMobile={isMobile}
@@ -872,6 +889,7 @@ export function TasksPageClient({ initialTasks }: { initialTasks: Task[] }) {
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4 p-6">
+              <fieldset disabled={saving || Boolean(savedTaskId)} className="space-y-4">
               <div>
                 <label className="mb-2 block text-sm text-[#e5e4e2]/60">Tytuł *</label>
                 <input
@@ -896,37 +914,26 @@ export function TasksPageClient({ initialTasks }: { initialTasks: Task[] }) {
               </div>
 
               <div>
-                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Zdjęcie</label>
-                {thumbnailPreview ? (
-                  <div className="group relative inline-block">
-                    <img
-                      src={thumbnailPreview}
-                      alt="Podgląd zdjęcia"
-                      className="h-32 w-32 rounded-lg border border-[#d3bb73]/20 object-cover"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleRemoveThumbnailSelection}
-                      className="absolute right-2 top-2 rounded-lg bg-red-500/90 p-1.5 text-white opacity-0 transition-opacity hover:bg-red-500 group-hover:opacity-100"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-                ) : (
-                  <label className="flex h-32 w-48 cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-[#d3bb73]/30 transition-colors hover:bg-[#d3bb73]/5">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleThumbnailSelect}
-                      className="hidden"
-                      disabled={uploadingThumbnail}
-                    />
-                    <ImageIcon className="mb-2 h-8 w-8 text-[#d3bb73]/50" />
-                    <span className="text-xs text-[#e5e4e2]/50">
-                      {uploadingThumbnail ? 'Przesyłanie...' : 'Dodaj zdjęcie'}
-                    </span>
-                  </label>
-                )}
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Załączniki</label>
+                <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[#d3bb73]/10 px-4 py-2 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/20">
+                  <input type="file" multiple onChange={handleAttachmentSelect} className="sr-only" disabled={saving || Boolean(savedTaskId)} />
+                  <Paperclip className="h-4 w-4" /> Dodaj pliki
+                </label>
+                <p className="mt-2 text-xs text-[#e5e4e2]/60">Zdjęcia, PDF-y, dokumenty i inne pliki. Możesz wybrać kilka naraz.</p>
+                <div className="mt-3 space-y-2">
+                  {attachmentFiles.map((file, index) => (
+                    <div key={`${file.name}-${file.lastModified}-${index}`} className="flex items-center gap-3 rounded-lg bg-[#e5e4e2]/5 p-2">
+                      <TaskAttachmentPreview file={file} />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm text-[#e5e4e2]" title={file.name}>{file.name}</p>
+                        <p className="text-xs text-[#e5e4e2]/60">{(file.size / 1024).toLocaleString('pl-PL', { maximumFractionDigits: 1 })} KB</p>
+                      </div>
+                      <button type="button" disabled={saving || Boolean(savedTaskId)} onClick={() => setAttachmentFiles((previous) => previous.filter((_, i) => i !== index))} aria-label={`Usuń załącznik ${file.name}`} className="rounded p-2 text-red-400 hover:bg-red-500/10 disabled:opacity-50">
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -963,12 +970,11 @@ export function TasksPageClient({ initialTasks }: { initialTasks: Task[] }) {
               </div>
 
               <div>
-                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Termin wykonania</label>
-                <input
-                  type="date"
+                <SellerDatePicker
+                  label="Termin wykonania"
                   value={formData.due_date}
-                  onChange={(e) => setFormData({ ...formData, due_date: e.target.value })}
-                  className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
+                  onChange={(due_date) => setFormData((previous) => ({ ...previous, due_date }))}
+                  onValidityChange={setDueDateValid}
                 />
               </div>
 
@@ -1032,19 +1038,22 @@ export function TasksPageClient({ initialTasks }: { initialTasks: Task[] }) {
                 </div>
               </div>
 
+              </fieldset>
+              {savedTaskId && !saving && <p role="status" className="text-sm text-amber-300">Zadanie jest zapisane. Pozostałe pliki oczekują na ponowne przesłanie.</p>}
               <div className="flex gap-3 pt-4">
                 <button
                   type="button"
                   onClick={handleCloseModal}
                   className="flex-1 rounded-lg bg-[#e5e4e2]/10 px-4 py-2 text-[#e5e4e2] transition-colors hover:bg-[#e5e4e2]/20"
                 >
-                  Anuluj
+                  {savedTaskId ? 'Zamknij' : 'Anuluj'}
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
+                  disabled={saving || !dueDateValid}
+                  className="flex-1 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:opacity-50"
                 >
-                  {editingTask ? 'Zapisz' : 'Utwórz'}
+                  {saving ? 'Zapisywanie…' : savedTaskId ? 'Ponów przesyłanie' : editingTask ? 'Zapisz' : 'Utwórz'}
                 </button>
               </div>
             </form>

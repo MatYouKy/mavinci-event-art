@@ -10,11 +10,13 @@ interface LocationSelectorProps {
   value: string;
   onChange: (value: string, locationData?: ILocation) => void;
   placeholder?: string;
+  allowFreeText?: boolean;
 }
 
 export default function LocationSelector({
   value,
   onChange,
+  allowFreeText = false,
   placeholder = 'Wybierz lub wyszukaj lokalizację...',
 }: LocationSelectorProps) {
   const [showDropdown, setShowDropdown] = useState(false);
@@ -87,10 +89,11 @@ export default function LocationSelector({
           value={inputValue}
           onChange={(e) => {
             setSearchQuery(e.target.value);
+            if (allowFreeText) onChange(e.target.value);
             setShowDropdown(true);
           }}
           onFocus={() => {
-            setSearchQuery('');
+            setSearchQuery(allowFreeText ? value : '');
             setShowDropdown(true);
           }}
           placeholder={placeholder}

@@ -1,0 +1,24 @@
+BEGIN;
+DO $$ DECLARE actor uuid; participant uuid; participant_auth uuid; mid uuid; result jsonb; BEGIN
+ SELECT coalesce(auth_user_id,id) INTO actor FROM public.employees WHERE is_active AND (role='admin' OR access_level='admin' OR 'admin'=ANY(coalesce(permissions,'{}'))) LIMIT 1;
+ SELECT id,coalesce(auth_user_id,id) INTO participant,participant_auth FROM public.employees WHERE is_active AND coalesce(auth_user_id,id)<>actor LIMIT 1;
+ IF actor IS NULL OR participant IS NULL THEN RAISE EXCEPTION 'No test actors'; END IF;
+ PERFORM set_config('request.jwt.claim.sub',actor::text,true);
+ SET LOCAL ROLE authenticated;
+ result:=public.create_private_meeting(jsonb_build_object('title','__privacy_test','datetime_start','2026-11-01T12:00:00Z'),jsonb_build_array(jsonb_build_object('employee_id',participant)));
+ mid:=(result->>'id')::uuid;
+ IF EXISTS(SELECT 1 FROM public.meetings WHERE id=mid) THEN RAISE EXCEPTION 'Unassigned admin/creator sees meeting'; END IF;
+ IF EXISTS(SELECT 1 FROM public.meeting_participants WHERE meeting_id=mid) THEN RAISE EXCEPTION 'Roster leaked'; END IF;
+ IF EXISTS(SELECT 1 FROM jsonb_array_elements(public.get_events_list()) x WHERE x->>'id'=mid::text) THEN RAISE EXCEPTION 'Calendar leak'; END IF;
+ PERFORM set_config('request.jwt.claim.sub',participant_auth::text,true);
+ IF NOT EXISTS(SELECT 1 FROM public.meetings WHERE id=mid) THEN RAISE EXCEPTION 'Participant cannot see meeting'; END IF;
+ IF NOT EXISTS(SELECT 1 FROM public.meeting_participants WHERE meeting_id=mid) THEN RAISE EXCEPTION 'Participant roster missing'; END IF;
+ IF NOT EXISTS(SELECT 1 FROM jsonb_array_elements(public.get_events_list()) x WHERE x->>'id'=mid::text) THEN RAISE EXCEPTION 'Participant calendar missing'; END IF;
+ SET LOCAL ROLE postgres;
+ DELETE FROM public.meeting_participants WHERE meeting_id=mid;
+ SET LOCAL ROLE authenticated;
+ IF EXISTS(SELECT 1 FROM public.meetings WHERE id=mid) THEN RAISE EXCEPTION 'Removed participant still has access'; END IF;
+ SET LOCAL ROLE postgres;
+END $$;
+SELECT 'PASS: private creation, unassigned admin denied, participant visible, revoked participant denied, calendar and roster';
+ROLLBACK;

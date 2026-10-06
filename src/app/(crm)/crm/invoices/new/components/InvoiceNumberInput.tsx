@@ -142,7 +142,7 @@ export default function InvoiceNumberInput({
           />
         </div>
 
-        <button
+        <button data-crm-action="secondary"
           type="button"
           onClick={fetchNextInvoiceNumber}
           disabled={loading || !myCompanyId}

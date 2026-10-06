@@ -24,8 +24,10 @@ export async function fetchCalendarEventsServer() {
       created_by,
       organization:organizations!events_organization_id_fkey(
         id,
-        name
+        name,
+        alias
       ),
+      contact_person:contact_person_id(id, first_name, last_name, full_name),
       category:event_categories(
         id,
         name,
@@ -123,6 +125,9 @@ export async function fetchCalendarEventsServer() {
   const normalized =
     (data || []).map((e: any) => ({
       ...e,
+      contact_person: e.contact_person
+        ? { full_name: e.contact_person.full_name || [e.contact_person.first_name, e.contact_person.last_name].filter(Boolean).join(' ') }
+        : null,
       assigned_employees: (e.assigned_employees || []).map((x: any) => x.employee),
     })) ?? [];
 

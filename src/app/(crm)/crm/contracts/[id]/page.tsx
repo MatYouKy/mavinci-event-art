@@ -15,12 +15,15 @@ import {
   CheckCircle,
   Printer,
 } from 'lucide-react';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import '@/styles/contractA4.css';
 
 export default function ContractDetailsPage() {
   const params = useParams();
   const router = useRouter();
+  const { canManageModule } = useCurrentEmployee();
+  const canManage = canManageModule('contracts');
   const { showSnackbar } = useSnackbar();
   const contractId = params.id as string;
 
@@ -66,6 +69,7 @@ export default function ContractDetailsPage() {
   };
 
   const updateStatus = async (status: string) => {
+    if (!canManage) return;
     try {
       const updates: any = { status };
       if (status === 'signed') {
@@ -186,32 +190,32 @@ export default function ContractDetailsPage() {
             <h2 className="text-lg font-light text-[#e5e4e2]">Akcje</h2>
             <div className="flex items-center gap-3">
               {contract.status === 'draft' && (
-                <button
+                (canManage && (<button
                   onClick={() => updateStatus('sent')}
                   className="flex items-center gap-2 rounded-lg bg-blue-500 px-4 py-2 text-white transition-colors hover:bg-blue-600"
                 >
                   <Send className="h-4 w-4" />
                   Wyślij umowę
-                </button>
+                </button>))
               )}
 
               {contract.status === 'sent' && (
-                <button
+                (canManage && (<button
                   onClick={() => updateStatus('signed')}
                   className="flex items-center gap-2 rounded-lg bg-green-500 px-4 py-2 text-white transition-colors hover:bg-green-600"
                 >
                   <CheckCircle className="h-4 w-4" />
                   Oznacz jako podpisaną
-                </button>
+                </button>))
               )}
 
-              <button
+              {canManage && (<button
                 onClick={() => router.push(`/crm/contracts/${contractId}/edit`)}
                 className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 bg-[#d3bb73]/20 px-4 py-2 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/30"
               >
                 <Edit className="h-4 w-4" />
                 Edytuj
-              </button>
+              </button>)}
 
               <button
                 onClick={handlePrint}
@@ -230,12 +234,12 @@ export default function ContractDetailsPage() {
               </button>
 
               {contract.status !== 'cancelled' && (
-                <button
+                (canManage && (<button
                   onClick={() => updateStatus('cancelled')}
                   className="flex items-center gap-2 rounded-lg bg-red-500/20 px-4 py-2 text-red-400 transition-colors hover:bg-red-500/30"
                 >
                   Anuluj
-                </button>
+                </button>))
               )}
             </div>
           </div>

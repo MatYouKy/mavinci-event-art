@@ -1,5 +1,11 @@
 'use client';
 
+import CustomerInquiryHistory from './CustomerInquiryHistory';
+
+import { systemLabel } from '@/lib/ui/systemLabels';
+import { formatSystemSubject } from '@/lib/ui/systemLabels';
+import SystemBadge from '@/components/UI/SystemBadge';
+
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Building2, Calendar, CircleDollarSign, Clock3, FileText, Mail, Phone, RefreshCw, Target, Users } from 'lucide-react';
@@ -84,7 +90,7 @@ export default function Organization360Panel({ organization }: { organization: O
     const eventRows = events.data || [];
     const activityRows: Activity[] = [
       ...(calls.data || []).map((item: any) => ({ id: `call-${item.id}`, kind: 'call' as const, title: item.outcome === 'connected' ? 'Rozmowa odbyta' : 'Próba kontaktu', date: item.started_at, status: item.outcome || item.status })),
-      ...inquiryRows.map((item: any) => ({ id: `inquiry-${item.id}`, kind: 'inquiry' as const, title: item.title, date: item.created_at, status: item.inquiry_stage || item.status, href: `/crm/tasks/${item.id}` })),
+      ...inquiryRows.map((item: any) => ({ id: `inquiry-${item.id}`, kind: 'inquiry' as const, title: formatSystemSubject(item.title), date: item.created_at, status: item.inquiry_stage || item.status, href: `/crm/inquiries/${item.id}` })),
       ...(offers.data || []).map((item: any) => ({ id: `offer-${item.id}`, kind: 'offer' as const, title: `Oferta ${item.offer_number || ''}`.trim(), date: item.created_at, status: item.status, href: `/crm/offers/${item.id}` })),
       ...eventRows.map((item: any) => ({ id: `event-${item.id}`, kind: 'event' as const, title: item.name || 'Wydarzenie', date: item.event_date, status: item.status, href: `/crm/events/${item.id}` })),
       ...(invoices.data || []).map((item: any) => ({
@@ -95,11 +101,11 @@ export default function Organization360Panel({ organization }: { organization: O
         status:
           item.organization_id === organization.id
             ? item.billing_arrangement === 'hotel'
-              ? `${item.status} · płatnik: hotel`
-              : item.status
+              ? `${systemLabel(item.status)} · płatnik: hotel`
+              : systemLabel(item.status)
             : item.billing_arrangement === 'hotel'
-              ? `${item.status} · opłacana przez hotel`
-              : `${item.status} · inny płatnik`,
+              ? `${systemLabel(item.status)} · opłacana przez hotel`
+              : `${systemLabel(item.status)} · inny płatnik`,
         href: `/crm/invoices/${item.id}`,
       })),
       ...(received.data || []).map((item: any) => ({ id: `received-${item.id}`, kind: 'email' as const, title: item.subject || 'Odebrana wiadomość', date: item.received_date, status: item.is_read ? 'przeczytana' : 'nieprzeczytana', href: `/crm/messages/${item.id}?type=received` })),
@@ -137,6 +143,7 @@ export default function Organization360Panel({ organization }: { organization: O
   if (loading) return <div className="flex min-h-72 items-center justify-center rounded-xl border border-gray-800 bg-[#151827]"><RefreshCw className="h-7 w-7 animate-spin text-[#d3bb73]" /></div>;
 
   return <div className="space-y-5">
+      <CustomerInquiryHistory organizationId={organization.id} />
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{[
       ['Otwarte zapytania', stats.openInquiries, Target],
       ['Wartość szans', `${stats.pipelineValue.toLocaleString('pl-PL')} zł`, CircleDollarSign],
@@ -145,7 +152,7 @@ export default function Organization360Panel({ organization }: { organization: O
     ].map(([label, value, Icon]: any) => <div key={label} className="rounded-xl border border-gray-800 bg-[#1a1d2e] p-4"><div className="flex items-center justify-between text-sm text-gray-400"><span>{label}</span><Icon className="h-4 w-4 text-[#d3bb73]" /></div><div className="mt-2 text-2xl font-semibold text-white">{value}</div></div>)}</div>
 
     <div className="grid gap-5 xl:grid-cols-[minmax(0,1.6fr)_minmax(300px,0.8fr)]">
-      <section className="rounded-xl border border-gray-800 bg-[#1a1d2e]"><div className="border-b border-gray-800 px-5 py-4"><h2 className="font-semibold text-white">Historia organizacji</h2><p className="text-sm text-gray-400">Sprzedaż, realizacje, finanse i korespondencja</p></div>{activities.length === 0 ? <div className="flex min-h-60 items-center justify-center text-sm text-gray-500">Brak powiązanych aktywności</div> : <div className="divide-y divide-gray-800">{activities.map((activity) => { const config = KIND[activity.kind]; const Icon = config.icon; return <button key={activity.id} disabled={!activity.href} onClick={() => activity.href && router.push(activity.href)} className="flex w-full items-start gap-3 px-5 py-4 text-left enabled:hover:bg-white/[0.03]"><span className={`rounded-lg p-2 ${config.color}`}><Icon className="h-4 w-4" /></span><span className="min-w-0 flex-1"><span className="flex flex-wrap items-center gap-2"><span className="font-medium text-gray-100">{activity.title}</span><span className={`rounded-full px-2 py-0.5 text-[11px] ${config.color}`}>{config.label}</span>{activity.status && <span className="text-xs text-gray-500">{activity.status}</span>}</span><span className="mt-1 block text-xs text-gray-500">{new Date(activity.date).toLocaleString('pl-PL')}</span></span></button>; })}</div>}</section>
+      <section className="rounded-xl border border-gray-800 bg-[#1a1d2e]"><div className="border-b border-gray-800 px-5 py-4"><h2 className="font-semibold text-white">Historia organizacji</h2><p className="text-sm text-gray-400">Sprzedaż, realizacje, finanse i korespondencja</p></div>{activities.length === 0 ? <div className="flex min-h-60 items-center justify-center text-sm text-gray-500">Brak powiązanych aktywności</div> : <div className="divide-y divide-gray-800">{activities.map((activity) => { const config = KIND[activity.kind]; const Icon = config.icon; return <button key={activity.id} disabled={!activity.href} onClick={() => activity.href && router.push(activity.href)} className="flex w-full items-start gap-3 px-5 py-4 text-left enabled:hover:bg-white/[0.03]"><span className={`rounded-lg p-2 ${config.color}`}><Icon className="h-4 w-4" /></span><span className="min-w-0 flex-1"><span className="flex flex-wrap items-center gap-2"><span className="font-medium text-gray-100">{activity.title}</span><span className={`rounded-full px-2 py-0.5 text-[11px] ${config.color}`}>{config.label}</span>{activity.status && <SystemBadge value={activity.status} label={activity.kind === 'invoice' ? activity.status : undefined} />}</span><span className="mt-1 block text-xs text-gray-500">{new Date(activity.date).toLocaleString('pl-PL')}</span></span></button>; })}</div>}</section>
 
       <aside className="space-y-5">
         <section className="rounded-xl border border-[#d3bb73]/25 bg-[#d3bb73]/10 p-5"><h3 className="font-semibold text-[#e1cc8d]">Następne działanie</h3><p className="mt-2 text-sm leading-6 text-gray-200">{recommendation}</p></section>

@@ -13,6 +13,8 @@ export type EventContractClauseBase = {
   productName: string;
   html: string;
   preview: string;
+  sharedKey?: string;
+  legacyOverrideId?: string;
 };
 
 export type EventContractClauseItem = {
@@ -26,11 +28,14 @@ export type EventContractClauseItem = {
   enabled: boolean;
   source: EventContractClauseSource;
   baseHtml: string;
+  sharedKey?: string;
+  legacyOverrideId?: string;
 };
 
 type StoredEventContractClauseOverride = {
   enabled?: boolean;
   html?: string;
+  detachedSharedClause?: boolean;
 };
 
 type StoredEventContractCustomClause = {
@@ -91,6 +96,7 @@ export const parseEventContractClauseOverrides = (
           const normalized: StoredEventContractClauseOverride = {};
           if (typeof override.enabled === 'boolean') normalized.enabled = override.enabled;
           if (typeof override.html === 'string') normalized.html = override.html;
+          if (override.detachedSharedClause === true) normalized.detachedSharedClause = true;
           if (Object.keys(normalized).length > 0) result[id] = normalized;
           return result;
         },
@@ -129,14 +135,21 @@ export const buildEventContractClauseItems = (
   storedValue: unknown,
 ): EventContractClauseItem[] => {
   const stored = parseEventContractClauseOverrides(storedValue);
+  const usedLegacyReplacements = new Set<string>();
   const automaticItems = automaticClauses.map<EventContractClauseItem>((clause) => {
-    const override = stored.overrides[clause.id];
+    const direct = stored.overrides[clause.id];
+    const legacy = clause.legacyOverrideId ? stored.overrides[clause.legacyOverrideId] : undefined;
+    const override = direct || legacy;
+    const usesLegacyReplacement = !direct && typeof legacy?.html === 'string';
+    const legacyReplacementUsed = usesLegacyReplacement && usedLegacyReplacements.has(clause.legacyOverrideId!);
+    if (usesLegacyReplacement) usedLegacyReplacements.add(clause.legacyOverrideId!);
     const html = typeof override?.html === 'string' ? override.html : clause.html;
     return {
       ...clause,
       html,
       preview: html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 420),
-      enabled: override?.enabled !== false,
+      enabled: override?.enabled !== false && !legacyReplacementUsed,
+      sharedKey: usesLegacyReplacement || override?.detachedSharedClause ? undefined : clause.sharedKey,
       source: 'automatic',
       baseHtml: clause.html,
     };
@@ -160,6 +173,9 @@ export const serializeEventContractClauseItems = (
     .filter((item) => item.source === 'automatic')
     .reduce<Record<string, StoredEventContractClauseOverride>>((result, item) => {
       const override: StoredEventContractClauseOverride = {};
+      // Zapis historycznego zastąpienia całej grupy nie może przy ponownym
+      // odczycie stać się nowym brzmieniem pojedynczej wspólnej zasady.
+      if (!item.sharedKey && item.legacyOverrideId) override.detachedSharedClause = true;
       if (!item.enabled) override.enabled = false;
       if (
         normalizeHtmlForComparison(item.html) !==

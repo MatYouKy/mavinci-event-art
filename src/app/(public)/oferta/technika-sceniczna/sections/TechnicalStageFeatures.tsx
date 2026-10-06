@@ -223,7 +223,7 @@ export default function TechnicalStageFeatures() {
           <div className="mb-8 sm:mb-12">
             <div className="-mx-4 flex gap-1 overflow-x-auto px-4 pb-2 sm:mx-0 sm:flex-wrap sm:justify-center sm:gap-2 sm:px-0">
               {features.map((feature, idx) => (
-                <button
+                <button data-crm-tab-active={activeTab === idx}
                   key={feature.id}
                   onClick={() => setActiveTab(idx)}
                   className={`flex-shrink-0 rounded-full px-4 py-2 text-xs font-medium transition-all sm:px-5 sm:py-2.5 sm:text-sm ${

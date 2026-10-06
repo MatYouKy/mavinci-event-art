@@ -3,15 +3,24 @@
 import { useEffect, useMemo, useState } from 'react';
 import { CalendarDays, ChevronDown, Download, Pencil, Trash2, X } from 'lucide-react';
 import ResponsiveActionBar from '../../ResponsiveActionBar';
+import {
+  bankStatementImportFormat,
+  resolveBankStatementAccountKinds,
+  type BankStatementAccountKind,
+} from '@/lib/bankStatementAccount';
 
 type AccountType = 'regular' | 'vat' | 'mt940';
-type AccountFilter = 'all' | AccountType;
+type AccountFilter = 'all' | BankStatementAccountKind;
+type FormatFilter = 'all' | 'PDF' | 'MT940' | 'other';
 type CompanyTab = 'all' | string;
 
 export interface BankStatementRecord {
   id: string;
   file_name: string;
   account_type: AccountType;
+  account_number?: string | null;
+  import_format?: string | null;
+  file_type?: string | null;
   statement_month: number;
   statement_year: number;
   my_company_id: string;
@@ -57,9 +66,9 @@ const MONTHS = [
   'Grudzień',
 ];
 
-function getTypeLabel(type: AccountType) {
+function getTypeLabel(type: BankStatementAccountKind) {
   if (type === 'vat') return 'VAT';
-  if (type === 'mt940') return 'MT940';
+  if (type === 'unclassified') return 'Nieustalone konto';
   return 'Bieżące';
 }
 
@@ -84,6 +93,7 @@ export default function BankStatementsListModal({
 }: Props) {
   const [selectedCompanyTab, setSelectedCompanyTab] = useState<CompanyTab>('all');
   const [selectedType, setSelectedType] = useState<AccountFilter>('all');
+  const [selectedFormat, setSelectedFormat] = useState<FormatFilter>('all');
   const [expandedYears, setExpandedYears] = useState<Set<number>>(new Set());
   const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set());
 
@@ -99,16 +109,37 @@ export default function BankStatementsListModal({
     return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
   }, [statements]);
 
+  const accountKinds = useMemo(() => {
+    const byCompany = new Map<string, BankStatementRecord[]>();
+    statements.forEach((statement) => {
+      // Never infer an account's kind from another company's statement history.
+      const key = statement.my_company_id || `source:${statement.id}`;
+      const companyStatements = byCompany.get(key) || [];
+      companyStatements.push(statement);
+      byCompany.set(key, companyStatements);
+    });
+    const kinds = new Map<string, BankStatementAccountKind>();
+    byCompany.forEach((companyStatements) => {
+      resolveBankStatementAccountKinds(companyStatements)
+        .forEach((kind, statementId) => kinds.set(statementId, kind));
+    });
+    return kinds;
+  }, [statements]);
+
   const filteredStatements = useMemo(() => {
     return statements.filter((statement) => {
       const companyMatches =
         selectedCompanyTab === 'all' || statement.my_company_id === selectedCompanyTab;
 
-      const typeMatches = selectedType === 'all' || statement.account_type === selectedType;
+      const typeMatches = selectedType === 'all'
+        || accountKinds.get(statement.id) === selectedType;
+      const format = bankStatementImportFormat(statement);
+      const formatMatches = selectedFormat === 'all'
+        || (selectedFormat === 'other' ? format === null : format === selectedFormat);
 
-      return companyMatches && typeMatches;
+      return companyMatches && typeMatches && formatMatches;
     });
-  }, [statements, selectedCompanyTab, selectedType]);
+  }, [statements, selectedCompanyTab, selectedType, selectedFormat, accountKinds]);
 
   const groupedStatements = useMemo(() => {
     const years = new Map<number, Map<number, BankStatementRecord[]>>();
@@ -188,7 +219,7 @@ export default function BankStatementsListModal({
 
         <div className="space-y-4 border-b border-[#d3bb73]/10 p-4">
           <div className="flex flex-wrap gap-2">
-            <button
+            <button data-crm-tab-active={selectedCompanyTab === 'all'}
               type="button"
               onClick={() => setSelectedCompanyTab('all')}
               className={`rounded-full px-3 py-1.5 text-xs font-medium ${
@@ -201,7 +232,7 @@ export default function BankStatementsListModal({
             </button>
 
             {companyTabs.map((company) => (
-              <button
+              <button data-crm-tab-active={selectedCompanyTab === company.id}
                 key={company.id}
                 type="button"
                 onClick={() => setSelectedCompanyTab(company.id)}
@@ -216,21 +247,47 @@ export default function BankStatementsListModal({
             ))}
           </div>
 
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Rodzaj rachunku">
+            <span className="mr-1 text-xs text-[#e5e4e2]/50">Rachunek:</span>
             {[
               { value: 'all', label: 'Wszystkie' },
-              { value: 'regular', label: 'Wyciąg' },
+              { value: 'regular', label: 'Bieżący' },
               { value: 'vat', label: 'VAT' },
-              { value: 'mt940', label: 'MT940' },
+              { value: 'unclassified', label: 'Do identyfikacji' },
             ].map((item) => (
               <button
                 key={item.value}
                 type="button"
                 onClick={() => setSelectedType(item.value as AccountFilter)}
+                aria-pressed={selectedType === item.value}
                 className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
                   selectedType === item.value
-                    ? 'border border-[#d3bb73] bg-[#d3bb73]/15 text-[#d3bb73]'
-                    : 'border border-[#d3bb73]/10 bg-transparent text-[#e5e4e2]/60 hover:bg-[#d3bb73]/5'
+                    ? 'bg-[#d3bb73]/15 text-[#d3bb73]'
+                    : 'bg-transparent text-[#e5e4e2]/60 hover:bg-[#d3bb73]/5'
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Format pliku">
+            <span className="mr-1 text-xs text-[#e5e4e2]/50">Format pliku:</span>
+            {[
+              { value: 'all', label: 'Wszystkie' },
+              { value: 'PDF', label: 'PDF' },
+              { value: 'MT940', label: 'MT940' },
+              { value: 'other', label: 'Pozostałe' },
+            ].map((item) => (
+              <button
+                key={item.value}
+                type="button"
+                onClick={() => setSelectedFormat(item.value as FormatFilter)}
+                aria-pressed={selectedFormat === item.value}
+                className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
+                  selectedFormat === item.value
+                    ? 'bg-[#d3bb73]/15 text-[#d3bb73]'
+                    : 'bg-transparent text-[#e5e4e2]/60 hover:bg-[#d3bb73]/5'
                 }`}
               >
                 {item.label}
@@ -327,7 +384,7 @@ export default function BankStatementsListModal({
                     Firma
                   </th>
                   <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
-                    Typ
+                    Rachunek / format
                   </th>
                   <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
                     Transakcje
@@ -367,7 +424,7 @@ export default function BankStatementsListModal({
                             className="w-full rounded border border-[#d3bb73]/30 bg-[#0f1119] px-2 py-1 text-sm text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                           />
 
-                          <button
+                          <button data-crm-action="secondary"
                             onClick={onRename}
                             className="rounded px-2 py-1 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/10"
                           >
@@ -393,17 +450,14 @@ export default function BankStatementsListModal({
                     </td>
 
                     <td className="px-4 py-3 text-center">
-                      <span
-                        className={`inline-block rounded px-2 py-0.5 text-xs font-medium ${
-                          stmt.account_type === 'vat'
-                            ? 'bg-blue-500/20 text-blue-400'
-                            : stmt.account_type === 'mt940'
-                              ? 'bg-purple-500/20 text-purple-400'
-                              : 'bg-[#d3bb73]/20 text-[#d3bb73]'
-                        }`}
-                      >
-                        {getTypeLabel(stmt.account_type)}
-                      </span>
+                      <div className="flex flex-col items-center gap-1">
+                        <span className="inline-block rounded bg-[#d3bb73]/15 px-2 py-0.5 text-xs font-medium text-[#d3bb73]">
+                          {getTypeLabel(accountKinds.get(stmt.id) || 'unclassified')}
+                        </span>
+                        <span className="text-xs text-[#e5e4e2]/60">
+                          {bankStatementImportFormat(stmt) || 'Pozostały format'}
+                        </span>
+                      </div>
                     </td>
 
                     <td className="px-4 py-3 text-center">

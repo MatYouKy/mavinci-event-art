@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react';
 import { X, Send, Mail, Loader } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
-import { useUpdateEventOfferMutation } from '@/app/(crm)/crm/events/store/api/eventsApi';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import {
   dispatchCrmEmail,
@@ -49,7 +48,6 @@ export default function SendOfferEmailModal({
 }: SendOfferEmailModalProps) {
   const { showSnackbar } = useSnackbar();
   const { currentEmployee, loading: loadingEmployee } = useCurrentEmployee();
-  const [updateOffer] = useUpdateEventOfferMutation();
   const [loading, setLoading] = useState(false);
   const [loadingAccounts, setLoadingAccounts] = useState(true);
   const [emailAccounts, setEmailAccounts] = useState<EmailAccount[]>([]);
@@ -224,6 +222,9 @@ W razie pytań proszę o kontakt.`),
         purpose: 'offer',
         recipientName: clientName,
       });
+      const { data: document, error: documentError } = await supabase.from('offers').select('generated_pdf_url,modified_after_generation').eq('id', offerId).single();
+      if (documentError) throw documentError;
+      if (!document.generated_pdf_url || document.modified_after_generation) throw new Error('Wygeneruj aktualny PDF oferty przed wysyłką.');
       const result = await dispatchCrmEmail({
         accessToken: session.access_token,
         functionName: 'send-offer-email',
@@ -236,6 +237,7 @@ W razie pytań proszę o kontakt.`),
         },
         payload: {
           offerId,
+          documentPath: document.generated_pdf_url,
           emailAccountId: formData.fromAccountId,
           to: formData.to,
           cc: formData.cc,
@@ -248,42 +250,13 @@ W razie pytań proszę o kontakt.`),
         },
       });
 
-      if (!result.scheduled && eventId) {
-        await updateOffer({
-          eventId,
-          offerId,
-          data: { status: 'sent' },
-        }).unwrap();
-      } else if (!result.scheduled) {
-        await supabase.from('offers').update({ status: 'sent' }).eq('id', offerId);
-      }
-
-      if (!result.scheduled) {
-        const { data: sentOffer } = await supabase
-          .from('offers')
-          .select('inquiry_id')
-          .eq('id', offerId)
-          .maybeSingle();
-
-        if (sentOffer?.inquiry_id) {
-          await supabase
-            .from('tasks')
-            .update({
-              inquiry_stage: 'proposal',
-              linked_offer_id: offerId,
-              last_contact_at: new Date().toISOString(),
-            })
-            .eq('id', sentOffer.inquiry_id)
-            .eq('is_inquiry', true);
-        }
-      }
-
       showSnackbar(
         result.scheduled && result.scheduledAt
           ? `Oferta zostanie wysłana ${formatScheduledEmailDate(result.scheduledAt)}`
           : 'Oferta wysłana przez email',
         'success',
       );
+      if (result.warning) showSnackbar(String(result.warning), 'warning');
       onSent?.();
       onClose();
     } catch (error: any) {
@@ -327,7 +300,6 @@ W razie pytań proszę o kontakt.`),
           <div className="rounded-lg border border-blue-500/20 bg-blue-500/10 p-4">
             <p className="text-sm text-blue-400">
               Oferta {offerNumber} zostanie ponownie wygenerowana i dołączona jako plik PDF.
-              W treści pozostanie również link do pobrania ważny przez 7 dni.
             </p>
           </div>
           </UnifiedEmailComposer>

@@ -1,4 +1,5 @@
 import type { InvoiceItem } from '@/app/(crm)/crm/invoices/[id]/page';
+import { getPaymentAwareInvoiceFooterNote } from '@/lib/invoices/paymentAwareFooterNote';
 
 export interface SettledInvoicePdfRef {
   id?: string;
@@ -19,6 +20,7 @@ export interface InvoicePdfData {
   footerNote: string;
   signatureName: string;
   website?: string | null;
+  /** Kept for callers; every rendered invoice is labelled as a visualization. */
   showPreviewWatermark?: boolean;
   invoiceNumber: string;
   invoiceType: string;
@@ -173,6 +175,13 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
           ? refundAmount
           : invoiceTotalToPay;
 
+  const footerNote = getPaymentAwareInvoiceFooterNote(data.footerNote, {
+    paymentStatus,
+    amountDue: invoiceTotalToPay,
+    paidAmount,
+    isRefund,
+  });
+
   const paymentLabel = isRefund
     ? paymentStatus === 'refunded'
       ? 'Zwrócono:'
@@ -268,6 +277,12 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
       <div class="settlement-box">
         <div class="settlement-title">Rozliczenie zaliczek</div>
         <table class="settlement-table">
+          <colgroup>
+            <col style="width: 46%" />
+            <col style="width: 18%" />
+            <col style="width: 18%" />
+            <col style="width: 18%" />
+          </colgroup>
           <thead>
             <tr>
               <th>Opis</th>
@@ -393,16 +408,26 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
         <div class="order-section">
           <div class="settlement-title">Pełna wartość zamówienia</div>
           <table>
+            <colgroup>
+              <col style="width: 4%" />
+              <col style="width: 33%" />
+              <col style="width: 5%" />
+              <col style="width: 6%" />
+              <col style="width: 13%" />
+              <col style="width: 14%" />
+              <col style="width: 8%" />
+              <col style="width: 17%" />
+            </colgroup>
             <thead>
               <tr>
-                <th style="width: 4%">Lp.</th>
-                <th style="width: 38%">Nazwa towaru lub usługi</th>
-                <th style="width: 7%">Jm.</th>
-                <th style="width: 8%">Ilość</th>
-                <th style="width: 12%">Cena netto</th>
-                <th style="width: 12%">Netto</th>
-                <th style="width: 7%">VAT</th>
-                <th style="width: 12%">Brutto</th>
+                <th>Lp.</th>
+                <th>Nazwa towaru lub usługi</th>
+                <th>Jm.</th>
+                <th>Ilość</th>
+                <th>Cena netto</th>
+                <th>Netto</th>
+                <th>VAT</th>
+                <th>Brutto</th>
               </tr>
             </thead>
             <tbody>
@@ -446,10 +471,18 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
       margin: 10mm 10mm 17mm;
     }
 
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+    }
+
     html,
     body {
       margin: 0;
       padding: 0;
+      width: 100%;
+      min-width: 0;
     }
 
     body {
@@ -458,22 +491,55 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
       font-size: 12px;
       line-height: 1.45;
       margin: 0;
-      width: auto;
+      width: 100%;
+      max-width: 100%;
+      /* Keep collapsed table border strokes inside the printable content box. */
+      padding: 1px;
       box-sizing: border-box;
       display: block;
+      overflow-wrap: anywhere;
     }
 
     .top {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      align-items: stretch;
       margin-bottom: 24px;
       gap: 20px;
     }
 
+    .top > div {
+      min-width: 0;
+    }
+
+    .preview-banner {
+      margin-bottom: 16px;
+      padding: 6px 10px;
+      background: #f3f4f6;
+      color: #555;
+      text-align: center;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    .logo-slot {
+      position: relative;
+      min-height: 0;
+    }
+
     .logo {
-      max-height: 50px;
-      width: auto;
+      /* Only the dates define the header height; the logo cannot make it taller. */
+      position: absolute;
+      inset: 0;
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      object-position: left top;
     }
 
     .meta {
@@ -527,6 +593,7 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
     table {
       border-collapse: collapse;
       width: 100%;
+      max-width: 100%;
       table-layout: fixed;
     }
 
@@ -554,10 +621,12 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
     th,
     td {
       border: 1px solid #d1d5db;
-      padding: 6px 8px;
+      padding: 6px 5px;
       font-size: 11px;
       vertical-align: top;
       color: #111;
+      overflow-wrap: anywhere;
+      word-break: normal;
     }
 
     th {
@@ -566,20 +635,6 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
       font-weight: 700;
       text-align: left;
       color: #111;
-    }
-
-    .preview-banner {
-      background: #6b7280;
-      color: #ffffff;
-      text-align: center;
-      letter-spacing: 6px;
-      font-size: 12px;
-      font-weight: 700;
-      padding: 6px 0;
-      margin: 0 0 16px;
-      width: 100%;
-      box-sizing: border-box;
-      text-transform: uppercase;
     }
 
     .center {
@@ -631,19 +686,23 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
     .signature {
       margin: 32px 5% 0;
       text-align: right;
+      break-inside: avoid;
+      page-break-inside: avoid;
     }
 
     .signature-container {
       display: inline-block;
-      width: auto;
+      width: 240px;
+      max-width: 100%;
     }
 
     .signature-line {
       display: inline-block;
-      width: 180px;
+      width: 100%;
       border-top: 1px solid #d1d5db;
       padding: 4px 0;
       text-align: center;
+      overflow-wrap: anywhere;
     }
 
     .signature-employee {
@@ -673,11 +732,6 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
     .settlement-table td {
       font-size: 10.5px;
       padding: 5px 7px;
-    }
-
-    .settlement-table th:first-child,
-    .settlement-table td:first-child {
-      width: 46%;
     }
 
     .advance-list {
@@ -722,12 +776,10 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
 </head>
 
 <body>
-${data.showPreviewWatermark
-  ? `<div class="preview-banner">Wizualizacja</div>`
-  : ''}
+  <div class="preview-banner">${data.isProforma ? 'Wizualizacja pro formy' : 'Wizualizacja faktury'}</div>
 
   <div class="top">
-    <div>
+    <div class="logo-slot">
       ${data.companyLogoUrl ? `<img src="${esc(data.companyLogoUrl)}" alt="Logo" class="logo" />` : ''}
     </div>
 
@@ -777,18 +829,30 @@ ${data.showPreviewWatermark
     correctiveItems
       ? `
     <table>
+      <colgroup>
+        <col style="width: 4%" />
+        <col style="width: 25%" />
+        <col style="width: 9%" />
+        <col style="width: 5%" />
+        <col style="width: 6%" />
+        <col style="width: 11%" />
+        <col style="width: 11%" />
+        <col style="width: 6%" />
+        <col style="width: 11%" />
+        <col style="width: 12%" />
+      </colgroup>
       <thead>
         <tr>
-          <th style="width: 2%">Lp.</th>
-          <th style="width: 28%">Nazwa towaru lub usługi</th>
-          <th style="width: 5%; font-size: 9px;"></th>
-          <th style="width: 3%">Jm.</th>
-          <th style="width: 5%">Ilość</th>
-          <th style="width: 10%">Cena netto</th>
-          <th style="width: 12%">Wartość netto</th>
-          <th style="width: 5%">VAT</th>
-          <th style="width: 9%">Kwota VAT</th>
-          <th style="width: 11%">Brutto</th>
+          <th>Lp.</th>
+          <th>Nazwa towaru lub usługi</th>
+          <th style="font-size: 9px;"></th>
+          <th>Jm.</th>
+          <th>Ilość</th>
+          <th>Cena netto</th>
+          <th>Wartość netto</th>
+          <th>VAT</th>
+          <th>Kwota VAT</th>
+          <th>Brutto</th>
         </tr>
       </thead>
       <tbody>
@@ -848,17 +912,28 @@ ${data.showPreviewWatermark
   `
       : `
     <table>
+      <colgroup>
+        <col style="width: 4%" />
+        <col style="width: 32%" />
+        <col style="width: 5%" />
+        <col style="width: 6%" />
+        <col style="width: 11%" />
+        <col style="width: 12%" />
+        <col style="width: 6%" />
+        <col style="width: 12%" />
+        <col style="width: 12%" />
+      </colgroup>
       <thead>
         <tr>
-          <th style="width: 2%">Lp.</th>
-          <th style="width: 38%">Nazwa towaru lub usługi</th>
-          <th style="width: 3%">Jm.</th>
-          <th style="width: 3%">Ilość</th>
-          <th style="width: 10%">Cena netto</th>
-          <th style="width: 12%">Wartość netto</th>
-          <th style="width: 5%">VAT</th>
-          <th style="width: 9%">Kwota VAT</th>
-          <th style="width: 9%">Brutto</th>
+          <th>Lp.</th>
+          <th>Nazwa towaru lub usługi</th>
+          <th>Jm.</th>
+          <th>Ilość</th>
+          <th>Cena netto</th>
+          <th>Wartość netto</th>
+          <th>VAT</th>
+          <th>Kwota VAT</th>
+          <th>Brutto</th>
         </tr>
       </thead>
       <tbody>
@@ -959,12 +1034,12 @@ ${data.showPreviewWatermark
   </div>
 
   <div class="footer-note">
-    ${data.footerNote ? `<span style="white-space: pre-wrap; font-weight: 700;">Uwagi:</span> ${esc(data.footerNote)}` : ''}
+    ${footerNote ? `<span style="white-space: pre-wrap; font-weight: 700;">Uwagi:</span> ${esc(footerNote)}` : ''}
   </div>
 
   <div class="signature">
     <div class="signature-container">
-      <div class="signature-employee">${esc(data.signatureName)}</div>
+      <div class="signature-employee">${esc(data.signatureName?.trim() || 'Brak danych osoby wystawiającej')}</div>
       <div class="signature-line">
         <div class="signature-role">Podpis osoby upoważnionej do wystawienia</div>
       </div>

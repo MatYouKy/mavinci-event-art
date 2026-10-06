@@ -1,6 +1,6 @@
 import { Employee } from '../lib/supabase';
 
-type PermissionEmployee = Pick<Employee, 'access_level' | 'role' | 'permissions'> | null | undefined;
+type PermissionEmployee = Pick<Employee, 'access_level' | 'role' | 'permissions' | 'has_realizations'> | null | undefined;
 
 export const isAdmin = (employee: PermissionEmployee): boolean => {
   if (!employee) return false;
@@ -14,8 +14,7 @@ export const isManagerOrAdmin = (employee: PermissionEmployee): boolean => {
   return (
     employee.access_level === 'manager' ||
     employee.role === 'manager' ||
-    employee.permissions?.includes('events_manage') === true ||
-    employee.permissions?.includes('fleet_manage') === true
+    employee.permissions?.includes('events_manage') === true
   );
 };
 
@@ -28,7 +27,9 @@ export const hasPermission = (employee: PermissionEmployee, scope: string): bool
 export const canView = (employee: PermissionEmployee, module: string): boolean => {
   if (!employee) return false;
   if (isAdmin(employee)) return true;
-  return hasPermission(employee, `${module}_view`) || hasPermission(employee, `${module}_manage`);
+  if (['events', 'calendar'].includes(module) && employee.has_realizations) return true;
+  return hasPermission(employee, `${module}_view`) || hasPermission(employee, `${module}_manage`)
+    || (['events', 'calendar'].includes(module) && hasPermission(employee, 'equipment_manage'));
 };
 
 export const canManage = (employee: PermissionEmployee, module: string): boolean => {
@@ -43,6 +44,14 @@ export const canCreate = (employee: PermissionEmployee, module: string): boolean
   return hasPermission(employee, `${module}_create`) || hasPermission(employee, `${module}_manage`);
 };
 
+// Match CRM inquiry creation scopes, while requiring access to the inquiry module.
+export const canCreateInquiry = (employee: PermissionEmployee): boolean =>
+  canView(employee, 'inquiries') && (
+    hasPermission(employee, 'inquiries_manage') ||
+    hasPermission(employee, 'inquiries_manage_all') ||
+    hasPermission(employee, 'tasks_create')
+  );
+
 export type ModuleName =
   | 'equipment'
   | 'employees'
@@ -51,6 +60,7 @@ export type ModuleName =
   | 'events'
   | 'calendar'
   | 'tasks'
+  | 'inquiries'
   | 'offers'
   | 'contracts'
   | 'messages'
@@ -79,7 +89,7 @@ export const MENU_ITEMS: MenuItem[] = [
   { icon: 'book-open', label: 'Kontakty', screen: 'Clients', module: 'contacts' },
   { icon: 'star', label: 'Wydarzenia', screen: 'Events', module: 'events' },
   { icon: 'check-square', label: 'Zadania', screen: 'Tasks', module: 'tasks' },
-  { icon: 'phone-call', label: 'Zapytania', screen: 'Inquiries', module: 'tasks' },
+  { icon: 'phone-call', label: 'Zapytania', screen: 'Inquiries', module: 'inquiries' },
   { icon: 'clock', label: 'Czas pracy', screen: 'TimeTracking', module: 'time_tracking' },
   { icon: 'users', label: 'Pracownicy', screen: 'Employees', module: 'employees' },
   { icon: 'truck', label: 'Flota', screen: 'Fleet', module: 'fleet' },
@@ -94,3 +104,7 @@ export const getVisibleMenuItems = (employee: PermissionEmployee): MenuItem[] =>
     return canView(employee, item.module);
   });
 };
+
+export const canViewEventFinances = (employee: PermissionEmployee): boolean =>
+  isAdmin(employee) || ['finances_manage','finances_view','offers_manage','offers_view','invoices_manage','invoices_view']
+    .some(scope => hasPermission(employee, scope));

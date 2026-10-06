@@ -1,10 +1,14 @@
+import { getEventNotificationTab, EventNotificationTab } from '../lib/eventNotificationTarget';
 import { createNavigationContainerRef } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
+import { getSellerChatTarget } from '../lib/sellerChatTarget';
 
 export const navigationRef = createNavigationContainerRef<any>();
 
 export type NotificationTargetData = {
   type?: string;
+  workflow?: string;
+  metadata?: Record<string, unknown> | null;
   conversation_id?: string;
   task_id?: string;
   entity_type?: string;
@@ -26,7 +30,16 @@ export function navigateToChat(conversationId: string) {
   if (navigationRef.isReady()) {
     navigationRef.navigate('Main', {
       screen: 'Messages',
-      params: { conversationId, chatRequestId: Date.now() },
+      params: { conversationId, conversationKind: 'employee', chatRequestId: Date.now() },
+    });
+  }
+}
+
+export function navigateToSellerChat(conversationId: string) {
+  if (navigationRef.isReady()) {
+    navigationRef.navigate('Main', {
+      screen: 'Messages',
+      params: { conversationId, conversationKind: 'seller', chatRequestId: Date.now() },
     });
   }
 }
@@ -49,7 +62,7 @@ export function navigateToInquiry(taskId: string) {
   }
 }
 
-export function navigateToEvent(eventId: string, initialTab?: 'fleet' | 'team') {
+export function navigateToEvent(eventId: string, initialTab?: EventNotificationTab) {
   if (navigationRef.isReady()) {
     navigationRef.navigate('Main', {
       screen: 'Events',
@@ -140,10 +153,15 @@ export async function routeNotification(
   d: NotificationTargetData,
 ): Promise<{ meetingId: string | null }> {
   let target = d;
+  const directSellerId = getSellerChatTarget(d);
+  if (directSellerId) {
+    navigateToSellerChat(directSellerId);
+    return { meetingId: null };
+  }
 
   // Older webhook banners did not contain inbound_event_id. Resolve it from the
   // stored CRM notification so an already delivered banner can still open details.
-  if (d.notification_id && !d.inbound_event_id && !d.entity_id) {
+  if (d.notification_id && !d.inbound_event_id && !d.workflow) {
     const { data: notification } = await supabase
       .from('notifications')
       .select('category, related_entity_type, related_entity_id, action_url, metadata')
@@ -154,6 +172,7 @@ export async function routeNotification(
       const metadata = notification.metadata as Record<string, unknown> | null;
       target = {
         ...d,
+        metadata: d.metadata || metadata,
         category: d.category || notification.category || undefined,
         entity_type: d.entity_type || notification.related_entity_type || undefined,
         entity_id: d.entity_id || notification.related_entity_id || undefined,
@@ -163,6 +182,12 @@ export async function routeNotification(
           (typeof metadata?.inbound_event_id === 'string' ? metadata.inbound_event_id : undefined),
       };
     }
+  }
+
+  const sellerId = getSellerChatTarget(target);
+  if (sellerId) {
+    navigateToSellerChat(sellerId);
+    return { meetingId: null };
   }
 
   if (isMeetingTarget(target)) {
@@ -240,7 +265,7 @@ export async function routeNotification(
     url.includes('/crm/events/')
   ) {
     if (target.entity_id) {
-      navigateToEvent(target.entity_id, target.initial_tab === 'fleet' ? 'fleet' : undefined);
+      navigateToEvent(target.entity_id, getEventNotificationTab(target));
     }
     return { meetingId: null };
   }

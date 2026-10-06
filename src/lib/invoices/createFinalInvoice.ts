@@ -1,8 +1,11 @@
 /**
- * Tworzenie faktury końcowej rozliczającej zaliczki/proformy
+ * Tworzenie faktury końcowej na całość zamówienia, rozliczającej opłacone zaliczki.
  */
 
 import { supabase } from '@/lib/supabase/browser';
+import { calculateFinalInvoice } from './finalInvoiceCalculation';
+import { DEFAULT_INVOICE_PAYMENT_TERM_DAYS, getInvoicePaymentDueDate } from './paymentTerm';
+import { getCurrentInvoiceIssuer } from './currentInvoiceIssuer';
 
 export interface FinalInvoiceItemInput {
   name: string;
@@ -64,8 +67,6 @@ interface CreateResult {
   error?: string;
 }
 
-const round2 = (n: number) => Math.round(n * 100) / 100;
-
 export async function createFinalInvoice(opts: CreateFinalInvoiceOptions): Promise<CreateResult> {
   try {
     if (!opts.items.length) {
@@ -80,7 +81,16 @@ export async function createFinalInvoice(opts: CreateFinalInvoiceOptions): Promi
       return { success: false, error: 'Ta sama zaliczka została wybrana więcej niż raz' };
     }
 
-    if (opts.items.some((item) => !item.name.trim() || item.quantity <= 0 || item.price_net < 0)) {
+    if (opts.settledInvoices.some((invoice) => invoice.invoice_type !== 'advance')) {
+      return { success: false, error: 'Faktura końcowa może rozliczać tylko faktury zaliczkowe' };
+    }
+
+    if (opts.items.some((item) =>
+      !item.name.trim() ||
+      !Number.isFinite(item.quantity) || item.quantity <= 0 ||
+      !Number.isFinite(item.price_net) || item.price_net < 0 ||
+      !Number.isFinite(item.vat_rate) || item.vat_rate < 0
+    )) {
       return { success: false, error: 'Pozycje faktury zawierają nieprawidłowe wartości' };
     }
 
@@ -113,42 +123,20 @@ export async function createFinalInvoice(opts: CreateFinalInvoiceOptions): Promi
     }
 
     const today = new Date().toISOString().split('T')[0];
-    const defaultDue = new Date();
-    defaultDue.setDate(defaultDue.getDate() + 14);
+    const defaultDue = getInvoicePaymentDueDate(opts.issueDate || today, DEFAULT_INVOICE_PAYMENT_TERM_DAYS);
 
-    const computedItems = opts.items.map((it, idx) => {
-      const valueNet = round2(Number(it.quantity) * Number(it.price_net));
-      const vatAmount = round2((valueNet * Number(it.vat_rate)) / 100);
-      const valueGross = round2(valueNet + vatAmount);
+    const calculation = calculateFinalInvoice(opts.items, opts.settledInvoices);
+    const computedItems = calculation.items;
+    const { net: totalNet, vat: totalVat, gross: totalGross } = calculation.totals;
+    const { net: settledNet, vat: settledVat, gross: settledGross } = calculation.settled;
+    const { net: remainingNet, vat: remainingVat, gross: remainingGross } = calculation.remaining;
 
+    if (remainingGross < -0.01) {
       return {
-        position_number: idx + 1,
-        name: it.name,
-        unit: it.unit,
-        quantity: Number(it.quantity),
-        price_net: Number(it.price_net),
-        vat_rate: Number(it.vat_rate),
-        vat_code: it.vat_code ?? String(it.vat_rate),
-        vat_exemption_reason: it.vat_exemption_reason?.trim() || null,
-        value_net: valueNet,
-        vat_amount: vatAmount,
-        value_gross: valueGross,
+        success: false,
+        error: 'Suma zaliczek przekracza wartość faktury końcowej. Wprowadź pozycje całego zamówienia.',
       };
-    });
-
-    const totalNet = round2(computedItems.reduce((s, i) => s + i.value_net, 0));
-    const totalVat = round2(computedItems.reduce((s, i) => s + i.vat_amount, 0));
-    const totalGross = round2(computedItems.reduce((s, i) => s + i.value_gross, 0));
-
-    const settledNet = round2(opts.settledInvoices.reduce((s, i) => s + Number(i.total_net ?? 0), 0));
-    const settledVat = round2(opts.settledInvoices.reduce((s, i) => s + Number(i.total_vat ?? 0), 0));
-    const settledGross = round2(
-      opts.settledInvoices.reduce((s, i) => s + Number(i.total_gross ?? 0), 0),
-    );
-
-    const remainingNet = round2(totalNet - settledNet);
-    const remainingVat = round2(totalVat - settledVat);
-    const remainingGross = round2(totalGross - settledGross);
+    }
 
     const settledInvoicesJson = opts.settledInvoices.map((i) => ({
       id: i.id,
@@ -172,17 +160,18 @@ export async function createFinalInvoice(opts: CreateFinalInvoiceOptions): Promi
       remainingGross,
     };
 
+    const currency = opts.currencyCode || 'PLN';
     const settlementLines = opts.settledInvoices
       .map(
         (i) =>
-          `- ${i.invoice_number} (${i.invoice_type}): ${Number(i.total_gross).toFixed(2)} PLN brutto`,
+          `- ${i.invoice_number} (zaliczkowa): ${Number(i.total_gross).toFixed(2)} ${currency} brutto`,
       )
       .join('\n');
 
     const settlementText = opts.settledInvoices.length
       ? `Rozliczone wpłaty / zaliczki:\n${settlementLines}\nSuma rozliczonych: ${settledGross.toFixed(
           2,
-        )} PLN brutto.\nDo dopłaty: ${remainingGross.toFixed(2)} PLN brutto.`
+        )} ${currency} brutto.\nDo dopłaty: ${remainingGross.toFixed(2)} ${currency} brutto.`
       : '';
 
     const finalNotes = [opts.notes, settlementText].filter(Boolean).join('\n\n');
@@ -193,17 +182,7 @@ export async function createFinalInvoice(opts: CreateFinalInvoiceOptions): Promi
       settlementSummary: settlementSummaryJson,
     });
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    const { data: employee } = await supabase
-      .from('employees')
-      .select('id')
-      .eq('email', user?.email)
-      .maybeSingle();
-
-      
+    const issuer = await getCurrentInvoiceIssuer();
 
     const insertPayload: Record<string, any> = {
       invoice_number: invoiceNumber,
@@ -216,14 +195,14 @@ export async function createFinalInvoice(opts: CreateFinalInvoiceOptions): Promi
       is_proforma: false,
       issue_date: opts.issueDate || today,
       sale_date: opts.saleDate || today,
-      payment_due_date: opts.paymentDueDate || defaultDue.toISOString().split('T')[0],
+      payment_due_date: opts.paymentDueDate || defaultDue,
       event_id: opts.eventId || null,
       organization_id: opts.organizationId || null,
       billing_arrangement: opts.billingArrangement || 'direct',
       service_recipient_organization_id: opts.serviceRecipientOrganizationId || null,
       service_recipient_contact_id: opts.serviceRecipientContactId || null,
       my_company_id: opts.myCompanyId || null,
-      created_by: employee?.id ?? null,
+      created_by: issuer.employeeId,
 
       total_net: totalNet,
       total_vat: totalVat,
@@ -251,9 +230,12 @@ export async function createFinalInvoice(opts: CreateFinalInvoiceOptions): Promi
     if (opts.sellerData) {
       Object.assign(insertPayload, opts.sellerData);
     }
+    // Seller/source snapshots must not replace the authenticated issuer.
+    insertPayload.created_by = issuer.employeeId;
+    insertPayload.signature_name = issuer.signatureName;
 
     const { data: createdId, error: createError } = await supabase.rpc(
-      'create_final_invoice_atomic',
+      'create_paid_final_invoice_atomic',
       {
         p_invoice: insertPayload,
         p_items: computedItems,
@@ -265,7 +247,9 @@ export async function createFinalInvoice(opts: CreateFinalInvoiceOptions): Promi
       console.error('Error creating final invoice atomically:', createError);
       return {
         success: false,
-        error: createError?.message || 'Nie udało się utworzyć faktury końcowej',
+        error: createError?.code === 'PGRST202'
+          ? 'Wystawianie faktur końcowych wymaga aktualizacji systemu. Skontaktuj się z administratorem.'
+          : createError?.message || 'Nie udało się utworzyć faktury końcowej',
       };
     }
 

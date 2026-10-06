@@ -45,6 +45,7 @@ const contactTypeIcons = {
 };
 export default function ContactsPage() {
   const router = useRouter();
+  useEffect(() => { if (new URLSearchParams(window.location.search).get('tab') === 'subcontractors') router.replace('/crm/subcontractors'); }, [router]);
   const { showSnackbar } = useSnackbar();
   const dispatch = useAppDispatch();
   const [activeTab, setActiveTab] = useState<TabFilter>('all');
@@ -448,7 +449,7 @@ export default function ContactsPage() {
 
           <div className="mb-6 border-b border-gray-700">
             <div className="flex gap-0">
-              <button
+              <button data-crm-tab-active={activeTab === 'all'}
                 onClick={() => {
                   setActiveTab('all');
                   setTypeFilter('all');
@@ -462,8 +463,8 @@ export default function ContactsPage() {
                 <Users className="h-4 w-4" />
                 Wszystkie kontakty
               </button>
-              <button
-                onClick={() => setActiveTab('subcontractors')}
+              <button data-crm-tab-active={activeTab === 'subcontractors'}
+                onClick={() => router.push('/crm/subcontractors')}
                 className={`flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors ${
                   activeTab === 'subcontractors'
                     ? 'border-[#d3bb73] text-[#d3bb73]'

@@ -1,5 +1,7 @@
 'use client';
 
+import { systemLabel } from '@/lib/ui/systemLabels';
+
 import { useState, useEffect } from 'react';
 import { Plus, Trash2, Settings, AlertCircle } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
@@ -150,7 +152,7 @@ export default function VehicleAttributesPanel({
       license_requirement: 'Wymagania prawne',
       technical: 'Parametry techniczne',
     };
-    return labels[category || ''] || category;
+    return labels[category || ''] || systemLabel(category, 'vehicleAttribute');
   };
 
   if (loading) {

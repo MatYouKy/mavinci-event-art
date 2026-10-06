@@ -19,6 +19,7 @@ import Link from 'next/link';
 import { supabase } from '@/lib/supabase/browser';
 import { ResetAnalyticsModal } from '@/components/crm/ResetAnalyticsModal';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import { CrmCartesianChart } from '@/components/crm/charts/CrmCharts';
 
 export default function AnalyticsPage() {
   const searchParams = useSearchParams();
@@ -109,13 +110,6 @@ export default function AnalyticsPage() {
     : dateRange === 1
       ? 'Dzisiaj'
       : `Ostatnie ${dateRange} dni`;
-
-  let maxVisits = 1;
-  if (stats?.dailyVisits && stats.dailyVisits.length > 0) {
-    stats.dailyVisits.forEach((d) => {
-      if (d.visits > maxVisits) maxVisits = d.visits;
-    });
-  }
 
   return (
     <div className="min-h-screen bg-[#0f1119] p-6">
@@ -325,26 +319,20 @@ export default function AnalyticsPage() {
                   <TrendingUp className="h-5 w-5 text-[#d3bb73]" />
                   Wizyty w czasie
                 </h2>
-                <div className="space-y-2">
-                  {stats.dailyVisits.slice(-14).map((day) => (
-                    <div key={day.date} className="flex items-center gap-3">
-                      <span className="w-20 text-xs text-[#e5e4e2]/60">
-                        {new Date(day.date).toLocaleDateString('pl-PL', {
-                          month: 'short',
-                          day: 'numeric',
-                        })}
-                      </span>
-                      <div className="relative h-6 flex-1 overflow-hidden rounded-full bg-[#0f1119]">
-                        <div
-                          className="absolute inset-y-0 left-0 flex items-center justify-end rounded-full bg-gradient-to-r from-[#d3bb73] to-[#d3bb73]/60 pr-2"
-                          style={{ width: `${(day.visits / maxVisits) * 100}%` }}
-                        >
-                          <span className="text-xs font-medium text-[#1c1f33]">{day.visits}</span>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                <CrmCartesianChart
+                  data={stats.dailyVisits.slice(-14).map((day) => ({
+                    date: new Date(day.date).toLocaleDateString('pl-PL', { month: 'short', day: 'numeric' }),
+                    visits: day.visits,
+                  }))}
+                  categoryKey="date"
+                  series={[{ key: 'visits', label: 'Wizyty', color: '#d3bb73' }]}
+                  kind="bar"
+                  height={300}
+                  valueFormatter={(value) => new Intl.NumberFormat('pl-PL').format(value)}
+                  ariaLabel="Liczba wizyt według daty — ostatnie 14 zarejestrowanych dni wybranego zakresu"
+                  showLegend={false}
+                  emptyMessage="Brak zarejestrowanych wizyt w wybranym zakresie."
+                />
               </div>
 
               <div className="rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] p-6">
@@ -352,24 +340,18 @@ export default function AnalyticsPage() {
                   <Globe className="h-5 w-5 text-[#d3bb73]" />
                   Źródła ruchu
                 </h2>
-                <div className="space-y-3">
-                  {stats.trafficSources.map((source) => (
-                    <div key={source.source} className="flex items-center justify-between">
-                      <span className="text-[#e5e4e2]/70">{source.source}</span>
-                      <div className="flex items-center gap-3">
-                        <div className="h-2 w-32 rounded-full bg-[#0f1119]">
-                          <div
-                            className="h-full rounded-full bg-[#d3bb73]"
-                            style={{ width: `${(source.visits / stats.totalVisits) * 100}%` }}
-                          />
-                        </div>
-                        <span className="w-12 text-right font-medium text-[#d3bb73]">
-                          {source.visits}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                <CrmCartesianChart
+                  data={stats.trafficSources.map((source) => ({ source: source.source, visits: source.visits }))}
+                  categoryKey="source"
+                  series={[{ key: 'visits', label: 'Wizyty', color: '#60a5fa' }]}
+                  kind="bar"
+                  horizontal
+                  height={Math.max(260, Math.min(600, stats.trafficSources.length * 42))}
+                  valueFormatter={(value) => new Intl.NumberFormat('pl-PL').format(value)}
+                  ariaLabel="Liczba wizyt według źródła ruchu w wybranym zakresie"
+                  showLegend={false}
+                  emptyMessage="Brak danych o źródłach ruchu."
+                />
               </div>
             </div>
 
@@ -379,24 +361,19 @@ export default function AnalyticsPage() {
                   <MonitorSmartphone className="h-5 w-5 text-[#d3bb73]" />
                   Urządzenia
                 </h2>
-                <div className="space-y-3">
-                  {stats.deviceBreakdown.map((device) => (
-                    <div key={device.device_type} className="flex items-center justify-between">
-                      <span className="capitalize text-[#e5e4e2]/70">{device.device_type}</span>
-                      <div className="flex items-center gap-3">
-                        <div className="h-2 w-32 rounded-full bg-[#0f1119]">
-                          <div
-                            className="h-full rounded-full bg-[#d3bb73]"
-                            style={{ width: `${device.percentage}%` }}
-                          />
-                        </div>
-                        <span className="w-16 text-right font-medium text-[#d3bb73]">
-                          {device.percentage}%
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                <CrmCartesianChart
+                  data={stats.deviceBreakdown.map((device) => ({ device: device.device_type, percentage: device.percentage }))}
+                  categoryKey="device"
+                  series={[{ key: 'percentage', label: 'Udział urządzeń', color: '#a78bfa' }]}
+                  kind="bar"
+                  horizontal
+                  height={240}
+                  valueFormatter={(value) => `${new Intl.NumberFormat('pl-PL', { maximumFractionDigits: 2 }).format(value)}%`}
+                  axisFormatter={(value) => `${value}%`}
+                  ariaLabel="Procentowy udział urządzeń w ruchu w wybranym zakresie"
+                  showLegend={false}
+                  emptyMessage="Brak danych o urządzeniach."
+                />
               </div>
 
               {stats.topCities.length > 0 && (

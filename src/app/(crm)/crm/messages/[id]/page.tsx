@@ -1,5 +1,8 @@
 'use client';
 
+import { formatSystemSubject } from '@/lib/ui/systemLabels';
+import InquiryTypeBadges from '@/components/crm/inquiries/InquiryTypeBadges';
+
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   useGetMessageDetailsQuery,
@@ -18,8 +21,6 @@ import {
   Reply,
   Forward,
   Trash2,
-  Paperclip,
-  Download,
   BrainCircuit,
   UserRound,
   Building2,
@@ -39,6 +40,7 @@ import CreateTaskFromMessageModal from '@/components/crm/CreateTaskFromMessageMo
 import { supabase } from '@/lib/supabase/browser';
 import { useDialog } from '@/contexts/DialogContext';
 import EmailHtmlPreview from '../components/EmailHtmlPreview';
+import MessageAttachments from '../components/MessageAttachments';
 import { dispatchCrmEmail, formatScheduledEmailDate } from '@/lib/emailScheduling';
 
 interface PageProps {
@@ -87,7 +89,7 @@ export default function MessageDetailPage({ params }: PageProps) {
   const [linkedInquiryId, setLinkedInquiryId] = useState<string | null>(null);
   const { data: emailAccountsData } = useGetEmailAccountsQuery();
   const selectableEmailAccounts = (emailAccountsData?.accounts || []).filter(
-    (account) => account.id !== 'all' && account.id !== 'contact_form',
+    (account) => account.can_send === true,
   );
 
   const {
@@ -433,7 +435,7 @@ export default function MessageDetailPage({ params }: PageProps) {
 
               <ResponsiveActionBar
                 actions={[
-                  ...(canManage && (message.type === 'contact_form' || message.type === 'received')
+                  ...((message.type === 'contact_form' ? selectableEmailAccounts.length > 0 : selectableEmailAccounts.some(account => account.id === message.email_account_id)) && (message.type === 'contact_form' || message.type === 'received')
                     ? [
                         {
                           label: 'Odpowiedz',
@@ -512,7 +514,7 @@ export default function MessageDetailPage({ params }: PageProps) {
                         },
                       ]
                     : []),
-                  ...(canManage && message.type === 'received'
+                  ...(selectableEmailAccounts.some(account => account.id === message.email_account_id) && message.type === 'received'
                     ? [
                         {
                           label: 'Przekaż',
@@ -541,8 +543,9 @@ export default function MessageDetailPage({ params }: PageProps) {
             <div className="mb-3 flex items-start justify-between gap-2 sm:mb-4">
               <div className="min-w-0 flex-1">
                 <h1 className="mb-2 break-words text-xl font-bold text-white sm:mb-4 sm:text-3xl">
-                  {message.subject}
+                  {formatSystemSubject(message.subject)}
                 </h1>
+                {message.type === 'contact_form' && <div className="mb-3"><InquiryTypeBadges title={message.subject} details={message.originalData} /></div>}
                 <div className="space-y-1.5 text-xs text-[#e5e4e2]/70 sm:space-y-2 sm:text-sm">
                   <p className="break-all">
                     <strong className="text-white">Od:</strong> {message.from}
@@ -653,7 +656,7 @@ export default function MessageDetailPage({ params }: PageProps) {
                   html={message.bodyHtml}
                   employeeId={message.originalData?.employee_id}
                   emailAccountId={message.email_account_id}
-                  title={`Wiadomość: ${message.subject || 'bez tematu'}`}
+                  title={`Wiadomość: ${formatSystemSubject(message.subject)}`}
                 />
               ) : message.body && message.body.trim() ? (
                 <p className="whitespace-pre-wrap text-sm text-[#e5e4e2] sm:text-base">
@@ -666,63 +669,7 @@ export default function MessageDetailPage({ params }: PageProps) {
               )}
             </div>
 
-            {message.attachments && message.attachments.length > 0 && (
-              <div className="mt-4 border-t border-[#d3bb73]/20 pt-4 sm:mt-6 sm:pt-6">
-                <div className="mb-2 flex items-center gap-1.5 sm:mb-3 sm:gap-2">
-                  <Paperclip className="h-4 w-4 text-[#d3bb73] sm:h-5 sm:w-5" />
-                  <h3 className="text-base font-semibold text-white sm:text-lg">
-                    Załączniki ({message.attachments.length})
-                  </h3>
-                </div>
-                <div className="space-y-1.5 sm:space-y-2">
-                  {message.attachments.map((attachment) => (
-                    <div
-                      key={attachment.id}
-                      className="flex items-center justify-between gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] p-2 transition-colors hover:bg-[#d3bb73]/5 sm:p-3"
-                    >
-                      <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
-                        <Paperclip className="h-3 w-3 flex-shrink-0 text-[#d3bb73] sm:h-4 sm:w-4" />
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-xs text-white sm:text-sm">
-                            {attachment.filename}
-                          </p>
-                          <p className="text-[10px] text-[#e5e4e2]/50 sm:text-xs">
-                            {(attachment.size_bytes / 1024).toFixed(1)} KB
-                          </p>
-                        </div>
-                      </div>
-                      <button
-                        onClick={async () => {
-                          try {
-                            const { data, error } = await supabase.storage
-                              .from('email-attachments')
-                              .download(attachment.storage_path);
-
-                            if (error) throw error;
-
-                            const url = URL.createObjectURL(data);
-                            const a = document.createElement('a');
-                            a.href = url;
-                            a.download = attachment.filename;
-                            document.body.appendChild(a);
-                            a.click();
-                            document.body.removeChild(a);
-                            URL.revokeObjectURL(url);
-                          } catch (error) {
-                            console.error('Error downloading attachment:', error);
-                            showSnackbar('Błąd podczas pobierania załącznika', 'error');
-                          }
-                        }}
-                        className="flex flex-shrink-0 items-center gap-1 rounded-lg bg-[#d3bb73]/20 px-2 py-1.5 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/30 sm:gap-2 sm:px-3 sm:py-2"
-                      >
-                        <Download className="h-3 w-3 sm:h-4 sm:w-4" />
-                        <span className="hidden text-xs sm:inline sm:text-sm">Pobierz</span>
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+            <MessageAttachments message={message} onRetry={() => { void refetchMessage(); }} />
           </div>
         </div>
       </div>
@@ -736,7 +683,7 @@ export default function MessageDetailPage({ params }: PageProps) {
             ? message.originalData.email
             : message.from.match(/<([^>]+)>/)?.[1] || message.from
         }
-        initialSubject={/^re\s*:/i.test(message.subject) ? message.subject : `Re: ${message.subject}`}
+        initialSubject={/^re\s*:/i.test(message.subject) ? message.subject : `Re: ${formatSystemSubject(message.subject)}`}
         initialBody=""
         replyContext={{
           from: message.from,
@@ -757,8 +704,8 @@ export default function MessageDetailPage({ params }: PageProps) {
         onClose={() => setShowForwardModal(false)}
         onSend={handleSendReply}
         initialTo=""
-        initialSubject={`Fwd: ${message.subject}`}
-        forwardedBody={`\n\n--- Przekazana wiadomość ---\nOd: ${message.from}\nData: ${new Date(message.date).toLocaleString('pl-PL')}\nTemat: ${message.subject}\n\n${message.body}`}
+        initialSubject={`Fwd: ${formatSystemSubject(message.subject)}`}
+        forwardedBody={`\n\n--- Przekazana wiadomość ---\nOd: ${message.from}\nData: ${new Date(message.date).toLocaleString('pl-PL', { timeZone: 'Europe/Warsaw' })}\nTemat: ${formatSystemSubject(message.subject)}\n\n${message.body}`}
         selectedAccountId={message.email_account_id || ''}
         emailAccounts={selectableEmailAccounts}
       />
@@ -792,6 +739,7 @@ export default function MessageDetailPage({ params }: PageProps) {
       {showCreateTaskModal && (employee?.id || sessionUserId) && (
         <CreateTaskFromMessageModal
           message={message}
+          inquiryId={linkedInquiryId}
           createdBy={employee?.id || sessionUserId!}
           onClose={() => setShowCreateTaskModal(false)}
           onSuccess={(taskId) => {

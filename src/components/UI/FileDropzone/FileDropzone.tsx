@@ -1,10 +1,9 @@
 /* eslint-disable @next/next/no-img-element */
+'use client';
 
 import { Upload, X, FileText } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase/browser';
-import * as pdfjsLib from 'pdfjs-dist';
-import { GlobalWorkerOptions } from 'pdfjs-dist';
 import dynamic from 'next/dynamic';
 
 const TransformWrapper = dynamic(
@@ -20,9 +19,6 @@ const TransformComponent = dynamic(
     ssr: false,
   },
 );
-
-GlobalWorkerOptions.workerSrc =
-  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.worker.min.mjs';
 
 interface FileDropzoneProps {
   file: File | null;
@@ -51,6 +47,10 @@ export function FileDropzone({
   const [usingExisting, setUsingExisting] = useState(false);
 
   const generatePdfPreview = async (source: ArrayBuffer) => {
+    // PDF.js is browser-only: a static import makes the entire event page async during SSR.
+    const pdfjsLib = await import('pdfjs-dist');
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
     const pdf = await pdfjsLib.getDocument({
       data: source,
     }).promise;

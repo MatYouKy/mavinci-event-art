@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useForegroundEffect } from '../hooks/useForegroundEffect';
+import { createRefreshQueue } from '../lib/refreshQueue';
 import {
   View,
   Text,
@@ -23,19 +25,18 @@ import { Feather } from '@expo/vector-icons';
 import { colors, spacing, typography } from '../theme';
 import { supabase } from '../lib/supabase';
 import { sortTasksByUrgency } from '../lib/taskSort';
+import { fetchEmployeeTasks, createPrivateEmployeeTask } from '../services/employeeTasks';
 import { useAuth } from '../contexts/AuthContext';
 import EmployeeAvatar from '../components/EmployeeAvatar';
-import { SearchableDropdown } from '../components/SearchableDropdown';
-import { sendTaskAssignmentPush } from '../services/taskAssignmentNotifications';
 
 type TasksStackParamList = {
-  Tasks: undefined;
+  TasksList: undefined;
   TaskDetail: {
     taskId: string;
   };
 };
 
-type TasksNavigationProp = NativeStackNavigationProp<TasksStackParamList, 'Tasks'>;
+type TasksNavigationProp = NativeStackNavigationProp<TasksStackParamList, 'TasksList'>;
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const COLUMN_WIDTH = SCREEN_WIDTH - 32;
@@ -468,7 +469,7 @@ function DraggableTaskCard({
 
 export default function TasksScreen() {
   const navigation = useNavigation<TasksNavigationProp>();
-  const { employee } = useAuth();
+  const { employee, session } = useAuth();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -486,18 +487,12 @@ export default function TasksScreen() {
   const [newDescription, setNewDescription] = useState('');
   const [newPriority, setNewPriority] = useState<Task['priority']>('medium');
   const [newColumn, setNewColumn] = useState<string>('todo');
-  const [assignableEmployees, setAssignableEmployees] = useState<
-    { id: string; name: string; surname: string; avatar_url: string | null }[]
-  >([]);
-  const [selectedAssigneeId, setSelectedAssigneeId] = useState<string | null>(null);
-  const [selectedAssigneeLabel, setSelectedAssigneeLabel] = useState<string | null>(null);
-  const [assigneeSearch, setAssigneeSearch] = useState('');
-  const [openedDropdown, setOpenedDropdown] = useState<string | null>(null);
+  const creatingRef = useRef(false);
 
-  useEffect(() => {
-    if (employee) {
-      fetchTasks();
-    }
+  useForegroundEffect((signal) => {
+    if (!employee?.id) return;
+    const queue = createRefreshQueue(signal, () => fetchTasks());
+    void queue.refresh();
 
     const channel = supabase
       .channel('tasks_changes')
@@ -510,84 +505,22 @@ export default function TasksScreen() {
         },
         () => {
           if (employee) {
-            fetchTasks();
+            queue.schedule();
           }
         },
       )
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      return supabase.removeChannel(channel);
     };
-  }, [employee]);
+  }, [employee, session?.user.id]);
 
   const fetchTasks = async () => {
     try {
-      if (!employee) return;
+      if (!employee || !session?.user.id) return;
 
-      const { data: createdTasks, error: error1 } = await supabase
-        .from('tasks')
-        .select('*')
-        .eq('created_by', employee.id)
-        .eq('is_private', false)
-        .is('event_id', null);
-
-      if (error1) throw error1;
-
-      const { data: assignedTasksData, error: error2 } = await supabase
-        .from('task_assignees')
-        .select('task_id')
-        .eq('employee_id', employee.id);
-
-      if (error2) throw error2;
-
-      const assignedTaskIds = assignedTasksData?.map((ta) => ta.task_id) || [];
-
-      let assignedTasks: any[] = [];
-      if (assignedTaskIds.length > 0) {
-        const { data: fetchedTasks, error: error3 } = await supabase
-          .from('tasks')
-          .select('*')
-          .in('id', assignedTaskIds)
-          .eq('is_private', false)
-          .is('event_id', null);
-
-        if (error3) throw error3;
-        assignedTasks = fetchedTasks || [];
-      }
-
-      const allTasks = [...(createdTasks || []), ...assignedTasks];
-      const uniqueTasks = Array.from(new Map(allTasks.map((task) => [task.id, task])).values());
-
-      const taskIds = uniqueTasks.map((t) => t.id);
-      if (taskIds.length > 0) {
-        const { data: assigneesData, error: error4 } = await supabase
-          .from('task_assignees')
-          .select('task_id, employee_id')
-          .in('task_id', taskIds);
-
-        if (error4) throw error4;
-
-        const employeeIds = [...new Set(assigneesData?.map((a) => a.employee_id) || [])];
-        if (employeeIds.length > 0) {
-          const { data: employeesData, error: error5 } = await supabase
-            .from('employees')
-            .select('id, name, surname, avatar_url, avatar_metadata')
-            .in('id', employeeIds);
-
-          if (error5) throw error5;
-
-          const employeesMap = new Map(employeesData?.map((e) => [e.id, e]) || []);
-
-          uniqueTasks.forEach((task) => {
-            const taskAssignees = assigneesData?.filter((a) => a.task_id === task.id) || [];
-            task.task_assignees = taskAssignees.map((ta) => ({
-              employee_id: ta.employee_id,
-              employees: employeesMap.get(ta.employee_id),
-            }));
-          });
-        }
-      }
+      const uniqueTasks = await fetchEmployeeTasks(supabase, employee.id, session.user.id);
 
       setTasks(uniqueTasks as Task[]);
     } catch (error) {
@@ -608,26 +541,10 @@ export default function TasksScreen() {
     setNewDescription('');
     setNewPriority('medium');
     setNewColumn('todo');
-    setSelectedAssigneeId(null);
-    setSelectedAssigneeLabel(null);
-    setAssigneeSearch('');
-    setOpenedDropdown(null);
   };
 
-  useEffect(() => {
-    if (!showCreateModal) return;
-    (async () => {
-      const { data } = await supabase
-        .from('employees')
-        .select('id, name, surname, avatar_url')
-        .order('name')
-        .limit(200);
-      setAssignableEmployees((data as any[]) || []);
-    })();
-  }, [showCreateModal]);
-
   const createTask = async () => {
-    if (!employee) return;
+    if (!employee || creatingRef.current) return;
   
     const title = newTitle.trim();
   
@@ -636,81 +553,17 @@ export default function TasksScreen() {
       return;
     }
   
+    creatingRef.current = true;
     setCreating(true);
   
     try {
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
-  
-      if (userError || !user) {
-        throw new Error('Nie udało się pobrać zalogowanego użytkownika.');
-      }
-  
-      const status =
-        newColumn === 'completed'
-          ? 'completed'
-          : newColumn === 'in_progress'
-            ? 'in_progress'
-            : newColumn === 'review'
-              ? 'review'
-              : 'todo';
-  
-      const { data: inserted, error: insertError } = await supabase
-        .from('tasks')
-        .insert({
-          title,
-          description: newDescription.trim() || null,
-          priority: newPriority,
-          status,
-          board_column: newColumn,
-  
-          // W Twojej bazie employee.id i auth_user_id są takie same,
-          // ale owner_id powinien odpowiadać auth.uid().
-          owner_id: user.id,
-          created_by: employee.id,
-  
-          is_private: false,
-          event_id: null,
-        })
-        .select('id')
-        .single();
-  
-      if (insertError) {
-        console.error('Błąd tworzenia zadania:', insertError);
-        throw insertError;
-      }
-  
-      if (!inserted?.id) {
-        throw new Error('Zadanie zostało utworzone bez identyfikatora.');
-      }
-  
-      const assigneeId = selectedAssigneeId || employee.id;
-  
-      const { data: assignment, error: assigneeError } = await supabase
-        .from('task_assignees')
-        .insert({
-          task_id: inserted.id,
-          employee_id: assigneeId,
-          assigned_by: employee.id,
-        })
-        .select('id')
-        .single();
-  
-      if (assigneeError) {
-        console.error('Błąd przypisywania pracownika:', assigneeError);
-  
-        // Usuwamy zadanie, żeby nie zostało bez przypisanego pracownika.
-        await supabase.from('tasks').delete().eq('id', inserted.id);
-  
-        throw new Error(
-          `Nie udało się przypisać pracownika: ${assigneeError.message}`,
-        );
-      }
+      await createPrivateEmployeeTask(supabase, employee.id, {
+        title,
+        description: newDescription.trim() || null,
+        priority: newPriority,
+        column: newColumn,
+      });
 
-      await sendTaskAssignmentPush(assignment.id);
-  
       resetCreateForm();
       setShowCreateModal(false);
   
@@ -723,6 +576,7 @@ export default function TasksScreen() {
         error?.message || 'Nie udało się utworzyć zadania.',
       );
     } finally {
+      creatingRef.current = false;
       setCreating(false);
     }
   };
@@ -766,7 +620,9 @@ export default function TasksScreen() {
       const { error } = await supabase
         .from('tasks')
         .update(updateData)
-        .eq('id', taskId);
+        .eq('id', taskId)
+        .select('id')
+        .single();
 
       if (error) throw error;
     } catch (error) {
@@ -1145,32 +1001,6 @@ export default function TasksScreen() {
               </View>
             </View>
 
-            <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Przypisz do</Text>
-              <SearchableDropdown
-                dropdownId="assignee"
-                openedDropdown={openedDropdown}
-                setOpenedDropdown={setOpenedDropdown}
-                label="Pracownik"
-                placeholder="Szukaj pracownika..."
-                icon="user-check"
-                items={assignableEmployees}
-                textValue={assigneeSearch}
-                onTextChange={setAssigneeSearch}
-                selectedLabel={selectedAssigneeLabel}
-                onSelect={(emp) => {
-                  setSelectedAssigneeId(emp.id);
-                  setSelectedAssigneeLabel(`${emp.name} ${emp.surname}`.trim());
-                  setAssigneeSearch('');
-                }}
-                onClear={() => {
-                  setSelectedAssigneeId(null);
-                  setSelectedAssigneeLabel(null);
-                }}
-                renderItem={(emp) => `${emp.name} ${emp.surname}`.trim()}
-                getFilterText={(emp) => `${emp.name} ${emp.surname}`}
-              />
-            </View>
           </ScrollView>
         </KeyboardAvoidingView>
       </Modal>

@@ -1,3 +1,4 @@
+import { uniquePhaseTypes } from '@/lib/CRM/events/uniquePhaseTypes';
 import { createApi } from '@reduxjs/toolkit/query/react';
 import { supabaseTableBaseQuery } from '@/lib/rtkq/supabaseTableBaseQuery';
 
@@ -210,6 +211,7 @@ export const eventPhasesApi = createApi({
         match: { is_active: true },
         order: { column: 'sequence_priority', ascending: true },
       }),
+      transformResponse: (response: EventPhaseType[]) => uniquePhaseTypes(response),
       providesTags: ['PhaseTypes'],
     }),
 
@@ -223,7 +225,10 @@ export const eventPhasesApi = createApi({
       invalidatesTags: ['PhaseTypes'],
     }),
 
-    updatePhaseType: builder.mutation<EventPhaseType, { id: string; data: Partial<EventPhaseType> }>({
+    updatePhaseType: builder.mutation<
+      EventPhaseType,
+      { id: string; data: Partial<EventPhaseType> }
+    >({
       query: ({ id, data }) => ({
         table: 'event_phase_types',
         method: 'update',
@@ -235,13 +240,45 @@ export const eventPhasesApi = createApi({
     }),
 
     // Event Phases
+    getFlexibleTravelPhases: builder.query<
+      Array<{ key: 'outbound' | 'inbound'; name: string; description: string }>,
+      string
+    >({
+      query: (eventId) => ({
+        table: 'events',
+        method: 'select',
+        select: 'flexible_travel_phases',
+        match: { id: eventId },
+        single: true,
+      }),
+      transformResponse: (data: { flexible_travel_phases?: any[] }) =>
+        data.flexible_travel_phases || [],
+      providesTags: (_result, _error, eventId) => [{ type: 'Phases', id: eventId }],
+    }),
+    saveFlexibleTravelPhase: builder.mutation<
+      void,
+      { eventId: string; key: 'outbound' | 'inbound'; name: string | null; description?: string }
+    >({
+      queryFn: async ({ eventId, key, name, description }) => {
+        const { supabase } = await import('@/lib/supabase/browser');
+        const { error } = await supabase.rpc('save_flexible_travel_phase', {
+          p_event_id: eventId,
+          p_key: key,
+          p_name: name,
+          p_description: description || '',
+        });
+        return error ? { error: { message: error.message } } : { data: undefined };
+      },
+      invalidatesTags: (_result, _error, args) => [{ type: 'Phases', id: args.eventId }],
+    }),
+
     getEventPhases: builder.query<EventPhase[], string>({
       query: (eventId) => ({
         table: 'event_phases',
         method: 'select',
         select: '*, phase_type:event_phase_types(*)',
         match: { event_id: eventId },
-        order: { column: 'sequence_order', ascending: true },
+        order: { column: 'start_time', ascending: true },
       }),
       providesTags: (result, error, eventId) => [{ type: 'Phases', id: eventId }],
     }),
@@ -252,6 +289,7 @@ export const eventPhasesApi = createApi({
         method: 'insert',
         data,
         select: '*',
+        single: true,
       }),
       invalidatesTags: (result, error, arg) => [{ type: 'Phases', id: arg.event_id }],
     }),
@@ -264,7 +302,7 @@ export const eventPhasesApi = createApi({
         data,
         select: '*',
       }),
-      invalidatesTags: (result) => result ? [{ type: 'Phases', id: result.event_id }] : [],
+      invalidatesTags: (result) => (result ? [{ type: 'Phases', id: result.event_id }] : []),
     }),
 
     deletePhase: builder.mutation<void, string>({
@@ -332,7 +370,8 @@ export const eventPhasesApi = createApi({
         data,
         select: '*',
       }),
-      invalidatesTags: (result) => (result ? [{ type: 'PhaseAssignments', id: result.phase_id }] : []),
+      invalidatesTags: (result) =>
+        result ? [{ type: 'PhaseAssignments', id: result.phase_id }] : [],
     }),
 
     // ✅ WAŻNE: delete przyjmuje też phase_id, żeby odświeżyć właściwą listę
@@ -366,7 +405,10 @@ export const eventPhasesApi = createApi({
       invalidatesTags: (result, error, arg) => [{ type: 'PhaseEquipment', id: arg.phase_id }],
     }),
 
-    updatePhaseEquipment: builder.mutation<EventPhaseEquipment, { id: string; assigned_start?: string; assigned_end?: string; notes?: string }>({
+    updatePhaseEquipment: builder.mutation<
+      EventPhaseEquipment,
+      { id: string; assigned_start?: string; assigned_end?: string; notes?: string }
+    >({
       query: ({ id, ...data }) => ({
         table: 'event_phase_equipment',
         method: 'update',
@@ -374,7 +416,8 @@ export const eventPhasesApi = createApi({
         data,
         select: '*',
       }),
-      invalidatesTags: (result) => (result ? [{ type: 'PhaseEquipment', id: result.phase_id }] : []),
+      invalidatesTags: (result) =>
+        result ? [{ type: 'PhaseEquipment', id: result.phase_id }] : [],
     }),
 
     deletePhaseEquipment: builder.mutation<void, string>({
@@ -416,7 +459,16 @@ export const eventPhasesApi = createApi({
       invalidatesTags: (result, error, arg) => [{ type: 'PhaseVehicles', id: arg.phase_id }],
     }),
 
-    updatePhaseVehicle: builder.mutation<EventPhaseVehicle, { id: string; assigned_start?: string; assigned_end?: string; notes?: string; purpose?: string }>({
+    updatePhaseVehicle: builder.mutation<
+      EventPhaseVehicle,
+      {
+        id: string;
+        assigned_start?: string;
+        assigned_end?: string;
+        notes?: string;
+        purpose?: string;
+      }
+    >({
       query: ({ id, ...data }) => ({
         table: 'event_phase_vehicles',
         method: 'update',
@@ -440,11 +492,14 @@ export const eventPhasesApi = createApi({
     }),
 
     // Conflict Detection
-    getEmployeeConflicts: builder.query<PhaseConflict[], {
-      employeeId: string;
-      eventId: string;
-      phaseId: string;
-    }>({
+    getEmployeeConflicts: builder.query<
+      PhaseConflict[],
+      {
+        employeeId: string;
+        eventId: string;
+        phaseId: string;
+      }
+    >({
       queryFn: async ({ employeeId, eventId, phaseId }) => {
         const { supabase } = await import('@/lib/supabase/client');
 
@@ -459,12 +514,15 @@ export const eventPhasesApi = createApi({
       },
     }),
 
-    getEquipmentConflicts: builder.query<PhaseConflict[], {
-      equipmentItemId: string;
-      startTime: string;
-      endTime: string;
-      excludeAssignmentId?: string;
-    }>({
+    getEquipmentConflicts: builder.query<
+      PhaseConflict[],
+      {
+        equipmentItemId: string;
+        startTime: string;
+        endTime: string;
+        excludeAssignmentId?: string;
+      }
+    >({
       queryFn: async ({ equipmentItemId, startTime, endTime, excludeAssignmentId }) => {
         const { supabase } = await import('@/lib/supabase/client');
 
@@ -480,11 +538,14 @@ export const eventPhasesApi = createApi({
       },
     }),
 
-    getAlternativeEquipment: builder.query<AlternativeEquipment[], {
-      equipmentItemId: string;
-      startTime: string;
-      endTime: string;
-    }>({
+    getAlternativeEquipment: builder.query<
+      AlternativeEquipment[],
+      {
+        equipmentItemId: string;
+        startTime: string;
+        endTime: string;
+      }
+    >({
       queryFn: async ({ equipmentItemId, startTime, endTime }) => {
         const { supabase } = await import('@/lib/supabase/client');
 
@@ -502,6 +563,8 @@ export const eventPhasesApi = createApi({
 });
 
 export const {
+  useGetFlexibleTravelPhasesQuery,
+  useSaveFlexibleTravelPhaseMutation,
   useGetPhaseTypesQuery,
   useCreatePhaseTypeMutation,
   useUpdatePhaseTypeMutation,

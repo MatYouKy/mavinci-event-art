@@ -1,6 +1,7 @@
 'use client';
 
 import { ArrowRight } from 'lucide-react';
+import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import { getSiteImage, SiteImage } from '../lib/siteImages';
 import { useEditMode } from '../contexts/EditModeContext';
@@ -11,9 +12,8 @@ import { uploadImage } from '../lib/storage';
 import { supabase } from '../lib/supabase';
 import { useSnackbar } from '../contexts/SnackbarContext';
 
-export default function Hero() {
-  const [heroImage, setHeroImage] = useState<SiteImage | null>(null);
-  const [isMobile, setIsMobile] = useState(false);
+export default function Hero({ initialHeroImage = null }: { initialHeroImage?: SiteImage | null }) {
+  const [heroImage, setHeroImage] = useState<SiteImage | null>(initialHeroImage);
   const { isEditMode } = useEditMode();
   const { showSnackbar } = useSnackbar();
 
@@ -23,15 +23,8 @@ export default function Hero() {
   };
 
   useEffect(() => {
-    loadImage();
-
-    const checkMobile = () => {
-      setIsMobile(window.innerWidth < 768);
-    };
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
-  }, []);
+    if (!initialHeroImage) loadImage();
+  }, [initialHeroImage]);
 
   const initialImage: IImage | null = heroImage
     ? {
@@ -138,16 +131,15 @@ export default function Hero() {
         </Formik>
       ) : (
         <>
-          <div
-            className="absolute inset-0 bg-cover bg-center"
-            style={{
-              backgroundImage: heroImage
-                ? `url(${isMobile && heroImage.mobile_url ? heroImage.mobile_url : heroImage.desktop_url})`
-                : 'url(https://fuuljhhuhfojtmmfmskq.supabase.co/storage/v1/object/public/site-images/hero/1760341625716-d0b65e.jpg)',
-            }}
-            role="img"
-            aria-label={heroImage?.alt_text || "Profesjonalna organizacja eventów biznesowych"}
-          />
+          <picture>
+            {heroImage?.mobile_url && <source media="(max-width: 767px)" srcSet={heroImage.mobile_url} />}
+            <img
+              src={heroImage?.desktop_url || 'https://fuuljhhuhfojtmmfmskq.supabase.co/storage/v1/object/public/site-images/hero/1760341625716-d0b65e.jpg'}
+              alt={heroImage?.alt_text || 'Realizacja eventu MAVINCI Event & ART'}
+              className="absolute inset-0 h-full w-full object-cover object-center"
+              loading="eager" fetchPriority="high" width={1920} height={1080}
+            />
+          </picture>
           <div className="absolute inset-0 bg-gradient-to-b from-[#1c1f33]/80 via-[#800020]/50 to-[#1c1f33]/90"></div>
         </>
       )}
@@ -156,14 +148,20 @@ export default function Hero() {
        
         <div className="max-w-3xl">
           <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-light text-white mb-6 md:mb-8 leading-tight">
-            Kompleksowa Obsługa
+            Agencja eventowa w Olsztynie
             <br />
-            <span className="text-[#d3bb73]">Eventów</span>
+            <span className="text-[#d3bb73]">Eventy i własna technika</span>
           </h1>
 
           <p className="text-base sm:text-lg md:text-xl text-white/80 font-light mb-8 md:mb-12 max-w-2xl leading-relaxed">
-            Od DJ-ów i nagłośnienia po oświetlenie sceniczne i streamingi. Realizujemy eventy w północnej i centralnej Polsce.
+            MAVINCI organizuje imprezy firmowe, integracje i konferencje w Olsztynie. Zapewniamy także samą obsługę techniczną: nagłośnienie Meyer Sound, oświetlenie, ekrany LED i streaming. Nasze biuro i magazyn mieszczą się przy ul. Towarowej 20B; realizujemy wydarzenia na Warmii i Mazurach oraz w całej Polsce.
           </p>
+
+          <nav aria-label="Oferta eventowa w Olsztynie" className="mb-8 flex flex-wrap gap-x-5 gap-y-3 text-sm text-[#d3bb73]">
+            <Link href="/oferta" className="underline underline-offset-4 hover:text-white">Organizacja eventów firmowych</Link>
+            <Link href="/oferta/technika-sceniczna/olsztyn" className="underline underline-offset-4 hover:text-white">Technika i nagłośnienie w Olsztynie</Link>
+            <Link href="/oferta/konferencje/olsztyn" className="underline underline-offset-4 hover:text-white">Obsługa konferencji w Olsztynie</Link>
+          </nav>
 
           <div className="flex flex-col sm:flex-row gap-4" role="group" aria-label="Akcje główne">
             <a

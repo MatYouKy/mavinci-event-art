@@ -16,7 +16,7 @@ export const TechnicalServices: FC<TechnicalServicesProps> = ({
   cityCases,
 }) => {
   const capitalizedLocative = capitalize(cityCases?.locative || '');
-  const locative = cityCases?.locative ? `${cityCases.locative_preposition ? cityCases.locative_preposition : 'w'} ${capitalizedLocative}` : 'Olsztynie';
+  const locative = cityCases?.locative ? `${cityCases.locative_preposition ? cityCases.locative_preposition : 'w'} ${capitalizedLocative}` : 'w Olsztynie';
   return (
     <section className="py-12 px-4 sm:px-6 lg:py-20">
       <div className="max-w-7xl mx-auto">

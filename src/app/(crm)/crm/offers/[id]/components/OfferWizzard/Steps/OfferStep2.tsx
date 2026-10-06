@@ -1,10 +1,6 @@
 'use client';
 
-import { EventAssumptionsEditor } from '@/components/crm/offers/EventAssumptionsEditor';
-import {
-  EventAssumptionItem,
-  formatEventAssumptionItems,
-} from '@/lib/CRM/Offers/eventAssumptions';
+import type { EventAssumptionItem } from '@/lib/CRM/Offers/eventAssumptions';
 import LocationSelector from '@/components/crm/LocationSelector';
 
 interface OfferStep2Data {
@@ -20,17 +16,11 @@ interface OfferStep2Data {
 interface OfferStep2Props {
   offerData: OfferStep2Data;
   setOfferData: (data: OfferStep2Data) => void;
-  aiContext?: {
-    inquiryId?: string;
-    eventCategory?: string;
-    productNames?: string[];
-  };
 }
 
 export default function OfferStep2({
   offerData,
   setOfferData,
-  aiContext,
 }: OfferStep2Props) {
   return (
     <div className="mx-auto max-w-2xl space-y-4">
@@ -59,6 +49,7 @@ export default function OfferStep2({
       <div>
         <label className="mb-2 block text-sm text-[#e5e4e2]/60">Miejsce wydarzenia</label>
         <LocationSelector
+          allowFreeText
           value={offerData.event_location}
           onChange={(value) => setOfferData({ ...offerData, event_location: value })}
           placeholder="Wyszukaj miejsce lub wpisz własną lokalizację..."
@@ -77,15 +68,6 @@ export default function OfferStep2({
         />
       </div>
 
-      <EventAssumptionsEditor
-        value={offerData.event_assumption_items}
-        aiContext={aiContext}
-        onChange={(eventAssumptionItems) => setOfferData({
-          ...offerData,
-          event_assumption_items: eventAssumptionItems,
-          event_assumptions: formatEventAssumptionItems(eventAssumptionItems),
-        })}
-      />
 
       <div>
         <label className="mb-2 block text-sm text-[#e5e4e2]/60">Cel wydarzenia</label>

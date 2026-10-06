@@ -1,5 +1,11 @@
 'use client';
 
+import { getPermissionLabel } from '@/lib/permissionCatalog';
+
+import { systemLabel } from '@/lib/ui/systemLabels';
+import { formatSystemSubject } from '@/lib/ui/systemLabels';
+import SystemBadge from '@/components/UI/SystemBadge';
+
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Plus,
@@ -192,7 +198,7 @@ export default function WebhooksSettingsPage() {
 
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div className="flex gap-2">
-          <button
+          <button data-crm-tab-active={tab === 'sources'}
             onClick={() => setTab('sources')}
             className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
               tab === 'sources'
@@ -203,7 +209,7 @@ export default function WebhooksSettingsPage() {
             <Webhook className="h-4 w-4" />
             Źródła ({sources.length})
           </button>
-          <button
+          <button data-crm-tab-active={tab === 'events'}
             onClick={() => setTab('events')}
             className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
               tab === 'events'
@@ -324,10 +330,10 @@ function SourcesList({
               <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-[#e5e4e2]/50">
                 <span>
                   Wymagane uprawnienia:{' '}
-                  {src.default_notify_permissions.join(', ') || 'brak'}
+                  {src.default_notify_permissions.map(getPermissionLabel).join(', ') || 'brak'}
                 </span>
                 {src.allowed_event_types && src.allowed_event_types.length > 0 && (
-                  <span>Dozwolone typy: {src.allowed_event_types.join(', ')}</span>
+                  <span>Dozwolone typy: {src.allowed_event_types.map((type) => systemLabel(type, 'eventType')).join(', ')}</span>
                 )}
                 <span>Utworzono: {new Date(src.created_at).toLocaleDateString('pl-PL')}</span>
               </div>
@@ -394,21 +400,21 @@ function EventsLog({
               )}
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-medium text-[#e5e4e2]">{evt.title}</span>
+                  <span className="font-medium text-[#e5e4e2]">{formatSystemSubject(evt.title)}</span>
                   <span
                     className={`rounded-full px-2 py-0.5 text-xs ${PRIORITY_COLORS[evt.priority] || PRIORITY_COLORS.normal}`}
                   >
-                    {evt.priority}
+                    {systemLabel(evt.priority, 'priority')}
                   </span>
                   <span
                     className={`rounded-full px-2 py-0.5 text-xs ${STATUS_COLORS[evt.status] || STATUS_COLORS.received}`}
                   >
-                    {evt.status}
+                    {systemLabel(evt.status)}
                   </span>
                 </div>
                 <div className="mt-0.5 flex flex-wrap gap-x-4 text-xs text-[#e5e4e2]/50">
                   <span>{sourceNameMap.get(evt.source_id) ?? evt.source_id}</span>
-                  <span>Typ: {evt.event_type}</span>
+                  <SystemBadge domain="eventType" value={evt.event_type} />
                   <span>{new Date(evt.created_at).toLocaleString('pl-PL')}</span>
                 </div>
               </div>

@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { X, Trash2 } from 'lucide-react';
+import Link from 'next/link';
 import GoogleMapsPicker from '@/components/crm/GoogleMapsPicker';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
@@ -44,11 +45,18 @@ type Props = {
   open: boolean;
   onClose: () => void;
   editingLocation?: ILocation | null;
-  
+  initialName?: string;
+
   onLocationSaved?: (location: ILocation) => void;
 };
 
-export default function LocationModal({ open, onClose, editingLocation = null, onLocationSaved }: Props) {
+export default function LocationModal({
+  open,
+  onClose,
+  editingLocation = null,
+  initialName = '',
+  onLocationSaved,
+}: Props) {
   const panelRef = useRef<HTMLDivElement>(null);
   const leftScrollRef = useRef<HTMLDivElement>(null);
 
@@ -82,9 +90,9 @@ export default function LocationModal({ open, onClose, editingLocation = null, o
         formatted_address: editingLocation.formatted_address ?? '',
       });
     } else {
-      setFormData(emptyForm);
+      setFormData({ ...emptyForm, name: initialName });
     }
-  }, [open, editingLocation]);
+  }, [open, editingLocation, initialName]);
 
   // blokada scrolla body + ESC
   useEffect(() => {
@@ -135,10 +143,12 @@ export default function LocationModal({ open, onClose, editingLocation = null, o
       setIsSaving(true);
 
       if (isEdit && editingLocation?.id) {
-        await updateById(editingLocation.id, payload);
+        const saved = await updateById(editingLocation.id, payload);
+        onLocationSaved?.(saved);
         showSnackbar('Lokalizacja zaktualizowana', 'success');
       } else {
-        await create(payload as LocationCreateInput);
+        const saved = await create(payload as LocationCreateInput);
+        onLocationSaved?.(saved);
         showSnackbar('Lokalizacja dodana', 'success');
       }
 
@@ -223,6 +233,21 @@ export default function LocationModal({ open, onClose, editingLocation = null, o
                 className="order-1 h-full overflow-y-auto pr-0 md:order-none md:pr-1"
               >
                 <div className="space-y-4">
+                  {editingLocation?.id && (
+                    <div className="rounded-lg bg-[#351020] p-3 text-sm text-[#e5e4e2]">
+                      <p>Salami i pomieszczeniami zarządzasz w szczegółach obiektu.</p>
+                      <Link
+                        href={`/crm/locations/${editingLocation.id}`}
+                        onClick={onClose}
+                        className="mt-2 inline-block rounded text-[#d3bb73] hover:underline focus-visible:outline focus-visible:outline-1"
+                      >
+                        Szczegóły i sale →
+                      </Link>
+                      <p className="mt-2 text-xs text-[#e5e4e2]/60">
+                        Przed przejściem zapisz ewentualne zmiany adresu.
+                      </p>
+                    </div>
+                  )}
                   {localError && (
                     <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
                       {localError}
@@ -255,7 +280,9 @@ export default function LocationModal({ open, onClose, editingLocation = null, o
                     </div>
 
                     <div>
-                      <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Miasto</label>
+                      <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
+                        Miasto
+                      </label>
                       <input
                         type="text"
                         value={formData.city}

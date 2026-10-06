@@ -1,6 +1,8 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 'use client';
 
+import { systemLabel } from '@/lib/ui/systemLabels';
+
 import React, { useState, useMemo, useCallback, memo, useRef, useEffect } from 'react';
 import Image from 'next/image';
 import { Trash2, GripVertical, Save, X } from 'lucide-react';
@@ -373,7 +375,7 @@ const AssignmentBar = memo<AssignmentBarProps>(
 
           {isEmployee && assignment.role && (
             <span className="truncate text-[10px] text-[#e5e4e2]/60">
-              {roleLabels[assignment.role as keyof typeof roleLabels] ?? assignment.role}
+              {roleLabels[assignment.role as keyof typeof roleLabels] ?? systemLabel(assignment.role, 'role', { preserveCustom: true })}
             </span>
           )}
 

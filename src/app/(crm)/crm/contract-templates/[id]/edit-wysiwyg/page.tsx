@@ -52,6 +52,7 @@ import {
 } from '@/lib/CRM/contracts/contractClauseSlots';
 import { createContractDraftPdf } from '../../printDraft';
 import { getContractDocumentCss } from '@/components/crm/events/calculations/helpers/getContractCssForPrint';
+import { SYSTEM_FONTS } from '@/lib/CRM/systemFonts';
 
 const DEFAULT_LOGO = '/erulers_logo_vect.png';
 
@@ -104,20 +105,6 @@ const inheritRangeTypographyForClauseSlot = (slot: HTMLElement, range: Range) =>
   slot.style.color = computed.color;
   slot.style.textAlign = computed.textAlign;
 };
-
-const SYSTEM_FONTS = [
-  { label: 'Arial', family: 'Arial, sans-serif' },
-  { label: 'Helvetica', family: "'Helvetica Neue', Helvetica, sans-serif" },
-  { label: 'Times New Roman', family: "'Times New Roman', Times, serif" },
-  { label: 'Georgia', family: 'Georgia, serif' },
-  { label: 'Verdana', family: 'Verdana, sans-serif' },
-  { label: 'Tahoma', family: 'Tahoma, sans-serif' },
-  { label: 'Trebuchet MS', family: "'Trebuchet MS', sans-serif" },
-  { label: 'Courier New', family: "'Courier New', monospace" },
-  { label: 'Palatino', family: "Palatino, 'Palatino Linotype', serif" },
-  { label: 'Garamond', family: 'Garamond, serif' },
-  { label: 'Systemowy', family: 'system-ui, -apple-system, BlinkMacSystemFont, sans-serif' },
-];
 
 const CLAUSE_TYPOGRAPHY_ROLES: Array<{
   key: ContractClauseTypographyRole;
@@ -192,6 +179,7 @@ const PLACEHOLDER_CONTEXT_GROUPS = [
       { key: '{{event_time_start}}', label: 'Godzina rozpoczęcia' },
       { key: '{{event_time_end}}', label: 'Godzina zakończenia' },
       { key: '{{event_schedule_contract}}', label: 'Pełny termin jedno- lub wielodniowy' },
+      { key: '{{termin_dostarczenia_materialow}}', label: 'Termin dostarczenia materiałów' },
       { key: '{{planned_setup_at}}', label: 'Planowany montaż — data i godzina' },
       { key: '{{planned_setup_date}}', label: 'Planowany montaż — data' },
       { key: '{{planned_setup_time}}', label: 'Planowany montaż — godzina' },
@@ -265,6 +253,7 @@ export default function EditTemplateWYSIWYGPage() {
   const contractId = searchParams.get('contractId');
   const eventId = searchParams.get('eventId');
   const isContractInstance = Boolean(contractId && eventId);
+  const [contractMeta, setContractMeta] = useState<Record<string, unknown>>({});
   const editorRef = useRef<HTMLDivElement>(null);
 
   const [loading, setLoading] = useState(true);
@@ -456,12 +445,16 @@ export default function EditTemplateWYSIWYGPage() {
             : data,
         );
 
+        setContractMeta({});
         let initialHtml = data.content_html || '';
         let settings = data.page_settings || {};
 
         if (instanceContract?.content) {
           try {
             const parsedContent = JSON.parse(instanceContract.content);
+            if (parsedContent.meta && typeof parsedContent.meta === 'object' && !Array.isArray(parsedContent.meta)) {
+              setContractMeta(parsedContent.meta);
+            }
             initialHtml =
               parsedContent.flowContent ||
               (Array.isArray(parsedContent.pages) ? parsedContent.pages.join('') : '') ||
@@ -517,7 +510,10 @@ export default function EditTemplateWYSIWYGPage() {
               ...settings,
               selectedFooter: settings.selectedFooter || 'default',
             });
-            const editableFlow = initialDocument.pages.join('');
+            // Do edytora trafia ciągła treść, nie fragmenty przecięte dla PDF.
+            // Sklejone strony zachowują osobne listy i marginesy kontynuacji.
+            const editableFlow = initialDocument.flowContent;
+            setContentHtml(editableFlow);
             setPages([editableFlow]);
             setPreviewPageCount(initialDocument.pages.length);
             setHistory([[editableFlow]]);
@@ -587,7 +583,7 @@ export default function EditTemplateWYSIWYGPage() {
       paginationSettings(),
     );
     const paginatedPages = renderedDocument.pages;
-    const allContent = paginatedPages.join('');
+    const allContent = renderedDocument.flowContent;
     const plainText = allContent.replace(/<[^>]*>/g, '').trim();
 
     if (!allContent || plainText === '') {
@@ -597,7 +593,7 @@ export default function EditTemplateWYSIWYGPage() {
 
     try {
       setSaving(true);
-      setPages([paginatedPages.join('')]);
+      setPages([allContent]);
       setPreviewPageCount(paginatedPages.length);
 
       if (isContractInstance && contractId && eventId) {
@@ -618,6 +614,7 @@ export default function EditTemplateWYSIWYGPage() {
                 pageSize: 'A4',
               },
               meta: {
+                ...contractMeta,
                 individuallyEdited: true,
                 editSource: 'wysiwyg',
                 editedAt: new Date().toISOString(),
@@ -638,6 +635,7 @@ export default function EditTemplateWYSIWYGPage() {
         content: plainText || 'Szablon umowy',
         content_html: allContent,
         page_settings: {
+          ...(template?.page_settings || {}),
           logoScale,
           logoPositionX,
           logoPositionY,
@@ -1575,10 +1573,9 @@ export default function EditTemplateWYSIWYGPage() {
       normalizedContent,
       paginationSettings(),
     );
-    const editableFlow = nextDocument.pages.join('');
-    setPages([editableFlow]);
+    // Podgląd aktualizuje wyłącznie licznik. Nie wstawiamy podzielonego HTML
+    // do edytora ani nie nadpisujemy zmian wpisanych podczas pomiaru stron.
     setPreviewPageCount(nextDocument.pages.length);
-    pageRefs.current = [];
   };
 
   const currentDraftTemplate = () => ({
@@ -2363,6 +2360,7 @@ export default function EditTemplateWYSIWYGPage() {
                   { key: '{{event_time_start}}', label: 'Godzina start (HH:MM)' },
                   { key: '{{event_time_end}}', label: 'Godzina koniec (HH:MM)' },
                   { key: '{{event_schedule_contract}}', label: 'Pełny termin jedno- lub wielodniowy' },
+                  { key: '{{termin_dostarczenia_materialow}}', label: 'Termin dostarczenia materiałów' },
                   { key: '{{planned_setup_at}}', label: 'Montaż — data i godzina' },
                   { key: '{{planned_setup_date}}', label: 'Montaż — data' },
                   { key: '{{planned_setup_time}}', label: 'Montaż — godzina' },
@@ -2585,7 +2583,7 @@ export default function EditTemplateWYSIWYGPage() {
                 </p>
               </div>
               <div className="flex gap-2">
-                <button
+                <button data-crm-action="secondary"
                   type="button"
                   onClick={() =>
                     setClauseTypography(

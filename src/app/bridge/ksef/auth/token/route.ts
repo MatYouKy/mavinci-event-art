@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createSupabaseServerClient } from "@/lib/supabase/server.app";
+import { loadInvoiceFinanceAccess } from '@/lib/invoices/financeAccess';
 import {
   getKSeFChallenge,
   authenticateWithKSeFToken,
@@ -48,6 +49,10 @@ export async function POST(req: Request) {
       );
     }
 
+    const financeAccess = await loadInvoiceFinanceAccess(userSupabase);
+    if (!financeAccess.canManageCompanyFinance) {
+      return NextResponse.json({ success: false, error: 'Brak dostępu do konfiguracji KSeF firmy.' }, { status: 403 });
+    }
     const { data: canManageCompany, error: permissionError } = await userSupabase.rpc(
       "can_manage_invoice_company",
       { p_company_id: companyId },

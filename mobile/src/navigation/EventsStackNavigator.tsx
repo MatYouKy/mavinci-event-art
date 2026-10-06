@@ -8,7 +8,7 @@ import PdfViewerScreen from '../screens/PdfViewerScreen';
 
 export type EventsStackParamList = {
   EventsList: undefined;
-  EventDetail: { eventId: string; initialTab?: 'fleet' | 'team' };
+  EventDetail: { eventId: string; initialTab?: 'fleet' | 'team' | 'warehouse' };
   PdfViewer: { url: string };
 };
 
@@ -19,7 +19,7 @@ function EventDetailWrapper() {
   const navigation = useNavigation();
   const { eventId, initialTab } = route.params as {
     eventId: string;
-    initialTab?: 'fleet' | 'team';
+    initialTab?: 'fleet' | 'team' | 'warehouse';
   };
 
   return (

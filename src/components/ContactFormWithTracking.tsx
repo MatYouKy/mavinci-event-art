@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { X, Send, Mail, Phone, User, MessageSquare } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
+import { trackMarketingLead } from '@/lib/marketing/trackLead.client';
 import { useFormTracking } from '@/hooks/useFormTracking';
 
 interface ContactFormProps {
@@ -56,8 +57,13 @@ export default function ContactFormWithTracking({
     }
   }, [isOpen, defaultCity, defaultEventType]);
 
+  const pendingSubmission = useRef<string | null>(null);
+  const submitLock = useRef(false);
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitLock.current) return;
+    submitLock.current = true;
+    pendingSubmission.current ||= crypto.randomUUID();
     setIsSubmitting(true);
     setSubmitError('');
 
@@ -65,6 +71,7 @@ export default function ContactFormWithTracking({
       const urlParams = new URLSearchParams(window.location.search);
 
       const submissionData = {
+        id: pendingSubmission.current,
         name: formData.name,
         email: formData.email,
         phone: formData.phone || null,
@@ -81,11 +88,13 @@ export default function ContactFormWithTracking({
         status: 'new',
       };
 
-      const { error } = await supabase.from('contact_form_submissions').insert([submissionData]);
+      const { error } = await supabase.from('contact_form_submissions').upsert([submissionData], { onConflict: 'id', ignoreDuplicates: true });
 
       if (error) throw error;
 
       trackFormComplete(formData);
+      trackMarketingLead('conference_inquiry', pendingSubmission.current);
+      pendingSubmission.current = null;
       setSubmitSuccess(true);
 
       setTimeout(() => {
@@ -103,6 +112,7 @@ export default function ContactFormWithTracking({
       console.error('Error submitting form:', error);
       setSubmitError('Wystąpił błąd podczas wysyłania formularza. Spróbuj ponownie.');
     } finally {
+      submitLock.current = false;
       setIsSubmitting(false);
     }
   };

@@ -142,7 +142,7 @@ function EmployeeBasicInfoCardComponent({
 
             {isAdmin && (
               <div>
-                <label className="text-xs text-[#e5e4e2]/60">Rola systemowa</label>
+                <label className="text-xs text-[#e5e4e2]/60">Rola firmowa i pakiet dostępu</label>
                 <select
                   value={editedData.access_level_id || ''}
                   onChange={(e) =>
@@ -153,13 +153,16 @@ function EmployeeBasicInfoCardComponent({
                   }
                   className="mt-1 w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-2 text-[#e5e4e2]"
                 >
-                  <option value="">Brak roli</option>
+                  <option value="">Brak roli firmowej</option>
                   {accessLevels.map((level) => (
                     <option key={level.id} value={level.id}>
                       {level.name}
                     </option>
                   ))}
                 </select>
+                <p className="mt-1 text-[11px] leading-4 text-[#e5e4e2]/45">
+                  Zmiana roli automatycznie zastosuje jej uprawnienia i zakładki. Zakres marek ustawisz w zakładce Uprawnienia.
+                </p>
               </div>
             )}
           </>

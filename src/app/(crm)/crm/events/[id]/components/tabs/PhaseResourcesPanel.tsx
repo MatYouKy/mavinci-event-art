@@ -1,5 +1,7 @@
 'use client';
 
+import { systemLabel } from '@/lib/ui/systemLabels';
+
 import React, { useState, useMemo, useEffect } from 'react';
 import { X, User, Package, Car, Plus, CheckCircle, XCircle, AlertCircle, Trash2, ShieldCheck } from 'lucide-react';
 import {
@@ -236,7 +238,7 @@ export const PhaseResourcesPanel: React.FC<PhaseResourcesPanelProps> = ({
         {tabs.map((tab) => {
           const Icon = tab.icon;
           return (
-            <button
+            <button data-crm-tab-active={currentTab === tab.id}
               key={tab.id}
               onClick={() => setCurrentTab(tab.id)}
               className={`flex flex-1 items-center justify-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors ${
@@ -354,7 +356,7 @@ export const PhaseResourcesPanel: React.FC<PhaseResourcesPanelProps> = ({
                               )}
                               {assignment.role && (
                                 <span className="inline-block rounded bg-[#d3bb73]/20 px-2 py-0.5 text-[#d3bb73]">
-                                  {roleLabels[assignment.role as keyof typeof roleLabels] ?? assignment.role}
+                                  {roleLabels[assignment.role as keyof typeof roleLabels] ?? systemLabel(assignment.role, 'role', { preserveCustom: true })}
                                 </span>
                               )}
                               {acceptedConflicts.map((acceptedConflict) => (

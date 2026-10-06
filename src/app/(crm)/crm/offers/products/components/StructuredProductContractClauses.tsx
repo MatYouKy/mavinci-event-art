@@ -15,6 +15,8 @@ import {
   type ContractClausePrimaryCategory,
 } from '@/lib/CRM/contracts/contractClauseContent';
 
+import { SHARED_CONTRACT_CLAUSES, getSharedContractClause } from '@/lib/CRM/contracts/sharedContractClauses';
+
 const ReactQuill = dynamic(() => import('react-quill'), { ssr: false });
 import 'react-quill/dist/quill.snow.css';
 const ReactQuillWithRef = ReactQuill as React.ComponentType<any>;
@@ -39,6 +41,7 @@ interface Props {
 const formats = ['header', 'bold', 'italic', 'underline', 'blockquote', 'list', 'bullet', 'indent', 'align'];
 const placeholders = [
   ['{{event_name}}', 'Nazwa wydarzenia'],
+  ['{{termin_dostarczenia_materialow}}', 'Wspólny termin materiałów'],
   ['{{event_schedule_contract}}', 'Termin wydarzenia'],
   ['{{planned_technical_schedule}}', 'Montaż i demontaż'],
   ['{{location_full}}', 'Lokalizacja'],
@@ -180,7 +183,7 @@ export function ProductContractClauses({
               <p className="text-sm text-[#e5e4e2]/55">
                 {productVariantName
                   ? `${productVariantName}: ${isInherited ? 'dziedziczy klauzule bazowe' : 'ma własne klauzule'}`
-                  : 'Osobne wpisy z kategorią i typem wykrywanym w umowie'}
+                  : 'Wspólne zasady pojawiają się w umowie raz; szczegóły pozostają przypisane do produktu'}
               </p>
             </div>
           </div>
@@ -208,7 +211,7 @@ export function ProductContractClauses({
           <div className="grid gap-4 xl:grid-cols-[290px_minmax(0,1fr)]">
             <aside className="rounded-xl border border-[#d3bb73]/20 bg-[#210811] p-3">
               <div className="mb-3 flex items-center justify-between">
-                <div><div className="text-sm font-semibold text-[#e5e4e2]">Wpisy</div><div className="text-[11px] text-[#e5e4e2]/40">Jedna klauzula = jeden typ</div></div>
+                <div><div className="text-sm font-semibold text-[#e5e4e2]">Wpisy</div><div className="text-[11px] text-[#e5e4e2]/40">Jedna klauzula = jedna zasada</div></div>
                 <button type="button" onClick={() => addEntry()} className="rounded-md border border-[#d3bb73]/30 p-2 text-[#d3bb73]"><Plus className="h-4 w-4" /></button>
               </div>
               <div className="max-h-[540px] space-y-2 overflow-y-auto">
@@ -224,8 +227,20 @@ export function ProductContractClauses({
             <div className="contract-clauses-editor min-w-0">
               {activeEntry ? <>
                 <div className="mb-3 grid gap-3 rounded-xl border border-[#d3bb73]/20 bg-[#411326] p-4 md:grid-cols-2">
+                  <label className="text-xs text-[#e5e4e2]/60 md:col-span-2">Treść klauzuli
+                    <select value={activeEntry.sharedKey || ''} onChange={(event) => {
+                      const shared = getSharedContractClause(event.target.value);
+                      updateEntry(activeEntry.id, shared
+                        ? { sharedKey: shared.key, category: shared.category, topic: shared.topic, title: shared.title, content: shared.content }
+                        : { sharedKey: undefined });
+                    }} className="mt-1 w-full rounded-lg border border-white/10 bg-[#210811] px-3 py-2 text-sm text-[#e5e4e2] focus:outline-none focus:ring-1 focus:ring-[#d3bb73]/20">
+                      <option value="">Własna treść dla tego produktu</option>
+                      {SHARED_CONTRACT_CLAUSES.map((clause) => <option key={clause.key} value={clause.key}>Wspólna zasada: {clause.title}</option>)}
+                    </select>
+                    {activeEntry.sharedKey && <span className="mt-2 block leading-5">Ta sama zasada zostanie wydrukowana tylko raz, również przy kilku produktach. Aby zmienić treść wyłącznie dla tej usługi, wybierz własną treść.</span>}
+                  </label>
                   <label className="text-xs text-[#e5e4e2]/60">Sekcja
-                    <select value={activeEntry.category} onChange={(event) => {
+                    <select disabled={Boolean(activeEntry.sharedKey)} value={activeEntry.category} onChange={(event) => {
                       const category = event.target.value as ContractClausePrimaryCategory;
                       const topic = getContractClauseTopicOptions(category)[0]?.value || 'technical';
                       updateEntry(activeEntry.id, { category, topic, title: getContractClauseTopicLabel(topic) });
@@ -234,7 +249,7 @@ export function ProductContractClauses({
                     </select>
                   </label>
                   <label className="text-xs text-[#e5e4e2]/60">Typ kontrolowany w umowie
-                    <select value={activeEntry.topic} onChange={(event) => {
+                    <select disabled={Boolean(activeEntry.sharedKey)} value={activeEntry.topic} onChange={(event) => {
                       const topic = event.target.value;
                       updateEntry(activeEntry.id, { topic, title: getContractClauseTopicLabel(topic) });
                     }} className="mt-1 w-full rounded-lg border border-[#d3bb73]/25 bg-[#210811] px-3 py-2 text-sm text-[#e5e4e2]">
@@ -242,7 +257,7 @@ export function ProductContractClauses({
                     </select>
                   </label>
                   <label className="text-xs text-[#e5e4e2]/60 md:col-span-2">Nazwa robocza
-                    <input value={activeEntry.title} onChange={(event) => updateEntry(activeEntry.id, { title: event.target.value })} className="mt-1 w-full rounded-lg border border-[#d3bb73]/25 bg-[#210811] px-3 py-2 text-sm text-[#e5e4e2]" />
+                    <input disabled={Boolean(activeEntry.sharedKey)} value={activeEntry.title} onChange={(event) => updateEntry(activeEntry.id, { title: event.target.value })} className="mt-1 w-full rounded-lg border border-[#d3bb73]/25 bg-[#210811] px-3 py-2 text-sm text-[#e5e4e2]" />
                   </label>
                 </div>
 
@@ -265,8 +280,8 @@ export function ProductContractClauses({
                   .contract-clauses-editor .ql-toolbar .ql-fill { fill: #e5e4e2; }
                   .contract-clauses-editor .ql-toolbar .ql-picker { color: #e5e4e2; }
                 `}</style>
-                <ReactQuillWithRef key={activeEntry.id} ref={quillRef} theme="snow" value={activeEntry.content} onChange={(content: string) => updateEntry(activeEntry.id, { content })} onChangeSelection={(range: { index: number } | null) => range && setCursorPosition(range.index)} modules={{ toolbar: [[{ header: [1, 2, 3, false] }], ['bold', 'italic', 'underline'], ['blockquote'], [{ list: 'ordered' }, { list: 'bullet' }], [{ indent: '-1' }, { indent: '+1' }], [{ align: [] }], ['clean']] }} formats={formats} placeholder="Wpisz pojedynczą klauzulę tego typu…" />
-                <p className="mt-3 rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/10 px-3 py-2 text-xs leading-5 text-[#e5e4e2]/70">Tab tworzy kolejny poziom numeracji, np. 1.1, a Shift+Tab wraca poziom wyżej. Wspólne warunki techniczne, np. zasilanie 230 V, wpisuj w „Wymaganiach produktu” — generator scali je raz dla całej oferty i umowy. W klauzulach pozostawiaj ustalenia specyficzne dla tej usługi, jej obowiązki, ograniczenia i ryzyka.</p>
+                <ReactQuillWithRef key={activeEntry.id} ref={quillRef} theme="snow" readOnly={Boolean(activeEntry.sharedKey)} value={activeEntry.content} onChange={(content: string) => { if (!activeEntry.sharedKey) updateEntry(activeEntry.id, { content }); }} onChangeSelection={(range: { index: number } | null) => range && setCursorPosition(range.index)} modules={{ toolbar: [[{ header: [1, 2, 3, false] }], ['bold', 'italic', 'underline'], ['blockquote'], [{ list: 'ordered' }, { list: 'bullet' }], [{ indent: '-1' }, { indent: '+1' }], [{ align: [] }], ['clean']] }} formats={formats} placeholder="Wpisz pojedynczą klauzulę tego typu…" />
+                <p className="mt-3 rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/10 px-3 py-2 text-xs leading-5 text-[#e5e4e2]/70">Tab tworzy kolejny poziom numeracji, np. 1.1, a Shift+Tab wraca poziom wyżej. Wspólne obowiązki i wymagania wybieraj z listy wspólnych zasad. Własne wpisy powinny opisywać szczegóły usługi, np. napięcie, wymagane obciążenie, format pliku lub próbę techniczną. Termin materiałów wskazuje zmienna „Wspólny termin materiałów”; nie wpisuj osobnych terminów dla każdego produktu.</p>
               </> : <button type="button" onClick={() => addEntry()} className="min-h-[300px] w-full rounded-xl border border-dashed border-[#d3bb73]/25 text-sm text-[#d3bb73]">Dodaj pierwszą klauzulę</button>}
             </div>
           </div>

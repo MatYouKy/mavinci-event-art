@@ -5,6 +5,8 @@ import { supabase } from '@/lib/supabase/browser';
 import { X, Plus, Trash2, Save } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import Image from 'next/image';
+import { ConferenceCityContentEditor } from './ConferenceCityContentEditor';
+import { readConferenceCityContent, type ConferenceCityContent } from '@/lib/SEO/conferenceCityContent';
 
 interface PageMetadataModalProps {
   isOpen: boolean;
@@ -25,6 +27,8 @@ type SchemaFaq = {
 
 export function PageMetadataModal({ isOpen, onClose, pageSlug, pageName }: PageMetadataModalProps) {
   const [metadata, setMetadata] = useState<any>(null);
+  const [conferenceContent, setConferenceContent] = useState<ConferenceCityContent | null>(null);
+  const isConferenceCity = /^oferta\/konferencje\/(?!lokalizacje$)[a-z0-9-]+$/.test(pageSlug);
   const [keywords, setKeywords] = useState<string[]>([]);
   const [newKeyword, setNewKeyword] = useState('');
   const [title, setTitle] = useState('');
@@ -86,6 +90,7 @@ export function PageMetadataModal({ isOpen, onClose, pageSlug, pageName }: PageM
 
     if (data) {
       const customSchema = data.custom_schema || {};
+      setConferenceContent(isConferenceCity ? readConferenceCityContent(customSchema) : null);
 
       setMetadata(data);
       setKeywords(data.keywords || []);
@@ -100,6 +105,7 @@ export function PageMetadataModal({ isOpen, onClose, pageSlug, pageName }: PageM
       setFaq(Array.isArray(customSchema.faq) ? customSchema.faq : []);
     } else {
       setMetadata(null);
+      setConferenceContent(null);
       setKeywords([]);
       setTitle('');
       setDescription('');
@@ -167,6 +173,10 @@ export function PageMetadataModal({ isOpen, onClose, pageSlug, pageName }: PageM
   };
 
   const handleSave = async () => {
+    if (conferenceContent && !readConferenceCityContent({ conferenceContent })) {
+      showSnackbar('Uzupełnij treść lokalną i poprawny adres HTTPS źródła obiektu.', 'error');
+      return;
+    }
     setIsSaving(true);
 
     const cleanedOffers = offers
@@ -190,6 +200,8 @@ export function PageMetadataModal({ isOpen, onClose, pageSlug, pageName }: PageM
       keywords,
       og_image: ogImage || null,
       custom_schema: {
+        ...(metadata?.custom_schema || {}),
+        ...(conferenceContent ? { conferenceContent } : {}),
         schemaMode: 'service',
         serviceType: serviceType || null,
         audienceType: audienceType || null,
@@ -273,6 +285,7 @@ export function PageMetadataModal({ isOpen, onClose, pageSlug, pageName }: PageM
         </div>
 
         <div className="space-y-6 p-6">
+          {conferenceContent && <ConferenceCityContentEditor value={conferenceContent} onChange={setConferenceContent} />}
           <div>
             <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Tytuł strony</label>
             <input

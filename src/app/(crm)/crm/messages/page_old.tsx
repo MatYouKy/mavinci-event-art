@@ -1,5 +1,7 @@
 'use client';
 
+import { formatSystemSubject } from '@/lib/ui/systemLabels';
+
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase/browser';
 import { Mail, RefreshCw, Search, Plus, Inbox } from 'lucide-react';
@@ -10,13 +12,7 @@ import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 
-const translateSubject = (subject: string): string => {
-  if (!subject) return 'Wiadomość z formularza';
-  return subject
-    .replace(/^event_inquiry\s*-\s*/i, 'Zapytanie o event - ')
-    .replace(/^team_join\s*-\s*/i, 'Rekrutacja - ')
-    .replace(/^general\s*-\s*/i, 'Ogólna - ');
-};
+const translateSubject = formatSystemSubject;
 
 interface UnifiedMessage {
   id: string;

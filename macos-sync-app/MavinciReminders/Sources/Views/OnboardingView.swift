@@ -8,6 +8,7 @@ import ServiceManagement
 /// Guides the user through granting permissions, entering CRM credentials,
 /// choosing a reminders list, and running the first sync.
 @available(macOS 13.0, *)
+@MainActor
 struct OnboardingView: View {
     @ObservedObject private var syncManager = SyncManager.shared
 
@@ -20,10 +21,13 @@ struct OnboardingView: View {
     @State private var connectionError: String? = nil
     @State private var employeeName: String = ""
     @State private var taskCount: Int = 0
+    @State private var closedTaskCount: Int = 0
     @State private var selectedListName: String = "Mavinci CRM"
     @State private var newListName: String = ""
     @State private var useExistingList: Bool = true
-    @State private var availableLists: [String] = []
+    @State private var availableLists: [ReminderListChoice] = []
+    @State private var selectedListID = ""
+    @State private var listError: String?
     @State private var firstSyncCompleted: Bool = false
     @State private var firstSyncCount: Int = 0
     @State private var isSyncing: Bool = false
@@ -261,7 +265,7 @@ struct OnboardingView: View {
                         .foregroundColor(.green)
                         .font(.headline)
 
-                    Text("Znaleziono \(taskCount) zadań dla: \(employeeName)")
+                    Text("Konto: \(employeeName)\nMoje zadania: \(taskCount) aktywnych, \(closedTaskCount) zakończonych lub anulowanych.\nTylko przypisane zadania z zakładki Zadania — bez wydarzeń i zapytań.")
                         .font(.body)
                         .foregroundColor(.secondary)
                 }
@@ -323,13 +327,13 @@ struct OnboardingView: View {
 
                 if useExistingList {
                     if availableLists.isEmpty {
-                        Text("Brak dostępnych list. Utwórz nową poniżej.")
+                        Text(RemindersError.noLists.localizedDescription)
                             .font(.caption)
                             .foregroundColor(.secondary)
                     } else {
-                        Picker("Lista:", selection: $selectedListName) {
-                            ForEach(availableLists, id: \.self) { listName in
-                                Text(listName).tag(listName)
+                        Picker("Lista:", selection: $selectedListID) {
+                            ForEach(availableLists) { list in
+                                Text("\(list.title) — \(list.account)").tag(list.id)
                             }
                         }
                         .frame(maxWidth: 250)
@@ -344,6 +348,8 @@ struct OnboardingView: View {
                 }
             }
             .padding(.leading, 4)
+            if let listError { Text(listError).foregroundStyle(.red).font(.caption) }
+            Button("Odśwież listy") { loadAvailableLists() }
         }
         .onAppear {
             loadAvailableLists()
@@ -506,7 +512,7 @@ struct OnboardingView: View {
         case .testConnection:
             return connectionTestPassed
         case .chooseList:
-            return !effectiveListName.isEmpty
+            return useExistingList ? availableLists.contains(where: { $0.id == selectedListID }) : !effectiveListName.isEmpty
         case .firstSync:
             return firstSyncCompleted
         case .done:
@@ -522,7 +528,7 @@ struct OnboardingView: View {
 
     private var effectiveListName: String {
         if useExistingList {
-            return selectedListName
+            return availableLists.first(where: { $0.id == selectedListID })?.title ?? selectedListName
         } else {
             return newListName.isEmpty ? "Mavinci CRM" : newListName
         }
@@ -535,8 +541,6 @@ struct OnboardingView: View {
         switch currentStep {
         case .credentials:
             saveCredentials()
-        case .chooseList:
-            saveListChoice()
         default:
             break
         }
@@ -567,8 +571,7 @@ struct OnboardingView: View {
 
     private func requestRemindersAccess() {
         Task {
-            let service = RemindersService()
-            let granted = await service.requestAccess()
+            let granted = await syncManager.requestRemindersAccess()
             await MainActor.run {
                 remindersAccessGranted = granted
                 syncManager.remindersAccessGranted = granted
@@ -597,6 +600,7 @@ struct OnboardingView: View {
                 await MainActor.run {
                     connectionTestPassed = true
                     taskCount = result.taskCount
+                    closedTaskCount = result.closedTaskCount
                     employeeName = result.employeeName
                     isTesting = false
                 }
@@ -610,21 +614,20 @@ struct OnboardingView: View {
     }
 
     private func loadAvailableLists() {
-        let store = EKEventStore()
-        let calendars = store.calendars(for: .reminder)
-        availableLists = calendars.map { $0.title }
-        if !availableLists.contains(selectedListName) && !availableLists.isEmpty {
-            selectedListName = availableLists.first ?? "Mavinci CRM"
+        Task {
+            do {
+                availableLists = try await syncManager.loadReminderLists()
+                if !availableLists.contains(where: { $0.id == selectedListID }) {
+                    selectedListID = availableLists.first?.id ?? ""
+                }
+                listError = nil
+            } catch { listError = error.localizedDescription }
         }
     }
 
-    private func saveListChoice() {
-        let listName = effectiveListName
-        UserDefaults.standard.set(listName, forKey: "selectedRemindersListName")
-
-        // Create the list if needed
-        let service = RemindersService(targetListName: listName)
-        _ = service.getOrCreateList(name: listName)
+    private func saveListChoice() async throws {
+        try await syncManager.chooseReminderList(identifier: useExistingList ? selectedListID : nil,
+                                                newName: useExistingList ? nil : effectiveListName)
     }
 
     private func performFirstSync() {
@@ -633,25 +636,16 @@ struct OnboardingView: View {
 
         Task {
             do {
-                // Fetch tasks from CRM
-                let response = try await CRMAPIClient.shared.fetchTasks()
-
-                guard response.success, let tasks = response.tasks else {
-                    throw CRMAPIError.invalidResponse
+                try await saveListChoice()
+                guard remindersAccessGranted else {
+                    throw NSError(domain: "MavinciSync", code: 1, userInfo: [NSLocalizedDescriptionKey: "Przyznaj dostęp do Przypomnień."])
                 }
-
-                // Create reminders for each task
-                let listName = effectiveListName
-                let service = RemindersService(targetListName: listName)
-                let baseURL = crmBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
-                var createdCount = 0
-
-                for task in tasks {
-                    if let reminder = service.createReminder(from: task, crmBaseURL: baseURL) {
-                        try service.saveReminder(reminder)
-                        createdCount += 1
-                    }
+                syncManager.remindersAccessGranted = remindersAccessGranted
+                await syncManager.syncNow()
+                if let error = syncManager.lastError {
+                    throw NSError(domain: "MavinciSync", code: 1, userInfo: [NSLocalizedDescriptionKey: error])
                 }
+                let createdCount = syncManager.activeRemindersCount
 
                 await MainActor.run {
                     firstSyncCompleted = true

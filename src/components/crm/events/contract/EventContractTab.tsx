@@ -53,6 +53,8 @@ import {
   serializeEventContractClauseItems,
   type EventContractClauseItem,
 } from '@/lib/CRM/contracts/eventContractClauseOverrides';
+import { assembleContractClauses, contractClauseSourceFingerprint, getSharedClauseConflicts } from '@/lib/CRM/contracts/contractClauseAssembly';
+import { CONTRACT_STRUCTURE_VERSION, getSharedContractClauseForText } from '@/lib/CRM/contracts/sharedContractClauses';
 import { placeContractClauses } from '@/lib/CRM/contracts/contractClauseSlots';
 import { createContractDraftPdf } from '@/app/(crm)/crm/contract-templates/printDraft';
 import { getOfferTotals } from '@/lib/CRM/Offers/offerTotals';
@@ -64,6 +66,8 @@ import {
 } from '@/lib/CRM/Offers/offerRequirements';
 import ContractAuditReviewModal from './ContractAuditReviewModal';
 import EventContractClausesModal from './EventContractClausesModal';
+import CancelContractModal from './CancelContractModal';
+import SignedContractAttachments from './SignedContractAttachments';
 import {
   applyContractAuditDecisions,
   extractContractAuditBlocks,
@@ -109,13 +113,15 @@ type ProductClauseCandidate = {
   productName: string;
   html: string;
   preview: string;
+  sharedKey?: string;
+  legacyOverrideId?: string;
 };
 
 type ProductClauseConflict = {
   key: string;
   category: ContractClausePrimaryCategory;
   topic: string;
-  candidates: ProductClauseCandidate[];
+  candidates: EventContractClauseItem[];
 };
 
 const CONTRACT_VARIABLE_LABELS: Record<string, string> = {
@@ -144,6 +150,7 @@ const CONTRACT_VARIABLE_LABELS: Record<string, string> = {
   organization_full_address: 'Pełny adres klienta',
   zamiownienie: 'Numer PO / zamówienia klienta',
   zamowienie: 'Numer PO / zamówienia klienta',
+  termin_dostarczenia_materialow: 'Termin dostarczenia materiałów',
   event_name: 'Nazwa wydarzenia',
   event_date: 'Data rozpoczęcia wydarzenia',
   event_end_date: 'Data zakończenia wydarzenia',
@@ -354,6 +361,13 @@ const contractValueHtml = (value: string | number) =>
     String(value),
   )}</strong>`;
 
+const contractRepresentativeTitleHtml = (value: string) => {
+  // Korygujemy wyłącznie błędną etykietę, bez zgadywania rodzaju prokury.
+  // Pozostałe stanowiska i dane zapisane w kartotece pozostają bez zmian.
+  const title = value.trim().replace(/^prokurent\s+zarządu\.?$/iu, 'prokurent');
+  return `<em style="font-weight:400 !important;font-style:italic !important;">${escapeContractText(title)}</em>`;
+};
+
 const multilineContractTextHtml = (value: string | null | undefined) =>
   String(value || '')
     .split(/\r?\n/)
@@ -553,11 +567,17 @@ export function EventContractTab({ eventId }: { eventId: string }) {
   const [editedVariables, setEditedVariables] = useState<Record<string, string>>({});
   const [variableSearch, setVariableSearch] = useState('');
   const [contractStatus, setContractStatus] = useState<ContractStatus>('draft');
+  const [preflightAcknowledgements, setPreflightAcknowledgements] = useState<{
+    context: string;
+    keys: string[];
+  }>({ context: '', keys: [] });
   const [contractId, setContractId] = useState<string | null>(null);
   const [contractVersion, setContractVersion] = useState(1);
   const [contractLockedAt, setContractLockedAt] = useState<string | null>(null);
   const [companySignedAt, setCompanySignedAt] = useState<string | null>(null);
   const [templateId, setTemplateId] = useState<string | null>(null);
+  const [selectedTemplateName, setSelectedTemplateName] = useState('');
+  const [showCancelContractModal, setShowCancelContractModal] = useState(false);
   const [contractCreatedBy, setContractCreatedBy] = useState<string | null>(null);
   const [showSendEmailModal, setShowSendEmailModal] = useState(false);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
@@ -608,18 +628,41 @@ export function EventContractTab({ eventId }: { eventId: string }) {
     [productClauseConflicts, productClauseSelections],
   );
 
-  const editableContractVariables = useMemo(() => {
-    const usedVariableKeys = new Set(
-      Array.from(originalTemplate.matchAll(/\{\{\s*([A-Za-z0-9_]+)\s*\}\}/g)).map(
-        (match) => match[1],
-      ),
+  const usedContractVariableKeys = useMemo(() => {
+    // Liczy się aktualna treść, nie historyczne strony ani metadane szablonu.
+    const { flowContent } = getContractDocumentParts(originalTemplate);
+    const assembled = assembleContractClauses(
+      eventContractClauseItems,
+      flowContent,
+      productClauseSelections,
     );
+    const placement = placeContractClauses(assembled.flowContent, {
+      ...variables,
+      ...assembled.sections,
+    });
+    const usedKeys = new Set<string>();
+    const collectVariableKeys = (html: string) => {
+      for (const match of html.matchAll(/\{\{\s*([A-Za-z0-9_]+)\s*\}\}/g)) {
+        const key = match[1];
+        if (usedKeys.has(key)) continue;
+        usedKeys.add(key);
+        // Sprawdzamy tylko klauzule użyte w dokumencie, przed podmianą ich zmiennych.
+        if (key.startsWith('contract_clauses_')) {
+          collectVariableKeys(placement.variables[key] || '');
+        }
+      }
+    };
+    collectVariableKeys(placement.flowContent);
+    return usedKeys;
+  }, [eventContractClauseItems, originalTemplate, productClauseSelections, variables]);
+
+  const editableContractVariables = useMemo(() => {
     const normalizedSearch = normalizeVariableSearch(variableSearch);
 
     return Object.entries(editedVariables)
       .filter(
         ([key]) =>
-          usedVariableKeys.has(key) &&
+          usedContractVariableKeys.has(key) &&
           !NON_EDITABLE_CONTRACT_VARIABLES.has(key) &&
           !key.startsWith('contract_clauses_') &&
           Boolean(CONTRACT_VARIABLE_LABELS[key]),
@@ -633,7 +676,7 @@ export function EventContractTab({ eventId }: { eventId: string }) {
         normalizedSearch ? normalizeVariableSearch(label).includes(normalizedSearch) : true,
       )
       .sort((left, right) => left.label.localeCompare(right.label, 'pl'));
-  }, [editedVariables, originalTemplate, variableSearch]);
+  }, [editedVariables, usedContractVariableKeys, variableSearch]);
 
   const contractAuditSensitiveValues = useMemo(() => {
     const identityKey =
@@ -793,6 +836,17 @@ export function EventContractTab({ eventId }: { eventId: string }) {
       }
     }
 
+    if (
+      usedContractVariableKeys.has('termin_dostarczenia_materialow') &&
+      !variables.termin_dostarczenia_materialow?.trim()
+    ) {
+      issues.push({
+        key: 'materials-deadline',
+        label: 'Uzupełnij termin dostarczenia materiałów w edycji zmiennych umowy.',
+        severity: 'blocker',
+      });
+    }
+
     if (!variables.accepted_calculation_number && !variables.offer_number) {
       issues.push({
         key: 'accepted-source',
@@ -813,7 +867,7 @@ export function EventContractTab({ eventId }: { eventId: string }) {
     if (unresolvedProductClauseConflicts.length > 0) {
       issues.push({
         key: 'product-clause-type-conflicts',
-        label: `Rozstrzygnij powtarzające się typy klauzul produktowych (${unresolvedProductClauseConflicts.length}).`,
+        label: `Rozstrzygnij rozbieżne wersje wspólnych ustaleń (${unresolvedProductClauseConflicts.length}).`,
         severity: 'blocker',
       });
     }
@@ -823,14 +877,46 @@ export function EventContractTab({ eventId }: { eventId: string }) {
     originalTemplate,
     selectedTemplateId,
     unresolvedProductClauseConflicts,
+    usedContractVariableKeys,
     variables,
   ]);
 
+  // Zgoda jest lokalna dla aktualnego dokumentu i użytkownika, nie wyłącza
+  // walidacji globalnie. Zmieniona treść, dane lub uwagi wymagają nowej zgody.
+  const preflightAcknowledgementContext = useMemo(() => JSON.stringify([
+    eventId,
+    employee?.id,
+    selectedTemplateId || templateId,
+    contractVersion,
+    contractContent,
+    variables,
+    contractPreflightIssues,
+  ]), [eventId, employee?.id, selectedTemplateId, templateId, contractVersion,
+    contractContent, variables, contractPreflightIssues]);
+
+  const isPreflightIssueAcknowledged = (key: string) =>
+    preflightAcknowledgements.context === preflightAcknowledgementContext
+    && preflightAcknowledgements.keys.includes(key);
+
+  const acknowledgePreflightIssue = (key: string, checked: boolean) => {
+    setPreflightAcknowledgements((current) => {
+      const keys = current.context === preflightAcknowledgementContext ? current.keys : [];
+      return {
+        context: preflightAcknowledgementContext,
+        keys: checked ? [...new Set([...keys, key])] : keys.filter((item) => item !== key),
+      };
+    });
+  };
+
   const ensureContractPreflight = (action: string) => {
-    const blockers = contractPreflightIssues.filter((issue) => issue.severity === 'blocker');
+    // Uwagi sprawdzamy przy finalizacji szkicu, nie przy dalszej obsłudze
+    // dokumentu, który został już wystawiony lub podpisany.
+    if (!['draft', 'cancelled'].includes(contractStatus)) return true;
+    const blockers = contractPreflightIssues.filter((issue) =>
+      issue.severity === 'blocker' && !isPreflightIssueAcknowledged(issue.key));
     if (blockers.length === 0) return true;
     showSnackbar(
-      `Przed ${action} uzupełnij wymagane dane dokumentu (${blockers.length}). Szczegóły są nad podglądem umowy.`,
+      `Przed ${action} uzupełnij dane albo potwierdź zapoznanie się z pozostałymi uwagami (${blockers.length}) nad podglądem umowy.`,
       'error',
     );
     return false;
@@ -859,6 +945,7 @@ export function EventContractTab({ eventId }: { eventId: string }) {
   const fetchContractData = async (
     clauseSelectionOverride?: Record<string, string>,
     replaceExistingContent = false,
+    templateIdOverride?: string,
   ) => {
     try {
       setLoading(true);
@@ -1032,7 +1119,7 @@ export function EventContractTab({ eventId }: { eventId: string }) {
       const contractResult = await supabase
         .from('contracts')
         .select(
-          'id, status, issued_at, sent_at, signed_by_client_at, signed_returned_at, cancelled_at, created_by, generated_pdf_path, modified_after_generation, content, version_number, locked_at, company_signed_at',
+          'id, template_id, status, issued_at, sent_at, signed_by_client_at, signed_returned_at, cancelled_at, created_by, generated_pdf_path, modified_after_generation, content, version_number, locked_at, company_signed_at',
         )
         .eq('event_id', eventId)
         .order('created_at', { ascending: false })
@@ -1044,7 +1131,7 @@ export function EventContractTab({ eventId }: { eventId: string }) {
         const fallbackResult = await supabase
           .from('contracts')
           .select(
-            'id, status, issued_at, sent_at, signed_by_client_at, signed_returned_at, cancelled_at, created_by, generated_pdf_path, modified_after_generation, content',
+            'id, template_id, status, issued_at, sent_at, signed_by_client_at, signed_returned_at, cancelled_at, created_by, generated_pdf_path, modified_after_generation, content',
           )
           .eq('event_id', eventId)
           .order('created_at', { ascending: false })
@@ -1053,10 +1140,15 @@ export function EventContractTab({ eventId }: { eventId: string }) {
         existingContract = fallbackResult.data as typeof existingContract;
       }
 
+      let storedMaterialsDeadline: string | null = null;
+      let storedIndividualEdits = false;
       let storedProductClauseSelections: Record<string, string> = {};
       if (existingContract?.content) {
         try {
           const parsedExistingContract = JSON.parse(existingContract.content);
+          storedIndividualEdits = parsedExistingContract?.meta?.individuallyEdited === true;
+          const savedDeadline = parsedExistingContract?.meta?.termin_dostarczenia_materialow;
+          if (typeof savedDeadline === 'string') storedMaterialsDeadline = savedDeadline;
           if (
             parsedExistingContract?.meta?.productClauseSelections &&
             typeof parsedExistingContract.meta.productClauseSelections === 'object'
@@ -1142,14 +1234,15 @@ export function EventContractTab({ eventId }: { eventId: string }) {
           .forEach((person: any) => addSigner(person.contact, person.title));
         return signers;
       })();
-      const legalRepresentativesListText = legalSigners
-        .map((signer) =>
-          signer.title ? `${signer.fullName} — ${signer.title}` : signer.fullName,
-        )
+      const legalRepresentativesListInlineHtml = legalSigners
+        .map((signer) => {
+          const title = signer.title ? ` - ${contractRepresentativeTitleHtml(signer.title)}` : '';
+          return `${escapeContractText(signer.fullName)}${title}`;
+        })
         .join(', ');
       const legalRepresentativesListHtml = legalSigners
         .map((signer) => {
-          const title = signer.title ? ` — ${contractValueHtml(signer.title)}` : '';
+          const title = signer.title ? ` - ${contractRepresentativeTitleHtml(signer.title)}` : '';
           return `${contractValueHtml(signer.fullName)}${title}`;
         })
         .join(' oraz ');
@@ -1210,19 +1303,35 @@ export function EventContractTab({ eventId }: { eventId: string }) {
           } | null)
         : null;
 
-      const rawTemplateId = event.selected_contract_template_id || template?.id || '';
+      const savedTemplateId = existingContract && (storedIndividualEdits || existingContract.generated_pdf_path || existingContract.locked_at || existingContract.status !== 'draft')
+        ? existingContract.template_id : null;
+      let defaultTemplateId = '';
+      if (!templateIdOverride && !savedTemplateId && !event.selected_contract_template_id && !template?.id) {
+        const { data: defaultTemplate, error: defaultTemplateError } = await supabase
+          .from('contract_templates')
+          .select('id')
+          .eq('is_active', true)
+          .contains('page_settings', { contractStructureDefault: true })
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (defaultTemplateError) throw defaultTemplateError;
+        defaultTemplateId = defaultTemplate?.id || '';
+      }
+      const rawTemplateId = templateIdOverride || savedTemplateId || event.selected_contract_template_id || template?.id || defaultTemplateId;
       const finalTemplateId = rawTemplateId && rawTemplateId !== 'null' ? rawTemplateId : '';
 
       if (!finalTemplateId) {
         setTemplateId(null);
         setSelectedTemplateId(null);
+        setSelectedTemplateName('');
         setLoading(false);
         return;
       }
 
       const { data: selectedTemplate, error: selectedTemplateError } = await supabase
         .from('contract_templates')
-        .select('id, name, content, content_html, page_settings')
+        .select('id, name, content, content_html, page_settings, updated_at')
         .eq('id', finalTemplateId)
         .single();
 
@@ -1238,6 +1347,7 @@ export function EventContractTab({ eventId }: { eventId: string }) {
 
       setTemplateId(template.id);
       setSelectedTemplateId(template.id);
+      setSelectedTemplateName(template.name);
 
       let templateToStore = template.content_html || template.content;
 
@@ -1584,6 +1694,8 @@ export function EventContractTab({ eventId }: { eventId: string }) {
             title: entry.title || getContractClauseTopicLabel(entry.topic),
             productName,
             html: clause,
+            sharedKey: entry.sharedKey,
+            legacyOverrideId: entry.legacyId ? `${String(item.id || item.product_id || productName)}:${entry.legacyId}` : undefined,
             preview: clause.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 420),
           });
         });
@@ -1602,7 +1714,6 @@ export function EventContractTab({ eventId }: { eventId: string }) {
         storedRequirements: parseStoredOfferRequirements(offers?.offer_requirements),
         refreshAutomaticSources: offers?.status === 'draft',
       }).filter((requirement) => requirement.included !== false);
-      const sharedRequirementTopics = new Set<string>();
 
       approvedOfferRequirements.forEach((requirement, requirementIndex) => {
         const requirementLines = splitOfferRequirementLines(requirement.description);
@@ -1616,13 +1727,13 @@ export function EventContractTab({ eventId }: { eventId: string }) {
             : 'Oferta';
 
         const descriptionText = descriptions.join(' ');
-        const mapped = mapOfferRequirementToContractTopic(
+        const shared = getSharedContractClauseForText(descriptionText);
+        const mapped = shared || mapOfferRequirementToContractTopic(
           requirement.category,
           descriptionText,
         );
-        if (mapped.category === 'requirements') sharedRequirementTopics.add(mapped.topic);
         const clause = normalizeContractClausePointListHtml(
-          descriptions.map((description) => `<p>${escapeContractText(description)}</p>`).join(''),
+          shared?.content || descriptions.map((description) => `<p>${escapeContractText(description)}</p>`).join(''),
         );
         if (!clause) return;
         const stableRequirementKey = String(
@@ -1630,6 +1741,7 @@ export function EventContractTab({ eventId }: { eventId: string }) {
         );
         clauseCandidates.push({
           id: `offer-requirement:${stableRequirementKey}`,
+          sharedKey: shared?.key,
           category: mapped.category,
           topic: mapped.topic,
           title: String(
@@ -1641,55 +1753,13 @@ export function EventContractTab({ eventId }: { eventId: string }) {
         });
       });
 
-      // Wspólne wymagania organizacyjne i techniczne są już agregowane na
-      // poziomie oferty. Jeżeli dany typ występuje w tej liście, nie dokładamy
-      // ponownie odpowiadającej mu klauzuli każdego produktu (np. sześciu
-      // osobnych zapisów o gniazdach 230 V). Klauzule warunków, obowiązków,
-      // ryzyk i wymagania unikalne dla produktu pozostają bez zmian.
-      const scopedClauseCandidates = clauseCandidates.filter((candidate) =>
-        candidate.id.startsWith('offer-requirement:') ||
-        candidate.category !== 'requirements' ||
-        !sharedRequirementTopics.has(candidate.topic),
+      // Wpisy tego samego tematu są uzupełnieniami, a nie automatycznie
+      // wykluczającymi się wariantami. Zachowujemy także szczegóły produktów.
+      const resolvedEventContractClauses = buildEventContractClauseItems(
+        clauseCandidates,
+        storedEventClauseOverrides,
       );
-
-      const uniqueCandidates = Array.from(
-        scopedClauseCandidates.reduce((result, candidate) => {
-          const signature = [
-            candidate.category,
-            candidate.topic,
-            normalizeClauseComparisonText(candidate.preview),
-          ].join(':');
-          const existing = result.get(signature);
-          if (!existing) {
-            result.set(signature, candidate);
-          } else if (existing.productName !== candidate.productName) {
-            const mergedSources = [...new Set([
-              ...existing.productName.split(' · '),
-              ...candidate.productName.split(' · '),
-            ].map((source) => source.trim()).filter(Boolean))].join(' · ');
-            result.set(signature, { ...existing, productName: mergedSources });
-          }
-          return result;
-        }, new Map<string, ProductClauseCandidate>()).values(),
-      );
-      const candidatesByType = uniqueCandidates.reduce((result, candidate) => {
-        const isSharedOfferRequirement = candidate.id.startsWith('offer-requirement:');
-        const key = isSharedOfferRequirement
-          ? `${candidate.category}:${candidate.topic}`
-          : `${candidate.category}:${candidate.topic}:${normalizeClauseComparisonText(candidate.productName)}`;
-        const current = result.get(key) || [];
-        current.push(candidate);
-        result.set(key, current);
-        return result;
-      }, new Map<string, ProductClauseCandidate[]>());
-      const clauseConflicts = Array.from(candidatesByType.entries())
-        .filter(([, candidates]) => candidates.length > 1)
-        .map(([key, candidates]) => ({
-          key,
-          category: candidates[0].category,
-          topic: candidates[0].topic,
-          candidates,
-        }));
+      const clauseConflicts = getSharedClauseConflicts(resolvedEventContractClauses);
       const validProductClauseSelections = clauseConflicts.reduce<Record<string, string>>(
         (result, conflict) => {
           const selectedId = requestedProductClauseSelections[conflict.key];
@@ -1700,60 +1770,17 @@ export function EventContractTab({ eventId }: { eventId: string }) {
         },
         {},
       );
-      const sourceProductClausesFingerprint = uniqueCandidates
-        .map((candidate) => `${candidate.id}:${normalizeClauseComparisonText(candidate.preview)}`)
-        .sort()
-        .join('|');
+      const sourceProductClausesFingerprint = contractClauseSourceFingerprint(clauseCandidates);
       setProductClauseConflicts(clauseConflicts);
       setProductClauseSelections(validProductClauseSelections);
       setProductClauseSelectionDraft(validProductClauseSelections);
-
-      const selectedClauseCandidates = Array.from(candidatesByType.entries()).flatMap(
-        ([key, candidates]) => {
-          const selectedId = validProductClauseSelections[key];
-          if (!selectedId) return candidates;
-          return candidates.filter((candidate) => candidate.id === selectedId);
-        },
-      );
-      const resolvedEventContractClauses = buildEventContractClauseItems(
-        selectedClauseCandidates,
-        storedEventClauseOverrides,
-      );
       setEventContractClauseItems(resolvedEventContractClauses);
-
-      const clausesByCategory: Record<ContractClauseCategory, string[]> = {
-        conditions: [],
-        requirements: [],
-        obligations: [],
-        risks: [],
-        additional_requirements: [],
-        general: [],
-      };
-      resolvedEventContractClauses.filter((candidate) => candidate.enabled).forEach((candidate) => {
-        const normalizedClause = normalizeContractClausePointListHtml(candidate.html);
-        if (!normalizedClause) return;
-        clausesByCategory[candidate.category].push(
-          `<div class="product-contract-clause" data-clause-category="${candidate.category}" data-clause-topic="${escapeContractText(candidate.topic)}" data-clause-candidate="${escapeContractText(candidate.id)}" data-product-name="${escapeContractText(candidate.productName)}">${normalizedClause}</div>`,
-        );
-      });
-
-      const clauseSection = (category: string, clauses: string[]) => {
-        if (!clauses.length) return '';
-        return deduplicateProductClauseSections(
-          `<div class="contract-product-clauses" data-clause-category="${category}">${clauses.join('')}</div>`,
-        );
-      };
-      const rawClauseSections = {
-        contract_clauses_conditions: clauseSection('conditions', clausesByCategory.conditions),
-        contract_clauses_requirements: clauseSection('requirements', clausesByCategory.requirements),
-        contract_clauses_obligations: clauseSection('obligations', clausesByCategory.obligations),
-        contract_clauses_risks: clauseSection('risks', clausesByCategory.risks),
-        contract_clauses_additional_requirements: clauseSection(
-          'additional_requirements',
-          clausesByCategory.additional_requirements,
-        ),
-        contract_clauses_general: clauseSection('general', clausesByCategory.general),
-      };
+      const assembledClauses = assembleContractClauses(
+        resolvedEventContractClauses,
+        template.page_settings?.flowContent || template.page_settings?.pages?.join('') ||
+          template.content_html || template.content,
+        validProductClauseSelections,
+      );
       const offerItemsHtml =
         contractScopeItems.length > 0
           ? `<span data-contract-offer-items="true" style="font-family:inherit;font-size:inherit;font-weight:inherit;line-height:inherit;color:inherit;">${contractScopeItems
@@ -1864,6 +1891,12 @@ export function EventContractTab({ eventId }: { eventId: string }) {
           ? `zaakceptowanej kalkulacji nr <strong>${escapeContractText(acceptedCalculationNumber)}</strong>`
           : 'uzgodnionym i zaakceptowanym zestawieniu zakresu';
 
+      const templateMaterialsDeadline =
+        template.page_settings?.contractVariableDefaults?.termin_dostarczenia_materialow;
+      const materialsDeadline = storedMaterialsDeadline ?? (
+        typeof templateMaterialsDeadline === 'string' ? templateMaterialsDeadline : ''
+      );
+
       const varsMap: Record<string, string> = {
         __contract_font_faces: '',
         contact_first_name: contact?.first_name || '',
@@ -1946,7 +1979,7 @@ export function EventContractTab({ eventId }: { eventId: string }) {
         legal_representative_city: legalRepresentative?.city || '',
         legal_representative_postal_code: legalRepresentative?.postal_code || '',
         legal_representative_title: formatPrefixedValue(organization?.legal_representative_title, '-', '.'),
-        legal_representatives_list: legalRepresentativesListText,
+        legal_representatives_list: legalRepresentativesListInlineHtml,
         legal_representatives_count: String(legalSigners.length),
         client_representation_type: representationType,
         client_representation_type_label: representationTypeLabel,
@@ -1987,6 +2020,8 @@ export function EventContractTab({ eventId }: { eventId: string }) {
         deposit_words: numberToWords(depositAmount),
         deposit_percent: `${depositPercent}%`,
         payment_term_days: String(paymentTermDays),
+        // Zapisana wartość umowy ma pierwszeństwo przed domyślną wartością szablonu.
+        termin_dostarczenia_materialow: materialsDeadline,
 
         contract_number: contractNumber,
         contract_date: new Date().toLocaleDateString('pl-PL'),
@@ -2047,19 +2082,19 @@ export function EventContractTab({ eventId }: { eventId: string }) {
         OFFER_ITEMS_TABLE: offerItemsTable,
       };
 
-      Object.entries(rawClauseSections).forEach(([key, value]) => {
+      Object.entries(assembledClauses.sections).forEach(([key, value]) => {
         varsMap[key] = replaceVariables(value, varsMap);
       });
-      const templateFlow = includeContractFonts(
-        template.page_settings?.flowContent ||
-          template.page_settings?.pages?.join('') || template.content_html || template.content,
-        varsMap,
-      );
+      const templateFlow = includeContractFonts(assembledClauses.flowContent, varsMap);
       const clausePlacement = placeContractClauses(templateFlow, varsMap);
       const flowWithAutomaticClauses = clausePlacement.flowContent;
       Object.assign(varsMap, clausePlacement.variables);
       setUnplacedClauseCategories(clausePlacement.unplacedClauseCategories);
       const sourceMeta = {
+        contractStructureVersion: CONTRACT_STRUCTURE_VERSION,
+        sourceTemplateId: template.id,
+        sourceTemplateUpdatedAt: template.updated_at,
+        termin_dostarczenia_materialow: materialsDeadline,
         sourceOfferId: offers?.id || null,
         sourceOfferStatus: offers?.status || null,
         sourceOfferUpdatedAt: offers?.updated_at || null,
@@ -2098,22 +2133,17 @@ export function EventContractTab({ eventId }: { eventId: string }) {
         try {
           const parsedContract = JSON.parse(existingContract.content);
           if (
-            parsedContract.meta?.individuallyEdited === true &&
-            parsedContract.pages &&
-            Array.isArray(parsedContract.pages)
+            (parsedContract.meta?.individuallyEdited === true ||
+              existingContract.generated_pdf_path ||
+              existingContract.status !== 'draft' || existingContract.locked_at) &&
+            (typeof parsedContract.flowContent === 'string' || Array.isArray(parsedContract.pages))
           ) {
             const savedFlow = includeContractFonts(
               parsedContract.flowContent || parsedContract.pages.join(''),
               varsMap,
             );
-            const savedClausePlacement = placeContractClauses(savedFlow, varsMap);
             const renderedContract = await renderContractDocument(
-              deduplicateProductClauseSections(
-                replaceVariables(
-                  savedClausePlacement.flowContent,
-                  savedClausePlacement.variables,
-                ),
-              ),
+              savedFlow,
               parsedContract.settings || templateSettings,
             );
             contentToSet = JSON.stringify({
@@ -2121,7 +2151,10 @@ export function EventContractTab({ eventId }: { eventId: string }) {
               ...renderedContract,
             });
             setContractSourceOutdated(
-              parsedContract.meta?.sourceOfferId !== sourceMeta.sourceOfferId ||
+              parsedContract.meta?.sourceTemplateId !== sourceMeta.sourceTemplateId ||
+                parsedContract.meta?.sourceTemplateUpdatedAt !== sourceMeta.sourceTemplateUpdatedAt ||
+                parsedContract.meta?.contractStructureVersion !== sourceMeta.contractStructureVersion ||
+                parsedContract.meta?.sourceOfferId !== sourceMeta.sourceOfferId ||
                 parsedContract.meta?.sourceOfferUpdatedAt !== sourceMeta.sourceOfferUpdatedAt ||
                 parsedContract.meta?.sourcePlannedSetupAt !== sourceMeta.sourcePlannedSetupAt ||
                 parsedContract.meta?.sourcePlannedTeardownAt !==
@@ -2137,6 +2170,10 @@ export function EventContractTab({ eventId }: { eventId: string }) {
         }
       }
 
+      if (!contentToSet && existingContract?.content && !replaceExistingContent &&
+        (existingContract.generated_pdf_path || existingContract.status !== 'draft' || existingContract.locked_at)) {
+        contentToSet = existingContract.content;
+      }
       if (!contentToSet) {
         // Dopóki treść nie była edytowana indywidualnie, źródłem prawdy jest oferta i szablon.
         contentToSet = currentSourceContent;
@@ -2147,6 +2184,7 @@ export function EventContractTab({ eventId }: { eventId: string }) {
           .from('contracts')
           .update({
             content: contentToSet,
+            template_id: template.id,
             modified_after_generation: true,
           })
           .eq('id', existingContract.id);
@@ -2172,7 +2210,7 @@ export function EventContractTab({ eventId }: { eventId: string }) {
         .replace(',', '.')
         .replace(/[^\d.]/g, '');
       const num = parseFloat(cleaned);
-      return isNaN(num) ? 0 : Math.round(num);
+      return isNaN(num) ? 0 : Math.round(num * 100) / 100;
     };
 
     const syncAmountInWords = (amountKey: string, wordsKey: string) => {
@@ -2195,9 +2233,22 @@ export function EventContractTab({ eventId }: { eventId: string }) {
     try {
       const parsed = JSON.parse(originalTemplate);
       if (parsed.pages && Array.isArray(parsed.pages)) {
+        const assembled = assembleContractClauses(
+          eventContractClauseItems,
+          parsed.flowContent || parsed.pages.join(''),
+          productClauseSelections,
+        );
+        Object.entries(assembled.sections).forEach(([key, value]) => {
+          updatedVariables[key] = replaceVariables(value, updatedVariables);
+        });
+        const placement = placeContractClauses(assembled.flowContent, updatedVariables);
+        Object.assign(updatedVariables, placement.variables);
+        setUnplacedClauseCategories(placement.unplacedClauseCategories);
+        setVariables({ ...updatedVariables });
+        setEditedVariables({ ...updatedVariables });
         const renderedContract = await renderContractDocument(
           replaceVariables(
-            includeContractFonts(parsed.flowContent || parsed.pages.join(''), updatedVariables),
+            includeContractFonts(placement.flowContent, updatedVariables),
             updatedVariables,
           ),
           parsed.settings || {},
@@ -2209,6 +2260,7 @@ export function EventContractTab({ eventId }: { eventId: string }) {
               ...(parsed.meta || {}),
               individuallyEdited: true,
               editSource: 'variables',
+              termin_dostarczenia_materialow: updatedVariables.termin_dostarczenia_materialow || '',
             },
           }),
         );
@@ -2248,89 +2300,10 @@ export function EventContractTab({ eventId }: { eventId: string }) {
         );
       }
 
-      // If no variables loaded yet (first template pick), do full reload
-      if (Object.keys(variables).length === 0) {
-        await fetchContractData();
-        return;
-      }
-
-      const { data: template, error } = await supabase
-        .from('contract_templates')
-        .select('id, name, content, content_html, page_settings')
-        .eq('id', newTemplateId)
-        .single();
-
-      if (error) throw error;
-      setSelectedTemplateId(newTemplateId);
-      setTemplateId(newTemplateId);
-
-      let templateToStore = template.content_html || template.content;
-
-      if (template.page_settings?.pages) {
-        const baseFlow = includeContractFonts(
-          template.page_settings.flowContent || template.page_settings.pages.join(''),
-          variables,
-        );
-        const clausePlacement = placeContractClauses(baseFlow, variables);
-        const flowContent = clausePlacement.flowContent;
-        setUnplacedClauseCategories(clausePlacement.unplacedClauseCategories);
-        const settings = applyEventCompanyBranding(
-          getTemplateSettings(template.page_settings),
-          eventCompanyBranding,
-        );
-        templateToStore = JSON.stringify({
-          pages: template.page_settings.pages,
-          flowContent,
-          settings,
-        });
-      }
-      setOriginalTemplate(templateToStore);
-
-      let contentToSet = '';
-      if (template.page_settings?.pages) {
-        const parsedTemplate = JSON.parse(templateToStore);
-        const source = parsedTemplate.flowContent;
-        const clausePlacement = placeContractClauses(source, variables);
-        const renderedContract = await renderContractDocument(
-          replaceVariables(clausePlacement.flowContent, clausePlacement.variables),
-          applyEventCompanyBranding(
-            getTemplateSettings(template.page_settings),
-            eventCompanyBranding,
-          ),
-        );
-        contentToSet = JSON.stringify(renderedContract);
-      } else {
-        const templateToUse = includeContractFonts(
-          template.content_html || template.content,
-          variables,
-        );
-        const clausePlacement = placeContractClauses(templateToUse, variables);
-        setUnplacedClauseCategories(clausePlacement.unplacedClauseCategories);
-        const renderedContract = await renderContractDocument(
-          replaceVariables(clausePlacement.flowContent, clausePlacement.variables),
-          applyEventCompanyBranding(
-            getTemplateSettings(template.page_settings),
-            eventCompanyBranding,
-          ),
-        );
-        contentToSet = JSON.stringify(renderedContract);
-      }
-      setContractContent(contentToSet);
-
-      if (contractId) {
-        const { error: contractUpdateError } = await supabase
-          .from('contracts')
-          .update({
-            template_id: newTemplateId,
-            content: contentToSet,
-            modified_after_generation: true,
-          })
-          .eq('id', contractId);
-
-        if (contractUpdateError) throw contractUpdateError;
-      }
-
-      showSnackbar(`Zmieniono szablon na: ${template.name}`, 'success');
+      // Zmiana szablonu korzysta z tej samej ścieżki co pierwsze generowanie.
+      // Ponownie dobieramy klauzule do pól szablonu i wczytujemy jego wartości domyślne.
+      await fetchContractData(undefined, true, newTemplateId);
+      showSnackbar('Zmieniono szablon umowy', 'success');
     } catch (err) {
       console.error('Error changing template:', err);
       showSnackbar(
@@ -2478,8 +2451,6 @@ export function EventContractTab({ eventId }: { eventId: string }) {
   };
 
   const handlePrint = async () => {
-    if (!isWorkingDraft && !ensureContractPreflight('wygenerowaniem finalnego PDF')) return;
-
     if (!templateId && !selectedTemplateId) {
       showSnackbar('Wybierz szablon umowy przed wygenerowaniem PDF', 'error');
       return;
@@ -2592,59 +2563,25 @@ export function EventContractTab({ eventId }: { eventId: string }) {
     }
   };
 
-  const handleDeleteContract = async () => {
-    if (!contractId) {
-      showSnackbar('Brak umowy do usunięcia', 'warning');
+  const handleStatusChange = async (newStatus: ContractStatus) => {
+    if (contractStatus === 'cancelled') return;
+    if (newStatus === 'cancelled') {
+      if (!isAdmin || !contractId) {
+        showSnackbar('Anulowanie zapisanej umowy wymaga uprawnień administratora.', 'warning');
+        return;
+      }
+      setShowCancelContractModal(true);
       return;
     }
-
-    const confirmed = window.confirm(
-      'Czy na pewno chcesz usunąć tę umowę? Tej operacji nie można cofnąć.',
-    );
-    if (!confirmed) return;
-
-    try {
-      if (generatedPdfPath) {
-        const { error: storageError } = await supabase.storage
-          .from('event-files')
-          .remove([generatedPdfPath]);
-        if (storageError) {
-          console.error('Error removing PDF from storage:', storageError);
-        }
-
-        const { error: filesError } = await supabase
-          .from('event_files')
-          .delete()
-          .eq('event_id', eventId)
-          .eq('file_path', generatedPdfPath);
-        if (filesError) {
-          console.error('Error removing event_files entry:', filesError);
-        }
-      }
-
-      const { error } = await supabase.from('contracts').delete().eq('id', contractId);
-
-      if (error) throw error;
-
-      setContractId(null);
-      setContractStatus('draft');
-      setGeneratedPdfPath(null);
-      setModifiedAfterGeneration(false);
-      showSnackbar('Umowa została usunięta wraz z plikiem PDF', 'success');
-      await fetchContractData();
-    } catch (err) {
-      console.error('Error deleting contract:', err);
-      showSnackbar('Błąd podczas usuwania umowy', 'error');
-    }
-  };
-
-  const handleStatusChange = async (newStatus: ContractStatus) => {
     if (
       !['draft', 'cancelled'].includes(newStatus) &&
       !ensureContractPreflight('zmianą statusu umowy')
     ) {
       return;
     }
+
+    const changesDocumentMode = ['draft', 'cancelled'].includes(contractStatus)
+      !== ['draft', 'cancelled'].includes(newStatus);
 
     try {
       if (!contractId) {
@@ -2690,6 +2627,7 @@ export function EventContractTab({ eventId }: { eventId: string }) {
         const updateData: any = {
           status: newStatus,
           content: contractContent,
+          ...(changesDocumentMode ? { modified_after_generation: true } : {}),
         };
 
         if (newStatus !== 'draft') {
@@ -2705,6 +2643,7 @@ export function EventContractTab({ eventId }: { eventId: string }) {
       }
 
       setContractStatus(newStatus);
+      if (changesDocumentMode) setModifiedAfterGeneration(true);
       await fetchContractData();
       showSnackbar('Status umowy został zaktualizowany', 'success');
     } catch (err) {
@@ -2746,19 +2685,21 @@ export function EventContractTab({ eventId }: { eventId: string }) {
   };
 
   const canEdit = useMemo(() => {
+    if (contractStatus === 'cancelled') return false;
     if (contractLockedAt) return false;
     if (isAdmin) return true;
     return contractStatus === 'draft' || contractStatus === 'cancelled';
   }, [contractLockedAt, isAdmin, contractStatus]);
 
-  const isWorkingDraft = contractStatus === 'draft' || contractStatus === 'cancelled';
+  const isWorkingDraft = contractStatus === 'draft';
 
   const canSendEmail = useMemo(() => {
+    if (contractStatus === 'cancelled') return false;
     if (!contractId) return false;
     if (isAdmin) return true;
     if (employee?.id && contractCreatedBy === employee.id) return true;
     return false;
-  }, [isAdmin, employee, contractId, contractCreatedBy]);
+  }, [isAdmin, employee, contractId, contractCreatedBy, contractStatus]);
 
   const confirmCompanySignature = async () => {
     if (!contractId || !employee?.id) return;
@@ -2782,7 +2723,7 @@ export function EventContractTab({ eventId }: { eventId: string }) {
     );
     if (unresolved.length > 0) {
       showSnackbar(
-        `Wybierz wariant dla wszystkich powtarzających się typów (${unresolved.length}).`,
+        `Wybierz wersję dla wszystkich rozbieżnych wspólnych ustaleń (${unresolved.length}).`,
         'warning',
       );
       return;
@@ -2979,6 +2920,22 @@ export function EventContractTab({ eventId }: { eventId: string }) {
   };
 
   const actions = useMemo(() => {
+    if (contractStatus === 'cancelled') {
+      return generatedPdfPath ? [
+        {
+          label: 'Pokaż archiwalny PDF',
+          onClick: handleShowPdf,
+          icon: <Eye className="h-4 w-4" />,
+          variant: 'default' as const,
+        },
+        {
+          label: 'Pobierz archiwalny PDF',
+          onClick: handleDownloadPdf,
+          icon: <Download className="h-4 w-4" />,
+          variant: 'default' as const,
+        },
+      ] : [];
+    }
     if (editMode) {
       return [
         {
@@ -2998,7 +2955,7 @@ export function EventContractTab({ eventId }: { eventId: string }) {
 
     const baseActions = [];
 
-    baseActions.push({
+    if (isWorkingDraft) baseActions.push({
       label: isPrintingDraft ? 'Przygotowywanie…' : 'Drukuj draft',
       onClick: handlePrintDraft,
       icon: isPrintingDraft ? (
@@ -3026,7 +2983,7 @@ export function EventContractTab({ eventId }: { eventId: string }) {
     } else {
       baseActions.push(
         {
-          label: 'Pokaż PDF',
+          label: isWorkingDraft ? 'Pokaż PDF draftu' : 'Pokaż / drukuj umowę',
           onClick: handleShowPdf,
           icon: <Eye className="h-4 w-4" />,
           variant: 'primary' as const,
@@ -3098,15 +3055,6 @@ export function EventContractTab({ eventId }: { eventId: string }) {
       );
     }
 
-    if (contractId && canEdit) {
-      baseActions.push({
-        label: 'Usuń umowę',
-        onClick: handleDeleteContract,
-        icon: <X className="h-4 w-4" />,
-        variant: 'danger' as const,
-      });
-    }
-
     return baseActions;
   }, [
     editMode,
@@ -3120,7 +3068,6 @@ export function EventContractTab({ eventId }: { eventId: string }) {
     handlePrint,
     handleShowPdf,
     handleDownloadPdf,
-    handleDeleteContract,
     handleStartContractAudit,
     isGeneratingPdf,
     isPrintingDraft,
@@ -3128,6 +3075,8 @@ export function EventContractTab({ eventId }: { eventId: string }) {
     contractSourceOutdated,
     sourceContractContent,
     contractPreflightIssues,
+    preflightAcknowledgements,
+    preflightAcknowledgementContext,
     contractStatus,
     isWorkingDraft,
   ]);
@@ -3194,9 +3143,17 @@ export function EventContractTab({ eventId }: { eventId: string }) {
                 Umowa na realizację wydarzenia
               </h2>
               <p className="mt-1 text-sm text-[#e5e4e2]/50">
-                Podgląd uwzględnia dane wydarzenia, ofertę i klauzule produktów. Draft nie jest
-                dokumentem finalnym.
+                {contractStatus === 'cancelled'
+                  ? 'Umowa anulowana. Zachowano jej treść, PDF i historię. Zapisany PDF jest dokumentem archiwalnym.'
+                  : isWorkingDraft
+                  ? 'Podgląd uwzględnia dane wydarzenia, ofertę i klauzule produktów. Aby wystawić finalną umowę, sprawdź uwagi i wybierz status „Wystawiona”.'
+                  : 'Umowa finalna. Generowany PDF i wysyłka dotyczą umowy, nie wersji roboczej.'}
               </p>
+              {selectedTemplateName && (
+                <p className="mt-2 text-xs text-[#e5e4e2]/55">
+                  Szablon umowy: <span className="font-medium text-[#d3bb73]">{selectedTemplateName}</span>
+                </p>
+              )}
             </div>
 
             <div className="flex shrink-0 justify-start md:justify-end">
@@ -3212,40 +3169,43 @@ export function EventContractTab({ eventId }: { eventId: string }) {
           </div>
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            {contractPreflightIssues.length > 0 && (
-              <div className="rounded-lg border border-amber-400/30 bg-amber-400/10 p-4 text-sm text-amber-100 lg:col-span-2">
+            {isWorkingDraft && contractPreflightIssues.length > 0 && (
+              <div className="rounded-lg border border-amber-400/10 bg-amber-400/10 p-4 text-sm text-amber-100 lg:col-span-2">
                 <div className="flex items-start gap-3">
                   <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-amber-300" />
                   <div className="min-w-0 flex-1">
                     <div className="font-semibold text-amber-200">
-                      Kontrola kompletności umowy
+                      Uwagi do sprawdzenia
                     </div>
                     <p className="mt-1 text-xs leading-5 text-amber-100/75">
-                      Braki nie blokują drukowania, generowania ani wysyłania wersji roboczej.
-                      Wymagane dane należy uzupełnić dopiero przed zmianą statusu na finalny.
+                      Poniższe uwagi nie blokują generowania PDF ani drukowania umowy.
+                      Aby wystawić lub wysłać finalną umowę mimo wskazanych braków, zaznacz
+                      zapoznanie się z odpowiednimi uwagami. Potwierdzenie nie uzupełnia danych
+                      i obowiązuje tylko dla bieżącej treści w tej sesji.
                     </p>
                     <div className="mt-3 space-y-2">
                       {contractPreflightIssues.map((issue) => (
                         <div
                           key={issue.key}
-                          className={`flex flex-col gap-2 rounded-md border px-3 py-2 sm:flex-row sm:items-center sm:justify-between ${
-                            issue.severity === 'blocker'
-                              ? 'border-red-400/25 bg-red-500/10'
-                              : 'border-amber-300/20 bg-black/10'
-                          }`}
+                          className="flex flex-col gap-2 rounded-md border border-amber-300/10 bg-black/10 px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
                         >
-                          <div className="flex items-start gap-2">
-                            <span
-                              className={`mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase ${
-                                issue.severity === 'blocker'
-                                  ? 'bg-red-500/20 text-red-200'
-                                  : 'bg-amber-400/15 text-amber-200'
-                              }`}
-                            >
-                              {issue.severity === 'blocker' ? 'Do finalizacji' : 'Sprawdź'}
+                          <label className="flex min-w-0 flex-1 cursor-pointer items-start gap-3 py-1">
+                            <input
+                              type="checkbox"
+                              checked={isPreflightIssueAcknowledged(issue.key)}
+                              onChange={(e) => acknowledgePreflightIssue(issue.key, e.target.checked)}
+                              disabled={!employee?.id || isGeneratingPdf}
+                              className="mt-1 h-4 w-4 shrink-0 rounded accent-[#d3bb73] disabled:cursor-not-allowed"
+                            />
+                            <span className="min-w-0">
+                              <span className="block leading-5">{issue.label}</span>
+                              <span className="mt-1 block text-xs leading-5 text-amber-100/75">
+                                {isPreflightIssueAcknowledged(issue.key)
+                                  ? 'Potwierdzono — świadomie akceptuję tę uwagę przy wystawieniu i wysłaniu finalnej umowy.'
+                                  : 'Zapoznałem(-am) się z uwagą i świadomie akceptuję wystawienie oraz wysłanie finalnej umowy mimo tego braku.'}
+                              </span>
                             </span>
-                            <span className="leading-5">{issue.label}</span>
-                          </div>
+                          </label>
                           {issue.actionHref && (
                             <a
                               href={issue.actionHref}
@@ -3262,16 +3222,16 @@ export function EventContractTab({ eventId }: { eventId: string }) {
                 </div>
               </div>
             )}
-            {unresolvedProductClauseConflicts.length > 0 && (
+            {isWorkingDraft && unresolvedProductClauseConflicts.length > 0 && (
               <div className="rounded-xl border border-[#d3bb73]/30 bg-[#2c0b18] p-4 text-sm text-[#e5e4e2] lg:col-span-2 md:p-5">
                 <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                   <div>
                     <div className="flex items-center gap-2 font-semibold text-[#d3bb73]">
                       <ShieldAlert className="h-4 w-4" />
-                      Powtarzające się warianty ustaleń
+                      Rozbieżne wersje wspólnych ustaleń
                     </div>
                     <p className="mt-1 max-w-3xl text-xs leading-5 text-[#e5e4e2]/60">
-                      To samo źródło przekazało więcej niż jeden wariant tego samego typu.
+                      W źródłach umowy występują różne wersje tej samej wspólnej zasady.
                       Wybierz treść, która ma znaleźć się w umowie. Ustalenia specyficzne dla
                       różnych produktów nie są wzajemnie wykluczane.
                     </p>
@@ -3298,7 +3258,7 @@ export function EventContractTab({ eventId }: { eventId: string }) {
                             key={candidate.id}
                             className={`cursor-pointer rounded-lg border p-3 transition-colors ${
                               productClauseSelectionDraft[conflict.key] === candidate.id
-                                ? 'border-[#d3bb73]/60 bg-[#d3bb73]/10'
+                                ? 'border-white/10 bg-[#d3bb73]/15'
                                 : 'border-white/10 bg-white/[0.025] hover:border-white/20'
                             }`}
                           >
@@ -3409,8 +3369,8 @@ export function EventContractTab({ eventId }: { eventId: string }) {
                 </div>
               </div>
             )}
-            {!generatedPdfPath && availableTemplates.length > 0 && (
-              <div className="rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-3 md:p-4">
+            {canEdit && isWorkingDraft && !generatedPdfPath && availableTemplates.length > 0 && (
+              <div className="rounded-lg bg-[#210811]/65 p-3 md:p-4 lg:col-span-2">
                 <label className="mb-2 block text-xs font-medium uppercase tracking-wide text-[#e5e4e2]/50">
                   Szablon umowy
                 </label>
@@ -3418,13 +3378,13 @@ export function EventContractTab({ eventId }: { eventId: string }) {
                 <select
                   value={selectedTemplateId || ''}
                   onChange={(e) => handleTemplateChange(e.target.value)}
-                  className="w-full cursor-pointer rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2.5 text-sm text-[#e5e4e2] transition-all hover:border-[#d3bb73]/40 focus:outline-none focus:ring-2 focus:ring-[#d3bb73]"
+                  className="min-h-11 w-full cursor-pointer rounded-lg border border-white/10 bg-[#351020] px-3 py-2.5 text-sm text-[#e5e4e2] transition-colors hover:bg-[#411326] focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-[#d3bb73]/50"
                 >
                   {availableTemplates.map((template) => (
                     <option
                       key={template.id}
                       value={template.id}
-                      className="bg-[#1c1f33] text-[#e5e4e2]"
+                      className="bg-[#351020] text-[#e5e4e2]"
                     >
                       {template.name}
                     </option>
@@ -3437,32 +3397,17 @@ export function EventContractTab({ eventId }: { eventId: string }) {
               </div>
             )}
 
-            <div className="rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-3 md:p-4">
-              <label className="mb-2 block text-xs font-medium uppercase tracking-wide text-[#e5e4e2]/50">
-                Status umowy
-              </label>
-
-              <div className="mb-3 flex flex-wrap gap-2 text-xs">
-                <span className="rounded-full bg-[#d3bb73]/10 px-2.5 py-1 text-[#d3bb73]">
-                  Wersja {contractVersion}
-                </span>
-                {contractLockedAt && (
-                  <span className="rounded-full bg-green-500/10 px-2.5 py-1 text-green-300">
-                    Dokument zablokowany po podpisaniu
-                  </span>
-                )}
-                {companySignedAt && (
-                  <span className="rounded-full bg-blue-500/10 px-2.5 py-1 text-blue-300">
-                    Podpis firmy potwierdzony
-                  </span>
-                )}
-              </div>
-
+            <div className="flex min-w-0 flex-wrap items-center gap-3 rounded-xl bg-[#210811]/65 px-4 py-3 lg:col-span-2 md:gap-4 md:px-5">
+                <label htmlFor={`contract-status-${eventId}`} className="shrink-0 text-xs font-medium uppercase tracking-wide text-[#e5e4e2]/55">
+                  Status umowy
+                </label>
+                <div className="min-w-0 max-w-full" title={!canEdit && contractStatus === 'issued' ? 'Tylko admin może anulować wystawioną umowę' : undefined}>
+                {canEdit || contractStatus === 'draft' ? (
               <select
+                id={`contract-status-${eventId}`}
                 value={contractStatus}
                 onChange={(e) => handleStatusChange(e.target.value as ContractStatus)}
-                disabled={!canEdit && contractStatus !== 'draft'}
-                className="w-full cursor-pointer rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2.5 text-sm text-[#e5e4e2] transition-all hover:border-[#d3bb73]/40 focus:outline-none focus:ring-2 focus:ring-[#d3bb73] disabled:cursor-not-allowed disabled:opacity-50"
+                className="min-h-11 w-full cursor-pointer rounded-lg border border-white/10 bg-[#351020] px-4 py-3 text-sm text-[#e5e4e2] transition-colors hover:bg-[#411326] focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-[#d3bb73]/50"
               >
                 {(
                   [
@@ -3485,41 +3430,74 @@ export function EventContractTab({ eventId }: { eventId: string }) {
                       key={status}
                       value={status}
                       disabled={isDisabled}
-                      className="bg-[#1c1f33] text-[#e5e4e2]"
+                      className="bg-[#351020] text-[#e5e4e2]"
                     >
                       {getStatusLabel(status)}
                     </option>
                   );
                 })}
               </select>
+                ) : (
+                  <p id={`contract-status-${eventId}`} className="py-1 text-sm font-medium text-[#e5e4e2]">
+                    {getStatusLabel(contractStatus)}
+                  </p>
+                )}
 
-              {!canEdit && contractStatus === 'issued' && (
-                <p className="mt-2 text-xs text-amber-400/80">
-                  Tylko admin może anulować wystawioną umowę
-                </p>
-              )}
-
-              {getStatusDate(contractStatus) && (
-                <div className="mt-4 rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33]/70 px-3 py-2">
-                  <div className="text-xs text-[#e5e4e2]/50">Data zmiany statusu</div>
-                  <div className="mt-0.5 text-sm font-medium text-[#d3bb73]">
-                    {getStatusDate(contractStatus)}
-                  </div>
                 </div>
-              )}
 
-              {isAdmin && contractId && !companySignedAt && contractStatus !== 'draft' && contractStatus !== 'cancelled' && (
-                <button
-                  type="button"
-                  onClick={confirmCompanySignature}
-                  className="mt-3 w-full rounded-lg border border-[#d3bb73]/25 px-3 py-2 text-sm text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/10"
-                >
-                  Potwierdź podpis firmy
-                </button>
+              <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs">
+                <span className="whitespace-nowrap rounded-full bg-[#d3bb73]/10 px-2.5 py-1 text-[#d3bb73]">
+                  Wersja {contractVersion}
+                </span>
+                {contractLockedAt && (
+                  <span className="rounded-full bg-green-500/10 px-2.5 py-1 text-green-300">
+                    Dokument zablokowany po podpisaniu
+                  </span>
+                )}
+                {companySignedAt && (
+                  <span className="rounded-full bg-[#d3bb73]/10 px-2.5 py-1 text-[#d3bb73]">
+                    Podpis firmy potwierdzony
+                  </span>
+                )}
+              {getStatusDate(contractStatus) && (
+                <span className="text-xs text-[#e5e4e2]/55" title="Data zmiany statusu">
+                  {getStatusDate(contractStatus)}
+                </span>
+              )}
+              </div>
+
+              {isAdmin && contractId && contractStatus !== 'cancelled' && (
+                <div className="ml-auto flex shrink-0 flex-wrap items-center gap-2">
+                  {!companySignedAt && contractStatus !== 'draft' && (
+                    <button
+                      type="button"
+                      onClick={confirmCompanySignature}
+                      className="min-h-11 rounded-lg border-0 bg-[#d3bb73]/10 px-4 py-2.5 text-sm font-medium text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/15 focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-[#d3bb73]/50"
+                    >
+                      Potwierdź podpis firmy
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setShowCancelContractModal(true)}
+                    disabled={isGeneratingPdf || isPrintingDraft}
+                    className="min-h-11 rounded-lg border-0 bg-red-400/5 px-4 py-2.5 text-sm font-medium text-red-200/80 transition-colors hover:bg-red-400/10 focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-red-300/40 disabled:opacity-40"
+                  >
+                    Anuluj umowę
+                  </button>
+                </div>
               )}
             </div>
           </div>
         </div>
+
+        {contractId && companySignedAt && ['signed_by_client', 'signed_returned', 'cancelled'].includes(contractStatus) && (
+          <SignedContractAttachments
+            key={contractId}
+            contractId={contractId}
+            cancelled={contractStatus === 'cancelled'}
+          />
+        )}
 
         {editMode && (
           <div className="no-print rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
@@ -3774,6 +3752,24 @@ export function EventContractTab({ eventId }: { eventId: string }) {
           })()}
         </div>
       </div>
+
+      {showCancelContractModal && isAdmin && contractId && (
+        <CancelContractModal
+          contractId={contractId}
+          eventId={eventId}
+          status={contractStatus}
+          templateName={selectedTemplateName}
+          onClose={() => setShowCancelContractModal(false)}
+          onCancelled={() => {
+            setShowCancelContractModal(false);
+            setShowSendEmailModal(false);
+            setEditMode(false);
+            setContractStatus('cancelled');
+            showSnackbar('Umowa została anulowana. Treść, PDF i historia zostały zachowane.', 'success');
+            void fetchContractData();
+          }}
+        />
+      )}
 
       {contractAuditReview && (
         <ContractAuditReviewModal

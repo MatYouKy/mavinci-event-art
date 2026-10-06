@@ -1,132 +1,41 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@supabase/supabase-js';
-
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
-const redirectError = (msg: string) => {
-  redirect(`/invitation/error?message=${encodeURIComponent(msg)}`);
-};
-
-export default async function AcceptInvitationPage({
+export default async function InvitationPage({
   searchParams,
 }: {
   searchParams: { token?: string };
 }) {
-  const token = searchParams.token;
-
-
-  if (!token) {
-    redirectError('Brak tokenu zaproszenia');
-  }
-
-  const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
-  const { data: assignment, error: assignmentError } = await supabase
+  if (!searchParams.token) redirect('/invitation/error?message=Brak%20tokenu%20zaproszenia');
+  const db = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  );
+  const { data: assignment, error } = await db
     .from('employee_assignments')
-    .select(`
-      id,
-      status,
-      invitation_expires_at,
-      employee_id,
-      event_id,
-      employees!employee_assignments_employee_id_fkey(
-        id,
-        name,
-        surname,
-        email
-      ),
-      events(
-        id,
-        name,
-        event_date,
-        location,
-        created_by
-      )
-    `)
-    .eq('invitation_token', token)
+    .select('id,status,event_id,invitation_expires_at')
+    .eq('invitation_token', searchParams.token)
     .maybeSingle();
-
-  if (assignmentError || !assignment) {
-    redirectError('Nieprawidłowy token zaproszenia');
-  }
-
-  if (new Date(assignment.invitation_expires_at) < new Date()) {
-    redirectError('Token zaproszenia wygasł');
-  }
-
-  if (assignment.status !== 'pending') {
-    const event = assignment.events as any;
-    redirect(
-      `/invitation/success?event=${encodeURIComponent(event?.name || '')}&type=accepted`,
-    );
-  }
-
-  const { error: updateError } = await supabase
+  if (error || !assignment) redirect('/invitation/error?message=Nieprawidłowe%20zaproszenie');
+  // A processed link opens the event; it cannot reverse a response from the app.
+  if (assignment.status === 'accepted') redirect(`/crm/events/${assignment.event_id}`);
+  if (assignment.status !== 'pending') redirect('/invitation/success?type=rejected');
+  if (assignment.invitation_expires_at && Date.parse(assignment.invitation_expires_at) < Date.now())
+    redirect('/invitation/error?message=Token%20zaproszenia%20wygasł');
+  const result = await db
     .from('employee_assignments')
-    .update({
-      status: 'accepted',
-      responded_at: new Date().toISOString(),
-    })
-    .eq('id', assignment.id);
-
-  if (updateError) {
-    console.error('[accept-invitation] Error accepting invitation:', updateError);
-    // ✅ pokaż dokładny błąd w URL (z kodem), bez 500
-    redirectError(`Nie udało się zaktualizować statusu: ${updateError.code} ${updateError.message}`);
-  }
-
-  const event = assignment.events as any;
-  const employee = assignment.employees as any;
-
-
-  if (event.created_by) {
-    const { data: creatorNotification, error: notifError } = await supabase
-      .from('notifications')
-      .insert({
-        category: 'employee',
-        title: 'Akceptacja zaproszenia',
-        message: `${employee.name} ${employee.surname} zaakceptował zaproszenie do wydarzenia "${event.name}"`,
-        type: 'success',
-        related_entity_type: 'event',
-        related_entity_id: assignment.event_id,
-        action_url: `/crm/events/${assignment.event_id}`,
-        metadata: {
-          event_id: assignment.event_id,
-          event_name: event.name,
-          employee_id: assignment.employee_id,
-          employee_name: `${employee.name} ${employee.surname}`,
-          assignment_id: assignment.id,
-          response_type: 'accepted',
-        },
-      })
-      .select('id')
-      .single();
-
-
-    if (notifError) {
-      redirectError(`Błąd tworzenia powiadomienia: ${notifError.code} ${notifError.message}`);
-    }
-
-    if (creatorNotification) {
-      const { error: recipientError } = await supabase
-        .from('notification_recipients')
-        .insert({
-          notification_id: creatorNotification.id,
-          user_id: event.created_by,
-        });
-
-      if (recipientError) {
-        redirectError(
-          `Błąd dodania odbiorcy powiadomienia: ${recipientError.code} ${recipientError.message}`,
-        );
-      }
-    }
-  }
-
-
-  redirect(`/invitation/success?event=${encodeURIComponent(event.name)}&type=accepted`);
+    .update({ status: 'accepted', responded_at: new Date().toISOString() })
+    .eq('id', assignment.id)
+    .eq('status', 'pending')
+    .select('status')
+    .maybeSingle();
+  if (result.error) redirect('/invitation/error?message=Nie%20udało%20się%20zapisać%20odpowiedzi');
+  const current =
+    result.data ||
+    (await db.from('employee_assignments').select('status').eq('id', assignment.id).single()).data;
+  if (!current) redirect('/invitation/error?message=Nie%20udało%20się%20odczytać%20odpowiedzi');
+  if (current.status === 'accepted') redirect(`/crm/events/${assignment.event_id}`);
+  redirect(`/invitation/success?type=${encodeURIComponent(current.status)}`);
 }

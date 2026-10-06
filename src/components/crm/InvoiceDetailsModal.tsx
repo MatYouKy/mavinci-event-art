@@ -4,12 +4,15 @@ import { X, Printer, Banknote, CreditCard, Calendar, FileText, Building2, User, 
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/lib/supabase/browser';
 import { decodeTextEntities } from '@/lib/textEncoding';
+import { getPaymentAwareInvoiceFooterNote } from '@/lib/invoices/paymentAwareFooterNote';
 import Image from 'next/image';
 
 interface InvoiceDetailsModalProps {
   invoice: any;
   onClose: () => void;
   overlayClassName?: string;
+  embedded?: boolean;
+  readOnly?: boolean;
 }
 
 interface MyCompanyData {
@@ -340,7 +343,7 @@ function isKsefInvoiceMissingDetails(inv: any): boolean {
   return !hasItems && !hasXml && !hasAddress;
 }
 
-export default function InvoiceDetailsModal({ invoice, onClose, overlayClassName = 'z-50' }: InvoiceDetailsModalProps) {
+export default function InvoiceDetailsModal({ invoice, onClose, overlayClassName = 'z-50', embedded = false, readOnly = false }: InvoiceDetailsModalProps) {
   const [myCompany, setMyCompany] = useState<MyCompanyData | null>(null);
   const [dbItems, setDbItems] = useState<any[]>([]);
   const [enrichedInvoice, setEnrichedInvoice] = useState<any>(invoice);
@@ -349,15 +352,18 @@ export default function InvoiceDetailsModal({ invoice, onClose, overlayClassName
   const [fetchError, setFetchError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (embedded) return;
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
     window.addEventListener('keydown', handleEscape);
     return () => window.removeEventListener('keydown', handleEscape);
-  }, [onClose]);
+  }, [onClose, embedded]);
 
   const fetchKsefDetails = useCallback(async () => {
-    if (!isKsefInvoiceMissingDetails(invoice)) return;
+    // The detail endpoint may persist newly downloaded XML/payment metadata.
+    // A read-only preview must never trigger that enrichment operation.
+    if (readOnly || !isKsefInvoiceMissingDetails(invoice)) return;
     setLoading(true);
     setFetchError(null);
     try {
@@ -383,7 +389,7 @@ export default function InvoiceDetailsModal({ invoice, onClose, overlayClassName
     } finally {
       setLoading(false);
     }
-  }, [invoice]);
+  }, [invoice, readOnly]);
 
   useEffect(() => {
     fetchKsefDetails();
@@ -512,6 +518,13 @@ export default function InvoiceDetailsModal({ invoice, onClose, overlayClassName
   const netAmount = inv.net_amount ?? xmlData.net_amount ?? null;
   const grossAmount = inv.gross_amount ?? xmlData.gross_amount ?? null;
   const vatAmount = inv.vat_amount ?? xmlData.vat_amount ?? (netAmount != null && grossAmount != null ? Number(grossAmount) - Number(netAmount) : null);
+  const footerNote = getPaymentAwareInvoiceFooterNote(myCompany?.invoice_footer_text, {
+    paymentStatus: inv.payment_status === 'paid' || paymentInfo === 'Zapłacono'
+      ? 'paid'
+      : inv.payment_status || (inv.payment_date ? 'paid' : 'unpaid'),
+    amountDue: Number(grossAmount ?? 0),
+    paidAmount: Number(inv.paid_amount ?? 0),
+  });
 
   const paymentStatusLabel = (() => {
     if (inv.payment_status === 'paid' || inv.payment_date) return 'Opłacona';
@@ -551,10 +564,10 @@ export default function InvoiceDetailsModal({ invoice, onClose, overlayClassName
         }
       `}</style>
 
-      <div className={`fixed inset-0 flex items-center justify-center bg-black/80 p-4 ${overlayClassName}`}>
-        <div className="relative w-full max-w-5xl max-h-[92vh] overflow-y-auto rounded-xl bg-white shadow-2xl">
+      <div className={embedded ? 'w-full' : `fixed inset-0 flex items-center justify-center bg-black/80 p-4 ${overlayClassName}`}>
+        <div className={embedded ? 'w-full bg-white' : 'relative w-full max-w-5xl max-h-[92vh] overflow-y-auto rounded-xl bg-white shadow-2xl'}>
           {/* Toolbar */}
-          <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-200 bg-white px-6 py-3 print:hidden">
+          <div className={embedded ? 'hidden' : 'sticky top-0 z-10 flex items-center justify-between border-b border-gray-200 bg-white px-6 py-3 print:hidden'}>
             <div className="flex items-center gap-3">
               <FileText className="h-5 w-5 text-gray-500" />
               <h2 className="text-lg font-semibold text-gray-900">Szczegóły faktury</h2>
@@ -918,9 +931,9 @@ export default function InvoiceDetailsModal({ invoice, onClose, overlayClassName
             )}
 
             {/* Footer */}
-            {isIssued && myCompany?.invoice_footer_text && (
+            {isIssued && footerNote && (
               <div className="mb-4 rounded border border-gray-200 bg-gray-50 p-3 text-xs text-gray-700 whitespace-pre-wrap">
-                {myCompany.invoice_footer_text}
+                {footerNote}
               </div>
             )}
 

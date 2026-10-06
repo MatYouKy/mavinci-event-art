@@ -1,8 +1,10 @@
 /**
- * Konwersja faktury proforma na fakturę VAT
+ * Konwersja całej pro formy na fakturę VAT lub opłaconą zaliczkę.
  */
 
 import { supabase } from '@/lib/supabase/browser';
+import { DEFAULT_INVOICE_PAYMENT_TERM_DAYS, getInvoicePaymentDueDate } from './paymentTerm';
+import { getCurrentInvoiceIssuer } from './currentInvoiceIssuer';
 
 interface ConvertResult {
   success: boolean;
@@ -16,7 +18,8 @@ export interface ConvertProformaOptions {
   issueDate?: string;
   saleDate?: string;
   paymentDueDate?: string;
-  advancePercent?: number;
+  receivedPaymentConfirmed?: boolean;
+  receivedPaymentDate?: string;
   buyerData?: {
     buyer_name?: string;
     buyer_nip?: string | null;
@@ -28,6 +31,31 @@ export interface ConvertProformaOptions {
 }
 
 const round2 = (value: number) => Number(value.toFixed(2));
+
+export function parseProformaPaymentDate(value: string): string | null {
+  const input = value.trim();
+  const polish = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(input);
+  const iso = polish ? `${polish[3]}-${polish[2]}-${polish[1]}` : input;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return null;
+  const parsed = new Date(`${iso}T12:00:00Z`);
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === iso
+    ? iso
+    : null;
+}
+
+export function getRecordedProformaPaymentDate(
+  proforma: { total_gross: number; manual_paid_amount?: number | null; paid_date?: string | null; paid_at?: string | null },
+  issueDate: string,
+  today: string,
+): string | null {
+  const total = Number(proforma.total_gross);
+  const received = Number(proforma.manual_paid_amount ?? 0);
+  const date = parseProformaPaymentDate(proforma.paid_date || proforma.paid_at?.split('T')[0] || '');
+  // A status label alone is not receipt evidence. Bank-linked receipts that
+  // are not available in this snapshot are confirmed explicitly in the form.
+  return total > 0 && Number.isFinite(received) && received >= total - 0.01
+    && date && date <= today && date <= issueDate ? date : null;
+}
 
 type PreparedInvoiceLine = {
   position_number: number;
@@ -57,7 +85,7 @@ export async function convertProformaToInvoice(
     // 1. Pobierz proformę z pozycjami
     const { data: proforma, error: proformaError } = await supabase
       .from('invoices')
-      .select('*, invoice_items(*)')
+      .select('*, invoice_items(*), invoice_order_items(*)')
       .eq('id', proformaId)
       .single();
 
@@ -96,31 +124,28 @@ export async function convertProformaToInvoice(
     }
 
     // 5. Pobierz aktualnego użytkownika
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    const { data: employee } = await supabase
-      .from('employees')
-      .select('id')
-      .eq('email', user?.email)
-      .maybeSingle();
+    const issuer = await getCurrentInvoiceIssuer();
 
     // 6. Przygotuj pełny snapshot dokumentu i — dla zaliczki — osobny snapshot zamówienia.
     const today = new Date().toISOString().split('T')[0];
-    const defaultDue = new Date();
-    defaultDue.setDate(defaultDue.getDate() + 14);
+    const defaultDue = getInvoicePaymentDueDate(options.issueDate || today, DEFAULT_INVOICE_PAYMENT_TERM_DAYS);
 
     if (!Array.isArray(proforma.invoice_items) || proforma.invoice_items.length === 0) {
       return { success: false, error: 'Proforma nie zawiera pozycji' };
     }
 
-    const advancePercent = options.advancePercent ?? 30;
-    if (targetType === 'advance' && (advancePercent <= 0 || advancePercent > 100)) {
-      return { success: false, error: 'Zaliczka musi być większa od 0% i nie może przekraczać 100%' };
+    const recordedPaymentDate = getRecordedProformaPaymentDate(proforma, options.issueDate || today, today);
+    const paymentDate = recordedPaymentDate || parseProformaPaymentDate(options.receivedPaymentDate || '');
+    if (targetType === 'advance') {
+      if ((!recordedPaymentDate && !options.receivedPaymentConfirmed) || !paymentDate) {
+        return { success: false, error: 'Potwierdź otrzymanie całej kwoty pro formy i podaj rzeczywistą datę wpłaty.' };
+      }
+      if (paymentDate > today || paymentDate > (options.issueDate || today)) {
+        return { success: false, error: 'Data wpłaty nie może być w przyszłości ani po dacie wystawienia zaliczki.' };
+      }
     }
 
-    const orderItems: PreparedInvoiceLine[] = proforma.invoice_items.map(
-      (item: any, index: number) => {
+    const prepareLine = (item: any, index: number): PreparedInvoiceLine => {
       const quantity = Number(item.quantity ?? 0);
       const priceNet = Number(item.price_net ?? 0);
       const vatRate = Number(item.vat_rate ?? 0);
@@ -139,22 +164,15 @@ export async function convertProformaToInvoice(
         vat_amount: vatAmount,
         value_gross: round2(valueNet + vatAmount),
       };
-      },
-    );
-
-    const ratio = targetType === 'advance' ? advancePercent / 100 : 1;
-    const documentItems = orderItems.map((item) => {
-      const priceNet = round2(item.price_net * ratio);
-      const valueNet = round2(item.quantity * priceNet);
-      const vatAmount = round2((valueNet * item.vat_rate) / 100);
-      return {
-        ...item,
-        price_net: priceNet,
-        value_net: valueNet,
-        vat_amount: vatAmount,
-        value_gross: round2(valueNet + vatAmount),
-      };
-    });
+    };
+    // The pro forma already specifies the requested amount. Never apply a
+    // second percentage here, even when it represents only part of an order.
+    const documentItems = proforma.invoice_items.map(prepareLine);
+    const orderItems: PreparedInvoiceLine[] = (
+      Array.isArray(proforma.invoice_order_items) && proforma.invoice_order_items.length > 0
+        ? proforma.invoice_order_items
+        : proforma.invoice_items
+    ).map(prepareLine);
 
     const orderTotals = orderItems.reduce(
       (sum: { net: number; vat: number; gross: number }, item: PreparedInvoiceLine) => ({
@@ -172,11 +190,15 @@ export async function convertProformaToInvoice(
       status: 'draft',
       payment_status: 'unpaid',
       paid_amount: 0,
+      // The RPC records the confirmed receipt only after storing all items,
+      // in the same transaction. Draft payment normalization cannot erase it.
+      received_payment_confirmed: targetType === 'advance' && options.receivedPaymentConfirmed === true,
+      received_payment_date: targetType === 'advance' ? paymentDate : null,
       related_invoice_id: proformaId,
       issue_date: options.issueDate || today,
       sale_date: options.saleDate || today,
-      payment_due_date: options.paymentDueDate || defaultDue.toISOString().split('T')[0],
-      created_by: employee?.id,
+      payment_due_date: options.paymentDueDate || defaultDue,
+      created_by: issuer.employeeId,
       invoice_type: targetType,
       my_company_id: proforma.my_company_id,
       event_id: proforma.event_id,
@@ -212,7 +234,7 @@ export async function convertProformaToInvoice(
       issue_place: proforma.issue_place,
       company_logo_url: proforma.company_logo_url || null,
       footer_note: proforma.footer_note,
-      signature_name: proforma.signature_name,
+      signature_name: issuer.signatureName,
       website: proforma.website,
       currency_code: proforma.currency_code || 'PLN',
       order_total_net: targetType === 'advance' ? orderTotals.net : null,
@@ -225,7 +247,7 @@ export async function convertProformaToInvoice(
     };
 
     const { data: invoiceId, error: conversionError } = await supabase.rpc(
-      'convert_proforma_atomic',
+      'convert_proforma_with_payment_atomic',
       {
         p_proforma_id: proformaId,
         p_invoice: invoiceData,
@@ -238,7 +260,9 @@ export async function convertProformaToInvoice(
       console.error('Error converting proforma atomically:', conversionError);
       return {
         success: false,
-        error: conversionError?.message || 'Błąd podczas tworzenia dokumentu z proformy',
+        error: conversionError?.code === 'PGRST202'
+          ? 'Nowy sposób rozliczania pro form wymaga aktualizacji bazy. Dokument nie został utworzony.'
+          : conversionError?.message || 'Błąd podczas tworzenia dokumentu z proformy',
       };
     }
 

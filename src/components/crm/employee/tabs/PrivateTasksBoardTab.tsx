@@ -13,9 +13,11 @@ import {
   Clock,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
+import { shouldAutomateTaskTimer } from '@/lib/CRM/tasks/taskTimerPreference';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 import { useMobile } from '@/hooks/useMobile';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import TaskAssigneeAvatars, { Assignee } from '@/components/crm/TaskAssigneeAvatars';
 
 interface Task {
@@ -56,9 +58,14 @@ export default function PrivateTasksBoardTab({
   tasksState,
 }: PrivateTasksBoardProps) {
   const router = useRouter();
+  const { currentEmployee, isAdmin } = useCurrentEmployee();
   const [tasks, setTasks] = useState<Task[]>(tasksState);
   const [loading, setLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+  // Keep one ID for the lifetime of the form, including retries after a lost response.
+  const newTaskIdRef = useRef<string | null>(null);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [draggedTask, setDraggedTask] = useState<Task | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
@@ -225,7 +232,7 @@ export default function PrivateTasksBoardTab({
 
           if (isRelevant) {
             setTasks((prevTasks) => [
-              ...prevTasks,
+              ...prevTasks.filter((task) => task.id !== newTask.id),
               {
                 ...newTask,
                 task_assignees: assigneesWithEmployees,
@@ -248,6 +255,8 @@ export default function PrivateTasksBoardTab({
         { event: 'INSERT', schema: 'public', table: 'task_assignees' },
         async (payload) => {
           const newAssignee = payload.new as any;
+          // An assignment can arrive after the task INSERT event. Load it for its new owner.
+          if (newAssignee.employee_id === employeeId) { void fetchTasks(); return; }
 
           const { data: employee } = await supabase
             .from('employees')
@@ -262,7 +271,7 @@ export default function PrivateTasksBoardTab({
                   ? {
                       ...task,
                       task_assignees: [
-                        ...(task.task_assignees || []),
+                        ...(task.task_assignees || []).filter((item) => item.employee_id !== newAssignee.employee_id),
                         { employee_id: newAssignee.employee_id, employees: employee },
                       ],
                     }
@@ -277,6 +286,7 @@ export default function PrivateTasksBoardTab({
         { event: 'DELETE', schema: 'public', table: 'task_assignees' },
         (payload) => {
           const deletedAssignee = payload.old as any;
+          if (!deletedAssignee.employee_id || deletedAssignee.employee_id === employeeId) { void fetchTasks(); return; }
 
           setTasks((prevTasks) =>
             prevTasks.map((task) =>
@@ -292,9 +302,12 @@ export default function PrivateTasksBoardTab({
           );
         },
       )
-      .subscribe();
+      .subscribe((status) => { if (status === 'SUBSCRIBED') void fetchTasks(); });
 
+    const refreshOnFocus = () => { void fetchTasks(); };
+    window.addEventListener('focus', refreshOnFocus);
     return () => {
+      window.removeEventListener('focus', refreshOnFocus);
       supabase.removeChannel(tasksChannel);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -523,7 +536,21 @@ export default function PrivateTasksBoardTab({
     const oldColumn = draggedTask.board_column;
     const taskId = draggedTask.id;
 
-    if (columnId === 'in_progress' && oldColumn !== 'in_progress') {
+    let automateTimer = true;
+    if (columnId === 'in_progress' || oldColumn === 'in_progress') {
+      try {
+        automateTimer = await shouldAutomateTaskTimer(currentEmployee?.id, isAdmin);
+      } catch (error) {
+        console.error('Error reading task timer preference:', error);
+        setDraggedTask(null);
+        setDragOverColumn(null);
+        stopAutoScroll();
+        showSnackbar('Nie udało się wczytać ustawień czasu pracy. Spróbuj ponownie.', 'error');
+        return;
+      }
+    }
+
+    if (automateTimer && columnId === 'in_progress' && oldColumn !== 'in_progress') {
       if (activeTimer && activeTimer.task_id !== taskId) {
         setDraggedTask(null);
         setDragOverColumn(null);
@@ -571,7 +598,7 @@ export default function PrivateTasksBoardTab({
       }
     }
 
-    if ((columnId === 'review' || columnId === 'completed') && oldColumn === 'in_progress') {
+    if (automateTimer && (columnId === 'review' || columnId === 'completed') && oldColumn === 'in_progress') {
       if (activeTimer && activeTimer.task_id === taskId) {
         const shouldStopTimer = await showConfirm(
           'Zatrzymać czas pracy?',
@@ -621,6 +648,8 @@ export default function PrivateTasksBoardTab({
   };
 
   const handleOpenModal = (task?: Task, defaultColumn?: string) => {
+    if (savingRef.current || !isOwnProfile) return;
+    newTaskIdRef.current = task ? null : crypto.randomUUID();
     if (task) {
       setEditingTask(task);
       setFormData({
@@ -644,24 +673,30 @@ export default function PrivateTasksBoardTab({
   };
 
   const handleCloseModal = () => {
+    if (savingRef.current) return;
+    newTaskIdRef.current = null;
     setShowModal(false);
     setEditingTask(null);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (savingRef.current || !isOwnProfile) return;
 
     if (!formData.title.trim()) {
       showSnackbar('Tytuł zadania jest wymagany', 'warning');
       return;
     }
 
+    savingRef.current = true;
+    setSaving(true);
+    let taskSaved = false;
     try {
       if (editingTask) {
         const { error } = await supabase
           .from('tasks')
           .update({
-            title: formData.title,
+            title: formData.title.trim(),
             description: formData.description || null,
             priority: formData.priority,
             board_column: formData.board_column,
@@ -672,37 +707,51 @@ export default function PrivateTasksBoardTab({
         if (error) throw error;
         showSnackbar('Zadanie zostało zaktualizowane', 'success');
       } else {
-        const { data: newTask, error: insertError } = await supabase
+        const taskId = newTaskIdRef.current ?? crypto.randomUUID();
+        newTaskIdRef.current = taskId;
+        const { error: saveError } = await supabase
           .from('tasks')
-          .insert({
-            title: formData.title,
+          .upsert({
+            id: taskId,
+            title: formData.title.trim(),
             description: formData.description || null,
             priority: formData.priority,
             board_column: formData.board_column,
             due_date: formData.due_date || null,
-            status: 'todo',
+            status: formData.board_column === 'review' ? 'in_progress' : formData.board_column,
             is_private: true,
             owner_id: employeeId,
             created_by: employeeId,
-          })
-          .select()
-          .single();
+          }, { onConflict: 'id' });
 
-        if (insertError) throw insertError;
+        if (saveError) throw saveError;
+        taskSaved = true;
 
-        const { error: assignError } = await supabase.from('task_assignees').insert({
-          task_id: newTask.id,
+        // auto_assign_task_creator may have already inserted this assignment.
+        const { error: assignError } = await supabase.from('task_assignees').upsert({
+          task_id: taskId,
           employee_id: employeeId,
-        });
+          assigned_by: currentEmployee?.id || employeeId,
+        }, { onConflict: 'task_id,employee_id', ignoreDuplicates: true });
 
         if (assignError) throw assignError;
         showSnackbar('Zadanie zostało utworzone', 'success');
       }
 
+      savingRef.current = false;
       handleCloseModal();
+      void fetchTasks();
     } catch (error) {
-      console.error('Error saving task:', error);
-      showSnackbar('Błąd podczas zapisywania zadania', 'error');
+      console.error('Error saving private task:', error);
+      showSnackbar(
+        taskSaved
+          ? 'Zadanie jest zapisane, ale nie udało się dokończyć przypisania. Ponów zapis — nie powstanie drugie zadanie.'
+          : 'Nie udało się potwierdzić zapisu zadania. Możesz ponowić zapis bez tworzenia duplikatu.',
+        'error',
+      );
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
     }
   };
 
@@ -1081,9 +1130,10 @@ export default function PrivateTasksBoardTab({
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
+                  disabled={saving}
+                  className="flex-1 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:cursor-wait disabled:opacity-50"
                 >
-                  {editingTask ? 'Zapisz' : 'Utwórz'}
+                  {saving ? 'Zapisywanie…' : editingTask ? 'Zapisz' : 'Utwórz'}
                 </button>
               </div>
             </form>

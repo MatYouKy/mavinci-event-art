@@ -1,4 +1,8 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import { useOperationalStages } from '../hooks/useOperationalStages';
+import { OPERATIONAL_LABELS, usesOperationalStages } from '../lib/operationalStages';
+import React, { useState, useCallback } from 'react';
+import { useForegroundEffect } from '../hooks/useForegroundEffect';
+import { createRefreshQueue } from '../lib/refreshQueue';
 import {
   View,
   Text,
@@ -98,118 +102,146 @@ export default function DashboardScreen() {
   const navigation = useNavigation<any>();
   const [upcomingEvents, setUpcomingEvents] = useState<DashboardEvent[]>([]);
   const [myTasks, setMyTasks] = useState<DashboardTask[]>([]);
+  const [damaged, setDamaged] = useState<any[]>([]);
+  const [loadError, setLoadError] = useState('');
+  const isWarehouse = employee?.permissions?.includes('equipment_manage') === true;
+  const operational = usesOperationalStages(employee);
+  const { stage, error: stageError } = useOperationalStages(upcomingEvents, operational);
   const [loading, setLoading] = useState(false);
   const { width } = useWindowDimensions();
   const isTablet = width >= TABLET_BREAKPOINT;
 
-  useEffect(() => {
-    loadDashboardData();
-  }, [employee?.id]);
+  useForegroundEffect(
+    (signal) => {
+      if (!employee?.id) return;
+      const queue = createRefreshQueue(signal, () => loadDashboardData());
+      void queue.refresh();
 
-  useEffect(() => {
-    if (!employee?.id) return;
+      const taskAssigneesChannel = supabase
+        .channel(`dashboard_task_assignees_${employee.id}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'task_assignees',
+            filter: `employee_id=eq.${employee.id}`,
+          },
+          () => {
+            queue.schedule();
+          },
+        )
+        .subscribe();
 
-    const taskAssigneesChannel = supabase
-      .channel(`dashboard_task_assignees_${employee.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'task_assignees',
-          filter: `employee_id=eq.${employee.id}`,
-        },
-        () => {
-          loadDashboardData();
-        }
-      )
-      .subscribe();
+      const tasksChannel = supabase
+        .channel(`dashboard_tasks_${employee.id}`)
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tasks' }, () => {
+          queue.schedule();
+        })
+        .subscribe();
 
-    const tasksChannel = supabase
-      .channel(`dashboard_tasks_${employee.id}`)
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'tasks' },
-        () => {
-          loadDashboardData();
-        }
-      )
-      .subscribe();
+      const employeeAssignmentsChannel = supabase
+        .channel(`dashboard_employee_assignments_${employee.id}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'employee_assignments',
+            filter: `employee_id=eq.${employee.id}`,
+          },
+          () => {
+            queue.schedule();
+          },
+        )
+        .subscribe();
 
-    const employeeAssignmentsChannel = supabase
-      .channel(`dashboard_employee_assignments_${employee.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'employee_assignments',
-          filter: `employee_id=eq.${employee.id}`,
-        },
-        () => {
-          loadDashboardData();
-        }
-      )
-      .subscribe();
+      const eventsChannel = supabase
+        .channel(`dashboard_events_${employee.id}`)
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'events' }, () => {
+          queue.schedule();
+        })
+        .subscribe();
 
-    const eventsChannel = supabase
-      .channel(`dashboard_events_${employee.id}`)
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'events' },
-        () => {
-          loadDashboardData();
-        }
-      )
-      .subscribe();
+      const warehouseChannel = isWarehouse
+        ? supabase
+            .channel(`dashboard_warehouse_${employee.id}`)
+            .on(
+              'postgres_changes',
+              { event: '*', schema: 'public', table: 'equipment_units' },
+              () => queue.schedule(),
+            )
+            .on(
+              'postgres_changes',
+              { event: '*', schema: 'public', table: 'event_warehouse_handoffs' },
+              () => queue.schedule(),
+            )
+            .on(
+              'postgres_changes',
+              { event: '*', schema: 'public', table: 'event_realizations' },
+              () => queue.schedule(),
+            )
+            .subscribe()
+        : null;
 
-    return () => {
-      supabase.removeChannel(taskAssigneesChannel);
-      supabase.removeChannel(tasksChannel);
-      supabase.removeChannel(employeeAssignmentsChannel);
-      supabase.removeChannel(eventsChannel);
-    };
-  }, [employee?.id]);
+      return () => {
+        return Promise.all([
+          supabase.removeChannel(taskAssigneesChannel),
+          supabase.removeChannel(tasksChannel),
+          supabase.removeChannel(employeeAssignmentsChannel),
+          supabase.removeChannel(eventsChannel),
+          ...(warehouseChannel ? [supabase.removeChannel(warehouseChannel)] : []),
+        ]);
+      };
+    },
+    [employee?.id, isWarehouse],
+  );
 
   const loadDashboardData = useCallback(async () => {
     if (!employee?.id) return;
     setLoading(true);
+    setLoadError('');
     try {
       // Fetch upcoming events assigned to this employee (accepted) or created by them
-      const { data: assignedEventIds } = await supabase
+      const { data: assignedEventIds, error: assignmentError } = await supabase
         .from('employee_assignments')
         .select('event_id')
         .eq('employee_id', employee.id)
         .eq('status', 'accepted');
 
+      if (assignmentError) throw assignmentError;
       const acceptedIds = assignedEventIds?.map((a) => a.event_id) ?? [];
 
       // Also fetch events created by this employee
-      const { data: createdEvents } = await supabase
+      const { data: createdEvents, error: createdError } = await supabase
         .from('events')
         .select('id')
         .eq('created_by', employee.id)
         .gte('event_date', new Date().toISOString().split('T')[0])
         .not('status', 'eq', 'cancelled');
 
+      if (createdError) throw createdError;
       const createdIds = (createdEvents ?? []).map((e) => e.id);
       const eventIds = [...new Set([...acceptedIds, ...createdIds])];
 
       let events: DashboardEvent[] = [];
       if (eventIds.length > 0) {
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from('events')
-          .select(`
+          .select(
+            `
             id, name, event_date, status,
             event_categories(name, color),
             creator:employees!created_by(name, surname)
-          `)
+          `,
+          )
           .in('id', eventIds)
           .gte('event_date', new Date().toISOString().split('T')[0])
           .not('status', 'eq', 'cancelled')
           .order('event_date', { ascending: true })
           .limit(8);
 
+        if (error) throw error;
         events = (data ?? []).map((e: any) => ({
           id: e.id,
           name: e.name,
@@ -222,34 +254,96 @@ export default function DashboardScreen() {
             : null,
         }));
       }
-      setUpcomingEvents(events);
-
-      // Fetch tasks assigned to the employee
-      const { data: assignedTaskIds } = await supabase
-        .from('task_assignees')
-        .select('task_id')
-        .eq('employee_id', employee.id);
-
-      const taskIds = assignedTaskIds?.map((a) => a.task_id) ?? [];
-
-      let tasks: DashboardTask[] = [];
-      if (taskIds.length > 0) {
-        const { data } = await supabase
-          .from('tasks')
-          .select('id, title, priority, status, board_column, due_date, created_at')
-          .in('id', taskIds)
-          .in('board_column', ['todo', 'in_progress', 'review'])
-          .limit(50);
-
-        tasks = sortTasksByUrgency(data ?? []).slice(0, 8);
+      const [realizations, warehouseEvents, broken] = await Promise.all([
+        supabase.rpc('get_my_realizations'),
+        isWarehouse
+          ? supabase
+              .from('events')
+              .select('id,name,event_date,status')
+              .in('status', [
+                'offer_accepted',
+                'in_preparation',
+                'ready_for_live',
+                'in_progress',
+                'invoiced',
+                'settled',
+              ])
+              .or(`status.not.in.(invoiced,settled),event_end_date.gte.${new Date().toISOString()}`)
+              .order('event_date', { ascending: true })
+              .limit(30)
+          : Promise.resolve({ data: [], error: null }),
+        isWarehouse
+          ? supabase
+              .from('equipment_units')
+              .select(
+                'id,equipment_id,unit_serial_number,condition_notes,equipment:equipment_items(name)',
+              )
+              .eq('status', 'damaged')
+              .order('updated_at', { ascending: false })
+              .limit(20)
+          : Promise.resolve({ data: [], error: null }),
+      ]);
+      if (realizations.error || warehouseEvents.error || broken.error)
+        throw realizations.error || warehouseEvents.error || broken.error;
+      const warehouseRows = warehouseEvents.data || [];
+      const warehouseStates = warehouseRows.length
+        ? await supabase.rpc('get_event_operational_states', {
+            p_event_ids: warehouseRows.map((event: any) => event.id),
+          })
+        : { data: [], error: null };
+      if (warehouseStates.error) throw warehouseStates.error;
+      const states = new Map(
+        (warehouseStates.data || []).map((row: any) => [row.event_id, row.status]),
+      );
+      const merged = new Map(events.map((event) => [event.id, event]));
+      for (const entry of [...warehouseRows, ...(realizations.data || [])]) {
+        const event = {
+          ...entry,
+          operational_status: entry.operational_status || states.get(entry.id),
+        };
+        if (
+          ['completed', 'settled', 'cancelled'].includes(event.operational_status || event.status)
+        ) {
+          merged.delete(event.id);
+          continue;
+        }
+        merged.set(event.id, {
+          ...event,
+          status: event.operational_status || event.status,
+          category_name: null,
+          category_color: null,
+          creator_name: null,
+        });
       }
-      setMyTasks(tasks);
+      setUpcomingEvents(
+        [...merged.values()].sort(
+          (a, b) => new Date(a.event_date).getTime() - new Date(b.event_date).getTime(),
+        ),
+      );
+      setDamaged(broken.data || []);
+
+      // Filter assignments on the server: a large employee history must not become
+      // an oversized URL containing every assigned task UUID.
+      const { data: tasks, error: tasksError } = await supabase
+        .from('tasks')
+        .select(
+          'id, title, priority, status, board_column, due_date, created_at, task_assignees!inner(employee_id)',
+        )
+        .eq('task_assignees.employee_id', employee.id)
+        .in('board_column', ['todo', 'in_progress', 'review'])
+        .limit(50);
+
+      if (tasksError) throw tasksError;
+      setMyTasks(sortTasksByUrgency(tasks ?? []).slice(0, 8));
     } catch (error) {
       console.error('Error loading dashboard:', error);
+      setLoadError(
+        'Nie udało się odświeżyć wszystkich danych. Pociągnij ekran w dół, aby ponowić.',
+      );
     } finally {
       setLoading(false);
     }
-  }, [employee?.id]);
+  }, [employee?.id, isWarehouse]);
 
   const handleEventPress = (event: DashboardEvent) => {
     navigation.navigate('Events', {
@@ -282,6 +376,68 @@ export default function DashboardScreen() {
         <Text style={styles.name}>{employee?.nickname || employee?.name}</Text>
       </View>
 
+      {!!(loadError || stageError) && (
+        <Text accessibilityRole="alert" style={{ color: colors.status.error, padding: 16 }}>
+          {loadError || stageError}
+        </Text>
+      )}
+      {isWarehouse && (
+        <View style={{ paddingHorizontal: 16, gap: 12 }}>
+          <View style={{ flexDirection: 'row', gap: 12, flexWrap: 'wrap' }}>
+            {[
+              { screen: 'Equipment', label: 'Sprzęt' },
+              { screen: 'Events', label: 'Wydarzenia' },
+              { screen: 'Tasks', label: 'Moje zadania' },
+            ].map((item) => (
+              <TouchableOpacity
+                key={item.screen}
+                accessibilityRole="button"
+                onPress={() => navigation.navigate(item.screen)}
+                style={{
+                  padding: 12,
+                  borderRadius: 8,
+                  backgroundColor: colors.background.secondary,
+                }}
+              >
+                <Text style={{ color: colors.primary.gold }}>{item.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <Text style={{ color: colors.text.primary, fontSize: 18 }}>Uszkodzony sprzęt</Text>
+          {damaged.length === 0 && !loadError && (
+            <Text style={{ color: colors.text.secondary }}>
+              Brak egzemplarzy oznaczonych jako uszkodzone.
+            </Text>
+          )}
+          {damaged.map((unit) => (
+            <TouchableOpacity
+              key={unit.id}
+              accessibilityRole="button"
+              onPress={() => navigation.navigate('Equipment', { equipmentId: unit.equipment_id })}
+              style={{ padding: 12, borderRadius: 8, backgroundColor: colors.background.secondary }}
+            >
+              <Text style={{ color: colors.text.primary }}>
+                {(Array.isArray(unit.equipment) ? unit.equipment[0] : unit.equipment)?.name ||
+                  'Sprzęt'}{' '}
+                · <Text style={{ color: colors.status.error }}>Uszkodzony</Text>
+              </Text>
+              {!!unit.unit_serial_number && (
+                <Text style={{ color: colors.text.secondary }}>
+                  Nr seryjny: {unit.unit_serial_number}
+                </Text>
+              )}
+              {!!unit.condition_notes && (
+                <Text style={{ color: colors.text.secondary }}>{unit.condition_notes}</Text>
+              )}
+            </TouchableOpacity>
+          ))}
+          {damaged.length === 20 && (
+            <Text style={{ color: colors.text.secondary }}>
+              Pokazano 20 ostatnio aktualizowanych egzemplarzy.
+            </Text>
+          )}
+        </View>
+      )}
       {/* Quick Stats */}
       <View style={styles.statsGrid}>
         <View style={[styles.statCard, { borderLeftColor: colors.primary.gold }]}>
@@ -298,167 +454,169 @@ export default function DashboardScreen() {
       </View>
 
       <View style={isTablet ? styles.tabletColumns : undefined}>
-      {/* Upcoming Events */}
-      <View style={[styles.section, isTablet && styles.tabletColumn]}>
-        <Text style={styles.sectionTitle}>Nadchodzące wydarzenia</Text>
-        {upcomingEvents.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Feather name="calendar" color={colors.text.tertiary} size={48} />
-            <Text style={styles.emptyText}>Brak nadchodzących wydarzeń</Text>
-          </View>
-        ) : (
-          upcomingEvents.map((event) => (
-            <TouchableOpacity
-              key={event.id}
-              style={styles.card}
-              onPress={() => handleEventPress(event)}
-              activeOpacity={0.7}
-            >
-              <View style={styles.cardHeader}>
-                <Text style={styles.cardTitle} numberOfLines={2}>
-                  {event.name}
-                </Text>
-              </View>
+        {/* Upcoming Events */}
+        <View style={[styles.section, isTablet && styles.tabletColumn]}>
+          <Text style={styles.sectionTitle}>Nadchodzące wydarzenia</Text>
+          {upcomingEvents.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Feather name="calendar" color={colors.text.tertiary} size={48} />
+              <Text style={styles.emptyText}>Brak nadchodzących wydarzeń</Text>
+            </View>
+          ) : (
+            upcomingEvents.map((event) => (
+              <TouchableOpacity
+                key={event.id}
+                style={styles.card}
+                onPress={() => handleEventPress(event)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.cardHeader}>
+                  <Text style={styles.cardTitle} numberOfLines={2}>
+                    {event.name}
+                  </Text>
+                </View>
 
-              <View style={styles.labelsRow}>
-                {event.category_name && (
+                <View style={styles.labelsRow}>
+                  {event.category_name && (
+                    <View
+                      style={[
+                        styles.badge,
+                        {
+                          backgroundColor: (event.category_color || '#6b7280') + '20',
+                          borderColor: (event.category_color || '#6b7280') + '40',
+                        },
+                      ]}
+                    >
+                      <View
+                        style={[
+                          styles.badgeDot,
+                          { backgroundColor: event.category_color || '#6b7280' },
+                        ]}
+                      />
+                      <Text
+                        style={[styles.badgeText, { color: event.category_color || '#6b7280' }]}
+                      >
+                        {event.category_name}
+                      </Text>
+                    </View>
+                  )}
+
                   <View
                     style={[
                       styles.badge,
                       {
-                        backgroundColor: (event.category_color || '#6b7280') + '20',
-                        borderColor: (event.category_color || '#6b7280') + '40',
+                        backgroundColor: (EVENT_STATUS_COLORS[stage(event)] || '#6b7280') + '20',
+                        borderColor: (EVENT_STATUS_COLORS[stage(event)] || '#6b7280') + '40',
                       },
                     ]}
                   >
-                    <View
-                      style={[
-                        styles.badgeDot,
-                        { backgroundColor: event.category_color || '#6b7280' },
-                      ]}
-                    />
                     <Text
-                      style={[styles.badgeText, { color: event.category_color || '#6b7280' }]}
+                      style={[
+                        styles.badgeText,
+                        { color: EVENT_STATUS_COLORS[stage(event)] || '#6b7280' },
+                      ]}
                     >
-                      {event.category_name}
+                      {(operational
+                        ? OPERATIONAL_LABELS[stage(event)]
+                        : EVENT_STATUS_LABELS[event.status]) || 'Wydarzenie'}
                     </Text>
                   </View>
-                )}
-
-                <View
-                  style={[
-                    styles.badge,
-                    {
-                      backgroundColor: (EVENT_STATUS_COLORS[event.status] || '#6b7280') + '20',
-                      borderColor: (EVENT_STATUS_COLORS[event.status] || '#6b7280') + '40',
-                    },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.badgeText,
-                      { color: EVENT_STATUS_COLORS[event.status] || '#6b7280' },
-                    ]}
-                  >
-                    {EVENT_STATUS_LABELS[event.status] || event.status}
-                  </Text>
                 </View>
-              </View>
 
-              <View style={styles.cardFooter}>
-                <Feather name="calendar" color={colors.text.tertiary} size={14} />
-                <Text style={styles.cardDate}>
-                  {new Date(event.event_date).toLocaleDateString('pl-PL', {
-                    day: 'numeric',
-                    month: 'short',
-                    year: 'numeric',
-                  })}
-                </Text>
-                {event.creator_name && (
-                  <>
-                    <Text style={styles.separator}>•</Text>
-                    <Feather name="user" color={colors.text.tertiary} size={12} />
-                    <Text style={styles.cardDate}>{event.creator_name}</Text>
-                  </>
-                )}
-              </View>
-            </TouchableOpacity>
-          ))
-        )}
-      </View>
-
-      {/* My Tasks */}
-      <View style={[styles.section, isTablet && styles.tabletColumn]}>
-        <Text style={styles.sectionTitle}>Moje zadania</Text>
-        {myTasks.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Feather name="check-square" color={colors.text.tertiary} size={48} />
-            <Text style={styles.emptyText}>Brak zadań do wykonania</Text>
-          </View>
-        ) : (
-          myTasks.map((task) => (
-            <TouchableOpacity
-              key={task.id}
-              style={styles.card}
-              onPress={() => handleTaskPress(task)}
-              activeOpacity={0.7}
-            >
-              <View style={styles.cardHeader}>
-                <Text style={styles.cardTitle} numberOfLines={2}>
-                  {task.title}
-                </Text>
-                <View
-                  style={[
-                    styles.priorityBadge,
-                    { borderColor: PRIORITY_COLORS[task.priority] || '#6b7280' },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.priorityText,
-                      { color: PRIORITY_COLORS[task.priority] || '#6b7280' },
-                    ]}
-                  >
-                    {PRIORITY_LABELS[task.priority] || task.priority}
+                <View style={styles.cardFooter}>
+                  <Feather name="calendar" color={colors.text.tertiary} size={14} />
+                  <Text style={styles.cardDate}>
+                    {new Date(event.event_date).toLocaleDateString('pl-PL', {
+                      day: 'numeric',
+                      month: 'short',
+                      year: 'numeric',
+                    })}
                   </Text>
-                </View>
-              </View>
-
-              <View style={styles.cardFooter}>
-                <View
-                  style={[
-                    styles.statusDot,
-                    {
-                      backgroundColor:
-                        TASK_STATUS_COLORS[task.board_column] || colors.text.tertiary,
-                    },
-                  ]}
-                />
-                <Text style={styles.cardMeta}>
-                  {TASK_STATUS_LABELS[task.board_column] || task.board_column}
-                </Text>
-                {task.due_date && (() => {
-                  const isOverdue =
-                    new Date(task.due_date) < new Date() &&
-                    task.board_column !== 'completed';
-                  return (
+                  {event.creator_name && (
                     <>
                       <Text style={styles.separator}>•</Text>
-                      <Text style={[styles.cardDate, isOverdue && styles.overdueDate]}>
-                        {isOverdue ? 'Zaległe: ' : ''}
-                        {new Date(task.due_date).toLocaleDateString('pl-PL', {
-                          day: 'numeric',
-                          month: 'short',
-                        })}
-                      </Text>
+                      <Feather name="user" color={colors.text.tertiary} size={12} />
+                      <Text style={styles.cardDate}>{event.creator_name}</Text>
                     </>
-                  );
-                })()}
-              </View>
-            </TouchableOpacity>
-          ))
-        )}
-      </View>
+                  )}
+                </View>
+              </TouchableOpacity>
+            ))
+          )}
+        </View>
+
+        {/* My Tasks */}
+        <View style={[styles.section, isTablet && styles.tabletColumn]}>
+          <Text style={styles.sectionTitle}>Moje zadania</Text>
+          {myTasks.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Feather name="check-square" color={colors.text.tertiary} size={48} />
+              <Text style={styles.emptyText}>Brak zadań do wykonania</Text>
+            </View>
+          ) : (
+            myTasks.map((task) => (
+              <TouchableOpacity
+                key={task.id}
+                style={styles.card}
+                onPress={() => handleTaskPress(task)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.cardHeader}>
+                  <Text style={styles.cardTitle} numberOfLines={2}>
+                    {task.title}
+                  </Text>
+                  <View
+                    style={[
+                      styles.priorityBadge,
+                      { borderColor: PRIORITY_COLORS[task.priority] || '#6b7280' },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.priorityText,
+                        { color: PRIORITY_COLORS[task.priority] || '#6b7280' },
+                      ]}
+                    >
+                      {PRIORITY_LABELS[task.priority] || task.priority}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.cardFooter}>
+                  <View
+                    style={[
+                      styles.statusDot,
+                      {
+                        backgroundColor:
+                          TASK_STATUS_COLORS[task.board_column] || colors.text.tertiary,
+                      },
+                    ]}
+                  />
+                  <Text style={styles.cardMeta}>
+                    {TASK_STATUS_LABELS[task.board_column] || task.board_column}
+                  </Text>
+                  {task.due_date &&
+                    (() => {
+                      const isOverdue =
+                        new Date(task.due_date) < new Date() && task.board_column !== 'completed';
+                      return (
+                        <>
+                          <Text style={styles.separator}>•</Text>
+                          <Text style={[styles.cardDate, isOverdue && styles.overdueDate]}>
+                            {isOverdue ? 'Zaległe: ' : ''}
+                            {new Date(task.due_date).toLocaleDateString('pl-PL', {
+                              day: 'numeric',
+                              month: 'short',
+                            })}
+                          </Text>
+                        </>
+                      );
+                    })()}
+                </View>
+              </TouchableOpacity>
+            ))
+          )}
+        </View>
       </View>
 
       <View style={{ height: spacing.xxxl }} />
@@ -484,6 +642,9 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.xxxl,
     color: colors.text.primary,
     fontWeight: typography.fontWeights.bold,
+    fontFamily: 'MBFAtom',
+    textTransform: 'uppercase',
+    letterSpacing: 2,
   },
   statsGrid: {
     flexDirection: 'row',

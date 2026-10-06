@@ -38,7 +38,6 @@ Deno.serve(async (req: Request) => {
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const openAiKey = Deno.env.get("OPENAI_API_KEY");
     if (!openAiKey) return json({ error: "Brak sekretu OPENAI_API_KEY" }, 503);
 
@@ -46,25 +45,12 @@ Deno.serve(async (req: Request) => {
       global: { headers: { Authorization: authorization } },
       auth: { persistSession: false },
     });
-    const serviceClient = createClient(supabaseUrl, serviceRoleKey, {
-      auth: { persistSession: false },
-    });
 
     const { data: userData, error: userError } = await userClient.auth.getUser();
     if (userError || !userData.user) return json({ error: "Nieprawidłowa sesja" }, 401);
 
-    const { data: employee, error: employeeError } = await serviceClient
-      .from("employees")
-      .select("id,role,access_level,permissions,is_active")
-      .or(`id.eq.${userData.user.id},auth_user_id.eq.${userData.user.id}`)
-      .eq("is_active", true)
-      .maybeSingle();
-    if (employeeError || !employee) return json({ error: "Nie znaleziono aktywnego pracownika" }, 403);
-
-    const permissions = Array.isArray(employee.permissions) ? employee.permissions : [];
-    const canView = employee.role === "admin" || employee.access_level === "admin" ||
-      permissions.some((permission: string) => ["admin", "finances_manage", "invoices_manage", "invoices_view", "ksef_manage"].includes(permission));
-    if (!canView) return json({ error: "Brak uprawnień do finansów" }, 403);
+    const { data: canView, error: financeAccessError } = await userClient.rpc("finance_can_view");
+    if (financeAccessError || canView !== true) return json({ error: "Brak uprawnień do analizy finansów firmy" }, 403);
 
     const body = await req.json().catch(() => ({}));
     const currentYear = new Date().getFullYear();

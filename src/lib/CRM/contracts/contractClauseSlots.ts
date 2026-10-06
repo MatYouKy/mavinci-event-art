@@ -45,9 +45,6 @@ const CATEGORY_NAMES = [
   'general',
 ] as const;
 const SLOT_NAMES = CONTRACT_CLAUSE_SLOTS.map((slot) => slot.name);
-const EMPTY_GENERAL_CLAUSES_HTML =
-  '<div class="contract-clauses-empty" style="padding-left:0;font-family:inherit;font-size:inherit;font-weight:inherit;font-style:inherit;line-height:inherit;color:inherit;"><ul class="contract-clauses-empty-list" style="font-family:inherit;font-size:inherit;font-weight:inherit;font-style:inherit;line-height:inherit;color:inherit;"><li>Brak szczególnych postanowień dla zamówionych usług lub produktów.</li></ul></div>';
-
 const hasVisibleClauseContent = (value?: string | null) =>
   String(value || '')
     .replace(/<br\s*\/?>/gi, '')
@@ -255,16 +252,6 @@ export const placeContractClauses = (
     declaredSlots.add('contract_clauses_additional_requirements');
   }
 
-  // Zadeklarowana sekcja postanowień szczególnych nie może pozostać wizualnie
-  // pusta. Wartość zastępczą dodajemy dopiero po obsłudze starszych szablonów,
-  // aby nie poprzedzała faktycznie istniejących wymagań dodatkowych.
-  if (
-    declaredSlots.has('contract_clauses_general') &&
-    !hasVisibleClauseContent(nextVariables.contract_clauses_general)
-  ) {
-    nextVariables.contract_clauses_general = EMPTY_GENERAL_CLAUSES_HTML;
-  }
-
   const unplacedSections = CATEGORY_NAMES
     .filter((category) => !declaredSlots.has(`contract_clauses_${category}`))
     .map((category) => nextVariables[`contract_clauses_${category}`])
@@ -278,6 +265,37 @@ export const placeContractClauses = (
       !declaredSlots.has(`contract_clauses_${category}`) &&
       !hasCatchAllSlot,
   );
+
+  if (typeof document !== 'undefined') {
+    const renderedTemplate = document.createElement('div');
+    renderedTemplate.innerHTML = flowContent;
+    renderedTemplate.querySelectorAll<HTMLElement>('[data-contract-if]').forEach((block) => {
+      const key = block.dataset.contractIf || '';
+      if (/^[A-Za-z0-9_]+$/.test(key) && !hasVisibleClauseContent(sourceVariables[key])) block.remove();
+    });
+    const used = new Set<string>();
+    renderedTemplate.querySelectorAll<HTMLElement>('[data-contract-clause-slot]').forEach((slot) => {
+      const name = normalizeSlotName(slot.dataset.contractClauseSlot);
+      if (!SLOT_NAMES.includes(name as (typeof SLOT_NAMES)[number])) return;
+      const empty = !hasVisibleClauseContent(nextVariables[name]);
+      if (empty || used.has(name)) {
+        const parent = slot.parentElement;
+        if (parent?.tagName === 'LI' &&
+          parent.textContent?.replace(/\s/g, '') === slot.textContent?.replace(/\s/g, '')) parent.remove();
+        else slot.remove();
+      } else used.add(name);
+    });
+    flowContent = renderedTemplate.innerHTML;
+  }
+  // Także zwykły placeholder wpisany dwa razy nie powiela całej sekcji.
+  SLOT_NAMES.forEach((name) => {
+    let printed = false;
+    flowContent = flowContent.replace(new RegExp(placeholderPattern(name).source, 'gi'), (match) => {
+      if (printed || !hasVisibleClauseContent(nextVariables[name])) return '';
+      printed = true;
+      return match;
+    });
+  });
 
   return {
     flowContent,

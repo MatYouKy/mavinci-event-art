@@ -22,7 +22,10 @@ import {
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { TrendChart } from '@/components/crm/dashboard/DashboardCharts';
+import { CrmCartesianChart, CrmDonutChart } from '@/components/crm/charts/CrmCharts';
 import type { DashboardMonth } from '@/lib/CRM/dashboard/dashboardData';
+import { useInvoiceFinanceAccess } from '@/hooks/useInvoiceFinanceAccess';
+import SellerFinancialDashboard from '@/components/crm/SellerFinancialDashboard';
 
 type MoneyTotals = {
   invoiced_revenue: number;
@@ -131,34 +134,24 @@ function NumberCard({
 
 function RankedBars({ title, items }: { title: string; items: Breakdown[] }) {
   const visible = items.slice(0, 8);
-  const max = Math.max(...visible.map((item) => Number(item.amount || 0)), 1);
 
   return (
     <section className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-5 sm:p-6">
       <h3 className="text-lg font-light text-[#e5e4e2]">{title}</h3>
-      {visible.length === 0 ? (
-        <p className="mt-6 text-sm text-[#e5e4e2]/40">Brak danych w wybranym okresie.</p>
-      ) : (
-        <div className="mt-5 space-y-4">
-          {visible.map((item) => (
-            <div key={`${item.code || ''}-${item.name}`}>
-              <div className="mb-1.5 flex items-center justify-between gap-3 text-xs">
-                <span className="truncate text-[#e5e4e2]/70" title={item.name}>{item.name}</span>
-                <span className="shrink-0 font-medium text-[#e5e4e2]">{money.format(Number(item.amount || 0))}</span>
-              </div>
-              <div className="h-2 overflow-hidden rounded-full bg-[#0f1119]">
-                <div
-                  className="h-full rounded-full"
-                  style={{
-                    width: `${Math.max((Number(item.amount || 0) / max) * 100, 2)}%`,
-                    backgroundColor: item.color || '#d3bb73',
-                  }}
-                />
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+      <div className="mt-5">
+        <CrmCartesianChart
+          data={visible.map((item) => ({ name: item.name, amount: Number(item.amount || 0) }))}
+          categoryKey="name"
+          series={[{ key: 'amount', label: 'Kwota', color: '#d3bb73' }]}
+          kind="bar"
+          horizontal
+          height={Math.max(220, visible.length * 42)}
+          valueFormatter={(value) => money.format(value)}
+          ariaLabel={`${title} w PLN`}
+          showLegend={false}
+          emptyMessage="Brak danych w wybranym okresie."
+        />
+      </div>
     </section>
   );
 }
@@ -171,14 +164,6 @@ function DonutBreakdown({ title, description, items }: { title: string; descript
     ? [...primaryItems, { code: 'remaining', name: 'Pozostałe', color: '#6b7280', amount: remainingAmount }]
     : primaryItems;
   const total = visible.reduce((sum, item) => sum + Number(item.amount || 0), 0);
-  let cursor = 0;
-  const gradient = visible.length
-    ? `conic-gradient(${visible.map((item) => {
-      const start = cursor;
-      cursor += (Number(item.amount || 0) / Math.max(total, 1)) * 100;
-      return `${item.color || '#d3bb73'} ${start}% ${cursor}%`;
-    }).join(', ')})`
-    : 'conic-gradient(#272a3e 0 100%)';
 
   return (
     <section className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-5 sm:p-6">
@@ -186,52 +171,50 @@ function DonutBreakdown({ title, description, items }: { title: string; descript
         <PieChart className="mt-0.5 h-5 w-5 text-[#d3bb73]" />
         <div><h3 className="text-lg font-light text-[#e5e4e2]">{title}</h3><p className="mt-1 text-xs text-[#e5e4e2]/45">{description}</p></div>
       </div>
-      <div className="mt-6 grid items-center gap-6 sm:grid-cols-[170px_1fr]">
-        <div className="relative mx-auto h-40 w-40 rounded-full" style={{ background: gradient }}>
-          <div className="absolute inset-[24px] flex flex-col items-center justify-center rounded-full bg-[#1c1f33] text-center">
-            <span className="text-[10px] uppercase tracking-wider text-[#e5e4e2]/35">Łącznie</span>
-            <strong className="mt-1 text-lg font-medium text-[#e5e4e2]">{money.format(total)}</strong>
-          </div>
-        </div>
-        <div className="space-y-2.5">
-          {visible.length ? visible.map((item) => {
-            const share = total > 0 ? (Number(item.amount || 0) / total) * 100 : 0;
-            return (
-              <div key={`${item.code || ''}-${item.name}`} className="flex items-center gap-2 text-xs">
-                <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: item.color || '#d3bb73' }} />
-                <span className="min-w-0 flex-1 truncate text-[#e5e4e2]/60">{item.name}</span>
-                <span className="text-[#e5e4e2]/40">{share.toFixed(1)}%</span>
-                <span className="w-24 text-right font-medium text-[#e5e4e2]">{money.format(Number(item.amount || 0))}</span>
-              </div>
-            );
-          }) : <p className="text-sm text-[#e5e4e2]/40">Brak kosztów w wybranym okresie.</p>}
-        </div>
+      <div className="mt-6">
+        <CrmDonutChart
+          data={visible.map((item) => ({ name: item.name, amount: Number(item.amount || 0), color: item.color || '#d3bb73' }))}
+          categoryKey="name"
+          valueKey="amount"
+          height={260}
+          valueFormatter={(value) => money.format(value)}
+          ariaLabel={`${title}: udział kategorii kosztowych w PLN`}
+          emptyMessage="Brak kosztów w wybranym okresie."
+        />
+        <p className="mt-3 text-center text-sm text-[#e5e4e2]/65">Łącznie: <strong className="font-medium text-[#e5e4e2]">{money.format(total)}</strong></p>
       </div>
     </section>
   );
 }
 
 function CompanyComparison({ companies }: { companies: CompanySummary[] }) {
-  const max = Math.max(...companies.flatMap((company) => [company.invoiced_revenue, company.incurred_costs]), 1);
   return (
     <section className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-5 sm:p-6">
       <div className="flex items-start gap-3">
         <Building2 className="mt-0.5 h-5 w-5 text-[#d3bb73]" />
         <div><h3 className="text-lg font-light text-[#e5e4e2]">Porównanie działalności</h3><p className="mt-1 text-xs text-[#e5e4e2]/45">Przychody, koszty i wynik dla firm objętych aktualnym filtrem.</p></div>
       </div>
-      <div className="mt-6 space-y-5">
-        {companies.length ? companies.map((company) => (
-          <div key={company.company_id || 'unassigned'}>
-            <div className="mb-2 flex items-center justify-between gap-3">
-              <span className="truncate text-sm font-medium text-[#e5e4e2]">{company.company_name}</span>
-              <span className={`shrink-0 text-xs font-medium ${company.operating_result >= 0 ? 'text-emerald-300' : 'text-red-300'}`}>Wynik {money.format(company.operating_result)}</span>
-            </div>
-            <div className="space-y-1.5">
-              <div className="flex items-center gap-2"><span className="w-16 text-[10px] text-[#e5e4e2]/40">Przychód</span><div className="h-2 flex-1 overflow-hidden rounded-full bg-[#0f1119]"><div className="h-full rounded-full bg-emerald-400" style={{ width: `${Math.max((company.invoiced_revenue / max) * 100, company.invoiced_revenue ? 2 : 0)}%` }} /></div><span className="w-24 text-right text-[11px] text-[#e5e4e2]/55">{money.format(company.invoiced_revenue)}</span></div>
-              <div className="flex items-center gap-2"><span className="w-16 text-[10px] text-[#e5e4e2]/40">Koszty</span><div className="h-2 flex-1 overflow-hidden rounded-full bg-[#0f1119]"><div className="h-full rounded-full bg-red-400" style={{ width: `${Math.max((company.incurred_costs / max) * 100, company.incurred_costs ? 2 : 0)}%` }} /></div><span className="w-24 text-right text-[11px] text-[#e5e4e2]/55">{money.format(company.incurred_costs)}</span></div>
-            </div>
-          </div>
-        )) : <p className="text-sm text-[#e5e4e2]/40">Brak danych działalności.</p>}
+      <div className="mt-6">
+        <CrmCartesianChart
+          data={companies.map((company) => ({
+            name: company.company_name,
+            revenue: company.invoiced_revenue,
+            costs: company.incurred_costs,
+            result: company.operating_result,
+          }))}
+          categoryKey="name"
+          series={[
+            { key: 'revenue', label: 'Przychód', color: '#34d399' },
+            { key: 'costs', label: 'Koszty', color: '#f87171' },
+            { key: 'result', label: 'Wynik', color: '#d3bb73' },
+          ]}
+          kind="bar"
+          horizontal
+          height={Math.max(260, Math.min(600, companies.length * 90))}
+          valueFormatter={(value) => money.format(value)}
+          ariaLabel="Porównanie przychodów, kosztów i wyniku działalności w PLN"
+          emptyMessage="Brak danych działalności."
+        />
       </div>
     </section>
   );
@@ -239,17 +222,30 @@ function CompanyComparison({ companies }: { companies: CompanySummary[] }) {
 
 function RatioCard({ label, value, helper, tone = 'gold' }: { label: string; value: number; helper: string; tone?: 'green' | 'red' | 'gold' }) {
   const color = tone === 'green' ? '#34d399' : tone === 'red' ? '#f87171' : '#d3bb73';
-  const safeValue = Math.max(0, Math.min(value, 100));
   return (
     <article className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-5">
       <div className="flex items-end justify-between gap-3"><p className="text-xs text-[#e5e4e2]/50">{label}</p><strong className="text-2xl font-light" style={{ color }}>{value.toFixed(1)}%</strong></div>
-      <div className="mt-4 h-2.5 overflow-hidden rounded-full bg-[#0f1119]"><div className="h-full rounded-full transition-all" style={{ width: `${safeValue}%`, backgroundColor: color }} /></div>
       <p className="mt-3 text-[11px] leading-relaxed text-[#e5e4e2]/35">{helper}</p>
     </article>
   );
 }
 
 export default function CanonicalFinancialDashboard({
+  filterCompanyIds,
+}: {
+  filterCompanyIds?: string[] | null;
+}) {
+  const { access, loading, error } = useInvoiceFinanceAccess();
+  if (loading) return <div className="flex min-h-48 items-center justify-center"><Loader2 className="h-7 w-7 animate-spin text-[#d3bb73]" /></div>;
+  if (error || !access) return <div role="alert" className="rounded-xl bg-white/5 p-5 text-sm text-amber-200">Nie udało się potwierdzić zakresu dostępu do finansów. Raport nie został pobrany.</div>;
+  if (access.scope === 'sales') return <SellerFinancialDashboard filterCompanyIds={filterCompanyIds} />;
+  if (!access.canViewCompanyFinance) return <div className="rounded-xl bg-white/5 p-5 text-sm text-[#e5e4e2]/60">Nie masz dostępu do raportu finansowego firmy.</div>;
+  return <CompanyFinancialDashboard filterCompanyIds={filterCompanyIds} />;
+}
+
+// Mount this component only after server-confirmed company finance access.
+// Its effects must never fetch company aggregates for a salesperson.
+function CompanyFinancialDashboard({
   filterCompanyIds,
 }: {
   filterCompanyIds?: string[] | null;

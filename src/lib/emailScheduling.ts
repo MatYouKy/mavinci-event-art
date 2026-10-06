@@ -11,7 +11,7 @@ export interface CrmEmailScheduleMetadata {
   markEntitySent?: boolean;
   draft?: boolean;
   inquiryId?: string;
-  eventId?: string;
+  eventId?: string | null;
   actionUrl?: string;
 }
 

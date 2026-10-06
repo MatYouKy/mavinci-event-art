@@ -1,9 +1,13 @@
 'use client';
 
+import { catalogViewMode, type CatalogViewMode } from '@/lib/CRM/equipment/catalogViewMode';
+
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Plus, Trash2, Package, Search, CreditCard as Edit, ArrowLeft, List, Table2, LayoutGrid } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
+import { saveEquipmentKit } from '@/lib/CRM/equipment/saveEquipmentKit';
+import { checkKitInventory } from '@/lib/CRM/equipment/kitInventory';
 import { uploadImage } from '@/lib/storage';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
@@ -24,6 +28,7 @@ interface Equipment {
   brand: string | null;
   model: string | null;
   thumbnail_url: string | null;
+  total_quantity?: number;
   equipment_units?: EquipmentUnit[];
 }
 
@@ -68,7 +73,7 @@ interface WarehouseCategory {
   level: number;
 }
 
-export function KitsPageClient({ viewMode }: { viewMode: ViewMode }) {
+export function KitsPageClient({ viewMode }: { viewMode?: ViewMode | null }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { showSnackbar } = useSnackbar();
@@ -82,7 +87,7 @@ export function KitsPageClient({ viewMode }: { viewMode: ViewMode }) {
   const [categories, setCategories] = useState<WarehouseCategory[]>([]);
   const [itemType, setItemType] = useState<'equipment' | 'cable'>('equipment');
   const { setViewMode } = useUserPreferences();
-  const [localViewMode, setLocalViewMode] = useState<ViewMode>(viewMode);
+  const [localViewMode, setLocalViewMode] = useState<CatalogViewMode>(() => catalogViewMode(viewMode));
   const [loading, setLoading] = useState(true);
   const [viewingKit, setViewingKit] = useState<Kit | null>(null);
   const [isEditMode, setIsEditMode] = useState(false);
@@ -146,6 +151,7 @@ export function KitsPageClient({ viewMode }: { viewMode: ViewMode }) {
         brand,
         model,
         thumbnail_url,
+        total_quantity,
         equipment_units(id, status)
       `,
       )
@@ -453,6 +459,11 @@ export function KitsPageClient({ viewMode }: { viewMode: ViewMode }) {
     );
   };
 
+  const kitInventoryPreview = (() => {
+    try { return checkKitInventory(editingKit?.id || null, kitForm.quantity, kitItems, kits, equipment, cables); }
+    catch { return null; }
+  })();
+
   const handleSaveKit = async () => {
     if (!kitForm.name.trim()) {
       showSnackbar('Nazwa zestawu jest wymagana', 'warning');
@@ -466,64 +477,8 @@ export function KitsPageClient({ viewMode }: { viewMode: ViewMode }) {
 
     setSaving(true);
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const kitId = await saveEquipmentKit(editingKit?.id || null, kitForm, kitItems);
 
-      let kitId = editingKit?.id;
-
-      if (editingKit) {
-        const { error: updateError } = await supabase
-          .from('equipment_kits')
-          .update({
-            name: kitForm.name,
-            description: kitForm.description || null,
-            thumbnail_url: kitForm.thumbnail_url || null,
-            warehouse_category_id: kitForm.warehouse_category_id || null,
-            quantity: kitForm.quantity || 1,
-          })
-          .eq('id', editingKit.id);
-
-        if (updateError) throw updateError;
-
-        const { error: deleteError } = await supabase
-          .from('equipment_kit_items')
-          .delete()
-          .eq('kit_id', editingKit.id);
-
-        if (deleteError) throw deleteError;
-      } else {
-        const { data: newKit, error: insertError } = await supabase
-          .from('equipment_kits')
-          .insert({
-            name: kitForm.name,
-            description: kitForm.description || null,
-            thumbnail_url: kitForm.thumbnail_url || null,
-            warehouse_category_id: kitForm.warehouse_category_id || null,
-            quantity: kitForm.quantity || 1,
-            created_by: user?.id || null,
-          })
-          .select()
-          .single();
-
-        if (insertError) throw insertError;
-        kitId = newKit.id;
-      }
-
-      const itemsToInsert = kitItems.map((item, index) => ({
-        kit_id: kitId,
-        equipment_id: item.equipment_id || null,
-        cable_id: item.cable_id || null,
-        quantity: item.quantity,
-        notes: item.notes || null,
-        order_index: index,
-      }));
-
-      const { error: itemsError } = await supabase
-        .from('equipment_kit_items')
-        .insert(itemsToInsert);
-
-      if (itemsError) throw itemsError;
 
       showSnackbar(editingKit ? 'Zestaw zaktualizowany' : 'Zestaw utworzony', 'success');
       setIsEditMode(false);
@@ -535,7 +490,7 @@ export function KitsPageClient({ viewMode }: { viewMode: ViewMode }) {
       }
     } catch (error) {
       console.error('Error saving kit:', error);
-      showSnackbar('Błąd podczas zapisywania zestawu', 'error');
+      showSnackbar(error instanceof Error ? error.message : 'Błąd podczas zapisywania zestawu', 'error');
     } finally {
       setSaving(false);
     }
@@ -867,6 +822,7 @@ export function KitsPageClient({ viewMode }: { viewMode: ViewMode }) {
                   <input
                     type="number"
                     min="1"
+                    max={kitInventoryPreview?.maxQuantity}
                     value={kitForm.quantity}
                     onChange={(e) =>
                       setKitForm((prev) => ({
@@ -876,6 +832,13 @@ export function KitsPageClient({ viewMode }: { viewMode: ViewMode }) {
                     }
                     className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
                   />
+                  <p className="mt-2 text-xs text-[#e5e4e2]/60">
+                    Maksymalnie {kitInventoryPreview?.maxQuantity ?? '—'} kompletów ze sprawnych składników,
+                    po uwzględnieniu innych zestawów.
+                  </p>
+                  {!!kitInventoryPreview?.shortages.length && (
+                    <p role="alert" className="mt-2 text-xs text-red-400">{kitInventoryPreview.shortages.join(' ')}</p>
+                  )}
                 </div>
               </div>
             </div>

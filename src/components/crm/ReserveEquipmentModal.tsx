@@ -1,11 +1,17 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Lock, AlertTriangle, CheckCircle, Package, X, Loader2, MoreVertical } from 'lucide-react';
+import { Lock, AlertTriangle, CheckCircle, Package, X, Loader2 } from 'lucide-react';
+import Image from 'next/image';
+import Popover from '@/components/UI/Tooltip';
+import OverlayPortal from '@/components/UI/OverlayPortal';
+import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDispatch } from 'react-redux';
 import { eventsApi } from '@/app/(crm)/crm/events/store/api/eventsApi';
+import EventAcceptanceConfirmationPreview, { useEventAcceptanceConfirmationPreview } from '@/components/crm/events/EventAcceptanceConfirmationPreview';
+import { sendEventAcceptanceConfirmation } from '@/lib/CRM/events/eventAcceptanceConfirmation';
 
 interface EquipmentItem {
   warehouse_category_id: any;
@@ -26,6 +32,7 @@ interface ReserveEquipmentModalProps {
   open: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  onEditOfferItem?: (itemId: string) => void;
 }
 
 interface AcceptancePackage {
@@ -37,6 +44,7 @@ interface AcceptancePackage {
 }
 
 interface SubstitutionItem {
+  thumbnail_url?: string | null;
   id: string;
   name: string;
   available_qty: number;
@@ -82,96 +90,27 @@ const parseItemKey = (key: string) => {
   };
 };
 
-// Mini dropdown component for actions
-function ActionsDropdown({
-  itemKey,
-  item,
-  onAcceptShortage,
-  onResolveConflict,
-  index,
-  totalItems,
-}: {
-  itemKey: string;
-  item: EquipmentItem;
-  onAcceptShortage: (key: string) => void;
-  onResolveConflict: (item: EquipmentItem) => void;
-  index: number;
-  totalItems: number;
-}) {
-  const [isOpen, setIsOpen] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-
-  // Otwórz w górę dla ostatnich 2 itemów
-  const openUpwards = totalItems - index <= 2;
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
-    };
-
-    if (isOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [isOpen]);
-
-  return (
-    <div className="relative" ref={dropdownRef}>
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="rounded p-1 text-[#e5e4e2]/60 transition-colors hover:bg-[#e5e4e2]/10 hover:text-[#e5e4e2]"
-      >
-        <MoreVertical className="h-4 w-4" />
-      </button>
-
-      {isOpen && (
-        <div
-          className={`absolute right-0 z-50 w-48 rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] shadow-xl ${
-            openUpwards ? 'bottom-full mb-1' : 'top-full mt-1'
-          }`}
-        >
-          <button
-            onClick={() => {
-              onAcceptShortage(itemKey);
-              setIsOpen(false);
-            }}
-            className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-[#e5e4e2] transition-colors hover:bg-[#e5e4e2]/10"
-          >
-            <AlertTriangle className="h-4 w-4" />
-            Zaakceptuj brak
-          </button>
-          <button
-            onClick={() => {
-              onResolveConflict(item);
-              setIsOpen(false);
-            }}
-            className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-[#e5e4e2] transition-colors hover:bg-[#e5e4e2]/10"
-          >
-            <Package className="h-4 w-4" />
-            Rozwiąż konflikt
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
 export default function ReserveEquipmentModal({
   offerId,
   open,
   onClose,
   onSuccess,
+  onEditOfferItem,
 }: ReserveEquipmentModalProps) {
   const [equipment, setEquipment] = useState<EquipmentItem[]>([]);
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
   const [acceptedShortages, setAcceptedShortages] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
+  const [equipmentError, setEquipmentError] = useState('');
+  const [resourceIssues, setResourceIssues] = useState<{ id: string; name: string; packageName: string; missing: string }[]>([]);
   const [confirming, setConfirming] = useState(false);
+  const confirmingRef = useRef(false);
+  const [acceptanceEventId, setAcceptanceEventId] = useState<string | null>(null);
+  const [isNewAcceptance, setIsNewAcceptance] = useState(false);
+  const [sendConfirmationEmail, setSendConfirmationEmail] = useState(false);
+  const confirmationPreview = useEventAcceptanceConfirmationPreview(
+    open && isNewAcceptance ? acceptanceEventId : null,
+  );
   const [packageMode, setPackageMode] = useState(false);
   const [packages, setPackages] = useState<AcceptancePackage[]>([]);
   const [selectedPackageId, setSelectedPackageId] = useState<string | null>(null);
@@ -179,6 +118,11 @@ export default function ReserveEquipmentModal({
   const [showSubstitutionModal, setShowSubstitutionModal] = useState(false);
   const [currentConflictItem, setCurrentConflictItem] = useState<EquipmentItem | null>(null);
   const [substitutions, setSubstitutions] = useState<SubstitutionItem[]>([]);
+  const [substitutionError, setSubstitutionError] = useState('');
+  const [substitutionQuantities, setSubstitutionQuantities] = useState<Record<string, string>>({});
+  const [selectedSubstitutionQty, setSelectedSubstitutionQty] = useState(1);
+  const [savingSubstitution, setSavingSubstitution] = useState(false);
+  const substitutionBusyRef = useRef(false);
   const [loadingSubstitutions, setLoadingSubstitutions] = useState(false);
   const [showRequiredComponentsModal, setShowRequiredComponentsModal] = useState(false);
   const [requiredComponents, setRequiredComponents] = useState<RequiredComponent[]>([]);
@@ -187,7 +131,20 @@ export default function ReserveEquipmentModal({
   const dispatch = useDispatch();
 
   useEffect(() => {
+    setShowSubstitutionModal(false);
+    setShowRequiredComponentsModal(false);
+    setCurrentConflictItem(null);
+    setSubstitutions([]);
+    setSubstitutionError('');
     if (open && offerId) {
+      setEquipmentError('');
+      setResourceIssues([]);
+      setEquipment([]);
+      setSelectedItems(new Set());
+      setAcceptedShortages(new Set());
+      setSendConfirmationEmail(false);
+      setAcceptanceEventId(null);
+      setIsNewAcceptance(false);
       void loadAcceptanceContext();
     }
   }, [open, offerId]);
@@ -198,6 +155,8 @@ export default function ReserveEquipmentModal({
       const { data, error } = await supabase
         .from('offers')
         .select(`
+          event_id,
+          status,
           package_mode,
           accepted_package_id,
           offer_items(product_variant:offer_product_variants!product_variant_id(name)),
@@ -213,6 +172,9 @@ export default function ReserveEquipmentModal({
         .eq('id', offerId)
         .single();
       if (error) throw error;
+
+      setAcceptanceEventId((data as any)?.event_id || null);
+      setIsNewAcceptance(Boolean((data as any)?.event_id && (data as any)?.status !== 'accepted'));
 
       const packageRows = [...((data as any)?.packages || [])]
         .sort((a: any, b: any) => Number(a.display_order || 0) - Number(b.display_order || 0))
@@ -244,6 +206,7 @@ export default function ReserveEquipmentModal({
       );
       await loadEquipment(initialPackageId || null);
     } catch (err: any) {
+      setEquipmentError(err.message || 'Nie udało się odczytać danych oferty.');
       console.error('Error loading acceptance context:', err);
       showSnackbar(err.message || 'Błąd podczas ładowania wariantów oferty', 'error');
       setLoading(false);
@@ -253,6 +216,32 @@ export default function ReserveEquipmentModal({
   const loadEquipment = async (packageId: string | null = selectedPackageId) => {
     try {
       setLoading(true);
+      setEquipmentError('');
+      setResourceIssues([]);
+      setEquipment([]);
+      setSelectedItems(new Set());
+      setAcceptedShortages(new Set());
+      // Inspect the saved offer scope: catalog changes do not update its snapshot.
+      let itemsQuery = supabase.from('offer_items').select('id,name,pricing_configuration').eq('offer_id', offerId);
+      if (packageId) {
+        const { data: packageItems, error: packageError } = await supabase.from('offer_package_items').select('offer_item_id').eq('package_id', packageId);
+        if (packageError) throw packageError;
+        itemsQuery = itemsQuery.in('id', (packageItems || []).map(item => item.offer_item_id));
+      }
+      const { data: offerItems, error: itemsError } = await itemsQuery;
+      if (itemsError) throw itemsError;
+      const issues = (offerItems || []).flatMap(item => {
+        const selection = (item.pricing_configuration as any)?.product_package;
+        if (!selection) return [];
+        const selected = Array.isArray(selection.options) ? selection.options.find((option: any) => option.id === selection.selected_id) : null;
+        const resources = selected?.resources;
+        const missing = [!Array.isArray(resources?.equipment) && 'sprzęt', !Array.isArray(resources?.staff) && 'obsadę'].filter(Boolean).join(' i ');
+        return !selected || missing ? [{ id: item.id, name: item.name, packageName: selected?.name || 'Nie wybrano pakietu', missing: selected ? missing : 'wybór pakietu' }] : [];
+      });
+      if (issues.length) {
+        setResourceIssues(issues);
+        throw new Error('Przed akceptacją uzupełnij konfigurację wskazanych pozycji oferty.');
+      }
       const { data, error } = await supabase.rpc('get_offer_equipment_for_reservation', {
         p_offer_id: offerId,
         p_package_id: packageId,
@@ -268,6 +257,7 @@ export default function ReserveEquipmentModal({
         .map((item: EquipmentItem) => `${item.item_type}-${item.item_id}`);
       setSelectedItems(new Set(availableIds));
     } catch (err: any) {
+      setEquipmentError(err.message || 'Nie udało się sprawdzić sprzętu oferty.');
       console.error('Error loading equipment:', err);
       showSnackbar(err.message || 'Błąd podczas ładowania sprzętu', 'error');
     } finally {
@@ -278,6 +268,8 @@ export default function ReserveEquipmentModal({
   const loadSubstitutions = async (item: EquipmentItem) => {
     try {
       setLoadingSubstitutions(true);
+      setSubstitutions([]);
+      setSubstitutionError('');
   
       let warehouseCategoryId = item.warehouse_category_id;
   
@@ -299,10 +291,10 @@ export default function ReserveEquipmentModal({
   
       const { data, error } = await supabase
         .from('equipment_items')
-        .select('id, name, brand, model, warehouse_category_id')
+        .select('id, name, brand, model, thumbnail_url, warehouse_category_id')
         .eq('warehouse_category_id', warehouseCategoryId)
         .neq('id', item.item_id)
-        .limit(10);
+        .order('name');
   
       if (error) throw error;
   
@@ -327,12 +319,16 @@ export default function ReserveEquipmentModal({
       );
 
       const available = itemsWithAvailability.filter(
-        (sub) => sub.available_qty >= item.required_qty
+        (sub) => sub.available_qty > 0
       );
 
       setSubstitutions(available);
+      setSubstitutionQuantities(Object.fromEntries(available.map((sub) => [
+        sub.id, String(Math.min(sub.available_qty, Math.max(1, item.required_qty))),
+      ])));
     } catch (err: any) {
       console.error('Error loading substitutions:', err);
+      setSubstitutionError('Nie udało się pobrać zamienników. Spróbuj ponownie.');
       showSnackbar(err.message || 'Błąd podczas ładowania alternatyw', 'error');
     } finally {
       setLoadingSubstitutions(false);
@@ -401,21 +397,32 @@ export default function ReserveEquipmentModal({
   };
 
   const handleSelectSubstitution = async (substitutionId: string) => {
-    if (!currentConflictItem) return;
-
-    const required = await checkRequiredComponents(substitutionId);
-
-    if (required.length > 0) {
-      setSelectedSubstitutionId(substitutionId);
-      setRequiredComponents(required);
-      setShowRequiredComponentsModal(true);
+    if (!currentConflictItem || substitutionBusyRef.current) return;
+    const quantity = Number(substitutionQuantities[substitutionId]);
+    const substitute = substitutions.find((sub) => sub.id === substitutionId);
+    if (!substitute || !Number.isInteger(quantity) || quantity < 1 || quantity > substitute.available_qty) {
+      showSnackbar('Podaj pełną liczbę sztuk od 1 do dostępnej ilości.', 'error');
       return;
     }
-
-    await saveSubstitution(substitutionId);
+    substitutionBusyRef.current = true;
+    setSavingSubstitution(true);
+    try {
+      const required = await checkRequiredComponents(substitutionId);
+      setSelectedSubstitutionQty(quantity);
+      if (required.length > 0) {
+        setSelectedSubstitutionId(substitutionId);
+        setRequiredComponents(required);
+        setShowRequiredComponentsModal(true);
+        return;
+      }
+      await saveSubstitution(substitutionId, quantity);
+    } finally {
+      substitutionBusyRef.current = false;
+      setSavingSubstitution(false);
+    }
   };
 
-  const saveSubstitution = async (substitutionId: string) => {
+  const saveSubstitution = async (substitutionId: string, quantity: number = selectedSubstitutionQty) => {
     if (!currentConflictItem) return;
 
     try {
@@ -433,12 +440,12 @@ export default function ReserveEquipmentModal({
           offer_id: offerId,
           from_item_id: currentConflictItem.item_id,
           to_item_id: substitutionId,
-          qty: currentConflictItem.required_qty,
+          qty: quantity,
         });
 
       if (error) throw error;
 
-      showSnackbar('Substytucja została zapisana', 'success');
+      showSnackbar(`Zapisano zamiennik: ${quantity} szt.`, 'success');
       setShowSubstitutionModal(false);
       setShowRequiredComponentsModal(false);
       setCurrentConflictItem(null);
@@ -452,7 +459,9 @@ export default function ReserveEquipmentModal({
   };
 
   const handleAddRequiredComponents = async () => {
-    if (!selectedSubstitutionId || !offerId) return;
+    if (!selectedSubstitutionId || !offerId || substitutionBusyRef.current) return;
+    substitutionBusyRef.current = true;
+    setSavingSubstitution(true);
 
     try {
       const { data: offer } = await supabase
@@ -468,7 +477,7 @@ export default function ReserveEquipmentModal({
       for (const component of requiredComponents) {
         const quantity = component.quantity_mode === 'fixed'
           ? Math.max(1, Number(component.quantity || 1))
-          : Math.max(1, Number(component.quantity || 1)) * Math.max(1, Number(currentConflictItem?.required_qty || 1));
+          : Math.max(1, Number(component.quantity || 1)) * selectedSubstitutionQty;
         if (component.compatible_equipment_id) {
           await supabase.from('event_equipment').insert({
             event_id: offer.event_id,
@@ -501,25 +510,39 @@ export default function ReserveEquipmentModal({
     } catch (err: any) {
       console.error('Error adding required components:', err);
       showSnackbar(err.message || 'Błąd podczas dodawania komponentów', 'error');
+    } finally {
+      substitutionBusyRef.current = false;
+      setSavingSubstitution(false);
     }
   };
 
   const handleConfirm = async () => {
+    if (confirmingRef.current || loading || equipmentError) return;
+    confirmingRef.current = true;
     try {
       setConfirming(true);
 
       // Pobierz event_id z oferty
-      const { data: offer } = await supabase
+      const { data: offer, error: offerError } = await supabase
         .from('offers')
-        .select('event_id')
+        .select('event_id, status')
         .eq('id', offerId)
         .single();
 
+      if (offerError) throw offerError;
       if (!offer?.event_id) {
         throw new Error('Nie znaleziono eventu dla tej oferty');
       }
 
       const eventId = offer.event_id;
+      const shouldSendConfirmation = sendConfirmationEmail && isNewAcceptance;
+      const expectedRecipientEmail = confirmationPreview.preview?.recipientEmail;
+      if (shouldSendConfirmation && (
+        offer.status === 'accepted' || !expectedRecipientEmail
+        || confirmationPreview.preview?.eventId !== eventId
+      )) {
+        throw new Error('Dane akceptacji lub odbiorcy zmieniły się. Otwórz okno ponownie przed wysłaniem potwierdzenia.');
+      }
 
       // Rezerwuj tylko zaznaczone
       const itemsToReserve = equipment
@@ -555,6 +578,8 @@ export default function ReserveEquipmentModal({
 
       if (error) throw error;
 
+      if (!data?.success) throw new Error(data?.error || 'Nie potwierdzono zapisania akceptacji i rezerwacji.');
+
       // Invaliduj cache RTK Query
       dispatch(eventsApi.util.invalidateTags([
         { type: 'EventEquipment', id: eventId },
@@ -574,6 +599,17 @@ export default function ReserveEquipmentModal({
         showSnackbar('Sprzęt został zarezerwowany pomyślnie', 'success');
       }
 
+      if (shouldSendConfirmation && expectedRecipientEmail) {
+        try {
+          const sent = await sendEventAcceptanceConfirmation({
+            eventId, acceptedOfferId: offerId, expectedRecipientEmail,
+          });
+          showSnackbar(`Oferta zaakceptowana. Potwierdzenie wysłano do ${sent.recipientEmail}`, 'success');
+        } catch (mailError) {
+          showSnackbar(`Oferta i rezerwacja zostały zapisane. ${mailError instanceof Error ? mailError.message : 'Nie potwierdzono wysłania wiadomości.'}`, 'warning');
+        }
+      }
+
       onSuccess();
       onClose();
     } catch (err: any) {
@@ -581,20 +617,21 @@ export default function ReserveEquipmentModal({
       showSnackbar(err.message || 'Błąd podczas rezerwacji sprzętu', 'error');
     } finally {
       setConfirming(false);
+      confirmingRef.current = false;
     }
   };
 
   const hasUnresolvedConflicts =
     equipment.some((e) => e.has_conflict) && acceptedShortages.size === 0;
   const noEquipmentNeeded = equipment.length === 0;
-  const canConfirm = noEquipmentNeeded || selectedItems.size > 0 || acceptedShortages.size > 0;
+  const canConfirm = !equipmentError && (noEquipmentNeeded || selectedItems.size > 0 || acceptedShortages.size > 0);
 
   if (!open) return null;
 
   return (
-    <>
+    <OverlayPortal>
       {/* Main Modal */}
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+      <div role="dialog" aria-modal="true" aria-label="Zarezerwuj sprzęt" data-app-overlay="true" className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm">
         <div className="relative w-full max-w-4xl rounded-2xl border border-[#d3bb73]/20 bg-[#1c1f33] shadow-2xl">
           {/* Header */}
           <div className="flex items-center justify-between border-b border-[#d3bb73]/10 p-6">
@@ -619,6 +656,19 @@ export default function ReserveEquipmentModal({
               <div className="flex flex-col items-center justify-center py-12">
                 <Loader2 className="mb-4 h-12 w-12 animate-spin text-[#d3bb73]" />
                 <p className="text-sm text-[#e5e4e2]/60">Ładowanie sprzętu...</p>
+              </div>
+            ) : equipmentError ? (
+              <div role="alert" className="space-y-4 rounded-xl bg-[#d3bb73]/10 p-4 text-sm text-[#e5e4e2]">
+                <h3 className="font-medium text-[#d3bb73]">Nie można jeszcze zaakceptować oferty</h3>
+                <p>{equipmentError}</p>
+                {resourceIssues.map(issue => <div key={issue.id} className="rounded-lg bg-black/15 p-3">
+                  <p className="font-medium">{issue.name}</p>
+                  <p className="mt-1 text-xs text-[#e5e4e2]/70">Pakiet: {issue.packageName}. Uzupełnij: {issue.missing}.</p>
+                  <p className="mt-1 text-xs text-[#e5e4e2]/70">Otwórz edycję pozycji oferty → „Sprzęt i obsada”. Zastosuj zasoby i zapisz pozycję. Zmiana samego produktu nie aktualizuje już dodanej oferty.</p>
+                  {onEditOfferItem && <button type="button" onClick={() => { onClose(); onEditOfferItem(issue.id); }} className="mt-3 rounded-lg bg-[#d3bb73] px-3 py-2 text-[#1c1f33]">Uzupełnij pozycję</button>}
+                </div>)}
+                {packageMode && <label className="block">Sprawdź inny pakiet<select value={selectedPackageId || ''} onChange={e => { const id = e.target.value; setSelectedPackageId(id); setSelectedOfferVariants(packages.find(p => p.id === id)?.variants || []); void loadEquipment(id); }} className="mt-1 w-full rounded-lg border border-white/10 bg-[#1c1f33] p-2">{packages.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>}
+                <button type="button" onClick={() => void loadAcceptanceContext()} className="text-[#d3bb73] underline">Sprawdź ponownie</button>
               </div>
             ) : (
               <>
@@ -656,6 +706,24 @@ export default function ReserveEquipmentModal({
                     <p className="mt-1 text-sm text-[#e5e4e2]">
                       {selectedOfferVariants.join('  •  ')}
                     </p>
+                  </div>
+                )}
+
+                {isNewAcceptance && acceptanceEventId && (
+                  <div className="mb-5 space-y-3 rounded-xl bg-[#e5e4e2]/5 p-4">
+                    <label className="flex cursor-pointer items-start gap-3 text-sm text-[#e5e4e2]">
+                      <input
+                        type="checkbox"
+                        checked={sendConfirmationEmail}
+                        onChange={(event) => setSendConfirmationEmail(event.target.checked)}
+                        disabled={confirming || confirmationPreview.loading || !confirmationPreview.preview?.recipientEmail}
+                        className="mt-0.5 h-4 w-4 rounded border-white/10 accent-[#d3bb73] focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-[#d3bb73]/50 disabled:opacity-50"
+                      />
+                      <span>Wyślij klientowi potwierdzenie realizacji po zaakceptowaniu oferty
+                        <span className="mt-1 block text-xs text-[#e5e4e2]/60">Opcjonalnie. Wiadomość zostanie wysłana dopiero po zapisaniu akceptacji; bez zaznaczenia zapisujemy tylko ofertę i rezerwację.</span>
+                      </span>
+                    </label>
+                    <EventAcceptanceConfirmationPreview {...confirmationPreview} />
                   </div>
                 )}
 
@@ -765,14 +833,10 @@ export default function ReserveEquipmentModal({
                                 {/* Actions */}
                                 <td className="px-4 py-3">
                                   {item.has_conflict && !isAcceptedShortage && (
-                                    <ActionsDropdown
-                                      itemKey={itemKey}
-                                      item={item}
-                                      onAcceptShortage={handleAcceptShortage}
-                                      onResolveConflict={handleResolveConflict}
-                                      index={index}
-                                      totalItems={equipment.length}
-                                    />
+                                    <ResponsiveActionBar alwaysDropdown compact menuZIndex={105} actions={[
+                                      { label: 'Zaakceptuj brak', icon: <AlertTriangle className="h-4 w-4" />, onClick: () => handleAcceptShortage(itemKey) },
+                                      { label: 'Rozwiąż konflikt', icon: <Package className="h-4 w-4" />, onClick: () => void handleResolveConflict(item) },
+                                    ]} />
                                   )}
                                 </td>
                               </tr>
@@ -818,12 +882,12 @@ export default function ReserveEquipmentModal({
               {confirming ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Rezerwuję...
+                  {sendConfirmationEmail ? 'Zapisuję i wysyłam…' : 'Rezerwuję...'}
                 </>
               ) : (
                 <>
                   <Lock className="h-4 w-4" />
-                  {noEquipmentNeeded ? 'Potwierdź Ofertę' : 'Potwierdź Rezerwację'}
+                  {sendConfirmationEmail ? 'Potwierdź i wyślij wiadomość' : noEquipmentNeeded ? 'Potwierdź Ofertę' : 'Potwierdź Rezerwację'}
                 </>
               )}
             </button>
@@ -833,8 +897,8 @@ export default function ReserveEquipmentModal({
 
       {/* Substitution Modal */}
       {showSubstitutionModal && currentConflictItem && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="relative w-full max-w-2xl rounded-2xl border border-[#d3bb73]/20 bg-[#1c1f33] shadow-2xl">
+        <div role="dialog" aria-modal="true" aria-label="Rozwiąż konflikt" data-app-overlay="true" className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="relative w-full max-w-3xl rounded-2xl border border-[#d3bb73]/20 bg-[#1c1f33] shadow-2xl">
             {/* Header */}
             <div className="flex items-center justify-between border-b border-[#d3bb73]/10 p-6">
               <div className="flex items-center gap-3">
@@ -847,6 +911,7 @@ export default function ReserveEquipmentModal({
                 </div>
               </div>
               <button
+                disabled={savingSubstitution}
                 onClick={() => {
                   setShowSubstitutionModal(false);
                   setCurrentConflictItem(null);
@@ -864,6 +929,8 @@ export default function ReserveEquipmentModal({
                   <Loader2 className="mb-4 h-12 w-12 animate-spin text-[#d3bb73]" />
                   <p className="text-sm text-[#e5e4e2]/60">Szukam alternatyw...</p>
                 </div>
+              ) : substitutionError ? (
+                <div role="alert" className="text-sm text-red-300">{substitutionError} <button type="button" onClick={() => void loadSubstitutions(currentConflictItem)} className="underline">Ponów</button></div>
               ) : substitutions.length === 0 ? (
                 <div className="rounded-lg border border-yellow-500/20 bg-yellow-500/10 p-4">
                   <p className="text-sm text-yellow-400">
@@ -873,7 +940,7 @@ export default function ReserveEquipmentModal({
               ) : (
                 <div className="space-y-2">
                   <p className="mb-4 text-sm text-[#e5e4e2]/60">
-                    Wybierz alternatywny sprzęt z tej samej kategorii:
+                    Zastępujesz {currentConflictItem.required_qty} szt. Wybierz zamiennik i podaj jego ilość — nie musi być taka sama.
                   </p>
                   {substitutions.map((sub) => {
                     const hasRequiredComponents =
@@ -888,61 +955,56 @@ export default function ReserveEquipmentModal({
                             : 'border-[#d3bb73]/10 bg-[#0f1117]'
                         }`}
                       >
-                        <button
-                          onClick={() => handleSelectSubstitution(sub.id)}
-                          className="w-full p-4 text-left transition-colors hover:bg-[#e5e4e2]/5"
-                        >
-                          <div className="flex items-center justify-between">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2">
-                                <div className="font-medium text-[#e5e4e2]">{sub.name}</div>
-                                {hasRequiredComponents && (
-                                  <span className="rounded bg-yellow-500/20 px-2 py-0.5 text-[10px] font-medium uppercase text-yellow-400">
-                                    Wymaga komponentów
-                                  </span>
-                                )}
-                              </div>
-                              {(sub.brand || sub.model) && (
-                                <div className="mt-1 text-xs text-[#e5e4e2]/50">
-                                  {sub.brand} {sub.model}
-                                </div>
+                        <div className="flex h-16 items-center gap-2 pr-2 sm:gap-3 sm:pr-3">
+                          {sub.thumbnail_url ? (
+                            <Popover
+                              openOn="auto"
+                              triggerClassName="shrink-0"
+                              ariaLabel={`Powiększ zdjęcie: ${sub.name}`}
+                              trigger={<Image src={sub.thumbnail_url} alt={sub.name} width={64} height={64} className="h-16 w-16 cursor-zoom-in rounded-lg bg-black/10 object-contain" />}
+                              content={<Image src={sub.thumbnail_url} alt={sub.name} width={300} height={300} className="max-h-[min(300px,60vh)] w-[min(300px,75vw)] rounded-lg object-contain" />}
+                            />
+                          ) : (
+                            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg bg-white/5" aria-label="Brak zdjęcia">
+                              <Package className="h-6 w-6 text-[#e5e4e2]/30" />
+                            </div>
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5">
+                              <div title={sub.name} className="truncate text-sm font-medium text-[#e5e4e2]">{sub.name}</div>
+                              {hasRequiredComponents && (
+                                <Popover
+                                  openOn="auto"
+                                  triggerClassName="shrink-0"
+                                  ariaLabel="Wymagane komponenty"
+                                  trigger={<AlertTriangle className="h-4 w-4 text-yellow-400" />}
+                                  content={<div className="space-y-1 text-xs"><p className="font-medium text-yellow-400">Wymagane komponenty</p>{sub.required_components!.map((comp) => <p key={comp.id}>{(comp.compatible_equipment || comp.compatible_kit || comp.compatible_cable)?.name}</p>)}</div>}
+                                />
                               )}
                             </div>
-                            <div className="text-sm text-green-400">Dostępne: {sub.available_qty}</div>
+                            {(sub.brand || sub.model) && <div title={`${sub.brand || ''} ${sub.model || ''}`} className="truncate text-xs text-[#e5e4e2]/50">{sub.brand} {sub.model}</div>}
+                            <div className="text-xs text-green-400 sm:hidden">Dostępne: {sub.available_qty} szt.</div>
                           </div>
-                        </button>
-
-                        {hasRequiredComponents && (
-                          <div className="border-t border-yellow-500/20 bg-yellow-500/5 px-4 py-3">
-                            <div className="mb-2 text-xs font-medium uppercase text-yellow-400">
-                              Wymagane komponenty:
-                            </div>
-                            <div className="space-y-1.5">
-                              {sub.required_components!.map((comp) => {
-                                const item = comp.compatible_equipment || comp.compatible_kit;
-                                const isKit = !!comp.compatible_kit;
-                                if (!item) return null;
-
-                                return (
-                                  <div
-                                    key={comp.id}
-                                    className="flex items-center gap-2 text-xs text-[#e5e4e2]/70"
-                                  >
-                                    <Package className="h-3 w-3 text-yellow-400" />
-                                    <span>
-                                      {item.name}
-                                      {isKit && (
-                                        <span className="ml-1 text-[10px] text-yellow-400">
-                                          (ZESTAW)
-                                        </span>
-                                      )}
-                                    </span>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        )}
+                          <div className="hidden shrink-0 whitespace-nowrap text-xs text-green-400 sm:block">Dostępne: {sub.available_qty} szt.</div>
+                          <label className="shrink-0 text-xs text-[#e5e4e2]/70">
+                            <span className="sr-only">Ilość zamiennika</span>
+                            <input
+                              type="number" min={1} max={sub.available_qty} step={1}
+                              aria-label={`Ilość zamiennika: ${sub.name}`}
+                              title="Ilość zamiennika"
+                              value={substitutionQuantities[sub.id] ?? ''}
+                              disabled={savingSubstitution}
+                              onChange={(event) => setSubstitutionQuantities((previous) => ({ ...previous, [sub.id]: event.target.value }))}
+                              className="h-9 w-14 rounded-lg border border-white/10 bg-black/20 px-2 text-sm text-[#e5e4e2] focus:outline-none focus:bg-white/10 sm:w-16"
+                            />
+                          </label>
+                          <button
+                            type="button"
+                            disabled={savingSubstitution || !Number.isInteger(Number(substitutionQuantities[sub.id])) || Number(substitutionQuantities[sub.id]) < 1 || Number(substitutionQuantities[sub.id]) > sub.available_qty}
+                            onClick={() => void handleSelectSubstitution(sub.id)}
+                            className="h-9 shrink-0 rounded-lg bg-[#d3bb73] px-2 text-xs font-medium text-[#0f1119] hover:bg-[#c4ac64] disabled:cursor-not-allowed disabled:opacity-50 sm:px-3 sm:text-sm"
+                          >{savingSubstitution ? 'Zapisuję…' : 'Wybierz'}</button>
+                        </div>
                       </div>
                     );
                   })}
@@ -953,6 +1015,7 @@ export default function ReserveEquipmentModal({
             {/* Footer */}
             <div className="flex items-center justify-end border-t border-[#d3bb73]/10 p-6">
               <button
+                disabled={savingSubstitution}
                 onClick={() => {
                   setShowSubstitutionModal(false);
                   setCurrentConflictItem(null);
@@ -967,7 +1030,7 @@ export default function ReserveEquipmentModal({
       )}
 
       {showRequiredComponentsModal && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4">
+        <div role="dialog" aria-modal="true" aria-label="Wymagane komponenty" data-app-overlay="true" className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-4">
           <div className="relative w-full max-w-2xl rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] shadow-xl">
             <div className="flex items-center justify-between border-b border-[#d3bb73]/10 p-6">
               <div>
@@ -977,6 +1040,7 @@ export default function ReserveEquipmentModal({
                 </p>
               </div>
               <button
+                disabled={savingSubstitution}
                 onClick={() => {
                   setShowRequiredComponentsModal(false);
                   setRequiredComponents([]);
@@ -1029,9 +1093,9 @@ export default function ReserveEquipmentModal({
                               </span>
                             )}
                             <span className="rounded bg-[#e5e4e2]/10 px-2 py-0.5 text-xs text-[#e5e4e2]/70">
-                              {component.quantity || 1}{' '}
+                              {(component.quantity || 1) * (component.quantity_mode === 'fixed' ? 1 : selectedSubstitutionQty)}{' '}
                               {isCable && component.compatible_cable?.stock_unit === 'meter' ? 'm' : 'szt.'}{' '}
-                              {component.quantity_mode === 'fixed' ? 'łącznie' : 'na sztukę sprzętu'}
+                              łącznie dla {selectedSubstitutionQty} szt. zamiennika
                             </span>
                             <span className="rounded bg-red-500/20 px-2 py-0.5 text-xs text-red-400">
                               WYMAGANY
@@ -1062,6 +1126,7 @@ export default function ReserveEquipmentModal({
 
             <div className="flex items-center justify-between border-t border-[#d3bb73]/10 p-6">
               <button
+                disabled={savingSubstitution}
                 onClick={() => {
                   setShowRequiredComponentsModal(false);
                   setRequiredComponents([]);
@@ -1073,9 +1138,16 @@ export default function ReserveEquipmentModal({
               </button>
               <div className="flex gap-2">
                 <button
+                  disabled={savingSubstitution}
                   onClick={async () => {
-                    if (selectedSubstitutionId) {
+                    if (!selectedSubstitutionId || substitutionBusyRef.current) return;
+                    substitutionBusyRef.current = true;
+                    setSavingSubstitution(true);
+                    try {
                       await saveSubstitution(selectedSubstitutionId);
+                    } finally {
+                      substitutionBusyRef.current = false;
+                      setSavingSubstitution(false);
                     }
                   }}
                   className="rounded-lg border border-[#e5e4e2]/20 px-4 py-2 text-sm text-[#e5e4e2] transition-colors hover:bg-[#e5e4e2]/10"
@@ -1083,6 +1155,7 @@ export default function ReserveEquipmentModal({
                   Kontynuuj bez komponentów
                 </button>
                 <button
+                  disabled={savingSubstitution}
                   onClick={handleAddRequiredComponents}
                   className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#0f1119] transition-colors hover:bg-[#c4ac64]"
                 >
@@ -1094,6 +1167,6 @@ export default function ReserveEquipmentModal({
           </div>
         </div>
       )}
-    </>
+    </OverlayPortal>
   );
 }

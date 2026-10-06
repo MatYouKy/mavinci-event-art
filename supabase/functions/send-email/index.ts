@@ -1,7 +1,99 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { prepareInlineEmailImages } from "../_shared/emailInlineImages.ts";
-import type { RelayEmailAttachment } from "../_shared/emailInlineImages.ts";
+
+// Keep these helpers local: Supabase Dashboard deployments may include only index.ts.
+// When updating the equivalents in _shared, keep both send-email functions in sync.
+async function salesDeliveryActor(req: Request, body: any, service: any, functionName: string) {
+  const token = req.headers.get('Authorization')?.replace(/^Bearer\s+/i, '');
+  if (!token) throw new Error('Wymagane logowanie');
+  if (token === Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')) {
+    const id = body._scheduledDispatch?.scheduledEmailId;
+    if (!id) throw new Error('Brak zlecenia wysyłki');
+    const { data: job, error } = await service.from('scheduled_emails').select('created_by,status,function_name').eq('id', id).single();
+    if (error || job.status !== 'processing' || job.function_name !== functionName) throw new Error('Nieprawidłowe zlecenie wysyłki');
+    return { userId: job.created_by, scheduled: true, deliveryKey: `scheduled:${id}` };
+  }
+  const { data, error } = await service.auth.getUser(token);
+  if (error || !data.user) throw new Error('Sesja wygasła');
+  return { userId: data.user.id, scheduled: false, deliveryKey: null };
+}
+async function assertSalesDocumentPermission(service: any, kind: string, id: string, userId: string) {
+  const { data, error } = await service.rpc('sales_actor_can_manage', { p_kind: kind, p_document: id, p_user: userId });
+  if (error || !data) throw new Error('Brak uprawnień do dokumentu');
+}
+async function assertSalesMailbox(service: any, accountId: string, userId: string) {
+  const { data: employee } = await service.from('employees').select('id,permissions,role,access_level').or(`id.eq.${userId},auth_user_id.eq.${userId}`).eq('is_active', true).limit(1).single();
+  const { data: account } = await service.from('employee_email_accounts').select('employee_id,account_type,is_active').eq('id', accountId).single();
+  if (!employee || !account?.is_active || account.account_type === 'system') throw new Error('Wybierz aktywną skrzynkę pracownika');
+  const { data: assignment } = await service.from('employee_email_account_assignments').select('id').eq('email_account_id', accountId).eq('employee_id', employee.id).maybeSingle();
+  if (account.employee_id !== employee.id && !assignment && !employee.permissions?.includes('admin') && employee.role !== 'admin' && employee.access_level !== 'admin') throw new Error('Brak dostępu do skrzynki');
+  return employee.id;
+}
+
+interface RelayEmailAttachment {
+  filename: string;
+  content: string;
+  contentType?: string;
+  contentDisposition?: "attachment" | "inline";
+  cid?: string;
+}
+
+interface PreparedEmail {
+  html: string;
+  attachments: RelayEmailAttachment[];
+}
+
+const extensionForMime = (mime: string): string => {
+  const normalized = mime.toLowerCase();
+  if (normalized === "image/jpeg") return "jpg";
+  if (normalized === "image/svg+xml") return "svg";
+  if (normalized === "image/gif") return "gif";
+  if (normalized === "image/webp") return "webp";
+  return "png";
+};
+
+/**
+ * Gmail usuwa data:image/... z HTML wiadomości. Zamieniamy je na obrazy MIME
+ * osadzone przez Content-ID, zachowując przy tym dotychczasowy szablon stopki.
+ */
+const prepareInlineEmailImages = (
+  html: string,
+  existingAttachments: RelayEmailAttachment[] = [],
+): PreparedEmail => {
+  if (!html || !/data:image\//i.test(html)) {
+    return { html, attachments: [...existingAttachments] };
+  }
+
+  const inlineAttachments: RelayEmailAttachment[] = [];
+  const knownImages = new Map<string, string>();
+  let imageIndex = 0;
+
+  const preparedHtml = html.replace(
+    /(<img\b[^>]*?\bsrc\s*=\s*)(["'])(data:(image\/[a-z0-9.+-]+)(?:;[^,]*)?;base64,([^"']+))\2/gi,
+    (_match, prefix: string, quote: string, dataUri: string, mime: string, base64: string) => {
+      const existingCid = knownImages.get(dataUri);
+      if (existingCid) return `${prefix}${quote}cid:${existingCid}${quote}`;
+
+      imageIndex += 1;
+      const cid = `mavinci-inline-${imageIndex}-${crypto.randomUUID()}@mavinci.pl`;
+      knownImages.set(dataUri, cid);
+      inlineAttachments.push({
+        filename: `mavinci-inline-${imageIndex}.${extensionForMime(mime)}`,
+        content: base64.replace(/\s+/g, ""),
+        contentType: mime,
+        contentDisposition: "inline",
+        cid,
+      });
+
+      return `${prefix}${quote}cid:${cid}${quote}`;
+    },
+  );
+
+  return {
+    html: preparedHtml,
+    attachments: [...existingAttachments, ...inlineAttachments],
+  };
+};
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -32,6 +124,15 @@ interface EmailRequest {
   emailAccountId?: string;
   smtpConfig?: SmtpConfig;
   attachments?: RelayEmailAttachment[];
+  // Only a trusted server may supply this transport-only secret.
+  saldeoDelivery?: {
+    companyId: string;
+    actorUserId: string;
+    periodMonth: number;
+    periodYear: number;
+    documentType: 'FK' | 'DS' | 'P';
+    pin: string;
+  };
 }
 
 interface EmailAccount {
@@ -52,15 +153,17 @@ Deno.serve(async (req: Request) => {
     });
   }
 
+  let isSaldeoDelivery = false;
   try {
 
     const requestBody = await req.json();
+    isSaldeoDelivery = requestBody?.saldeoDelivery != null;
 
     const {
       to,
       cc,
       bcc,
-      subject,
+      subject: providedSubject,
       body,
       replyTo,
       inReplyTo,
@@ -69,7 +172,86 @@ Deno.serve(async (req: Request) => {
       emailAccountId,
       smtpConfig,
       attachments,
+      saldeoDelivery,
     }: EmailRequest = requestBody;
+
+    let salesActor: { userId: string; scheduled: boolean; deliveryKey: string | null } | null = null;
+    let salesEmployeeId: string | null = null;
+    const salesDocument = requestBody.salesDocument;
+    if (salesDocument) {
+      if (salesDocument.kind !== 'calculation' || !emailAccountId || smtpConfig) throw new Error('Nieprawidłowa wysyłka kalkulacji');
+      const service = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+      salesActor = await salesDeliveryActor(req, requestBody, service, 'send-email');
+      await assertSalesDocumentPermission(service, 'calculation', salesDocument.id, salesActor.userId);
+      salesEmployeeId = await assertSalesMailbox(service, emailAccountId, salesActor.userId);
+      const { data: file } = await service.from('sales_document_files').select('id').eq('calculation_id', salesDocument.id).eq('storage_bucket', 'event-files').eq('storage_path', salesDocument.storagePath).eq('revision', salesDocument.revision).maybeSingle();
+      if (!file) throw new Error('Brak zapisanej wersji PDF kalkulacji');
+      if (!salesActor.scheduled) {
+        const { data: calculation } = await service.from('event_calculations').select('content_revision,generated_pdf_path').eq('id', salesDocument.id).single();
+        if (calculation?.content_revision !== salesDocument.revision || calculation.generated_pdf_path !== salesDocument.storagePath) throw new Error('Kalkulacja została zmieniona. Wygeneruj PDF ponownie.');
+      }
+      const { data: pdf, error: pdfError } = await service.storage.from('event-files').download(salesDocument.storagePath);
+      if (pdfError || !pdf) throw new Error('Nie udało się pobrać PDF');
+      const bytes = new Uint8Array(await pdf.arrayBuffer()); let binary = '';
+      for (let i=0; i<bytes.length; i+=8192) binary += String.fromCharCode(...bytes.subarray(i,i+8192));
+      if (!attachments?.length) throw new Error('Brak załącznika kalkulacji');
+      attachments[0] = { filename: 'kalkulacja.pdf', content: btoa(binary), contentType: 'application/pdf', contentDisposition: 'attachment' };
+    }
+
+    if (requestBody.inquiryId && !salesDocument) {
+      const service = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+      salesActor = await salesDeliveryActor(req, requestBody, service, 'send-email');
+      await assertSalesDocumentPermission(service, 'inquiry', requestBody.inquiryId, salesActor.userId);
+      if (!emailAccountId || smtpConfig) throw new Error('Wybierz skrzynkę pracownika');
+      salesEmployeeId = await assertSalesMailbox(service, emailAccountId, salesActor.userId);
+    }
+    if (emailAccountId && !salesEmployeeId && !isSaldeoDelivery) {
+      const token = req.headers.get('Authorization')?.replace(/^Bearer\s+/i, '');
+      const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+      if (token !== serviceKey || requestBody._scheduledDispatch) {
+        const service = createClient(Deno.env.get('SUPABASE_URL')!, serviceKey);
+        const actor = await salesDeliveryActor(req, requestBody, service, 'send-email');
+        const { data: sender, error: senderError } = await service.from('employees').select('id,permissions,role,access_level').or(`id.eq.${actor.userId},auth_user_id.eq.${actor.userId}`).eq('is_active',true).maybeSingle();
+        const { data: account, error: accountError } = await service.from('employee_email_accounts').select('employee_id,is_active').eq('id',emailAccountId).maybeSingle();
+        const { data: assignment, error: assignmentError } = sender ? await service.from('employee_email_account_assignments').select('can_send').eq('email_account_id',emailAccountId).eq('employee_id',sender.id).maybeSingle() : {data:null,error:null};
+        const canUseMessages = sender && (sender.role === 'admin' || sender.access_level === 'admin' || sender.permissions?.some((p: string) => ['admin','messages_view','messages_manage'].includes(p)));
+        if (senderError || accountError || assignmentError || !canUseMessages || !account?.is_active || (account.employee_id !== sender.id && assignment?.can_send !== true) || smtpConfig) throw new Error('Brak uprawnień do wysyłania z tej skrzynki');
+        salesEmployeeId = sender.id;
+      }
+    }
+    let subject = providedSubject;
+    let persistedSubject = providedSubject;
+    let saldeoActorId: string | null = null;
+    if (isSaldeoDelivery) {
+      const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+      const bearer = req.headers.get('Authorization')?.replace(/^Bearer\s+/i, '');
+      if (!serviceKey || bearer !== serviceKey || !saldeoDelivery) throw new Error('Saldeo server authorization required');
+      const { companyId, actorUserId, periodMonth, periodYear, documentType, pin } = saldeoDelivery;
+      const uuid = /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
+      if (!uuid.test(companyId) || !uuid.test(actorUserId) || typeof pin !== 'string' || !/^[^\s()\r\n]{4,64}$/.test(pin)
+        || !Number.isInteger(periodMonth) || periodMonth < 1 || periodMonth > 12
+        || !Number.isInteger(periodYear) || periodYear < 2000 || periodYear > 2100
+        || !['FK', 'DS', 'P'].includes(documentType) || cc || bcc || smtpConfig || !emailAccountId || !attachments?.length) {
+        throw new Error('Invalid private Saldeo delivery');
+      }
+      const server = createClient(Deno.env.get('SUPABASE_URL')!, serviceKey);
+      const [companyResult, actorResult] = await Promise.all([
+        server.from('my_companies').select('saldeo_document_email').eq('id', companyId).eq('is_active', true).maybeSingle(),
+        server.from('employees').select('id,role,access_level').eq('is_active', true)
+          .or(`id.eq.${actorUserId},auth_user_id.eq.${actorUserId}`).limit(1).maybeSingle(),
+      ]);
+      const expectedRecipient = String(companyResult.data?.saldeo_document_email || '').trim();
+      if (companyResult.error || actorResult.error || !actorResult.data
+        || (actorResult.data.role !== 'admin' && actorResult.data.access_level !== 'admin')
+        || !/^[^\s@]+@dok\.saldeo\.pl$/i.test(expectedRecipient)
+        || typeof to !== 'string' || to.trim().toLowerCase() !== expectedRecipient.toLowerCase()) {
+        throw new Error('Saldeo recipient or administrator not authorized');
+      }
+      const period = `${String(periodMonth).padStart(2, '0')}/${periodYear}`;
+      subject = `(${period}) (${pin}) {${documentType}}`;
+      persistedSubject = `(${period}) (PIN ukryty) {${documentType}}`;
+      saldeoActorId = actorUserId;
+    }
 
     if (!to || !subject || !body) {
       console.error('[send-email] Missing fields:', { to: !!to, subject: !!subject, body: !!body });
@@ -178,10 +360,10 @@ Deno.serve(async (req: Request) => {
     let persistedSentEmailId: string | null = null;
 
     if (emailAccountId) {
-      let employeeId: string | null = null;
+      let employeeId: string | null = salesEmployeeId || saldeoActorId;
 
       const authHeader = req.headers.get("Authorization");
-      if (authHeader) {
+      if (authHeader && !saldeoActorId && !salesEmployeeId) {
         try {
           const { data: { user } } = await supabase.auth.getUser(
             authHeader.replace("Bearer ", "")
@@ -208,7 +390,7 @@ Deno.serve(async (req: Request) => {
             employee_id: employeeId,
             email_account_id: emailAccountId,
             to_address: to,
-            subject: subject,
+            subject: persistedSubject,
             // Do CRM zapisujemy wersję z obrazami data URI. Wersja CID jest
             // przeznaczona wyłącznie dla transportu SMTP i bez części MIME nie
             // nadaje się do późniejszego podglądu w folderze „Wysłane”.
@@ -269,6 +451,15 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    if (salesDocument && salesActor) {
+      const { error } = await supabase.rpc('record_sales_delivery', { p_kind: 'calculation', p_document: salesDocument.id, p_delivery_key: salesActor.deliveryKey || `calculation:${salesDocument.id}:${info.messageId || crypto.randomUUID()}`, p_storage_path: salesDocument.storagePath, p_recipient: to });
+      if (error) console.error('Calculation delivered; activity write failed', error.code);
+    }
+
+    if (requestBody.inquiryId && !salesDocument && salesActor) {
+      const { error } = await supabase.rpc('record_inquiry_delivery', { p_inquiry: requestBody.inquiryId, p_delivery_key: salesActor.deliveryKey || `inquiry:${requestBody.inquiryId}:${info.messageId || crypto.randomUUID()}`, p_recipient: to });
+      if (error) console.error('Inquiry email delivered; activity write failed', error.code);
+    }
     if (messageId && emailAccountId) {
       await supabase
         .from("contact_messages")
@@ -294,11 +485,14 @@ Deno.serve(async (req: Request) => {
       }
     );
   } catch (error) {
-    console.error("Error sending email:", error);
+    // Relay errors may contain the transport subject. Never expose the PIN in
+    // a log, stored CRM message, or HTTP response for the private Saldeo path.
+    if (isSaldeoDelivery) console.error('[send-email] Private Saldeo delivery failed; details withheld');
+    else console.error("Error sending email:", error);
     return new Response(
       JSON.stringify({ 
         success: false, 
-        error: error instanceof Error ? error.message : "Unknown error" 
+        error: isSaldeoDelivery ? 'Nie udało się potwierdzić wysyłki do Saldeo. Sprawdź jej stan przed ponowieniem.' : error instanceof Error ? error.message : "Unknown error"
       }),
       {
         status: 400,

@@ -235,24 +235,24 @@ export default function EventCategoriesPage() {
 
   return (
     <PermissionGuard permission="event_categories_manage">
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 p-6">
+      <div className="min-h-screen bg-[var(--brand-burgundy-950)] text-[var(--brand-platinum)] p-6">
         <div className="mx-auto max-w-6xl">
-          <div className="mb-8 flex items-center justify-between">
+          <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
             <div>
               <h1 className="mb-2 text-3xl font-bold text-white">Kategorie wydarzeń</h1>
-              <p className="text-gray-400">Zarządzaj kategoriami i ikonami dla wydarzeń</p>
+              <p className="text-[var(--brand-platinum)]/60">Zarządzaj kategoriami i ikonami dla wydarzeń</p>
             </div>
-            <div className="flex gap-3">
+            <div className="flex flex-wrap gap-3">
               <button
                 onClick={() => setShowIconModal(true)}
-                className="flex items-center gap-2 rounded-lg bg-gray-700 px-6 py-3 text-white transition-colors hover:bg-gray-600"
+                className="flex items-center gap-2 rounded-lg bg-[var(--brand-burgundy-900)] px-6 py-3 text-white transition-colors hover:bg-[var(--brand-burgundy-750)]"
               >
                 <Sparkles className="h-5 w-5" />
                 Zarządzaj ikonami
               </button>
               <button
                 onClick={() => handleOpenModal()}
-                className="flex items-center gap-2 rounded-lg bg-blue-600 px-6 py-3 text-white transition-colors hover:bg-blue-700"
+                className="flex items-center gap-2 rounded-lg bg-[var(--brand-gold)] px-6 py-3 text-[var(--brand-burgundy-950)] transition-colors hover:bg-[var(--brand-gold-hover)]"
               >
                 <Plus className="h-5 w-5" />
                 Nowa kategoria
@@ -264,7 +264,7 @@ export default function EventCategoriesPage() {
             {categories.map((category) => (
               <div
                 key={category.id}
-                className="rounded-lg border border-gray-700 bg-gray-800/50 p-6 backdrop-blur-sm transition-all hover:border-gray-600"
+                className="rounded-lg border border-white/10 bg-[var(--brand-burgundy-800)] p-6 backdrop-blur-sm transition-all hover:border-white/15"
               >
                 <div className="mb-4 flex items-start justify-between">
                   <div className="flex items-center gap-3">
@@ -283,33 +283,33 @@ export default function EventCategoriesPage() {
                     </div>
                     <div>
                       <h3 className="text-lg font-semibold text-white">{category.name}</h3>
-                      <span className="text-xs text-gray-400">{category.color}</span>
+                      <span className="text-xs text-[var(--brand-platinum)]/60">{category.color}</span>
                     </div>
                   </div>
                   <div className="flex gap-2">
                     <button
                       onClick={() => handleOpenModal(category)}
-                      className="rounded p-2 text-gray-400 transition-colors hover:bg-gray-700 hover:text-blue-400"
+                      className="rounded p-2 text-[var(--brand-platinum)]/60 transition-colors hover:bg-[var(--brand-burgundy-750)] hover:text-[var(--brand-gold)]"
                     >
                       <Pencil className="h-4 w-4" />
                     </button>
                     <button
                       onClick={() => handleDelete(category.id)}
-                      className="rounded p-2 text-gray-400 transition-colors hover:bg-gray-700 hover:text-red-400"
+                      className="rounded p-2 text-[var(--brand-platinum)]/60 transition-colors hover:bg-[var(--brand-burgundy-750)] hover:text-red-400"
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>
                   </div>
                 </div>
                 {category.description && (
-                  <p className="mb-3 text-sm text-gray-400">{category.description}</p>
+                  <p className="mb-3 text-sm text-[var(--brand-platinum)]/60">{category.description}</p>
                 )}
                 <div className="flex items-center gap-2">
                   <span
                     className={`rounded-full px-3 py-1 text-xs font-medium ${
                       category.is_active
                         ? 'bg-green-500/20 text-green-400'
-                        : 'bg-gray-500/20 text-gray-400'
+                        : 'bg-white/5 text-[var(--brand-platinum)]/60'
                     }`}
                   >
                     {category.is_active ? 'Aktywna' : 'Nieaktywna'}
@@ -324,14 +324,14 @@ export default function EventCategoriesPage() {
               key={editingCategory?.id || 'new'}
               className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
             >
-              <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-xl border border-gray-700 bg-gray-800 p-6">
+              <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-xl border border-white/10 bg-[var(--brand-burgundy-800)] p-6">
                 <div className="mb-6 flex items-center justify-between">
                   <h2 className="text-xl font-bold text-white">
                     {editingCategory ? 'Edytuj kategorię' : 'Nowa kategoria'}
                   </h2>
                   <button
                     onClick={handleCloseModal}
-                    className="text-gray-400 transition-colors hover:text-white"
+                    className="text-[var(--brand-platinum)]/60 transition-colors hover:text-white"
                   >
                     <X className="h-5 w-5" />
                   </button>
@@ -339,31 +339,31 @@ export default function EventCategoriesPage() {
 
                 <form onSubmit={handleSubmit} className="space-y-4">
                   <div>
-                    <label className="mb-2 block text-sm font-medium text-gray-300">
+                    <label className="mb-2 block text-sm font-medium text-[var(--brand-platinum)]/80">
                       Nazwa kategorii *
                     </label>
                     <input
                       type="text"
                       value={formData.name}
                       onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                      className="w-full rounded-lg border border-gray-600 bg-gray-700 px-4 py-2 text-white focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                      className="w-full rounded-lg border border-[var(--app-field-border)] bg-[var(--brand-burgundy-900)] px-4 py-2 text-white outline-none focus:border-[var(--app-field-border-focus)]"
                       required
                     />
                   </div>
 
                   <div>
-                    <label className="mb-2 block text-sm font-medium text-gray-300">Ikona</label>
+                    <label className="mb-2 block text-sm font-medium text-[var(--brand-platinum)]/80">Ikona</label>
                     <div className="space-y-3">
                       <button
                         type="button"
                         onClick={() => setShowIconPicker(!showIconPicker)}
-                        className="flex w-full items-center justify-between rounded-lg border border-gray-600 bg-gray-700 px-4 py-3 text-left transition-colors hover:bg-gray-600"
+                        className="flex w-full items-center justify-between rounded-lg border border-[var(--app-field-border)] bg-[var(--brand-burgundy-900)] px-4 py-3 text-left transition-colors hover:bg-[var(--brand-burgundy-750)]"
                       >
                         <div className="flex items-center gap-3">
                           {formData.icon_id ? (
                             <>
                               <div
-                                className="flex h-8 w-8 items-center justify-center rounded bg-gray-600"
+                                className="flex h-8 w-8 items-center justify-center rounded bg-[var(--brand-burgundy-900)]"
                                 dangerouslySetInnerHTML={{
                                   __html:
                                     icons.find((i) => i.id === formData.icon_id)?.svg_code || '',
@@ -376,8 +376,8 @@ export default function EventCategoriesPage() {
                             </>
                           ) : (
                             <>
-                              <Image className="h-8 w-8 text-gray-400" />
-                              <span className="text-gray-400">Wybierz ikonę (opcjonalnie)</span>
+                              <Image className="h-8 w-8 text-[var(--brand-platinum)]/60" />
+                              <span className="text-[var(--brand-platinum)]/60">Wybierz ikonę (opcjonalnie)</span>
                             </>
                           )}
                         </div>
@@ -395,7 +395,7 @@ export default function EventCategoriesPage() {
                         )}
                       </button>
                       {showIconPicker && (
-                        <div className="grid max-h-48 grid-cols-4 gap-2 overflow-y-auto rounded-lg border border-gray-600 bg-gray-900 p-3">
+                        <div className="grid max-h-48 grid-cols-4 gap-2 overflow-y-auto rounded-lg border border-[var(--app-field-border)] bg-[var(--brand-burgundy-950)] p-3">
                           {icons.map((icon) => (
                             <button
                               key={icon.id}
@@ -406,8 +406,8 @@ export default function EventCategoriesPage() {
                               }}
                               className={`rounded-lg p-3 transition-all ${
                                 formData.icon_id === icon.id
-                                  ? 'scale-110 bg-blue-600'
-                                  : 'bg-gray-700 hover:bg-gray-600'
+                                  ? 'bg-[var(--brand-burgundy-750)] ring-1 ring-inset ring-[var(--brand-gold)]/30'
+                                  : 'bg-[var(--brand-burgundy-900)] hover:bg-[var(--brand-burgundy-750)]'
                               }`}
                               title={icon.name}
                             >
@@ -423,7 +423,7 @@ export default function EventCategoriesPage() {
                   </div>
 
                   <div>
-                    <label className="mb-2 block text-sm font-medium text-gray-300">Kolor *</label>
+                    <label className="mb-2 block text-sm font-medium text-[var(--brand-platinum)]/80">Kolor *</label>
                     <div className="mb-3 flex gap-3">
                       <input
                         type="color"
@@ -435,7 +435,7 @@ export default function EventCategoriesPage() {
                         type="text"
                         value={formData.color}
                         onChange={(e) => setFormData({ ...formData, color: e.target.value })}
-                        className="flex-1 rounded-lg border border-gray-600 bg-gray-700 px-4 py-2 text-white focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                        className="flex-1 rounded-lg border border-[var(--app-field-border)] bg-[var(--brand-burgundy-900)] px-4 py-2 text-white outline-none focus:border-[var(--app-field-border-focus)]"
                         placeholder="#3B82F6"
                         pattern="^#[0-9A-Fa-f]{6}$"
                         required
@@ -447,9 +447,9 @@ export default function EventCategoriesPage() {
                           key={color}
                           type="button"
                           onClick={() => setFormData({ ...formData, color })}
-                          className={`h-8 w-full rounded border-2 transition-all ${
+                          className={`h-8 w-full rounded border transition-all ${
                             formData.color === color
-                              ? 'scale-110 border-white'
+                              ? 'border-[var(--brand-gold)]/40 brightness-125'
                               : 'border-transparent'
                           }`}
                           style={{ backgroundColor: color }}
@@ -459,17 +459,17 @@ export default function EventCategoriesPage() {
                   </div>
 
                   <div>
-                    <label className="mb-2 block text-sm font-medium text-gray-300">Opis</label>
+                    <label className="mb-2 block text-sm font-medium text-[var(--brand-platinum)]/80">Opis</label>
                     <textarea
                       value={formData.description}
                       onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                      className="w-full rounded-lg border border-gray-600 bg-gray-700 px-4 py-2 text-white focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                      className="w-full rounded-lg border border-[var(--app-field-border)] bg-[var(--brand-burgundy-900)] px-4 py-2 text-white outline-none focus:border-[var(--app-field-border-focus)]"
                       rows={3}
                     />
                   </div>
 
                   <div>
-                    <label className="mb-2 block text-sm font-medium text-gray-300">
+                    <label className="mb-2 block text-sm font-medium text-[var(--brand-platinum)]/80">
                       Szablon oferty (opcjonalnie)
                     </label>
                     <select
@@ -480,7 +480,7 @@ export default function EventCategoriesPage() {
                           default_offer_template_category_id: e.target.value,
                         })
                       }
-                      className="w-full rounded-lg border border-gray-600 bg-gray-700 px-4 py-2 text-white focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                      className="w-full rounded-lg border border-[var(--app-field-border)] bg-[var(--brand-burgundy-900)] px-4 py-2 text-white outline-none focus:border-[var(--app-field-border-focus)]"
                     >
                       <option value="">Domyślny szablon</option>
                       {offerTemplateCategories.map((category) => (
@@ -492,7 +492,7 @@ export default function EventCategoriesPage() {
                   </div>
 
                   <div>
-                    <label className="mb-2 block text-sm font-medium text-gray-300">
+                    <label className="mb-2 block text-sm font-medium text-[var(--brand-platinum)]/80">
                       Szablon umowy (opcjonalnie)
                     </label>
                     <select
@@ -500,7 +500,7 @@ export default function EventCategoriesPage() {
                       onChange={(e) =>
                         setFormData({ ...formData, contract_template_id: e.target.value })
                       }
-                      className="w-full rounded-lg border border-gray-600 bg-gray-700 px-4 py-2 text-white focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                      className="w-full rounded-lg border border-[var(--app-field-border)] bg-[var(--brand-burgundy-900)] px-4 py-2 text-white outline-none focus:border-[var(--app-field-border-focus)]"
                     >
                       <option value="">Brak szablonu</option>
                       {contractTemplates.map((template) => (
@@ -517,9 +517,9 @@ export default function EventCategoriesPage() {
                       id="is_active"
                       checked={formData.is_active}
                       onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
-                      className="h-4 w-4 rounded border-gray-600 text-blue-600 focus:ring-blue-500"
+                      className="h-4 w-4 rounded border-[var(--app-field-border)] accent-[var(--brand-gold)] focus-visible:outline focus-visible:outline-1 focus-visible:outline-[var(--brand-gold)]"
                     />
-                    <label htmlFor="is_active" className="text-sm text-gray-300">
+                    <label htmlFor="is_active" className="text-sm text-[var(--brand-platinum)]/80">
                       Kategoria aktywna
                     </label>
                   </div>
@@ -528,13 +528,13 @@ export default function EventCategoriesPage() {
                     <button
                       type="button"
                       onClick={handleCloseModal}
-                      className="flex-1 rounded-lg bg-gray-700 px-4 py-2 text-white transition-colors hover:bg-gray-600"
+                      className="flex-1 rounded-lg bg-[var(--brand-burgundy-900)] px-4 py-2 text-white transition-colors hover:bg-[var(--brand-burgundy-750)]"
                     >
                       Anuluj
                     </button>
                     <button
                       type="submit"
-                      className="flex-1 rounded-lg bg-blue-600 px-4 py-2 text-white transition-colors hover:bg-blue-700"
+                      className="flex-1 rounded-lg bg-[var(--brand-gold)] px-4 py-2 text-[var(--brand-burgundy-950)] transition-colors hover:bg-[var(--brand-gold-hover)]"
                     >
                       {editingCategory ? 'Zapisz' : 'Utwórz'}
                     </button>
@@ -546,12 +546,12 @@ export default function EventCategoriesPage() {
 
           {showIconModal && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-              <div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-xl border border-gray-700 bg-gray-800 p-6">
+              <div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-xl border border-white/10 bg-[var(--brand-burgundy-800)] p-6">
                 <div className="mb-6 flex items-center justify-between">
                   <h2 className="text-xl font-bold text-white">Zarządzanie ikonami</h2>
                   <button
                     onClick={handleCloseIconModal}
-                    className="text-gray-400 transition-colors hover:text-white"
+                    className="text-[var(--brand-platinum)]/60 transition-colors hover:text-white"
                   >
                     <X className="h-5 w-5" />
                   </button>
@@ -559,28 +559,28 @@ export default function EventCategoriesPage() {
 
                 <form
                   onSubmit={handleSubmitIcon}
-                  className="mb-6 space-y-4 rounded-lg bg-gray-900 p-4"
+                  className="mb-6 space-y-4 rounded-lg bg-[var(--brand-burgundy-950)] p-4"
                 >
                   <h3 className="mb-4 text-lg font-semibold text-white">
                     {editingIcon ? 'Edytuj ikonę' : 'Dodaj nową ikonę'}
                   </h3>
 
                   <div>
-                    <label className="mb-2 block text-sm font-medium text-gray-300">
+                    <label className="mb-2 block text-sm font-medium text-[var(--brand-platinum)]/80">
                       Nazwa ikony *
                     </label>
                     <input
                       type="text"
                       value={iconFormData.name}
                       onChange={(e) => setIconFormData({ ...iconFormData, name: e.target.value })}
-                      className="w-full rounded-lg border border-gray-600 bg-gray-700 px-4 py-2 text-white focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                      className="w-full rounded-lg border border-[var(--app-field-border)] bg-[var(--brand-burgundy-900)] px-4 py-2 text-white outline-none focus:border-[var(--app-field-border-focus)]"
                       placeholder="np. Mikrofon"
                       required
                     />
                   </div>
 
                   <div>
-                    <label className="mb-2 block text-sm font-medium text-gray-300">
+                    <label className="mb-2 block text-sm font-medium text-[var(--brand-platinum)]/80">
                       Kod SVG *
                     </label>
                     <textarea
@@ -588,7 +588,7 @@ export default function EventCategoriesPage() {
                       onChange={(e) =>
                         setIconFormData({ ...iconFormData, svg_code: e.target.value })
                       }
-                      className="w-full rounded-lg border border-gray-600 bg-gray-700 px-4 py-2 font-mono text-sm text-white focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                      className="w-full rounded-lg border border-[var(--app-field-border)] bg-[var(--brand-burgundy-900)] px-4 py-2 font-mono text-sm text-white outline-none focus:border-[var(--app-field-border-focus)]"
                       rows={6}
                       placeholder='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">...</svg>'
                       required
@@ -596,8 +596,8 @@ export default function EventCategoriesPage() {
                   </div>
 
                   <div>
-                    <label className="mb-2 block text-sm font-medium text-gray-300">Podgląd</label>
-                    <div className="flex items-center gap-4 rounded-lg bg-gray-700 p-4">
+                    <label className="mb-2 block text-sm font-medium text-[var(--brand-platinum)]/80">Podgląd</label>
+                    <div className="flex items-center gap-4 rounded-lg bg-[var(--brand-burgundy-900)] p-4">
                       {iconFormData.svg_code && (
                         <div
                           className="flex h-12 w-12 items-center justify-center rounded-lg"
@@ -624,7 +624,7 @@ export default function EventCategoriesPage() {
                           onChange={(e) =>
                             setIconFormData({ ...iconFormData, preview_color: e.target.value })
                           }
-                          className="flex-1 rounded-lg border border-gray-500 bg-gray-600 px-4 py-2 text-white"
+                          className="flex-1 rounded-lg border border-[var(--app-field-border)] bg-[var(--brand-burgundy-900)] px-4 py-2 text-white"
                           placeholder="#3B82F6"
                         />
                       </div>
@@ -643,26 +643,26 @@ export default function EventCategoriesPage() {
                           id: '',
                         } as ICustomIcon);
                       }}
-                      className="rounded-lg bg-gray-700 px-4 py-2 text-white transition-colors hover:bg-gray-600"
+                      className="rounded-lg bg-[var(--brand-burgundy-900)] px-4 py-2 text-white transition-colors hover:bg-[var(--brand-burgundy-750)]"
                     >
                       Anuluj
                     </button>
                     <button
                       type="submit"
-                      className="rounded-lg bg-blue-600 px-4 py-2 text-white transition-colors hover:bg-blue-700"
+                      className="rounded-lg bg-[var(--brand-gold)] px-4 py-2 text-[var(--brand-burgundy-950)] transition-colors hover:bg-[var(--brand-gold-hover)]"
                     >
                       {editingIcon ? 'Zaktualizuj' : 'Dodaj ikonę'}
                     </button>
                   </div>
                 </form>
 
-                <div className="border-t border-gray-700 pt-6">
+                <div className="border-t border-white/10 pt-6">
                   <h3 className="mb-4 text-lg font-semibold text-white">Dostępne ikony</h3>
                   <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
                     {icons.map((icon) => (
                       <div
                         key={icon.id}
-                        className="rounded-lg border border-gray-700 bg-gray-900 p-4 transition-all hover:border-gray-600"
+                        className="rounded-lg border border-white/10 bg-[var(--brand-burgundy-950)] p-4 transition-all hover:border-white/15"
                       >
                         <div className="mb-3 flex items-center justify-between">
                           <div
@@ -678,14 +678,14 @@ export default function EventCategoriesPage() {
                             <button
                               type="button"
                               onClick={() => handleOpenIconModal(icon)}
-                              className="rounded p-1 text-gray-400 hover:bg-gray-700 hover:text-blue-400"
+                              className="rounded p-1 text-[var(--brand-platinum)]/60 hover:bg-[var(--brand-burgundy-750)] hover:text-[var(--brand-gold)]"
                             >
                               <Pencil className="h-4 w-4" />
                             </button>
                             <button
                               type="button"
                               onClick={() => handleDeleteIcon(icon.id)}
-                              className="rounded p-1 text-gray-400 hover:bg-gray-700 hover:text-red-400"
+                              className="rounded p-1 text-[var(--brand-platinum)]/60 hover:bg-[var(--brand-burgundy-750)] hover:text-red-400"
                             >
                               <Trash2 className="h-4 w-4" />
                             </button>

@@ -1,5 +1,7 @@
 'use client';
 
+import SectionAccessPanel from '@/components/crm/settings/SectionAccessPanel';
+
 import { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
@@ -47,6 +49,7 @@ interface AssignedEmployee {
   permissions: string[] | null;
   is_active: boolean | null;
   role: string | null;
+  role_permissions_inherited: boolean | null;
 }
 
 interface TabDefinition {
@@ -159,8 +162,8 @@ export default function AccessLevelsPage() {
     try {
       setLoading(true);
       const [levelsResult, employeesResult] = await Promise.all([
-        supabase.from('access_levels').select('*').order('order_index'),
-        supabase.from('employees').select('id, access_level_id, permissions, is_active, role').eq('is_active', true),
+        supabase.from('access_levels').select('*').eq('is_company_role', true).order('order_index'),
+        supabase.from('employees').select('id, access_level_id, permissions, is_active, role, role_permissions_inherited').eq('is_active', true),
       ]);
 
       if (levelsResult.error) throw levelsResult.error;
@@ -183,7 +186,7 @@ export default function AccessLevelsPage() {
       }
     } catch (error) {
       console.error('Error fetching access levels:', error);
-      showSnackbar('Nie udało się pobrać poziomów dostępu', 'error');
+      showSnackbar('Nie udało się pobrać ról firmowych', 'error');
     } finally {
       setLoading(false);
     }
@@ -197,7 +200,7 @@ export default function AccessLevelsPage() {
   const levelStats = useMemo(() => new Map(accessLevels.map((level) => {
     const employees = assignedEmployees.filter((item) => item.access_level_id === level.id);
     const individuallyChanged = employees.filter((item) =>
-      item.role !== 'admin' && !sameScopeSet(item.permissions || [], level.default_permissions),
+      item.role !== 'admin' && (!item.role_permissions_inherited || !sameScopeSet(item.permissions || [], level.default_permissions)),
     ).length;
     return [level.id, { assigned: employees.length, individuallyChanged }] as const;
   })), [accessLevels, assignedEmployees]);
@@ -244,7 +247,7 @@ export default function AccessLevelsPage() {
     const normalizedName = formData.name.trim();
     const normalizedSlug = formData.slug.trim().toLowerCase();
     if (!normalizedName || !normalizedSlug) {
-      showSnackbar('Uzupełnij nazwę i slug poziomu dostępu', 'warning');
+      showSnackbar('Uzupełnij nazwę i slug roli firmowej', 'warning');
       return;
     }
     if (!/^[a-z0-9-]+$/.test(normalizedSlug)) {
@@ -268,21 +271,22 @@ export default function AccessLevelsPage() {
       if (editingLevel) {
         const { error } = await supabase.from('access_levels').update(payload).eq('id', editingLevel.id);
         if (error) throw error;
-        showSnackbar('Poziom dostępu został zaktualizowany', 'success');
+        showSnackbar('Rola firmowa została zaktualizowana', 'success');
       } else {
         const { error } = await supabase.from('access_levels').insert({
           ...payload,
+          is_company_role: true,
           order_index: Math.max(0, ...accessLevels.map((level) => level.order_index || 0)) + 1,
         });
         if (error) throw error;
-        showSnackbar('Poziom dostępu został utworzony', 'success');
+        showSnackbar('Rola firmowa została utworzona', 'success');
       }
       setShowModal(false);
       setEditingLevel(null);
       await fetchAccessLevels();
     } catch (error) {
       console.error('Error saving access level:', error);
-      showSnackbar('Nie udało się zapisać poziomu dostępu', 'error');
+      showSnackbar('Nie udało się zapisać roli firmowej', 'error');
     } finally {
       setSaving(false);
     }
@@ -302,7 +306,7 @@ export default function AccessLevelsPage() {
       showSnackbar('Nie udało się usunąć poziomu dostępu', 'error');
       return;
     }
-    showSnackbar('Poziom dostępu został usunięty', 'success');
+    showSnackbar('Rola firmowa została usunięta', 'success');
     await fetchAccessLevels();
   };
 
@@ -354,7 +358,7 @@ export default function AccessLevelsPage() {
   );
 
   if (employeeLoading || loading) {
-    return <div className="flex min-h-[45vh] items-center justify-center text-[#e5e4e2]/60">Ładowanie poziomów dostępu…</div>;
+    return <div className="flex min-h-[45vh] items-center justify-center text-[#e5e4e2]/60">Ładowanie ról firmowych…</div>;
   }
 
   if (!employee || !isAdmin) {
@@ -367,17 +371,19 @@ export default function AccessLevelsPage() {
         <header className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <div className="mb-2 flex items-center gap-2 text-sm text-[#d3bb73]"><Shield className="h-4 w-4" /> Bezpieczeństwo i dostęp</div>
-            <h1 className="text-2xl font-light md:text-3xl">Poziomy dostępu</h1>
+            <h1 className="text-2xl font-light md:text-3xl">Role firmowe</h1>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-[#e5e4e2]/50">
-              Poziom jest szablonem zakresów i widoczności zakładek. Faktyczny dostęp pracownika wynika z jego zapisanych uprawnień, a administrator zawsze ma pełny dostęp.
+              Rola firmowa nadaje od razu kompletny pakiet uprawnień i zakładek. Dostęp do marek przypisujesz osobno na karcie pracownika, a administrator firmy zachowuje pełny dostęp.
             </p>
           </div>
-          <ResponsiveActionBar disabledBackground actions={[{ label: 'Dodaj poziom', icon: <Plus className="h-4 w-4" />, onClick: () => openModal(), variant: 'primary' }]} />
+          <ResponsiveActionBar disabledBackground actions={[{ label: 'Dodaj rolę', icon: <Plus className="h-4 w-4" />, onClick: () => openModal(), variant: 'primary' }]} />
         </header>
 
         <div className="rounded-xl border border-blue-400/20 bg-blue-400/10 p-4 text-sm text-blue-100/80">
-          <div className="flex items-start gap-3"><AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-blue-300" /><div><strong className="font-medium text-blue-100">Zakres bazowy i wyjątki indywidualne</strong><p className="mt-1 leading-5">Zmiana poziomu nie ukrywa indywidualnych różnic pracowników. Licznik na każdej karcie pokazuje, ilu pracowników ma zapisany zakres inny niż szablon poziomu.</p></div></div>
+          <div className="flex items-start gap-3"><AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-blue-300" /><div><strong className="font-medium text-blue-100">Pakiety ról i wyjątki indywidualne</strong><p className="mt-1 leading-5">Pracownicy korzystający z pakietu roli otrzymają jego późniejsze aktualizacje automatycznie. Ręczna zmiana pojedynczego uprawnienia oznaczy konto jako indywidualny wyjątek.</p></div></div>
         </div>
+
+        <SectionAccessPanel />
 
         <section className="grid gap-4">
           {accessLevels.map((level) => {
@@ -431,7 +437,7 @@ export default function AccessLevelsPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-3 md:p-6">
           <div className="max-h-[94vh] w-full max-w-6xl overflow-y-auto rounded-xl border border-[#d3bb73]/25 bg-[#1c1f33] shadow-2xl">
             <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-[#d3bb73]/15 bg-[#1c1f33] p-4 md:p-6">
-              <div><h2 className="text-xl font-light">{editingLevel ? 'Edytuj poziom dostępu' : 'Nowy poziom dostępu'}</h2><p className="mt-1 text-xs text-[#e5e4e2]/45">Zakresy odpowiadają kluczom faktycznie używanym przez CRM.</p></div>
+              <div><h2 className="text-xl font-light">{editingLevel ? 'Edytuj rolę firmową' : 'Nowa rola firmowa'}</h2><p className="mt-1 text-xs text-[#e5e4e2]/45">Pakiet zostanie zastosowany automatycznie po przypisaniu roli pracownikowi.</p></div>
               <button type="button" onClick={closeModal} disabled={saving} className="rounded-lg p-2 text-[#e5e4e2]/60 hover:bg-white/5 hover:text-[#e5e4e2] disabled:opacity-40" aria-label="Zamknij"><X className="h-5 w-5" /></button>
             </div>
 
@@ -452,7 +458,7 @@ export default function AccessLevelsPage() {
                   <div><h3 className="text-sm font-medium">Bazowe zakresy systemowe</h3><p className="mt-1 text-xs leading-5 text-[#e5e4e2]/45">Wybrano {formData.default_permissions.length} z {ALL_PERMISSION_SCOPES.length} opisanych zakresów.</p></div>
                   <div className="flex flex-col gap-2 sm:flex-row">
                     <label className="relative block"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#e5e4e2]/35" /><input value={permissionSearch} onChange={(event) => setPermissionSearch(event.target.value)} placeholder="Szukaj zakresu…" className="w-full rounded-lg border border-[#d3bb73]/15 bg-[#0f1119] py-2 pl-9 pr-3 text-sm outline-none focus:border-[#d3bb73]/45 sm:w-64" /></label>
-                    <button type="button" onClick={() => setFormData((current) => ({ ...current, default_permissions: [...ALL_PERMISSION_SCOPES] }))} className="rounded-lg border border-[#d3bb73]/20 px-3 py-2 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/10">Zaznacz wszystkie</button>
+                    <button data-crm-action="secondary" type="button" onClick={() => setFormData((current) => ({ ...current, default_permissions: ALL_PERMISSION_SCOPES.filter(scope => !scope.endsWith('_own_only')) }))} className="rounded-lg border border-[#d3bb73]/20 px-3 py-2 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/10">Zaznacz wszystkie</button>
                     <button type="button" onClick={() => setFormData((current) => ({ ...current, default_permissions: [] }))} className="rounded-lg border border-[#d3bb73]/10 px-3 py-2 text-xs text-[#e5e4e2]/55 hover:bg-white/5">Wyczyść</button>
                   </div>
                 </div>
@@ -471,7 +477,7 @@ export default function AccessLevelsPage() {
 
             <div className="sticky bottom-0 flex flex-col-reverse gap-2 border-t border-[#d3bb73]/15 bg-[#1c1f33] p-4 sm:flex-row sm:justify-end md:px-6">
               <button type="button" onClick={closeModal} disabled={saving} className="rounded-lg border border-[#d3bb73]/15 px-5 py-2.5 text-sm text-[#e5e4e2]/70 hover:bg-white/5 disabled:opacity-40">Anuluj</button>
-              <button type="button" onClick={() => void handleSave()} disabled={saving} className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#d3bb73] px-5 py-2.5 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-40"><Save className="h-4 w-4" /> {saving ? 'Zapisywanie…' : 'Zapisz poziom'}</button>
+              <button type="button" onClick={() => void handleSave()} disabled={saving} className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#d3bb73] px-5 py-2.5 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-40"><Save className="h-4 w-4" /> {saving ? 'Zapisywanie…' : 'Zapisz rolę'}</button>
             </div>
           </div>
         </div>

@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { supabase } from '@/lib/supabase/browser';
+import type { OfferWizardEventDefaults } from './hooks/useOfferWizzard';
 import { X, ChevronRight, ChevronLeft } from 'lucide-react';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import EquipmentConflictsSummary from './EquipmentConflictsSummary';
@@ -23,7 +25,66 @@ interface OfferWizardProps {
   onSuccess: () => void;
 }
 
-export default function OfferWizard({
+export default function OfferWizard(props: OfferWizardProps) {
+  const [loaded, setLoaded] = useState<{ eventId: string; defaults: OfferWizardEventDefaults; clientType: ClientType; organizationId: string; contactId: string } | null>(null);
+  const [loadError, setLoadError] = useState('');
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+    setLoaded(null);
+    setLoadError('');
+    if (!props.isOpen || !props.eventId) return;
+    void (async () => {
+      try {
+        const { data, error } = await supabase.from('events').select(`
+          id, name, description, event_date, event_end_date, location, location_id,
+          client_type, organization_id, contact_person_id,
+          locations(name, city, postal_code, formatted_address, address), event_categories(name)
+        `).eq('id', props.eventId).single();
+        if (error || !data) throw error || new Error('Nie znaleziono wydarzenia.');
+        const venue = Array.isArray(data.locations) ? data.locations[0] : data.locations;
+        const category = Array.isArray(data.event_categories) ? data.event_categories[0] : data.event_categories;
+        const locationText = venue
+          ? [venue.name, venue.city, venue.postal_code].filter(Boolean).join(', ') || venue.formatted_address || venue.address || ''
+          : '';
+        if (!active) return;
+        setLoaded({
+          eventId: data.id,
+          clientType: data.client_type || (data.organization_id ? 'business' : data.contact_person_id ? 'individual' : props.clientType || 'business'),
+          organizationId: data.organization_id || '',
+          contactId: data.contact_person_id || '',
+          defaults: {
+            name: data.name || '',
+            description: data.description || '',
+            location: locationText || (typeof data.location === 'string' ? data.location : ''),
+            startsAt: data.event_date || '',
+            endsAt: data.event_end_date || '',
+            category: category?.name || '',
+          },
+        });
+      } catch {
+        if (active) setLoadError('Nie udało się pobrać danych wydarzenia. Spróbuj ponownie, aby uzupełnić ofertę zapisanymi informacjami.');
+      }
+    })();
+    return () => { active = false; };
+  }, [props.isOpen, props.eventId, attempt]);
+
+  if (!props.isOpen) return null;
+  if (!loaded || loaded.eventId !== props.eventId) return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div role="dialog" aria-modal="true" aria-label="Kreator oferty" className="w-full max-w-lg rounded-xl bg-[#0f1119] p-6">
+        <div className="flex items-center justify-between gap-4"><h2 className="text-xl">Kreator oferty</h2><button type="button" onClick={props.onClose} aria-label="Zamknij kreator" className="rounded-lg p-2 text-white/60 hover:bg-white/5"><X className="h-5 w-5" /></button></div>
+        <p role={loadError ? 'alert' : 'status'} className="mt-4 text-sm text-white/65">{loadError || 'Uzupełniam dane z wydarzenia…'}</p>
+        {loadError && <button type="button" onClick={() => setAttempt(value => value + 1)} className="mt-4 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm text-[#250914]">Spróbuj ponownie</button>}
+      </div>
+    </div>
+  );
+  return <OfferWizardContent {...props} key={loaded.eventId} eventDefaults={loaded.defaults}
+    clientType={loaded.clientType} organizationId={loaded.organizationId} contactId={loaded.contactId} />;
+}
+
+function OfferWizardContent({
   isOpen,
   onClose,
   eventId,
@@ -31,7 +92,8 @@ export default function OfferWizard({
   contactId: propContactId,
   clientType: propClientType,
   onSuccess,
-}: OfferWizardProps) {
+  eventDefaults,
+}: OfferWizardProps & { eventDefaults: OfferWizardEventDefaults }) {
   const { employee } = useCurrentEmployee();
   const {
     handleSubmit,
@@ -109,6 +171,7 @@ export default function OfferWizard({
     isOpen,
     eventId,
     employeeId: employee?.id,
+    eventDefaults,
     defaults: {
       clientType: propClientType || ('business' as ClientType),
       organizationId: propOrganizationId || '',
@@ -227,13 +290,17 @@ export default function OfferWizard({
 
           {/* Step 2: Podstawowe dane */}
           {step === 2 && (
+            <div className="space-y-4">
+              <div className="mx-auto max-w-2xl rounded-lg bg-white/5 p-4 text-sm">
+                <p className="font-medium">{eventDefaults.name}</p>
+                {eventDefaults.startsAt && <p className="mt-1 text-white/65">Termin wydarzenia: {formatEventDate(eventDefaults.startsAt)}{eventDefaults.endsAt ? ` – ${formatEventDate(eventDefaults.endsAt)}` : ''}</p>}
+                <p className="mt-2 text-xs text-white/50">Dostępne dane zostały uzupełnione z wydarzenia. Możesz je dostosować do tej oferty.</p>
+              </div>
             <OfferStep2
               offerData={offerData}
               setOfferData={setOfferData}
-              aiContext={{
-                productNames: offerItems.map((item) => item.name).filter(Boolean),
-              }}
             />
+            </div>
           )}
 
           {/* Step 3: Katalog produktów */}
@@ -347,4 +414,14 @@ export default function OfferWizard({
       {/* Modal został usunięty - konflikty pokazują się w EquipmentConflictsSummary */}
     </div>
   );
+}
+
+function formatEventDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat('pl-PL', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    ...(value.includes('T') || value.includes(' ') ? { hour: '2-digit' as const, minute: '2-digit' as const } : {}),
+    timeZone: 'Europe/Warsaw',
+  }).format(date);
 }

@@ -43,6 +43,7 @@ type SafeDocument = {
   counterparty: string;
   paymentStatus: string;
   documentKind: string;
+  externalDocumentKind: string;
   settlementDocumentNumbers: string[];
   sourceDocumentNumbers: string[];
   requiresKsefReview: boolean;
@@ -95,6 +96,9 @@ function safeDate(value: unknown) {
 function prepareTransactions(value: unknown): SafeTransaction[] {
   if (!Array.isArray(value)) return [];
   return value.slice(0, 160).flatMap((item, index) => {
+    // Locally explained operations (including linked own VAT transfers) are
+    // never document candidates, even if an older UI submits a stale batch.
+    if (item?.accountingReviewStatus === "explained") return [];
     const direction = item?.direction === "credit"
       ? "credit"
       : item?.direction === "debit"
@@ -156,6 +160,9 @@ function prepareDocuments(value: unknown): SafeDocument[] {
       counterparty: safeText(item?.counterparty, 100),
       paymentStatus: safeText(item?.paymentStatus, 30),
       documentKind: safeText(item?.documentKind, 30),
+      externalDocumentKind: source === "external" && ["invoice", "receipt", "credit_note", "insurance_policy", "contract", "debit_note", "other"].includes(item?.externalDocumentKind)
+        ? item.externalDocumentKind
+        : "",
       settlementDocumentNumbers,
       sourceDocumentNumbers,
       requiresKsefReview: item?.requiresKsefReview === true,
@@ -185,10 +192,10 @@ Deno.serve(async (req: Request) => {
     const { data: userData, error: userError } = await userClient.auth.getUser(token);
     if (userError || !userData.user) return json({ error: "Nieprawidłowa sesja" }, 401);
 
-    const { data: canManageInvoices, error: permissionError } = await userClient.rpc(
-      "can_manage_invoices",
+    const { data: canManageFinance, error: permissionError } = await userClient.rpc(
+      "finance_can_manage",
     );
-    if (permissionError || !canManageInvoices) {
+    if (permissionError || canManageFinance !== true) {
       return json({ error: "Brak uprawnień do analizy rozliczeń" }, 403);
     }
 
@@ -199,10 +206,32 @@ Deno.serve(async (req: Request) => {
       return json({ error: "Nieprawidłowy okres analizy" }, 400);
     }
 
-    const transactions = prepareTransactions(body?.transactions);
+    let transactions = prepareTransactions(body?.transactions);
     const documents = prepareDocuments(body?.documents);
     if (!transactions.length) {
       return json({ error: "Brak nierozliczonych transakcji do analizy" }, 400);
+    }
+
+    // Source UUIDs terminate at our authenticated CRM endpoint. They are not
+    // included in SafeTransaction/snapshot or forwarded to the AI provider.
+    const transactionIds = body?.transactionIds;
+    if (!transactionIds || typeof transactionIds !== "object" || Array.isArray(transactionIds)
+      || transactions.some((transaction) => !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(transactionIds[transaction.ref] || "")))) {
+      return json({ error: "Odśwież CRM przed analizą — wymagane jest sprawdzenie aktualnych powiązań przelewów." }, 400);
+    }
+    const { data: currentTransactions, error: transactionStateError } = await userClient.from("bank_transactions")
+      .select("id,paired_bank_transaction_id,accounting_review_status,private_transfer_detected,match_status")
+      .in("id", transactions.map((transaction) => transactionIds[transaction.ref]));
+    if (transactionStateError) return json({ error: "Nie można sprawdzić aktualnego stanu transakcji. Analiza nie została uruchomiona." }, 503);
+    const currentById = new Map((currentTransactions || []).map((transaction) => [transaction.id, transaction]));
+    transactions = transactions.filter((transaction) => {
+      const current = currentById.get(transactionIds[transaction.ref]);
+      return current && !current.paired_bank_transaction_id && current.accounting_review_status !== "explained"
+        && !current.private_transfer_detected && current.match_status !== "matched";
+    });
+    if (!transactions.length) {
+      return json({ summary: "Transakcje zostały już rozliczone lub powiązane jako transfery własne; pominięto je przed wysłaniem do AI.",
+        likelyMatches: [], missingDocuments: [], reviewTransactions: [], reviewDocuments: [], warnings: [] });
     }
 
     const snapshot = { month, year, transactions, documents };
@@ -301,6 +330,7 @@ Deno.serve(async (req: Request) => {
           "Łącz wyłącznie pozycje o tym samym companyRef i kierunku. Zwykle wymagaj tej samej waluty.",
           "Wyjątek stanowią dokumenty source=external w walucie obcej: możesz zaproponować płatność w PLN po przewalutowaniu tylko wtedy, gdy tytuł płatności jednoznacznie wskazuje sprzedawcę lub numer dokumentu. Nigdy nie opieraj takiej sugestii wyłącznie na kwocie; wskaż obie waluty i konieczność ręcznej kontroli kursu.",
           "Uwzględniaj płatności częściowe, opóźnione, przedpłaty oraz jeden przelew obejmujący kilka dokumentów, np. Allegro Pay.",
+          "Dokumenty source=external nie zawsze są fakturami: externalDocumentKind rozróżnia insurance_policy (polisa), contract (umowa), debit_note (nota), receipt (paragon/rachunek), credit_note (korekta), invoice i other. Polisa jest odrębnym dokumentem źródłowym: porównuj jej numer z tytułem przelewu i ubezpieczyciela. Nie żądaj dodatkowej faktury wyłącznie dlatego, że zgodny dokument jest polisą. Dla polisy grossAmount to całkowita składka, nigdy suma ubezpieczenia; niższy przelew może być ratą, ale wymaga dowodów w numerze/opisie i ręcznego zatwierdzenia. Nie uznawaj pojedynczej raty za opłacenie całej polisy. Nie wyciągaj wniosków o podatkowej kwalifikacji kosztu z samego typu dokumentu.",
           "Pole document.amount oznacza aktualną kwotę do zapłaty lub dopłaty, a document.grossAmount pełną wartość brutto dokumentu. Dla faktur końcowych nie porównuj przelewu z pełnym brutto, jeżeli zaliczki obniżyły kwotę do dopłaty.",
           "Pola settlementDocumentNumbers i sourceDocumentNumbers opisują łańcuch proforma → faktura zaliczkowa → faktura końcowa. Traktuj taki łańcuch jako jedno rozliczenie, ale nie przypisuj ponownie wcześniej zapłaconej zaliczki.",
           "Dokładny numer faktury występujący w tytule przelewu jest silniejszym sygnałem niż sama zgodność kwoty. Najpierw porównaj pełny numer dokumentu, potem kontrahenta, kwotę i chronologię; nietypowy tytuł nie wyklucza dopasowania, ale wymaga innych zgodnych sygnałów.",

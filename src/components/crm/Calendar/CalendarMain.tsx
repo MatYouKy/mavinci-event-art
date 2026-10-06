@@ -1,5 +1,7 @@
 'use client';
 
+import { useOperationalStages } from '@/hooks/useOperationalStages';
+import { OPERATIONAL_LABELS, usesOperationalStages } from '@/lib/CRM/events/operationalStages';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
@@ -9,6 +11,7 @@ import {
   Calendar as CalendarIcon,
   MapPin,
   Building2,
+  UserRound,
   Clock,
   X,
   Filter,
@@ -32,6 +35,7 @@ import {
   useGetTimelineResourcesQuery,
 } from '@/store/api/calendarApi';
 import { getWeekBounds } from '@/lib/timeline';
+import { isEventVisibleToOperationalRole } from '@/lib/CRM/events/eventVisibility';
 
 const INQUIRY_STAGE_LABELS: Record<string, string> = {
   new: 'Nowe',
@@ -71,6 +75,8 @@ export default function CalendarMain({
   const [clients, setClients] = useState<any[]>([]);
   const [employees, setEmployees] = useState<any[]>([]);
   const [currentEmployee, setCurrentEmployee] = useState<any>(null);
+  const operational = usesOperationalStages(currentEmployee);
+  const {states: operationalStates, stage: displayStatus} = useOperationalStages(allEvents.filter(e=>!e.is_meeting&&!e.is_inquiry), operational);
   const [filters, setFilters] = useState({
     statuses: [] as string[],
     categories: [] as string[],
@@ -168,6 +174,9 @@ export default function CalendarMain({
     !currentEmployee.permissions?.includes('admin') &&
     !!currentEmployee.permissions?.includes('calendar_view_accepted_only');
 
+  const canSeePlanningEvents =
+    !!currentEmployee?.permissions?.includes('events_view_planning');
+
   const applyFilters = useCallback(() => {
     let filtered = [...allEvents];
 
@@ -187,10 +196,11 @@ export default function CalendarMain({
           return isCreator || isParticipant;
         }
 
-        return e.status === 'offer_accepted';
+        return isEventVisibleToOperationalRole(e.status, canSeePlanningEvents);
       });
     }
 
+    if (operational) filtered = filtered.map(e => e.is_meeting || e.is_inquiry ? e : {...e,status:displayStatus(e),operational_label:OPERATIONAL_LABELS[displayStatus(e)]});
     if (filters.statuses.length > 0) {
       filtered = filtered.filter((e) => filters.statuses.includes(e.status));
     }
@@ -236,6 +246,8 @@ export default function CalendarMain({
     setEvents(filtered);
   }, [
     allEvents,
+    operationalStates,
+    operational,
     filters.statuses,
     filters.categories,
     filters.clients,
@@ -245,6 +257,7 @@ export default function CalendarMain({
     filters.potentialInquiries,
     currentEmployee?.id,
     isAcceptedOnlyViewer,
+    canSeePlanningEvents,
   ]);
 
   // ✅ kluczowy fix: NIE nadpisuj initial pustym [] zanim query będzie SUCCESS
@@ -545,7 +558,7 @@ export default function CalendarMain({
     <div className="mx-auto max-w-7xl space-y-6">
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
         <div className="flex items-center gap-4">
-          <button
+          <button data-crm-action="secondary"
             onClick={() => router.push('/crm/calendar/meetings')}
             className="hidden rounded-lg border border-[#d3bb73]/30 px-3 py-2 text-sm text-[#d3bb73] transition-colors hover:bg-[#d3bb73] hover:text-[#1c1f33] md:block"
           >
@@ -721,7 +734,7 @@ export default function CalendarMain({
             <div className="space-y-3">
               <label className="block text-sm text-[#e5e4e2]/60">Status</label>
               <div className="max-h-48 space-y-2 overflow-y-auto">
-                {Object.entries(STATUS_LABELS).map(([status, label]) => (
+                {Object.entries(operational ? OPERATIONAL_LABELS : STATUS_LABELS).map(([status, label]) => (
                   <button
                     key={status}
                     onClick={() => toggleFilter('statuses', status)}
@@ -900,7 +913,7 @@ export default function CalendarMain({
             <h4 className="mb-3 text-sm font-medium text-[#e5e4e2]">{hoveredEvent.name}</h4>
 
             <div className="flex items-center gap-2 text-xs text-[#e5e4e2]/70">
-              <Building2 className="h-3 w-3" />
+              {hoveredEvent.organization ? <Building2 className="h-3 w-3" /> : <UserRound className="h-3 w-3" />}
               <span>
                 {hoveredEvent.organization?.alias ||
                   hoveredEvent.organization?.name ||
@@ -944,7 +957,7 @@ export default function CalendarMain({
                   STATUS_COLORS[hoveredEvent.status as CalendarStatus]
                 }`}
               >
-                {STATUS_LABELS[hoveredEvent.status as CalendarStatus]}
+                {hoveredEvent.operational_label || STATUS_LABELS[hoveredEvent.status as CalendarStatus]}
               </span>
             </div>
 
@@ -1027,7 +1040,7 @@ export default function CalendarMain({
                           STATUS_COLORS[event.status as CalendarStatus]
                         }`}
                       >
-                        {STATUS_LABELS[event.status as CalendarStatus]}
+                        {event.operational_label || STATUS_LABELS[event.status as CalendarStatus]}
                       </span>
                     </div>
                   </div>

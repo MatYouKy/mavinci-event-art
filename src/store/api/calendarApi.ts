@@ -10,7 +10,8 @@ export interface CalendarEvent {
   created_by?: string | null;
   color?: string;
   location?: string;
-  organization?: { name: string } | null;
+  organization?: { name: string; alias?: string | null } | null;
+  contact_person?: { full_name?: string | null } | null;
   category?: { name: string; color?: string } | null;
   is_meeting?: boolean;
   is_inquiry?: boolean;
@@ -85,6 +86,8 @@ export const calendarApi = createApi({
                 notes,
                 datetime_start,
                 datetime_end,
+                recurrence_days,
+                series_id,
                 location_text,
                 created_by,
                 created_at,
@@ -139,7 +142,12 @@ export const calendarApi = createApi({
             created_by: event.created_by,
             color: event.event_categories?.color,
             location: event.location || '',
-            organization: event.organizations ? { name: event.organizations.name } : null,
+            organization: event.organizations
+              ? { name: event.organizations.name, alias: event.organizations.alias }
+              : null,
+            contact_person: event.contacts
+              ? { full_name: event.contacts.full_name || [event.contacts.first_name, event.contacts.last_name].filter(Boolean).join(' ') }
+              : null,
             category: event.event_categories
               ? {
                   name: event.event_categories.name,
@@ -275,7 +283,7 @@ export const calendarApi = createApi({
               .eq('is_active', true)
               .order('name'),
 
-            supabase.from('contacts').select('id, name, type').order('name'),
+            supabase.from('contacts').select('id, name:full_name').order('full_name'),
 
             supabase
               .from('employees')
@@ -287,7 +295,7 @@ export const calendarApi = createApi({
           return {
             data: {
               categories: categoriesResult.data || [],
-              clients: clientsResult.data || [],
+              clients: (clientsResult.data || []).map(client => ({ ...client, type: 'individual' })),
               employees: employeesResult.data || [],
             },
           };
@@ -314,6 +322,7 @@ export const calendarApi = createApi({
         employee_id?: string;
         contact_id?: string;
       }>;
+      recurrence_days?: number;
       alert_1_minutes?: number | null;
       alert_2_minutes?: number | null;
       alert_critical_minutes?: number | null;
@@ -323,40 +332,12 @@ export const calendarApi = createApi({
       try {
         const { participants, ...meeting } = meetingData;
   
-        const { data, error } = await supabase
-          .from('meetings')
-          .insert(meeting)
-          .select()
-          .single();
-  
-        if (error) {
-          return {
-            error: {
-              status: 'CUSTOM_ERROR',
-              error: error.message,
-            },
-          };
-        }
-  
-        if (participants?.length) {
-          const participantsData = participants.map((participant) => ({
-            meeting_id: data.id,
-            employee_id: participant.employee_id ?? null,
-            contact_id: participant.contact_id ?? null,
-          }));
-  
-          const { error: participantsError } = await supabase
-            .from('meeting_participants')
-            .insert(participantsData);
-  
-          if (participantsError) {
-            console.error(
-              'Error adding meeting participants:',
-              participantsError,
-            );
-          }
-        }
-  
+        const { data, error } = await supabase.rpc('create_private_meeting', {
+          p_data: meeting,
+          p_participants: participants ?? [],
+        });
+        if (error) return { error: { status: 'CUSTOM_ERROR', error: error.message } };
+
         return { data };
       } catch (error: unknown) {
         const message =
@@ -405,10 +386,7 @@ export const calendarApi = createApi({
     deleteMeeting: builder.mutation<void, string>({
       async queryFn(meetingId) {
         try {
-          const { error } = await supabase
-            .from('meetings')
-            .update({ deleted_at: new Date().toISOString() })
-            .eq('id', meetingId);
+          const { error } = await supabase.rpc('delete_meeting_occurrences', { p_id: meetingId, p_scope: 'single' });
 
           if (error) return { error: { status: 'CUSTOM_ERROR', error: error.message } };
 

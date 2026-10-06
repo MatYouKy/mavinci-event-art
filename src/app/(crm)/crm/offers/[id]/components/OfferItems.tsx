@@ -1,4 +1,7 @@
 'use client';
+import type { ProductSalesPackage } from '@/lib/CRM/Offers/productSalesPackages';
+
+import { hasOfferAddons, expandConfiguredItems, type OfferConfiguration } from '@/lib/CRM/Offers/offerAddons';
 
 import { useEffect, useMemo, useState } from 'react';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
@@ -24,6 +27,7 @@ async function resolveStorageDisplayUrl(
 }
 
 interface OfferItem {
+  pricing_configuration?: OfferConfiguration | null;
   id: string;
   offer_id?: string;
   product_id: string;
@@ -39,6 +43,7 @@ interface OfferItem {
   display_order: number;
   product_variant_id?: string | null;
   offer_page_variant_override?: 'compact' | 'default' | 'visual' | null;
+  variant_prices_net?: Record<string, number>;
   show_variant_prices_in_pdf?: boolean;
   show_product_variants_in_pdf?: boolean;
   product_variant?: IProductVariant | null;
@@ -51,6 +56,8 @@ interface OfferItem {
     offer_image_path?: string | null;
     offer_page_variant?: string | null;
     product_page_url?: string | null;
+    sales_packages?: ProductSalesPackage[];
+    sales_packages_enabled?: boolean;
     variants?: IProductVariant[];
   };
 }
@@ -304,13 +311,17 @@ export default function OfferItems({
                       || item.product?.offer_page_variant === 'visual'
                       ? item.product.offer_page_variant
                       : 'default';
-                    const printLayout = item.offer_page_variant_override || catalogLayout;
-                    const hasProductVariants = (item.product?.variants || []).length > 0;
-                    const showsVariantComparison = hasProductVariants && item.show_product_variants_in_pdf !== false;
+                    const hasAddons = hasOfferAddons(item);
+                    const hasPackages = Boolean(item.pricing_configuration?.product_package?.options?.length || (item.product?.sales_packages_enabled && !item.product_variant_id && item.product.sales_packages?.length));
+                    const blockedByElements = (item.product?.variants || []).some(v => v.is_active !== false);
+                    const requestedLayout = item.offer_page_variant_override || catalogLayout;
+                    const printLayout = hasAddons || hasPackages || (blockedByElements && requestedLayout === 'compact') ? 'default' : requestedLayout;
+                    const hasProductVariants = !hasPackages && blockedByElements;
+                    const showsVariantComparison = !hasAddons && hasProductVariants && item.show_product_variants_in_pdf !== false;
 
                     const actions: Action[] = [
                       {
-                        label: 'Otwórz produkt',
+                        label: 'Otwórz produkt w CRM',
                         icon: <Eye className="h-4 w-4" />,
                         onClick: () => window.open(`/crm/offers/products/${item.product_id}`, '_blank', 'noopener,noreferrer'),
                         show: Boolean(item.product_id),
@@ -386,7 +397,18 @@ export default function OfferItems({
 
                               <div className="min-w-0 flex-1">
                                 <h3 className="line-clamp-1 text-sm font-semibold text-[#e5e4e2] md:text-base">
-                                  {itemName}
+                                  {item.product_id ? (
+                                    <a
+                                      href={`/produkty/${item.product_id}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      title="Zobacz publiczną kartę produktu w nowej karcie"
+                                      onClick={(event) => event.stopPropagation()}
+                                      className="rounded-sm underline decoration-[#d3bb73]/30 underline-offset-4 transition-colors hover:text-[#d3bb73] hover:decoration-[#d3bb73]/60 focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#d3bb73]/40"
+                                    >
+                                      {itemName}
+                                    </a>
+                                  ) : itemName}
                                 </h3>
 
                                 {item.product_variant?.name && (
@@ -430,11 +452,11 @@ export default function OfferItems({
                                   <span className="text-[10px] font-medium uppercase tracking-wide text-[#e5e4e2]/40">
                                     Układ w PDF
                                   </span>
-                                  <div className={`inline-flex rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] p-0.5 ${showsVariantComparison ? 'opacity-40' : ''}`}>
+                                  <div className={`inline-flex rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] p-0.5 ${showsVariantComparison || hasPackages ? 'opacity-40' : ''}`}>
                                     <button
                                       type="button"
-                                      disabled={updatingLayoutId === item.id || showsVariantComparison}
-                                      onClick={() => updatePrintLayout(item.id, 'compact')}
+                                      disabled={updatingLayoutId === item.id || blockedByElements || showsVariantComparison || hasAddons || hasPackages}
+                                      onClick={() => !blockedByElements && !hasAddons && updatePrintLayout(item.id, 'compact')}
                                       className={`rounded-md px-2.5 py-1 text-[11px] transition-colors ${
                                         printLayout === 'compact'
                                           ? 'bg-[#d3bb73] font-medium text-[#1c1f33]'
@@ -445,7 +467,7 @@ export default function OfferItems({
                                     </button>
                                     <button
                                       type="button"
-                                      disabled={updatingLayoutId === item.id || showsVariantComparison}
+                                      disabled={updatingLayoutId === item.id || showsVariantComparison || hasPackages}
                                       onClick={() => updatePrintLayout(item.id, 'default')}
                                       className={`rounded-md px-2.5 py-1 text-[11px] transition-colors ${
                                         printLayout === 'default'
@@ -457,7 +479,7 @@ export default function OfferItems({
                                     </button>
                                     <button
                                       type="button"
-                                      disabled={updatingLayoutId === item.id || showsVariantComparison}
+                                      disabled={updatingLayoutId === item.id || showsVariantComparison || hasPackages}
                                       onClick={() => updatePrintLayout(item.id, 'visual')}
                                       className={`rounded-md px-2.5 py-1 text-[11px] transition-colors ${
                                         printLayout === 'visual'
@@ -468,13 +490,18 @@ export default function OfferItems({
                                       Duża grafika
                                     </button>
                                   </div>
+                                  {blockedByElements && !hasPackages && <p className="w-full text-xs text-[#d3bb73]">Produkt ma elementy lub warianty — układ kompaktowy jest wyłączony.</p>}
+                                  {hasPackages && <p className="w-full text-xs text-[#d3bb73]">Strony prezentacji elementów i wybór pakietu. Kalkulacja obejmuje tylko wybrany zakres.</p>}
+                                  {hasAddons && <p className="w-full text-xs text-[#d3bb73]">Dodatki wymagają szczegółowej kalkulacji — układ kompaktowy wyłączony.</p>}
+                                  {hasAddons && <div className="w-full space-y-1 text-xs text-[#e5e4e2]/70">{expandConfiguredItems([item]).map(row => <div key={row.id} className="flex justify-between gap-3"><span>{row.name} · {row.quantity} {row.unit} × {Number(row.unit_price).toFixed(2)} zł</span><span>{Number(row.subtotal).toFixed(2)} zł netto</span></div>)}</div>}
                                   {hasProductVariants && (
                                     <>
+                                      <button type="button" onClick={() => onEditItem(item)} className="rounded-lg bg-[#d3bb73]/10 px-2.5 py-1 text-[11px] text-[#d3bb73]">Edytuj ceny wariantów</button>
                                       <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-[#d3bb73]/15 bg-[#1c1f33] px-2.5 py-1 text-[11px] text-[#e5e4e2]/60">
                                         <input
                                           type="checkbox"
-                                          checked={item.show_product_variants_in_pdf !== false}
-                                          disabled={updatingVariantPriceId === item.id}
+                                          checked={!hasAddons && item.show_product_variants_in_pdf !== false}
+                                          disabled={updatingVariantPriceId === item.id || hasAddons}
                                           onChange={(event) => void updateVariantPageVisibility(item.id, event.target.checked)}
                                           className="h-3.5 w-3.5 accent-[#d3bb73]"
                                         />

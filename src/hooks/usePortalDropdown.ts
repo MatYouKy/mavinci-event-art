@@ -7,6 +7,9 @@ export type DropdownPosition = {
   top: number;
   left: number;
   width?: number;
+  anchorTop?: number;
+  anchorBottom?: number;
+  offsetY?: number;
 };
 
 type UsePortalDropdownOptions = {
@@ -52,16 +55,11 @@ export const usePortalDropdown = (options?: UsePortalDropdownOptions) => {
         ? rect.right - resolvedWidth
         : rect.left;
   
-    const menuHeight = 320; // max-h-80 = 20rem = 320px
-    const spaceBelow = window.innerHeight - rect.bottom;
-    const spaceAbove = rect.top;
-  
-    const shouldOpenUp = spaceBelow < menuHeight + offsetY && spaceAbove > spaceBelow;
-  
     setPosition({
-      top: shouldOpenUp
-        ? Math.max(8, rect.top - menuHeight - offsetY)
-        : rect.bottom + offsetY,
+      top: rect.bottom + offsetY,
+      anchorTop: rect.top,
+      anchorBottom: rect.bottom,
+      offsetY,
       left,
       width: resolvedWidth,
     });
@@ -101,7 +99,8 @@ export const usePortalDropdown = (options?: UsePortalDropdownOptions) => {
       if (event.key === 'Escape') close();
     };
 
-    const handleScrollOrResize = () => {
+    const handleScrollOrResize = (event: Event) => {
+      if (event.target instanceof Element && event.target.closest('[data-portal-dropdown="true"]')) return;
       if (closeOnScroll) close();
       else updatePosition();
     };

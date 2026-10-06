@@ -1,7 +1,11 @@
 'use client';
 
+import { systemLabel } from '@/lib/ui/systemLabels';
+
 import { supabase } from '@/lib/supabase/browser';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import FullScreenLoader from '@/components/UI/Loader/CustomModalLoader';
+import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useRouter } from 'next/navigation';
 import { Plus, Search, User, Lock, LayoutGrid, List, ListTree, Clock } from 'lucide-react';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
@@ -33,6 +37,9 @@ export default function EmployeesPageClient({
   const [deletingEmployeeId, setDeletingEmployeeId] = useState<string | null>(null);
 
   const { showConfirm } = useDialog();
+  const { showSnackbar } = useSnackbar();
+  const deleteLock = useRef(false);
+  const [removedIds, setRemovedIds] = useState<string[]>([]);
   const { canCreateInModule, canViewModule, employee: currentEmployee } = useCurrentEmployee();
   const canAddEmployee = canCreateInModule('employees');
   const isAdmin =
@@ -50,7 +57,8 @@ export default function EmployeesPageClient({
     await setViewMode('employees', mode);
   };
 
-  const filteredEmployees = employees.filter((emp) =>
+  const visibleEmployees = employees.filter(emp => !removedIds.includes(emp.id));
+  const filteredEmployees = visibleEmployees.filter((emp) =>
     `${emp.name} ${emp.surname} ${emp.nickname || ''} ${emp.email} ${emp.occupation || ''}`
       .toLowerCase()
       .includes(searchTerm.toLowerCase()),
@@ -71,7 +79,7 @@ export default function EmployeesPageClient({
       assistant: 'Asystent',
       unassigned: 'Nieprzypisany',
     };
-    return labels[role] || role;
+    return labels[role] || systemLabel(role, 'role');
   };
 
   const getAccessLevelLabel = (level: string) => {
@@ -85,7 +93,7 @@ export default function EmployeesPageClient({
       unassigned: 'Nieprzypisany',
       instructor: 'Instruktor',
     };
-    return labels[level] || level;
+    return labels[level] || systemLabel(level, 'access');
   };
 
   const getAccessLevelColor = (level: string) => {
@@ -103,7 +111,9 @@ export default function EmployeesPageClient({
   };
 
   const handleDeleteEmployee = async (employee: IEmployee) => {
-    if (!isAdmin || deletingEmployeeId) return;
+    if (!isAdmin || deleteLock.current) return;
+    deleteLock.current = true;
+    try {
   
     const confirmed = await showConfirm(
       `Czy na pewno chcesz trwale usunąć pracownika:\n\n${employee.name} ${employee.surname}?\n\nTej operacji nie można cofnąć. Autorstwo wydarzeń i wymaganych dokumentów przejmie Twoje konto administratora, a przypisania tego pracownika zostaną usunięte.`,
@@ -112,7 +122,6 @@ export default function EmployeesPageClient({
   
     if (!confirmed) return;
   
-    try {
       setDeletingEmployeeId(employee.id);
   
       const { error } = await supabase.rpc('delete_employee_completely', {
@@ -121,25 +130,34 @@ export default function EmployeesPageClient({
   
       if (error) throw error;
   
+      setRemovedIds(current => [...current, employee.id]);
+      showSnackbar('Pracownik został usunięty.', 'success');
       router.refresh();
     } catch (err: unknown) {
       console.error('Error deleting employee:', err);
   
-      alert(
-        err instanceof Error
-          ? err.message
+      showSnackbar(
+        typeof err === 'object' && err !== null && 'message' in err
+          ? String(err.message)
           : 'Nie udało się trwale usunąć pracownika.',
+        'error',
       );
     } finally {
       setDeletingEmployeeId(null);
+      deleteLock.current = false;
     }
   };
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6">
+    <div className="mx-auto max-w-7xl space-y-6" aria-busy={!!deletingEmployeeId}>
+      <FullScreenLoader
+        show={!!deletingEmployeeId}
+        title="Usuwanie pracownika"
+        description="Trwa usuwanie konta i porządkowanie powiązań. Poczekaj na zakończenie procesu."
+      />
       <div className="flex items-center justify-between">
         <div className="mt-3">
-          <h2 className="text-2xl font-light text-[#e5e4e2]">Pracownicy</h2>
+          <h2 className="text-2xl font-light text-[#e5e4e2]">Pracownicy CRM</h2>
           <p className="mt-1 text-sm text-[#e5e4e2]/60">Zarządzaj zespołem i uprawnieniami</p>
         </div>
         <div className="flex gap-3">

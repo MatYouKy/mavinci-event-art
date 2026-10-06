@@ -72,6 +72,8 @@ export const buildConflictPayloadItems = (items: IOfferItem[]) =>
     .filter((i) => !!i.product_id)
     .map((i) => ({
       product_id: i.product_id!,
+      product_variant_id: i.product_variant_id || null,
+      pricing_configuration: i.pricing_configuration || null,
       quantity: i.quantity ?? 1, // w DB masz "quantity"
     }));
 

@@ -1,3 +1,5 @@
+import { resolveCalculationPrintCompany } from '@/lib/CRM/calculations/calculationLogo';
+import { requestCalculationPdf } from '@/lib/CRM/calculations/calculationActions';
 import SendCalculationEmailModal from '../../SendCalculationEmailModal';
 import { ImportFromOfferModal } from './ImportFromOfferModal';
 import { AddCalculationItemModal } from './AddCalculationItemModal';
@@ -34,8 +36,10 @@ export function CalculationEditor({
   calculationId,
   eventId,
   inquiryContext,
+  readOnly = false,
   onBack,
 }: {
+  readOnly?: boolean;
   calculationId: string;
   eventId: string | null;
   inquiryContext?: {
@@ -59,9 +63,11 @@ export function CalculationEditor({
   const [items, setItems] = useState<CalcItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [orderChanged, setOrderChanged] = useState(false);
   const [eventName, setEventName] = useState('');
   const [eventDate, setEventDate] = useState<string | null>(null);
   const [showImport, setShowImport] = useState(false);
+  const [editingModalItem, setEditingModalItem] = useState<CalcItem | null>(null);
   const [addModalCategory, setAddModalCategory] = useState<Category | null>(null);
   const [generatedPdfPath, setGeneratedPdfPath] = useState<string | null>(null);
   const [calculationCreatedAt, setCalculationCreatedAt] = useState<string | null>(null);
@@ -87,7 +93,8 @@ export function CalculationEditor({
           .select('*')
           .eq('calculation_id', calculationId)
           .order('category')
-          .order('position'),
+          .order('position')
+          .order('id'),
         eventId
           ? supabase
               .from('events')
@@ -166,6 +173,12 @@ export function CalculationEditor({
           }
         }
 
+        const vehicleIds = [...new Set(itemsData.filter((row: any) => row.source === 'vehicle' && row.source_ref).map((row: any) => row.source_ref as string))];
+        const vehicleLabels = new Map<string, string>();
+        if (vehicleIds.length) {
+          const { data: vehicles } = await supabase.from('vehicles').select('id,name,registration_number').in('id', vehicleIds);
+          for (const vehicle of vehicles || []) vehicleLabels.set(vehicle.id, [vehicle.name, vehicle.registration_number].filter(Boolean).join(' · '));
+        }
         setItems(
           itemsData.map((r: any) => {
             const eqInfo = r.source_ref ? equipmentMap[r.source_ref] : null;
@@ -182,10 +195,11 @@ export function CalculationEditor({
               days: Number(r.days),
               source: r.source,
               source_ref: r.source_ref,
+              source_label: r.source === 'vehicle' ? vehicleLabels.get(r.source_ref) || 'Pojazd z bazy' : null,
               position: r.position,
               vat_rate: r.vat_rate != null ? Number(r.vat_rate) : DEFAULT_VAT,
               power_watts: r.power_watts != null ? Number(r.power_watts) : null,
-              power_source_ref: r.source_ref ?? null,
+              power_source_ref: r.source === 'warehouse' ? r.source_ref ?? null : null,
               weight_kg: r.weight_kg != null ? Number(r.weight_kg) : (eqInfo?.weight_kg ?? null),
               thumbnail_url: eqInfo?.thumbnail_url ?? null,
               stock_quantity: eqInfo?.stock_quantity ?? null,
@@ -277,11 +291,11 @@ export function CalculationEditor({
   }, [load]);
 
   const openAddModal = (category: Category) => {
+    setEditingModalItem(null);
     setAddModalCategory(category);
   };
 
-  const persistItem = async (item: CalcItem, position: number): Promise<string | null> => {
-    const row = {
+  const serializeItem = (item: CalcItem, position: number) => ({
       calculation_id: calculationId,
       category: item.category,
       name: item.name,
@@ -296,7 +310,11 @@ export function CalculationEditor({
       vat_rate: Number(item.vat_rate ?? DEFAULT_VAT),
       power_watts: item.power_watts ?? null,
       weight_kg: item.weight_kg ?? null,
-    };
+  });
+
+  const persistItem = async (item: CalcItem, position: number): Promise<string | null> => {
+    setGeneratedPdfPath(null);
+    const row = serializeItem(item, position);
 
     if (item.id) {
       const { error } = await supabase
@@ -325,10 +343,11 @@ export function CalculationEditor({
   };
 
   const addItemFromModal = async (item: CalcItem) => {
-    const position = items.filter((it) => it.category === item.category).length;
+    const position = Math.max(-1, ...items.map((it) => it.position ?? -1)) + 1;
     const newId = await persistItem(item, position);
+    if (!newId) throw new Error('Nie udało się dodać pozycji. Spróbuj ponownie.');
     if (newId) {
-      setItems((prev) => [...prev, { ...item, id: newId }]);
+      setItems((prev) => [...prev, { ...item, id: newId, position }]);
       await supabase
         .from('event_calculations')
         .update({ updated_at: new Date().toISOString() })
@@ -337,10 +356,32 @@ export function CalculationEditor({
   };
 
   const updateItem = (index: number, patch: Partial<CalcItem>) => {
+    setGeneratedPdfPath(null);
     setItems((prev) => prev.map((it, i) => (i === index ? { ...it, ...patch } : it)));
   };
 
+  const reorderItems = (category: Category, from: number, to: number) => {
+    if (saving || generatingPdf || from === to) return;
+    const categoryItems = items.filter((item) => item.category === category);
+    if (!categoryItems[from] || !categoryItems[to]) return;
+    const [moved] = categoryItems.splice(from, 1);
+    categoryItems.splice(to, 0, moved);
+    let categoryIndex = 0;
+    setItems(items.map((item, position) => ({
+      ...(item.category === category ? categoryItems[categoryIndex++] : item), position,
+    })));
+    setOrderChanged(true);
+  };
+
+  const moveItem = (index: number, direction: -1 | 1) => {
+    const current = items[index];
+    if (!current) return;
+    const from = items.filter((item) => item.category === current.category).indexOf(current);
+    reorderItems(current.category, from, from + direction);
+  };
+
   const removeItem = async (index: number) => {
+    setGeneratedPdfPath(null);
     const item = items[index];
     if (item?.id) {
       const { error } = await supabase.from('event_calculation_items').delete().eq('id', item.id);
@@ -356,18 +397,19 @@ export function CalculationEditor({
       .eq('id', calculationId);
   };
 
-  const toggleEdit = async (index: number, editing: boolean) => {
-    if (!editing) {
-      const item = items[index];
-      if (item) {
-        await persistItem(item, item.position ?? index);
-        await supabase
-          .from('event_calculations')
-          .update({ updated_at: new Date().toISOString() })
-          .eq('id', calculationId);
-      }
-    }
-    setItems((prev) => prev.map((it, i) => (i === index ? { ...it, editing } : it)));
+  const toggleEdit = (index: number, editing: boolean) => {
+    if (!editing || saving || generatingPdf) return;
+    const item = items[index];
+    if (item) { setEditingModalItem(item); setAddModalCategory(item.category); }
+  };
+
+  const saveModalItem = async (item: CalcItem) => {
+    if (!editingModalItem) { await addItemFromModal(item); return; }
+    const current = items.find(row => row.id === editingModalItem.id);
+    if (!current) throw new Error('Pozycja nie jest już dostępna. Otwórz kalkulację ponownie.');
+    const saved = await persistItem({ ...item, id: current.id }, current.position);
+    if (!saved) throw new Error('Nie udało się zapisać zmian. Formularz pozostaje otwarty.');
+    setItems(previous => previous.map(row => row.id === saved ? { ...item, id: saved, position: row.position, editing: false } : row));
   };
 
   const grouped = useMemo(() => {
@@ -418,6 +460,7 @@ export function CalculationEditor({
   );
 
   const handleSave = async () => {
+    if (saving || readOnly) return false;
     setSaving(true);
 
     try {
@@ -427,6 +470,7 @@ export function CalculationEditor({
           name,
           notes,
           updated_at: new Date().toISOString(),
+          ...(orderChanged ? { generated_pdf_path: null, generated_pdf_at: null } : {}),
         })
         .eq('id', calculationId);
 
@@ -434,27 +478,41 @@ export function CalculationEditor({
 
       const itemsToSave = items.map((item, index) => ({
         ...item,
+        id: item.id || crypto.randomUUID(),
         position: index,
       }));
 
-      for (const item of itemsToSave) {
-        await persistItem(item, item.position);
+      // One request for the complete order, instead of a request for every row.
+      if (itemsToSave.length) {
+        const { data: savedItems, error: itemsError } = await supabase
+          .from('event_calculation_items')
+          .upsert(itemsToSave.map((item) => ({ ...serializeItem(item, item.position), id: item.id })))
+          .select('id');
+        if (itemsError) throw itemsError;
+        if (savedItems?.length !== itemsToSave.length) throw new Error('Nie udało się potwierdzić zapisu wszystkich pozycji.');
       }
+      setOrderChanged(false);
 
       showSnackbar('Zapisano kalkulację', 'success');
 
-      setItems(itemsToSave.map((it) => ({ ...it, editing: false })));
-
-      await load();
+      // Keep the editor mounted and preserve any fields edited while the request ran.
+      setItems((current) => current.map((item) => {
+        const originalIndex = items.indexOf(item);
+        return originalIndex >= 0 ? { ...itemsToSave[originalIndex], editing: false } : item;
+      }));
+      setGeneratedPdfPath(null);
+      return true;
     } catch (e: any) {
       console.error(e);
       showSnackbar(e.message || 'Błąd zapisu', 'error');
+      return false;
     } finally {
       setSaving(false);
     }
   };
 
   const handleDeleteCalc = () => {
+    if (readOnly) return;
     showConfirm({
       title: 'Usunąć kalkulację?',
       message: 'Tej operacji nie można cofnąć.',
@@ -462,7 +520,8 @@ export function CalculationEditor({
       cancelText: 'Anuluj',
     }).then(async (confirmed: boolean | void) => {
       if (confirmed) {
-        await supabase.from('event_calculations').delete().eq('id', calculationId);
+        const { error } = await supabase.from('event_calculations').delete().eq('id', calculationId);
+        if (error) { showSnackbar(error.message, 'error'); return; }
         onBack();
       } else {
         showSnackbar('Anulowano usuwanie kalkulacji', 'warning');
@@ -471,6 +530,7 @@ export function CalculationEditor({
   };
 
   const appendImportedItems = async (imported: CalcItem[]) => {
+    setGeneratedPdfPath(null);
     const savedItems: CalcItem[] = [];
     for (const it of imported) {
       const position = items.length + savedItems.length;
@@ -490,6 +550,13 @@ export function CalculationEditor({
   };
 
   const handlePrint = async () => {
+    let printCompany;
+    try {
+      printCompany = await resolveCalculationPrintCompany(company);
+    } catch (error: any) {
+      showSnackbar(error.message || 'Nie udało się wczytać logo do wydruku.', 'error');
+      return;
+    }
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -525,7 +592,7 @@ export function CalculationEditor({
       categoryTotalsGross,
       grandTotal,
       grandTotalGross,
-      company,
+      company: printCompany,
       totalPowerWatts,
       contactPerson: primaryContact
         ? {
@@ -555,23 +622,32 @@ export function CalculationEditor({
 
     setGeneratingPdf(true);
     try {
+      if (!(await handleSave())) return;
+      const { data: savedCalculation, error: revisionError } = await supabase.from('event_calculations').select('content_revision,name,notes').eq('id', calculationId).single();
+      if (revisionError) throw revisionError;
+      const { data: savedRows, error: rowsError } = await supabase.from('event_calculation_items').select('*').eq('calculation_id', calculationId).order('position').order('id');
+      if (rowsError) throw rowsError;
+      const savedGrouped: Record<Category, CalcItem[]> = { equipment: [], staff: [], transport: [], other: [] };
+      const savedTotals = { equipment: 0, staff: 0, transport: 0, other: 0 };
+      const savedGross = { equipment: 0, staff: 0, transport: 0, other: 0 };
+      for (const item of (savedRows || []) as CalcItem[]) { savedGrouped[item.category].push(item); savedTotals[item.category] += rowNet(item); savedGross[item.category] += rowGross(item); }
+
       const {
         data: { user },
       } = await supabase.auth.getUser();
 
       const { data: employee } = await supabase
         .from('employees')
-        .select('first_name, last_name, full_name, email, phone')
+        .select('name, surname, email, phone_number')
         .eq('auth_user_id', user?.id)
         .maybeSingle();
 
       const preparedBy = employee
         ? {
             name:
-              employee.full_name ||
-              `${employee.first_name ?? ''} ${employee.last_name ?? ''}`.trim(),
+              `${employee.name ?? ''} ${employee.surname ?? ''}`.trim(),
             email: employee.email ?? user?.email ?? null,
-            phone: employee.phone ?? null,
+            phone: employee.phone_number ?? null,
           }
         : {
             name: user?.email ?? 'Nieznany użytkownik',
@@ -581,17 +657,17 @@ export function CalculationEditor({
 
       const html = buildCalculationHtml({
         calculationNumber: getCalculationNumber(calculationId, calculationCreatedAt),
-        name,
-        notes,
+        name: savedCalculation.name,
+        notes: savedCalculation.notes || '',
         eventName,
         eventDate,
-        grouped,
-        categoryTotals,
-        categoryTotalsGross,
-        grandTotal,
-        grandTotalGross,
-        company,
-        totalPowerWatts,
+        grouped: savedGrouped,
+        categoryTotals: savedTotals,
+        categoryTotalsGross: savedGross,
+        grandTotal: round2(Object.values(savedTotals).reduce((sum, value) => sum + value, 0)),
+        grandTotalGross: round2(Object.values(savedGross).reduce((sum, value) => sum + value, 0)),
+        company: await resolveCalculationPrintCompany(company),
+        totalPowerWatts: (savedRows || []).reduce((sum, item) => sum + Number(item.power_watts || 0) * Number(item.quantity || 0), 0),
         contactPerson: primaryContact
           ? {
               name: primaryContact.name,
@@ -602,25 +678,12 @@ export function CalculationEditor({
         preparedBy,
       });
 
-      const res = await fetch('/bridge/events/calculations-pdf', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          eventId,
-          inquiryId: inquiryContext?.inquiryId ?? null,
-          calculationId,
-          eventName,
-          calculationName: name,
-          html,
-          createdBy: user?.id ?? null,
-          previousPdfPath: generatedPdfPath,
-        }),
+      const data = await requestCalculationPdf({
+        expectedRevision: savedCalculation.content_revision,
+        eventId, inquiryId: inquiryContext?.inquiryId ?? null, calculationId,
+        eventName, calculationName: name, html, createdBy: user?.id ?? null,
+        previousPdfPath: generatedPdfPath,
       });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data?.error || 'Błąd generowania PDF');
-      }
 
       setGeneratedPdfPath(data.storagePath);
       showSnackbar(
@@ -636,7 +699,8 @@ export function CalculationEditor({
   };
 
   const handleOpenSendEmail = async () => {
-    if (!generatedPdfPath) {
+    if (readOnly) return;
+    if (!generatedPdfPath || orderChanged) {
       showSnackbar('Najpierw wygeneruj PDF kalkulacji', 'warning');
       return;
     }
@@ -686,6 +750,7 @@ export function CalculationEditor({
   }
 
   return (
+    <div><button type="button" onClick={onBack} className="mb-3 text-sm text-[#d3bb73]">Wróć do listy kalkulacji</button><fieldset disabled={readOnly || saving || generatingPdf}>
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
@@ -698,7 +763,7 @@ export function CalculationEditor({
 
           <input
             value={name}
-            onChange={(e) => setName(e.target.value)}
+            onChange={(e) => { setName(e.target.value); setGeneratedPdfPath(null); }}
             className="rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-3 py-2 text-lg font-light text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
           />
         </div>
@@ -710,7 +775,7 @@ export function CalculationEditor({
               label: 'Importuj z oferty',
               onClick: () => setShowImport(true),
               icon: <Import className="h-4 w-4" />,
-              show: Boolean(eventId),
+              show: !readOnly && Boolean(eventId || inquiryContext?.inquiryId),
             },
             {
               label: 'Drukuj',
@@ -719,6 +784,7 @@ export function CalculationEditor({
             },
             {
               label: generatingPdf ? 'Generuję...' : 'Generuj PDF',
+              show: !readOnly,
               onClick: handleGeneratePdf,
               disabled: generatingPdf,
               icon: generatingPdf ? (
@@ -729,12 +795,14 @@ export function CalculationEditor({
             },
             {
               label: 'Wyślij email',
+              show: !readOnly,
               onClick: handleOpenSendEmail,
-              disabled: !generatedPdfPath,
+              disabled: !generatedPdfPath || orderChanged,
               icon: <Mail className="h-4 w-4" />,
             },
             {
               label: saving ? 'Zapisywanie...' : 'Zapisz',
+              show: !readOnly,
               onClick: handleSave,
               disabled: saving,
               variant: 'primary',
@@ -742,6 +810,7 @@ export function CalculationEditor({
             },
             {
               label: 'Usuń kalkulację',
+              show: !readOnly,
               onClick: handleDeleteCalc,
               variant: 'danger',
               icon: <Trash2 className="h-4 w-4" />,
@@ -772,6 +841,10 @@ export function CalculationEditor({
         })}
       </div>
 
+      <p className="text-xs text-[#e5e4e2]/60">
+        Przeciągnij pozycję za uchwyt po lewej lub użyj strzałek, aby zmienić kolejność w sekcji. Kliknij „Zapisz”, aby ją zachować.
+        {orderChanged && <span className="ml-1 text-[#d3bb73]">Kolejność została zmieniona. Po zapisaniu wygeneruj ponownie PDF przed wysyłką.</span>}
+      </p>
       {(Object.keys(CATEGORY_META) as Category[]).map((cat) => (
         <CategorySection
           key={cat}
@@ -782,6 +855,9 @@ export function CalculationEditor({
           onUpdate={updateItem}
           onRemove={removeItem}
           onToggleEdit={toggleEdit}
+          onMove={moveItem}
+          onReorder={reorderItems}
+          reorderingDisabled={saving || generatingPdf}
         />
       ))}
 
@@ -789,7 +865,7 @@ export function CalculationEditor({
         <div className="mb-2 text-sm font-medium text-[#e5e4e2]/60">Notatki</div>
         <textarea
           value={notes}
-          onChange={(e) => setNotes(e.target.value)}
+          onChange={(e) => { setNotes(e.target.value); setGeneratedPdfPath(null); }}
           rows={3}
           placeholder="Dodatkowe uwagi do kalkulacji..."
           className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
@@ -865,8 +941,9 @@ export function CalculationEditor({
         description="Proszę chwilę poczekać..."
       />
 
-      {showImport && eventId && (
+      {showImport && (eventId || inquiryContext?.inquiryId) && (
         <ImportFromOfferModal
+          inquiryId={inquiryContext?.inquiryId}
           eventId={eventId}
           existingRefs={new Set(items.map((i) => i.source_ref).filter(Boolean) as string[])}
           onClose={() => setShowImport(false)}
@@ -879,6 +956,7 @@ export function CalculationEditor({
 
       {showSendEmail && (
         <SendCalculationEmailModal
+          inquiryId={inquiryContext?.inquiryId}
           calculationId={calculationId}
           eventId={eventId}
           contactPerson={primaryContact}
@@ -892,13 +970,16 @@ export function CalculationEditor({
 
       {addModalCategory && (
         <AddCalculationItemModal
+          key={editingModalItem?.id || `new-${addModalCategory}`}
+          initialItem={editingModalItem || undefined}
           category={addModalCategory}
           existingItems={items}
           existingCount={items.filter((it) => it.category === addModalCategory).length}
-          onAdd={addItemFromModal}
-          onClose={() => setAddModalCategory(null)}
+          onAdd={saveModalItem}
+          onClose={() => { setAddModalCategory(null); setEditingModalItem(null); }}
         />
       )}
     </div>
+    </fieldset></div>
   );
 }

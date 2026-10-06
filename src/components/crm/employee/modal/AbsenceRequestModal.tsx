@@ -1,5 +1,7 @@
 'use client';
 
+import { systemLabel } from '@/lib/ui/systemLabels';
+
 import React, { useState, useEffect } from 'react';
 import { X, CheckCircle, XCircle, Calendar, Clock, User, FileText } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
@@ -152,7 +154,7 @@ export const AbsenceRequestModal: React.FC<AbsenceRequestModalProps> = ({
       remote_work: 'Praca zdalna',
       other: 'Inne',
     };
-    return labels[type] || type;
+    return labels[type] || systemLabel(type, 'absence');
   };
 
   const getAbsenceTypeColor = (type: string) => {

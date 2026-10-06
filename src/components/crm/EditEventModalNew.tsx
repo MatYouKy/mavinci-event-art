@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import LocationSelector from './LocationSelector';
+import { EventRoomSelector } from './locations/EventRoomSelector';
+import { supabase } from '@/lib/supabase/browser';
 import ClientSelectorTabs, { Contact } from './ClientSelectorTabs';
 import CompanySelector from './CompanySelector';
 import { useEventCategories } from '@/app/(crm)/crm/event-categories/hook/useEventCategories';
@@ -43,6 +45,8 @@ export default function EditEventModalNew({
 }: EditEventModalProps) {
   const { categories } = useEventCategories();
   const { showAlert } = useDialog();
+  const [roomsLoading, setRoomsLoading] = useState(true);
+  const [roomsError, setRoomsError] = useState(false);
 
   const [clientData, setClientData] = useState<{
     client_type: 'individual' | 'business';
@@ -61,6 +65,8 @@ export default function EditEventModalNew({
     event_end_date: null as string | null,
     location: '',
     location_id: null as string | null,
+    location_room_ids: [] as string[],
+    stage_room_id: null as string | null,
     budget: '',
     status: 'inquiry',
     my_company_id: null as string | null,
@@ -68,6 +74,9 @@ export default function EditEventModalNew({
 
   useEffect(() => {
     if (!isOpen || !event) return;
+    let active = true;
+    setRoomsLoading(true);
+    setRoomsError(false);
 
     setClientData({
       client_type:
@@ -83,15 +92,42 @@ export default function EditEventModalNew({
       event_end_date: event?.event_end_date || null,
       location: location?.name || event?.location || '',
       location_id: event?.location_id || location?.id || null,
+      location_room_ids: (event?.location_room_ids || []) as string[],
+      stage_room_id: (event?.stage_room_id || null) as string | null,
       budget: event?.budget != null ? String(event.budget) : '',
       status: event?.status || 'inquiry',
       my_company_id: event?.my_company_id || null,
     });
+    supabase
+      .from('events')
+      .select('location_id,location_room_ids,stage_room_id')
+      .eq('id', event.id)
+      .single()
+      .then(({ data, error }) => {
+        if (!active) return;
+        setRoomsLoading(false);
+        setRoomsError(!!error);
+        if (data)
+          setFormData((prev) =>
+            prev.location_id === data.location_id
+              ? {
+                  ...prev,
+                  location_room_ids: data.location_room_ids || [],
+                  stage_room_id: data.stage_room_id || null,
+                }
+              : prev,
+          );
+      });
+    return () => {
+      active = false;
+    };
   }, [isOpen, event, contact, location]);
 
   if (!isOpen) return null;
 
   const handleSubmit = () => {
+    if (roomsLoading || roomsError)
+      return showAlert('Poczekaj na pobranie danych sal lub otwórz formularz ponownie.');
     if (!formData.name.trim()) {
       return showAlert('Nazwa eventu jest wymagana');
     }
@@ -130,6 +166,8 @@ export default function EditEventModalNew({
 
       location: formData.location.trim(),
       location_id: formData.location_id || null,
+      location_room_ids: formData.location_room_ids,
+      stage_room_id: formData.stage_room_id,
 
       budget: formData.budget !== '' ? parseFloat(formData.budget) : null,
 
@@ -273,10 +311,35 @@ export default function EditEventModalNew({
                       ...prev,
                       location: value,
                       location_id: locationData?.id || null,
+                      location_room_ids:
+                        prev.location_id === (locationData?.id || null)
+                          ? prev.location_room_ids
+                          : [],
+                      stage_room_id:
+                        prev.location_id === (locationData?.id || null) ? prev.stage_room_id : null,
                     }))
                   }
                   placeholder="Wpisz lub wybierz lokalizację"
                 />
+                {roomsError && (
+                  <p role="alert" className="mt-2 text-sm text-red-300">
+                    Nie udało się pobrać zapisanych sal. Otwórz formularz ponownie.
+                  </p>
+                )}
+                {!roomsLoading && !roomsError && (
+                  <EventRoomSelector
+                    locationId={formData.location_id || null}
+                    selected={formData.location_room_ids}
+                    stage={formData.stage_room_id}
+                    onChange={(ids, stage) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        location_room_ids: ids,
+                        stage_room_id: stage,
+                      }))
+                    }
+                  />
+                )}
               </div>
 
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -311,10 +374,13 @@ export default function EditEventModalNew({
                   >
                     <option value="inquiry">Zapytanie</option>
                     <option value="offer_to_send">Oferta do wysłania</option>
-                    <option value="offer_sent">Oferta wysłana</option>
+                    {['in_preparation', 'ready_for_live'].includes(formData.status) && (
+                  <option value={formData.status} disabled>
+                    {formData.status === 'in_preparation' ? 'W przygotowaniu' : 'Gotowe do realizacji'} · status magazynu
+                  </option>
+                )}
+                <option value="offer_sent">Oferta wysłana</option>
                     <option value="offer_accepted">Oferta zaakceptowana</option>
-                    <option value="in_preparation">W przygotowaniu</option>
-                    <option value="ready_for_live">Gotowe do realizacji</option>
                     <option value="in_progress">W trakcie</option>
                     <option value="completed">Zakończone</option>
                     <option value="cancelled">Anulowane</option>
@@ -340,6 +406,7 @@ export default function EditEventModalNew({
                 <button
                   type="button"
                   onClick={handleSubmit}
+                  disabled={roomsLoading || roomsError}
                   className="flex-1 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] hover:bg-[#d3bb73]/90"
                 >
                   Zapisz zmiany

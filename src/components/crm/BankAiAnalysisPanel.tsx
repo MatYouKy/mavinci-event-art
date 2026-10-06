@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import styles from './BankAiAnalysisPanel.module.css';
 import {
   AlertTriangle,
   ArrowRightLeft,
@@ -18,10 +19,19 @@ import {
   X,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
+import { BANK_STATEMENT_DEDUPLICATION_COLUMNS, deduplicateStatementTransactions, loadBankStatementTransactionPages } from '@/lib/bankStatementDeduplication';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { decodeTextEntities } from '@/lib/textEncoding';
+import { externalDocumentKindLabel } from '@/lib/invoices/externalDocumentKinds';
+import { loadPersonnelPaymentBreakdowns, type PersonnelPaymentBreakdown } from '@/lib/personnel/payrollMatching';
 import { parseMT940Description } from '@/lib/bankStatementParsers';
 import InvoiceDetailsModal from '@/components/crm/InvoiceDetailsModal';
+import BankDocumentLinkedPayments from './BankDocumentLinkedPayments';
+import BankTransactionDetailsModal from './BankTransactionDetailsModal';
+import BankTransactionDocumentPickerModal, { type DocumentPickerTransaction } from './BankTransactionDocumentPickerModal';
+import ResponsiveActionBar from './ResponsiveActionBar';
+import { taxPaymentExclusionReason, type TaxPaymentCompanyAccounts } from '@/lib/CRM/bankTaxPayments';
+import { isConfirmedInternalVatTransfer, linkDetectedVatTransfersForPeriod } from '@/lib/CRM/bankVatTransfers';
 import {
   applyBankTransactionMatch,
   applyBankTransactionMatchToDocument,
@@ -79,6 +89,9 @@ type PreparedDocument = {
   counterparty: string;
   paymentStatus: string;
   documentKind: string;
+  externalDocumentKind?: string;
+  payrollTotalAmount?: number | null;
+  payrollNetConfirmed?: boolean;
   settlementDocumentNumbers: string[];
   sourceDocumentNumbers: string[];
   requiresKsefReview: boolean;
@@ -171,7 +184,23 @@ type StoredAiAnalysisRow = {
   updated_at: string;
 };
 
-const ANALYSIS_REPORT_VERSION = 19;
+const ANALYSIS_REPORT_VERSION = 21;
+
+async function loadTaxPaymentAccounts(companyIds: string[]) {
+  const ids = [...new Set(companyIds.filter(Boolean))];
+  if (!ids.length) return { accounts: new Map<string, TaxPaymentCompanyAccounts>(), warning: '' };
+  const { data, error } = await supabase.from('my_companies')
+    .select('id,bank_account,vat_bank_account,private_bank_account,tax_office_bank_account,zus_bank_account')
+    .in('id', ids);
+  if (error) {
+    if (['PGRST204', '42703'].includes(String(error.code))) {
+      return { accounts: new Map<string, TaxPaymentCompanyAccounts>(), warning:
+        'Rozpoznawanie rachunków ZUS / urzędu wymaga migracji 20260908150000. Do tego czasu pomijane są tylko przelewy rozpoznane po odbiorcy lub zapisanej klasyfikacji.' };
+    }
+    throw error;
+  }
+  return { accounts: new Map((data || []).map((row) => [row.id, row as TaxPaymentCompanyAccounts])), warning: '' };
+}
 
 const money = (value: number, currency = 'PLN') => `${Number(value || 0)
   .toFixed(2)
@@ -232,9 +261,35 @@ function sourceLabel(source: PreparedDocument['source']) {
 }
 
 function documentHeading(document: PreparedDocument) {
+  if (document.source === 'external') {
+    return `${externalDocumentKindLabel(document.externalDocumentKind)} poza KSeF`;
+  }
   return document.source === 'personnel'
     ? 'Dokument kadrowy'
     : `Faktura ${sourceLabel(document.source)}`;
+}
+
+function personnelNeedsNetConfirmation(document: PreparedDocument) {
+  return document.source === 'personnel'
+    && document.documentKind === 'personnel_salary'
+    && document.payrollNetConfirmed !== true
+    && !document.linkedTransactionId;
+}
+
+function currentPersonnelDocument(document: PreparedDocument, payment?: PersonnelPaymentBreakdown): PreparedDocument {
+  if (document.source !== 'personnel') return document;
+  if (!payment) return { ...document, payrollNetConfirmed: false };
+  const linked = Boolean(payment.linkedTransactionId);
+  return {
+    ...document,
+    amount: linked ? 0 : payment.amount,
+    grossAmount: payment.amount,
+    settledAmount: linked ? payment.amount : 0,
+    payrollTotalAmount: payment.totalAmount,
+    payrollNetConfirmed: payment.netConfirmed,
+    paymentStatus: linked ? 'już dopasowana' : 'do dopasowania',
+    linkedTransactionId: payment.linkedTransactionId || undefined,
+  };
 }
 
 function isDocumentPaid(document: PreparedDocument) {
@@ -277,102 +332,6 @@ function normalizeCounterpartyAlias(value?: string | null) {
     .replace(/[\u0300-\u036f]/g, '')
     .toUpperCase()
     .replace(/[^A-Z0-9]/g, '');
-}
-
-function deduplicateStatementTransactions(
-  rows: any[],
-  statementMetadata: Map<string, any>,
-) {
-  const resolutionPriority = (row: any) => {
-    if (String(row.match_status || '') === 'matched') return 4;
-    if (Number(row.allocated_amount || 0) > 0.009) return 3;
-    if (String(row.accounting_review_status || '') === 'explained') return 2;
-    if (Boolean(row.private_transfer_detected)) return 1;
-    return 0;
-  };
-  const sourcePriority = (row: any) => {
-    const statement = statementMetadata.get(row.statement_id);
-    const format = String(statement?.import_format || statement?.file_type || '').toUpperCase();
-    return format === 'MT940' || statement?.account_type === 'mt940' ? 2 : 1;
-  };
-  const textIdentity = (row: any) => normalizeCounterpartyAlias(
-    `${row.counterparty_name || ''} ${row.title || ''} ${row.raw_description || ''}`,
-  );
-  const accountIdentities = (row: any) => {
-    const values = new Set<string>();
-    const directAccount = String(row.counterparty_account || '').replace(/\D/g, '');
-    if (directAccount.length >= 16) values.add(directAccount.slice(-26));
-    const transactionText = [row.counterparty_name, row.title, row.raw_description]
-      .filter(Boolean)
-      .join(' ');
-    const embeddedAccounts = transactionText.match(/(?:PL\s*)?\d{2}(?:[\s-]*\d{4}){6}/gi) || [];
-    embeddedAccounts.forEach((account) => {
-      const digits = account.replace(/\D/g, '');
-      if (digits.length >= 16) values.add(digits.slice(-26));
-    });
-    return values;
-  };
-  const referenceIdentity = (row: any) => normalizeCounterpartyAlias(row.reference_number || '');
-  const statementAccountIdentity = (row: any) => String(
-    statementMetadata.get(row.statement_id)?.account_number || '',
-  ).replace(/\D/g, '');
-  const statementCompanyIdentity = (row: any) => String(
-    statementMetadata.get(row.statement_id)?.my_company_id || '',
-  );
-  const isMt940Source = (row: any) => {
-    const statement = statementMetadata.get(row.statement_id);
-    const format = String(statement?.import_format || statement?.file_type || '').toUpperCase();
-    return format.includes('MT940') || statement?.account_type === 'mt940';
-  };
-  const isPdfSource = (row: any) => {
-    const statement = statementMetadata.get(row.statement_id);
-    const format = String(statement?.import_format || statement?.file_type || '').toUpperCase();
-    return format.includes('PDF') || String(statement?.file_name || '').toLowerCase().endsWith('.pdf');
-  };
-  const hasSameIdentity = (left: any, right: any) => {
-    const leftAccounts = accountIdentities(left);
-    const rightAccounts = accountIdentities(right);
-    if (Array.from(leftAccounts).some((account) => rightAccounts.has(account))) return true;
-
-    const leftReference = referenceIdentity(left);
-    const rightReference = referenceIdentity(right);
-    if (leftReference.length >= 4 && rightReference.length >= 4 && leftReference === rightReference) return true;
-
-    const leftText = textIdentity(left);
-    const rightText = textIdentity(right);
-    const shorterTextLength = Math.min(leftText.length, rightText.length);
-    return shorterTextLength >= 12 && (
-      leftText.includes(rightText)
-      || rightText.includes(leftText)
-      || leftText.slice(0, 32) === rightText.slice(0, 32)
-    );
-  };
-  const hasSameBookingData = (left: any, right: any) => {
-    if (left.statement_id === right.statement_id) return false;
-    const leftStatementAccount = statementAccountIdentity(left);
-    const rightStatementAccount = statementAccountIdentity(right);
-    const sameStatementAccount = leftStatementAccount.length >= 8
-      && leftStatementAccount === rightStatementAccount;
-    const sameCompanyAcrossPdfAndMt940 = Boolean(statementCompanyIdentity(left))
-      && statementCompanyIdentity(left) === statementCompanyIdentity(right)
-      && ((isPdfSource(left) && isMt940Source(right)) || (isMt940Source(left) && isPdfSource(right)));
-    return (sameStatementAccount || sameCompanyAcrossPdfAndMt940)
-      && String(left.transaction_date || '') === String(right.transaction_date || '')
-      && String(left.transaction_type || '') === String(right.transaction_type || '')
-      && String(left.currency || 'PLN').toUpperCase() === String(right.currency || 'PLN').toUpperCase()
-      && Math.abs(Math.abs(Number(left.amount || 0)) - Math.abs(Number(right.amount || 0))) <= 0.009
-      && hasSameIdentity(left, right);
-  };
-
-  return [...rows]
-    .sort((left, right) => (
-      resolutionPriority(right) - resolutionPriority(left)
-      || sourcePriority(right) - sourcePriority(left)
-    ))
-    .reduce<any[]>((uniqueRows, row) => {
-      if (!uniqueRows.some((existing) => hasSameBookingData(existing, row))) uniqueRows.push(row);
-      return uniqueRows;
-    }, []);
 }
 
 function transactionContainsDocumentNumber(
@@ -513,11 +472,14 @@ export default function BankAiAnalysisPanel({
   year,
   companyId,
   onMatchApplied,
+  embedded = false,
 }: {
   month: number;
   year: number;
   companyId?: string | null;
   onMatchApplied?: () => void | Promise<void>;
+  /** Show the saved analysis directly inside the monthly dashboard. */
+  embedded?: boolean;
 }) {
   const { showSnackbar } = useSnackbar();
   const [loading, setLoading] = useState(false);
@@ -527,6 +489,15 @@ export default function BankAiAnalysisPanel({
   const [detailsTab, setDetailsTab] = useState<'matches' | 'missing' | 'transactions' | 'documents'>('matches');
   const [selectedMatchIndex, setSelectedMatchIndex] = useState(0);
   const [selectedTransactionRef, setSelectedTransactionRef] = useState<string | null>(null);
+  const [transactionDetailsRef, setTransactionDetailsRef] = useState<string | null>(null);
+  const [databaseDocumentPicker, setDatabaseDocumentPicker] = useState<{
+    transactionRef: string;
+    transaction: DocumentPickerTransaction;
+    initialSource: 'all' | 'external';
+    requestId: number;
+  } | null>(null);
+  const [documentPickerLoadingRef, setDocumentPickerLoadingRef] = useState<string | null>(null);
+  const documentPickerRequestRef = useRef(0);
   const [showTransactionPicker, setShowTransactionPicker] = useState(false);
   const [searchOtherMonths, setSearchOtherMonths] = useState(false);
   const [otherMonthsLoading, setOtherMonthsLoading] = useState(false);
@@ -551,6 +522,8 @@ export default function BankAiAnalysisPanel({
   const [noteCategory, setNoteCategory] = useState('other');
   const [noteExplained, setNoteExplained] = useState(false);
   const [noteSaving, setNoteSaving] = useState(false);
+  const [linkedDocumentStates, setLinkedDocumentStates] = useState<Record<string, boolean>>({});
+  const [linkedPaymentsRefreshKey, setLinkedPaymentsRefreshKey] = useState(0);
   const [mappingEditorRef, setMappingEditorRef] = useState<string | null>(null);
   const [mappingAliasDraft, setMappingAliasDraft] = useState('');
   const [mappingCounterpartyDraft, setMappingCounterpartyDraft] = useState('');
@@ -567,6 +540,14 @@ export default function BankAiAnalysisPanel({
   });
   const [snapshotStats, setSnapshotStats] = useState<SnapshotStats | null>(null);
   const reportKey = `${year}:${month}:${companyId || 'all'}`;
+  const detailsVisible = (embedded || showDetails) && !loading;
+
+  useEffect(() => {
+    documentPickerRequestRef.current += 1;
+    setDatabaseDocumentPicker(null);
+    setDocumentPickerLoadingRef(null);
+    return () => { documentPickerRequestRef.current += 1; };
+  }, [reportKey, showDetails]);
 
   useEffect(() => {
     let cancelled = false;
@@ -581,6 +562,7 @@ export default function BankAiAnalysisPanel({
     setAnalysisStale(false);
     setSelectedMatchIndex(0);
     setSelectedTransactionRef(null);
+    setTransactionDetailsRef(null);
     setShowTransactionPicker(false);
     setSearchOtherMonths(false);
     setOtherMonthsLoading(false);
@@ -598,6 +580,8 @@ export default function BankAiAnalysisPanel({
     setConfirmedReviewNotes(new Map());
     setShowDetails(false);
     setNoteEditor(null);
+    setLinkedDocumentStates({});
+    setLinkedPaymentsRefreshKey(0);
     setMappingEditorRef(null);
     setInvoiceDetails(null);
     setInvoiceDetailsLoadingId(null);
@@ -637,6 +621,62 @@ export default function BankAiAnalysisPanel({
         && Array.isArray(stored.transactions)
         && Array.isArray(stored.documents)
       ) {
+        let currentDocuments = new Map(stored.documents);
+        try {
+          const payroll = await loadPersonnelPaymentBreakdowns(
+            supabase,
+            stored.documents.filter(([, document]) => document.source === 'personnel').map(([, document]) => document.id),
+          );
+          if (cancelled) return;
+          currentDocuments = new Map(stored.documents.map(([ref, document]) => [
+            ref, currentPersonnelDocument(document, payroll.get(document.id)),
+          ]));
+        } catch (payrollError) {
+          if (cancelled) return;
+          console.warn('Nie udało się odświeżyć kwot netto w zapisanej analizie:', payrollError);
+          currentDocuments = new Map(stored.documents.map(([ref, document]) => [
+            ref, currentPersonnelDocument(document),
+          ]));
+        }
+        const personnelAmountsChanged = JSON.stringify(Array.from(currentDocuments.entries())) !== JSON.stringify(stored.documents);
+        let currentAnalysis = personnelAmountsChanged ? {
+          ...stored.analysis,
+          likelyMatches: stored.analysis.likelyMatches.map((match) => {
+            if (match.documentRefs.length !== 1) return match;
+            const document = currentDocuments.get(match.documentRefs[0]);
+            if (!document || document.documentKind !== 'personnel_salary') return match;
+            return {
+              ...match,
+              amountExplanation: document.payrollNetConfirmed
+                ? `Aktualna potwierdzona wypłata netto na konto: ${money(document.grossAmount, document.currency)}. Pozostałe obciążenia nie są częścią tego przelewu do pracownika.`
+                : 'Kwota w rejestrze wymaga potwierdzenia jako netto na konto; nie należy dopasowywać łącznej kwoty umowy do wypłaty pracownika.',
+            };
+          }),
+        } : stored.analysis;
+        const hiddenTransferRefs = new Set<string>();
+        const storedTransactionIds = stored.transactions.map(([, transaction]) => transaction.id);
+        for (let offset = 0; offset < storedTransactionIds.length; offset += 100) {
+          const { data: currentTransactions, error: currentTransactionsError } = await supabase.from('bank_transactions')
+            .select('id,statement_id,accounting_category,accounting_subtype,accounting_review_status,paired_bank_transaction_id')
+            .in('id', storedTransactionIds.slice(offset, offset + 100));
+          if (cancelled) return;
+          if (currentTransactionsError) {
+            setReportReadyKey(reportKey);
+            showSnackbar('Nie można sprawdzić aktualnych transferów VAT. Odśwież analizę, zanim użyjesz zapisanych propozycji.', 'warning');
+            return;
+          }
+          const confirmedIds = new Set((currentTransactions || []).filter(isConfirmedInternalVatTransfer).map((transaction) => transaction.id));
+          stored.transactions.forEach(([ref, transaction]) => { if (confirmedIds.has(transaction.id)) hiddenTransferRefs.add(ref); });
+        }
+        if (hiddenTransferRefs.size) {
+          currentAnalysis = {
+            ...currentAnalysis,
+            summary: `${currentAnalysis.summary} Pominięto już połączone transfery rachunek bieżący ↔ VAT (${hiddenTransferRefs.size} operacji).`,
+            likelyMatches: currentAnalysis.likelyMatches.filter((match) => !hiddenTransferRefs.has(match.transactionRef)),
+            missingDocuments: currentAnalysis.missingDocuments.filter((item) => !hiddenTransferRefs.has(item.transactionRef)),
+            reviewTransactions: currentAnalysis.reviewTransactions.filter((item) => !hiddenTransferRefs.has(item.transactionRef)),
+          };
+        }
         const signature = JSON.stringify({
           version: stored.analysis_version,
           analysis: stored.analysis,
@@ -647,21 +687,28 @@ export default function BankAiAnalysisPanel({
           isStale: stored.is_stale,
         });
         lastPersistedReportRef.current = signature;
-        setAnalysis(stored.analysis);
+        setAnalysis(currentAnalysis);
         setMaps({
-          transactions: new Map(stored.transactions.map(([ref, transaction]) => [
+          transactions: new Map(stored.transactions.filter(([ref]) => !hiddenTransferRefs.has(ref)).map(([ref, transaction]) => [
             ref,
             {
               ...transaction,
               title: parsedBankTransactionTitle(transaction.title, transaction.rawDescription),
             },
           ])),
-          documents: new Map(stored.documents),
+          documents: currentDocuments,
         });
-        setSnapshotStats(stored.snapshot_stats);
+        const currentStoredTransactions = stored.transactions.filter(([ref]) => !hiddenTransferRefs.has(ref)).map(([, transaction]) => transaction);
+        setSnapshotStats(hiddenTransferRefs.size ? {
+          ...stored.snapshot_stats,
+          transactions: currentStoredTransactions.length,
+          debitTransactions: currentStoredTransactions.filter((transaction) => transaction.direction === 'debit').length,
+          debitAmount: currentStoredTransactions.filter((transaction) => transaction.direction === 'debit')
+            .reduce((sum, transaction) => sum + transaction.remainingAmount, 0),
+        } : stored.snapshot_stats);
         setMatchedKeys(new Set(stored.matched_keys || []));
         setAnalysisSavedAt(stored.updated_at || null);
-        setAnalysisStale(stored.is_stale);
+        setAnalysisStale(stored.is_stale || personnelAmountsChanged || hiddenTransferRefs.size > 0);
       }
       setReportReadyKey(reportKey);
     };
@@ -734,7 +781,7 @@ export default function BankAiAnalysisPanel({
     try {
       let statementsQuery = supabase
         .from('bank_statements')
-        .select('id,my_company_id,account_type,account_number,import_format,file_type,file_name')
+        .select(BANK_STATEMENT_DEDUPLICATION_COLUMNS)
         .eq('statement_month', month)
         .eq('statement_year', year)
         .eq('processed', true)
@@ -754,27 +801,14 @@ export default function BankAiAnalysisPanel({
         label: 'Łączę rachunek bieżący z VAT',
         detail: 'Szukam jednoznacznych par o tej samej kwocie i walucie, przeciwnym kierunku oraz tej samej dacie.',
       });
-      const { data: vatPairingData, error: vatPairingError } = await supabase.rpc(
-        'auto_link_vat_account_transfers_for_period',
-        {
-          p_statement_month: month,
-          p_statement_year: year,
-          p_company_id: companyId || null,
-        },
-      );
-      if (vatPairingError) {
-        const migrationMissing = ['PGRST202', '42703', '42883'].includes(String(vatPairingError.code || ''));
-        if (!migrationMissing) throw vatPairingError;
-        autoVatPairingWarning = 'Automatyczne parowanie rachunku VAT wymaga migracji 20260904143000 w Supabase.';
-        showSnackbar(autoVatPairingWarning, 'warning');
-      } else {
-        const pairingResult = Array.isArray(vatPairingData) ? vatPairingData[0] : vatPairingData;
-        autoLinkedVatPairCount = Math.max(Number(pairingResult?.linked_pairs || 0), 0);
-        if (autoLinkedVatPairCount > 0) {
-          setAnalysisStale(true);
-          showSnackbar(`Automatyczne transfery rachunek bieżący ↔ VAT zostały połączone (${autoLinkedVatPairCount}).`, 'success');
-          await onMatchApplied?.();
-        }
+      const vatPairingResult = await linkDetectedVatTransfersForPeriod(supabase, { companyId, month, year });
+      autoLinkedVatPairCount = vatPairingResult.linkedPairs;
+      autoVatPairingWarning = vatPairingResult.warnings.join(' ');
+      if (autoVatPairingWarning) showSnackbar(autoVatPairingWarning, 'warning');
+      if (autoLinkedVatPairCount > 0) {
+        setAnalysisStale(true);
+        showSnackbar(`Automatyczne transfery rachunek bieżący ↔ VAT zostały połączone (${autoLinkedVatPairCount}).`, 'success');
+        await onMatchApplied?.();
       }
 
       setAnalysisProgress({
@@ -790,15 +824,21 @@ export default function BankAiAnalysisPanel({
       const statementCompany = new Map(
         statementRows.map((statement) => [statement.id, statement.my_company_id || 'bez-firmy']),
       );
+      const taxPaymentAccounts = await loadTaxPaymentAccounts(
+        statementRows.map((statement) => statement.my_company_id || ''),
+      );
       const statementMetadata = new Map(
         statementRows.map((statement) => [statement.id, statement]),
       );
-      const { data: transactionRows, error: transactionsError } = await supabase
-        .from('bank_transactions')
-        .select('id,statement_id,transaction_date,amount,currency,transaction_type,counterparty_name,counterparty_account,title,reference_number,raw_description,match_status,allocated_amount,accounting_note,accounting_category,accounting_review_status,private_transfer_detected')
-        .in('statement_id', statementIds)
-        .order('transaction_date', { ascending: true });
-      if (transactionsError) throw transactionsError;
+      const transactionRows = await loadBankStatementTransactionPages((from, to) =>
+        supabase
+          .from('bank_transactions')
+          .select('id,statement_id,transaction_date,posting_date,amount,currency,transaction_type,counterparty_name,counterparty_account,title,reference_number,raw_description,match_status,allocated_amount,matched_document_count,matched_invoice_id,accounting_note,accounting_category,accounting_subtype,accounting_review_status,private_transfer_detected,paired_bank_transaction_id,source_index,source_balance_before,source_balance_after,source_verified')
+          .in('statement_id', statementIds)
+          .order('transaction_date', { ascending: true })
+          .order('id', { ascending: true })
+          .range(from, to),
+      );
       const uniqueTransactionRows = deduplicateStatementTransactions(
         transactionRows || [],
         statementMetadata,
@@ -839,14 +879,14 @@ export default function BankAiAnalysisPanel({
         .limit(1000);
       let externalQuery = supabase
         .from('external_invoices')
-        .select('id,my_company_id,invoice_number,invoice_date,amount_gross,currency,seller_name,payment_status,payment_method,accounting_note')
+        .select('id,my_company_id,document_kind,invoice_number,invoice_date,amount_gross,currency,seller_name,payment_status,payment_method,accounting_note')
         .gte('invoice_date', dateFrom)
         .lte('invoice_date', dateTo)
         .order('invoice_date', { ascending: false })
         .limit(1000);
       const personnelPaymentsQuery = supabase
         .from('personnel_contract_payments')
-        .select('id,payment_date,amount,currency,payment_type,recipient_name,title,notes,bank_transaction_id,personnel_contracts!personnel_contract_payments_personnel_contract_id_fkey!inner(id,my_company_id,contract_number,title,party_name,status)')
+        .select('id,payment_date,amount,currency,payment_type,payroll_total_amount,payroll_net_confirmed,recipient_name,title,notes,bank_transaction_id,personnel_contracts!personnel_contract_payments_personnel_contract_id_fkey!inner(id,my_company_id,contract_number,title,party_name,status)')
         .gte('payment_date', dateFrom)
         .lte('payment_date', dateTo)
         .order('payment_date', { ascending: false })
@@ -900,6 +940,7 @@ export default function BankAiAnalysisPanel({
       });
       const counterpartyMappings = mappingsResult.data || [];
       const visiblePersonnelPayments = (personnelPaymentsResult.data || []).filter((payment: any) => {
+        if (['tax', 'zus'].includes(String(payment.payment_type))) return false;
         const relation = Array.isArray(payment.personnel_contracts)
           ? payment.personnel_contracts[0]
           : payment.personnel_contracts;
@@ -1112,6 +1153,7 @@ export default function BankAiAnalysisPanel({
               counterparty: invoice.seller_name || '',
               paymentStatus: bankMatchedAmount > 0 ? 'partially_matched' : invoice.payment_status || 'unpaid',
               documentKind: 'external',
+              externalDocumentKind: invoice.document_kind || 'invoice',
               settlementDocumentNumbers: [],
               sourceDocumentNumbers: [],
               requiresKsefReview: false,
@@ -1143,6 +1185,8 @@ export default function BankAiAnalysisPanel({
             counterparty: payment.recipient_name || contract?.party_name || '',
             paymentStatus: isLinked ? 'już dopasowana' : 'do dopasowania',
             documentKind: `personnel_${paymentType}`,
+            payrollTotalAmount: payment.payroll_total_amount == null ? null : Number(payment.payroll_total_amount),
+            payrollNetConfirmed: payment.payroll_net_confirmed === true,
             settlementDocumentNumbers: [],
             sourceDocumentNumbers: [],
             requiresKsefReview: false,
@@ -1157,7 +1201,8 @@ export default function BankAiAnalysisPanel({
         || (document.source === 'personnel' && Boolean(document.linkedTransactionId))
       ));
 
-      const unresolved = uniqueTransactionRows
+      const pendingTransactions = uniqueTransactionRows
+        .filter((transaction) => !isConfirmedInternalVatTransfer(transaction))
         .map((transaction) => {
           const amount = Math.abs(Number(transaction.amount || 0));
           const remainingAmount = Math.max(amount - Number(transaction.allocated_amount || 0), 0);
@@ -1180,6 +1225,7 @@ export default function BankAiAnalysisPanel({
           return {
             id: transaction.id,
             companyId: transactionCompanyId,
+            taxPaymentExclusion: taxPaymentExclusionReason(transaction, taxPaymentAccounts.accounts.get(transactionCompanyId)),
             date: transaction.transaction_date || '',
             direction: transaction.transaction_type as Direction,
             amount,
@@ -1206,11 +1252,14 @@ export default function BankAiAnalysisPanel({
           && transaction.accountingReviewStatus !== 'explained'
           && transaction.matchStatus !== 'matched'
           && transaction.remainingAmount > 0.009
-        ))
+        ));
+      const excludedTaxPaymentCount = pendingTransactions.filter((transaction) => transaction.taxPaymentExclusion).length;
+      const unresolved = pendingTransactions
+        .filter((transaction) => !transaction.taxPaymentExclusion)
         .sort((left, right) => right.remainingAmount - left.remainingAmount)
         .slice(0, 160);
 
-      if (!unresolved.length && autoLinkedVatPairCount === 0) {
+      if (!unresolved.length && autoLinkedVatPairCount === 0 && excludedTaxPaymentCount === 0) {
         throw new Error('Wszystkie transakcje z tego miesiąca są już rozliczone.');
       }
 
@@ -1274,6 +1323,9 @@ export default function BankAiAnalysisPanel({
           counterparty: document.counterparty,
           paymentStatus: document.paymentStatus,
           documentKind: document.documentKind,
+          externalDocumentKind: 'externalDocumentKind' in document ? document.externalDocumentKind : undefined,
+          payrollTotalAmount: 'payrollTotalAmount' in document ? document.payrollTotalAmount : undefined,
+          payrollNetConfirmed: 'payrollNetConfirmed' in document ? document.payrollNetConfirmed : undefined,
           settlementDocumentNumbers: document.settlementDocumentNumbers,
           sourceDocumentNumbers: document.sourceDocumentNumbers,
           requiresKsefReview: document.requiresKsefReview,
@@ -1320,6 +1372,7 @@ export default function BankAiAnalysisPanel({
           personnelTransactionsWithoutRecords.add(transaction.ref);
         }
         const candidate = relatedDocuments
+          .filter((item) => !personnelNeedsNetConfirmation(item.document))
           .filter((item) => !usedPersonnelDocumentRefs.has(item.document.ref))
           .map((item) => {
             const amountDifference = Math.abs(item.document.amount - transaction.remainingAmount);
@@ -1347,7 +1400,7 @@ export default function BankAiAnalysisPanel({
           documentRefs: [candidate.document.ref],
           confidence: candidate.amountMatches && candidate.identityMatches ? 'high' as const : 'medium' as const,
           reason: `Lokalne dopasowanie dokumentu kadrowego: ${signals}. Dane wynagrodzenia nie zostały wysłane do OpenAI.`,
-          amountExplanation: `Przelew ${money(transaction.remainingAmount, transaction.currency)} porównano z zapisaną wypłatą ${money(candidate.document.amount, candidate.document.currency)}.`,
+          amountExplanation: `Przelew ${money(transaction.remainingAmount, transaction.currency)} porównano z zapisaną wypłatą ${candidate.document.documentKind === 'personnel_salary' ? 'netto na konto ' : ''}${money(candidate.document.amount, candidate.document.currency)}.${candidate.document.documentKind === 'personnel_salary' ? ' Podatki i składki rozlicza się osobno, nie jako część wypłaty pracownika.' : ''}`,
           recommendedAction: 'Porównaj odbiorcę, okres wynagrodzenia i numer umowy, a następnie zatwierdź powiązanie.',
         }];
       });
@@ -1368,7 +1421,7 @@ export default function BankAiAnalysisPanel({
         indeterminate: safeTransactions.length > 0,
       });
       let parsedAnalysis: AiAnalysis = {
-        summary: 'Pozycje kadrowe zostały sprawdzone lokalnie w CRM.',
+        summary: 'Analiza lokalna zakończona. Nie było pozostałych pozycji do wysłania do AI.',
         likelyMatches: [],
         missingDocuments: [],
         reviewTransactions: [],
@@ -1379,7 +1432,14 @@ export default function BankAiAnalysisPanel({
         const { data: responseBody, error: analysisError } = await supabase.functions.invoke(
           'analyze-bank-reconciliation',
           {
-            body: { month, year, transactions: safeTransactions, documents: safeDocuments },
+            body: {
+              month, year, transactions: safeTransactions, documents: safeDocuments,
+              // Only the authenticated CRM endpoint sees these lookup IDs;
+              // its minimized OpenAI snapshot never includes them.
+              transactionIds: Object.fromEntries(transactions
+                .filter((transaction) => !personnelRelatedTransactionRefs.has(transaction.ref))
+                .map((transaction) => [transaction.ref, transaction.id])),
+            },
           },
         );
         if (analysisError) {
@@ -1513,8 +1573,8 @@ export default function BankAiAnalysisPanel({
         .map((transactionRef) => ({
           transactionRef,
           priority: 'medium' as const,
-          reason: 'Rozpoznano odbiorcę lub numer umowy, ale kwota przelewu nie odpowiada zapisanej wypłacie.',
-          recommendedAction: 'Sprawdź kwotę netto, zaliczkę, potrącenia albo wybierz właściwy zapis wynagrodzenia.',
+          reason: 'Rozpoznano odbiorcę lub numer umowy, ale kwota netto wymaga potwierdzenia albo nie odpowiada przelewowi.',
+          recommendedAction: 'W Umowy personelu sprawdź kwotę netto na konto. Podatki, składki i inne obciążenia pozostają osobnym rozliczeniem.',
         }));
       const analysedMonthPrefix = `${year}-${String(month).padStart(2, '0')}`;
       const unmatchedPersonnelReviews: AiAnalysis['reviewDocuments'] = documents
@@ -1592,6 +1652,9 @@ export default function BankAiAnalysisPanel({
         ...parsedAnalysis,
         summary: [
           parsedAnalysis.summary,
+          excludedTaxPaymentCount > 0
+            ? `Pominięto płatności podatkowe i ZUS (${excludedTaxPaymentCount}) — nie wymagają opisu ani faktury w tej analizie. Statusy transakcji pozostają bez zmian.`
+            : '',
           documents.some((document) => document.source === 'personnel')
             ? `Rejestr kadrowy sprawdzono lokalnie: ${personnelSuggestions.length} ${personnelSuggestions.length === 1 ? 'propozycja' : 'propozycji'} dopasowania.`
             : '',
@@ -1614,6 +1677,7 @@ export default function BankAiAnalysisPanel({
         missingDocuments: [
           ...missingPersonnelDocuments,
           ...(parsedAnalysis.missingDocuments || [])
+            .filter((item) => transactionsByRef.has(item.transactionRef))
             .filter((item) => !personnelRelatedTransactionRefs.has(item.transactionRef))
             .filter((item) => !exactNumberTransactionRefs.has(item.transactionRef))
             .filter((item) => !currencyTransactionRefs.has(item.transactionRef))
@@ -1622,6 +1686,7 @@ export default function BankAiAnalysisPanel({
         reviewTransactions: [
           ...personnelTransactionReviews,
           ...(parsedAnalysis.reviewTransactions || [])
+            .filter((item) => transactionsByRef.has(item.transactionRef))
             .filter((item) => !personnelRelatedTransactionRefs.has(item.transactionRef))
             .filter((item) => !exactNumberTransactionRefs.has(item.transactionRef))
             .filter((item) => !currencyTransactionRefs.has(item.transactionRef))
@@ -1635,6 +1700,7 @@ export default function BankAiAnalysisPanel({
         warnings: [
           ...(parsedAnalysis.warnings || []),
           ...(autoVatPairingWarning ? [autoVatPairingWarning] : []),
+          ...(taxPaymentAccounts.warning ? [taxPaymentAccounts.warning] : []),
         ],
       };
       setAnalysis(refreshedAnalysis);
@@ -1667,7 +1733,7 @@ export default function BankAiAnalysisPanel({
         .filter(Boolean))];
       let statementsQuery = supabase
         .from('bank_statements')
-        .select('id,my_company_id,statement_month,statement_year,account_type,account_number,import_format,file_type,file_name')
+        .select(BANK_STATEMENT_DEDUPLICATION_COLUMNS)
         .gte('statement_year', year - 1)
         .lte('statement_year', year + 1)
         .eq('processed', true)
@@ -1690,24 +1756,23 @@ export default function BankAiAnalysisPanel({
         return distance <= 12;
       });
       const statementIds = surroundingStatements.map((statement) => statement.id);
+      const taxPaymentAccounts = await loadTaxPaymentAccounts(
+        surroundingStatements.map((statement) => statement.my_company_id || ''),
+      );
       if (statementIds.length === 0) {
         if (notify) showSnackbar('Nie ma poprawnie wgranych wyciągów w zakresie 12 miesięcy.', 'info');
         return [] as PreparedTransaction[];
       }
 
-      const transactionRows: any[] = [];
-      const pageSize = 1000;
-      for (let from = 0; ; from += pageSize) {
-        const { data, error } = await supabase
+      const transactionRows = await loadBankStatementTransactionPages((from, to) =>
+        supabase
           .from('bank_transactions')
-          .select('id,statement_id,transaction_date,amount,currency,transaction_type,counterparty_name,counterparty_account,title,reference_number,raw_description,match_status,allocated_amount,accounting_note,accounting_category,accounting_review_status,private_transfer_detected')
+          .select('id,statement_id,transaction_date,posting_date,amount,currency,transaction_type,counterparty_name,counterparty_account,title,reference_number,raw_description,match_status,allocated_amount,matched_document_count,matched_invoice_id,accounting_note,accounting_category,accounting_subtype,accounting_review_status,private_transfer_detected,paired_bank_transaction_id,source_index,source_balance_before,source_balance_after,source_verified')
           .in('statement_id', statementIds)
           .order('transaction_date', { ascending: false })
-          .range(from, from + pageSize - 1);
-        if (error) throw error;
-        transactionRows.push(...(data || []));
-        if (!data || data.length < pageSize) break;
-      }
+          .order('id', { ascending: true })
+          .range(from, to),
+      );
 
       const statementCompanies = new Map(
         surroundingStatements.map((statement) => [statement.id, statement.my_company_id || '']),
@@ -1732,6 +1797,7 @@ export default function BankAiAnalysisPanel({
       }, 0);
       let nextRefNumber = maxRefNumber + 1;
       const refreshedTransactions: PreparedTransaction[] = uniqueTransactionRows
+        .filter((transaction) => !isConfirmedInternalVatTransfer(transaction))
         .map((transaction) => {
           const amount = Math.abs(Number(transaction.amount || 0));
           const remainingAmount = Math.max(amount - Number(transaction.allocated_amount || 0), 0);
@@ -1741,6 +1807,7 @@ export default function BankAiAnalysisPanel({
             id: transaction.id,
             companyId: transactionCompanyId,
             companyRef: companyRefs.get(transactionCompanyId) || (transactionCompanyId ? 'F1' : 'F0'),
+            taxPaymentExclusion: taxPaymentExclusionReason(transaction, taxPaymentAccounts.accounts.get(transactionCompanyId)),
             date: transaction.transaction_date || '',
             direction: transaction.transaction_type as Direction,
             amount,
@@ -1765,10 +1832,11 @@ export default function BankAiAnalysisPanel({
           };
         })
         .filter((transaction) => !transaction.privateTransferDetected)
+        .filter((transaction) => !transaction.taxPaymentExclusion)
         .filter((transaction) => transaction.accountingReviewStatus !== 'explained')
         .filter((transaction) => transaction.matchStatus !== 'matched' && transaction.remainingAmount > 0.009)
         .sort((left, right) => right.date.localeCompare(left.date))
-        .map(({ matchStatus: _matchStatus, privateTransferDetected: _private, ...transaction }) => ({
+        .map(({ matchStatus: _matchStatus, privateTransferDetected: _private, taxPaymentExclusion: _taxExclusion, ...transaction }) => ({
           ...transaction,
           ref: existingRefsById.get(transaction.id) || `T${nextRefNumber++}`,
         }));
@@ -1823,6 +1891,10 @@ export default function BankAiAnalysisPanel({
     const document = maps.documents.get(documentRef);
     if (!transaction || !document) {
       showSnackbar('Nie udało się odnaleźć transakcji lub dokumentu.', 'error');
+      return;
+    }
+    if (personnelNeedsNetConfirmation(document)) {
+      showSnackbar('Najpierw uzupełnij i potwierdź kwotę netto na konto w Umowy personelu. Nie dopasowuj łącznej kwoty umowy do wypłaty pracownika.', 'warning');
       return;
     }
 
@@ -2008,6 +2080,9 @@ export default function BankAiAnalysisPanel({
     : selectedMatch
       ? maps.transactions.get(selectedMatch.transactionRef)
       : undefined;
+  const transactionDetails = transactionDetailsRef
+    ? maps.transactions.get(transactionDetailsRef)
+    : undefined;
   const pendingMatches = analysis?.likelyMatches
     .map((match, index) => ({ match, index }))
     .filter(({ match }) => {
@@ -2121,6 +2196,121 @@ export default function BankAiAnalysisPanel({
         - Math.abs(right.remainingAmount - pickerDocument.amount);
     });
 
+  const openTransactionDetails = (transactionRef: string) => {
+    if (!maps.transactions.has(transactionRef)) {
+      showSnackbar('Nie udało się odnaleźć tej transakcji w zapisanej analizie. Odśwież analizę.', 'error');
+      return;
+    }
+    setTransactionDetailsRef(transactionRef);
+  };
+
+  const loadCurrentPickerTransaction = async (transactionId: string): Promise<DocumentPickerTransaction> => {
+    const { data, error } = await supabase
+      .from('bank_transactions')
+      .select('id,transaction_date,amount,currency,transaction_type,counterparty_name,title,allocated_amount')
+      .eq('id', transactionId)
+      .single();
+    if (error) throw error;
+    if (!data) throw new Error('Nie znaleziono płatności w bazie.');
+    const amount = Number(data.amount);
+    const allocatedAmount = Number(data.allocated_amount ?? 0);
+    if (
+      !Number.isFinite(amount)
+      || !Number.isFinite(allocatedAmount)
+      || allocatedAmount < 0
+      || !['credit', 'debit'].includes(data.transaction_type)
+    ) throw new Error('Płatność ma nieprawidłową kwotę lub kierunek. Sprawdź szczegóły wyciągu.');
+    return {
+      id: data.id,
+      transaction_date: data.transaction_date,
+      amount,
+      allocated_amount: allocatedAmount,
+      currency: data.currency || 'PLN',
+      transaction_type: data.transaction_type as Direction,
+      counterparty_name: data.counterparty_name,
+      title: data.title,
+    };
+  };
+
+  const syncPickerTransaction = (transactionRef: string, transaction: DocumentPickerTransaction) => {
+    const remainingAmount = Math.max(Math.abs(transaction.amount) - Number(transaction.allocated_amount ?? 0), 0);
+    setMaps((current) => {
+      const previous = current.transactions.get(transactionRef);
+      if (!previous || previous.id !== transaction.id) return current;
+      const transactions = new Map(current.transactions);
+      transactions.set(transactionRef, {
+        ...previous,
+        date: transaction.transaction_date,
+        amount: Math.abs(transaction.amount),
+        remainingAmount,
+        currency: transaction.currency,
+        direction: transaction.transaction_type,
+      });
+      return { ...current, transactions };
+    });
+    // Only a current bank balance can clear a missing document; partial payments stay on the list.
+    if (remainingAmount <= 0.009) {
+      setAnalysis((current) => current ? {
+        ...current,
+        missingDocuments: current.missingDocuments.filter((item) => item.transactionRef !== transactionRef),
+      } : current);
+    }
+    return remainingAmount;
+  };
+
+  const openDatabaseDocumentPicker = async (transactionRef: string, initialSource: 'all' | 'external' = 'all') => {
+    const snapshotTransaction = maps.transactions.get(transactionRef);
+    if (!snapshotTransaction) {
+      showSnackbar('Nie udało się odnaleźć tej transakcji w zapisanej analizie.', 'error');
+      return;
+    }
+    const requestId = ++documentPickerRequestRef.current;
+    setDocumentPickerLoadingRef(transactionRef);
+    try {
+      const transaction = await loadCurrentPickerTransaction(snapshotTransaction.id);
+      if (requestId !== documentPickerRequestRef.current) return;
+      const remainingAmount = syncPickerTransaction(transactionRef, transaction);
+      if (remainingAmount <= 0.009) {
+        showSnackbar('Ta płatność jest już w całości rozliczona. Usunięto ją z brakujących dokumentów.', 'info');
+        return;
+      }
+      setDatabaseDocumentPicker({ transactionRef, transaction, initialSource, requestId });
+    } catch (error: any) {
+      if (requestId === documentPickerRequestRef.current) {
+        showSnackbar(error?.message || 'Nie udało się wczytać aktualnej płatności.', 'error');
+      }
+    } finally {
+      if (requestId === documentPickerRequestRef.current) setDocumentPickerLoadingRef(null);
+    }
+  };
+
+  const handleDatabaseDocumentMatched = async () => {
+    const picker = databaseDocumentPicker;
+    if (!picker) return;
+    if (picker.requestId === documentPickerRequestRef.current) {
+      setDatabaseDocumentPicker(null);
+      setAnalysisStale(true);
+      setLinkedPaymentsRefreshKey((current) => current + 1);
+    }
+    try {
+      const transaction = await loadCurrentPickerTransaction(picker.transaction.id);
+      if (picker.requestId === documentPickerRequestRef.current) {
+        syncPickerTransaction(picker.transactionRef, transaction);
+      }
+    } catch {
+      if (picker.requestId === documentPickerRequestRef.current) {
+        showSnackbar('Dopasowanie zapisano, ale nie udało się odświeżyć salda płatności. Otwórz wybór dokumentu ponownie, aby pobrać aktualny stan.', 'warning');
+      }
+    }
+    try {
+      await onMatchApplied?.();
+    } catch {
+      if (picker.requestId === documentPickerRequestRef.current) {
+        showSnackbar('Dopasowanie zapisano. Nie udało się odświeżyć widoku wyciągu — odśwież go ręcznie.', 'warning');
+      }
+    }
+  };
+
   const openTransactionMatches = (transactionRef: string) => {
     const transaction = maps.transactions.get(transactionRef);
     if (!transaction) {
@@ -2215,7 +2405,8 @@ export default function BankAiAnalysisPanel({
   const selectedDocuments = availableDocumentRefs
     .filter((ref) => selectedDocumentRefs.has(ref) && !isDocumentConfirmed(ref, matchedKeys))
     .map((ref) => maps.documents.get(ref))
-    .filter((document): document is PreparedDocument => Boolean(document));
+    .filter((document): document is PreparedDocument => Boolean(document))
+    .filter((document) => !personnelNeedsNetConfirmation(document));
   const crossCurrencyDocument = selectedDocuments.length === 1
     && selectedTransaction
     && selectedDocuments[0].source === 'external'
@@ -2261,6 +2452,7 @@ export default function BankAiAnalysisPanel({
     if (!normalizedDocumentSearch) return true;
     const searchableText = [
       document.number,
+      documentHeading(document),
       document.counterparty,
       document.accountingNote,
       ...document.settlementDocumentNumbers,
@@ -2463,15 +2655,6 @@ export default function BankAiAnalysisPanel({
     setNoteExplained(transaction.accountingReviewStatus === 'explained');
   };
 
-  const openDocumentNote = (documentRef: string) => {
-    const document = maps.documents.get(documentRef);
-    if (!document) return;
-    setNoteEditor({ kind: 'document', ref: documentRef });
-    setNoteDraft(document.accountingNote);
-    setNoteCategory('other');
-    setNoteExplained(false);
-  };
-
   const openInvoiceDetails = async (document: PreparedDocument) => {
     if (document.source !== 'ksef' && document.source !== 'crm') {
       showSnackbar('Pełny podgląd pozycji jest dostępny dla faktur KSeF i CRM.', 'info');
@@ -2643,20 +2826,21 @@ export default function BankAiAnalysisPanel({
   };
 
   return (
-    <section className="border-b border-[#d3bb73]/10 bg-[#141827] px-4 py-3">
+    <section className={`${styles.panel} ${embedded ? 'relative rounded-xl bg-[var(--brand-burgundy-900)] p-4' : 'border-b border-[#d3bb73]/10 bg-[var(--brand-burgundy-900)] px-4 py-3'}`} aria-busy={loading}>
       {loading && (
         <div
-          className="fixed inset-0 z-[10050] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
-          role="dialog"
-          aria-modal="true"
+          className={embedded ? 'mb-5 flex items-center justify-center rounded-xl bg-white/[0.025] p-4' : 'fixed inset-0 z-[10050] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm'}
+          role={embedded ? 'status' : 'dialog'}
+          aria-modal={embedded ? undefined : true}
+          aria-live={embedded ? 'polite' : undefined}
           aria-label="Trwa analiza AI"
         >
-          <div className="w-full max-w-md rounded-xl border border-[#d3bb73]/25 bg-[#141827] p-8 text-center shadow-2xl">
+          <div className={embedded ? 'w-full max-w-xl rounded-xl bg-[var(--brand-burgundy-900)] p-6 text-center' : 'w-full max-w-md rounded-xl border border-white/[0.07] bg-[var(--brand-burgundy-900)] p-8 text-center shadow-2xl'}>
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full border border-[#d3bb73]/20 bg-[#d3bb73]/5">
-              <Loader2 className="h-8 w-8 animate-spin text-[#d3bb73]" />
+              <Loader2 className="h-8 w-8 animate-spin text-[var(--brand-gold)]" />
             </div>
             <h3 className="mt-5 text-lg font-medium text-[#e5e4e2]">Analizuję transakcje i dokumenty</h3>
-            <p className="mt-2 text-xs font-medium uppercase tracking-[0.16em] text-[#d3bb73]">
+            <p className="mt-2 text-xs font-medium uppercase tracking-[0.16em] text-[var(--brand-gold)]">
               Etap {analysisProgress.step} z {analysisProgress.totalSteps}
             </p>
             <p className="mt-2 text-sm font-medium text-[#e5e4e2]/80">{analysisProgress.label}</p>
@@ -2664,7 +2848,7 @@ export default function BankAiAnalysisPanel({
               {analysisProgress.detail}
             </p>
             <div
-              className="mt-5 h-2 overflow-hidden rounded-full bg-[#252945]"
+              className="mt-5 h-2 overflow-hidden rounded-full bg-[var(--brand-burgundy-750)]"
               role="progressbar"
               aria-label={analysisProgress.label}
               aria-valuemin={0}
@@ -2672,7 +2856,7 @@ export default function BankAiAnalysisPanel({
               aria-valuenow={analysisProgress.percent}
             >
               <div
-                className={`h-full rounded-full bg-[#d3bb73] transition-[width] duration-500 ease-out ${analysisProgress.indeterminate ? 'animate-pulse' : ''}`}
+                className={`h-full rounded-full bg-[var(--brand-gold)] transition-[width] duration-500 ease-out ${analysisProgress.indeterminate ? 'animate-pulse' : ''}`}
                 style={{ width: `${analysisProgress.percent}%` }}
               />
             </div>
@@ -2681,7 +2865,7 @@ export default function BankAiAnalysisPanel({
               <span>{analysisProgress.percent}%</span>
             </div>
             <p className="mt-3 text-xs text-[#e5e4e2]/35">
-              Uzgodnienie za {month}/{year}. Okno pozostanie zablokowane do zakończenia analizy.
+              Uzgodnienie za {month}/{year}. {embedded ? 'Wyniki pojawią się poniżej po zakończeniu analizy.' : 'Okno pozostanie zablokowane do zakończenia analizy.'}
             </p>
           </div>
         </div>
@@ -2690,18 +2874,18 @@ export default function BankAiAnalysisPanel({
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h4 className="flex items-center gap-2 font-medium text-[#e5e4e2]">
-            <Sparkles className="h-4 w-4 text-[#d3bb73]" /> Analiza uzgodnienia przez AI
+            <Sparkles className="h-4 w-4 text-[var(--brand-gold)]" /> Analiza uzgodnienia przez AI
           </h4>
           <p className="mt-1 max-w-4xl text-[11px] leading-relaxed text-[#e5e4e2]/45">
-            Korzysta ze wszystkich poprawnie przetworzonych wyciągów: rachunku bieżącego, rachunku VAT oraz importów MT940. Szuka płatności zbiorczych i częściowych, brakujących dokumentów kosztowych oraz pozycji wymagających ręcznej kontroli. Porównuje faktury KSeF, faktury CRM i dokumenty spoza KSeF, pomijając dokumenty oznaczone jako płatne gotówką. Wynagrodzenia, zaliczki, PIT, ZUS i zwroty kosztów są porównywane lokalnie w CRM — dane kadrowe nie są wysyłane do OpenAI. Do AI trafiają daty, kwoty, waluty, kontrahenci i skrócone tytuły pozostałych pozycji, bez rachunków bankowych, NIP-ów i plików. Sugestie nie są zatwierdzane automatycznie.
+            Korzysta ze wszystkich poprawnie przetworzonych wyciągów: rachunku bieżącego, rachunku VAT oraz importów MT940. Szuka płatności zbiorczych i częściowych, brakujących dokumentów kosztowych oraz pozycji wymagających ręcznej kontroli. Porównuje faktury KSeF, faktury CRM i dokumenty spoza KSeF, pomijając dokumenty oznaczone jako płatne gotówką. Rozpoznane płatności wychodzące do ZUS i urzędu skarbowego są pomijane bez wymagania wyjaśnień. Rachunki tych odbiorców można zapisać w ustawieniach firmy; samo słowo VAT w tytule nie wyłącza płatności faktury. Wynagrodzenia, zaliczki i zwroty kosztów są porównywane lokalnie w CRM — dane kadrowe nie są wysyłane do OpenAI. Do AI trafiają daty, kwoty, waluty, kontrahenci i skrócone tytuły pozostałych pozycji, bez rachunków bankowych, NIP-ów i plików. Sugestie nie są zatwierdzane automatycznie.
           </p>
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
-          {analysis && (
+          {analysis && !embedded && (
             <button
               type="button"
               onClick={() => setShowDetails(true)}
-              className="inline-flex items-center justify-center gap-2 rounded-lg border border-[#d3bb73]/35 bg-[#1c1f33] px-4 py-2 text-sm font-medium text-[#d3bb73] hover:bg-[#d3bb73]/10"
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-[#d3bb73]/15 bg-[var(--brand-burgundy-800)] px-4 py-2 text-sm font-medium text-[var(--brand-gold)] hover:bg-[#d3bb73]/10"
             >
               <Eye className="h-4 w-4" />
               Pokaż analizę
@@ -2710,14 +2894,22 @@ export default function BankAiAnalysisPanel({
           <button
             type="button"
             onClick={() => void runAnalysis()}
-            disabled={loading}
-            className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#141827] disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={loading || reportReadyKey !== reportKey}
+            className={`${styles.primaryAction} inline-flex items-center justify-center gap-2 rounded-lg bg-[var(--brand-gold)] px-4 py-2 text-sm font-medium text-[var(--brand-burgundy-950)] disabled:cursor-not-allowed disabled:opacity-50`}
           >
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
             {loading ? 'Analizuję…' : analysis ? 'Analizuj ponownie' : 'Analizuj AI'}
           </button>
         </div>
       </div>
+
+      {embedded && !loading && !analysis && (
+        <div className="mt-4 rounded-xl bg-[var(--brand-burgundy-800)] p-5 text-sm text-[#e5e4e2]/65">
+          {reportReadyKey !== reportKey
+            ? 'Wczytuję zapisany wynik analizy tego miesiąca…'
+            : 'Nie ma zapisanej analizy dla tego miesiąca. Możesz uruchomić ją przyciskiem „Analizuj AI”; otwarcie dashboardu nie uruchamia analizy ani nie zatwierdza dopasowań.'}
+        </div>
+      )}
 
       {!reportPersistenceAvailable && (
         <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-400/20 bg-amber-400/5 px-3 py-2 text-xs text-amber-100">
@@ -2729,7 +2921,7 @@ export default function BankAiAnalysisPanel({
       )}
 
       {analysis && (
-        <div className="mt-3 flex flex-col gap-3 rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] px-3 py-2.5 lg:flex-row lg:items-center">
+        <div className="mt-3 flex flex-col gap-3 rounded-lg border border-[#d3bb73]/10 bg-[var(--brand-burgundy-800)] px-3 py-2.5 lg:flex-row lg:items-center">
           <p className="min-w-0 flex-1 line-clamp-2 text-xs leading-relaxed text-[#e5e4e2]/65">{analysis.summary}</p>
           <div className="flex flex-wrap items-center gap-2 text-[11px]">
             {analysisStale && (
@@ -2752,19 +2944,19 @@ export default function BankAiAnalysisPanel({
         </div>
       )}
 
-      {showDetails && analysis && (
-        <div className="fixed inset-0 z-[10020] flex items-center justify-center bg-black/75 p-3 sm:p-5">
-          <div className="flex h-[94vh] w-full max-w-[1560px] flex-col overflow-hidden rounded-xl border border-[#d3bb73]/25 bg-[#141827] shadow-2xl">
+      {detailsVisible && analysis && (
+        <div className={embedded ? 'mt-4 min-w-0' : 'fixed inset-0 z-[10020] flex items-center justify-center bg-black/75 p-3 sm:p-5'}>
+          <div className={embedded ? 'flex h-[80vh] min-h-[620px] w-full min-w-0 flex-col overflow-hidden rounded-xl bg-[var(--brand-burgundy-900)]' : 'flex h-[94vh] w-full max-w-[1560px] flex-col overflow-hidden rounded-xl border border-white/[0.07] bg-[var(--brand-burgundy-900)] shadow-2xl'}>
             <header className="flex items-start justify-between border-b border-[#d3bb73]/15 px-5 py-4">
               <div>
                 <h3 className="flex items-center gap-2 text-lg font-medium text-[#e5e4e2]">
-                  <Sparkles className="h-5 w-5 text-[#d3bb73]" /> Analiza AI — {month}/{year}
+                  <Sparkles className="h-5 w-5 text-[var(--brand-gold)]" /> Analiza AI — {month}/{year}
                 </h3>
                 <p className="mt-1 text-xs text-[#e5e4e2]/45">Porównaj dane źródłowe i zatwierdzaj dopasowania pojedynczo.</p>
               </div>
-              <button type="button" onClick={() => setShowDetails(false)} className="rounded p-2 text-[#e5e4e2]/55 hover:bg-white/5 hover:text-[#e5e4e2]">
+              {!embedded && <button type="button" onClick={() => { setShowDetails(false); setTransactionDetailsRef(null); }} aria-label="Zamknij analizę" className="rounded p-2 text-[#e5e4e2]/55 hover:bg-white/5 hover:text-[#e5e4e2]">
                 <X className="h-5 w-5" />
-              </button>
+              </button>}
             </header>
 
             <nav className="flex gap-2 overflow-x-auto border-b border-[#d3bb73]/10 px-4 py-2">
@@ -2774,11 +2966,11 @@ export default function BankAiAnalysisPanel({
                 ['transactions', `Przelewy do kontroli (${analysis.reviewTransactions.length})`],
                 ['documents', `Dokumenty do kontroli (${analysis.reviewDocuments.length})`],
               ] as const).map(([tab, label]) => (
-                <button
+                <button data-crm-tab-active={detailsTab === tab}
                   key={tab}
                   type="button"
                   onClick={() => setDetailsTab(tab)}
-                  className={`shrink-0 rounded-lg px-3 py-2 text-xs font-medium ${detailsTab === tab ? 'bg-[#d3bb73] text-[#141827]' : 'border border-[#d3bb73]/15 text-[#e5e4e2]/65 hover:bg-white/5'}`}
+                  className={`shrink-0 rounded-lg px-3 py-2 text-xs font-medium ${detailsTab === tab ? 'bg-[var(--brand-gold)] text-[var(--brand-burgundy-950)]' : 'border border-[#d3bb73]/15 text-[#e5e4e2]/65 hover:bg-white/5'}`}
                 >
                   {label}
                 </button>
@@ -2789,18 +2981,18 @@ export default function BankAiAnalysisPanel({
               {detailsTab === 'matches' && (
                 <div className="grid h-full min-h-0 gap-4 lg:grid-cols-[360px_minmax(0,1fr)]">
                   <aside
-                    className="min-h-0 overflow-y-auto rounded-lg border border-[#d3bb73]/15 bg-[#1c1f33] p-3"
+                    className="min-h-0 overflow-y-auto rounded-lg border border-[#d3bb73]/15 bg-[var(--brand-burgundy-800)] p-3"
                     style={{ fontFamily: "Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" }}
                   >
                     <h4 className="mb-3 flex items-center gap-2 text-sm font-medium text-emerald-200"><Link2 className="h-4 w-4" /> Do potwierdzenia ({pendingMatches.length})</h4>
                     {manualMatch && (
-                      <div className="mb-3 rounded-lg border border-[#d3bb73]/25 bg-[#d3bb73]/10 p-3 text-xs">
-                        <strong className="text-[#d3bb73]">Ręczne sprawdzanie powiązań</strong>
+                      <div className="mb-3 rounded-lg border border-[#d3bb73]/15 bg-[#d3bb73]/10 p-3 text-xs">
+                        <strong className="text-[var(--brand-gold)]">Ręczne sprawdzanie powiązań</strong>
                         <p className="mt-1 text-[#e5e4e2]/55">Pokazuję możliwe dokumenty lub płatność wybrane z raportu.</p>
                         <button
                           type="button"
                           onClick={() => setManualMatch(null)}
-                          className="mt-2 rounded border border-[#d3bb73]/30 px-2.5 py-1.5 font-medium text-[#d3bb73] hover:bg-[#d3bb73]/10"
+                          className="mt-2 rounded border border-[#d3bb73]/15 px-2.5 py-1.5 font-medium text-[var(--brand-gold)] hover:bg-[#d3bb73]/10"
                         >
                           Wróć do sugestii AI
                         </button>
@@ -2815,7 +3007,7 @@ export default function BankAiAnalysisPanel({
                             setManualMatch(null);
                             setSelectedMatchIndex(index);
                           }}
-                          className={`w-full rounded-lg border p-3 text-left text-xs ${!manualMatch && selectedMatchIndex === index ? 'border-[#d3bb73] bg-[#d3bb73]/10' : 'border-[#d3bb73]/10 bg-[#141827] hover:border-[#d3bb73]/35'}`}
+                          className={`w-full rounded-lg border p-3 text-left text-xs ${!manualMatch && selectedMatchIndex === index ? 'border-[#d3bb73]/15 bg-[#d3bb73]/10' : 'border-[#d3bb73]/10 bg-[var(--brand-burgundy-900)] hover:border-[#d3bb73]/35'}`}
                         >
                           <div className="flex items-start justify-between gap-2">
                             <strong className="text-[#e5e4e2]">{transactionLabel(maps.transactions.get(match.transactionRef))}</strong>
@@ -2852,15 +3044,15 @@ export default function BankAiAnalysisPanel({
                     )}
                   </aside>
 
-                  <main className="min-h-0 overflow-y-auto rounded-lg border border-[#d3bb73]/15 bg-[#1c1f33] p-4 xl:overflow-hidden">
+                  <main className="min-h-0 overflow-y-auto rounded-lg border border-[#d3bb73]/15 bg-[var(--brand-burgundy-800)] p-4 xl:overflow-hidden">
                     {!selectedMatch || !selectedTransaction ? (
                       <div className="flex h-full items-center justify-center text-sm text-[#e5e4e2]/45">Wybierz propozycję z listy.</div>
                     ) : (
                       <div className="space-y-4 xl:flex xl:h-full xl:min-h-0 xl:flex-col xl:space-y-0 xl:gap-4">
-                        <div className="rounded-lg border border-[#d3bb73]/15 bg-[#141827] p-3 text-xs">
+                        <div className="rounded-lg border border-[#d3bb73]/15 bg-[var(--brand-burgundy-900)] p-3 text-xs">
                           <p className="text-[#e5e4e2]/70">{selectedMatch.reason}</p>
                           <p className="mt-1 text-[#e5e4e2]/50">{selectedMatch.amountExplanation}</p>
-                          <p className="mt-2 font-medium text-[#d3bb73]">{selectedMatch.recommendedAction}</p>
+                          <p className="mt-2 font-medium text-[var(--brand-gold)]">{selectedMatch.recommendedAction}</p>
                         </div>
 
                         <div className="grid gap-4 xl:min-h-0 xl:flex-1 xl:grid-cols-2">
@@ -2868,6 +3060,13 @@ export default function BankAiAnalysisPanel({
                             <div className="flex items-center justify-between gap-3">
                               <h5 className="flex items-center gap-2 text-sm font-medium text-amber-100"><ArrowRightLeft className="h-4 w-4" /> Płatność bankowa</h5>
                               <div className="flex flex-wrap justify-end gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => openTransactionDetails(selectedTransaction.ref)}
+                                  className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300/10 bg-white/5 px-2.5 py-1.5 text-[11px] font-medium text-amber-100 hover:bg-amber-300/10"
+                                >
+                                  <Eye className="h-3.5 w-3.5" /> Szczegóły
+                                </button>
                                 <button
                                   type="button"
                                   onClick={() => openCounterpartyMapping(
@@ -2915,7 +3114,7 @@ export default function BankAiAnalysisPanel({
                             <dl className="mt-4 grid grid-cols-[120px_1fr] gap-x-3 gap-y-2 text-xs">
                               <dt className="text-[#e5e4e2]/40">Data</dt><dd className="text-[#e5e4e2]">{selectedTransaction.date || '—'}</dd>
                               <dt className="text-[#e5e4e2]/40">Kwota</dt><dd className="font-medium text-amber-100">{money(selectedTransaction.amount, selectedTransaction.currency)}</dd>
-                              <dt className="text-[#e5e4e2]/40">Pozostało</dt><dd className="font-medium text-[#d3bb73]">{money(selectedTransaction.remainingAmount, selectedTransaction.currency)}</dd>
+                              <dt className="text-[#e5e4e2]/40">Pozostało</dt><dd className="font-medium text-[var(--brand-gold)]">{money(selectedTransaction.remainingAmount, selectedTransaction.currency)}</dd>
                               <dt className="text-[#e5e4e2]/40">Kierunek</dt><dd className="text-[#e5e4e2]">{selectedTransaction.direction === 'credit' ? 'Wpłata' : 'Wydatek'}</dd>
                               <dt className="text-[#e5e4e2]/40">Źródło</dt><dd className="text-[#e5e4e2]">{transactionStatementLabel(selectedTransaction)}{selectedTransaction.statementFileName && <span className="mt-0.5 block break-all text-[10px] text-[#e5e4e2]/40">{selectedTransaction.statementFileName}</span>}</dd>
                               <dt className="text-[#e5e4e2]/40">Kontrahent</dt><dd className="min-w-0 whitespace-pre-wrap [overflow-wrap:anywhere] text-[#e5e4e2]">{selectedTransaction.counterparty || '—'}</dd>
@@ -2935,15 +3134,15 @@ export default function BankAiAnalysisPanel({
                           </section>
 
                           <section className="space-y-3 xl:min-h-0 xl:overflow-y-auto xl:overscroll-contain xl:pr-1">
-                            <div className="sticky top-0 z-10 flex flex-col gap-2 bg-[#1c1f33] pb-1 sm:flex-row">
+                            <div className="sticky top-0 z-10 flex flex-col gap-2 bg-[var(--brand-burgundy-800)] pb-1 sm:flex-row">
                               <div className="relative flex min-w-0 flex-1 gap-2">
-                                <label className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#141827] px-3 py-2 shadow-lg">
-                                  <Search className="h-4 w-4 shrink-0 text-[#d3bb73]" />
+                                <label className="crm-search-field flex min-w-0 flex-1 items-center gap-2 rounded-lg border bg-[var(--brand-burgundy-900)] px-3 py-2">
+                                  <Search className="h-4 w-4 shrink-0 text-[var(--brand-gold)]" />
                                   <input
                                     value={documentSearch}
                                     onChange={(event) => setDocumentSearch(event.target.value)}
                                     placeholder="Szukaj po odbiorcy, numerze lub kwocie…"
-                                    className="min-w-0 flex-1 bg-transparent text-sm text-[#e5e4e2] outline-none placeholder:text-[#e5e4e2]/30"
+                                    className="crm-search-input min-w-0 flex-1 bg-transparent text-sm text-[#e5e4e2] outline-none placeholder:text-[#e5e4e2]/30"
                                   />
                                   <span className="shrink-0 text-[11px] text-[#e5e4e2]/40">
                                     {visibleDocumentRefs.length}/{availableDocumentRefs.length}
@@ -2954,22 +3153,22 @@ export default function BankAiAnalysisPanel({
                                   aria-label="Filtry dokumentów"
                                   aria-expanded={documentFiltersOpen}
                                   onClick={() => setDocumentFiltersOpen((current) => !current)}
-                                  className={`relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border bg-[#141827] shadow-lg ${
+                                  className={`relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border bg-[var(--brand-burgundy-900)] shadow-lg ${
                                     activeDocumentFilterCount > 0
-                                      ? 'border-[#d3bb73]/55 text-[#d3bb73]'
-                                      : 'border-white/15 text-[#e5e4e2]/65 hover:border-[#d3bb73]/35 hover:text-[#d3bb73]'
+                                      ? 'border-[#d3bb73]/15 text-[var(--brand-gold)]'
+                                      : 'border-white/15 text-[#e5e4e2]/65 hover:border-[#d3bb73]/35 hover:text-[var(--brand-gold)]'
                                   }`}
                                 >
                                   <SlidersHorizontal className="h-4 w-4" />
                                   {activeDocumentFilterCount > 0 && (
-                                    <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#d3bb73] px-1 text-[10px] font-semibold text-[#141827]">
+                                    <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--brand-gold)] px-1 text-[10px] font-semibold text-[var(--brand-burgundy-950)]">
                                       {activeDocumentFilterCount}
                                     </span>
                                   )}
                                 </button>
 
                                 {documentFiltersOpen && (
-                                  <div className="absolute right-0 top-full z-30 mt-2 w-[min(360px,calc(100vw-3rem))] rounded-xl border border-white/10 bg-[#141827] p-4 shadow-2xl">
+                                  <div className="absolute right-0 top-full z-30 mt-2 w-[min(360px,calc(100vw-3rem))] rounded-xl border border-white/10 bg-[var(--brand-burgundy-900)] p-4 shadow-2xl">
                                     <div className="mb-4 flex items-center justify-between gap-3">
                                       <div>
                                         <h5 className="text-sm font-medium text-[#e5e4e2]">Filtry dokumentów</h5>
@@ -2986,7 +3185,7 @@ export default function BankAiAnalysisPanel({
                                         <select
                                           value={documentSourceFilter}
                                           onChange={(event) => setDocumentSourceFilter(event.target.value as DocumentSourceFilter)}
-                                          className="mt-1.5 w-full rounded-lg border border-white/15 bg-[#1c1f33] px-3 py-2 text-xs text-[#e5e4e2] outline-none focus:border-[#d3bb73]/55"
+                                          className="mt-1.5 w-full rounded-lg border border-white/15 bg-[var(--brand-burgundy-800)] px-3 py-2 text-xs text-[#e5e4e2] outline-none focus:border-[#d3bb73]/55"
                                         >
                                           <option value="all">Wszystkie typy</option>
                                           <option value="ksef">KSeF</option>
@@ -3000,7 +3199,7 @@ export default function BankAiAnalysisPanel({
                                         <select
                                           value={documentPaymentFilter}
                                           onChange={(event) => setDocumentPaymentFilter(event.target.value as DocumentPaymentFilter)}
-                                          className="mt-1.5 w-full rounded-lg border border-white/15 bg-[#1c1f33] px-3 py-2 text-xs text-[#e5e4e2] outline-none focus:border-[#d3bb73]/55"
+                                          className="mt-1.5 w-full rounded-lg border border-white/15 bg-[var(--brand-burgundy-800)] px-3 py-2 text-xs text-[#e5e4e2] outline-none focus:border-[#d3bb73]/55"
                                         >
                                           <option value="all">Wszystkie statusy</option>
                                           <option value="paid">Opłacone</option>
@@ -3014,7 +3213,7 @@ export default function BankAiAnalysisPanel({
                                           value={documentDateFrom}
                                           max={documentDateTo || undefined}
                                           onChange={(event) => setDocumentDateFrom(event.target.value)}
-                                          className="mt-1.5 w-full rounded-lg border border-white/15 bg-[#1c1f33] px-3 py-2 text-xs text-[#e5e4e2] outline-none focus:border-[#d3bb73]/55"
+                                          className="mt-1.5 w-full rounded-lg border border-white/15 bg-[var(--brand-burgundy-800)] px-3 py-2 text-xs text-[#e5e4e2] outline-none focus:border-[#d3bb73]/55"
                                         />
                                       </label>
                                       <label className="text-[11px] text-[#e5e4e2]/60">
@@ -3024,7 +3223,7 @@ export default function BankAiAnalysisPanel({
                                           value={documentDateTo}
                                           min={documentDateFrom || undefined}
                                           onChange={(event) => setDocumentDateTo(event.target.value)}
-                                          className="mt-1.5 w-full rounded-lg border border-white/15 bg-[#1c1f33] px-3 py-2 text-xs text-[#e5e4e2] outline-none focus:border-[#d3bb73]/55"
+                                          className="mt-1.5 w-full rounded-lg border border-white/15 bg-[var(--brand-burgundy-800)] px-3 py-2 text-xs text-[#e5e4e2] outline-none focus:border-[#d3bb73]/55"
                                         />
                                       </label>
                                     </div>
@@ -3042,7 +3241,7 @@ export default function BankAiAnalysisPanel({
                                       >
                                         Wyczyść
                                       </button>
-                                      <button type="button" onClick={() => setDocumentFiltersOpen(false)} className="rounded-lg bg-[#d3bb73] px-4 py-2 text-xs font-medium text-[#141827]">
+                                      <button type="button" onClick={() => setDocumentFiltersOpen(false)} className="rounded-lg bg-[var(--brand-gold)] px-4 py-2 text-xs font-medium text-[var(--brand-burgundy-950)]">
                                         Gotowe
                                       </button>
                                     </div>
@@ -3052,7 +3251,7 @@ export default function BankAiAnalysisPanel({
                               <button
                                 type="button"
                                 onClick={() => openTransactionMatches(selectedTransaction.ref)}
-                                className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-sky-300/25 bg-[#141827] px-3 py-2 text-xs font-medium text-sky-100 hover:bg-sky-300/10"
+                                className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-sky-300/25 bg-[var(--brand-burgundy-900)] px-3 py-2 text-xs font-medium text-sky-100 hover:bg-sky-300/10"
                               >
                                 <ReceiptText className="h-3.5 w-3.5" /> Wybierz inny dokument
                               </button>
@@ -3062,6 +3261,7 @@ export default function BankAiAnalysisPanel({
                               if (!document) return null;
                               const matched = isDocumentConfirmed(ref, matchedKeys);
                               const alreadyLinked = Boolean(document.linkedTransactionId);
+                              const needsNetConfirmation = personnelNeedsNetConfirmation(document);
                               const linkedToSelectedTransaction = alreadyLinked
                                 && document.linkedTransactionId === selectedTransaction.id;
                               const isOriginalSuggestion = selectedMatch.documentRefs.includes(ref);
@@ -3076,7 +3276,7 @@ export default function BankAiAnalysisPanel({
                                     <h5 className="flex items-center gap-2 text-sm font-medium text-sky-100">
                                       <ReceiptText className="h-4 w-4" /> {documentHeading(document)}
                                       {document.documentKind === 'final' && (
-                                        <span className="rounded bg-[#d3bb73]/15 px-2 py-0.5 text-[10px] uppercase text-[#d3bb73]">końcowa</span>
+                                        <span className="rounded bg-[#d3bb73]/15 px-2 py-0.5 text-[10px] uppercase text-[var(--brand-gold)]">końcowa</span>
                                       )}
                                       {document.source === 'personnel' && (
                                         <span className="rounded bg-violet-400/15 px-2 py-0.5 text-[10px] uppercase text-violet-100">
@@ -3116,8 +3316,8 @@ export default function BankAiAnalysisPanel({
                                       }`}>
                                         <input
                                           type="checkbox"
-                                          checked={matched || linkedToSelectedTransaction || selectedDocumentRefs.has(ref)}
-                                          disabled={matched || alreadyLinked}
+                                          checked={matched || linkedToSelectedTransaction || (!needsNetConfirmation && selectedDocumentRefs.has(ref))}
+                                          disabled={matched || alreadyLinked || needsNetConfirmation}
                                           onChange={() => {
                                             if (!selectedDocumentRefs.has(ref) && selectedDocumentRefs.size >= 20) {
                                               showSnackbar('Jednocześnie możesz dopasować maksymalnie 20 dokumentów.', 'info');
@@ -3130,7 +3330,7 @@ export default function BankAiAnalysisPanel({
                                               return next;
                                             });
                                           }}
-                                          className="h-4 w-4 rounded border-[#d3bb73]/40 bg-[#141827] accent-[#d3bb73]"
+                                          className="h-4 w-4 rounded border-[#d3bb73]/15 bg-[var(--brand-burgundy-900)] accent-[var(--brand-gold)]"
                                         />
                                         {matched
                                           ? 'Dopasowana'
@@ -3138,7 +3338,9 @@ export default function BankAiAnalysisPanel({
                                             ? 'Dopasowana do tej płatności'
                                             : alreadyLinked
                                               ? 'Dopasowana do innej płatności'
-                                              : 'Zaznacz'}
+                                              : needsNetConfirmation
+                                                ? 'Potwierdź netto'
+                                                : 'Zaznacz'}
                                       </label>
                                       <span className="rounded bg-sky-400/10 px-2 py-0.5 text-[10px] uppercase text-sky-200">{document.paymentStatus}</span>
                                     </div>
@@ -3148,7 +3350,21 @@ export default function BankAiAnalysisPanel({
                                     <dt className="text-[#e5e4e2]/40">Kontrahent</dt><dd className="break-words text-[#e5e4e2]">{document.counterparty || '—'}</dd>
                                     <dt className="text-[#e5e4e2]/40">Wystawienie</dt><dd className="text-[#e5e4e2]">{document.issueDate || '—'}</dd>
                                     <dt className="text-[#e5e4e2]/40">Termin</dt><dd className="text-[#e5e4e2]">{document.dueDate || '—'}</dd>
-                                    {alreadyLinked && document.source === 'personnel' ? (
+                                    {document.documentKind === 'personnel_salary' ? (
+                                      <>
+                                        <dt className="text-[#e5e4e2]/40">{document.payrollNetConfirmed ? 'Netto na konto' : 'Kwota w rejestrze'}</dt>
+                                        <dd className="font-medium text-sky-100">{money(document.grossAmount, document.currency)}</dd>
+                                        {document.payrollTotalAmount != null && (
+                                          <>
+                                            <dt className="text-[#e5e4e2]/40">Łącznie wg dokumentu</dt><dd className="text-[#e5e4e2]">{money(document.payrollTotalAmount, document.currency)}</dd>
+                                            {document.payrollNetConfirmed && document.payrollTotalAmount >= document.grossAmount && (
+                                              <><dt className="text-[#e5e4e2]/40">Pozostałe obciążenia</dt><dd className="text-amber-100">{money(document.payrollTotalAmount - document.grossAmount, document.currency)} · rozliczane osobno</dd></>
+                                            )}
+                                          </>
+                                        )}
+                                        {alreadyLinked && <><dt className="text-[#e5e4e2]/40">Powiązanie</dt><dd className="text-green-200">Rozliczono wypłatę na konto. Nie oznacza to opłacenia podatku ani składek.</dd></>}
+                                      </>
+                                    ) : alreadyLinked && document.source === 'personnel' ? (
                                       <>
                                         <dt className="text-[#e5e4e2]/40">Kwota</dt><dd className="font-medium text-sky-100">{money(document.grossAmount, document.currency)}</dd>
                                         <dt className="text-[#e5e4e2]/40">Powiązanie</dt><dd className="text-green-200">Ta wypłata została już rozliczona z płatnością bankową.</dd>
@@ -3157,12 +3373,22 @@ export default function BankAiAnalysisPanel({
                                       <>
                                         <dt className="text-[#e5e4e2]/40">Brutto</dt><dd className="text-[#e5e4e2]">{money(document.grossAmount, document.currency)}</dd>
                                         <dt className="text-[#e5e4e2]/40">Zaliczki</dt><dd className="text-emerald-200">− {money(document.settledAmount, document.currency)}</dd>
-                                        <dt className="text-[#e5e4e2]/40">Do dopłaty</dt><dd className="font-medium text-[#d3bb73]">{money(document.amount, document.currency)}</dd>
+                                        <dt className="text-[#e5e4e2]/40">Do dopłaty</dt><dd className="font-medium text-[var(--brand-gold)]">{money(document.amount, document.currency)}</dd>
                                       </>
                                     ) : (
                                       <><dt className="text-[#e5e4e2]/40">Kwota</dt><dd className="font-medium text-sky-100">{money(document.amount, document.currency)}</dd></>
                                     )}
                                   </dl>
+                                  {needsNetConfirmation && (
+                                    <p className="mt-3 rounded-lg bg-amber-300/5 p-2.5 text-[11px] leading-relaxed text-amber-100/85">
+                                      Ta kwota nie została potwierdzona jako wypłata netto. Otwórz Umowy personelu → Otwórz umowę → Uzupełnij netto. Podaj kwotę na konto oraz łączną kwotę z dokumentu, bez zgadywania podziału podatków i składek.
+                                    </p>
+                                  )}
+                                  {document.documentKind === 'personnel_salary' && document.payrollNetConfirmed && !alreadyLinked && (
+                                    <p className="mt-3 rounded-lg bg-sky-400/5 p-2.5 text-[11px] leading-relaxed text-sky-100/85">
+                                      Do tego przelewu dopasowana będzie wyłącznie wypłata netto na konto. Pozostała część kwoty wymaga osobnego rozliczenia podatków, składek lub innych obciążeń na podstawie dokumentów kadrowych.
+                                    </p>
+                                  )}
                                   {document.accountingNote && (
                                     <div className="mt-3 rounded-lg border border-amber-300/20 bg-amber-300/5 p-2.5 text-[11px] leading-relaxed text-amber-100/85">
                                       <strong className="text-amber-200">Wcześniejsze uwagi do dokumentu:</strong>{' '}
@@ -3191,7 +3417,7 @@ export default function BankAiAnalysisPanel({
                               );
                             })}
                             {visibleDocumentRefs.length === 0 && (
-                              <div className="rounded-lg border border-[#d3bb73]/10 bg-[#141827] px-4 py-10 text-center text-sm text-[#e5e4e2]/45">
+                              <div className="rounded-lg border border-[#d3bb73]/10 bg-[var(--brand-burgundy-900)] px-4 py-10 text-center text-sm text-[#e5e4e2]/45">
                                 Brak dokumentów pasujących do wyszukiwania.
                               </div>
                             )}
@@ -3204,7 +3430,7 @@ export default function BankAiAnalysisPanel({
                                 && !isDocumentConfirmed(ref, matchedKeys),
                               );
                             }) && (
-                              <div className="sticky bottom-0 rounded-lg border border-[#d3bb73]/25 bg-[#141827] p-3 shadow-xl">
+                              <div className="sticky bottom-0 rounded-lg border border-[#d3bb73]/15 bg-[var(--brand-burgundy-900)] p-3 shadow-xl">
                                 {canFlagSelectedDocumentsForExplanation && (
                                   <div className="mb-3 rounded-lg border border-amber-300/20 bg-amber-300/5 p-3">
                                     <label className="flex cursor-pointer items-start gap-2.5 text-xs text-amber-100">
@@ -3212,12 +3438,12 @@ export default function BankAiAnalysisPanel({
                                         type="checkbox"
                                         checked={matchNeedsExplanation}
                                         onChange={(event) => setMatchNeedsExplanation(event.target.checked)}
-                                        className="mt-0.5 h-4 w-4 accent-[#d3bb73]"
+                                        className="mt-0.5 h-4 w-4 accent-[var(--brand-gold)]"
                                       />
                                       <span>
                                         <strong className="block text-amber-200">Wymaga dodatkowego wyjaśnienia</strong>
                                         <span className="mt-0.5 block text-[11px] leading-relaxed text-amber-100/65">
-                                          Faktura pozostanie oznaczona do kontroli również po zapisaniu dopasowania.
+                                          Dokument pozostanie oznaczony do kontroli również po zapisaniu dopasowania.
                                         </span>
                                       </span>
                                     </label>
@@ -3230,7 +3456,7 @@ export default function BankAiAnalysisPanel({
                                           rows={2}
                                           maxLength={2000}
                                           placeholder="Np. faktura zostanie skorygowana lub zastąpiona — przed zamknięciem miesiąca sprawdzić nowy dokument."
-                                          className="mt-1.5 w-full resize-y rounded-lg border border-amber-300/20 bg-[#1c1f33] px-3 py-2 text-xs text-[#e5e4e2] outline-none placeholder:text-[#e5e4e2]/25 focus:border-amber-300/50"
+                                          className="mt-1.5 w-full resize-y rounded-lg border border-amber-300/20 bg-[var(--brand-burgundy-800)] px-3 py-2 text-xs text-[#e5e4e2] outline-none placeholder:text-[#e5e4e2]/25 focus:border-amber-300/50"
                                         />
                                         {selectedDocuments.length > 1 && (
                                           <span className="mt-1 block text-amber-100/55">
@@ -3245,7 +3471,7 @@ export default function BankAiAnalysisPanel({
                                   <span className="text-[#e5e4e2]/55">
                                     Zaznaczono: <strong className="text-[#e5e4e2]">{selectedDocuments.length}</strong>
                                   </span>
-                                  <span className={selectionExceedsPayment ? 'font-medium text-red-300' : 'font-medium text-[#d3bb73]'}>
+                                  <span className={selectionExceedsPayment ? 'font-medium text-red-300' : 'font-medium text-[var(--brand-gold)]'}>
                                     Do przypisania: {money(selectedDocumentsTotal, selectedTransaction.currency)}
                                   </span>
                                 </div>
@@ -3286,7 +3512,7 @@ export default function BankAiAnalysisPanel({
                                     || selectedTransaction.remainingAmount <= 0.009
                                   }
                                   onClick={() => void matchSelectedDocuments()}
-                                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#d3bb73] px-3 py-2.5 text-sm font-medium text-[#141827] disabled:cursor-not-allowed disabled:opacity-50"
+                                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[var(--brand-gold)] px-3 py-2.5 text-sm font-medium text-[var(--brand-burgundy-950)] disabled:cursor-not-allowed disabled:opacity-50"
                                 >
                                   {matchingKey === bulkMatchingKey ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
                                   {matchingKey === bulkMatchingKey
@@ -3308,36 +3534,59 @@ export default function BankAiAnalysisPanel({
               )}
 
               {detailsTab === 'missing' && (
-                <div className="h-full overflow-y-auto rounded-lg border border-red-400/15 bg-[#1c1f33] p-4">
-                  <div className="grid gap-3 lg:grid-cols-2">
+                <div className="h-full overflow-y-auto rounded-lg bg-[var(--brand-burgundy-800)] p-3 sm:p-4">
+                  <p className="mb-3 text-xs leading-relaxed text-[#e5e4e2]/60">Wybierz dokument z aktualnej bazy: KSeF, CRM, spoza KSeF (także polisy i inne dokumenty) lub kadrowy. Lista uwzględnia dokumenty dodane po analizie; nie trzeba uruchamiać AI ponownie.</p>
+                  <ul className="m-0 flex list-none flex-col gap-2 p-0">
                     {analysis.missingDocuments.map((item, index) => (
-                      <article key={`${item.transactionRef}-${index}`} className={`rounded border p-4 text-xs ${priorityClasses(item.priority)}`}>
-                        <div className="flex justify-between gap-3"><strong>{documentTypeLabels[item.documentType]}</strong><span className="uppercase opacity-60">{priorityLabel(item.priority)}</span></div>
-                        <p className="mt-2 text-[#e5e4e2]/70">{transactionLabel(maps.transactions.get(item.transactionRef))}</p>
-                        {maps.transactions.get(item.transactionRef)?.accountingNote && <p className="mt-2 rounded bg-emerald-400/10 px-2.5 py-2 text-emerald-100">Opis: {maps.transactions.get(item.transactionRef)?.accountingNote}</p>}
-                        <p className="mt-2 opacity-80">{item.reason}</p><p className="mt-2 font-medium text-[#d3bb73]">{item.recommendedAction}</p>
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          <button type="button" onClick={() => openTransactionMatches(item.transactionRef)} className="inline-flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 bg-[#141827]/60 px-3 py-2 font-medium text-[#d3bb73] hover:bg-[#d3bb73]/10"><Search className="h-3.5 w-3.5" /> Sprawdź powiązania</button>
-                          <button type="button" onClick={() => openCounterpartyMapping(item.transactionRef)} className="inline-flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 bg-[#141827]/60 px-3 py-2 font-medium text-[#d3bb73] hover:bg-[#d3bb73]/10"><BookOpenCheck className="h-3.5 w-3.5" /> Dodaj do mapowań</button>
-                          <button type="button" onClick={() => openTransactionNote(item.transactionRef, item.documentType)} className="inline-flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 bg-[#141827]/60 px-3 py-2 font-medium text-[#d3bb73] hover:bg-[#d3bb73]/10"><MessageSquareText className="h-3.5 w-3.5" /> Opisz płatność</button>
+                      <li key={`${item.transactionRef}-${index}`} className={`flex items-start gap-3 rounded-lg p-3 text-xs leading-relaxed sm:p-4 ${priorityClasses(item.priority)}`}>
+                        <div className="min-w-0 flex-1 break-words">
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1"><strong>{documentTypeLabels[item.documentType]}</strong><span className="text-[10px] uppercase opacity-60">{priorityLabel(item.priority)}</span></div>
+                          <p className="mt-1 text-[#e5e4e2]/70">{transactionLabel(maps.transactions.get(item.transactionRef))}</p>
+                          {maps.transactions.get(item.transactionRef)?.accountingNote && <p className="mt-2 rounded bg-emerald-400/10 px-2.5 py-2 text-emerald-100">Opis: {maps.transactions.get(item.transactionRef)?.accountingNote}</p>}
+                          <p className="mt-2 opacity-80">{item.reason}</p><p className="mt-1 font-medium text-[var(--brand-gold)]">{item.recommendedAction}</p>
+                          <button
+                            type="button"
+                            disabled={documentPickerLoadingRef !== null || matchingKey !== null}
+                            onClick={() => void openDatabaseDocumentPicker(item.transactionRef)}
+                            className="mt-3 inline-flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[var(--brand-burgundy-900)] px-3 py-2 font-medium text-[var(--brand-gold)] hover:bg-[#d3bb73]/10 disabled:cursor-wait disabled:opacity-50"
+                          >
+                            {documentPickerLoadingRef === item.transactionRef ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
+                            {documentPickerLoadingRef === item.transactionRef ? 'Wczytuję płatność…' : 'Wybierz dokument z bazy'}
+                          </button>
                         </div>
-                      </article>
+                        <div className="shrink-0">
+                          <ResponsiveActionBar
+                            alwaysDropdown
+                            compact
+                            menuZIndex={10030}
+                            actions={[
+                              { label: 'Szczegóły', icon: <Eye className="h-4 w-4" />, onClick: () => openTransactionDetails(item.transactionRef) },
+                              { label: 'Sprawdź powiązania', icon: <Search className="h-4 w-4" />, disabled: documentPickerLoadingRef !== null || matchingKey !== null, onClick: () => void openDatabaseDocumentPicker(item.transactionRef) },
+                              { label: 'Dokument spoza KSeF', icon: <ReceiptText className="h-4 w-4" />, disabled: documentPickerLoadingRef !== null || matchingKey !== null, onClick: () => void openDatabaseDocumentPicker(item.transactionRef, 'external') },
+                              { label: 'Dodaj do mapowań', icon: <BookOpenCheck className="h-4 w-4" />, onClick: () => openCounterpartyMapping(item.transactionRef) },
+                              { label: 'Opisz płatność', icon: <MessageSquareText className="h-4 w-4" />, onClick: () => openTransactionNote(item.transactionRef, item.documentType) },
+                            ]}
+                          />
+                        </div>
+                      </li>
                     ))}
-                  </div>
+                  </ul>
+                  {analysis.missingDocuments.length === 0 && <p className="py-8 text-center text-sm text-[#e5e4e2]/55">Brak brakujących dokumentów.</p>}
                 </div>
               )}
 
               {detailsTab === 'transactions' && (
-                <div className="h-full overflow-y-auto rounded-lg border border-amber-400/15 bg-[#1c1f33] p-4">
+                <div className="h-full overflow-y-auto rounded-lg border border-amber-400/15 bg-[var(--brand-burgundy-800)] p-4">
                   <div className="grid gap-3 lg:grid-cols-2">
                     {analysis.reviewTransactions.map((item, index) => (
                       <article key={`${item.transactionRef}-${index}`} className={`rounded border p-4 text-xs ${priorityClasses(item.priority)}`}>
-                        <strong>{transactionLabel(maps.transactions.get(item.transactionRef))}</strong><p className="mt-2 opacity-80">{item.reason}</p><p className="mt-2 font-medium text-[#d3bb73]">{item.recommendedAction}</p>
+                        <strong>{transactionLabel(maps.transactions.get(item.transactionRef))}</strong><p className="mt-2 opacity-80">{item.reason}</p><p className="mt-2 font-medium text-[var(--brand-gold)]">{item.recommendedAction}</p>
                         {maps.transactions.get(item.transactionRef)?.accountingNote && <p className="mt-2 rounded bg-emerald-400/10 px-2.5 py-2 text-emerald-100">Opis: {maps.transactions.get(item.transactionRef)?.accountingNote}</p>}
                         <div className="mt-3 flex flex-wrap gap-2">
-                          <button type="button" onClick={() => openTransactionMatches(item.transactionRef)} className="inline-flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 bg-[#141827]/60 px-3 py-2 font-medium text-[#d3bb73] hover:bg-[#d3bb73]/10"><Search className="h-3.5 w-3.5" /> Sprawdź powiązania</button>
-                          <button type="button" onClick={() => openCounterpartyMapping(item.transactionRef)} className="inline-flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 bg-[#141827]/60 px-3 py-2 font-medium text-[#d3bb73] hover:bg-[#d3bb73]/10"><BookOpenCheck className="h-3.5 w-3.5" /> Dodaj do mapowań</button>
-                          <button type="button" onClick={() => openTransactionNote(item.transactionRef)} className="inline-flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 bg-[#141827]/60 px-3 py-2 font-medium text-[#d3bb73] hover:bg-[#d3bb73]/10"><MessageSquareText className="h-3.5 w-3.5" /> Opisz płatność</button>
+                          <button type="button" onClick={() => openTransactionDetails(item.transactionRef)} className="inline-flex items-center gap-2 rounded-lg border border-[#d3bb73]/10 bg-[#d3bb73]/10 px-3 py-2 font-medium text-[var(--brand-gold)] hover:bg-[#d3bb73]/20"><Eye className="h-3.5 w-3.5" /> Szczegóły</button>
+                          <button type="button" onClick={() => openTransactionMatches(item.transactionRef)} className="inline-flex items-center gap-2 rounded-lg border border-[#d3bb73]/15 bg-[var(--brand-burgundy-900)] px-3 py-2 font-medium text-[var(--brand-gold)] hover:bg-[#d3bb73]/10"><Search className="h-3.5 w-3.5" /> Sprawdź powiązania</button>
+                          <button type="button" onClick={() => openCounterpartyMapping(item.transactionRef)} className="inline-flex items-center gap-2 rounded-lg border border-[#d3bb73]/15 bg-[var(--brand-burgundy-900)] px-3 py-2 font-medium text-[var(--brand-gold)] hover:bg-[#d3bb73]/10"><BookOpenCheck className="h-3.5 w-3.5" /> Dodaj do mapowań</button>
+                          <button type="button" onClick={() => openTransactionNote(item.transactionRef)} className="inline-flex items-center gap-2 rounded-lg border border-[#d3bb73]/15 bg-[var(--brand-burgundy-900)] px-3 py-2 font-medium text-[var(--brand-gold)] hover:bg-[#d3bb73]/10"><MessageSquareText className="h-3.5 w-3.5" /> Opisz płatność</button>
                         </div>
                       </article>
                     ))}
@@ -3346,18 +3595,54 @@ export default function BankAiAnalysisPanel({
               )}
 
               {detailsTab === 'documents' && (
-                <div className="h-full overflow-y-auto rounded-lg border border-sky-400/15 bg-[#1c1f33] p-4">
+                <div className="h-full overflow-y-auto rounded-lg border border-sky-400/15 bg-[var(--brand-burgundy-800)] p-4">
                   <div className="grid gap-3 lg:grid-cols-2">
-                    {analysis.reviewDocuments.map((item, index) => (
-                      <article key={`${item.documentRef}-${index}`} className={`rounded border p-4 text-xs ${priorityClasses(item.priority)}`}>
-                        <strong>{documentLabel(maps.documents.get(item.documentRef))}</strong><p className="mt-2 opacity-80">{item.reason}</p><p className="mt-2 font-medium text-[#d3bb73]">{item.recommendedAction}</p>
-                        {maps.documents.get(item.documentRef)?.accountingNote && <p className="mt-2 rounded bg-sky-400/10 px-2.5 py-2 text-sky-100">Opis: {maps.documents.get(item.documentRef)?.accountingNote}</p>}
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          <button type="button" disabled={otherMonthsLoading} onClick={() => void openDocumentMatches(item.documentRef)} className="inline-flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 bg-[#141827]/60 px-3 py-2 font-medium text-[#d3bb73] hover:bg-[#d3bb73]/10 disabled:opacity-50">{otherMonthsLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />} Znajdź płatność</button>
-                          <button type="button" onClick={() => openDocumentNote(item.documentRef)} className="inline-flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 bg-[#141827]/60 px-3 py-2 font-medium text-[#d3bb73] hover:bg-[#d3bb73]/10"><MessageSquareText className="h-3.5 w-3.5" /> Opisz dokument</button>
-                        </div>
-                      </article>
-                    ))}
+                    {analysis.reviewDocuments.map((item, index) => {
+                      const document = maps.documents.get(item.documentRef);
+                      const hasSavedPayment = linkedDocumentStates[item.documentRef] === true;
+                      return (
+                        <article key={`${item.documentRef}-${index}`} className="rounded-lg bg-white/5 p-4 text-xs text-[#e5e4e2]">
+                          <strong>{documentLabel(document)}</strong>
+                          {hasSavedPayment ? (
+                            <details className="mt-3 rounded-lg bg-black/10 p-3 text-[#e5e4e2]/65">
+                              <summary className="cursor-pointer">Uwagi z ostatniej analizy — zapisane przed sprawdzeniem aktualnych powiązań</summary>
+                              <p className="mt-2">{item.reason}</p>
+                              <p className="mt-2">{item.recommendedAction}</p>
+                              <p className="mt-2 text-sky-200">Dokument ma już zapisaną płatność. Historyczna uwaga nie oznacza konieczności ponownego dopasowania; pozostałe kwestie dokumentu nadal mogą wymagać sprawdzenia.</p>
+                            </details>
+                          ) : (
+                            <>
+                              <p className="mt-2 opacity-80">{item.reason}</p>
+                              <p className="mt-2 font-medium text-[var(--brand-gold)]">{item.recommendedAction}</p>
+                            </>
+                          )}
+                          {document ? (
+                            <BankDocumentLinkedPayments
+                              document={document}
+                              refreshKey={linkedPaymentsRefreshKey}
+                              onFindPayment={() => { if (!otherMonthsLoading) void openDocumentMatches(item.documentRef); }}
+                              onLinkedStateChange={(hasLinks) => setLinkedDocumentStates((current) => (
+                                current[item.documentRef] === hasLinks ? current : { ...current, [item.documentRef]: hasLinks }
+                              ))}
+                              onDocumentNoteChanged={(note) => setMaps((current) => {
+                                const currentDocument = current.documents.get(item.documentRef);
+                                if (!currentDocument || currentDocument.accountingNote === note) return current;
+                                const documents = new Map(current.documents);
+                                documents.set(item.documentRef, { ...currentDocument, accountingNote: note });
+                                return { ...current, documents };
+                              })}
+                              onSaved={() => {
+                                setAnalysisStale(true);
+                                setLinkedPaymentsRefreshKey((current) => current + 1);
+                                void onMatchApplied?.();
+                              }}
+                            />
+                          ) : (
+                            <p className="mt-3 text-amber-200">Nie znaleziono dokumentu w zapisanej analizie. Odśwież analizę, aby sprawdzić jego płatności.</p>
+                          )}
+                        </article>
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -3365,7 +3650,7 @@ export default function BankAiAnalysisPanel({
 
             {analysis.warnings.length > 0 && (
               <footer className="flex items-start gap-2 border-t border-[#d3bb73]/10 px-5 py-2 text-[11px] text-[#e5e4e2]/45">
-                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#d3bb73]" />
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--brand-gold)]" />
                 <span className="line-clamp-2">{analysis.warnings.join(' • ')}</span>
               </footer>
             )}
@@ -3373,26 +3658,47 @@ export default function BankAiAnalysisPanel({
         </div>
       )}
 
+      {detailsVisible && databaseDocumentPicker && (
+        <BankTransactionDocumentPickerModal
+          key={`${databaseDocumentPicker.transaction.id}:${databaseDocumentPicker.requestId}`}
+          transaction={databaseDocumentPicker.transaction}
+          initialSource={databaseDocumentPicker.initialSource}
+          onClose={() => {
+            documentPickerRequestRef.current += 1;
+            setDatabaseDocumentPicker(null);
+          }}
+          onMatched={handleDatabaseDocumentMatched}
+        />
+      )}
+
+      {detailsVisible && transactionDetails && (
+        <BankTransactionDetailsModal
+          key={transactionDetails.id}
+          transaction={{ id: transactionDetails.id, company_id: transactionDetails.companyId }}
+          onClose={() => setTransactionDetailsRef(null)}
+        />
+      )}
+
       {noteEditor && (
         <div className="fixed inset-0 z-[10070] flex items-center justify-center bg-black/80 p-4">
-          <div className="w-full max-w-xl rounded-xl border border-[#d3bb73]/25 bg-[#141827] shadow-2xl">
+          <div className="w-full max-w-xl rounded-xl border border-[#d3bb73]/15 bg-[var(--brand-burgundy-900)] shadow-2xl">
             <header className="flex items-start justify-between border-b border-[#d3bb73]/15 px-5 py-4">
               <div><h3 className="text-lg font-medium text-[#e5e4e2]">{noteEditor.kind === 'transaction' ? 'Opis płatności' : 'Opis dokumentu'}</h3><p className="mt-1 text-xs text-[#e5e4e2]/45">Notatka będzie widoczna przy kolejnych analizach i podczas ręcznej kontroli.</p></div>
               <button type="button" onClick={() => setNoteEditor(null)} className="rounded p-2 text-[#e5e4e2]/55 hover:bg-white/5"><X className="h-5 w-5" /></button>
             </header>
             <div className="space-y-4 p-5">
-              {noteEditor.kind === 'transaction' && <label className="block text-xs text-[#e5e4e2]/65">Rodzaj płatności<select value={noteCategory} onChange={(event) => setNoteCategory(event.target.value)} className="mt-2 w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2.5 text-sm text-[#e5e4e2] outline-none">{Object.entries(accountingCategoryLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>}
-              <label className="block text-xs text-[#e5e4e2]/65">Opis księgowy<textarea autoFocus value={noteDraft} onChange={(event) => setNoteDraft(event.target.value)} rows={5} maxLength={2000} placeholder={noteEditor.kind === 'transaction' ? 'Np. miesięczna prowizja bankowa — dokumentem źródłowym jest wyciąg bankowy.' : 'Dodaj informacje pomocne przy rozliczeniu tego dokumentu…'} className="mt-2 w-full resize-y rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2.5 text-sm text-[#e5e4e2] outline-none placeholder:text-[#e5e4e2]/25" /></label>
-              {noteEditor.kind === 'transaction' && <label className="flex items-start gap-3 rounded-lg border border-emerald-400/15 bg-emerald-400/5 p-3 text-xs text-emerald-100/85"><input type="checkbox" checked={noteExplained} onChange={(event) => setNoteExplained(event.target.checked)} className="mt-0.5 h-4 w-4 accent-[#d3bb73]" /><span><strong className="block text-emerald-200">Wyjaśnione bez faktury</strong>Włącz dla opłaty bankowej, podatku, ZUS lub innej płatności, której podstawą nie jest faktura.</span></label>}
+              {noteEditor.kind === 'transaction' && <label className="block text-xs text-[#e5e4e2]/65">Rodzaj płatności<select value={noteCategory} onChange={(event) => setNoteCategory(event.target.value)} className="mt-2 w-full rounded-lg border border-[#d3bb73]/20 bg-[var(--brand-burgundy-800)] px-3 py-2.5 text-sm text-[#e5e4e2] outline-none">{Object.entries(accountingCategoryLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>}
+              <label className="block text-xs text-[#e5e4e2]/65">Opis księgowy<textarea autoFocus value={noteDraft} onChange={(event) => setNoteDraft(event.target.value)} rows={5} maxLength={2000} placeholder={noteEditor.kind === 'transaction' ? 'Np. miesięczna prowizja bankowa — dokumentem źródłowym jest wyciąg bankowy.' : 'Dodaj informacje pomocne przy rozliczeniu tego dokumentu…'} className="mt-2 w-full resize-y rounded-lg border border-[#d3bb73]/20 bg-[var(--brand-burgundy-800)] px-3 py-2.5 text-sm text-[#e5e4e2] outline-none placeholder:text-[#e5e4e2]/25" /></label>
+              {noteEditor.kind === 'transaction' && <label className="flex items-start gap-3 rounded-lg border border-emerald-400/15 bg-emerald-400/5 p-3 text-xs text-emerald-100/85"><input type="checkbox" checked={noteExplained} onChange={(event) => setNoteExplained(event.target.checked)} className="mt-0.5 h-4 w-4 accent-[var(--brand-gold)]" /><span><strong className="block text-emerald-200">Wyjaśnione bez faktury</strong>Włącz dla opłaty bankowej, podatku, ZUS lub innej płatności, której podstawą nie jest faktura.</span></label>}
             </div>
-            <footer className="flex justify-end gap-2 border-t border-[#d3bb73]/10 px-5 py-4"><button type="button" onClick={() => setNoteEditor(null)} className="rounded-lg border border-[#d3bb73]/20 px-4 py-2 text-sm text-[#e5e4e2]/70 hover:bg-white/5">Anuluj</button><button type="button" disabled={noteSaving || !noteDraft.trim()} onClick={() => void saveAccountingNote()} className="inline-flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#141827] disabled:opacity-50">{noteSaving && <Loader2 className="h-4 w-4 animate-spin" />} Zapisz opis</button></footer>
+            <footer className="flex justify-end gap-2 border-t border-[#d3bb73]/10 px-5 py-4"><button type="button" onClick={() => setNoteEditor(null)} className="rounded-lg border border-[#d3bb73]/20 px-4 py-2 text-sm text-[#e5e4e2]/70 hover:bg-white/5">Anuluj</button><button type="button" disabled={noteSaving || !noteDraft.trim()} onClick={() => void saveAccountingNote()} className="inline-flex items-center gap-2 rounded-lg bg-[var(--brand-gold)] px-4 py-2 text-sm font-medium text-[var(--brand-burgundy-950)] disabled:opacity-50">{noteSaving && <Loader2 className="h-4 w-4 animate-spin" />} Zapisz opis</button></footer>
           </div>
         </div>
       )}
 
       {mappingEditorRef && (
         <div className="fixed inset-0 z-[10080] flex items-center justify-center bg-black/80 p-4">
-          <div className="w-full max-w-xl rounded-xl border border-[#d3bb73]/25 bg-[#141827] shadow-2xl">
+          <div className="w-full max-w-xl rounded-xl border border-[#d3bb73]/15 bg-[var(--brand-burgundy-900)] shadow-2xl">
             <header className="flex items-start justify-between border-b border-[#d3bb73]/15 px-5 py-4">
               <div>
                 <h3 className="text-lg font-medium text-[#e5e4e2]">Szablon rozpoznawania kontrahenta</h3>
@@ -3401,12 +3707,12 @@ export default function BankAiAnalysisPanel({
               <button type="button" onClick={() => setMappingEditorRef(null)} className="rounded p-2 text-[#e5e4e2]/55 hover:bg-white/5"><X className="h-5 w-5" /></button>
             </header>
             <div className="space-y-4 p-5">
-              <label className="block text-xs text-[#e5e4e2]/65">Fragment widoczny w płatności<input autoFocus value={mappingAliasDraft} onChange={(event) => setMappingAliasDraft(event.target.value)} maxLength={180} placeholder="np. OLSZTYN PL HOTEL WARMI NSKI" className="mt-2 w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2.5 text-sm text-[#e5e4e2] outline-none placeholder:text-[#e5e4e2]/25" /></label>
-              <label className="block text-xs text-[#e5e4e2]/65">Właściwa nazwa kontrahenta<input value={mappingCounterpartyDraft} onChange={(event) => setMappingCounterpartyDraft(event.target.value)} maxLength={240} placeholder='np. "MAZUR-TOURIST" Sp. z o.o. UL. KOŁOBRZESKA 1' className="mt-2 w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2.5 text-sm text-[#e5e4e2] outline-none placeholder:text-[#e5e4e2]/25" /></label>
-              <label className="block text-xs text-[#e5e4e2]/65">NIP kontrahenta — opcjonalnie<input value={mappingNipDraft} onChange={(event) => setMappingNipDraft(event.target.value)} inputMode="numeric" maxLength={13} placeholder="10 cyfr" className="mt-2 w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2.5 text-sm text-[#e5e4e2] outline-none placeholder:text-[#e5e4e2]/25" /></label>
+              <label className="block text-xs text-[#e5e4e2]/65">Fragment widoczny w płatności<input autoFocus value={mappingAliasDraft} onChange={(event) => setMappingAliasDraft(event.target.value)} maxLength={180} placeholder="np. OLSZTYN PL HOTEL WARMI NSKI" className="mt-2 w-full rounded-lg border border-[#d3bb73]/20 bg-[var(--brand-burgundy-800)] px-3 py-2.5 text-sm text-[#e5e4e2] outline-none placeholder:text-[#e5e4e2]/25" /></label>
+              <label className="block text-xs text-[#e5e4e2]/65">Właściwa nazwa kontrahenta<input value={mappingCounterpartyDraft} onChange={(event) => setMappingCounterpartyDraft(event.target.value)} maxLength={240} placeholder='np. "MAZUR-TOURIST" Sp. z o.o. UL. KOŁOBRZESKA 1' className="mt-2 w-full rounded-lg border border-[#d3bb73]/20 bg-[var(--brand-burgundy-800)] px-3 py-2.5 text-sm text-[#e5e4e2] outline-none placeholder:text-[#e5e4e2]/25" /></label>
+              <label className="block text-xs text-[#e5e4e2]/65">NIP kontrahenta — opcjonalnie<input value={mappingNipDraft} onChange={(event) => setMappingNipDraft(event.target.value)} inputMode="numeric" maxLength={13} placeholder="10 cyfr" className="mt-2 w-full rounded-lg border border-[#d3bb73]/20 bg-[var(--brand-burgundy-800)] px-3 py-2.5 text-sm text-[#e5e4e2] outline-none placeholder:text-[#e5e4e2]/25" /></label>
               <p className="rounded-lg border border-sky-400/15 bg-sky-400/5 p-3 text-xs leading-relaxed text-sky-100/75">Użyj możliwie charakterystycznego fragmentu, ale pomiń numery rachunku, identyfikatory karty i datę. Mapowanie wzmacnia podpowiedź — kwota, kierunek i dokument nadal są sprawdzane.</p>
             </div>
-            <footer className="flex justify-end gap-2 border-t border-[#d3bb73]/10 px-5 py-4"><button type="button" onClick={() => setMappingEditorRef(null)} className="rounded-lg border border-[#d3bb73]/20 px-4 py-2 text-sm text-[#e5e4e2]/70 hover:bg-white/5">Anuluj</button><button type="button" disabled={mappingSaving || normalizeCounterpartyAlias(mappingAliasDraft).length < 4 || !mappingCounterpartyDraft.trim()} onClick={() => void saveCounterpartyMapping()} className="inline-flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#141827] disabled:opacity-50">{mappingSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <BookOpenCheck className="h-4 w-4" />} Zapisz szablon</button></footer>
+            <footer className="flex justify-end gap-2 border-t border-[#d3bb73]/10 px-5 py-4"><button type="button" onClick={() => setMappingEditorRef(null)} className="rounded-lg border border-[#d3bb73]/20 px-4 py-2 text-sm text-[#e5e4e2]/70 hover:bg-white/5">Anuluj</button><button type="button" disabled={mappingSaving || normalizeCounterpartyAlias(mappingAliasDraft).length < 4 || !mappingCounterpartyDraft.trim()} onClick={() => void saveCounterpartyMapping()} className="inline-flex items-center gap-2 rounded-lg bg-[var(--brand-gold)] px-4 py-2 text-sm font-medium text-[var(--brand-burgundy-950)] disabled:opacity-50">{mappingSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <BookOpenCheck className="h-4 w-4" />} Zapisz szablon</button></footer>
           </div>
         </div>
       )}
@@ -3421,7 +3727,7 @@ export default function BankAiAnalysisPanel({
 
       {showTransactionPicker && selectedMatch && (
         <div className="fixed inset-0 z-[10040] flex items-center justify-center bg-black/80 p-4">
-          <div className="flex max-h-[84vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-[#d3bb73]/25 bg-[#141827] shadow-2xl">
+          <div className="flex max-h-[84vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-[#d3bb73]/15 bg-[var(--brand-burgundy-900)] shadow-2xl">
             <header className="flex items-start justify-between border-b border-[#d3bb73]/15 px-5 py-4">
               <div>
                 <h3 className="text-lg font-medium text-[#e5e4e2]">Wybierz inną płatność</h3>
@@ -3442,17 +3748,17 @@ export default function BankAiAnalysisPanel({
 
             <div className="border-b border-[#d3bb73]/10 p-4">
               <div className="mb-3 flex flex-wrap gap-2">
-                <button type="button" onClick={() => setSearchOtherMonths(false)} className={`rounded-lg border px-3 py-1.5 text-xs ${!searchOtherMonths ? 'border-[#d3bb73] bg-[#d3bb73]/10 text-[#d3bb73]' : 'border-[#d3bb73]/15 text-[#e5e4e2]/55'}`}>Analizowany miesiąc</button>
-                <button type="button" disabled={otherMonthsLoading} onClick={() => { setSearchOtherMonths(true); void loadOtherMonthsTransactions(); }} className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs ${searchOtherMonths ? 'border-[#d3bb73] bg-[#d3bb73]/10 text-[#d3bb73]' : 'border-[#d3bb73]/15 text-[#e5e4e2]/55'}`}>{otherMonthsLoading && <Loader2 className="h-3.5 w-3.5 animate-spin" />} Wszystkie miesiące ±12</button>
+                <button type="button" onClick={() => setSearchOtherMonths(false)} className={`rounded-lg border px-3 py-1.5 text-xs ${!searchOtherMonths ? 'border-[#d3bb73]/15 bg-[#d3bb73]/10 text-[var(--brand-gold)]' : 'border-[#d3bb73]/15 text-[#e5e4e2]/55'}`}>Analizowany miesiąc</button>
+                <button type="button" disabled={otherMonthsLoading} onClick={() => { setSearchOtherMonths(true); void loadOtherMonthsTransactions(); }} className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs ${searchOtherMonths ? 'border-[#d3bb73]/15 bg-[#d3bb73]/10 text-[var(--brand-gold)]' : 'border-[#d3bb73]/15 text-[#e5e4e2]/55'}`}>{otherMonthsLoading && <Loader2 className="h-3.5 w-3.5 animate-spin" />} Wszystkie miesiące ±12</button>
               </div>
-              <label className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2">
-                <Search className="h-4 w-4 shrink-0 text-[#d3bb73]" />
+              <label className="crm-search-field flex items-center gap-2 rounded-lg border bg-[var(--brand-burgundy-800)] px-3 py-2">
+                <Search className="h-4 w-4 shrink-0 text-[var(--brand-gold)]" />
                 <input
                   autoFocus
                   value={transactionSearch}
                   onChange={(event) => setTransactionSearch(event.target.value)}
                   placeholder="Szukaj po kwocie, dacie, kontrahencie lub tytule przelewu…"
-                  className="min-w-0 flex-1 bg-transparent text-sm text-[#e5e4e2] outline-none placeholder:text-[#e5e4e2]/30"
+                  className="crm-search-input min-w-0 flex-1 bg-transparent text-sm text-[#e5e4e2] outline-none placeholder:text-[#e5e4e2]/30"
                 />
               </label>
             </div>
@@ -3462,7 +3768,7 @@ export default function BankAiAnalysisPanel({
                 <div className="py-12 text-center text-sm text-[#e5e4e2]/50">
                   <p>Nie znaleziono zgodnej nierozliczonej płatności.</p>
                   {!searchOtherMonths && (
-                    <button type="button" disabled={otherMonthsLoading} onClick={() => { setSearchOtherMonths(true); void loadOtherMonthsTransactions(); }} className="mt-4 inline-flex items-center gap-2 rounded-lg border border-[#d3bb73]/25 px-3 py-2 text-xs font-medium text-[#d3bb73] hover:bg-[#d3bb73]/10 disabled:opacity-50">
+                    <button type="button" disabled={otherMonthsLoading} onClick={() => { setSearchOtherMonths(true); void loadOtherMonthsTransactions(); }} className="mt-4 inline-flex items-center gap-2 rounded-lg border border-[#d3bb73]/15 px-3 py-2 text-xs font-medium text-[var(--brand-gold)] hover:bg-[#d3bb73]/10 disabled:opacity-50">
                       {otherMonthsLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
                       Szukaj w innych miesiącach
                     </button>
@@ -3480,14 +3786,14 @@ export default function BankAiAnalysisPanel({
                       }}
                       className={`w-full rounded-lg border p-3 text-left hover:border-[#d3bb73]/50 ${
                         selectedTransaction?.ref === transaction.ref
-                          ? 'border-[#d3bb73] bg-[#d3bb73]/10'
-                          : 'border-[#d3bb73]/12 bg-[#1c1f33]'
+                          ? 'border-[#d3bb73]/15 bg-[#d3bb73]/10'
+                          : 'border-[#d3bb73]/12 bg-[var(--brand-burgundy-800)]'
                       }`}
                     >
                       <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-start">
                         <div className="min-w-0">
                           <div className="text-xs text-[#e5e4e2]/45">{transaction.date || 'bez daty'}</div>
-                          <div className="mt-1 inline-flex rounded bg-[#d3bb73]/10 px-2 py-0.5 text-[10px] uppercase text-[#d3bb73]">{transactionStatementLabel(transaction)}</div>
+                          <div className="mt-1 inline-flex rounded bg-[#d3bb73]/10 px-2 py-0.5 text-[10px] uppercase text-[var(--brand-gold)]">{transactionStatementLabel(transaction)}</div>
                           {!belongsToAnalysedMonth(transaction.date, year, month) && <div className="mt-1 inline-flex rounded bg-sky-400/10 px-2 py-0.5 text-[10px] uppercase text-sky-200">inny miesiąc</div>}
                           <div className="mt-1 font-medium text-[#e5e4e2]">{transaction.mappedCounterparty || transaction.counterparty || 'Brak kontrahenta'}</div>
                           {transaction.mappedCounterparty && <div className="mt-0.5 text-[10px] text-green-300/70">rozpoznano z szablonu „{transaction.mappingAlias}”</div>}

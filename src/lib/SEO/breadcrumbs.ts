@@ -16,6 +16,10 @@ const LABELS: Record<string, string> = {
   'symulatory-vr': 'Symulatory VR',
   portfolio: 'Portfolio',
   uslugi: 'Usługi',
+  'dla-agencji-i-hoteli': 'Dla agencji i hoteli',
+  olsztyn: 'Olsztyn', ostroda: 'Ostróda', ilawa: 'Iława', gizycko: 'Giżycko',
+  elk: 'Ełk', ketrzyn: 'Kętrzyn', mragowo: 'Mrągowo', mikolajki: 'Mikołajki',
+  elblag: 'Elbląg', szczytno: 'Szczytno',
 };
 
 function startCaseFromSlug(slug: string) {
@@ -45,9 +49,7 @@ export function buildBreadcrumbList(pathname?: string) {
   for (const part of parts) {
     acc += `/${part}`;
     items.push({
-      name: part
-        .replace(/-/g, ' ')
-        .replace(/\b\w/g, (l) => l.toUpperCase()),
+      name: LABELS[part] || startCaseFromSlug(part),
       item: `https://mavinci.pl${acc}`,
     });
   }
@@ -55,6 +57,7 @@ export function buildBreadcrumbList(pathname?: string) {
   return {
     '@context': 'https://schema.org',
     '@type': 'BreadcrumbList',
+    '@id': `${SITE_URL}${clean}#breadcrumb`,
     itemListElement: items.map((x, i) => ({
       '@type': 'ListItem',
       position: i + 1,

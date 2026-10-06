@@ -1,4 +1,12 @@
+import RealizationActions from '../components/Events/RealizationActions';
+import { useOperationalStages } from '../hooks/useOperationalStages';
+import { OPERATIONAL_LABELS, usesOperationalStages } from '../lib/operationalStages';
+import RealizationWorkspace from '../components/Events/RealizationWorkspace';
+import { respondToAssignment } from '../services/assignmentResponse';
+import WarehouseHandoffPanel from '../components/Events/WarehouseHandoffPanel';
 import React, { useState, useEffect, useCallback } from 'react';
+import { useForegroundEffect } from '../hooks/useForegroundEffect';
+import { createRefreshQueue } from '../lib/refreshQueue';
 import {
   View,
   Text,
@@ -33,9 +41,10 @@ import {
   WeddingCardData,
   WeddingCardTab,
 } from '@/components/Events/EventDetailScreen/WeddingCardTab';
-import { isManagerOrAdmin } from '../lib/permissions';
+import { mergeEventTeam } from '../lib/eventTeam';
+import { canViewEventFinances, isManagerOrAdmin } from '../lib/permissions';
 
-type TabKey = 'details' | 'agenda' | 'wedding' | 'checklist' | 'team' | 'fleet' | 'files';
+type TabKey = 'warehouse' | 'details' | 'agenda' | 'wedding' | 'checklist' | 'team' | 'fleet' | 'files';
 
 interface Props {
   eventId: string;
@@ -49,23 +58,19 @@ interface MyAssignment {
   role: string | null;
 }
 
-export default function EventDetailScreen({ eventId, onBack, initialTab }: Props) {
+function StandardEventDetailScreen({ eventId, onBack, initialTab }: Props) {
   const { employee } = useAuth();
   const canManageEvent = isManagerOrAdmin(employee);
-  const canViewBillingContext =
-    canManageEvent ||
-    employee?.permissions?.some((permission) =>
-      [
-        'finances_manage',
-        'finances_view',
-        'offers_manage',
-        'offers_view',
-        'invoices_manage',
-        'invoices_view',
-      ].includes(permission),
-    ) === true;
-  const [activeTab, setActiveTab] = useState<TabKey>(initialTab ?? 'details');
+  const isWarehouseWorker = employee?.permissions?.includes('equipment_manage') === true;
+  const showWarehouseTab = isWarehouseWorker || initialTab === 'warehouse';
+  const canViewBillingContext = canViewEventFinances(employee);
+  const [activeTab, setActiveTab] = useState<TabKey>(initialTab ?? (isWarehouseWorker ? 'warehouse' : 'details'));
+  useEffect(() => {
+    if (initialTab) setActiveTab(initialTab);
+  }, [eventId, initialTab]);
   const [event, setEvent] = useState<EventDetail | null>(null);
+  const operational = usesOperationalStages(employee);
+  const {stage: displayStatus} = useOperationalStages(event ? [{id:eventId,status:event.status}] : [],operational);
   const [agenda, setAgenda] = useState<AgendaData | null>(null);
   const [weddingCard, setWeddingCard] = useState<WeddingCardData | null>(null);
   const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
@@ -104,62 +109,11 @@ export default function EventDetailScreen({ eventId, onBack, initialTab }: Props
     if (!myAssignment) return;
     setRespondingInvitation(true);
     try {
-      const { error } = await supabase
-        .from('employee_assignments')
-        .update({ status: newStatus, responded_at: new Date().toISOString() })
-        .eq('id', myAssignment.id);
-
-      if (error) {
-        Alert.alert('Błąd', 'Nie udało się zaktualizować statusu zaproszenia.');
-        return;
-      }
-
-      setMyAssignment({ ...myAssignment, status: newStatus });
-      if (newStatus === 'accepted') {
-        setShowAcceptedFeedback(true);
-      }
-
-      // Notify event creator
-      if (event) {
-        const empName = employee
-          ? [employee.name, employee.surname].filter(Boolean).join(' ')
-          : 'Pracownik';
-        const title =
-          newStatus === 'accepted' ? 'Akceptacja zaproszenia' : 'Odrzucenie zaproszenia';
-        const message =
-          newStatus === 'accepted'
-            ? `${empName} zaakceptował(a) zaproszenie do wydarzenia "${event.name}"`
-            : `${empName} odrzucił(a) zaproszenie do wydarzenia "${event.name}"`;
-
-        const { data: eventRow } = await supabase
-          .from('events')
-          .select('created_by')
-          .eq('id', eventId)
-          .maybeSingle();
-
-        if (eventRow?.created_by) {
-          const { data: notif } = await supabase
-            .from('notifications')
-            .insert({
-              category: 'employee',
-              title,
-              message,
-              type: newStatus === 'accepted' ? 'success' : 'info',
-              related_entity_type: 'event',
-              related_entity_id: eventId,
-              action_url: `/crm/events/${eventId}`,
-            })
-            .select('id')
-            .single();
-
-          if (notif) {
-            await supabase.from('notification_recipients').insert({
-              notification_id: notif.id,
-              user_id: eventRow.created_by,
-            });
-          }
-        }
-      }
+      const current = await respondToAssignment(myAssignment.id, newStatus);
+      setMyAssignment(current);
+      setShowAcceptedFeedback(current.status === 'accepted');
+    } catch (error: any) {
+      Alert.alert('Nie udało się zapisać', error.message || 'Spróbuj ponownie.');
     } finally {
       setRespondingInvitation(false);
     }
@@ -192,16 +146,16 @@ export default function EventDetailScreen({ eventId, onBack, initialTab }: Props
       .from('events')
       .select(
         `
-        id, name, description, event_date, event_end_date, status, notes, created_by,
-        expected_revenue, budget, equipment_checklist_pdf_path,
-        billing_arrangement, billing_organization_id,
+        id, name, description, event_date, event_end_date, status, created_by,
+        ${canViewBillingContext ? 'notes, expected_revenue, budget, billing_arrangement, billing_organization_id,' : ''}
+        equipment_checklist_pdf_path, location,
         loading_confirmed, loading_confirmed_at, loading_confirmed_by, loading_notes,
         loading_locked, loading_unlock_requested, loading_unlock_requested_at,
         loading_unlock_requested_by, loading_unlock_reason,
         event_categories(name, color),
-        locations(name, formatted_address, address, city),
+        locations(name, formatted_address, address, city, postal_code, country, latitude, longitude, google_place_id),
         client_organization:organizations!events_organization_id_fkey(id, name, alias),
-        billing_organization:organizations!events_billing_organization_id_fkey(id, name, alias),
+        ${canViewBillingContext ? 'billing_organization:organizations!events_billing_organization_id_fkey(id, name, alias),' : ''}
         client_contact:contacts!events_contact_person_id_fkey(id, first_name, last_name, phone, mobile, email),
         creator:employees!created_by(name, surname)
       `,
@@ -214,15 +168,29 @@ export default function EventDetailScreen({ eventId, onBack, initialTab }: Props
 
     setChecklistPdfPath((data as any).equipment_checklist_pdf_path || null);
 
-    const { data: assignments } = await supabase
+    const { data: assignments, error: teamError } = await supabase
       .from('employee_assignments')
       .select(
-        'role, responsibilities, status, employee:employees!employee_assignments_employee_id_fkey(id, name, surname, nickname, occupation, avatar_url, avatar_metadata)',
+        'role, responsibilities, status, employee:employees!employee_assignments_employee_id_fkey(id, name, surname, nickname, occupation, avatar_url, avatar_metadata, phone_number, email)',
       )
       .eq('event_id', eventId)
       .order('created_at', { ascending: true });
 
-    const loc = (data as any).locations;
+    if (teamError) throw teamError;
+    const responsibilityResult = await supabase.rpc('get_event_responsibility_team', { p_event_id: eventId });
+    if (responsibilityResult.error) throw responsibilityResult.error;
+    const rawLocation = (data as any).locations;
+    const loc = Array.isArray(rawLocation) ? rawLocation[0] : rawLocation;
+    const locationAddress =
+      loc?.formatted_address?.trim() ||
+      [
+        loc?.address,
+        [loc?.postal_code, loc?.city].filter(Boolean).join(' '),
+        loc?.address || loc?.city ? loc?.country : null,
+      ]
+        .filter(Boolean)
+        .join(', ') ||
+      null;
     const rawClientOrganization = (data as any).client_organization;
     const rawBillingOrganization = (data as any).billing_organization;
     const rawClientContact = (data as any).client_contact;
@@ -260,9 +228,7 @@ export default function EventDetailScreen({ eventId, onBack, initialTab }: Props
               id: embeddedContact.id,
               name:
                 embeddedContact.full_name ||
-                [embeddedContact.first_name, embeddedContact.last_name]
-                  .filter(Boolean)
-                  .join(' ') ||
+                [embeddedContact.first_name, embeddedContact.last_name].filter(Boolean).join(' ') ||
                 'Kontakt rozliczeniowy',
               phone: embeddedContact.mobile || embeddedContact.phone || null,
               email: embeddedContact.email || null,
@@ -285,9 +251,11 @@ export default function EventDetailScreen({ eventId, onBack, initialTab }: Props
       budget: (data as any).budget ?? null,
       category_name: cat?.name ?? null,
       category_color: cat?.color ?? null,
-      location_name: loc?.name ?? null,
-      location_address:
-        loc?.formatted_address || loc?.address || (loc?.city ? `${loc.city}` : null),
+      location_name: loc?.name || (data as any).location || null,
+      location_address: locationAddress,
+      location_latitude: loc?.latitude ?? null,
+      location_longitude: loc?.longitude ?? null,
+      location_google_place_id: loc?.google_place_id ?? null,
       organization_name: org?.alias || org?.name || null,
       organization_id: org?.id ?? null,
       billing_arrangement: (data as any).billing_arrangement || 'direct',
@@ -311,20 +279,7 @@ export default function EventDetailScreen({ eventId, onBack, initialTab }: Props
       loading_unlock_requested_at: (data as any).loading_unlock_requested_at ?? null,
       loading_unlock_requested_by: (data as any).loading_unlock_requested_by ?? null,
       loading_unlock_reason: (data as any).loading_unlock_reason ?? null,
-      employees: (assignments || [])
-        .map((a: any) => ({
-          id: a.employee?.id,
-          name: a.employee?.name ?? '',
-          surname: a.employee?.surname ?? '',
-          nickname: a.employee?.nickname ?? null,
-          occupation: a.employee?.occupation ?? null,
-          avatar_url: a.employee?.avatar_url ?? null,
-          avatar_metadata: a.employee?.avatar_metadata ?? null,
-          role: a.role,
-          responsibilities: a.responsibilities ?? null,
-          status: a.status ?? null,
-        }))
-        .filter((member: any) => Boolean(member.id)),
+      employees: mergeEventTeam(assignments || [], responsibilityResult.data || []),
     } as EventDetail;
   }, [canViewBillingContext, eventId]);
 
@@ -347,45 +302,51 @@ export default function EventDetailScreen({ eventId, onBack, initialTab }: Props
     if (cardError) throw cardError;
     if (!card) return null;
 
-    const [answersResult, peopleResult, scheduleResult, tracksResult, attractionsResult, pdfResult] =
-      await Promise.all([
-        supabase
-          .from('wedding_card_answers')
-          .select('id,section,field_key,value')
-          .eq('wedding_card_id', card.id),
-        supabase
-          .from('wedding_card_people')
-          .select(
-            'id,side,role,first_name,last_name,phone,email,instagram_handle,instagram_tag_consent,notes',
-          )
-          .eq('wedding_card_id', card.id)
-          .order('side')
-          .order('sort_order'),
-        supabase
-          .from('wedding_schedule_items')
-          .select('id,title,scheduled_at,category,location,responsible_person,notes,is_confirmed')
-          .eq('wedding_card_id', card.id)
-          .order('scheduled_at', { ascending: true, nullsFirst: false })
-          .order('sort_order'),
-        supabase
-          .from('wedding_music_tracks')
-          .select('id,list_type,title,artist,notes')
-          .eq('wedding_card_id', card.id)
-          .order('sort_order'),
-        supabase
-          .from('wedding_attraction_choices')
-          .select('id,attraction_key,attraction_name,choice,notes')
-          .eq('wedding_card_id', card.id)
-          .order('attraction_name'),
-        supabase
-          .from('event_files')
-          .select('file_path')
-          .eq('event_id', eventId)
-          .like('file_path', `${eventId}/documents/wedding-card/%`)
-          .order('updated_at', { ascending: false })
-          .limit(1)
-          .maybeSingle(),
-      ]);
+    const [
+      answersResult,
+      peopleResult,
+      scheduleResult,
+      tracksResult,
+      attractionsResult,
+      pdfResult,
+    ] = await Promise.all([
+      supabase
+        .from('wedding_card_answers')
+        .select('id,section,field_key,value')
+        .eq('wedding_card_id', card.id),
+      supabase
+        .from('wedding_card_people')
+        .select(
+          'id,side,role,first_name,last_name,phone,email,instagram_handle,instagram_tag_consent,notes',
+        )
+        .eq('wedding_card_id', card.id)
+        .order('side')
+        .order('sort_order'),
+      supabase
+        .from('wedding_schedule_items')
+        .select('id,title,scheduled_at,category,location,responsible_person,notes,is_confirmed')
+        .eq('wedding_card_id', card.id)
+        .order('scheduled_at', { ascending: true, nullsFirst: false })
+        .order('sort_order'),
+      supabase
+        .from('wedding_music_tracks')
+        .select('id,list_type,title,artist,notes')
+        .eq('wedding_card_id', card.id)
+        .order('sort_order'),
+      supabase
+        .from('wedding_attraction_choices')
+        .select('id,attraction_key,attraction_name,choice,notes')
+        .eq('wedding_card_id', card.id)
+        .order('attraction_name'),
+      supabase
+        .from('event_files')
+        .select('file_path')
+        .eq('event_id', eventId)
+        .like('file_path', `${eventId}/documents/wedding-card/%`)
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ]);
 
     const contentError = [
       answersResult,
@@ -582,8 +543,12 @@ export default function EventDetailScreen({ eventId, onBack, initialTab }: Props
       })) as EventVehicleAssignment[];
 
     if (canManageEvent) return mapped;
+    if (isWarehouseWorker) {
+      const permission = await supabase.rpc('can_receive_warehouse_event', { p_event_id: eventId });
+      if (!permission.error && permission.data === true) return mapped;
+    }
     return mapped.filter((row) => row.driver_id === employee?.id);
-  }, [canManageEvent, employee?.id, eventId]);
+  }, [canManageEvent, isWarehouseWorker, employee?.id, eventId]);
 
   const refreshFleet = useCallback(async () => {
     setFleetAssignments(await fetchFleet());
@@ -665,128 +630,147 @@ export default function EventDetailScreen({ eventId, onBack, initialTab }: Props
     return () => clearTimeout(timeout);
   }, [showAcceptedFeedback]);
 
-  useEffect(() => {
-    const assignmentIds = new Set(fleetAssignments.map((item) => item.id));
-    const channel = supabase
-      .channel(`mobile-event-fleet-${eventId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'event_vehicles',
-          filter: `event_id=eq.${eventId}`,
-        },
-        () => {
-          void refreshFleet();
-        },
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'vehicle_handovers' },
-        (payload) => {
-          const row = (payload.new || payload.old) as { event_vehicle_id?: string };
-          if (row?.event_vehicle_id && assignmentIds.has(row.event_vehicle_id)) {
-            void refreshFleet();
-          }
-        },
-      )
-      .subscribe();
+  useForegroundEffect(
+    (signal, resumed) => {
+      const queue = createRefreshQueue(signal, () => refreshFleet());
+      if (resumed) void queue.refresh();
+      const assignmentIds = new Set(fleetAssignments.map((item) => item.id));
+      const channel = supabase
+        .channel(`mobile-event-fleet-${eventId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'event_vehicles',
+            filter: `event_id=eq.${eventId}`,
+          },
+          () => {
+            queue.schedule();
+          },
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'vehicle_handovers' },
+          (payload) => {
+            const row = (payload.new || payload.old) as { event_vehicle_id?: string };
+            if (row?.event_vehicle_id && assignmentIds.has(row.event_vehicle_id)) {
+              queue.schedule();
+            }
+          },
+        )
+        .subscribe();
 
-    return () => {
-      void supabase.removeChannel(channel);
-    };
-  }, [eventId, fleetAssignments, refreshFleet]);
+      return () => {
+        return supabase.removeChannel(channel);
+      };
+    },
+    [eventId, fleetAssignments, refreshFleet],
+  );
 
-  useEffect(() => {
-    const channel = supabase
-      .channel(`mobile-event-data-${eventId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'events',
-          filter: `id=eq.${eventId}`,
-        },
-        () => void refreshEventState(),
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'employee_assignments',
-          filter: `event_id=eq.${eventId}`,
-        },
-        () => {
-          void refreshEventState();
-        },
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'event_billing_contacts',
-          filter: `event_id=eq.${eventId}`,
-        },
-        () => void refreshEventState(),
-      )
-      .subscribe();
+  useForegroundEffect(
+    (signal, resumed) => {
+      const queue = createRefreshQueue(signal, () => refreshEventState());
+      if (resumed) void queue.refresh();
+      const channel = supabase
+        .channel(`mobile-event-data-${eventId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'events',
+            filter: `id=eq.${eventId}`,
+          },
+          queue.schedule,
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'employee_assignments',
+            filter: `event_id=eq.${eventId}`,
+          },
+          () => {
+            queue.schedule();
+          },
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'event_billing_contacts',
+            filter: `event_id=eq.${eventId}`,
+          },
+          queue.schedule,
+        )
+        .subscribe();
 
-    return () => {
-      void supabase.removeChannel(channel);
-    };
-  }, [eventId, refreshEventState]);
+      return () => {
+        return supabase.removeChannel(channel);
+      };
+    },
+    [eventId, refreshEventState],
+  );
 
-  useEffect(() => {
-    const channel = supabase
-      .channel(`mobile-wedding-card-${eventId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'wedding_cards',
-          filter: `event_id=eq.${eventId}`,
-        },
-        () => void refreshWeddingCard(),
-      )
-      .subscribe();
+  useForegroundEffect(
+    (signal, resumed) => {
+      const queue = createRefreshQueue(signal, () => refreshWeddingCard());
+      if (resumed) void queue.refresh();
+      const channel = supabase
+        .channel(`mobile-wedding-card-${eventId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'wedding_cards',
+            filter: `event_id=eq.${eventId}`,
+          },
+          queue.schedule,
+        )
+        .subscribe();
 
-    return () => {
-      void supabase.removeChannel(channel);
-    };
-  }, [eventId, refreshWeddingCard]);
+      return () => {
+        return supabase.removeChannel(channel);
+      };
+    },
+    [eventId, refreshWeddingCard],
+  );
 
-  useEffect(() => {
-    if (!weddingCard?.id) return;
-    const channel = supabase.channel(`mobile-wedding-card-content-${weddingCard.id}`);
-    [
-      'wedding_card_answers',
-      'wedding_card_people',
-      'wedding_schedule_items',
-      'wedding_music_tracks',
-      'wedding_attraction_choices',
-    ].forEach((table) => {
-      channel.on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table,
-          filter: `wedding_card_id=eq.${weddingCard.id}`,
-        },
-        () => void refreshWeddingCard(),
-      );
-    });
-    channel.subscribe();
+  useForegroundEffect(
+    (signal) => {
+      if (!weddingCard?.id) return;
+      const queue = createRefreshQueue(signal, () => refreshWeddingCard());
+      const channel = supabase.channel(`mobile-wedding-card-content-${weddingCard.id}`);
+      [
+        'wedding_card_answers',
+        'wedding_card_people',
+        'wedding_schedule_items',
+        'wedding_music_tracks',
+        'wedding_attraction_choices',
+      ].forEach((table) => {
+        channel.on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table,
+            filter: `wedding_card_id=eq.${weddingCard.id}`,
+          },
+          queue.schedule,
+        );
+      });
+      channel.subscribe();
 
-    return () => {
-      void supabase.removeChannel(channel);
-    };
-  }, [refreshWeddingCard, weddingCard?.id]);
+      return () => {
+        return supabase.removeChannel(channel);
+      };
+    },
+    [refreshWeddingCard, weddingCard?.id],
+  );
 
   useEffect(() => {
     if (isWeddingEvent && activeTab === 'agenda') {
@@ -795,13 +779,21 @@ export default function EventDetailScreen({ eventId, onBack, initialTab }: Props
     if (!isWeddingEvent && activeTab === 'wedding') {
       setActiveTab('agenda');
     }
-    if (!isLoading && activeTab === 'fleet' && fleetAssignments.length === 0) {
+    if (!isLoading && activeTab === 'fleet' && !showWarehouseTab && fleetAssignments.length === 0) {
       setActiveTab('details');
     }
-    if (!isLoading && activeTab === 'files' && !canViewPrivateFiles && files.length === 0) {
+    if (!isLoading && activeTab === 'files' && !showWarehouseTab && !canViewPrivateFiles && files.length === 0) {
       setActiveTab('details');
     }
-  }, [activeTab, canViewPrivateFiles, files.length, fleetAssignments.length, isLoading, isWeddingEvent]);
+  }, [
+    activeTab,
+    showWarehouseTab,
+    canViewPrivateFiles,
+    files.length,
+    fleetAssignments.length,
+    isLoading,
+    isWeddingEvent,
+  ]);
 
   const toggleLoadedItem = async (item: ChecklistItem) => {
     // If loading is locked, prevent unchecking
@@ -868,6 +860,7 @@ export default function EventDetailScreen({ eventId, onBack, initialTab }: Props
   }
 
   const tabs: { key: TabKey; label: string; icon: string; count?: number }[] = [
+    ...(showWarehouseTab ? [{ key: 'warehouse' as const, label: 'Magazyn', icon: 'package' }] : []),
     { key: 'details', label: 'Szczegóły', icon: 'info' },
     ...(isWeddingEvent
       ? ([
@@ -878,7 +871,9 @@ export default function EventDetailScreen({ eventId, onBack, initialTab }: Props
             count: weddingCard?.schedule.length || 0,
           },
         ] as const)
-      : ([{ key: 'agenda', label: 'Agenda', icon: 'clock', count: agenda?.items.length || 0 }] as const)),
+      : ([
+          { key: 'agenda', label: 'Agenda', icon: 'clock', count: agenda?.items.length || 0 },
+        ] as const)),
     {
       key: 'checklist',
       label: 'Checklista',
@@ -886,7 +881,7 @@ export default function EventDetailScreen({ eventId, onBack, initialTab }: Props
       count: checklist.length + logistics.length,
     },
     { key: 'team', label: 'Zespół', icon: 'users', count: event.employees.length },
-    ...(fleetAssignments.length > 0
+    ...(showWarehouseTab || fleetAssignments.length > 0
       ? ([
           {
             key: 'fleet',
@@ -896,7 +891,7 @@ export default function EventDetailScreen({ eventId, onBack, initialTab }: Props
           },
         ] as const)
       : []),
-    ...(canViewPrivateFiles || files.length > 0
+    ...(showWarehouseTab || canViewPrivateFiles || files.length > 0
       ? ([{ key: 'files', label: 'Pliki', icon: 'file', count: files.length }] as const)
       : []),
   ];
@@ -924,13 +919,13 @@ export default function EventDetailScreen({ eventId, onBack, initialTab }: Props
         <View
           style={[
             styles.headerStatus,
-            { backgroundColor: (STATUS_COLORS[event.status] || '#6b7280') + '20' },
+            { backgroundColor: (STATUS_COLORS[displayStatus({id:eventId,status:event.status})] || '#6b7280') + '20' },
           ]}
         >
           <Text
-            style={[styles.headerStatusText, { color: STATUS_COLORS[event.status] || '#6b7280' }]}
+            style={[styles.headerStatusText, { color: STATUS_COLORS[displayStatus({id:eventId,status:event.status})] || '#6b7280' }]}
           >
-            {STATUS_LABELS[event.status] || event.status}
+            {(operational ? OPERATIONAL_LABELS : STATUS_LABELS)[displayStatus({id:eventId,status:event.status})] || 'Nowe wydarzenie'}
           </Text>
         </View>
       </View>
@@ -1029,6 +1024,18 @@ export default function EventDetailScreen({ eventId, onBack, initialTab }: Props
           />
         }
       >
+        {(activeTab === 'details' || activeTab === 'warehouse') && <RealizationActions eventId={eventId} onChanged={() => void loadAll(true)} />}
+        {(activeTab === 'warehouse' || (activeTab === 'details' && !showWarehouseTab)) && <WarehouseHandoffPanel key={eventId} eventId={eventId} status={event.status} onAccepted={() => { void loadAll(true); }} />}
+        {activeTab === 'warehouse' && <View style={{ paddingHorizontal: spacing.md, gap: 10 }}>
+          <Text style={{ color: colors.text.primary, fontWeight: '600' }}>Zakładki przygotowania wydarzenia</Text>
+          {tabs.filter(tab => tab.key !== 'warehouse').map(tab => <TouchableOpacity key={tab.key}
+            accessibilityRole="button" onPress={() => setActiveTab(tab.key)}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 12, backgroundColor: colors.background.secondary }}>
+            <Feather name={tab.icon as any} size={20} color={colors.primary.gold} />
+            <Text style={{ flex: 1, color: colors.text.primary }}>{tab.key === 'checklist' ? 'Sprzęt, kompletacja i checklista' : tab.label}</Text>
+            <Feather name="chevron-right" size={18} color={colors.text.secondary} />
+          </TouchableOpacity>)}
+        </View>}
         {activeTab === 'details' && <DetailsTab event={event} employee={employee as Employee} />}
         {activeTab === 'agenda' && !isWeddingEvent && <AgendaTab agenda={agenda} />}
         {activeTab === 'wedding' && isWeddingEvent && <WeddingCardTab card={weddingCard} />}
@@ -1116,7 +1123,13 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   headerContent: { flex: 1 },
-  headerTitle: { fontFamily: 'MBFAtom', textTransform: 'uppercase', fontSize: 16, fontWeight: '700', color: colors.text.primary },
+  headerTitle: {
+    fontFamily: 'MBFAtom',
+    textTransform: 'uppercase',
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text.primary,
+  },
   headerMeta: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
   headerDot: { width: 8, height: 8, borderRadius: 4 },
   headerCategory: { fontSize: 11, color: colors.text.secondary },
@@ -1271,3 +1284,13 @@ const styles = StyleSheet.create({
     color: '#991b1b',
   },
 });
+
+export default function EventDetailScreen(props: Props) {
+ const [retry,setRetry]=useState(0);
+ const [result,setResult]=useState<{ready:boolean;data:any;error:boolean}>({ready:false,data:null,error:false});
+ useEffect(()=>{let live=true;setResult({ready:false,data:null,error:false});void supabase.rpc('get_realization_workspace',{p_event_id:props.eventId}).then(r=>{if(live)setResult({ready:true,data:r.data,error:!!r.error});});return()=>{live=false;};},[props.eventId,retry]);
+ if(!result.ready)return <ActivityIndicator color={colors.primary.gold}/>;
+ if(result.error)return <View style={{padding:20}}><Text style={{color:colors.text.primary}}>Nie udało się sprawdzić dostępu do realizacji.</Text><TouchableOpacity onPress={()=>setRetry(value=>value+1)}><Text style={{color:colors.primary.gold,paddingVertical:12}}>Spróbuj ponownie</Text></TouchableOpacity><TouchableOpacity onPress={props.onBack}><Text style={{color:colors.primary.gold}}>Wróć</Text></TouchableOpacity></View>;
+ if(result.data?.operational_only)return <RealizationWorkspace initialData={result.data} onBack={props.onBack} initialTab={props.initialTab}/>;
+ return <StandardEventDetailScreen {...props}/>;
+}

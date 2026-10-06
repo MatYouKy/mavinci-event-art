@@ -3,7 +3,7 @@ import { canAccessMarketingCompany, getMarketingAccess } from '@/lib/marketing/a
 import { createSupabaseAdminClient } from '@/lib/supabase/admin.server';
 import type { MarketingProvider } from '@/lib/marketing/types';
 import { decryptMarketingCredentials } from '@/lib/marketing/crypto.server';
-import { getMetaGraphVersion, readJsonResponse } from '@/lib/marketing/providers.server';
+import { getMetaGraphVersion, normaliseGoogleCustomerId, readJsonResponse } from '@/lib/marketing/providers.server';
 
 const PROVIDERS = new Set<MarketingProvider>(['meta', 'google']);
 const ALLOWED_SETTINGS = new Set([
@@ -43,6 +43,19 @@ export async function PATCH(
         .filter(([key]) => ALLOWED_SETTINGS.has(key))
         .map(([key, value]) => [key, typeof value === 'string' ? value.trim() : value]),
     );
+    if (provider === 'google') {
+      for (const key of ['google_ads_customer_id', 'google_ads_login_customer_id']) {
+        if (!(key in settings)) continue;
+        const value = normaliseGoogleCustomerId(String(settings[key] || ''));
+        if (value && !/^\d{10}$/.test(value)) {
+          return NextResponse.json({ error: 'Numer konta Google Ads musi mieć 10 cyfr.' }, { status: 400 });
+        }
+        settings[key] = value;
+      }
+      if (settings.google_ads_customer_id && settings.google_ads_customer_id === settings.google_ads_login_customer_id) {
+        return NextResponse.json({ error: 'Konto reklamowe i konto menedżera muszą mieć różne numery. Przy bezpośrednim dostępie pozostaw pole menedżera puste.' }, { status: 400 });
+      }
+    }
     const admin = createSupabaseAdminClient();
     const { data: current, error: currentError } = await admin
       .from('marketing_integrations')

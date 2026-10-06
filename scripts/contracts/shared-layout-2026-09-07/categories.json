@@ -1,0 +1,98 @@
+[
+  {
+    "id": "8a27e6ef-d9e7-4383-a14d-8158ba6ca7d7",
+    "name": "Konferencja",
+    "before": null,
+    "after": "c14587d1-e71f-4f36-8386-bdf8ef4c687e"
+  },
+  {
+    "id": "20ac2ccb-003c-4c06-b0e5-dd73e4097536",
+    "name": "Koncert",
+    "before": null,
+    "after": "c14587d1-e71f-4f36-8386-bdf8ef4c687e"
+  },
+  {
+    "id": "6f992565-44ba-4705-ba24-c2ade19da06a",
+    "name": "Targi",
+    "before": null,
+    "after": "c14587d1-e71f-4f36-8386-bdf8ef4c687e"
+  },
+  {
+    "id": "bbfd19cd-ab96-412f-8584-c45e3c07dd71",
+    "name": "Dekoracje",
+    "before": null,
+    "after": "c14587d1-e71f-4f36-8386-bdf8ef4c687e"
+  },
+  {
+    "id": "f3038be5-47d9-49c6-9bb9-8bea32c0d275",
+    "name": "DJ Standard",
+    "before": "264dc6b7-b614-420d-bc02-daecd2f3277c",
+    "after": "c14587d1-e71f-4f36-8386-bdf8ef4c687e"
+  },
+  {
+    "id": "8142aab3-345f-4515-ae57-d6f31e993b54",
+    "name": "STUDNIÓWKA",
+    "before": null,
+    "after": "c14587d1-e71f-4f36-8386-bdf8ef4c687e"
+  },
+  {
+    "id": "73db2a02-5586-4c4a-990c-fc2fa5d95f9d",
+    "name": "Inne",
+    "before": null,
+    "after": "c14587d1-e71f-4f36-8386-bdf8ef4c687e"
+  },
+  {
+    "id": "287c838e-41d5-493f-bc0c-420b01039c4d",
+    "name": "DJ i prowadzenie",
+    "before": null,
+    "after": "c14587d1-e71f-4f36-8386-bdf8ef4c687e"
+  },
+  {
+    "id": "b2f707f9-12f3-441f-8121-aa075fdf56fe",
+    "name": "Multimedia",
+    "before": null,
+    "after": "c14587d1-e71f-4f36-8386-bdf8ef4c687e"
+  },
+  {
+    "id": "318deefd-b15e-40c4-aa08-78a7b9bad259",
+    "name": "Nagłośnienie",
+    "before": null,
+    "after": "c14587d1-e71f-4f36-8386-bdf8ef4c687e"
+  },
+  {
+    "id": "761db536-5186-4c9b-9e0e-6fa01a101115",
+    "name": "Oświetlenie",
+    "before": null,
+    "after": "c14587d1-e71f-4f36-8386-bdf8ef4c687e"
+  },
+  {
+    "id": "4cf6b727-f3cd-44bb-a3b8-b20e8eafafa7",
+    "name": "EVENT",
+    "before": "984449a7-a639-435d-a364-0379bd8a4b27",
+    "after": "c14587d1-e71f-4f36-8386-bdf8ef4c687e"
+  },
+  {
+    "id": "7fcf30f3-1c40-4ad9-9537-e98e49ec03da",
+    "name": "TEAMBUILDING",
+    "before": null,
+    "after": "c14587d1-e71f-4f36-8386-bdf8ef4c687e"
+  },
+  {
+    "id": "1a701496-7d75-406c-a67b-f1a1fba46c14",
+    "name": "Dodatki",
+    "before": "1bac1d1f-1f6c-4a82-a9a1-f57a225da149",
+    "after": "c14587d1-e71f-4f36-8386-bdf8ef4c687e"
+  },
+  {
+    "id": "72a3a4bc-5d22-41c6-b1fd-4bd8663f769a",
+    "name": "FESTYNY",
+    "before": null,
+    "after": "c14587d1-e71f-4f36-8386-bdf8ef4c687e"
+  },
+  {
+    "id": "9c461e90-e9a0-49a8-a90c-bdcb369f1f89",
+    "name": "Wesele",
+    "before": "264dc6b7-b614-420d-bc02-daecd2f3277c",
+    "after": "c14587d1-e71f-4f36-8386-bdf8ef4c687e"
+  }
+]

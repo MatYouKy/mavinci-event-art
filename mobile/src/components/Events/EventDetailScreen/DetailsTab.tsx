@@ -1,5 +1,8 @@
+import { canViewEventFinances } from '../../../lib/permissions';
 import { View, Text, StyleSheet, TouchableOpacity, Linking } from 'react-native';
 import { colors, spacing } from '../../../theme';
+import { Feather } from '@expo/vector-icons';
+import { getLocationMapLinks, showLocationDirections } from '../../../lib/locationMaps';
 
 import { InfoRow } from './InfoRow';
 import { Employee } from '../../../lib/supabase';
@@ -31,6 +34,9 @@ export interface EventDetail {
   category_color: string | null;
   location_name: string | null;
   location_address: string | null;
+  location_latitude?: number | string | null;
+  location_longitude?: number | string | null;
+  location_google_place_id?: string | null;
   organization_name: string | null;
   organization_id: string | null;
   billing_arrangement: EventBillingArrangement;
@@ -65,15 +71,17 @@ const BILLING_ARRANGEMENT_LABELS: Record<EventBillingArrangement, string> = {
 export function DetailsTab({ event, employee }: { event: EventDetail; employee: Employee }) {
   const { startCall, pendingCall, showOutcome, closeOutcome } = useCrmCall();
   const permissions = employee?.permissions ?? [];
+  const mapLocation = {
+    name: event.location_name,
+    address: event.location_address,
+    latitude: event.location_latitude,
+    longitude: event.location_longitude,
+    googlePlaceId: event.location_google_place_id,
+  };
+  const hasMapLocation = Boolean(getLocationMapLinks(mapLocation));
+  const openDirections = () => showLocationDirections(mapLocation);
 
-  const canViewFinances =
-    permissions.includes('finances_manage') ||
-    permissions.includes('finances_view') ||
-    permissions.includes('offers_manage') ||
-    permissions.includes('offers_view') ||
-    permissions.includes('invoices_manage') ||
-    permissions.includes('invoices_view') ||
-    employee.role === 'admin';
+  const canViewFinances = canViewEventFinances(employee);
   const hasExpectedRevenue = typeof event.expected_revenue === 'number';
   const hasBudget = typeof event.budget === 'number';
 
@@ -106,10 +114,21 @@ export function DetailsTab({ event, employee }: { event: EventDetail; employee: 
             />
           )}
           {Boolean(event.location_name) && (
-            <InfoRow icon="map-pin" label="Lokalizacja" value={event.location_name} />
+            <TouchableOpacity onPress={openDirections} accessibilityRole="button" accessibilityLabel={`Otwórz lokalizację: ${event.location_name}`} style={styles.locationRow}>
+              <InfoRow icon="map-pin" label="Lokalizacja" value={event.location_name} highlight />
+            </TouchableOpacity>
           )}
           {Boolean(event.location_address) && (
-            <InfoRow icon="navigation" label="Adres" value={event.location_address} />
+            <TouchableOpacity onPress={openDirections} accessibilityRole="button" accessibilityLabel={`Wyznacz trasę do: ${event.location_address}`} style={styles.locationRow}>
+              <InfoRow icon="navigation" label="Adres" value={event.location_address} highlight />
+            </TouchableOpacity>
+          )}
+          {hasMapLocation && (
+            <TouchableOpacity onPress={openDirections} accessibilityRole="button" accessibilityHint="Otwiera wybór aplikacji z mapami" style={styles.directionsButton}>
+              <Feather name="navigation" size={18} color={colors.primary.gold} />
+              <Text style={styles.directionsText}>Wyznacz trasę</Text>
+              <Feather name="external-link" size={15} color={colors.primary.gold} />
+            </TouchableOpacity>
           )}
         </View>
       </View>
@@ -246,6 +265,20 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   infoGrid: { gap: 8 },
+  locationRow: { minHeight: 44, justifyContent: 'center', paddingVertical: 6 },
+  directionsButton: {
+    minHeight: 46,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginTop: 4,
+    borderRadius: 10,
+    backgroundColor: colors.background.elevated,
+  },
+  directionsText: { color: colors.primary.gold, fontSize: 14, fontWeight: '600' },
   billingContact: {
     gap: 8,
     marginTop: 4,

@@ -1,7 +1,41 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
-import { Plus, UserCheck, Mail, Phone, Star, DollarSign, Clock, AlertCircle, FileText, Calendar, X, Send, ShieldCheck, UserPlus, Pencil, ExternalLink } from 'lucide-react';
+import { systemLabel } from '@/lib/ui/systemLabels';
+
+import { useState, useEffect, useMemo, useRef } from 'react';
+import Link from 'next/link';
+import {
+  Plus,
+  UserCheck,
+  Mail,
+  Phone,
+  Star,
+  DollarSign,
+  Clock,
+  AlertCircle,
+  FileText,
+  Calendar,
+  X,
+  Send,
+  ShieldCheck,
+  UserPlus,
+  Pencil,
+  ExternalLink,
+  ChevronRight,
+} from 'lucide-react';
+import SearchCombobox from '@/components/crm/SearchCombobox';
+import {
+  matchesSubcontractor,
+  subcontractorOption,
+} from '@/components/crm/subcontractors/subcontractorSearch';
+import { subcontractorTaskSchema } from '@/components/crm/subcontractors/taskValidation';
+import {
+  collectValidationErrors,
+  ContactValidationField,
+} from '@/components/crm/contacts/contactValidation';
+import { Modal } from '@/components/UI/Modal';
+import CustomModalLoader from '@/components/UI/Loader/CustomModalLoader';
+import { getFunctionErrorMessage } from '@/lib/supabase/functionError';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { FileDropzone } from '@/components/UI/FileDropzone/FileDropzone';
@@ -10,6 +44,7 @@ import { useEventWorkspace } from '@/components/crm/events/EventWorkspaceProvide
 interface Subcontractor {
   id: string;
   company_name: string;
+  organization?: { name?: string | null; alias?: string | null; phone?: string | null } | null;
   contact_person: string | null;
   email: string | null;
   phone: string | null;
@@ -68,6 +103,8 @@ interface SubcontractorTask {
   guidelines_status?: 'draft' | 'sent' | 'confirmed' | 'declined' | 'expired';
   guidelines_sent_at?: string | null;
   confirmed_at?: string | null;
+  confirmed_by_name?: string | null;
+  response_note?: string | null;
   declined_at?: string | null;
   reminder_week_sent_at?: string | null;
   reminder_day_sent_at?: string | null;
@@ -109,6 +146,7 @@ export default function EventSubcontractorsPanel({ eventId }: EventSubcontractor
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [allSubcontractors, setAllSubcontractors] = useState<Subcontractor[]>([]);
   const [loading, setLoading] = useState(true);
+  const loadedEvent = useRef<string | null>(null);
   const [showAddTaskModal, setShowAddTaskModal] = useState(false);
   const [editingTask, setEditingTask] = useState<SubcontractorTask | null>(null);
   const [sendingTaskId, setSendingTaskId] = useState<string | null>(null);
@@ -140,9 +178,30 @@ export default function EventSubcontractorsPanel({ eventId }: EventSubcontractor
     }
   }, [eventId]);
 
+  useEffect(() => {
+    const channel = supabase
+      .channel(`subcontractor-orders-${eventId}-${crypto.randomUUID()}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'subcontractor_tasks',
+          filter: `event_id=eq.${eventId}`,
+        },
+        () => {
+          void fetchData();
+        },
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [eventId]);
+
   const fetchData = async () => {
     try {
-      setLoading(true);
+      if (loadedEvent.current !== eventId) setLoading(true);
 
       const { data: tasksData, error: tasksError } = await supabase
         .from('subcontractor_tasks')
@@ -202,7 +261,7 @@ export default function EventSubcontractorsPanel({ eventId }: EventSubcontractor
 
       const { data: subcontractorsData, error: subError } = await supabase
         .from('subcontractors')
-        .select('*')
+        .select('*, organization:organizations!organization_id(name,alias,phone)')
         .eq('status', 'active')
         .order('company_name', { ascending: true });
 
@@ -212,6 +271,7 @@ export default function EventSubcontractorsPanel({ eventId }: EventSubcontractor
       console.error('Error fetching subcontractors data:', error);
       showSnackbar('Błąd podczas ładowania danych podwykonawców', 'error');
     } finally {
+      loadedEvent.current = eventId;
       setLoading(false);
     }
   };
@@ -253,7 +313,7 @@ export default function EventSubcontractorsPanel({ eventId }: EventSubcontractor
       declined: 'Odrzucone',
       expired: 'Wygasło',
     };
-    return labels[status] || status;
+    return labels[status] || systemLabel(status);
   };
 
   const previewContract = async (contract: Contract) => {
@@ -279,16 +339,19 @@ export default function EventSubcontractorsPanel({ eventId }: EventSubcontractor
     }
     try {
       setSendingTaskId(task.id);
-      const { error } = await supabase.functions.invoke('send-subcontractor-assignment', {
+      const { data, error } = await supabase.functions.invoke('send-subcontractor-assignment', {
         body: { taskId: task.id },
       });
       if (error) throw error;
+      if (data?.error) throw new Error(data.error);
       showSnackbar('Wytyczne wysłane do podwykonawcy', 'success');
       await fetchData();
       refreshWorkspace('subcontractor_tasks');
     } catch (error) {
-      console.error('Error sending subcontractor guidelines:', error);
-      showSnackbar('Nie udało się wysłać wytycznych', 'error');
+      showSnackbar(
+        await getFunctionErrorMessage(error, 'Nie udało się wysłać wytycznych'),
+        'error',
+      );
     } finally {
       setSendingTaskId(null);
     }
@@ -383,7 +446,8 @@ export default function EventSubcontractorsPanel({ eventId }: EventSubcontractor
         </div>
       </div>
 
-      {tasks.filter((t) => t.task_type === 'equipment_rental' && !t.subcontractor_id).length > 0 && (
+      {tasks.filter((t) => t.task_type === 'equipment_rental' && !t.subcontractor_id).length >
+        0 && (
         <div className="rounded-lg border border-yellow-500/20 bg-yellow-500/5 p-6">
           <div className="mb-4 flex items-center gap-3">
             <AlertCircle className="h-5 w-5 text-yellow-400" />
@@ -482,7 +546,13 @@ export default function EventSubcontractorsPanel({ eventId }: EventSubcontractor
                     </div>
                     <div>
                       <h3 className="mb-1 text-lg font-semibold text-[#e5e4e2]">
-                        {sub.company_name}
+                        <Link
+                          href={`/crm/subcontractors/${subId}`}
+                          className="inline-flex items-center gap-2 text-[#d3bb73] underline-offset-4 hover:underline"
+                        >
+                          {sub.company_name}
+                          <ExternalLink aria-hidden="true" className="h-4 w-4 shrink-0" />
+                        </Link>
                       </h3>
                       {sub.contact_person && (
                         <p className="mb-2 text-sm text-[#e5e4e2]/60">{sub.contact_person}</p>
@@ -543,6 +613,42 @@ export default function EventSubcontractorsPanel({ eventId }: EventSubcontractor
                                   </span>
                                 )}
                               </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span
+                                className={`rounded px-2 py-1 text-xs ${getStatusColor(
+                                  task.guidelines_status || 'draft',
+                                )}`}
+                              >
+                                {getStatusLabel(task.guidelines_status || 'draft')}
+                              </span>
+                              <span
+                                className={`rounded px-2 py-1 text-xs ${getStatusColor(
+                                  task.status,
+                                )}`}
+                              >
+                                {getStatusLabel(task.status)}
+                              </span>
+                              <span
+                                className={`rounded px-2 py-1 text-xs ${getStatusColor(
+                                  task.payment_status,
+                                )}`}
+                              >
+                                {getStatusLabel(task.payment_status)}
+                              </span>
+                            </div>
+                          </div>
+
+                          <details className="group/task-details mt-3">
+                            <summary className="flex cursor-pointer list-none items-center gap-2 rounded-lg py-2 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/5 [&::-webkit-details-marker]:hidden">
+                              <ChevronRight
+                                aria-hidden="true"
+                                className="h-4 w-4 shrink-0 transition-transform group-open/task-details:rotate-90"
+                              />
+                              Szczegóły i wytyczne
+                              <span className="sr-only"> — {task.task_name}</span>
+                            </summary>
+                            <div className="pt-2">
                               {(task.scope_of_work || task.description) && (
                                 <p className="text-sm text-[#e5e4e2]/60">
                                   {task.scope_of_work || task.description}
@@ -574,155 +680,156 @@ export default function EventSubcontractorsPanel({ eventId }: EventSubcontractor
                                   </div>
                                 </div>
                               )}
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <span
-                                className={`rounded px-2 py-1 text-xs ${getStatusColor(
-                                  task.guidelines_status || 'draft',
-                                )}`}
-                              >
-                                {getStatusLabel(task.guidelines_status || 'draft')}
-                              </span>
-                              <span
-                                className={`rounded px-2 py-1 text-xs ${getStatusColor(
-                                  task.status,
-                                )}`}
-                              >
-                                {getStatusLabel(task.status)}
-                              </span>
-                              <span
-                                className={`rounded px-2 py-1 text-xs ${getStatusColor(
-                                  task.payment_status,
-                                )}`}
-                              >
-                                {getStatusLabel(task.payment_status)}
-                              </span>
-                            </div>
-                          </div>
-
-                          <div className="mt-3 grid grid-cols-2 gap-4 text-sm lg:grid-cols-5">
-                            <div>
-                              <div className="mb-1 text-xs text-[#e5e4e2]/40">Rozliczenie</div>
-                              <div className="text-[#e5e4e2]">
-                                {task.payment_type === 'fixed'
-                                  ? 'Ryczałt'
-                                  : task.payment_type === 'hourly'
-                                    ? 'Godzinowe'
-                                    : 'Mieszane'}
-                              </div>
-                            </div>
-                            <div>
-                              <div className="mb-1 text-xs text-[#e5e4e2]/40">Godziny</div>
-                              <div className="text-[#e5e4e2]">
-                                {task.actual_hours}h / {task.estimated_hours}h
-                              </div>
-                            </div>
-                            <div>
-                              <div className="mb-1 text-xs text-[#e5e4e2]/40">Stawka/Cena</div>
-                              <div className="text-[#e5e4e2]">
-                                {task.payment_type === 'fixed'
-                                  ? `${task.fixed_price} zł`
-                                  : `${task.hourly_rate} zł/h`}
-                              </div>
-                            </div>
-                            <div>
-                              <div className="mb-1 text-xs text-[#e5e4e2]/40">Forma</div>
-                              <div className="text-[#e5e4e2]">
-                                {task.settlement_type === 'cash'
-                                  ? 'Gotówka'
-                                  : task.settlement_type === 'civil_contract'
-                                    ? 'Umowa cywilna'
-                                    : task.settlement_type === 'invoice_no_vat'
-                                      ? 'Faktura bez VAT'
-                                      : task.settlement_type === 'invoice_vat'
-                                        ? 'Faktura VAT'
-                                        : 'Inne'}
-                              </div>
-                            </div>
-                            <div>
-                              <div className="mb-1 text-xs text-[#e5e4e2]/40">Koszt</div>
-                              <div className="font-semibold text-[#d3bb73]">
-                                {(task.agreed_cost || task.total_cost || 0).toLocaleString('pl-PL')}{' '}
-                                {task.currency || 'PLN'}
-                              </div>
-                            </div>
-                          </div>
-
-                          {(task.deliverables || task.guidelines || task.operational_notes) && (
-                            <div className="mt-3 grid gap-3 rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33]/60 p-3 text-sm md:grid-cols-3">
-                              {task.deliverables && (
+                              <div className="mt-3 grid grid-cols-2 gap-4 text-sm lg:grid-cols-5">
                                 <div>
-                                  <div className="mb-1 text-xs font-medium text-[#d3bb73]">Rezultat</div>
-                                  <p className="whitespace-pre-wrap text-[#e5e4e2]/70">{task.deliverables}</p>
+                                  <div className="mb-1 text-xs text-[#e5e4e2]/40">Rozliczenie</div>
+                                  <div className="text-[#e5e4e2]">
+                                    {task.payment_type === 'fixed'
+                                      ? 'Ryczałt'
+                                      : task.payment_type === 'hourly'
+                                        ? 'Godzinowe'
+                                        : 'Mieszane'}
+                                  </div>
                                 </div>
-                              )}
-                              {task.guidelines && (
                                 <div>
-                                  <div className="mb-1 text-xs font-medium text-[#d3bb73]">Wytyczne</div>
-                                  <p className="whitespace-pre-wrap text-[#e5e4e2]/70">{task.guidelines}</p>
+                                  <div className="mb-1 text-xs text-[#e5e4e2]/40">Godziny</div>
+                                  <div className="text-[#e5e4e2]">
+                                    {task.actual_hours}h / {task.estimated_hours}h
+                                  </div>
                                 </div>
-                              )}
-                              {task.operational_notes && (
                                 <div>
-                                  <div className="mb-1 text-xs font-medium text-[#d3bb73]">Notatki wewnętrzne</div>
-                                  <p className="whitespace-pre-wrap text-[#e5e4e2]/70">{task.operational_notes}</p>
+                                  <div className="mb-1 text-xs text-[#e5e4e2]/40">Stawka/Cena</div>
+                                  <div className="text-[#e5e4e2]">
+                                    {task.payment_type === 'fixed'
+                                      ? `${task.fixed_price} zł`
+                                      : `${task.hourly_rate} zł/h`}
+                                  </div>
                                 </div>
-                              )}
-                            </div>
-                          )}
+                                <div>
+                                  <div className="mb-1 text-xs text-[#e5e4e2]/40">Forma</div>
+                                  <div className="text-[#e5e4e2]">
+                                    {task.settlement_type === 'cash'
+                                      ? 'Gotówka'
+                                      : task.settlement_type === 'civil_contract'
+                                        ? 'Umowa cywilna'
+                                        : task.settlement_type === 'invoice_no_vat'
+                                          ? 'Faktura bez VAT'
+                                          : task.settlement_type === 'invoice_vat'
+                                            ? 'Faktura VAT'
+                                            : 'Inne'}
+                                  </div>
+                                </div>
+                                <div>
+                                  <div className="mb-1 text-xs text-[#e5e4e2]/40">Koszt</div>
+                                  <div className="font-semibold text-[#d3bb73]">
+                                    {(task.agreed_cost || task.total_cost || 0).toLocaleString(
+                                      'pl-PL',
+                                    )}{' '}
+                                    {task.currency || 'PLN'}
+                                  </div>
+                                </div>
+                              </div>
 
-                          <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-[#d3bb73]/5 pt-3 text-xs text-[#e5e4e2]/60">
-                            <div className="flex flex-wrap items-center gap-4">
-                              {(task.scheduled_start || task.start_date) && (
-                                <span className="flex items-center gap-1">
-                                  <Calendar className="h-3 w-3" />
-                                  Od:{' '}
-                                  {new Date(task.scheduled_start || task.start_date!).toLocaleString(
-                                    'pl-PL',
-                                    { dateStyle: 'short', timeStyle: task.scheduled_start ? 'short' : undefined },
+                              {(task.deliverables || task.guidelines || task.operational_notes) && (
+                                <div className="mt-3 grid gap-3 rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33]/60 p-3 text-sm md:grid-cols-3">
+                                  {task.deliverables && (
+                                    <div>
+                                      <div className="mb-1 text-xs font-medium text-[#d3bb73]">
+                                        Rezultat
+                                      </div>
+                                      <p className="whitespace-pre-wrap text-[#e5e4e2]/70">
+                                        {task.deliverables}
+                                      </p>
+                                    </div>
                                   )}
-                                </span>
-                              )}
-                              {(task.scheduled_end || task.end_date) && (
-                                <span className="flex items-center gap-1">
-                                  <Calendar className="h-3 w-3" />
-                                  Do:{' '}
-                                  {new Date(task.scheduled_end || task.end_date!).toLocaleString(
-                                    'pl-PL',
-                                    { dateStyle: 'short', timeStyle: task.scheduled_end ? 'short' : undefined },
+                                  {task.guidelines && (
+                                    <div>
+                                      <div className="mb-1 text-xs font-medium text-[#d3bb73]">
+                                        Wytyczne
+                                      </div>
+                                      <p className="whitespace-pre-wrap text-[#e5e4e2]/70">
+                                        {task.guidelines}
+                                      </p>
+                                    </div>
                                   )}
-                                </span>
+                                  {task.operational_notes && (
+                                    <div>
+                                      <div className="mb-1 text-xs font-medium text-[#d3bb73]">
+                                        Notatki wewnętrzne
+                                      </div>
+                                      <p className="whitespace-pre-wrap text-[#e5e4e2]/70">
+                                        {task.operational_notes}
+                                      </p>
+                                    </div>
+                                  )}
+                                </div>
                               )}
-                              {task.confirmed_at && (
-                                <span className="flex items-center gap-1 text-green-300">
-                                  <ShieldCheck className="h-3 w-3" />
-                                  Potwierdzono {new Date(task.confirmed_at).toLocaleDateString('pl-PL')}
-                                </span>
+
+                              {task.response_note && (
+                                <p className="mt-3 text-sm text-[#e5e4e2]/70">
+                                  Odpowiedź podwykonawcy: {task.response_note}
+                                </p>
                               )}
+                              <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-[#d3bb73]/5 pt-3 text-xs text-[#e5e4e2]/60">
+                                <div className="flex flex-wrap items-center gap-4">
+                                  {(task.scheduled_start || task.start_date) && (
+                                    <span className="flex items-center gap-1">
+                                      <Calendar className="h-3 w-3" />
+                                      Od:{' '}
+                                      {new Date(
+                                        task.scheduled_start || task.start_date!,
+                                      ).toLocaleString('pl-PL', {
+                                        dateStyle: 'short',
+                                        timeStyle: task.scheduled_start ? 'short' : undefined,
+                                      })}
+                                    </span>
+                                  )}
+                                  {(task.scheduled_end || task.end_date) && (
+                                    <span className="flex items-center gap-1">
+                                      <Calendar className="h-3 w-3" />
+                                      Do:{' '}
+                                      {new Date(
+                                        task.scheduled_end || task.end_date!,
+                                      ).toLocaleString('pl-PL', {
+                                        dateStyle: 'short',
+                                        timeStyle: task.scheduled_end ? 'short' : undefined,
+                                      })}
+                                    </span>
+                                  )}
+                                  {task.confirmed_at && (
+                                    <span className="flex items-center gap-1 text-green-300">
+                                      <ShieldCheck className="h-3 w-3" />
+                                      Zaakceptowano{' '}
+                                      {new Date(task.confirmed_at).toLocaleString('pl-PL')}
+                                      {task.confirmed_by_name ? ` · ${task.confirmed_by_name}` : ''}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingTask(task)}
+                                    className="flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 font-medium text-[#e5e4e2]/70 hover:bg-white/5"
+                                  >
+                                    <Pencil className="h-3.5 w-3.5" /> Edytuj
+                                  </button>
+                                  <button data-crm-action="secondary"
+                                    type="button"
+                                    onClick={() => sendGuidelines(task)}
+                                    disabled={sendingTaskId === task.id}
+                                    className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 px-3 py-2 font-medium text-[#d3bb73] hover:bg-[#d3bb73]/10 disabled:opacity-50"
+                                  >
+                                    <Send className="h-3.5 w-3.5" />
+                                    {sendingTaskId === task.id
+                                      ? 'Wysyłanie...'
+                                      : task.guidelines_status === 'sent'
+                                        ? 'Wyślij ponownie'
+                                        : 'Wyślij wytyczne'}
+                                  </button>
+                                </div>
+                              </div>
                             </div>
-                            <div className="flex items-center gap-2">
-                              <button
-                                type="button"
-                                onClick={() => setEditingTask(task)}
-                                className="flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 font-medium text-[#e5e4e2]/70 hover:bg-white/5"
-                              >
-                                <Pencil className="h-3.5 w-3.5" /> Edytuj
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => sendGuidelines(task)}
-                                disabled={sendingTaskId === task.id}
-                                className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 px-3 py-2 font-medium text-[#d3bb73] hover:bg-[#d3bb73]/10 disabled:opacity-50"
-                              >
-                                <Send className="h-3.5 w-3.5" />
-                                {sendingTaskId === task.id
-                                  ? 'Wysyłanie...'
-                                  : task.guidelines_status === 'sent'
-                                    ? 'Wyślij ponownie'
-                                    : 'Wyślij wytyczne'}
-                              </button>
-                            </div>
-                          </div>
+                          </details>
                         </div>
                       ))}
                     </div>
@@ -827,21 +934,34 @@ function AddTaskModal({
 }) {
   const { showSnackbar } = useSnackbar();
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+  const generatingRef = useRef(false);
+  const [generating, setGenerating] = useState(false);
+  const [showGenerator, setShowGenerator] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [aiError, setAiError] = useState('');
+  const [aiSource, setAiSource] = useState('');
+  const modalRef = useRef<HTMLDivElement>(null);
+  const [submitted, setSubmitted] = useState(false);
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [providerMode, setProviderMode] = useState<'existing' | 'quick'>('existing');
   const [catalogServices, setCatalogServices] = useState<SubcontractorCatalogService[]>([]);
   const [servicesLoading, setServicesLoading] = useState(false);
   const [quickProvider, setQuickProvider] = useState({
     company_name: '',
+    nip: '',
     contact_person: '',
     email: '',
     phone: '',
     entity_type: 'individual' as 'company' | 'individual',
     is_registered_business: false,
   });
-  const toLocalDateTime = (value?: string | null) => value
-    ? new Date(new Date(value).getTime() - new Date(value).getTimezoneOffset() * 60000)
-        .toISOString().slice(0, 16)
-    : '';
+  const toLocalDateTime = (value?: string | null) =>
+    value
+      ? new Date(new Date(value).getTime() - new Date(value).getTimezoneOffset() * 60000)
+          .toISOString()
+          .slice(0, 16)
+      : '';
   const [formData, setFormData] = useState({
     subcontractor_id: initialTask?.subcontractor_id || '',
     service_catalog_id: initialTask?.service_catalog_id || '',
@@ -875,6 +995,35 @@ function AddTaskModal({
     total_value: 0,
     contract_type: 'project' as 'frame' | 'project',
   });
+
+  const getErrors = () =>
+    collectValidationErrors(subcontractorTaskSchema, {
+      ...formData,
+      providerMode,
+      nip: providerMode === 'quick' ? quickProvider.nip : '',
+      company_name: providerMode === 'quick' ? quickProvider.company_name : '',
+      email: providerMode === 'quick' ? quickProvider.email : '',
+      phone: providerMode === 'quick' ? quickProvider.phone : '',
+      createContract: !initialTask && createContract,
+      contractFile,
+      contract_value: createContract ? contractData.total_value : 0,
+    });
+  useEffect(() => {
+    if (submitted) setFormErrors(getErrors());
+  }, [
+    submitted,
+    formData,
+    quickProvider,
+    providerMode,
+    createContract,
+    contractFile,
+    contractData,
+  ]);
+
+  const subcontractorOptions = useMemo(
+    () => subcontractors.map(subcontractorOption),
+    [subcontractors],
+  );
 
   const selectedSubcontractor = subcontractors.find((s) => s.id === formData.subcontractor_id);
 
@@ -931,37 +1080,91 @@ function AddTaskModal({
         ...prev,
         hourly_rate:
           prev.payment_type === 'hourly' && prev.hourly_rate === 0
-            ? selectedSubcontractor.hourly_rate
+            ? (selectedSubcontractor.hourly_rate ?? 0)
             : prev.hourly_rate,
-        settlement_type:
-          selectedSubcontractor.default_settlement_type || prev.settlement_type,
-        payment_method:
-          selectedSubcontractor.preferred_payment_method || prev.payment_method,
+        settlement_type: selectedSubcontractor.default_settlement_type || prev.settlement_type,
+        payment_method: selectedSubcontractor.preferred_payment_method || prev.payment_method,
       }));
     }
   }, [selectedSubcontractor, formData.payment_type]);
 
+  const generateGuidelines = async () => {
+    if (generatingRef.current || savingRef.current) return;
+    if (!formData.task_name.trim()) {
+      setAiError('Najpierw podaj nazwę zlecenia, aby AI określiło obowiązki tego podwykonawcy.');
+      return;
+    }
+    generatingRef.current = true;
+    setGenerating(true);
+    setAiError('');
+    try {
+      const { data, error } = await supabase.functions.invoke('generate-subcontractor-guidelines', {
+        body: {
+          eventId,
+          prompt: aiPrompt,
+          taskName: formData.task_name,
+          scopeOfWork: formData.scope_of_work,
+          deliverables: formData.deliverables,
+          guidelines: formData.guidelines,
+          startsAt: formData.scheduled_start,
+          endsAt: formData.scheduled_end,
+        },
+      });
+      if (error)
+        throw new Error(
+          await getFunctionErrorMessage(
+            error,
+            'Nie udało się wygenerować wytycznych. Spróbuj ponownie.',
+          ),
+        );
+      if (data?.error) throw new Error(data.error);
+      const draft = data?.draft;
+      for (const [field, max] of Object.entries({
+        scope_of_work: 6000,
+        deliverables: 4000,
+        guidelines: 6000,
+      })) {
+        if (typeof draft?.[field] !== 'string' || !draft[field].trim() || draft[field].length > max)
+          throw new Error('Generator zwrócił nieprawidłową treść. Spróbuj ponownie.');
+      }
+      setFormData((prev) => ({
+        ...prev,
+        scope_of_work: draft.scope_of_work,
+        deliverables: draft.deliverables,
+        guidelines: draft.guidelines,
+      }));
+      setAiSource(
+        (data.sourceOffers || []).map((offer: { name: string }) => offer.name).join(', ') ||
+          'Dane wydarzenia, zlecenie i dodatkowe wskazówki',
+      );
+      setShowGenerator(false);
+      showSnackbar(
+        'Uzupełniono zakres, oczekiwany rezultat i wytyczne. Sprawdź treść przed zapisaniem i wysłaniem.',
+        'success',
+      );
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : 'Nie udało się wygenerować wytycznych.');
+    } finally {
+      generatingRef.current = false;
+      setGenerating(false);
+    }
+  };
+
   const handleSubmit = async () => {
-    if (
-      (providerMode === 'existing' && !formData.subcontractor_id) ||
-      (providerMode === 'quick' && !quickProvider.company_name) ||
-      !formData.task_name
-    ) {
-      showSnackbar('Wybierz lub dodaj podwykonawcę i podaj nazwę zlecenia', 'warning');
+    if (savingRef.current || generatingRef.current) return;
+    setSubmitted(true);
+    const errors = getErrors();
+    setFormErrors(errors);
+    if (Object.keys(errors).length) {
+      showSnackbar(Object.values(errors)[0], 'warning');
+      requestAnimationFrame(() => {
+        const field = modalRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]');
+        field?.focus({ preventScroll: true });
+        field?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      });
       return;
     }
-    if (formData.scheduled_start && formData.scheduled_end && formData.scheduled_end <= formData.scheduled_start) {
-      showSnackbar('Termin zakończenia musi być późniejszy niż rozpoczęcia', 'warning');
-      return;
-    }
-    if (!initialTask && createContract && !contractFile) {
-      showSnackbar('Dodaj plik umowy podwykonawcy', 'warning');
-      return;
-    }
-    if (contractFile && contractFile.size > 15 * 1024 * 1024) {
-      showSnackbar('Plik umowy może mieć maksymalnie 15 MB', 'warning');
-      return;
-    }
+    savingRef.current = true;
 
     try {
       setSaving(true);
@@ -976,16 +1179,17 @@ function AddTaskModal({
         const { data: createdProvider, error: providerError } = await supabase
           .from('subcontractors')
           .insert({
-            company_name: quickProvider.company_name,
+            company_name: quickProvider.company_name.trim(),
+            nip: formData.settlement_type.startsWith('invoice') ? quickProvider.nip.replace(/[\s-]/g, '') : null,
             contact_person: quickProvider.contact_person || null,
-            email: quickProvider.email || null,
+            email: quickProvider.email.trim() || null,
             phone: quickProvider.phone || null,
             entity_type: quickProvider.entity_type,
             is_registered_business: quickProvider.is_registered_business,
             default_settlement_type: formData.settlement_type,
             preferred_payment_method: formData.payment_method,
-            hourly_rate: formData.hourly_rate,
-            specialization: [],
+            hourly_rate: formData.payment_type === 'fixed' ? 0 : formData.hourly_rate,
+            specialization: [formData.task_name.trim()],
             status: 'active',
           })
           .select('id, contact_person, email, phone')
@@ -997,30 +1201,35 @@ function AddTaskModal({
         contactPhone = createdProvider.phone;
       }
 
-      const calculatedCost = formData.payment_type === 'fixed'
-        ? formData.fixed_price
-        : formData.payment_type === 'hourly'
-          ? formData.estimated_hours * formData.hourly_rate
-          : formData.fixed_price + formData.estimated_hours * formData.hourly_rate;
+      const calculatedCost =
+        formData.payment_type === 'fixed'
+          ? formData.fixed_price
+          : formData.payment_type === 'hourly'
+            ? formData.estimated_hours * formData.hourly_rate
+            : formData.fixed_price + formData.estimated_hours * formData.hourly_rate;
       const taskPayload = {
         event_id: eventId,
         subcontractor_id: subcontractorId,
         service_catalog_id: formData.service_catalog_id || null,
-        task_name: formData.task_name,
+        task_name: formData.task_name.trim(),
         description: formData.description || null,
         scope_of_work: formData.scope_of_work || formData.description || null,
         deliverables: formData.deliverables || null,
         guidelines: formData.guidelines || null,
         operational_notes: formData.operational_notes || null,
-        scheduled_start: formData.scheduled_start || null,
-        scheduled_end: formData.scheduled_end || null,
+        scheduled_start: formData.scheduled_start
+          ? new Date(formData.scheduled_start).toISOString()
+          : null,
+        scheduled_end: formData.scheduled_end
+          ? new Date(formData.scheduled_end).toISOString()
+          : null,
         start_date: formData.scheduled_start?.slice(0, 10) || formData.start_date || null,
         end_date: formData.scheduled_end?.slice(0, 10) || formData.end_date || null,
         estimated_hours: formData.estimated_hours,
         actual_hours: formData.actual_hours,
         payment_type: formData.payment_type,
-        hourly_rate: formData.hourly_rate,
-        fixed_price: formData.fixed_price,
+        hourly_rate: formData.payment_type === 'fixed' ? 0 : formData.hourly_rate,
+        fixed_price: formData.payment_type === 'hourly' ? 0 : formData.fixed_price,
         agreed_cost: formData.agreed_cost || calculatedCost,
         settlement_type: formData.settlement_type,
         payment_method: formData.payment_method,
@@ -1082,7 +1291,9 @@ function AddTaskModal({
       }
 
       showSnackbar(
-        initialTask ? 'Zlecenie podwykonawcze zostało zaktualizowane' : 'Zlecenie podwykonawcze zostało dodane',
+        initialTask
+          ? 'Zlecenie podwykonawcze zostało zaktualizowane'
+          : 'Zlecenie podwykonawcze zostało dodane',
         'success',
       );
       onSuccess();
@@ -1090,193 +1301,313 @@ function AddTaskModal({
       console.error('Error adding task:', error);
       showSnackbar('Błąd podczas dodawania zadania', 'error');
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/50 p-4">
+    <div
+      ref={modalRef}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Zlecenie podwykonawcy"
+      className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/50 p-4"
+    >
+      <CustomModalLoader
+        show={saving || generating}
+        title={generating ? 'Przygotowywanie wytycznych' : 'Zapisywanie zlecenia'}
+      />
+      <Modal
+        open={showGenerator}
+        title="Wygeneruj wytyczne"
+        onClose={() => {
+          if (!generatingRef.current) setShowGenerator(false);
+        }}
+      >
+        <p className="mb-4 text-sm text-white/60">
+          AI uzupełni zakres obowiązków, oczekiwany rezultat i wytyczne na podstawie wydarzenia,
+          zlecenia i Twoich wskazówek. Jeśli jest zaakceptowana oferta, uwzględni także wybrany
+          pakiet. Oferta nie jest wymagana. Zastąpi treść tych trzech pól — sprawdź ją przed
+          wysłaniem.
+        </p>
+        <label htmlFor="subcontractor-ai-prompt" className="mb-2 block text-sm">
+          Dodatkowe wskazówki (opcjonalnie)
+        </label>
+        <textarea
+          id="subcontractor-ai-prompt"
+          value={aiPrompt}
+          onChange={(e) => setAiPrompt(e.target.value)}
+          maxLength={2000}
+          rows={4}
+          className="w-full rounded-lg border border-white/10 bg-[#250914] p-3 text-white"
+          placeholder="Np. podkreśl wymagania dotyczące punktualności i montażu…"
+        />
+        <p className="mt-1 text-right text-xs text-white/50">{aiPrompt.length}/2000</p>
+        {aiError && (
+          <p role="alert" className="my-3 text-sm text-red-300">
+            {aiError}
+          </p>
+        )}
+        <button
+          type="button"
+          disabled={generating}
+          onClick={generateGuidelines}
+          className="mt-4 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#250914] disabled:opacity-50"
+        >
+          Wygeneruj i uzupełnij
+        </button>
+      </Modal>
       <div className="my-8 max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-xl border border-[#d3bb73]/20 bg-[#0f1119] p-6">
         <div className="mb-6 flex items-center justify-between">
           <h2 className="text-xl font-light text-[#e5e4e2]">
             {initialTask ? 'Edytuj zlecenie podwykonawcze' : 'Dodaj zlecenie podwykonawcze'}
           </h2>
-          <button onClick={onClose} className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]">
+          <button
+            onClick={() => {
+              if (!savingRef.current && !generatingRef.current) onClose();
+            }}
+            className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]"
+          >
             <X className="h-5 w-5" />
           </button>
         </div>
 
         <div className="space-y-6">
-          {!initialTask && <div className="grid grid-cols-2 gap-2 rounded-lg bg-[#1c1f33] p-1">
-            <button
-              type="button"
-              onClick={() => setProviderMode('existing')}
-              className={`rounded-md px-3 py-2 text-sm ${providerMode === 'existing' ? 'bg-[#d3bb73] text-[#1c1f33]' : 'text-[#e5e4e2]/70'}`}
-            >
-              Z bazy
-            </button>
-            <button
-              type="button"
-              onClick={() => setProviderMode('quick')}
-              className={`flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm ${providerMode === 'quick' ? 'bg-[#d3bb73] text-[#1c1f33]' : 'text-[#e5e4e2]/70'}`}
-            >
-              <UserPlus className="h-4 w-4" /> Jednorazowy / nowy
-            </button>
-          </div>}
+          {!initialTask && (
+            <div className="grid grid-cols-2 gap-2 rounded-lg bg-[#1c1f33] p-1">
+              <button
+                type="button"
+                onClick={() => setProviderMode('existing')}
+                className={`rounded-md px-3 py-2 text-sm ${providerMode === 'existing' ? 'bg-[#d3bb73] text-[#1c1f33]' : 'text-[#e5e4e2]/70'}`}
+              >
+                Z bazy
+              </button>
+              <button
+                type="button"
+                onClick={() => setProviderMode('quick')}
+                className={`flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm ${providerMode === 'quick' ? 'bg-[#d3bb73] text-[#1c1f33]' : 'text-[#e5e4e2]/70'}`}
+              >
+                <UserPlus className="h-4 w-4" /> Jednorazowy / nowy
+              </button>
+            </div>
+          )}
 
           {/* Wybór podwykonawcy */}
           {providerMode === 'existing' ? (
-          <div className="space-y-4">
-            <div>
-            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Podwykonawca *</label>
-            <select
-              value={formData.subcontractor_id}
-              onChange={(e) =>
-                setFormData({
-                  ...formData,
-                  subcontractor_id: e.target.value,
-                  service_catalog_id: '',
-                })
-              }
-              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
-            >
-              <option value="">Wybierz podwykonawcę...</option>
-              {subcontractors.map((sub) => (
-                <option key={sub.id} value={sub.id}>
-                  {sub.company_name} {sub.hourly_rate > 0 && `(${sub.hourly_rate} zł/h)`}
-                </option>
-              ))}
-            </select>
-            </div>
-
-            {formData.subcontractor_id && (
+            <div className="space-y-4">
               <div>
-                <label className="mb-2 block text-sm text-[#e5e4e2]/60">
-                  Usługa podwykonawcy
-                </label>
-                <select
-                  value={formData.service_catalog_id}
-                  onChange={(event) => handleServiceSelect(event.target.value)}
-                  disabled={servicesLoading}
-                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none disabled:opacity-60"
-                >
-                  <option value="">
-                    {servicesLoading
-                      ? 'Ładowanie usług...'
-                      : 'Inna / niezdefiniowana usługa'}
-                  </option>
-                  {catalogServices.map((service) => (
-                    <option key={service.id} value={service.id}>
-                      {service.name}
-                      {service.unit_price != null
-                        ? ` — ${Number(service.unit_price).toLocaleString('pl-PL')} zł/${service.unit || 'szt.'}`
-                        : ''}
-                    </option>
-                  ))}
-                </select>
-                {!servicesLoading && catalogServices.length === 0 && (
-                  <p className="mt-2 text-xs text-[#e5e4e2]/45">
-                    Ten podwykonawca nie ma jeszcze zdefiniowanych usług. Zlecenie zostanie zapisane
-                    jako usługa niezdefiniowana.
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Podwykonawca *</label>
+                <SearchCombobox
+                  name="subcontractor_id"
+                  ariaLabel="Podwykonawca"
+                  value={formData.subcontractor_id}
+                  options={subcontractorOptions}
+                  filterOption={matchesSubcontractor}
+                  onChange={(id) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      subcontractor_id: id,
+                      service_catalog_id: '',
+                    }))
+                  }
+                  placeholder="Wyszukaj po nazwie, aliasie lub telefonie…"
+                  emptyLabel="Nie znaleziono podwykonawcy"
+                  disabled={saving || generating}
+                  error={Boolean(formErrors.subcontractor_id)}
+                  describedBy={
+                    formErrors.subcontractor_id ? 'subcontractor-search-error' : undefined
+                  }
+                />
+                {formErrors.subcontractor_id && (
+                  <p id="subcontractor-search-error" className="mt-1 text-sm text-red-400">
+                    {formErrors.subcontractor_id}
                   </p>
                 )}
               </div>
-            )}
-          </div>
+
+              {formData.subcontractor_id && (
+                <div>
+                  <label className="mb-2 block text-sm text-[#e5e4e2]/60">
+                    Usługa podwykonawcy
+                  </label>
+                  <select
+                    value={formData.service_catalog_id}
+                    onChange={(event) => handleServiceSelect(event.target.value)}
+                    disabled={servicesLoading}
+                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none disabled:opacity-60"
+                  >
+                    <option value="">
+                      {servicesLoading ? 'Ładowanie usług...' : 'Inna / niezdefiniowana usługa'}
+                    </option>
+                    {catalogServices.map((service) => (
+                      <option key={service.id} value={service.id}>
+                        {service.name}
+                        {service.unit_price != null
+                          ? ` — ${Number(service.unit_price).toLocaleString('pl-PL')} zł/${service.unit || 'szt.'}`
+                          : ''}
+                      </option>
+                    ))}
+                  </select>
+                  {!servicesLoading && catalogServices.length === 0 && (
+                    <p className="mt-2 text-xs text-[#e5e4e2]/45">
+                      Ten podwykonawca nie ma jeszcze zdefiniowanych usług. Zlecenie zostanie
+                      zapisane jako usługa niezdefiniowana.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
           ) : (
             <div className="space-y-4 rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33]/50 p-4">
               <div className="grid grid-cols-2 gap-3">
                 <button
                   type="button"
-                  onClick={() => setQuickProvider({ ...quickProvider, entity_type: 'individual', is_registered_business: false })}
+                  onClick={() =>
+                    setQuickProvider({
+                      ...quickProvider,
+                      entity_type: 'individual',
+                      is_registered_business: false,
+                    })
+                  }
                   className={`rounded-lg border px-3 py-2 text-sm ${quickProvider.entity_type === 'individual' ? 'border-[#d3bb73] text-[#d3bb73]' : 'border-white/10 text-[#e5e4e2]/60'}`}
                 >
                   Osoba prywatna
                 </button>
                 <button
                   type="button"
-                  onClick={() => setQuickProvider({ ...quickProvider, entity_type: 'company', is_registered_business: true })}
+                  onClick={() =>
+                    setQuickProvider({
+                      ...quickProvider,
+                      entity_type: 'company',
+                      is_registered_business: true,
+                    })
+                  }
                   className={`rounded-lg border px-3 py-2 text-sm ${quickProvider.entity_type === 'company' ? 'border-[#d3bb73] text-[#d3bb73]' : 'border-white/10 text-[#e5e4e2]/60'}`}
                 >
                   Firma / działalność
                 </button>
               </div>
-              <input
-                value={quickProvider.company_name}
-                onChange={(e) => setQuickProvider({ ...quickProvider, company_name: e.target.value })}
-                placeholder={quickProvider.entity_type === 'individual' ? 'Imię i nazwisko *' : 'Nazwa firmy *'}
-                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
-              />
+              {formData.settlement_type.startsWith('invoice') && <ContactValidationField field="nip" error={formErrors.nip}><input aria-label="NIP podwykonawcy" value={quickProvider.nip} onChange={e=>setQuickProvider({...quickProvider,nip:e.target.value})} placeholder="NIP do faktury *" className="w-full rounded-lg border border-white/10 bg-[#250914] px-4 py-2" /></ContactValidationField>}
+              {formData.settlement_type === 'civil_contract' && <p className="text-sm text-[#d3bb73]">Umowa zlecenie wymaga pełnego kreatora danych i oświadczeń. <a href="/crm/subcontractors/new" target="_blank" rel="noopener noreferrer" className="underline">Dodaj podwykonawcę i przygotuj umowę</a>, następnie wybierz go z bazy.</p>}
+              <ContactValidationField field="company_name" error={formErrors.company_name}>
+                <input
+                  value={quickProvider.company_name}
+                  onChange={(e) =>
+                    setQuickProvider({ ...quickProvider, company_name: e.target.value })
+                  }
+                  placeholder={
+                    quickProvider.entity_type === 'individual'
+                      ? 'Imię i nazwisko *'
+                      : 'Nazwa firmy *'
+                  }
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
+                />
+              </ContactValidationField>
               {quickProvider.entity_type === 'company' && (
                 <input
                   value={quickProvider.contact_person}
-                  onChange={(e) => setQuickProvider({ ...quickProvider, contact_person: e.target.value })}
+                  onChange={(e) =>
+                    setQuickProvider({ ...quickProvider, contact_person: e.target.value })
+                  }
                   placeholder="Osoba kontaktowa"
                   className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
                 />
               )}
               <div className="grid gap-4 sm:grid-cols-2">
-                <input
-                  type="email"
-                  value={quickProvider.email}
-                  onChange={(e) => setQuickProvider({ ...quickProvider, email: e.target.value })}
-                  placeholder="E-mail (potrzebny do potwierdzeń)"
-                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
-                />
-                <input
-                  value={quickProvider.phone}
-                  onChange={(e) => setQuickProvider({ ...quickProvider, phone: e.target.value })}
-                  placeholder="Telefon"
-                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
-                />
+                <ContactValidationField field="email" error={formErrors.email}>
+                  <input
+                    type="email"
+                    value={quickProvider.email}
+                    onChange={(e) => setQuickProvider({ ...quickProvider, email: e.target.value })}
+                    placeholder="E-mail (potrzebny do potwierdzeń)"
+                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
+                  />
+                </ContactValidationField>
+                <ContactValidationField field="phone" error={formErrors.phone}>
+                  <input
+                    value={quickProvider.phone}
+                    onChange={(e) => setQuickProvider({ ...quickProvider, phone: e.target.value })}
+                    placeholder="Telefon"
+                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
+                  />
+                </ContactValidationField>
               </div>
             </div>
           )}
 
+          <div className="rounded-lg bg-[#46172b]/40 p-4">
+            <button
+              type="button"
+              disabled={saving || generating}
+              onClick={() => {
+                setAiError('');
+                setShowGenerator(true);
+              }}
+              className="rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#250914] disabled:opacity-50"
+            >
+              Wygeneruj wytyczne
+            </button>
+            <p className="mt-2 text-xs text-white/60">
+              Zakres, oczekiwany rezultat i wytyczne trafią do e-maila wysłanego przyciskiem „Wyślij
+              wytyczne” po zapisaniu zlecenia.
+            </p>
+            {aiSource && <p className="mt-2 text-xs text-[#d3bb73]">Źródło: {aiSource}</p>}
+          </div>
           {/* Nazwa zadania */}
           <div>
             <label className="mb-2 block text-sm text-[#e5e4e2]/60">Nazwa zadania *</label>
-            <input
-              type="text"
-              value={formData.task_name}
-              onChange={(e) => setFormData({ ...formData, task_name: e.target.value })}
-              placeholder="np. Obsługa nagłośnienia"
-              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
-            />
+            <ContactValidationField field="task_name" error={formErrors.task_name}>
+              <input
+                type="text"
+                value={formData.task_name}
+                onChange={(e) => setFormData({ ...formData, task_name: e.target.value })}
+                placeholder="np. Obsługa nagłośnienia"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+              />
+            </ContactValidationField>
           </div>
 
           {/* Zakres i wytyczne */}
           <div>
             <label className="mb-2 block text-sm text-[#e5e4e2]/60">Zakres obowiązków</label>
-            <textarea
-              value={formData.scope_of_work}
-              onChange={(e) => setFormData({ ...formData, scope_of_work: e.target.value })}
-              rows={3}
-              placeholder="Co dokładnie ma wykonać podwykonawca?"
-              className="w-full resize-y rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
-            />
+            <ContactValidationField field="scope_of_work" error={formErrors.scope_of_work}>
+              <textarea
+                value={formData.scope_of_work}
+                onChange={(e) => setFormData({ ...formData, scope_of_work: e.target.value })}
+                rows={3}
+                placeholder="Co dokładnie ma wykonać podwykonawca?"
+                className="w-full resize-y rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+              />
+            </ContactValidationField>
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
             <div>
               <label className="mb-2 block text-sm text-[#e5e4e2]/60">Oczekiwany rezultat</label>
-              <textarea
-                value={formData.deliverables}
-                onChange={(e) => setFormData({ ...formData, deliverables: e.target.value })}
-                rows={3}
-                placeholder="Co ma zostać dostarczone i w jakim standardzie?"
-                className="w-full resize-y rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
-              />
+              <ContactValidationField field="deliverables" error={formErrors.deliverables}>
+                <textarea
+                  value={formData.deliverables}
+                  onChange={(e) => setFormData({ ...formData, deliverables: e.target.value })}
+                  rows={3}
+                  placeholder="Co ma zostać dostarczone i w jakim standardzie?"
+                  className="w-full resize-y rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                />
+              </ContactValidationField>
             </div>
             <div>
-              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Wytyczne wysyłane e-mailem</label>
-              <textarea
-                value={formData.guidelines}
-                onChange={(e) => setFormData({ ...formData, guidelines: e.target.value })}
-                rows={3}
-                placeholder="Kontakt na miejscu, dress code, godzina gotowości, zasady techniczne..."
-                className="w-full resize-y rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
-              />
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">
+                Wytyczne wysyłane e-mailem
+              </label>
+              <ContactValidationField field="guidelines" error={formErrors.guidelines}>
+                <textarea
+                  value={formData.guidelines}
+                  onChange={(e) => setFormData({ ...formData, guidelines: e.target.value })}
+                  rows={3}
+                  placeholder="Kontakt na miejscu, dress code, godzina gotowości, zasady techniczne..."
+                  className="w-full resize-y rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                />
+              </ContactValidationField>
             </div>
           </div>
 
@@ -1295,21 +1626,25 @@ function AddTaskModal({
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="mb-2 block text-sm text-[#e5e4e2]/60">Rozpoczęcie pracy</label>
-              <input
-                type="datetime-local"
-                value={formData.scheduled_start}
-                onChange={(e) => setFormData({ ...formData, scheduled_start: e.target.value })}
-                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
-              />
+              <ContactValidationField field="scheduled_start" error={formErrors.scheduled_start}>
+                <input
+                  type="datetime-local"
+                  value={formData.scheduled_start}
+                  onChange={(e) => setFormData({ ...formData, scheduled_start: e.target.value })}
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                />
+              </ContactValidationField>
             </div>
             <div>
               <label className="mb-2 block text-sm text-[#e5e4e2]/60">Zakończenie pracy</label>
-              <input
-                type="datetime-local"
-                value={formData.scheduled_end}
-                onChange={(e) => setFormData({ ...formData, scheduled_end: e.target.value })}
-                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
-              />
+              <ContactValidationField field="scheduled_end" error={formErrors.scheduled_end}>
+                <input
+                  type="datetime-local"
+                  value={formData.scheduled_end}
+                  onChange={(e) => setFormData({ ...formData, scheduled_end: e.target.value })}
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                />
+              </ContactValidationField>
             </div>
           </div>
 
@@ -1318,7 +1653,9 @@ function AddTaskModal({
               <label className="mb-2 block text-sm text-[#e5e4e2]/60">Dokument rozliczeniowy</label>
               <select
                 value={formData.settlement_type}
-                onChange={(e) => setFormData({ ...formData, settlement_type: e.target.value as SettlementType })}
+                onChange={(e) =>
+                  setFormData({ ...formData, settlement_type: e.target.value as SettlementType })
+                }
                 className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2]"
               >
                 <option value="invoice_vat">Faktura VAT</option>
@@ -1332,7 +1669,9 @@ function AddTaskModal({
               <label className="mb-2 block text-sm text-[#e5e4e2]/60">Sposób płatności</label>
               <select
                 value={formData.payment_method}
-                onChange={(e) => setFormData({ ...formData, payment_method: e.target.value as PaymentMethod })}
+                onChange={(e) =>
+                  setFormData({ ...formData, payment_method: e.target.value as PaymentMethod })
+                }
                 className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2]"
               >
                 <option value="transfer">Przelew</option>
@@ -1367,53 +1706,61 @@ function AddTaskModal({
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="mb-2 block text-sm text-[#e5e4e2]/60">Szacowane godziny</label>
-              <input
-                type="number"
-                value={formData.estimated_hours}
-                onChange={(e) =>
-                  setFormData({ ...formData, estimated_hours: parseFloat(e.target.value) || 0 })
-                }
-                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
-              />
+              <ContactValidationField field="estimated_hours" error={formErrors.estimated_hours}>
+                <input
+                  type="number"
+                  value={formData.estimated_hours}
+                  onChange={(e) =>
+                    setFormData({ ...formData, estimated_hours: parseFloat(e.target.value) || 0 })
+                  }
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                />
+              </ContactValidationField>
             </div>
             <div>
               <label className="mb-2 block text-sm text-[#e5e4e2]/60">Rzeczywiste godziny</label>
-              <input
-                type="number"
-                value={formData.actual_hours}
-                onChange={(e) =>
-                  setFormData({ ...formData, actual_hours: parseFloat(e.target.value) || 0 })
-                }
-                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
-              />
+              <ContactValidationField field="actual_hours" error={formErrors.actual_hours}>
+                <input
+                  type="number"
+                  value={formData.actual_hours}
+                  onChange={(e) =>
+                    setFormData({ ...formData, actual_hours: parseFloat(e.target.value) || 0 })
+                  }
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                />
+              </ContactValidationField>
             </div>
           </div>
 
           {(formData.payment_type === 'hourly' || formData.payment_type === 'mixed') && (
             <div>
               <label className="mb-2 block text-sm text-[#e5e4e2]/60">Stawka godzinowa (zł)</label>
-              <input
-                type="number"
-                value={formData.hourly_rate}
-                onChange={(e) =>
-                  setFormData({ ...formData, hourly_rate: parseFloat(e.target.value) || 0 })
-                }
-                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
-              />
+              <ContactValidationField field="hourly_rate" error={formErrors.hourly_rate}>
+                <input
+                  type="number"
+                  value={formData.hourly_rate}
+                  onChange={(e) =>
+                    setFormData({ ...formData, hourly_rate: parseFloat(e.target.value) || 0 })
+                  }
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                />
+              </ContactValidationField>
             </div>
           )}
 
           {(formData.payment_type === 'fixed' || formData.payment_type === 'mixed') && (
             <div>
               <label className="mb-2 block text-sm text-[#e5e4e2]/60">Cena ryczałtowa (zł)</label>
-              <input
-                type="number"
-                value={formData.fixed_price}
-                onChange={(e) =>
-                  setFormData({ ...formData, fixed_price: parseFloat(e.target.value) || 0 })
-                }
-                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
-              />
+              <ContactValidationField field="fixed_price" error={formErrors.fixed_price}>
+                <input
+                  type="number"
+                  value={formData.fixed_price}
+                  onChange={(e) =>
+                    setFormData({ ...formData, fixed_price: parseFloat(e.target.value) || 0 })
+                  }
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                />
+              </ContactValidationField>
             </div>
           )}
 
@@ -1421,15 +1768,19 @@ function AddTaskModal({
             <label className="mb-2 block text-sm text-[#e5e4e2]/60">
               Uzgodniony koszt do prognozy wydarzenia (zł)
             </label>
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              value={formData.agreed_cost}
-              onChange={(e) => setFormData({ ...formData, agreed_cost: parseFloat(e.target.value) || 0 })}
-              placeholder="Kwota, którą pokażemy w przyszłej rentowności wydarzenia"
-              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
-            />
+            <ContactValidationField field="agreed_cost" error={formErrors.agreed_cost}>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={formData.agreed_cost}
+                onChange={(e) =>
+                  setFormData({ ...formData, agreed_cost: parseFloat(e.target.value) || 0 })
+                }
+                placeholder="Kwota, którą pokażemy w przyszłej rentowności wydarzenia"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+              />
+            </ContactValidationField>
           </div>
 
           {/* Statusy */}
@@ -1462,102 +1813,180 @@ function AddTaskModal({
           </div>
 
           {/* Opcjonalna umowa */}
-          {!initialTask && <div className="border-t border-[#d3bb73]/10 pt-6">
-            <label className="mb-4 flex cursor-pointer items-center gap-2 text-sm text-[#e5e4e2]">
-              <input
-                type="checkbox"
-                checked={createContract}
-                onChange={(e) => {
-                  setCreateContract(e.target.checked);
-                  if (!e.target.checked) setContractFile(null);
-                }}
-                className="h-4 w-4 rounded border-[#d3bb73]/20 bg-[#1c1f33] text-[#d3bb73]"
-              />
-              Dodaj umowę otrzymaną od podwykonawcy
-            </label>
+          {!initialTask && (
+            <div className="border-t border-[#d3bb73]/10 pt-6">
+              <label className="mb-4 flex cursor-pointer items-center gap-2 text-sm text-[#e5e4e2]">
+                <input
+                  type="checkbox"
+                  checked={createContract}
+                  onChange={(e) => {
+                    setCreateContract(e.target.checked);
+                    if (!e.target.checked) setContractFile(null);
+                  }}
+                  className="h-4 w-4 rounded border-[#d3bb73]/20 bg-[#1c1f33] text-[#d3bb73]"
+                />
+                Dodaj umowę otrzymaną od podwykonawcy
+              </label>
 
-            {createContract && (
-              <div className="space-y-4 border-l-2 border-[#d3bb73]/20 pl-6">
-                <div>
-                  <label className="mb-2 block text-sm text-[#e5e4e2]/60">Plik umowy *</label>
-                  <FileDropzone file={contractFile} onChange={setContractFile} />
-                  <p className="mt-2 text-xs text-[#e5e4e2]/45">
-                    Przeciągnij PDF albo skan umowy. Plik trafi także do folderu „Umowy z podwykonawcami” w wydarzeniu.
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
+              {createContract && (
+                <div className="space-y-4 border-l-2 border-[#d3bb73]/20 pl-6">
                   <div>
-                    <label className="mb-2 block text-sm text-[#e5e4e2]/60">Numer umowy (opcjonalnie)</label>
+                    <label className="mb-2 block text-sm text-[#e5e4e2]/60">Plik umowy *</label>
+                    <div
+                      tabIndex={-1}
+                      data-validation-field="contractFile"
+                      aria-invalid={Boolean(formErrors.contractFile)}
+                      aria-describedby="subcontractor-contract-error"
+                    >
+                      <FileDropzone file={contractFile} onChange={setContractFile} />
+                      {formErrors.contractFile && (
+                        <p id="subcontractor-contract-error" className="mt-1 text-sm text-red-400">
+                          {formErrors.contractFile}
+                        </p>
+                      )}
+                    </div>
+                    <p className="mt-2 text-xs text-[#e5e4e2]/45">
+                      Przeciągnij PDF albo skan umowy. Plik trafi także do folderu „Umowy z
+                      podwykonawcami” w wydarzeniu.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="mb-2 block text-sm text-[#e5e4e2]/60">
+                        Numer umowy (opcjonalnie)
+                      </label>
+                      <input
+                        type="text"
+                        value={contractData.contract_number}
+                        onChange={(e) =>
+                          setContractData({ ...contractData, contract_number: e.target.value })
+                        }
+                        placeholder="np. UMW/2025/001"
+                        className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-sm text-[#e5e4e2]/60">Typ umowy</label>
+                      <select
+                        value={contractData.contract_type}
+                        onChange={(e) =>
+                          setContractData({
+                            ...contractData,
+                            contract_type: e.target.value as 'frame' | 'project',
+                          })
+                        }
+                        className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                      >
+                        <option value="project">Projektowa</option>
+                        <option value="frame">Ramowa</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm text-[#e5e4e2]/60">
+                      Tytuł umowy (opcjonalnie)
+                    </label>
                     <input
                       type="text"
-                      value={contractData.contract_number}
-                      onChange={(e) =>
-                        setContractData({ ...contractData, contract_number: e.target.value })
-                      }
-                      placeholder="np. UMW/2025/001"
+                      value={contractData.title}
+                      onChange={(e) => setContractData({ ...contractData, title: e.target.value })}
+                      placeholder="np. Umowa o świadczenie usług nagłośnienia"
                       className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                     />
                   </div>
+
                   <div>
-                    <label className="mb-2 block text-sm text-[#e5e4e2]/60">Typ umowy</label>
-                    <select
-                      value={contractData.contract_type}
-                      onChange={(e) =>
-                        setContractData({
-                          ...contractData,
-                          contract_type: e.target.value as 'frame' | 'project',
-                        })
-                      }
-                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                    <label className="mb-2 block text-sm text-[#e5e4e2]/60">
+                      Wartość umowy (zł)
+                    </label>
+                    <ContactValidationField
+                      field="contract_value"
+                      error={formErrors.contract_value}
                     >
-                      <option value="project">Projektowa</option>
-                      <option value="frame">Ramowa</option>
-                    </select>
+                      <input
+                        type="number"
+                        value={contractData.total_value}
+                        onChange={(e) =>
+                          setContractData({
+                            ...contractData,
+                            total_value: parseFloat(e.target.value) || 0,
+                          })
+                        }
+                        className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                      />
+                    </ContactValidationField>
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm text-[#e5e4e2]/60">Opis umowy</label>
+                    <textarea
+                      value={contractData.description}
+                      onChange={(e) =>
+                        setContractData({ ...contractData, description: e.target.value })
+                      }
+                      rows={2}
+                      className="w-full resize-y rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                    />
                   </div>
                 </div>
-
-                <div>
-                  <label className="mb-2 block text-sm text-[#e5e4e2]/60">Tytuł umowy (opcjonalnie)</label>
-                  <input
-                    type="text"
-                    value={contractData.title}
-                    onChange={(e) => setContractData({ ...contractData, title: e.target.value })}
-                    placeholder="np. Umowa o świadczenie usług nagłośnienia"
-                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-sm text-[#e5e4e2]/60">Wartość umowy (zł)</label>
-                  <input
-                    type="number"
-                    value={contractData.total_value}
-                    onChange={(e) =>
-                      setContractData({
-                        ...contractData,
-                        total_value: parseFloat(e.target.value) || 0,
-                      })
-                    }
-                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-sm text-[#e5e4e2]/60">Opis umowy</label>
-                  <textarea
-                    value={contractData.description}
-                    onChange={(e) =>
-                      setContractData({ ...contractData, description: e.target.value })
-                    }
-                    rows={2}
-                    className="w-full resize-y rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
-                  />
-                </div>
-              </div>
-            )}
-          </div>}
+              )}
+            </div>
+          )}
         </div>
+
+        {Object.keys(formErrors).length > 0 && (
+          <div role="alert" className="mt-6 rounded-lg bg-red-500/10 p-3 text-sm text-red-300">
+            <p className="font-medium">Nie można zapisać zlecenia. Popraw:</p>
+            <ul className="mt-2 space-y-2">
+              {Object.entries(formErrors).map(([name, message]) => (
+                <li key={name}>
+                  <button
+                    type="button"
+                    className="text-left underline decoration-red-300/40 underline-offset-4"
+                    onClick={() => {
+                      const field = Array.from(
+                        modalRef.current?.querySelectorAll<HTMLElement>(
+                          '[name], [data-validation-field]',
+                        ) || [],
+                      ).find(
+                        (element) =>
+                          element.getAttribute('name') === name ||
+                          element.dataset.validationField === name,
+                      );
+                      field?.focus({ preventScroll: true });
+                      field?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }}
+                  >
+                    {(
+                      {
+                        subcontractor_id: 'Podwykonawca',
+                        company_name: 'Nazwa podwykonawcy',
+                        email: 'E-mail',
+                        phone: 'Telefon',
+                        task_name: 'Nazwa zadania',
+                        scope_of_work: 'Zakres obowiązków',
+                        deliverables: 'Oczekiwany rezultat',
+                        guidelines: 'Wytyczne',
+                        scheduled_start: 'Rozpoczęcie',
+                        scheduled_end: 'Zakończenie',
+                        estimated_hours: 'Planowane godziny',
+                        actual_hours: 'Rzeczywiste godziny',
+                        hourly_rate: 'Stawka godzinowa',
+                        fixed_price: 'Kwota ryczałtu',
+                        agreed_cost: 'Uzgodniony koszt',
+                        contract_value: 'Wartość umowy',
+                        contractFile: 'Plik umowy',
+                      } as Record<string, string>
+                    )[name] || 'Formularz'}
+                    : {message}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         <div className="mt-6 flex gap-3">
           <button

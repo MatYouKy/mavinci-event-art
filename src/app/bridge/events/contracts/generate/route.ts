@@ -1,3 +1,5 @@
+import { cookies } from 'next/headers';
+import { createSupabaseServerClient } from '@/lib/supabase/server.app';
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { chromium } from 'playwright';
@@ -64,11 +66,22 @@ async function getOrCreateUmowyFolderId({
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as Body;
-    const { eventId, contractId, pagesHtml, cssText, fileName, createdBy } = body;
+    const { eventId, contractId, pagesHtml, cssText, fileName } = body;
 
     if (!eventId || !contractId || !pagesHtml || !cssText) {
       return NextResponse.json({ error: 'Brak wymaganych danych' }, { status: 400 });
     }
+
+    const userClient = createSupabaseServerClient(cookies());
+    const { data: auth } = await userClient.auth.getUser();
+    if (!auth.user) return NextResponse.json({ error: 'Wymagane logowanie.' }, { status: 401 });
+    const { data: contract, error: accessError } = await userClient.from('contracts')
+      .select('id').eq('id', contractId).eq('event_id', eventId).maybeSingle();
+    const { data: canManage, error: permissionError } = await userClient.rpc('crm_contract_permission', { p_action: 'manage' });
+    if (accessError || !contract || permissionError || !canManage) {
+      return NextResponse.json({ error: 'Nie masz uprawnień do generowania tej umowy.' }, { status: 403 });
+    }
+    const { data: createdBy } = await userClient.rpc('sales_employee_id');
 
     const baseUrl =
       process.env.NEXT_PUBLIC_SITE_URL ||

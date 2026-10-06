@@ -1,6 +1,7 @@
 'use client';
 
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X, CheckCircle, AlertCircle, Info, AlertTriangle } from 'lucide-react';
 
 interface Snackbar {
@@ -18,6 +19,13 @@ const SnackbarContext = createContext<SnackbarContextType | undefined>(undefined
 
 export function SnackbarProvider({ children }: { children: React.ReactNode }) {
   const [snackbars, setSnackbars] = useState<Snackbar[]>([]);
+  const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(null);
+
+  useEffect(() => {
+    // Keep the server and first client render identical; mount the portal only
+    // after hydration instead of branching on document during rendering.
+    setPortalContainer(document.body);
+  }, []);
 
   const showSnackbar = useCallback((
     message: string,
@@ -69,11 +77,12 @@ export function SnackbarProvider({ children }: { children: React.ReactNode }) {
   return (
     <SnackbarContext.Provider value={{ showSnackbar }}>
       {children}
-      <div className="fixed bottom-6 right-6 z-[100] flex flex-col gap-3 max-w-md">
+      {portalContainer && createPortal(<div className="pointer-events-none fixed bottom-6 right-4 z-[10000] flex w-[calc(100%-2rem)] max-w-md flex-col gap-3 sm:right-6">
         {snackbars.map((snackbar, index) => (
           <div
             key={snackbar.id}
-            className={`${getColors(snackbar.type)} rounded-lg shadow-2xl p-4 flex items-center gap-3 min-w-[320px] animate-slide-in-right`}
+            role={snackbar.type === 'error' ? 'alert' : 'status'}
+            className={`${getColors(snackbar.type)} pointer-events-auto rounded-lg shadow-2xl p-4 flex items-center gap-3 animate-slide-in-right`}
             style={{
               animation: 'slideInRight 0.3s ease-out forwards',
               opacity: 0,
@@ -83,6 +92,8 @@ export function SnackbarProvider({ children }: { children: React.ReactNode }) {
             <div className="flex-shrink-0">{getIcon(snackbar.type)}</div>
             <p className="flex-1 text-sm font-medium">{snackbar.message}</p>
             <button
+              type="button"
+              aria-label="Zamknij powiadomienie"
               onClick={() => removeSnackbar(snackbar.id)}
               className="flex-shrink-0 hover:opacity-70 transition-opacity"
             >
@@ -90,7 +101,7 @@ export function SnackbarProvider({ children }: { children: React.ReactNode }) {
             </button>
           </div>
         ))}
-      </div>
+      </div>, portalContainer)}
 
       <style jsx global>{`
         @keyframes slideInRight {

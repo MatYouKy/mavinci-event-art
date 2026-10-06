@@ -3,13 +3,43 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Settings, Lock, Eye, Bell, LayoutGrid, LayoutList, Save, RefreshCw, Shield, Tag, ArrowRight, Mail, Plus, List, Table2, Building2, Key, Ligature as FileSignature, Upload, Volume2, Trash2, Webhook, Database, BarChart3, Workflow, Activity } from 'lucide-react';
+import {
+  Settings,
+  Lock,
+  Eye,
+  Bell,
+  LayoutGrid,
+  LayoutList,
+  Save,
+  RefreshCw,
+  Shield,
+  Tag,
+  ArrowRight,
+  Mail,
+  Plus,
+  List,
+  Table2,
+  Building2,
+  Key,
+  Ligature as FileSignature,
+  Upload,
+  Volume2,
+  Trash2,
+  Webhook,
+  Database,
+  BarChart3,
+  Workflow,
+  Activity,
+  ScanLine,
+} from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import ChangePasswordModal from '@/components/crm/ChangePasswordModal';
 import AddSystemEmailModal from '@/components/crm/AddSystemEmailModal';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import { invalidateSellerSidebarBadge, useSellerSidebarBadge, type SellerSidebarScope } from '@/lib/seller/sidebarBadge';
 import { CalendarSettings } from './calendar-icam/CalendarSettings';
+import OpenAiUsagePanel from './OpenAiUsagePanel';
 import {
   DASHBOARD_WIDGETS,
   DEFAULT_DASHBOARD_RANGE,
@@ -29,6 +59,8 @@ export interface NotificationPreferences {
   push: boolean;
   soundEnabled: boolean;
   customSoundUrl?: string | null;
+  sellerSidebarScope?: SellerSidebarScope;
+  autoStartTaskTimer?: boolean;
   categories: {
     messages: boolean;
     events: boolean;
@@ -84,11 +116,21 @@ export default function SettingsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { showSnackbar } = useSnackbar();
-  const { employee, loading: employeeLoading } = useCurrentEmployee();
+  const { employee, loading: employeeLoading, isAdmin } = useCurrentEmployee();
 
   const [activeTab, setActiveTab] = useState<
     'general' | 'dashboard' | 'password' | 'notifications' | 'system-email' | 'admin'
-  >(searchParams.get('tab') === 'dashboard' ? 'dashboard' : 'general');
+  >(
+    searchParams.get('tab') === 'dashboard'
+      ? 'dashboard'
+      : searchParams.get('tab') === 'admin'
+        ? 'admin'
+        : searchParams.get('tab') === 'notifications'
+          ? 'notifications'
+          : 'general',
+  );
+  const sellerBadge = useSellerSidebarBadge(Boolean(employee) && activeTab === 'notifications');
+  const canChooseSellerBadgeScope = sellerBadge.employeeId === employee?.id && sellerBadge.canChooseScope;
   const [preferences, setPreferences] = useState<Preferences>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -243,6 +285,17 @@ export default function SettingsPage() {
     }));
   };
 
+  const updateSellerSidebarScope = (scope: SellerSidebarScope) => {
+    if (!canChooseSellerBadgeScope) return;
+    setPreferences((prev) => ({
+      ...prev,
+      notifications: {
+        ...((prev.notifications || {}) as NotificationPreferences),
+        sellerSidebarScope: scope,
+      },
+    }));
+  };
+
   const handleSoundUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !employee?.id) return;
@@ -290,10 +343,7 @@ export default function SettingsPage() {
         },
       };
 
-      await supabase
-        .from('employees')
-        .update({ preferences: updatedPrefs })
-        .eq('id', employee.id);
+      await supabase.from('employees').update({ preferences: updatedPrefs }).eq('id', employee.id);
 
       showSnackbar('Dźwięk powiadomień został zaktualizowany', 'success');
     } catch (err) {
@@ -325,10 +375,7 @@ export default function SettingsPage() {
         },
       };
 
-      await supabase
-        .from('employees')
-        .update({ preferences: updatedPrefs })
-        .eq('id', employee.id);
+      await supabase.from('employees').update({ preferences: updatedPrefs }).eq('id', employee.id);
 
       showSnackbar('Przywrócono domyślny dźwięk', 'success');
     } catch (err) {
@@ -375,6 +422,7 @@ export default function SettingsPage() {
       if (error) throw error;
 
       showSnackbar('Ustawienia zostały zapisane', 'success');
+      invalidateSellerSidebarBadge();
     } catch (err) {
       console.error('Error saving preferences:', err);
       showSnackbar('Błąd podczas zapisywania ustawień', 'error');
@@ -395,6 +443,7 @@ export default function SettingsPage() {
       if (error) throw error;
 
       setPreferences({});
+      invalidateSellerSidebarBadge();
       showSnackbar('Ustawienia zostały zresetowane', 'success');
     } catch (err) {
       console.error('Error resetting preferences:', err);
@@ -427,7 +476,7 @@ export default function SettingsPage() {
       </div>
 
       <div className="mb-6 flex gap-4 overflow-x-auto border-b border-[#d3bb73]/10">
-        <button
+        <button data-crm-tab-active={activeTab === 'general'}
           onClick={() => setActiveTab('general')}
           className={`relative px-4 py-3 text-sm font-medium transition-colors ${
             activeTab === 'general' ? 'text-[#d3bb73]' : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
@@ -442,12 +491,10 @@ export default function SettingsPage() {
           )}
         </button>
 
-        <button
+        <button data-crm-tab-active={activeTab === 'dashboard'}
           onClick={() => setActiveTab('dashboard')}
           className={`relative whitespace-nowrap px-4 py-3 text-sm font-medium transition-colors ${
-            activeTab === 'dashboard'
-              ? 'text-[#d3bb73]'
-              : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
+            activeTab === 'dashboard' ? 'text-[#d3bb73]' : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
           }`}
         >
           <div className="flex items-center gap-2">
@@ -459,7 +506,7 @@ export default function SettingsPage() {
           )}
         </button>
 
-        <button
+        <button data-crm-tab-active={activeTab === 'password'}
           onClick={() => setActiveTab('password')}
           className={`relative px-4 py-3 text-sm font-medium transition-colors ${
             activeTab === 'password' ? 'text-[#d3bb73]' : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
@@ -474,7 +521,7 @@ export default function SettingsPage() {
           )}
         </button>
 
-        <button
+        <button data-crm-tab-active={activeTab === 'notifications'}
           onClick={() => setActiveTab('notifications')}
           className={`relative px-4 py-3 text-sm font-medium transition-colors ${
             activeTab === 'notifications'
@@ -492,7 +539,7 @@ export default function SettingsPage() {
         </button>
 
         {employee?.permissions?.includes('admin') && (
-          <button
+          <button data-crm-tab-active={activeTab === 'system-email'}
             onClick={() => setActiveTab('system-email')}
             className={`relative px-4 py-3 text-sm font-medium transition-colors ${
               activeTab === 'system-email'
@@ -510,7 +557,7 @@ export default function SettingsPage() {
           </button>
         )}
         {employee?.permissions?.includes('admin') && (
-          <button
+          <button data-crm-tab-active={activeTab === 'admin'}
             onClick={() => setActiveTab('admin')}
             className={`relative px-4 py-3 text-sm font-medium transition-colors ${
               activeTab === 'admin' ? 'text-[#d3bb73]' : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
@@ -672,7 +719,9 @@ export default function SettingsPage() {
                       />
                     </span>
                     <span>
-                      <span className="block text-sm font-medium text-[#e5e4e2]">{widget.label}</span>
+                      <span className="block text-sm font-medium text-[#e5e4e2]">
+                        {widget.label}
+                      </span>
                       <span className="mt-1 block text-xs leading-5 text-[#e5e4e2]/50">
                         {widget.description}
                       </span>
@@ -739,6 +788,7 @@ export default function SettingsPage() {
 
       {activeTab === 'notifications' && (
         <div className="space-y-6">
+          {isAdmin && employee && <OpenAiUsagePanel key={employee.id} />}
           <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
             <h3 className="mb-4 text-lg font-light text-[#e5e4e2]">Preferencje powiadomień</h3>
             <p className="mb-6 text-sm text-[#e5e4e2]/60">
@@ -746,6 +796,59 @@ export default function SettingsPage() {
             </p>
 
             <div className="space-y-6">
+              <section className="rounded-lg bg-[#0f1119] p-4" aria-label="Licznik powiadomień sprzedawców">
+                <h4 className="text-sm font-medium text-[#e5e4e2]">Sprzedawcy — licznik w menu bocznym</h4>
+                <p className="mt-2 text-xs leading-5 text-[#e5e4e2]/60">
+                  Licznik jest sumą badge na liście sprzedawców: nowych zgłoszeń do decyzji, nieprzeczytanych wiadomości i pozostałych powiadomień.
+                  Odczyt zmniejsza oba liczniki, ale nie zmienia decyzji o ofercie. Przy zerze badge jest ukryty.
+                </p>
+                {sellerBadge.loading ? (
+                  <p className="mt-3 text-xs text-[#e5e4e2]/50">Wczytywanie ustawień licznika…</p>
+                ) : sellerBadge.employeeId !== employee?.id ? (
+                  <p className="mt-3 text-xs text-amber-200">Nie udało się wczytać ustawień licznika. Wymagana jest migracja licznika powiadomień sprzedawców.</p>
+                ) : canChooseSellerBadgeScope ? (
+                  <fieldset className="mt-4 space-y-2">
+                    <legend className="mb-2 text-xs text-[#e5e4e2]/70">Zakres widoczny dla Ciebie jako administratora</legend>
+                    {([
+                      ['mine', 'Tylko moje', 'Nieodczytane sprawy sprzedawców przypisanych do Ciebie jako opiekuna.'],
+                      ['all', 'Wszystkie', 'Nieodczytane przez Ciebie sprawy wszystkich dostępnych sprzedawców. Domyślne ustawienie administratora.'],
+                    ] as const).map(([value, label, description]) => (
+                      <label key={value} className="flex cursor-pointer items-start gap-3 rounded-lg bg-white/[0.03] p-3 hover:bg-white/[0.06]">
+                        <input type="radio" name="seller-sidebar-scope" value={value}
+                          checked={(preferences.notifications?.sellerSidebarScope === 'mine' ? 'mine' : 'all') === value}
+                          onChange={() => updateSellerSidebarScope(value)} disabled={saving}
+                          className="mt-0.5 accent-[#d3bb73]" />
+                        <span><span className="block text-sm text-[#e5e4e2]">{label}</span><span className="mt-1 block text-xs leading-5 text-[#e5e4e2]/50">{description}</span></span>
+                      </label>
+                    ))}
+                    <p className="pt-1 text-xs text-[#e5e4e2]/45">Ten sam zakres obowiązuje w badge na liście i w menu bocznym. Odczyt dotyczy tylko Twojego konta. Wybór nie zmienia odbiorców powiadomień ani dostępu do sprzedawców. Użyj „Zapisz zmiany” poniżej.</p>
+                  </fieldset>
+                ) : (
+                  <p className="mt-3 text-xs text-[#e5e4e2]/60">W obu miejscach widzisz wyłącznie nieodczytane sprawy przypisanych Ci sprzedawców.</p>
+                )}
+              </section>
+
+              {isAdmin && (
+                <section className="rounded-lg bg-[#0f1119] p-4" aria-label="Czas pracy przy zmianie statusu zadania">
+                  <label className="flex cursor-pointer items-start justify-between gap-4">
+                    <span>
+                      <span className="block text-sm font-medium text-[#e5e4e2]">Automatyczny pomiar czasu po przeniesieniu zadania do „W trakcie”</span>
+                      <span className="mt-2 block text-xs leading-5 text-[#e5e4e2]/60">
+                        Wyłącz, jeśli jako administrator przesuwasz zadania, aby nadzorować pracę zespołu.
+                        Przenoszenie kart nie uruchomi wtedy licznika, nie zapyta o jego zatrzymanie i nie będzie blokowane przez inny aktywny pomiar.
+                      </span>
+                    </span>
+                    <input type="checkbox" checked={preferences.notifications?.autoStartTaskTimer ?? true}
+                      onChange={(event) => updateNotificationPreference('autoStartTaskTimer', event.target.checked)}
+                      disabled={saving} className="mt-1 h-4 w-4 shrink-0 accent-[#d3bb73]" />
+                  </label>
+                  <p className="mt-3 text-xs leading-5 text-[#e5e4e2]/45">
+                    Dotyczy Twojego konta na tablicach zadań, zapytań i wydarzeń. Ręczny pomiar czasu pozostaje dostępny.
+                    Wyłączenie nie zatrzymuje już działającego licznika. Użyj „Zapisz zmiany” poniżej.
+                  </p>
+                </section>
+              )}
+
               <div className="space-y-4">
                 <h4 className="text-sm font-medium text-[#e5e4e2]">Kanały powiadomień</h4>
 
@@ -985,7 +1088,7 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {activeTab === 'admin' && (
+      {activeTab === 'admin' && employee?.permissions?.includes('admin') && (
         <div className="space-y-6">
           <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
             <h3 className="mb-4 text-lg font-light text-[#e5e4e2]">Zarządzanie systemem</h3>
@@ -994,6 +1097,18 @@ export default function SettingsPage() {
             </p>
 
             <div className="space-y-3">
+              <button
+                onClick={() => router.push('/crm/settings/compensation')}
+                className="flex w-full items-center justify-between rounded-lg bg-[#351020] p-4 text-left text-[#e5e4e2] hover:bg-[#46172b]"
+              >
+                <div>
+                  <div className="font-medium">Wynagrodzenia i koszty pracy</div>
+                  <div className="text-xs text-[#e5e4e2]/60">
+                    Wspólne parametry CIT, dywidendy, składek i porównania form zatrudnienia
+                  </div>
+                </div>
+                <ArrowRight className="h-5 w-5 text-[#d3bb73]" />
+              </button>
               <button
                 onClick={() => router.push('/crm/settings/system-health')}
                 className="flex w-full items-center justify-between rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-4 transition-colors hover:bg-[#1c1f33]"
@@ -1027,6 +1142,22 @@ export default function SettingsPage() {
               </button>
 
               <button
+                onClick={() => router.push('/crm/settings/scanners')}
+                className="flex w-full items-center justify-between rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-4 transition-colors hover:bg-[#1c1f33]"
+              >
+                <div className="flex items-center gap-3">
+                  <ScanLine className="h-5 w-5 text-[#d3bb73]" />
+                  <div className="text-left">
+                    <div className="font-medium text-[#e5e4e2]">Skanery dokumentów</div>
+                    <div className="text-xs text-[#e5e4e2]/60">
+                      Wykrywanie urządzeń, domyślny skaner i skan testowy
+                    </div>
+                  </div>
+                </div>
+                <ArrowRight className="h-5 w-5 text-[#e5e4e2]/40" />
+              </button>
+
+              <button
                 onClick={() => router.push('/crm/settings/storage')}
                 className="flex w-full items-center justify-between rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-4 transition-colors hover:bg-[#1c1f33]"
               >
@@ -1034,7 +1165,9 @@ export default function SettingsPage() {
                   <Database className="h-5 w-5 text-[#d3bb73]" />
                   <div className="text-left">
                     <div className="font-medium text-[#e5e4e2]">Pliki Supabase</div>
-                    <div className="text-xs text-[#e5e4e2]/60">Przeglądaj wszystkie buckety, katalogi i pliki systemowe</div>
+                    <div className="text-xs text-[#e5e4e2]/60">
+                      Przeglądaj wszystkie buckety, katalogi i pliki systemowe
+                    </div>
                   </div>
                 </div>
                 <ArrowRight className="h-5 w-5 text-[#e5e4e2]/40" />
@@ -1119,7 +1252,7 @@ export default function SettingsPage() {
               </button>
 
               <button
-                onClick={() => router.push('/crm/offers/categories')}
+                onClick={() => router.push('/crm/event-categories')}
                 className="flex w-full items-center justify-between rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-4 transition-colors hover:bg-[#1c1f33]"
               >
                 <div className="flex items-center gap-3">

@@ -21,6 +21,7 @@ import {
 interface SendCalculationEmailModalProps {
   calculationId: string;
   eventId: string | null;
+  inquiryId?: string;
   calculationName?: string;
   eventName?: string;
   defaultEmail?: string;
@@ -48,6 +49,7 @@ interface EventAttachment {
 export default function SendCalculationEmailModal({
   calculationId,
   eventId,
+  inquiryId,
   calculationName = '',
   eventName = '',
   defaultEmail = '',
@@ -161,10 +163,11 @@ Proszę o zapoznanie się z treścią. W razie pytań lub uwag pozostaję do dys
     base64: string;
     filename: string;
     storagePath: string;
+    revision: number;
   }> => {
     const { data, error } = await supabase
       .from('event_calculations')
-      .select('name, generated_pdf_path')
+      .select('name, generated_pdf_path, generated_pdf_revision, content_revision')
       .eq('id', calculationId)
       .maybeSingle();
 
@@ -172,7 +175,7 @@ Proszę o zapoznanie się z treścią. W razie pytań lub uwag pozostaję do dys
       throw new Error('Nie znaleziono kalkulacji');
     }
 
-    if (!data.generated_pdf_path) {
+    if (!data.generated_pdf_path || data.generated_pdf_revision !== data.content_revision) {
       throw new Error(
         'PDF kalkulacji nie został jeszcze wygenerowany. Najpierw kliknij "Generuj PDF".',
       );
@@ -201,6 +204,7 @@ Proszę o zapoznanie się z treścią. W razie pytań lub uwag pozostaję do dys
       base64,
       filename,
       storagePath: data.generated_pdf_path,
+      revision: data.generated_pdf_revision,
     };
   };
 
@@ -350,9 +354,11 @@ Proszę o zapoznanie się z treścią. W razie pytań lub uwag pozostaję do dys
           entityType: 'calculation',
           entityId: calculationId,
           eventId,
-          actionUrl: `/crm/events/${eventId}?tab=calculations`,
+          inquiryId,
+          actionUrl: eventId ? `/crm/events/${eventId}?tab=calculations` : `/crm/inquiries/${inquiryId}?tab=calculations`,
         },
         payload: {
+          salesDocument: { kind: 'calculation', id: calculationId, storagePath: pdfData.storagePath, revision: pdfData.revision },
           emailAccountId: formData.fromAccountId,
           to: formData.to.trim(),
           subject: formData.subject.trim(),

@@ -206,7 +206,7 @@ export default function MobileCalendarView({
             <div className="space-y-2">
               {eventsForSelectedDate.map((event) => {
                 const statusColor =
-                  event.category?.color || STATUS_COLORS[event.status] || '#d3bb73';
+                  event.category?.color || STATUS_COLORS[event.status as keyof typeof STATUS_COLORS] || '#d3bb73';
 
                 return (
                   <button
@@ -272,7 +272,7 @@ export default function MobileCalendarView({
                               color: statusColor,
                             }}
                           >
-                            {STATUS_LABELS[event.status]}
+                            {event.operational_label || STATUS_LABELS[event.status as keyof typeof STATUS_LABELS]}
                           </span>
                         </div>
                       </div>

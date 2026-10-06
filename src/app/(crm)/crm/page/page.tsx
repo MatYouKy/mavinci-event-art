@@ -6,6 +6,9 @@ import { FileText, ChevronRight, ChevronDown, BarChart3, Edit, Search, Code } fr
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import MarketingWorkspace from '@/components/crm/marketing/MarketingWorkspace';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import { hasPermission, isAdmin } from '@/lib/permissions';
+import { CrmCartesianChart } from '@/components/crm/charts/CrmCharts';
 
 interface PageNode {
   url: string;
@@ -16,6 +19,9 @@ interface PageNode {
 
 export default function PageManagementPage() {
   const searchParams = useSearchParams();
+  const { employee } = useCurrentEmployee();
+  const canViewMarketing = Boolean(employee && (isAdmin(employee) ||
+    ['marketing_campaigns_view', 'marketing_campaigns_manage', 'marketing_campaigns_approve'].some((permission) => hasPermission(employee, permission))));
   const [section, setSection] = useState<'marketing' | 'website'>(
     searchParams.get('tab') === 'website' ? 'website' : 'marketing',
   );
@@ -26,10 +32,18 @@ export default function PageManagementPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set(['/']));
 
-  const { data: pages, isLoading } = useGetAllPagesQuery(
+  const { data: pages, isLoading, error: pagesError } = useGetAllPagesQuery(
     { dateRange },
     { skip: section === 'marketing' },
   );
+
+  const topPageVisits = useMemo(() => {
+    const query = searchQuery.trim().toLocaleLowerCase('pl-PL');
+    return (pages || [])
+      .filter((page) => !query || `${page.title} ${page.url}`.toLocaleLowerCase('pl-PL').includes(query))
+      .slice().sort((left, right) => right.visits - left.visits).slice(0, 8)
+      .map((page) => ({ name: page.title === page.url ? page.url : `${page.title} (${page.url})`, visits: page.visits }));
+  }, [pages, searchQuery]);
 
   const pageTree = useMemo(() => {
     const getVisits = (url: string) => pages?.find(p => p.url === url)?.visits || 0;
@@ -250,6 +264,8 @@ export default function PageManagementPage() {
           </div>
         </div>
 
+        {canViewMarketing && <MarketingWorkspace initialCompanyId={searchParams.get('company') || undefined} />}
+
         <div className="rounded-xl border border-[#d3bb73]/20 bg-[#351020] p-6">
           <div className="mb-6">
             <div className="relative">
@@ -263,6 +279,25 @@ export default function PageManagementPage() {
               />
             </div>
           </div>
+
+          <section className="mb-6 rounded-xl bg-[#210811]/60 p-4 sm:p-5">
+            <h2 className="text-base font-light text-[#e5e4e2]">Najczęściej odwiedzane strony</h2>
+            <p className="mt-1 text-xs text-[#e5e4e2]/45">Do 8 stron z największą liczbą zarejestrowanych wizyt · ostatnie {dateRange} dni{searchQuery.trim() ? ' · zgodnie z wyszukiwaniem' : ''}.</p>
+            {isLoading ? <p className="py-8 text-sm text-[#e5e4e2]/45" role="status">Ładowanie statystyk…</p>
+              : pagesError ? <p className="py-6 text-sm text-amber-200" role="alert">Nie udało się pobrać statystyk odwiedzin. Wykres nie jest dostępny.</p>
+                : <div className="mt-4"><CrmCartesianChart
+                  data={topPageVisits}
+                  categoryKey="name"
+                  series={[{ key: 'visits', label: 'Wizyty', color: '#d3bb73' }]}
+                  kind="bar"
+                  horizontal
+                  height={Math.max(220, topPageVisits.length * 44)}
+                  valueFormatter={(value) => new Intl.NumberFormat('pl-PL').format(value)}
+                  ariaLabel={`Najczęściej odwiedzane strony w ostatnich ${dateRange} dniach`}
+                  showLegend={false}
+                  emptyMessage={searchQuery.trim() ? 'Brak zarejestrowanych wizyt dla stron pasujących do wyszukiwania.' : 'Brak zarejestrowanych wizyt w tym okresie.'}
+                /></div>}
+          </section>
 
           {isLoading ? (
             <div className="text-center py-12 text-[#e5e4e2]/50">Ładowanie struktury strony...</div>

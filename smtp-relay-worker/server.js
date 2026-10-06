@@ -2,6 +2,8 @@ import express from 'express';
 import nodemailer from 'nodemailer';
 import dotenv from 'dotenv';
 import { ImapFlow } from 'imapflow';
+import { registerAttachmentRoute } from './imap-attachments.js';
+import { timingSafeEqual } from 'node:crypto';
 
 dotenv.config();
 
@@ -17,47 +19,15 @@ if (!RELAY_SECRET) {
 }
 
 function verifyAuth(req, res, next) {
-  const authHeader = req.headers.authorization;
-
-  console.log('🔐 Authorization check:');
-  console.log(
-    `   Received header: ${authHeader ? authHeader.substring(0, 20) + '...' : 'MISSING'}`,
-  );
-  console.log(`   Expected: Bearer ${RELAY_SECRET.substring(0, 10)}...`);
-
-  if (!authHeader) {
-    console.log('❌ No authorization header provided');
-    return res.status(401).json({
-      success: false,
-      error: 'Unauthorized: No authorization header',
-    });
+  const header = req.headers.authorization;
+  if (!header?.startsWith('Bearer ')) {
+    return res.status(401).json({ success: false, error: 'Unauthorized' });
   }
-
-  if (!authHeader.startsWith('Bearer ')) {
-    console.log('❌ Invalid authorization format (should be "Bearer <token>")');
-    return res.status(401).json({
-      success: false,
-      error: 'Unauthorized: Invalid authorization format',
-    });
+  const provided = Buffer.from(header.slice(7));
+  const expected = Buffer.from(RELAY_SECRET);
+  if (provided.length !== expected.length || !timingSafeEqual(provided, expected)) {
+    return res.status(401).json({ success: false, error: 'Unauthorized' });
   }
-
-  const providedSecret = authHeader.replace('Bearer ', '');
-  const expectedSecret = RELAY_SECRET;
-
-  if (providedSecret !== expectedSecret) {
-    console.log('❌ Secret mismatch');
-    console.log(`   Provided length: ${providedSecret.length}`);
-    console.log(`   Expected length: ${expectedSecret.length}`);
-    console.log(
-      `   First 10 chars match: ${providedSecret.substring(0, 10) === expectedSecret.substring(0, 10)}`,
-    );
-    return res.status(401).json({
-      success: false,
-      error: 'Unauthorized: Invalid relay secret',
-    });
-  }
-
-  console.log('✅ Authorization successful');
   next();
 }
 
@@ -218,27 +188,38 @@ app.post('/api/imap/read-state', verifyAuth, async (req, res) => {
     if (typeof targetReadState === 'boolean') {
       for (const message of messages.slice(0, 50)) {
         if (!message?.messageId) continue;
-        const cachedUidIsValid =
-          message.imapUid &&
-          (!message.imapUidValidity || String(message.imapUidValidity) === uidValidity);
-        let uid = cachedUidIsValid ? Number(message.imapUid) : null;
-        if (!uid) {
+        const expectedId = normalizedMessageId(message.messageId);
+        const cachedUidIsValid = message.imapUid && message.imapUidValidity &&
+          String(message.imapUidValidity) === uidValidity;
+        let email = cachedUidIsValid
+          ? await client.fetchOne(String(message.imapUid), { envelope: true, flags: true }, { uid: true })
+          : null;
+        if (!email || normalizedMessageId(email.envelope?.messageId) !== expectedId) {
+          email = null;
           const matches = await client.search(
-            { header: { 'message-id': message.messageId } },
-            { uid: true },
+            { header: { 'message-id': message.messageId } }, { uid: true },
           );
-          uid = matches.at(-1) || null;
+          const exact = [];
+          if (matches.length) {
+            for await (const candidate of client.fetch(matches.join(','), { envelope: true, flags: true }, { uid: true })) {
+              if (normalizedMessageId(candidate.envelope?.messageId) === expectedId) exact.push(candidate);
+            }
+          }
+          // Duplicate Message-IDs without a verified UID are ambiguous.
+          if (exact.length === 1) email = exact[0];
         }
-        if (!uid) {
+        if (!email) {
           states.push({ id: message.id, found: false });
           continue;
         }
         if (targetReadState) {
-          await client.messageFlagsAdd(uid, ['\\Seen'], { uid: true });
+          await client.messageFlagsAdd(email.uid, ['\\Seen'], { uid: true });
+          email.flags.add('\\Seen');
         } else {
-          await client.messageFlagsRemove(uid, ['\\Seen'], { uid: true });
+          await client.messageFlagsRemove(email.uid, ['\\Seen'], { uid: true });
+          email.flags.delete('\\Seen');
         }
-        states.push(buildState({ ...message, imapUid: uid }, null, targetReadState));
+        states.push(buildState(message, email, targetReadState));
       }
     } else {
       const idsByMessageId = new Map(
@@ -285,15 +266,18 @@ app.post('/api/imap/read-state', verifyAuth, async (req, res) => {
   }
 });
 
+registerAttachmentRoute(app, verifyAuth);
+
 app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'smtp-relay-worker',
+    capabilities: ['imap-attachments-v1'],
     timestamp: new Date().toISOString(),
   });
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, process.env.RELAY_HOST || '0.0.0.0', () => {
   console.log('');
   console.log('┌─────────────────────────────────────────────┐');
   console.log('│  📮 SMTP Relay Worker                      │');

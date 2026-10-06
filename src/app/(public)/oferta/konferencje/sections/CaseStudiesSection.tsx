@@ -5,15 +5,17 @@ interface CaseStudiesSectionProps {
 }
 
 export const CaseStudiesSection:FC<CaseStudiesSectionProps> = ({ caseStudies }) => {
+  const published = caseStudies.filter((study) => study.is_active === true);
+  if (!published.length) return null;
   return (
     <section className="py-20 px-6">
-          <div className="max-w-7xl mx-auto" style={{ display: 'none' }}>
+          <div className="max-w-7xl mx-auto">
             <h2 className="text-4xl font-light text-[#e5e4e2] mb-4 text-center">
-              Case Studies (Hidden)
+              Wybrane realizacje konferencyjne
             </h2>
 
             <div className="space-y-12">
-              {caseStudies.map((study) => (
+              {published.map((study) => (
                 <div key={study.id} className="bg-gradient-to-br from-[#1c1f33] to-[#0f1119] border border-[#d3bb73]/20 rounded-xl p-8">
                   <div className="grid md:grid-cols-2 gap-8">
                     <div>
@@ -52,7 +54,7 @@ export const CaseStudiesSection:FC<CaseStudiesSectionProps> = ({ caseStudies }) 
                       <div>
                         <h4 className="text-[#d3bb73] font-medium mb-2">Wykorzystany sprzęt</h4>
                         <div className="flex flex-wrap gap-2">
-                          {study.equipment_used.map((eq: string, idx: number) => (
+                          {(study.equipment_used || []).map((eq: string, idx: number) => (
                             <span key={idx} className="text-xs px-3 py-1 bg-[#d3bb73]/10 text-[#e5e4e2]/80 rounded-full">
                               {eq}
                             </span>

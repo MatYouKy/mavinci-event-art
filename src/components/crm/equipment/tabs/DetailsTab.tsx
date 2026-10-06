@@ -210,7 +210,7 @@ export function DetailsTab({
         </div>
 
         <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-          <EquipmentSkillRequirementsPanel equipmentId={equipment.id} canEdit={true} />
+          <EquipmentSkillRequirementsPanel equipmentId={equipment.id} canEdit={canEdit} />
         </div>
       </div>
     </div>

@@ -1,5 +1,7 @@
 'use client';
 
+import EmployeeTimeSettlements from '@/components/crm/personnel/EmployeeTimeSettlements';
+
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -34,6 +36,8 @@ interface TimeEntry {
   duration_minutes: number | null;
   is_billable: boolean;
   hourly_rate: number | null;
+  personnel_contract_id?: string | null;
+  personnel_rate_snapshot?: { currency?: string; rate_basis?: string } | null;
   tags: string[];
   task_id: string | null;
   event_id: string | null;
@@ -74,6 +78,7 @@ export default function AdminDashboard() {
   const router = useRouter();
   const { showSnackbar } = useSnackbar();
   const [loading, setLoading] = useState(true);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [entries, setEntries] = useState<TimeEntry[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [employeeStats, setEmployeeStats] = useState<EmployeeStats[]>([]);
@@ -327,6 +332,7 @@ export default function AdminDashboard() {
       showSnackbar('Błąd podczas pobierania danych', 'error');
     } finally {
       setLoading(false);
+      setHasLoaded(true);
     }
   };
 
@@ -341,7 +347,7 @@ export default function AdminDashboard() {
       const empData = entry.employees;
       const duration = entry.duration_minutes || 0;
       const revenue =
-        entry.is_billable && entry.hourly_rate ? (duration / 60) * entry.hourly_rate : 0;
+        !entry.personnel_contract_id && entry.hourly_rate ? (duration / 60) * entry.hourly_rate : 0;
 
       if (!employeeMap.has(empId)) {
         employeeMap.set(empId, {
@@ -428,7 +434,7 @@ export default function AdminDashboard() {
 
   const handleExport = () => {
     const csv = [
-      ['Pracownik', 'Łączny czas', 'Czas rozliczalny', 'Przychód', 'Liczba wpisów', 'Aktywne dni'],
+      ['Pracownik', 'Łączny czas', 'Czas rozliczalny', 'Wpisy bez umowy — wartość orientacyjna', 'Liczba wpisów', 'Aktywne dni'],
       ...employeeStats.map((s) => [
         `${s.employee_name} ${s.employee_surname}`,
         formatHours(s.total_hours),
@@ -450,7 +456,7 @@ export default function AdminDashboard() {
     URL.revokeObjectURL(url);
   };
 
-  if (loading) {
+  if (loading && !hasLoaded) {
     return (
       <div className="flex h-64 items-center justify-center">
         <div className="text-[#e5e4e2]/60">Ładowanie danych...</div>
@@ -565,6 +571,7 @@ export default function AdminDashboard() {
           )}
         </div>
 
+        {selectedEmployee !== 'all' && <div className="mb-6"><EmployeeTimeSettlements key={selectedEmployee} employeeId={selectedEmployee} dateTo={dateTo} /></div>}
         <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
           <div className="rounded-lg bg-[#0f1119] p-4">
             <div className="mb-2 flex items-center gap-3">
@@ -595,7 +602,7 @@ export default function AdminDashboard() {
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-500/20">
                 <DollarSign className="h-5 w-5 text-blue-400" />
               </div>
-              <div className="text-sm text-[#e5e4e2]/60">Przychód</div>
+              <div className="text-sm text-[#e5e4e2]/60">Wpisy bez umowy — wartość orientacyjna</div>
             </div>
             <div className="text-2xl font-bold text-[#e5e4e2]">
               {formatCurrency(totalStats.totalRevenue)}

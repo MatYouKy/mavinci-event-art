@@ -13,6 +13,7 @@ let package = Package(
             resources: [
                 .copy("../Resources/Info.plist")
             ]
-        )
+        ),
+        .testTarget(name: "MavinciRemindersTests", dependencies: ["MavinciReminders"], path: "Tests")
     ]
 )

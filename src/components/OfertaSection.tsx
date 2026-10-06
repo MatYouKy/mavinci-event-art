@@ -10,6 +10,7 @@ export default function OfertaSection({ services }: { services: Service[] }) {
   return (
     <section
       id="oferta"
+      aria-labelledby="home-offer-heading"
       className="relative overflow-hidden bg-gradient-to-b from-[#1c1f33] to-[#0f1119] py-24 md:py-32"
     >
       <div className="absolute inset-0 opacity-5">
@@ -22,11 +23,11 @@ export default function OfertaSection({ services }: { services: Service[] }) {
           <span className="mb-4 block text-sm font-light uppercase tracking-widest text-[#d3bb73] md:text-base">
             Nasza Oferta
           </span>
-          <h2 className="mb-6 text-3xl font-light text-[#e5e4e2] sm:text-4xl md:text-5xl">
-            Specjalizacje i Rozwiązania
+          <h2 id="home-offer-heading" className="mb-6 text-3xl font-light text-[#e5e4e2] sm:text-4xl md:text-5xl">
+            Konferencje, integracje i imprezy firmowe
           </h2>
           <p className="mx-auto max-w-2xl text-lg font-light text-[#e5e4e2]/70">
-            Dedykowane strony z pełną informacją o naszych kluczowych usługach
+            Wybierz format wydarzenia i zakres współpracy: od technicznej obsługi konferencji po organizację integracji, gali lub wieczoru tematycznego. Możesz zamówić cały event albo wybrane usługi.
           </p>
           <div className="mx-auto mt-6 h-1 w-24 bg-gradient-to-r from-transparent via-[#d3bb73] to-transparent"></div>
         </div>

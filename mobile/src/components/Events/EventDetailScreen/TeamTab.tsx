@@ -1,7 +1,9 @@
 import { useState } from 'react';
-import { ActivityIndicator, Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 
+import { useAuth } from '../../../contexts/AuthContext';
+import { canView } from '../../../lib/permissions';
 import EmployeeAvatar from '../../EmployeeAvatar';
 import { colors, spacing } from '../../../theme';
 import { getOrCreateDirectConversation } from '../../../services/directConversation';
@@ -15,6 +17,9 @@ export interface EventTeamMember {
   avatar_url?: string | null;
   avatar_metadata?: any;
   role: string | null;
+  phone_number?: string | null;
+  email?: string | null;
+  responsibility_roles?: string[];
   occupation?: string | null;
   responsibilities?: string | null;
   status?: string | null;
@@ -32,10 +37,12 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 export function TeamTab({ employees, currentEmployeeId }: Props) {
+  const { employee } = useAuth();
+  const openContact = (url: string) => { void Linking.openURL(url).catch(() => Alert.alert('Kontakt', 'Nie udało się otworzyć aplikacji.')); };
   const [openingConversationWith, setOpeningConversationWith] = useState<string | null>(null);
 
   const startConversation = async (employeeId: string) => {
-    if (!currentEmployeeId || openingConversationWith) return;
+    if (!currentEmployeeId || openingConversationWith || !canView(employee, 'chat')) return;
 
     setOpeningConversationWith(employeeId);
     try {
@@ -67,7 +74,7 @@ export function TeamTab({ employees, currentEmployeeId }: Props) {
         {employees.map((teamMember) => {
           const displayName =
             teamMember.nickname || `${teamMember.name} ${teamMember.surname}`.trim();
-          const assignmentLabel = teamMember.role || teamMember.occupation;
+          const assignmentLabel = teamMember.responsibility_roles?.join(' · ') || teamMember.role || teamMember.occupation;
           const isCurrentEmployee = teamMember.id === currentEmployeeId;
           const isOpening = openingConversationWith === teamMember.id;
 
@@ -111,7 +118,14 @@ export function TeamTab({ employees, currentEmployeeId }: Props) {
                 )}
               </View>
 
-              {!isCurrentEmployee && (
+              {!isCurrentEmployee && <View style={{ gap: 8 }}>
+                {!!teamMember.phone_number && <>
+                  <TouchableOpacity accessibilityRole="button" accessibilityLabel={`Zadzwoń do ${displayName}`} onPress={() => openContact(`tel:${teamMember.phone_number!.replace(/[^+0-9]/g, '')}`)}><Text style={{ color: colors.primary.gold }}>Zadzwoń</Text></TouchableOpacity>
+                  <TouchableOpacity accessibilityRole="button" onPress={() => openContact(`sms:${teamMember.phone_number!.replace(/[^+0-9]/g, '')}`)}><Text style={{ color: colors.primary.gold }}>SMS</Text></TouchableOpacity>
+                </>}
+                {!!teamMember.email && <TouchableOpacity accessibilityRole="button" onPress={() => openContact(`mailto:${encodeURIComponent(teamMember.email!)}`)}><Text style={{ color: colors.primary.gold }}>E-mail</Text></TouchableOpacity>}
+              </View>}
+              {!isCurrentEmployee && canView(employee, 'chat') && (
                 <TouchableOpacity
                   style={styles.messageButton}
                   onPress={() => startConversation(teamMember.id)}

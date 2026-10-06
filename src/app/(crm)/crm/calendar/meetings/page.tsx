@@ -5,9 +5,11 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase/browser';
 import { Calendar, MapPin, Users, Plus, Search, Filter, Clock } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import { meetingRecurrenceLabel } from '@/lib/meetings/recurrence';
 import NewMeetingModal from '@/components/crm/NewMeetingModal';
 
 interface Meeting {
+  recurrence_days: number;
   id: string;
   title: string;
   location_id: string | null;
@@ -253,6 +255,7 @@ export default function MeetingsListPage() {
                         <div className="flex-1">
                           <h3 className="mb-1 text-lg font-semibold text-[#e5e4e2] group-hover:text-[#d3bb73]">
                             {meeting.title}
+                            {!!meeting.recurrence_days && <span className="ml-2 text-xs text-[#d3bb73]">{meetingRecurrenceLabel(meeting.recurrence_days)}</span>}
                           </h3>
                           <p className={`text-xs font-medium ${timeStatus.color}`}>
                             {timeStatus.label}

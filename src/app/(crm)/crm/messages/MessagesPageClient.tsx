@@ -1,7 +1,10 @@
 'use client';
 
+import { formatSystemSubject } from '@/lib/ui/systemLabels';
+
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import { useDispatch } from 'react-redux';
 import { supabase } from '@/lib/supabase/browser';
 import {
   Mail,
@@ -23,6 +26,7 @@ import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 import {
+  messagesApi,
   useGetMessagesListQuery,
   useLazyGetMessageDetailsQuery,
   useMarkMessageAsReadMutation,
@@ -48,13 +52,7 @@ import {
 } from '@/lib/CRM/messages/messageListCache';
 import { dispatchCrmEmail, formatScheduledEmailDate } from '@/lib/emailScheduling';
 
-const translateSubject = (subject: string): string => {
-  if (!subject) return 'Wiadomość z formularza';
-  return subject
-    .replace(/^event_inquiry\s*-\s*/i, 'Zapytanie o event - ')
-    .replace(/^team_join\s*-\s*/i, 'Rekrutacja - ')
-    .replace(/^general\s*-\s*/i, 'Ogólna - ');
-};
+const translateSubject = formatSystemSubject;
 
 const extractReplyAddress = (message: MessageDetails | null) => {
   if (!message) return '';
@@ -83,6 +81,10 @@ export default function MessagesPageClient({
   canView: initialCanView,
 }: MessagesPageClientProps) {
   const router = useRouter();
+  const dispatch = useDispatch();
+  const markingRef = useRef(false);
+  const [markingAccountId, setMarkingAccountId] = useState<string | null>(null);
+  const [markedCount, setMarkedCount] = useState(0);
   const { employee: currentEmployee, canCreateInModule } = useCurrentEmployee();
   const { showSnackbar } = useSnackbar();
   const { showConfirm } = useDialog();
@@ -100,6 +102,8 @@ export default function MessagesPageClient({
   } = useGetEmailAccountsQuery();
 
   const emailAccounts = accountsData?.accounts || [];
+  const sendingAccounts = emailAccounts.filter(account => account.can_send === true);
+  const canSend = (canView || canManage) && sendingAccounts.length > 0;
   const hasContactFormAccess = accountsData?.hasContactFormAccess ?? initialHasContactFormAccess;
 
   const [selectedAccount, setSelectedAccount] = useState<string>('');
@@ -161,6 +165,54 @@ export default function MessagesPageClient({
       pollingInterval: 60000,
       refetchOnMountOrArgChange: true,
     });
+
+  const handleMarkAllRead = async (accountId: string) => {
+    if (markingRef.current) return;
+    markingRef.current = true;
+    setMarkingAccountId(accountId);
+    setMarkedCount(0);
+    let marked = 0;
+    let missing = 0;
+    let cursor: string | null = null;
+    let cutoff: string | undefined;
+    try {
+      do {
+        const response = await fetch('/bridge/messages/mark-all-read', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ accountId, cursor, cutoff }),
+        });
+        const result = await response.json().catch(() => null);
+        if (!response.ok || !Array.isArray(result?.ids)) {
+          throw new Error(result?.error || 'Nie udało się oznaczyć wiadomości. Spróbuj ponownie.');
+        }
+        const changed = new Set<string>(result.ids);
+        marked += changed.size;
+        missing += result.missingOnServer || 0;
+        setMarkedCount(marked);
+        setAllMessages(previous => previous.map(message =>
+          message.type === 'received' && changed.has(message.id) ? { ...message, isRead: true } : message,
+        ));
+        if (result.cursor && result.cursor === cursor) throw new Error('Synchronizacja została przerwana. Spróbuj ponownie.');
+        cursor = result.cursor;
+        cutoff = result.cutoff;
+      } while (cursor);
+      showSnackbar(
+        marked === 0 ? 'Wszystkie wiadomości w tej skrzynce są już odczytane.'
+          : missing > 0
+            ? `Oznaczono jako odczytane: ${marked}. Dla ${missing} wiadomości zapisano zmianę tylko w CRM — nie odnaleziono ich jednoznacznie na serwerze pocztowym.`
+            : `Oznaczono wszystkie wiadomości jako odczytane (${marked}).`,
+        missing > 0 ? 'warning' : 'success',
+      );
+    } catch (error) {
+      showSnackbar(`${marked > 0 ? `Oznaczono już ${marked} wiadomości. ` : ''}${error instanceof Error ? error.message : 'Nie udało się zakończyć operacji.'}`, 'error');
+    } finally {
+      markingRef.current = false;
+      setMarkingAccountId(null);
+      dispatch(messagesApi.util.invalidateTags(['Message', 'MessagesList']));
+      void refetchUnreadCounts();
+    }
+  };
 
   const handleAdvancedSearch = async () => {
     if (!searchQuery.trim()) {
@@ -584,6 +636,7 @@ export default function MessagesPageClient({
     scheduledAt?: string | null;
   }) => {
     const accountToUse = data.fromAccountId || selectedAccount;
+    if (!sendingAccounts.some(account => account.id === accountToUse)) throw new Error('Nie masz uprawnień do wysyłania z tej skrzynki.');
 
     if (!accountToUse || accountToUse === 'all' || accountToUse === 'contact_form') {
       showSnackbar('Wybierz konto email do wysłania', 'warning');
@@ -690,6 +743,7 @@ export default function MessagesPageClient({
     return allMessages.filter((msg) => {
       return (
         (msg.from || '').toLowerCase().includes(query) ||
+        (msg.to || '').toLowerCase().includes(query) ||
         (msg.subject || '').toLowerCase().includes(query) ||
         (msg.preview || '').toLowerCase().includes(query)
       );
@@ -824,6 +878,9 @@ export default function MessagesPageClient({
           hasContactFormAccess={hasContactFormAccess}
           canManage={canManage}
           unreadCounts={unreadCounts}
+          onMarkAllRead={handleMarkAllRead}
+          markingAccountId={markingAccountId}
+          markedCount={markedCount}
         />
       </div>
       <div className="flex min-w-0 flex-1 flex-col p-2.5 sm:p-4">
@@ -838,19 +895,19 @@ export default function MessagesPageClient({
                   {canManage ? 'Zarządzaj komunikacją z klientami' : 'Przeglądaj wiadomości email'}
                 </p>
               </div>
-              {canManage && (
+              {(canManage || canSend) && (
                 <ResponsiveActionBar
                   actions={[
-                    {
-                      label: 'Nowa wiadomość',
+                    ...(canSend ? [{
+                      label: 'Wyślij e-mail',
                       onClick: () => setShowNewMessageModal(true),
                       icon: <Plus className="h-5 w-5" />,
-                    },
-                    {
+                    }] : []),
+                    ...(canManage ? [{
                       label: 'Pobierz z serwera',
                       onClick: fetchEmailsFromServer,
                       icon: <Inbox className="h-5 w-5" />,
-                    },
+                    }] : []),
                   ]}
                 />
               )}
@@ -1054,8 +1111,11 @@ export default function MessagesPageClient({
                           <div className="mb-0.5 flex items-start justify-between gap-2">
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-1.5">
-                                <span className="truncate text-[13px] leading-4 text-white">
-                                  {message.from}
+                                <span
+                                  className="truncate text-[13px] leading-4 text-white"
+                                  title={message.type === 'sent' ? `Do: ${message.to?.trim() || 'Nie podano odbiorcy'}` : message.from}
+                                >
+                                  {message.type === 'sent' ? `Do: ${message.to?.trim() || 'Nie podano odbiorcy'}` : message.from}
                                 </span>
                                 {!message.isRead && (
                                   <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#d3bb73]" />
@@ -1158,6 +1218,7 @@ export default function MessagesPageClient({
               <MessagePreviewPane
                 message={selectedMessage}
                 canManage={canManage}
+                canSend={canSend && (selectedMessage?.type === 'contact_form' || sendingAccounts.some(account => account.id === selectedMessage?.email_account_id))}
                 onClose={() => setSelectedMessageId(null)}
                 onOpenInNewWindow={openMessageInNewWindow}
                 onReply={handleReply}
@@ -1239,7 +1300,7 @@ export default function MessagesPageClient({
             : ''
         }
         selectedAccountId={replyToMessage?.email_account_id || forwardMessage?.email_account_id || selectedAccount}
-        emailAccounts={emailAccounts.filter((acc) => acc.id !== 'all' && acc.id !== 'contact_form')}
+        emailAccounts={sendingAccounts}
       />
 
       {showAssignModal && messageToAssign && (

@@ -1,6 +1,11 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 'use client';
 
+import type { EventStatus } from '@/components/crm/Calendar/types';
+import { useOperationalStages } from '@/hooks/useOperationalStages';
+import { OPERATIONAL_LABELS, usesOperationalStages } from '@/lib/CRM/events/operationalStages';
+
+import { eventListState } from '@/lib/CRM/events/eventListState';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -38,6 +43,7 @@ import FullScreenLoader from '@/components/UI/Loader/CustomModalLoader';
 import { eventStatusLabels } from './[id]/components/tabs/EventsDetailsTab/EventDetailsAction';
 import { deleteEventSafely } from '@/lib/CRM/events/deleteEventSafely';
 import { EVENT_STATUS_BADGE_CLASSES } from '@/components/crm/events/eventStatusPalette';
+import { isEventAwaitingOperationalConfirmation } from '@/lib/CRM/events/eventVisibility';
 
 const moveKey = (arr: EventsTableColKey[], from: EventsTableColKey, to: EventsTableColKey) => {
   const a = [...arr];
@@ -114,18 +120,6 @@ const SETTLED_STATUSES = new Set(['settled', 'cancelled']);
 type PastUrgency = 'red' | 'orange' | null;
 type CopiedFinancialSource = 'calculation' | 'offer' | null;
 
-function getPastUrgency(event: any): PastUrgency {
-  if (SETTLED_STATUSES.has(event.status)) return null;
-  const eventEndDate = event.event_end_date || event.event_date;
-  if (!eventEndDate) return null;
-  const end = new Date(eventEndDate);
-  end.setHours(0, 0, 0, 0);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  if (end >= today) return null;
-  const daysPast = Math.floor((today.getTime() - end.getTime()) / (1000 * 60 * 60 * 24));
-  return daysPast > 7 ? 'red' : 'orange';
-}
 
 const stop = (e: React.MouseEvent) => {
   e.preventDefault();
@@ -953,6 +947,34 @@ export default function EventsPageClient({
     hasScope('invoices_manage', currentEmployee) ||
     hasScope('invoices_view', currentEmployee);
 
+  const operational = usesOperationalStages(currentEmployee);
+  const { states: operationalStates, stage: displayStatus } = useOperationalStages(events, operational);
+  const [listPayments,setListPayments]=useState<Record<string,any[]>>({});
+  useEffect(()=>{
+    let live=true;
+    setListPayments({});
+    if(!canViewCommercials || !events.length)return;
+    async function loadPayments(){
+      const result:Record<string,any[]>={};
+      for(let offset=0;offset<events.length;offset+=100){
+        const ids=events.slice(offset,offset+100).map(e=>e.id);
+        const [milestones,invoices]=await Promise.all([
+          supabase.from('event_payment_milestones').select('event_id,invoice_id,amount,paid_amount,due_date,status,paid_at').in('event_id',ids),
+          supabase.from('invoices').select('id,event_id,total_gross,payment_due_date,status,paid_date').in('event_id',ids)
+        ]);
+        const paidInvoices=new Set((invoices.data||[]).filter(i=>i.status==='paid'||i.paid_date).map(i=>i.id));
+        for(const p of milestones.data||[]){if(p.invoice_id&&paidInvoices.has(p.invoice_id))continue;(result[p.event_id]??=[]).push(p);}
+        for(const p of invoices.data||[]){if(!['issued','sent','overdue'].includes(p.status)||p.paid_date)continue;(result[p.event_id]??=[]).push({amount:p.total_gross,due_date:p.payment_due_date,status:p.status});}
+      }
+      if(live)setListPayments(result);
+    }
+    void loadPayments();return()=>{live=false;};
+  },[events,canViewCommercials]);
+  const visualState=(event:any)=> operational
+    ? { state: displayStatus(event)==='settled' ? 'settled' : displayStatus(event)==='in_progress' ? 'live' : displayStatus(event)==='cancelled' ? 'cancelled' : 'scheduled', label: OPERATIONAL_LABELS[displayStatus(event)] || 'Nowe wydarzenie', days: 0 }
+    : eventListState(event,listPayments[event.id]||[]);
+  const getPastUrgency=(event:any):PastUrgency=>{const state=visualState(event).state;return ['late','overdue'].includes(state)?'red':['completed','settlement','awaiting'].includes(state)?'orange':null;};
+
   const handleViewModeChange = async (mode: ViewMode) => {
     setLocalViewMode(mode);
     await setViewMode('events', mode);
@@ -990,30 +1012,11 @@ export default function EventsPageClient({
 
   useEffect(() => {
     applyFiltersAndSort();
-  }, [events, searchQuery, statusFilter, categoryFilter, sortField, sortDirection, showPastEvents]);
+  }, [events, searchQuery, statusFilter, categoryFilter, sortField, sortDirection, showPastEvents, operationalStates, operational]);
 
   const fetchEvents = async () => {
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session?.user?.id) {
-        setEvents([]);
-        return;
-      }
-
-      const currentUserId = session.user.id;
-
-      const { data: employee } = await supabase
-        .from('employees')
-        .select('permissions, role')
-        .eq('id', currentUserId)
-        .maybeSingle();
-
-      const isAdmin =
-        employee?.role === 'admin' || employee?.permissions?.includes('events_manage');
-
-      let query = supabase.from('events').select(
+      const { data, error } = await supabase.from('events').select(
         `
           *,
           organizations:organizations!events_organization_id_fkey(name, alias),
@@ -1021,33 +1024,7 @@ export default function EventsPageClient({
           event_categories(name, color),
           locations(name, formatted_address, address, city, postal_code)
         `,
-      );
-
-      if (!isAdmin) {
-        const { data: assignedEvents } = await supabase
-          .from('employee_assignments')
-          .select('event_id')
-          .eq('employee_id', currentUserId);
-
-        const eventIds = assignedEvents?.map((a) => a.event_id) || [];
-
-        const { data: createdEvents } = await supabase
-          .from('events')
-          .select('id')
-          .eq('created_by', currentUserId);
-
-        const createdEventIds = createdEvents?.map((e) => e.id) || [];
-        const allEventIds = Array.from(new Set([...eventIds, ...createdEventIds])) as string[];
-
-        if (allEventIds.length === 0) {
-          setEvents([]);
-          return;
-        }
-
-        query = query.in('id', allEventIds);
-      }
-
-      const { data, error } = await query.order('event_date', { ascending: true });
+      ).order('event_date', { ascending: true });
 
       if (error) {
         console.error('Error fetching events:', error);
@@ -1055,7 +1032,10 @@ export default function EventsPageClient({
       }
 
       if (data) {
-        setEvents(data);
+        const mine = await supabase.rpc('get_my_realizations');
+        const merged = new Map(data.map(e => [e.id,e]));
+        for (const row of mine.data || []) if (!merged.has(row.id)) merged.set(row.id,row);
+        setEvents(Array.from(merged.values()));
         return;
       }
     } catch (err) {
@@ -1064,6 +1044,15 @@ export default function EventsPageClient({
 
     setEvents([]);
   };
+
+  useEffect(() => {
+    let live=true;
+    void supabase.rpc('get_my_realizations').then(({data}) => {
+      if(!live || !data?.length)return;
+      setEvents(previous => { const merged=new Map(previous.map(e=>[e.id,e])); for(const row of data)if(!merged.has(row.id))merged.set(row.id,row);return Array.from(merged.values()); });
+    });
+    return()=>{live=false;};
+  }, [currentEmployee?.id]);
 
   const handleDeleteClick = (e: React.MouseEvent | null, event: any) => {
     if (e) e.stopPropagation();
@@ -1110,7 +1099,7 @@ export default function EventsPageClient({
     }
 
     if (statusFilter !== 'all') {
-      result = result.filter((event) => event.status === statusFilter);
+      result = result.filter((event) => displayStatus(event) === statusFilter);
     }
 
     if (categoryFilter !== 'all') {
@@ -1122,7 +1111,7 @@ export default function EventsPageClient({
         const endDate = new Date(event.event_end_date || event.event_date);
         endDate.setHours(0, 0, 0, 0);
         if (endDate >= today) return true;
-        return !SETTLED_STATUSES.has(event.status);
+        return !SETTLED_STATUSES.has(displayStatus(event));
       });
     }
 
@@ -1200,6 +1189,11 @@ export default function EventsPageClient({
 
   const handleSaveEvent = async (eventData: any) => {
     try {
+      if (currentEmployee?.company_access_mode === 'selected' && !eventData.my_company_id) {
+        showSnackbar('Wybierz markę realizującą wydarzenie', 'warning');
+        return;
+      }
+
       const {
         data: { session },
       } = await supabase.auth.getSession();
@@ -1221,6 +1215,7 @@ export default function EventsPageClient({
             budget: eventData.budget ? parseFloat(eventData.budget) : null,
             description: eventData.description || null,
             status: eventData.status,
+            my_company_id: eventData.my_company_id || null,
             attachments: eventData.attachments || [],
             created_by: session?.user?.id || null,
           },
@@ -1284,29 +1279,15 @@ export default function EventsPageClient({
 
       return (
         <>
-          <div className="truncate font-medium">{event.name}</div>
+          <div className="flex items-center gap-2 font-medium">{urgency==='red'&&<span title={visualState(event).label} className="event-payment-alert shrink-0 text-red-400"><AlertCircle className="h-5 w-5" aria-label={visualState(event).label}/></span>}<span className="truncate">{event.name}</span></div>
           <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[10px] text-[#e5e4e2]/45">
             <span className="truncate">
               {event.created_at
                 ? `Utworzono: ${new Date(event.created_at).toLocaleDateString('pl-PL')}`
                 : 'Utworzono: —'}
             </span>
-            {urgency && (
-              <span
-                title={
-                  urgency === 'red'
-                    ? 'Nierozliczone ponad 7 dni'
-                    : 'Zbliża się termin rozliczenia'
-                }
-                className={`inline-flex flex-shrink-0 rounded border px-1.5 py-0.5 text-[9px] font-medium leading-none ${
-                  urgency === 'red'
-                    ? 'border-rose-200/35 bg-rose-950/25 text-rose-100/80'
-                    : 'border-amber-200/35 bg-amber-950/25 text-amber-100/80'
-                }`}
-              >
-                {urgency === 'red' ? 'Zaległe' : 'Do rozliczenia'}
-              </span>
-            )}
+            {visualState(event).label && <span className="event-state-label shrink-0 rounded bg-white/5 px-1.5 py-0.5 text-[10px] text-[#e5e4e2]/70">{visualState(event).label}</span>}
+
           </div>
         </>
       );
@@ -1344,7 +1325,7 @@ export default function EventsPageClient({
       </a>
     ),
 
-    status: (event) => <EventStatusBadge status={event.status} />,
+    status: (event) => <EventStatusBadge status={displayStatus(event) as EventStatus} label={operational ? OPERATIONAL_LABELS[displayStatus(event)] : undefined} />,
 
     category: (event) => (
       <span className="block truncate">{event.event_categories?.name ?? '—'}</span>
@@ -1428,6 +1409,11 @@ export default function EventsPageClient({
     return arr;
   }, [router, canViewEventStatus, canAddNewEvent]);
 
+  const eventsAwaitingConfirmation = useMemo(
+    () => events.filter((event) => isEventAwaitingOperationalConfirmation(event)),
+    [events],
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -1436,6 +1422,41 @@ export default function EventsPageClient({
           <ResponsiveActionBar actions={actions} />
         </div>
       </div>
+
+      {eventsAwaitingConfirmation.length > 0 && canViewEventStatus && (
+        <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 p-4 text-amber-100">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-300" />
+            <div>
+              <div className="text-sm font-medium">
+                {eventsAwaitingConfirmation.length === 1
+                  ? '1 wydarzenie wymaga potwierdzenia operacyjnego'
+                  : `${eventsAwaitingConfirmation.length} wydarzeń wymaga potwierdzenia operacyjnego`}
+              </div>
+              <p className="mt-1 text-xs leading-5 text-amber-100/70">
+                Termin przypada w ciągu 72 godzin lub już minął, a wydarzenie nadal jest zapytaniem albo ofertą do wysłania. Magazyn nie otrzyma go do planowania, dopóki oferta nie zostanie wysłana.
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {eventsAwaitingConfirmation.slice(0, 5).map((event) => (
+                  <button
+                    key={event.id}
+                    type="button"
+                    onClick={() => handleOpenEvent(event)}
+                    className="rounded-md border border-amber-300/20 bg-black/10 px-2 py-1 text-xs hover:bg-amber-300/10"
+                  >
+                    {event.name}
+                  </button>
+                ))}
+                {eventsAwaitingConfirmation.length > 5 && (
+                  <span className="px-2 py-1 text-xs text-amber-100/60">
+                    +{eventsAwaitingConfirmation.length - 5} kolejnych
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Filtry i sortowanie */}
       <div className="space-y-4 rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-2 md:p-4">
@@ -1531,7 +1552,7 @@ export default function EventsPageClient({
               const settledPastCount = events.filter((event) => {
                 const endDate = new Date(event.event_end_date || event.event_date);
                 endDate.setHours(0, 0, 0, 0);
-                return endDate < today && SETTLED_STATUSES.has(event.status);
+                return endDate < today && SETTLED_STATUSES.has(displayStatus(event));
               }).length;
               return settledPastCount > 0 ? (
                 <span className="text-[#e5e4e2]/40">(ukryto {settledPastCount} rozliczonych)</span>
@@ -1560,6 +1581,7 @@ export default function EventsPageClient({
             className="rounded-lg border border-[#d3bb73]/20 bg-[#0f1117] px-4 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
           >
             <option value="all">Wszystkie statusy</option>
+            {operational ? Object.entries(OPERATIONAL_LABELS).map(([value,label]) => <option key={value} value={value}>{label}</option>) : <>
             <option value="settled">Rozliczony</option>
             <option value="offer_sent">Oferta wysłana</option>
             <option value="offer_accepted">Zaakceptowana</option>
@@ -1571,7 +1593,7 @@ export default function EventsPageClient({
             <option value="inquiry">Zapytanie</option>
             <option value="cancelled">Anulowany</option>
             <option value="ready_for_live">Gotowy do realizacji</option>
-          </select>
+          </>}</select>
 
           <select
             value={categoryFilter}
@@ -1716,6 +1738,7 @@ export default function EventsPageClient({
                   className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1117] px-4 py-2.5 text-sm text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
                 >
                   <option value="all">Wszystkie statusy</option>
+            {operational ? Object.entries(OPERATIONAL_LABELS).map(([value,label]) => <option key={value} value={value}>{label}</option>) : <>
                   <option value="offer_sent">Oferta wysłana</option>
                   <option value="offer_accepted">Zaakceptowana</option>
                   <option value="in_preparation">Przygotowanie</option>
@@ -1727,7 +1750,7 @@ export default function EventsPageClient({
                   <option value="inquiry">Zapytanie</option>
                   <option value="cancelled">Anulowany</option>
                   <option value="ready_for_live">Gotowy do realizacji</option>
-                </select>
+                </>}</select>
 
                 <select
                   value={categoryFilter}
@@ -1869,7 +1892,8 @@ export default function EventsPageClient({
                     <tr
                       key={event.id}
                       onClick={() => handleOpenEvent(event)}
-                      data-event-urgency={
+                      data-event-state={visualState(event).state}
+                data-event-urgency={
                         urgency === 'red'
                           ? 'overdue'
                           : urgency === 'orange'
@@ -1975,7 +1999,8 @@ export default function EventsPageClient({
                 <div
                   key={`${event.id}-grid-${index}`}
                   onClick={() => handleOpenEvent(event)}
-                  data-event-urgency={
+                  data-event-state={visualState(event).state}
+                data-event-urgency={
                     urgency === 'red'
                       ? 'overdue'
                       : urgency === 'orange'
@@ -1992,23 +2017,11 @@ export default function EventsPageClient({
                           : 'border-[#d3bb73]/10'
                   }`}
                 >
-                  {urgency && (
-                    <div
-                      className={`absolute right-3 top-3 rounded-full p-1 ring-1 ${
-                        urgency === 'red'
-                          ? 'bg-rose-300/25 text-rose-50 ring-rose-200/90'
-                          : 'bg-amber-300/25 text-amber-50 ring-amber-200/90'
-                      }`}
-                    >
-                      <AlertCircle
-                        className="h-5 w-5"
-                        aria-label={urgency === 'red' ? 'Nierozliczony >7 dni' : 'Nierozliczony'}
-                      />
-                    </div>
-                  )}
+
                   <div className="mb-3 flex items-start justify-between gap-3">
                     <h3 className="line-clamp-2 flex-1 text-base font-medium text-[#e5e4e2]">
-                      {event.name}
+                      {urgency==='red'&&<AlertCircle className="event-payment-alert mr-2 inline-block h-5 w-5 text-red-400" aria-label={visualState(event).label}/>}{event.name}
+                      {visualState(event).label&&<span className="event-state-label mt-1 block text-xs font-normal text-[#e5e4e2]/65">{visualState(event).label}</span>}
                     </h3>
 
                     <div className="flex items-center gap-2">
@@ -2130,7 +2143,7 @@ export default function EventsPageClient({
                   <div className="mt-4 flex flex-wrap items-center gap-2">
                     {canViewEventStatus && (
                       <div>
-                        <EventStatusBadge status={event.status} />
+                        <EventStatusBadge status={displayStatus(event) as EventStatus} label={operational ? OPERATIONAL_LABELS[displayStatus(event)] : undefined} />
                       </div>
                     )}
 
@@ -2153,7 +2166,7 @@ export default function EventsPageClient({
                   <div className="mt-3 hidden md:block">
                     {canViewEventStatus && (
                       <div>
-                        <EventStatusBadge status={event.status} />
+                        <EventStatusBadge status={displayStatus(event) as EventStatus} label={operational ? OPERATIONAL_LABELS[displayStatus(event)] : undefined} />
                       </div>
                     )}
                   </div>
@@ -2165,6 +2178,7 @@ export default function EventsPageClient({
             return (
               <div
                 key={`${event.id}-list-${index}`}
+                data-event-state={visualState(event).state}
                 data-event-urgency={
                   urgency === 'red'
                     ? 'overdue'
@@ -2183,26 +2197,14 @@ export default function EventsPageClient({
                 }`}
                 onClick={() => handleOpenEvent(event)}
               >
-                {urgency && (
-                  <div
-                    className={`absolute right-3 top-3 rounded-full p-1 ring-1 md:right-4 md:top-4 ${
-                      urgency === 'red'
-                        ? 'bg-rose-300/25 text-rose-50 ring-rose-200/90'
-                        : 'bg-amber-300/25 text-amber-50 ring-amber-200/90'
-                    }`}
-                  >
-                    <AlertCircle
-                      className="h-5 w-5"
-                      aria-label={urgency === 'red' ? 'Nierozliczony >7 dni' : 'Nierozliczony'}
-                    />
-                  </div>
-                )}
+
                 {/* TWÓJ OBECNY LIST CONTENT 1:1 */}
                 <div className="flex items-start justify-between gap-1 sm:gap-2">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <h3 className="max-w-[240px] truncate text-base font-medium text-[#e5e4e2] md:text-lg">
-                        {event.name}
+                        {urgency==='red'&&<AlertCircle className="event-payment-alert mr-2 inline-block h-5 w-5 text-red-400" aria-label={visualState(event).label}/>}{event.name}
+                        {visualState(event).label&&<span className="event-state-label mt-1 block text-xs font-normal text-[#e5e4e2]/65">{visualState(event).label}</span>}
                       </h3>
                       {isPast && (
                         <span className="hidden rounded bg-[#e5e4e2]/10 px-2 py-0.5 text-xs text-[#e5e4e2]/50 md:inline">
@@ -2257,7 +2259,7 @@ export default function EventsPageClient({
                     <div className="hidden items-center gap-2 md:flex">
                       {canViewEventStatus && (
                         <div>
-                          <EventStatusBadge status={event.status} />
+                          <EventStatusBadge status={displayStatus(event) as EventStatus} label={operational ? OPERATIONAL_LABELS[displayStatus(event)] : undefined} />
                         </div>
                       )}
                       {event.event_categories && (
@@ -2332,7 +2334,7 @@ export default function EventsPageClient({
                     <div
                       className={`rounded-full border px-2 py-1 text-xs ${statusColors[event.status]}`}
                     >
-                      <EventStatusBadge status={event.status} />
+                      <EventStatusBadge status={displayStatus(event) as EventStatus} label={operational ? OPERATIONAL_LABELS[displayStatus(event)] : undefined} />
                     </div>
                   )}
                   {event.event_categories && (

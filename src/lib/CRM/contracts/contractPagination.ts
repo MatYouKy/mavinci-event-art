@@ -258,7 +258,23 @@ const cloneTextRangePreservingMarkup = (
   if (start) range.setStart(start.node, start.offset);
   if (end) range.setEnd(end.node, end.offset);
 
-  clone.appendChild(range.cloneContents());
+  let fragment: Node = range.cloneContents();
+  let ancestor: Node | null = range.commonAncestorContainer;
+
+  if (ancestor.nodeType !== Node.ELEMENT_NODE) {
+    ancestor = ancestor.parentNode;
+  }
+
+  // Range nie kopiuje wspólnego przodka ani otaczających go znaczników.
+  // Odtwarzamy je, aby kontynuacja podpunktu zachowała własne style i wcięcie.
+  while (ancestor && ancestor !== source) {
+    const wrapper = ancestor.cloneNode(false);
+    wrapper.appendChild(fragment);
+    fragment = wrapper;
+    ancestor = ancestor.parentNode;
+  }
+
+  clone.appendChild(fragment);
   return clone;
 };
 
@@ -670,7 +686,15 @@ const preserveContractListIndent = (
     if (!expectedDepth) return;
 
     const actualDepth = getContractListDepth(item, boundary);
-    const missingDepth = Math.max(0, expectedDepth - actualDepth);
+    // Przesunięcie rodzica obejmuje również jego podpunkty. Nie dodajemy
+    // drugi raz tego samego brakującego poziomu do zagnieżdżonego <li>.
+    let inheritedMissingDepth = 0;
+    let ancestor = item.parentElement;
+    while (ancestor && ancestor !== boundary) {
+      inheritedMissingDepth += Number(ancestor.dataset.contractPaginationMissingDepth || 0);
+      ancestor = ancestor.parentElement;
+    }
+    const missingDepth = Math.max(0, expectedDepth - actualDepth - inheritedMissingDepth);
     if (!item.hasAttribute('data-contract-pagination-base-margin')) {
       item.dataset.contractPaginationBaseMargin = item.style.marginLeft || '0px';
     }

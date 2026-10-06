@@ -1,6 +1,8 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 'use client';
 
+import { formatSystemSubject } from '@/lib/ui/systemLabels';
+
 import { useRouter } from 'next/navigation';
 import { Calendar, GripVertical, Edit, Trash2, UserPlus, MessageSquare } from 'lucide-react';
 import { memo, useMemo } from 'react';
@@ -115,7 +117,7 @@ const assignees = useMemo(() => {
             onClick={handleTitleClick}
             className="text-sm font-medium text-[#e5e4e2] hover:text-[#d3bb73] transition-colors text-left flex-1 truncate"
           >
-            {task.title}
+            {formatSystemSubject(task.title)}
           </button>
         </div>
         {canManage && (

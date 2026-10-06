@@ -194,7 +194,12 @@ export function AddEquipmentModal({
     const q = normalize(searchTerm);
 
     return (availableEquipment || [])
-      .filter((i) => normalize(i?.name).includes(q) || normalize(i?.category?.name).includes(q))
+      .filter((i) => {
+        const searchableText = normalize(
+          [i?.name, i?.brand, i?.model, i?.category?.name].filter(Boolean).join(' '),
+        );
+        return q.split(/\s+/).every((word) => searchableText.includes(word));
+      })
       .filter((i) => {
         const maxAdd = getMaxAdd('item', i.id);
         // dopóki availability nie ma, pokazuj wszystko
@@ -579,7 +584,7 @@ export function AddEquipmentModal({
         <div className="mb-4">
           <input
             type="text"
-            placeholder="Szukaj sprzętu lub zestawu..."
+            placeholder="Szukaj po nazwie, marce lub modelu..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
@@ -613,7 +618,9 @@ export function AddEquipmentModal({
                     'item',
                     item,
                     item?.name || 'Sprzęt',
-                    item?.category?.name || 'Brak kategorii',
+                    [item?.brand, item?.model, item?.category?.name || 'Brak kategorii']
+                      .filter(Boolean)
+                      .join(' • '),
                   ),
                 )}
               </div>

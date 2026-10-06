@@ -1,0 +1,24 @@
+ 'use client';
+import { ContractDateField } from '@/components/crm/invoices/ContractTermFields';
+import { personnelInput as input } from '@/lib/personnel/workspace';
+import { type PersonnelPayrollProfile } from '@/lib/personnel/legal';
+export function PersonnelLegalFields({value,onChange,kind}:{value:PersonnelPayrollProfile;onChange:(value:PersonnelPayrollProfile)=>void;kind:string}) {
+ const set=(key:keyof PersonnelPayrollProfile,v:string|boolean)=>onChange({...value,[key]:v});
+ return <details className="space-y-3 rounded-lg bg-white/[0.035] p-4"><summary className="cursor-pointer text-sm font-medium">Dane do PIT i ZUS</summary>
+ <p className="text-xs leading-5 opacity-65">Dane aktualizuj po zmianie sytuacji osoby. Każde zatwierdzone rozliczenie zachowuje własną kopię. Status ucznia lub studenta nie oznacza automatycznie zwolnienia z PIT.</p>
+ <div className="grid gap-3 sm:grid-cols-2">
+ <ContractDateField label="Data urodzenia" value={value.birth_date} onChange={v=>set('birth_date',v)}/>
+ <label className="text-xs">Status edukacji<select className={input} value={value.education} onChange={e=>set('education',e.target.value)}><option value="unknown">Do ustalenia</option><option value="none">Nie jest uczniem ani studentem</option><option value="pupil">Uczeń</option><option value="student">Student</option></select></label>
+ {['student','pupil'].includes(value.education)&&<><ContractDateField label="Status potwierdzony od" value={value.education_from} onChange={v=>set('education_from',v)}/><ContractDateField label="Ostatni dzień potwierdzonego statusu" value={value.education_to} onChange={v=>set('education_to',v)}/><p className="text-xs leading-5 text-amber-100/80 sm:col-span-2">ZUS: zlecenie ucznia lub studenta przed 26. urodzinami może być bez składek. Zweryfikuj rzeczywisty status, również przerwę między studiami. Studia doktoranckie i podyplomowe nie dają tego zwolnienia.</p></>}
+ <label className="text-xs sm:col-span-2">Zlecenie / dzieło z osobą już zatrudnioną na etacie u tego pracodawcy<select className={input} value={value.own_employer} onChange={e=>set('own_employer',e.target.value)}><option value="unknown">Do ustalenia</option><option value="no">Nie</option><option value="yes">Tak — dodatkowa umowa do istniejącego etatu</option></select></label>
+ <p className="text-xs leading-5 opacity-65 sm:col-span-2">„Tak” oznacza istniejącą umowę o pracę ze zleceniodawcą albo wykonywanie zlecenia na rzecz swojego pracodawcy. Sam wpis osoby w CRM lub nowe zlecenie dla Mavinci nie oznacza odpowiedzi „Tak”. Jeżeli osoba nie ma takiego etatu i nie wykonuje pracy na rzecz swojego pracodawcy, wybierz „Nie”.</p>
+ <label className="text-xs">Rezydencja podatkowa<select className={input} value={value.tax_residency} onChange={e=>set('tax_residency',e.target.value)}><option value="unknown">Do ustalenia</option><option value="PL">Polska</option><option value="other">Inna — rozliczenie indywidualne</option></select></label>
+ <label className="text-xs">Wniosek o niestosowanie ulgi dla młodych<select className={input} value={value.youth_opt_out} onChange={e=>set('youth_opt_out',e.target.value)}><option value="unknown">Do ustalenia</option><option value="no">Nie złożono</option><option value="yes">Złożono</option></select></label>
+ <label className="text-xs sm:col-span-2">Inne tytuły ubezpieczenia i ustalenia dla księgowości<textarea className={input} rows={2} value={value.other_insurance} onChange={e=>set('other_insurance',e.target.value)} placeholder="Np. etat u innego pracodawcy, inne zlecenia, działalność, dobrowolne chorobowe"/></label>
+ </div>
+ <p className="text-xs leading-5 opacity-65">PIT: limit ulgi dla młodych to 85 528 zł rocznie, łącznie u wszystkich płatników i z innymi ulgami objętymi wspólnym limitem. Liczy się data uzyskania przychodu. {kind==='specific_work'?'Umowa o dzieło nie korzysta z tej ulgi.':'Student nie jest warunkiem ulgi PIT.'}</p>
+ {kind==='employment'&&<p className="text-xs leading-5 text-amber-100/80">Umowa o pracę: ulga PIT nie zwalnia ze składek ZUS. Rozliczenie wymaga także wymiaru etatu, czasu pracy, absencji, dodatków i innych składników listy płac.</p>}
+ {kind==='specific_work'&&<p className="text-xs leading-5 text-amber-100/80">Dzieło wymaga określonego rezultatu. Sama powtarzalna obsługa wydarzenia nie staje się dziełem przez wybór nazwy. Zweryfikuj również obowiązek zgłoszenia RUD.</p>}
+ <p className="text-xs opacity-60"><a className="underline" href="https://www.podatki.gov.pl/ulgi-i-odliczenia/ulga-dla-mlodych-pit" target="_blank" rel="noreferrer">Zasady PIT — MF</a> · <a className="underline" href="https://www.zus.pl/-/studencki-portfel-w-wakacje.-kiedy-praca-sezonowa-zasili-twoje-konto-w-zus-a-kiedy-do-twojego-portfela-trafi-%E2%80%9Eca%C5%82a-pensja-" target="_blank" rel="noreferrer">Status studenta — ZUS</a></p>
+ </details>;
+}

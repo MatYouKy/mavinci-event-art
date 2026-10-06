@@ -1,4 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { canCreateInquiry } from '../lib/permissions';
+import React, { useState, useCallback } from 'react';
+import { useForegroundEffect } from '../hooks/useForegroundEffect';
+import { createRefreshQueue } from '../lib/refreshQueue';
 import {
   View,
   Text,
@@ -128,25 +131,21 @@ export default function InquiriesScreen() {
     );
   }, []);
 
-  useEffect(() => {
-    fetchInquiries();
-  }, [fetchInquiries]);
-
-  useEffect(() => {
+  useForegroundEffect((signal) => {
     if (!employee?.id) return;
+    const queue = createRefreshQueue(signal, () => fetchInquiries());
+    void queue.refresh();
     const channel = supabase
       .channel('inquiries_realtime')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'tasks', filter: 'is_inquiry=eq.true' },
-        () => {
-          fetchInquiries();
-        },
+        queue.schedule,
       )
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      return supabase.removeChannel(channel);
     };
   }, [employee?.id, fetchInquiries]);
 
@@ -384,13 +383,13 @@ export default function InquiriesScreen() {
         />
       )}
 
-      <TouchableOpacity
+      {canCreateInquiry(employee) && <TouchableOpacity
         style={styles.fab}
         activeOpacity={0.8}
         onPress={() => setShowNewModal(true)}
       >
         <Feather name="plus" size={24} color="#fff" />
-      </TouchableOpacity>
+      </TouchableOpacity>}
 
       <NewInquiryModal
         visible={showNewModal}

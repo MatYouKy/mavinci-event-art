@@ -1,5 +1,7 @@
 'use client';
 
+import { systemLabel } from '@/lib/ui/systemLabels';
+
 import { CalendarViewProps } from './types';
 import { STATUS_COLORS } from './constants';
 import { Calendar, MapPin, Users } from 'lucide-react';
@@ -100,7 +102,7 @@ export default function EmployeeView({
                             {assignment?.role && (
                               <div className="flex items-center gap-2">
                                 <span className="text-xs text-[#d3bb73] bg-[#d3bb73]/10 px-2 py-1 rounded">
-                                  {assignment.role}
+                                  {systemLabel(assignment.role, 'role', { preserveCustom: true })}
                                 </span>
                               </div>
                             )}

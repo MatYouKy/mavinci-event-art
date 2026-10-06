@@ -15,6 +15,7 @@ import {
   List,
   Table2,
 } from 'lucide-react';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useUserPreferences } from '@/hooks/useUserPreferences';
 
 interface Contract {
@@ -38,6 +39,9 @@ interface Contract {
 
 export default function ContractsPage() {
   const router = useRouter();
+  const { canManageModule, canCreateInModule } = useCurrentEmployee();
+  const canManage = canManageModule('contracts');
+  const canCreate = canCreateInModule('contracts');
   const { getViewMode, setViewMode } = useUserPreferences();
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [filteredContracts, setFilteredContracts] = useState<Contract[]>([]);
@@ -106,6 +110,7 @@ export default function ContractsPage() {
   };
 
   const handleDelete = async (id: string) => {
+    if (!canManage) return;
     if (!confirm('Czy na pewno chcesz usunąć tę umowę?')) return;
 
     try {
@@ -165,13 +170,13 @@ export default function ContractsPage() {
               <FileType className="h-5 w-5" />
               Szablony
             </button>
-            <button
+            {canCreate && (<button
               onClick={() => setShowCreateModal(true)}
               className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-3 font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
             >
               <Plus className="h-5 w-5" />
               Nowa umowa
-            </button>
+            </button>)}
           </div>
         </div>
 
@@ -243,13 +248,13 @@ export default function ContractsPage() {
             <FileText className="mx-auto mb-4 h-16 w-16 text-[#e5e4e2]/20" />
             <h3 className="mb-2 text-xl font-light text-[#e5e4e2]">Brak umów</h3>
             <p className="mb-6 text-[#e5e4e2]/60">Utwórz pierwszą umowę</p>
-            <button
+            {canCreate && (<button
               onClick={() => setShowCreateModal(true)}
               className="inline-flex items-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-3 font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
             >
               <Plus className="h-5 w-5" />
               Nowa umowa
-            </button>
+            </button>)}
           </div>
         ) : viewMode === 'grid' ? (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -319,7 +324,7 @@ export default function ContractsPage() {
                       <Download className="mx-auto h-4 w-4" />
                     </button>
                   )}
-                  <button
+                  {canManage && (<button
                     onClick={(e) => {
                       e.stopPropagation();
                       handleDelete(contract.id);
@@ -328,7 +333,7 @@ export default function ContractsPage() {
                     title="Usuń"
                   >
                     <Trash2 className="mx-auto h-4 w-4" />
-                  </button>
+                  </button>)}
                 </div>
               </div>
             ))}
@@ -391,7 +396,7 @@ export default function ContractsPage() {
                         <Download className="h-5 w-5" />
                       </button>
                     )}
-                    <button
+                    {canManage && (<button
                       onClick={(e) => {
                         e.stopPropagation();
                         handleDelete(contract.id);
@@ -400,7 +405,7 @@ export default function ContractsPage() {
                       title="Usuń"
                     >
                       <Trash2 className="h-5 w-5" />
-                    </button>
+                    </button>)}
                   </div>
                 </div>
               </div>
@@ -498,7 +503,7 @@ export default function ContractsPage() {
                               <Download className="h-4 w-4" />
                             </button>
                           )}
-                          <button
+                          {canManage && (<button
                             onClick={(e) => {
                               e.stopPropagation();
                               handleDelete(contract.id);
@@ -507,7 +512,7 @@ export default function ContractsPage() {
                             title="Usuń"
                           >
                             <Trash2 className="h-4 w-4" />
-                          </button>
+                          </button>)}
                         </div>
                       </td>
                     </tr>
@@ -519,7 +524,7 @@ export default function ContractsPage() {
         )}
       </div>
 
-      {showCreateModal && (
+      {canCreate && showCreateModal && (
         <CreateContractModal
           isOpen={showCreateModal}
           onClose={() => setShowCreateModal(false)}

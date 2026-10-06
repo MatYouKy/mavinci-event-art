@@ -17,57 +17,46 @@ import { IUploadImage } from '@/types/image';
 import { CategoryBreadcrumb } from '@/components/CategoryBreadcrumb';
 import Image from 'next/image';
 
-const MOCK_PROJECTS: PortfolioProject[] = [
-  {
-    id: 'mock-1',
-    title: 'Targi Branżowe Olsztyn 2024',
-    category: 'Targi i Wystawy',
-    image: 'https://images.pexels.com/photos/1190297/pexels-photo-1190297.jpeg?auto=compress&cs=tinysrgb&w=1920',
-    description: 'Kompleksowa organizacja targów branżowych w Olsztynie - obsługa 200 wystawców, catering, multimedia. Event trwał 3 dni i przyciągnął ponad 5000 zwiedzających z całej Polski.',
-    order_index: 1,
-    location: 'Olsztyn',
-    event_date: '2024-05-15',
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    tags: [],
-    slug: ''
-  },
-];
-
-export default function PortfolioDetailClient() {
+export default function PortfolioDetailClient({ initialProject }: { initialProject: PortfolioProject & { keywords?: string[]; meta_description?: string } }) {
   const { isEditMode } = useEditMode();
   const { showSnackbar } = useSnackbar();
   const params = useParams();
   const slug = params.slug as string;
 
-  const [project, setProject] = useState<PortfolioProject | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [project, setProject] = useState<PortfolioProject | null>(initialProject);
+  const [loading, setLoading] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const [title, setTitle] = useState('');
-  const [category, setCategory] = useState('');
-  const [tags, setTags] = useState<string[]>([]);
+  const [title, setTitle] = useState(initialProject.title);
+  const [category, setCategory] = useState(initialProject.category);
+  const [tags, setTags] = useState<string[]>(initialProject.tags || []);
   const [newTag, setNewTag] = useState('');
-  const [keywords, setKeywords] = useState<string[]>([]);
+  const [keywords, setKeywords] = useState<string[]>(initialProject.keywords || []);
   const [newKeyword, setNewKeyword] = useState('');
-  const [metaDescription, setMetaDescription] = useState('');
-  const [location, setLocation] = useState('');
-  const [eventDate, setEventDate] = useState('');
-  const [description, setDescription] = useState('');
-  const [orderIndex, setOrderIndex] = useState(0);
+  const [metaDescription, setMetaDescription] = useState(initialProject.meta_description || '');
+  const [location, setLocation] = useState(initialProject.location || '');
+  const [eventDate, setEventDate] = useState(initialProject.event_date || '');
+  const [description, setDescription] = useState(initialProject.description);
+  const [orderIndex, setOrderIndex] = useState(initialProject.order_index || 0);
   const [imageData, setImageData] = useState<IUploadImage | null>(null);
-  const [previewImage, setPreviewImage] = useState<string>('');
+  const [previewImage, setPreviewImage] = useState<string>(initialProject.image_metadata?.desktop?.src || initialProject.image);
   const [heroOpacity, setHeroOpacity] = useState(0.2);
-  const [gallery, setGallery] = useState<GalleryImage[]>([]);
-  const [detailedDescription, setDetailedDescription] = useState('');
-  const [features, setFeatures] = useState<PortfolioProjectFeature[]>([]);
+  const [gallery, setGallery] = useState<GalleryImage[]>(initialProject.gallery || []);
+  const [detailedDescription, setDetailedDescription] = useState(initialProject.detailed_description || '');
+  const [features, setFeatures] = useState<PortfolioProjectFeature[]>(initialProject.features || []);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
   useEffect(() => {
-    fetchProject();
-  }, [slug]);
+    if (initialProject.slug === slug) {
+      setProject(initialProject);
+      loadProjectData(initialProject);
+      setLoading(false);
+    } else {
+      fetchProject();
+    }
+  }, [slug, initialProject]);
 
   // Cleanup Object URL on unmount
   useEffect(() => {
@@ -91,21 +80,11 @@ export default function PortfolioDetailClient() {
         setProject(data);
         loadProjectData(data);
       } else {
-        const mockProject = MOCK_PROJECTS.find(p => p.id === slug);
-        if (mockProject) {
-          setProject(mockProject);
-          loadProjectData(mockProject);
-        } else {
-          setProject(null);
-        }
+        setProject(null);
       }
     } catch (error) {
       console.error('Error fetching project:', error);
-      const mockProject = MOCK_PROJECTS.find(p => p.id === slug);
-      if (mockProject) {
-        setProject(mockProject);
-        loadProjectData(mockProject);
-      }
+      showSnackbar('Nie udało się odświeżyć realizacji.', 'error');
     }
     setLoading(false);
   };
@@ -117,7 +96,7 @@ export default function PortfolioDetailClient() {
     setKeywords((proj as any).keywords || []);
     setMetaDescription((proj as any).meta_description || '');
     setLocation(proj.location || 'Polska');
-    setEventDate(proj.event_date || new Date().toISOString().split('T')[0]);
+    setEventDate(proj.event_date || '');
     setDescription(proj.description);
     setDetailedDescription(proj.detailed_description || '');
     setOrderIndex(proj.order_index || 0);

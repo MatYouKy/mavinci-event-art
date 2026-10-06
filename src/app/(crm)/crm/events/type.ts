@@ -14,6 +14,16 @@ export type SelectedItem = {
 };
 
 export interface IOffer {
+  discount_amount?: number;
+  discount_percent?: number;
+  tax_amount?: number;
+  total_cost?: number | null;
+  logistics_cost_net?: number | null;
+  logistics_enabled?: boolean;
+  logistics_price_net?: number;
+  totals_include_logistics?: boolean;
+  pricing_source?: string | null;
+  calculation_snapshot?: import('@/lib/CRM/Offers/offerTotals').OfferPricingTotalsInput['calculation_snapshot'];
   subtotal: number;
   tax_percent: number;
   id: string;
@@ -46,8 +56,11 @@ export interface IOffer {
 }
 
 export interface IEvent {
+  financial_source?: 'offer' | 'calculation' | null;
   permissionContext: EventPermissionContext;
   location_id: any;
+  location_room_ids?: string[];
+  stage_room_id?: string | null;
   id: string;
   name: string;
   description?: string;

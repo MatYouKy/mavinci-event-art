@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useId, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Search, X, Plus, ExternalLink } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
@@ -21,6 +21,8 @@ type Props = {
   onLocationChange: (locationId: string | null) => void;
   editMode: boolean;
   onOpenAddLocation?: () => void;
+  required?: boolean;
+  error?: string;
 };
 
 function labelForInput(loc: LocationRow | null) {
@@ -53,11 +55,16 @@ export default function OrganizationLocationPicker({
   onLocationChange,
   editMode,
   onOpenAddLocation,
+  required = false,
+  error,
 }: Props) {
+  const inputId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const [currentLocation, setCurrentLocation] = useState<LocationRow | null>(null);
+  const [loadingCurrent, setLoadingCurrent] = useState(false);
+  const [currentError, setCurrentError] = useState('');
 
   const [q, setQ] = useState('');
   const [open, setOpen] = useState(false);
@@ -72,11 +79,16 @@ export default function OrganizationLocationPicker({
     let alive = true;
 
     const run = async () => {
+      setCurrentError('');
       if (!currentLocationId) {
         if (!alive) return;
         setCurrentLocation(null);
+        setLoadingCurrent(false);
         return;
       }
+
+      setLoadingCurrent(true);
+      setCurrentLocation(null);
 
       const { data, error } = await supabase
         .from('locations')
@@ -85,14 +97,17 @@ export default function OrganizationLocationPicker({
         .maybeSingle();
 
       if (!alive) return;
+      setLoadingCurrent(false);
 
       if (error) {
         console.error('Fetch current location error:', error);
         setCurrentLocation(null);
+        setCurrentError('Nie udało się wczytać powiązanej lokalizacji. Sprawdź uprawnienia do lokalizacji.');
         return;
       }
 
       setCurrentLocation((data as LocationRow) || null);
+      if (!data) setCurrentError('Powiązana lokalizacja jest niedostępna. Sprawdź uprawnienia do lokalizacji.');
     };
 
     run();
@@ -195,7 +210,7 @@ export default function OrganizationLocationPicker({
   if (!editMode) {
     return (
       <div className="mt-2">
-        {currentLocationId && currentLocation ? (
+        {currentLocationId ? (
           <div className="border-t border-[#d3bb73]/10 pt-4">
             <Link
               href={`/crm/locations/${currentLocationId}`}
@@ -204,10 +219,11 @@ export default function OrganizationLocationPicker({
               className="group flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-[#d3bb73] transition-colors hover:bg-white/5 hover:text-[#d3bb73]/80 [&_*]:!cursor-pointer"
             >
               <span className="min-w-0 flex-1 truncate transition-colors group-hover:text-[#d3bb73]/80">
-                {labelForInput(currentLocation) || '—'}
+                {labelForInput(currentLocation) || (loadingCurrent ? 'Wczytywanie lokalizacji…' : 'Otwórz powiązaną lokalizację')}
               </span>
               <ExternalLink className="h-4 w-4 transition-colors group-hover:text-[#d3bb73]/80" />
             </Link>
+            {currentError && <p role="alert" className="mt-2 text-sm text-amber-200">{currentError}</p>}
           </div>
         ) : (
           <div className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-white/50">
@@ -222,7 +238,8 @@ export default function OrganizationLocationPicker({
 
   return (
     <div ref={rootRef} className="rounded-xl border border-white/10 bg-white/[0.02] p-4">
-      <div className="text-sm font-medium text-white/80">Lokalizacja</div>
+      <label htmlFor={inputId} className="text-sm font-medium text-white/80">Lokalizacja{required ? ' *' : ''}</label>
+      {required && <p className="mt-1 text-xs text-white/55">Wymagana dla hotelu. Sale, rzuty, zdjęcia i informacje techniczne są zapisane wyłącznie w tej lokalizacji.</p>}
 
       <div className="mt-3 flex items-stretch gap-3">
         <div className="relative flex-1">
@@ -230,12 +247,19 @@ export default function OrganizationLocationPicker({
           <Search className="pointer-events-none absolute left-3 top-[22px] h-4 w-4 -translate-y-1/2 text-white/40" />
 
           <input
+            id={inputId}
+            name="location_id"
+            aria-required={required}
+            aria-invalid={Boolean(error)}
+            aria-describedby={error ? `${inputId}-error` : undefined}
             ref={inputRef}
             value={q}
             onChange={(e) => {
               setIsUserTyping(true);
               setFetchError('');
               setQ(e.target.value);
+              onLocationChange(null);
+              setCurrentLocation(null);
               setOpen(true);
             }}
             onFocus={() => setOpen(true)}
@@ -243,7 +267,7 @@ export default function OrganizationLocationPicker({
             className={[
               // ✅ stała wysokość inputa -> ikony zawsze trafiają w środek
               'h-11 w-full rounded-lg border bg-black/20 py-2 pl-10 pr-10 text-sm text-white outline-none transition',
-              showError ? 'border-red-500/50' : 'border-white/10 focus:border-[#d3bb73]/40',
+              showError || error ? 'border-red-500/25' : 'border-white/10 focus:border-[#d3bb73]/25',
             ].join(' ')}
           />
 
@@ -285,9 +309,10 @@ export default function OrganizationLocationPicker({
           )}
 
           <div className="mt-1 text-xs text-white/40">
-            Wpisz min. 2 znaki — pokaże się podpowiedź. Jeśli nie ma na liście, dodaj nową
-            lokalizację.
+            Wpisz min. 2 znaki i wybierz wynik z listy. Samo wpisanie nazwy nie tworzy powiązania.
           </div>
+          {error && <p id={`${inputId}-error`} role="alert" className="mt-2 text-sm text-red-300">{error}</p>}
+          {currentError && <p role="alert" className="mt-2 text-sm text-amber-200">{currentError}</p>}
 
           {showError && (
             <div className="mt-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
@@ -296,14 +321,14 @@ export default function OrganizationLocationPicker({
           )}
         </div>
 
-        <button
+        {onOpenAddLocation && <button
           type="button"
           onClick={() => onOpenAddLocation?.()}
           className="inline-flex h-11 items-center gap-2 rounded-lg bg-[#d3bb73] px-4 text-sm font-semibold text-[#0f1119] transition hover:bg-[#c4a859]"
         >
           <Plus className="h-4 w-4" />
           Dodaj nową lokalizację
-        </button>
+        </button>}
       </div>
     </div>
   );

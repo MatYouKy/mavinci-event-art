@@ -1,9 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { X, FileText, Loader, RefreshCw, ArrowLeft, Check } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { X, FileText, Loader, RefreshCw, ArrowLeft, Check, CalendarDays } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import { getRecordedProformaPaymentDate, parseProformaPaymentDate } from '@/lib/invoices/convertProformaToInvoice';
+import { DEFAULT_INVOICE_PAYMENT_TERM_DAYS, getInvoicePaymentDueDate } from '@/lib/invoices/paymentTerm';
 
 type TargetInvoiceType = 'vat' | 'advance';
 type NumberingMode = 'auto' | 'manual';
@@ -35,6 +37,10 @@ interface ProformaData {
   payment_method: string | null;
   bank_account: string | null;
   notes: string | null;
+  currency_code: string | null;
+  paid_date: string | null;
+  paid_at: string | null;
+  manual_paid_amount: number | null;
   invoice_items?: Array<{
     name: string;
     unit: string;
@@ -58,10 +64,9 @@ export default function ConvertProformaModal({
   const [autoPreview, setAutoPreview] = useState<string>('');
   const [proforma, setProforma] = useState<ProformaData | null>(null);
   const [loadingProforma, setLoadingProforma] = useState(true);
+  const paymentDatePicker = useRef<HTMLInputElement>(null);
 
   const today = new Date().toISOString().split('T')[0];
-  const due = new Date();
-  due.setDate(due.getDate() + 14);
 
   const [form, setForm] = useState({
     targetType: 'vat' as TargetInvoiceType,
@@ -69,9 +74,13 @@ export default function ConvertProformaModal({
     customNumber: '',
     issueDate: today,
     saleDate: today,
-    paymentDueDate: due.toISOString().split('T')[0],
-    advancePercent: 30,
+    paymentTermDays: String(DEFAULT_INVOICE_PAYMENT_TERM_DAYS),
+    receivedPaymentConfirmed: false,
+    receivedPaymentDate: '',
   });
+  const paymentDueDate = getInvoicePaymentDueDate(form.issueDate, form.paymentTermDays);
+  const invalidPaymentTerm = form.targetType !== 'advance' && !paymentDueDate;
+  const paymentDueDateDisplay = paymentDueDate?.split('-').reverse().join('.') || '';
 
   const [editableBuyer, setEditableBuyer] = useState({
     buyer_name: '',
@@ -92,6 +101,11 @@ export default function ConvertProformaModal({
         .maybeSingle();
       if (data) {
         setProforma(data as ProformaData);
+        setForm((current) => ({
+          ...current,
+          receivedPaymentConfirmed: false,
+          receivedPaymentDate: data.paid_date || data.paid_at?.split('T')[0] || '',
+        }));
         setEditableBuyer({
           buyer_name: data.buyer_name || '',
           buyer_nip: data.buyer_nip || '',
@@ -157,22 +171,35 @@ export default function ConvertProformaModal({
   }, [form.targetType, proforma]);
 
   const goToPreview = () => {
+    if (invalidPaymentTerm) {
+      showSnackbar('Podaj termin płatności jako liczbę całkowitą dni od 0 oraz poprawną datę wystawienia.', 'error');
+      return;
+    }
     if (form.numberingMode === 'manual' && !form.customNumber.trim()) {
       showSnackbar('Podaj numer faktury', 'error');
       return;
     }
-    if (
-      form.targetType === 'advance' &&
-      (form.advancePercent <= 0 || form.advancePercent > 100)
-    ) {
-      showSnackbar('Zaliczka musi być większa od 0% i nie może przekraczać 100%.', 'error');
-      return;
+    if (form.targetType === 'advance') {
+      const savedPaymentDate = proforma && getRecordedProformaPaymentDate(proforma, form.issueDate, today);
+      const paymentDate = savedPaymentDate || parseProformaPaymentDate(form.receivedPaymentDate);
+      if ((!savedPaymentDate && !form.receivedPaymentConfirmed) || !paymentDate) {
+        showSnackbar('Potwierdź otrzymanie całej kwoty pro formy i podaj rzeczywistą datę wpłaty.', 'error');
+        return;
+      }
+      if (paymentDate > today || paymentDate > form.issueDate) {
+        showSnackbar('Data wpłaty nie może być w przyszłości ani po dacie wystawienia zaliczki.', 'error');
+        return;
+      }
     }
     setStep('preview');
   };
 
   const handleSubmit = async () => {
     if (!proforma) return;
+    if (invalidPaymentTerm) {
+      showSnackbar('Podaj termin płatności jako liczbę całkowitą dni od 0 oraz poprawną datę wystawienia.', 'error');
+      return;
+    }
     setLoading(true);
     try {
       const { convertProformaToInvoice } = await import('@/lib/invoices/convertProformaToInvoice');
@@ -182,8 +209,9 @@ export default function ConvertProformaModal({
           form.numberingMode === 'manual' ? form.customNumber.trim() : undefined,
         issueDate: form.issueDate,
         saleDate: form.saleDate,
-        paymentDueDate: form.paymentDueDate,
-        advancePercent: form.advancePercent,
+        paymentDueDate: form.targetType === 'advance' ? undefined : paymentDueDate || undefined,
+        receivedPaymentConfirmed: form.receivedPaymentConfirmed,
+        receivedPaymentDate: form.receivedPaymentDate,
         buyerData: {
           buyer_name: editableBuyer.buyer_name,
           buyer_nip: editableBuyer.buyer_nip || null,
@@ -197,24 +225,12 @@ export default function ConvertProformaModal({
         throw new Error(result.error || 'Blad konwersji');
       }
 
-      if (proforma.event_id) {
-        const { error: settlementLinkError } = await supabase.rpc(
-          'link_invoice_to_event_settlement',
-          {
-            p_invoice_id: result.invoiceId,
-            p_source_event_id: proforma.event_id,
-          },
-        );
-        if (settlementLinkError) {
-          console.error('Error linking converted invoice to settlement group:', settlementLinkError);
-          showSnackbar(
-            'Faktura powstała, ale nie udało się przypisać jej do całej grupy wydarzeń',
-            'warning',
-          );
-        }
-      }
-
-      showSnackbar('Faktura zostala utworzona (szkic)', 'success');
+      showSnackbar(
+        form.targetType === 'advance'
+          ? 'Wystawiono opłaconą fakturę zaliczkową na całą kwotę pro formy'
+          : 'Faktura została utworzona (szkic)',
+        'success',
+      );
       onConverted(result.invoiceId);
     } catch (err: any) {
       console.error(err);
@@ -226,7 +242,13 @@ export default function ConvertProformaModal({
 
   const targetNumber =
     form.numberingMode === 'manual' ? form.customNumber.trim() : autoPreview || '—';
-  const previewFactor = form.targetType === 'advance' ? form.advancePercent / 100 : 1;
+  const currency = proforma?.currency_code || 'PLN';
+  const recordedPaymentDate = proforma && getRecordedProformaPaymentDate(proforma, form.issueDate, today);
+  const paymentDateValue = recordedPaymentDate || form.receivedPaymentDate;
+  const receivedPaymentDate = parseProformaPaymentDate(paymentDateValue);
+  const paymentDateDisplay = /^\d{4}-\d{2}-\d{2}$/.test(paymentDateValue)
+    ? paymentDateValue.split('-').reverse().join('.')
+    : paymentDateValue;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -260,6 +282,17 @@ export default function ConvertProformaModal({
                 Proforma zrodlowa
               </div>
               <div className="mt-1 text-base font-medium text-[#e5e4e2]">{proformaNumber}</div>
+              <div className="mt-3 space-y-2 text-sm text-[#e5e4e2]/70">
+                <p><span className="text-[#e5e4e2]">Podstawa pozycji i kwoty:</span> ta pro forma. Zachowamy wpisane na niej nazwy i układ pozycji — bez zastępowania ich szczegółami kalkulacji lub oferty.</p>
+                {proforma.invoice_items?.length === 1 && (
+                  <p className="rounded-lg bg-[#d3bb73]/5 p-3">
+                    Pozycja na nowej fakturze: <span className="font-medium text-[#e5e4e2]">{proforma.invoice_items[0].name}</span>
+                  </p>
+                )}
+                {form.targetType === 'advance' && (
+                  <p className="text-xs text-[#e5e4e2]/55">Faktura końcowa odziedziczy nazwy i układ tej zaliczki. Pełną wartość rozliczenia pobierze osobno z zamówienia, w pierwszej kolejności z powiązanego wydarzenia; nie będzie to ponowne naliczenie samej kwoty zaliczki.</p>
+                )}
+              </div>
             </div>
 
             <div>
@@ -271,7 +304,7 @@ export default function ConvertProformaModal({
                     {
                       value: 'advance',
                       label: 'Faktura zaliczkowa',
-                      desc: 'Zaliczka, koncowa wystawiona pozniej',
+                      desc: 'Cała opłacona pro forma, bez ponownego procentowania',
                     },
                   ] as Array<{ value: TargetInvoiceType; label: string; desc: string }>
                 ).map((opt) => {
@@ -302,27 +335,71 @@ export default function ConvertProformaModal({
             </div>
 
             {form.targetType === 'advance' && (
-              <div className="rounded-lg border border-blue-500/25 bg-blue-500/10 p-4">
-                <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
-                  Procent pełnego zamówienia objęty tą zaliczką *
-                </label>
-                <div className="relative max-w-[220px]">
-                  <input
-                    type="number"
-                    min="0.01"
-                    max="100"
-                    step="0.01"
-                    value={form.advancePercent}
-                    onChange={(e) =>
-                      setForm({ ...form, advancePercent: Number(e.target.value) })
-                    }
-                    className="w-full rounded-lg border border-blue-400/30 bg-[#0a0d1a] px-4 py-3 pr-10 text-[#e5e4e2]"
-                  />
-                  <span className="absolute right-4 top-3 text-[#e5e4e2]/50">%</span>
+              <div className="space-y-4 rounded-lg bg-[#d3bb73]/10 p-4">
+                <div>
+                  <p className="font-medium text-[#d3bb73]">
+                    Kwota zaliczki: {Number(proforma.total_gross).toFixed(2)} {currency}
+                  </p>
+                  <p className="mt-2 text-sm text-[#e5e4e2]/70">
+                    To 100% tej pro formy — nie przeliczamy jej ponownie procentem.
+                    Zaliczka potwierdzi otrzymaną wpłatę, a do zapłaty pozostanie 0,00 {currency}.
+                    Faktura końcowa obejmie pełne zamówienie pomniejszone o rozliczone zaliczki.
+                  </p>
                 </div>
-                <p className="mt-2 text-xs text-[#e5e4e2]/55">
-                  Pełna wartość zamówienia pozostanie zapisana w strukturze faktury zaliczkowej.
-                </p>
+                {recordedPaymentDate ? (
+                  <p className="text-sm text-[#d3bb73]">Zachowamy wpłatę potwierdzoną przy pro formie oraz jej datę.</p>
+                ) : <label className="flex items-start gap-3 text-sm text-[#e5e4e2]">
+                  <input
+                    type="checkbox"
+                    checked={form.receivedPaymentConfirmed}
+                    onChange={(e) => setForm({ ...form, receivedPaymentConfirmed: e.target.checked })}
+                    className="mt-0.5 accent-[#d3bb73]"
+                  />
+                  Potwierdzam otrzymanie całej kwoty tej pro formy. Nie jest to potwierdzenie nowej, dodatkowej wpłaty.
+                </label>}
+                <div className="max-w-xs">
+                  <label htmlFor="proforma-received-payment-date" className="mb-2 block text-sm text-[#e5e4e2]/70">
+                    Rzeczywista data otrzymania wpłaty *
+                  </label>
+                  <div className="flex items-center rounded-lg border border-white/10 bg-[#0a0d1a] focus-within:bg-[#d3bb73]/5">
+                    <input
+                      id="proforma-received-payment-date"
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="DD.MM.RRRR"
+                      value={paymentDateDisplay}
+                      readOnly={Boolean(recordedPaymentDate)}
+                      onChange={(e) => setForm({ ...form, receivedPaymentDate: e.target.value })}
+                      className="min-w-0 flex-1 rounded-lg border-0 bg-transparent px-3 py-2 text-[#e5e4e2] outline-none"
+                    />
+                    <div className="relative">
+                      <button
+                        type="button"
+                        aria-label="Wybierz datę otrzymania wpłaty z kalendarza"
+                        disabled={Boolean(recordedPaymentDate)}
+                        onClick={() => {
+                          const picker = paymentDatePicker.current;
+                          if (picker?.showPicker) picker.showPicker();
+                          else picker?.focus();
+                        }}
+                        className="rounded-lg p-3 text-[#d3bb73] hover:bg-white/5"
+                      >
+                        <CalendarDays className="h-4 w-4" />
+                      </button>
+                      <input
+                        ref={paymentDatePicker}
+                        type="date"
+                        aria-label="Kalendarz daty otrzymania wpłaty"
+                        tabIndex={-1}
+                        disabled={Boolean(recordedPaymentDate)}
+                        value={receivedPaymentDate || ''}
+                        max={form.issueDate < today ? form.issueDate : today}
+                        onChange={(e) => setForm({ ...form, receivedPaymentDate: e.target.value })}
+                        className="pointer-events-none absolute bottom-0 left-0 h-px w-px opacity-0"
+                      />
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -414,15 +491,26 @@ export default function ConvertProformaModal({
                   className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-3 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                 />
               </div>
-              <div>
-                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Termin platnosci</label>
+              {form.targetType !== 'advance' && <div>
+                <label htmlFor="proforma-payment-term-days" className="mb-2 block text-sm text-[#e5e4e2]/60">Termin płatności (dni)</label>
                 <input
-                  type="date"
-                  value={form.paymentDueDate}
-                  onChange={(e) => setForm({ ...form, paymentDueDate: e.target.value })}
-                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-3 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                  id="proforma-payment-term-days"
+                  type="number"
+                  inputMode="numeric"
+                  min="0"
+                  step="1"
+                  value={form.paymentTermDays}
+                  onChange={(e) => setForm({ ...form, paymentTermDays: e.target.value })}
+                  aria-invalid={invalidPaymentTerm}
+                  aria-describedby="proforma-payment-term-help"
+                  className="w-full rounded-lg border border-white/10 bg-[#0a0d1a] px-3 py-2 text-[#e5e4e2] focus:bg-[#d3bb73]/5 focus:outline-none"
                 />
-              </div>
+                <p id="proforma-payment-term-help" className={`mt-2 text-xs ${invalidPaymentTerm ? 'text-red-400' : 'text-[#e5e4e2]/60'}`}>
+                  {invalidPaymentTerm
+                    ? 'Podaj pełną liczbę dni od 0 oraz poprawną datę wystawienia.'
+                    : `Od daty wystawienia · termin: ${paymentDueDateDisplay}${Number(form.paymentTermDays) === 0 ? ' (płatność w dniu wystawienia)' : ''}`}
+                </p>
+              </div>}
             </div>
 
             <div>
@@ -498,13 +586,15 @@ export default function ConvertProformaModal({
                 </div>
                 <div>
                   <span className="text-[#e5e4e2]/50">Status:</span>{' '}
-                  <span className="font-medium text-[#e5e4e2]">Szkic</span>
+                  <span className="font-medium text-[#e5e4e2]">
+                    {form.targetType === 'advance' ? 'Opłacona' : 'Szkic'}
+                  </span>
                 </div>
                 {form.targetType === 'advance' && (
                   <div>
                     <span className="text-[#e5e4e2]/50">Zaliczka:</span>{' '}
                     <span className="font-medium text-[#e5e4e2]">
-                      {form.advancePercent}% zamówienia
+                      Cała kwota pro formy
                     </span>
                   </div>
                 )}
@@ -517,8 +607,12 @@ export default function ConvertProformaModal({
                   <span className="text-[#e5e4e2]">{form.saleDate}</span>
                 </div>
                 <div>
-                  <span className="text-[#e5e4e2]/50">Termin:</span>{' '}
-                  <span className="text-[#e5e4e2]">{form.paymentDueDate}</span>
+                  <span className="text-[#e5e4e2]/50">
+                    {form.targetType === 'advance' ? 'Wpłata otrzymana:' : 'Termin:'}
+                  </span>{' '}
+                  <span className="text-[#e5e4e2]">
+                    {form.targetType === 'advance' ? paymentDateDisplay : `${paymentDueDateDisplay} (${Number(form.paymentTermDays)} dni od wystawienia)`}
+                  </span>
                 </div>
               </div>
             </div>
@@ -553,7 +647,7 @@ export default function ConvertProformaModal({
 
             <div className="overflow-hidden rounded-lg border border-[#d3bb73]/10 bg-[#0a0d1a]">
               <div className="border-b border-[#d3bb73]/10 px-4 py-2 text-xs uppercase tracking-wider text-[#e5e4e2]/40">
-                Pozycje (kopiowane z proformy)
+                Pozycje na fakturze — odziedziczone z pro formy
               </div>
               <table className="w-full text-sm">
                 <thead className="bg-[#1c1f33] text-xs uppercase text-[#e5e4e2]/50">
@@ -573,11 +667,11 @@ export default function ConvertProformaModal({
                       <td className="px-2 py-2 text-[#e5e4e2]/70">{it.unit}</td>
                       <td className="px-2 py-2 text-right">{Number(it.quantity)}</td>
                       <td className="px-2 py-2 text-right">
-                        {(Number(it.price_net) * previewFactor).toFixed(2)}
+                        {Number(it.price_net).toFixed(2)}
                       </td>
                       <td className="px-2 py-2 text-right">{it.vat_rate}%</td>
                       <td className="px-2 py-2 text-right font-medium">
-                        {(Number(it.value_gross) * previewFactor).toFixed(2)}
+                        {Number(it.value_gross).toFixed(2)}
                       </td>
                     </tr>
                   ))}
@@ -587,27 +681,28 @@ export default function ConvertProformaModal({
                 <div>
                   <span className="text-[#e5e4e2]/50">Netto:</span>{' '}
                   <span className="text-[#e5e4e2]">
-                    {(Number(proforma.total_net) * previewFactor).toFixed(2)}
+                    {Number(proforma.total_net).toFixed(2)}
                   </span>
                 </div>
                 <div>
                   <span className="text-[#e5e4e2]/50">VAT:</span>{' '}
                   <span className="text-[#e5e4e2]">
-                    {(Number(proforma.total_vat) * previewFactor).toFixed(2)}
+                    {Number(proforma.total_vat).toFixed(2)}
                   </span>
                 </div>
                 <div>
                   <span className="text-[#e5e4e2]/50">Brutto:</span>{' '}
                   <span className="font-medium text-[#d3bb73]">
-                    {(Number(proforma.total_gross) * previewFactor).toFixed(2)} PLN
+                    {Number(proforma.total_gross).toFixed(2)} {currency}
                   </span>
                 </div>
               </div>
             </div>
 
-            <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 p-3 text-xs text-[#e5e4e2]/70">
-              Faktura zostanie utworzona jako szkic. Po wystawieniu mozesz dalej edytowac pozycje
-              i dane przed wyslaniem do KSeF.
+            <div className="rounded-lg bg-[#d3bb73]/10 p-3 text-sm text-[#e5e4e2]/80">
+              {form.targetType === 'advance'
+                ? `Otrzymano ${Number(proforma.total_gross).toFixed(2)} ${currency}. Do zapłaty: 0,00 ${currency}. Powstanie wystawiona, opłacona zaliczka, bez automatycznej wysyłki do KSeF. Sprawdź dane przed zatwierdzeniem.`
+                : 'Faktura zostanie utworzona jako szkic. Dane i pozycje można poprawić przed wystawieniem i wysłaniem do KSeF.'}
             </div>
           </div>
         )}
@@ -636,7 +731,7 @@ export default function ConvertProformaModal({
             {step === 'config' ? (
               <button
                 onClick={goToPreview}
-                disabled={loadingProforma}
+                disabled={loadingProforma || invalidPaymentTerm}
                 className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-2.5 font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:opacity-50"
               >
                 Dalej: podglad
@@ -644,7 +739,7 @@ export default function ConvertProformaModal({
             ) : (
               <button
                 onClick={handleSubmit}
-                disabled={loading}
+                disabled={loading || invalidPaymentTerm}
                 className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-2.5 font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:opacity-50"
               >
                 {loading ? (

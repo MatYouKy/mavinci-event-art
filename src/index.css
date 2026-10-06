@@ -32,6 +32,9 @@
   --brand-platinum: #e5e4e2;
   --font-brand-heading: 'Atom', 'Montserrat', sans-serif;
   --brand-atom-optical-scale: 0.88;
+  --app-field-border: rgba(229, 228, 226, 0.11);
+  --app-field-border-hover: rgba(229, 228, 226, 0.18);
+  --app-field-border-focus: rgba(211, 187, 115, 0.38);
 }
 
 html, body {
@@ -57,6 +60,21 @@ body.crm-body {
   background-color: var(--brand-burgundy-950);
 }
 
+/* Full-screen layers must not inherit space-y margins from page forms. */
+:is(.brand-theme, body) :is([data-app-overlay='true'], .fixed.inset-0) {
+  margin: 0 !important;
+  inset: 0 !important;
+}
+
+/* Legacy modal backdrops also sit above the fixed CRM header (z-50).
+   Higher layers used by nested dialogs and loaders retain their own order. */
+.brand-theme .fixed.inset-0.z-50:is(
+  [class*='bg-black'], [class*='backdrop-blur'],
+  [data-crm-modal='true'], [role='dialog'], [data-app-overlay='true']
+) {
+  z-index: 100;
+}
+
 /*
  * Jeden motyw dla CRM i części publicznej. Dotychczasowe komponenty używają
  * historycznych, granatowych wartości bezpośrednio w klasach Tailwind.
@@ -70,6 +88,42 @@ body.crm-body {
     var(--brand-burgundy-950);
   color: var(--brand-platinum);
   accent-color: var(--brand-gold);
+}
+
+/*
+ * Wspólny, lekki wygląd pól w całej aplikacji. Usuwa historyczne ringi,
+ * dwupikselowe ramki i obrys przeglądarki, pozostawiając jedną subtelną
+ * krawędź. Kontrolki specjalne oraz pola celowo bezramkowe są pomijane.
+ */
+.brand-theme :where(
+  input:not([type='hidden']):not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']):not([type='color']):not([type='button']):not([type='submit']):not([type='reset']):not([type='image']):not(.crm-search-input):not([class~='border-0']):not([class~='border-none']):not([class~='bg-transparent']),
+  textarea:not(.crm-search-input):not([class~='border-0']):not([class~='border-none']):not([class~='bg-transparent']),
+  select:not(.crm-search-input):not([class~='border-0']):not([class~='border-none']):not([class~='bg-transparent'])
+):not([aria-invalid='true']):not([data-invalid='true']):not([class*='border-red']):not([class*='border-rose']) {
+  border-width: 1px !important;
+  border-color: var(--app-field-border) !important;
+  box-shadow: none !important;
+  outline: none !important;
+  transition-property: border-color, background-color;
+  transition-duration: 150ms;
+}
+
+.brand-theme :where(
+  input:not([type='hidden']):not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']):not([type='color']):not([type='button']):not([type='submit']):not([type='reset']):not([type='image']):not(.crm-search-input):not([class~='border-0']):not([class~='border-none']):not([class~='bg-transparent']),
+  textarea:not(.crm-search-input):not([class~='border-0']):not([class~='border-none']):not([class~='bg-transparent']),
+  select:not(.crm-search-input):not([class~='border-0']):not([class~='border-none']):not([class~='bg-transparent'])
+):not(:disabled):not([aria-invalid='true']):not([data-invalid='true']):not([class*='border-red']):not([class*='border-rose']):hover {
+  border-color: var(--app-field-border-hover) !important;
+}
+
+.brand-theme :where(
+  input:not([type='hidden']):not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']):not([type='color']):not([type='button']):not([type='submit']):not([type='reset']):not([type='image']):not(.crm-search-input):not([class~='border-0']):not([class~='border-none']):not([class~='bg-transparent']),
+  textarea:not(.crm-search-input):not([class~='border-0']):not([class~='border-none']):not([class~='bg-transparent']),
+  select:not(.crm-search-input):not([class~='border-0']):not([class~='border-none']):not([class~='bg-transparent'])
+):not([aria-invalid='true']):not([data-invalid='true']):not([class*='border-red']):not([class*='border-rose']):is(:focus, :focus-visible) {
+  border-color: var(--app-field-border-focus) !important;
+  box-shadow: none !important;
+  outline: none !important;
 }
 
 /*
@@ -143,6 +197,39 @@ body.brand-theme--crm .crm-form-control:hover {
 
 body.brand-theme--crm .crm-form-control:focus {
   border-color: rgba(211, 187, 115, 0.38) !important;
+  box-shadow: none !important;
+}
+
+/* Wyszukiwarki mają jedną cienką ramkę na kontenerze, bez drugiej ramki inputa. */
+body.brand-theme--crm .crm-search-field {
+  border: 1px solid rgba(229, 228, 226, 0.12) !important;
+  box-shadow: none !important;
+  transition: border-color 150ms ease, background-color 150ms ease;
+}
+
+body.brand-theme--crm .crm-search-field:hover {
+  border-color: rgba(229, 228, 226, 0.2) !important;
+}
+
+body.brand-theme--crm .crm-search-field:focus-within {
+  border-color: rgba(211, 187, 115, 0.34) !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+body.brand-theme--crm .crm-search-field .crm-search-input {
+  appearance: none;
+  border: 0 !important;
+  border-radius: 0 !important;
+  outline: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
+
+body.brand-theme--crm .crm-search-field .crm-search-input:focus,
+body.brand-theme--crm .crm-search-field .crm-search-input:focus-visible {
+  border: 0 !important;
+  outline: 0 !important;
   box-shadow: none !important;
 }
 
@@ -335,17 +422,13 @@ body.brand-theme--crm :is(
 
 /*
  * Jeden czytelny stan aktywny dla tabów CRM. Atrybuty semantyczne obsługują
- * nowe komponenty, a ostatni selektor zachowuje zgodność ze starszymi tabami
- * opartymi wyłącznie o klasy koloru i dolnej krawędzi.
+ * komponenty. Kolor tekstu i ramka rodzica nigdy nie określają roli kontrolki.
  */
 body.brand-theme--crm :is(
   [data-crm-tab-active='true'],
   [role='tab'][aria-selected='true'],
-  [role='tab'][data-state='active'],
-  [data-crm-tabs='true'] [data-state='active'],
-  [role='tablist'] [data-state='active']
-),
-body.brand-theme--crm :where([class*='border-b']) button[class~='text-[#d3bb73]'] {
+  [role='tab'][data-state='active']
+) {
   background:
     linear-gradient(180deg, rgba(127, 23, 52, 0.78), rgba(82, 26, 49, 0.66)) !important;
   border-radius: 0.625rem 0.625rem 0 0;
@@ -356,11 +439,35 @@ body.brand-theme--crm :where([class*='border-b']) button[class~='text-[#d3bb73]'
     0 -2px 0 rgba(226, 205, 141, 0.92) inset;
 }
 
-body.brand-theme--crm :where([data-crm-tabs='true'], [role='tablist'])
-  :where([role='tab'], button):not([aria-selected='true']):hover {
+body.brand-theme--crm :is([data-crm-tab-active], [role='tab']) {
+  border-radius: 0.625rem 0.625rem 0 0;
+}
+
+body.brand-theme--crm :is([data-crm-tab-active='false'], [role='tab'][aria-selected='false']):not(:disabled):hover {
   background-color: rgba(148, 29, 62, 0.38);
-  color: var(--brand-platinum) !important;
-  box-shadow: 0 -2px 0 rgba(211, 187, 115, 0.46) inset;
+  color: var(--brand-platinum);
+}
+
+/* Explicit action variants: four rounded corners, no tab underline. */
+.brand-theme [data-crm-action='secondary'] {
+  border: 1px solid rgba(211, 187, 115, 0.14);
+  border-radius: 0.5rem;
+  background: rgba(211, 187, 115, 0.10);
+  color: var(--brand-gold);
+  box-shadow: none;
+  font-weight: 500;
+  transition: background-color 150ms, color 150ms;
+}
+.brand-theme [data-crm-action='secondary']:not(:disabled):hover {
+  background: rgba(211, 187, 115, 0.18);
+  color: var(--brand-gold-hover);
+}
+.brand-theme [data-crm-action]:focus-visible {
+  outline: 2px solid var(--brand-gold);
+  outline-offset: 2px;
+}
+.brand-theme [data-crm-action]:disabled {
+  cursor: not-allowed;
 }
 
 body.brand-theme--crm :is(
@@ -507,82 +614,50 @@ body.brand-theme--crm :is(
   background-color: #7a2949 !important;
 }
 
-/*
- * Rozliczenia wymagają mocniejszej hierarchii niż zwykłe statusy. Zaległe
- * wydarzenia korzystają z chłodniejszej czerwieni, a świeżo zakończone z
- * bursztynu. Pełne obramowanie pozwala rozpoznać stan również bez odczytu
- * samego koloru tła.
- */
-body.brand-theme--crm [data-event-urgency='overdue'] {
-  background-color: #5a1d2c !important;
-  border-color: rgba(254, 205, 211, 0.72) !important;
-  box-shadow:
-    inset 5px 0 0 #fb7185,
-    inset 0 1px 0 rgba(255, 228, 230, 0.2),
-    inset 0 -1px 0 rgba(255, 228, 230, 0.16) !important;
+/* Status palette; overdue payments intentionally have prominent borders. */
+body.brand-theme--crm [data-event-state] {
+  --event-surface:#401629;
+  --event-accent:#E4C978;
+  --event-frame:0px;
+  background-color:var(--event-surface) !important;
+  color:#F5EEF1 !important;
+  opacity:1 !important;
+  border-color:#e5e4e20f !important;
+  box-shadow:inset 3px 0 var(--event-accent) !important;
+  --tw-ring-shadow:0 0 #0000;
 }
-
-body.brand-theme--crm [data-event-urgency='overdue']:hover {
-  background-color: #75273b !important;
-  border-color: rgba(255, 228, 230, 0.92) !important;
+body.brand-theme--crm [data-event-state='live'] { --event-surface:#64213E; --event-accent:#FFB3CC; }
+body.brand-theme--crm [data-event-state='completed'] { --event-surface:#193D3A; --event-accent:#77D6BE; }
+body.brand-theme--crm [data-event-state='settlement'] { --event-surface:#382344; --event-accent:#CFACF2; }
+body.brand-theme--crm [data-event-state='awaiting'] { --event-surface:#49331E; --event-accent:#FFD178; }
+body.brand-theme--crm [data-event-state='late'] { --event-surface:#571A2B; --event-accent:#FF8A98; --event-frame:1px; }
+body.brand-theme--crm [data-event-state='overdue'] { --event-surface:#681C2B; --event-accent:#FF6378; --event-frame:1px; }
+body.brand-theme--crm [data-event-state='settled'] { --event-surface:#291820; --event-accent:#A8C0B4; box-shadow:inset 0 2px 10px #0005,inset 3px 0 var(--event-accent) !important; }
+body.brand-theme--crm [data-event-state='cancelled'] { --event-surface:#292127; --event-accent:#B8ABB2; }
+body.brand-theme--crm [data-event-state]:hover { background-image:linear-gradient(#ffffff09,#ffffff09) !important; }
+body.brand-theme--crm [data-event-state] .event-state-label,
+body.brand-theme--crm [data-event-state] .event-payment-alert { color:var(--event-accent) !important; }
+body.brand-theme--crm [data-event-state='overdue'] .event-payment-alert { filter:drop-shadow(0 0 3px #ff637866); stroke-width:3; }
+body.brand-theme--crm :is(div,article)[data-event-state='late'],
+body.brand-theme--crm :is(div,article)[data-event-state='overdue'] {
+  border:var(--event-frame) solid var(--event-accent) !important;
+  box-shadow:0 0 12px #ff637822 !important;
 }
-
-body.brand-theme--crm [data-event-urgency='approaching'] {
-  background-color: #4b321d !important;
-  border-color: rgba(253, 230, 138, 0.68) !important;
-  box-shadow:
-    inset 5px 0 0 #f2c866,
-    inset 0 1px 0 rgba(254, 243, 199, 0.18),
-    inset 0 -1px 0 rgba(254, 243, 199, 0.14) !important;
+body.brand-theme--crm table[data-event-list-table='true'] { border-collapse:separate; border-spacing:0 4px; }
+body.brand-theme--crm table[data-event-list-table='true'] thead th { border-bottom:1px solid #d3bb731f; }
+body.brand-theme--crm table[data-event-list-table='true'] tbody tr > td { border-bottom:1px solid #e5e4e20d; }
+/* Frame the entire row, with no borders between individual cells. */
+body.brand-theme--crm table[data-event-list-table='true'] tbody tr:is([data-event-state='late'],[data-event-state='overdue']) > td {
+  border-top:var(--event-frame) solid var(--event-accent) !important;
+  border-bottom:var(--event-frame) solid var(--event-accent) !important;
 }
-
-body.brand-theme--crm [data-event-urgency='approaching']:hover {
-  background-color: #684825 !important;
-  border-color: rgba(254, 243, 199, 0.94) !important;
+body.brand-theme--crm table[data-event-list-table='true'] tbody tr:is([data-event-state='late'],[data-event-state='overdue']) > td:first-child {
+  border-left:var(--event-frame) solid var(--event-accent) !important;
+  border-radius:8px 0 0 8px;
 }
-
-body.brand-theme--crm tr[data-event-urgency] {
-  border-top-style: solid;
-  border-bottom-style: solid;
-  border-top-width: 1px;
-  border-bottom-width: 1px;
-}
-
-body.brand-theme--crm :is(div, article)[data-event-urgency] {
-  border-width: 2px;
-}
-
-/* Wyraźne separatory listy wydarzeń — bez ciężkiej siatki pionowej. */
-body.brand-theme--crm table[data-event-list-table='true'] {
-  border-collapse: separate;
-  border-spacing: 0;
-}
-
-body.brand-theme--crm table[data-event-list-table='true'] thead th {
-  border-bottom: 2px solid rgba(226, 205, 141, 0.55);
-}
-
-body.brand-theme--crm table[data-event-list-table='true'] tbody tr > td {
-  border-bottom: 2px solid rgba(211, 187, 115, 0.3);
-  box-shadow: inset 0 -1px 0 rgba(20, 4, 11, 0.48);
-}
-
-body.brand-theme--crm table[data-event-list-table='true'] tbody tr:hover > td {
-  border-bottom-color: rgba(240, 221, 160, 0.68);
-}
-
-body.brand-theme--crm table[data-event-list-table='true']
-  tbody tr[data-event-urgency='overdue'] > td {
-  border-bottom-color: rgba(254, 205, 211, 0.64);
-}
-
-body.brand-theme--crm table[data-event-list-table='true']
-  tbody tr[data-event-urgency='approaching'] > td {
-  border-bottom-color: rgba(253, 230, 138, 0.62);
-}
-
-body.brand-theme--crm table[data-event-list-table='true'] tbody tr:last-child > td {
-  border-bottom-width: 0;
+body.brand-theme--crm table[data-event-list-table='true'] tbody tr:is([data-event-state='late'],[data-event-state='overdue']) > td:last-child {
+  border-right:var(--event-frame) solid var(--event-accent) !important;
+  border-radius:0 8px 8px 0;
 }
 
 .brand-theme :is([class~='text-[#1c1f33]'], [class~='text-[#0f1119]'], [class~='text-[#0a0d1a]']) {
@@ -602,9 +677,9 @@ body.brand-theme--crm table[data-event-list-table='true'] tbody tr:last-child > 
   --tw-gradient-to: var(--brand-burgundy-950) var(--tw-gradient-to-position) !important;
 }
 
-.brand-theme :where(button, a, input, textarea, select) {
-  outline-color: var(--brand-gold);
-}
+/* Nie koloruj globalnie outline: Tailwind outline-none używa przezroczystego
+ * obrysu, który po zmianie koloru staje się widoczny nawet bez fokusu.
+ * Kontrolki definiują własny, subtelny stan focus-visible. */
 
 @layer utilities {
   .scrollbar-hide {

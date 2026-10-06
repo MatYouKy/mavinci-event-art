@@ -5,6 +5,7 @@ import { decryptMarketingCredentials, encryptMarketingCredentials } from './cryp
 import {
   getMetaGraphVersion,
   getGoogleAdsVersion,
+  googleAdsHeaders,
   normaliseGoogleCustomerId,
   normaliseMetaAdAccountId,
   readJsonResponse,
@@ -154,17 +155,27 @@ async function syncGoogleAds(integration: IntegrationRow, credentials: GoogleCre
     String(integration.settings.google_ads_customer_id || ''),
   );
   if (!customerId) return { rows: 0, campaigns: 0, skipped: true };
-  const developerToken = process.env.GOOGLE_ADS_DEVELOPER_TOKEN;
-  if (!developerToken) throw new Error('Brak GOOGLE_ADS_DEVELOPER_TOKEN.');
-  const loginCustomerId = normaliseGoogleCustomerId(
-    String(integration.settings.google_ads_login_customer_id || ''),
-  );
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${credentials.access_token}`,
-    'developer-token': developerToken,
-    'Content-Type': 'application/json',
+  if (!/^\d{10}$/.test(customerId)) throw new Error('Numer konta reklamowego Google Ads musi mieć 10 cyfr.');
+  const headers = googleAdsHeaders(credentials.access_token, String(integration.settings.google_ads_login_customer_id || ''));
+  const search = async (query: string) => {
+    const response = await fetch(
+      `https://googleads.googleapis.com/${getGoogleAdsVersion()}/customers/${customerId}/googleAds:searchStream`,
+      { method: 'POST', headers, body: JSON.stringify({ query }), cache: 'no-store' },
+    );
+    const batches = await readJsonResponse(response, 'Google Ads');
+    return (Array.isArray(batches) ? batches : [batches]).flatMap((batch: any) => batch.results || []);
   };
-  if (loginCustomerId) headers['login-customer-id'] = loginCustomerId;
+  const accountRows = await search('SELECT customer.id, customer.manager, customer.currency_code FROM customer LIMIT 1');
+  const account = accountRows[0]?.customer;
+  if (!account) throw new Error('Google Ads nie zwrócił danych wybranego konta. Sprawdź przypisanie kont.');
+  if (account.manager) {
+    throw new Error('Wybrano konto menedżera zamiast konta reklamowego. W polu klienta wybierz konto, na którym powstają kampanie; numer menedżera wpisz w osobnym polu MCC.');
+  }
+  const { start, end } = dateRange();
+  // A date-segmented report omits campaigns without activity. Fetch the catalog separately.
+  const catalog = await search(`SELECT campaign.id, campaign.name, campaign.status,
+    campaign.advertising_channel_type, campaign.start_date, campaign.end_date,
+    campaign_budget.amount_micros, campaign_budget.total_amount_micros, campaign_budget.period FROM campaign`);
   const query = `
     SELECT
       campaign.id,
@@ -181,23 +192,10 @@ async function syncGoogleAds(integration: IntegrationRow, credentials: GoogleCre
       metrics.conversions,
       metrics.conversions_value
     FROM campaign
-    WHERE segments.date DURING LAST_30_DAYS
-      AND campaign.status != 'REMOVED'
+    WHERE segments.date BETWEEN '${start}' AND '${end}'
   `;
-  const response = await fetch(
-    `https://googleads.googleapis.com/${getGoogleAdsVersion()}/customers/${customerId}/googleAds:searchStream`,
-    {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ query }),
-      cache: 'no-store',
-    },
-  );
-  const batches = await readJsonResponse(response, 'Google Ads');
-  const results = (Array.isArray(batches) ? batches : [batches]).flatMap(
-    (batch: any) => batch.results || [],
-  );
-  const currency = String(integration.settings.currency || 'PLN');
+  const results = await search(query);
+  const currency = String(account.currencyCode || integration.settings.currency || 'PLN');
   const metricRows = results.map((row: any) => ({
     company_id: integration.company_id,
     integration_id: integration.id,
@@ -216,7 +214,7 @@ async function syncGoogleAds(integration: IntegrationRow, credentials: GoogleCre
   }));
 
   const campaigns = new Map<string, any>();
-  for (const row of results) {
+  for (const row of [...catalog, ...results]) {
     const id = String(row.campaign?.id || '');
     if (!id) continue;
     const current = campaigns.get(id) || {
@@ -227,8 +225,8 @@ async function syncGoogleAds(integration: IntegrationRow, credentials: GoogleCre
       name: row.campaign?.name || id,
       status: row.campaign?.status || 'UNKNOWN',
       objective: row.campaign?.advertisingChannelType || null,
-      budget_daily: moneyFromMicros(row.campaignBudget?.amountMicros),
-      budget_lifetime: null,
+      budget_daily: row.campaignBudget?.period === 'CUSTOM_PERIOD' ? null : moneyFromMicros(row.campaignBudget?.amountMicros),
+      budget_lifetime: row.campaignBudget?.period === 'CUSTOM_PERIOD' ? moneyFromMicros(row.campaignBudget?.totalAmountMicros) : null,
       currency,
       impressions: 0,
       clicks: 0,
@@ -237,7 +235,7 @@ async function syncGoogleAds(integration: IntegrationRow, credentials: GoogleCre
       conversion_value: 0,
       start_date: row.campaign?.startDate || null,
       end_date: row.campaign?.endDate || null,
-      metadata: {},
+      metadata: { customer_id: customerId, report_start: start, report_end: end },
       synced_at: new Date().toISOString(),
     };
     current.impressions += numberValue(row.metrics?.impressions);
@@ -485,11 +483,21 @@ export async function syncMarketingIntegration(integration: IntegrationRow) {
         integration.credentials_encrypted,
       );
       const credentials = await refreshGoogleCredentials(integration, stored);
-      const [searchConsole, googleAds] = await Promise.all([
+      const sources = await Promise.allSettled([
         syncSearchConsole(integration, credentials),
         syncGoogleAds(integration, credentials),
       ]);
-      result = { searchConsole, googleAds };
+      const labels = ['Google Search Console', 'Google Ads'];
+      const outcomes = sources.map((source, index) => source.status === 'fulfilled'
+        ? { ok: true, ...source.value }
+        : { ok: false, error: `${labels[index]}: ${source.reason?.message || 'Błąd synchronizacji'}` });
+      result = { searchConsole: outcomes[0], googleAds: outcomes[1] };
+      const errors = outcomes.filter((source) => !source.ok).map((source) => 'error' in source ? source.error : '').join('; ');
+      if (errors) {
+        // Wait for both sources to finish before reporting a partial failure.
+        await markIntegration(integration.id, { status: 'error', last_error: errors.slice(0, 1000) });
+        return { integrationId: integration.id, provider: integration.provider, ok: false, error: errors, result };
+      }
     } else {
       const credentials = decryptMarketingCredentials<MetaCredentials>(
         integration.credentials_encrypted,
@@ -546,17 +554,8 @@ export async function updateExternalCampaignStatus(
     const customerId = normaliseGoogleCustomerId(
       String(integration.settings.google_ads_customer_id || ''),
     );
-    const developerToken = process.env.GOOGLE_ADS_DEVELOPER_TOKEN;
-    if (!customerId || !developerToken) throw new Error('Brak konfiguracji Google Ads.');
-    const headers: Record<string, string> = {
-      Authorization: `Bearer ${credentials.access_token}`,
-      'developer-token': developerToken,
-      'Content-Type': 'application/json',
-    };
-    const loginCustomerId = normaliseGoogleCustomerId(
-      String(integration.settings.google_ads_login_customer_id || ''),
-    );
-    if (loginCustomerId) headers['login-customer-id'] = loginCustomerId;
+    if (!/^\d{10}$/.test(customerId)) throw new Error('Brak poprawnego numeru konta reklamowego Google Ads.');
+    const headers = googleAdsHeaders(credentials.access_token, String(integration.settings.google_ads_login_customer_id || ''));
     await readJsonResponse(
       await fetch(`https://googleads.googleapis.com/${getGoogleAdsVersion()}/customers/${customerId}/campaigns:mutate`, {
         method: 'POST',

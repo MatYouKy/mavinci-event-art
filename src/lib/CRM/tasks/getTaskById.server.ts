@@ -14,6 +14,7 @@ export interface Task {
   due_date: string | null;
   event_id: string | null;
   inquiry_id: string | null;
+  is_inquiry?: boolean | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -48,6 +49,7 @@ export async function getTaskByIdServer(taskId: string): Promise<Task | null> {
       due_date,
       event_id,
       inquiry_id,
+      is_inquiry,
       created_by,
       created_at,
       updated_at,

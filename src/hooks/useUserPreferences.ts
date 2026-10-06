@@ -25,6 +25,7 @@ interface Preferences {
   clients?: ViewModePreference;
   equipment?: ViewModePreference;
   kits?: ViewModePreference;
+  cables?: ViewModePreference;
   events?: ViewModePreference;
   tasks?: ViewModePreference;
   offers?: ViewModePreference;
@@ -70,6 +71,7 @@ export function useUserPreferences() {
       'clients',
       'equipment',
       'kits',
+      'cables',
       'events',
       'tasks',
       'offers',
@@ -90,6 +92,7 @@ export function useUserPreferences() {
       'clients',
       'equipment',
       'kits',
+      'cables',
       'events',
       'tasks',
       'offers',

@@ -20,6 +20,11 @@ interface PopoverProps {
   offset?: number;
   placement?: Placement;
   className?: string;
+  triggerClassName?: string;
+  maxWidth?: number;
+  ariaLabel?: string;
+  /** Keep the preview inside the native modal top layer. */
+  portalWithinDialog?: boolean;
 
   /** touch/mobile: przytrzymaj X ms żeby otworzyć (dla openOn="auto" albo "click") */
   holdToOpenMs?: number;
@@ -55,6 +60,10 @@ export default function Popover({
   offset = 10,
   placement = 'top',
   className = '',
+  triggerClassName = '',
+  maxWidth = 320,
+  ariaLabel,
+  portalWithinDialog = false,
   holdToOpenMs = 320,
   autoCloseMs = 0,
 }: PopoverProps) {
@@ -97,7 +106,7 @@ export default function Popover({
   }, []);
 
   useEffect(() => {
-    rootRef.current = ensureRoot();
+    rootRef.current = (portalWithinDialog ? triggerRef.current?.closest<HTMLDialogElement>('dialog') : null) || ensureRoot();
     return () => {
       if (closeTimer.current) window.clearTimeout(closeTimer.current);
       if (openTimer.current) window.clearTimeout(openTimer.current);
@@ -105,7 +114,7 @@ export default function Popover({
       if (autoCloseTimer.current) window.clearTimeout(autoCloseTimer.current);
       if (moveGuardCleanup.current) moveGuardCleanup.current();
     };
-  }, []);
+  }, [portalWithinDialog]);
 
   const compute = useCallback(() => {
     const t = triggerRef.current;
@@ -156,9 +165,12 @@ export default function Popover({
     if (popRef.current) ro.observe(popRef.current);
 
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
+      if (e.key === 'Escape') {
+        if (portalWithinDialog) { e.preventDefault(); e.stopPropagation(); }
+        setOpen(false);
+      }
     };
-    window.addEventListener('keydown', onKey);
+    window.addEventListener('keydown', onKey, portalWithinDialog);
 
     const onDocDown = (e: MouseEvent | TouchEvent) => {
       const t = triggerRef.current;
@@ -185,14 +197,14 @@ export default function Popover({
     return () => {
       window.removeEventListener('scroll', onScroll, true);
       window.removeEventListener('resize', onResize);
-      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('keydown', onKey, portalWithinDialog);
       document.removeEventListener('mousedown', onDocDown, true);
       document.removeEventListener('touchstart', onDocDown, true);
       ro.disconnect();
       if (autoCloseTimer.current) window.clearTimeout(autoCloseTimer.current);
       autoCloseTimer.current = null;
     };
-  }, [open, compute, autoCloseMs]);
+  }, [open, compute, autoCloseMs, portalWithinDialog]);
 
   const startOpen = useCallback(() => {
     if (openTimer.current) window.clearTimeout(openTimer.current);
@@ -269,16 +281,18 @@ export default function Popover({
       ref={popRef}
       role="dialog"
       aria-modal="false"
+      aria-label={ariaLabel}
       style={{
         position: 'fixed',
+        zIndex: portalWithinDialog ? 2147483647 : undefined,
         left: `${coords.left}px`,
         top: `${coords.top}px`,
         pointerEvents: 'auto',
+        maxWidth,
       }}
       // hover: utrzymuj otwarte przy przejściu na popover
       onMouseEnter={effectiveOpenOn === 'hover' ? startOpen : undefined}
       onMouseLeave={effectiveOpenOn === 'hover' ? startClose : undefined}
-      className="max-w-[320px]"
     >
       <div
         aria-hidden
@@ -318,7 +332,7 @@ export default function Popover({
 
   return (
     <>
-      <div ref={triggerRef} className="inline-flex align-middle" {...(triggerProps as any)} tabIndex={0}>
+      <div ref={triggerRef} className={`inline-flex align-middle ${triggerClassName}`} {...(triggerProps as any)} tabIndex={0} aria-label={ariaLabel} aria-haspopup="dialog" aria-expanded={open}>
         {trigger}
       </div>
       {open && rootRef.current && createPortal(node, rootRef.current)}

@@ -32,6 +32,7 @@ import {
   Megaphone,
   MonitorPlay,
   BookOpen,
+  BadgePercent,
 } from 'lucide-react';
 
 /**
@@ -53,6 +54,7 @@ export const NavigationIcons = {
   inquiries: Inbox,
   tasks: CheckSquare,
   employees: Users,
+  salespeople: BadgePercent,
   offers: FileText,
   contacts: UserRound,
   contracts: ScrollText,

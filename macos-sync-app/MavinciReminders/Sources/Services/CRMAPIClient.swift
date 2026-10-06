@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 // MARK: - CRM API Errors
 
@@ -11,23 +12,29 @@ enum CRMAPIError: LocalizedError {
     case serverError(Int)
     case decodingError(Error)
     case invalidResponse
+    case configurationChanged
+    case unsupportedTaskScope
 
     var errorDescription: String? {
         switch self {
         case .invalidURL:
-            return "The CRM base URL is invalid or not configured."
+            return "Adres CRM jest nieprawidłowy lub nie został ustawiony. Sprawdź Ustawienia → Połączenie."
         case .noToken:
-            return "No sync token found in Keychain. Please configure your token in Settings."
+            return "Brak klucza synchronizacji w Pęku kluczy. Uzupełnij go w Ustawieniach → Połączenie."
         case .networkError(let error):
-            return "Network error: \(error.localizedDescription)"
+            return "Błąd połączenia z CRM: \(error.localizedDescription)"
         case .unauthorized:
-            return "Unauthorized. Your sync token may be expired or invalid."
+            return "CRM odmówił dostępu. Sprawdź klucz synchronizacji i aktywność swojego konta."
         case .serverError(let code):
-            return "Server returned an error (HTTP \(code))."
+            return "Serwer CRM zwrócił błąd HTTP \(code). Problem nie oznacza automatycznie braku internetu."
         case .decodingError(let error):
-            return "Failed to decode the server response: \(error.localizedDescription)"
+            return "Nie można odczytać odpowiedzi CRM. Sprawdź zgodność wersji backendu z aplikacją. Szczegóły: \(error.localizedDescription)"
         case .invalidResponse:
-            return "Received an invalid or unexpected response from the server."
+            return "CRM zwrócił nieprawidłową odpowiedź. Sprawdź połączenie w Ustawieniach → Połączenie."
+        case .configurationChanged:
+            return "Adres CRM lub klucz zmienił się podczas synchronizacji. Ponów synchronizację po zakończeniu edycji ustawień."
+        case .unsupportedTaskScope:
+            return "CRM nie potwierdził zakresu „Zadania przypisane do mnie”. Zaktualizuj backend CRM. Dla bezpieczeństwa nie zaimportowano zadań."
         }
     }
 }
@@ -54,6 +61,10 @@ final class CRMAPIClient {
     /// The CRM base URL, read from UserDefaults.
     var baseURL: String {
         UserDefaults.standard.string(forKey: Self.defaultsKeyBaseURL) ?? ""
+    }
+
+    var configurationIdentity: String {
+        SHA256.hash(data: Data((baseURL + "|" + (KeychainService.shared.loadToken() ?? "")).utf8)).map { String(format: "%02x", $0) }.joined()
     }
 
     /// The session configured with appropriate timeout and caching policies.
@@ -101,8 +112,11 @@ final class CRMAPIClient {
 
         do {
             let tasksResponse = try decoder.decode(CRMTasksResponse.self, from: data)
+            try tasksResponse.validatePersonalScope()
             log("Fetched \(tasksResponse.tasks?.count ?? 0) tasks for \(tasksResponse.employee_name ?? "unknown")")
             return tasksResponse
+        } catch let error as CRMAPIError {
+            throw error
         } catch {
             throw CRMAPIError.decodingError(error)
         }
@@ -144,7 +158,7 @@ final class CRMAPIClient {
     /// Tests the connection to the CRM by performing a task fetch.
     /// - Returns: A tuple indicating whether the connection succeeded, the number of tasks, and the employee name.
     /// - Throws: `CRMAPIError` if the connection test fails.
-    func testConnection() async throws -> (success: Bool, taskCount: Int, employeeName: String) {
+    func testConnection() async throws -> (success: Bool, taskCount: Int, closedTaskCount: Int, employeeName: String) {
         let response = try await fetchTasks()
 
         guard response.success else {
@@ -153,11 +167,12 @@ final class CRMAPIClient {
             throw CRMAPIError.serverError(0)
         }
 
-        let taskCount = response.tasks?.count ?? 0
+        let taskCount = response.tasks?.filter { !$0.isCompleted }.count ?? 0
+        let closedTaskCount = response.tasks?.filter { $0.isCompleted }.count ?? 0
         let employeeName = response.employee_name ?? "Unknown"
 
         log("Connection test passed: \(taskCount) tasks for \(employeeName)")
-        return (success: true, taskCount: taskCount, employeeName: employeeName)
+        return (success: true, taskCount: taskCount, closedTaskCount: closedTaskCount, employeeName: employeeName)
     }
 
     // MARK: - Private Helpers
@@ -199,9 +214,7 @@ final class CRMAPIClient {
             throw CRMAPIError.invalidURL
         }
 
-        components.queryItems = [
-            URLQueryItem(name: "token", value: token)
-        ]
+        components.queryItems = nil
 
         guard let url = components.url else {
             throw CRMAPIError.invalidURL
@@ -213,7 +226,9 @@ final class CRMAPIClient {
     /// Applies standard headers to a request.
     private func applyHeaders(to request: inout URLRequest) {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.setValue("MavinciReminders/1.0 macOS", forHTTPHeaderField: "User-Agent")
+        if let token = KeychainService.shared.loadToken() { request.setValue("Bearer " + token, forHTTPHeaderField: "Authorization") }
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "development"
+        request.setValue("MavinciReminders/\(version) macOS", forHTTPHeaderField: "User-Agent")
     }
 
     /// Performs the URL request, mapping transport-level errors to `CRMAPIError`.

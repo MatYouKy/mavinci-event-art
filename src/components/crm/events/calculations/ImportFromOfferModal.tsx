@@ -1,3 +1,4 @@
+import { systemLabel } from '@/lib/ui/systemLabels';
 import { ArrowLeft, FileDown, Package, Users, Truck } from 'lucide-react';
 import { CATEGORY_META } from './calculations.constants';
 import { CalcItem, Category } from './EventCalculationsTab';
@@ -49,11 +50,13 @@ const ROLE_LABELS: Record<string, string> = {
 
 export function ImportFromOfferModal({
   eventId,
+  inquiryId,
   existingRefs,
   onClose,
   onImport,
 }: {
-  eventId: string;
+  eventId: string | null;
+  inquiryId?: string;
   existingRefs: Set<string>;
   onClose: () => void;
   onImport: (items: CalcItem[]) => void;
@@ -73,15 +76,16 @@ export function ImportFromOfferModal({
 
   useEffect(() => {
     fetchData();
-  }, [eventId]);
+  }, [eventId, inquiryId]);
 
   const fetchData = async () => {
     setLoading(true);
 
-    const { data: offers } = await supabase
-      .from('offers')
-      .select('id, offer_number')
-      .eq('event_id', eventId);
+    let query = supabase.from('offers').select('id, offer_number');
+    if (inquiryId) query = query.eq('inquiry_id', inquiryId);
+    else if (eventId) query = query.eq('event_id', eventId);
+    else { setLoading(false); return; }
+    const { data: offers } = await query;
 
     if (!offers?.length) {
       setOfferItems([]);
@@ -326,6 +330,7 @@ export function ImportFromOfferModal({
   };
 
   const fetchVehicles = async () => {
+    if (!eventId) { setVehicleRows([]); return; }
     const { data: vehicles } = await supabase
       .from('event_vehicles')
       .select(
@@ -526,7 +531,7 @@ export function ImportFromOfferModal({
 
         {/* Mode tabs */}
         <div className="flex border-b border-[#d3bb73]/10">
-          <button
+          <button data-crm-tab-active={mode === 'products'}
             onClick={() => setMode('products')}
             className={`flex items-center gap-2 px-5 py-3 text-sm transition-colors ${
               mode === 'products'
@@ -537,7 +542,7 @@ export function ImportFromOfferModal({
             <Package className="h-4 w-4" />
             Produkty
           </button>
-          <button
+          <button data-crm-tab-active={mode === 'contents'}
             onClick={() => setMode('contents')}
             className={`flex items-center gap-2 px-5 py-3 text-sm transition-colors ${
               mode === 'contents'
@@ -548,7 +553,7 @@ export function ImportFromOfferModal({
             <Users className="h-4 w-4" />
             Zawartość (sprzęt + ludzie)
           </button>
-          <button
+          <button data-crm-tab-active={mode === 'transport'}
             onClick={() => setMode('transport')}
             className={`flex items-center gap-2 px-5 py-3 text-sm transition-colors ${
               mode === 'transport'
@@ -569,7 +574,7 @@ export function ImportFromOfferModal({
               'Importuj sprzęt i pracowników przypisanych do produktów w ofercie.'}
             {mode === 'transport' && 'Importuj pojazdy przypisane do tego wydarzenia.'}
           </span>
-          <button
+          <button data-crm-action="secondary"
             type="button"
             onClick={() => {
               if (mode === 'products') toggleAllProducts();
@@ -822,7 +827,7 @@ export function ImportFromOfferModal({
                         />
                       </td>
                       <td className="px-3 py-2 text-[#e5e4e2]">
-                        {s.role}
+                        {systemLabel(s.role, 'role', { preserveCustom: true })}
                         {alreadyImported && (
                           <span className="ml-2 inline-block rounded bg-[#d3bb73]/10 px-1.5 py-0.5 text-xs text-[#d3bb73]">
                             Już zaimportowano

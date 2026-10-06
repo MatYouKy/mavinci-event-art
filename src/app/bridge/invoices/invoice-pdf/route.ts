@@ -5,6 +5,8 @@ import { chromium } from 'playwright';
 import { createSupabaseServerClient } from '@/lib/supabase/server.app';
 import { buildInvoicePdfHtml } from '@/components/crm/invoices/helpers/buildInvoicePdfHtml';
 import { generateKsefInvoiceQrDataUrl } from '@/lib/ksef/qr';
+import { resolveInvoiceIssuerName } from '@/lib/invoices/resolveInvoiceIssuerName';
+import { resolveInvoicePrintLogo } from '@/lib/invoices/resolveInvoicePrintLogo';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -93,14 +95,7 @@ async function inlineExternalImages(rawHtml: string): Promise<string> {
 
 const numberOrZero = (value: unknown) => Number(value ?? 0);
 
-function getCompanyLogoUrl(value: unknown): string | null {
-  const logo = String(value ?? '').trim();
-  if (!logo) return null;
-  if (/^https?:\/\//i.test(logo)) return logo;
-  return `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/company-logos/${logo}`;
-}
-
-function buildCanonicalPdfHtml(invoice: any): string {
+function buildCanonicalPdfHtml(invoice: any, companyLogoUrl: string): string {
   const items = Array.isArray(invoice.invoice_items) ? invoice.invoice_items : [];
   const orderItems = Array.isArray(invoice.invoice_order_items) ? invoice.invoice_order_items : [];
   const settledInvoices = Array.isArray(invoice.settled_invoices)
@@ -122,6 +117,7 @@ function buildCanonicalPdfHtml(invoice: any): string {
     buyerIsPrivatePerson: Boolean(invoice.buyer_is_private_person),
     footerNote: invoice.footer_note ?? '',
     signatureName: invoice.signature_name ?? '',
+    showPreviewWatermark: true,
     website: invoice.website ?? null,
     invoiceNumber: invoice.invoice_number,
     invoiceType: invoice.invoice_type === 'proforma' || invoice.is_proforma ? 'proforma' : invoice.invoice_type,
@@ -146,7 +142,7 @@ function buildCanonicalPdfHtml(invoice: any): string {
     totalVat: numberOrZero(invoice.total_vat),
     totalGross: numberOrZero(invoice.total_gross),
     currencyCode: invoice.currency_code ?? 'PLN',
-    companyLogoUrl: getCompanyLogoUrl(invoice.company_logo_url),
+    companyLogoUrl,
     isProforma: invoice.invoice_type === 'proforma' || Boolean(invoice.is_proforma),
     correctionReason: invoice.correction_reason ?? undefined,
     correctedInvoiceNumber: invoice.corrected_invoice_number ?? undefined,
@@ -234,7 +230,18 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Nie znaleziono faktury.' }, { status: 404 });
     }
 
-    let htmlWithKsef = buildCanonicalPdfHtml(invoice);
+    const issuerName = await resolveInvoiceIssuerName(supabase, invoice);
+    if (!issuerName) {
+      return NextResponse.json(
+        {
+          error: 'Nie można ustalić imienia i nazwiska osoby wystawiającej fakturę. Uzupełnij dane wystawiającego w fakturze lub imię i nazwisko jej autora w CRM, a następnie wygeneruj PDF ponownie.',
+        },
+        { status: 422 },
+      );
+    }
+
+    const companyLogoUrl = await resolveInvoicePrintLogo(supabase, invoice.my_company_id);
+    let htmlWithKsef = buildCanonicalPdfHtml({ ...invoice, signature_name: issuerName }, companyLogoUrl);
     const qrPlaceholder = '<div id="ksef-verification-placeholder"></div>';
     if (invoice.ksef_reference_number && invoice.ksef_status === 'accepted') {
       const [{ data: ksefInvoice }, { data: credentials }] = await Promise.all([

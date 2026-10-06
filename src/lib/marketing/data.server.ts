@@ -173,9 +173,9 @@ export async function getMarketingOverview(
   const positionRows = metrics.filter(
     (metric) => metric.source === 'google_search_console' && metric.averagePosition > 0,
   );
-  totals.averagePosition = positionRows.length
-    ? positionRows.reduce((sum, metric) => sum + metric.averagePosition, 0) /
-      positionRows.length
+  const positionImpressions = positionRows.reduce((sum, metric) => sum + metric.organicImpressions, 0);
+  totals.averagePosition = positionImpressions
+    ? positionRows.reduce((sum, metric) => sum + metric.averagePosition * metric.organicImpressions, 0) / positionImpressions
     : 0;
 
   const messages = (messagesResult.data || []) as MarketingOverviewDTO['messages'];

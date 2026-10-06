@@ -1,6 +1,6 @@
 'use client';
 
-import { Award, Users, Calendar, Star } from 'lucide-react';
+import { Award, Calendar } from 'lucide-react';
 import { AnimatedCounter } from './UI/AnimatedCounter';
 
 interface StatItem {
@@ -13,7 +13,6 @@ interface StatItem {
 export const stats: StatItem[] = [
   { icon: Calendar, value: 3700, suffix: '+', label: 'Zrealizowanych Eventów' },
   { icon: Award, value: 15, suffix: '+', label: 'Lat Doświadczenia' },
-  { icon: Star, value: 101, suffix: '%', label: 'Zaangażowanie' },
 ];
 
 
@@ -53,7 +52,7 @@ export default function Stats() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 md:gap-12">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-8 md:gap-12">
           {stats.map((stat, index) => (
             <div
               key={stat.label}

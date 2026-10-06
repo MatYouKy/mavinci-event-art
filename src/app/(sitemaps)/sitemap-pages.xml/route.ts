@@ -35,33 +35,34 @@ ${urlsXml}
 }
 
 export async function GET() {
-  const nowIso = new Date().toISOString();
 
   const urls: SitemapUrl[] = [
-    { loc: `${BASE_URL}/`, lastmod: nowIso, changefreq: 'weekly', priority: 1.0 },
+    { loc: `${BASE_URL}/`, changefreq: 'weekly', priority: 1.0 },
 
-    { loc: `${BASE_URL}/o-nas`, lastmod: nowIso, changefreq: 'monthly', priority: 0.8 },
-    { loc: `${BASE_URL}/zespol`, lastmod: nowIso, changefreq: 'monthly', priority: 0.8 },
+    { loc: `${BASE_URL}/o-nas`, changefreq: 'monthly', priority: 0.8 },
+    { loc: `${BASE_URL}/zespol`, changefreq: 'monthly', priority: 0.8 },
 
-    { loc: `${BASE_URL}/oferta`, lastmod: nowIso, changefreq: 'weekly', priority: 0.9 },
-    { loc: `${BASE_URL}/oferta/konferencje`, lastmod: nowIso, changefreq: 'weekly', priority: 0.9 },
+    { loc: `${BASE_URL}/oferta`, changefreq: 'weekly', priority: 0.9 },
+    { loc: `${BASE_URL}/oferta/konferencje`, changefreq: 'weekly', priority: 0.9 },
 
-    { loc: `${BASE_URL}/oferta/kasyno`, lastmod: nowIso, changefreq: 'weekly', priority: 0.8 },
-    { loc: `${BASE_URL}/oferta/kasyno/zasady/blackjack`, lastmod: nowIso, changefreq: 'yearly', priority: 0.5 },
-    { loc: `${BASE_URL}/oferta/kasyno/zasady/ruletka`, lastmod: nowIso, changefreq: 'yearly', priority: 0.5 },
-    { loc: `${BASE_URL}/oferta/kasyno/zasady/poker`, lastmod: nowIso, changefreq: 'yearly', priority: 0.5 },
+    { loc: `${BASE_URL}/oferta/kasyno`, changefreq: 'weekly', priority: 0.8 },
+    { loc: `${BASE_URL}/oferta/kasyno/zasady/blackjack`, changefreq: 'yearly', priority: 0.5 },
+    { loc: `${BASE_URL}/oferta/kasyno/zasady/ruletka`, changefreq: 'yearly', priority: 0.5 },
+    { loc: `${BASE_URL}/oferta/kasyno/zasady/poker`, changefreq: 'yearly', priority: 0.5 },
 
-    { loc: `${BASE_URL}/oferta/streaming`, lastmod: nowIso, changefreq: 'weekly', priority: 0.8 },
-    { loc: `${BASE_URL}/oferta/integracje`, lastmod: nowIso, changefreq: 'weekly', priority: 0.8 },
-    { loc: `${BASE_URL}/oferta/dj-eventowy`, lastmod: nowIso, changefreq: 'weekly', priority: 0.8 },
-    { loc: `${BASE_URL}/oferta/technika-sceniczna`, lastmod: nowIso, changefreq: 'weekly', priority: 0.8 },
-    { loc: `${BASE_URL}/oferta/quizy-teleturnieje`, lastmod: nowIso, changefreq: 'weekly', priority: 0.8 },
-    { loc: `${BASE_URL}/oferta/wieczory-tematyczne`, lastmod: nowIso, changefreq: 'weekly', priority: 0.8 },
-    { loc: `${BASE_URL}/oferta/symulatory-vr`, lastmod: nowIso, changefreq: 'weekly', priority: 0.8 },
+    { loc: `${BASE_URL}/oferta/streaming`, changefreq: 'weekly', priority: 0.8 },
+    { loc: `${BASE_URL}/oferta/integracje`, changefreq: 'weekly', priority: 0.8 },
+    { loc: `${BASE_URL}/oferta/dj-eventowy`, changefreq: 'weekly', priority: 0.8 },
+    { loc: `${BASE_URL}/oferta/technika-sceniczna`, changefreq: 'weekly', priority: 0.8 },
+    { loc: `${BASE_URL}/oferta/quizy-teleturnieje`, changefreq: 'weekly', priority: 0.8 },
+    { loc: `${BASE_URL}/oferta/wieczory-tematyczne`, changefreq: 'weekly', priority: 0.8 },
+    { loc: `${BASE_URL}/oferta/symulatory-vr`, changefreq: 'weekly', priority: 0.8 },
 
-    // opcjonalnie huby:
-    { loc: `${BASE_URL}/portfolio`, lastmod: nowIso, changefreq: 'weekly', priority: 0.7 },
-    { loc: `${BASE_URL}/uslugi`, lastmod: nowIso, changefreq: 'weekly', priority: 0.7 },
+    { loc: `${BASE_URL}/dla-agencji-i-hoteli`, changefreq: 'monthly', priority: 0.8 },
+
+    // Public hubs:
+    { loc: `${BASE_URL}/portfolio`, changefreq: 'weekly', priority: 0.7 },
+    { loc: `${BASE_URL}/uslugi`, changefreq: 'weekly', priority: 0.7 },
   ];
 
   return new Response(generateSitemapXml(urls), {

@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Inbox, Send, File as FileEdit, Trash2, Mail, FormInput, GripVertical } from 'lucide-react';
+import { Inbox, Send, File as FileEdit, Trash2, Mail, FormInput, GripVertical, Loader2 } from 'lucide-react';
 import type { MessageFolder, MessageUnreadCounts } from '@/store/api/messagesApi';
+import { InboxContextMenu } from './InboxContextMenu';
 import { useUserPreferences } from '@/app/(crm)/crm/PreferencesClientProvider';
 
 interface EmailAccount {
@@ -22,6 +23,9 @@ interface MessagesSidebarProps {
   hasContactFormAccess: boolean;
   canManage: boolean;
   unreadCounts?: MessageUnreadCounts;
+  onMarkAllRead: (accountId: string) => void;
+  markingAccountId: string | null;
+  markedCount: number;
 }
 
 const folderItems: Array<{
@@ -44,6 +48,9 @@ export function MessagesSidebar({
   hasContactFormAccess,
   canManage,
   unreadCounts,
+  onMarkAllRead,
+  markingAccountId,
+  markedCount,
 }: MessagesSidebarProps) {
   const { preferences, setPreference } = useUserPreferences();
   const userAccounts = emailAccounts.filter(
@@ -189,24 +196,42 @@ export function MessagesSidebar({
                   {folderItems.map(({ key, label, icon: Icon }) => {
                     const isActive = selectedAccount === account.id && filterType === key;
 
+                    const folderButton = (
+                      <button
+                        onClick={() => {
+                          setSelectedAccount(account.id);
+                          setFilterType(key);
+                        }}
+                        aria-haspopup={key === 'received' ? 'menu' : undefined}
+                        aria-busy={key === 'received' && markingAccountId === account.id}
+                        title={key === 'received' ? 'Kliknij prawym przyciskiem, aby otworzyć menu skrzynki' : undefined}
+                        className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors ${
+                          isActive
+                            ? 'bg-[#d3bb73] text-[#1c1f33]'
+                            : 'text-[#e5e4e2]/80 hover:bg-white/5'
+                        }`}
+                      >
+                        {key === 'received' && markingAccountId === account.id
+                          ? <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+                          : <Icon className="h-4 w-4 shrink-0" />}
+                        {key === 'received' && markingAccountId === account.id
+                          ? <span role="status">Oznaczanie… {markedCount}</span>
+                          : label}
+                        {key === 'received' &&
+                          renderUnreadBadge(unreadCounts?.byAccount[account.id], isActive)}
+                      </button>
+                    );
                     return (
                       <li key={key}>
-                        <button
-                          onClick={() => {
-                            setSelectedAccount(account.id);
-                            setFilterType(key);
-                          }}
-                          className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors ${
-                            isActive
-                              ? 'bg-[#d3bb73] text-[#1c1f33]'
-                              : 'text-[#e5e4e2]/80 hover:bg-white/5'
-                          }`}
-                        >
-                          <Icon className="h-4 w-4" />
-                          {label}
-                          {key === 'received' &&
-                            renderUnreadBadge(unreadCounts?.byAccount[account.id], isActive)}
-                        </button>
+                        {key === 'received' ? (
+                          <InboxContextMenu
+                            accountName={account.display_name || account.account_name || account.email_address}
+                            disabled={markingAccountId !== null}
+                            onMarkAllRead={() => onMarkAllRead(account.id)}
+                          >
+                            {folderButton}
+                          </InboxContextMenu>
+                        ) : folderButton}
                       </li>
                     );
                   })}

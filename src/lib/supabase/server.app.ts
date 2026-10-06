@@ -7,11 +7,12 @@ export type CookieStoreLike = {
   set: (name: string, value: string, options?: any) => void;
 };
 
-export function createSupabaseServerClient(cookieStore: CookieStoreLike) {
+export function createSupabaseServerClient(cookieStore: CookieStoreLike, options?: { fetch?: typeof fetch }) {
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
+      ...(options?.fetch ? { global: { fetch: options.fetch } } : {}),
       cookies: {
         getAll() {
           return cookieStore.getAll();

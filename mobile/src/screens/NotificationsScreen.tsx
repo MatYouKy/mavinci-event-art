@@ -1,4 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import { getEventNotificationTab } from '../lib/eventNotificationTarget';
+import { getSellerChatTarget } from '../lib/sellerChatTarget';
+import { navigateToSellerChat } from '../navigation/navigationRef';
+import { respondToAssignment } from '../services/assignmentResponse';
+import React, { useState, useRef } from 'react';
+import { useForegroundEffect } from '../hooks/useForegroundEffect';
+import { createRefreshQueue } from '../lib/refreshQueue';
 import {
   View,
   Text,
@@ -50,39 +56,62 @@ export default function NotificationsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [respondingId, setRespondingId] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (employee?.id) {
-      fetchNotifications();
+  const refreshRef = useRef<(() => Promise<void>) | null>(null);
 
-      const channel = supabase
-        .channel('notifications_screen_changes')
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'notification_recipients',
-            filter: `user_id=eq.${employee.id}`,
-          },
-          () => {
-            fetchNotifications();
-          }
-        )
-        .subscribe();
+  useForegroundEffect(
+    (signal) => {
+      if (employee?.id) {
+        const queue = createRefreshQueue(signal, loadNotifications);
+        refreshRef.current = queue.refresh;
+        void queue.refresh();
 
-      return () => {
-        supabase.removeChannel(channel);
-      };
-    }
-  }, [employee?.id]);
+        const channel = supabase
+          .channel('notifications_screen_changes')
+          .on(
+            'postgres_changes',
+            {
+              event: '*',
+              schema: 'public',
+              table: 'notification_recipients',
+              filter: `user_id=eq.${employee.id}`,
+            },
+            queue.schedule,
+          )
+          .on(
+            'postgres_changes',
+            {
+              event: 'UPDATE',
+              schema: 'public',
+              table: 'employee_assignments',
+              filter: `employee_id=eq.${employee.id}`,
+            },
+            queue.schedule,
+          )
+          .subscribe((status) => {
+            if (status === 'SUBSCRIBED') queue.schedule();
+          });
+
+        return () => {
+          if (refreshRef.current === queue.refresh) refreshRef.current = null;
+          return supabase.removeChannel(channel);
+        };
+      }
+    },
+    [employee?.id],
+  );
 
   const fetchNotifications = async () => {
-    if (!employee?.id) return;
+    await refreshRef.current?.();
+  };
+
+  const loadNotifications = async (signal: AbortSignal) => {
+    if (!employee?.id || signal.aborted) return;
 
     try {
       const { data, error } = await supabase
         .from('notification_recipients')
-        .select(`
+        .select(
+          `
           id,
           is_read,
           notification:notifications(
@@ -96,28 +125,60 @@ export default function NotificationsScreen() {
             created_at,
             metadata
           )
-        `)
+        `,
+        )
         .eq('user_id', employee.id)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .abortSignal(signal);
 
+      if (signal.aborted) return;
       if (error) throw error;
 
-      const formattedNotifications = data
+      const formattedNotifications = (data || [])
         .filter((item: any) => item.notification)
         // Ukryj zdublowane zaproszenie fazowe — poprawne zaproszenie do
         // wydarzenia przychodzi jako osobne powiadomienie (employee_assignments).
-        .filter(
-          (item: any) =>
-            item.notification.related_entity_type !== 'event_phase_assignment'
-        )
+        .filter((item: any) => item.notification.related_entity_type !== 'event_phase_assignment')
         .map((item: any) => ({
           ...item.notification,
           is_read: item.is_read,
           recipient_id: item.id,
         }));
 
+      const assignmentIds = Array.from(
+        new Set<string>(
+          formattedNotifications
+            .map((n: Notification) => n.metadata?.assignment_id)
+            .filter(Boolean) as string[],
+        ),
+      );
+      if (assignmentIds.length) {
+        const current = await supabase
+          .from('employee_assignments')
+          .select('id,status,responded_at')
+          .in('id', assignmentIds)
+          .eq('employee_id', employee.id)
+          .abortSignal(signal);
+        if (signal.aborted) return;
+        if (current.error) throw current.error;
+        const byId = new Map((current.data || []).map((a) => [a.id, a]));
+        for (const notification of formattedNotifications) {
+          const assignment = byId.get(notification.metadata?.assignment_id);
+          if (assignment)
+            notification.metadata = {
+              ...notification.metadata,
+              assignment_status: assignment.status,
+              responded_at: assignment.responded_at,
+              requires_response: assignment.status === 'pending',
+            };
+        }
+      }
+
       const contactMessageIds = formattedNotifications
-        .filter((item: Notification) => item.related_entity_type === 'contact_messages' && item.related_entity_id)
+        .filter(
+          (item: Notification) =>
+            item.related_entity_type === 'contact_messages' && item.related_entity_id,
+        )
         .map((item: Notification) => item.related_entity_id as string);
 
       let notificationsWithTypes = formattedNotifications;
@@ -125,7 +186,9 @@ export default function NotificationsScreen() {
         const { data: contactMessages } = await supabase
           .from('contact_messages')
           .select('id, category')
-          .in('id', contactMessageIds);
+          .in('id', contactMessageIds)
+          .abortSignal(signal);
+        if (signal.aborted) return;
 
         const typeById = new Map((contactMessages || []).map((item) => [item.id, item.category]));
         notificationsWithTypes = formattedNotifications.map((item: Notification) => ({
@@ -134,12 +197,14 @@ export default function NotificationsScreen() {
         }));
       }
 
-      setNotifications(notificationsWithTypes);
+      if (!signal.aborted) setNotifications(notificationsWithTypes);
     } catch (error) {
-      console.error('Error fetching notifications:', error);
+      if (!signal.aborted) console.error('Error fetching notifications:', error);
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (!signal.aborted) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   };
 
@@ -151,7 +216,7 @@ export default function NotificationsScreen() {
         .eq('id', recipientId);
 
       setNotifications((prev) =>
-        prev.map((n) => (n.id === notificationId ? { ...n, is_read: true } : n))
+        prev.map((n) => (n.id === notificationId ? { ...n, is_read: true } : n)),
       );
     } catch (error) {
       console.error('Error marking notification as read:', error);
@@ -176,22 +241,15 @@ export default function NotificationsScreen() {
 
   const handleAssignmentResponse = async (
     notification: Notification,
-    status: 'accepted' | 'rejected'
+    status: 'accepted' | 'rejected',
   ) => {
     const assignmentId = notification.metadata?.assignment_id;
     if (!assignmentId) return;
 
     setRespondingId(assignmentId);
     try {
-      const { error } = await supabase
-        .from('employee_assignments')
-        .update({
-          status,
-          responded_at: new Date().toISOString(),
-        })
-        .eq('id', assignmentId);
-
-      if (error) throw error;
+      const current = await respondToAssignment(assignmentId, status);
+      const actualStatus = current.status;
 
       setNotifications((prev) =>
         prev.map((n) =>
@@ -201,19 +259,19 @@ export default function NotificationsScreen() {
                 metadata: {
                   ...n.metadata,
                   requires_response: false,
-                  assignment_status: status,
-                  responded_at: new Date().toISOString(),
+                  assignment_status: actualStatus,
+                  responded_at: current.responded_at,
                 },
               }
-            : n
-        )
+            : n,
+        ),
       );
 
       Alert.alert(
-        status === 'accepted' ? 'Zaakceptowano' : 'Odrzucono',
-        status === 'accepted'
+        actualStatus === 'accepted' ? 'Zaakceptowano' : 'Odrzucono',
+        actualStatus === 'accepted'
           ? 'Zaproszenie do wydarzenia zostało zaakceptowane.'
-          : 'Zaproszenie do wydarzenia zostało odrzucone.'
+          : 'Zaproszenie do wydarzenia zostało odrzucone.',
       );
     } catch (error) {
       console.error('Error responding to assignment:', error);
@@ -230,7 +288,7 @@ export default function NotificationsScreen() {
       [
         { text: 'Anuluj', style: 'cancel' },
         { text: 'Akceptuj', onPress: () => handleAssignmentResponse(notification, 'accepted') },
-      ]
+      ],
     );
   };
 
@@ -240,15 +298,25 @@ export default function NotificationsScreen() {
       'Czy na pewno chcesz odrzucić zaproszenie do tego wydarzenia?',
       [
         { text: 'Anuluj', style: 'cancel' },
-        { text: 'Odrzuć', style: 'destructive', onPress: () => handleAssignmentResponse(notification, 'rejected') },
-      ]
+        {
+          text: 'Odrzuć',
+          style: 'destructive',
+          onPress: () => handleAssignmentResponse(notification, 'rejected'),
+        },
+      ],
     );
   };
 
   const navigateToEntity = (notification: Notification) => {
+    const sellerId = getSellerChatTarget(notification);
+    if (sellerId) { navigateToSellerChat(sellerId); return; }
     const entityType = notification.related_entity_type;
     const entityId = notification.related_entity_id;
     const category = notification.category;
+    if (entityType === 'meeting' && entityId) {
+      navigation.navigate('Main', { screen: 'Meetings', params: { meetingId: entityId } });
+      return;
+    }
 
     if (notification.metadata?.inbound_event_id) {
       navigation.navigate('InboundEventDetail', {
@@ -292,7 +360,7 @@ export default function NotificationsScreen() {
     }
 
     if (entityType === 'event' && entityId) {
-      const initialTab = notification.metadata?.kind === 'vehicle_pickup' ? 'fleet' : undefined;
+      const initialTab = getEventNotificationTab(notification);
       navigation.navigate('Main', {
         screen: 'Events',
         params: {
@@ -465,7 +533,9 @@ export default function NotificationsScreen() {
     }
 
     const hasInvitation = !!item.metadata?.assignment_id;
-    const messageType = item.message_type || item.metadata?.event_type ||
+    const messageType =
+      item.message_type ||
+      item.metadata?.event_type ||
       (item.category === 'contact_form' ? 'contact_form' : undefined);
     const isNavigable = !!(
       item.related_entity_id ||
@@ -497,19 +567,19 @@ export default function NotificationsScreen() {
                 ? 'user-plus'
                 : item.metadata?.inbound_event_id
                   ? 'file-text'
-                : item.related_entity_type === 'contact_messages'
-                  ? 'message-square'
-                : item.related_entity_type === 'event'
-                  ? 'star'
-                : item.related_entity_type === 'task'
-                    ? 'check-square'
-                    : item.related_entity_type === 'vehicle'
-                      ? 'truck'
-                    : item.category === 'webhook'
-                      ? 'globe'
-                      : item.is_read
-                        ? 'check-circle'
-                        : 'bell'
+                  : item.related_entity_type === 'contact_messages'
+                    ? 'message-square'
+                    : item.related_entity_type === 'event'
+                      ? 'star'
+                      : item.related_entity_type === 'task'
+                        ? 'check-square'
+                        : item.related_entity_type === 'vehicle'
+                          ? 'truck'
+                          : item.category === 'webhook'
+                            ? 'globe'
+                            : item.is_read
+                              ? 'check-circle'
+                              : 'bell'
             }
             color={
               hasInvitation && item.metadata?.requires_response

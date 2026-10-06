@@ -1,5 +1,7 @@
 'use client';
 
+import { eventTravelMinutes } from '@/lib/CRM/events/travelPlan';
+
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   Plus,
@@ -16,6 +18,10 @@ import {
 } from 'lucide-react';
 import {
   useGetEventPhasesQuery,
+  useGetPhaseTypesQuery,
+  useGetFlexibleTravelPhasesQuery,
+  useCreatePhaseMutation,
+  useSaveFlexibleTravelPhaseMutation,
   useUpdatePhaseMutation,
   useDeletePhaseMutation,
   EventPhase,
@@ -25,12 +31,14 @@ import { PhaseTimelineView } from './PhaseTimelineView';
 import { PhaseResourcesPanel } from './PhaseResourcesPanel';
 import { ResourceTimeline } from './ResourceTimeline';
 import { PhaseAssignmentsLoader, PhaseAssignmentsData } from './PhaseAssignmentsLoader';
+import { isWarehousePhase, phaseRank, suggestPhaseTimes } from '@/lib/CRM/events/phaseSuggestions';
 import { AddPhaseModal } from '../Modals/AddPhaseModal';
 import { EditPhaseModal } from '../Modals/EditPhaseModal';
 import { AddPhaseAssignmentModal } from '../Modals/AddPhaseAssignmentModal';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 import {
+  eventsApi,
   useGetEventEmployeesQuery,
   useGetEventVehiclesQuery,
   useGetEventEquipmentQuery,
@@ -38,10 +46,7 @@ import {
 } from '../../../store/api/eventsApi';
 import { useAppDispatch } from '@/store/hooks';
 import { supabase } from '@/lib/supabase/client';
-import {
-  localDatetimeStringToUTC,
-  utcToLocalDatetimeString,
-} from '@/lib/utils/dateTimeUtils';
+import { localDatetimeStringToUTC, utcToLocalDatetimeString } from '@/lib/utils/dateTimeUtils';
 
 interface EventPhasesTimelineProps {
   eventId: string;
@@ -67,11 +72,22 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
   onContractScheduleSaved,
 }) => {
   const dispatch = useAppDispatch();
-  const { data: phases = [], isLoading } = useGetEventPhasesQuery(eventId);
+  const { data: phases = [], isLoading } = useGetEventPhasesQuery(eventId, {
+    refetchOnMountOrArgChange: true,
+  });
   const { data: eventEmployees = [] } = useGetEventEmployeesQuery(eventId, { skip: !eventId });
-  const { data: eventVehicles = [] } = useGetEventVehiclesQuery(eventId, { skip: !eventId });
+  const { data: eventVehicles = [] } = useGetEventVehiclesQuery(eventId, {
+    skip: !eventId,
+    refetchOnMountOrArgChange: true,
+  });
   const { data: eventEquipment = [] } = useGetEventEquipmentQuery(eventId, { skip: !eventId });
 
+  const { data: phaseTypes = [] } = useGetPhaseTypesQuery();
+  const { data: flexiblePhases = [] } = useGetFlexibleTravelPhasesQuery(eventId);
+  const [createPhase] = useCreatePhaseMutation();
+  const [removeFlexible] = useSaveFlexibleTravelPhaseMutation();
+  const [applyingTravel, setApplyingTravel] = useState(false);
+  const applyingTravelRef = useRef(false);
   const [updatePhase] = useUpdatePhaseMutation();
   const [deletePhase] = useDeletePhaseMutation();
   const [updateEvent, { isLoading: isSavingContractSchedule }] = useUpdateEventMutation();
@@ -87,6 +103,7 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
   const zoomCenterRef = useRef(0.5);
   const [isPanning, setIsPanning] = useState(false);
   const [zoomLevel, setZoomLevel] = useState<ZoomLevel>('hours');
+  const [showWarehousePhases, setShowWarehousePhases] = useState(true);
   const [resourceFilter, setResourceFilter] = useState<ResourceFilter>('all');
   const [selectedPhase, setSelectedPhase] = useState<EventPhase | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -147,6 +164,57 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
     }
   };
 
+  // A logistics save can change phase times, not only vehicle assignments.
+  useEffect(() => {
+    if (!eventId) return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const refresh = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        timer = null;
+        dispatch(eventPhasesApi.util.invalidateTags([{ type: 'Phases', id: eventId }]));
+        dispatch(
+          eventsApi.util.invalidateTags([
+            { type: 'EventVehicles', id: eventId },
+            { type: 'EventLogistics', id: eventId },
+          ]),
+        );
+      }, 300);
+    };
+    const channel = supabase
+      .channel(`event_travel_phases_${eventId}_${crypto.randomUUID()}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'event_phases',
+          filter: `event_id=eq.${eventId}`,
+        },
+        refresh,
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'event_vehicles',
+          filter: `event_id=eq.${eventId}`,
+        },
+        refresh,
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'events', filter: `id=eq.${eventId}` },
+        refresh,
+      )
+      .subscribe();
+    return () => {
+      if (timer) clearTimeout(timer);
+      supabase.removeChannel(channel);
+    };
+  }, [eventId, dispatch]);
+
   // Realtime subscription dla przypisań pojazdów do faz
   useEffect(() => {
     if (!eventId) return;
@@ -163,11 +231,9 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
         (payload) => {
           // Invaliduj cache dla wszystkich faz tego wydarzenia
           phases.forEach((phase) => {
-            dispatch(
-              eventPhasesApi.util.invalidateTags([{ type: 'PhaseVehicles', id: phase.id }])
-            );
+            dispatch(eventPhasesApi.util.invalidateTags([{ type: 'PhaseVehicles', id: phase.id }]));
           });
-        }
+        },
       )
       .subscribe();
 
@@ -292,11 +358,7 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
   const handleTimelinePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
     const target = event.target as HTMLElement;
-    if (
-      target.closest(
-        '[data-timeline-interactive="true"], button, input, select, textarea, a',
-      )
-    ) {
+    if (target.closest('[data-timeline-interactive="true"], button, input, select, textarea, a')) {
       return;
     }
     const container = scrollContainerRef.current;
@@ -419,6 +481,9 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
       return phase;
     });
   }, [phases, draftChanges]);
+  const visiblePhases = displayPhases.filter(
+    (phase) => showWarehousePhases || !isWarehousePhase(phase),
+  );
 
   // Prepare employees data (extract from both old and new assignments)
   const employees = useMemo(() => {
@@ -471,6 +536,100 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <label className="flex items-center gap-2 text-xs text-[#e5e4e2]/70">
+            <input
+              type="checkbox"
+              checked={showWarehousePhases}
+              onChange={(event) => setShowWarehousePhases(event.target.checked)}
+              className="accent-[#d3bb73]"
+            />
+            Pokaż załadunek i rozładunek
+          </label>
+          <button
+            type="button"
+            className="rounded-lg bg-[#d3bb73]/10 px-3 py-2 text-xs text-[#d3bb73]"
+            disabled={applyingTravel}
+            onClick={async () => {
+              if (applyingTravelRef.current) return;
+              applyingTravelRef.current = true;
+              setApplyingTravel(true);
+              try {
+                const estimate = eventTravelMinutes(eventVehicles);
+                let count = 0;
+                const types = phaseTypes.map((type) => {
+                  const rank = phaseRank(type);
+                  const minutes =
+                    rank === 2 ? estimate.outbound : rank === 6 ? estimate.inbound : null;
+                  return minutes ? { ...type, default_duration_hours: minutes / 60 } : type;
+                });
+                const current = [...displayPhases];
+                for (const template of flexiblePhases) {
+                  const rank = template.key === 'outbound' ? 2 : 6;
+                  const minutes = rank === 2 ? estimate.outbound : estimate.inbound;
+                  if (
+                    !minutes ||
+                    current.some(
+                      (p) =>
+                        phaseRank(p.phase_type || { name: p.name, sequence_priority: 0 }) === rank,
+                    )
+                  )
+                    continue;
+                  const type = types.find((t) => phaseRank(t) === rank);
+                  if (!type) continue;
+                  const times = suggestPhaseTimes(
+                    type,
+                    types,
+                    current,
+                    eventStartDate,
+                    eventEndDate,
+                  );
+                  if (!times) continue;
+                  const created = await createPhase({
+                    event_id: eventId,
+                    phase_type_id: type.id,
+                    name: template.name,
+                    description: template.description || undefined,
+                    start_time: times.start,
+                    end_time: times.end,
+                    sequence_order: current.length + 1,
+                  }).unwrap();
+                  current.push({ ...created, phase_type: type });
+                  count++;
+                  await removeFlexible({ eventId, key: template.key, name: null }).unwrap();
+                }
+                for (const phase of displayPhases) {
+                  const rank = phaseRank(
+                    phase.phase_type || { name: phase.name, sequence_priority: 0 },
+                  );
+                  const minutes =
+                    rank === 2 ? estimate.outbound : rank === 6 ? estimate.inbound : null;
+                  if (!minutes) continue;
+                  const start = new Date(phase.start_time);
+                  const end = new Date(start.getTime() + minutes * 60000);
+                  handlePhaseResizeDraft(phase.id, start, end);
+                  count++;
+                }
+                showSnackbar(
+                  count
+                    ? 'Czasy pobrane z logistyki. Fazy są na osi. Sprawdź godziny i zapisz zmiany harmonogramu.'
+                    : !estimate.outbound && !estimate.inbound
+                      ? 'Brak zapisanej estymacji trasy. Oblicz trasę i zapisz pojazd w Logistyce.'
+                      : 'Czas trasy jest dostępny. Dodaj Dojazd lub Powrót — formularz pobierze estymację.',
+                  count ? 'success' : 'warning',
+                );
+              } catch (error: any) {
+                showSnackbar(
+                  error.message || 'Nie udało się zastosować czasów przejazdu.',
+                  'error',
+                );
+              } finally {
+                applyingTravelRef.current = false;
+                setApplyingTravel(false);
+              }
+            }}
+          >
+            Zastosuj czasy przejazdu z logistyki
+          </button>
           {/* Draft Changes Actions */}
           {hasUnsavedChanges && (
             <>
@@ -625,7 +784,9 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
         <div className="flex flex-1 flex-col items-center justify-center gap-4 p-12">
           <Clock className="h-16 w-16 text-[#e5e4e2]/20" />
           <div className="text-center">
-            <h3 className="mb-2 text-lg font-medium text-[#e5e4e2]">Brak faz</h3>
+            <h3 className="mb-2 text-lg font-medium text-[#e5e4e2]">
+              Brak faz o stałych terminach
+            </h3>
             <p className="mb-4 text-sm text-[#e5e4e2]/60">
               Podziel wydarzenie na fazy (montaż, realizacja, demontaż)
             </p>
@@ -634,7 +795,7 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
               className="inline-flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
             >
               <Plus className="h-4 w-4" />
-              Dodaj Pierwszą Fazę
+              Dodaj fazę
             </button>
           </div>
         </div>
@@ -671,7 +832,7 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
                   </span>
                 </div>
                 <PhaseTimelineView
-                  phases={displayPhases}
+                  phases={visiblePhases}
                   timelineBounds={timelineBounds}
                   zoomLevel={zoomLevel}
                   selectedPhase={selectedPhase}
@@ -727,6 +888,12 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
 
       {/* Add Phase Modal */}
       <AddPhaseModal
+        travelEstimates={eventTravelMinutes(eventVehicles)}
+        onCreated={(typeName) => {
+          if (['załadunek', 'rozładunek'].includes(typeName.trim().toLocaleLowerCase('pl-PL'))) {
+            setShowWarehousePhases(true);
+          }
+        }}
         open={showAddModal}
         onClose={() => setShowAddModal(false)}
         eventId={eventId}

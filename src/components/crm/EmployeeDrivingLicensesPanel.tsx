@@ -14,6 +14,9 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import SearchCombobox from './SearchCombobox';
+import SellerDatePicker from '@/app/(public)/seller/_components/SellerDatePicker';
+import { drivingLicenseCodeFromCertification, type LegacyDrivingLicenseCertificate } from '@/lib/CRM/employees/drivingLicenses';
 
 function unwrapEmbedded<T>(raw: T | T[] | null | undefined): T | null {
   if (raw == null) return null;
@@ -47,11 +50,13 @@ interface LicenseCategory {
 interface EmployeeDrivingLicensesPanelProps {
   employeeId: string;
   canEdit: boolean;
+  legacyCertificates?: LegacyDrivingLicenseCertificate[];
 }
 
 export default function EmployeeDrivingLicensesPanel({
   employeeId,
   canEdit,
+  legacyCertificates = [],
 }: EmployeeDrivingLicensesPanelProps) {
   const [licenses, setLicenses] = useState<DrivingLicense[]>([]);
   const [availableCategories, setAvailableCategories] = useState<LicenseCategory[]>([]);
@@ -59,6 +64,8 @@ export default function EmployeeDrivingLicensesPanel({
   const [editingLicense, setEditingLicense] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const { showSnackbar } = useSnackbar();
+  const [obtainedDateValid, setObtainedDateValid] = useState(true);
+  const [expiryDateValid, setExpiryDateValid] = useState(true);
 
   const [formData, setFormData] = useState({
     license_category_id: '',
@@ -135,7 +142,20 @@ export default function EmployeeDrivingLicensesPanel({
     }
   };
 
+  const datesValid = () => {
+    if (!obtainedDateValid || !expiryDateValid) {
+      showSnackbar('Wpisz poprawne daty w formacie DD.MM.RRRR.', 'warning');
+      return false;
+    }
+    if (formData.obtained_date && formData.expiry_date && formData.expiry_date < formData.obtained_date) {
+      showSnackbar('Data ważności nie może być wcześniejsza niż data uzyskania.', 'warning');
+      return false;
+    }
+    return true;
+  };
+
   const handleAdd = async () => {
+    if (!datesValid()) return;
     if (!formData.license_category_id) {
       showSnackbar('Wybierz kategorię prawa jazdy', 'warning');
       return;
@@ -154,6 +174,7 @@ export default function EmployeeDrivingLicensesPanel({
       if (error) throw error;
 
       showSnackbar('Prawo jazdy dodane pomyślnie', 'success');
+      window.dispatchEvent(new Event('employee-driving-licenses-changed'));
       setShowAddModal(false);
       resetForm();
       fetchLicenses();
@@ -168,6 +189,7 @@ export default function EmployeeDrivingLicensesPanel({
   };
 
   const handleUpdate = async (licenseId: string) => {
+    if (!datesValid()) return;
     try {
       const { error } = await supabase
         .from('employee_driving_licenses')
@@ -182,6 +204,7 @@ export default function EmployeeDrivingLicensesPanel({
       if (error) throw error;
 
       showSnackbar('Prawo jazdy zaktualizowane pomyślnie', 'success');
+      window.dispatchEvent(new Event('employee-driving-licenses-changed'));
       setEditingLicense(null);
       resetForm();
       fetchLicenses();
@@ -203,6 +226,7 @@ export default function EmployeeDrivingLicensesPanel({
       if (error) throw error;
 
       showSnackbar('Prawo jazdy usunięte pomyślnie', 'success');
+      window.dispatchEvent(new Event('employee-driving-licenses-changed'));
       fetchLicenses();
     } catch (error) {
       console.error('Error deleting license:', error);
@@ -227,6 +251,7 @@ export default function EmployeeDrivingLicensesPanel({
   };
 
   const resetForm = () => {
+    setObtainedDateValid(true); setExpiryDateValid(true);
     setFormData({
       license_category_id: '',
       obtained_date: '',
@@ -236,22 +261,41 @@ export default function EmployeeDrivingLicensesPanel({
     });
   };
 
+  const today = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Warsaw', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
   const isExpired = (expiryDate: string | null) => {
     if (!expiryDate) return false;
-    return new Date(expiryDate) < new Date();
+    return expiryDate < today;
   };
 
   const isExpiringSoon = (expiryDate: string | null) => {
     if (!expiryDate) return false;
     const daysUntilExpiry = Math.floor(
-      (new Date(expiryDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24),
+      (new Date(expiryDate).getTime() - new Date(today).getTime()) / (1000 * 60 * 60 * 24),
     );
-    return daysUntilExpiry > 0 && daysUntilExpiry <= 30;
+    return daysUntilExpiry >= 0 && daysUntilExpiry <= 30;
   };
 
   const availableCategoriesForAdd = availableCategories.filter(
     (cat) => !licenses.some((lic) => lic.license_category_id === cat.id),
   );
+
+  const legacyNeedsReview = legacyCertificates.some((cert) => {
+    if (!cert.is_active) return false;
+    const code = drivingLicenseCodeFromCertification(cert.certification_type.name);
+    const current = licenses.find((license) => license.license_category.code === code);
+    return !current || current.expiry_date !== cert.expiry_date
+      || Boolean(cert.certification_number && current.license_number && cert.certification_number !== current.license_number);
+  });
+  const prepareLegacyLicense = (cert: LegacyDrivingLicenseCertificate) => {
+    const code = drivingLicenseCodeFromCertification(cert.certification_type.name);
+    const category = availableCategoriesForAdd.find((item) => item.code === code);
+    if (!category) { showSnackbar('Wybierz właściwą kategorię w sekcji Prawa jazdy. Istniejącego wpisu nie nadpisujemy.', 'info'); return; }
+    setObtainedDateValid(true); setExpiryDateValid(true);
+    setFormData({ license_category_id: category.id, obtained_date: cert.issued_date || '', expiry_date: cert.expiry_date || '',
+      license_number: cert.certification_number || '', notes: cert.notes || '' });
+    setShowAddModal(true);
+  };
+  const displayDate = (value: string | null) => value ? value.split('-').reverse().join('.') : 'Nie podano';
 
   if (loading) {
     return <div className="py-8 text-center text-[#e5e4e2]/60">Ładowanie...</div>;
@@ -274,6 +318,9 @@ export default function EmployeeDrivingLicensesPanel({
           </button>
         )}
       </div>
+
+      <p className="text-sm text-[#e5e4e2]/60">Jedyne miejsce zapisu kategorii dla floty. Wybór kierowcy uwzględnia te wpisy, daty ważności oraz termin rezerwacji pojazdu.</p>
+      {legacyNeedsReview && <p role="status" className="rounded-lg bg-amber-300/10 p-3 text-sm text-amber-200">W historii certyfikatów są brakujące tutaj kategorie lub inne daty ważności. Porównaj je z dokumentem. Nie nadpisujemy ani nie przedłużamy uprawnień automatycznie.</p>}
 
       {licenses.length === 0 ? (
         <div className="py-8 text-center">
@@ -301,32 +348,10 @@ export default function EmployeeDrivingLicensesPanel({
                 {isEditing ? (
                   <div className="space-y-3">
                     <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="mb-1 block text-xs text-[#e5e4e2]/60">
-                          Data uzyskania
-                        </label>
-                        <input
-                          type="date"
-                          value={formData.obtained_date}
-                          onChange={(e) =>
-                            setFormData({ ...formData, obtained_date: e.target.value })
-                          }
-                          className="w-full rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-2 py-1.5 text-sm text-[#e5e4e2] focus:border-[#d3bb73]/40 focus:outline-none"
-                        />
-                      </div>
-                      <div>
-                        <label className="mb-1 block text-xs text-[#e5e4e2]/60">
-                          Data ważności
-                        </label>
-                        <input
-                          type="date"
-                          value={formData.expiry_date}
-                          onChange={(e) =>
-                            setFormData({ ...formData, expiry_date: e.target.value })
-                          }
-                          className="w-full rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-2 py-1.5 text-sm text-[#e5e4e2] focus:border-[#d3bb73]/40 focus:outline-none"
-                        />
-                      </div>
+                      <SellerDatePicker label="Data uzyskania" value={formData.obtained_date}
+                        onChange={(value) => setFormData((previous) => ({ ...previous, obtained_date: value }))} onValidityChange={setObtainedDateValid} />
+                      <SellerDatePicker label="Data ważności" value={formData.expiry_date}
+                        onChange={(value) => setFormData((previous) => ({ ...previous, expiry_date: value }))} onValidityChange={setExpiryDateValid} />
                     </div>
                     <div>
                       <label className="mb-1 block text-xs text-[#e5e4e2]/60">
@@ -450,6 +475,24 @@ export default function EmployeeDrivingLicensesPanel({
         </div>
       )}
 
+      {legacyCertificates.length > 0 && <details className="rounded-lg bg-white/[0.035] p-4 text-sm">
+        <summary className="cursor-pointer text-[#e5e4e2]/60">Poprzednie wpisy z certyfikatów — historia ({legacyCertificates.length})</summary>
+        <p className="mt-3 text-xs text-[#e5e4e2]/50">Zachowaliśmy oryginalne dane. Wpisy poniżej nie są drugim źródłem uprawnień i nie kwalifikują kierowcy do pojazdu. Kategorie edytujesz wyłącznie powyżej. Przed uzupełnieniem brakującej kategorii sprawdź daty z dokumentem.</p>
+        <div className="mt-3 space-y-3">{legacyCertificates.map((cert) => {
+          const code = drivingLicenseCodeFromCertification(cert.certification_type.name);
+          const canImport = cert.is_active && availableCategoriesForAdd.some((item) => item.code === code);
+          return <div key={cert.id} className="rounded-lg bg-black/10 p-3 text-xs text-[#e5e4e2]/60">
+            <p className="font-medium text-[#e5e4e2]">{cert.certification_type.name} · {cert.is_active ? 'dawny wpis' : 'dawny wpis nieaktywny'}</p>
+            <p className="mt-1">Wydano: {displayDate(cert.issued_date)} · Ważne do: {displayDate(cert.expiry_date)}</p>
+            {cert.certification_number && <p>Numer: {cert.certification_number}</p>}
+            {cert.issuing_authority && <p>Wystawca: {cert.issuing_authority}</p>}
+            {cert.notes && <p className="mt-1 whitespace-pre-wrap">{cert.notes}</p>}
+            {cert.document_url && /^https?:\/\//i.test(cert.document_url) && <a href={cert.document_url} target="_blank" rel="noopener noreferrer" className="mt-2 inline-block text-[#d3bb73] underline">Otwórz dokument historyczny</a>}
+            {canEdit && canImport && <button type="button" onClick={() => prepareLegacyLicense(cert)} className="mt-2 rounded-lg bg-[#d3bb73]/10 px-3 py-2 text-[#d3bb73] hover:bg-[#d3bb73]/20">Sprawdź dane i uzupełnij kategorię</button>}
+          </div>;
+        })}</div>
+      </details>}
+
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="w-full max-w-md rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] p-6">
@@ -463,41 +506,20 @@ export default function EmployeeDrivingLicensesPanel({
                 <label className="mb-2 block text-sm text-[#e5e4e2]/60">
                   Kategoria prawa jazdy *
                 </label>
-                <select
+                <SearchCombobox
+                  ariaLabel="Kategoria prawa jazdy"
                   value={formData.license_category_id}
-                  onChange={(e) =>
-                    setFormData({ ...formData, license_category_id: e.target.value })
-                  }
-                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/40 focus:outline-none"
-                >
-                  <option value="">Wybierz kategorię</option>
-                  {availableCategoriesForAdd.map((cat) => (
-                    <option key={cat.id} value={cat.id}>
-                      {cat.code} - {cat.name}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(value) => setFormData((previous) => ({ ...previous, license_category_id: value }))}
+                  options={availableCategoriesForAdd.map((cat) => ({ id: cat.id, label: `${cat.code} — ${cat.name}` }))}
+                  placeholder="Wyszukaj kategorię…"
+                />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="mb-2 block text-sm text-[#e5e4e2]/60">Data uzyskania</label>
-                  <input
-                    type="date"
-                    value={formData.obtained_date}
-                    onChange={(e) => setFormData({ ...formData, obtained_date: e.target.value })}
-                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/40 focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="mb-2 block text-sm text-[#e5e4e2]/60">Data ważności</label>
-                  <input
-                    type="date"
-                    value={formData.expiry_date}
-                    onChange={(e) => setFormData({ ...formData, expiry_date: e.target.value })}
-                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/40 focus:outline-none"
-                  />
-                </div>
+                <SellerDatePicker label="Data uzyskania" value={formData.obtained_date}
+                  onChange={(value) => setFormData((previous) => ({ ...previous, obtained_date: value }))} onValidityChange={setObtainedDateValid} />
+                <SellerDatePicker label="Data ważności" value={formData.expiry_date}
+                  onChange={(value) => setFormData((previous) => ({ ...previous, expiry_date: value }))} onValidityChange={setExpiryDateValid} />
               </div>
 
               <div>

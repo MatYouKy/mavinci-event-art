@@ -178,6 +178,21 @@ Deno.serve(async (req: Request) => {
       throw new Error("Company ID is required");
     }
 
+    const userClient = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY') ?? '', {
+      global: { headers: { Authorization: `Bearer ${accessToken}` } },
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const [scopeResult, companyResult] = await Promise.all([
+      userClient.rpc('get_invoice_finance_access'),
+      userClient.rpc('can_manage_invoice_company', { p_company_id: companyId }),
+    ]);
+    if (scopeResult.error || scopeResult.data?.canManageCompanyFinance !== true
+      || companyResult.error || companyResult.data !== true) {
+      return new Response(JSON.stringify({ error: 'Brak dostępu do konfiguracji KSeF firmy.' }), {
+        status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     const { data: credentials, error: credError } = await supabaseClient
       .from("ksef_credentials")
       .select("*")

@@ -1,4 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useForegroundEffect } from '../hooks/useForegroundEffect';
+import { createRefreshQueue } from '../lib/refreshQueue';
 import {
   ActivityIndicator,
   Alert,
@@ -562,20 +564,22 @@ function FleetContent() {
     }
   }, [employee?.id]);
 
-  useEffect(() => {
-    void loadVehicles();
+  useForegroundEffect((signal) => {
+    if (!employee?.id) return;
+    const queue = createRefreshQueue(signal, () => loadVehicles());
+    void queue.refresh();
 
     const channel = supabase
       .channel(`mobile-fleet-${employee?.id ?? 'anonymous'}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'vehicles' }, () => void loadVehicles())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'event_vehicles' }, () => void loadVehicles())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'vehicle_handovers' }, () => void loadVehicles())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'vehicle_alerts' }, () => void loadVehicles())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'insurance_policies' }, () => void loadVehicles())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'vehicles' }, queue.schedule)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'event_vehicles' }, queue.schedule)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'vehicle_handovers' }, queue.schedule)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'vehicle_alerts' }, queue.schedule)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'insurance_policies' }, queue.schedule)
       .subscribe();
 
     return () => {
-      void supabase.removeChannel(channel);
+      return supabase.removeChannel(channel);
     };
   }, [employee?.id, loadVehicles]);
 

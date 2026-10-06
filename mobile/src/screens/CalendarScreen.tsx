@@ -1,3 +1,7 @@
+import { canView, canCreateInquiry } from '../lib/permissions';
+import { useOperationalStages } from '../hooks/useOperationalStages';
+import { OPERATIONAL_LABELS, usesOperationalStages } from '../lib/operationalStages';
+import { useFocusEffect } from '@react-navigation/native';
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View,
@@ -77,9 +81,13 @@ interface CalendarEvent {
 
 function CalendarContent({ onEventPress }: { onEventPress: (eventId: CalendarEvent) => void }) {
   const { employee } = useAuth();
+  const canViewInquiries = canView(employee, 'inquiries');
+  const canAddInquiry = canCreateInquiry(employee);
   const { width, height } = useWindowDimensions();
   const isWideLayout = width > height && width >= 768;
   const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const operational = usesOperationalStages(employee);
+  const {stage: displayStatus} = useOperationalStages(events.filter(e=>!e.is_meeting&&!e.is_inquiry), operational);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [inquiryModalVisible, setInquiryModalVisible] = useState(false);
@@ -96,15 +104,19 @@ function CalendarContent({ onEventPress }: { onEventPress: (eventId: CalendarEve
       // Pobierz ID wydarzeń przypisanych i własnych
       // ==========================================
 
-      const [{ data: assignedRows }, { data: ownRows }] = await Promise.all([
+      const [{ data: assignedRows }, { data: ownRows }, warehouseRows] = await Promise.all([
         supabase.from('employee_assignments').select('event_id').eq('employee_id', employee.id),
 
         supabase.from('events').select('id').eq('created_by', employee.id),
+        employee.permissions?.includes('equipment_manage')
+          ? supabase.from('events').select('id').in('status', ['offer_accepted','in_preparation','ready_for_live','in_progress','completed','invoiced','settled'])
+          : Promise.resolve({ data: [], error: null }),
       ]);
 
       const eventIds = [
         ...(assignedRows ?? []).map((r) => r.event_id),
         ...(ownRows ?? []).map((r) => r.id),
+        ...(warehouseRows.data ?? []).map((r) => r.id),
       ].filter(Boolean);
 
       const uniqueEventIds = [...new Set(eventIds)];
@@ -174,7 +186,7 @@ function CalendarContent({ onEventPress }: { onEventPress: (eventId: CalendarEve
 
       const { data: meetings } = await supabase
         .from('meetings')
-        .select('id, title, datetime_start, datetime_end, location_text')
+        .select('id, title, datetime_start, datetime_end, location_text, recurrence_days')
         .is('deleted_at', null)
         .eq('created_by', employee.id);
 
@@ -188,7 +200,7 @@ function CalendarContent({ onEventPress }: { onEventPress: (eventId: CalendarEve
             status: 'meeting',
             location: m.location_text ?? undefined,
 
-            category_name: 'Spotkanie',
+            category_name: m.recurrence_days ? 'Spotkanie cykliczne' : 'Spotkanie',
             category_color: '#8B5CF6',
             category_icon_svg: null,
 
@@ -217,7 +229,7 @@ function CalendarContent({ onEventPress }: { onEventPress: (eventId: CalendarEve
         if (meetingIds.length) {
           const { data: participantMeetings } = await supabase
             .from('meetings')
-            .select('id, title, datetime_start, datetime_end, location_text')
+            .select('id, title, datetime_start, datetime_end, location_text, recurrence_days')
             .is('deleted_at', null)
             .in('id', meetingIds);
 
@@ -231,7 +243,7 @@ function CalendarContent({ onEventPress }: { onEventPress: (eventId: CalendarEve
                 status: 'meeting',
                 location: m.location_text ?? undefined,
 
-                category_name: 'Spotkanie',
+                category_name: m.recurrence_days ? 'Spotkanie cykliczne' : 'Spotkanie',
                 category_color: '#8B5CF6',
                 category_icon_svg: null,
 
@@ -247,12 +259,12 @@ function CalendarContent({ onEventPress }: { onEventPress: (eventId: CalendarEve
       // Zapytania
       // ==========================================
 
-      const { data: inquiryTasks } = await supabase
+      const { data: inquiryTasks } = canViewInquiries ? await supabase
         .from('tasks')
         .select('id, title, due_date, inquiry_details')
         .eq('is_inquiry', true)
         .neq('board_column', 'completed')
-        .not('due_date', 'is', null);
+        .not('due_date', 'is', null) : { data: null };
 
       if (inquiryTasks) {
         for (const t of inquiryTasks) {
@@ -274,17 +286,23 @@ function CalendarContent({ onEventPress }: { onEventPress: (eventId: CalendarEve
         }
       }
 
-      setEvents(allEvents);
+      const mine = await supabase.rpc('get_my_realizations');
+      const merged = new Map(allEvents.map(e=>[e.id,e]));
+      for(const row of mine.data||[]) if(!merged.has(row.id)) merged.set(row.id,row);
+      setEvents([...merged.values()]);
     } catch (error) {
       console.error('Error fetching calendar events:', error);
     } finally {
       setIsLoading(false);
     }
-  }, [employee?.id]);
+  }, [employee?.id, employee?.permissions, canViewInquiries]);
 
+  useFocusEffect(useCallback(() => { void fetchEvents(); }, [fetchEvents]));
   useEffect(() => {
-    fetchEvents();
-  }, [fetchEvents]);
+    if (!employee?.permissions?.includes('equipment_manage')) return;
+    const channel = supabase.channel('warehouse-events-'+Math.random()).on('postgres_changes', { event: '*', schema: 'public', table: 'events' }, () => { void fetchEvents(); }).subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [fetchEvents, employee?.permissions]);
 
   const markedDates = useMemo(() => {
     const marks: Record<string, any> = {};
@@ -326,7 +344,7 @@ function CalendarContent({ onEventPress }: { onEventPress: (eventId: CalendarEve
   const renderEvent = ({ item }: { item: CalendarEvent }) => {
     const badgeColor = item.category_color || STATUS_COLORS[item.status] || colors.text.tertiary;
 
-    const badgeLabel = item.category_name || STATUS_LABELS[item.status] || item.status;
+    const badgeLabel = operational && !item.is_meeting && !item.is_inquiry ? OPERATIONAL_LABELS[displayStatus(item)] : item.category_name || STATUS_LABELS[item.status] || 'Wydarzenie';
 
     const time = new Date(item.event_date).toLocaleTimeString('pl-PL', {
       hour: '2-digit',
@@ -450,10 +468,10 @@ function CalendarContent({ onEventPress }: { onEventPress: (eventId: CalendarEve
           {eventsForSelectedDate.length > 0 && ` (${eventsForSelectedDate.length})`}
         </Text>
 
-        <TouchableOpacity style={styles.addInquiryBtn} onPress={() => setInquiryModalVisible(true)}>
+        {canAddInquiry && <TouchableOpacity style={styles.addInquiryBtn} onPress={() => setInquiryModalVisible(true)}>
           <Feather name="phone-call" size={16} color={colors.primary.gold} />
           <Text style={styles.addInquiryBtnText}>Dodaj zapytanie</Text>
-        </TouchableOpacity>
+        </TouchableOpacity>}
 
         {eventsForSelectedDate.length === 0 ? (
           <View style={styles.emptyState}>
@@ -478,7 +496,7 @@ function CalendarContent({ onEventPress }: { onEventPress: (eventId: CalendarEve
       </View>
 
       <NewInquiryModal
-        visible={inquiryModalVisible}
+        visible={canAddInquiry && inquiryModalVisible}
         onClose={() => setInquiryModalVisible(false)}
         initialDate={selectedDate}
         onSaved={fetchEvents}
@@ -647,10 +665,12 @@ export default function CalendarScreen({ initialMeetingId }: { initialMeetingId?
 
   if (selectedInquiryId) {
     return (
-      <TaskDetailScreen
-        route={{ params: { taskId: selectedInquiryId } }}
-        navigation={{ goBack: () => setSelectedInquiryId(null) }}
-      />
+      <PermissionGate module="inquiries">
+        <TaskDetailScreen
+          route={{ params: { taskId: selectedInquiryId } }}
+          navigation={{ goBack: () => setSelectedInquiryId(null) }}
+        />
+      </PermissionGate>
     );
   }
 

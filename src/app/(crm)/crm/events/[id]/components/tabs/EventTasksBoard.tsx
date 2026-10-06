@@ -15,6 +15,7 @@ import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import { shouldAutomateTaskTimer } from '@/lib/CRM/tasks/taskTimerPreference';
 import { useMobile } from '@/hooks/useMobile';
 import TaskCard from '../../../../../../../components/crm/TaskCard';
 import { Task } from '@/components/crm/TaskCard';
@@ -67,7 +68,7 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
   const autoScrollIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const { showSnackbar } = useSnackbar();
   const { showConfirm } = useDialog();
-  const { currentEmployee } = useCurrentEmployee();
+  const { currentEmployee, isAdmin } = useCurrentEmployee();
 
   const isMobile = useMobile(1024);
   const [activeColumnIndex, setActiveColumnIndex] = useState(0);
@@ -574,7 +575,17 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
   };
 
   const handleMoveTask = async (taskId: string, newColumn: string, oldColumn: string) => {
-    if (newColumn === 'in_progress' && oldColumn !== 'in_progress') {
+    let automateTimer = true;
+    if (newColumn === 'in_progress' || oldColumn === 'in_progress') {
+      try {
+        automateTimer = await shouldAutomateTaskTimer(currentEmployee?.id, isAdmin);
+      } catch (error) {
+        console.error('Error reading task timer preference:', error);
+        showSnackbar('Nie udało się wczytać ustawień czasu pracy. Spróbuj ponownie.', 'error');
+        return;
+      }
+    }
+    if (automateTimer && newColumn === 'in_progress' && oldColumn !== 'in_progress') {
       if (activeTimer && activeTimer.task_id !== taskId) {
         showSnackbar(
           'Zakończ poprzednie zadanie aby rozpocząć kolejne lub przenieś je do zrobienia',
@@ -627,7 +638,7 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
       return;
     }
 
-    if ((newColumn === 'review' || newColumn === 'completed') && oldColumn === 'in_progress') {
+    if (automateTimer && (newColumn === 'review' || newColumn === 'completed') && oldColumn === 'in_progress') {
       if (activeTimer && activeTimer.task_id === taskId) {
         const shouldStopTimer = await showConfirm(
           'Zatrzymać czas pracy?',

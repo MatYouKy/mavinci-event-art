@@ -1,0 +1,16 @@
+const ts=require('typescript'),fs=require('fs'),Module=require('module'),assert=require('node:assert/strict');
+const file='src/lib/invoices/finalOrderValue.ts';
+const m=new Module(file);
+m._compile(ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText,file);
+const {scaleFinalOrderNet:scale,orderNetFromAdvancePercent:full}=m.exports;
+const original=[{name:'Usługa',quantity:1,price_net:9362.5,vat_rate:23}];
+assert.equal(full(9362.5,50),18725);
+const items=scale(original,18725);
+assert.equal(items[0].price_net,18725);
+assert.equal(original[0].price_net,9362.5);
+assert.equal(Math.round((18725+Math.round(18725*.23*100)/100-11515.88)*100)/100,11515.87);
+assert.deepEqual(scale([{quantity:1,price_net:100,vat_rate:8},{quantity:1,price_net:200,vat_rate:23}],600).map(i=>[i.price_net,i.vat_rate]),[[200,8],[400,23]]);
+assert.equal(scale([{quantity:1,price_net:0}],100)[0].price_net,100);
+assert.equal(scale(Array.from({length:4},()=>({quantity:1,price_net:1})),0.02).reduce((s,i)=>s+i.price_net,0),0.02);
+assert.throws(()=>full(100,0)); assert.throws(()=>full(100,101)); assert.throws(()=>scale([{quantity:0,price_net:10}],100));
+console.log('PASS: full order, percentage, mixed VAT, zero price, rounding, immutability and invalid input');

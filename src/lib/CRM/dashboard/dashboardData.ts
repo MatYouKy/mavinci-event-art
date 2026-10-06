@@ -1,7 +1,12 @@
 import 'server-only';
 import { cookies } from 'next/headers';
+import { cache } from 'react';
 import { CookieStoreLike, createSupabaseServerClient } from '@/lib/supabase/server.app';
+import { loadInvoiceFinanceAccess } from '@/lib/invoices/financeAccess';
+import { canView } from '@/lib/permissions';
 import type { DashboardPreferences } from './dashboardConfig';
+import type { SellerFinancialReport } from './sellerDashboardTypes';
+import { createDashboardReadFetch } from './dashboardReadFetch.server';
 
 export type DashboardStats = {
   totalEvents: number;
@@ -38,6 +43,9 @@ export type DashboardMonth = {
 };
 
 export type DashboardAnalytics = {
+  scope?: 'company' | 'sales' | 'none';
+  accessError?: string | null;
+  sellerReport?: SellerFinancialReport | null;
   months: DashboardMonth[];
   funnel: {
     inquiries: number;
@@ -67,8 +75,117 @@ function getCookieStore(): CookieStoreLike {
   };
 }
 
+// Reuse one request-scoped client and read queue for all dashboard sections.
+// React cache is per server request; employee data is never globally cached.
+const getDashboardClient = cache(() => createSupabaseServerClient(getCookieStore(), {
+  fetch: createDashboardReadFetch(),
+}));
+
+const fetchDashboardAccess = cache(async () => {
+  try {
+    const supabase = getDashboardClient();
+    return { access: await loadInvoiceFinanceAccess(supabase), error: null };
+  } catch (error) {
+    console.error('[CRM dashboard] access lookup failed:', error);
+    // A missing migration/session must never restore the old company-wide data path.
+    return { access: null, error: 'Nie udało się potwierdzić zakresu dostępu do dashboardu.' };
+  }
+});
+
+const emptyStats = (): DashboardStats => ({
+  totalEvents: 0, upcomingEvents: 0, openInquiries: 0, activeOffers: 0,
+  totalClients: 0, activeEmployees: 0, equipmentItems: 0, pendingTasks: 0,
+  revenue: 0, overdueInvoices: 0,
+});
+
+function emptyAnalytics(): DashboardAnalytics {
+  return {
+    scope: 'none', months: createMonthBuckets(),
+    funnel: { inquiries: 0, offers: 0, acceptedOffers: 0, events: 0 },
+    attention: { overdueTasks: 0, overdueInquiries: 0, overdueInvoices: 0, eventsNext30Days: 0, unownedCustomers: 0, neglectedOpportunities: 0, workflowRisks: 0 },
+  };
+}
+
+// Operational staff keep their own tasks and assigned events, but never receive
+// finance/employee/client aggregates merely because they can open /crm.
+const fetchOperationalDashboard = cache(async () => {
+  const result = { stats: emptyStats(), analytics: emptyAnalytics(), recentActivity: [] as RecentActivityDTO[] };
+  const { access } = await fetchDashboardAccess();
+  if (!access?.employeeId || access.scope !== 'none') return result;
+  const supabase = getDashboardClient();
+  const { data: employee, error: employeeError } = await supabase.from('employees')
+    .select('role,access_level,permissions').eq('id', access.employeeId).eq('is_active', true).maybeSingle();
+  if (employeeError) throw employeeError;
+  if (!employee) return result;
+  const identities = Array.from(new Set([access.employeeId, access.authUserId].filter((id): id is string => Boolean(id))));
+  const idList = identities.join(',');
+  const viewEvents = canView(employee, 'events');
+  const viewTasks = canView(employee, 'tasks') || canView(employee, 'inquiries');
+  const [eventAssignments, taskAssignments] = await Promise.all([
+    viewEvents ? supabase.from('employee_assignments').select('event_id').in('employee_id', identities).eq('status', 'accepted') : Promise.resolve({ data: [], error: null }),
+    viewTasks ? supabase.from('task_assignees').select('task_id').in('employee_id', identities) : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (eventAssignments.error) throw eventAssignments.error;
+  if (taskAssignments.error) throw taskAssignments.error;
+  const eventIds = (eventAssignments.data || []).map((row) => row.event_id).filter(Boolean);
+  const taskIds = (taskAssignments.data || []).map((row) => row.task_id).filter(Boolean);
+  const eventFilter = [`created_by.in.(${idList})`, ...(eventIds.length ? [`id.in.(${eventIds.join(',')})`] : [])].join(',');
+  const taskFilter = [`created_by.in.(${idList})`, `inquiry_owner_id.in.(${idList})`, ...(taskIds.length ? [`id.in.(${taskIds.join(',')})`] : [])].join(',');
+  const [eventsResult, tasksResult, offersResult] = await Promise.all([
+    viewEvents ? supabase.from('events').select('id,name,event_date,status,created_at').or(eventFilter) : Promise.resolve({ data: [], error: null }),
+    viewTasks ? supabase.from('tasks').select('id,title,status,is_inquiry,inquiry_stage,event_id,created_at,due_date,next_action_at').or(taskFilter) : Promise.resolve({ data: [], error: null }),
+    canView(employee, 'offers') ? supabase.from('offers').select('id,status,created_at').in('created_by', identities) : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (eventsResult.error) throw eventsResult.error;
+  if (tasksResult.error) throw tasksResult.error;
+  if (offersResult.error) throw offersResult.error;
+  const events = eventsResult.data || [];
+  const tasks = tasksResult.data || [];
+  const offers = offersResult.data || [];
+  const now = new Date();
+  const next30 = new Date(now);
+  next30.setDate(next30.getDate() + 30);
+  const openTasks = tasks.filter((task) => !['done', 'completed', 'cancelled', 'archived'].includes(task.status));
+  const inquiries = tasks.filter((task) => task.is_inquiry);
+  result.stats.totalEvents = events.length;
+  result.stats.upcomingEvents = events.filter((event) => event.status !== 'cancelled' && new Date(event.event_date) >= now).length;
+  result.stats.pendingTasks = openTasks.filter((task) => !task.is_inquiry).length;
+  result.stats.openInquiries = inquiries.filter((task) => !['won', 'lost'].includes(task.inquiry_stage || '')).length;
+  result.stats.activeOffers = offers.filter((offer) => ['draft', 'sent'].includes(offer.status)).length;
+  const buckets = new Map(result.analytics.months.map((month) => [month.key, month]));
+  for (const event of events) {
+    const bucket = buckets.get(monthKey(event.event_date));
+    if (bucket && event.status !== 'cancelled') bucket.events += 1;
+  }
+  for (const inquiry of inquiries) {
+    const bucket = buckets.get(monthKey(inquiry.created_at));
+    if (bucket) bucket.inquiries += 1;
+  }
+  for (const offer of offers) {
+    const bucket = buckets.get(monthKey(offer.created_at));
+    if (bucket) bucket.offers += 1;
+  }
+  result.analytics.funnel = {
+    inquiries: inquiries.length,
+    offers: inquiries.filter((task) => ['proposal', 'negotiation', 'won'].includes(task.inquiry_stage || '')).length,
+    acceptedOffers: inquiries.filter((task) => task.inquiry_stage === 'won').length,
+    events: inquiries.filter((task) => task.inquiry_stage === 'won' && task.event_id).length,
+  };
+  result.analytics.attention.overdueTasks = openTasks.filter((task) => !task.is_inquiry && task.due_date && new Date(task.due_date) < now).length;
+  result.analytics.attention.overdueInquiries = inquiries.filter((task) => !['won', 'lost'].includes(task.inquiry_stage || '') && task.next_action_at && new Date(task.next_action_at) < now).length;
+  result.analytics.attention.eventsNext30Days = events.filter((event) => event.status !== 'cancelled' && new Date(event.event_date) >= now && new Date(event.event_date) <= next30).length;
+  result.recentActivity = [
+    ...events.map((event) => ({ id: event.id, type: 'event' as const, title: `Wydarzenie: ${event.name}`, created_at: event.created_at, time: new Date(event.created_at).toLocaleDateString('pl-PL'), icon: 'Calendar', color: 'text-[#d3bb73]' })),
+    ...tasks.map((task) => ({ id: task.id, type: 'task' as const, title: task.title, created_at: task.created_at, time: new Date(task.created_at).toLocaleDateString('pl-PL'), icon: 'Clock', color: 'text-[#d3bb73]' })),
+  ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 5);
+  return result;
+});
+
 export async function fetchStatsServer(): Promise<DashboardStats> {
-  const supabase = createSupabaseServerClient(getCookieStore());
+  const { access } = await fetchDashboardAccess();
+  if (!access || access.scope === 'sales') return emptyStats();
+  if (access.scope === 'none') return (await fetchOperationalDashboard()).stats;
+  const supabase = getDashboardClient();
 
   const nowIso = new Date().toISOString();
   const yearStartIso = `${new Date().getFullYear()}-01-01`;
@@ -187,7 +304,20 @@ function createMonthBuckets(): DashboardMonth[] {
 }
 
 export async function fetchDashboardAnalyticsServer(): Promise<DashboardAnalytics> {
-  const supabase = createSupabaseServerClient(getCookieStore());
+  const { access, error: accessError } = await fetchDashboardAccess();
+  if (!access) return { ...emptyAnalytics(), accessError };
+  if (access.scope === 'none') return (await fetchOperationalDashboard()).analytics;
+  const supabase = getDashboardClient();
+  if (access.scope === 'sales') {
+    const year = new Date().getFullYear();
+    const { data, error } = await supabase.rpc('get_my_sales_financial_report', {
+      p_date_from: `${year}-01-01`, p_date_to: `${year}-12-31`, p_company_ids: null,
+    });
+    return {
+      ...emptyAnalytics(), scope: 'sales',
+      sellerReport: !error && data?.scope === 'own_sales' ? data as SellerFinancialReport : null,
+    };
+  }
   const months = createMonthBuckets();
   const startIso = `${months[0].key}-01T00:00:00.000Z`;
   const now = new Date();
@@ -316,6 +446,7 @@ export async function fetchDashboardAnalyticsServer(): Promise<DashboardAnalytic
   }).length;
 
   return {
+    scope: 'company',
     months,
     funnel: {
       inquiries: inquiriesRes.data?.length ?? 0,
@@ -336,15 +467,14 @@ export async function fetchDashboardAnalyticsServer(): Promise<DashboardAnalytic
 }
 
 export async function fetchDashboardPreferencesServer(): Promise<DashboardPreferences> {
-  const supabase = createSupabaseServerClient(getCookieStore());
-  const { data: authData, error: authError } = await supabase.auth.getUser();
-  if (authError) throw authError;
-  if (!authData.user) return {};
+  const { access } = await fetchDashboardAccess();
+  if (!access?.employeeId || access.scope === 'sales') return {};
+  const supabase = getDashboardClient();
 
   const { data, error } = await supabase
     .from('employees')
     .select('preferences')
-    .eq('id', authData.user.id)
+    .eq('id', access.employeeId)
     .maybeSingle();
 
   if (error) throw error;
@@ -352,7 +482,10 @@ export async function fetchDashboardPreferencesServer(): Promise<DashboardPrefer
 }
 
 export async function fetchRecentActivityServer(): Promise<RecentActivityDTO[]> {
-  const supabase = createSupabaseServerClient(getCookieStore());
+  const { access } = await fetchDashboardAccess();
+  if (!access || access.scope === 'sales') return [];
+  if (access.scope === 'none') return (await fetchOperationalDashboard()).recentActivity;
+  const supabase = getDashboardClient();
 
   const [eventsRes, clientsRes, tasksRes] = await Promise.all([
     supabase

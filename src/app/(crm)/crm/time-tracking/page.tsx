@@ -1,5 +1,7 @@
 'use client';
 
+import EmployeeTimeSettlements from '@/components/crm/personnel/EmployeeTimeSettlements';
+
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
@@ -27,6 +29,7 @@ import {
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import { PersonnelEarnings, PersonnelTimeContractPicker } from '@/components/crm/personnel/PersonnelEarnings';
 import AdminDashboard from './AdminDashboard';
 
 interface TimeEntry {
@@ -41,6 +44,8 @@ interface TimeEntry {
   duration_minutes: number | null;
   is_billable: boolean;
   hourly_rate: number | null;
+  personnel_contract_id?: string | null;
+  personnel_rate_snapshot?: { currency?: string; rate_basis?: string } | null;
   tags: string[];
   edit_count?: number;
   employee_name?: string;
@@ -72,6 +77,7 @@ export default function TimeTrackingPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [activeTimer, setActiveTimer] = useState<TimeEntry | null>(null);
   const [loading, setLoading] = useState(true);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
@@ -240,6 +246,7 @@ export default function TimeTrackingPage() {
       showSnackbar('Błąd podczas ładowania wpisów czasu', 'error');
     } finally {
       setLoading(false);
+      setHasLoaded(true);
     }
   };
 
@@ -280,13 +287,15 @@ export default function TimeTrackingPage() {
     }
   };
 
-  const startTimer = async (taskId: string | null, title: string | null, description: string) => {
+  const startTimer = async (taskId: string | null, title: string | null, description: string, contractId?: string) => {
     try {
       const { data, error } = await supabase
         .from('time_entries')
         .insert([
           {
             employee_id: employee!.id,
+            personnel_contract_id: contractId || null,
+            event_id: tasks.find(t=>t.id===taskId)?.event_id || null,
             task_id: taskId,
             title: title,
             description: description || null,
@@ -300,9 +309,11 @@ export default function TimeTrackingPage() {
       setActiveTimer(data);
       showSnackbar('Timer rozpoczęty!', 'success');
       fetchData();
-    } catch (error) {
+      return true;
+    } catch (error: any) {
       console.error('Error starting timer:', error);
-      showSnackbar('Błąd podczas uruchamiania timera', 'error');
+      showSnackbar(error?.message || 'Błąd podczas uruchamiania timera', 'error');
+      return false;
     }
   };
 
@@ -320,9 +331,9 @@ export default function TimeTrackingPage() {
       setElapsedTime(0);
       showSnackbar('Timer zatrzymany!', 'success');
       fetchData();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error stopping timer:', error);
-      showSnackbar('Błąd podczas zatrzymywania timera', 'error');
+      showSnackbar(error?.message || 'Błąd podczas zatrzymywania timera', 'error');
     }
   };
 
@@ -363,7 +374,7 @@ export default function TimeTrackingPage() {
     .filter((e) => e.duration_minutes && e.is_billable)
     .reduce((sum, e) => sum + (e.duration_minutes || 0), 0);
 
-  if (employeeLoading || loading) {
+  if (employeeLoading || (loading && !hasLoaded)) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <div className="text-[#e5e4e2]/60">Ładowanie...</div>
@@ -415,6 +426,8 @@ export default function TimeTrackingPage() {
           )}
         </div>
 
+        {employee && !(isAdmin && adminView === 'dashboard') && (viewMode !== 'all' || filterEmployee) && <EmployeeTimeSettlements key={viewMode === 'all' ? filterEmployee : employee.id} employeeId={viewMode === 'all' ? filterEmployee : employee.id} dateTo={filterDateTo} refreshKey={entries.length} />}
+        {employee && <PersonnelEarnings employeeId={viewMode === 'all' && filterEmployee ? filterEmployee : employee.id} refreshKey={entries.length + (activeTimer ? 1 : 0)}/>}
         {/* Admin Dashboard */}
         {isAdmin && adminView === 'dashboard' ? (
           <AdminDashboard />
@@ -650,7 +663,7 @@ export default function TimeTrackingPage() {
                         </div>
                         {entry.hourly_rate && (
                           <div className="mt-1 text-xs text-[#e5e4e2]/40">
-                            {entry.hourly_rate} zł/h
+                            {entry.hourly_rate} {entry.personnel_rate_snapshot?.currency || 'PLN'}/h {entry.personnel_rate_snapshot?.rate_basis === 'gross' ? 'brutto' : entry.personnel_rate_snapshot?.rate_basis === 'net' ? 'netto' : ''}
                           </div>
                         )}
                       </div>
@@ -711,10 +724,10 @@ export default function TimeTrackingPage() {
       {showAddModal && (
         <StartTimerModal
           tasks={tasks}
+          employeeId={employee!.id}
           onClose={() => setShowAddModal(false)}
-          onStart={(taskId, title, description) => {
-            startTimer(taskId, title, description);
-            setShowAddModal(false);
+          onStart={async (taskId, title, description, contractId) => {
+            if(await startTimer(taskId, title, description, contractId)) setShowAddModal(false);
           }}
         />
       )}
@@ -731,6 +744,7 @@ export default function TimeTrackingPage() {
               const { error } = await supabase
                 .from('time_entries')
                 .update({
+                  personnel_contract_id: updated.personnel_contract_id || null,
                   title: updated.title,
                   description: updated.description,
                   start_time: updated.start_time,
@@ -765,14 +779,18 @@ export default function TimeTrackingPage() {
 }
 
 function StartTimerModal({
+  employeeId,
   tasks,
   onClose,
   onStart,
 }: {
+  employeeId: string;
   tasks: Task[];
   onClose: () => void;
-  onStart: (taskId: string | null, title: string | null, description: string) => void;
+  onStart: (taskId: string | null, title: string | null, description: string, contractId: string) => Promise<void>;
 }) {
+  const [contractId,setContractId] = useState('');
+  const [starting,setStarting] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const [description, setDescription] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -794,19 +812,22 @@ function StartTimerModal({
     setShowSuggestions(value.length > 0);
   };
 
-  const handleStart = () => {
+  const handleStart = async () => {
+    if(starting) return;
     if (!inputValue.trim()) {
       alert('Podaj tytuł zadania');
       return;
     }
 
-    onStart(selectedTaskId, selectedTaskId ? null : inputValue, description);
+    setStarting(true);
+    try { await onStart(selectedTaskId, selectedTaskId ? null : inputValue, description, contractId); } finally { setStarting(false); }
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="w-full max-w-md rounded-xl border border-[#d3bb73]/20 bg-[#0f1119] p-6">
         <h2 className="mb-6 text-xl font-light text-[#e5e4e2]">Rozpocznij timer</h2>
+        <div className="mb-4"><PersonnelTimeContractPicker employeeId={employeeId} value={contractId} onChange={setContractId}/></div>
 
         <div className="space-y-4">
           <div className="relative">
@@ -866,7 +887,8 @@ function StartTimerModal({
 
         <div className="mt-6 flex gap-3">
           <button
-            onClick={handleStart}
+            disabled={starting}
+            onClick={()=>void handleStart()}
             className="flex-1 rounded-lg bg-[#d3bb73] px-4 py-2 font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90"
           >
             <Play className="mr-2 inline h-4 w-4" />

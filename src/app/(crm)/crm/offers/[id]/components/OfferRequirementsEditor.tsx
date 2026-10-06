@@ -30,18 +30,22 @@ const parseStoredRequirements = (value: unknown): OfferRequirementEntry[] => {
   return [];
 };
 
-export default function OfferRequirementsEditor({ offer, canEdit, onSaved }: Props) {
+export default function OfferRequirementsEditor({ offer, canEdit: mayEdit, onSaved }: Props) {
   const { showSnackbar } = useSnackbar();
+  const [editing, setEditing] = useState(false);
   const [requirements, setRequirements] = useState<OfferRequirementEntry[]>([]);
   const [templateRequirements, setTemplateRequirements] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const canEdit = mayEdit && editing && !saving;
+  const [snapshot, setSnapshot] = useState<OfferRequirementEntry[]>([]);
   const [dirty, setDirty] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
 
   const offerItems = useMemo(() => offer.offer_items || [], [offer.offer_items]);
 
   useEffect(() => {
+    if (editing) return;
     let cancelled = false;
     const load = async () => {
       setLoading(true);
@@ -68,7 +72,7 @@ export default function OfferRequirementsEditor({ offer, canEdit, onSaved }: Pro
     };
     void load();
     return () => { cancelled = true; };
-  }, [offer.id, offer.offer_requirements, offer.status, offer.event?.category?.default_offer_template_category_id, offerItems]);
+  }, [editing, offer.id, offer.offer_requirements, offer.status, offer.event?.category?.default_offer_template_category_id, offerItems]);
 
   const updateRequirement = (key: string, patch: Partial<OfferRequirementEntry>) => {
     setRequirements((current) => current.map((item) => {
@@ -125,6 +129,7 @@ export default function OfferRequirementsEditor({ offer, canEdit, onSaved }: Pro
       if (error) throw error;
       setRequirements(normalized);
       setDirty(false);
+      setEditing(false);
       showSnackbar('Wymagania oferty zostały zapisane', 'success');
       onSaved();
     } catch (error: any) {
@@ -158,12 +163,16 @@ export default function OfferRequirementsEditor({ offer, canEdit, onSaved }: Pro
         </span>
       </button>
 
+      {mayEdit && <div className="mt-4 flex gap-2">
+        {!editing ? <button type="button" disabled={loading} className="rounded-lg bg-[#d3bb73]/10 px-3 py-2 text-sm text-[#d3bb73] disabled:opacity-50" onClick={() => { setSnapshot(structuredClone(requirements)); setEditing(true); setIsOpen(true); }}>Edytuj</button>
+        : <button type="button" disabled={saving} className="rounded-lg bg-[#d3bb73]/10 px-3 py-2 text-sm text-[#d3bb73] disabled:opacity-50" onClick={() => { setRequirements(snapshot); setDirty(false); setEditing(false); }}>Anuluj</button>}
+      </div>}
       {isOpen && canEdit && (
         <div className="mt-4 flex flex-wrap gap-2 border-t border-[#d3bb73]/10 pt-4">
-          <button type="button" onClick={restoreAutomatic} className="inline-flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 px-3 py-2 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/10">
+          <button data-crm-action="secondary" type="button" onClick={restoreAutomatic} className="inline-flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 px-3 py-2 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/10">
             <RotateCcw className="h-3.5 w-3.5" /> Odśwież automatycznie
           </button>
-          <button type="button" onClick={addRequirement} className="inline-flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 px-3 py-2 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/10">
+          <button data-crm-action="secondary" type="button" onClick={addRequirement} className="inline-flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 px-3 py-2 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/10">
             <Plus className="h-3.5 w-3.5" /> Dodaj wymaganie
           </button>
           <button type="button" onClick={save} disabled={saving || !dirty} className="inline-flex items-center gap-2 rounded-lg bg-[#d3bb73] px-3 py-2 text-xs font-medium text-[#1c1f33] disabled:cursor-not-allowed disabled:opacity-40">

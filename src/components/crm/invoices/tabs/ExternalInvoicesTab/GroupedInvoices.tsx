@@ -24,15 +24,16 @@ import {
   tableDensityClasses,
 } from '../../TablePreferencesControl';
 import ResponsiveActionBar from '../../../ResponsiveActionBar';
+import { externalDocumentKindLabel } from '@/lib/invoices/externalDocumentKinds';
 
 export const EXTERNAL_INVOICE_COLUMNS: TableColumnOption[] = [
-  { id: 'number', label: 'Numer faktury', required: true },
+  { id: 'number', label: 'Numer i rodzaj dokumentu', required: true },
   { id: 'label', label: 'Nazwa opisowa' },
-  { id: 'seller', label: 'Sprzedawca' },
+  { id: 'seller', label: 'Sprzedawca / wystawca' },
   { id: 'date', label: 'Data' },
   { id: 'payment', label: 'Płatność' },
   { id: 'net', label: 'Netto' },
-  { id: 'gross', label: 'Brutto' },
+  { id: 'gross', label: 'Kwota / brutto' },
   { id: 'actions', label: 'Akcje' },
 ];
 
@@ -72,8 +73,8 @@ export function GroupedInvoices({
     return (
       <div className="rounded-xl border border-dashed border-[#d3bb73]/20 py-16 text-center text-[#e5e4e2]/50">
         {hasSearchQuery
-          ? 'Nie znaleziono faktur pasujących do wyszukiwania.'
-          : 'Brak faktur spoza KSeF. Dodaj pierwszą fakturę papierową, zagraniczną lub paragon — subskrypcje pojawią się tu automatycznie co miesiąc.'}
+          ? 'Nie znaleziono dokumentów pasujących do wyszukiwania lub filtrów.'
+          : 'Brak dokumentów spoza KSeF. Dodaj fakturę, paragon, polisę, umowę, notę obciążeniową lub inny dokument — subskrypcje pojawią się tu automatycznie co miesiąc.'}
       </div>
     );
   }
@@ -115,7 +116,7 @@ export function GroupedInvoices({
                       <thead>
                         <tr className="border-b border-[#d3bb73]/10 bg-[#0f1119]">
                           <th className="sticky left-0 z-10 bg-[#0f1119] px-2.5 py-2 text-left text-[11px] font-medium uppercase tracking-wide text-[#e5e4e2]/50">
-                            Numer faktury
+                            Numer / rodzaj
                           </th>
                           {isColumnVisible('label') && (
                             <th className="px-2.5 py-2 text-left text-[11px] font-medium uppercase tracking-wide text-[#e5e4e2]/50">
@@ -124,7 +125,7 @@ export function GroupedInvoices({
                           )}
                           {isColumnVisible('seller') && (
                             <th className="px-2.5 py-2 text-left text-[11px] font-medium uppercase tracking-wide text-[#e5e4e2]/50">
-                              Sprzedawca
+                              Sprzedawca / wystawca
                             </th>
                           )}
                           {isColumnVisible('date') && (
@@ -137,7 +138,7 @@ export function GroupedInvoices({
                             <th className="px-2.5 py-2 text-right text-[11px] font-medium uppercase tracking-wide text-[#e5e4e2]/50">Netto</th>
                           )}
                           {isColumnVisible('gross') && (
-                            <th className="px-2.5 py-2 text-right text-[11px] font-medium uppercase tracking-wide text-[#e5e4e2]/50">Brutto</th>
+                            <th className="px-2.5 py-2 text-right text-[11px] font-medium uppercase tracking-wide text-[#e5e4e2]/50">Kwota / brutto</th>
                           )}
                           {isColumnVisible('actions') && (
                             <th className="px-2.5 py-2 text-right text-[11px] font-medium uppercase tracking-wide text-[#e5e4e2]/50">Akcje</th>
@@ -215,6 +216,9 @@ export function GroupedInvoices({
                                 <div className="truncate text-sm font-medium text-[#e5e4e2]" title={inv.invoice_number}>
                                   {inv.invoice_number}
                                 </div>
+                                <span className="mt-1 inline-flex max-w-full truncate rounded bg-white/5 px-1.5 py-0.5 text-[10px] text-[#e5e4e2]/65">
+                                  {externalDocumentKindLabel(inv.document_kind)}
+                                </span>
                               </td>
                               {isColumnVisible('label') && (
                                 <td className="overflow-hidden px-2.5 py-2 text-[#e5e4e2]/75">
@@ -259,7 +263,7 @@ export function GroupedInvoices({
                                       ...(canManage
                                         ? [
                                             { label: 'Edytuj', onClick: () => onEdit(inv), icon: <Pencil className="h-4 w-4" /> },
-                                            { label: 'Dodaj podobną', onClick: () => onAddSimilar(inv), icon: <Copy className="h-4 w-4" /> },
+                                            { label: 'Dodaj podobny dokument', onClick: () => onAddSimilar(inv), icon: <Copy className="h-4 w-4" /> },
                                             { label: 'Usuń', onClick: () => onDelete(inv), icon: <Trash2 className="h-4 w-4" />, variant: 'danger' as const },
                                           ]
                                         : []),

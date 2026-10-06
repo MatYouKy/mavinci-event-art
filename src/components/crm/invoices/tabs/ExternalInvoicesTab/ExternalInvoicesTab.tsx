@@ -16,7 +16,13 @@ import { supabase } from '@/lib/supabase/browser';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useDialog } from '@/contexts/DialogContext';
 import { useSnackbar } from '@/contexts/SnackbarContext';
-import { InvoiceFormModal } from './InvoiceFormModal';
+import {
+  EXTERNAL_DOCUMENT_KINDS,
+  externalDocumentKindLabel,
+  isExternalDocumentKind,
+  type ExternalDocumentKind,
+} from '@/lib/invoices/externalDocumentKinds';
+import { InvoiceFormModal, type SavedSellerOption } from './InvoiceFormModal';
 import { EXTERNAL_INVOICE_COLUMNS, GroupedInvoices } from './GroupedInvoices';
 import { SubscriptionsList } from './SubscriptionsList';
 import { SubscriptionFormModal } from './SubscriptionFormModal';
@@ -28,6 +34,10 @@ import {
 
 export interface ExternalInvoice {
   id: string;
+  document_kind?: ExternalDocumentKind | null;
+  contract_term?: 'fixed' | 'indefinite' | null;
+  contract_start_date?: string | null;
+  contract_end_date?: string | null;
   seller_name: string;
   seller_nip: string | null;
   invoice_number: string;
@@ -72,6 +82,10 @@ export interface Subscription {
 }
 
 export interface InvoicePrefill {
+  document_kind?: ExternalDocumentKind;
+  contract_term?: 'fixed' | 'indefinite';
+  contract_start_date?: string;
+  contract_end_date?: string;
   seller_name?: string;
   seller_nip?: string;
   invoice_number?: string;
@@ -168,6 +182,7 @@ export function ExternalInvoicesTab() {
   const [loading, setLoading] = useState(true);
   const [schemaMissing, setSchemaMissing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [documentKindFilter, setDocumentKindFilter] = useState<ExternalDocumentKind | 'all'>('all');
   const [viewMode, setViewMode] = useState<'table' | 'list'>('table');
   const tablePreferences = useStoredTablePreferences(
     'crm.external-invoices.table-preferences.v1',
@@ -206,7 +221,7 @@ export function ExternalInvoicesTab() {
     setSchemaMissing(false);
 
     if (invRes.error) {
-      showSnackbar('Nie udało się pobrać faktur spoza KSeF', 'error');
+      showSnackbar('Nie udało się pobrać dokumentów spoza KSeF', 'error');
     } else {
       setInvoices(invRes.data || []);
     }
@@ -250,6 +265,7 @@ export function ExternalInvoicesTab() {
       open: true,
       invoice: null,
       prefill: {
+        document_kind: isExternalDocumentKind(invoice.document_kind) ? invoice.document_kind : 'invoice',
         seller_name: invoice.seller_name,
         seller_nip: invoice.seller_nip || '',
         invoice_number: '',
@@ -275,8 +291,8 @@ export function ExternalInvoicesTab() {
   const deleteInvoice = useCallback(
     async (inv: ExternalInvoice) => {
       const ok = await showConfirm({
-        title: 'Usuń fakturę',
-        message: `Czy na pewno usunąć fakturę ${inv.invoice_number}?`,
+        title: 'Usuń dokument',
+        message: `Czy na pewno usunąć dokument ${inv.invoice_number}?`,
         confirmText: 'Usuń',
       });
       if (!ok) return;
@@ -286,10 +302,10 @@ export function ExternalInvoicesTab() {
       }
       const { error } = await supabase.from('external_invoices').delete().eq('id', inv.id);
       if (error) {
-        showSnackbar('Nie udało się usunąć faktury', 'error');
+        showSnackbar('Nie udało się usunąć dokumentu', 'error');
         return;
       }
-      showSnackbar('Faktura została usunięta', 'success');
+      showSnackbar('Dokument został usunięty', 'success');
       fetchData();
     },
     [showConfirm, showSnackbar, fetchData],
@@ -390,7 +406,9 @@ export function ExternalInvoicesTab() {
   const filteredInvoices = useMemo(
     () =>
       invoices.filter((invoice) =>
+        (documentKindFilter === 'all' || (invoice.document_kind || 'invoice') === documentKindFilter) &&
         matchesSearch([
+          externalDocumentKindLabel(invoice.document_kind),
           invoice.invoice_number,
           invoice.label,
           invoice.seller_name,
@@ -402,7 +420,7 @@ export function ExternalInvoicesTab() {
           invoice.amount_gross,
         ]),
       ),
-    [invoices, matchesSearch],
+    [invoices, matchesSearch, documentKindFilter],
   );
 
   const filteredSubscriptions = useMemo(
@@ -420,6 +438,37 @@ export function ExternalInvoicesTab() {
     [matchesSearch, subscriptions],
   );
 
+  const sellerOptions = useMemo<SavedSellerOption[]>(() => {
+    const sellers = new Map<string, SavedSellerOption>();
+
+    const addSeller = (rawName: string | null | undefined, rawNip: string | null | undefined) => {
+      const name = rawName?.trim();
+      if (!name) return;
+      const nip = rawNip?.trim() || '';
+      const normalizedName = name.toLocaleLowerCase('pl-PL').replace(/\s+/g, ' ');
+      const normalizedNip = nip.replace(/\D/g, '');
+      const key = `${normalizedName}:${normalizedNip}`;
+      const existing = sellers.get(key);
+
+      if (existing) {
+        existing.usageCount += 1;
+      } else {
+        sellers.set(key, { key, name, nip, usageCount: 1 });
+      }
+    };
+
+    invoices.forEach((invoice) => addSeller(invoice.seller_name, invoice.seller_nip));
+    subscriptions.forEach((subscription) =>
+      addSeller(subscription.seller_name, subscription.seller_nip),
+    );
+
+    return Array.from(sellers.values()).sort(
+      (first, second) =>
+        second.usageCount - first.usageCount ||
+        first.name.localeCompare(second.name, 'pl', { sensitivity: 'base' }),
+    );
+  }, [invoices, subscriptions]);
+
   const actionItems = [
     {
       label: 'Odśwież',
@@ -429,7 +478,7 @@ export function ExternalInvoicesTab() {
     ...(canManage && !schemaMissing
       ? [
           {
-            label: subTab === 'invoices' ? 'Dodaj fakturę' : 'Dodaj subskrypcję',
+            label: subTab === 'invoices' ? 'Dodaj dokument spoza KSeF' : 'Dodaj subskrypcję',
             onClick: () =>
               subTab === 'invoices'
                 ? setInvoiceModal({ open: true, prefill: null, invoice: null })
@@ -445,7 +494,7 @@ export function ExternalInvoicesTab() {
     <div>
       <div className="mb-6 flex flex-col gap-3 lg:flex-row lg:items-center">
         <div className="flex w-full shrink-0 items-center gap-2 lg:w-auto">
-          <button
+          <button data-crm-tab-active={subTab === 'invoices'}
             onClick={() => setSubTab('invoices')}
             className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
               subTab === 'invoices'
@@ -454,9 +503,9 @@ export function ExternalInvoicesTab() {
             }`}
           >
             <FileText className="h-4 w-4" />
-            Faktury
+            Dokumenty
           </button>
-          <button
+          <button data-crm-tab-active={subTab === 'subscriptions'}
             onClick={() => setSubTab('subscriptions')}
             className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
               subTab === 'subscriptions'
@@ -478,15 +527,15 @@ export function ExternalInvoicesTab() {
         </div>
 
         <div className="ml-auto flex w-full min-w-0 flex-wrap items-center justify-end gap-2 lg:w-auto lg:flex-nowrap">
-          <div className="flex h-9 min-w-[190px] flex-1 items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-3 lg:w-64 lg:flex-none">
+          <div className="crm-search-field flex h-9 min-w-[190px] flex-1 items-center gap-2 rounded-lg border bg-[#1c1f33] px-3 lg:w-64 lg:flex-none">
             <Search className="h-4 w-4 shrink-0 text-[#e5e4e2]/40" />
             <input
               type="search"
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder={subTab === 'invoices' ? 'Numer, nazwa, NIP, sprzedawca…' : 'Nazwa, NIP, sprzedawca…'}
-              className="min-w-0 flex-1 bg-transparent text-xs text-[#e5e4e2] outline-none placeholder:text-[#e5e4e2]/35"
-              aria-label="Szukaj faktury spoza KSeF"
+              placeholder={subTab === 'invoices' ? 'Numer, nazwa, NIP, wystawca…' : 'Nazwa, NIP, sprzedawca…'}
+              className="crm-search-input min-w-0 flex-1 bg-transparent text-xs text-[#e5e4e2] outline-none placeholder:text-[#e5e4e2]/35"
+              aria-label="Szukaj dokumentu spoza KSeF"
             />
             {searchQuery && (
               <button type="button" onClick={() => setSearchQuery('')} aria-label="Wyczyść wyszukiwanie">
@@ -494,6 +543,18 @@ export function ExternalInvoicesTab() {
               </button>
             )}
           </div>
+
+          {subTab === 'invoices' && (
+            <select
+              value={documentKindFilter}
+              onChange={(event) => setDocumentKindFilter(isExternalDocumentKind(event.target.value) ? event.target.value : 'all')}
+              aria-label="Filtruj po rodzaju dokumentu"
+              className="crm-form-control h-9 max-w-full rounded-lg border border-white/10 bg-[#1c1f33] px-2 text-xs text-[#e5e4e2] outline-none focus:border-white/20 focus:ring-0"
+            >
+              <option value="all">Wszystkie rodzaje</option>
+              {EXTERNAL_DOCUMENT_KINDS.map((kind) => <option key={kind.value} value={kind.value}>{kind.label}</option>)}
+            </select>
+          )}
 
           {subTab === 'invoices' && viewMode === 'table' && (
             <TablePreferencesControl
@@ -544,7 +605,7 @@ export function ExternalInvoicesTab() {
             Ta sekcja nie jest jeszcze gotowa do zapisu danych
           </h3>
           <p className="mx-auto max-w-xl text-sm leading-relaxed text-[#e5e4e2]/60">
-            Miejsce do przechowywania faktur spoza KSeF i subskrypcji nie zostało jeszcze utworzone
+            Miejsce do przechowywania dokumentów spoza KSeF i subskrypcji nie zostało jeszcze utworzone
             w bazie danych. Zakładka i formularze są gotowe — dodawanie zostanie włączone
             automatycznie, gdy tylko baza zostanie skonfigurowana.
           </p>
@@ -554,7 +615,7 @@ export function ExternalInvoicesTab() {
       ) : subTab === 'invoices' ? (
         <GroupedInvoices
           invoices={filteredInvoices}
-          subscriptions={filteredSubscriptions}
+          subscriptions={documentKindFilter === 'all' || documentKindFilter === 'invoice' ? filteredSubscriptions : []}
           canManage={canManage}
           onPreview={openFile}
           onDelete={deleteInvoice}
@@ -564,7 +625,7 @@ export function ExternalInvoicesTab() {
           viewMode={viewMode}
           density={tablePreferences.density}
           isColumnVisible={tablePreferences.isColumnVisible}
-          hasSearchQuery={Boolean(searchQuery.trim())}
+          hasSearchQuery={Boolean(searchQuery.trim()) || documentKindFilter !== 'all'}
         />
       ) : (
         <SubscriptionsList
@@ -581,6 +642,7 @@ export function ExternalInvoicesTab() {
         <InvoiceFormModal
           invoice={invoiceModal.invoice ?? null}
           prefill={invoiceModal.prefill}
+          sellerOptions={sellerOptions}
           onClose={() =>
             setInvoiceModal({
               open: false,

@@ -45,7 +45,7 @@ export async function fetchNotificationsServer(
     return { notifications: [], unreadCount: 0 };
   }
 
-  const notifications: Notification[] = (data ?? []).map((recipient: any) => ({
+  const notifications: Notification[] = (data ?? []).filter((recipient: any) => recipient.notifications).map((recipient: any) => ({
     ...recipient.notifications,
     recipient_id: recipient.id,
     is_read: recipient.is_read,

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useRouter } from 'next/navigation';
 import {
   MapPin,
@@ -33,6 +34,8 @@ interface StorageLocation {
 
 export default function StorageLocationsPage() {
   const router = useRouter();
+  const { canManageModule } = useCurrentEmployee();
+  const canManage = canManageModule('equipment');
   const { showSnackbar } = useSnackbar();
 
   const [locations, setLocations] = useState<StorageLocation[]>([]);
@@ -68,6 +71,7 @@ export default function StorageLocationsPage() {
   };
 
   const handleOpenModal = (location?: StorageLocation) => {
+    if (!canManage) return;
     if (location) {
       setEditingLocation(location);
       setFormData({
@@ -125,6 +129,7 @@ export default function StorageLocationsPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canManage) return;
 
     if (!formData.name.trim()) {
       showSnackbar('Nazwa lokalizacji jest wymagana', 'error');
@@ -176,6 +181,7 @@ export default function StorageLocationsPage() {
   };
 
   const handleDelete = async (id: string) => {
+    if (!canManage) return;
     if (!confirm('Czy na pewno chcesz usunąć tę lokalizację?')) return;
 
     try {
@@ -208,13 +214,13 @@ export default function StorageLocationsPage() {
               <p className="text-gray-400">Zarządzaj lokalizacjami przechowywania sprzętu</p>
             </div>
           </div>
-          <button
+          {canManage && (<button
             onClick={() => handleOpenModal()}
             className="flex items-center space-x-2 rounded-lg bg-[#d3bb73] px-4 py-2 font-medium text-[#0f1119] transition-colors hover:bg-[#c4a859]"
           >
             <Plus className="h-5 w-5" />
             <span>Dodaj lokalizację</span>
-          </button>
+          </button>)}
         </div>
 
         {loading ? (
@@ -271,19 +277,19 @@ export default function StorageLocationsPage() {
                 {location.notes && <p className="mb-3 text-xs text-gray-500">{location.notes}</p>}
 
                 <div className="flex items-center space-x-2 border-t border-gray-700 pt-3">
-                  <button
+                  {canManage && (<button
                     onClick={() => handleOpenModal(location)}
                     className="flex flex-1 items-center justify-center space-x-1 rounded bg-[#d3bb73]/20 px-3 py-2 text-sm text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/30"
                   >
                     <Edit className="h-4 w-4" />
                     <span>Edytuj</span>
-                  </button>
-                  <button
+                  </button>)}
+                  {canManage && (<button
                     onClick={() => handleDelete(location.id)}
                     className="rounded bg-red-900/20 px-3 py-2 text-red-400 transition-colors hover:bg-red-900/30"
                   >
                     <Trash2 className="h-4 w-4" />
-                  </button>
+                  </button>)}
                 </div>
               </div>
             ))}
@@ -294,18 +300,18 @@ export default function StorageLocationsPage() {
           <div className="py-12 text-center">
             <Building2 className="mx-auto mb-4 h-16 w-16 text-gray-600" />
             <p className="mb-4 text-gray-400">Brak lokalizacji magazynowych</p>
-            <button
+            {canManage && (<button
               onClick={() => handleOpenModal()}
               className="inline-flex items-center space-x-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#0f1119] transition-colors hover:bg-[#c4a859]"
             >
               <Plus className="h-5 w-5" />
               <span>Dodaj pierwszą lokalizację</span>
-            </button>
+            </button>)}
           </div>
         )}
       </div>
 
-      {showModal && (
+      {canManage && showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg border border-gray-700 bg-[#1a1d2e] p-6">
             <div className="mb-6 flex items-center justify-between">

@@ -1,5 +1,7 @@
 'use client';
 
+import { duplicateCalculation } from '@/lib/CRM/calculations/calculationActions';
+
 import { useCallback, useEffect, useState } from 'react';
 import {
   Calculator,
@@ -52,7 +54,8 @@ export interface CalcItem {
   quantity: number;
   unit_price: number;
   days: number;
-  source: 'manual' | 'offer' | 'warehouse';
+  source: 'manual' | 'offer' | 'warehouse' | 'product' | 'vehicle';
+  source_label?: string | null;
   source_ref?: string | null;
   position: number;
   vat_rate: number;
@@ -167,65 +170,7 @@ export default function EventCalculationsTab({ eventId, contactPerson }: Props) 
     try {
       setDuplicatingId(id);
 
-      const { data: calc, error: calcError } = await supabase
-        .from('event_calculations')
-        .select('*')
-        .eq('id', id)
-        .maybeSingle();
-
-      if (calcError) throw calcError;
-
-      if (!calc) {
-        showSnackbar('Nie znaleziono kalkulacji do duplikowania', 'error');
-        return;
-      }
-
-      const { data: calcItems, error: itemsError } = await supabase
-        .from('event_calculation_items')
-        .select('*')
-        .eq('calculation_id', id)
-        .order('position');
-
-      if (itemsError) throw itemsError;
-
-      const { data: newCalc, error: insertCalcError } = await supabase
-        .from('event_calculations')
-        .insert({
-          event_id: calc.event_id,
-          name: `${calc.name} — kopia`,
-          notes: calc.notes,
-        })
-        .select()
-        .single();
-
-      if (insertCalcError) throw insertCalcError;
-
-      if (calcItems?.length) {
-        const payload = calcItems.map((item: any, index: number) => ({
-          calculation_id: newCalc.id,
-          category: item.category,
-          name: item.name,
-          description: item.description,
-          unit: item.unit,
-          quantity: item.quantity,
-          unit_price: item.unit_price,
-          days: item.days,
-          source: item.source,
-          source_ref: item.source_ref,
-          position: index,
-          vat_rate: item.vat_rate ?? DEFAULT_VAT,
-          power_watts: item.power_watts ?? null,
-          power_source_ref: item.power_source_ref ?? null,
-          power_specs: item.power_specs ?? { power_watts: null },
-          weight_kg: item.weight_kg ?? null,
-        }));
-
-        const { error: insertItemsError } = await supabase
-          .from('event_calculation_items')
-          .insert(payload);
-
-        if (insertItemsError) throw insertItemsError;
-      }
+      const { calculation: newCalc, items: calcItems } = await duplicateCalculation(id, { eventId });
 
       const duplicatedTotal =
         calcItems?.reduce(

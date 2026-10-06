@@ -423,13 +423,13 @@ export default function WorkflowSettingsPage() {
                       </div>
                     ))}
                   </div>
-                  <button onClick={() => addRequirement(stage)} className="m-4 flex items-center gap-2 rounded-lg border border-dashed border-[#d3bb73]/25 px-3 py-2 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/5"><Plus className="h-4 w-4" />Dodaj warunek</button>
+                  <button data-crm-action="secondary" onClick={() => addRequirement(stage)} className="m-4 flex items-center gap-2 rounded-lg border border-dashed border-[#d3bb73]/25 px-3 py-2 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/5"><Plus className="h-4 w-4" />Dodaj warunek</button>
                 </section>
               ))}
             </div>
 
             <div className="flex flex-col gap-3 sm:flex-row sm:justify-between">
-              <button onClick={addStage} className="flex items-center justify-center gap-2 rounded-lg border border-[#d3bb73]/25 px-4 py-2.5 text-[#d3bb73] hover:bg-[#d3bb73]/5"><Plus className="h-4 w-4" />Dodaj etap</button>
+              <button data-crm-action="secondary" onClick={addStage} className="flex items-center justify-center gap-2 rounded-lg border border-[#d3bb73]/25 px-4 py-2.5 text-[#d3bb73] hover:bg-[#d3bb73]/5"><Plus className="h-4 w-4" />Dodaj etap</button>
               <button onClick={saveTemplate} disabled={saving || !selected.name.trim()} className="flex items-center justify-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-2.5 font-medium text-[#11131d] disabled:opacity-50">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}Zapisz cały proces</button>
             </div>
           </main>

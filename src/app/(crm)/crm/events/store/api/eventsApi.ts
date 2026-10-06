@@ -1,6 +1,7 @@
 import { createApi, fakeBaseQuery } from '@reduxjs/toolkit/query/react';
 import { supabase } from '@/lib/supabase/browser';
 import { deleteEventSafely } from '@/lib/CRM/events/deleteEventSafely';
+import { watchTaskChanges } from '@/lib/CRM/tasks/watchTaskChanges';
 
 import { IEvent } from '../../type';
 
@@ -624,7 +625,7 @@ export const eventsApi = createApi({
 
           if (error) throw error;
 
-          if (data?.id && sendInvitation) {
+          if (data?.id && data.status === 'pending' && sendInvitation) {
             try {
               const result = await supabase.functions.invoke('send-event-invitation', {
                 body: { assignmentId: data.id, includePhases, mode: 'invitation' },
@@ -892,6 +893,18 @@ export const eventsApi = createApi({
             error: { status: 'FETCH_ERROR', error: error.message } as unknown as EventsApiError,
           };
         }
+      },
+      async onCacheEntryAdded(eventId, { cacheDataLoaded, cacheEntryRemoved, dispatch }) {
+        let stop: (() => void) | undefined;
+        try {
+          await cacheDataLoaded;
+          stop = watchTaskChanges(`event:${eventId}`, () => {
+            return dispatch(eventsApi.endpoints.getEventTasks.initiate(eventId, { subscribe: false, forceRefetch: true })).unwrap();
+          });
+          await cacheEntryRemoved;
+        } catch {
+          // The cache entry can be removed before the initial request completes.
+        } finally { stop?.(); }
       },
       providesTags: (result, error, eventId) => [{ type: 'EventTasks', id: eventId }],
     }),

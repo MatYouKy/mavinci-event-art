@@ -29,21 +29,26 @@ export const PortfolioProjects:FC<PortfolioProjectsProps> = ({ isEditMode, portf
       )}
 
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {portfolioProjects.slice(0, 6).map((project, idx) => (
+        {portfolioProjects.slice(0, 6).map((project) => (
           <Link
             key={project.id}
             href={`/portfolio/${project.slug || project.id}`}
-            className="group relative overflow-hidden rounded-xl aspect-video cursor-pointer transform hover:scale-105 transition-all duration-500 animate-fade-in-up"
-            style={{ animationDelay: `${idx * 100}ms` }}
+            className="group flex flex-col overflow-hidden rounded-xl bg-white/[0.04] transition-colors hover:bg-white/[0.08]"
+            prefetch={false}
           >
             <img
               src={project.image || project.image_url}
               alt={project.alt || project.title}
-              className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+              className="aspect-video w-full object-cover"
+              width={800}
+              height={450}
+              loading="lazy"
+              decoding="async"
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-              <div className="absolute bottom-0 left-0 right-0 p-4">
-                <h3 className="text-white font-medium mb-1">{project.title}</h3>
+            <div className="flex-1">
+              <div className="p-4">
+                <h3 className="mb-1 break-words text-base font-medium uppercase leading-relaxed text-white">{project.title}</h3>
+                {project.location && project.location !== 'Polska' && <p className="mb-1 text-sm text-[#d3bb73]">{project.location}</p>}
                 {project.client && (
                   <p className="text-white/80 text-sm">{project.client}</p>
                 )}

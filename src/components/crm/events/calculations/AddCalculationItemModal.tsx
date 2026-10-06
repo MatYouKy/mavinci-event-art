@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { X, Search, Package, Zap, AlertTriangle } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { CalcItem, Category } from './EventCalculationsTab';
@@ -28,7 +28,8 @@ interface Props {
   category: Category;
   existingCount: number;
   existingItems: CalcItem[];
-  onAdd: (item: CalcItem) => void;
+  initialItem?: CalcItem;
+  onAdd: (item: CalcItem) => Promise<void>;
   onClose: () => void;
 }
 
@@ -37,15 +38,56 @@ export function AddCalculationItemModal({
   existingCount,
   existingItems,
   onAdd,
+  initialItem,
   onClose,
 }: Props) {
-  const [mode, setMode] = useState<'warehouse' | 'manual'>(
-    category === 'equipment' ? 'warehouse' : 'manual',
+  const [mode, setMode] = useState<'warehouse' | 'manual' | 'product' | 'vehicle'>(
+    initialItem ? (['warehouse', 'product', 'vehicle'].includes(initialItem.source) ? initialItem.source as 'warehouse' | 'product' | 'vehicle' : 'manual')
+      : category === 'equipment' ? 'warehouse' : 'manual',
   );
+  type CatalogOption = { id: string; label: string; name: string; description: string; price: number; unit: string; vat: number };
+  const [catalog, setCatalog] = useState<CatalogOption[]>([]);
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [selectedCatalog, setSelectedCatalog] = useState<CatalogOption | null>(initialItem && ['product', 'vehicle'].includes(initialItem.source) && initialItem.source_ref ? {
+    id: initialItem.source_ref, label: initialItem.source_label || initialItem.name, name: initialItem.name,
+    description: initialItem.description, price: initialItem.unit_price, unit: initialItem.unit, vat: initialItem.vat_rate,
+  } : null);
+  const [sourceChanged, setSourceChanged] = useState(false);
+  const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const submitLock = useRef(false);
+  const close = () => { if (!submitLock.current) onClose(); };
+
+  useEffect(() => {
+    if (mode !== 'product' && mode !== 'vehicle') return;
+    let active = true;
+    setCatalogLoading(true); setError(''); setCatalog([]);
+    const load = async () => {
+      try {
+        const options: CatalogOption[] = [];
+        for (let offset = 0; ; offset += 500) {
+          const result = mode === 'product'
+            ? await supabase.from('offer_products').select('id,name,description,price_net,base_price,unit,vat_rate').eq('is_active', true).eq('is_personnel_service', true).order('id').range(offset, offset + 499)
+            : await supabase.from('vehicles').select('id,name,brand,model,registration_number,category,status').not('status', 'in', '(sold,scrapped,inactive)').order('id').range(offset, offset + 499);
+          if (result.error) throw result.error;
+          for (const row of (result.data || []) as any[]) {
+            const transportName = ['personal_car', 'bus', 'motorcycle'].includes(row.category) ? 'Transport osobowy' : 'Transport ciężarowy';
+            options.push(mode === 'product' ? { id: row.id, label: row.name, name: row.name, description: row.description || '', price: Number(row.price_net ?? row.base_price ?? 0), unit: row.unit || 'h', vat: Number(row.vat_rate ?? DEFAULT_VAT) }
+              : { id: row.id, label: [row.name || [row.brand, row.model].filter(Boolean).join(' '), row.registration_number].filter(Boolean).join(' · '), name: transportName, description: '', price: 0, unit: 'auto', vat: DEFAULT_VAT });
+          }
+          if ((result.data || []).length < 500) break;
+        }
+        if (active) setCatalog(options.sort((a, b) => a.label.localeCompare(b.label, 'pl')));
+      } catch { if (active) setError('Nie udało się pobrać katalogu. Zamknij formularz i spróbuj ponownie.'); }
+      finally { if (active) setCatalogLoading(false); }
+    };
+    void load();
+    return () => { active = false; };
+  }, [mode]);
 
   const isTransport = category === 'transport';
   const [unit, setUnit] = useState(
-    category === 'staff' ? 'h' : category === 'transport' ? 'auto' : 'szt.',
+    initialItem?.unit || (category === 'staff' ? 'h' : category === 'transport' ? 'auto' : 'szt.'),
   );
 
   const PAGE_SIZE = 30;
@@ -53,15 +95,20 @@ export function AddCalculationItemModal({
   const [search, setSearch] = useState('');
   const [equipmentList, setEquipmentList] = useState<EquipmentOption[]>([]);
   const [loadingEquipment, setLoadingEquipment] = useState(false);
-  const [selectedEquipment, setSelectedEquipment] = useState<EquipmentOption | null>(null);
+  const [selectedEquipment, setSelectedEquipment] = useState<EquipmentOption | null>(initialItem?.source === 'warehouse' && initialItem.source_ref ? {
+    id: initialItem.source_ref, name: initialItem.name, brand: null, model: null,
+    thumbnail_url: initialItem.thumbnail_url || null, rental_price_per_day: initialItem.unit_price,
+    power_specs: { power_watts: initialItem.power_watts }, weight_kg: initialItem.weight_kg ?? null,
+    stock_quantity: initialItem.stock_quantity ?? 0,
+  } : null);
 
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [quantity, setQuantity] = useState(1);
-  const [days, setDays] = useState(1);
-  const [unitPrice, setUnitPrice] = useState(0);
-  const [vatRate, setVatRate] = useState(DEFAULT_VAT);
-  const [powerWatts, setPowerWatts] = useState<number | null>(null);
+  const [name, setName] = useState(initialItem?.name ?? '');
+  const [description, setDescription] = useState(initialItem?.description ?? '');
+  const [quantity, setQuantity] = useState(initialItem?.quantity ?? 1);
+  const [days, setDays] = useState(initialItem?.days ?? 1);
+  const [unitPrice, setUnitPrice] = useState(initialItem?.unit_price ?? 0);
+  const [vatRate, setVatRate] = useState(initialItem?.vat_rate ?? DEFAULT_VAT);
+  const [powerWatts, setPowerWatts] = useState<number | null>(initialItem?.power_watts ?? null);
 
   const loadEquipment = useCallback(async () => {
     if (equipmentList.length > 0) return;
@@ -159,7 +206,7 @@ export function AddCalculationItemModal({
 
   const getAlreadyAddedQuantity = (equipmentId: string) =>
     existingItems
-      .filter((item) => item.source === 'warehouse' && item.source_ref === equipmentId)
+      .filter((item) => (!initialItem || item.id !== initialItem.id) && item.source === 'warehouse' && item.source_ref === equipmentId)
       .reduce((sum, item) => sum + Number(item.quantity || 0), 0);
 
   const getRemainingStock = (eq: EquipmentOption) => {
@@ -190,22 +237,25 @@ export function AddCalculationItemModal({
 
   const handleSelectEquipment = (eq: EquipmentOption) => {
     setSelectedEquipment(eq);
+    setSourceChanged(true);
     const fullName = [eq.brand, eq.model, eq.name].filter(Boolean).join(' ') || eq.name;
     setName(fullName);
-    if (eq.rental_price_per_day && Number(eq.rental_price_per_day) > 0) {
-      setUnitPrice(Number(eq.rental_price_per_day));
-    }
-    if (eq.power_specs?.power_watts) {
-      setPowerWatts(eq.power_specs.power_watts);
-    }
+    setUnitPrice(Number(eq.rental_price_per_day ?? 0));
+    setPowerWatts(eq.power_specs?.power_watts ?? null);
   };
 
   const stockExceeded = selectedEquipment != null && quantity > selectedEquipment.stock_quantity;
 
-  const handleSubmit = () => {
-    if (!name.trim()) return;
+  const handleSubmit = async () => {
+    if (submitLock.current || !name.trim()) return;
+    if (![quantity, days, unitPrice, vatRate].every(Number.isFinite) || quantity <= 0 || days <= 0 || unitPrice < 0 || vatRate < 0 || vatRate > 100 || !unit.trim()) {
+      setError('Uzupełnij poprawną ilość, jednostkę, dni / kilometry, cenę i VAT.'); return;
+    }
+    if ((mode === 'warehouse' && !selectedEquipment) || (['product', 'vehicle'].includes(mode) && !selectedCatalog)) return;
+    submitLock.current = true; setSubmitting(true); setError('');
 
     const item: CalcItem = {
+      ...initialItem,
       category,
       name: name.trim(),
       description: description.trim(),
@@ -213,20 +263,22 @@ export function AddCalculationItemModal({
       quantity,
       unit_price: unitPrice,
       days,
-      source: selectedEquipment ? 'warehouse' : 'manual',
-      source_ref: selectedEquipment?.id ?? null,
-      position: existingCount,
+      source: selectedEquipment ? 'warehouse' : selectedCatalog ? mode as 'product' | 'vehicle' : !sourceChanged && initialItem ? initialItem.source : 'manual',
+      source_ref: selectedEquipment?.id ?? selectedCatalog?.id ?? (!sourceChanged ? initialItem?.source_ref : null) ?? null,
+      source_label: selectedCatalog?.label || null,
+      position: initialItem?.position ?? existingCount,
       vat_rate: vatRate,
       editing: false,
       power_watts: powerWatts,
-      power_source_ref: selectedEquipment?.id ?? null,
-      weight_kg: selectedEquipment?.weight_kg ?? null,
-      thumbnail_url: selectedEquipment?.thumbnail_url ?? null,
-      stock_quantity: selectedEquipment?.stock_quantity ?? null,
+      power_source_ref: selectedEquipment?.id ?? (!sourceChanged ? initialItem?.power_source_ref : null) ?? null,
+      weight_kg: selectedEquipment?.weight_kg ?? (!sourceChanged ? initialItem?.weight_kg : null) ?? null,
+      thumbnail_url: selectedEquipment?.thumbnail_url ?? (!sourceChanged ? initialItem?.thumbnail_url : null) ?? null,
+      stock_quantity: selectedEquipment?.stock_quantity ?? (!sourceChanged ? initialItem?.stock_quantity : null) ?? null,
     };
 
-    onAdd(item);
-    onClose();
+    try { await onAdd(item); onClose(); }
+    catch (e) { setError((e as Error).message || 'Nie udało się zapisać pozycji.'); }
+    finally { submitLock.current = false; setSubmitting(false); }
   };
 
   useEffect(() => {
@@ -239,26 +291,26 @@ export function AddCalculationItemModal({
   const grossTotal = netTotal * (1 + vatRate / 100);
 
   const inputClass =
-    'w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none';
+    'w-full rounded-lg border border-white/10 bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] focus:border-white/20 focus:outline-none';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-[#d3bb73]/20 bg-[#1c1f33]">
+      <div className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#1c1f33]">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-[#d3bb73]/10 px-6 py-4">
-          <h3 className="text-lg font-medium text-[#e5e4e2]">Dodaj pozycję</h3>
-          <button onClick={onClose} className="p-1 text-[#e5e4e2]/60 hover:text-[#e5e4e2]">
+          <h3 className="text-lg font-medium text-[#e5e4e2]">{initialItem ? 'Edytuj pozycję' : 'Dodaj pozycję'}</h3>
+          <button onClick={close} className="p-1 text-[#e5e4e2]/60 hover:text-[#e5e4e2]">
             <X className="h-5 w-5" />
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-6 py-4">
+        <fieldset disabled={submitting} className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
           {/* Mode Toggle for equipment category */}
           {category === 'equipment' && (
             <div className="mb-4 flex gap-2">
               <button
                 onClick={() => {
-                  setMode('warehouse');
+                  setMode('warehouse'); setSourceChanged(true); setDescription('');
                   setSelectedEquipment(null);
                   setName('');
                 }}
@@ -272,7 +324,7 @@ export function AddCalculationItemModal({
               </button>
               <button
                 onClick={() => {
-                  setMode('manual');
+                  setMode('manual'); setSourceChanged(true); setPowerWatts(null);
                   setSelectedEquipment(null);
                   setName('');
                 }}
@@ -287,6 +339,27 @@ export function AddCalculationItemModal({
             </div>
           )}
 
+          {(category === 'staff' || category === 'transport') && <div className="mb-4 space-y-3">
+            <div className="flex gap-2">{(['manual', category === 'staff' ? 'product' : 'vehicle'] as const).map(option => <button key={option} type="button" onClick={() => {
+              setMode(option); setSourceChanged(true); setSelectedCatalog(null); setName(''); setDescription(''); setUnitPrice(0); setPowerWatts(null); setSearch('');
+            }} className={`rounded-lg px-4 py-2 text-sm ${mode === option ? 'bg-[#d3bb73]/20 text-[#d3bb73]' : 'bg-white/5 text-white/60'}`}>
+              {option === 'manual' ? 'Ręcznie' : option === 'product' ? 'Usługi personelu z katalogu' : 'Pojazdy z bazy'}
+            </button>)}</div>
+            {mode !== 'manual' && !selectedCatalog && <>
+              <input aria-label="Szukaj w katalogu" value={search} onChange={e => setSearch(e.target.value)} placeholder={mode === 'product' ? 'Szukaj usługi personelu…' : 'Szukaj pojazdu…'} className={inputClass} />
+              <div className="max-h-64 overflow-y-auto rounded-lg bg-black/15">
+                {catalogLoading ? <p className="p-4 text-sm text-white/50">Wczytuję…</p> : !catalog.length ? <p className="p-4 text-sm text-white/50">{mode === 'product' ? 'Brak usług. W karcie produktu zaznacz „Usługa personelu — bez sprzętu”.' : 'Brak dostępnych pojazdów.'}</p> : catalog.filter(option => option.label.toLocaleLowerCase('pl').includes(search.toLocaleLowerCase('pl'))).map(option => <button key={option.id} type="button" className="block w-full p-3 text-left text-sm text-white/80 hover:bg-white/5" onClick={() => {
+                  setSelectedCatalog(option); setSourceChanged(true); setName(option.name); setDescription(option.description); setUnitPrice(option.price); setUnit(option.unit); setVatRate(option.vat); setPowerWatts(null);
+                }}>{option.label}{mode === 'product' && <span className="ml-2 text-[#d3bb73]">{option.price.toFixed(2)} zł / {option.unit}</span>}</button>)}
+              </div>
+            </>}
+            {selectedCatalog && <div className="rounded-lg bg-black/15 p-3 text-sm text-white/65">
+              <p>{mode === 'vehicle' ? 'Pojazd — informacja wewnętrzna: ' : 'Usługa z katalogu: '}{selectedCatalog.label}</p>
+              {mode === 'vehicle' && <p className="mt-1 text-xs text-white/45">W kalkulacji dla klienta pojawią się wyłącznie nazwa i opis pozycji poniżej. Wybór pojazdu nie rezerwuje go.</p>}
+              <button type="button" className="mt-2 text-[#d3bb73]" onClick={() => { setSelectedCatalog(null); setName(''); }}>Zmień</button>
+            </div>}
+          </div>}
+
           {/* Equipment Search (warehouse mode) */}
           {mode === 'warehouse' && !selectedEquipment && (
             <div className="mb-4">
@@ -298,7 +371,7 @@ export function AddCalculationItemModal({
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Szukaj sprzętu..."
-                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] py-2.5 pl-10 pr-4 text-sm text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                  className="w-full rounded-lg border border-white/10 bg-[#0a0d1a] py-2.5 pl-10 pr-4 text-sm text-[#e5e4e2] focus:border-white/20 focus:outline-none"
                 />
               </div>
 
@@ -432,10 +505,10 @@ export function AddCalculationItemModal({
                 )}
                 {visibleCount < filteredEquipmentAll.length && (
                   <div className="border-t border-[#d3bb73]/10 p-3 text-center">
-                    <button
+                    <button data-crm-action="secondary"
                       type="button"
                       onClick={() => setVisibleCount((prev) => prev + PAGE_SIZE)}
-                      className="rounded-lg border border-[#d3bb73]/30 px-4 py-2 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/10"
+                      className="rounded-lg border border-white/10 px-4 py-2 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/10"
                     >
                       Pokaż więcej ({currentlyVisible} / {filteredEquipmentAll.length})
                     </button>
@@ -447,7 +520,7 @@ export function AddCalculationItemModal({
 
           {/* Selected equipment preview */}
           {mode === 'warehouse' && selectedEquipment && (
-            <div className="mb-4 flex items-center gap-3 rounded-lg border border-[#d3bb73]/30 bg-[#0a0d1a] p-3">
+            <div className="mb-4 flex items-center gap-3 rounded-lg border border-white/10 bg-[#0a0d1a] p-3">
               {selectedEquipment.thumbnail_url ? (
                 <NextImage
                   src={selectedEquipment.thumbnail_url}
@@ -494,7 +567,7 @@ export function AddCalculationItemModal({
           )}
 
           {/* Form fields */}
-          {(mode === 'manual' || selectedEquipment) && (
+          {(mode === 'manual' || selectedEquipment || selectedCatalog) && (
             <div className="space-y-4">
               <div>
                 <label className="mb-1.5 block text-sm text-[#e5e4e2]/60">Nazwa</label>
@@ -509,8 +582,8 @@ export function AddCalculationItemModal({
 
               <div>
                 <label className="mb-1.5 block text-sm text-[#e5e4e2]/60">Opis</label>
-                <input
-                  type="text"
+                <textarea
+                  rows={5}
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="Opcjonalny opis..."
@@ -585,7 +658,7 @@ export function AddCalculationItemModal({
                     className={inputClass}
                   />
                 </div>
-                <div>
+                {(category === 'equipment' || category === 'other') && <div>
                   <label className="mb-1.5 flex items-center gap-1.5 text-sm text-[#e5e4e2]/60">
                     <Zap className="h-3.5 w-3.5 text-amber-400" />
                     Pobor mocy (W)
@@ -598,12 +671,12 @@ export function AddCalculationItemModal({
                     placeholder="np. 575"
                     className={inputClass}
                   />
-                </div>
+                </div>}
               </div>
 
               {/* Summary preview */}
               {unitPrice > 0 && (
-                <div className="flex items-center justify-between rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3">
+                <div className="flex items-center justify-between rounded-lg border border-white/10 bg-[#0a0d1a] px-4 py-3">
                   <div className="text-sm text-[#e5e4e2]/60">
                     {isTransport
                       ? `${quantity} aut x ${unitPrice.toFixed(2)} zł/km x ${days} km`
@@ -621,22 +694,23 @@ export function AddCalculationItemModal({
               )}
             </div>
           )}
-        </div>
+        </fieldset>
 
+        {error && <p role="alert" className="px-6 py-2 text-sm text-amber-200">{error}</p>}
         {/* Footer */}
         <div className="flex items-center justify-end gap-3 border-t border-[#d3bb73]/10 px-6 py-4">
           <button
-            onClick={onClose}
+            onClick={close}
             className="rounded-lg px-4 py-2 text-sm text-[#e5e4e2]/70 hover:text-[#e5e4e2]"
           >
             Anuluj
           </button>
           <button
             onClick={handleSubmit}
-            disabled={!name.trim()}
+            disabled={submitting || !name.trim() || (mode === 'warehouse' && !selectedEquipment) || (['product', 'vehicle'].includes(mode) && !selectedCatalog)}
             className="rounded-lg bg-[#d3bb73] px-5 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-40"
           >
-            Dodaj pozycje
+            {submitting ? 'Zapisuję…' : initialItem ? 'Zapisz zmiany' : 'Dodaj pozycję'}
           </button>
         </div>
       </div>

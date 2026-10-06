@@ -1,4 +1,5 @@
 'use client';
+import type { ProductSalesPackage } from '@/lib/CRM/Offers/productSalesPackages';
 
 import { useMemo, useState } from 'react';
 import { useDialog } from '@/contexts/DialogContext';
@@ -15,10 +16,20 @@ import { IProduct, IProductVariant } from '@/app/(crm)/crm/offers/types';
 import { ClientType } from '@/app/(crm)/crm/clients/type';
 import { normalizeEventAssumptionItems } from '@/lib/CRM/Offers/eventAssumptions';
 
+export type OfferWizardEventDefaults = {
+  name: string;
+  description: string;
+  location: string;
+  startsAt: string;
+  endsAt: string;
+  category: string;
+};
+
 export function useOfferWizardLogic(opts: {
   isOpen: boolean;
   eventId: string;
   employeeId?: string;
+  eventDefaults?: OfferWizardEventDefaults;
   defaults?: { clientType?: ClientType; organizationId?: string; contactId?: string };
   onSuccess: () => void;
   onClose: () => void;
@@ -29,7 +40,7 @@ export function useOfferWizardLogic(opts: {
   const hasOrganization =
     opts.defaults?.organizationId && opts.defaults.organizationId.trim() !== '';
   const hasContact = opts.defaults?.contactId && opts.defaults.contactId.trim() !== '';
-  const initialStep = opts.defaults?.clientType && (hasOrganization || hasContact) ? 2 : 1;
+  const initialStep = (opts.defaults?.clientType === 'business' ? hasOrganization : opts.defaults?.clientType === 'individual' ? hasContact : false) ? 2 : 1;
   const [step, setStep] = useState(initialStep);
   const [loading, setLoading] = useState(false);
 
@@ -66,9 +77,9 @@ export function useOfferWizardLogic(opts: {
     offer_number: '',
     valid_until: '',
     notes: '',
-    event_location: '',
-    event_assumptions: '',
-    event_assumption_items: normalizeEventAssumptionItems([], ''),
+    event_location: opts.eventDefaults?.location || '',
+    event_assumptions: opts.eventDefaults?.description || '',
+    event_assumption_items: normalizeEventAssumptionItems([], opts.eventDefaults?.description || ''),
     event_goal: '',
   });
 
@@ -161,9 +172,9 @@ export function useOfferWizardLogic(opts: {
     return client.canProceedFromStep1;
   }, [step, client.canProceedFromStep1]);
 
-  const addProductToOffer = async (product: IProduct, variant?: IProductVariant) => {
+  const addProductToOffer = async (product: IProduct, variant?: IProductVariant, salesPackage?: ProductSalesPackage) => {
     // ✅ dostajesz "next" od razu
-    const nextItems = items.addProduct(product, variant);
+    const nextItems = items.addProduct(product, variant, salesPackage);
 
     const rows = await conflicts.checkCartConflicts(nextItems);
     if (rows.length > 0) {
@@ -243,6 +254,7 @@ export function useOfferWizardLogic(opts: {
     try {
       const offer = await submitOfferWizard({
         eventId: opts.eventId,
+        eventTitle: opts.eventDefaults?.name,
         employeeId: opts.employeeId,
         clientType: client.clientType as any,
         organizationId: client.selectedOrganizationId,

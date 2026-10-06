@@ -20,6 +20,7 @@ import { supabase } from '@/lib/supabase/browser';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
+import { meetingRecurrenceLabel } from '@/lib/meetings/recurrence';
 import NewMeetingModal from '@/components/crm/NewMeetingModal';
 
 interface MeetingParticipant {
@@ -36,6 +37,8 @@ interface MeetingParticipant {
 }
 
 interface Meeting {
+  series_id: string | null;
+  recurrence_days: number;
   id: string;
   title: string;
   datetime_start: string;
@@ -119,7 +122,7 @@ function MeetingsContent() {
       .from('meetings')
       .select(
         `
-        id, title, datetime_start, datetime_end, is_all_day, color, notes,
+        id, title, datetime_start, datetime_end, is_all_day, color, notes, series_id, recurrence_days,
         location_text, created_by, alert_1_minutes, alert_2_minutes, alert_critical_minutes,
         location:locations(id, name),
         creator:employees!meetings_created_by_fkey(id, name, surname),
@@ -203,17 +206,14 @@ function MeetingsContent() {
   const handleDelete = async (meeting: Meeting) => {
     const confirmed = await showConfirm({
       title: 'Usuń spotkanie',
-      message: `Czy na pewno chcesz usunąć spotkanie "${meeting.title}"?`,
+      message: `Czy na pewno chcesz usunąć ${meeting.series_id ? 'tylko ten termin spotkania' : 'spotkanie'} "${meeting.title}"?`,
       confirmText: 'Usuń',
       cancelText: 'Anuluj',
     });
     if (!confirmed) return;
 
     setDeleting(true);
-    const { error } = await supabase
-      .from('meetings')
-      .update({ deleted_at: new Date().toISOString() })
-      .eq('id', meeting.id);
+    const { error } = await supabase.rpc('delete_meeting_occurrences', { p_id: meeting.id, p_scope: 'single' });
     setDeleting(false);
 
     if (error) {
@@ -270,6 +270,7 @@ function MeetingsContent() {
           <span className="flex items-center gap-1.5">
             <Clock className="h-4 w-4 text-[#d3bb73]" />
             {formatMeetingDate(m)}
+            {m.series_id && <span className="text-xs text-[#d3bb73]">{meetingRecurrenceLabel(m.recurrence_days)}</span>}
           </span>
           {location && (
             <span className="flex items-center gap-1.5">
@@ -454,6 +455,7 @@ function MeetingDetailModal({
         <div className="space-y-4 p-5">
           <DetailRow icon={<Clock className="h-4 w-4" />} label="Termin">
             {formatMeetingDate(meeting)}
+            {meeting.series_id && <span className="ml-2 text-xs text-[#d3bb73]">{meetingRecurrenceLabel(meeting.recurrence_days)}</span>}
             {meeting.datetime_end && !meeting.is_all_day && (
               <>
                 {' – '}

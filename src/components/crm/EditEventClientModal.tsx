@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { X, User, Building2, Plus, Trash2, Briefcase } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import SearchCombobox from '@/components/crm/SearchCombobox';
 
 interface EditEventClientModalProps {
   isOpen: boolean;
@@ -398,7 +399,7 @@ export default function EditEventClientModal({
 
           {/* Taby */}
           <div className="flex gap-2">
-            <button
+            <button data-crm-tab-active={activeTab === 'individual'}
               onClick={() => setActiveTab('individual')}
               className={`flex items-center gap-2 rounded-lg px-4 py-2 transition-colors ${
                 activeTab === 'individual'
@@ -409,7 +410,7 @@ export default function EditEventClientModal({
               <User className="h-4 w-4" />
               Impreza indywidualna
             </button>
-            <button
+            <button data-crm-tab-active={activeTab === 'business'}
               onClick={() => setActiveTab('business')}
               className={`flex items-center gap-2 rounded-lg px-4 py-2 transition-colors ${
                 activeTab === 'business'
@@ -430,21 +431,22 @@ export default function EditEventClientModal({
                 <label className="mb-2 block text-sm text-[#e5e4e2]/60">
                   Osoba kontaktowa / Klient indywidualny
                 </label>
-                <select
+                <SearchCombobox
                   value={individualContactId || ''}
-                  onChange={(e) => {
-                    setIndividualContactId(e.target.value);
+                  onChange={(id) => {
+                    setIndividualContactId(id);
                     setShowNewIndividualForm(false);
                   }}
-                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
-                >
-                  <option value="">Wybierz klienta</option>
-                  {individualContacts.map((contact) => (
-                    <option key={contact.id} value={contact.id}>
-                      {contact.full_name} {contact.email ? `(${contact.email})` : ''}
-                    </option>
-                  ))}
-                </select>
+                  options={individualContacts.map((contact) => ({
+                    id: contact.id,
+                    label: contact.full_name || [contact.first_name, contact.last_name].filter(Boolean).join(' '),
+                    description: [contact.email, contact.phone].filter(Boolean).join(' · '),
+                  }))}
+                  placeholder="Szukaj klienta po nazwisku, e-mailu lub telefonie…"
+                  ariaLabel="Osoba kontaktowa / Klient indywidualny"
+                  emptyLabel="Nie znaleziono klientów"
+                  disabled={loading}
+                />
               </div>
 
               <button
@@ -510,18 +512,20 @@ export default function EditEventClientModal({
                 <label className="mb-2 block text-sm text-[#e5e4e2]/60">
                   Organizacja (Firma) *
                 </label>
-                <select
+                <SearchCombobox
                   value={organizationId || ''}
-                  onChange={(e) => setOrganizationId(e.target.value)}
-                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
-                >
-                  <option value="">Wybierz organizację</option>
-                  {organizations.map((org) => (
-                    <option key={org.id} value={org.id}>
-                      {org.alias || org.name}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setOrganizationId}
+                  options={organizations.map((org) => ({
+                    id: org.id,
+                    label: org.alias || org.name,
+                    description: org.alias && org.alias !== org.name ? org.name : undefined,
+                    keywords: org.name,
+                  }))}
+                  placeholder="Szukaj firmy po nazwie lub aliasie…"
+                  ariaLabel="Organizacja (Firma)"
+                  emptyLabel="Nie znaleziono firm"
+                  disabled={loading}
+                />
               </div>
 
               {organizationId && (
@@ -680,25 +684,22 @@ export default function EditEventClientModal({
                         <label className="mb-2 block text-sm text-[#e5e4e2]/60">
                           Lub dodaj istniejącą osobę z firmy
                         </label>
-                        <select
-                          onChange={(e) => {
-                            if (e.target.value) {
-                              handleAddExistingContact(e.target.value);
-                              e.target.value = '';
-                            }
-                          }}
-                          className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
-                        >
-                          <option value="">Wybierz osobę</option>
-                          {businessContacts
-                            .filter((c) => !eventContactPersons.find((p) => p.contact_id === c.id))
-                            .map((contact) => (
-                              <option key={contact.id} value={contact.id}>
-                                {contact.full_name}{' '}
-                                {contact.position ? `(${contact.position})` : ''}
-                              </option>
-                            ))}
-                        </select>
+                        <SearchCombobox
+                          value=""
+                          onChange={(id) => { if (id) void handleAddExistingContact(id); }}
+                          options={businessContacts
+                            .filter((contact) => !eventContactPersons.some((person) => person.contact_id === contact.id))
+                            .map((contact) => ({
+                              id: contact.id,
+                              label: contact.full_name || [contact.first_name, contact.last_name].filter(Boolean).join(' '),
+                              description: [contact.position, contact.email, contact.phone].filter(Boolean).join(' · '),
+                            }))}
+                          placeholder="Szukaj osoby kontaktowej…"
+                          ariaLabel="Dodaj istniejącą osobę z firmy"
+                          emptyLabel="Brak osób pasujących do wyszukiwania"
+                          allowClear={false}
+                          disabled={loading}
+                        />
                       </div>
                     )}
                   </div>

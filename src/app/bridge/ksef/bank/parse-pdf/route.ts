@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 import 'pdfjs-dist/legacy/build/pdf.worker.mjs';
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { createSupabaseServerClient } from '@/lib/supabase/server.app';
+import { extractBankStatementAccountNumber } from '@/lib/bankStatementAccount';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -18,6 +19,11 @@ export interface BankTransaction {
   counterpartyAccount?: string;
   title?: string;
   referenceNumber?: string;
+  rawDescription?: string;
+  sourceIndex?: number;
+  balanceBefore?: number;
+  balanceAfter?: number;
+  sourceVerified?: boolean;
 
   transactionKind?:
     | 'transfer'
@@ -59,6 +65,7 @@ interface BankStatement {
   integrity: {
     checkedTransitions: number;
     failedTransitions: number;
+    emptyStatementVerified?: boolean;
   };
 }
 
@@ -170,7 +177,40 @@ function formatIsoDateFromPolish(value: string): string | null {
   const match = value.match(/\b(\d{2})\.(\d{2})\.(\d{4})\b/);
   if (!match) return null;
   const [, dd, mm, yyyy] = match;
+  const date = new Date(Date.UTC(Number(yyyy), Number(mm) - 1, Number(dd)));
+  if (Number(yyyy) < 1900 || date.getUTCFullYear() !== Number(yyyy)
+    || date.getUTCMonth() !== Number(mm) - 1 || date.getUTCDate() !== Number(dd)) return null;
   return `${yyyy}-${mm}-${dd}`;
+}
+
+function statementHeaderAccount(headerText: string): string | undefined {
+  // Only labelled account fields above the first transaction table belong to
+  // the statement owner. Never search transaction descriptions for this value.
+  const values = Array.from(headerText.matchAll(
+    /\bNr\s+(?:rachunku(?:\s*\/\s*karty)?|IBAN)\s*:\s*((?:PL\s*)?\d{2}(?:[ \t]*\d{4}){6})(?!\d)/gi,
+  ), (match) => extractBankStatementAccountNumber(match[1]))
+    .filter((value): value is string => Boolean(value));
+  const accounts = [...new Set(values)];
+  if (accounts.length > 1) {
+    throw new Error('Nagłówek wyciągu zawiera sprzeczne numery rachunku i IBAN. Sprawdź plik źródłowy.');
+  }
+  return accounts[0];
+}
+
+function statementSummaryAmount(lines: string[], label: RegExp): number | null {
+  const values: number[] = [];
+  for (const line of lines) {
+    const match = line.match(label);
+    if (!match || match.index == null) continue;
+    const tail = line.slice(match.index + match[0].length);
+    const amount = tail.match(/^\s*([+\-]?[\d\s.'’]+(?:,\d{2}|\.\d{2}))\s*(?:PLN)?\s*$/);
+    if (!amount) return null;
+    const parsed = parsePolishAmount(amount[1]);
+    if (parsed == null) return null;
+    values.push(parsed);
+  }
+  if (!values.length || values.some((value) => Math.round(value * 100) !== Math.round(values[0] * 100))) return null;
+  return values[0];
 }
 
 function extractAccountNumber(text: string): string | undefined {
@@ -246,16 +286,28 @@ function extractCounterpartyName(block: string): string | undefined {
 }
 
 function parsePKOPdfRows(rows: PdfRow[]): BankStatement {
-  const lines = rows.map((row) => sanitizeText(row.cells.map((cell) => cell.text).join(' '))).filter(Boolean);
+  const rowTexts = rows.map((row) => sanitizeText(row.cells.map((cell) => cell.text).join(' ')));
+  const lines = rowTexts.filter(Boolean);
   const rawText = lines.join('\n');
   const transactions: BankTransaction[] = [];
   const transactionRows: Array<{ rowIndex: number; date: string; amountRaw: string; amount: number; balance: number }> = [];
+  const firstPage = rows[0]?.page;
+  const tableHeaderIndex = rows.findIndex((row, index) => row.page === firstPage
+    && /\bData\s+operacji\b/i.test(rowTexts[index]) && /\bKwota\s+operacji\b/i.test(rowTexts[index]));
+  const headerLines = tableHeaderIndex >= 0 ? rowTexts.slice(0, tableHeaderIndex) : [];
+  const headerText = headerLines.join('\n');
+  const accountNumber = statementHeaderAccount(headerText);
+  const periodMatch = headerText.match(/WYCIĄG\s+za\s+okres\s+(\d{2}\.\d{2}\.\d{4})\s*[-–]\s*(\d{2}\.\d{2}\.\d{4})/i);
+  const periodFrom = periodMatch ? formatIsoDateFromPolish(periodMatch[1]) || undefined : undefined;
+  const periodTo = periodMatch ? formatIsoDateFromPolish(periodMatch[2]) || undefined : undefined;
+  let hasDatedBodyRow = false;
 
   rows.forEach((row, rowIndex) => {
     const leadingText = sanitizeText(
       row.cells.filter((cell) => cell.x < 8).map((cell) => cell.text).join(' '),
     );
     const dateText = leadingText.match(/\b\d{2}\.\d{2}\.\d{4}\b/)?.[0];
+    if (dateText && tableHeaderIndex >= 0 && rowIndex > tableHeaderIndex) hasDatedBodyRow = true;
     const moneyCells = row.cells
       .filter((cell) => cell.x > 20 && /^[+\-]?[\d\s.'’]+(?:,\d{2}|\.\d{2})$/.test(cell.text.trim()))
       .sort((a, b) => a.x - b.x);
@@ -286,7 +338,9 @@ function parsePKOPdfRows(rows: PdfRow[]): BankStatement {
       .slice(transactionRow.rowIndex + 1, nextRowIndex)
       .flatMap((row) => row.cells)
       .filter((cell) => cell.x < 26);
-    const details = sanitizeText(detailCells.map((cell) => cell.text).join(' '));
+    const operationCells = rows[transactionRow.rowIndex].cells
+      .filter((cell) => cell.x >= 8 && cell.x < 26);
+    const details = sanitizeText([...operationCells, ...detailCells].map((cell) => cell.text).join(' '));
     const combined = sanitizeText(`${transactionRow.date} ${details}`);
     const postingDateCell = detailCells.find((cell) => cell.x < 6 && /^\d{2}\.\d{2}\.\d{4}$/.test(cell.text.trim()));
     const original = extractOriginalAmountAndCurrency(combined);
@@ -319,6 +373,11 @@ function parsePKOPdfRows(rows: PdfRow[]): BankStatement {
       counterpartyAccount: extractAccountNumber(combined),
       title: cleanupTransactionTitle(details || transactionRow.date),
       referenceNumber: extractReferenceNumber(combined),
+      rawDescription: details,
+      sourceIndex: index,
+      balanceBefore: (Math.round(transactionRow.balance * 100)
+        - Math.round(absoluteAmount * 100) * (type === 'credit' ? 1 : -1)) / 100,
+      balanceAfter: transactionRow.balance,
       transactionKind,
       originalAmount: original.originalAmount,
       originalCurrency: original.originalCurrency,
@@ -332,30 +391,70 @@ function parsePKOPdfRows(rows: PdfRow[]): BankStatement {
     });
   });
 
-  if (!transactions.length) throw new Error('Nie znaleziono poprawnych operacji w tabeli wyciągu PKO');
+  if (!transactions.length) {
+    const explicitEmpty = tableHeaderIndex >= 0
+      && rowTexts.slice(tableHeaderIndex + 1).some((line) => /^BRAK\s+OPERACJI$/i.test(line));
+    const debitTurnover = statementSummaryAmount(headerLines, /\bObroty\s+WN\b/i);
+    const creditTurnover = statementSummaryAmount(headerLines, /\bObroty\s+MA\b/i);
+    const openingBalance = statementSummaryAmount(headerLines, /\bSaldo\s+poprzednie\b/i);
+    const closingBalance = statementSummaryAmount(rowTexts.slice(tableHeaderIndex + 1), /\bSaldo\s+końcowe\b/i);
+    const currency = headerText.match(/\bWaluta\s+rachunku\s*:\s*([A-Z]{3})\b/i)?.[1]?.toUpperCase();
+    const validPeriod = periodFrom && periodTo && periodFrom <= periodTo
+      && periodFrom.slice(0, 7) === periodTo.slice(0, 7);
+    const zeroTurnovers = debitTurnover === 0 && creditTurnover === 0;
+    const unchangedBalance = openingBalance != null && closingBalance != null
+      && Math.round(openingBalance * 100) === Math.round(closingBalance * 100);
+    if (!explicitEmpty || hasDatedBodyRow || !accountNumber || !validPeriod
+      || currency !== 'PLN' || !zeroTurnovers || !unchangedBalance) {
+      throw new Error('Nie znaleziono poprawnych operacji w tabeli wyciągu PKO. Pusty wyciąg wymaga oznaczenia „BRAK OPERACJI”, poprawnego okresu i rachunku w nagłówku oraz zerowych obrotów i zgodnych sald.');
+    }
+    return {
+      accountNumber,
+      openingBalance: openingBalance!,
+      closingBalance: closingBalance!,
+      currency,
+      transactions: [],
+      rawText,
+      lines,
+      periodFrom,
+      periodTo,
+      parserVersion: 4,
+      integrity: { checkedTransitions: 0, failedTransitions: 0, emptyStatementVerified: true },
+    };
+  }
   if (checkedTransitions > 0 && failedTransitions > 0) {
     throw new Error('Kontrola ciągłości salda nie powiodła się. Plik nie został zaimportowany.');
   }
 
-  const periodMatch = rawText.match(/WYCIĄG\s+za\s+okres\s+(\d{2}\.\d{2}\.\d{4})\s*-\s*(\d{2}\.\d{2}\.\d{4})/i);
   const firstSignedAmount = transactions[0].type === 'credit' ? transactions[0].amount : -transactions[0].amount;
   const lastTransaction = transactions.at(-1)!;
   const lastSignedAmount = lastTransaction.type === 'credit' ? lastTransaction.amount : -lastTransaction.amount;
+  const computedOpening = chronologicalAscending
+    ? transactionRows[0].balance - firstSignedAmount
+    : transactionRows.at(-1)!.balance - lastSignedAmount;
+  const computedClosing = chronologicalAscending
+    ? transactionRows.at(-1)!.balance : transactionRows[0].balance;
+  const headerOpening = statementSummaryAmount(headerLines, /\bSaldo\s+poprzednie\b/i);
+  const footerClosing = statementSummaryAmount(rowTexts.slice(tableHeaderIndex + 1), /\bSaldo\s+końcowe\b/i);
+  const balancesVerified = headerOpening != null && footerClosing != null
+    && Math.round(computedOpening * 100) === Math.round(headerOpening * 100)
+    && Math.round(computedClosing * 100) === Math.round(footerClosing * 100);
+  if (headerOpening != null && footerClosing != null && !balancesVerified) {
+    throw new Error('Odczytane operacje PDF nie zgadzają się z saldami wyciągu. Plik wymaga sprawdzenia.');
+  }
+  transactions.forEach((transaction) => { transaction.sourceVerified = balancesVerified; });
 
   return {
-    openingBalance: chronologicalAscending
-      ? transactionRows[0]?.balance - firstSignedAmount
-      : transactionRows.at(-1)!.balance - lastSignedAmount,
-    closingBalance: chronologicalAscending
-      ? transactionRows.at(-1)?.balance
-      : transactionRows[0]?.balance,
+    accountNumber,
+    openingBalance: headerOpening ?? computedOpening,
+    closingBalance: footerClosing ?? computedClosing,
     currency: 'PLN',
     transactions,
     rawText,
     lines,
-    periodFrom: periodMatch ? formatIsoDateFromPolish(periodMatch[1]) || undefined : undefined,
-    periodTo: periodMatch ? formatIsoDateFromPolish(periodMatch[2]) || undefined : undefined,
-    parserVersion: 2,
+    periodFrom,
+    periodTo,
+    parserVersion: 4,
     integrity: { checkedTransitions, failedTransitions },
   };
 }
@@ -430,7 +529,7 @@ export async function POST(req: Request) {
     }
 
     const { data: canManageInvoices, error: permissionError } = await userClient.rpc(
-      'can_manage_invoices',
+      'finance_can_manage',
     );
     if (permissionError || !canManageInvoices) {
       return NextResponse.json(

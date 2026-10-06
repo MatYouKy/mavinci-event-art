@@ -10,6 +10,7 @@ import {
 } from '@/app/(crm)/crm/events/store/api/eventsApi';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { supabase } from '@/lib/supabase/browser';
+import { kitEventLimits } from '@/lib/CRM/equipment/kitInventory';
 
 type ItemType = 'item' | 'kit' | 'cable';
 type AvailKey = `${ItemType}-${string}`;
@@ -56,6 +57,8 @@ function buildInEventMap(equipmentRows: any[]) {
   };
 
   for (const row of equipmentRows || []) {
+    if (row?.removed_from_offer || row?.use_external_rental ||
+      (row?.status && !['reserved', 'in_use'].includes(row.status))) continue;
     const rowQty = Number(row?.quantity ?? 0);
 
     const eqId = row?.equipment_id ?? row?.equipment?.id ?? row?.equipment?.equipment_id;
@@ -103,7 +106,7 @@ export function useEventEquipment(eventId: string, event?: EventCore) {
 
   // Pobiera WSZYSTKIE equipment (włącznie z usuniętymi) - do liczenia dostępności
   const {
-    data: allEquipmentForAvailability = [],
+    data: allEquipmentForAvailability,
     refetch: refetchAll,
   } = useGetAllEventEquipmentForAvailabilityQuery(eventId, { skip: !eventId });
 
@@ -175,7 +178,7 @@ export function useEventEquipment(eventId: string, event?: EventCore) {
       let baseRows: AvailabilityRow[] = [];
 
       if (event.event_date && event.event_end_date) {
-        const { data, error } = await supabase.rpc('check_equipment_availability_for_event', {
+        const { data, error } = await supabase.rpc('check_equipment_inventory_for_event', {
           p_event_id: event.id,
           p_start_date: event.event_date,
           p_end_date: event.event_end_date,
@@ -371,48 +374,17 @@ export function useEventEquipment(eventId: string, event?: EventCore) {
 
       if (!kitsError && kits) {
         const kitsWithAvail = (kits as any[]).map((kit) => {
-          let minAvailable = Infinity;
-          const kitItems = kit.equipment_kit_items || [];
-      
-          for (const item of kitItems) {
-            const itemQty = Number(item.quantity ?? 0);
-      
-            if (itemQty <= 0) continue;
-      
-            if (item.equipment_id) {
-              const k = keyOf('item', item.equipment_id);
-              const avail = byKey[k];
-      
-              if (avail) {
-                const canAddFromThisItem = Math.floor(avail.max_add / itemQty);
-                minAvailable = Math.min(minAvailable, canAddFromThisItem);
-              } else {
-                minAvailable = 0;
-              }
-            } else if (item.cable_id) {
-              const k = keyOf('cable', item.cable_id);
-              const avail = byKey[k];
-      
-              if (avail) {
-                const canAddFromThisItem = Math.floor(avail.max_add / itemQty);
-                minAvailable = Math.min(minAvailable, canAddFromThisItem);
-              } else {
-                minAvailable = 0;
-              }
-            }
-          }
-      
-          const maxAddKits = minAvailable === Infinity ? 0 : Math.max(0, minAvailable);
           const kitKey = keyOf('kit', kit.id);
           const usedByThisEvent = Number(usedMap.get(kitKey) ?? 0);
-          const maxSetKits = usedByThisEvent + maxAddKits;
-      
+          const reservedElsewhere = Number(baseRows.find(row => row.item_type === 'kit' && row.item_id === kit.id)?.reserved_quantity || 0);
+          const { maxAdd: maxAddKits, maxSet: maxSetKits } = kitEventLimits(kit, byKey, usedByThisEvent, reservedElsewhere);
+
           // ✅ KLUCZOWE: dopisz availability kita do wspólnej mapy
           byKey[kitKey] = {
-            total_quantity: maxSetKits,
-            reserved_quantity: 0,
+            total_quantity: Number(kit.quantity),
+            reserved_quantity: reservedElsewhere,
             used_by_this_event: usedByThisEvent,
-            available_in_term: maxAddKits,
+            available_in_term: maxSetKits,
             max_add: maxAddKits,
             max_set: maxSetKits,
           };
@@ -421,14 +393,16 @@ export function useEventEquipment(eventId: string, event?: EventCore) {
             ...kit,
             available_count: maxAddKits,
             used_by_this_event: usedByThisEvent,
-            available_in_term: maxAddKits,
+            available_in_term: maxSetKits,
             max_add: maxAddKits,
             max_set: maxSetKits,
-            reserved_quantity: 0,
-            total_quantity: maxSetKits,
+            reserved_quantity: reservedElsewhere,
+            total_quantity: Number(kit.quantity),
           };
         });
       
+        // Opublikuj również limity zestawów obliczone po dostępności sprzętu.
+        setAvailabilityByKey({ ...byKey });
         setAvailableKits(kitsWithAvail);
       }
     } catch (e) {
@@ -438,6 +412,29 @@ export function useEventEquipment(eventId: string, event?: EventCore) {
       if (seq === fetchSeqRef.current) setIsCheckingAvailability(false);
     }
   }, [event?.id, event?.event_date, event?.event_end_date]);
+
+  // Rezerwacje mogą dotrzeć później niż pierwsze sprawdzenie dostępności.
+  useEffect(() => {
+    if (!allEquipmentForAvailability) return;
+    void fetchAvailableEquipment();
+  }, [allEquipmentForAvailability, fetchAvailableEquipment]);
+
+  useEffect(() => {
+    const refresh = () => { void fetchAvailableEquipment(); };
+    const onVisible = () => { if (document.visibilityState === 'visible') refresh(); };
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', onVisible);
+    const inventoryChannel = supabase.channel(`kit_inventory_${eventId}_${crypto.randomUUID()}`);
+    for (const table of ['equipment_units', 'equipment_items', 'equipment_kits', 'equipment_kit_items', 'cables']) {
+      inventoryChannel.on('postgres_changes', { event: '*', schema: 'public', table }, refresh);
+    }
+    inventoryChannel.subscribe();
+    return () => {
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', onVisible);
+      void supabase.removeChannel(inventoryChannel);
+    };
+  }, [eventId, fetchAvailableEquipment]);
 
   const addEquipment = useCallback(
     async (items: SelectedEquipment[]) => {

@@ -34,7 +34,9 @@ export default function CRMLoginPage() {
       }
 
       if (data.session) {
-        router.push('/crm');
+        const { data: sellerContext } = await supabase.rpc('get_seller_portal_context');
+        const isSellerAccount = data.user?.user_metadata?.portal === 'seller';
+        router.push(sellerContext || isSellerAccount ? '/seller' : '/crm');
       }
     } catch (err: any) {
       setError(err.message || 'Wystąpił błąd podczas logowania');
@@ -48,12 +50,15 @@ export default function CRMLoginPage() {
     setResetLoading(true);
 
     try {
-      const { error: resetError } = await supabase.auth.resetPasswordForEmail(resetEmail, {
-        redirectTo: `${window.location.origin}/reset-password`,
+      const response = await fetch('/bridge/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: resetEmail }),
       });
+      const result = await response.json();
 
-      if (resetError) {
-        setError(resetError.message);
+      if (!response.ok) {
+        setError(result?.error || 'Nie udało się wysłać linku do zmiany hasła.');
         setResetLoading(false);
         return;
       }
@@ -75,12 +80,12 @@ export default function CRMLoginPage() {
               <Lock className="h-8 w-8 text-[#d3bb73]" />
             </div>
             <h2 className="mb-2 text-3xl font-light text-[#e5e4e2]">
-              {showResetPassword ? 'Resetuj hasło' : 'Panel CRM Mavinci'}
+              {showResetPassword ? 'Resetuj hasło' : 'Mavinci · logowanie'}
             </h2>
             <p className="font-light text-[#e5e4e2]/60">
               {showResetPassword
                 ? 'Podaj adres email aby otrzymać link do zmiany hasła'
-                : 'Zaloguj się aby zarządzać systemem'}
+                : 'Zaloguj się do CRM lub portalu sprzedawcy'}
             </p>
           </div>
 

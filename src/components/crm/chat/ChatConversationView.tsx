@@ -11,6 +11,7 @@ import {
   Film,
   Image as ImageIcon,
   Download,
+  Loader2,
   MoreVertical,
   Trash2,
   CheckCircle2,
@@ -73,6 +74,42 @@ export default function ChatConversationView({
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
   const [showMenu, setShowMenu] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [lightboxFilename, setLightboxFilename] = useState('plik');
+  const [downloadingUrl, setDownloadingUrl] = useState<string | null>(null);
+  const downloadingRef = useRef(false);
+  const [downloadError, setDownloadError] = useState<{ url: string; message: string } | null>(null);
+
+  const openAttachment = (url: string, filename?: string | null) => {
+    setLightboxFilename(filename || decodeURIComponent(url.split('/').pop()?.split('?')[0] || 'plik'));
+    setLightboxUrl(url);
+    setDownloadError(null);
+  };
+
+  const downloadAttachment = async (url: string, filename: string) => {
+    if (downloadingRef.current) return;
+    downloadingRef.current = true;
+    setDownloadingUrl(url);
+    setDownloadError(null);
+    try {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error('Download failed');
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = objectUrl;
+      anchor.download = filename || 'zdjecie';
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      // Leave time for the browser to start saving before releasing the blob.
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+    } catch {
+      setDownloadError({ url, message: 'Nie udało się pobrać pliku. Spróbuj ponownie lub otwórz go w nowej karcie.' });
+    } finally {
+      downloadingRef.current = false;
+      setDownloadingUrl(null);
+    }
+  };
   const [isDraggingFile, setIsDraggingFile] = useState(false);
 
   const [reactionPickerMsgId, setReactionPickerMsgId] = useState<string | null>(null);
@@ -357,6 +394,17 @@ export default function ChatConversationView({
     if (isSending) return;
 
     setIsSending(true);
+    try {
+      const { data: auth, error: authError } = await supabase.auth.getUser();
+      if (authError || !auth.user) throw new Error('Nie udało się potwierdzić zalogowanego konta.');
+      const { data: actor, error: actorError } = await supabase.from('employees').select('id')
+        .eq('auth_user_id', auth.user.id).eq('is_active', true).maybeSingle();
+      if (actorError || actor?.id !== currentEmployeeId) throw new Error('Konto czatu nie odpowiada zalogowanemu użytkownikowi. Odśwież CRM i sprawdź konto.');
+    } catch (cause) {
+      setIsSending(false);
+      window.alert(cause instanceof Error ? cause.message : 'Nie udało się potwierdzić nadawcy.');
+      return;
+    }
     setNewMessage('');
     setPendingFile(null);
     if (pendingPreview) {
@@ -639,7 +687,8 @@ export default function ChatConversationView({
 
     if (isImage) {
       return (
-        <button onClick={() => setLightboxUrl(url)} className="block cursor-zoom-in">
+        <div>
+        <button type="button" onClick={() => openAttachment(url, msg.attachment_filename)} aria-label="Powiększ zdjęcie" className="block cursor-zoom-in">
           <img
             src={url}
             alt={msg.attachment_filename || 'Obraz'}
@@ -647,6 +696,14 @@ export default function ChatConversationView({
             loading="lazy"
           />
         </button>
+        <button type="button" disabled={downloadingUrl !== null}
+          onClick={() => void downloadAttachment(url, msg.attachment_filename || 'zdjecie')}
+          className="mt-1.5 inline-flex items-center gap-1.5 rounded px-1 py-1 text-xs opacity-80 hover:opacity-100 disabled:opacity-50">
+          {downloadingUrl === url ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+          {downloadingUrl === url ? 'Pobieranie…' : 'Pobierz zdjęcie'}
+        </button>
+        {downloadError?.url === url && <p role="alert" className="mt-1 text-xs">{downloadError.message}</p>}
+        </div>
       );
     }
 
@@ -668,7 +725,7 @@ export default function ChatConversationView({
       <button
         onClick={() => {
           if (isPdf) {
-            setLightboxUrl(url);
+            openAttachment(url, msg.attachment_filename);
           } else {
             const a = document.createElement('a');
             a.href = url;
@@ -1088,7 +1145,13 @@ export default function ChatConversationView({
     </div>
     {lightboxUrl && createPortal(
       <div className="fixed inset-0 z-[99999] flex flex-col bg-black/90 backdrop-blur-sm" onClick={() => setLightboxUrl(null)}>
-        <div className="flex items-center justify-end gap-3 p-4">
+        <div className="flex flex-wrap items-center justify-end gap-3 p-4">
+          <button type="button" disabled={downloadingUrl !== null}
+            onClick={(e) => { e.stopPropagation(); void downloadAttachment(lightboxUrl, lightboxFilename); }}
+            className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 text-sm text-white hover:bg-white/20 disabled:opacity-50">
+            {downloadingUrl === lightboxUrl ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+            {downloadingUrl === lightboxUrl ? 'Pobieranie…' : 'Pobierz'}
+          </button>
           <a
             href={lightboxUrl}
             target="_blank"
@@ -1105,6 +1168,7 @@ export default function ChatConversationView({
             <X className="h-6 w-6" />
           </button>
         </div>
+        {downloadError?.url === lightboxUrl && <p role="alert" className="px-4 pb-3 text-center text-sm text-red-200">{downloadError.message}</p>}
         <div className="flex flex-1 items-center justify-center overflow-hidden px-4 pb-4" onClick={(e) => e.stopPropagation()}>
           {/\.(pdf)(\?|$)/i.test(lightboxUrl) ? (
             <iframe

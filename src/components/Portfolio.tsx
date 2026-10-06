@@ -3,10 +3,10 @@
 import { useState } from 'react';
 import { ArrowUpRight } from 'lucide-react';
 import Link from 'next/link';
+import cardStyles from '@/components/PortfolioCard.module.css';
 import { PortfolioProject } from '@/lib/Pages/Home/getPortfolioProjects';
 
 export default function Portfolio({ portfolioProjects }: { portfolioProjects: PortfolioProject[] }) {
-  const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
 
 
@@ -71,51 +71,48 @@ export default function Portfolio({ portfolioProjects }: { portfolioProjects: Po
             <Link
               href={`/portfolio/${project.slug}`}
               key={project.id}
-              className="group relative overflow-hidden rounded-2xl cursor-pointer block w-full md:w-[calc(33.333%-1.33rem)]"
+              className={`${cardStyles.card} group relative overflow-hidden rounded-2xl cursor-pointer block w-full md:w-[calc(33.333%-1.33rem)]`}
               style={{
                 animation: `fadeInUp 0.6s ease-out ${index * 0.1}s both`,
               }}
-              onMouseEnter={() => setHoveredId(project.id)}
-              onMouseLeave={() => setHoveredId(null)}
+
             >
-              <div className="aspect-[4/5] relative overflow-hidden">
+              <div className={cardStyles.frame}>
                 <img
                   src={project.image_metadata?.desktop?.src || project.image}
                   alt={project.alt || project.title}
-                  className="w-full h-full object-cover transition-all duration-700 group-hover:scale-110"
+                  className={`${cardStyles.image} transition-transform duration-700 motion-safe:group-hover:scale-110`}
                 />
 
                 <div className="absolute inset-0 bg-gradient-to-t from-[#1c1f33] via-[#1c1f33]/60 to-transparent opacity-80 group-hover:opacity-95 transition-opacity duration-500"></div>
 
-                <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-all duration-500 transform translate-y-[-10px] group-hover:translate-y-0">
+                <div className={cardStyles.actions}>
                   <div className="w-10 h-10 rounded-full bg-[#d3bb73]/90 backdrop-blur-sm flex items-center justify-center hover:bg-[#d3bb73] transition-colors duration-300 hover:scale-110 transform">
                     <ArrowUpRight className="w-5 h-5 text-[#1c1f33]" />
                   </div>
                 </div>
 
-                <div className="absolute bottom-0 left-0 right-0 p-6 transform transition-all duration-500">
+                <div className={cardStyles.caption}>
                   <div className="mb-3">
                     <span className="inline-block px-3 py-1 bg-[#d3bb73]/20 backdrop-blur-md border border-[#d3bb73]/40 rounded-full text-[#d3bb73] text-xs font-light tracking-wide">
                       {project.category}
                     </span>
                   </div>
 
-                  <h3 className="text-xl md:text-2xl font-light text-[#e5e4e2] mb-2 transform transition-all duration-500 group-hover:translate-x-2">
+                  <h3 className={cardStyles.title}>
                     {project.title}
                   </h3>
 
-                  <p
-                    className={`text-[#e5e4e2]/70 text-sm font-light leading-relaxed transition-all duration-500 ${
-                      hoveredId === project.id
-                        ? 'opacity-100 translate-y-0 max-h-20'
-                        : 'opacity-0 translate-y-4 max-h-0'
-                    }`}
-                  >
-                    {project.description}
-                  </p>
+                  {project.description && (
+                    <div className={cardStyles.description}>
+                      <div className={cardStyles.descriptionInner}>
+                        <p className={cardStyles.descriptionText}>{project.description}</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
-                <div className="absolute inset-0 border-2 border-transparent group-hover:border-[#d3bb73]/30 rounded-2xl transition-all duration-500 pointer-events-none"></div>
+                <div className="absolute inset-0 border border-white/5 group-hover:border-[#d3bb73]/15 rounded-2xl transition-all duration-500 pointer-events-none"></div>
               </div>
             </Link>
           ))}

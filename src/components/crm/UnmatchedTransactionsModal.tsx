@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { AlertCircle, CheckCircle, Link as LinkIcon, MoreVertical, Search, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
+import { BANK_STATEMENT_DEDUPLICATION_COLUMNS, deduplicateStatementTransactions, loadBankStatementTransactionPages } from '@/lib/bankStatementDeduplication';
 import { repairBrokenBankText } from '@/lib/bankTextEncoding';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import {
@@ -69,7 +70,7 @@ export default function UnmatchedTransactionsModal({ month, year, companyId, onC
       if (!silent) setLoading(true);
       let statementsQuery = supabase
         .from('bank_statements')
-        .select('id,my_company_id')
+        .select(BANK_STATEMENT_DEDUPLICATION_COLUMNS)
         .eq('statement_month', month)
         .eq('statement_year', year)
         .eq('processed', true)
@@ -88,24 +89,28 @@ export default function UnmatchedTransactionsModal({ month, year, companyId, onC
         return;
       }
 
-      const { data, error } = await supabase
-        .from('bank_transactions')
-        .select(
-          'id,statement_id,transaction_date,amount,currency,transaction_type,counterparty_name,counterparty_account,title,match_status,allocated_amount,private_transfer_detected,private_transfer_owner,accounting_note,accounting_category,accounting_subtype,accounting_review_status',
-        )
-        .in('statement_id', statementIds)
-        .neq('match_status', 'matched')
-        .order('transaction_date', { ascending: false });
-      if (error) throw error;
+      const data = await loadBankStatementTransactionPages((from, to) =>
+        supabase
+          .from('bank_transactions')
+          .select(
+            'id,statement_id,transaction_date,posting_date,amount,currency,transaction_type,counterparty_name,counterparty_account,title,raw_description,reference_number,match_status,allocated_amount,matched_document_count,matched_invoice_id,private_transfer_detected,private_transfer_owner,accounting_note,accounting_category,accounting_subtype,accounting_review_status',
+          )
+          .in('statement_id', statementIds)
+          .order('transaction_date', { ascending: false })
+          .order('id', { ascending: true })
+          .range(from, to),
+      );
       setTransactions(
-        ((data || []) as Omit<Transaction, 'company_id'>[])
+        deduplicateStatementTransactions(data || [], new Map((statements || []).map((statement) => [statement.id, statement])))
           .map((transaction) => ({
             ...transaction,
             company_id: statementCompanies.get(transaction.statement_id) || '',
           }))
           .filter(
             (transaction) =>
-              !transaction.private_transfer_detected && transaction.accounting_review_status !== 'explained',
+              transaction.match_status !== 'matched'
+              && !transaction.private_transfer_detected
+              && transaction.accounting_review_status !== 'explained',
           ),
       );
     } catch (error: any) {
@@ -351,7 +356,7 @@ export default function UnmatchedTransactionsModal({ month, year, companyId, onC
                           <div className="flex flex-wrap items-center gap-2">
                             <span className="font-medium text-[#e5e4e2]">{candidate.invoiceNumber}</span>
                             <span className="rounded bg-blue-500/15 px-2 py-0.5 text-xs text-blue-300">
-                              {getBankMatchSourceLabel(candidate.documentSource)}
+                              {getBankMatchSourceLabel(candidate.documentSource, candidate.externalDocumentKind)}
                             </span>
                             <span
                               className={`rounded px-2 py-0.5 text-xs ${

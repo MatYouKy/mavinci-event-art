@@ -1,32 +1,33 @@
 'use client';
 
+import { formatSystemSubject } from '@/lib/ui/systemLabels';
+import InquiryTypeBadges from '@/components/crm/inquiries/InquiryTypeBadges';
+
 import {
   ArrowLeft,
-  Download,
   ExternalLink,
   Forward,
   Inbox,
   ListPlus,
   ListTodo,
   Loader2,
-  Paperclip,
   Reply,
   Trash2,
   UserPlus,
 } from 'lucide-react';
 import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
-import { supabase } from '@/lib/supabase/browser';
 import {
   useGetMessageDetailsQuery,
   type MessageDetails,
   type MessageListItem,
 } from '@/store/api/messagesApi';
-import { useSnackbar } from '@/contexts/SnackbarContext';
 import EmailHtmlPreview from './EmailHtmlPreview';
+import MessageAttachments from './MessageAttachments';
 
 interface MessagePreviewPaneProps {
   message: MessageListItem | null;
   canManage: boolean;
+  canSend: boolean;
   onClose: () => void;
   onOpenInNewWindow: (message: MessageListItem) => void;
   onReply: (message: MessageDetails) => void;
@@ -46,6 +47,7 @@ const formatMessageDate = (date: string) =>
 export function MessagePreviewPane({
   message,
   canManage,
+  canSend,
   onClose,
   onOpenInNewWindow,
   onReply,
@@ -55,9 +57,8 @@ export function MessagePreviewPane({
   onCreateTask,
   onDelete,
 }: MessagePreviewPaneProps) {
-  const { showSnackbar } = useSnackbar();
   const previewable = Boolean(message && message.type !== 'draft');
-  const { data: details, isLoading, error } = useGetMessageDetailsQuery(
+  const { currentData: details, isFetching, error, refetch } = useGetMessageDetailsQuery(
     {
       id: message?.id || '',
       type:
@@ -69,28 +70,6 @@ export function MessagePreviewPane({
     },
     { skip: !previewable },
   );
-
-  const downloadAttachment = async (attachment: NonNullable<MessageDetails['attachments']>[number]) => {
-    try {
-      const { data, error: downloadError } = await supabase.storage
-        .from('email-attachments')
-        .download(attachment.storage_path);
-
-      if (downloadError) throw downloadError;
-
-      const url = URL.createObjectURL(data);
-      const anchor = document.createElement('a');
-      anchor.href = url;
-      anchor.download = attachment.filename;
-      document.body.appendChild(anchor);
-      anchor.click();
-      document.body.removeChild(anchor);
-      URL.revokeObjectURL(url);
-    } catch (downloadError) {
-      console.error('Error downloading attachment:', downloadError);
-      showSnackbar('Nie udało się pobrać załącznika', 'error');
-    }
-  };
 
   if (!message) {
     return (
@@ -124,7 +103,7 @@ export function MessagePreviewPane({
     );
   }
 
-  if (isLoading) {
+  if (isFetching && !details) {
     return (
       <div className="flex h-full min-h-0 flex-1 items-center justify-center bg-[#11141f]">
         <Loader2 className="h-6 w-6 animate-spin text-[#d3bb73]" />
@@ -157,8 +136,9 @@ export function MessagePreviewPane({
             </button>
             <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-0.5">
               <h2 className="min-w-0 truncate text-sm font-semibold leading-snug text-white sm:text-base">
-                {details.subject || '(bez tematu)'}
+                {formatSystemSubject(details.subject)}
               </h2>
+              {details.type === 'contact_form' && <InquiryTypeBadges title={details.subject} details={details.originalData} />}
               <time className="shrink-0 text-[10px] text-[#e5e4e2]/40 sm:text-[11px]">
                 {formatMessageDate(details.date)}
               </time>
@@ -186,7 +166,7 @@ export function MessagePreviewPane({
                   icon: <ExternalLink className="h-4 w-4" />,
                   pin: true,
                 },
-                ...(canManage && canActOnInbound
+                ...(canSend && canActOnInbound
                   ? [
                       {
                         label: 'Odpowiedz',
@@ -195,6 +175,8 @@ export function MessagePreviewPane({
                         variant: 'primary' as const,
                         pin: true,
                       },
+                    ] : []),
+                ...(canManage && canActOnInbound ? [
                       {
                         label: 'Przypisz',
                         onClick: () => onAssign(details),
@@ -216,7 +198,7 @@ export function MessagePreviewPane({
                       },
                     ]
                   : []),
-                ...(canManage && details.type === 'received'
+                ...(canSend && details.type === 'received'
                   ? [
                       {
                         label: 'Przekaż',
@@ -248,7 +230,7 @@ export function MessagePreviewPane({
               html={details.bodyHtml}
               employeeId={details.originalData?.employee_id}
               emailAccountId={details.email_account_id}
-              title={`Wiadomość: ${details.subject || 'bez tematu'}`}
+              title={`Wiadomość: ${formatSystemSubject(details.subject)}`}
             />
           ) : details.body?.trim() ? (
             <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-[#e5e4e2]">
@@ -261,35 +243,9 @@ export function MessagePreviewPane({
         </div>
       </div>
 
-      {details.attachments && details.attachments.length > 0 && (
-        <div className="shrink-0 border-t border-[#d3bb73]/15 bg-[#11141f] px-4 pb-4 pt-2 sm:px-6 sm:pr-20">
-          <div className="rounded-lg border border-[#d3bb73]/15 bg-[#171a28] p-2.5 shadow-lg shadow-black/20">
-            <div className="mb-1.5 flex items-center gap-2 text-[11px] font-medium text-[#e5e4e2]/70">
-              <Paperclip className="h-3.5 w-3.5 text-[#d3bb73]" />
-              Załączniki ({details.attachments.length})
-            </div>
-            <div className="max-h-28 space-y-1.5 overflow-y-auto pr-1">
-              {details.attachments.map((attachment) => (
-                <button
-                  key={attachment.id}
-                  type="button"
-                  onClick={() => downloadAttachment(attachment)}
-                  className="flex w-full min-w-0 items-center gap-2 rounded-md border border-[#d3bb73]/10 bg-[#1c1f33] px-2.5 py-1.5 text-left transition-colors hover:border-[#d3bb73]/35"
-                >
-                  <Paperclip className="h-3.5 w-3.5 shrink-0 text-[#d3bb73]" />
-                  <span className="min-w-0 flex-1 truncate text-xs text-white">
-                    {attachment.filename}
-                  </span>
-                  <span className="shrink-0 text-[10px] text-[#e5e4e2]/40">
-                    {(attachment.size_bytes / 1024).toFixed(1)} KB
-                  </span>
-                  <Download className="h-3.5 w-3.5 shrink-0 text-[#e5e4e2]/50" />
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
+      <div className="shrink-0 px-4 pb-2 empty:hidden sm:px-6 sm:pr-20">
+        <MessageAttachments message={details} onRetry={() => { void refetch(); }} />
+      </div>
     </section>
   );
 }
