@@ -118,6 +118,31 @@ const permissionCategories: PermissionCategory[] = ACCESS_SECTIONS.map(section =
   extraPermissions: section.scopes.filter(scope => !scope.key.endsWith('_own_only') && scope.key !== `${section.key}_view` && scope.key !== `${section.key}_manage`),
 }));
 
+type FinanceAccessScope = 'inherit' | 'sales' | 'sales_lead' | 'company';
+
+const FINANCE_SCOPE_OPTIONS: Array<{ value: FinanceAccessScope; label: string; description: string }> = [
+  {
+    value: 'inherit',
+    label: 'Według roli',
+    description: 'Rola „Sprzedaż / Opiekun klienta” działa jak „Sprzedaż — własne faktury”; pozostałe według uprawnień do finansów.',
+  },
+  {
+    value: 'sales',
+    label: 'Sprzedaż — własne faktury',
+    description: 'Wystawia i widzi tylko własne faktury; koszty, bank, płace i KSeF są ukryte.',
+  },
+  {
+    value: 'sales_lead',
+    label: 'Sprzedaż i rentowność — bez fakturowania',
+    description: 'Koszty, marża i prowizje własnych wydarzeń; faktury wystawia administrator.',
+  },
+  {
+    value: 'company',
+    label: 'Finanse firmy',
+    description: 'Dotychczasowe uprawnienia finansowe według zaznaczeń poniżej.',
+  },
+];
+
 export default function EmployeePermissionsTab({
   employeeId,
   isAdmin,
@@ -149,6 +174,7 @@ export default function EmployeePermissionsTab({
   const [salesTeams, setSalesTeams] = useState<SalesTeamOption[]>([]);
   const [salesTeamId, setSalesTeamId] = useState('');
   const [isSalesTeamManager, setIsSalesTeamManager] = useState(false);
+  const [financeAccessScope, setFinanceAccessScope] = useState<FinanceAccessScope>('inherit');
   const [webhookSourceSettings, setWebhookSourceSettings] = useState<Record<string, boolean>>({});
   const [notificationDefaultsEnabled, setNotificationDefaultsEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -187,7 +213,7 @@ export default function EmployeePermissionsTab({
         supabase
           .from('employees')
           .select(
-            'updated_at, role, access_level, access_level_id, permissions, event_tabs, contact_tabs, organization_tabs, my_company_ids, company_access_mode, role_permissions_inherited, invoice_company_permissions, sales_team_id, is_sales_team_manager, access_levels(name, default_permissions, event_tabs, contact_tabs, organization_tabs)',
+            'updated_at, role, access_level, access_level_id, permissions, event_tabs, contact_tabs, organization_tabs, my_company_ids, company_access_mode, role_permissions_inherited, invoice_company_permissions, sales_team_id, is_sales_team_manager, finance_access_scope, access_levels(name, default_permissions, event_tabs, contact_tabs, organization_tabs)',
           )
           .eq('id', employeeId)
           .maybeSingle(),
@@ -235,6 +261,11 @@ export default function EmployeePermissionsTab({
       setSalesTeams((salesTeamsRes.data || []) as SalesTeamOption[]);
       setSalesTeamId(data?.sales_team_id || '');
       setIsSalesTeamManager(data?.is_sales_team_manager || false);
+      setFinanceAccessScope(
+        FINANCE_SCOPE_OPTIONS.some((option) => option.value === (data as any)?.finance_access_scope)
+          ? ((data as any).finance_access_scope as FinanceAccessScope)
+          : 'inherit',
+      );
 
       const adminNotificationDefaults =
         data?.role === 'admin' ||
@@ -491,6 +522,8 @@ export default function EmployeePermissionsTab({
           invoice_company_permissions: invoiceCompanyPerms,
           sales_team_id: salesTeamId || null,
           is_sales_team_manager: isSalesTeamManager,
+          // Zakres finansów zmienia wyłącznie administrator (wymusza to też trigger w bazie).
+          ...(isAdmin ? { finance_access_scope: financeAccessScope } : {}),
         })
         .eq('id', employeeId)
         .filter('updated_at', loadedUpdatedAt ? 'eq' : 'is', loadedUpdatedAt)
@@ -985,6 +1018,45 @@ export default function EmployeePermissionsTab({
                         a na karcie wydarzenia określasz projekty, poziom obsługi i okres dostępu.
                         Light Magic pozostaje zawsze dostępny jako moduł podstawowy.
                       </p>
+                    </div>
+                  )}
+
+                  {category.key === 'invoices' && (
+                    <div className="space-y-2 border-t border-[#d3bb73]/10 pt-3">
+                      <div className="text-sm font-medium text-[#e5e4e2]/80">
+                        Zakres danych finansowych
+                        <span className="mt-1 block text-xs font-normal text-[#e5e4e2]/60">
+                          Decyduje, które faktury, koszty i prowizje pracownik widzi i czy może wystawiać faktury.
+                          Zmienia wyłącznie administrator.
+                        </span>
+                      </div>
+                      <div className="grid gap-2 md:grid-cols-2">
+                        {FINANCE_SCOPE_OPTIONS.map((option) => (
+                          <label
+                            key={option.value}
+                            className={`flex cursor-pointer items-start gap-3 rounded-lg p-3 transition-colors ${
+                              financeAccessScope === option.value ? 'bg-[#d3bb73]/10' : 'bg-[#0f1119] hover:bg-white/5'
+                            } ${!isAdmin ? 'cursor-not-allowed opacity-60' : ''}`}
+                          >
+                            <input
+                              type="radio"
+                              name="finance-access-scope"
+                              value={option.value}
+                              checked={financeAccessScope === option.value}
+                              disabled={!isAdmin}
+                              onChange={() => {
+                                setFinanceAccessScope(option.value);
+                                setHasChanges(true);
+                              }}
+                              className="mt-0.5 h-4 w-4 border-[#d3bb73]/30 bg-[#0f1119] text-[#d3bb73] focus:ring-[#d3bb73]/50"
+                            />
+                            <span>
+                              <span className="block text-sm text-[#e5e4e2]">{option.label}</span>
+                              <span className="mt-0.5 block text-xs text-[#e5e4e2]/55">{option.description}</span>
+                            </span>
+                          </label>
+                        ))}
+                      </div>
                     </div>
                   )}
 
