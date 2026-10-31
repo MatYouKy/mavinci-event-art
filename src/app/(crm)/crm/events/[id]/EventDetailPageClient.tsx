@@ -271,6 +271,7 @@ export default function EventDetailPageClient({
     isAdmin,
     isCreator,
     currentUserId,
+    canManageEvent,
   } = permissionContext;
 
   const visibleEventTabs = useMemo(() => {
@@ -279,8 +280,9 @@ export default function EventDetailPageClient({
     return allowedEventTabs;
   }, [isAdmin, isCreator, allowedEventTabs]);
 
+  // Jedna decyzja z bazy (current_employee_can_manage_event); starsza baza: dotychczasowa reguła.
   const canEventManage =
-    isCreator || isAdmin || currentEmployee?.permissions?.includes('events_manage');
+    canManageEvent ?? Boolean(isCreator || isAdmin || currentEmployee?.permissions?.includes('events_manage'));
   const canManageTeam = canManageTeamFromContext || isCreator || isAdmin;
 
   const router = useRouter();
@@ -1088,6 +1090,7 @@ export default function EventDetailPageClient({
               router.refresh();
             }} />
             {canViewCommercials && <EventDetailsAction
+              canEditStatus={Boolean(canEventManage)}
               event={event}
               categories={categories}
               hasOffers={!!offersData && offersData.length > 0}
@@ -1310,6 +1313,7 @@ export default function EventDetailPageClient({
           startTime={event?.event_date ?? ''}
           endTime={event?.event_end_date ?? ''}
           createdById={event?.created_by ?? ''}
+          canManage={Boolean(canEventManage)}
         />
       )}
 

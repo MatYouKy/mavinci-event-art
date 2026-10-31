@@ -42,7 +42,12 @@ type PermissionEmployee = Pick<IEmployee, 'access_level' | 'role' | 'permissions
  */
 export const isAdmin = (employee: PermissionEmployee): boolean => {
   if (!employee) return false;
-  return employee.access_level === 'admin' || employee.role === 'admin';
+  // Zgodnie z funkcjami bazy (invoice_finance_is_admin, can_manage_inquiry): rola, poziom dostępu lub uprawnienie „admin”.
+  return (
+    employee.access_level === 'admin' ||
+    employee.role === 'admin' ||
+    Boolean(employee.permissions?.includes('admin'))
+  );
 };
 
 /**

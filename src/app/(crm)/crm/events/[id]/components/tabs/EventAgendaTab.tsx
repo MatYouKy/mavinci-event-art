@@ -121,6 +121,8 @@ interface EventAgendaTabProps {
   contact: ContactRow | ISimpleContact;
   organization: OrganizationRow | null;
   createdById: string;
+  /** Decyzja z current_employee_can_manage_event (administrator, events_manage, opiekun sprzedaży). */
+  canManage?: boolean;
 }
 
 interface AgendaItem {
@@ -150,6 +152,7 @@ export default function EventAgendaTab({
   contact,
   organization,
   createdById,
+  canManage: canManageFromEvent,
 }: EventAgendaTabProps) {
   const { employee } = useCurrentEmployee();
   const { event } = useEvent();
@@ -234,7 +237,8 @@ export default function EventAgendaTab({
   const [endTimeInput, setEndTimeInput] = useState(() => isoToTimeInput(endTime));
 
   const canManage =
-    employee?.permissions?.includes('events_manage') || employee?.permissions?.includes('admin');
+    canManageFromEvent ??
+    Boolean(employee?.permissions?.includes('events_manage') || employee?.permissions?.includes('admin'));
 
   useEffect(() => {
     fetchAgenda();

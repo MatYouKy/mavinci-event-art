@@ -52,6 +52,10 @@ export type EventPermissionContext = {
   hasLimitedAccess: boolean;
   isAdmin: boolean;
   isCreator: boolean;
+  /** Opiekun sprzedaży wydarzenia (właściciel zapytania, autor zaakceptowanej oferty, opiekun sprzedawcy z portalu). */
+  sellsEvent?: boolean;
+  /** Decyzja bazy: public.current_employee_can_manage_event — ta sama co w RLS agendy i wydarzenia. */
+  canManageEvent?: boolean;
   currentUserId: string | null;
 };
 
@@ -283,7 +287,16 @@ export async function fetchEventByIdServer(
     Array.isArray((currentEmployee as any)?.permissions) &&
     (currentEmployee as any).permissions.includes('events_manage');
 
-  const isCreator = creatorId === currentUserId;
+  const [sellsEventResult, manageEventResult] = await Promise.all([
+    supabase.rpc('current_employee_sells_event', { p_event_id: normalizedEventId }),
+    supabase.rpc('current_employee_can_manage_event', { p_event_id: normalizedEventId }),
+  ]);
+  const sellsEvent = !sellsEventResult.error && sellsEventResult.data === true;
+  // Opiekun sprzedaży prowadzi wydarzenie tak jak jego autor (agenda, status, zespół).
+  const isCreator = creatorId === currentUserId || sellsEvent;
+  const canManageEvent = manageEventResult.error
+    ? Boolean(isAdmin || canManageEvents || isCreator)
+    : manageEventResult.data === true;
 
   const hasAcceptedOnlyCalendarView =
     !isAdmin &&
@@ -442,7 +455,7 @@ const realizationCompany = myCompany
     creator: (creator as unknown as IEmployee) ?? null,
     organization: (organization as OrganizationRow) ?? null,
     currentEmployee: (currentEmployee as unknown as IEmployee) ?? null,
-    permissionContext,
+    permissionContext: { ...permissionContext, sellsEvent, canManageEvent },
     employees: (eventEmployees as EventEmployeeAssignmentRow[]) ?? [],
   } as EventByIdServerResult;
 }

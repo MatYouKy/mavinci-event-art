@@ -397,8 +397,8 @@ export default function EventDetailsAction({
 
   const isReadyForLive = currentStatus === 'ready_for_live';
 
-  const canAgenda =
-    employee?.permissions?.includes('events_manage') || employee?.permissions?.includes('admin');
+  // Agenda podlega tej samej decyzji co status wydarzenia (current_employee_can_manage_event).
+  const canAgenda = canManageStatus;
 
   const canEquipment =
     employee?.permissions?.includes('equipment_manage') || employee?.permissions?.includes('admin');
