@@ -39,6 +39,24 @@ Deno.serve(async (req: Request) => {
       throw new Error("Missing emailAccountId");
     }
 
+    // Dostęp sprawdzamy uprawnieniami wywołującego (RLS: własna skrzynka, przypisana albo
+    // messages_manage), zanim klient serwisowy odczyta cokolwiek z tej skrzynki.
+    const callerClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
+      global: { headers: { Authorization: authHeader } },
+      auth: { persistSession: false },
+    });
+    const { data: allowedAccount, error: accessError } = await callerClient
+      .from("employee_email_accounts")
+      .select("id")
+      .eq("id", emailAccountId)
+      .maybeSingle();
+    if (accessError || !allowedAccount) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Brak dostępu do tej skrzynki." }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
     const { data: emailAccount, error: accountError } = await supabase
       .from("employee_email_accounts")
       .select("*")
