@@ -28,8 +28,17 @@ BEGIN
     WHERE o.status::text = 'sent' AND o.sent_at IS NOT NULL
       AND coalesce(o.sales_channel, 'crm') <> 'seller_portal'
       AND (inquiry.id IS NULL OR (inquiry.archived_at IS NULL AND coalesce(inquiry.inquiry_stage, '') NOT IN ('won', 'lost')))
-      AND (o.sent_at < now() - interval '3 days'
-        OR (o.valid_until IS NOT NULL AND o.valid_until::date <= (now() AT TIME ZONE 'Europe/Warsaw')::date + 2))
+      -- Tylko oferty z ostatnich 30 dni i z co najmniej jednym niewysłanym przypomnieniem
+      -- (inaczej stare rekordy zapełniłyby limit i nowe oferty nie dostawałyby przypomnień).
+      AND o.sent_at > now() - interval '30 days'
+      AND (
+        (o.sent_at < now() - interval '3 days' AND NOT ('no_reply_3d' = ANY(o.follow_up_reminders_sent)))
+        OR (o.sent_at < now() - interval '7 days' AND NOT ('no_reply_7d' = ANY(o.follow_up_reminders_sent)))
+        OR (o.valid_until IS NOT NULL
+          AND o.valid_until::date BETWEEN (now() AT TIME ZONE 'Europe/Warsaw')::date
+            AND (now() AT TIME ZONE 'Europe/Warsaw')::date + 2
+          AND NOT ('expires_2d' = ANY(o.follow_up_reminders_sent))))
+    ORDER BY o.sent_at
     LIMIT 500
   LOOP
     kind := CASE
@@ -40,8 +49,17 @@ BEGIN
       WHEN offer.sent_at < now() - interval '7 days' AND NOT ('no_reply_7d' = ANY(offer.follow_up_reminders_sent)) THEN 'no_reply_7d'
       WHEN offer.sent_at < now() - interval '3 days' AND offer.sent_at >= now() - interval '7 days'
         AND NOT ('no_reply_3d' = ANY(offer.follow_up_reminders_sent)) THEN 'no_reply_3d'
+      -- Po 7 dniach przypomnienie 3-dniowe nie ma już sensu: oznaczamy je jako obsłużone.
+      WHEN offer.sent_at < now() - interval '7 days' AND NOT ('no_reply_3d' = ANY(offer.follow_up_reminders_sent))
+        THEN 'skip_3d'
       ELSE NULL END;
     CONTINUE WHEN kind IS NULL;
+
+    IF kind = 'skip_3d' THEN
+      UPDATE public.offers SET follow_up_reminders_sent = array_append(follow_up_reminders_sent, 'no_reply_3d')
+      WHERE id = offer.id;
+      CONTINUE;
+    END IF;
 
     recipients := public.offer_sales_owner_user_ids(offer.id);
     label := coalesce(nullif(offer.title, ''), offer.offer_number, 'Oferta');
@@ -77,10 +95,21 @@ BEGIN
  RETURN NEW;
 END $$;
 
--- Ponowna wysyłka zaczyna odliczanie od nowa.
+-- Data wysyłki oferty: record_sales_delivery (send-offer-email) zmienia tylko status na „sent”,
+-- nie ustawia sent_at — bez tego przypomnienia i „Mój dzień” nie widziałyby ofert z CRM.
+-- Ten sam wyzwalacz zeruje przypomnienia przy nowej dacie wysyłki i dla nowych ofert (także kopii).
 CREATE OR REPLACE FUNCTION public.reset_offer_followups_on_send()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
 BEGIN
+  IF TG_OP = 'INSERT' THEN
+    NEW.follow_up_reminders_sent := '{}';
+    IF NEW.status::text = 'sent' AND NEW.sent_at IS NULL THEN NEW.sent_at := now(); END IF;
+    RETURN NEW;
+  END IF;
+  IF NEW.status::text = 'sent' AND OLD.status::text IS DISTINCT FROM 'sent'
+    AND NEW.sent_at IS NOT DISTINCT FROM OLD.sent_at THEN
+    NEW.sent_at := now();
+  END IF;
   IF NEW.sent_at IS DISTINCT FROM OLD.sent_at THEN
     NEW.follow_up_reminders_sent := '{}';
   END IF;
@@ -88,8 +117,29 @@ BEGIN
 END;
 $$;
 DROP TRIGGER IF EXISTS reset_offer_followups_on_send ON public.offers;
-CREATE TRIGGER reset_offer_followups_on_send BEFORE UPDATE OF sent_at ON public.offers
+CREATE TRIGGER reset_offer_followups_on_send BEFORE INSERT OR UPDATE ON public.offers
   FOR EACH ROW EXECUTE FUNCTION public.reset_offer_followups_on_send();
+
+-- Uzupełnienie sent_at dla ofert już wysłanych: ostatnia wysyłka z historii zapytania,
+-- a gdy jej brak — data ostatniej zmiany oferty (przybliżenie).
+UPDATE public.offers o SET sent_at = delivery.last_sent
+FROM (
+  SELECT (a.metadata->>'document_id')::uuid AS offer_id, max(a.created_at) AS last_sent
+  FROM public.inquiry_activity a
+  WHERE a.kind = 'delivery' AND a.metadata->>'document_id' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+  GROUP BY 1
+) delivery
+WHERE o.id = delivery.offer_id AND o.status::text = 'sent' AND o.sent_at IS NULL;
+UPDATE public.offers SET sent_at = coalesce(updated_at, created_at)
+WHERE status::text = 'sent' AND sent_at IS NULL;
+
+-- Start bez lawiny powiadomień: oferty wysłane wcześniej mają już „wykorzystane” przypomnienia
+-- za miniony czas (i tak widać je w „Mój dzień” jako oferty bez odpowiedzi).
+UPDATE public.offers SET follow_up_reminders_sent = CASE
+    WHEN sent_at < now() - interval '7 days' THEN ARRAY['no_reply_3d', 'no_reply_7d']
+    ELSE ARRAY['no_reply_3d'] END
+WHERE status::text = 'sent' AND sent_at IS NOT NULL AND sent_at < now() - interval '3 days'
+  AND follow_up_reminders_sent = '{}';
 
 -- Przekazanie do fakturowania po akceptacji oferty.
 CREATE OR REPLACE FUNCTION public.notify_finance_on_offer_accepted()
@@ -98,10 +148,17 @@ DECLARE recipients uuid[]; event_name text; seller text;
 BEGIN
   IF NEW.status::text <> 'accepted' OR OLD.status::text IS NOT DISTINCT FROM 'accepted' THEN RETURN NEW; END IF;
 
+  -- Finanse firmy: administratorzy i osoby z uprawnieniami finansowymi, bez zakresów sprzedażowych
+  -- (sprzedawca nie widzi kwot cudzej sprzedaży).
   SELECT array_agg(DISTINCT coalesce(e.auth_user_id, e.id)) INTO recipients
   FROM public.employees e
-  WHERE e.is_active AND (e.role::text = 'admin' OR e.access_level::text = 'admin'
-    OR coalesce(e.permissions, '{}'::text[]) && ARRAY['admin', 'finances_manage', 'invoices_manage']::text[]);
+  LEFT JOIN public.access_levels level ON level.id = e.access_level_id
+  WHERE e.is_active
+    AND (e.role::text = 'admin' OR e.access_level::text = 'admin'
+      OR 'admin' = ANY(coalesce(e.permissions, '{}'::text[]))
+      OR (coalesce(e.permissions, '{}'::text[]) && ARRAY['finances_manage', 'invoices_manage']::text[]
+        AND coalesce(e.finance_access_scope, 'inherit') NOT IN ('sales', 'sales_lead')
+        AND NOT (coalesce(e.finance_access_scope, 'inherit') = 'inherit' AND level.slug = 'sales-specialist')));
   SELECT name INTO event_name FROM public.events WHERE id = NEW.event_id;
   SELECT concat_ws(' ', e.name, e.surname) INTO seller FROM public.employees e
   WHERE e.id = NEW.created_by OR e.auth_user_id = NEW.created_by LIMIT 1;

@@ -28,15 +28,23 @@ const deny = (error: string, status: number): Denied => ({
  * Klient Supabase działający w imieniu zalogowanego użytkownika (RLS obowiązuje).
  * Obsługuje sesję z ciasteczek CRM oraz nagłówek Authorization: Bearer z aplikacji mobilnej.
  */
-function sessionClient(request?: Request): SupabaseClient {
+function sessionClient(request?: Request): { client: SupabaseClient; token: string | null } {
   const authorization = request?.headers.get('authorization');
   if (authorization?.toLowerCase().startsWith('bearer ')) {
-    return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
+    const client = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
       global: { headers: { Authorization: authorization } },
       auth: { persistSession: false, autoRefreshToken: false },
     });
+    return { client, token: authorization.slice(7).trim() };
   }
-  return createSupabaseServerClient(cookies()) as unknown as SupabaseClient;
+  return { client: createSupabaseServerClient(cookies()) as unknown as SupabaseClient, token: null };
+}
+
+/** Bez zapisanej sesji (nagłówek Bearer) getUser musi dostać token wprost. */
+async function sessionUser(request?: Request) {
+  const { client, token } = sessionClient(request);
+  const { data, error } = token ? await client.auth.getUser(token) : await client.auth.getUser();
+  return { client, user: error ? null : data.user };
 }
 
 /**
@@ -44,12 +52,12 @@ function sessionClient(request?: Request): SupabaseClient {
  * Każdy endpoint /bridge, który używa klucza serwisowego, musi najpierw wywołać tę funkcję.
  */
 export async function requireSessionEmployee(request?: Request): Promise<Granted | Denied> {
-  const client = sessionClient(request);
-  const { data: { user }, error } = await client.auth.getUser();
-  if (error || !user) return deny('Zaloguj się ponownie.', 401);
+  const { client, user } = await sessionUser(request);
+  if (!user) return deny('Zaloguj się ponownie.', 401);
 
+  // Brak odpowiedzi = brak dostępu (fail closed).
   const portal = await client.rpc('current_session_is_seller_portal');
-  if (portal.data === true) return deny('Ta operacja jest dostępna tylko w CRM.', 403);
+  if (portal.error || portal.data !== false) return deny('Ta operacja jest dostępna tylko w CRM.', 403);
 
   const { data: row } = await client
     .from('employees')
@@ -92,8 +100,7 @@ export async function canManageEvent(client: SupabaseClient, eventId: string) {
 
 /** Dowolny zalogowany użytkownik (pracownik CRM albo konto portalu sprzedawcy). */
 export async function requireSessionUser(request?: Request): Promise<{ ok: true; client: SupabaseClient } | Denied> {
-  const client = sessionClient(request);
-  const { data: { user }, error } = await client.auth.getUser();
-  if (error || !user) return deny('Zaloguj się ponownie.', 401);
+  const { client, user } = await sessionUser(request);
+  if (!user) return deny('Zaloguj się ponownie.', 401);
   return { ok: true, client };
 }

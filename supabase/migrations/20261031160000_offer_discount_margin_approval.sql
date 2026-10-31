@@ -44,44 +44,57 @@ RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalo
   SELECT public.current_employee_is_crm_admin() OR public.finance_can_manage();
 $$;
 
--- Ocena oferty względem progów; bez zależności od sesji (używana też przez usługę wysyłki).
-CREATE OR REPLACE FUNCTION public.offer_guardrail_evaluation(p_offer_id uuid)
+-- Ocena oferty względem progów. Kwoty liczone po stronie bazy z pozycji oferty (jak
+-- calculate_offer_totals), a nie z kolumn total_cost/margin_percent zapisanych przez klienta.
+-- Przyjmuje wiersz, żeby wyzwalacz mógł ocenić NOWE wartości jeszcze przed zapisem.
+CREATE OR REPLACE FUNCTION public.offer_guardrail_evaluate_row(o public.offers)
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, public AS $$
-DECLARE o public.offers%ROWTYPE; g public.sales_offer_guardrails%ROWTYPE;
-  reasons jsonb := '[]'::jsonb; discount numeric; margin numeric; approval_valid boolean := false;
-  snapshot jsonb;
+DECLARE g public.sales_offer_guardrails%ROWTYPE;
+  items_subtotal numeric := 0; items_cost numeric := 0; subtotal numeric; cost numeric;
+  discount_value numeric; discount numeric; net numeric; margin numeric;
+  reasons jsonb := '[]'::jsonb; approval_valid boolean := false; snapshot jsonb := o.approval_snapshot;
 BEGIN
-  SELECT * INTO o FROM public.offers WHERE id = p_offer_id;
-  IF NOT FOUND THEN RETURN NULL; END IF;
   SELECT * INTO g FROM public.sales_offer_guardrails WHERE id = 1;
+  SELECT coalesce(sum(coalesce(i.total, 0)), 0)::numeric,
+         coalesce(sum(coalesce(i.unit_cost, 0) * coalesce(i.quantity, 0)), 0)::numeric
+    INTO items_subtotal, items_cost
+  FROM public.offer_items i WHERE i.offer_id = o.id;
 
-  discount := coalesce(nullif(o.discount_percent, 0), CASE
-    WHEN coalesce(o.subtotal, 0) > 0 AND coalesce(o.discount_amount, 0) > 0
-    THEN round(o.discount_amount / o.subtotal * 100, 2) END, 0);
-  margin := CASE WHEN coalesce(o.total_cost, 0) > 0 THEN o.margin_percent END;
+  subtotal := items_subtotal + CASE WHEN coalesce(o.logistics_enabled, false)
+    THEN coalesce(o.logistics_price_net, 0)::numeric ELSE 0 END;
+  cost := items_cost + coalesce(o.logistics_cost_net, 0)::numeric;
+  discount_value := CASE WHEN coalesce(o.discount_amount, 0) > 0
+    THEN least(subtotal, o.discount_amount::numeric)
+    ELSE round(subtotal * coalesce(o.discount_percent, 0)::numeric / 100, 2) END;
+  discount := CASE WHEN subtotal > 0 THEN round(discount_value / subtotal * 100, 2) ELSE 0 END;
+  net := subtotal - discount_value;
+  margin := CASE WHEN cost > 0 AND net > 0 THEN round((net - cost) / net * 100, 2) END;
 
   IF coalesce(g.enabled, false) AND coalesce(o.sales_channel, 'crm') <> 'seller_portal' THEN
     IF discount > g.max_discount_percent THEN
       reasons := reasons || jsonb_build_object('kind', 'discount', 'value', discount, 'limit', g.max_discount_percent,
-        'message', format('Rabat %s%% przekracza limit %s%%', round(discount, 2), g.max_discount_percent));
+        'message', format('Rabat %s%% przekracza limit %s%%', discount, g.max_discount_percent));
     END IF;
     IF margin IS NOT NULL AND margin < g.min_margin_percent THEN
       reasons := reasons || jsonb_build_object('kind', 'margin', 'value', margin, 'limit', g.min_margin_percent,
-        'message', format('Marża %s%% jest poniżej progu %s%%', round(margin, 2), g.min_margin_percent));
+        'message', format('Marża %s%% jest poniżej progu %s%%', margin, g.min_margin_percent));
     END IF;
   END IF;
 
-  snapshot := o.approval_snapshot;
+  -- Akceptacja obowiązuje dla tej samej wartości pozycji, rabatu nie wyższego i marży nie niższej.
   IF o.approval_status = 'approved' AND snapshot IS NOT NULL THEN
-    approval_valid := coalesce((snapshot->>'total_amount')::numeric, -1) = coalesce(o.total_amount, 0)
-      AND coalesce((snapshot->>'discount')::numeric, -1) = discount
-      AND (margin IS NULL OR margin >= coalesce((snapshot->>'margin')::numeric, margin) - 0.01);
+    approval_valid := abs(coalesce((snapshot->>'subtotal')::numeric, -1) - subtotal) <= 0.01
+      AND discount <= coalesce((snapshot->>'discount')::numeric, -1) + 0.01
+      AND (margin IS NULL
+        OR margin >= coalesce(g.min_margin_percent, 0)
+        OR ((snapshot->>'margin') IS NOT NULL AND margin >= (snapshot->>'margin')::numeric - 0.01));
   END IF;
 
   RETURN jsonb_build_object(
     'offer_id', o.id,
     'required', jsonb_array_length(reasons) > 0,
     'reasons', reasons,
+    'subtotal', subtotal,
     'discount_percent', discount,
     'margin_percent', margin,
     'margin_known', margin IS NOT NULL,
@@ -97,6 +110,16 @@ BEGIN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION public.offer_guardrail_evaluation(p_offer_id uuid)
+RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+DECLARE o public.offers%ROWTYPE;
+BEGIN
+  SELECT * INTO o FROM public.offers WHERE id = p_offer_id;
+  IF NOT FOUND THEN RETURN NULL; END IF;
+  RETURN public.offer_guardrail_evaluate_row(o);
+END;
+$$;
+
 -- Dla interfejsu: ocena + prawa bieżącego użytkownika.
 CREATE OR REPLACE FUNCTION public.get_offer_guardrail_status(p_offer_id uuid)
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, public AS $$
@@ -106,6 +129,8 @@ BEGIN
     RAISE EXCEPTION 'Wymagane konto pracownika.' USING ERRCODE = '42501';
   END IF;
   IF NOT EXISTS (SELECT 1 FROM public.offers WHERE id = p_offer_id) THEN RETURN NULL; END IF;
+  -- Marża i rabat cudzej oferty nie są widoczne dla innych sprzedawców.
+  IF NOT (can_approve OR public.sales_can_manage_offer(p_offer_id)) THEN RETURN NULL; END IF;
   result := public.offer_guardrail_evaluation(p_offer_id);
   RETURN result || jsonb_build_object(
     'can_approve', can_approve,
@@ -122,14 +147,21 @@ BEGIN
     RAISE EXCEPTION 'Brak uprawnień do tej oferty.' USING ERRCODE = '42501';
   END IF;
   evaluation := public.offer_guardrail_evaluation(p_offer_id);
-  IF NOT (evaluation->>'required')::boolean THEN RETURN evaluation; END IF;
+  IF NOT (evaluation->>'required')::boolean OR (evaluation->>'approval_valid')::boolean THEN RETURN evaluation; END IF;
   SELECT * INTO o FROM public.offers WHERE id = p_offer_id;
+  -- Prośba o te same kwoty już czeka — bez ponownego powiadamiania.
+  IF o.approval_status = 'pending'
+    AND o.approval_snapshot->'subtotal' = evaluation->'subtotal'
+    AND o.approval_snapshot->'discount' = evaluation->'discount_percent'
+    AND o.approval_snapshot->'margin' IS NOT DISTINCT FROM evaluation->'margin_percent' THEN
+    RETURN evaluation;
+  END IF;
 
   PERFORM set_config('mavinci.offer_approval', 'yes', true);
   UPDATE public.offers SET approval_status = 'pending', approval_requested_at = now(), approval_requested_by = actor,
     approval_decided_at = NULL, approval_decided_by = NULL,
     approval_note = nullif(btrim(coalesce(p_note, '')), ''),
-    approval_snapshot = jsonb_build_object('total_amount', coalesce(o.total_amount, 0),
+    approval_snapshot = jsonb_build_object('subtotal', evaluation->'subtotal',
       'discount', evaluation->'discount_percent', 'margin', evaluation->'margin_percent')
   WHERE id = p_offer_id;
 
@@ -167,7 +199,7 @@ BEGIN
   UPDATE public.offers SET approval_status = CASE WHEN p_approve THEN 'approved' ELSE 'rejected' END,
     approval_decided_at = now(), approval_decided_by = actor,
     approval_note = coalesce(nullif(btrim(coalesce(p_note, '')), ''), approval_note),
-    approval_snapshot = jsonb_build_object('total_amount', coalesce(o.total_amount, 0),
+    approval_snapshot = jsonb_build_object('subtotal', evaluation->'subtotal',
       'discount', evaluation->'discount_percent', 'margin', evaluation->'margin_percent')
   WHERE id = p_offer_id;
 
@@ -210,7 +242,8 @@ BEGIN
   IF auth.uid() IS NULL OR auth.role() = 'service_role' THEN RETURN NEW; END IF;
   IF NEW.status::text = 'sent' AND OLD.status::text IS DISTINCT FROM 'sent'
     AND NOT public.current_employee_can_approve_offers() THEN
-    evaluation := public.offer_guardrail_evaluation(NEW.id);
+    -- Ocena NOWYCH wartości: rabat zmieniony razem ze statusem też podlega progom.
+    evaluation := public.offer_guardrail_evaluate_row(NEW);
     IF evaluation IS NOT NULL AND NOT (evaluation->>'can_send')::boolean THEN
       RAISE EXCEPTION 'Oferta wymaga akceptacji przed wysłaniem: %',
         (SELECT string_agg(reason->>'message', '; ') FROM jsonb_array_elements(evaluation->'reasons') reason)
@@ -241,6 +274,20 @@ DROP TRIGGER IF EXISTS protect_offer_approval_columns ON public.offers;
 CREATE TRIGGER protect_offer_approval_columns BEFORE UPDATE ON public.offers
   FOR EACH ROW EXECUTE FUNCTION public.protect_offer_approval_columns();
 
+-- Nowa oferta (także kopia „Duplikuj”) zaczyna bez akceptacji.
+CREATE OR REPLACE FUNCTION public.reset_offer_approval_on_insert()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+BEGIN
+  NEW.approval_status := NULL; NEW.approval_requested_at := NULL; NEW.approval_requested_by := NULL;
+  NEW.approval_decided_at := NULL; NEW.approval_decided_by := NULL; NEW.approval_note := NULL;
+  NEW.approval_snapshot := NULL;
+  RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS reset_offer_approval_on_insert ON public.offers;
+CREATE TRIGGER reset_offer_approval_on_insert BEFORE INSERT ON public.offers
+  FOR EACH ROW EXECUTE FUNCTION public.reset_offer_approval_on_insert();
+
 -- Ta sama definicja co w 20260926120000; kolumny akceptacji nie zmieniają treści oferty
 -- (bez tego akceptacja unieważniałaby wygenerowany PDF).
 CREATE OR REPLACE FUNCTION public.mark_offer_modified() RETURNS trigger LANGUAGE plpgsql AS $$
@@ -256,12 +303,14 @@ REVOKE ALL ON FUNCTION public.current_employee_can_approve_offers(), public.get_
   public.request_offer_approval(uuid, text), public.decide_offer_approval(uuid, boolean, text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.current_employee_can_approve_offers(), public.get_offer_guardrail_status(uuid),
   public.request_offer_approval(uuid, text), public.decide_offer_approval(uuid, boolean, text) TO authenticated, service_role;
-REVOKE ALL ON FUNCTION public.offer_guardrail_evaluation(uuid) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.offer_guardrail_evaluation(uuid) TO service_role;
+REVOKE ALL ON FUNCTION public.offer_guardrail_evaluation(uuid), public.offer_guardrail_evaluate_row(public.offers)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.offer_guardrail_evaluation(uuid), public.offer_guardrail_evaluate_row(public.offers)
+  TO service_role;
 REVOKE ALL ON FUNCTION public.offer_send_guardrail(uuid, uuid) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.offer_send_guardrail(uuid, uuid) TO service_role;
-REVOKE ALL ON FUNCTION public.guard_offer_send_approval(), public.protect_offer_approval_columns()
-  FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.guard_offer_send_approval(), public.protect_offer_approval_columns(),
+  public.reset_offer_approval_on_insert() FROM PUBLIC, anon, authenticated;
 
 NOTIFY pgrst, 'reload schema';
 COMMIT;

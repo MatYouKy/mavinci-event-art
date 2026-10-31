@@ -19,6 +19,7 @@ CREATE OR REPLACE FUNCTION public.sales_finance_is_lead()
 RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public AS $$
   SELECT coalesce((
     SELECT e.finance_access_scope = 'sales_lead' AND NOT public.invoice_finance_is_admin()
+      AND NOT public.current_session_is_seller_portal()
     FROM public.employees e WHERE e.id = public.current_invoice_employee_id()
   ), false);
 $$;
@@ -62,10 +63,26 @@ RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalo
 $$;
 
 -- Koszty wydarzenia -------------------------------------------------------------------
+-- Ograniczenia RESTRICTIVE osobno dla każdej operacji: polityki permisywne są łączone przez OR,
+-- więc reguła „tylko oczekujące” musi być w polityce restrykcyjnej, a nie tylko w permisywnej.
 DROP POLICY IF EXISTS sales_finance_private ON public.event_costs;
-CREATE POLICY sales_finance_private ON public.event_costs AS RESTRICTIVE FOR ALL TO authenticated
-  USING (public.invoice_finance_scope() <> 'sales' OR public.sales_lead_owns_event(event_id))
-  WITH CHECK (public.invoice_finance_scope() <> 'sales' OR public.sales_lead_owns_event(event_id));
+DROP POLICY IF EXISTS sales_finance_private_select ON public.event_costs;
+CREATE POLICY sales_finance_private_select ON public.event_costs AS RESTRICTIVE FOR SELECT TO authenticated
+  USING (public.invoice_finance_scope() <> 'sales' OR public.sales_lead_owns_event(event_id));
+DROP POLICY IF EXISTS sales_finance_private_insert ON public.event_costs;
+CREATE POLICY sales_finance_private_insert ON public.event_costs AS RESTRICTIVE FOR INSERT TO authenticated
+  WITH CHECK (public.invoice_finance_scope() <> 'sales'
+    OR (public.sales_lead_owns_event(event_id) AND coalesce(status, 'pending') = 'pending'));
+DROP POLICY IF EXISTS sales_finance_private_update ON public.event_costs;
+CREATE POLICY sales_finance_private_update ON public.event_costs AS RESTRICTIVE FOR UPDATE TO authenticated
+  USING (public.invoice_finance_scope() <> 'sales'
+    OR (public.sales_lead_owns_event(event_id) AND coalesce(status, 'pending') = 'pending'))
+  WITH CHECK (public.invoice_finance_scope() <> 'sales'
+    OR (public.sales_lead_owns_event(event_id) AND coalesce(status, 'pending') = 'pending'));
+DROP POLICY IF EXISTS sales_finance_private_delete ON public.event_costs;
+CREATE POLICY sales_finance_private_delete ON public.event_costs AS RESTRICTIVE FOR DELETE TO authenticated
+  USING (public.invoice_finance_scope() <> 'sales'
+    OR (public.sales_lead_owns_event(event_id) AND coalesce(status, 'pending') = 'pending'));
 
 DROP POLICY IF EXISTS sales_lead_event_costs_read ON public.event_costs;
 CREATE POLICY sales_lead_event_costs_read ON public.event_costs FOR SELECT TO authenticated
@@ -81,14 +98,28 @@ DROP POLICY IF EXISTS sales_lead_event_costs_delete ON public.event_costs;
 CREATE POLICY sales_lead_event_costs_delete ON public.event_costs FOR DELETE TO authenticated
   USING (public.sales_lead_owns_event(event_id) AND coalesce(status, 'pending') = 'pending');
 
--- Gotówka wydarzenia: tylko odczyt ------------------------------------------------------
+-- Gotówka wydarzenia: opiekun sprzedaży tylko odczytuje ------------------------------------
 DROP POLICY IF EXISTS sales_finance_private ON public.event_cash_transactions;
-CREATE POLICY sales_finance_private ON public.event_cash_transactions AS RESTRICTIVE FOR ALL TO authenticated
-  USING (public.invoice_finance_scope() <> 'sales' OR public.sales_lead_owns_event(event_id))
+DROP POLICY IF EXISTS sales_finance_private_select ON public.event_cash_transactions;
+CREATE POLICY sales_finance_private_select ON public.event_cash_transactions AS RESTRICTIVE FOR SELECT TO authenticated
+  USING (public.invoice_finance_scope() <> 'sales' OR public.sales_lead_owns_event(event_id));
+DROP POLICY IF EXISTS sales_finance_private_insert ON public.event_cash_transactions;
+CREATE POLICY sales_finance_private_insert ON public.event_cash_transactions AS RESTRICTIVE FOR INSERT TO authenticated
   WITH CHECK (public.invoice_finance_scope() <> 'sales');
+DROP POLICY IF EXISTS sales_finance_private_update ON public.event_cash_transactions;
+CREATE POLICY sales_finance_private_update ON public.event_cash_transactions AS RESTRICTIVE FOR UPDATE TO authenticated
+  USING (public.invoice_finance_scope() <> 'sales') WITH CHECK (public.invoice_finance_scope() <> 'sales');
+DROP POLICY IF EXISTS sales_finance_private_delete ON public.event_cash_transactions;
+CREATE POLICY sales_finance_private_delete ON public.event_cash_transactions AS RESTRICTIVE FOR DELETE TO authenticated
+  USING (public.invoice_finance_scope() <> 'sales');
 DROP POLICY IF EXISTS sales_lead_cash_read ON public.event_cash_transactions;
 CREATE POLICY sales_lead_cash_read ON public.event_cash_transactions FOR SELECT TO authenticated
   USING (public.sales_lead_owns_event(event_id));
+
+-- Faktury: opiekun bez fakturowania nie usuwa także faktur wystawionych wcześniej ------------
+DROP POLICY IF EXISTS invoices_sales_lead_no_delete ON public.invoices;
+CREATE POLICY invoices_sales_lead_no_delete ON public.invoices AS RESTRICTIVE FOR DELETE TO authenticated
+  USING (NOT public.sales_finance_is_lead());
 
 -- Prowizje wydarzenia ----------------------------------------------------------------
 DROP POLICY IF EXISTS commissions_sales_read_scope ON public.event_commissions;

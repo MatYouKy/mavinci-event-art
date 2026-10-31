@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { employeeHasAny, requireSessionEmployee } from '@/lib/auth/requireEmployee.server';
+import { requireSessionEmployee } from '@/lib/auth/requireEmployee.server';
 
 export const dynamic = 'force-dynamic';
 
@@ -92,8 +92,9 @@ export async function POST(request: Request) {
   try {
     const access = await requireSessionEmployee(request);
     if (!access.ok) return access.response;
-    if (!employeeHasAny(access.employee, 'tenders_view')) {
-      return NextResponse.json({ success: false, error: 'Brak dostępu do przetargów.' }, { status: 403 });
+    // Przeliczenie nadpisuje ocenę wszystkich przetargów kluczem serwisowym — tylko administrator.
+    if (!access.employee.isAdmin) {
+      return NextResponse.json({ success: false, error: 'Przeliczenie ocen uruchamia administrator.' }, { status: 403 });
     }
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;

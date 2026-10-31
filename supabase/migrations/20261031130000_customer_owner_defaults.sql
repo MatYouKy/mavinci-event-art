@@ -1,7 +1,7 @@
 BEGIN;
 
 -- 1. Opiekun klienta jest ustawiany automatycznie przy dodaniu kontaktu lub organizacji
---    przez osobę ze sprzedaży. Od opiekuna zależą: widoczność sprzedawców zewnętrznych,
+--    przez sprzedawcę (rola sprzedaży; nie administrator ani kierownik). Od opiekuna zależą: widoczność sprzedawców zewnętrznych,
 --    prowizje i raport „Moja sprzedaż”, więc rekord bez opiekuna „znika” ze sprzedaży.
 -- 2. Tożsamość pracownika: id lub auth_user_id (jak w nowszych funkcjach), nie tylko id = auth.uid().
 -- 3. Przejęcie cudzego klienta wymaga administratora albo kierownika zespołu sprzedaży.
@@ -59,7 +59,16 @@ BEGIN
     RETURN NEW;
   END IF;
   actor := public.current_crm_employee_id();
-  IF actor IS NOT NULL AND public.employee_is_eligible_customer_owner(actor) THEN
+  -- Domyślnie opiekunem zostaje tylko sprzedawca. Kontakty dodane przez administratora lub
+  -- kierownika zostają bez opiekuna, żeby sprzedawca mógł je przejąć.
+  IF actor IS NOT NULL AND EXISTS (
+    SELECT 1 FROM public.employees employee
+    LEFT JOIN public.access_levels level ON level.id = employee.access_level_id
+    WHERE employee.id = actor
+      AND employee.role::text <> 'admin' AND coalesce(employee.access_level::text, '') <> 'admin'
+      AND NOT ('admin' = ANY(coalesce(employee.permissions, '{}'::text[])))
+      AND (employee.role::text = 'sales' OR employee.access_level::text = 'sales' OR level.slug = 'sales-specialist')
+  ) THEN
     NEW.owner_id := actor;
   END IF;
   RETURN NEW;

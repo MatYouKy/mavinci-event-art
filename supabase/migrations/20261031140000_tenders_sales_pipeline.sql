@@ -41,6 +41,11 @@ CREATE POLICY tenders_admin_insert ON public.tenders FOR INSERT TO authenticated
   WITH CHECK (public.current_employee_is_crm_admin());
 CREATE POLICY tenders_admin_delete ON public.tenders FOR DELETE TO authenticated
   USING (public.current_employee_is_crm_admin());
+-- Niezależnie od nazw starszych polityk permisywnych: bez tenders_view nie ma dostępu.
+DROP POLICY IF EXISTS tenders_employees_only ON public.tenders;
+CREATE POLICY tenders_employees_only ON public.tenders AS RESTRICTIVE FOR ALL TO authenticated
+  USING (public.current_employee_can_view_tenders())
+  WITH CHECK (public.current_employee_can_view_tenders());
 
 DROP POLICY IF EXISTS "Authenticated users can view filter configs" ON public.tender_filter_config;
 DROP POLICY IF EXISTS "Authenticated users can manage filter configs" ON public.tender_filter_config;
@@ -52,10 +57,18 @@ CREATE POLICY tender_filter_config_view ON public.tender_filter_config FOR SELEC
 CREATE POLICY tender_filter_config_admin ON public.tender_filter_config FOR ALL TO authenticated
   USING (public.current_employee_is_crm_admin())
   WITH CHECK (public.current_employee_is_crm_admin());
+DROP POLICY IF EXISTS tender_filter_config_employees_only ON public.tender_filter_config;
+CREATE POLICY tender_filter_config_employees_only ON public.tender_filter_config AS RESTRICTIVE FOR ALL TO authenticated
+  USING (public.current_employee_can_view_tenders())
+  WITH CHECK (public.current_employee_is_crm_admin());
 
 DROP POLICY IF EXISTS "Authenticated users can view import logs" ON public.tender_import_logs;
 CREATE POLICY tender_import_logs_view ON public.tender_import_logs FOR SELECT TO authenticated
   USING (public.current_employee_can_view_tenders());
+DROP POLICY IF EXISTS tender_import_logs_employees_only ON public.tender_import_logs;
+CREATE POLICY tender_import_logs_employees_only ON public.tender_import_logs AS RESTRICTIVE FOR ALL TO authenticated
+  USING (public.current_employee_can_view_tenders())
+  WITH CHECK (public.current_employee_is_crm_admin());
 
 -- Powiązania -------------------------------------------------------------------------
 ALTER TABLE public.tenders
@@ -74,7 +87,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_tasks_inquiry_per_tender ON public.tasks(te
 CREATE OR REPLACE FUNCTION public.guard_tender_assignment()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
 BEGIN
-  IF auth.uid() IS NULL OR auth.role() = 'service_role'
+  -- pg_trigger_depth() > 1: zmiany kaskadowe (np. ON DELETE SET NULL po usunięciu zapytania).
+  IF auth.uid() IS NULL OR auth.role() = 'service_role' OR pg_trigger_depth() > 1
     OR coalesce(current_setting('mavinci.tender_assignment', true), '') = 'yes'
     OR public.current_employee_is_crm_admin() THEN
     RETURN NEW;
@@ -91,6 +105,21 @@ $$;
 DROP TRIGGER IF EXISTS guard_tender_assignment ON public.tenders;
 CREATE TRIGGER guard_tender_assignment BEFORE UPDATE ON public.tenders
   FOR EACH ROW EXECUTE FUNCTION public.guard_tender_assignment();
+
+-- Przesunięty termin składania (aktualizacja z BZP/TED) = przypomnienia od nowa.
+-- Nazwa „zz_” — wykonuje się po guard_tender_assignment (wyzwalacze BEFORE w kolejności nazw).
+CREATE OR REPLACE FUNCTION public.reset_tender_reminders_on_deadline()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+BEGIN
+  IF NEW.submission_deadline IS DISTINCT FROM OLD.submission_deadline THEN
+    NEW.deadline_reminders_sent := '{}';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS zz_reset_tender_reminders_on_deadline ON public.tenders;
+CREATE TRIGGER zz_reset_tender_reminders_on_deadline BEFORE UPDATE OF submission_deadline ON public.tenders
+  FOR EACH ROW EXECUTE FUNCTION public.reset_tender_reminders_on_deadline();
 
 -- Opiekun przetargu: sprzedawca przypisuje siebie; administrator lub kierownik zespołu — dowolną osobę z dostępem.
 CREATE OR REPLACE FUNCTION public.assign_tender(p_tender_id uuid, p_employee_id uuid)
@@ -304,7 +333,7 @@ REVOKE ALL ON FUNCTION public.current_employee_can_view_tenders(), public.curren
 GRANT EXECUTE ON FUNCTION public.current_employee_can_view_tenders(), public.current_employee_is_crm_admin(),
   public.assign_tender(uuid, uuid), public.create_inquiry_from_tender(uuid) TO authenticated, service_role;
 REVOKE ALL ON FUNCTION public.process_tender_deadline_reminders(), public.sync_tender_status_from_inquiry(),
-  public.guard_tender_assignment() FROM PUBLIC, anon, authenticated;
+  public.guard_tender_assignment(), public.reset_tender_reminders_on_deadline() FROM PUBLIC, anon, authenticated;
 
 DO $schedule$
 DECLARE job_id bigint;

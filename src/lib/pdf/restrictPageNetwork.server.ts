@@ -35,7 +35,10 @@ export async function restrictPageNetwork(page: Page, extraOrigins: Array<string
     if (/^(data|blob|about):/i.test(target)) return route.continue();
     try {
       const parsed = new URL(target);
-      if (parsed.protocol === 'https:' && allowed.has(parsed.host)) return route.continue();
+      // Tylko własne hosty z konfiguracji (http dopuszczalny dla lokalnego środowiska).
+      if ((parsed.protocol === 'https:' || parsed.protocol === 'http:') && allowed.has(parsed.host)) {
+        return route.continue();
+      }
     } catch {
       // nieprawidłowy adres — blokujemy
     }
