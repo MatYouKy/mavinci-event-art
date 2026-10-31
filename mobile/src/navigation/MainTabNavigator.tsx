@@ -25,6 +25,7 @@ import TimeTrackingScreen from '../screens/TimeTrackingScreen';
 import EmployeesScreen from '../screens/EmployeesScreen';
 import FleetScreen from '../screens/FleetScreen';
 import ClientsScreen from '../screens/ClientsScreen';
+import TendersScreen from '../screens/TendersScreen';
 import MessagesScreen from '../screens/MessagesScreen';
 import CustomDrawer from '../components/CustomDrawer';
 import { useUnreadChatCount } from '../services/chatNotifications';
@@ -48,6 +49,7 @@ export type MainTabParamList = {
   Employees: undefined;
   Fleet: undefined;
   Clients: undefined;
+  Tenders: { tenderId?: string; requestId?: number } | undefined;
 };
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -382,6 +384,15 @@ export default function MainTabNavigator() {
             title: 'Kontakty',
             tabBarButton: () => null,
             tabBarIcon: ({ color, size }) => <Feather name="book-open" color={color} size={size} />,
+          }}
+        />
+        <Tab.Screen
+          name="Tenders"
+          component={TendersScreen}
+          options={{
+            title: 'Przetargi',
+            tabBarButton: () => null,
+            tabBarIcon: ({ color, size }) => <Feather name="briefcase" color={color} size={size} />,
           }}
         />
         <Tab.Screen

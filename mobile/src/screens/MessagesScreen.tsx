@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
+  ScrollView,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -15,11 +16,13 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import PermissionGate from '../components/PermissionGate';
 import { humanizeMessageEnums } from '../lib/messageLabels';
+import { inboxMailboxIds, mailboxFilter } from '../lib/mailboxPreferences';
 
 type InboxTab = 'email' | 'forms';
 
 interface EmailMessage {
   id: string;
+  email_account_id: string;
   subject: string | null;
   from_address: string | null;
   received_date: string;
@@ -61,6 +64,13 @@ interface ContactMessage {
 
 type FormMessage = InboundEvent | ContactMessage;
 
+interface Mailbox {
+  id: string;
+  account_name: string;
+  email_address: string;
+  account_type: string;
+}
+
 function stripHtml(value: string | null) {
   if (!value) return '';
   return value
@@ -91,6 +101,41 @@ function MessagesContent() {
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  // Skrzynki jak w CRM: własne i przypisane, bez ukrytych w Ustawieniach → Skrzynki pocztowe.
+  const [mailboxes, setMailboxes] = useState<Mailbox[]>([]);
+  const [unreadByMailbox, setUnreadByMailbox] = useState<Record<string, number>>({});
+  const [selectedMailbox, setSelectedMailbox] = useState<string>('all');
+
+  const loadMailboxes = useCallback(async (): Promise<Mailbox[]> => {
+    if (!employee?.id) return [];
+    const ids = await inboxMailboxIds(supabase, employee.id);
+    if (ids.length === 0) {
+      setMailboxes([]);
+      setUnreadByMailbox({});
+      return [];
+    }
+    const { data, error } = await supabase
+      .from('employee_email_accounts')
+      .select('id, account_name, email_address, account_type')
+      .in('id', ids)
+      .eq('is_active', true);
+    if (error) throw error;
+    const order: Record<string, number> = { personal: 0, shared: 1, system: 2 };
+    const list = ((data || []) as Mailbox[]).sort((a, b) =>
+      (order[a.account_type] ?? 9) - (order[b.account_type] ?? 9) || a.account_name.localeCompare(b.account_name));
+    setMailboxes(list);
+    const counts = await Promise.all(list.map(async (mailbox) => {
+      const { count } = await supabase
+        .from('received_emails')
+        .select('id', { count: 'exact', head: true })
+        .eq('email_account_id', mailbox.id)
+        .eq('is_read', false)
+        .is('deleted_at', null);
+      return [mailbox.id, count || 0] as const;
+    }));
+    setUnreadByMailbox(Object.fromEntries(counts));
+    return list;
+  }, [employee?.id]);
 
   const fetchMessages = useCallback(async (isRefresh = false) => {
     if (!employee?.id) return;
@@ -101,14 +146,21 @@ function MessagesContent() {
 
     try {
       if (activeTab === 'email') {
+        const list = await loadMailboxes();
+        const visibleIds = list.map((mailbox) => mailbox.id);
+        const scope = selectedMailbox !== 'all' && visibleIds.includes(selectedMailbox) ? [selectedMailbox] : visibleIds;
+        if (selectedMailbox !== 'all' && !visibleIds.includes(selectedMailbox)) setSelectedMailbox('all');
+        // Pusta lista skrzynek = brak wiadomości (nigdy zapytanie bez filtra skrzynek).
         const { data, error } = await supabase
           .from('received_emails')
-          .select('id, subject, from_address, received_date, is_read, body_text, body_html')
+          .select('id, email_account_id, subject, from_address, received_date, is_read, body_text, body_html')
+          .in('email_account_id', mailboxFilter(scope))
+          .is('deleted_at', null)
           .order('received_date', { ascending: false })
           .limit(50);
 
         if (error) throw error;
-        setEmails(data || []);
+        setEmails((data || []) as EmailMessage[]);
       } else {
         const [contactResult, webhookResult] = await Promise.all([
           supabase
@@ -158,7 +210,7 @@ function MessagesContent() {
       setIsLoading(false);
       setRefreshing(false);
     }
-  }, [activeTab, employee?.id]);
+  }, [activeTab, employee?.id, loadMailboxes, selectedMailbox]);
 
   useEffect(() => {
     fetchMessages();
@@ -173,8 +225,11 @@ function MessagesContent() {
     return date.toLocaleDateString('pl-PL', { day: '2-digit', month: 'short' });
   };
 
+  const mailboxName = (id: string) => mailboxes.find((mailbox) => mailbox.id === id)?.account_name;
+
   const renderEmail = ({ item }: { item: EmailMessage }) => {
     const preview = item.body_text?.trim() || stripHtml(item.body_html);
+    const showMailbox = selectedMailbox === 'all' && mailboxes.length > 1;
 
     return (
       <TouchableOpacity
@@ -195,6 +250,9 @@ function MessagesContent() {
           <Text style={[styles.messageSubject, !item.is_read && styles.messageTextBold]} numberOfLines={1}>
             {item.subject || '(brak tematu)'}
           </Text>
+          {showMailbox && !!mailboxName(item.email_account_id) && (
+            <Text style={styles.mailboxLabel} numberOfLines={1}>{mailboxName(item.email_account_id)}</Text>
+          )}
           {!!preview && <Text style={styles.messageSnippet} numberOfLines={2}>{preview}</Text>}
         </View>
         {!item.is_read ? <View style={styles.unreadDot} /> : <Feather name="chevron-right" size={16} color={colors.text.tertiary} />}
@@ -264,6 +322,27 @@ function MessagesContent() {
         </TouchableOpacity>
       </View>
 
+      {activeTab === 'email' && mailboxes.length > 1 && (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.mailboxBar}
+          contentContainerStyle={styles.mailboxBarContent}>
+          {[{ id: 'all', account_name: 'Wszystkie' } as Pick<Mailbox, 'id' | 'account_name'>, ...mailboxes].map((mailbox) => {
+            const active = selectedMailbox === mailbox.id;
+            const unread = mailbox.id === 'all'
+              ? Object.values(unreadByMailbox).reduce((sum, count) => sum + count, 0)
+              : unreadByMailbox[mailbox.id] || 0;
+            return (
+              <TouchableOpacity key={mailbox.id} onPress={() => setSelectedMailbox(mailbox.id)}
+                style={[styles.mailboxChip, active && styles.mailboxChipActive]}
+                accessibilityRole="button" accessibilityState={{ selected: active }}>
+                <Text style={[styles.mailboxChipText, active && styles.mailboxChipTextActive]} numberOfLines={1}>
+                  {mailbox.account_name}{unread > 0 ? ` · ${unread}` : ''}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      )}
+
       {isLoading ? (
         <View style={styles.centered}>
           <ActivityIndicator size="large" color={colors.primary.gold} />
@@ -287,7 +366,11 @@ function MessagesContent() {
             <View style={styles.emptyState}>
               <Feather name={activeTab === 'email' ? 'inbox' : 'file-text'} size={48} color={colors.text.tertiary} />
               <Text style={styles.emptyText}>
-                {activeTab === 'email' ? 'Brak wiadomości e-mail' : 'Brak wiadomości z formularzy'}
+                {activeTab === 'email'
+                  ? mailboxes.length === 0
+                    ? 'Brak skrzynek. Sprawdź Ustawienia → Skrzynki pocztowe.'
+                    : 'Brak wiadomości e-mail'
+                  : 'Brak wiadomości z formularzy'}
               </Text>
             </View>
           }
@@ -350,6 +433,19 @@ const styles = StyleSheet.create({
   messageSnippet: { fontSize: typography.fontSizes.xs, color: colors.text.tertiary, marginTop: 3, lineHeight: 17 },
   messageTextBold: { fontWeight: typography.fontWeights.bold },
   unreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.primary.gold },
+  mailboxLabel: { fontSize: typography.fontSizes.xs, color: colors.primary.gold, marginTop: 2 },
+  mailboxBar: { flexGrow: 0, backgroundColor: colors.background.secondary },
+  mailboxBarContent: { paddingHorizontal: spacing.md, paddingBottom: spacing.sm, gap: spacing.sm },
+  mailboxChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.background.tertiary,
+    maxWidth: 220,
+  },
+  mailboxChipActive: { backgroundColor: colors.primary.gold + '33' },
+  mailboxChipText: { fontSize: typography.fontSizes.xs, color: colors.text.secondary },
+  mailboxChipTextActive: { color: colors.primary.gold, fontWeight: typography.fontWeights.semibold },
   emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 60, gap: 12 },
   emptyText: { fontSize: typography.fontSizes.sm, color: colors.text.tertiary },
   errorText: {

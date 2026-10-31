@@ -20,6 +20,33 @@ jobs:
           node-version: 20
       - run: node scripts/ci/check-migrations.mjs
 
+  mobile:
+    name: Aplikacja mobilna
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Wspólny kod CRM i mobile (identyczne kopie)
+        run: node scripts/ci/check-shared-copies.mjs
+      - name: Parytet CRM ↔ mobile
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          IS_PR: ${{ github.event_name == 'pull_request' }}
+        run: node scripts/ci/check-mobile-parity.mjs
+      - name: Zależności mobile
+        run: yarn install --frozen-lockfile
+        working-directory: mobile
+      # Raport jak w CRM: istniejące błędy typów nie blokują, dopóki moduł nie zostanie wyczyszczony.
+      - name: Kontrola typów mobile (raport)
+        run: npx tsc --noEmit -p tsconfig.json --pretty false
+        working-directory: mobile
+        continue-on-error: true
+
   web:
     name: Typy, lint i build
     runs-on: ubuntu-latest

@@ -24,3 +24,12 @@
 - Inputy, selecty, textarea i datepickery mają najwyżej jedną delikatną linię 1 px, bez podwójnej ramki i grubych złotych ringów. Nie ustawiaj globalnie `outline-color`: ujawnia przezroczyste obrysy `outline-none` także poza fokusem.
 - Kalendarze korzystają z kolorów aktualnego motywu, nie z osobnej granatowej palety. Dni nie mają osobnych ramek; zaznaczenie pokazuj tłem, a fokus klawiatury subtelnym, widocznym wyróżnieniem.
 - Pola dat muszą umożliwiać zarówno wybór z kalendarza, jak i ręczne wpisanie daty w formacie `DD.MM.RRRR`, z walidacją rzeczywistej daty przed zapisem.
+
+## Aplikacja mobilna nadąża za CRM
+
+- Zmiana modułu CRM, który ma odpowiednik w aplikacji mobilnej (`mobile/`), obejmuje aplikację w tym samym commicie lub PR: te same reguły biznesowe, uprawnienia, filtry, etykiety i powiadomienia. Mapa modułów: `docs/mobile-parity.md`.
+- Logikę używaną w obu miejscach trzymaj w identycznych kopiach wymienionych w `scripts/ci/check-shared-copies.mjs` (Metro nie importuje plików spoza `mobile/`). CI zatrzymuje się przy rozbieżności.
+- Reguły dostępu wymuszaj w bazie (RLS, funkcje), nie tylko w interfejsie — aplikacja mobilna czyta bazę bezpośrednio, więc filtr dodany tylko w CRM jej nie obejmuje.
+- Moduły dostępne tylko w CRM (oferty, faktury, finanse, ustawienia administracyjne) aplikacja otwiera w przeglądarce (`openInCrmWeb`). Nowy link w powiadomieniu musi mieć obsługę w `mobile/src/navigation/navigationRef.ts` (`routeNotification`, `routeSalesUrl`).
+- Jeśli zmiana świadomie nie dotyczy aplikacji, wpisz w opisie PR „Mobile: nie dotyczy — powód”. Bez tego kontrola parytetu w CI zatrzymuje PR.
+- Zmiany w aplikacji wymagają nowej wersji: podnieś `version` w `mobile/app.json` i `mobile/package.json`, a następnie `cd mobile && yarn deploy`.

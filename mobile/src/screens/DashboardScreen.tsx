@@ -18,6 +18,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { sortTasksByUrgency } from '../lib/taskSort';
 import { colors, spacing, typography, borderRadius } from '../theme';
+import SalesDaySection from '../components/SalesDaySection';
 
 const TABLET_BREAKPOINT = 768;
 
@@ -108,6 +109,7 @@ export default function DashboardScreen() {
   const operational = usesOperationalStages(employee);
   const { stage, error: stageError } = useOperationalStages(upcomingEvents, operational);
   const [loading, setLoading] = useState(false);
+  const [salesRefreshKey, setSalesRefreshKey] = useState(0);
   const { width } = useWindowDimensions();
   const isTablet = width >= TABLET_BREAKPOINT;
 
@@ -365,7 +367,7 @@ export default function DashboardScreen() {
       refreshControl={
         <RefreshControl
           refreshing={loading}
-          onRefresh={loadDashboardData}
+          onRefresh={() => { setSalesRefreshKey((key) => key + 1); void loadDashboardData(); }}
           tintColor={colors.primary.gold}
         />
       }
@@ -438,6 +440,8 @@ export default function DashboardScreen() {
           )}
         </View>
       )}
+      <SalesDaySection refreshKey={salesRefreshKey} />
+
       {/* Quick Stats */}
       <View style={styles.statsGrid}>
         <View style={[styles.statCard, { borderLeftColor: colors.primary.gold }]}>

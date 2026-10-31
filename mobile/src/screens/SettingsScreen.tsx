@@ -10,6 +10,9 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
 import { colors, spacing, typography, borderRadius } from '../theme';
+import Constants from 'expo-constants';
+import MailboxPreferencesSection from '../components/MailboxPreferencesSection';
+import { roleLabel } from '../lib/roleLabels';
 
 export default function SettingsScreen() {
   const { employee, signOut } = useAuth();
@@ -48,7 +51,7 @@ export default function SettingsScreen() {
         <Text style={styles.userEmail}>{employee?.email}</Text>
         {employee?.role && (
           <View style={styles.roleBadge}>
-            <Text style={styles.roleText}>{employee.role}</Text>
+            <Text style={styles.roleText}>{roleLabel(employee.role)}</Text>
           </View>
         )}
       </View>
@@ -86,6 +89,8 @@ export default function SettingsScreen() {
         </TouchableOpacity>
       </View>
 
+      <MailboxPreferencesSection />
+
       {/* Sign Out */}
       <View style={styles.section}>
         <TouchableOpacity
@@ -99,7 +104,7 @@ export default function SettingsScreen() {
 
       {/* Version */}
       <View style={styles.footer}>
-        <Text style={styles.version}>Mavinci CRM Mobile v1.0.0</Text>
+        <Text style={styles.version}>Mavinci CRM Mobile v{Constants.expoConfig?.version ?? '—'}</Text>
       </View>
     </ScrollView>
   );

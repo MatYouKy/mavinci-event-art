@@ -1,5 +1,6 @@
 import { getEventNotificationTab, EventNotificationTab } from '../lib/eventNotificationTarget';
 import { createNavigationContainerRef } from '@react-navigation/native';
+import { Linking } from 'react-native';
 import { supabase } from '../lib/supabase';
 import { getSellerChatTarget } from '../lib/sellerChatTarget';
 
@@ -60,6 +61,41 @@ export function navigateToInquiry(taskId: string) {
       params: { screen: 'InquiryDetail', params: { taskId }, initial: false },
     });
   }
+}
+
+export function navigateToTenders(tenderId?: string) {
+  if (navigationRef.isReady()) {
+    navigationRef.navigate('Main', { screen: 'Tenders', params: { tenderId, requestId: Date.now() } });
+  }
+}
+
+/** Adres CRM w przeglądarce — dla modułów, których aplikacja nie ma (oferty, faktury, ustawienia). */
+export const CRM_WEB_URL = (process.env.EXPO_PUBLIC_CRM_URL || 'https://mavinci.pl').replace(/\/+$/, '');
+
+export function openInCrmWeb(path: string) {
+  const target = /^https?:\/\//i.test(path) ? path : `${CRM_WEB_URL}${path.startsWith('/') ? '' : '/'}${path}`;
+  void Linking.openURL(target).catch(() => undefined);
+}
+
+const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
+
+/**
+ * Linki z powiadomień sprzedażowych (przypomnienia o przetargach i ofertach, akceptacja oferty,
+ * przekazanie do fakturowania). Zwraca true, gdy link został obsłużony.
+ */
+export function routeSalesUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  const inquiry = url.match(new RegExp(`/crm/inquiries/(${UUID})`, 'i'));
+  if (inquiry) { navigateToInquiry(inquiry[1]); return true; }
+  if (url.startsWith('/crm/tenders')) {
+    const tender = url.match(new RegExp(`[?&]tender=(${UUID})`, 'i'));
+    navigateToTenders(tender?.[1]);
+    return true;
+  }
+  const event = url.match(new RegExp(`/crm/events/(${UUID})`, 'i'));
+  if (event) { navigateToEvent(event[1]); return true; }
+  if (/^\/crm\/(offers|invoices|settings|salespeople)(\/|\?|$)/i.test(url)) { openInCrmWeb(url); return true; }
+  return false;
 }
 
 export function navigateToEvent(eventId: string, initialTab?: EventNotificationTab) {
@@ -246,8 +282,14 @@ export async function routeNotification(
     return { meetingId: null };
   }
 
+  // Przetargi, oferty, zapytania i wydarzenia wskazane tylko w adresie (bez related_entity_id).
+  if (!target.entity_id && !target.inquiry_id && !target.task_id && routeSalesUrl(url)) {
+    return { meetingId: null };
+  }
+
   if (isInquiryTarget(target)) {
-    const id = target.inquiry_id || target.entity_id || target.task_id;
+    const id = target.inquiry_id || target.entity_id || target.task_id
+      || url.match(new RegExp(`/crm/inquiries/(${UUID})`, 'i'))?.[1];
     if (id) navigateToInquiry(id);
     return { meetingId: null };
   }

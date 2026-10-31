@@ -2,9 +2,10 @@ import { Employee } from '../lib/supabase';
 
 type PermissionEmployee = Pick<Employee, 'access_level' | 'role' | 'permissions' | 'has_realizations'> | null | undefined;
 
+// Jak w CRM (src/lib/permissions.ts): administrator to rola/poziom „admin” albo uprawnienie „admin”.
 export const isAdmin = (employee: PermissionEmployee): boolean => {
   if (!employee) return false;
-  return employee.access_level === 'admin' || employee.role === 'admin';
+  return employee.access_level === 'admin' || employee.role === 'admin' || employee.permissions?.includes('admin') === true;
 };
 
 export const isManagerOrAdmin = (employee: PermissionEmployee): boolean => {
@@ -72,7 +73,8 @@ export type ModuleName =
   | 'locations'
   | 'time_tracking'
   | 'databases'
-  | 'invoices';
+  | 'invoices'
+  | 'tenders';
 
 export interface MenuItem {
   icon: string;
@@ -91,6 +93,7 @@ export const MENU_ITEMS: MenuItem[] = [
   { icon: 'star', label: 'Wydarzenia', screen: 'Events', module: 'events' },
   { icon: 'check-square', label: 'Zadania', screen: 'Tasks', module: 'tasks' },
   { icon: 'phone-call', label: 'Zapytania', screen: 'Inquiries', module: 'inquiries' },
+  { icon: 'briefcase', label: 'Przetargi', screen: 'Tenders', module: 'tenders' },
   { icon: 'clock', label: 'Czas pracy', screen: 'TimeTracking', module: 'time_tracking' },
   { icon: 'users', label: 'Pracownicy', screen: 'Employees', module: 'employees' },
   { icon: 'truck', label: 'Flota', screen: 'Fleet', module: 'fleet' },
