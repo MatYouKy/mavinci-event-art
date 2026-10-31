@@ -55,3 +55,8 @@ Gałąź: `audyt-sprzedaz-2026-10` (od commitu `4db32540` — snapshot wcześnie
 - Zmiany nie były uruchamiane na bazie ani budowane (zasady `.build-policy.md`) — zastosuj najpierw na kopii bazy.
 - Linki z zaproszeń do wydarzeń (`/invitation/accept`) akceptują zaproszenie samym wejściem — skanery poczty mogą je „kliknąć”.
 - 28 starszych wersji migracji jest zduplikowanych; `supabase db push` ich nie przyjmie (raport w CI).
+- Opiekun sprzedaży (`sales_lead`) widzi prowizje własnych wydarzeń, ale nie historię ich wypłat (`event_commission_payouts`).
+- Ręczna zmiana etapu zapytania z przetargu na „Oferta wysłana” oznacza przetarg jako złożony.
+- Powiązanie oferty z wydarzeniem przez `link_offer_context` nadal ustala opiekuna sprzedaży (zaakceptowana oferta); funkcja ma własne kontrole marki i jednej zaakceptowanej oferty.
+- `current_employee_can_view_event` sprawdza teraz także opiekuna sprzedaży — przy bardzo długich listach wydarzeń obserwuj czas odpowiedzi.
+- Endpointy `/bridge/events/revalidate`, `/bridge/ksef/auth/challenge`, `/bridge/places/*`, `/bridge/gus/company` wymagają teraz zalogowania; w repozytorium nie ma wywołań spoza przeglądarki, ale sprawdź własne skrypty/integracje.
