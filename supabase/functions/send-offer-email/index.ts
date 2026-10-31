@@ -278,6 +278,21 @@ Deno.serve(async (req: Request) => {
     const user = { id: actor.userId };
     await assertSalesDocumentPermission(supabase, 'offer', offerId, user.id);
 
+    // Progi rabatu i marży (sales_offer_guardrails). Starsza baza bez funkcji: bez blokady.
+    const { data: guardrail, error: guardrailError } = await supabase.rpc('offer_send_guardrail', {
+      p_offer_id: offerId,
+      p_user: user.id,
+    });
+    if (guardrailError && !['PGRST202', '42883'].includes(guardrailError.code || '')) {
+      throw new Error('Nie udało się sprawdzić progów akceptacji oferty.');
+    }
+    if (guardrail && guardrail.can_send === false) {
+      const reasons = Array.isArray(guardrail.reasons)
+        ? guardrail.reasons.map((reason: any) => reason?.message).filter(Boolean).join('; ')
+        : '';
+      throw new Error(`Oferta wymaga akceptacji przed wysłaniem${reasons ? `: ${reasons}` : ''}. Użyj „Wyślij do akceptacji” w ofercie.`);
+    }
+
     // Email delivery only needs offer fields; no event or organization is required.
     const { data: offer, error: offerError } = await supabase
       .from("offers")

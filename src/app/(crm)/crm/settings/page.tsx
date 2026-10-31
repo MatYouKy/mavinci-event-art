@@ -1112,6 +1112,18 @@ export default function SettingsPage() {
                 <ArrowRight className="h-5 w-5 text-[#d3bb73]" />
               </button>
               <button
+                onClick={() => router.push('/crm/settings/sales-guardrails')}
+                className="flex w-full items-center justify-between rounded-lg bg-[#0f1119] p-4 text-left text-[#e5e4e2] transition-colors hover:bg-[#1c1f33]"
+              >
+                <div>
+                  <div className="font-medium">Progi akceptacji ofert</div>
+                  <div className="text-xs text-[#e5e4e2]/60">
+                    Maksymalny rabat i minimalna marża, powyżej których oferta wymaga akceptacji przed wysyłką
+                  </div>
+                </div>
+                <ArrowRight className="h-5 w-5 text-[#d3bb73]" />
+              </button>
+              <button
                 onClick={() => router.push('/crm/settings/system-health')}
                 className="flex w-full items-center justify-between rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-4 transition-colors hover:bg-[#1c1f33]"
               >
