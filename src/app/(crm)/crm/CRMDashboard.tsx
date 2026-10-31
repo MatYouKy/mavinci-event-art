@@ -36,6 +36,7 @@ import {
 import { IEmployee } from './employees/type';
 import { useRouter } from 'next/navigation';
 import SellerFinancialDashboard from '@/components/crm/SellerFinancialDashboard';
+import SalesDayPanel from '@/components/crm/dashboard/SalesDayPanel';
 
 interface DashboardStats {
   totalEvents: number;
@@ -73,7 +74,13 @@ export default function CRMDashboard({
   const { employee, loading } = useCurrentEmployee();
   const router = useRouter();
   if (analytics.accessError) return <div role="alert" className="rounded-xl bg-white/5 p-6 text-sm text-amber-200">{analytics.accessError} Dane firmy nie zostały pobrane.</div>;
-  if (analytics.scope === 'sales') return <SellerFinancialDashboard initialReport={analytics.sellerReport} />;
+  // Sprzedawca zaczyna dzień od listy działań; wyniki finansowe są poniżej.
+  if (analytics.scope === 'sales') return (
+    <div className="space-y-8">
+      <SalesDayPanel />
+      <SellerFinancialDashboard initialReport={analytics.sellerReport} />
+    </div>
+  );
   const companyDashboard = analytics.scope === 'company';
   const dashboardRange = dashboardPreferences.range ?? DEFAULT_DASHBOARD_RANGE;
   const visibleMonths = dashboardRange === '12m' ? analytics.months : analytics.months.slice(-6);
