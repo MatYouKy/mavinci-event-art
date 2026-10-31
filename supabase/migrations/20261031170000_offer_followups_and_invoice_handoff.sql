@@ -124,6 +124,13 @@ CREATE TRIGGER reset_offer_followups_on_send BEFORE INSERT OR UPDATE ON public.o
 
 -- Uzupełnienie sent_at dla ofert już wysłanych: ostatnia wysyłka z historii zapytania,
 -- a gdy jej brak — data ostatniej zmiany oferty (przybliżenie).
+-- Uzupełnienie danych nie jest edycją oferty: zachowujemy oryginalne updated_at.
+DO $pause$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_trigger WHERE tgrelid = 'public.offers'::regclass
+    AND tgname = 'update_offers_updated_at_trigger') THEN
+    ALTER TABLE public.offers DISABLE TRIGGER update_offers_updated_at_trigger;
+  END IF;
+END $pause$;
 UPDATE public.offers o SET sent_at = delivery.last_sent
 FROM (
   SELECT (a.metadata->>'document_id')::uuid AS offer_id, max(a.created_at) AS last_sent
@@ -142,6 +149,13 @@ UPDATE public.offers SET follow_up_reminders_sent = CASE
     ELSE ARRAY['no_reply_3d'] END
 WHERE status::text = 'sent' AND sent_at IS NOT NULL AND sent_at < now() - interval '3 days'
   AND follow_up_reminders_sent = '{}';
+
+DO $resume$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_trigger WHERE tgrelid = 'public.offers'::regclass
+    AND tgname = 'update_offers_updated_at_trigger') THEN
+    ALTER TABLE public.offers ENABLE TRIGGER update_offers_updated_at_trigger;
+  END IF;
+END $resume$;
 
 -- Przekazanie do fakturowania po akceptacji oferty.
 CREATE OR REPLACE FUNCTION public.notify_finance_on_offer_accepted()

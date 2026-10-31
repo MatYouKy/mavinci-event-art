@@ -196,7 +196,7 @@ GRANT EXECUTE ON FUNCTION public.sales_finance_is_lead(), public.sales_lead_owns
   public.get_event_finance_access(uuid) TO authenticated, service_role;
 
 -- Nowy sprzedawca (rekrutacja 11/2026): kalkulacje i rentowność po jego stronie, faktury u administratora.
--- Pozostali pracownicy zmieniają zakres w zakładce Uprawnienia (admin_set_employee_finance_scope).
+-- Pozostali pracownicy: zakres zmienia administrator w zakładce Uprawnienia pracownika.
 UPDATE public.employees SET finance_access_scope = 'sales_lead'
 WHERE id = '5e1a3293-fda2-438c-963a-92f6116df82b' AND finance_access_scope = 'sales';
 

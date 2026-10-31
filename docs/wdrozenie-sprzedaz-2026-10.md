@@ -2,6 +2,20 @@
 
 Gałąź: `audyt-sprzedaz-2026-10` (od commitu `4db32540` — snapshot wcześniejszych, niezacommitowanych zmian).
 
+## Status produkcji (31.10.2026, wieczór)
+
+- **Migracje zastosowane** na projekcie „Mavinci - CRM” (`fuuljhhuhfojtmmfmskq`): 5 zaległych z tabeli 2a
+  (bez `20260901173000`), `20261031090000` oraz wszystkie z tabeli 2. Historia w
+  `supabase_migrations.schema_migrations` ma wersje zgodne z nazwami plików.
+- `20260901173000_sync_phase_vehicles_with_event_logistics` — świadomie **niezastosowana** (patrz 2a).
+  `supabase db push` będzie ją pokazywał jako zaległą — nie wypychać.
+- Sprawdzone po wdrożeniu: Mariusz Jegliński ma zakres `sales_lead` (nie wystawia faktur, planuje koszty
+  własnych wydarzeń, widzi przetargi, nie zatwierdza własnych ofert), zadania cron `tender-deadline-reminders`
+  i `offer-followup-reminders` są aktywne, 14 wysłanych ofert ma uzupełnione `sent_at` (bez zmiany `updated_at`),
+  38 starych adresów usług działa jako aliasy.
+- **Do zrobienia:** wdrożyć Edge Function `send-offer-email` (sekcja 3) i aplikację (sekcja 4).
+  Do czasu wdrożenia funkcji wysyłka e-mailem nie sprawdza progów; ręczna zmiana statusu na „wysłana” już tak.
+
 ## 1. Przed wdrożeniem
 
 1. Sprawdź stan bazy: `scripts/migration-status.sql` w SQL Editor, potem
