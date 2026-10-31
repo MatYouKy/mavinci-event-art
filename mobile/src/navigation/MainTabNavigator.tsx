@@ -3,7 +3,7 @@ import { useForegroundEffect } from '../hooks/useForegroundEffect';
 import { createRefreshQueue } from '../lib/refreshQueue';
 import { TouchableOpacity, View, Text, Image } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, NavigatorScreenParams } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import * as Notifications from 'expo-notifications';
 import { colors, typography } from '../theme';
@@ -20,7 +20,7 @@ import MessagesStackNavigator from './MessagesStackNavigator';
 import TasksStackNavigator from './TasksStackNavigator';
 import EventsStackNavigator from './EventsStackNavigator';
 import EquipmentStackNavigator from './EquipmentStackNavigator';
-import InquiriesStackNavigator from './InquiriesStackNavigator';
+import InquiriesStackNavigator, { InquiriesStackParamList } from './InquiriesStackNavigator';
 import TimeTrackingScreen from '../screens/TimeTrackingScreen';
 import EmployeesScreen from '../screens/EmployeesScreen';
 import FleetScreen from '../screens/FleetScreen';
@@ -42,9 +42,9 @@ export type MainTabParamList = {
   Inbox: undefined;
   Events: undefined;
   Tasks: undefined;
-  Inquiries: undefined;
+  Inquiries: NavigatorScreenParams<InquiriesStackParamList> | undefined;
   Equipment: { equipmentId?: string } | undefined;
-  TimeTracking: undefined;
+  TimeTracking: { discussionEntryId?: string; discussionRequestId?: number } | undefined;
   Employees: undefined;
   Fleet: undefined;
   Clients: undefined;
@@ -335,6 +335,12 @@ export default function MainTabNavigator() {
         <Tab.Screen
           name="Inquiries"
           component={InquiriesStackNavigator}
+          listeners={({ navigation }) => ({
+            tabPress: (event) => {
+              event.preventDefault();
+              navigation.navigate('Inquiries', { screen: 'InquiriesList', initial: false });
+            },
+          })}
           options={{
             title: 'Zapytania',
             tabBarButton: canView(employee, 'inquiries') ? undefined : () => null,

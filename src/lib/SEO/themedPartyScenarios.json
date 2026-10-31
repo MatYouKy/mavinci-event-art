@@ -1,0 +1,101 @@
+[
+  {
+    "slug": "gatsby",
+    "label": "Gatsby i lata 20.",
+    "themeTitles": ["Wieczór Gatsby / Lata 20."],
+    "projectIds": ["7612c319-a402-4981-a5dd-f79502c9cf01"],
+    "content": {
+      "title": "Impreza firmowa w stylu Gatsby i lat 20.",
+      "metaTitle": "Impreza Gatsby dla firm — wieczór w stylu lat 20. | MAVINCI",
+      "description": "Wieczór Gatsby dla firmy: muzyka, dekoracje, światło i kasyno rozrywkowe. Poznaj przykładowy program, zakres obsługi i realizację MAVINCI.",
+      "lead": "Złoto, pióra i taneczny wieczór inspirowany latami 20. Motyw Gatsby może połączyć elegancki bankiet, jubileusz firmy i swobodną integrację. W MAVINCI dobieramy do niego muzykę, prowadzenie, dekoracje oraz technikę.",
+      "summary": "Gatsby sprawdza się, gdy chcesz zachować uroczysty charakter spotkania, a jednocześnie zaprosić gości do wspólnej zabawy. Zaczynamy od celu wydarzenia i układu sali: miejsca na kolację, wystąpienia, parkiet i dodatkowe atrakcje. Motyw nie wymaga od wszystkich kostiumów — klimat można zbudować wybranymi dekoracjami, światłem i muzyką. Przy scenariuszu dla firmy ustalamy także ton prowadzenia, zakres personalizacji i przejście od części oficjalnej do tanecznej.",
+      "occasion": "Jubileusz firmy, bankiet po konferencji, gala z podziękowaniami lub elegancka integracja pracowników.",
+      "program": [
+        { "heading": "Powitanie w klimacie lat 20.", "text": "Muzyka na wejście i światło budują atmosferę, a prowadzący wprowadza gości w program. Jeżeli wybierzesz strefę zdjęciową, umieszczamy ją tak, aby nie blokowała wejścia do sali." },
+        { "heading": "Kolacja i część firmowa", "text": "Zapowiedzi, podziękowania lub przemówienia otrzymują swoje miejsce w scenariuszu. Z realizatorami ustalamy wejścia mikrofonów, muzyki i materiałów firmy, a z obiektem momenty serwisu." },
+        { "heading": "Integracja przy wybranej atrakcji", "text": "Kasyno rozrywkowe lub krótki quiz mogą stworzyć okazję do rozmów między zespołami. Ich obecność, zasady i czas działania zapisujemy w uzgodnionym programie." },
+        { "heading": "Wieczór taneczny", "text": "DJ rozwija część taneczną według ustalonego kierunku muzycznego. Występ instrumentalisty lub artysty może być osobnym punktem, po potwierdzeniu dostępności i warunków technicznych." }
+      ],
+      "scope": [
+        { "heading": "Dekoracje i oprawa sali", "text": "Wybieramy elementy inspirowane art déco, złotem i piórami. Ustalamy konkretne dekoracje, miejsca ich ustawienia i zakres strefy zdjęciowej; nie każdy wariant wymaga przebudowy całej sali." },
+        { "heading": "Muzyka i prowadzenie", "text": "Dobieramy DJ-a, charakter zapowiedzi i repertuar. Inspiracje swingiem można połączyć z muzyką taneczną dobraną do gości. Występy na żywo wyceniamy w ustalonym zakresie." },
+        { "heading": "Technika podporządkowana programowi", "text": "Własne nagłośnienie Meyer Sound LINA, oświetlenie i multimedia pozwalają zaplanować przemówienia oraz parkiet w jednej realizacji. Zestaw dobieramy do akustyki, wielkości sali i scenariusza." }
+      ],
+      "planning": ["Miejsce na dekoracje i parkiet oraz możliwość montażu przed kolacją.", "Zakres wystąpień firmowych i ewentualne materiały na ekran.", "Decyzja o kasynie, strefie zdjęciowej i występach dodatkowych.", "Dobrowolny dress code i informacja dla uczestników przed wydarzeniem."],
+      "evidenceIntro": "W portfolio pokazujemy rzeczywistą realizację urodzinową w stylu Gatsby. Dokumentuje naszą pracę przy muzyce, dekoracjach, scenie, świetle i kasynie. Dla wydarzenia firmowego zmieniamy scenariusz oraz zakres, a miejsce tej realizacji nie jest przypisywane do miasta Twojego zapytania.",
+      "faq": [
+        { "question": "Czy impreza Gatsby nadaje się na wieczór po konferencji?", "answer": "Tak. Możemy połączyć kolację, podziękowania i część taneczną. Ważne jest ustalenie, czy korzystamy z tej samej sali oraz ile czasu obiekt udostępnia na zmianę oprawy i próby." },
+        { "question": "Czy wszyscy goście muszą mieć stroje z lat 20.?", "answer": "Nie. Dress code może być dobrowolny. Dekoracje, światło i muzyka wystarczą do zaznaczenia motywu, a organizator może zaproponować gościom prosty akcent w stroju." },
+        { "question": "Czy kasyno i muzycy są w każdym wariancie?", "answer": "Nie. Dobieramy je do programu i budżetu, a zakres potwierdzamy w ofercie. Kasyno eventowe jest rozrywką bez zakładów pieniężnych; występy muzyków wymagają uzgodnienia dostępności." },
+        { "question": "Od czego zależy koszt wieczoru Gatsby?", "answer": "Od terminu, miejsca, liczby gości, długości programu, wybranych dekoracji i atrakcji. Wpływ mają również dojazd, dostęp do sali i czas potrzebny na montaż. Wycena wskazuje konkretne elementy realizacji." }
+      ]
+    }
+  },
+  {
+    "slug": "las-vegas",
+    "label": "Las Vegas i Casino Night",
+    "themeTitles": ["Wieczór w stylu Las Vegas"],
+    "projectIds": ["7612c319-a402-4981-a5dd-f79502c9cf01", "44c3e755-dd64-4214-a000-8b2bbb07894e"],
+    "content": {
+      "title": "Wieczór Las Vegas i Casino Night dla firm",
+      "metaTitle": "Las Vegas i Casino Night — impreza firmowa | MAVINCI",
+      "description": "Impreza firmowa Las Vegas: kasyno rozrywkowe, DJ, prowadzenie i oprawa sali. Sprawdź pomysł na wieczór, wybór atrakcji oraz realizacje MAVINCI.",
+      "lead": "Rozmowy przy stołach, emocje wspólnej zabawy i muzyka na parkiecie. Wieczór Las Vegas łączy kasyno rozrywkowe z oprawą całego spotkania firmowego — od powitania po finał imprezy.",
+      "summary": "Ten motyw daje gościom kilka sposobów udziału: grę przy stołach, rozmowę i taniec. Sprawdza się po konferencji lub podczas spotkania różnych działów firmy, gdy organizator chce pozostawić uczestnikom swobodę wyboru aktywności. Ustalamy, czy kasyno ma być głównym punktem programu, czy działać obok DJ-a i pozostałych atrakcji. Rozmieszczenie stołów planujemy razem z parkietem oraz obsługą sali, aby poszczególne strefy nie przeszkadzały sobie nawzajem.",
+      "occasion": "Wieczorna integracja po szkoleniu, spotkanie pracowników i partnerów, jubileusz lub bankiet firmowy.",
+      "program": [
+        { "heading": "Powitanie i zasady zabawy", "text": "Prowadzący przedstawia plan wieczoru oraz sposób udziału w kasynie. Uczestnicy dostają jasną informację, że jest to zabawa bez zakładów pieniężnych." },
+        { "heading": "Otwarcie stołów", "text": "Goście poznają zasady wybranych gier z obsługą kasyna. Ruletkę, blackjacka lub poker dobieramy do przestrzeni, liczby uczestników i charakteru spotkania." },
+        { "heading": "Muzyka i integracja", "text": "DJ i prowadzący łączą grę, rozmowy i część taneczną. Jeżeli w programie są wystąpienia firmy, planujemy przerwę w atrakcjach i odpowiedni poziom muzyki." },
+        { "heading": "Wspólne zakończenie części kasynowej", "text": "Możemy przewidzieć podsumowanie zabawy lub symboliczne wyróżnienia ustalone z organizatorem. Następnie wieczór może być kontynuowany na parkiecie." }
+      ],
+      "scope": [
+        { "heading": "Kasyno rozrywkowe", "text": "Ustalamy rodzaje i liczbę stołów, obsługę oraz czas działania. Jeżeli potrzebujesz wyłącznie tej atrakcji na istniejącym wydarzeniu, możesz zamówić samo kasyno eventowe." },
+        { "heading": "Motyw Las Vegas", "text": "Dekoracje, kolor światła, oprawa muzyczna i komunikacja prowadzącego tworzą wspólny klimat. Konkretne elementy scenografii dobieramy do sali; motyw nie oznacza automatycznie pełnej dekoracji obiektu." },
+        { "heading": "Dźwięk, światło i multimedia", "text": "Technikę dobieramy oddzielnie dla rozmów przy stołach, komunikatów i parkietu. Ekran może pokazywać plan wieczoru lub uzgodnione materiały firmy. Sprzęt i realizatorów określamy w ofercie." }
+      ],
+      "planning": ["Powierzchnia na stoły oraz swobodne przejścia i dojście obsługi.", "Czy kasyno działa równolegle z kolacją i DJ-em, czy jako osobny punkt.", "Sposób udziału, zasady zabawy i ewentualne symboliczne wyróżnienia.", "Dostęp do sali, transport stołów oraz godziny montażu i demontażu."],
+      "evidenceIntro": "Poniższe realizacje pokazują kasyno w szerszej oprawie wydarzeń MAVINCI: wieczoru Gatsby i gali firmowej. To przykłady wykorzystania atrakcji, a nie deklaracja, że każda z tych imprez miała motyw Las Vegas.",
+      "faq": [
+        { "question": "Czym różni się wieczór Las Vegas od zamówienia samego kasyna?", "answer": "Samo kasyno to wybrana atrakcja z ustaloną obsługą i czasem działania. Wieczór Las Vegas może dodatkowo obejmować scenariusz całego spotkania, prowadzenie, DJ-a, dekoracje i technikę. W ofercie rozdzielamy te elementy." },
+        { "question": "Czy trzeba znać zasady gier?", "answer": "Nie. Przebieg gier i zasady udziału są wyjaśniane uczestnikom. Dobieramy formę do rozrywkowego charakteru wydarzenia firmowego." },
+        { "question": "Czy podczas Casino Night gra się na pieniądze?", "answer": "Nie. Proponujemy kasyno rozrywkowe do integracji, bez zakładów pieniężnych. Warunki udziału i ewentualne symboliczne wyróżnienia ustalamy z organizatorem przed imprezą." },
+        { "question": "Ile miejsca i stołów potrzeba na imprezę?", "answer": "Nie podajemy jednego zestawu dla każdej grupy. Potrzebujemy liczby gości, planu sali oraz informacji, czy kasyno będzie jedyną atrakcją. Na tej podstawie określamy układ, obsługę i zakres wyceny." }
+      ]
+    }
+  },
+  {
+    "slug": "hollywood",
+    "label": "Hollywood i gala filmowa",
+    "themeTitles": ["Wieczór w stylu Hollywood"],
+    "projectIds": ["44c3e755-dd64-4214-a000-8b2bbb07894e"],
+    "content": {
+      "title": "Impreza Hollywood i gala filmowa dla firmy",
+      "metaTitle": "Impreza Hollywood dla firm — gala filmowa | MAVINCI",
+      "description": "Wieczór Hollywood z galą firmowych wyróżnień, muzyką i multimediami. Poznaj scenariusz, wymagania techniczne oraz realizację gali MAVINCI.",
+      "lead": "Filmowy motyw, który nadaje oprawę firmowym osiągnięciom. Łączymy ceremonię wyróżnień, prowadzenie, muzykę i multimedia z dalszą częścią rozrywkową wieczoru.",
+      "summary": "Hollywood jest dobrym punktem wyjścia dla firmy, która chce podsumować rok, wyróżnić zespoły lub uczcić jubileusz. Najpierw układamy część oficjalną: kategorie nagród, kolejność wejść i treści wyświetlane na ekranie. Następnie łączymy ją z kolacją oraz zabawą. Dzięki temu dekoracja filmowa wspiera konkretną historię firmy, a uczestnicy wiedzą, kiedy skupić uwagę na scenie. Wspólnie ustalamy, jak uroczysty ma być ton prowadzenia i ile miejsca zostawić na humor.",
+      "occasion": "Gala nagród pracowniczych lub sprzedażowych, podsumowanie roku, jubileusz firmy i uroczysty finał konferencji.",
+      "program": [
+        { "heading": "Wejście gości i otwarcie gali", "text": "Uzgodniona oprawa wejścia, muzyka i prowadzący wprowadzają w filmowy klimat. Strefę zdjęciową lub czerwony dywan dobieramy do miejsca oraz zakresu dekoracji." },
+        { "heading": "Wyróżnienia i historia firmy", "text": "Prowadzący zapowiada kategorie, a realizatorzy uruchamiają przygotowane materiały, muzykę i światło. Przed galą ustalamy kolejność osób, nazwiska oraz sposób wejścia na scenę." },
+        { "heading": "Kolacja i uzgodniony program artystyczny", "text": "Przerwy dopasowujemy do serwisu obiektu. Występ muzyczny, pokaz lub inny punkt artystyczny dobieramy do programu i potwierdzamy oddzielnie w ofercie." },
+        { "heading": "Przejście do zabawy", "text": "Po zakończeniu ceremonii zmieniamy charakter muzyki i światła. DJ prowadzi część taneczną; quiz filmowy lub kasyno mogą stanowić dodatkową, uzgodnioną atrakcję." }
+      ],
+      "scope": [
+        { "heading": "Scenariusz i prowadzenie gali", "text": "Ustalamy kolejność wystąpień, zapowiedzi i momentów wręczenia nagród. Informacje o laureatach oraz materiały firmy otrzymujemy od organizatora, aby przygotować spójny przebieg ceremonii." },
+        { "heading": "Światło, ekran i dźwięk", "text": "Mikrofony, oświetlenie sceny i ekrany LED lub telewizory dobieramy do sali. Nasze zaplecze obejmuje Meyer Sound LINA oraz multimedia. Realizatorzy łączą wejścia materiałów z prowadzeniem wydarzenia." },
+        { "heading": "Dekoracje i część wieczorna", "text": "Filmową scenografię, oprawę muzyczną i atrakcje wybieramy według programu. Wygląd statuetek, dodatkowe pokazy i rejestrację wydarzenia uzgadniamy osobno; nie są automatyczną częścią każdego wariantu." }
+      ],
+      "planning": ["Lista kategorii, laureatów i osób wręczających nagrody.", "Termin dostarczenia prezentacji, filmów, nazwisk oraz logotypów.", "Miejsce na scenę, czytelność ekranu i trasa wejścia wyróżnianych osób.", "Czas próby technicznej oraz powiązanie ceremonii z kolacją."],
+      "evidenceIntro": "Gala Oskary Sprzedaży 2023 to realizacja MAVINCI łącząca filmową scenografię, ekran LED, program artystyczny, kasyno i obsługę techniczną. W portfolio pokazujemy jej zdjęcia oraz faktyczny zakres prac.",
+      "faq": [
+        { "question": "Czy można przygotować galę z własnymi kategoriami nagród?", "answer": "Tak. Nazwy kategorii, wyróżniane osoby i charakter podziękowań ustalamy z firmą. Organizator dostarcza zatwierdzone informacje, na których opieramy zapowiedzi i materiały do wyświetlenia." },
+        { "question": "Jakich materiałów potrzebujecie przed galą?", "answer": "Uzgadniamy listę laureatów i osób występujących, prezentacje, filmy oraz logotypy. Wyznaczamy termin przekazania plików i czas na próbę, żeby sprawdzić ich kolejność, format i zgodność ze scenariuszem." },
+        { "question": "Czy motyw Hollywood sprawdzi się bez wręczania nagród?", "answer": "Tak. Można oprzeć wieczór na muzyce filmowej, dekoracjach i programie integracyjnym, np. quizie. Ceremonia wyróżnień jest jednym z możliwych formatów, a nie obowiązkowym elementem." },
+        { "question": "Czy zapewniacie również technikę konferencji przed galą?", "answer": "Możemy połączyć oba zakresy w jednym harmonogramie. Ustalamy wykorzystanie nagłośnienia, mikrofonów, światła i multimediów oraz czas potrzebny na zmianę ustawienia sali przed wieczorem." }
+      ]
+    }
+  }
+]

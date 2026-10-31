@@ -1,5 +1,7 @@
 'use client';
 
+import { servicePath } from '@/lib/SEO/serviceUrls';
+
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -65,7 +67,7 @@ export function CategoryBreadcrumb({
         const servicesChildren: CategoryNode[] =
           data?.map((service: any) => ({
             label: service.name,
-            href: `/uslugi/${service.slug}`,
+            href: servicePath(service),
           })) ?? [];
 
         const updatedTree = categoryNavLinks.map((node) =>

@@ -15,6 +15,11 @@ export type InquiryDetails = {
   event_time?: string | null;
   source_message_date?: string | null;
   termin?: string | null;
+  event_single_day?: boolean;
+  event_end_date?: string | null;
+  event_start_time?: string | null;
+  event_end_time?: string | null;
+  event_end_next_day?: boolean;
   location_text?: string | null;
   scope?: string | null;
   event_assumptions?: string | null;

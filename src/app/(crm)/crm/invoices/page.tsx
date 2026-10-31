@@ -35,10 +35,12 @@ import {
   WalletCards,
   Banknote,
 } from 'lucide-react';
+import KsefLocalSalesSyncIssues from '@/components/crm/invoices/KsefLocalSalesSyncIssues';
 import KSeFIntegrationPanel from '@/components/crm/KSeFIntegrationPanel';
 import CanonicalFinancialDashboard from '@/components/crm/CanonicalFinancialDashboard';
 import FinancialEntriesTab from '@/components/crm/FinancialEntriesTab';
 import PermissionGuard from '@/components/crm/PermissionGuard';
+import SystemBadge from '@/components/ui/SystemBadge';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useInvoiceFinanceAccess } from '@/hooks/useInvoiceFinanceAccess';
 import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
@@ -68,9 +70,11 @@ interface Invoice {
   invoice_number: string;
   invoice_type: 'vat' | 'proforma' | 'advance' | 'corrective' | 'final';
   status: 'draft' | 'proforma' | 'issued' | 'sent' | 'paid' | 'overdue' | 'cancelled';
+  payment_status: 'unpaid' | 'partially_paid' | 'paid' | 'overdue' | 'refund_due' | 'partially_refunded' | 'refunded' | 'not_applicable' | null;
+  correction_kind?: 'amount' | 'party_data' | null;
   issue_date: string;
   sale_date: string;
-  payment_due_date: string;
+  payment_due_date: string | null;
   paid_date: string | null;
   buyer_name: string;
   buyer_nip: string | null;
@@ -91,6 +95,17 @@ interface Invoice {
   organization?: {
     name: string;
   };
+}
+
+function isPaidProforma(invoice: Invoice): boolean {
+  return (invoice.is_proforma === true || invoice.invoice_type === 'proforma')
+    && invoice.status !== 'draft'
+    && invoice.status !== 'cancelled'
+    && invoice.payment_status === 'paid';
+}
+
+function getInvoiceDisplayStatus(invoice: Invoice): Invoice['status'] {
+  return isPaidProforma(invoice) ? 'paid' : invoice.status;
 }
 
 function InvoiceContextMenu({
@@ -458,7 +473,7 @@ export default function InvoicesPage() {
     fetchInvoices();
     fetchMyCompanies();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allowedCompanyIds, permissionsLoading, financeAccessLoading, financeAccess]);
+  }, [allowedCompanyIds, permissionsLoading, financeAccessLoading, financeAccess, activeTab]);
 
   const fetchMyCompanies = async () => {
     try {
@@ -491,7 +506,7 @@ export default function InvoicesPage() {
         .select(
           `
           *,
-          event:events(name),
+          event:events!invoices_event_id_fkey(name),
           organization:organizations!invoices_organization_id_fkey(name),
           service_recipient_organization:organizations!invoices_service_recipient_organization_id_fkey(name),
           my_company:my_companies(id, name)
@@ -527,7 +542,11 @@ export default function InvoicesPage() {
     }
   };
 
-  const getStatusBadge = (status: string) => {
+  const getStatusBadge = (invoice: Invoice) => {
+    if (isPaidProforma(invoice)) {
+      return <SystemBadge value="paid" label="Opłacona" />;
+    }
+    const status = invoice.status;
     const statusConfig = {
       draft: {
         label: 'Szkic',
@@ -596,7 +615,7 @@ export default function InvoicesPage() {
   };
 
   const getRowColor = (invoice: Invoice) => {
-    if (invoice.status === 'paid') return 'bg-green-500/[0.06] hover:bg-green-500/[0.12]';
+    if (getInvoiceDisplayStatus(invoice) === 'paid') return 'bg-green-500/[0.06] hover:bg-green-500/[0.12]';
     if (invoice.invoice_type === 'corrective') return 'bg-red-500/[0.06] hover:bg-red-500/[0.12]';
     if (invoice.invoice_type === 'advance') return 'bg-amber-500/[0.06] hover:bg-amber-500/[0.12]';
     if (invoice.invoice_type === 'proforma') return 'bg-blue-500/[0.04] hover:bg-blue-500/[0.08]';
@@ -604,7 +623,7 @@ export default function InvoicesPage() {
   };
 
   const getCardBorderColor = (invoice: Invoice) => {
-    if (invoice.status === 'paid') return 'border-l-green-500';
+    if (getInvoiceDisplayStatus(invoice) === 'paid') return 'border-l-green-500';
     if (invoice.invoice_type === 'corrective') return 'border-l-red-500';
     if (invoice.invoice_type === 'advance') return 'border-l-amber-500';
     if (invoice.invoice_type === 'proforma') return 'border-l-blue-400';
@@ -620,7 +639,9 @@ export default function InvoicesPage() {
         (invoice.buyer_nip && invoice.buyer_nip.includes(searchTerm));
 
       const matchesType = filterType === 'all' || invoice.invoice_type === filterType;
-      const matchesStatus = filterStatus === 'all' || invoice.status === filterStatus;
+      const matchesStatus = filterStatus === 'all'
+        || invoice.status === filterStatus
+        || (filterStatus === 'paid' && isPaidProforma(invoice));
       const matchesCompany =
         selectedCompanyIds.size === 0 || selectedCompanyIds.has((invoice as any).my_company_id);
 
@@ -667,7 +688,10 @@ export default function InvoicesPage() {
       }
 
       if (sortKey === 'issue_date' || sortKey === 'payment_due_date') {
-        return (new Date(a[sortKey]).getTime() - new Date(b[sortKey]).getTime()) * direction;
+        const left = a[sortKey];
+        const right = b[sortKey];
+        if (!left || !right) return left ? -1 : right ? 1 : 0;
+        return (new Date(left).getTime() - new Date(right).getTime()) * direction;
       }
 
       if (sortKey === 'total_net' || sortKey === 'total_gross') {
@@ -675,7 +699,7 @@ export default function InvoicesPage() {
       }
 
       if (sortKey === 'status') {
-        return collator.compare(a.status || '', b.status || '') * direction;
+        return collator.compare(getInvoiceDisplayStatus(a), getInvoiceDisplayStatus(b)) * direction;
       }
 
       return 0;
@@ -912,10 +936,15 @@ export default function InvoicesPage() {
               {/* Original content */}
 
               <div className="mb-4 rounded-xl border border-[#d3bb73]/15 bg-[#d3bb73]/5 px-4 py-3 text-sm text-[#e5e4e2]/70">
-                Lokalny rejestr przechowuje proformy, szkice, wizualizacje PDF oraz dokumenty
-                oczekujące na wysłanie do KSeF. KSeF uzupełnia ten rejestr, ale go nie zastępuje.
+                Rejestr sprzedaży obejmuje faktury lokalne i wystawione w KSeF oraz proformy i szkice.
+                Powiązane faktury mają wspólny stan płatności. Faktury zakupowe pozostają w zakładce KSeF.
               </div>
 
+              {financeAccess.canViewCompanyFinance && <KsefLocalSalesSyncIssues
+                companyIds={selectedCompanyIds.size > 0 ? Array.from(selectedCompanyIds) : allowedCompanyIds}
+                canManage={canManageInvoices && financeAccess.canManageCompanyFinance}
+                onSynced={() => void fetchInvoices()}
+              />}
               {/* Stats */}
               <div className="mb-6 overflow-hidden rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33]">
                 <button
@@ -1208,7 +1237,7 @@ export default function InvoicesPage() {
                             <td className="whitespace-nowrap px-6 py-3.5">
                               <div className="flex items-center gap-1.5 text-sm text-[#e5e4e2]/80">
                                 <Calendar className="h-3.5 w-3.5 text-[#e5e4e2]/30" />
-                                {new Date(invoice.payment_due_date).toLocaleDateString('pl-PL')}
+                                {invoice.correction_kind === 'party_data' ? 'Nie dotyczy' : invoice.payment_due_date ? new Date(invoice.payment_due_date).toLocaleDateString('pl-PL') : '—'}
                               </div>
                             </td>
                             <td className="whitespace-nowrap px-6 py-3.5 text-right text-sm text-[#e5e4e2]/70">
@@ -1227,7 +1256,7 @@ export default function InvoicesPage() {
                             </td>
                             <td className="whitespace-nowrap px-3 py-3.5">
                               <div className="flex items-center gap-2">
-                                {getStatusBadge(invoice.status)}
+                                {getStatusBadge(invoice)}
                                 {invoice.ksef_status && (
                                   <span
                                     className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium ${
@@ -1321,7 +1350,7 @@ export default function InvoicesPage() {
                           </div>
                         </div>
                         <div className="ml-3 flex items-center gap-2">
-                          {getStatusBadge(invoice.status)}
+                          {getStatusBadge(invoice)}
                           {invoice.ksef_status && (
                             <span
                               className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium ${
@@ -1369,7 +1398,7 @@ export default function InvoicesPage() {
                           </div>
                           <div className="flex items-center gap-1.5">
                             <Clock className="h-3 w-3" />
-                            Termin: {new Date(invoice.payment_due_date).toLocaleDateString('pl-PL')}
+                            Termin: {invoice.correction_kind === 'party_data' ? 'Nie dotyczy' : invoice.payment_due_date ? new Date(invoice.payment_due_date).toLocaleDateString('pl-PL') : '—'}
                           </div>
                         </div>
                         <div className="text-right">

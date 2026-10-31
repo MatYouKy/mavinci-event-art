@@ -16,7 +16,7 @@ import {
   Menu,
   MessageSquare,
   Settings,
-  PlusCircle,
+  Users,
   X,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
@@ -26,8 +26,8 @@ import { SellerCountBadge } from '@/components/seller/SellerInboxPanel';
 
 const navigation = [
   { name: 'Dashboard', href: '/seller', icon: LayoutDashboard },
-  { name: 'Nowa oferta', href: '/seller/offers/new', icon: PlusCircle },
   { name: 'Moje oferty', href: '/seller/offers', icon: FileText },
+  { name: 'Kontakty', href: '/seller/contacts', icon: Users },
   { name: 'Realizacje', href: '/seller/realizations', icon: CalendarDays },
   { name: 'Rozmowy z opiekunem', href: '/seller/messages', icon: MessageSquare },
   { name: 'Moje wynagrodzenie', href: '/seller/commissions', icon: BadgePercent },
@@ -193,7 +193,7 @@ export default function SellerLayout({ children }: { children: React.ReactNode }
                 <Menu className="h-6 w-6" />
               </button>
               <h1 className="text-xl font-light text-[#e5e4e2]">
-                {navigation.find((item) => item.href === pathname)?.name || 'Panel sprzedawcy'}
+                {pathname === '/seller/offers/new' ? 'Nowa oferta' : navigation.find((item) => item.href === pathname)?.name || 'Panel sprzedawcy'}
               </h1>
             </div>
           </header>

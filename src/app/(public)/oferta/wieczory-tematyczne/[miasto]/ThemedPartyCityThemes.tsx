@@ -1,66 +1,27 @@
-'use client';
-
+import 'server-only';
 import Image from 'next/image';
-import { PolishCityCases } from '@/lib/polishCityCases';
+import Link from 'next/link';
+import type { PolishCityCases } from '@/lib/polishCityCases';
 
-interface ThemeItem {
-  title: string;
-  description: string;
-  keywords?: string;
-  image: string;
-}
-
-type Props = {
-  themes: ThemeItem[];
-  cityCases: PolishCityCases;
-};
-
-function capitalize(value: string) {
-  if (!value) return value;
-  return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
-}
+type Props = { themes: { title: string; description: string; image?: string; scenarioHref?: string }[]; cityCases: PolishCityCases };
 
 export default function ThemedPartyCityThemes({ themes, cityCases }: Props) {
-  const prep = cityCases.locative_preposition || 'w';
-
-  if (!themes || themes.length === 0) return null;
-
-  return (
-    <section className="border-b border-[#d3bb73]/10 bg-[#1c1f33]/30 px-6 py-20">
-      <div className="mx-auto max-w-7xl">
-        <h2 className="mb-4 text-center text-3xl font-light text-[#e5e4e2] md:text-4xl">
-          Popularne tematyki wieczorów {prep} {capitalize(cityCases.locative)}
-        </h2>
-        <p className="mx-auto mb-12 max-w-3xl text-center text-[#e5e4e2]/60">
-          Wybierz gotowy motyw lub stwórz z nami autorską tematykę dopasowaną do Twojego eventu{' '}
-          {prep} {capitalize(cityCases.locative)}
-        </p>
-
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {themes.map((theme, idx) => (
-            <div
-              key={idx}
-              className="group overflow-hidden rounded-xl border border-[#d3bb73]/10 bg-[#0f1119] transition-all duration-300 hover:border-[#d3bb73]/40"
-            >
-              <div className="relative aspect-[16/9] overflow-hidden">
-                <Image
-                  src={theme.image}
-                  alt={`${theme.title} ${prep} ${capitalize(cityCases.locative)}`}
-                  fill
-                  sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
-                  className="object-cover transition-transform duration-500 group-hover:scale-110"
-                  loading="lazy"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-[#0f1119] via-[#0f1119]/20 to-transparent" />
-              </div>
-              <div className="p-5">
-                <h3 className="mb-2 text-lg font-medium text-[#d3bb73]">{theme.title}</h3>
-                <p className="text-sm leading-relaxed text-[#e5e4e2]/70">{theme.description}</p>
-              </div>
-            </div>
-          ))}
-        </div>
+  if (!themes.length) return null;
+  return <section id="motywy" className="bg-[#291320]/60 px-5 py-14 sm:px-6 md:py-20">
+    <div className="mx-auto max-w-7xl">
+      <h2 className="text-2xl font-light uppercase leading-snug sm:text-3xl">Pomysły na wieczór tematyczny dla firmy</h2>
+      <p className="mt-5 max-w-3xl leading-7 text-white/75">Wybierz klimat imprezy {cityCases.locative_preposition || 'w'} {cityCases.locative}. Poniższe opisy pokazują możliwości programu; dekoracje, atrakcje i wyposażenie dobieramy do sali, liczby gości oraz budżetu.</p>
+      <div className="mt-9 grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+        {themes.map((theme, index) => <article key={`${theme.title}-${index}`} className="group overflow-hidden rounded-2xl bg-[#190f1b] shadow-sm">
+          {theme.image && <div className="relative aspect-[16/10] overflow-hidden">
+            <Image src={theme.image} alt={`Motyw wieczoru: ${theme.title}`} fill sizes="(max-width: 639px) calc(100vw - 40px), (max-width: 1279px) 50vw, 400px" className="object-cover motion-safe:transition-transform motion-safe:duration-500 motion-safe:group-hover:scale-[1.02]" loading="lazy" />
+          </div>}
+          <div className="p-6"><h3 className="text-lg leading-7 text-[#d3bb73]">{theme.title}</h3><p className="mt-3 text-sm leading-6 text-white/75">{theme.description}</p>
+            {theme.scenarioHref && <Link href={theme.scenarioHref} className="mt-4 inline-flex min-h-11 items-center text-sm text-[#d3bb73] underline underline-offset-4">Poznaj program i zobacz realizacje ↗</Link>}
+            {/las vegas|james bond/i.test(theme.title) && <Link href="/oferta/kasyno" className="mt-4 inline-flex min-h-11 items-center text-sm text-[#d3bb73] underline underline-offset-4">Zobacz zasady kasyna rozrywkowego</Link>}
+          </div>
+        </article>)}
       </div>
-    </section>
-  );
+    </div>
+  </section>;
 }

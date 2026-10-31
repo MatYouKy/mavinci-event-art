@@ -224,6 +224,7 @@ function InquiryEditorModal({ inquiry, employees, canAssign, onClose, onSaved }:
   onSaved: (inquiry: InquiryListItem) => void;
 }) {
   const { showSnackbar } = useSnackbar();
+  const [title, setTitle] = useState(inquiry.title || '');
   const [stage, setStage] = useState<InquiryStage>(inquiry.inquiry_stage);
   const [ownerId, setOwnerId] = useState(inquiry.inquiry_owner_id ?? '');
   const [nextActionAt, setNextActionAt] = useState(toDateTimeLocal(inquiry.next_action_at));
@@ -271,6 +272,11 @@ function InquiryEditorModal({ inquiry, employees, canAssign, onClose, onSaved }:
   };
 
   const save = async () => {
+    if (saving) return;
+    if (!title.trim()) {
+      showSnackbar('Wpisz tytuł zapytania.', 'warning');
+      return;
+    }
     if (stage === 'lost' && (!lostReasonCategory || !lostReason.trim())) {
       showSnackbar('Wybierz kategorię i opisz powód przegrania zapytania', 'error');
       return;
@@ -280,6 +286,7 @@ function InquiryEditorModal({ inquiry, employees, canAssign, onClose, onSaved }:
 
     setSaving(true);
     const { data, error } = await supabase.from('tasks').update({
+      title: title.trim(),
       inquiry_stage: stage,
       inquiry_owner_id: ownerId || null,
       next_action_at: nextActionAt ? new Date(nextActionAt).toISOString() : null,
@@ -318,6 +325,11 @@ function InquiryEditorModal({ inquiry, employees, canAssign, onClose, onSaved }:
         </div>
 
         <div className="space-y-5 p-5">
+          <label className="block">
+            <span className="mb-2 block text-sm text-[#e5e4e2]/70">Tytuł zapytania *</span>
+            <input value={title} onChange={event => setTitle(event.target.value)} disabled={saving} required
+              className="w-full rounded-lg border border-white/10 bg-[#0f1119] px-3 py-2.5 text-sm text-[#e5e4e2] disabled:opacity-50" />
+          </label>
           <div>
             <label className="mb-2 block text-xs font-medium uppercase tracking-wide text-[#e5e4e2]/45">Etap sprzedaży</label>
             <div className="grid gap-2 sm:grid-cols-2">

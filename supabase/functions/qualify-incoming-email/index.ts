@@ -1,3 +1,4 @@
+import { inquiryParticipantsSchema, inquiryParticipantsInstruction, supportedInquiryParticipants, type InquiryParticipants } from '../_shared/inquiryParticipants.ts';
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -19,6 +20,7 @@ interface QualificationJob {
 }
 
 interface Classification {
+  participants: InquiryParticipants;
   is_sales_opportunity: boolean;
   intent: "event_inquiry" | "market_research" | "vendor" | "job_application" | "invoice" | "spam" | "other";
   confidence: number;
@@ -107,6 +109,7 @@ async function classifyEmail(
     type: "object",
     additionalProperties: false,
     properties: {
+      participants: inquiryParticipantsSchema,
       is_sales_opportunity: { type: "boolean" },
       intent: {
         type: "string",
@@ -128,7 +131,7 @@ async function classifyEmail(
     required: [
       "is_sales_opportunity", "intent", "confidence", "summary", "reasoning", "customer_name",
       "company_name", "phone", "event_type", "event_date", "location", "budget",
-      "requested_services", "signals",
+      "requested_services", "signals", "participants",
     ],
   };
 
@@ -148,6 +151,7 @@ async function classifyEmail(
             type: "input_text",
             text: [
               "Jesteś kwalifikatorem sprzedaży firmy eventowej Mavinci.",
+              inquiryParticipantsInstruction,
               "Rozpoznaj wyłącznie nowe, realne zapytania o organizację lub obsługę wydarzenia.",
               "Badanie rynku bez konkretnej intencji zakupu oznacz jako market_research.",
               "Faktury, oferty dostawców, rekrutację, spam i zwykłą korespondencję oznacz jako niesprzedażowe.",
@@ -183,7 +187,9 @@ async function classifyEmail(
     throw new Error(`OpenAI ${response.status}: ${(await response.text()).slice(0, 500)}`);
   }
 
-  return JSON.parse(responseText(await response.json())) as Classification;
+  const result = JSON.parse(responseText(await response.json())) as Classification;
+  result.participants = supportedInquiryParticipants(result.participants, [email.subject, String(email.body_text || '').slice(0, 12000)]);
+  return result;
 }
 
 Deno.serve(async (req: Request) => {
@@ -398,18 +404,8 @@ Deno.serve(async (req: Request) => {
           .maybeSingle();
         contact = existingContact;
 
-        if (!contact && classification.is_sales_opportunity && classification.confidence >= SALES_CONFIDENCE_THRESHOLD) {
-          const names = splitName(classification.customer_name || senderName, senderEmail);
-          const { data, error } = await supabase.from("contacts").insert({
-            ...names,
-            email: senderEmail,
-            phone: classification.phone,
-            tags: ["zapytanie-email-ai"],
-            notes: "Kontakt utworzony automatycznie na podstawie zakwalifikowanej wiadomości e-mail.",
-          }).select("id, first_name, last_name, email").single();
-          if (error) throw error;
-          contact = data;
-        }
+        // New contacts require an explicit type and confirmation in the inquiry UI.
+        // Keep sender details in the inquiry until the seller chooses a client.
 
         if (classification.company_name) {
           const { data } = await supabase.from("organizations")
@@ -418,14 +414,6 @@ Deno.serve(async (req: Request) => {
             .limit(1)
             .maybeSingle();
           organization = data;
-        }
-
-        if (contact && organization) {
-          await supabase.from("contact_organizations").upsert({
-            contact_id: contact.id,
-            organization_id: organization.id,
-            is_current: true,
-          }, { onConflict: "contact_id,organization_id" });
         }
 
         const shouldCreateInquiry = classification.is_sales_opportunity
@@ -496,6 +484,11 @@ Deno.serve(async (req: Request) => {
                 event_date: classification.event_date,
                 location: classification.location,
                 budget: classification.budget,
+                guest_count: classification.participants.kind === 'exact' ? classification.participants.count : null,
+                guest_count_text: classification.participants.text,
+                guest_count_evidence: classification.participants.evidence,
+                guest_count_extraction: classification.participants,
+
                 requested_services: classification.requested_services,
                 ai_confidence: classification.confidence,
                 ai_reasoning: classification.reasoning,

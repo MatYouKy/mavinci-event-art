@@ -348,6 +348,7 @@ export default function MessageDetailPage({ params }: PageProps) {
             : 'Wiadomość wysłana!',
           'success',
         );
+        if (result.warning) showSnackbar(String(result.warning), 'warning');
         setShowReplyModal(false);
         setShowForwardModal(false);
       } else {

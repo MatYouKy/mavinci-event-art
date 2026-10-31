@@ -5,9 +5,9 @@ import { Loader2, MessageSquare } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { ConversationMessages, type SellerConversation } from './SellerChatPanel';
 
-type Props = { offerId: string; partnerId: string; companyId: string; canStart: boolean; crm: boolean; compact?: boolean; standalone?: boolean; realization?: boolean };
+type Props = { offerId: string; partnerId: string; companyId: string; canStart: boolean; crm: boolean; compact?: boolean; standalone?: boolean; realization?: boolean; embedded?: boolean };
 
-export default function SellerOfferConversation({ offerId, partnerId, companyId, canStart, crm, compact = false, standalone = false, realization = false }: Props) {
+export default function SellerOfferConversation({ offerId, partnerId, companyId, canStart, crm, compact = false, standalone = false, realization = false, embedded = false }: Props) {
   const [conversation, setConversation] = useState<SellerConversation | null>(null);
   const [loading, setLoading] = useState(true);
   const [opening, setOpening] = useState(false);
@@ -61,9 +61,9 @@ export default function SellerOfferConversation({ offerId, partnerId, companyId,
   const fitViewport = compact && standalone;
   const isRealization = realization || Boolean(conversation?.has_event);
   const title = isRealization ? 'Rozmowa o realizacji' : 'Rozmowa o ofercie';
-  return <section id="seller-offer-conversation" aria-label={title} className={`min-w-0 scroll-mt-6 space-y-3 rounded-xl ${fitViewport ? 'lg:flex lg:min-h-0 lg:flex-auto lg:flex-col' : ''} ${standalone ? 'bg-[#1c1f33] p-4 sm:p-5' : compact ? 'bg-white/[0.03] p-3' : 'my-5 bg-white/[0.03] p-4'}`}>
-    <Heading className={`flex shrink-0 items-center gap-2 ${standalone ? 'text-base uppercase' : 'text-sm'}`}><MessageSquare className="h-4 w-4 shrink-0 text-[#d3bb73]" />{title}</Heading>
-    <p className="shrink-0 text-xs leading-5 text-white/55">{isRealization ? 'Kontynuujcie ten sam wątek — cała historia oferty pozostaje tutaj. Wiadomości nie zmieniają decyzji o akceptacji ani potwierdzeniu wydarzenia.' : compact ? 'Pytania i uwagi do szkicu — bez zmiany decyzji o akceptacji.' : 'Tutaj omawiacie szkic: pytania, obawy i propozycje zmian. Wiadomość nie zatwierdza ani nie odrzuca zapytania. Ten sam wątek pozostaje przy ofercie, a później przy powiązanej realizacji.'}</p>
+  return <section id="seller-offer-conversation" aria-label={title} className={`min-w-0 scroll-mt-6 space-y-3 rounded-xl ${fitViewport ? 'lg:flex lg:min-h-0 lg:flex-auto lg:flex-col' : ''} ${embedded ? '' : standalone ? 'bg-[#1c1f33] p-4 sm:p-5' : compact ? 'bg-white/[0.03] p-3' : 'my-5 bg-white/[0.03] p-4'}`}>
+    {!embedded && <Heading className={`flex shrink-0 items-center gap-2 ${standalone ? 'text-base uppercase' : 'text-sm'}`}><MessageSquare className="h-4 w-4 shrink-0 text-[#d3bb73]" />{title}</Heading>}
+    <p className="shrink-0 text-xs leading-5 text-white/55">{embedded ? 'Rozmowa ze sprzedawcą — przycisk „Wyślij” wysyła samą wiadomość, bez decyzji o ofercie.' : isRealization ? 'Kontynuujcie ten sam wątek — cała historia oferty pozostaje tutaj. Wiadomości nie zmieniają decyzji o akceptacji ani potwierdzeniu wydarzenia.' : compact ? 'Pytania i uwagi do szkicu — bez zmiany decyzji o akceptacji.' : 'Tutaj omawiacie szkic: pytania, obawy i propozycje zmian. Wiadomość nie zatwierdza ani nie odrzuca zapytania. Ten sam wątek pozostaje przy ofercie, a później przy powiązanej realizacji.'}</p>
     {loading && <p role="status" className="text-sm text-white/50">Wczytywanie rozmowy…</p>}
     {error && <div role="alert" className="text-sm text-amber-200">{error}<button type="button" onClick={() => void reload()} className="ml-2 text-[#d3bb73] underline underline-offset-4">Odśwież rozmowę</button></div>}
     {conversation ? <ConversationMessages key={conversation.id} conversation={conversation} crm={crm} compact={compact} fitViewport={fitViewport} realization={isRealization} onRead={() => { void reload(); }} /> : !loading && !error && <div className="space-y-3 py-2">

@@ -1,13 +1,21 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 'use client';
+import LedProductConfigurationSection from '@/components/crm/offers/LedProductConfigurationSection';
 import { COMPACT_PRODUCT_DESCRIPTION_LIMIT, compactProductBlockReason } from '@/lib/CRM/Offers/productPresentation';
 import ProductRelatedServicesSection from '@/components/crm/offers/ProductRelatedServicesSection';
 import { ProductPackageCostSummary } from '@/components/crm/offers/ProductPackageCostsEditor';
+import { QuantitySourceSelect } from '@/components/crm/offers/AudiencePricingEditor';
 import ProductSalesPackagesSection from '@/components/crm/offers/ProductSalesPackagesSection';
 import { validateSalesPackages, type ProductSalesPackage } from '@/lib/CRM/Offers/productSalesPackages';
+import ProductEquipmentTreeSection from '@/components/crm/offers/ProductEquipmentTreeSection';
+import { validateProductConfigurator } from '@/lib/CRM/Offers/modularProduct';
 import ProductAddonsSection from '@/components/crm/offers/ProductAddonsSection';
 import ProductSettingsDrawer from '@/components/crm/offers/ProductSettingsDrawer';
 import ProductDataSection from '@/components/crm/offers/ProductDataSection';
+import ProductLanguageSwitch from '@/components/crm/offers/ProductLanguagePanel';
+import ProductTranslationModal from '@/components/crm/offers/ProductTranslationModal';
+import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
+import { useProductLanguage } from '@/hooks/useProductLanguage';
 import ProductRequirementsSection, { type OfferAdditionalRequirement } from '@/components/crm/offers/ProductRequirementsSection';
 import { validateAddons, type ProductAddon } from '@/lib/CRM/Offers/offerAddons';
 
@@ -44,6 +52,9 @@ import { ProductContractClauses } from '../components/StructuredProductContractC
 import { ProductMavinciLiveModules } from '../components/ProductMavinciLiveModules';
 import { ProductOfferCardPreview } from '../components/ProductOfferCardPreview';
 import { ProductVariantsEditor } from '../components/ProductVariantsEditor';
+import ProductCardImageSection from '../components/ProductCardImageSection';
+import ProductImageFraming from '../components/ProductImageFraming';
+import type { ImageCrops } from '@/lib/CRM/Offers/productImageCrop';
 import { AddEquipmentModal } from '../modal/AddEquipmentModal';
 import { useManageProduct } from '../hooks/useManageProduct';
 import type {
@@ -106,6 +117,7 @@ interface IProduct {
   pdf_thumbnail_url?: string | null;
   offer_short_description?: string | null;
   offer_description?: string | null;
+  public_description?: string | null;
   offer_compact_description?: string | null;
   offer_benefits?: string[] | null;
   offer_requirements?: string[] | null;
@@ -115,10 +127,13 @@ interface IProduct {
   offer_image_position_x?: number | null;
   offer_image_position_y?: number | null;
   offer_image_zoom?: number | null;
+  offer_image_crops?: ImageCrops;
   product_page_url?: string | null;
+  quantity_source?: import('@/lib/CRM/Offers/audiencePricing').QuantitySource;
   sales_packages?: ProductSalesPackage[];
   sales_packages_enabled?: boolean;
   pricing_addons?: ProductAddon[];
+  configuration_schema?: import('@/lib/CRM/Offers/modularProduct').ProductConfigurator | null;
   offer_page_variant?: string | null;
   offer_page_enabled?: boolean;
   recommended_contract_clauses?: string | null;
@@ -414,7 +429,13 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
       (a, b) => a.display_order - b.display_order,
     ),
   );
-  const [variantDraft, setVariantDraft] = useState<IProductVariant[] | null>(null);
+  const productLanguage = useProductLanguage(productId, product, productVariants, canEdit);
+  const contentLanguage = productLanguage.language;
+  const refreshEnglish = async (id = productId) => {
+    try { await productLanguage.generate(id); }
+    catch { /* Translation errors remain visible in ProductTranslationModal. */ }
+  };
+  const variantsSavingRef = useRef(false);
   const [savingVariants, setSavingVariants] = useState(false);
   const [addonsEditing, setAddonsEditing] = useState(false);
   const [savingAddons, setSavingAddons] = useState(false);
@@ -424,16 +445,16 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
   const [savingProductSection, setSavingProductSection] = useState<string | null>(null);
   const [previewPage, setPreviewPage] = useState<'elements' | 'packages'>('elements');
   const [basicPreview, setBasicPreview] = useState<Partial<IProduct> | null>(null);
+  const [presentationPreview, setPresentationPreview] = useState<Partial<IProduct> | null>(null);
+  const offerCopyRequest = useRef(0);
   const setSectionEditing = (key: string, editing: boolean) => setEditingProductSections(current => editing ? [...new Set([...current, key])] : current.filter(item => item !== key));
-  const visibleVariants = variantDraft ?? productVariants;
+  const visibleVariants = productVariants;
+  const isStageProduct = ['stage', 'warehouse_stage'].includes(product?.configuration_schema?.profile || '');
   const compactBlockReason = compactProductBlockReason({ ...product, offer_product_variants: visibleVariants });
   const hasIndividualExtensionRates = visibleVariants.some(v => v.is_active !== false)
     || Boolean(product?.sales_packages_enabled && product.sales_packages?.length);
   const effectivePageVariant = product?.offer_page_variant === 'compact' && compactBlockReason
-    ? 'default' : product?.offer_page_variant || 'default';
-  const variantsEditing = variantDraft !== null;
-  const variantImageSnapshot = useRef<Record<string, string>>({});
-  const variantDraftImageSnapshot = useRef(new Map<string, { file: File; preview: string }>());
+    ? 'default' : isStageProduct && product?.offer_page_variant !== 'compact' ? 'default' : product?.offer_page_variant || 'default';
   const persistedProductVariants = useMemo(
     () => productVariants.filter((variant) => !variant.id.startsWith('temp-')),
     [productVariants],
@@ -458,9 +479,7 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
 
 
   const [uploadingOfferImage, setUploadingOfferImage] = useState(false);
-  const [offerImageFile, setOfferImageFile] = useState<File | null>(null);
   const [offerImageSrc, setOfferImageSrc] = useState<string | null>(null);
-  const [draggingOfferImage, setDraggingOfferImage] = useState(false);
   const [variantImageUrls, setVariantImageUrls] = useState<Record<string, string>>({});
   const draftVariantImages = useRef(new Map<string, { file: File; preview: string }>());
   const createdProductId = useRef<string | null>(null);
@@ -468,15 +487,13 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
   useEffect(() => () => {
     draftVariantImages.current.forEach(({ preview }) => URL.revokeObjectURL(preview));
     draftVariantImages.current.clear();
-    variantDraftImageSnapshot.current.forEach(({ preview }) => URL.revokeObjectURL(preview));
-    variantDraftImageSnapshot.current.clear();
   }, []);
 
   useEffect(() => {
     const activeIds = new Set(visibleVariants.map(variant => variant.id));
     draftVariantImages.current.forEach(({ preview }, id) => {
       if (!activeIds.has(id)) {
-        if (variantDraftImageSnapshot.current.get(id)?.preview !== preview) URL.revokeObjectURL(preview);
+        URL.revokeObjectURL(preview);
         draftVariantImages.current.delete(id);
       }
     });
@@ -947,140 +964,10 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
     }
   };
 
-  const handleUploadOfferImage = async (selectedFile?: File | null) => {
-    const file = selectedFile || offerImageFile;
-    if (!file || !product || productId === 'new') return;
-
-    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
-      showSnackbar('Grafika do PDF musi być plikiem PNG, JPG lub WebP', 'error');
-      return;
-    }
-
-    if (file.size > 10 * 1024 * 1024) {
-      showSnackbar('Grafika nie może być większa niż 10 MB', 'error');
-      return;
-    }
-
-    const previousPreview = offerImageSrc;
-    let localPreview = '';
-    try {
-      setUploadingOfferImage(true);
-      const optimizedFile = await optimizeOfferImage(file, {
-        maxWidth: 1800,
-        maxHeight: 1800,
-        quality: 0.82,
-      });
-      localPreview = URL.createObjectURL(optimizedFile);
-      setOfferImageFile(optimizedFile);
-      setOfferImageSrc(localPreview);
-      const extension =
-        optimizedFile.type === 'image/png'
-          ? 'png'
-          : optimizedFile.type === 'image/webp'
-            ? 'webp'
-            : 'jpg';
-      const filePath = `assets/${product.id}/offer-image-${Date.now()}.${extension}`;
-
-      const { error: uploadError } = await bucket.upload(filePath, optimizedFile, {
-        contentType: optimizedFile.type,
-        upsert: false,
-      });
-      if (uploadError) throw uploadError;
-
-      const { error: updateError } = await supabase
-        .from('offer_products')
-        .update({ offer_image_path: filePath })
-        .eq('id', product.id);
-      if (updateError) {
-        await bucket.remove([filePath]);
-        throw updateError;
-      }
-
-      // Older images may still be referenced by brochures and offer snapshots.
-      // Replacing a catalog image must not delete those immutable assets.
-      const { data } = await bucket.createSignedUrl(filePath, 3600);
-      setOfferImageSrc(data?.signedUrl || null);
-      setOfferImageFile(null);
-      setProduct((current) => (current ? { ...current, offer_image_path: filePath } : current));
-      showSnackbar('Grafika produktu została zapisana', 'success');
-    } catch (err: any) {
-      setOfferImageSrc(previousPreview);
-      showSnackbar(err.message || 'Błąd przesyłania grafiki', 'error');
-    } finally {
-      if (localPreview) URL.revokeObjectURL(localPreview);
-      setUploadingOfferImage(false);
-    }
-  };
-
-  const handleOfferImageDrop = async (event: React.DragEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    setDraggingOfferImage(false);
-    if (!canEdit || productId === 'new' || uploadingOfferImage) return;
-
-    const file = event.dataTransfer.files?.[0];
-    if (file) await handleUploadOfferImage(file);
-  };
-
-  const handleUploadVariantImage = async (variant: IProductVariant, file: File) => {
-    if (!product || !canEdit || !variantsEditing || saving || savingVariants || uploadingVariantImageId) return;
-    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type) || file.size > 10 * 1024 * 1024) {
-      showSnackbar('Wybierz zdjęcie PNG, JPG lub WebP o wielkości do 10 MB', 'error');
-      return;
-    }
-    try {
-      setUploadingVariantImageId(variant.id);
-      const optimizedFile = await optimizeOfferImage(file, { maxWidth: 1800, maxHeight: 1800, quality: 0.82 });
-      const previous = draftVariantImages.current.get(variant.id);
-      if (previous && variantDraftImageSnapshot.current.get(variant.id)?.preview !== previous.preview) URL.revokeObjectURL(previous.preview);
-      const preview = URL.createObjectURL(optimizedFile);
-      draftVariantImages.current.set(variant.id, { file: optimizedFile, preview });
-      setVariantImageUrls(current => ({ ...current, [variant.id]: preview }));
-    } catch (err: any) {
-      showSnackbar(err.message || 'Nie udało się przygotować zdjęcia', 'error');
-      throw err;
-    } finally {
-      setUploadingVariantImageId(null);
-    }
-  };
-
-  const handleDeleteVariantImage = async (variant: IProductVariant) => {
-    if (!canEdit || !variantsEditing || saving || savingVariants || uploadingVariantImageId) return;
-    const draft = draftVariantImages.current.get(variant.id);
-    if (draft && variantDraftImageSnapshot.current.get(variant.id)?.preview !== draft.preview) URL.revokeObjectURL(draft.preview);
-    draftVariantImages.current.delete(variant.id);
-    setVariantDraft(current => current?.map(item => item.id === variant.id ? { ...item, offer_image_path: null } : item) ?? null);
-    setVariantImageUrls(current => {
-      const next = { ...current };
-      delete next[variant.id];
-      return next;
-    });
-  };
-
-  const handleDeleteOfferImage = async () => {
-    if (!product?.offer_image_path || productId === 'new') return;
-    if (!confirm('Odłączyć grafikę od produktu? Plik pozostanie dostępny w broszurach i wcześniej przygotowanych ofertach.')) return;
-
-    try {
-      setUploadingOfferImage(true);
-      const { error: updateError } = await supabase
-        .from('offer_products')
-        .update({ offer_image_path: null })
-        .eq('id', product.id);
-      if (updateError) throw updateError;
-
-      // Keep shared files so existing brochures and snapshots remain usable.
-      setOfferImageSrc(null);
-      setProduct((current) => (current ? { ...current, offer_image_path: null } : current));
-      showSnackbar('Grafikę odłączono od produktu. Zachowano ją dla istniejących materiałów.', 'success');
-    } catch (err: any) {
-      showSnackbar(err.message || 'Błąd usuwania grafiki', 'error');
-    } finally {
-      setUploadingOfferImage(false);
-    }
-  };
-
-  const handleGenerateOfferCopy = async () => {
-    if (!product || productId === 'new') return;
+  const handleGenerateOfferCopy = async (source: IProduct) => {
+    if (contentLanguage === 'en') { showSnackbar('Tłumaczenie wykonaj przyciskiem „Przetłumacz PL → EN” po zamknięciu edycji.', 'info'); return; }
+    if (!canEdit || productId === 'new' || generatingOfferCopy) return;
+    const requestId = ++offerCopyRequest.current;
 
     try {
       setGeneratingOfferCopy(true);
@@ -1088,15 +975,16 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
       const { data, error } = await supabase.functions.invoke('assist-inquiry', {
         body: {
           action: 'draft_product_offer_content',
-          productId: product.id,
+          productId: source.id,
           currentContent: {
-            short_description: product.offer_short_description || '',
-            description: product.offer_description || '',
-            benefits: product.offer_benefits || [],
-            image_alt: product.offer_image_alt || '',
+            short_description: source.offer_short_description || '',
+            description: source.offer_description || '',
+            benefits: source.offer_benefits || [],
+            image_alt: source.offer_image_alt || '',
           },
         },
       });
+      if (requestId !== offerCopyRequest.current) return;
       if (error) {
         let errorMessage = error.message;
         const response = (error as any).context;
@@ -1113,30 +1001,21 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
 
       setOfferAiDraft(data.result as ProductOfferAiDraft);
     } catch (err: any) {
-      showSnackbar(err.message || 'Nie udało się przygotować propozycji AI', 'error');
+      if (requestId === offerCopyRequest.current) showSnackbar(err.message || 'Nie udało się przygotować propozycji AI', 'error');
     } finally {
-      setGeneratingOfferCopy(false);
+      if (requestId === offerCopyRequest.current) setGeneratingOfferCopy(false);
     }
   };
 
-  const handleApplyOfferAiDraft = () => {
+  const handleApplyOfferAiDraft = (source: IProduct, onChange: (next: IProduct) => void) => {
     if (!offerAiDraft) return;
-    setProduct((current) =>
-      current
-        ? {
-            ...current,
-            offer_short_description: offerAiDraft.short_description,
-            offer_description: offerAiDraft.description,
-            offer_benefits: offerAiDraft.benefits,
-            offer_image_alt: offerAiDraft.image_alt,
-          }
-        : current,
-    );
+    onChange({
+      ...source,
+      offer_short_description: offerAiDraft.short_description,
+      offer_description: offerAiDraft.description,
+      offer_benefits: offerAiDraft.benefits,
+    });
     setOfferAiDraft(null);
-    showSnackbar(
-      'Propozycję przeniesiono do formularza. Zapisz produkt, aby ją zatwierdzić.',
-      'info',
-    );
   };
 
   // -----------------------------
@@ -1208,6 +1087,7 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
       short_description: variant.short_description?.trim() || null,
       description: variant.description?.trim() || null,
       benefits: (variant.benefits || []).map((item) => item.trim()).filter(Boolean),
+      quantity_source: variant.quantity_source || 'manual',
       price_net: Number(variant.price_net || 0),
       price_gross: Number(variant.price_gross || 0),
       service_duration_hours: variant.service_duration_hours == null
@@ -1242,7 +1122,7 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
       .map((variant) => variant.id.startsWith('temp-') ? variant.id.slice(5) : variant.id);
     const removedIds = (existingVariants || [])
       .map((variant) => variant.id)
-      .filter((id) => !persistedIds.includes(id));
+      .filter((id) => productVariants.some(variant => variant.id === id) && !persistedIds.includes(id));
 
     if (removedIds.length > 0) {
       const { error } = await supabase
@@ -1284,55 +1164,62 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
     }
   };
 
-  const beginVariantEdit = () => {
-    if (!canEdit || saving || savingVariants || uploadingVariantImageId) return;
-    variantImageSnapshot.current = { ...variantImageUrls };
-    variantDraftImageSnapshot.current = new Map(draftVariantImages.current);
-    setVariantDraft(structuredClone(productVariants));
-  };
-
-  const cancelVariantEdit = () => {
-    if (savingVariants || uploadingVariantImageId) return;
-    draftVariantImages.current.forEach(({ preview }, id) => {
-      if (variantDraftImageSnapshot.current.get(id)?.preview !== preview) URL.revokeObjectURL(preview);
-    });
-    draftVariantImages.current = new Map(variantDraftImageSnapshot.current);
-    variantDraftImageSnapshot.current.clear();
-    setVariantImageUrls(variantImageSnapshot.current);
-    setVariantDraft(null);
-  };
-
-  const saveVariantSection = async () => {
-    if (!product || !canEdit || !variantDraft || saving || savingVariants || savingAddons || savingRequirements || savingProductSection || uploadingVariantImageId) return;
+  const saveVariantSection = async (source: IProductVariant[], image?: { id: string; file?: File; remove?: boolean }) => {
+    if (contentLanguage === 'en') {
+      if (image?.file || image?.remove) throw new Error('Zdjęcia są wspólne. Zmień je w wersji PL.');
+      await productLanguage.savePatch({ offer_product_variants: source }); return;
+    }
+    if (!product || !canEdit || saving || variantsSavingRef.current || savingVariants || savingAddons || savingRequirements || savingProductSection || uploadingOfferImage) throw new Error('Trwa zapis innej sekcji. Spróbuj ponownie.');
+    if (source.some(variant => !variant.name.trim())) throw new Error('Każdy element musi mieć nazwę');
+    const names = source.map(variant => variant.name.trim().toLocaleLowerCase('pl-PL'));
+    if (new Set(names).size !== names.length) throw new Error('Nazwy elementów produktu muszą być unikalne');
+    if (source.some(variant => [variant.price_net, variant.price_gross, variant.service_duration_hours, variant.extension_price_net_per_hour].some(value => value != null && (!Number.isFinite(Number(value)) || Number(value) < 0)))) throw new Error('Ceny i czas usługi muszą być nieujemnymi liczbami');
+    const previousImages = new Map(draftVariantImages.current);
+    variantsSavingRef.current = true; setSavingVariants(true);
     try {
-      setSavingVariants(true);
-      if (variantDraft.some(variant => !variant.name.trim())) throw new Error('Każdy wariant musi mieć nazwę');
-      const names = variantDraft.map(variant => variant.name.trim().toLocaleLowerCase('pl-PL'));
-      if (new Set(names).size !== names.length) throw new Error('Nazwy wariantów produktu muszą być unikalne');
-      if (variantDraft.some(variant => [variant.price_net, variant.price_gross, variant.service_duration_hours, variant.extension_price_net_per_hour].some(value => value != null && (!Number.isFinite(Number(value)) || Number(value) < 0)))) {
-        throw new Error('Ceny i czas usługi muszą być nieujemnymi liczbami');
+      if (image?.remove) draftVariantImages.current.delete(image.id);
+      if (image?.file) {
+        setUploadingVariantImageId(image.id);
+        const file = await optimizeOfferImage(image.file, { maxWidth: 1800, maxHeight: 1800, quality: 0.82 });
+        draftVariantImages.current.set(image.id, { file, preview: URL.createObjectURL(file) });
       }
-      const saved = productId === 'new' ? structuredClone(variantDraft) : await persistVariants(product.id, variantDraft);
+      const removedIds = productVariants.filter(variant => !variant.id.startsWith('temp-') && !source.some(next => next.id === variant.id)).map(variant => variant.id);
+      let saved: IProductVariant[];
+      if (productId === 'new') {
+        saved = structuredClone(source);
+      } else if (removedIds.length) {
+        if ((product.sales_packages || []).some(pack => pack.element_ids.some(id => removedIds.includes(id)))) throw new Error('Najpierw usuń element ze składu pakietów.');
+        const { error } = await supabase.from('offer_product_variants').delete().eq('product_id', product.id).in('id', removedIds);
+        if (error) throw error;
+        // Removing a row preserves the relative order; no second write is needed.
+        saved = source;
+      } else {
+        saved = await persistVariants(product.id, source);
+      }
       setProductVariants(saved);
+      await refreshEnglish();
       setProduct(current => current ? { ...current, offer_product_variants: saved } : current);
-      variantDraftImageSnapshot.current.forEach(({ preview }, id) => {
+      previousImages.forEach(({ preview }, id) => {
         if (draftVariantImages.current.get(id)?.preview !== preview) URL.revokeObjectURL(preview);
       });
-      variantDraftImageSnapshot.current.clear();
       if (productId !== 'new') {
         draftVariantImages.current.forEach(({ preview }) => URL.revokeObjectURL(preview));
         draftVariantImages.current.clear();
+      } else {
+        setVariantImageUrls(Object.fromEntries(Array.from(draftVariantImages.current, ([id, draft]) => [id, draft.preview])));
       }
-      setVariantDraft(null);
-      showSnackbar(productId === 'new' ? 'Warianty zatwierdzone. Zapisz produkt, aby dodać go do katalogu.' : 'Zapisano warianty produktu', 'success');
-    } catch (err: any) {
-      showSnackbar(err.message || 'Nie udało się zapisać wariantów', 'error');
-    } finally {
-      setSavingVariants(false);
-    }
+      showSnackbar(productId === 'new' ? 'Element zatwierdzony. Zapisz nowy produkt, aby dodać go do katalogu.' : 'Zapisano zmiany elementów produktu', 'success');
+    } catch (error) {
+      draftVariantImages.current.forEach(({ preview }, id) => {
+        if (previousImages.get(id)?.preview !== preview) URL.revokeObjectURL(preview);
+      });
+      draftVariantImages.current = previousImages;
+      throw error;
+    } finally { variantsSavingRef.current = false; setSavingVariants(false); setUploadingVariantImageId(null); }
   };
 
   const saveAddonSection = async (pricing_addons: ProductAddon[]) => {
+    if (contentLanguage === 'en') { await productLanguage.savePatch({ pricing_addons }); return; }
     if (!product || !canEdit || saving || savingVariants || savingAddons || savingRequirements || savingProductSection) throw new Error('Zapis jest chwilowo niedostępny. Spróbuj ponownie.');
     const validation = validateAddons(pricing_addons);
     if (validation) throw new Error(validation);
@@ -1344,6 +1231,7 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
         if (error || !data) throw new Error(error?.message || 'Nie udało się zapisać dodatków');
       }
       setProduct(current => current ? { ...current, ...patch } : current);
+      await refreshEnglish();
       showSnackbar(productId === 'new' ? 'Dodatki zatwierdzone. Zapisz produkt, aby dodać go do katalogu.' : 'Zapisano dodatki i limity pakietu', 'success');
     } finally {
       setSavingAddons(false);
@@ -1351,6 +1239,7 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
   };
 
   const saveRequirementSection = async (requirements: OfferAdditionalRequirement[]) => {
+    if (contentLanguage === 'en') { await productLanguage.savePatch({ offer_additional_requirements: requirements }); return; }
     if (!product || !canEdit || saving || savingVariants || savingAddons || savingRequirements || savingProductSection) throw new Error('Zapis jest chwilowo niedostępny. Spróbuj ponownie.');
     const patch = {
       offer_requirements: [],
@@ -1369,6 +1258,7 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
         if (error || !data) throw new Error(error?.message || 'Nie udało się zapisać wymagań');
       }
       setProduct(current => current ? { ...current, ...patch } : current);
+      await refreshEnglish();
       showSnackbar(productId === 'new' ? 'Wymagania zatwierdzone. Zapisz produkt, aby dodać go do katalogu.' : 'Zapisano wymagania produktu', 'success');
     } finally {
       setSavingRequirements(false);
@@ -1376,7 +1266,9 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
   };
 
   const saveProductSection = async (section: string, patch: Partial<IProduct>) => {
+    if (contentLanguage === 'en' && section !== 'image_crops') { await productLanguage.savePatch(patch); return; }
     if (!product || !canEdit || saving || savingVariants || savingAddons || savingRequirements || savingProductSection) throw new Error('Trwa zapis innej sekcji. Spróbuj ponownie.');
+    if (patch.configuration_schema) { const error = validateProductConfigurator(patch.configuration_schema); if (error) throw new Error(error); }
     const normalized = { ...patch };
     if (section === 'basic') {
       normalized.name = String(patch.name || '').trim();
@@ -1393,7 +1285,7 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
       normalized.min_quantity = 1;
     }
     if (section === 'tags') normalized.tags = (patch.tags || []).map(tag => tag.trim()).filter(Boolean);
-    const numericKeys: (keyof IProduct)[] = ['vat_rate', 'price_net', 'price_gross', 'cost_net', 'cost_gross', 'transport_cost_net', 'transport_cost_gross', 'logistics_cost_net', 'logistics_cost_gross', 'min_quantity', 'max_quantity', 'setup_time_hours', 'teardown_time_hours'];
+    const numericKeys: (keyof IProduct)[] = ['vat_rate', 'price_net', 'price_gross', 'cost_net', 'cost_gross', 'transport_cost_net', 'transport_cost_gross', 'logistics_cost_net', 'logistics_cost_gross', 'min_quantity', 'max_quantity', 'setup_time_hours', 'teardown_time_hours', 'service_duration_hours', 'extension_price_net_per_hour'];
     if (numericKeys.some(key => normalized[key] != null && (!Number.isFinite(Number(normalized[key])) || Number(normalized[key]) < 0))) throw new Error('Ilości, czas i kwoty muszą być nieujemnymi liczbami');
     try {
       setSavingProductSection(section);
@@ -1402,7 +1294,11 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
         if (error || !data) throw new Error(error?.message || 'Nie udało się zapisać sekcji');
       }
       setProduct(current => current ? { ...current, ...normalized } : current);
-      showSnackbar(productId === 'new' ? 'Sekcja zatwierdzona. Zapisz produkt, aby dodać go do katalogu.' : 'Zapisano sekcję produktu', 'success');
+      // The component tree is language-neutral and reports its own autosave status.
+      if (section !== 'configurator') {
+        await refreshEnglish();
+        showSnackbar(productId === 'new' ? 'Sekcja zatwierdzona. Zapisz produkt, aby dodać go do katalogu.' : 'Zapisano sekcję produktu', 'success');
+      }
     } finally { setSavingProductSection(null); }
   };
 
@@ -1420,14 +1316,16 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
   };
 
   const saveSalesPackages = async (packages: ProductSalesPackage[], enabled: boolean) => {
+    if (contentLanguage === 'en') { await productLanguage.savePatch({ sales_packages: packages, sales_packages_enabled: enabled }); return; }
     const error = validateSalesPackages(packages);
     if (error) throw new Error(error);
     await saveProductSection('sales_packages', { sales_packages: packages, sales_packages_enabled: enabled });
   };
 
   const handleSave = async () => {
+    if (contentLanguage === 'en') return;
     if (!product || !canEdit || saving || savingVariants || savingAddons || savingRequirements || savingProductSection || uploadingVariantImageId) return;
-    if (variantsEditing || addonsEditing || requirementsEditing || editingProductSections.length > 0) {
+    if (addonsEditing || requirementsEditing || editingProductSections.length > 0) {
       showSnackbar('Najpierw zapisz lub anuluj zmiany w edytowanych sekcjach produktu', 'error');
       return;
     }
@@ -1447,7 +1345,9 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
 
       const addonError = validateAddons(product.pricing_addons || []);
       if (addonError) throw new Error(addonError);
+      if (product.configuration_schema) { const error = validateProductConfigurator(product.configuration_schema); if (error) throw new Error(error); }
       const productData = {
+        configuration_schema: product.configuration_schema || null,
         pricing_addons: product.pricing_addons || [],
         category_id: product.category_id || null,
         related_service_ids: product.related_service_ids || [],
@@ -1477,6 +1377,7 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
         display_order: product.display_order,
         offer_short_description: product.offer_short_description || null,
         offer_description: product.offer_description || null,
+        public_description: product.public_description?.trim() || null,
         offer_compact_description: product.offer_compact_description?.trim() || null,
         service_duration_hours: product.service_duration_hours == null
           ? null
@@ -1501,8 +1402,9 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
         offer_image_position_x: Number(product.offer_image_position_x ?? 50),
         offer_image_position_y: Number(product.offer_image_position_y ?? 25),
         offer_image_zoom: normalizeOfferImageScale(product.offer_image_zoom),
+        offer_image_crops: product.offer_image_crops || {},
         product_page_url: productPageUrl || null,
-        offer_page_variant: product.pricing_addons?.length ? 'default' : effectivePageVariant,
+        offer_page_variant: !isStageProduct && product.pricing_addons?.length ? 'default' : effectivePageVariant,
         offer_page_enabled: true,
         is_subcontractor_service: product.is_subcontractor_service || false,
         subcontractor_id: product.subcontractor_id || null,
@@ -1520,6 +1422,7 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
         const data = result.data;
         createdProductId.current = data.id;
         await persistVariants(data.id, productVariants);
+        await refreshEnglish(data.id);
 
         showSnackbar('Produkt został dodany', 'success');
         router.push(`/crm/offers/products/${data.id}`);
@@ -1531,6 +1434,7 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
         if (error) throw error;
 
 
+        await refreshEnglish();
         showSnackbar('Zapisano zmiany', 'success');
         // tylko po akcji
         await fetchProduct();
@@ -1586,6 +1490,9 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
     );
   }
 
+  const displayProduct = (productLanguage.product || product) as IProduct;
+  const displayVariants = displayProduct.offer_product_variants || visibleVariants;
+  const languageLocked = saving || savingVariants || savingAddons || savingRequirements || !!savingProductSection || uploadingOfferImage || !!uploadingVariantImageId || editingProductSections.length > 0 || addonsEditing || requirementsEditing || productLanguage.busy;
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -1599,7 +1506,7 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
           </button>
           <div>
             <h1 className="text-2xl font-light text-[#e5e4e2]">
-              {productId === 'new' ? 'Nowy produkt' : product.name}
+              {productId === 'new' ? 'Nowy produkt' : displayProduct.name}
             </h1>
             {productId !== 'new' && (
               <p className="mt-1 text-sm text-[#e5e4e2]/60">{product.category?.name}</p>
@@ -1607,58 +1514,91 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
           </div>
         </div>
 
-        {canEdit && (
-          <div className="flex items-center gap-3">
-            {productId !== 'new' && (
-              <button
-                onClick={handleDelete}
-                disabled={saving}
-                className="flex items-center gap-2 rounded-lg bg-red-500/20 px-4 py-2 text-red-400 transition-colors hover:bg-red-500/30 disabled:opacity-50"
-              >
-                <Trash2 className="h-4 w-4" />
-                Usuń
-              </button>
-            )}
-            <button
-              onClick={handleSave}
-              disabled={saving || uploadingOfferImage || !!uploadingVariantImageId}
-              className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:opacity-50"
-            >
-              <Save className="h-4 w-4" />
-              {uploadingOfferImage
-                ? 'Zapisywanie grafiki...'
-                : saving
-                  ? 'Zapisywanie...'
-                  : productId === 'new'
-                    ? 'Dodaj produkt'
-                    : 'Zapisz zmiany'}
-            </button>
-          </div>
-        )}
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <ProductLanguageSwitch englishDisabled={!productLanguage.englishReady} language={contentLanguage} disabled={languageLocked} onChange={next => void productLanguage.switchLanguage(next)} />
+          <ResponsiveActionBar disabledBackground compact actions={[
+            { label: productId === 'new' ? 'Dodaj produkt' : 'Zapisz zmiany', icon: <Save className="h-4 w-4" />, onClick: () => void handleSave(), show: canEdit && contentLanguage === 'pl', disabled: languageLocked, variant: 'primary' },
+            { label: 'Przetłumacz PL → EN', icon: <Sparkles className="h-4 w-4" />, onClick: () => void refreshEnglish(), show: canEdit && productId !== 'new', disabled: languageLocked },
+            { label: 'Usuń', icon: <Trash2 className="h-4 w-4" />, onClick: () => void handleDelete(), show: canEdit && contentLanguage === 'pl' && productId !== 'new', disabled: languageLocked, variant: 'danger' },
+          ]} />
+        </div>
       </div>
+      {!productLanguage.englishReady && <p role="status" className="text-xs text-white/60">{productLanguage.preparing ? 'Wczytujemy zapisane teksty EN…' : 'Przygotuj aktualną wersję EN przyciskiem „Przetłumacz PL → EN”. Gotowe tłumaczenie przełączysz natychmiast.'}</p>}
+      <ProductTranslationModal busy={productLanguage.busy} error={productLanguage.error}
+        operation={productLanguage.operation} canRetry={productLanguage.canRetry}
+        onRetry={() => void productLanguage.retry()} onClose={productLanguage.dismissError} />
+      {contentLanguage === 'en' && <p className="text-xs text-white/50">Treść EN. Teksty edytujesz w tych samych sekcjach. Skład, zdjęcia i ustawienia zmienisz w PL.</p>}
 
       <div className="grid items-start gap-6 lg:grid-cols-12">
         <div className="min-w-0 space-y-6 lg:col-span-8">
 <ProductDataSection<IProduct>
-              title="Podstawowe informacje" value={product} fields={["name", "category_id", "description", "is_active"]}
-              canEdit={canEdit} disabled={saving || savingVariants || savingAddons || savingRequirements || Boolean(savingProductSection)}
+              title="Podstawowe informacje" value={displayProduct} fields={["name", "category_id", "description", "is_active", "is_personnel_service"]}
+              canEdit={canEdit} disabled={productLanguage.busy || saving || savingVariants || savingAddons || savingRequirements || Boolean(savingProductSection)}
               onEditingChange={editing => setSectionEditing('basic', editing)}
               onSave={patch => saveProductSection('basic', patch)}
               onDraftChange={setBasicPreview}
-              renderView={(product) => (<div className="space-y-4"><div className="flex flex-wrap items-center justify-between gap-3"><h3 className="text-xl font-medium text-[#e5e4e2]">{product.name || 'Nowy produkt'}</h3><span className="rounded-full bg-[#d3bb73]/10 px-3 py-1 text-xs text-[#d3bb73]">{product.is_active ? 'Aktywny' : 'Nieaktywny'}</span></div><p className="text-sm text-[#d3bb73]">{initialCategories.find(category => category.id === product.category_id)?.name || 'Bez kategorii'}</p><p className="whitespace-pre-line text-sm leading-relaxed text-[#e5e4e2]/65">{product.description || 'Brak opisu produktu.'}</p></div>)}
-              renderEditor={(product, setProduct) => (<div className="grid gap-4 sm:grid-cols-2"><label className="text-sm text-[#e5e4e2]/65 sm:col-span-2">Nazwa produktu<input value={product.name} onChange={e => setProduct({ ...product, name: e.target.value })} className="mt-1 w-full rounded-lg border border-white/10 bg-black/15 px-3 py-2 text-sm text-[#e5e4e2]" /></label><label className="text-sm text-[#e5e4e2]/65 sm:col-span-2">Kategoria<select value={product.category_id || ''} onChange={e => setProduct({ ...product, category_id: e.target.value })} className="mt-1 w-full rounded-lg border border-white/10 bg-black/15 px-3 py-2 text-sm text-[#e5e4e2]"><option value="">Bez kategorii</option>{initialCategories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label><label className="text-sm text-[#e5e4e2]/65 sm:col-span-2">Opis produktu<textarea rows={4} value={product.description || ''} onChange={e => setProduct({ ...product, description: e.target.value })} className="mt-1 w-full rounded-lg border border-white/10 bg-black/15 px-3 py-2 text-sm text-[#e5e4e2]" /></label><label className="flex items-center gap-2 text-sm text-[#e5e4e2]"><input type="checkbox" checked={product.is_active} onChange={e => setProduct({ ...product, is_active: e.target.checked })} className="accent-[#d3bb73]" />Produkt aktywny</label></div>)}
+              renderView={(product) => (<div className="space-y-4"><div className="flex flex-wrap items-center justify-between gap-3"><h3 className="text-xl font-medium text-[#e5e4e2]">{product.name || 'Nowy produkt'}</h3><span className="rounded-full bg-[#d3bb73]/10 px-3 py-1 text-xs text-[#d3bb73]">{product.is_active ? 'Aktywny' : 'Nieaktywny'}</span></div><p className="text-sm text-[#d3bb73]">{initialCategories.find(category => category.id === product.category_id)?.name || 'Bez kategorii'}</p><p className="whitespace-pre-line text-sm leading-relaxed text-[#e5e4e2]/65">{product.description || 'Brak opisu produktu.'}</p>{product.is_personnel_service && <div className="rounded-lg bg-black/10 p-3 text-sm"><p className="text-[#e5e4e2]/80">Usługa personelu — bez sprzętu</p><p className="mt-1 text-xs text-[#e5e4e2]/50">{product.is_active ? 'Dostępny w kalkulacji: Ludzie → Usługi personelu z katalogu.' : 'Aktywuj produkt, aby pojawił się w katalogu usług personelu kalkulacji.'}</p></div>}</div>)}
+              renderEditor={(product, setProduct) => (<div className="grid gap-4 sm:grid-cols-2"><label className="text-sm text-[#e5e4e2]/65 sm:col-span-2">Nazwa produktu<input value={product.name} onChange={e => setProduct({ ...product, name: e.target.value })} className="mt-1 w-full rounded-lg border border-white/10 bg-black/15 px-3 py-2 text-sm text-[#e5e4e2]" /></label><label className="text-sm text-[#e5e4e2]/65 sm:col-span-2">Kategoria<select value={product.category_id || ''} onChange={e => setProduct({ ...product, category_id: e.target.value })} className="mt-1 w-full rounded-lg border border-white/10 bg-black/15 px-3 py-2 text-sm text-[#e5e4e2]"><option value="">Bez kategorii</option>{initialCategories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label><label className="text-sm text-[#e5e4e2]/65 sm:col-span-2">Opis produktu<textarea rows={4} value={product.description || ''} onChange={e => setProduct({ ...product, description: e.target.value })} className="mt-1 w-full rounded-lg border border-white/10 bg-black/15 px-3 py-2 text-sm text-[#e5e4e2]" /></label><div className="flex flex-wrap items-center gap-x-6 gap-y-3 sm:col-span-2"><label className="flex items-center gap-2 text-sm text-[#e5e4e2]"><input type="checkbox" checked={product.is_active} onChange={e => setProduct({ ...product, is_active: e.target.checked })} className="h-4 w-4 accent-[#d3bb73]" />Produkt aktywny</label><label className="flex items-center gap-2 text-sm text-[#e5e4e2]" title={contentLanguage !== 'pl' ? 'To ustawienie zmienisz w wersji PL produktu.' : undefined}><input type="checkbox" checked={Boolean(product.is_personnel_service)} disabled={contentLanguage !== 'pl'} onChange={e => setProduct({ ...product, is_personnel_service: e.target.checked })} className="h-4 w-4 accent-[#d3bb73]" />Usługa personelu — bez sprzętu</label></div></div>)}
             />
+        <div className="lg:col-span-2"><ProductImageFraming
+          value={product.offer_image_crops}
+          sources={[
+            ...(product.offer_image_path && offerImageSrc ? [{ path: product.offer_image_path, url: offerImageSrc, name: 'Zdjęcie główne', x: Number(product.offer_image_position_x ?? 50), y: Number(product.offer_image_position_y ?? 25), zoom: Number(product.offer_image_zoom ?? 1) }] : []),
+            ...visibleVariants.filter(v => v.offer_image_path && variantImageUrls[v.id]).map(v => ({ path: v.offer_image_path!, url: variantImageUrls[v.id], name: v.name, x: 50, y: 50, zoom: 1 })),
+          ].filter((source, index, all) => all.findIndex(other => other.path === source.path) === index)}
+          disabled={!canEdit || productId === 'new' || productLanguage.busy || saving || savingVariants || savingAddons || savingRequirements || Boolean(savingProductSection) || uploadingOfferImage}
+          onSave={value => saveProductSection('image_crops', { offer_image_crops: value })}
+          onEditingChange={editing => setSectionEditing('image_crops', editing)}
+        /></div>
         {/* Presentation in generated offer */}
-        <div className="rounded-xl border border-[#7f1734]/40 bg-[#1c1f33] p-6 ">
-          <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <ImageIcon className="h-5 w-5 text-[#b94b69]" />
-              <h2 className="text-lg font-medium text-[#e5e4e2]">Prezentacja w ofercie PDF</h2>
-            </div>
-            {canEdit && productId !== 'new' && (
+        <ProductDataSection<IProduct>
+          title="Prezentacja w ofercie PDF"
+          value={displayProduct}
+          fields={['offer_short_description', 'offer_description', 'public_description', 'offer_compact_description', 'service_duration_hours', 'extension_price_net_per_hour', 'offer_benefits', 'product_page_url', 'offer_page_variant']}
+          canEdit={canEdit}
+          disabled={productLanguage.busy || saving || savingVariants || savingAddons || savingRequirements || Boolean(savingProductSection) || uploadingOfferImage}
+          onDraftChange={setPresentationPreview}
+          onEditingChange={editing => {
+            setSectionEditing('presentation', editing);
+            offerCopyRequest.current += 1;
+            setGeneratingOfferCopy(false);
+            setOfferAiDraft(null);
+          }}
+          onSave={patch => saveProductSection('presentation', {
+            ...patch,
+            offer_page_variant: isStageProduct ? (patch.offer_page_variant === 'compact' ? 'compact' : 'default') : product.pricing_addons?.length || (patch.offer_page_variant === 'compact' && compactBlockReason) ? 'default' : patch.offer_page_variant || 'default',
+          })}
+          renderView={(product) => {
+            const savedPresentationProduct = product;
+            return <div className="grid grid-cols-1 items-start gap-5 xl:grid-cols-[minmax(0,1fr)_260px]">
+<div className="space-y-5 text-sm text-[#e5e4e2]/75">
+                <div><p className="mb-1 text-xs text-[#e5e4e2]/45">Zdanie pod tytułem</p><p>{product.offer_short_description || 'Brak zdania pod tytułem.'}</p></div>
+                <div><p className="mb-1 text-xs text-[#e5e4e2]/45">Opis rozszerzony</p><p className="whitespace-pre-line leading-relaxed">{product.offer_description || 'Brak opisu rozszerzonego.'}</p></div>
+                <details className="rounded-lg bg-black/10 p-3"><summary className="cursor-pointer text-[#d3bb73]">Pełny opis na stronie produktu</summary><p className="mt-3 whitespace-pre-line leading-relaxed">{product.public_description || 'Brak osobnego opisu publicznego.'}</p></details>
+                {compactBlockReason ? <p className="text-xs text-[#e5e4e2]/50">{compactBlockReason} Opis kompaktowy nie jest używany.</p> : <div><p className="mb-1 text-xs text-[#e5e4e2]/45">Opis kompaktowy</p><p className="whitespace-pre-line">{product.offer_compact_description || 'Nie uzupełniono — używany jest skrócony opis rozszerzony.'}</p></div>}
+                <dl className="grid gap-3 sm:grid-cols-2"><div><dt className="text-xs text-[#e5e4e2]/45">Układ PDF</dt><dd className="mt-1">{effectivePageVariant === 'compact' ? 'Kompaktowy' : isStageProduct ? 'Rozbudowany' : effectivePageVariant === 'visual' ? 'Duża grafika' : 'Osobna strona'}</dd></div><div><dt className="text-xs text-[#e5e4e2]/45">Czas usługi</dt><dd className="mt-1">{product.service_duration_hours != null ? `${product.service_duration_hours} godz.` : 'Nie określono'}</dd></div><div><dt className="text-xs text-[#e5e4e2]/45">Dodatkowa godzina netto</dt><dd className="mt-1">{hasIndividualExtensionRates ? 'Ustalana osobno dla elementu lub pakietu' : product.extension_price_net_per_hour != null ? `${product.extension_price_net_per_hour.toLocaleString('pl-PL')} zł` : 'Nie określono'}</dd></div></dl>
+                <div><p className="mb-1 text-xs text-[#e5e4e2]/45">Korzyści</p>{product.offer_benefits?.length ? <ul className="list-disc space-y-1 pl-5">{product.offer_benefits.map((benefit, index) => <li key={index}>{benefit}</li>)}</ul> : <p>Brak wpisanych korzyści.</p>}</div>
+                <div><p className="mb-1 text-xs text-[#e5e4e2]/45">Link „Zobacz więcej”</p><p className="break-all">{product.product_page_url || 'Nie ustawiono'}</p></div>
+              </div>
+            <ProductCardImageSection
+              productId={productId} productName={displayProduct.name} value={savedPresentationProduct} imageUrl={offerImageSrc}
+              canEdit={canEdit} disabled={productLanguage.busy || saving || savingVariants || savingAddons || savingRequirements || Boolean(savingProductSection)}
+              onSave={patch => saveProductSection('offer_image', patch)}
+              onEditingChange={editing => setSectionEditing('offer_image', editing)}
+              onSavingChange={setUploadingOfferImage}
+            />
+            </div>;
+          }}
+          renderEditor={(draftProduct, setProduct) => {
+            const savedPresentationProduct = product;
+            const productForEditor = draftProduct;
+            const effectivePageVariant = isStageProduct ? (productForEditor.offer_page_variant === 'compact' ? 'compact' : 'default') : productForEditor.offer_page_variant === 'compact' && compactBlockReason ? 'default' : productForEditor.offer_page_variant || 'default';
+            return ((product: IProduct) => <>
+              <div className="mb-4 flex justify-end">
+            {canEdit && contentLanguage === 'pl' && productId !== 'new' && (
               <button
                 type="button"
-                onClick={handleGenerateOfferCopy}
+                onClick={() => handleGenerateOfferCopy(product)}
                 disabled={generatingOfferCopy}
                 className="flex items-center gap-2 rounded-lg border border-violet-400/30 bg-violet-400/10 px-4 py-2 text-sm text-violet-300 transition-colors hover:bg-violet-400/20 disabled:opacity-50"
               >
@@ -1670,12 +1610,7 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
                 {generatingOfferCopy ? 'Przygotowywanie...' : 'Zaproponuj treść z AI'}
               </button>
             )}
-          </div>
-          <p className="mb-5 text-sm text-[#e5e4e2]/60">
-            Te zatwierdzone dane z CRM zasilają dynamiczną kartę produktu. AI przygotowuje wyłącznie
-            roboczą propozycję tekstu i nie zmienia cen, ilości ani terminów.
-          </p>
-
+              </div>
           {offerAiDraft && (
             <div className="mb-5 rounded-lg border border-violet-400/30 bg-violet-400/10 p-4">
               <div className="mb-3 flex items-center justify-between gap-3">
@@ -1695,7 +1630,7 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
                   </button>
                   <button
                     type="button"
-                    onClick={handleApplyOfferAiDraft}
+                    onClick={() => handleApplyOfferAiDraft(product, setProduct)}
                     className="rounded-lg bg-violet-400 px-3 py-2 text-xs font-medium text-[#1c1f33] hover:bg-violet-300"
                   >
                     Zastosuj do formularza
@@ -1716,7 +1651,7 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
             </div>
           )}
 
-          <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_260px]">
+              <div className="grid grid-cols-1 items-start gap-5 xl:grid-cols-[minmax(0,1fr)_260px]">
             <div className="space-y-4">
 
 
@@ -1746,6 +1681,11 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
                 />
               </div>
 
+              <div>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Pełny opis na publicznej stronie produktu</label>
+                <textarea rows={12} maxLength={16000} value={product.public_description || ''} onChange={e => setProduct({ ...product, public_description: e.target.value })} disabled={!canEdit} className="w-full rounded-lg border border-white/10 bg-black/15 px-4 py-2 text-[#e5e4e2]" placeholder="Szczegółowy opis usługi, zakres, opcje i warunki realizacji" />
+                <p className="mt-1 text-xs text-[#e5e4e2]/50">Widoczny na /produkty/[id]. Nie jest skracany do miejsca w PDF. Oddzielaj części pustą linią; tytuł części wpisz w pierwszym wierszu.</p>
+              </div>
               <div>
                 <label htmlFor="product-compact-description" className="mb-2 block text-sm text-[#e5e4e2]/60">Krótki opis do oferty kompaktowej</label>
                 <textarea
@@ -1864,228 +1804,29 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
                     disabled={!canEdit}
                     className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
                   >
-                    <option value="default">Domyślny</option>
-                    <option value="compact" disabled={Boolean(compactBlockReason)}>Kompaktowy - do 3 produktów na stronie</option>
-                    <option value="visual">Duża grafika</option>
+                    <option value="default">{isStageProduct ? 'Rozbudowany — pełna strona ze zdjęciem, opisem i zakresem' : 'Domyślny'}</option>
+                    <option value="compact" disabled={Boolean(compactBlockReason)}>Kompaktowy — do 3 produktów na stronie</option>
+                    {!isStageProduct && <option value="visual">Duża grafika</option>}
                   </select>
                   <p className="mt-1 text-xs text-[#e5e4e2]/40">
-                    {compactBlockReason || 'Wariant kompaktowy grupuje kolejne produkty po maksymalnie trzy na jednej stronie PDF.'}
+                    {isStageProduct ? 'Kompaktowy zachowuje kartę ze zdjęciem i skróconym opisem, do trzech produktów na stronie. Rozbudowany zachowuje pełną stronę ze zdjęciem i opisem oraz pokazuje wybrane elementy i ilości w zakresie. Zdjęcia komponentów nie są dodawane.' : compactBlockReason || 'Wariant kompaktowy grupuje kolejne produkty po maksymalnie trzy na jednej stronie PDF.'}
                   </p>
                 </div>
-                <div>
-                  <label className="mb-2 block text-sm text-[#e5e4e2]/60">Opis grafiki</label>
-                  <input
-                    type="text"
-                    value={product.offer_image_alt || ''}
-                    onChange={(e) => setProduct({ ...product, offer_image_alt: e.target.value })}
-                    disabled={!canEdit}
-                    placeholder="Co przedstawia grafika"
-                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
-                  />
-                </div>
+
               </div>
             </div>
 
-            <div className="rounded-lg border border-[#d3bb73]/15 bg-[#0a0d1a] p-4">
-              <p className="mb-3 text-sm font-medium text-[#e5e4e2]">Grafika na karcie produktu</p>
-              <div
-                onDragEnter={(event) => {
-                  event.preventDefault();
-                  if (canEdit && productId !== 'new') setDraggingOfferImage(true);
-                }}
-                onDragOver={(event) => event.preventDefault()}
-                onDragLeave={(event) => {
-                  if (!event.currentTarget.contains(event.relatedTarget as Node)) {
-                    setDraggingOfferImage(false);
-                  }
-                }}
-                onDrop={handleOfferImageDrop}
-                className={`relative overflow-hidden rounded-lg border-2 border-dashed transition-colors ${
-                  draggingOfferImage
-                    ? 'border-[#b94b69] bg-[#7f1734]/20'
-                    : 'border-[#e5e4e2]/15 bg-[#1c1f33]'
-                }`}
-              >
-                {offerImageSrc ? (
-                  <div className="relative aspect-[4/3] w-full overflow-hidden rounded-t-lg bg-black/20">
-                    {normalizeOfferImageScale(product.offer_image_zoom) < 1 && (
-                      <Image
-                        src={offerImageSrc}
-                        alt=""
-                        fill
-                        unoptimized
-                        aria-hidden
-                        className="object-cover opacity-55"
-                        style={{
-                          objectPosition: `${Number(product.offer_image_position_x ?? 50)}% ${Number(product.offer_image_position_y ?? 25)}%`,
-                        }}
-                      />
-                    )}
-                    <Image
-                      src={offerImageSrc}
-                      alt={product.offer_image_alt || product.name}
-                      fill
-                      unoptimized
-                      className={`z-10 transition-transform duration-150 ${
-                        normalizeOfferImageScale(product.offer_image_zoom) < 1
-                          ? 'object-contain'
-                          : 'object-cover'
-                      }`}
-                      style={{
-                        objectPosition: `${Number(product.offer_image_position_x ?? 50)}% ${Number(product.offer_image_position_y ?? 25)}%`,
-                        transform: `scale(${normalizeOfferImageScale(product.offer_image_zoom)})`,
-                        transformOrigin: `${Number(product.offer_image_position_x ?? 50)}% ${Number(product.offer_image_position_y ?? 25)}%`,
-                      }}
-                    />
-                  </div>
-                ) : (
-                  <div className="flex aspect-[4/3] flex-col items-center justify-center gap-3 text-center">
-                    <ImageIcon className="h-12 w-12 text-[#e5e4e2]/15" />
-                    <span className="px-4 text-xs text-[#e5e4e2]/40">
-                      {productId === 'new'
-                        ? 'Najpierw zapisz produkt'
-                        : 'Przeciągnij tutaj plik PNG, JPG lub WebP'}
-                    </span>
-                  </div>
-                )}
-
-                {uploadingOfferImage && (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-[#0a0d1a]/75 text-white backdrop-blur-sm">
-                    <Loader2 className="h-8 w-8 animate-spin text-[#b94b69]" />
-                    <span className="text-sm">Zapisywanie grafiki...</span>
-                  </div>
-                )}
-
-                {draggingOfferImage && !uploadingOfferImage && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-[#7f1734]/65 text-sm font-medium text-white backdrop-blur-sm">
-                    Upuść, aby zapisać grafikę
-                  </div>
-                )}
+            <ProductCardImageSection
+              productId={productId} productName={displayProduct.name} value={savedPresentationProduct} imageUrl={offerImageSrc}
+              canEdit={canEdit} disabled={productLanguage.busy || saving || savingVariants || savingAddons || savingRequirements || Boolean(savingProductSection)}
+              onSave={patch => saveProductSection('offer_image', patch)}
+              onEditingChange={editing => setSectionEditing('offer_image', editing)}
+              onSavingChange={setUploadingOfferImage}
+            />
               </div>
-
-              {canEdit && productId !== 'new' && (
-                <div className="mt-4 space-y-3">
-                  <label
-                    htmlFor={`offer-image-${product.id}`}
-                    className={`flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-[#7f1734] px-3 py-2 text-sm text-white hover:bg-[#941d3e] ${
-                      uploadingOfferImage ? 'pointer-events-none opacity-50' : ''
-                    }`}
-                  >
-                    <Upload className="h-4 w-4" />
-                    {offerImageSrc ? 'Zmień grafikę' : 'Wybierz grafikę'}
-                  </label>
-                  <input
-                    id={`offer-image-${product.id}`}
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp"
-                    disabled={uploadingOfferImage}
-                    onChange={async (event) => {
-                      const file = event.target.files?.[0];
-                      if (file) await handleUploadOfferImage(file);
-                      event.target.value = '';
-                    }}
-                    className="hidden"
-                  />
-                  {offerImageSrc && (
-                    <>
-                      <div className="space-y-3 rounded-lg border border-[#d3bb73]/15 bg-[#111421] p-3">
-                        <p className="text-xs font-medium uppercase tracking-wide text-[#d3bb73]">
-                          Kadrowanie w ofercie
-                        </p>
-                        <label className="block text-xs text-[#e5e4e2]/55">
-                          Poziom: {Math.round(Number(product.offer_image_position_x ?? 50))}%
-                          <input
-                            type="range"
-                            min="0"
-                            max="100"
-                            value={Number(product.offer_image_position_x ?? 50)}
-                            onChange={(event) =>
-                              setProduct({
-                                ...product,
-                                offer_image_position_x: Number(event.target.value),
-                              })
-                            }
-                            className="mt-1 w-full accent-[#d3bb73]"
-                          />
-                        </label>
-                        <label className="block text-xs text-[#e5e4e2]/55">
-                          Pion: {Math.round(Number(product.offer_image_position_y ?? 25))}%
-                          <input
-                            type="range"
-                            min="0"
-                            max="100"
-                            value={Number(product.offer_image_position_y ?? 25)}
-                            onChange={(event) =>
-                              setProduct({
-                                ...product,
-                                offer_image_position_y: Number(event.target.value),
-                              })
-                            }
-                            className="mt-1 w-full accent-[#d3bb73]"
-                          />
-                        </label>
-                        <label className="block text-xs text-[#e5e4e2]/55">
-                          Skala:{' '}
-                          {Math.round(normalizeOfferImageScale(product.offer_image_zoom) * 100)}%
-                          <input
-                            type="range"
-                            min="0.5"
-                            max="3"
-                            step="0.05"
-                            value={normalizeOfferImageScale(product.offer_image_zoom)}
-                            onChange={(event) =>
-                              setProduct({
-                                ...product,
-                                offer_image_zoom: Number(event.target.value),
-                              })
-                            }
-                            className="mt-1 w-full accent-[#d3bb73]"
-                          />
-                        </label>
-                        <div className="flex items-center justify-between gap-3 text-[11px] text-[#e5e4e2]/35">
-                          <span>50% — pomniejszenie</span>
-                          <button data-crm-action="secondary"
-                            type="button"
-                            onClick={() => setProduct({ ...product, offer_image_zoom: 1 })}
-                            className="rounded border border-[#d3bb73]/20 px-2 py-1 text-[#d3bb73] hover:bg-[#d3bb73]/10"
-                          >
-                            Ustaw 100%
-                          </button>
-                          <span>300% — powiększenie</span>
-                        </div>
-                        <p className="text-[11px] leading-4 text-[#e5e4e2]/35">
-                          Poniżej 100% zdjęcie jest pomniejszane wewnątrz stałego kadru, a jego tło
-                          nadal wypełnia cały obszar.
-                        </p>
-                        <p className="text-[11px] text-[#e5e4e2]/35">
-                          Ustawienia zatwierdzisz przyciskiem „Zapisz zmiany”.
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={handleDeleteOfferImage}
-                        disabled={uploadingOfferImage}
-                        className="flex w-full items-center justify-center gap-2 rounded-lg bg-red-500/15 px-3 py-2 text-sm text-red-300 hover:bg-red-500/25 disabled:opacity-50"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                        Usuń grafikę
-                      </button>
-                    </>
-                  )}
-                  <p className="text-xs text-[#e5e4e2]/40">
-                    PNG, JPG lub WebP, maksymalnie 10 MB. Plik zapisuje się automatycznie po wybraniu lub
-                    upuszczeniu.
-                  </p>
-                </div>
-              )}
-              {productId === 'new' && (
-                <p className="mt-3 text-xs text-[#e5e4e2]/40">
-                  Najpierw zapisz nowy produkt, aby dodać grafikę i użyć AI.
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
+            </>)(productForEditor);
+          }}
+        />
 
 
         {/* Presentation in generated offer */}
@@ -2095,48 +1836,52 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
             pageUrl={product.related_service_url}
             pageLabel={product.related_service_label}
             canEdit={canEdit}
-            disabled={saving || savingVariants || savingAddons || savingRequirements || Boolean(savingProductSection)}
+            disabled={productLanguage.busy || saving || savingVariants || savingAddons || savingRequirements || Boolean(savingProductSection)}
             onSave={(ids, url, label) => saveProductSection('related_services', { related_service_ids: ids, related_service_url: url, related_service_label: label })}
             onEditingChange={editing => setSectionEditing('related_services', editing)}
           /></div>
           <ProductVariantsEditor
+            textOnly={contentLanguage === 'en'}
             elementMode={Boolean(product.sales_packages_enabled)}
-            productName={product.name}
-            variants={visibleVariants}
-            editing={variantsEditing}
-            sectionActions={canEdit ? (
-              <div className="flex flex-wrap items-center gap-2">
-                {variantsEditing ? <>
-                  <button type="button" onClick={cancelVariantEdit} disabled={saving || savingVariants || savingAddons || savingRequirements || Boolean(savingProductSection) || !!uploadingVariantImageId} className="rounded-lg bg-white/5 px-4 py-2 text-sm text-[#e5e4e2] hover:bg-white/10 disabled:opacity-40">Anuluj</button>
-                  <button type="button" onClick={saveVariantSection} disabled={saving || savingVariants || savingAddons || savingRequirements || Boolean(savingProductSection) || !!uploadingVariantImageId} className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] disabled:opacity-40">
-                    {savingVariants ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                    {savingVariants ? 'Zapisywanie…' : product.sales_packages_enabled ? 'Zapisz elementy' : 'Zapisz warianty'}
-                  </button>
-                </> : <button type="button" onClick={beginVariantEdit} disabled={saving || savingVariants || savingRequirements || Boolean(savingProductSection)} className="rounded-lg bg-[#d3bb73]/10 px-4 py-2 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/20 disabled:opacity-40">Edytuj warianty</button>}
-              </div>
-            ) : undefined}
+            productName={displayProduct.name}
+            variants={displayVariants}
+            editing={canEdit}
+            isNewProduct={productId === 'new'}
+            onEditingChange={editing => setSectionEditing('variants', editing)}
             vatRate={product.vat_rate}
             defaultServiceDurationHours={product.service_duration_hours}
             defaultExtensionPriceNetPerHour={hasIndividualExtensionRates ? null : product.extension_price_net_per_hour}
-            disabled={!canEdit || !variantsEditing || saving || savingVariants || !!uploadingVariantImageId}
-            onChange={setVariantDraft}
+            disabled={!canEdit || productLanguage.busy || saving || savingVariants || savingAddons || savingRequirements || Boolean(savingProductSection) || uploadingOfferImage || !!uploadingVariantImageId}
+            onChange={saveVariantSection}
             imageUrls={variantImageUrls}
             uploadingImageId={uploadingVariantImageId}
-            onImageUpload={handleUploadVariantImage}
-            onImageDelete={handleDeleteVariantImage}
           />
         </div>
 
 
-        <ProductSalesPackagesSection productId={productId} value={product.sales_packages || []}
-          enabled={Boolean(product.sales_packages_enabled)} elements={persistedProductVariants}
-          canEdit={canEdit} disabled={saving || savingVariants || savingAddons || savingRequirements || Boolean(savingProductSection)}
+        {(productId === '137230df-baf9-41af-8ee8-ff6b18148668' || product.configuration_schema?.profile === 'led') && <div className="lg:col-span-2"><LedProductConfigurationSection
+          value={product.configuration_schema || null} canEdit={canEdit && contentLanguage === 'pl'} disabled={productLanguage.busy || saving || Boolean(savingProductSection)}
+          onSave={configuration_schema => saveProductSection('configurator', { configuration_schema })}
+          onEditingChange={editing => setSectionEditing('led-configurator', editing)}
+        /></div>}
+        {productId === 'be81ab60-9ca7-4429-af94-b7068f8e9530' && <div className="lg:col-span-2"><ProductEquipmentTreeSection
+          key={productId}
+          productId={productId}
+          value={product.configuration_schema || null}
+          canEdit={canEdit && contentLanguage === 'pl'}
+          disabled={productLanguage.busy || saving || savingVariants || savingAddons || savingRequirements || Boolean(savingProductSection)}
+          onSave={configuration_schema => saveProductSection('configurator', { configuration_schema })}
+          onEditingChange={editing => setSectionEditing('configurator', editing)}
+        /></div>}
+        <ProductSalesPackagesSection textOnly={contentLanguage === 'en'} productId={productId} value={displayProduct.sales_packages || []}
+          enabled={Boolean(product.sales_packages_enabled)} elements={displayVariants.filter(variant => !variant.id.startsWith('temp-'))}
+          canEdit={canEdit} disabled={productLanguage.busy || saving || savingVariants || savingAddons || savingRequirements || Boolean(savingProductSection)}
           onSave={saveSalesPackages} onEditingChange={editing => setSectionEditing('sales_packages', editing)} />
         <div className="lg:col-span-2">
           <ProductAddonsSection
-            value={product.pricing_addons || []}
+            value={displayProduct.pricing_addons || []}
             canEdit={canEdit}
-            disabled={saving || savingVariants || savingRequirements || Boolean(savingProductSection)}
+            disabled={productLanguage.busy || saving || savingVariants || savingRequirements || Boolean(savingProductSection)}
             saving={savingAddons}
             onSave={saveAddonSection}
             onEditingChange={setAddonsEditing}
@@ -2145,9 +1890,9 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
 
 
 <ProductRequirementsSection
-                value={withCategorizedProductRequirements(product).offer_additional_requirements || []}
+                value={withCategorizedProductRequirements(displayProduct).offer_additional_requirements || []}
                 canEdit={canEdit}
-                disabled={saving || savingVariants || savingAddons || Boolean(savingProductSection)}
+                disabled={productLanguage.busy || saving || savingVariants || savingAddons || Boolean(savingProductSection)}
                 saving={savingRequirements}
                 onSave={saveRequirementSection}
                 onEditingChange={setRequirementsEditing}
@@ -2155,18 +1900,18 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
 
 {!(product.sales_packages_enabled && product.sales_packages?.length) && <ProductSettingsDrawer title="Ustawienia wyceny" description="Jednostka rozliczenia i minimalna ilość produktu.">
             <ProductDataSection<IProduct>
-              title="Ustawienia wyceny" value={product} fields={["unit", "min_quantity"]}
-              canEdit={canEdit} disabled={saving || savingVariants || savingAddons || savingRequirements || Boolean(savingProductSection)}
+              title="Ustawienia wyceny" value={displayProduct} fields={["unit", "min_quantity", "quantity_source"]}
+              canEdit={canEdit} disabled={productLanguage.busy || saving || savingVariants || savingAddons || savingRequirements || Boolean(savingProductSection)}
               onEditingChange={editing => setSectionEditing('pricing_units', editing)}
               onSave={patch => saveProductSection('pricing_units', patch)}
               renderView={product => (<dl className="flex flex-wrap gap-6 text-sm"><div><dt className="text-xs text-[#e5e4e2]/45">Jednostka</dt><dd className="mt-1 text-[#e5e4e2]">{product.unit || '—'}</dd></div><div><dt className="text-xs text-[#e5e4e2]/45">Minimalna ilość</dt><dd className="mt-1 text-[#e5e4e2]">{product.min_quantity}</dd></div></dl>)}
-              renderEditor={(product, setProduct) => (<div className="grid gap-4 sm:grid-cols-2"><label className="text-sm text-[#e5e4e2]/65">Jednostka<input value={product.unit} onChange={e => setProduct({ ...product, unit: e.target.value })} className="mt-1 w-full rounded-lg border border-white/10 bg-black/15 px-3 py-2 text-sm text-[#e5e4e2]" /></label><label className="text-sm text-[#e5e4e2]/65">Minimalna ilość<input type="number" min={0.01} step="0.01" value={Number.isFinite(product.min_quantity) ? product.min_quantity : ''} onChange={e => setProduct({ ...product, min_quantity: e.target.valueAsNumber })} className="mt-1 w-full rounded-lg border border-white/10 bg-black/15 px-3 py-2 text-sm text-[#e5e4e2]" /></label><p className="text-xs text-[#e5e4e2]/45 sm:col-span-2">Jednostka pojawia się w kalkulacji, np. szt., godz. lub usługa. Domyślna minimalna ilość wynosi 1.</p></div>)}
+              renderEditor={(product, setProduct) => (<div className="grid gap-4 sm:grid-cols-2"><QuantitySourceSelect value={product.quantity_source} onChange={quantity_source=>setProduct({...product,quantity_source})}/><label className="text-sm text-[#e5e4e2]/65">Jednostka<input value={product.unit} onChange={e => setProduct({ ...product, unit: e.target.value })} className="mt-1 w-full rounded-lg border border-white/10 bg-black/15 px-3 py-2 text-sm text-[#e5e4e2]" /></label><label className="text-sm text-[#e5e4e2]/65">Minimalna ilość<input type="number" min={0.01} step="0.01" value={Number.isFinite(product.min_quantity) ? product.min_quantity : ''} onChange={e => setProduct({ ...product, min_quantity: e.target.valueAsNumber })} className="mt-1 w-full rounded-lg border border-white/10 bg-black/15 px-3 py-2 text-sm text-[#e5e4e2]" /></label><p className="text-xs text-[#e5e4e2]/45 sm:col-span-2">Jednostka pojawia się w kalkulacji, np. szt., godz. lub usługa. Domyślna minimalna ilość wynosi 1.</p></div>)}
             />
           </ProductSettingsDrawer>}
 
 <ProductSettingsDrawer title="Ceny i koszty" description={product.sales_packages_enabled && product.sales_packages?.length ? "Ceny i koszty poszczególnych pakietów oraz wspólna stawka VAT." : "Cena sprzedaży, koszty realizacji, transport i logistyka."}><ProductDataSection<IProduct>
-              title="Ceny i koszty" value={product} fields={["vat_rate", "price_net", "price_gross", "cost_net", "cost_gross", "transport_cost_net", "transport_cost_gross", "logistics_cost_net", "logistics_cost_gross"]}
-              canEdit={canEdit} disabled={saving || savingVariants || savingAddons || savingRequirements || Boolean(savingProductSection)}
+              title="Ceny i koszty" value={displayProduct} fields={["vat_rate", "price_net", "price_gross", "cost_net", "cost_gross", "transport_cost_net", "transport_cost_gross", "logistics_cost_net", "logistics_cost_gross"]}
+              canEdit={canEdit} disabled={productLanguage.busy || saving || savingVariants || savingAddons || savingRequirements || Boolean(savingProductSection)}
               onEditingChange={editing => setSectionEditing('pricing', editing)}
               onSave={patch => saveProductSection('pricing', patch)}
               
@@ -2189,13 +1934,13 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
           <div className="pt-4"><h2 className="text-sm font-semibold uppercase tracking-wider text-[#d3bb73]">Realizacja i ustawienia dodatkowe</h2><p className="mt-1 text-sm text-[#e5e4e2]/45">Rozwiń wybraną sekcję, aby sprawdzić lub zmienić konfigurację.</p></div>
 
 <ProductSettingsDrawer title="Warunki techniczne i logistyka" description="Transport, montaż, demontaż i ograniczenia realizacji."><ProductDataSection<IProduct>
-              title="Ustawienia realizacji" value={product} fields={["requires_vehicle", "requires_driver", "is_personnel_service", "setup_time_hours", "teardown_time_hours", "max_quantity"]}
-              canEdit={canEdit} disabled={saving || savingVariants || savingAddons || savingRequirements || Boolean(savingProductSection)}
+              title="Ustawienia realizacji" value={displayProduct} fields={["requires_vehicle", "requires_driver", "setup_time_hours", "teardown_time_hours", "max_quantity"]}
+              canEdit={canEdit} disabled={productLanguage.busy || saving || savingVariants || savingAddons || savingRequirements || Boolean(savingProductSection)}
               onEditingChange={editing => setSectionEditing('technical', editing)}
               onSave={patch => saveProductSection('technical', patch)}
               
-              renderView={(product) => (<dl className="grid gap-4 sm:grid-cols-2">{[['Pojazd', product.requires_vehicle ? 'Wymagany' : 'Niewymagany'], ['Kierowca', product.requires_driver ? 'Wymagany' : 'Niewymagany'], ['Usługa personelu bez sprzętu', product.is_personnel_service ? 'Tak' : 'Nie'], ['Montaż', `${product.setup_time_hours || 0} h`], ['Demontaż', `${product.teardown_time_hours || 0} h`], ['Maksymalna ilość', product.max_quantity == null ? 'Bez limitu' : String(product.max_quantity)]].map(([label, value]) => <div key={label}><dt className="text-xs text-[#e5e4e2]/45">{label}</dt><dd className="mt-1 text-sm text-[#e5e4e2]">{value}</dd></div>)}</dl>)}
-              renderEditor={(product, setProduct) => (<div className="space-y-4">{([['requires_vehicle', 'Wymaga pojazdu'], ['requires_driver', 'Wymaga kierowcy'], ['is_personnel_service', 'Usługa personelu — bez sprzętu']] as const).map(([key, label]) => <label key={key} className="flex items-center gap-2 text-sm text-[#e5e4e2]"><input type="checkbox" checked={Boolean(product[key])} onChange={e => setProduct({ ...product, [key]: e.target.checked })} className="accent-[#d3bb73]" />{label}</label>)}<div className="grid gap-4 sm:grid-cols-2">{([['setup_time_hours', 'Montaż (h)'], ['teardown_time_hours', 'Demontaż (h)']] as const).map(([key, label]) => <label key={key} className="text-sm text-[#e5e4e2]/65">{label}<input type="number" min="0" step="0.25" value={product[key] || 0} onChange={e => setProduct({ ...product, [key]: Number(e.target.value) })} className="mt-1 w-full rounded-lg border border-white/10 bg-black/15 px-3 py-2 text-sm text-[#e5e4e2]" /></label>)}<label className="text-sm text-[#e5e4e2]/65">Maksymalna ilość<input type="number" min="0" step="0.01" value={product.max_quantity ?? ''} onChange={e => setProduct({ ...product, max_quantity: e.target.value === '' ? null : Number(e.target.value) })} placeholder="Bez limitu" className="mt-1 w-full rounded-lg border border-white/10 bg-black/15 px-3 py-2 text-sm text-[#e5e4e2]" /></label></div></div>)}
+              renderView={(product) => (<dl className="grid gap-4 sm:grid-cols-2">{[['Pojazd', product.requires_vehicle ? 'Wymagany' : 'Niewymagany'], ['Kierowca', product.requires_driver ? 'Wymagany' : 'Niewymagany'], ['Montaż', `${product.setup_time_hours || 0} h`], ['Demontaż', `${product.teardown_time_hours || 0} h`], ['Maksymalna ilość', product.max_quantity == null ? 'Bez limitu' : String(product.max_quantity)]].map(([label, value]) => <div key={label}><dt className="text-xs text-[#e5e4e2]/45">{label}</dt><dd className="mt-1 text-sm text-[#e5e4e2]">{value}</dd></div>)}</dl>)}
+              renderEditor={(product, setProduct) => (<div className="space-y-4">{([['requires_vehicle', 'Wymaga pojazdu'], ['requires_driver', 'Wymaga kierowcy']] as const).map(([key, label]) => <label key={key} className="flex items-center gap-2 text-sm text-[#e5e4e2]"><input type="checkbox" checked={Boolean(product[key])} onChange={e => setProduct({ ...product, [key]: e.target.checked })} className="accent-[#d3bb73]" />{label}</label>)}<div className="grid gap-4 sm:grid-cols-2">{([['setup_time_hours', 'Montaż (h)'], ['teardown_time_hours', 'Demontaż (h)']] as const).map(([key, label]) => <label key={key} className="text-sm text-[#e5e4e2]/65">{label}<input type="number" min="0" step="0.25" value={product[key] || 0} onChange={e => setProduct({ ...product, [key]: Number(e.target.value) })} className="mt-1 w-full rounded-lg border border-white/10 bg-black/15 px-3 py-2 text-sm text-[#e5e4e2]" /></label>)}<label className="text-sm text-[#e5e4e2]/65">Maksymalna ilość<input type="number" min="0" step="0.01" value={product.max_quantity ?? ''} onChange={e => setProduct({ ...product, max_quantity: e.target.value === '' ? null : Number(e.target.value) })} placeholder="Bez limitu" className="mt-1 w-full rounded-lg border border-white/10 bg-black/15 px-3 py-2 text-sm text-[#e5e4e2]" /></label></div></div>)}
             /></ProductSettingsDrawer>
 {persistedProductVariants.length > 0 && (<ProductSettingsDrawer title="Zakres konfiguracji wariantu" description="Wybierz produkt bazowy lub wariant dla sprzętu, obsady i klauzul.">        {persistedProductVariants.length > 0 && (
           <section className="rounded-xl border border-[#d3bb73]/25 bg-[#1c1f33] p-6 ">
@@ -2400,8 +2145,8 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
 
 </ProductSettingsDrawer>)}
 <ProductSettingsDrawer title="Podwykonawca" description="Powiązanie produktu z zewnętrzną usługą."><ProductDataSection<IProduct>
-              title="Podwykonawca" value={product} fields={["is_subcontractor_service", "subcontractor_id", "subcontractor_service_catalog_id", "subcontractor_settlement_method", "subcontractor_economic_cost", "vat_rate", "price_net", "price_gross", "cost_net", "cost_gross", "transport_cost_net", "transport_cost_gross", "logistics_cost_net", "logistics_cost_gross", "base_price"]}
-              canEdit={canEdit} disabled={saving || savingVariants || savingAddons || savingRequirements || Boolean(savingProductSection)}
+              title="Podwykonawca" value={displayProduct} fields={["is_subcontractor_service", "subcontractor_id", "subcontractor_service_catalog_id", "subcontractor_settlement_method", "subcontractor_economic_cost", "vat_rate", "price_net", "price_gross", "cost_net", "cost_gross", "transport_cost_net", "transport_cost_gross", "logistics_cost_net", "logistics_cost_gross", "base_price"]}
+              canEdit={canEdit} disabled={productLanguage.busy || saving || savingVariants || savingAddons || savingRequirements || Boolean(savingProductSection)}
               onEditingChange={editing => setSectionEditing('supplier', editing)}
               onSave={patch => saveProductSection('supplier', patch)}
               
@@ -2506,8 +2251,8 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
 </>)}
             /></ProductSettingsDrawer>
 <ProductSettingsDrawer title="Tagi i wyszukiwanie" description="Słowa ułatwiające odnalezienie produktu."><ProductDataSection<IProduct>
-              title="Tagi" value={product} fields={["tags"]}
-              canEdit={canEdit} disabled={saving || savingVariants || savingAddons || savingRequirements || Boolean(savingProductSection)}
+              title="Tagi" value={displayProduct} fields={["tags"]}
+              canEdit={canEdit} disabled={productLanguage.busy || saving || savingVariants || savingAddons || savingRequirements || Boolean(savingProductSection)}
               onEditingChange={editing => setSectionEditing('tags', editing)}
               onSave={patch => saveProductSection('tags', patch)}
               
@@ -2630,14 +2375,16 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
             <button type="button" aria-pressed={previewPage === 'packages'} onClick={() => setPreviewPage('packages')} className={`flex-1 rounded-md px-3 py-2 text-sm ${previewPage === 'packages' ? 'bg-[#d3bb73]/15 text-[#d3bb73]' : 'text-white/60'}`}>Pakiety</button>
           </div>}
           <ProductOfferCardPreview
+            language={contentLanguage}
             previewPage={product.sales_packages_enabled && product.sales_packages?.length ? previewPage : 'elements'}
-            product={{ ...product, ...basicPreview, offer_product_variants: visibleVariants }}
+            product={{ ...displayProduct, ...basicPreview, ...presentationPreview, offer_product_variants: displayVariants }}
             imageUrl={offerImageSrc}
             variantImageUrls={variantImageUrls}
           />
 
         </aside>
       </div>
+
 
       {/* Add Equipment/Kit Modal */}
       {showAddEquipmentModal && (

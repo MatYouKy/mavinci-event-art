@@ -1,3 +1,4 @@
+import { validateAudiencePricing, type AudiencePricing } from './audiencePricing.ts';
 export type PackageCostSettlement = 'invoice' | 'cash_documented' | 'cash_non_deductible';
 export const packageCostSettlementLabels: Record<PackageCostSettlement, string> = {
   invoice: 'Faktura / rachunek — koszt netto',
@@ -30,6 +31,9 @@ export type ProductPackageStaff = {
 };
 export type ProductPackageResources = { equipment: ProductPackageEquipment[]; staff: ProductPackageStaff[] };
 export type ProductSalesPackage = {
+  audience_pricing?: AudiencePricing | null;
+  price_on_request?: boolean;
+  include_product_addons?: boolean;
   id: string; name: string; description: string; included_label: string; element_ids: string[];
   extension_price_net_per_hour?: number | null;
   /** Internal estimate per one package; null/absent means not estimated, [] means explicitly zero. */
@@ -46,6 +50,9 @@ export function validateSalesPackages(options: ProductSalesPackage[]): string | 
   for (const p of options) {
     if (!p || !/^[0-9a-f-]{36}$/i.test(p.id) || ids.has(p.id)) return 'Pakiety muszą mieć unikalne identyfikatory.';
     ids.add(p.id);
+    if ((p.price_on_request !== undefined && typeof p.price_on_request !== 'boolean') || (p.include_product_addons !== undefined && typeof p.include_product_addons !== 'boolean')) return 'Nieprawidłowe ustawienia wyceny pakietu.';
+    const audienceError = validateAudiencePricing(p.audience_pricing);
+    if (audienceError) return audienceError;
     const resourceError = validatePackageResources(p.resources);
     if (resourceError) return `${p.name || 'Pakiet'}: ${resourceError}`;
     const costError = validatePackageCosts(p.cost_items);

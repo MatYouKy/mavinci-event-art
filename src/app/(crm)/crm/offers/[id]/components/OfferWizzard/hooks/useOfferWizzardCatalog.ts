@@ -17,7 +17,7 @@ export function useOfferWizardCatalog(opts: { isOpen: boolean; step: number }) {
       const pRes = await supabase
         .from('offer_products')
         .select(
-          `*, variants:offer_product_variants(id, product_id, name, short_description, description, benefits, price_net, price_gross, is_recommended, is_active, display_order), category:event_categories(name, icon_id, custom_icon:custom_icons(id, name, svg_code, preview_color))`,
+          `*, variants:offer_product_variants(id, product_id, name, short_description, description, benefits, price_net, price_gross, is_recommended, is_active, display_order, quantity_source), category:event_categories(name, icon_id, custom_icon:custom_icons(id, name, svg_code, preview_color))`,
         )
         .eq('is_active', true)
         .order('display_order');

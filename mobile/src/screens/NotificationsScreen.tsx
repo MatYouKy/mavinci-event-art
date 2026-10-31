@@ -308,6 +308,12 @@ export default function NotificationsScreen() {
   };
 
   const navigateToEntity = (notification: Notification) => {
+    const timeDiscussion = notification.action_url?.match(/\/crm\/time-tracking\/[0-9a-f-]{36}\?[^#]*discussion=([0-9a-f-]{36})/i);
+    if (timeDiscussion) {
+      navigation.navigate('Main', { screen: 'TimeTracking', params: { discussionEntryId: timeDiscussion[1], discussionRequestId: Date.now() } });
+      return;
+    }
+
     const sellerId = getSellerChatTarget(notification);
     if (sellerId) { navigateToSellerChat(sellerId); return; }
     const entityType = notification.related_entity_type;

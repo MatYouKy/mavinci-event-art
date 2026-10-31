@@ -479,6 +479,7 @@ export default function EquipmentDetailPage() {
       {/* COMPONENTS */}
       {activeTab === 'components' && (
         <ComponentsTab
+          onUpdated={refetchEquipment}
           equipment={equipment}
           isEditing={isEditing}
           onAdd={async (payload: any) => {

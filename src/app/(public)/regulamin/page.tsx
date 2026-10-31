@@ -427,7 +427,7 @@ export default function RegulaminPage() {
                 <Phone className="h-4 w-4" /> Telefon: +48 698 212 279
               </li>
               <li>
-                <Link href="/kontakt" className="text-[#d3bb73] hover:text-[#d3bb73]/80">
+                <Link href="/#kontakt" className="text-[#d3bb73] hover:text-[#d3bb73]/80">
                   Formularz kontaktowy na stronie mavinci.pl
                 </Link>{' '}
                 <ArrowRight className="h-4 w-4" />

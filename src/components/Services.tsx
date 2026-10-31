@@ -1,5 +1,7 @@
 'use client';
 
+import { servicePath } from '@/lib/SEO/serviceUrls';
+
 import {
   ArrowRight,
   ChevronLeft,
@@ -103,7 +105,7 @@ export default function Services({ categories }: { categories: CategoryWithFirst
             {visibleCategories.map((category) => {
               const Icon = iconMap[category.icon] || Package;
               const href = category.first_service
-                ? `/uslugi/${category.first_service.slug}`
+                ? servicePath(category.first_service)
                 : '/uslugi';
 
               return (

@@ -1,12 +1,16 @@
 import { sealDemoAttribution } from '@/lib/seller/demoAttribution.server';
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { brochurePalette, parseDecorativePages, parseComposer, resolvedBenefits, brochurePageProblem, requiresPageImage, orderedBrochureKeys, type BrochureImageBucket } from '@/lib/brochures/decorativePages';
+import { brochurePalette, parseDecorativePages, parseComposer, resolvedBenefits, requiresPageImage, type BrochureImageBucket } from '@/lib/brochures/decorativePages';
+import { brochureFileName, brochurePageReferences, validateBrochureContent, type BrochureValidationIssue } from '@/lib/brochures/validation';
+import { validatePdfAssets, type BrochureImageSource } from '@/lib/brochures/validatePdfAssets.server';
 import { createClient } from '@supabase/supabase-js';
 import { chromium } from 'playwright';
 import { loadPdfFont } from '@/lib/brochures/loadPdfFont.server';
 import { createSupabaseServerClient } from '@/lib/supabase/server.app';
 import { BrochureRequestError, requireBrochureEmployeeAccess } from '@/lib/brochures/access.server';
+import { resolveBrochureClient } from '@/lib/brochures/recipient.server';
+import { brochureClientPdfFileName } from '@/lib/brochures/recipient';
 import {
   buildSalesBrochureHtml,
   SalesBrochureSnapshot,
@@ -15,6 +19,20 @@ import {
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 180;
+
+const BROCHURE_PDF_SIZE_LIMIT = 50 * 1024 * 1024;
+const formatPdfSize = (bytes: number) =>
+  `${new Intl.NumberFormat('pl-PL', { maximumFractionDigits: 2 }).format(bytes / (1024 * 1024))} MiB`;
+
+const pdfSizeLimitResponse = (fileSizeBytes: number, limitBytes: number, storageRejected = false) =>
+  NextResponse.json({
+    error: storageRejected
+      ? `Magazyn plików odrzucił PDF o rozmiarze ${formatPdfSize(fileSizeBytes)}. Limit broszur wynosi ${formatPdfSize(limitBytes)}. Administrator powinien sprawdzić także globalny limit plików w Supabase. PDF nie został zapisany.`
+      : `PDF ma ${formatPdfSize(fileSizeBytes)}, a dopuszczalny rozmiar broszury wynosi ${formatPdfSize(limitBytes)}. Zmniejsz rozdzielczość zdjęć lub podziel broszurę na mniejsze części. PDF nie został zapisany.`,
+    code: 'brochure_pdf_size_limit',
+    fileSizeBytes,
+    limitBytes,
+  }, { status: 413 });
 
 const getSupabaseAdmin = () =>
   createClient(
@@ -28,6 +46,7 @@ const slugify = (value: string) =>
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
+    .replace(/ł/g, 'l')
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '') || 'broszura';
 
@@ -40,7 +59,8 @@ export async function POST(request: Request) {
   let browser: Awaited<ReturnType<typeof chromium.launch>> | null = null;
 
   try {
-    const { brochureId, recipientEmail: rawRecipient, campaignId } = (await request.json()) as { brochureId?: string; recipientEmail?: unknown; campaignId?: string };
+    const { brochureId, recipientEmail: rawRecipient, recipient: rawClient, campaignId, validateOnly: rawValidateOnly } = (await request.json()) as { brochureId?: string; recipientEmail?: unknown; recipient?: unknown; campaignId?: string; validateOnly?: boolean };
+    const validateOnly = rawValidateOnly === true;
     const recipientEmail = typeof rawRecipient === 'string' ? rawRecipient.trim().toLowerCase() : '';
     if (recipientEmail && (recipientEmail.length > 200 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipientEmail))) return NextResponse.json({ error: 'Wpisz prawidłowy e-mail odbiorcy lub pozostaw pole puste.' }, { status: 400 });
     if (!brochureId) {
@@ -63,6 +83,19 @@ export async function POST(request: Request) {
     }
 
     const employeeId = await requireBrochureEmployeeAccess(userClient);
+    const recipient = await resolveBrochureClient(userClient, rawClient);
+    if (!validateOnly) {
+      // Fail before rendering/uploading if the client-version migration is missing.
+      const readiness = await userClient.from('sales_brochure_generations')
+        .select('recipient_contact_id,recipient_organization_id,recipient_name,recipient_email')
+        .eq('brochure_id', brochureId).limit(0);
+      if (readiness.error) {
+        const missingMigration = ['42703', 'PGRST204'].includes(readiness.error.code);
+        throw new BrochureRequestError(missingMigration
+          ? 'Generator wymaga migracji powiązań broszur z klientami (20261020160000_brochure_client_versions.sql). Poproś administratora o jej wdrożenie. PDF nie został utworzony.'
+          : 'Nie udało się sprawdzić zapisu wersji broszury. Spróbuj ponownie. PDF nie został utworzony.', 503);
+      }
+    }
     const admin = getSupabaseAdmin();
     const { data: employee, error: employeeError } = await admin
       .from('employees')
@@ -88,7 +121,7 @@ export async function POST(request: Request) {
 
     let campaignGenerationId: string | null = null;
     if (campaignId) {
-      if (!/^[0-9a-f-]{36}$/i.test(campaignId) || recipientEmail) return NextResponse.json({ error: 'Wersja kampanijna nie może mieć e-maila pojedynczego odbiorcy.' }, { status: 400 });
+      if (!/^[0-9a-f-]{36}$/i.test(campaignId) || recipientEmail || recipient) return NextResponse.json({ error: 'Wersja kampanijna nie może być przypisana do pojedynczego klienta ani adresu e-mail.' }, { status: 400 });
       const { data: canManageCampaign } = await userClient.rpc('can_manage_marketing_campaigns');
       const { data: campaign } = await userClient.from('mailing_campaigns').select('id,status,brochure_generation_id').eq('id',campaignId).maybeSingle();
       if (!canManageCampaign || !campaign || campaign.status !== 'draft' || !campaign.brochure_generation_id) return NextResponse.json({ error: 'Wymagany jest dostęp do szkicu kampanii z przypisaną broszurą.' }, { status: 403 });
@@ -157,30 +190,81 @@ export async function POST(request: Request) {
       throw companyResult.error || new Error('Broszura nie ma prawidłowej działalności');
     }
 
-    const signProductImage = async (path: string | null | undefined, bucket: BrochureImageBucket, label: string) => {
-      const value = String(path || '').trim();
+    const decorativePages = parseDecorativePages(brochure.brand_config?.decorative_pages).filter((page) => page.isVisible);
+    const composer = parseComposer(brochure.brand_config?.composer);
+    const references = brochurePageReferences((itemsResult.data || []).map((row: any) => ({
+      id: row.id, title: row.custom_title || (row.variant?.name ? `${row.product?.name} — ${row.variant.name}` : row.product?.name) || 'Usługa',
+    })), decorativePages, composer);
+    const validationIssues = validateBrochureContent(decorativePages, references);
+    const validationResponse = (issues: BrochureValidationIssue[]) => NextResponse.json({
+      error: `Broszura wymaga sprawdzenia. Liczba problemów: ${issues.length}. Szczegóły i miejsca edycji są w raporcie. PDF nie został zapisany.`,
+      issues,
+    }, { status: 422 });
+    const imageSources = new Map<string, BrochureImageSource>();
+    type ImageResolution = { url: string; originalUrl: string } | { reason: 'missing' | 'access' | 'temporary' };
+    const signingCache = new Map<string, Promise<ImageResolution>>();
+    const signProductImage = async (path: string | null | undefined, requestedBucket: BrochureImageBucket | 'company-logos', pageKey: string, logo = false) => {
+      let value = String(path || '').trim();
       if (!value) return null;
-      if (/^https?:\/\//i.test(value) || value.startsWith('data:image/')) return value;
-      // Hotel materials retain their own RLS; never retry them as service_role.
-      const storageClient = bucket === 'seller-brand-assets' ? userClient : admin;
-      const transformed = await storageClient.storage.from(bucket).createSignedUrl(value, 3600, {
-        transform: { width: 1800, height: 2200, resize: 'contain', quality: 85 },
+      let bucket: BrochureImageBucket | 'company-logos' = requestedBucket;
+      // Refresh saved Storage URLs instead of reusing an expired signed link.
+      // Resolve only known buckets on our own Storage host.
+      if (/^https?:\/\//i.test(value)) {
+        try {
+          const url = new URL(value);
+          const match = url.pathname.match(/^\/storage\/v1\/(?:object|render\/image)\/(?:sign|public)\/([^/]+)\/(.+)$/);
+          if (url.origin === new URL(process.env.NEXT_PUBLIC_SUPABASE_URL!).origin && match
+            && ['offer-product-pages', 'offer-template-pages', 'seller-brand-assets', 'company-logos'].includes(match[1])) {
+            bucket = match[1] as typeof bucket;
+            value = decodeURIComponent(match[2]);
+          }
+        } catch { /* The actual download reports malformed/unavailable URLs. */ }
+      }
+      const fileName = brochureFileName(value);
+      if (/^https?:\/\//i.test(value) || value.startsWith('data:image/')) {
+        imageSources.set(value, { originalUrl: value, fileName });
+        return value;
+      }
+      const key = `${bucket}:${value}`;
+      if (!signingCache.has(key)) {
+        signingCache.set(key, (async (): Promise<ImageResolution> => {
+          // Hotel materials retain their RLS, including when supplied as URLs.
+          const storage = (bucket === 'seller-brand-assets' ? userClient : admin).storage.from(bucket);
+          try {
+            const original = await storage.createSignedUrl(value, 3600);
+            if (original.error || !original.data?.signedUrl) {
+              const code = original.error && 'statusCode' in original.error ? String(original.error.statusCode) : '';
+              const message = original.error?.message || '';
+              return { reason: code === '404' || /not found|does not exist/i.test(message) ? 'missing'
+                : ['401', '403'].includes(code) || /permission|not authorized|row.level security|access denied/i.test(message) ? 'access' : 'temporary' };
+            }
+            // Logos (including SVG) do not need a raster transformation.
+            if (logo) return { url: original.data.signedUrl, originalUrl: original.data.signedUrl };
+            const transformed = await storage.createSignedUrl(value, 3600, {
+              transform: { width: 1800, height: 2200, resize: 'contain', quality: 85 },
+            }).catch(() => null);
+            return { url: transformed?.data?.signedUrl || original.data.signedUrl, originalUrl: original.data.signedUrl };
+          } catch { return { reason: 'temporary' }; }
+        })());
+      }
+      const resolved = await signingCache.get(key)!;
+      if ('url' in resolved) {
+        imageSources.set(resolved.url, { originalUrl: resolved.originalUrl, fileName });
+        return resolved.url;
+      }
+      const reference = references.find((entry) => entry.key === pageKey);
+      validationIssues.push({
+        id: logo ? 'brand:logo' : `${pageKey}:image`, pageKey,
+        pageNumber: reference?.number || null, pageTitle: reference?.title || 'Cała broszura',
+        field: logo ? 'logo' : 'imagePath', element: logo ? 'Logo marki' : 'Zdjęcie strony', fileName,
+        ...(logo ? { companyId: brochure.my_company_id } : {}), reason: resolved.reason,
+        message: resolved.reason === 'missing' ? 'Plik nie istnieje już w bibliotece.'
+          : resolved.reason === 'access' ? 'Brak dostępu do pliku w bibliotece.' : 'Nie udało się uzyskać linku do pliku.',
+        remedy: resolved.reason === 'temporary' ? 'Sprawdź ponownie za chwilę. Nie usuwaj zdjęcia — to może być chwilowy problem połączenia.'
+          : resolved.reason === 'access' ? 'Sprawdź uprawnienia do materiałów organizacji. Ponowne wgranie pliku nie jest wymagane.'
+            : logo ? 'W brandbooku marki wybierz aktualne logo.' : 'Otwórz wskazaną stronę i wybierz aktualne zdjęcie lub wgraj poprawny plik.',
       });
-      if (!transformed.error && transformed.data?.signedUrl) return transformed.data.signedUrl;
-      // Image transformation is optional; a valid original must still work.
-      const original = await storageClient.storage.from(bucket).createSignedUrl(value, 3600);
-      if (!original.error && original.data?.signedUrl) return original.data.signedUrl;
-      const error = original.error || transformed.error;
-      const code = error && 'statusCode' in error ? String(error.statusCode) : '';
-      const message = error?.message || '';
-      console.error('Brochure image unavailable:', { label, bucket, path: value, code, message });
-      if (code === '404' || /not found|does not exist/i.test(message)) {
-        throw new BrochureRequestError(`${label}: zapisane zdjęcie nie istnieje już w bibliotece. W Studio stron wybierz aktualne zdjęcie i zapisz broszurę. Brak pliku: ${value.split('/').pop()}.`, 422);
-      }
-      if (code === '403' || /permission|not authorized|row.level security|access denied/i.test(message)) {
-        throw new BrochureRequestError(`${label}: brak dostępu do zdjęcia. Sprawdź uprawnienia do materiałów organizacji; ponowne wgranie pliku nie jest wymagane.`, 403);
-      }
-      throw new BrochureRequestError(`${label}: nie udało się uzyskać dostępu do zdjęcia. Spróbuj ponownie za chwilę; nie trzeba usuwać zdjęcia z broszury.`, 503);
+      return null;
     };
 
     const company = companyResult.data;
@@ -190,26 +274,17 @@ export async function POST(request: Request) {
       || (logosResult.data || []).find((logo: any) => logo.background === 'transparent')
       || logosResult.data?.[0];
     const rawLogo = String(brandLogo?.url || company.logo_url || '').trim();
-    const logoUrl = !rawLogo
-      ? null
-      : /^https?:\/\//i.test(rawLogo)
-        ? rawLogo
-        : admin.storage.from('company-logos').getPublicUrl(rawLogo).data.publicUrl;
+    if (logosResult.error) throw new BrochureRequestError('Nie udało się odczytać logo marki. Spróbuj ponownie za chwilę.', 503);
+    const logoUrl = await signProductImage(rawLogo, 'company-logos', references[0]?.key || 'cover', true);
     const colors = (colorsResult.data || []) as Array<{ hex: string; role: string }>;
     const { primaryColor, secondaryColor } = brochurePalette(colors);
     const headingFont = (fontsResult.data || []).find((font) => font.role === 'heading' && (font.file_url || font.storage_path));
     const bodyFont = (fontsResult.data || []).find((font) => font.role === 'body');
     const bodyFontUrl = bodyFont?.file_url || (bodyFont?.storage_path ? admin.storage.from('company-logos').getPublicUrl(bodyFont.storage_path).data.publicUrl : /\bInter\b/i.test(bodyFont?.family || '') ? new URL('/fonts/Inter-Variable.ttf', request.url).href : null);
     const headingFontUrl = headingFont?.file_url || (headingFont?.storage_path ? admin.storage.from('company-logos').getPublicUrl(headingFont.storage_path).data.publicUrl : null);
-    const decorativePages = parseDecorativePages(brochure.brand_config?.decorative_pages).filter((page) => page.isVisible);
-    const invalidPage = decorativePages.find((page) => brochurePageProblem(page));
-    if (invalidPage) return NextResponse.json({ error: `${invalidPage.slogan || 'Strona'}: ${brochurePageProblem(invalidPage)}` }, { status: 400 });
-    const composer = parseComposer(brochure.brand_config?.composer);
-    const pageNumbers = new Map(orderedBrochureKeys(itemsResult.data || [], decorativePages, composer.pageOrder)
-      .filter((key) => !composer.hiddenPages.includes(key)).map((key, index) => [key, index + 1]));
     const snapshotDecorations = await Promise.all(decorativePages.map(async (page) => ({
       ...page, imageUrl: requiresPageImage(page.layout)
-        ? await signProductImage(page.imagePath, page.imageBucket, `Strona ${pageNumbers.get(`decorative:${page.id}`)} „${page.slogan || 'Grafika'}”`)
+        ? await signProductImage(page.imagePath, page.imageBucket, `decorative:${page.id}`)
         : null,
     })));
 
@@ -219,7 +294,7 @@ export async function POST(request: Request) {
         const variant = row.variant || null;
         const benefits = resolvedBenefits(row.custom_benefits, variant?.benefits, product.offer_benefits);
         const imagePath = row.custom_image_path || variant?.offer_image_path || product.offer_image_path;
-        const imageUrl = await signProductImage(imagePath, 'offer-product-pages', `Zdjęcie usługi „${product.name}”`);
+        const imageUrl = await signProductImage(imagePath, 'offer-product-pages', `product:${row.id}`);
         return {
           id: row.id,
           title: row.custom_title || (variant?.name ? `${product.name} — ${variant.name}` : product.name),
@@ -243,9 +318,9 @@ export async function POST(request: Request) {
     }
 
     const coverImagePath = composer.coverImagePath || brochure.cover_image_path;
-    const coverImageUrl = composer.hiddenPages.includes('cover') ? null : await signProductImage(coverImagePath, composer.coverImagePath ? composer.coverImageBucket : 'offer-product-pages', 'Okładka broszury');
+    const coverImageUrl = composer.hiddenPages.includes('cover') ? null : await signProductImage(coverImagePath, composer.coverImagePath ? composer.coverImageBucket : 'offer-product-pages', 'cover');
 
-    const demoAttribution = brochure.brand_config?.seller_demo_enabled === true
+    const demoAttribution = !validateOnly && brochure.brand_config?.seller_demo_enabled === true
       ? { sourceId: crypto.randomUUID(), brochureId: brochure.id, employeeId: employee.id, recipientEmail, ...(campaignId ? { campaignId } : {}) } : undefined;
     let demoUrl: string | undefined;
     if (demoAttribution) {
@@ -263,6 +338,7 @@ export async function POST(request: Request) {
     }
     const snapshot: SalesBrochureSnapshot = {
       recipientEmail,
+      recipient,
       demoAttribution,
       demoUrl,
       brochure: {
@@ -306,10 +382,23 @@ export async function POST(request: Request) {
       generatedAt: new Date().toISOString(),
     };
 
-    const [embeddedHeadingFont, embeddedBodyFont] = await Promise.all([
+    const fontResults = await Promise.allSettled([
       loadPdfFont(headingFontUrl, headingFont?.family || 'Nagłówki'),
       loadPdfFont(bodyFontUrl, bodyFont?.family || 'Treść', Boolean(!bodyFont?.file_url && !bodyFont?.storage_path && /\bInter\b/i.test(bodyFont?.family || ''))),
     ]);
+    fontResults.forEach((result, index) => {
+      if (result.status !== 'rejected') return;
+      validationIssues.push({
+        id: `brand:font:${index}`, pageKey: 'cover', pageNumber: null, pageTitle: 'Cała broszura',
+        field: 'font', element: index === 0 ? 'Czcionka nagłówków' : 'Czcionka treści',
+        companyId: brochure.my_company_id, reason: 'font',
+        message: 'Nie udało się pobrać poprawnego pliku czcionki.',
+        remedy: 'Sprawdź ponownie za chwilę. Jeśli problem wraca, sprawdź plik TTF, OTF, WOFF lub WOFF2 w brandbooku marki.',
+      });
+    });
+    if (validationIssues.length) return validationResponse(validationIssues);
+    const embeddedHeadingFont = fontResults[0].status === 'fulfilled' ? fontResults[0].value : null;
+    const embeddedBodyFont = fontResults[1].status === 'fulfilled' ? fontResults[1].value : null;
     // Keep the original source URLs in generation history; only the document
     // sent to Chromium contains the embedded font files.
     const renderSnapshot: SalesBrochureSnapshot = {
@@ -321,60 +410,20 @@ export async function POST(request: Request) {
       args: ['--no-sandbox', '--disable-setuid-sandbox', '--font-render-hinting=medium'],
     });
     const page = await browser.newPage();
-    // The document is ready independently of long-running image/network requests.
-    await page.setContent(buildSalesBrochureHtml(renderSnapshot), { waitUntil: 'domcontentloaded', timeout: 30_000 });
-    const assets = await page.evaluate(async ({ heading, body, timeoutMs }) => {
-      const images = Array.from(document.images);
-      const cleanups: Array<() => void> = [];
-      const imageLoads = images.map((image) => new Promise<void>((resolve) => {
-        if (image.complete) return resolve();
-        const settled = () => {
-          image.removeEventListener('load', settled);
-          image.removeEventListener('error', settled);
-          resolve();
-        };
-        image.addEventListener('load', settled, { once: true });
-        image.addEventListener('error', settled, { once: true });
-        cleanups.push(settled);
-      }));
-      let fontsReady = false;
-      let fontFailed = false;
-      const fontLoads = (async () => {
-        try {
-          const families = [heading ? 'BrochureBrandHeading' : '', body ? 'BrochureBrandBody' : ''].filter(Boolean);
-          // Explicitly start font loading before waiting, including Polish glyphs.
-          await Promise.all(families.map((family) => document.fonts.load(`16px "${family}"`, 'MAVINCI ĄĆĘŁŃÓŚŹŻ ąćęłńóśźż')));
-          await document.fonts.ready;
-          fontsReady = true;
-        } catch {
-          fontFailed = true;
-        }
-      })();
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      const timedOut = await Promise.race([
-        Promise.all([...imageLoads, fontLoads]).then(() => false),
-        new Promise<boolean>((resolve) => { timer = setTimeout(() => resolve(true), timeoutMs); }),
-      ]);
-      if (timer !== undefined) clearTimeout(timer);
-      cleanups.forEach((cleanup) => cleanup());
-      const errors = new Set<string>();
-      const sheets = Array.from(document.querySelectorAll('.page'));
-      for (const image of images) {
-        if (image.complete && image.naturalWidth > 0) continue;
-        const sheet = image.closest('.page');
-        const index = sheet ? sheets.indexOf(sheet) : -1;
-        errors.add(`${index >= 0 ? `Strona ${index + 1}: ` : ''}nie udało się wczytać zdjęcia lub logo. Spróbuj ponownie; jeśli problem wraca, wybierz plik ponownie.`);
-      }
-      if (fontFailed || !fontsReady) errors.add('Generator nie mógł zastosować osadzonych fontów w dokumencie PDF. Plik nie został zapisany.');
-      if (timedOut) errors.add('Pobieranie materiałów broszury przekroczyło 60 sekund. PDF nie został zapisany.');
-      return { errors: Array.from(errors), timedOut };
-    }, { heading: Boolean(headingFontUrl), body: Boolean(bodyFontUrl), timeoutMs: 60_000 });
-    if (assets.errors.length) return NextResponse.json({ error: assets.errors.join('\n') }, { status: assets.timedOut ? 504 : 422 });
+    let assetIssues: BrochureValidationIssue[];
+    try {
+      assetIssues = await validatePdfAssets(page, buildSalesBrochureHtml(renderSnapshot), references,
+        imageSources, brochure.my_company_id, Boolean(embeddedHeadingFont), Boolean(embeddedBodyFont));
+    } catch {
+      // A browser/renderer failure is not evidence that the user chose a bad file.
+      // Do not expose Playwright errors containing signed asset URLs.
+      throw new BrochureRequestError('Nie udało się zakończyć sprawdzania materiałów broszury. Spróbuj ponownie za chwilę. Nie zmieniaj zdjęć na podstawie tego komunikatu — problem dotyczy działania generatora.', 503);
+    }
+    if (assetIssues.length) return validationResponse(assetIssues);
     // Validate the actual composition after images and fonts settle; never publish clipped copy.
     const issues = await page.evaluate(() => {
-      const errors: string[] = [];
+      const errors: Array<{ pageKey: string; number: number }> = [];
       document.querySelectorAll<HTMLElement>('.page').forEach((sheet, index) => {
-        const label = `Strona ${index + 1}`;
         const bounds = sheet.getBoundingClientRect();
         const footer = sheet.querySelector('footer')?.getBoundingClientRect();
         const bottom = footer?.top ?? bounds.bottom;
@@ -391,23 +440,58 @@ export async function POST(request: Request) {
         const metrics = sheet.querySelector('.metrics')?.getBoundingClientRect();
         const intro = sheet.querySelector('.intro-grid')?.getBoundingClientRect();
         if (metrics && intro && intro.bottom > metrics.top - 5) bad = true;
-        if (bad) errors.push(`${label}: treść nie mieści się w układzie. Skróć tekst, zmniejsz hasło lub powiększ/przesuń pole.`);
-        if (Array.from(sheet.querySelectorAll('img')).some((image) => !image.complete || image.naturalWidth === 0)) errors.push(`${label}: nie udało się wczytać zdjęcia lub logo. Wybierz plik ponownie.`);
+        if (bad) errors.push({ pageKey: sheet.dataset.pageKey || '', number: index + 1 });
       });
       return errors;
     });
-    if (issues.length) return NextResponse.json({ error: issues.join('\n') }, { status: 422 });
+    if (issues.length) return validationResponse(issues.map((issue) => ({
+      id: `${issue.pageKey}:layout`, pageKey: issue.pageKey, pageNumber: issue.number,
+      pageTitle: references.find((reference) => reference.key === issue.pageKey)?.title || 'Strona broszury',
+      field: 'layout', element: 'Układ i długość tekstu', reason: 'layout',
+      message: 'Treść wychodzi poza stronę lub nakłada się na inne elementy.',
+      remedy: 'Otwórz tę stronę. Skróć tekst, zmniejsz hasło albo zmień rozmiar lub położenie pola w Studio stron.',
+    })));
+    if (validateOnly) return NextResponse.json({ ok: true, issues: [], pageCount: references.length });
     const pdf = await page.pdf({ format: 'A4', printBackground: true });
 
-    const fileName = `broszura-${slugify(brochure.name)}-${new Date()
+    // Read the deployed bucket limit: environments may still have an older
+    // migration. Do not upload an oversized PDF or create a history entry for it.
+    const { data: pdfBucket, error: pdfBucketError } = await admin.storage.getBucket('generated-brochures');
+    if (pdfBucketError || !pdfBucket) {
+      throw new BrochureRequestError(
+        `PDF ma ${formatPdfSize(pdf.byteLength)}, ale nie udało się odczytać limitu magazynu broszur. Spróbuj ponownie za chwilę. PDF nie został zapisany.`,
+        503,
+      );
+    }
+    const configuredLimit = pdfBucket.file_size_limit;
+    const sizeLimit = typeof configuredLimit === 'number' && Number.isFinite(configuredLimit) && configuredLimit > 0
+      ? Math.min(BROCHURE_PDF_SIZE_LIMIT, configuredLimit)
+      : BROCHURE_PDF_SIZE_LIMIT;
+    if (pdf.byteLength > sizeLimit) return pdfSizeLimitResponse(pdf.byteLength, sizeLimit);
+
+    const fileName = recipient ? brochureClientPdfFileName(recipient) : `broszura-${slugify(brochure.name)}-${new Date()
       .toISOString()
       .slice(0, 10)}.pdf`;
-    const storagePath = `${brochure.id}/${crypto.randomUUID()}-${fileName}`;
+    // Unikalny katalog zachowuje odrębne wersje bez identyfikatora w nazwie
+    // pobieranego pliku. Klucz Storage jest ASCII, nazwa dla klienta zachowuje
+    // polskie znaki i trafia również do załącznika e-mail.
+    const storagePath = recipient
+      ? `${brochure.id}/${crypto.randomUUID()}/${slugify(fileName.replace(/\.pdf$/i, ''))}.pdf`
+      : `${brochure.id}/${crypto.randomUUID()}-${fileName}`;
     const upload = await admin.storage.from('generated-brochures').upload(storagePath, pdf, {
       contentType: 'application/pdf',
       upsert: false,
     });
-    if (upload.error) throw upload.error;
+    if (upload.error) {
+      // A project-wide Storage limit can be lower than the bucket limit.
+      // Explain that separately instead of incorrectly blaming image validation.
+      const storageCode = String(upload.error.statusCode || '');
+      if (upload.error.status === 413 || storageCode === '413' || storageCode === 'EntityTooLarge'
+        || /exceeded the maximum allowed size|payload too large|entity too large/i.test(upload.error.message)) {
+        return pdfSizeLimitResponse(pdf.byteLength, sizeLimit, true);
+      }
+      throw upload.error;
+    }
 
     const { data: generation, error: generationError } = await admin.rpc(
       'record_sales_brochure_generation',
@@ -433,14 +517,14 @@ export async function POST(request: Request) {
     }
     const { data: signed } = await admin.storage
       .from('generated-brochures')
-      .createSignedUrl(storagePath, 3600);
+      .createSignedUrl(storagePath, 3600, { download: fileName });
 
     return NextResponse.json({
       ok: true,
       generation,
       storagePath,
       fileName,
-      pageCount: snapshotItems.length + snapshotDecorations.length + 3 - composer.hiddenPages.length,
+      pageCount: references.length,
       downloadUrl: signed?.signedUrl || null,
     });
   } catch (error: any) {

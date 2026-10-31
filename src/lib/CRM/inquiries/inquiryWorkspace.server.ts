@@ -47,7 +47,7 @@ export async function fetchInquiryWorkspaceServer(inquiryId: string) {
       .order('created_at', { ascending: false }),
     supabase
       .from('offers')
-      .select('id, title, event_id, offer_number, status, total_amount, subtotal, tax_amount, tax_percent, discount_amount, discount_percent, pricing_source, calculation_snapshot, package_mode, accepted_package_id, offer_packages!offer_packages_offer_id_fkey(id,name,price_net), valid_until, created_at, updated_at')
+      .select('id, title, event_id, guest_count, offer_number, status, total_amount, subtotal, tax_amount, tax_percent, discount_amount, discount_percent, pricing_source, calculation_snapshot, package_mode, accepted_package_id, offer_packages!offer_packages_offer_id_fkey(id,name,price_net), valid_until, created_at, updated_at')
       .eq('inquiry_id', inquiryId)
       .order('created_at', { ascending: false }),
     supabase

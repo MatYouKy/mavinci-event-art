@@ -7,6 +7,8 @@ import { buildInvoicePdfHtml } from '@/components/crm/invoices/helpers/buildInvo
 import { generateKsefInvoiceQrDataUrl } from '@/lib/ksef/qr';
 import { resolveInvoiceIssuerName } from '@/lib/invoices/resolveInvoiceIssuerName';
 import { resolveInvoicePrintLogo } from '@/lib/invoices/resolveInvoicePrintLogo';
+import { getInvoiceKsefRecipient } from '@/lib/invoices/ksefRecipient';
+import { getInvoicePartyDataCorrection } from '@/lib/invoices/partyDataCorrection';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -138,6 +140,8 @@ function buildCanonicalPdfHtml(invoice: any, companyLogoUrl: string): string {
     buyerStreet: invoice.buyer_street ?? '',
     buyerCity: invoice.buyer_city ?? '',
     buyerPostalCode: invoice.buyer_postal_code ?? '',
+    buyerCountryCode: ['POLSKA', 'POLAND', ''].includes(String(invoice.buyer_country ?? '').toUpperCase()) ? 'PL' : String(invoice.buyer_country).toUpperCase(),
+    recipient: getInvoiceKsefRecipient(invoice),
     totalNet: numberOrZero(invoice.total_net),
     totalVat: numberOrZero(invoice.total_vat),
     totalGross: numberOrZero(invoice.total_gross),
@@ -145,8 +149,11 @@ function buildCanonicalPdfHtml(invoice: any, companyLogoUrl: string): string {
     companyLogoUrl,
     isProforma: invoice.invoice_type === 'proforma' || Boolean(invoice.is_proforma),
     correctionReason: invoice.correction_reason ?? undefined,
+    correctionKind: invoice.correction_kind,
+    correctionPartyDataBefore: getInvoicePartyDataCorrection(invoice),
     correctedInvoiceNumber: invoice.corrected_invoice_number ?? undefined,
     correctedInvoiceIssueDate: invoice.corrected_invoice_issue_date ?? undefined,
+    correctedInvoiceKsefNumber: invoice.corrected_invoice_ksef_number ?? undefined,
     items: items.map((item: any, index: number) => ({
       positionNumber: Number(item.position_number ?? index + 1),
       name: item.name ?? '',

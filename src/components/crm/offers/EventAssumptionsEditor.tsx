@@ -7,21 +7,27 @@ import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import {
   EVENT_ASSUMPTION_OPTIONS,
+  normalizeEventAssumptionItems,
   EVENT_ASSUMPTION_VALUE_MAX_LENGTH,
   EventAssumptionItem,
   EventAssumptionKey,
   getEventAssumptionOption,
+  syncGuestCountAssumptions,
 } from '@/lib/CRM/Offers/eventAssumptions';
 
 export function EventAssumptionsEditor({
   value,
   onChange,
   aiContext,
+  eventGoal = '',
   showAiAction = true,
+  guestCount,
 }: {
   showAiAction?: boolean;
+  guestCount?: number | null;
+  eventGoal?: string;
   value: EventAssumptionItem[];
-  onChange: (items: EventAssumptionItem[]) => void;
+  onChange: (items: EventAssumptionItem[], eventGoal?: string) => void;
   aiContext?: {
     inquiryId?: string;
     eventCategory?: string;
@@ -30,6 +36,8 @@ export function EventAssumptionsEditor({
 }) {
   const { showSnackbar } = useSnackbar();
   const [generating, setGenerating] = useState(false);
+  const [sourceInfo, setSourceInfo] = useState('');
+  const [generateGoal, setGenerateGoal] = useState(true);
   const generatingRef = useRef(false);
   const [showAiDialog, setShowAiDialog] = useState(false);
   const [aiInstructions, setAiInstructions] = useState('');
@@ -42,15 +50,19 @@ export function EventAssumptionsEditor({
 
   const generateWithAi = async () => {
     if (generatingRef.current) return;
+    const requestedItems = normalizeEventAssumptionItems(value);
     generatingRef.current = true;
     try {
       setGenerating(true);
       const { data, error } = await supabase.functions.invoke('assist-inquiry', {
         body: {
           action: 'draft_offer_assumptions',
+          selectedAssumptions: requestedItems.map(item => ({ key: item.key, label: item.label, value: item.value })),
           ...(aiInstructions.trim() ? { additionalInstructions: aiInstructions.trim() } : {}),
           inquiryId: aiContext?.inquiryId || undefined,
           context: {
+            event_goal: eventGoal,
+            ...(guestCount == null ? {} : { guest_count: guestCount }),
             event_category: String(aiContext?.eventCategory || '').slice(0, 100),
             product_names: (aiContext?.productNames || [])
               .map((name) => String(name).slice(0, 120))
@@ -72,6 +84,9 @@ export function EventAssumptionsEditor({
       const candidates = Array.isArray(data?.result?.assumptions)
         ? data.result.assumptions
         : [];
+      if (candidates.length !== requestedItems.length || candidates.some((candidate: any, index: number) => candidate.key !== requestedItems[index].key)) {
+        throw new Error('AI nie zachowało wybranych kategorii. Spróbuj ponownie.');
+      }
       const allowedKeys = new Set(EVENT_ASSUMPTION_OPTIONS.map((option) => option.key));
       const usedKeys = new Set<EventAssumptionKey>();
       const assumptions = candidates.reduce<EventAssumptionItem[]>((result, candidate) => {
@@ -95,9 +110,13 @@ export function EventAssumptionsEditor({
       if (assumptions.length !== 3) {
         throw new Error('AI nie przygotowało trzech kompletnych założeń. Spróbuj ponownie.');
       }
-      onChange(assumptions);
+      const goal = String(data?.result?.event_goal || '').trim();
+      if (generateGoal && !goal) throw new Error('AI nie przygotowało celu wydarzenia. Spróbuj ponownie.');
+      onChange(guestCount === undefined ? assumptions : syncGuestCountAssumptions(assumptions, guestCount), generateGoal ? goal : undefined);
+      const sources = data?.result?.source_context;
+      setSourceInfo(sources ? `Wykorzystano analizy: ${sources.analysis_count}, wiadomości: ${sources.correspondence_count}. ${sources.approved_summary_current ? 'Uwzględniono aktualne zatwierdzone podsumowanie.' : 'Brak aktualnego zatwierdzonego podsumowania — propozycja wymaga sprawdzenia.'}` : 'Propozycja na podstawie kontekstu oferty, bez powiązanego zapytania.');
       setShowAiDialog(false);
-      showSnackbar('AI przygotowało trzy robocze założenia', 'success');
+      showSnackbar(generateGoal ? 'AI uzupełniło wybrane założenia i cel wydarzenia' : 'AI uzupełniło wybrane założenia', 'success');
     } catch (error: any) {
       showSnackbar(error?.message || 'Nie udało się przygotować założeń przez AI', 'error');
     } finally {
@@ -141,8 +160,10 @@ export function EventAssumptionsEditor({
           </div>
           <div className="mt-5 rounded-lg border border-[#d3bb73]/15 bg-[#1b0710] p-4">
             <p className="text-sm font-medium text-[#d3bb73]">Podstawa propozycji</p>
-            <p className="mt-2 text-sm leading-6 text-[#e5e4e2]/65">AI przygotuje trzy konkretne założenia biznesowe na podstawie zapytania, rodzaju wydarzenia i wybranych produktów. Opisze korzyści i priorytety realizacji, bez dopowiadania nieznanych faktów.</p>
+            <p className="mt-2 text-sm leading-6 text-[#e5e4e2]/65">AI uzupełni kategorie wybrane w trzech kartach, w tej samej kolejności. Wykorzysta ustalenia, historię analiz z zakładki „Analiza i AI”, aktualne zatwierdzone podsumowanie, korespondencję oraz wybrane produkty. Brakujące fakty oznaczy jako wymagające doprecyzowania.</p>
           </div>
+          <ol className="mt-3 space-y-1 text-sm text-[#d3bb73]">{value.map((item, index) => <li key={index}>{index + 1}. {item.label || getEventAssumptionOption(item.key).label}</li>)}</ol>
+          <label className="mt-4 flex items-center gap-2 text-sm text-[#e5e4e2]"><input type="checkbox" checked={generateGoal} disabled={generating} onChange={event => setGenerateGoal(event.target.checked)} />Uzupełnij również cel wydarzenia</label>
           <label htmlFor={instructionsId} className="mb-2 mt-5 block text-sm text-[#e5e4e2]">Co chcesz osiągnąć? <span className="text-[#e5e4e2]/45">(opcjonalnie)</span></label>
           <textarea
             id={instructionsId}
@@ -156,7 +177,7 @@ export function EventAssumptionsEditor({
             className="w-full resize-y rounded-lg border border-[#d3bb73]/20 bg-[#15070d] px-3 py-3 text-sm leading-6 text-[#e5e4e2] placeholder:text-[#e5e4e2]/30 focus:border-[#d3bb73]/50 focus:outline-none disabled:opacity-60"
           />
           <div className="mt-1 flex justify-between gap-3 text-xs text-[#e5e4e2]/45"><span>Puste pole = propozycja według bazowej instrukcji.</span><span>{aiInstructions.length}/2000</span></div>
-          <p className="mt-4 text-xs leading-5 text-[#e5e4e2]/50">Propozycja zastąpi trzy założenia w edytorze. Przed zapisaniem oferty możesz je jeszcze poprawić.</p>
+          <p className="mt-4 text-xs leading-5 text-[#e5e4e2]/50">Propozycja zastąpi treści trzech wybranych założeń oraz — jeśli zaznaczono — cel wydarzenia. Przed zapisaniem oferty możesz je poprawić.</p>
           <div className="mt-6 flex justify-end gap-3">
             <button type="button" disabled={generating} onClick={() => setShowAiDialog(false)} className="rounded-lg border border-[#d3bb73]/20 px-4 py-2 text-sm text-[#e5e4e2]/70 disabled:opacity-40">Anuluj</button>
             <button type="button" disabled={generating} onClick={generateWithAi} className="inline-flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1b0710] disabled:cursor-wait disabled:opacity-60">
@@ -167,6 +188,7 @@ export function EventAssumptionsEditor({
         </div>
       </Dialog>
 
+      {sourceInfo && <p role="status" className="text-xs text-[#e5e4e2]/60">{sourceInfo}</p>}
       {value.map((item, index) => {
         const option = getEventAssumptionOption(item.key);
         const selectedKeys = new Set(value.map((entry) => entry.key));
@@ -184,8 +206,8 @@ export function EventAssumptionsEditor({
                   updateItem(index, {
                     key,
                     label: key === 'custom' ? '' : nextOption.label,
-                    value: nextOption.defaultValue || '',
-                    badge_value: nextOption.defaultBadgeValue || '',
+                    value: key === 'guest_count' && guestCount != null ? `${guestCount} osób` : nextOption.defaultValue || '',
+                    badge_value: key === 'guest_count' && guestCount != null ? String(guestCount) : nextOption.defaultBadgeValue || '',
                   });
                 }}
                 className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#30101f] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
@@ -222,12 +244,14 @@ export function EventAssumptionsEditor({
               </div>
             )}
 
+            {item.key === 'guest_count' && guestCount !== undefined && <p className="mb-3 text-xs text-[#d3bb73]">Liczba pobierana automatycznie z informacji podstawowych oferty. Zmień ją tam, aby zaktualizować również wycenę.</p>}
             <label className="mb-1.5 block text-xs text-[#d3bb73]">
               Wartość liczbowa w burgundowym znaczniku
             </label>
             <div className="mb-3 flex items-center gap-3">
               <input
                 value={item.badge_value || ''}
+                readOnly={item.key === 'guest_count' && guestCount !== undefined}
                 onChange={(event) => updateItem(index, {
                   ...item,
                   badge_value: event.target.value.toLocaleUpperCase('pl-PL').slice(0, 7),
@@ -250,6 +274,7 @@ export function EventAssumptionsEditor({
             {option.multiline ? (
               <textarea
                 value={item.value}
+                readOnly={item.key === 'guest_count' && guestCount !== undefined}
                 onChange={(event) => updateItem(index, {
                   ...item,
                   value: event.target.value.slice(0, EVENT_ASSUMPTION_VALUE_MAX_LENGTH),
@@ -262,6 +287,7 @@ export function EventAssumptionsEditor({
             ) : (
               <input
                 value={item.value}
+                readOnly={item.key === 'guest_count' && guestCount !== undefined}
                 onChange={(event) => updateItem(index, {
                   ...item,
                   value: event.target.value.slice(0, EVENT_ASSUMPTION_VALUE_MAX_LENGTH),

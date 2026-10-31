@@ -1,3 +1,4 @@
+import { generateOfferPdf } from '@/lib/offer-pdf/service';
 import { NextRequest, NextResponse } from 'next/server';
 import { randomUUID } from 'node:crypto';
 import { demoAdmin, demoJson, demoNetworkHash, demoSessionCookie, getDemoBrochure, isDemoUuid, readDemoSession } from '@/lib/seller/demo.server';
@@ -63,10 +64,10 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       if (!release) return json({ error: 'Podgląd jest zajęty. Spróbuj ponownie za chwilę.' },429);
       try {
         const key = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-        const result = await fetch(process.env.NEXT_PUBLIC_SUPABASE_URL + '/functions/v1/generate-offer-pdf', {
+        const result = await generateOfferPdf(new Request('http://offer-pdf.internal/render', {
           method: 'POST', cache: 'no-store', headers: { Authorization: 'Bearer ' + key, apikey: key, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ outputMode: 'demo_cover', offerId: sessionId, demo: input }), signal: AbortSignal.timeout(90000),
-        });
+          body: JSON.stringify({ outputMode: 'demo_cover', offerId: sessionId, demo: input }),
+        }));
         if (!result.ok || result.headers.get('X-Offer-Demo-Cover') !== 'cover-v1' || !result.headers.get('Content-Type')?.includes('application/pdf')) throw new Error('Nie udało się odświeżyć okładki. Spróbuj ponownie.');
         const pdf = Buffer.from(await result.arrayBuffer());
         if (pdf.subarray(0,5).toString('ascii') !== '%PDF-' || pdf.length > 20*1024*1024) throw new Error('Nie udało się odczytać okładki.');
@@ -96,12 +97,8 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     generationId = requestedGeneration;
     const { error: snapshotError } = await admin.from('seller_demo_generations').update({ snapshot: { ...details, attribution: session.brand_config?.attribution || null, logoAdded: Boolean(logo), coverAdded: Boolean(cover), portraitAdded: Boolean(portrait) } }).eq('id',generationId);
     if (snapshotError) throw new Error('Nie udało się zapisać danych dokumentu.');
-    const endpoint = process.env.NEXT_PUBLIC_SUPABASE_URL + '/functions/v1/generate-offer-pdf';
     const key = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-    const headers = { Authorization: 'Bearer ' + key, apikey: key };
-    const capabilities = await fetch(endpoint,{method:'OPTIONS',headers,cache:'no-store',signal:AbortSignal.timeout(15000)});
-    if (capabilities.headers.get('X-Offer-Demo') !== 'demo-v2') throw new Error('Demonstracja PDF jest chwilowo niedostępna. Spróbuj później.');
-    const result = await fetch(endpoint,{method:'POST',cache:'no-store',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({outputMode:'demo_binary',offerId:generationId,demo:input}),signal:AbortSignal.timeout(150000)});
+    const result = await generateOfferPdf(new Request('http://offer-pdf.internal/render', {method:'POST',headers:{Authorization:'Bearer '+key,'Content-Type':'application/json'},body:JSON.stringify({outputMode:'demo_binary',offerId:generationId,demo:input})}));
     if (!result.ok || result.headers.get('X-Offer-Demo') !== 'demo-v2' || !result.headers.get('Content-Type')?.includes('application/pdf')) throw new Error('Nie udało się przygotować PDF. Spróbuj ponownie za chwilę.');
     const pdf = Buffer.from(await result.arrayBuffer());
     if (pdf.subarray(0,5).toString('ascii') !== '%PDF-' || pdf.length > 20 * 1024 * 1024) throw new Error('Generator zwrócił nieprawidłowy dokument.');

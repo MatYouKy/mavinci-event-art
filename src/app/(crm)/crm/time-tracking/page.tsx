@@ -1,4 +1,5 @@
 'use client';
+import { TimeEntryDiscussion, useTimeEntryDiscussions } from '@/components/crm/TimeEntryDiscussion';
 
 import EmployeeTimeSettlements from '@/components/crm/personnel/EmployeeTimeSettlements';
 
@@ -48,6 +49,7 @@ interface TimeEntry {
   personnel_rate_snapshot?: { currency?: string; rate_basis?: string } | null;
   tags: string[];
   edit_count?: number;
+  updated_at: string;
   employee_name?: string;
   employee_surname?: string;
   task_title?: string;
@@ -72,6 +74,7 @@ interface Task {
 
 export default function TimeTrackingPage() {
   const { showSnackbar } = useSnackbar();
+  const discussions = useTimeEntryDiscussions();
   const { employee, loading: employeeLoading, isAdmin } = useCurrentEmployee();
   const [entries, setEntries] = useState<TimeEntry[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -502,7 +505,7 @@ export default function TimeTrackingPage() {
 
             {/* Statystyki */}
             <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-              <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-4">
+              <div className={`rounded-lg border bg-[#1c1f33] p-4 ${discussions.threads.some(t => t.time_entry_id === entry.id && !t.resolved) ? 'border-orange-400/80' : 'border-[#d3bb73]/10'}`}>
                 <div className="mb-2 flex items-center gap-3">
                   <Clock className="h-5 w-5 text-blue-400" />
                   <span className="text-sm text-[#e5e4e2]/60">Łącznie</span>
@@ -627,6 +630,7 @@ export default function TimeTrackingPage() {
                           </span>
                         )}
                       </div>
+                      
                       {entry.description && (
                         <p className="mb-2 text-sm text-[#e5e4e2]/60">{entry.description}</p>
                       )}
@@ -656,18 +660,18 @@ export default function TimeTrackingPage() {
                         </span>
                       </div>
                     </div>
-                    <div className="flex items-center gap-4 text-right">
-                      <div>
+                    <div className="grid shrink-0 grid-cols-[auto_auto] items-center gap-x-4 text-right">
+                      <div className="contents">
                         <div className="text-2xl font-bold text-[#d3bb73]">
                           {formatMinutes(entry.duration_minutes)}
                         </div>
                         {entry.hourly_rate && (
-                          <div className="mt-1 text-xs text-[#e5e4e2]/40">
+                          <div className="col-start-1 row-start-2 mt-1 text-xs text-[#e5e4e2]/40">
                             {entry.hourly_rate} {entry.personnel_rate_snapshot?.currency || 'PLN'}/h {entry.personnel_rate_snapshot?.rate_basis === 'gross' ? 'brutto' : entry.personnel_rate_snapshot?.rate_basis === 'net' ? 'netto' : ''}
                           </div>
                         )}
                       </div>
-                      <div className="flex gap-2">
+                      <div className="col-start-2 row-start-1 flex items-center gap-2">
                         {viewMode === 'my' && entry.end_time && (
                           <button
                             onClick={() => {
@@ -695,18 +699,11 @@ export default function TimeTrackingPage() {
                             </span>
                           </button>
                         )}
-                        {viewMode === 'my' && (
-                          <button
-                            onClick={() => deleteEntry(entry.id)}
-                            className="p-2 text-red-400 hover:text-red-300"
-                            title="Usuń"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        )}
+                        <TimeEntryDiscussion panelId={`discussion-panel-${entry.id}`} entry={entry} isAdmin={isAdmin} discussions={discussions} onDelete={viewMode === 'my' ? () => deleteEntry(entry.id) : undefined} />
                       </div>
                     </div>
                   </div>
+                  <div id={`discussion-panel-${entry.id}`} className="empty:hidden mt-2 border-t border-orange-400/25 text-left" />
                 </div>
               ))}
 
@@ -741,7 +738,7 @@ export default function TimeTrackingPage() {
           }}
           onSave={async (updated) => {
             try {
-              const { error } = await supabase
+              const { data, error } = await supabase
                 .from('time_entries')
                 .update({
                   personnel_contract_id: updated.personnel_contract_id || null,
@@ -750,9 +747,16 @@ export default function TimeTrackingPage() {
                   start_time: updated.start_time,
                   end_time: updated.end_time,
                 })
-                .eq('id', updated.id);
+                .eq('id', updated.id)
+                .eq('employee_id', editingEntry.employee_id)
+                .eq('updated_at', editingEntry.updated_at)
+                .select('id');
 
               if (error) throw error;
+              if (!data?.length) {
+                showSnackbar('Wpis zmienił się lub nie jest już dostępny. Zamknij edycję i odśwież listę.', 'error');
+                return;
+              }
               showSnackbar('Wpis zaktualizowany', 'success');
               setShowEditModal(false);
               setEditingEntry(null);
@@ -1129,6 +1133,13 @@ function HistoryModal({ entryId, onClose }: { entryId: string; onClose: () => vo
       is_billable: 'Płatne',
       hourly_rate: 'Stawka godzinowa',
       tags: 'Tagi',
+      task_id: 'Powiązane zadanie',
+      event_id: 'Powiązane wydarzenie',
+      employee_id: 'Pracownik',
+      personnel_contract_id: 'Umowa pracownika',
+      personnel_rate_snapshot: 'Warunki rozliczenia',
+      compensation_snapshot: 'Warunki wynagrodzenia',
+      created_at: 'Data utworzenia',
     };
     return names[field] || field;
   };
@@ -1192,7 +1203,7 @@ function HistoryModal({ entryId, onClose }: { entryId: string; onClose: () => vo
                   </div>
                   <div className="text-right">
                     <div className="text-sm text-[#e5e4e2]">
-                      {item.employee_name} {item.employee_surname}
+                      {[item.actor_name, item.actor_surname].filter(Boolean).join(' ') || 'Autor niedostępny (starszy wpis lub system)'}
                     </div>
                     <div className="text-xs text-[#e5e4e2]/60">
                       {new Date(item.changed_at).toLocaleString('pl-PL')}

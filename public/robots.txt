@@ -10,7 +10,7 @@ Disallow: /login
 Disallow: /reset-password
 Disallow: /invitation
 Disallow: /subcontractor-confirmation
-Disallow: /demo-sprzedawcy
+# Demo pages send noindex in HTML and X-Robots-Tag; allow crawling to read it.
 
 # OAI-SearchBot, Googlebot, Bingbot and PerplexityBot inherit the rules above.
 # Existing access for training crawlers is unchanged.

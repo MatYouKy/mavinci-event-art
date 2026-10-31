@@ -150,7 +150,7 @@ export const plainTextToEmailHtml = (value: string): string => {
   return escaped.split('\n').map((line) => `<p>${line || '<br>'}</p>`).join('');
 };
 
-export const normalizeUnifiedEmailHtml = (html: string): string => {
+export const normalizeUnifiedEmailHtml = (html: string, compactSpacing = false): string => {
   if (!html || typeof window === 'undefined') return html;
 
   const documentNode = new DOMParser().parseFromString(html, 'text/html');
@@ -180,7 +180,15 @@ export const normalizeUnifiedEmailHtml = (html: string): string => {
 
   documentNode.body.querySelectorAll<HTMLElement>('p').forEach((paragraph) => {
     paragraph.style.marginTop = '0';
-    paragraph.style.marginBottom = paragraph.textContent?.trim() ? '10px' : '8px';
+    paragraph.style.marginBottom = compactSpacing ? '0' : paragraph.textContent?.trim() ? '10px' : '8px';
+    if (compactSpacing) {
+      paragraph.style.padding = '0';
+      paragraph.style.height = 'auto';
+      paragraph.style.minHeight = '0';
+      paragraph.style.lineHeight = '20px';
+      paragraph.style.whiteSpace = 'normal';
+      if (!paragraph.className.includes('ql-indent-')) paragraph.style.marginLeft = '0';
+    }
     paragraph.style.marginRight = '0';
   });
   documentNode.body.querySelectorAll<HTMLElement>('ol, ul').forEach((list) => {
@@ -192,6 +200,23 @@ export const normalizeUnifiedEmailHtml = (html: string): string => {
     item.style.marginBottom = '4px';
     item.style.marginRight = '0';
   });
+
+  if (compactSpacing) {
+    documentNode.body.querySelectorAll<HTMLElement>('div').forEach(element => {
+      element.style.margin = '0';
+      element.style.padding = '0';
+      element.style.height = 'auto';
+      element.style.minHeight = '0';
+      element.style.whiteSpace = 'normal';
+    });
+    const isEmptyParagraph = (element: Element | null) => element?.tagName === 'P'
+      && !element.textContent?.trim() && !element.querySelector('img');
+    while (isEmptyParagraph(documentNode.body.firstElementChild)) documentNode.body.firstElementChild!.remove();
+    while (isEmptyParagraph(documentNode.body.lastElementChild)) documentNode.body.lastElementChild!.remove();
+    documentNode.body.querySelectorAll('p').forEach(paragraph => {
+      if (isEmptyParagraph(paragraph) && isEmptyParagraph(paragraph.previousElementSibling)) paragraph.remove();
+    });
+  }
 
   // Email clients collapse ordinary runs of spaces even when the editor displays them.
   const textNodes = documentNode.createTreeWalker(documentNode.body, NodeFilter.SHOW_TEXT);
@@ -253,7 +278,7 @@ export const buildUnifiedEmailContent = async (
     emailAccountId: options.draft.fromAccountId || null,
   });
   const result = await buildCompanyEmailBody({
-    content: normalizeUnifiedEmailHtml(options.draft.messageHtml),
+    content: normalizeUnifiedEmailHtml(options.draft.messageHtml, options.purpose === 'offer' || options.purpose === 'invoice'),
     contentIsHtml: true,
     subject: options.draft.subject,
     recipientName: options.recipientName,

@@ -124,7 +124,7 @@ export default function EventWorkflowReadinessPanel({
     const channel = supabase.channel(`event-workflow-readiness-${eventId}`);
     const refresh = () => void loadReadiness(true);
 
-    ['offers', 'contracts', 'employee_assignments', 'event_equipment', 'event_vehicles', 'event_agendas', 'tasks', 'invoices', 'wedding_cards'].forEach((table) => {
+    ['offers', 'contracts', 'event_partner_arrangements', 'employee_assignments', 'event_equipment', 'event_vehicles', 'event_agendas', 'tasks', 'invoices', 'wedding_cards'].forEach((table) => {
       channel.on(
         'postgres_changes',
         { event: '*', schema: 'public', table, filter: `event_id=eq.${eventId}` },

@@ -5,6 +5,7 @@ export interface GUSCompanyData {
   dataSources?: Array<'gus' | 'mf_whitelist' | 'krs' | 'ceidg'>;
   regon?: string;
   address?: string;
+  addressParts?: { street: string; buildingNumber: string; apartmentNumber: string };
   city?: string;
   postalCode?: string;
   country?: string;
@@ -93,7 +94,7 @@ export function findExactRegistryRepresentativeContact<
     : null;
 }
 
-export async function fetchCompanyDataFromGUS(nip: string): Promise<GUSCompanyData | null> {
+export async function fetchCompanyDataFromGUS(nip: string, options: { signal?: AbortSignal } = {}): Promise<GUSCompanyData | null> {
   const cleanNip = nip.replace(/\D/g, '');
 
   if (cleanNip.length !== 10) {
@@ -106,6 +107,7 @@ export async function fetchCompanyDataFromGUS(nip: string): Promise<GUSCompanyDa
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({ nip: cleanNip }),
+    signal: options.signal,
   });
 
   const data = await response.json();

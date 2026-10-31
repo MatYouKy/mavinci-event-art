@@ -216,3 +216,18 @@ export function formatEventAssumptionItems(items: EventAssumptionItem[]) {
     .map((item) => `${item.label}: ${item.value}`)
     .join('\n');
 }
+
+// The numeric offer field is authoritative; never infer pricing from free-form text.
+export function syncGuestCountAssumptions(items: EventAssumptionItem[], guestCount: number | null | undefined): EventAssumptionItem[] {
+  if (guestCount != null && (!Number.isInteger(guestCount) || guestCount < 1 || guestCount > 100000)) return items;
+  const index = items.findIndex(item => item.key === 'guest_count');
+  if (guestCount == null) {
+    return items.map(item => item.key === 'guest_count' ? { ...item, value: '', badge_value: '' } : item);
+  }
+  const guest: EventAssumptionItem = { key: 'guest_count', label: 'Liczba gości', value: `${guestCount} osób`, badge_value: String(guestCount) };
+  if (index >= 0) return items.map((item, i) => i === index ? guest : item);
+  const empty = items.findIndex(item => !item.value.trim() && !item.badge_value?.trim());
+  if (empty >= 0) return items.map((item, i) => i === empty ? guest : item);
+  // Keep all three deliberately selected cards. The section shows the count separately.
+  return items.length < 3 ? [...items, guest] : items;
+}

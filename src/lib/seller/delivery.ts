@@ -4,18 +4,38 @@ export type ClientAcceptance = { id: string; document_id: string; source_key: st
 export type DeliveryProgress = {
   my_company_id: string; commission_enabled: boolean;
   acceptances: ClientAcceptance[];
-  items: { id: string; name: string; quantity: number; unit: string; requirements?: string | null; accommodation?: string | null; logistics?: string | null }[];
+  items: { id: string; name: string; quantity: number; unit: string; days?: number; configuration_scope?: string | null; requirements?: string | null; accommodation?: string | null; logistics?: string | null }[];
   submissions: { id: string; task_key: string; arrangement_revision: number; submitted_at: string }[];
+};
+export type SellerOfferSummaryData = {
+  seller_name: string; seller_organization: string;
+  client_name: string; client_company: string;
+  event_date: string | null; event_location: string;
+  items: { id: string; name: string; quantity: number; unit: string; days: number }[];
 };
 export type SellerDocument = { id: string; filename: string; created_at: string; source_key: string; current: boolean };
 export type SellerDeliveryState = {
   title: string; offer_number: string; source_key: string; documents: SellerDocument[];
-  review?: { document_id: string; status: string; source_key: string; reviewed_at?: string; response_note?: string };
-  realization?: { offer_status: string; event_status: string | null; stage: string; event_id: string | null };
+  offer_summary?: SellerOfferSummaryData; offer_summary_error?: string;
+  review?: { document_id: string; status: string; source_key: string; reviewed_at?: string | null; requested_at?: string | null; response_note?: string; request_note?: string };
+  realization?: { offer_status: string; event_status: string | null; stage: string; event_id: string | null; migration_ready?: boolean };
   seller_arrangements?: SellerArrangements; seller_arrangements_error?: string;
   seller_progress?: DeliveryProgress; seller_progress_error?: string;
   chat?: { sales_partner_id: string; my_company_id: string; can_start: boolean }; chat_error?: string;
 };
+
+// Public decision identity: distinguishes successive review rounds even when
+// the PDF/source did not change (e.g. the seller only clarified a concern).
+export function sellerReviewIdentity(review: SellerDeliveryState['review'] | null) {
+  return review ? {
+    document_id: review.document_id,
+    source_key: review.source_key,
+    status: review.status,
+    requested_at: review.requested_at || null,
+    reviewed_at: review.reviewed_at || null,
+    response_note: review.response_note || '',
+  } : null;
+}
 
 export const deliverySteps = ['Potwierdzenie MAVINCI', 'Potwierdzona', 'W przygotowaniu', 'Gotowa', 'W realizacji', 'Zrealizowana'];
 // Dates never advance a stage. Only the existing CRM decision/status does.

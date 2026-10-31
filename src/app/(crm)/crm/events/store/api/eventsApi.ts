@@ -1124,7 +1124,7 @@ export const eventsApi = createApi({
             *,
             vehicles!event_vehicles_vehicle_id_fkey(name, registration_number, fuel_type,thumb_url ),
             trailer:vehicles!event_vehicles_trailer_vehicle_id_fkey(name, registration_number, fuel_type),
-            driver:employees!event_vehicles_driver_id_fkey(id, name, surname)
+            driver:employees!event_vehicles_driver_id_fkey(id, name, surname, avatar_url, avatar_metadata)
           `,
               )
               .eq('event_id', eventId)
@@ -1159,8 +1159,20 @@ export const eventsApi = createApi({
             conflictCounts[key] = (conflictCounts[key] || 0) + 1;
           });
 
+          // Preserve the assigned identity even when an embedded employee is unavailable.
+          const missingDriverIds = [...new Set((vehiclesRes.data || [])
+            .filter((vehicle: any) => vehicle.driver_id && !vehicle.driver)
+            .map((vehicle: any) => vehicle.driver_id as string))];
+          const driverLookup = new Map<string, any>();
+          if (missingDriverIds.length) {
+            const { data: drivers, error: driversError } = await supabase.from('employees')
+              .select('id,name,surname,avatar_url,avatar_metadata').in('id', missingDriverIds);
+            if (driversError) console.error('[getEventLogistics:drivers]', driversError);
+            (drivers || []).forEach(driver => driverLookup.set(driver.id, driver));
+          }
           let vehiclesWithConflicts = (vehiclesRes.data || []).map((v: any) => ({
             ...v,
+            driver: v.driver || driverLookup.get(v.driver_id) || null,
             conflicts_count: conflictCounts[v.id] || 0,
           }));
 

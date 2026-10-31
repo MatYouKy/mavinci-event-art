@@ -55,6 +55,7 @@ export default function NewVehiclePage() {
     power_hp: '',
     power_kw: '',
     fuel_type: 'diesel',
+    average_fuel_consumption: '',
     transmission: 'manualna',
     drive_type: '',
     number_of_seats: '',
@@ -126,9 +127,17 @@ export default function NewVehiclePage() {
       return;
     }
   
+    const consumptionText = formData.average_fuel_consumption.trim().replace(',', '.');
+    const averageConsumption = formData.vehicle_type === 'car' && formData.fuel_type !== 'elektryczny' && consumptionText
+      ? Number(consumptionText) : null;
+    if (averageConsumption !== null && (!Number.isFinite(averageConsumption) || averageConsumption < 0.01 || averageConsumption > 999.99)) {
+      showSnackbar('Podaj średnie spalanie od 0,01 do 999,99 l/100 km albo pozostaw pole puste.', 'error');
+      return;
+    }
     setLoading(true);
   
     const safeVehicleData = {
+      average_fuel_consumption: averageConsumption,
       vehicle_type: formData.vehicle_type,
       name: formData.name.trim(),
       brand: formData.brand.trim(),
@@ -578,6 +587,14 @@ export default function NewVehiclePage() {
                   <option value="elektryczny">Elektryczny</option>
                 </select>
               </div>
+
+              {formData.fuel_type !== 'elektryczny' && <div>
+                <label htmlFor="average_fuel_consumption" className="mb-2 block text-sm font-medium text-[#e5e4e2]">Średnie spalanie (l/100 km)</label>
+                <input id="average_fuel_consumption" name="average_fuel_consumption" type="text" inputMode="decimal"
+                  value={formData.average_fuel_consumption} onChange={handleChange} placeholder="np. 9,5"
+                  className="w-full rounded-lg border border-white/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]" />
+                <p className="mt-2 text-xs text-[#e5e4e2]/50">Domyślne spalanie do kosztów logistyki. Puste pole pozwala korzystać z historii tankowań.</p>
+              </div>}
 
               <div>
                 <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">

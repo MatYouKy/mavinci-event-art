@@ -28,6 +28,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import { useDialog } from '@/contexts/DialogContext';
 import Image from 'next/image';
 import {
   renderContractDocument,
@@ -166,6 +167,7 @@ const PLACEHOLDER_CONTEXT_GROUPS = [
       { key: '{{client_representation_block}}', label: 'Pełna informacja o reprezentacji' },
       { key: '{{decision_makers_list}}', label: 'Osoby decyzyjne' },
       { key: '{{client_contract_party_block}}', label: 'Pełne dane strony klienta' },
+      { key: '{{client_invoice_details_block}}', label: 'Dane do faktury — nabywca i odbiorca' },
     ],
   },
   {
@@ -249,6 +251,7 @@ export default function EditTemplateWYSIWYGPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { showSnackbar } = useSnackbar();
+  const { showConfirm } = useDialog();
   const templateId = params.id as string;
   const contractId = searchParams.get('contractId');
   const eventId = searchParams.get('eventId');
@@ -659,12 +662,17 @@ export default function EditTemplateWYSIWYGPage() {
         updated_at: new Date().toISOString(),
       };
 
-      const { error } = await supabase
+      if (!template?.updated_at) throw new Error('Odśwież szablon przed zapisaniem zmian.');
+      const { data: savedTemplate, error } = await supabase
         .from('contract_templates')
         .update(updateData)
-        .eq('id', templateId);
+        .eq('id', templateId)
+        .eq('updated_at', template.updated_at)
+        .select('id')
+        .maybeSingle();
 
       if (error) throw error;
+      if (!savedTemplate) throw new Error('Szablon został zmieniony w innej karcie. Skopiuj swoje poprawki i odśwież stronę przed ponownym zapisem.');
 
       showSnackbar('Szablon zapisany pomyślnie', 'success');
       await fetchTemplate();
@@ -1070,8 +1078,30 @@ export default function EditTemplateWYSIWYGPage() {
   };
 
   const handleSaveAsNewFooterTemplate = async () => {
-    const name = prompt('Podaj nazwę szablonu stopki:');
-    if (!name) return;
+    let name = '';
+    let nameInput: HTMLInputElement | null = null;
+    const confirmed = await showConfirm({
+      title: 'Zapisz szablon stopki',
+      message: (
+        <label className="block text-sm">
+          Nazwa szablonu stopki
+          <input autoFocus required type="text" ref={input => { nameInput = input; }}
+            onChange={event => { name = event.target.value; event.target.setCustomValidity(''); }}
+            className="mt-2 w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-inherit outline-none" />
+        </label>
+      ),
+      validate: () => {
+        if (name.trim()) return true;
+        nameInput?.setCustomValidity('Podaj nazwę szablonu stopki.');
+        nameInput?.reportValidity();
+        nameInput?.focus();
+        return false;
+      },
+      confirmText: 'Zapisz szablon',
+      cancelText: 'Anuluj',
+    });
+    if (!confirmed) return;
+    name = name.trim();
 
     try {
       const { error } = await supabase.from('footer_templates').insert({
@@ -2340,6 +2370,7 @@ export default function EditTemplateWYSIWYGPage() {
                   { key: '{{client_representation_block}}', label: 'Pełna informacja o reprezentacji' },
                   { key: '{{decision_makers_list}}', label: 'Lista osób decyzyjnych' },
                   { key: '{{client_contract_party_block}}', label: 'Pełne dane strony klienta' },
+      { key: '{{client_invoice_details_block}}', label: 'Dane do faktury — nabywca i odbiorca' },
                 ].map((p) => (
                   <button
                     key={p.key}

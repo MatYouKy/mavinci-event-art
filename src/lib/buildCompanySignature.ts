@@ -391,7 +391,7 @@ export async function buildCompanySignatureHtml(opts: BuildOptions = {}): Promis
 export async function buildCompanyEmailBody(opts: BuildBodyOptions): Promise<BuildBodyResult> {
   const ctx = await loadCompanyContext(opts);
   const rawContentHtml = opts.contentIsHtml ? opts.content : opts.content.replace(/\n/g, '<br>');
-  const contentHtml = `<div style="margin:0; padding:0; color:#1c1f33 !important; background-color:#ffffff !important; font-family:Arial, sans-serif; font-size:14px; line-height:1.6;">${rawContentHtml}</div>`;
+  const contentHtml = `<div data-crm-email-content="true" style="margin:0; padding:0; color:#1c1f33 !important; background-color:#ffffff !important; font-family:Arial, sans-serif; font-size:14px; line-height:1.6;">${rawContentHtml}</div>`;
 
   if (!ctx) {
     return {
@@ -471,7 +471,7 @@ export async function buildCompanyEmailBody(opts: BuildBodyOptions): Promise<Bui
 
   if (!assignedTemplateHtml) {
     const html = await optimizeEmbeddedEmailImages(
-      `<div style="display:block; width:100%; max-width:none; margin:0; padding:0; box-sizing:border-box; font-family:Arial,sans-serif; color:#1c1f33; background-color:#ffffff;"><div style="margin:0; padding:0; white-space:pre-wrap; color:#1c1f33; background-color:#ffffff;">${contentHtml}</div>${opts.pdfLink ?? ''}${signatureHtml}</div>`,
+      `<div style="display:block; width:100%; max-width:none; margin:0; padding:0; box-sizing:border-box; font-family:Arial,sans-serif; color:#1c1f33; background-color:#ffffff;"><div style="margin:0; padding:0; white-space:${opts.contentIsHtml ? 'normal' : 'pre-wrap'}; color:#1c1f33; background-color:#ffffff;">${contentHtml}</div>${opts.pdfLink ?? ''}${signatureHtml}</div>`,
     );
     return {
       html,
@@ -482,7 +482,12 @@ export async function buildCompanyEmailBody(opts: BuildBodyOptions): Promise<Bui
   }
 
   const html = await optimizeEmbeddedEmailImages(
-    renderSafeEmailBodyTemplate(assignedTemplateHtml, values),
+    renderSafeEmailBodyTemplate(
+      opts.contentIsHtml
+        ? assignedTemplateHtml.replace(/white-space\s*:\s*(?:pre-wrap|pre-line|break-spaces)(?:\s*!important)?/gi, 'white-space:normal')
+        : assignedTemplateHtml,
+      values,
+    ),
   );
   return {
     html,

@@ -242,6 +242,12 @@ export function ChecklistTab({
 
   return (
     <View style={styles.checklistContainer}>
+      {event?.equipment_checklist_notes?.trim() ? (
+        <View style={{ padding: spacing.md, marginBottom: spacing.md, borderRadius: 12, backgroundColor: colors.background.secondary }}>
+          <Text style={{ color: colors.primary.gold, fontWeight: '600', marginBottom: 8 }}>Notatki do checklisty</Text>
+          <Text selectable style={{ color: colors.text.primary, lineHeight: 22 }}>{event.equipment_checklist_notes}</Text>
+        </View>
+      ) : null}
       {/* PDF button + Confirm loading button */}
       <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
         {pdfPath && (
@@ -588,6 +594,7 @@ export function ChecklistTab({
                     </Text>
                   )}
                 </View>
+                {!!item.notes?.trim() && <Text selectable style={{ color: colors.text.secondary, marginTop: 8, lineHeight: 20 }}>{item.notes}</Text>}
               </View>
             </TouchableOpacity>
           ))}

@@ -1,89 +1,82 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Check, Loader2, Palette } from 'lucide-react';
+import { Loader2, Palette, RefreshCw } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import type { SellerBranding } from '@/lib/seller/portal';
-import { identityAssetPatch, OfferVisualIdentityFields, SellerPersonalIdentityFields, uploadIdentityAssets, type IdentityAssetKind } from './OfferIdentityFields';
-import { sellerUploadedFonts } from './OfferHeadingFontPicker';
+import { IdentityAssetPreview, OrganizationIdentitySummary } from './OfferIdentityFields';
 import HotelVenueSettings from './HotelVenueSettings';
+import SearchCombobox from '@/components/crm/SearchCombobox';
 
 type BrandingContext = {
   organization_id: string | null;
   organization_name: string | null;
-  brands: { id: string; name: string; can_manage: boolean; branding: SellerBranding }[];
+  organizations?: { id: string; name: string }[];
+  brands: { id: string; name: string; branding: SellerBranding }[];
 };
 
 export default function CrmOfferBrandingPanel({ partnerId, organizationId, hotelSpacesHref }: { partnerId?: string; organizationId?: string; hotelSpacesHref?: string }) {
   const [data, setData] = useState<BrandingContext | null>(null);
   const [brandId, setBrandId] = useState('');
-  const [form, setForm] = useState<SellerBranding>({});
+  const [selectedOrganizationId, setSelectedOrganizationId] = useState('');
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [uploading, setUploading] = useState<IdentityAssetKind | null>(null);
   const [error, setError] = useState('');
-  const [message, setMessage] = useState('');
-  const [dirty, setDirty] = useState(false);
-  const lock = useRef(false);
-  const alive = useRef(true);
+  const [attempt, setAttempt] = useState(0);
   const selectedBrand = data?.brands.find((brand) => brand.id === brandId);
-  const canEdit = selectedBrand?.can_manage === true;
 
-  const reload = useCallback(async () => {
-    const { data: loaded, error: failed } = await supabase.rpc('get_crm_offer_branding', { p_partner: partnerId || null, p_organization: organizationId || null });
-    if (!alive.current) return;
-    setLoading(false);
-    if (failed) {
-      setError(['PGRST202', '42883', '42P01'].includes(failed.code) ? 'Ustawienia wymagają migracji 20260909120000_organization_seller_offer_branding.sql.' : failed.message);
-      return;
-    }
-    const next = loaded as BrandingContext;
-    setData(next);
-    setBrandId((current) => next.brands.some((brand) => brand.id === current) ? current : next.brands[0]?.id || '');
-    setError('');
-  }, [partnerId, organizationId]);
-  useEffect(() => { alive.current = true; void reload(); return () => { alive.current = false; }; }, [reload]);
-  useEffect(() => { if (selectedBrand) { setForm(selectedBrand.branding); setDirty(false); } }, [selectedBrand]);
+  useEffect(() => { setSelectedOrganizationId(''); }, [partnerId, organizationId]);
+  useEffect(() => {
+    let active = true;
+    setLoading(true); setError(''); setData(null);
+    void (async () => {
+      try {
+        const { data: loaded, error: failed } = await supabase.rpc('get_crm_offer_branding', {
+          p_partner: partnerId || null, p_organization: selectedOrganizationId || organizationId || null,
+        });
+        if (failed) throw failed;
+        if (!active) return;
+        const next = loaded as BrandingContext;
+        setData(next);
+        setBrandId((current) => next.brands.some((brand) => brand.id === current) ? current : next.brands[0]?.id || '');
+      } catch (cause) {
+        if (active) setError((cause as { message?: string }).message || 'Nie udało się pobrać brandingu.');
+      } finally { if (active) setLoading(false); }
+    })();
+    return () => { active = false; };
+  }, [partnerId, organizationId, selectedOrganizationId, attempt]);
 
-  const change = (patch: Partial<SellerBranding>) => { setForm((current) => ({ ...current, ...patch })); setDirty(true); setMessage(''); };
-  const upload = async (files: File[], kind: IdentityAssetKind) => {
-    if (!canEdit || lock.current || !data) return;
-    lock.current = true; setUploading(kind); setError('');
-    try {
-      const paths = await uploadIdentityAssets({ files, kind, partnerId, companyId: brandId, organizationId: data.organization_id, galleryCount: form.venue_image_urls?.length || 0, fontCount: sellerUploadedFonts(form).length });
-      if (alive.current) { setForm((current) => ({ ...current, ...identityAssetPatch(kind, paths, current, files) })); setDirty(true); setMessage('Plik wgrany. Zapisz ustawienia, aby zastosować go w ofertach.'); }
-    } catch (cause) { if (alive.current) setError(cause instanceof Error ? cause.message : 'Nie udało się wgrać pliku.'); }
-    finally { lock.current = false; if (alive.current) setUploading(null); }
-  };
-  const save = async () => {
-    if (!canEdit || lock.current || !data) return;
-    lock.current = true; setSaving(true); setError(''); setMessage('');
-    try {
-      const { error: failed } = await supabase.rpc('save_crm_offer_branding', {
-        p_company: brandId, p_partner: partnerId || null, p_organization: data.organization_id, p_branding: form,
-      });
-      if (failed) throw new Error(failed.message);
-      if (!alive.current) return;
-      setDirty(false);
-      await reload();
-      if (alive.current) setMessage('Zapisano. Nowo generowane wersje ofert użyją aktualnego brandingu i wizytówki. Istniejące pliki PDF pozostają bez zmian.');
-    } catch (cause) { if (alive.current) setError(cause instanceof Error ? cause.message : 'Nie udało się zapisać ustawień.'); }
-    finally { lock.current = false; if (alive.current) setSaving(false); }
-  };
-
-  if (loading) return <p className="flex items-center gap-2 p-5 text-sm text-white/50"><Loader2 className="h-4 w-4 animate-spin" />Wczytywanie brandingu…</p>;
-  if (!data) return <p role="alert" className="rounded-xl bg-amber-300/5 p-5 text-sm text-amber-200">{error || 'Brak dostępnych ustawień.'}</p>;
+  if (loading) return <p role="status" className="flex items-center gap-2 p-5 text-sm text-white/50"><Loader2 className="h-4 w-4 animate-spin" />Wczytywanie brandingu…</p>;
+  if (!data) return <div role="alert" className="space-y-3 rounded-xl bg-amber-300/5 p-5 text-sm text-amber-200">
+    <p>{error || 'Brak dostępnych ustawień.'}</p>
+    <button type="button" onClick={() => setAttempt((value) => value + 1)} className="rounded-lg bg-white/5 px-4 py-2">Spróbuj ponownie</button>
+  </div>;
+  const branding = selectedBrand?.branding || {};
   return <div className="space-y-5 text-[#e5e4e2]">
-    <header><h2 className="flex items-center gap-2 text-lg"><Palette className="h-5 w-5 text-[#d3bb73]" />Branding ofert{data.organization_name ? ` · ${data.organization_name}` : ''}</h2><p className="mt-2 text-sm leading-6 text-white/50">Ten sam układ PDF co w ofertach CRM, z własnym logo, paletą i czcionką nagłówków.</p></header>
-    <div className="flex flex-wrap gap-2" role="group" aria-label="Marka realizująca">{data.brands.map((brand) => <button type="button" key={brand.id} disabled={saving || Boolean(uploading)} aria-pressed={brandId === brand.id} onClick={() => { if (brand.id !== brandId && (!dirty || window.confirm('Porzucić niezapisane zmiany tej marki?'))) { setBrandId(brand.id); setError(''); setMessage(''); } }} className={`rounded-lg px-4 py-2.5 text-sm ${brandId === brand.id ? 'bg-[#d3bb73]/15 text-[#d3bb73]' : 'bg-white/5 text-white/50'}`}>{brand.name}</button>)}</div>
-    {data.organization_id ? <div className="rounded-xl bg-[#d3bb73]/[0.07] p-4 text-sm leading-6 text-white/65"><p>Logo, zdjęcia obiektu, kolory, czcionka i tekst organizacji są wspólne dla wszystkich jej sprzedawców w marce {selectedBrand?.name}. Wizytówka dotyczy tylko wybranej osoby.</p>{partnerId && <Link href={`/crm/contacts/${data.organization_id}?tab=branding`} className="mt-2 inline-block text-xs text-[#d3bb73] hover:underline">Otwórz branding w karcie organizacji</Link>}</div> : <p className="rounded-xl bg-white/[0.03] p-4 text-sm text-white/50">Sprzedawca niezależny — wszystkie ustawienia dotyczą wyłącznie jego ofert. Może również edytować je w swoim portalu.</p>}
-    {!canEdit && <p className="text-sm text-amber-200">Masz dostęp tylko do odczytu ustawień tej marki.</p>}
-    {error && <p role="alert" className="rounded-lg bg-amber-300/10 p-4 text-sm text-amber-200">{error}</p>}
-    {message && <p role="status" className="rounded-lg bg-emerald-300/10 p-4 text-sm text-emerald-200">{message}</p>}
-    {partnerId && <SellerPersonalIdentityFields value={form} onChange={change} onUpload={upload} disabled={!canEdit || saving || Boolean(uploading)} uploading={uploading} />}
-    <OfferVisualIdentityFields companyId={brandId} value={form} onChange={change} onUpload={upload} disabled={!canEdit || saving || Boolean(uploading)} uploading={uploading} />
-    {canEdit && <div className="flex justify-end"><button type="button" disabled={saving || Boolean(uploading) || !dirty} onClick={() => void save()} className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-5 py-3 text-sm font-medium text-[#210811] disabled:opacity-40">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}{saving ? 'Zapisywanie…' : partnerId ? 'Zapisz branding i wizytówkę' : 'Zapisz branding organizacji'}</button></div>}
+    <header className="flex flex-wrap items-start justify-between gap-3">
+      <div><h2 className="flex items-center gap-2 text-lg"><Palette className="h-5 w-5 text-[#d3bb73]" />Podgląd brandingu ofert</h2>
+        <p className="mt-2 max-w-3xl text-sm leading-6 text-white/50">Logo, kolory, wygląd ofert i wizytówkę sprzedawca ustawia wyłącznie w swoim portalu. CRM pokazuje te same zapisane dane, bez możliwości ich edycji.</p></div>
+      <button type="button" onClick={() => setAttempt((value) => value + 1)} className="inline-flex items-center gap-2 rounded-lg bg-white/5 px-3 py-2 text-xs text-[#d3bb73]"><RefreshCw className="h-4 w-4" />Odśwież podgląd</button>
+    </header>
+    {partnerId && (data.organizations?.length || 0) > 1 && <div className="max-w-lg space-y-2">
+      <p className="text-xs text-white/50">Organizacja powiązana ze sprzedawcą</p>
+      <SearchCombobox value={data.organization_id || ''} options={(data.organizations || []).map((item) => ({ id: item.id, label: item.name }))}
+        onChange={setSelectedOrganizationId} allowClear={false} ariaLabel="Organizacja podglądu brandingu" placeholder="Wybierz organizację…" />
+    </div>}
+    <div className="flex flex-wrap gap-2" role="group" aria-label="Marka realizująca">{data.brands.map((brand) => <button type="button" key={brand.id} aria-pressed={brandId === brand.id} onClick={() => setBrandId(brand.id)} className={`rounded-lg px-4 py-2.5 text-sm ${brandId === brand.id ? 'bg-[#d3bb73]/15 text-[#d3bb73]' : 'bg-white/5 text-white/50'}`}>{brand.name}</button>)}</div>
+    {data.organization_id ? <div className="rounded-xl bg-[#d3bb73]/[0.07] p-4 text-sm leading-6 text-white/65">
+      <p>Branding organizacji jest wspólny dla wszystkich przypisanych do niej sprzedawców w marce {selectedBrand?.name}. Każdy z nich może go edytować w portalu. Wizytówka dotyczy wyłącznie wybranej osoby.</p>
+      {partnerId && <Link href={`/crm/contacts/${data.organization_id}?tab=branding`} className="mt-2 inline-block text-xs text-[#d3bb73] hover:underline">Otwórz kartę organizacji</Link>}
+    </div> : <p className="rounded-xl bg-white/[0.03] p-4 text-sm text-white/50">Sprzedawca niezależny — ustawienia dotyczą tylko jego ofert. Edytuje je w swoim portalu.</p>}
+    {partnerId && <section className="grid gap-5 rounded-xl bg-[#1c1f33] p-5 md:grid-cols-[1fr_220px]">
+      <div className="space-y-3"><h2 className="text-sm font-medium">Wizytówka sprzedawcy · podgląd</h2>
+        <dl className="space-y-3">{([{ key: 'display_name', label: 'Imię i nazwisko' }, { key: 'position_title', label: 'Stanowisko' },
+          { key: 'contact_email', label: 'E-mail' }, { key: 'contact_phone', label: 'Telefon' }] as const).map((field) =>
+          <div key={field.key}><dt className="text-xs text-white/45">{field.label}</dt><dd className="mt-1 break-words text-sm">{branding[field.key] || 'Nie uzupełniono'}</dd></div>)}</dl>
+      </div>
+      <IdentityAssetPreview path={branding.portrait_url} alt="Zdjęcie sprzedawcy" className="h-48" />
+    </section>}
+    <OrganizationIdentitySummary value={branding} name={data.organization_name} shared={Boolean(data.organization_id)} />
     {hotelSpacesHref ? <Link href={hotelSpacesHref} className="block rounded-xl bg-white/5 p-4 text-sm text-[#d3bb73] hover:bg-white/10">Sale, rzuty i informacje techniczne edytujesz w zakładce „Sale i przestrzenie” →</Link>
       : data.organization_id && <HotelVenueSettings key={data.organization_id} organizationId={data.organization_id} crm />}
   </div>;

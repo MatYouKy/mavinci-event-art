@@ -46,6 +46,7 @@ interface Organization {
   legal_form: string | null;
   krs: string | null;
   regon: string | null;
+  ksef_internal_id?: string | null;
   address: string | null;
   city: string | null;
   postal_code: string | null;
@@ -93,6 +94,8 @@ interface OrganizationDetailsSectionProps {
   handleFetchFromGUS: () => void;
   onOpenAddLocation?: () => void;
   onOpenHotelSpaces?: () => void;
+  onStartEdit?: () => void;
+  onOpenContacts?: () => void;
   primaryContact: any;
   legalRepresentative: any;
   decisionMakers: DecisionMaker[];
@@ -121,6 +124,8 @@ export default function OrganizationDetailsSection({
   handleFetchFromGUS,
   onOpenAddLocation,
   onOpenHotelSpaces,
+  onStartEdit,
+  onOpenContacts,
   primaryContact,
   legalRepresentative,
   decisionMakers,
@@ -317,6 +322,16 @@ export default function OrganizationDetailsSection({
             )}
           </div>
 
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-400">Numer identyfikacji wewnętrznej KSeF</label>
+            {editMode ? (
+              <input type="text" value={editedData.ksef_internal_id || ''}
+                onChange={e => updateField('ksef_internal_id', e.target.value)}
+                placeholder="np. 5252228219-00145"
+                className={getOrganizationInputClassName(formErrors, 'ksef_internal_id')} />
+            ) : <p className="text-white">{organization.ksef_internal_id || '—'}</p>}
+          </div>
+
           <div className="md:col-span-2">
             <label className="mb-1 block text-sm font-medium text-gray-400">Adres (ulica) *</label>
             {editMode ? (
@@ -498,6 +513,9 @@ export default function OrganizationDetailsSection({
         <h2 className="mb-3 text-lg uppercase">{isHotel ? 'Lokalizacja hotelu i przestrzenie' : 'Powiązana lokalizacja'}</h2>
         <OrganizationLocationPicker
           organizationId={organization.id}
+          registryPeople={registryLookup?.representatives}
+          onStartEdit={onStartEdit}
+          onOpenContacts={onOpenContacts}
           currentLocationId={editMode && editedData.location_id !== undefined ? editedData.location_id : organization.location_id}
           onLocationChange={(locationId) => updateField('location_id', locationId)}
           editMode={editMode}

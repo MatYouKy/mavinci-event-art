@@ -1,3 +1,4 @@
+import { selectConferenceReferences } from '@/lib/SEO/conferencePortfolio';
 export async function getConferencesData(supabase: any) {
   const [
     heroRes,
@@ -21,7 +22,7 @@ export async function getConferencesData(supabase: any) {
     supabase.from('conferences_process').select('*').eq('is_active', true).order('display_order'),
     supabase.from('conferences_pricing').select('*').eq('is_active', true).order('display_order'),
     supabase.from('conferences_faq').select('*').eq('is_active', true).order('display_order'),
-    supabase.from('portfolio_projects').select('*').contains('tags', ['konferencje']).order('order_index'),
+    supabase.from('portfolio_projects').select('*').order('order_index'),
     supabase.from('conferences_cities').select('*').eq('is_active', true).order('display_order'),
     supabase.from('conferences_service_categories').select(`*, items:conferences_service_items(*)`).eq('is_active', true).order('display_order'),
     supabase.from('conferences_related_services').select(`*, service_item:conferences_service_items(*)`).eq('is_active', true).order('display_order'),
@@ -42,10 +43,33 @@ export async function getConferencesData(supabase: any) {
     pricing: pricingRes.data ?? [],
     faq: faqRes.data ?? [],
     gallery: galleryRes.data ?? [],
-    portfolio: portfolioRes.data ?? [],
+    portfolio: selectConferenceReferences(portfolioRes.data ?? [], undefined, Number.MAX_SAFE_INTEGER),
     cities: citiesRes.data ?? [],
     serviceCategories: serviceCategoriesRes.data ?? [],
     relatedServices,
     allServiceItems: allServiceItemsRes.data ?? [],
   };
+}
+
+/** City pages need only the sections they actually render. */
+export async function getConferenceCitySourceData(supabase: any) {
+  const [services, caseStudies, advantages, process, faq, portfolio] = await Promise.all([
+    supabase.from('conferences_services').select('*').eq('is_active', true).order('display_order'),
+    supabase.from('conferences_case_studies').select('*').eq('is_active', true).order('display_order'),
+    supabase.from('conferences_advantages').select('*').eq('is_active', true).order('display_order'),
+    supabase.from('conferences_process').select('*').eq('is_active', true).order('display_order'),
+    supabase.from('conferences_faq').select('*').eq('is_active', true).order('display_order'),
+    supabase.from('portfolio_projects').select('*').order('order_index'),
+  ]);
+  if ([services, caseStudies, advantages, process, faq, portfolio].some(result => result.error)) {
+    throw new Error('Nie udało się pobrać treści konferencji.');
+  }
+  return { services: services.data || [], caseStudies: caseStudies.data || [],
+    advantages: advantages.data || [], process: process.data || [], faq: faq.data || [],
+    portfolio: portfolio.data || [] };
+}
+
+export async function getConferenceCityData(supabase: any, citySlug: string) {
+  const data = await getConferenceCitySourceData(supabase);
+  return { ...data, portfolio: selectConferenceReferences(data.portfolio, citySlug) };
 }

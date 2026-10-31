@@ -68,9 +68,9 @@ export default function CableDetailPage() {
 
   // edit form
   const [editForm, setEditForm] = useState<any>({});
-  const detailedCableCategories = cableCategories.filter((category: any) => category.parent_id);
-  const selectableCableCategories =
-    detailedCableCategories.length > 0 ? detailedCableCategories : cableCategories;
+  const selectableCableCategories = cableCategories.filter(
+    (category: any) => !cableCategories.some((child: any) => child.parent_id === category.id),
+  );
 
   const handleEdit = () => {
     if (!cable) return;
@@ -304,6 +304,9 @@ export default function CableDetailPage() {
                 className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
               >
                 <option value="">Wybierz kategorię</option>
+                {cable.cable_category && !selectableCableCategories.some((category: any) => category.id === cable.cable_category.id) && (
+                  <option value={cable.cable_category.id}>{cable.cable_category.name} (obecne przypisanie)</option>
+                )}
                 {selectableCableCategories.map((category: any) => {
                     const parent = cableCategories.find((item: any) => item.id === category.parent_id);
                     return (

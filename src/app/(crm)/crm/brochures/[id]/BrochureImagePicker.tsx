@@ -12,6 +12,25 @@ type Props = {
   onChange: (path: string, bucket: BrochureImageBucket) => void; onBusy: (busy: boolean) => void;
   onSave: () => void; hasChanges: boolean;
 };
+
+// MIME and size alone do not prove that a file can actually be decoded.
+const validateUploadedImage = (file: Blob) => new Promise<void>((resolve, reject) => {
+  const image = new Image();
+  const url = URL.createObjectURL(file);
+  let timer: ReturnType<typeof setTimeout>;
+  const finish = (error?: string) => {
+    clearTimeout(timer);
+    image.onload = null; image.onerror = null;
+    image.removeAttribute('src');
+    URL.revokeObjectURL(url);
+    if (error) reject(new Error(error)); else resolve();
+  };
+  image.onload = () => finish(image.naturalWidth > 0 && image.naturalHeight > 0 ? undefined : 'Obraz nie ma poprawnych wymiarów. Wybierz inny plik.');
+  image.onerror = () => finish('Nie można odczytać tego obrazu. Plik może być uszkodzony — zapisz go ponownie jako JPG, PNG lub WebP i wybierz ponownie.');
+  timer = setTimeout(() => finish('Odczyt zdjęcia trwa zbyt długo. Wybierz mniejszy plik JPG, PNG lub WebP.'), 15_000);
+  image.src = url;
+});
+
 export default function BrochureImagePicker({ emptyLabel = 'Bez zdjęcia', brochureId, path, bucket, assets, imageUrls, disabled, inputClass, onChange, onBusy, onSave, hasChanges }: Props) {
   const { showSnackbar } = useSnackbar();
   const fileInput = useRef<HTMLInputElement>(null);
@@ -34,7 +53,9 @@ export default function BrochureImagePicker({ emptyLabel = 'Bez zdjęcia', broch
     uploadInProgress.current = true;
     setUploadName(file.name); setUploading(true); onBusy(true);
     try {
+      await validateUploadedImage(file);
       const optimized = await optimizeOfferImage(file, { maxWidth: 2200, maxHeight: 3000, quality: .9 });
+      if (optimized !== file) await validateUploadedImage(optimized);
       const extension = optimized.type === 'image/png' ? 'png' : optimized.type === 'image/webp' ? 'webp' : 'jpg';
       const nextPath = `assets/brochures/${brochureId}/${crypto.randomUUID()}.${extension}`;
       const { error } = await supabase.storage.from('offer-product-pages').upload(nextPath, optimized, { contentType: optimized.type });

@@ -47,15 +47,35 @@ export const getMissingRequiredEmailPlaceholders = (
   return missing;
 };
 
+/**
+ * Usuwa wyłącznie samodzielną dopiskę systemową ze starszych szablonów.
+ * Wywołujemy przed wstawieniem treści maila, aby nie zmieniać wiadomości
+ * użytkownika ani cytowanej korespondencji.
+ * Odpowiedniki lokalne: send-offer-email i send-invoice-email (wdrożenia Dashboard).
+ */
+export function removeSystemEmailFooter(html: string): string {
+  const gap = '(?:\\s|&nbsp;|&#(?:160|x0*a0);|<\\/?(?:span|strong|b|em|i|a)\\b[^>]*>)*';
+  const notice = `Wiadomość${gap}wysłana${gap}z${gap}(?:systemu${gap})?(?:CRM${gap}Mavinci|Mavinci(?:${gap}CRM)?|{{\\s*company_name\\s*}})`;
+  const contents = `${gap}${notice}${gap}[.!]?${gap}`;
+  return (html || '')
+    .replace(
+      new RegExp(`<(p|div|span|td)\\b([^>]*)>${contents}<\\/\\1>`, 'gi'),
+      (_match, tag: string, attributes: string) =>
+        tag.toLowerCase() === 'td' ? `<td${attributes}></td>` : '',
+    )
+    .replace(new RegExp(`^${contents}$`, 'i'), '');
+}
+
 export function renderEmailBodyTemplate(
   template: string,
   values: EmailBodyPlaceholderValues,
 ): string {
   if (!template) return '';
-  let out = template;
+  let out = removeSystemEmailFooter(template);
   for (const { key } of EMAIL_BODY_PLACEHOLDERS) {
     const re = new RegExp(`{{\\s*${key}\\s*}}`, 'g');
-    out = out.replace(re, String(values[key] ?? ''));
+    const value = String(values[key] ?? '');
+    out = out.replace(re, () => key === 'signature' ? removeSystemEmailFooter(value) : value);
   }
   return out;
 }
@@ -81,7 +101,6 @@ export const DEFAULT_EMAIL_BODY_TEMPLATE = `<style>
   .mavinci-message-shell { background:#191619 !important; color:#f3edf0 !important; }
   .mavinci-message-card, .mavinci-message-content { background:#242024 !important; color:#f3edf0 !important; }
   .mavinci-message-content div, .mavinci-message-content p { color:#f3edf0 !important; }
-  .mavinci-message-footer { color:#cdbfc6 !important; }
 }
 </style><div class="mavinci-message-shell" style="font-family: 'Helvetica Neue', Arial, sans-serif; background: #f5f5f5; padding: 24px 0; color: #1c1f33;">
   <div class="mavinci-message-card" style="max-width: 640px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
@@ -89,14 +108,11 @@ export const DEFAULT_EMAIL_BODY_TEMPLATE = `<style>
       <img src="{{company_logo}}" alt="{{company_name}}" height="48" style="display: inline-block; max-height: 48px;" />
     </div>
     <div class="mavinci-message-content" style="padding: 32px 28px; font-size: 14px; line-height: 1.6; color: #1c1f33;">
-      <div style="white-space: pre-wrap;">{{content}}</div>
+      <div style="white-space: normal;">{{content}}</div>
       {{pdf_link}}
     </div>
     <div style="padding: 24px 28px; border-top: 1px solid #ececec;">
       {{signature}}
     </div>
-  </div>
-  <div class="mavinci-message-footer" style="max-width: 640px; margin: 12px auto 0; text-align: center; font-size: 11px; color: #888;">
-    Wiadomość wysłana z {{company_name}}
   </div>
 </div>`;

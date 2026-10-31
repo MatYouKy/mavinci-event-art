@@ -15,6 +15,7 @@ import {
   Truck,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
+import SellerComponentPrices from '@/components/seller/SellerComponentPrices';
 import SellerPricingThumbnail from './SellerPricingThumbnail';
 
 type Brand = { id: string; name: string };
@@ -56,6 +57,7 @@ export default function SellerPricingPage() {
   const params = useParams<{ id: string }>();
   const sellerId = params.id;
   const [sellerName, setSellerName] = useState('Sprzedawca');
+  const [contactId, setContactId] = useState<string | null>(null);
   const [brands, setBrands] = useState<Brand[]>([]);
   const [brandId, setBrandId] = useState('');
   const [items, setItems] = useState<PriceItem[]>([]);
@@ -85,6 +87,7 @@ export default function SellerPricingPage() {
       }
 
       const profile = profileResult.data;
+      setContactId(profile.contact_id || null);
       if (profile.contact_id) {
         const { data } = await supabase.from('contacts').select('full_name').eq('id', profile.contact_id).maybeSingle();
         if (data?.full_name) setSellerName(data.full_name);
@@ -200,7 +203,7 @@ export default function SellerPricingPage() {
       <div className="mx-auto max-w-7xl space-y-5">
         <header className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <Link href="/crm/salespeople" className="inline-flex items-center gap-2 text-xs text-[#e5e4e2]/45 hover:text-[#d3bb73]"><ArrowLeft className="h-4 w-4" /> Sprzedawcy</Link>
+            <Link href={contactId ? `/crm/contacts/${contactId}?tab=seller&section=settings#seller-profile-settings` : `/crm/salespeople?seller=${sellerId}&section=settings#seller-profile-settings`} className="inline-flex items-center gap-2 text-xs text-[#e5e4e2]/45 hover:text-[#d3bb73]"><ArrowLeft className="h-4 w-4" /> Ustawienia sprzedawcy</Link>
             <h1 className="mt-3 text-2xl font-light">Cennik: {sellerName}</h1>
             <p className="mt-1 max-w-3xl text-sm text-[#e5e4e2]/45">Każda pozycja bez własnej ceny otrzymuje automatycznie stawkę MAVINCI powiększoną o {defaultMarkup}%. Sprzedawca widzi tylko cenę wynikową.</p>
             <p className="mt-2 max-w-3xl text-xs text-[#d3bb73]/75">Nowi sprzedawcy oraz nowe produkty i warianty startują bez dostępu. Zaznacz „Dostępny” i zapisz cennik, aby udostępnić wybraną pozycję dla tej marki. Sama zmiana ceny nie przyznaje dostępu.</p>
@@ -251,6 +254,7 @@ export default function SellerPricingPage() {
                   );
                 })}
               </div>
+              <SellerComponentPrices key={`${sellerId}:${brandId}:${productId}`} partnerId={sellerId} brandId={brandId} productId={productId} />
             </section>
           ))}
           {brandId && visibleProducts.length === 0 && <p className="py-12 text-center text-sm text-white/35">Nie znaleziono produktów.</p>}

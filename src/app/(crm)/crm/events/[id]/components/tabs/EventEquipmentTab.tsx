@@ -1,4 +1,5 @@
 'use client';
+import { EquipmentChecklistNotes } from '@/components/crm/EquipmentChecklistNotes';
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -7,6 +8,7 @@ import {
   Printer,
   AlertTriangle,
   Calculator,
+  Search,
   Download,
   ArrowRightLeft,
   FileText,
@@ -297,6 +299,8 @@ export const EventEquipmentTab: React.FC<{
   eventEndDate: string;
   initialEvent?: IEvent;
 }> = ({ eventId, contact, eventDate, location, eventEndDate, initialEvent }) => {
+  const [equipmentSearch, setEquipmentSearch] = useState('');
+  useEffect(() => { setEquipmentSearch(''); }, [eventId]);
   const [expandedKits, setExpandedKits] = useState<Set<string>>(new Set());
   const [showAddEquipmentModal, setShowAddEquipmentModal] = useState(false);
   const [generatingPdf, setGeneratingPdf] = useState(false);
@@ -310,6 +314,7 @@ export const EventEquipmentTab: React.FC<{
   const [draftQuantity, setDraftQuantity] = useState<number>(1);
   const [showRentalModal, setShowRentalModal] = useState(false);
   const [currentRowForRental, setCurrentRowForRental] = useState<any>(null);
+  const [checklistNotesDirty, setChecklistNotesDirty] = useState(false);
   const [localChecklistModified, setLocalChecklistModified] = useState(false);
   const [acceptedCalcId, setAcceptedCalcId] = useState<string | null>(null);
   const [externalItems, setExternalItems] = useState<
@@ -1049,7 +1054,19 @@ export const EventEquipmentTab: React.FC<{
   const totalCount = equipment.length;
   const allLoaded = totalCount > 0 && loadedCount === totalCount;
 
+  const checklistFileName = (suffix = '') => {
+    const name = String(event?.name || 'wydarzenie').normalize('NFC')
+      .replace(/[^\p{L}\p{N}._ -]/gu, '-')
+      .replace(/\s+/g, '-').replace(/-+/g, '-').replace(/^[. -]+|[. -]+$/g, '')
+      .slice(0, 100) || 'wydarzenie';
+    return `checklista-sprzętu-${name}${suffix ? `-${suffix}` : ''}.pdf`;
+  };
+
   const handleGenerateChecklist = async () => {
+    if (checklistNotesDirty) {
+      showSnackbar('Zapisz notatki przed wygenerowaniem checklisty.', 'warning');
+      return;
+    }
     if (generatingPdf) return;
     if (!eventId || !equipment || equipment.length === 0) {
       showSnackbar('Brak sprzętu do wygenerowania checklisty', 'error');
@@ -1061,6 +1078,11 @@ export const EventEquipmentTab: React.FC<{
 
       // Keep the saved PDF until its replacement is successfully stored.
 
+      // Read loading marks at generation time, including changes made on a phone.
+      const { data: loadingRows, error: loadingError } = await supabase
+        .from('event_equipment').select('id,is_loaded').eq('event_id', eventId);
+      if (loadingError) throw new Error('Nie udało się pobrać aktualnego stanu załadunku.');
+      const loadedById = new Map((loadingRows || []).map((row) => [row.id, row.is_loaded === true]));
       const equipmentData = (equipment as any[])
         .filter((row) => !row?.removed_from_offer)
         .map((row) => {
@@ -1074,6 +1096,7 @@ export const EventEquipmentTab: React.FC<{
             sortIsKit: !!d.isKit,
             sortName: String(d.name || '').toLocaleLowerCase('pl-PL'),
             data: {
+              is_loaded: loadedById.get(row.id) === true,
               name: d.name,
               brand: d.brand,
               model: d.model,
@@ -1134,7 +1157,8 @@ export const EventEquipmentTab: React.FC<{
         try {
           const response = await fetch(publicUrl);
           if (!response.ok) return publicUrl;
-          const blob = await response.blob();
+          if (!response.ok) throw new Error('Nie udało się pobrać pliku checklisty');
+        const blob = await response.blob();
           const buffer = await blob.arrayBuffer();
           const base64 = btoa(
             new Uint8Array(buffer).reduce(
@@ -1154,7 +1178,12 @@ export const EventEquipmentTab: React.FC<{
       let contactName = contact?.full_name || '-';
       let contactPhone = contact?.phone || '-';
 
+      const { data: checklistNotesRow, error: checklistNotesError } = await supabase
+        .from('events').select('equipment_checklist_notes,equipment_checklist_note_items').eq('id', eventId).single();
+      if (checklistNotesError) throw new Error('Nie udało się pobrać notatek do checklisty.');
       const html = buildEquipmentChecklistHtml({
+        checklistNotes: checklistNotesRow?.equipment_checklist_notes,
+        checklistNoteItems: checklistNotesRow?.equipment_checklist_note_items,
         eventName: event?.name || 'Wydarzenie',
         eventDate: eventDateFormatted,
         location: location,
@@ -1179,10 +1208,8 @@ export const EventEquipmentTab: React.FC<{
       element.prepend(document.importNode(printStyles, true));
 
       const opt: any = {
-        margin: [10, 10, 1, 10],
-        filename: `checklista-${String(event?.name || 'event')
-          .replace(/[^a-z0-9]/gi, '-')
-          .toLowerCase()}.pdf`,
+        margin: [10, 10, 15, 10],
+        filename: checklistFileName(),
         image: { type: 'jpeg' as const, quality: 0.98 },
         html2canvas: {
           scale: 2,
@@ -1209,19 +1236,24 @@ export const EventEquipmentTab: React.FC<{
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
 
         // ✅ to jest kluczowe przy "nie tnij wierszy"
-        pagebreak: { mode: ['css', 'legacy'] },
+        pagebreak: { mode: ['css', 'legacy'], avoid: ['tr.row', '.checklist-note-record', '.signatures', '.notes-acknowledgement'] },
       };
 
       const worker = html2pdfFn().from(element).set(opt).toPdf();
+      // Number actual PDF pages after natural pagination, including overflow notes.
+      const pdf = await worker.get('pdf');
+      const pageCount = pdf.internal.getNumberOfPages();
+      for (let page = 1; page <= pageCount; page++) {
+        pdf.setPage(page);
+        pdf.setFont('helvetica', 'normal'); pdf.setFontSize(8); pdf.setTextColor(70, 70, 70);
+        pdf.text(`Strona ${page} / ${pageCount}`, 200, 290, { align: 'right' });
+      }
       const pdfBlob: Blob = await worker.output('blob');
 
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-      const safeEventName = String(event?.name || 'event')
-        .replace(/[^a-z0-9]/gi, '-')
-        .toLowerCase();
-
-      const fileName = `checklista-sprzetu-${safeEventName.replace(/[^a-z0-9]/gi, '-').toLowerCase()}-${timestamp}.pdf`;
-      const storagePath = `${eventId}/${fileName}`;
+      const fileName = checklistFileName(timestamp);
+      // Storage keys remain ASCII; the displayed and downloaded name preserves Unicode.
+      const storagePath = `${eventId}/checklista-${timestamp}-${crypto.randomUUID()}.pdf`;
 
       const { error: uploadError } = await supabase.storage
         .from('event-files')
@@ -1330,7 +1362,10 @@ export const EventEquipmentTab: React.FC<{
 
         const link = document.createElement('a');
         link.href = blobUrl;
-        link.download = checklistPdfPath.split('/').pop() || 'checklista.pdf';
+        const { data: fileRecord, error: nameError } = await supabase.from('event_files')
+          .select('name,original_name').eq('event_id', eventId).eq('file_path', checklistPdfPath).maybeSingle();
+        if (nameError) console.warn('Nie udało się pobrać nazwy checklisty:', nameError);
+        link.download = fileRecord?.original_name || fileRecord?.name || checklistFileName();
         link.style.display = 'none';
         document.body.appendChild(link);
         link.click();
@@ -1346,36 +1381,51 @@ export const EventEquipmentTab: React.FC<{
     }
   };
 
+  const visibleEquipment = useMemo(() => {
+    const normalize = (value: string) => value.toLocaleLowerCase('pl-PL').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/ł/g, 'l');
+    const terms = normalize(equipmentSearch).trim().split(/\s+/).filter(Boolean);
+    if (!terms.length) return equipment || [];
+    return (equipment || []).filter((row: any) => {
+      const asset = row.equipment || row.equipment_items || row.cable || row.cables || row;
+      const kit = row.kit || row.equipment_kits;
+      const text = normalize([
+        asset.name, asset.brand, asset.manufacturer, asset.model, kit?.name,
+        ...extractKitItemsFromRow(row).flatMap(item => [item.name, item.brand, item.model]),
+      ].filter(value => typeof value === 'string').join(' '));
+      return terms.every(term => text.includes(term));
+    });
+  }, [equipment, equipmentSearch]);
+
   const manualKitRows = useMemo(
-    () => (equipment || []).filter((r: any) => !r.auto_added && isKitRow(r)),
-    [equipment],
+    () => visibleEquipment.filter((r: any) => !r.auto_added && isKitRow(r)),
+    [visibleEquipment],
   );
   const autoKitRows = useMemo(
-    () => (equipment || []).filter((r: any) => r.auto_added && isKitRow(r)),
-    [equipment],
+    () => visibleEquipment.filter((r: any) => r.auto_added && isKitRow(r)),
+    [visibleEquipment],
   );
 
   const manualItemRows = useMemo(
     () =>
-      (equipment || []).filter(
+      visibleEquipment.filter(
         (r: any) => !r.auto_added && !isKitRow(r) && !isCableRow(r),
       ),
-    [equipment],
+    [visibleEquipment],
   );
   const autoItemRows = useMemo(
     () =>
-      (equipment || []).filter(
+      visibleEquipment.filter(
         (r: any) => r.auto_added && !isKitRow(r) && !isCableRow(r),
       ),
-    [equipment],
+    [visibleEquipment],
   );
   const manualCableRows = useMemo(
-    () => (equipment || []).filter((r: any) => !r.auto_added && isCableRow(r)),
-    [equipment],
+    () => visibleEquipment.filter((r: any) => !r.auto_added && isCableRow(r)),
+    [visibleEquipment],
   );
   const autoCableRows = useMemo(
-    () => (equipment || []).filter((r: any) => r.auto_added && isCableRow(r)),
-    [equipment],
+    () => visibleEquipment.filter((r: any) => r.auto_added && isCableRow(r)),
+    [visibleEquipment],
   );
 
   const renderKitRow = (row: any, editable: boolean) => {
@@ -2072,7 +2122,7 @@ export const EventEquipmentTab: React.FC<{
 
   return (
     <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-2">
           <h2 className="text-lg font-light text-[#e5e4e2]">Sprzęt</h2>
           <div className="text-sm text-[#e5e4e2]/60">
@@ -2080,6 +2130,17 @@ export const EventEquipmentTab: React.FC<{
           </div>
         </div>
 
+        <div className="relative min-w-[220px] flex-1">
+          <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#e5e4e2]/40" />
+          <input
+            type="search"
+            aria-label="Wyszukaj sprzęt dodany do wydarzenia"
+            placeholder="Szukaj sprzętu: nazwa, model, producent…"
+            value={equipmentSearch}
+            onChange={event => setEquipmentSearch(event.target.value)}
+            className="w-full rounded-lg border border-[#d3bb73]/10 bg-black/15 py-2 pl-9 pr-3 text-sm text-[#e5e4e2] placeholder:text-[#e5e4e2]/40 focus:bg-black/20 focus:outline-none"
+          />
+        </div>
         <div className="flex items-center gap-3">
           <ResponsiveActionBar actions={actions} />
         </div>
@@ -2137,7 +2198,7 @@ export const EventEquipmentTab: React.FC<{
                 Kolejka weryfikacji zestawów ({componentReviewQueue.length})
               </h3>
               <p className="mt-1 text-xs text-sky-300/70">
-                Sprawdź elementy wymagane i rekomendowane oraz ich dostępność przed zamknięciem
+                Sprawdź elementy wymagane, rekomendowane i opcjonalne oraz ich dostępność przed zamknięciem
                 listy sprzętu.
               </p>
             </div>
@@ -2463,6 +2524,11 @@ export const EventEquipmentTab: React.FC<{
         <p className="text-[#e5e4e2]/60">Brak przypisanego sprzętu</p>
       ) : (
         <div className="space-y-5">
+          {equipmentSearch.trim() && (
+            <p role="status" className="text-sm text-[#e5e4e2]/60">
+              {visibleEquipment.length ? `Znaleziono pozycji: ${visibleEquipment.length} z ${equipment?.length || 0}` : 'Brak sprzętu pasującego do wyszukiwania.'}
+            </p>
+          )}
           {manualItemRows.length + autoItemRows.length > 0 && (
             <section className="space-y-3 rounded-xl border border-[#d3bb73]/10 bg-[#0f1119]/25 p-4">
               <div className="flex items-center justify-between">
@@ -2563,6 +2629,11 @@ export const EventEquipmentTab: React.FC<{
           )}
         </div>
       )}
+
+      <div className="mt-6">
+      <EquipmentChecklistNotes key={eventId} eventId={eventId} onDirtyChange={setChecklistNotesDirty}
+        onSaved={() => { setLocalChecklistModified(true); void refetchEvent(); showSnackbar('Notatki do checklisty zapisane', 'success'); }} />
+      </div>
 
       {showAddEquipmentModal && (
         <AddEquipmentModal

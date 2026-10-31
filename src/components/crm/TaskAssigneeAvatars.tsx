@@ -14,9 +14,10 @@ export interface Assignee {
 interface Props {
   assignees: Assignee[];
   maxVisible?: number;
+  onMessage?: (employeeId: string) => void;
 }
 
-export default function TaskAssigneeAvatars({ assignees, maxVisible = 5 }: Props) {
+export default function TaskAssigneeAvatars({ assignees, maxVisible = 5, onMessage }: Props) {
   const router = useRouter();
 
   if (!assignees || assignees.length === 0) return null;
@@ -30,7 +31,7 @@ export default function TaskAssigneeAvatars({ assignees, maxVisible = 5 }: Props
 
   const renderAvatar = (assignee: Assignee, index: number) => {
     const { employees } = assignee;
-    const fullName = `${employees?.name} ${employees?.surname}`;
+    const fullName = [employees?.name, employees?.surname].filter(Boolean).join(' ') || 'Przypisany pracownik';
 
     const avatar = (
       <div className="cursor-pointer" onClick={() => handleProfileClick(assignee.employee_id)}>
@@ -84,7 +85,7 @@ export default function TaskAssigneeAvatars({ assignees, maxVisible = 5 }: Props
                 Profil
               </button>
               <button
-                onClick={() => router.push(`/crm/messages?to=${assignee.employee_id}`)}
+                onClick={() => onMessage ? onMessage(assignee.employee_id) : router.push(`/crm/messages?to=${assignee.employee_id}`)}
                 className="flex items-center justify-center rounded bg-[#d3bb73]/10 px-2 py-1 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/20"
                 title="Czat prywatny"
               >

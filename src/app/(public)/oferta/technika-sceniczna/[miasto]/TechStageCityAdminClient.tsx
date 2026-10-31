@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Settings } from 'lucide-react';
 import CityPageSEOModal from '@/components/CityPageSEOModal';
 
@@ -20,6 +21,7 @@ export default function TechStageCityAdminClient({
   defaultDescription,
 }: Props) {
   const [isSEOModalOpen, setIsSEOModalOpen] = useState(false);
+  const router = useRouter();
 
   if (!isAdmin) return null;
 
@@ -35,7 +37,7 @@ export default function TechStageCityAdminClient({
 
       <CityPageSEOModal
         isOpen={isSEOModalOpen}
-        onClose={() => setIsSEOModalOpen(false)}
+        onClose={() => { setIsSEOModalOpen(false); router.refresh(); }}
         pageType="technika-sceniczna"
         citySlug={cityLocality}
         cityName={cityName}

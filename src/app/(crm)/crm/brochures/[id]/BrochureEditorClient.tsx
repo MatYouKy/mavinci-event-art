@@ -17,6 +17,7 @@ import {
   Plus,
   Save,
   Search,
+  ShieldCheck,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -27,9 +28,14 @@ import BrochurePageList from './BrochurePageList';
 import BrochureDemoReport from './BrochureDemoReport';
 import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
 import SendBrochureEmailModal from '@/components/crm/brochures/SendBrochureEmailModal';
+import BrochureClientPicker from '@/components/crm/brochures/BrochureClientPicker';
+import type { BrochureClient } from '@/lib/brochures/recipient';
+import BrochureValidationPanel from '@/components/crm/brochures/BrochureValidationPanel';
+import { brochurePageReferences, validateBrochureContent, BrochureValidationError, type BrochureValidationIssue } from '@/lib/brochures/validation';
+import { readBrochureResponse } from '@/components/crm/brochures/delivery';
 import styles from './BrochureEditor.module.css';
 import { buildSalesBrochureHtml, type SalesBrochureSnapshot } from '@/lib/brochures/buildSalesBrochureHtml';
-import { brochureAssetKey, brochurePalette, parseDecorativePages, parseComposer, orderedBrochureKeys, resolvedBenefits, brochurePageProblem, BROCHURE_LAYOUTS, type BrochureComposer, type BrochureDecorativePage, type BrochureImageAsset } from '@/lib/brochures/decorativePages';
+import { brochureAssetKey, brochurePalette, parseDecorativePages, parseComposer, orderedBrochureKeys, resolvedBenefits, BROCHURE_LAYOUTS, type BrochureComposer, type BrochureDecorativePage, type BrochureImageAsset } from '@/lib/brochures/decorativePages';
 
 type Brochure = {
   id: string;
@@ -119,7 +125,9 @@ export default function BrochureEditorClient({ brochureId }: { brochureId: strin
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
   const [recipientEmail, setRecipientEmail] = useState('');
+  const [recipient, setRecipient] = useState<BrochureClient | null>(null);
   const [ownPdfVersion, setOwnPdfVersion] = useState<number | null>(null);
+  const [ownPdfRecipient, setOwnPdfRecipient] = useState('');
   const [reportRevision, setReportRevision] = useState(0);
   const [showBrochureMail, setShowBrochureMail] = useState(false);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
@@ -132,6 +140,11 @@ export default function BrochureEditorClient({ brochureId }: { brochureId: strin
   const [hotelAssets, setHotelAssets] = useState<BrochureImageAsset[]>([]);
   const [assetNotice, setAssetNotice] = useState('');
   const [dirty, setDirty] = useState(false);
+  const [validationIssues, setValidationIssues] = useState<BrochureValidationIssue[] | null>(null);
+  const [validationStale, setValidationStale] = useState(false);
+  const [validationError, setValidationError] = useState('');
+  const [editTarget, setEditTarget] = useState<{ key: string; field: string } | null>(null);
+  const openedValidationLink = useRef<string | null>(null);
   const [previewCompany, setPreviewCompany] = useState<SalesBrochureSnapshot['company']>({ name: 'MAVINCI', primaryColor: '#d3bb73', secondaryColor: '#1c1f33' });
   const decorationPages = useMemo(() => parseDecorativePages(brochure?.brand_config?.decorative_pages), [brochure?.brand_config]);
   const composer = useMemo(() => parseComposer(brochure?.brand_config?.composer), [brochure?.brand_config]);
@@ -140,9 +153,13 @@ export default function BrochureEditorClient({ brochureId }: { brochureId: strin
     ...product.variants.filter((v) => v.offer_image_path).map((v) => ({ key: brochureAssetKey('offer-product-pages', v.offer_image_path!), label: `${product.name} — ${v.name}`, path: v.offer_image_path!, bucket: 'offer-product-pages' as const })),
   ]), [products]);
   const decorationAssets = useMemo(() => [...new Map([...productAssets, ...libraryAssets, ...hotelAssets,
+    ...items.filter((item) => item.custom_image_path).map((item) => ({
+      key: brochureAssetKey('offer-product-pages', item.custom_image_path!), label: `Broszura: ${itemTitle(item)}`,
+      path: item.custom_image_path!, bucket: 'offer-product-pages' as const,
+    })),
     ...decorationPages.filter((p) => p.imagePath).map((p) => ({ key: brochureAssetKey(p.imageBucket, p.imagePath), label: `Broszura: ${p.slogan || 'grafika'}`, path: p.imagePath, bucket: p.imageBucket })),
     ...(composer.coverImagePath ? [{ key: brochureAssetKey(composer.coverImageBucket, composer.coverImagePath), label: 'Okładka broszury', path: composer.coverImagePath, bucket: composer.coverImageBucket }] : []),
-  ].map((asset) => [asset.key, asset])).values()], [productAssets, libraryAssets, hotelAssets, decorationPages, composer.coverImagePath, composer.coverImageBucket]);
+  ].map((asset) => [asset.key, asset])).values()], [productAssets, libraryAssets, hotelAssets, items, decorationPages, composer.coverImagePath, composer.coverImageBucket]);
   const onUploadBusy = useCallback((uploading: boolean) => setBusy(uploading ? 'upload-image' : null), []);
   const assetPaths = JSON.stringify(decorationAssets.map(({ key, path, bucket }) => ({ key, path, bucket })));
   useEffect(() => {
@@ -288,15 +305,18 @@ export default function BrochureEditorClient({ brochureId }: { brochureId: strin
       return [path, data?.signedUrl || ''] as const;
     }));
     setImageUrls((current) => ({ ...current, ...Object.fromEntries(signed) }));
-    setPdfUrl(null); setOwnPdfVersion(null);
+    setPdfUrl(null); setOwnPdfVersion(null); setOwnPdfRecipient('');
     const { data: currentEmployeeId } = await supabase.rpc('current_brochure_employee_id');
     if (currentEmployeeId) {
       const { data: ownGeneration } = await supabase.from('sales_brochure_generations')
-        .select('pdf_path,version').eq('brochure_id', brochureId).eq('created_by', currentEmployeeId)
+        .select('pdf_path,file_name,version,snapshot').eq('brochure_id', brochureId).eq('created_by', currentEmployeeId)
         .order('version', { ascending: false }).limit(1).maybeSingle();
       if (ownGeneration) {
-        const { data } = await supabase.storage.from('generated-brochures').createSignedUrl(ownGeneration.pdf_path, 3600);
+        const { data } = await supabase.storage.from('generated-brochures').createSignedUrl(ownGeneration.pdf_path, 3600, {
+          download: ownGeneration.file_name,
+        });
         setPdfUrl(data?.signedUrl || null); setOwnPdfVersion(ownGeneration.version);
+        setOwnPdfRecipient(ownGeneration.snapshot?.recipient?.name || ownGeneration.snapshot?.recipientEmail || ownGeneration.snapshot?.demoAttribution?.recipientEmail || '');
       }
     }
     setReportRevision(value => value + 1);
@@ -338,9 +358,54 @@ export default function BrochureEditorClient({ brochureId }: { brochureId: strin
   const pageRows = orderedBrochureKeys(items, decorationPages.map((p) => ({ ...p, isVisible: true })), composer.pageOrder).map((key) => {
     const item = key.startsWith('product:') ? items.find((i) => i.id === key.slice(8)) : null;
     const page = key.startsWith('decorative:') ? decorationPages.find((p) => p.id === key.slice(11)) : null;
-    if (item) return { key, title: itemTitle(item), subtitle: 'Usługa z katalogu', visible: item.is_visible, imageUrl: imageUrls[item.custom_image_path || item.variant?.offer_image_path || item.product.offer_image_path || ''] };
+    if (item) {
+      const path = item.custom_image_path || item.variant?.offer_image_path || item.product.offer_image_path || '';
+      return { key, title: itemTitle(item), subtitle: 'Usługa z katalogu', visible: item.is_visible, imageUrl: imageUrls[brochureAssetKey('offer-product-pages', path)] || imageUrls[path] };
+    }
     if (page) return { key, title: page.slogan || 'Gotowa grafika', subtitle: BROCHURE_LAYOUTS[page.layout], visible: page.isVisible, imageUrl: imageUrls[brochureAssetKey(page.imageBucket, page.imagePath)] };
     return { key, title: ({ cover: 'Okładka', intro: 'Wprowadzenie', closing: 'Kontakt i następny krok' } as Record<string, string>)[key] || 'Strona', subtitle: 'Treść w ustawieniach po lewej', visible: !composer.hiddenPages.includes(key) };
+  });
+
+  // Retain the report while editing; it is no longer a verdict on the new draft.
+  useEffect(() => { setValidationStale(true); }, [brochure, items]);
+  useEffect(() => {
+    if (loading || !brochure || openedValidationLink.current === brochureId) return;
+    openedValidationLink.current = brochureId;
+    const params = new URLSearchParams(window.location.search);
+    const key = params.get('page');
+    if (!key || !pageRows.some((row) => row.key === key)) return;
+    setSelectedPageKey(key);
+    if (key.startsWith('product:')) setSelectedItemId(key.slice(8));
+    setEditTarget({ key, field: params.get('field') || 'layout' });
+  }, [loading, brochure, brochureId, pageRows]);
+  useEffect(() => {
+    if (!editTarget || loading || busy || selectedPageKey !== editTarget.key) return;
+    const frame = requestAnimationFrame(() => {
+      const targetId = editTarget.key.startsWith('decorative:') ? 'brochure-page-studio'
+        : editTarget.key.startsWith('product:') ? (editTarget.field === 'imagePath' ? 'brochure-product-image' : 'brochure-product-fields')
+          : editTarget.key === 'cover' && editTarget.field === 'imagePath' ? 'brochure-cover-image' : 'brochure-settings';
+      const container = document.getElementById(targetId);
+      const field = Array.from(container?.querySelectorAll<HTMLElement>('[data-brochure-field]') || [])
+        .find((element) => element.dataset.brochureField === editTarget.field);
+      const target = field || container;
+      target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      target?.querySelector<HTMLElement>('input:not([type="file"]), textarea, select, button')?.focus({ preventScroll: true });
+      setEditTarget(null);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [editTarget, loading, busy, selectedPageKey]);
+  const editValidationIssue = (issue: BrochureValidationIssue) => {
+    if (!pageRows.some((row) => row.key === issue.pageKey)) {
+      showSnackbar('Ta strona została usunięta. Sprawdź broszurę ponownie.', 'info');
+      return;
+    }
+    selectPage(issue.pageKey);
+    setEditTarget({ key: issue.pageKey, field: issue.field });
+  };
+  const revealValidation = () => requestAnimationFrame(() => {
+    const panel = document.getElementById('brochure-validation');
+    panel?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    panel?.focus({ preventScroll: true });
   });
 
   const save = async (notify = true): Promise<boolean> => {
@@ -398,23 +463,45 @@ export default function BrochureEditorClient({ brochureId }: { brochureId: strin
     setBusy(null);
   };
 
-  const generatePdf = async () => {
-    if (!brochure || busy || !canViewResults) return;
+  const generatePdf = async (validateOnly = false) => {
+    if (!brochure || busy || !canManage || !canViewResults) return;
     if (recipientEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipientEmail.trim())) { showSnackbar('Wpisz prawidłowy e-mail odbiorcy lub pozostaw pole puste.', 'error'); return; }
-    const invalid = decorationPages.find((page) => brochurePageProblem(page));
-    if (invalid) { selectPage(`decorative:${invalid.id}`); showSnackbar(`${invalid.slogan || 'Strona'}: ${brochurePageProblem(invalid)}`, 'error'); return; }
-    if (!(await save())) return;
-    setBusy('pdf');
+    setValidationError('');
+    const references = brochurePageReferences(items.filter((item) => item.is_visible).map((item) => ({
+      id: item.id, title: itemTitle(item),
+    })), decorationPages, composer);
+    const contentIssues = validateBrochureContent(decorationPages, references);
+    if (contentIssues.length) {
+      setValidationIssues(contentIssues); setValidationStale(false); revealValidation();
+      showSnackbar('Uzupełnij wskazane pola. Szczegóły znajdziesz w raporcie broszury.', 'error');
+      return;
+    }
+    if (dirty && !(await save(false))) return;
+    setBusy(validateOnly ? 'validate' : 'pdf');
     try {
       const response = await fetch('/bridge/brochures/generate-pdf', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ brochureId, recipientEmail }),
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ brochureId, recipientEmail, recipient, validateOnly }),
       });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(result.error || 'Nie udało się wygenerować PDF');
-      setPdfUrl(result.downloadUrl || null);
-      await load(true);
-      showSnackbar('Wygenerowano nową wersję PDF', 'success');
-    } catch (error: any) { showSnackbar(error?.message || 'Nie udało się wygenerować PDF', 'error'); }
+      const result = await readBrochureResponse<{ downloadUrl?: string; pageCount?: number; generation?: { version: number } }>(response, 'Nie udało się sprawdzić broszury.');
+      if (!validateOnly) {
+        await load(true);
+        setPdfUrl(result.downloadUrl || null);
+        if (result.generation) setOwnPdfVersion(result.generation.version);
+        setOwnPdfRecipient(recipient?.name || recipientEmail.trim());
+      }
+      setValidationIssues([]); setValidationStale(false);
+      showSnackbar(validateOnly ? 'Sprawdzono obrazy, czcionki i układ. Nie utworzono nowego PDF.'
+        : recipient ? 'PDF zapisany w zakładce Broszury klienta. Wersja ogólna pozostała bez zmian. Nie wysłano wiadomości.'
+          : 'Wygenerowano nową wersję PDF', 'success');
+    } catch (error: any) {
+      if (error instanceof BrochureValidationError) {
+        setValidationIssues(error.issues); setValidationStale(false); revealValidation();
+        showSnackbar('Nie utworzono PDF. W raporcie wskazaliśmy elementy wymagające sprawdzenia.', 'error');
+      } else {
+        const message = error?.message || 'Nie udało się sprawdzić broszury. Spróbuj ponownie.';
+        setValidationError(message); setValidationStale(true); showSnackbar(message, 'error');
+      }
+    }
     finally { setBusy(null); }
   };
 
@@ -426,14 +513,18 @@ export default function BrochureEditorClient({ brochureId }: { brochureId: strin
 
   const createCampaign = async () => {
     if (!brochure || busy || !canViewResults) return;
-    if (recipientEmail.trim()) { showSnackbar('Przed utworzeniem kampanii wygeneruj wersję PDF bez e-maila pojedynczego odbiorcy.', 'error'); return; }
-    if (ownPdfVersion !== brochure.current_pdf_version) { showSnackbar('Przed utworzeniem kampanii wygeneruj własną aktualną wersję PDF.', 'error'); return; }
+    if (recipient || recipientEmail.trim()) { showSnackbar('Do kampanii wybierz wersję ogólną: bez powiązanego klienta i bez e-maila odbiorcy.', 'error'); return; }
+    if (!brochure.current_pdf_path || brochure.modified_after_generation || dirty) { showSnackbar('Przed utworzeniem kampanii wygeneruj aktualną ogólną wersję PDF.', 'error'); return; }
     setBusy('campaign');
     try {
-      const { data: currentGeneration, error: generationError } = await supabase.from('sales_brochure_generations').select('snapshot').eq('brochure_id', brochure.id).eq('version', brochure.current_pdf_version).single();
+      const { data: currentGeneration, error: generationError } = await supabase.from('sales_brochure_generations').select('snapshot,created_by,recipient_contact_id,recipient_organization_id,recipient_email').eq('brochure_id', brochure.id).eq('version', brochure.current_pdf_version).single();
       if (generationError) throw generationError;
+      if (currentGeneration.created_by !== employee?.id) throw new Error('Do kampanii potrzebujesz własnej ogólnej wersji PDF. Wygeneruj ją bez klienta i e-maila odbiorcy.');
       if (currentGeneration?.snapshot?.demoAttribution?.campaignId) throw new Error('Bieżący PDF jest przypisany do innej kampanii. Wygeneruj ogólną wersję przed utworzeniem kolejnej kampanii.');
-      if (currentGeneration?.snapshot?.demoAttribution?.recipientEmail) throw new Error('Bieżący PDF jest przypisany do pojedynczego odbiorcy. Wygeneruj wersję bez e-maila przed utworzeniem kampanii.');
+      if (currentGeneration?.recipient_contact_id || currentGeneration?.recipient_organization_id || currentGeneration?.recipient_email
+        || currentGeneration?.snapshot?.recipientEmail || currentGeneration?.snapshot?.demoAttribution?.recipientEmail) {
+        throw new Error('Bieżący PDF jest przypisany do klienta. Do kampanii wygeneruj wersję ogólną bez klienta i e-maila odbiorcy.');
+      }
       const { data, error } = await supabase.rpc('create_hotel_brochure_campaign', {
         p_brochure_id: brochure.id, p_name: null, p_subject: null,
       });
@@ -458,19 +549,40 @@ export default function BrochureEditorClient({ brochureId }: { brochureId: strin
             <button type="button" onClick={() => { if (!dirty || window.confirm('Masz niezapisane zmiany. Opuścić kreator?')) router.push('/crm/brochures'); }} className="mt-1 rounded-lg border border-[#d3bb73]/15 p-2 text-[#e5e4e2]/55 hover:text-[#d3bb73]"><ArrowLeft className="h-4 w-4" /></button>
             <div><div className="mb-1 flex items-center gap-2 text-xs uppercase tracking-[.18em] text-[#d3bb73]"><BookOpen className="h-4 w-4" /> Edytor broszury</div><h1 className="text-2xl font-light">{brochure.name}</h1><p className="mt-1 text-sm text-[#e5e4e2]/45">Katalog zasila treść bazową. Personalizacja nie zmienia produktu globalnie. {dirty ? 'Masz niezapisane zmiany.' : 'Zmiany zapisane.'}</p></div>
           </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <button type="button" onClick={() => void generatePdf()} disabled={!canManage || !canViewResults || Boolean(busy) || !pageRows.some((p) => p.visible)} className="inline-flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2.5 text-sm font-medium text-[#1c1f33] disabled:opacity-40">{busy === 'pdf' ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />} Generuj PDF</button>
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            <button type="button" onClick={() => void generatePdf(true)} disabled={!canManage || !canViewResults || Boolean(busy) || !pageRows.some((p) => p.visible)} className="inline-flex items-center gap-2 rounded-lg bg-white/10 px-4 py-2.5 text-sm text-[#d3bb73] disabled:opacity-40">{busy === 'validate' ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />} Sprawdź broszurę</button>
+            <button type="button" onClick={() => void generatePdf()} disabled={!canManage || !canViewResults || Boolean(busy) || !pageRows.some((p) => p.visible)} className="inline-flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2.5 text-sm font-medium text-[#1c1f33] disabled:opacity-40">{busy === 'pdf' ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />} {recipient ? 'Generuj PDF dla klienta' : 'Generuj PDF'}</button>
             <ResponsiveActionBar alwaysDropdown disabledBackground actions={[
               { label: 'Studio stron', icon: <LayoutTemplate className="h-4 w-4" />, onClick: () => document.getElementById('brochure-page-studio')?.scrollIntoView({ behavior: 'smooth', block: 'start' }) },
               { label: busy === 'save' ? 'Zapisywanie…' : 'Zapisz', icon: busy === 'save' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />, onClick: () => void save(), disabled: !canManage || Boolean(busy) },
-              { label: `Mój PDF v${ownPdfVersion}`, icon: <Download className="h-4 w-4" />, onClick: () => { if (pdfUrl) window.open(pdfUrl, '_blank', 'noopener,noreferrer'); }, show: Boolean(pdfUrl) },
+              { label: `Ostatni PDF v${ownPdfVersion}${ownPdfRecipient ? ` — ${ownPdfRecipient}` : ' — ogólny'}`, icon: <Download className="h-4 w-4" />, onClick: () => { if (pdfUrl) window.open(pdfUrl, '_blank', 'noopener,noreferrer'); }, show: Boolean(pdfUrl) },
               { label: 'Wyślij broszurę', icon: <FileText className="h-4 w-4" />, onClick: () => void openBrochureMail(), disabled: !canManage || !canViewResults || Boolean(busy) },
-              { label: 'Utwórz szkic kampanii', icon: <Megaphone className="h-4 w-4" />, onClick: () => void createCampaign(), disabled: !canManage || !canViewResults || dirty || !pdfUrl || brochure.modified_after_generation || Boolean(busy) },
+              { label: 'Utwórz szkic kampanii', icon: <Megaphone className="h-4 w-4" />, onClick: () => void createCampaign(), disabled: !canManage || !canViewResults || dirty || !brochure.current_pdf_path || brochure.modified_after_generation || Boolean(busy) },
             ]} />
           </div>
         </header>
+        <p className="text-xs leading-5 text-white/50">Sprawdzanie zapisuje bieżące zmiany i sprawdza obrazy, czcionki oraz układ stron. Nie tworzy nowej wersji PDF ani nie wysyła wiadomości. Generowanie PDF również wykonuje te kontrole.</p>
+        {validationError && <p role="alert" className="rounded-lg bg-amber-400/10 p-4 text-sm text-amber-200">{validationError}</p>}
+        {validationIssues !== null && <BrochureValidationPanel brochureId={brochureId} issues={validationIssues} stale={validationStale} disabled={Boolean(busy)} onEdit={editValidationIssue} />}
 
-        {brochure.brand_config?.seller_demo_enabled === true && <div className={`${cardClass} p-4`}><label className="block text-xs text-white/60">E-mail odbiorcy tej wersji PDF — opcjonalnie<input type="email" maxLength={200} value={recipientEmail} disabled={!canManage || Boolean(busy)} onChange={e=>setRecipientEmail(e.target.value)} placeholder="np. sprzedaz@hotel.pl" className={`${inputClass} mt-2 max-w-md`}/></label><p className="mt-2 text-xs leading-5 text-white/45">Przycisk „Generuj PDF” utworzy wersję z linkiem przypisanym do Ciebie i wskazanego odbiorcy. E-mail będzie ukryty w zaszyfrowanym linku. Generowanie nie wysyła wiadomości. Dla kolejnego odbiorcy wygeneruj osobną wersję. Przy przekazaniu pliku dalej przypisanie nadal dotyczy pierwotnego odbiorcy.</p></div>}
+        <div className={`${cardClass} space-y-4 p-4`}>
+          <BrochureClientPicker value={recipient} disabled={!canManage || Boolean(busy)} onChange={(client, suggestedEmail) => {
+            setRecipient(client);
+            if (suggestedEmail !== undefined) setRecipientEmail(suggestedEmail);
+          }} />
+          <label className="block text-xs text-white/60">E-mail odbiorcy tej wersji PDF — opcjonalnie
+            <input type="email" maxLength={200} value={recipientEmail} disabled={!canManage || Boolean(busy)}
+              onChange={event => setRecipientEmail(event.target.value)} placeholder="np. sprzedaz@hotel.pl" className={`${inputClass} mt-2 max-w-md`} />
+          </label>
+          <p className="text-xs leading-5 text-white/45">
+            Generowanie zapisuje osobny PDF, ale nie wysyła wiadomości. Plik przypisany do klienta zostaje w jego kartotece i nie zastępuje wersji ogólnej.
+            {' '}E-mail możesz zmienić lub pozostawić pusty; nie zmienia to danych kontaktu w CRM.
+          </p>
+          {brochure.brand_config?.seller_demo_enabled === true && <p className="text-xs leading-5 text-white/45">
+            Link demo będzie przypisany do Ciebie i podanego e-maila, ukrytego w zaszyfrowanym linku.
+            Przy przekazaniu pliku dalej przypisanie nadal dotyczy pierwotnego odbiorcy.
+          </p>}
+        </div>
 
         {brochure.current_pdf_version > 0 && brochure.modified_after_generation && <div className="rounded-lg border border-amber-400/20 bg-amber-400/10 px-4 py-3 text-sm text-amber-200">Treść zmieniła się od wygenerowania PDF. Przed użyciem w kampanii utwórz nową wersję.</div>}
 
@@ -479,7 +591,7 @@ export default function BrochureEditorClient({ brochureId }: { brochureId: strin
 
         <section className="grid gap-5 xl:grid-cols-[390px_minmax(0,1fr)_360px]">
           <aside className="space-y-5">
-            <div className={`${cardClass} p-4`}>
+            <div id="brochure-settings" className={`${cardClass} p-4`}>
               <h2 className="mb-4 flex items-center gap-2 text-sm font-medium"><LayoutTemplate className="h-4 w-4 text-[#d3bb73]" /> Ustawienia</h2>
               <div className="space-y-3">
                 <Field label="Nazwa robocza"><input value={brochure.name} disabled={!canManage || Boolean(busy)} onChange={(event) => updateBrochure('name', event.target.value)} className={inputClass} /></Field>
@@ -496,7 +608,7 @@ export default function BrochureEditorClient({ brochureId }: { brochureId: strin
               </div>
             </div>
 
-            <div className={`${cardClass} space-y-4 p-4`}>
+            <div id="brochure-cover-image" className={`${cardClass} space-y-4 p-4`}>
               <h2 className="text-sm font-medium">Zdjęcie okładki</h2>
               <BrochureImagePicker emptyLabel="Automatycznie z pierwszej usługi" brochureId={brochure.id} path={composer.coverImagePath || brochure.cover_image_path || ''} bucket={composer.coverImagePath ? composer.coverImageBucket : 'offer-product-pages'} assets={decorationAssets} imageUrls={imageUrls} disabled={!canManage || Boolean(busy)} inputClass={inputClass} onBusy={onUploadBusy} onSave={() => void save()} hasChanges={dirty} onChange={(coverImagePath, coverImageBucket) => { setDirty(true); setBrochure((current) => current ? { ...current, cover_image_path: null, brand_config: { ...current.brand_config, composer: { ...composer, coverImagePath, coverImageBucket } }, modified_after_generation: Boolean(current.current_pdf_path) } : current); }} />
               {assetNotice && <p className="text-xs leading-5 text-white/40">{assetNotice}</p>}
@@ -524,7 +636,19 @@ export default function BrochureEditorClient({ brochureId }: { brochureId: strin
               onChange={updateDecorations} onSelect={(id) => selectPage(`decorative:${id}`)} onUploadBusy={onUploadBusy}
               onSave={() => void save()} hasChanges={dirty}
             />
+            {selectedItem && selectedPageKey.startsWith('product:') && <section id="brochure-product-image" className={`${cardClass} space-y-4 p-4`}>
+              <h2 className="text-sm font-medium">Zdjęcie usługi — {itemTitle(selectedItem)}</h2>
+              <p className="text-xs leading-5 text-white/55">Zmiana dotyczy tylko tej broszury. Nie zmienia zdjęcia w katalogu usług. Puste pole przywraca zdjęcie katalogowe.</p>
+              <BrochureImagePicker key={selectedItem.id} brochureId={brochure.id}
+                path={selectedItem.custom_image_path || selectedItem.variant?.offer_image_path || selectedItem.product.offer_image_path || ''}
+                bucket="offer-product-pages" assets={decorationAssets.filter((asset) => asset.bucket === 'offer-product-pages')}
+                imageUrls={imageUrls} emptyLabel="Przywróć zdjęcie katalogowe" disabled={!canManage || Boolean(busy)}
+                inputClass={inputClass} onBusy={onUploadBusy} onSave={() => void save()} hasChanges={dirty}
+                onChange={(path) => updateItem('custom_image_path', path || null)} />
+            </section>}
+            <div id="brochure-product-fields">
             {selectedItem && selectedPageKey.startsWith('product:') && <div className={`${cardClass} p-4 md:p-5`}><div className="mb-4 flex items-center justify-between"><div><h2 className="text-lg font-light">Treść strony</h2><p className="mt-1 text-xs text-[#e5e4e2]/40">Puste pola tekstowe pobierają aktualną treść katalogową. Pusta lista korzyści ukrywa korzyści. Przywrócenie katalogu włącza dziedziczenie.</p></div><button type="button" disabled={!canManage || Boolean(busy)} onClick={() => { setDirty(true); setItems((current) => current.map((item) => item.id === selectedItem.id ? { ...item, custom_title: null, custom_short_description: null, custom_description: null, custom_benefits: null, custom_image_path: null } : item)); setBrochure((current) => current ? { ...current, modified_after_generation: Boolean(current.current_pdf_path) } : current); }} className="text-xs text-[#d3bb73]">Przywróć katalog</button><button type="button" disabled={!canManage || Boolean(busy)} onClick={() => void removeItem(selectedItem.id)} className="text-xs text-red-300/70">Usuń usługę</button></div><div className="space-y-4"><Field label="Układ strony"><select value={selectedItem.page_layout} disabled={!canManage || Boolean(busy)} onChange={(event) => updateItem('page_layout', event.target.value as BrochureItem['page_layout'])} className={inputClass}><option value="visual">Wizualny — duże zdjęcie</option><option value="classic">Klasyczny</option><option value="compact">Kompaktowy</option></select></Field><Field label="Tytuł"><input value={selectedItem.custom_title ?? itemTitle(selectedItem)} disabled={!canManage || Boolean(busy)} onChange={(event) => updateItem('custom_title', event.target.value)} className={inputClass} /></Field><Field label="Lead"><textarea rows={3} value={selectedItem.custom_short_description ?? itemShort(selectedItem)} disabled={!canManage || Boolean(busy)} onChange={(event) => updateItem('custom_short_description', event.target.value)} className={inputClass} /></Field><Field label="Opis"><textarea rows={8} value={selectedItem.custom_description ?? itemDescription(selectedItem)} disabled={!canManage || Boolean(busy)} onChange={(event) => updateItem('custom_description', event.target.value)} className={inputClass} /></Field><Field label="Korzyści — jedna w wierszu"><textarea rows={6} value={(selectedItem.custom_benefits ?? itemBenefits(selectedItem)).join('\n')} disabled={!canManage || Boolean(busy)} onChange={(event) => updateItem('custom_benefits', event.target.value.split('\n'))} className={inputClass} /></Field></div></div>}
+            </div>
           </section>
 
           <aside className="xl:sticky xl:top-5 xl:self-start">
@@ -575,7 +699,10 @@ function BrochureQuickPreview({ brochure, company, contact, items, imageUrls, or
     contact: contact ? { name: [contact.name, contact.surname].filter(Boolean).join(' ') || '', email: contact.email, phone: contact.phone_number } : null,
     coverImageUrl: composer.coverImagePath ? imageUrls[brochureAssetKey(composer.coverImageBucket, composer.coverImagePath)] : brochure.cover_image_path ? imageUrls[brochure.cover_image_path] : null,
     composer,
-    items: visibleItems.map((item) => ({ id: item.id, title: itemTitle(item), shortDescription: itemShort(item), description: itemDescription(item), benefits: itemBenefits(item), category: item.product.category?.name, layout: item.page_layout, imageUrl: imageUrls[item.custom_image_path || item.variant?.offer_image_path || item.product.offer_image_path || ''] })),
+    items: visibleItems.map((item) => {
+      const path = item.custom_image_path || item.variant?.offer_image_path || item.product.offer_image_path || '';
+      return { id: item.id, title: itemTitle(item), shortDescription: itemShort(item), description: itemDescription(item), benefits: itemBenefits(item), category: item.product.category?.name, layout: item.page_layout, imageUrl: imageUrls[brochureAssetKey('offer-product-pages', path)] || imageUrls[path] };
+    }),
     decorativePages: decorations.map((page) => ({ ...page, imageUrl: imageUrls[brochureAssetKey(page.imageBucket, page.imagePath)] })),
     generatedAt: '',
   };

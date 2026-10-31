@@ -55,6 +55,9 @@ export interface PortfolioProjectFeature {
 }
 
 export interface PortfolioProject {
+  event_city_slug?: string | null;
+  reference_city_slugs?: string[];
+  conference_reference_enabled?: boolean | null;
   slug: string;
   tags: any[];
   _id?: string;

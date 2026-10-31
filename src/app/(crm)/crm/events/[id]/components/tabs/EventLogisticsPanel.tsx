@@ -1,5 +1,7 @@
 'use client';
 
+import TaskAssigneeAvatars from '@/components/crm/TaskAssigneeAvatars';
+import type { IEmployee } from '@/app/(crm)/crm/employees/type';
 import { systemLabel } from '@/lib/ui/systemLabels';
 
 import { useState, useEffect, useRef } from 'react';
@@ -56,6 +58,7 @@ interface EventVehicle {
   external_rental_cost: number | null;
   departure_location: string | null;
   departure_time: string | null;
+  logistics_schedule?: { mode?: string; outbound_start?: string | null } | null;
   arrival_time: string | null;
   return_departure_time: string | null;
   return_arrival_time: string | null;
@@ -101,6 +104,8 @@ interface EventVehicle {
     fuel_type: string;
   } | null;
   driver: {
+    avatar_url?: string | null;
+    avatar_metadata?: IEmployee['avatar_metadata'];
     id: string;
     name: string;
     surname: string;
@@ -522,25 +527,37 @@ export default function EventLogisticsPanel({
                                   : 'Wsparcie'}
                             </p>
                           </div>
-                          {vehicle.driver && (
-                            <div>
-                              <span className="text-[#e5e4e2]/60">Kierowca:</span>
-                              <p className="text-[#e5e4e2]">
-                                {vehicle.driver.name} {vehicle.driver.surname}
-                              </p>
+                          <div className="min-w-0">
+                            <span className="text-[#e5e4e2]/60">Kierowca:</span>
+                            <div className="mt-1 flex items-center gap-2">
+                              {vehicle.driver_id ? <>
+                                <TaskAssigneeAvatars
+                                  assignees={[{employee_id:vehicle.driver_id,employees:vehicle.driver as IEmployee | null}]}
+                                  maxVisible={1}
+                                  onMessage={employeeId=>window.dispatchEvent(new CustomEvent('crm-chat-open-employee',{detail:{employeeId}}))}
+                                />
+                                <span className="min-w-0 text-[#e5e4e2]">
+                                  {[vehicle.driver?.name, vehicle.driver?.surname].filter(Boolean).join(' ') || 'Przypisany pracownik'}
+                                </span>
+                              </> : <span className="text-xs text-[#e5e4e2]/50">Nie przypisano kierowcy</span>}
                             </div>
-                          )}
+                          </div>
                           <div>
                             <span className="text-[#e5e4e2]/60">Wyjazd:</span>
                             <p className="text-[#e5e4e2]">
-                              {vehicle.departure_time || vehicle.phase_assignment_from
-                                ? new Date(
-                                    vehicle.departure_time || vehicle.phase_assignment_from!,
-                                  ).toLocaleTimeString('pl-PL', {
-                                    hour: '2-digit',
-                                    minute: '2-digit',
-                                  })
-                                : '-'}
+                              {(() => {
+                                const departure = vehicle.logistics_schedule?.mode === 'timeline'
+                                  ? vehicle.logistics_schedule.outbound_start
+                                  : vehicle.logistics_schedule?.outbound_start || vehicle.departure_time || vehicle.phase_assignment_from;
+                                const date = departure ? new Date(departure) : null;
+                                return date && Number.isFinite(date.getTime())
+                                  ? date.toLocaleTimeString('pl-PL', {
+                                      hour: '2-digit',
+                                      minute: '2-digit',
+                                      timeZone: 'Europe/Warsaw',
+                                    })
+                                  : 'Nie ustalono';
+                              })()}
                             </p>
                           </div>
                           <div>

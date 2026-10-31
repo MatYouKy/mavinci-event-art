@@ -1,480 +1,74 @@
+import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { unstable_noStore as noStore } from 'next/cache';
-import { Metadata } from 'next';
 import PageLayout from '@/components/Layout/PageLayout';
-import { CategoryBreadcrumb } from '@/components/CategoryBreadcrumb';
+import { ServerBreadcrumb } from '@/components/Layout/ServerBreadcrumb';
 import { getUserPermissions } from '@/lib/serverAuth';
-import EditableHeroSectionServer from '@/components/EditableHeroSectionServer';
-import { getPolishCityCasesSmart, PolishCityCases } from '@/lib/polishCityCases';
-import { loadCityCasesFromDb } from '@/lib/Pages/polishCityCases.server';
-import { createSupabaseServerClient } from '@/lib/server';
-import { cookies } from 'next/headers';
-import Stats from '@/components/Stats';
-import CityMapEmbed from '@/components/CityMapEmbed/CityMapEmbed';
-
+import { getThemedPartyCityData } from '@/lib/SEO/themedPartyData.server';
+import { ORGANIZATION_ID, WEBSITE_ID } from '@/lib/SEO/site';
+import ThemedPartyCityHero from './ThemedPartyCityHero';
 import ThemedPartyCityAdminClient from './ThemedPartyCityAdminClient';
-import ThemedPartyCityIntro from './ThemedPartyCityIntro';
-import ThemedPartyCityServices from './ThemedPartyCityServices';
-import ThemedPartyCityEquipment from './ThemedPartyCityEquipment';
-import ThemedPartyCityBenefits from './ThemedPartyCityBenefits';
-import ThemedPartyCityGallery from './ThemedPartyCityGallery';
-import ThemedPartyCityProcess from './ThemedPartyCityProcess';
-import ThemedPartyCityFAQ from './ThemedPartyCityFAQ';
-import ThemedPartyCityCTA from './ThemedPartyCityCTA';
+import ThemedPartyCityContentEditor from './ThemedPartyCityContentEditor';
 import ThemedPartyCityThemes from './ThemedPartyCityThemes';
 import ThemedPartyCitySharedGallery from './ThemedPartyCitySharedGallery';
+import { ThemedPartyIntro, ThemedPartyPlanning, ThemedPartyPortfolio, ThemedPartyTechnical, ThemedPartyQuestions, ThemedPartyRelated } from './ThemedPartyCitySections';
+import ThemedPartyCityCTA from './ThemedPartyCityCTA';
 
-function capitalize(value: string) {
-  if (!value) return value;
-  return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
-}
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
-async function loadCityData(city: string) {
-  noStore();
-
-  const supabase = createSupabaseServerClient();
-
-  const { data: cityData, error: cityError } = await supabase
-    .from('schema_org_places')
-    .select('*')
-    .eq('locality', city)
-    .eq('is_global', true)
-    .eq('is_active', true)
-    .maybeSingle();
-
-  if (!cityData || cityError) return null;
-
-  let heroImage: { image_url: string } | null = null;
-  try {
-    const { data } = await supabase
-    .from('wieczory-tematyczne_page_images')
-      .select('image_url')
-      .eq('is_active', true)
-      .eq('section', 'hero')
-      .maybeSingle();
-    heroImage = data;
-  } catch {
-    /* table may not exist yet */
-  }
-
-  const { hasWebsiteEdit } = await getUserPermissions();
-
-  const { data: globalConfig } = await supabase.from('schema_org_global').select('*').single();
-
-  const { data: cityPageSeo } = await supabase
-    .from('schema_org_page_metadata')
-    .select('*')
-    .eq('page_slug', `oferta/wieczory-tematyczne/${city}`)
-    .maybeSingle();
-
-  let cityContent: any = null;
-  let gallery: any[] = [];
-
-  try {
-    const { data: cc } = await supabase
-      .from('themed_party_city_content')
-      .select('*')
-      .eq('city_slug', city)
-      .eq('is_active', true)
-      .maybeSingle();
-    cityContent = cc;
-  } catch {
-    /* table may not exist yet */
-  }
-
-  try {
-    const { data: gal } = await supabase
-      .from('themed_party_city_gallery')
-      .select('*')
-      .eq('city_slug', city)
-      .eq('is_active', true)
-      .order('display_order');
-    gallery = gal || [];
-  } catch {
-    /* table may not exist yet */
-  }
-
-  const EXCEPTIONS: Record<string, PolishCityCases> = await loadCityCasesFromDb();
-  const cityCases = getPolishCityCasesSmart(city, EXCEPTIONS);
-
-  // Fetch shared themed-party data (themes + gallery from main page)
-  let sharedThemes: any[] = [];
-  let sharedGallery: any[] = [];
-  try {
-    const { data: sharedData } = await supabase
-      .from('site_images')
-      .select('*')
-      .eq('section', 'themed-party')
-      .eq('is_active', true)
-      .order('order_index');
-
-    if (sharedData && sharedData.length > 0) {
-      const themesRow = sharedData.find((r: any) => r.name === 'themes');
-      if (themesRow?.image_metadata?.items && Array.isArray(themesRow.image_metadata.items)) {
-        sharedThemes = themesRow.image_metadata.items;
-      }
-
-      const galleryRows = sharedData
-        .filter((r: any) => r.name?.startsWith('gallery-'))
-        .sort((a: any, b: any) => (a.order_index || 0) - (b.order_index || 0));
-
-      if (galleryRows.length > 0) {
-        sharedGallery = galleryRows.map((r: any) => ({
-          id: r.id,
-          image_url: r.desktop_url || '',
-          alt_text: r.alt_text || '',
-          caption: r.image_metadata?.caption || '',
-        }));
-      }
-    }
-  } catch {
-    /* site_images may not have themed-party data yet */
-  }
-
-  const image =
-    cityContent?.hero_image_url ||
-    cityPageSeo?.og_image ||
-    heroImage?.image_url ||
-    'https://mavinci.pl/logo-mavinci-crm.png';
-
-  const canonicalUrl = `https://mavinci.pl/oferta/wieczory-tematyczne/${city}`;
-  const prep = cityCases.locative_preposition || 'w';
-
-  const defaultTitle = `Wieczory tematyczne ${prep} ${capitalize(cityCases.locative)}`;
-  const defaultDescription = `Organizacja wieczorów tematycznych ${prep} ${capitalize(cityCases.locative)}. Imprezy w klimacie Casino Night, Hollywood, PRL, Dzikiego Zachodu, lat 20-tych i wiele więcej. Dekoracje, aktorzy, scenografia, muzyka - kompleksowa realizacja eventów firmowych.`;
-
-  const metaTitle =
-    cityContent?.seo_title ||
-    cityPageSeo?.title ||
-    `${defaultTitle} - Imprezy Tematyczne dla Firm | MAVINCI`;
-
-  const description =
-    cityContent?.seo_description || cityPageSeo?.description || defaultDescription;
-
-  const keywords =
-    cityContent?.seo_keywords?.join(', ') ||
-    (cityPageSeo?.keywords as string[] | null)?.join(', ') ||
-    `wieczory tematyczne ${cityCases.nominative}, imprezy tematyczne ${cityCases.locative}, event tematyczny ${cityCases.locative}, impreza firmowa ${cityCases.locative}, casino night ${cityCases.locative}, impreza w stylu PRL ${cityCases.locative}`;
-
+export async function generateMetadata({ params }: { params: { miasto: string } }): Promise<Metadata> {
+  const data = await getThemedPartyCityData(params.miasto);
+  if (!data) return { title: 'Nie znaleziono lokalizacji | MAVINCI', robots: { index: false } };
   return {
-    city: cityData,
-    globalConfig,
-    hasWebsiteEdit,
-    image,
-    canonicalUrl,
-    title: defaultTitle,
-    description,
-    keywords,
-    cityCases,
-    metaTitle,
-    cityContent,
-    gallery: gallery || [],
-    sharedThemes,
-    sharedGallery,
-    cityPageSeo,
-  };
-}
-
-export async function generateMetadata({
-  params,
-}: {
-  params: { miasto: string };
-}): Promise<Metadata> {
-  const data = await loadCityData(params.miasto);
-
-  if (!data) {
-    return { title: 'Wieczory Tematyczne - MAVINCI Event & ART' };
-  }
-
-  const { description, keywords, canonicalUrl, image, cityCases, metaTitle } = data;
-
-  return {
-    title: metaTitle,
-    description,
-    keywords,
-    alternates: { canonical: canonicalUrl },
-    openGraph: {
-      type: 'website',
-      url: canonicalUrl,
-      title: metaTitle,
-      description,
-      images: [{ url: image, alt: `Wieczory tematyczne ${cityCases.locative}` }],
-      siteName: 'MAVINCI Event & ART',
-    },
-    twitter: {
-      card: 'summary_large_image',
-      title: metaTitle,
-      description,
-      images: [image],
-    },
+    title: { absolute: data.metaTitle }, description: data.description, keywords: data.keywords,
+    alternates: { canonical: data.canonicalUrl },
+    robots: { index: true, follow: true, googleBot: { index: true, follow: true, 'max-image-preview': 'large' } },
+    openGraph: { type: 'website', url: data.canonicalUrl, title: data.metaTitle, description: data.description,
+      locale: 'pl_PL', siteName: 'MAVINCI Event & ART', images: [{ url: data.ogImage, alt: data.heroSettings.alt_text || data.title }] },
+    twitter: { card: 'summary_large_image', title: data.metaTitle, description: data.description, images: [data.ogImage] },
   };
 }
 
 export default async function ThemedPartyCityPage({ params }: { params: { miasto: string } }) {
-  const data = await loadCityData(params.miasto);
+  const data = await getThemedPartyCityData(params.miasto);
   if (!data) notFound();
-
-  const {
-    cityCases,
-    globalConfig,
-    hasWebsiteEdit,
-    image,
-    description,
-    title,
-    city,
-    cityContent,
-    gallery,
-    sharedThemes,
-    sharedGallery,
-    cityPageSeo,
-  } = data;
-
-  const canonicalUrl = `https://mavinci.pl/oferta/wieczory-tematyczne/${city.locality}`;
-  const pageSlug = `oferta/wieczory-tematyczne/${city.locality}`;
-  const prep = cityCases.locative_preposition || 'w';
-
-  const schemaConfig = cityPageSeo?.custom_schema || {};
-
-  const schemaOffers =
-    Array.isArray(schemaConfig.offers) && schemaConfig.offers.length > 0
-      ? schemaConfig.offers
-      : [
-          {
-            name: 'Casino Night',
-            description:
-              'Wieczór tematyczny w klimacie kasyna z ruletką, blackjackiem, pokerem, profesjonalnymi krupierami i oprawą Las Vegas.',
-          },
-          {
-            name: 'Impreza w stylu Hollywood',
-            description:
-              'Gala firmowa w stylu Hollywood z czerwonym dywanem, elegancką scenografią, oprawą fotograficzną i prowadzeniem wydarzenia.',
-          },
-          {
-            name: 'Wieczór w stylu PRL',
-            description:
-              'Impreza tematyczna w klimacie PRL z dekoracjami z epoki, muzyką, quizami, konkursami i charakterystyczną oprawą.',
-          },
-          {
-            name: 'Great Gatsby i lata 20.',
-            description:
-              'Elegancki wieczór firmowy w stylu lat 20., z klimatem art déco, muzyką, dekoracjami i scenografią bankietową.',
-          },
-          {
-            name: 'Dziki Zachód / Western',
-            description:
-              'Impreza tematyczna w klimacie westernu z dekoracjami saloonu, konkursami, muzyką country i animacjami dla uczestników.',
-          },
-          {
-            name: 'Kompleksowa realizacja wieczoru tematycznego',
-            description:
-              'Przygotowanie koncepcji, scenariusza, dekoracji, atrakcji, prowadzenia, oprawy technicznej i koordynacji całego wydarzenia.',
-          },
-        ];
-
-  const schemaFaq =
-    Array.isArray(schemaConfig.faq) && schemaConfig.faq.length > 0
-      ? schemaConfig.faq.filter((item: any) => item.question && item.answer)
-      : [];
-
-  const customSchema = globalConfig
-    ? {
-        '@context': 'https://schema.org',
-        '@graph': [
-          {
-            '@type': 'WebPage',
-            '@id': `${canonicalUrl}#webpage`,
-            url: canonicalUrl,
-            name: cityPageSeo?.title || title,
-            description,
-            inLanguage: 'pl-PL',
-            isPartOf: {
-              '@type': 'WebSite',
-              '@id': 'https://mavinci.pl/#website',
-              name: 'MAVINCI Event & ART',
-              url: 'https://mavinci.pl',
-            },
-            about: {
-              '@id': `${canonicalUrl}#service`,
-            },
-          },
-          {
-            '@type': 'LocalBusiness',
-            '@id': 'https://mavinci.pl/#organization',
-            name: globalConfig.organization_name,
-            url: globalConfig.organization_url,
-            logo: globalConfig.organization_logo,
-            image,
-            telephone: globalConfig.telephone,
-            email: globalConfig.email,
-            priceRange: schemaConfig.priceRange || globalConfig.price_range || '$$-$$$',
-            address: {
-              '@type': 'PostalAddress',
-              streetAddress: globalConfig.street_address,
-              addressLocality: globalConfig.locality,
-              postalCode: globalConfig.postal_code,
-              addressRegion: globalConfig.region,
-              addressCountry: globalConfig.country || 'PL',
-            },
-            sameAs: [
-              globalConfig.facebook_url,
-              globalConfig.instagram_url,
-              globalConfig.linkedin_url,
-              globalConfig.youtube_url,
-              globalConfig.twitter_url,
-            ].filter(Boolean),
-          },
-          {
-            '@type': 'Service',
-            '@id': `${canonicalUrl}#service`,
-            name: `Wieczory tematyczne ${prep} ${capitalize(cityCases.locative)}`,
-            description,
-            url: canonicalUrl,
-            image,
-            serviceType: schemaConfig.serviceType || 'Wieczory tematyczne i imprezy firmowe',
-            provider: {
-              '@id': 'https://mavinci.pl/#organization',
-            },
-            areaServed: {
-              '@type': 'Place',
-              name: cityCases.nominative,
-              address: {
-                '@type': 'PostalAddress',
-                addressLocality: cityCases.nominative,
-                postalCode: city.postal_code,
-                addressRegion: city.region,
-                addressCountry: 'PL',
-              },
-            },
-            audience: {
-              '@type': 'BusinessAudience',
-              audienceType:
-                schemaConfig.audienceType ||
-                `Firmy, agencje eventowe, działy HR i organizatorzy imprez ${prep} ${capitalize(
-                  cityCases.locative,
-                )}`,
-            },
-            hasOfferCatalog: {
-              '@id': `${canonicalUrl}#offer-catalog`,
-            },
-            offers: {
-              '@type': 'Offer',
-              availability: 'https://schema.org/InStock',
-            },
-          },
-          {
-            '@type': 'OfferCatalog',
-            '@id': `${canonicalUrl}#offer-catalog`,
-            name: `Wieczory tematyczne i imprezy firmowe ${prep} ${capitalize(cityCases.locative)}`,
-            itemListElement: schemaOffers.map((offer: any) => ({
-              '@type': 'Offer',
-              availability: 'https://schema.org/InStock',
-              itemOffered: {
-                '@type': 'Service',
-                name: offer.name,
-                description: offer.description,
-                areaServed: {
-                  '@type': 'Place',
-                  name: cityCases.nominative,
-                },
-                provider: {
-                  '@id': 'https://mavinci.pl/#organization',
-                },
-              },
-            })),
-          },
-          ...(schemaFaq.length > 0
-            ? [
-                {
-                  '@type': 'FAQPage',
-                  '@id': `${canonicalUrl}#faq`,
-                  mainEntity: schemaFaq.map((item: any) => ({
-                    '@type': 'Question',
-                    name: item.question,
-                    acceptedAnswer: {
-                      '@type': 'Answer',
-                      text: item.answer,
-                    },
-                  })),
-                },
-              ]
-            : []),
-        ],
-      }
-    : undefined;
-
-  return (
-    <PageLayout pageSlug={pageSlug} customSchema={customSchema} cookieStore={cookies()}>
-      <EditableHeroSectionServer
-        whiteWordsCount={2}
-        section="wieczory-tematyczne-hero"
-        pageSlug={pageSlug}
-        initialImageUrl={image}
-        initialTitle={cityContent?.hero_title || title}
-        initialDescription={cityContent?.hero_description || description}
-      />
-
-      <div className="left-0 top-0 min-h-screen w-full bg-transparent">
-        <section className="relative min-h-[50px]">
-          <div className="absolute left-0 top-0 z-10 w-full border-b border-[#d3bb73]/20">
-            <div className="mx-auto min-h-[50px] max-w-7xl px-6">
-              <CategoryBreadcrumb
-                pageSlug={pageSlug}
-                productName={title}
-                hideMetadataButton={false}
-              />
-            </div>
-          </div>
-          <Stats />
-        </section>
-
-        <ThemedPartyCityAdminClient
-          isAdmin={hasWebsiteEdit}
-          cityLocality={city.locality}
-          cityName={cityCases.nominative}
-          defaultTitle={title}
-          defaultDescription={description}
-        />
-
-        <ThemedPartyCityIntro cityCases={cityCases} content={cityContent} />
-
-        {sharedThemes.length > 0 && (
-          <ThemedPartyCityThemes themes={sharedThemes} cityCases={cityCases} />
-        )}
-        <ThemedPartyCityServices cityCases={cityCases} content={cityContent} />
-
-        <ThemedPartyCityEquipment cityCases={cityCases} content={cityContent} />
-
-        <ThemedPartyCityBenefits cityCases={cityCases} content={cityContent} />
-
-
-        {sharedGallery.length > 0 && (
-          <ThemedPartyCitySharedGallery images={sharedGallery} cityCases={cityCases} />
-        )}
-
-        {gallery.length > 0 && <ThemedPartyCityGallery images={gallery} cityCases={cityCases} />}
-
-        <ThemedPartyCityProcess cityCases={cityCases} content={cityContent} />
-
-        <ThemedPartyCityFAQ cityCases={cityCases} content={cityContent} />
-
-        <CityMapEmbed query={`${cityCases.nominative}, Polska`} />
-
-        <ThemedPartyCityCTA cityCases={cityCases} content={cityContent} />
-      </div>
-    </PageLayout>
-  );
-}
-
-export async function generateStaticParams() {
-  const { createSupabaseAdminClient } = await import('@/lib/supabase/admin.server');
-  const supabase = createSupabaseAdminClient();
-
-  const { data: cities } = await supabase
-    .from('schema_org_places')
-    .select('locality')
-    .eq('is_global', true)
-    .eq('is_active', true);
-
-  if (!cities) return [];
-  return cities.map((city) => ({ miasto: city.locality }));
+  const { hasWebsiteEdit } = await getUserPermissions();
+  const { canonicalUrl: url, city, cityCases, title, description, faq, themes } = data;
+  const schema = {
+    '@context': 'https://schema.org', '@graph': [
+      { '@type': 'WebPage', '@id': `${url}#webpage`, url, name: data.metaTitle, description, inLanguage: 'pl-PL',
+        isPartOf: { '@id': WEBSITE_ID }, mainEntity: { '@id': `${url}#service` },
+        primaryImageOfPage: { '@type': 'ImageObject', url: data.image, caption: data.heroSettings.alt_text } },
+      { '@type': 'Service', '@id': `${url}#service`, url, name: title, description: data.lead,
+        image: data.image, serviceType: 'Organizacja imprez i wieczorów tematycznych dla firm',
+        provider: { '@id': ORGANIZATION_ID }, areaServed: { '@type': city.locality === 'warchaly' ? 'Place' : 'City', name: city.name },
+        audience: { '@type': 'BusinessAudience', audienceType: 'Firmy, działy HR, agencje eventowe i organizatorzy konferencji' },
+        ...(themes.length > 0 && { hasOfferCatalog: { '@type': 'OfferCatalog', name: 'Motywy wieczorów tematycznych',
+          itemListElement: themes.map(theme => ({ '@type': 'Offer', itemOffered: { '@type': 'Service', name: theme.title, description: theme.description, ...(theme.scenarioHref && { url: `https://mavinci.pl${theme.scenarioHref}` }), provider: { '@id': ORGANIZATION_ID } } })) } }),
+      },
+      ...(faq.length > 0 ? [{ '@type': 'FAQPage', '@id': `${url}#faq`, isPartOf: { '@id': `${url}#webpage` },
+        mainEntity: faq.map(item => ({ '@type': 'Question', name: item.question, acceptedAnswer: { '@type': 'Answer', text: item.answer } })) }] : []),
+    ],
+  };
+  const labels = { [city.locality]: city.name };
+  return <PageLayout pageSlug={data.pageSlug} customSchema={schema} breadcrumbLabels={labels}>
+    <ThemedPartyCityHero pageSlug={data.pageSlug} cityName={city.name} cityForms={[cityCases.locative, cityCases.genitive]}
+      title={title} lead={data.lead} image={data.image} canEdit={hasWebsiteEdit} settings={data.heroSettings} localSettings={data.localHero} />
+    <div className="bg-[#190f1b] text-[#e5e4e2]">
+      <div className="mx-auto max-w-7xl px-5 pt-6 sm:px-6"><ServerBreadcrumb pageSlug={data.pageSlug} labels={labels} /></div>
+      {hasWebsiteEdit && <>
+        <ThemedPartyCityAdminClient isAdmin cityLocality={city.locality} cityName={city.name} defaultTitle={data.metaTitle} defaultDescription={description} />
+        <ThemedPartyCityContentEditor citySlug={city.locality} cityName={city.name} content={data.content} recordId={data.recordId} />
+      </>}
+      <ThemedPartyIntro data={data} />
+      <ThemedPartyCityThemes themes={themes} cityCases={cityCases} />
+      <ThemedPartyPortfolio data={data} />
+      <ThemedPartyTechnical data={data} />
+      <ThemedPartyPlanning data={data} />
+      <ThemedPartyCitySharedGallery images={data.gallery} />
+      <ThemedPartyQuestions data={data} />
+      <ThemedPartyCityCTA cityCases={cityCases} citySlug={city.locality} />
+      <ThemedPartyRelated data={data} />
+    </div>
+  </PageLayout>;
 }

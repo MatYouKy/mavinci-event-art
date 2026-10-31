@@ -66,6 +66,8 @@ export default function CustomDrawer({ visible, onClose, navigation, currentScre
     onClose();
     if (screen === 'Tasks') {
       navigation.navigate('Tasks', { screen: 'TasksList', initial: false });
+    } else if (screen === 'Inquiries') {
+      navigation.navigate('Inquiries', { screen: 'InquiriesList', initial: false });
     } else {
       navigation.navigate(screen);
     }

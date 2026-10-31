@@ -1,13 +1,15 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Download, Eye, FileCheck2, Loader, Upload } from 'lucide-react';
+import Dialog from '@mui/material/Dialog';
+import { Download, Eye, FileCheck2, Loader, Upload, X } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 
-type Attachment = { id: string; original_name: string; file_size: number; mime_type: string; created_at: string };
+export type Attachment = { id: string; original_name: string; file_size: number; mime_type: string; created_at: string };
 
-export default function SignedContractAttachments({ contractId, cancelled = false }: {
-  contractId: string; cancelled?: boolean;
+export default function SignedContractAttachments({ contractId, cancelled = false, onFilesChange, manageOpen = false, onManageClose }: {
+  contractId: string; cancelled?: boolean; onFilesChange?: (files: Attachment[]) => void;
+  manageOpen?: boolean; onManageClose?: () => void;
 }) {
   const { showSnackbar } = useSnackbar();
   const [files, setFiles] = useState<Attachment[]>([]);
@@ -43,6 +45,10 @@ export default function SignedContractAttachments({ contractId, cancelled = fals
     return () => controller.abort();
   }, [endpoint, cancelled, reload]);
 
+  useEffect(() => {
+    if (!loading && !error) onFilesChange?.(files);
+  }, [files, loading, error, onFilesChange]);
+
   const upload = async (selected: FileList | null) => {
     if (!selected?.length || busy.current || !canUpload || cancelled) return;
     if (selected.length !== 1) {
@@ -76,7 +82,7 @@ export default function SignedContractAttachments({ contractId, cancelled = fals
     }
   };
 
-  return (
+  const content = (
     <section className="no-print min-w-0 space-y-3 rounded-xl bg-[#210811]/65 p-4 lg:col-span-2 md:p-5" aria-label="Podpisana umowa">
       <div className="flex items-center gap-2 text-sm font-medium text-[#e5e4e2]">
         <FileCheck2 className="h-4 w-4 text-[#d3bb73]" />
@@ -119,4 +125,15 @@ export default function SignedContractAttachments({ contractId, cancelled = fals
       </ul>}
     </section>
   );
+  if (files.length > 0) {
+    return <Dialog open={manageOpen} onClose={() => { if (!uploading) onManageClose?.(); }} fullWidth maxWidth="md"
+      aria-label="Dokumenty podpisanej umowy"
+      PaperProps={{ sx: { backgroundColor: '#210811', color: '#e5e4e2', borderRadius: '16px', backgroundImage: 'none' } }}>
+      <div className="flex justify-end px-4 pt-3">
+        <button type="button" aria-label="Zamknij dokumenty umowy" disabled={uploading} onClick={onManageClose} className="rounded p-2 text-white/60 hover:bg-white/5 disabled:opacity-40"><X className="h-5 w-5" /></button>
+      </div>
+      {content}
+    </Dialog>;
+  }
+  return content;
 }

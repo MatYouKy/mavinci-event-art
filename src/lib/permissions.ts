@@ -64,7 +64,7 @@ export const canView = (employee: PermissionEmployee, module: string): boolean =
   return hasPermission(employee, `${module}_view`) || hasPermission(employee, `${module}_manage`)
     || (['contracts', 'offers', 'events'].includes(module) && hasPermission(employee, `${module}_create`))
     || (['events', 'calendar'].includes(module) && hasPermission(employee, 'equipment_manage'))
-    || (module === 'time_tracking' && hasPermission(employee, 'time_tracking_view_own'));
+    || module === 'time_tracking';
 };
 
 /**

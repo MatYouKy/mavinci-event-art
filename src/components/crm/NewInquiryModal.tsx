@@ -42,6 +42,7 @@ export default function NewInquiryModal({ isOpen, onClose, initialDate, onSaved,
   const [source, setSource] = useState<ManualSource>('phone');
   const [termin, setTermin] = useState('');
   const [scope, setScope] = useState('');
+  const [guestCount, setGuestCount] = useState('');
   const [budget, setBudget] = useState('');
   const [expectations, setExpectations] = useState('');
 
@@ -71,6 +72,7 @@ export default function NewInquiryModal({ isOpen, onClose, initialDate, onSaved,
     setSource('phone');
     setTermin(initialDate ? toLocalDateTimeInput(initialDate) : '');
     setScope('');
+    setGuestCount('');
     setBudget('');
     setExpectations('');
     setClientText(initialClient?.name || '');
@@ -157,6 +159,7 @@ export default function NewInquiryModal({ isOpen, onClose, initialDate, onSaved,
     }
 
     savingRef.current = true;
+    if (guestCount !== '' && (!Number.isInteger(Number(guestCount)) || Number(guestCount) < 1 || Number(guestCount) > 100000)) { setError('Podaj całkowitą liczbę osób od 1 do 100 000 lub zostaw pole puste.'); savingRef.current = false; return; }
     setSaving(true);
     try {
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
@@ -204,6 +207,7 @@ export default function NewInquiryModal({ isOpen, onClose, initialDate, onSaved,
         location_text: locationText.trim() || null,
         location_id: locationId,
         scope: scope.trim() || null,
+        guest_count: guestCount === '' ? null : Number(guestCount),
         budget: budget.trim() || null,
         expectations: expectations.trim() || null,
         client_text: clientText.trim() || null,
@@ -425,6 +429,7 @@ export default function NewInquiryModal({ isOpen, onClose, initialDate, onSaved,
           </div>
 
           <div>
+            <label className="mb-3 block text-sm text-white/65">Liczba osób — opcjonalnie<input type="number" min={1} max={100000} step={1} value={guestCount} onChange={e => setGuestCount(e.target.value)} placeholder="Nie ustalono" className="mt-1 w-full rounded-lg border border-white/10 bg-black/15 p-2" /></label>
             <label className="block text-sm text-[#e5e4e2]/70 mb-1">Zakres</label>
             <textarea
               value={scope}

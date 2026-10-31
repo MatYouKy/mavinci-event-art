@@ -4,6 +4,7 @@ export const revalidate = 0;
 import { buildMetadataForSlug } from '@/lib/seo-helpers';
 import OfferLayout from '../OfferLayout';
 import StreamingPage from './StreamingPage';
+import ConferenceOlsztynLink from '@/components/ConferenceOlsztynLink';
 
 const pageSlug = 'oferta/streaming';
 
@@ -18,6 +19,7 @@ export default async function Page() {
       section="streaming"
     >
       <StreamingPage />
+      <ConferenceOlsztynLink context="streaming" />
     </OfferLayout>
   );
 }

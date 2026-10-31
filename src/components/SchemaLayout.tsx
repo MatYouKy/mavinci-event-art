@@ -231,17 +231,17 @@ export default function SchemaLayout({
         <meta name="twitter:description" content={description} />
         <meta name="twitter:image" content={ogImage} />
 
-        <link rel="canonical" content={`${globalConfig.organization_url}/${pageSlug}`} />
+        <link rel="canonical" href={`${globalConfig.organization_url}/${pageSlug}`} />
 
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData).replace(/</g, '\\u003c') }}
         />
 
         {breadcrumbLd && (
           <script
             type="application/ld+json"
-            dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbLd) }}
+            dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbLd).replace(/</g, '\\u003c') }}
           />
         )}
       </Head>

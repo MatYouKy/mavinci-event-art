@@ -6,6 +6,9 @@ export function drawPaginatedOfferPricingTable(
   regular: PDFFont, bold: PDFFont, config: any = {},
 ) {
   if (!items.length) return;
+  const english = config.language === 'en';
+  const labels: Record<string, string> = {"Lp.": "No.", "Nazwa pozycji": "Item", "Ilość": "Qty", "Jedn.": "Unit", "Dni": "Days", "Cena jedn.\nnetto": "Unit price\nexcl. VAT", "Wartość\nnetto": "Total\nexcl. VAT", "Wartość\nbrutto": "Total\nincl. VAT", "Pozycja": "Item", "szt.": "pcs", "PRÓBNA KALKULACJA · CIĄG DALSZY": "SAMPLE QUOTATION · CONTINUED", "WYCENA · CIĄG DALSZY": "QUOTATION · CONTINUED", "Kontynuacja pozycji z poprzedniej strony. Wszystkie kwoty w PLN.": "Items continued from the previous page. All amounts in PLN.", "RAZEM PRZED RABATEM (PLN)": "TOTAL BEFORE DISCOUNT (PLN)", "RAZEM WPISANE CENY (PLN)": "TOTAL ENTERED PRICES (PLN)", "RAZEM PO RABACIE (PLN)": "TOTAL AFTER DISCOUNT (PLN)", "RAZEM (PLN)": "TOTAL (PLN)", "Netto razem": "Total excl. VAT", "Brutto razem": "Total incl. VAT", "Dalsze pozycje na kolejnej stronie →": "More items on the next page →", "Koniec kalkulacji · podsumowanie obejmuje wszystkie strony.": "End of quotation · totals include all pages.", "Wartość wybranego wariantu znajduje się w porównaniu pakietów.": "The price of the selected option is shown in the package comparison."};
+  const t = (value: string) => english ? labels[value] || value : value;
   const firstPage = pdf.getPage(pageIndex);
   const { width, height } = firstPage.getSize();
   const color = (hex: string | undefined, fallback: string): RGB => {
@@ -31,19 +34,20 @@ export function drawPaginatedOfferPricingTable(
   const continuationTop = 122;
   const capacity = height - continuationTop - headerHeight - bottom;
   const maxLines = Math.max(1, Math.floor((capacity - summaryHeight - 12) / lineHeight));
-  const money = (value: number) => value.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const money = (value: number) => value.toLocaleString(english ? 'en-GB' : 'pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const round = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
   type Column = { key: string; label: string; width: number; align: 'left' | 'right' | 'center' };
   const columns: Column[] = [
-    { key: 'lp', label: 'Lp.', width: config.col_lp_width || 22, align: 'left' },
-    { key: 'name', label: 'Nazwa pozycji', width: 0, align: 'left' },
-    ...(config.show_quantity === false ? [] : [{ key: 'quantity', label: 'Ilość', width: config.col_qty_width || 34, align: 'center' as const }]),
-    { key: 'unit', label: 'Jedn.', width: config.col_unit_width || 32, align: 'center' },
+    { key: 'lp', label: t('Lp.'), width: config.col_lp_width || 22, align: 'left' },
+    { key: 'name', label: t('Nazwa pozycji'), width: 0, align: 'left' },
+    ...(config.show_quantity === false ? [] : [{ key: 'quantity', label: t('Ilość'), width: config.col_qty_width || 34, align: 'center' as const }]),
+    { key: 'unit', label: t('Jedn.'), width: config.col_unit_width || 32, align: 'center' },
+    { key: 'days', label: t('Dni'), width: 28, align: 'center' },
   ];
-  if (config.show_unit_price_net !== false) columns.push({ key: 'price', label: 'Cena jedn.\nnetto', width: config.col_unit_price_width || 56, align: 'right' });
+  if (config.show_unit_price_net !== false) columns.push({ key: 'price', label: t('Cena jedn.\nnetto'), width: config.col_unit_price_width || 56, align: 'right' });
   if (config.show_vat_column === true) columns.push({ key: 'vat', label: 'VAT', width: config.col_vat_width || 34, align: 'center' });
-  if (config.show_value_net !== false) columns.push({ key: 'net', label: 'Wartość\nnetto', width: config.col_value_net_width || 66, align: 'right' });
-  if (config.show_value_gross !== false) columns.push({ key: 'gross', label: 'Wartość\nbrutto', width: config.col_value_gross_width || 66, align: 'right' });
+  if (config.show_value_net !== false) columns.push({ key: 'net', label: t('Wartość\nnetto'), width: config.col_value_net_width || 66, align: 'right' });
+  if (config.show_value_gross !== false) columns.push({ key: 'gross', label: t('Wartość\nbrutto'), width: config.col_value_gross_width || 66, align: 'right' });
   const fixedWidth = columns.reduce((sum, col) => sum + col.width, 0);
   // Keep configured columns inside the page even in narrower legacy templates.
   const scale = Math.min(1, (tableWidth - 90) / fixedWidth);
@@ -69,7 +73,7 @@ export function drawPaginatedOfferPricingTable(
     }
     return lines;
   };
-  type Row = { index: number; lines: string[]; values: Record<string, string>; height: number; continued: boolean; parentId?: string };
+  type Row = { index: number; lines: string[]; values: Record<string, string>; height: number; continued: boolean; parentId?: string; descriptionStart: number };
   const rows: Row[] = [];
   let computedNet = 0;
   let computedGross = 0;
@@ -78,20 +82,23 @@ export function drawPaginatedOfferPricingTable(
     const price = Number(item.unit_price ?? item.final_price ?? 0);
     const vat = Number(item.product?.vat_rate ?? item.vat_rate ?? config.vat_rate ?? 23);
     const missing = config.demo_mode && item.demo_price_entered === false;
-    const net = missing ? 0 : round(Number(item.subtotal ?? quantity * price));
+    const net = missing ? 0 : round(Number(item.subtotal ?? quantity * Number(item.days ?? 1) * price));
     const gross = round(net * (1 + vat / 100));
     computedNet += net;
     computedGross += gross;
-    const name = String(item.name || item.product?.name || 'Pozycja');
-    const description = item.calculation_note || (config.show_description ? String(item.description || item.product?.description || '') : '');
-    const lines = wrap([name, description].filter(Boolean).join('\n'), columns[1].width - 10);
+    const name = String(item.name || item.product?.name || t('Pozycja'));
+    const nameLines = wrap(name, columns[1].width - 10);
+    // Only calculation rows opt in: never substitute catalog equipment copy.
+    const description = String(item.calculation_description || '').trim();
+    const lines = [...nameLines, ...(description && description !== name.trim()
+      ? wrap(description, columns[1].width - 10) : [])];
     const values = {
-      lp: `${index + 1}.`, quantity: quantity.toLocaleString('pl-PL'), unit: item.unit || 'szt.',
+      lp: `${index + 1}.`, days: Number(item.days ?? 1).toLocaleString(english ? 'en-GB' : 'pl-PL'), quantity: quantity.toLocaleString(english ? 'en-GB' : 'pl-PL'), unit: item.unit || t('szt.'),
       price: item.price_label || (missing ? '—' : money(price)), vat: `${vat}%`, net: missing ? '—' : money(net), gross: missing ? '—' : money(gross),
     };
     for (let offset = 0; offset < lines.length; offset += maxLines) {
       const part = lines.slice(offset, offset + maxLines);
-      rows.push({ index, lines: part, values, height: Math.max(rowHeight, part.length * lineHeight + 12), continued: offset > 0, parentId: item.pricing_parent_id });
+      rows.push({ index, lines: part, values, height: Math.max(rowHeight, part.length * lineHeight + 12), continued: offset > 0, parentId: item.pricing_parent_id, descriptionStart: nameLines.length - offset });
     }
   });
 
@@ -138,8 +145,8 @@ export function drawPaginatedOfferPricingTable(
   sheets.forEach((sheet, sheetIndex) => {
     const { page } = sheet;
     if (sheetIndex > 0) {
-      drawCell(page, config.continuation_title || (config.demo_mode ? 'PRÓBNA KALKULACJA · CIĄG DALSZY' : 'WYCENA · CIĄG DALSZY'), left - 5, height - 65, tableWidth, 19, bold, headerColor);
-      drawCell(page, config.continuation_note || 'Kontynuacja pozycji z poprzedniej strony. Wszystkie kwoty w PLN.', left - 5, height - 92, tableWidth, 9, regular, textColor);
+      drawCell(page, config.continuation_title || (config.demo_mode ? t('PRÓBNA KALKULACJA · CIĄG DALSZY') : t('WYCENA · CIĄG DALSZY')), left - 5, height - 65, tableWidth, 19, bold, headerColor);
+      drawCell(page, config.continuation_note || t('Kontynuacja pozycji z poprzedniej strony. Wszystkie kwoty w PLN.'), left - 5, height - 92, tableWidth, 9, regular, textColor);
     }
     let y = height - sheet.top;
     if (sheet.rows.length) {
@@ -157,10 +164,10 @@ export function drawPaginatedOfferPricingTable(
       let x = left;
       columns.forEach(col => {
         if (col.key === 'name') {
-          row.lines.forEach((line, i) => drawCell(page, line, x, y - 6 - fontSize - i * lineHeight, col.width, fontSize, regular, textColor));
+          row.lines.forEach((line, i) => drawCell(page, line, x, y - 6 - fontSize - i * lineHeight, col.width, i >= row.descriptionStart ? Math.max(7, fontSize - 1) : fontSize, regular, i >= row.descriptionStart ? color(config.description_color, '#575c66') : textColor));
 
         }
-        else drawCell(page, row.continued ? (col.key === 'lp' ? `${row.index + 1}. cd.` : '') : row.values[col.key], x, y - 6 - fontSize, col.width, fontSize, regular, textColor, col.align);
+        else drawCell(page, row.continued ? (col.key === 'lp' ? `${row.index + 1}. ${english ? 'cont.' : 'cd.'}` : '') : row.values[col.key], x, y - 6 - fontSize, col.width, fontSize, regular, textColor, col.align);
         x += col.width;
       });
       drawGrid(page, y, y - row.height);
@@ -190,22 +197,22 @@ export function drawPaginatedOfferPricingTable(
           });
           y -= 28;
         };
-        summaryRow('RAZEM PRZED RABATEM (PLN)', listNet, listGross);
-        summaryRow(`RABAT ${money(Number(config.discount_percent || 0))}% (PLN)`, -discount, -round(listGross - gross));
+        summaryRow(t('RAZEM PRZED RABATEM (PLN)'), listNet, listGross);
+        summaryRow(`${english ? 'DISCOUNT' : 'RABAT'} ${money(Number(config.discount_percent || 0))}% (PLN)`, -discount, -round(listGross - gross));
       }
       page.drawRectangle({ x: left, y: y - 44, width: tableWidth, height: 44, color: headerColor });
-      drawCell(page, partial ? 'RAZEM WPISANE CENY (PLN)' : discount > 0 ? 'RAZEM PO RABACIE (PLN)' : 'RAZEM (PLN)', left, y - 26, labelWidth, fontSize, bold, headerText);
+      drawCell(page, partial ? t('RAZEM WPISANE CENY (PLN)') : discount > 0 ? t('RAZEM PO RABACIE (PLN)') : t('RAZEM (PLN)'), left, y - 26, labelWidth, fontSize, bold, headerText);
       let x = left;
       columns.forEach(col => {
         if (col.key === 'net' || col.key === 'gross') {
-          drawCell(page, col.key === 'net' ? 'Netto razem' : 'Brutto razem', x, y - 13, col.width, 7, regular, headerText, 'right');
+          drawCell(page, col.key === 'net' ? t('Netto razem') : t('Brutto razem'), x, y - 13, col.width, 7, regular, headerText, 'right');
           drawCell(page, hasPrices ? money(col.key === 'net' ? net : gross) : '—', x, y - 30, col.width, fontSize + 1, bold, headerText, 'right');
         }
         x += col.width;
       });
     }
-    const note = !last ? 'Dalsze pozycje na kolejnej stronie →' : config.final_note || (showSummary ? 'Koniec kalkulacji · podsumowanie obejmuje wszystkie strony.' : 'Wartość wybranego wariantu znajduje się w porównaniu pakietów.');
+    const note = !last ? t('Dalsze pozycje na kolejnej stronie →') : config.final_note || (showSummary ? t('Koniec kalkulacji · podsumowanie obejmuje wszystkie strony.') : t('Wartość wybranego wariantu znajduje się w porównaniu pakietów.'));
     drawCell(page, note, left - 5, sheet.bottom - 20, tableWidth - 90, 8, regular, summaryColor);
-    drawCell(page, `Kalkulacja ${sheetIndex + 1} / ${sheets.length}`, left + tableWidth - 95, sheet.bottom - 20, 100, 8, bold, summaryColor, 'right');
+    drawCell(page, `${english ? 'Quotation' : 'Kalkulacja'} ${sheetIndex + 1} / ${sheets.length}`, left + tableWidth - 95, sheet.bottom - 20, 100, 8, bold, summaryColor, 'right');
   });
 }

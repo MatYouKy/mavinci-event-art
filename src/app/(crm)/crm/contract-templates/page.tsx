@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import Dialog from '@mui/material/Dialog';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/browser';
 import {
@@ -15,6 +16,7 @@ import {
   Loader2,
   CheckCircle2,
   XCircle,
+  X,
 } from 'lucide-react';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -35,6 +37,31 @@ export default function ContractTemplatesPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
   const [printingDraftId, setPrintingDraftId] = useState<string | null>(null);
+  const [confirmation, setConfirmation] = useState<{ action: 'delete' | 'duplicate'; template: IContractTemplate } | null>(null);
+  const [confirming, setConfirming] = useState(false);
+  const confirmingRef = useRef(false);
+
+  const closeConfirmation = () => {
+    if (!confirmingRef.current) setConfirmation(null);
+  };
+
+  const confirmTemplateAction = async () => {
+    if (!confirmation || !canManage || confirmingRef.current) return;
+    confirmingRef.current = true;
+    setConfirming(true);
+    try {
+      const succeeded = confirmation.action === 'delete'
+        ? await handleDelete(confirmation.template.id)
+        : await handleDuplicate(confirmation.template);
+      if (succeeded) {
+        setConfirmation(null);
+        await fetchTemplates();
+      }
+    } finally {
+      confirmingRef.current = false;
+      setConfirming(false);
+    }
+  };
 
   useEffect(() => {
     fetchTemplates();
@@ -78,16 +105,15 @@ export default function ContractTemplatesPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Czy na pewno chcesz usunąć ten szablon?')) return;
-
     try {
       const { error } = await supabase.from('contract_templates').delete().eq('id', id);
 
       if (error) throw error;
       showSnackbar('Szablon usunięty', 'success');
-      fetchTemplates();
+      return true;
     } catch (err: any) {
       showSnackbar(err.message || 'Błąd podczas usuwania szablonu', 'error');
+      return false;
     }
   };
 
@@ -107,8 +133,6 @@ export default function ContractTemplatesPage() {
   };
 
   const handleDuplicate = async (template: IContractTemplate) => {
-    if (!confirm(`Czy na pewno chcesz zduplikować szablon "${template.name}"?`)) return;
-
     try {
       const { data, error } = await supabase
         .from('contract_templates')
@@ -128,10 +152,12 @@ export default function ContractTemplatesPage() {
 
       if (data && data[0]) {
         showSnackbar('Szablon zduplikowany pomyślnie', 'success');
-        fetchTemplates();
+        return true;
       }
+      throw new Error('Nie udało się utworzyć kopii szablonu.');
     } catch (err: any) {
       showSnackbar(err.message || 'Błąd podczas duplikowania szablonu', 'error');
+      return false;
     }
   };
 
@@ -309,13 +335,13 @@ export default function ContractTemplatesPage() {
                   show: canManage,
                   label: 'Duplikuj',
                   icon: <Copy className="h-5 w-5" />,
-                  onClick: () => handleDuplicate(template),
+                  onClick: () => setConfirmation({ action: 'duplicate', template }),
                 },
                 {
                   show: canManage,
                   label: 'Usuń',
                   icon: <Trash2 className="h-5 w-5" />,
-                  onClick: () => handleDelete(template.id),
+                  onClick: () => setConfirmation({ action: 'delete', template }),
                   variant: 'danger',
                 },
               ];
@@ -421,6 +447,40 @@ export default function ContractTemplatesPage() {
         )}
       </div>
   
+      <Dialog
+        open={canManage && Boolean(confirmation)}
+        onClose={closeConfirmation}
+        fullWidth
+        maxWidth="sm"
+        aria-labelledby="template-confirmation-title"
+        aria-describedby="template-confirmation-description"
+        PaperProps={{ role: 'alertdialog', sx: { backgroundColor: '#210811', color: '#e5e4e2', borderRadius: '16px', backgroundImage: 'none' } }}
+      >
+        <div className="space-y-5 p-5 sm:p-6" aria-busy={confirming}>
+          <div className="flex items-center justify-between gap-4">
+            <h2 id="template-confirmation-title" className="text-lg font-medium uppercase">
+              {confirmation?.action === 'delete' ? 'Usuń szablon umowy' : 'Duplikuj szablon umowy'}
+            </h2>
+            <button type="button" onClick={closeConfirmation} disabled={confirming} aria-label="Zamknij" className="rounded-lg border-0 p-2 text-white/60 hover:bg-white/5 disabled:opacity-40">
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+          <div id="template-confirmation-description" className="space-y-3 text-sm leading-6 text-white/70">
+            <p>Szablon: <strong className="break-words text-[#d3bb73]">{confirmation?.template.name}</strong></p>
+            <p>{confirmation?.action === 'delete'
+              ? 'Czy na pewno chcesz usunąć ten szablon? Tej operacji nie można cofnąć.'
+              : 'Utworzymy osobną kopię szablonu z jego treścią i ustawieniami stron. Kopia będzie nieaktywna, aby można było ją edytować przed użyciem.'}</p>
+          </div>
+          <div className="flex flex-wrap justify-end gap-3">
+            <button type="button" autoFocus onClick={closeConfirmation} disabled={confirming} className="min-h-11 rounded-lg border-0 bg-white/5 px-4 py-2.5 text-sm hover:bg-white/10 disabled:opacity-40">Anuluj</button>
+            <button type="button" onClick={confirmTemplateAction} disabled={confirming || !confirmation} className={`inline-flex min-h-11 items-center gap-2 rounded-lg border-0 px-4 py-2.5 text-sm font-medium disabled:opacity-40 ${confirmation?.action === 'delete' ? 'bg-red-400/10 text-red-200 hover:bg-red-400/15' : 'bg-[#d3bb73] text-[#210811] hover:bg-[#e7cf86]'}`}>
+              {confirming && <Loader2 className="h-4 w-4 animate-spin" />}
+              {confirming ? 'Zapisywanie…' : confirmation?.action === 'delete' ? 'Usuń szablon' : 'Utwórz kopię'}
+            </button>
+          </div>
+        </div>
+      </Dialog>
+
       {canManage && showCreateModal && (
         <CreateTemplateModal
           isOpen={showCreateModal}

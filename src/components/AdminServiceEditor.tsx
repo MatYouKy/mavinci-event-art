@@ -10,6 +10,7 @@ import { ServiceGalleryEditor } from './ServiceGalleryEditor';
 import { uploadOptimizedImage } from '@/lib/storage';
 import { IUploadImage } from '@/types/image';
 import { slugify } from '@/lib/slugify';
+import { servicePath } from '@/lib/SEO/serviceUrls';
 import { IconGridSelector } from './IconGridSelector';
 import Image from 'next/image';
 
@@ -118,9 +119,11 @@ export function AdminServiceEditor({ serviceId, onClose, onSaved }: AdminService
   const handleSave = async () => {
     setSaving(true);
     try {
-      const newSlug = slugify(name);
+      // Preserve existing addresses when changing a title or description.
+      const newSlug = originalSlug || slugify(name);
+      if (!newSlug) throw new Error('Nazwa musi zawierać litery lub cyfry.');
 
-      const { error } = await supabase
+      const { data: saved, error } = await supabase
         .from('conferences_service_items')
         .update({
           name,
@@ -140,15 +143,15 @@ export function AdminServiceEditor({ serviceId, onClose, onSaved }: AdminService
           seo_keywords: seoKeywords,
           updated_at: new Date().toISOString(),
         })
-        .eq('id', serviceId);
+        .eq('id', serviceId).select('id,slug').single();
 
-      if (error) throw error;
+      if (error || !saved) throw error || new Error('Nie udało się zapisać usługi.');
 
       showSnackbar('Usługa zaktualizowana pomyślnie', 'success');
       onClose();
 
-      if (newSlug !== originalSlug) {
-        router.push(`/uslugi/${newSlug}`);
+      if (saved.slug !== originalSlug) {
+        router.push(servicePath(saved));
       } else {
         onSaved();
       }

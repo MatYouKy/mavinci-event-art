@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { slugify } from '@/lib/slugify';
 import { supabase } from '@/lib/supabase/browser';
 import { X, Save, Plus } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -24,21 +25,6 @@ export function AdminAddServiceModal({
   const [description, setDescription] = useState('');
   const [isPremium, setIsPremium] = useState(false);
 
-  const generateSlug = (text: string) => {
-    return text
-      .toLowerCase()
-      .replace(/[ąĄ]/g, 'a')
-      .replace(/[ćĆ]/g, 'c')
-      .replace(/[ęĘ]/g, 'e')
-      .replace(/[łŁ]/g, 'l')
-      .replace(/[ńŃ]/g, 'n')
-      .replace(/[óÓ]/g, 'o')
-      .replace(/[śŚ]/g, 's')
-      .replace(/[źŹżŻ]/g, 'z')
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '');
-  };
-
   const handleSave = async () => {
     if (!name.trim()) {
       showSnackbar('Nazwa usługi jest wymagana', 'error');
@@ -47,7 +33,8 @@ export function AdminAddServiceModal({
 
     setSaving(true);
     try {
-      const slug = generateSlug(name);
+      const slug = slugify(name);
+      if (!slug) throw new Error('Nazwa musi zawierać litery lub cyfry.');
 
       const { error: insertError } = await supabase.from('conferences_service_items').insert({
         category_id: categoryId,

@@ -1,5 +1,7 @@
 'use client';
 
+import type { GUSCompanyData } from '@/lib/gus';
+import SearchCombobox from '@/components/crm/SearchCombobox';
 import { useState } from 'react';
 import { UserCircle, Plus, Trash2, Check, Shield, ExternalLink } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
@@ -27,6 +29,7 @@ interface DecisionMaker {
 
 interface Props {
   organizationId: string;
+  registryPeople?: GUSCompanyData['representatives'];
   primaryContact: Contact | null;
   legalRepresentative: Contact | null;
   legalRepresentativeTitle: string | null;
@@ -34,6 +37,8 @@ interface Props {
   decisionMakers: DecisionMaker[];
   availableContacts: Contact[];
   editMode: boolean;
+  onStartEdit?: () => void;
+  onOpenContacts?: () => void;
   onUpdate: () => void;
   onEditedDataChange: (field: string, value: any) => void;
   editedPrimaryContactId: string | null;
@@ -57,6 +62,7 @@ const REPRESENTATION_TYPE_LABELS: Record<RepresentationType, string> = {
 
 export default function OrganizationRepresentatives({
   organizationId,
+  registryPeople = [],
   primaryContact,
   legalRepresentative,
   legalRepresentativeTitle,
@@ -64,6 +70,8 @@ export default function OrganizationRepresentatives({
   decisionMakers,
   availableContacts,
   editMode,
+  onStartEdit,
+  onOpenContacts,
   onUpdate,
   onEditedDataChange,
   editedPrimaryContactId,
@@ -117,6 +125,16 @@ export default function OrganizationRepresentatives({
           : registryProfile === 'institution'
             ? 'Wskaż dyrektora, kierownika lub pełnomocnika oraz dokument, statut albo przepis stanowiący podstawę umocowania.'
             : 'Wskaż osobę uprawnioną i rejestr, statut, uchwałę lub pełnomocnictwo stanowiące podstawę umocowania.';
+
+  const getContactTitle = (contact: Contact) => {
+    if (contact.id === primaryRepresentativeId && legalRepresentativeTitle?.trim()) return legalRepresentativeTitle;
+    if (contact.position?.trim()) return contact.position;
+    const normalize = (name: string) => name.trim().replace(/\s+/g, ' ').toLocaleLowerCase('pl-PL');
+    const name = normalize(contact.full_name || [contact.first_name, contact.last_name].filter(Boolean).join(' '));
+    const sameNameContacts = availableContacts.filter(person => normalize(person.full_name || [person.first_name, person.last_name].filter(Boolean).join(' ')) === name);
+    const matches = registryPeople.filter(person => normalize(person.fullName) === name);
+    return name && sameNameContacts.length === 1 && matches.length === 1 ? matches[0].title : '';
+  };
 
   const handleAddDecisionMaker = async () => {
     if (!newDM.contact_id) return;
@@ -493,7 +511,12 @@ export default function OrganizationRepresentatives({
           {needsJointSigners && signerCount < 2 && (
             <div className="mt-3 rounded border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">
               Reprezentacja łączna wymaga wskazania co najmniej dwóch osób uprawnionych do
-              podpisu. Dodaj je poniżej i zaznacz „Uprawniony do podpisu / współreprezentacji”.
+              podpisu zgodnie z dokładną zasadą reprezentacji. Wskazano: {signerCount}.
+              <div className="mt-2 flex flex-wrap gap-2">
+                {editMode ? <button type="button" onClick={() => { setNewDM({ contact_id: '', title: '', can_sign_contracts: true }); setShowAddModal(true); }} className="rounded-lg bg-white/10 px-3 py-2">Dodaj osobę do podpisu</button>
+                  : onStartEdit && <button type="button" onClick={onStartEdit} className="rounded-lg bg-white/10 px-3 py-2">Edytuj reprezentantów</button>}
+                {onOpenContacts && <button type="button" onClick={onOpenContacts} className="rounded-lg bg-white/10 px-3 py-2">Kontakty organizacji</button>}
+              </div>
             </div>
           )}
         </div>
@@ -575,25 +598,14 @@ export default function OrganizationRepresentatives({
             <div className="space-y-4">
               <div>
                 <label className="mb-1 block text-sm text-gray-300">Osoba</label>
-                <select
-                  value={newDM.contact_id}
-                  onChange={(e) => setNewDM({ ...newDM, contact_id: e.target.value })}
-                  disabled={availableDecisionMakerContacts.length === 0}
-                  className="w-full rounded border border-gray-600 bg-gray-800 px-3 py-2 text-white disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <option value="">
-                    {availableDecisionMakerContacts.length === 0
-                      ? availableContacts.length === 0
-                        ? '-- Brak osób kontaktowych (dodaj w zakładce Kontakty) --'
-                        : '-- Wszystkie osoby zostały już dodane --'
-                      : '-- Wybierz --'}
-                  </option>
-                  {availableDecisionMakerContacts.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.full_name} {c.position ? `(${c.position})` : ''}
-                    </option>
-                  ))}
-                </select>
+                <SearchCombobox value={newDM.contact_id} ariaLabel="Osoba uprawniona do podpisu"
+                  placeholder="Wyszukaj osobę…"
+                  options={availableDecisionMakerContacts.map(contact => ({ id: contact.id, label: contact.full_name, description: [getContactTitle(contact), contact.email].filter(Boolean).join(' · ') }))}
+                  onChange={id => {
+                    const contact = availableDecisionMakerContacts.find(person => person.id === id);
+                    setNewDM(prev => ({ ...prev, contact_id: id, title: contact ? getContactTitle(contact) : '' }));
+                  }}
+                />
                 {availableDecisionMakerContacts.length === 0 && (
                   <div className="mt-2 text-xs text-amber-400">
                     {availableContacts.length === 0

@@ -57,3 +57,9 @@ verify_jwt = true
 
 [functions.generate-subcontractor-guidelines]
 verify_jwt = true
+
+[functions.translate-product]
+verify_jwt = true
+
+[functions.translate-offer]
+verify_jwt = true

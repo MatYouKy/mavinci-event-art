@@ -385,8 +385,8 @@ export default function EditEventClientModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33]">
-        <div className="border-b border-[#d3bb73]/10 p-6">
+      <div className="flex h-[min(720px,90dvh)] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33]">
+        <div className="shrink-0 border-b border-[#d3bb73]/10 p-6">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-2xl font-light text-[#e5e4e2]">Edytuj klienta</h2>
             <button
@@ -424,7 +424,7 @@ export default function EditEventClientModal({
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-6">
           {activeTab === 'individual' ? (
             <div className="space-y-4">
               <div>
@@ -444,6 +444,7 @@ export default function EditEventClientModal({
                   }))}
                   placeholder="Szukaj klienta po nazwisku, e-mailu lub telefonie…"
                   ariaLabel="Osoba kontaktowa / Klient indywidualny"
+                  resultsClassName="!max-h-[min(16rem,max(6rem,calc(90dvh-340px)))]"
                   emptyLabel="Nie znaleziono klientów"
                   disabled={loading}
                 />
@@ -523,6 +524,7 @@ export default function EditEventClientModal({
                   }))}
                   placeholder="Szukaj firmy po nazwie lub aliasie…"
                   ariaLabel="Organizacja (Firma)"
+                  resultsClassName="!max-h-[min(16rem,max(6rem,calc(90dvh-340px)))]"
                   emptyLabel="Nie znaleziono firm"
                   disabled={loading}
                 />

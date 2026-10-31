@@ -8,12 +8,13 @@ interface PageLayoutProps {
   children: React.ReactNode;
   pageSlug: string;
   customSchema?: any;
+  breadcrumbLabels?: Record<string, string>;
   cookieStore?: ReturnType<typeof cookies>;
 }
 
-export default async function PageLayout({ children, pageSlug, customSchema, cookieStore }: PageLayoutProps) {
+export default async function PageLayout({ children, pageSlug, customSchema, cookieStore, breadcrumbLabels }: PageLayoutProps) {
   const data = customSchema ?? await buildSchemaJsonLdForSlug(pageSlug, cookieStore ?? cookies());
   const schema = normalizePageSchema(data, pageSlug);
-  const breadcrumb = pageSlug !== 'home' ? buildBreadcrumbList(`/${pageSlug}`) : null;
+  const breadcrumb = pageSlug !== 'home' ? buildBreadcrumbList(`/${pageSlug}`, breadcrumbLabels) : null;
   return <>{schema && <JsonLd data={schema} />}{breadcrumb && <JsonLd data={breadcrumb} />}{children}</>;
 }

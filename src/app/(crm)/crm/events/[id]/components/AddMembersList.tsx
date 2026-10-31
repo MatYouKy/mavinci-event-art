@@ -267,6 +267,16 @@ export function TeamMembersList({
             const employeeId = item.employee_id || item.employee?.id;
             const isLeader = leadership?.realization?.manager_id === employeeId;
             const isExpanded = expandedId === item.id;
+            const normalizeRoleLabel = (label: string) => label.trim().replace(/\s+/g, ' ').toLocaleLowerCase('pl-PL');
+            const responsibilityRoles = (item.responsibility_roles || []).filter(
+              (label: string, index: number, labels: string[]) => label.trim() && labels.findIndex(
+                candidate => normalizeRoleLabel(candidate) === normalizeRoleLabel(label),
+              ) === index,
+            );
+            const roleLabel = item.role ? systemLabel(item.role, 'role', { preserveCustom: true }) : '';
+            const roleAlreadyShown = responsibilityRoles.some(
+              (label: string) => normalizeRoleLabel(label) === normalizeRoleLabel(roleLabel),
+            );
             {!item.employee && <div>Brak danych pracownika (RLS / relacja)</div>}
             return item.employee && (
               <div
@@ -292,9 +302,9 @@ export function TeamMembersList({
                     <h3 className="font-medium text-[#e5e4e2]">
                       {getEmployeeLabel(item.employee)}
                     </h3>
-                    {item.responsibility_roles?.length > 0 && <p className="text-sm text-[#d3bb73]">{item.responsibility_roles.join(' · ')}</p>}
-                    {item.role && !isEditing && (
-                      <p className="text-sm text-[#d3bb73]">{systemLabel(item.role, 'role', { preserveCustom: true })}</p>
+                    {responsibilityRoles.length > 0 && <p className="text-sm text-[#d3bb73]">{responsibilityRoles.join(' · ')}</p>}
+                    {roleLabel && !roleAlreadyShown && !isEditing && (
+                      <p className="text-sm text-[#d3bb73]">{roleLabel}</p>
                     )}
                     <div className="mt-1 flex flex-wrap items-center gap-2">
                       {getStatusBadge(item.status || 'pending')}

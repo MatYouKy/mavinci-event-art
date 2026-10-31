@@ -1,15 +1,16 @@
 type FAQSectionProps = {
   faq: { id: string; question: string; answer: string }[];
+  title?: string;
 };
 
 /** Answers are in the initial HTML and remain usable without JavaScript. */
-export function FAQSection({ faq }: FAQSectionProps) {
+export function FAQSection({ faq, title = 'Pytania o obsługę konferencji' }: FAQSectionProps) {
   if (!faq.length) return null;
   return (
     <section className="px-5 py-12 sm:px-6 md:py-16" aria-labelledby="conference-faq-heading">
       <div className="mx-auto max-w-4xl">
         <h2 id="conference-faq-heading" className="mb-8 text-2xl font-light uppercase text-[#e5e4e2] sm:text-3xl">
-          Pytania o obsługę konferencji
+          {title}
         </h2>
         <div className="space-y-3">
           {faq.map(item => (

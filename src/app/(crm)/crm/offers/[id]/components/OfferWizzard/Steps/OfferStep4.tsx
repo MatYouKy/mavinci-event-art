@@ -8,6 +8,7 @@ export interface CustomItem {
   name: string;
   description: string;
   quantity: number;
+  days?: number;
   unit_price: number;
 }
 
@@ -104,6 +105,7 @@ export default function OfferStep4({
       name: editedItem.name.trim() || 'Pozycja oferty',
       description: editedItem.description?.trim() || '',
       quantity,
+      days: Math.max(1, Math.min(3650, Math.trunc(editedItem.days || 1))),
       unit_price: unitPrice,
     });
 
@@ -144,6 +146,7 @@ export default function OfferStep4({
         <div className="rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] p-4">
           <h4 className="mb-3 text-sm font-medium text-[#e5e4e2]">Nowa pozycja</h4>
           <div className="grid grid-cols-2 gap-3">
+            <label className="text-sm text-[#e5e4e2]">Liczba dni<input type="number" min="1" max="3650" step="1" value={customItem.days ?? 1} onChange={e => setCustomItem({ ...customItem, days: Number(e.target.value) })} className="block w-full rounded-lg bg-black/15 px-3 py-2" /></label>
             <input
               type="text"
               placeholder="Nazwa"
@@ -205,7 +208,7 @@ export default function OfferStep4({
             const isEditing = editingItemId === item.id;
             const editable = isEditing && editedItem ? editedItem : item;
 
-            const netto = editable.quantity * editable.unit_price;
+            const netto = editable.quantity * (editable.days ?? 1) * editable.unit_price;
             const vatRate = 23;
             const vatValue = netto * (vatRate / 100);
             const brutto = netto + vatValue;
@@ -243,6 +246,7 @@ export default function OfferStep4({
                           className="rounded-lg border border-[#d3bb73]/20 bg-[#0f1117] px-3 py-2 text-[#e5e4e2]"
                         />
 
+                        <label className="text-sm text-[#e5e4e2]">Liczba dni<input type="number" min="1" max="3650" step="1" value={editedItem.days ?? 1} onChange={e => setEditedItem({ ...editedItem, days: Number(e.target.value) })} className="block w-full rounded-lg bg-black/15 px-3 py-2" /></label>
                         <input
                           type="number"
                           min={0}
@@ -277,7 +281,7 @@ export default function OfferStep4({
 
                         <div className="mt-2 text-sm text-[#e5e4e2]/80">
                           <div>
-                            Ilość: {item.quantity} × {item.unit_price.toFixed(2)} zł netto
+                            Ilość: {item.quantity} × {item.days ?? 1} dni × {item.unit_price.toFixed(2)} zł netto
                           </div>
                           <div className="font-medium text-[#d3bb73]">
                             Netto: {item.subtotal.toFixed(2)} zł

@@ -17,6 +17,7 @@ import {
 import React, { FC, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import EditEventClientModal from '@/components/crm/EditEventClientModal';
+import LocationSelector from '@/components/crm/LocationSelector';
 
 import { logChange } from '../../../helpers/logChange';
 import { EventDestailsDescription } from './EventDetailsDescription';
@@ -77,6 +78,39 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
 
   const [showEditClientModal, setShowEditClientModal] = useState(false);
   const [editingRooms, setEditingRooms] = useState(false);
+  const [editingLocation, setEditingLocation] = useState(false);
+  const [locationDraft, setLocationDraft] = useState({ label: '', id: null as string | null });
+  const [savingLocation, setSavingLocation] = useState(false);
+  const [locationError, setLocationError] = useState('');
+  const locationSaveRef = React.useRef(false);
+  useEffect(() => { setEditingLocation(false); setLocationError(''); }, [initialEvent.id, initialEvent.location_id]);
+
+  const saveLocation = async () => {
+    if (!canEditEventDetails || locationSaveRef.current) return;
+    if (!locationDraft.id) { setLocationError('Wybierz lokalizację z listy.'); return; }
+    locationSaveRef.current = true;
+    setSavingLocation(true);
+    setLocationError('');
+    try {
+      const changes: Partial<IEvent> = {
+        location_id: locationDraft.id,
+        location: locationDraft.label as unknown as IEvent['location'],
+        ...(locationDraft.id !== event.location_id ? { location_room_ids: [], stage_room_id: null } : {}),
+      };
+      if (!(await updateEvent(changes))) {
+        setLocationError('Nie udało się zapisać lokalizacji.');
+        return;
+      }
+      setEvent(previous => ({ ...previous, ...changes }));
+      setEditingLocation(false);
+      setEditingRooms(false);
+      await refetch(true);
+      router.refresh();
+    } finally {
+      locationSaveRef.current = false;
+      setSavingLocation(false);
+    }
+  };
   const [editingDates, setEditingDates] = useState(false);
   const [dateDraft, setDateDraft] = useState({ start: '', end: '' });
   const [dateError, setDateError] = useState('');
@@ -321,12 +355,29 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
             <div className="flex-1">
               <div className="flex items-center gap-2">
                 <p className="text-sm text-[#e5e4e2]/60">Lokalizacja</p>
-                {canEditEventDetails && event.location_id && !editingRooms && (
-                  <button type="button" onClick={() => setEditingRooms(true)} className="inline-flex items-center gap-1 text-xs text-[#d3bb73] hover:underline" aria-label="Edytuj sale realizacji">
+                {canEditEventDetails && !editingLocation && (
+                  <button type="button" onClick={() => {
+                    setLocationDraft({ label: location?.name || '', id: event.location_id || null });
+                    setLocationError('');
+                    setEditingLocation(true);
+                  }} className="inline-flex items-center gap-1 text-xs text-[#d3bb73] hover:underline" aria-label="Edytuj lokalizację wydarzenia">
                     <Edit className="h-3 w-3" /> Edytuj
                   </button>
                 )}
               </div>
+              {editingLocation && canEditEventDetails && (
+                <fieldset disabled={savingLocation} className="my-3 space-y-3 rounded-lg bg-white/5 p-3">
+                  <LocationSelector value={locationDraft.label} onChange={(label, selectedLocation) => {
+                    setLocationDraft({ label, id: selectedLocation?.id || null });
+                    setLocationError('');
+                  }} />
+                  {locationError && <p role="alert" className="text-sm text-red-300">{locationError}</p>}
+                  <div className="flex items-center gap-3">
+                    <button type="button" onClick={saveLocation} className="rounded-lg bg-[#d3bb73] px-3 py-2 text-sm text-[#250914]">{savingLocation ? 'Zapisywanie…' : 'Zapisz lokalizację'}</button>
+                    <button type="button" onClick={() => setEditingLocation(false)} className="text-sm text-[#e5e4e2]/70">Anuluj</button>
+                  </div>
+                </fieldset>
+              )}
               {location?.name ? (
                 <div className="group relative inline-block">
                   <button
@@ -367,6 +418,11 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
                 </div>
               ) : (
                 <p className="text-[#e5e4e2]">Brak lokalizacji</p>
+              )}
+              {canEditEventDetails && event.location_id && !editingRooms && !editingLocation && (
+                <button type="button" onClick={() => setEditingRooms(true)} className="ml-2 inline-flex items-center gap-1 text-xs text-[#d3bb73] hover:underline">
+                  <Edit className="h-3 w-3" /> Edytuj sale
+                </button>
               )}
               <EventRooms
                 key={`${event.id}:${event.location_id}:${event.location_room_ids?.join(',')}:${event.stage_room_id}`}

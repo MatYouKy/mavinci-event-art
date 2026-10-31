@@ -1,4 +1,5 @@
 'use client';
+import type { CalculationTransportEstimate } from './CalculationVehicleTravel';
 
 import { duplicateCalculation } from '@/lib/CRM/calculations/calculationActions';
 
@@ -45,6 +46,7 @@ interface CalculationRow {
 }
 
 export interface CalcItem {
+  transport_estimate?: CalculationTransportEstimate | null;
   id?: string;
   calculation_id?: string;
   category: Category;

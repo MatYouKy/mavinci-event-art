@@ -8,11 +8,14 @@ import type { ILocation } from '@/app/(crm)/crm/locations/type';
 import { CalendarDays, Loader2, Plus } from 'lucide-react';
 
 export type InquiryContextFields = {
+  guest_count: string;
   location_text: string;
   location_id: string;
   event_start_time: string;
   event_end_time: string;
   event_end_next_day: boolean;
+  event_single_day: boolean;
+  event_end_date: string;
   termin: string;
   scope: string;
   preliminary_budget_min: string;
@@ -42,8 +45,9 @@ function amount(value: string): string | null {
   return normalized;
 }
 
-export default function InquiryContextEditor({ initial, disabled, onSave, onCancel }: {
+export default function InquiryContextEditor({ initial, disabled, onSave, onCancel, focusGuestCount = false }: {
   initial: InquiryContextFields;
+  focusGuestCount?: boolean;
   disabled: boolean;
   onSave: (context: InquiryContextFields) => Promise<boolean>;
   onCancel: () => void;
@@ -61,10 +65,23 @@ export default function InquiryContextEditor({ initial, disabled, onSave, onCanc
     setShowLocations(false);
   };
   const [date, setDate] = useState(() => dateText(initial.termin));
+  const [endDate, setEndDate] = useState(() => {
+    if (initial.event_end_date) return dateText(initial.event_end_date);
+    if (initial.event_end_next_day && initial.termin) {
+      const base = parseDate(dateText(initial.termin));
+      if (base) {
+        const next = new Date(`${base}T12:00:00`);
+        next.setDate(next.getDate() + 1);
+        return dateText(next.toISOString());
+      }
+    }
+    return '';
+  });
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const lock = useRef(false);
   const parsedDate = parseDate(date);
+  const parsedEndDate = parseDate(endDate);
   const input = 'mt-1 w-full rounded-lg border border-white/10 bg-black/15 px-3 py-2 text-sm text-white/85 focus:outline-none focus:border-white/20';
   const save = async () => {
     if (disabled || lock.current) return;
@@ -73,9 +90,13 @@ export default function InquiryContextEditor({ initial, disabled, onSave, onCanc
     if ([draft.event_start_time, draft.event_end_time].some(time => time && !timePattern.test(time))) {
       setError('Podaj godziny w formacie GG:MM.'); return;
     }
-    if (draft.event_start_time && draft.event_end_time && !draft.event_end_next_day && draft.event_end_time <= draft.event_start_time) {
-      setError('Godzina zakończenia musi być późniejsza od rozpoczęcia. Dla wydarzenia przez północ zaznacz następny dzień.'); return;
+    if (!draft.event_single_day && (!parsedDate || !parsedEndDate || parsedEndDate <= parsedDate || !draft.event_end_time)) {
+      setError('Podaj datę zakończenia późniejszą od daty rozpoczęcia oraz godzinę zakończenia.'); return;
     }
+    if (draft.event_single_day && draft.event_start_time && draft.event_end_time && draft.event_end_time <= draft.event_start_time) {
+      setError('Godzina zakończenia musi być późniejsza od rozpoczęcia. Jeśli wydarzenie kończy się innego dnia, odznacz „Wydarzenie jednodniowe”.'); return;
+    }
+    if (draft.guest_count !== '' && (!Number.isInteger(Number(draft.guest_count)) || Number(draft.guest_count) < 1 || Number(draft.guest_count) > 100000)) { setError('Podaj całkowitą liczbę osób od 1 do 100 000 lub zostaw pole puste.'); return; }
     const matchedLocation = !draft.location_id && !locationError && exactMatches.length === 1 ? exactMatches[0] : null;
     const min = amount(draft.preliminary_budget_min);
     const max = amount(draft.preliminary_budget_max);
@@ -86,7 +107,7 @@ export default function InquiryContextEditor({ initial, disabled, onSave, onCanc
     try {
       // Preserve an existing event time when only other context fields were edited.
       const termin = date.trim() === dateText(initial.termin) ? initial.termin : parsedDate;
-      const saved = await onSave({ ...draft, location_id: draft.location_id || matchedLocation?.id || '', location_text: matchedLocation ? locationLabel(matchedLocation) : draft.location_text.trim(), event_end_next_day: Boolean(draft.event_end_time && draft.event_end_next_day), scope: draft.scope.trim(), termin,
+      const saved = await onSave({ ...draft, location_id: draft.location_id || matchedLocation?.id || '', location_text: matchedLocation ? locationLabel(matchedLocation) : draft.location_text.trim(), event_end_next_day: false, event_end_date: draft.event_single_day ? '' : parsedEndDate || '', scope: draft.scope.trim(), termin,
         preliminary_budget_min: min, preliminary_budget_max: max });
       if (saved) onCancel();
     } catch { setError('Nie udało się zapisać kontekstu. Spróbuj ponownie.'); }
@@ -110,24 +131,40 @@ export default function InquiryContextEditor({ initial, disabled, onSave, onCanc
         <p className="mt-1 text-xs text-white/45">{draft.location_id ? 'Powiązano z lokalizacją z bazy.' : !locationError && exactMatches.length === 1 ? 'Przy zapisie powiążemy z pasującą lokalizacją.' : exactMatches.length > 1 ? 'Kilka miejsc ma tę nazwę. Wybierz właściwą lokalizację lub zapisz sam tekst.' : 'Możesz również zapisać sam tekst bez dodawania do bazy.'}</p>
         <button type="button" onClick={() => { setShowLocations(false); setAddingLocation(true); }} className="mt-2 inline-flex items-center gap-1 text-xs text-[#d3bb73] hover:underline"><Plus className="h-3.5 w-3.5" />Dodaj lokalizację</button>
       </div>
-      <div>
-        <label htmlFor="inquiry-context-date" className="text-xs text-white/60">Termin</label>
-        <div className="flex items-center gap-2">
-          <input id="inquiry-context-date" value={date} onChange={e => setDate(e.target.value)} placeholder="DD.MM.RRRR" inputMode="numeric" maxLength={10} className={input} />
-          <label className="relative mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/5 text-[#d3bb73]" title="Wybierz termin z kalendarza">
-            <CalendarDays className="h-4 w-4" aria-hidden="true" />
-            <input aria-label="Wybierz termin z kalendarza" type="date" onClick={e => e.currentTarget.showPicker?.()} value={parsedDate || ''} onChange={e => setDate(dateText(e.target.value))} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
-          </label>
+      <div className="space-y-3">
+        <label className="flex items-center gap-2 text-xs text-white/60"><input type="checkbox" checked={draft.event_single_day} onChange={event => setDraft({ ...draft, event_single_day: event.target.checked })} />Wydarzenie jednodniowe</label>
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="min-w-[150px] flex-1">
+            <label htmlFor="inquiry-context-date" className="text-xs text-white/60">{draft.event_single_day ? 'Data wydarzenia' : 'Data rozpoczęcia'}</label>
+            <div className="flex items-center gap-2">
+              <input id="inquiry-context-date" value={date} onChange={e => setDate(e.target.value)} placeholder="DD.MM.RRRR" inputMode="numeric" maxLength={10} className={`${input} min-w-0`} />
+              <label className="relative mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/5 text-[#d3bb73]" title="Wybierz termin z kalendarza">
+                <CalendarDays className="h-4 w-4" aria-hidden="true" />
+                <input aria-label="Wybierz termin z kalendarza" type="date" onClick={e => e.currentTarget.showPicker?.()} value={parsedDate || ''} onChange={e => setDate(dateText(e.target.value))} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
+              </label>
+            </div>
+          </div>
+          <div className="w-28 text-xs text-white/60">Godzina od<input aria-label="Rozpoczęcie" type="time" step={300} value={draft.event_start_time} onChange={event => setDraft({ ...draft, event_start_time: event.target.value })} className={`${input} min-w-0`} /></div>
+          {draft.event_single_day && <div className="w-28 text-xs text-white/60">Godzina do<input aria-label="Zakończenie" type="time" step={300} value={draft.event_end_time} onChange={event => setDraft({ ...draft, event_end_time: event.target.value })} className={`${input} min-w-0`} /></div>}
         </div>
+        {!draft.event_single_day && <div className="flex flex-wrap items-end gap-2">
+          <div className="min-w-[150px] flex-1">
+            <label htmlFor="inquiry-context-end-date" className="text-xs text-white/60">Data zakończenia *</label>
+            <div className="flex items-center gap-2">
+              <input id="inquiry-context-end-date" value={endDate} onChange={e => setEndDate(e.target.value)} placeholder="DD.MM.RRRR" inputMode="numeric" maxLength={10} className={`${input} min-w-0`} />
+              <label className="relative mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/5 text-[#d3bb73]" title="Wybierz datę zakończenia">
+                <CalendarDays className="h-4 w-4" aria-hidden="true" />
+                <input aria-label="Wybierz datę zakończenia" type="date" min={parsedDate || undefined} onClick={e => e.currentTarget.showPicker?.()} value={parsedEndDate || ''} onChange={e => setEndDate(dateText(e.target.value))} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
+              </label>
+            </div>
+          </div>
+          <div className="w-28 text-xs text-white/60">Godzina do *<input aria-label="Zakończenie" type="time" step={300} value={draft.event_end_time} onChange={event => setDraft({ ...draft, event_end_time: event.target.value })} className={`${input} min-w-0`} /></div>
+        </div>}
       </div>
-      <div>
-        <p className="text-xs text-white/60">Szacowane godziny wydarzenia</p>
-        <div className="grid grid-cols-2 gap-2">
-          <label className="text-xs text-white/45">Od<input type="time" value={draft.event_start_time} onChange={event => setDraft({ ...draft, event_start_time: event.target.value })} className={input} /></label>
-          <label className="text-xs text-white/45">Do<input type="time" value={draft.event_end_time} onChange={event => setDraft({ ...draft, event_end_time: event.target.value })} className={input} /></label>
-        </div>
-        <label className="mt-2 flex items-center gap-2 text-xs text-white/60"><input type="checkbox" checked={draft.event_end_next_day} onChange={event => setDraft({ ...draft, event_end_next_day: event.target.checked })} />Zakończenie następnego dnia</label>
-      </div>
+      <label className="block text-xs text-white/60">Liczba osób — opcjonalnie
+        <input autoFocus={focusGuestCount} type="number" min={1} max={100000} step={1} value={draft.guest_count} onChange={e => setDraft({ ...draft, guest_count: e.target.value })} placeholder="Nie ustalono" className={input} />
+        <span className="mt-1 block text-xs text-white/45">Zostanie przeniesiona do nowej oferty. Zmiana zapytania nie zmienia istniejących wycen.</span>
+      </label>
       <label className="block text-xs text-white/60">Zakres
         <textarea rows={4} value={draft.scope} onChange={e => setDraft({ ...draft, scope: e.target.value })} maxLength={10000} placeholder="Jakiej obsługi potrzebuje klient?" className={input} />
       </label>

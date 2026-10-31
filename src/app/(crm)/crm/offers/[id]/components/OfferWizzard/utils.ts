@@ -1,9 +1,9 @@
 import { IOfferItem } from '../../../types';
 import { EquipmentConflictRow, SelectedAltMap } from './types';
 
-export const calcSubtotal = (qty: number, unitPrice: number, discountPercent: number) => {
+export const calcSubtotal = (qty: number, unitPrice: number, discountPercent: number, days = 1) => {
   const disc = (discountPercent || 0) / 100;
-  return qty * unitPrice * (1 - disc);
+  return qty * days * unitPrice * (1 - disc);
 };
 
 export const buildSubstitutionsForRpc = ({

@@ -1,3 +1,4 @@
+import { useRoute, useNavigation } from '@react-navigation/native';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
@@ -15,6 +16,8 @@ import { colors, spacing } from '../theme';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import PermissionGate from '../components/PermissionGate';
+import TimeEntryDiscussions from '../components/TimeEntryDiscussions';
+import OwnTimeEntries from '../components/OwnTimeEntries';
 
 interface TimeEntry {
   id: string;
@@ -30,6 +33,17 @@ interface TimeEntry {
 }
 
 function TimeTrackingContent() {
+  const route = useRoute<any>();
+  const discussionNavigation = useNavigation<any>();
+  const [discussionThreads, setDiscussionThreads] = useState<any[]>([]);
+  const renderDiscussionBadge = (entryId: string) => {
+    const thread = discussionThreads.find(t => t.time_entry_id === entryId);
+    if (!thread) return null;
+    return <TouchableOpacity onPress={() => discussionNavigation.setParams({ discussionEntryId: entryId, discussionRequestId: Date.now() })}
+      style={{ alignSelf: 'flex-start', backgroundColor: thread.resolved ? '#22c55e15' : '#f59e0b20', borderRadius: 6, padding: 7, marginTop: 6 }}>
+      <Text style={{ color: thread.resolved ? '#7bd99c' : '#fcd34d', fontSize: 12 }}>{thread.resolved ? 'Wyjaśnione' : 'Do wyjaśnienia'} · {thread.messages.length} wiadomości</Text>
+    </TouchableOpacity>;
+  };
   const { employee } = useAuth();
   const [activeEntry, setActiveEntry] = useState<TimeEntry | null>(null);
   const [todayEntries, setTodayEntries] = useState<TimeEntry[]>([]);
@@ -67,6 +81,9 @@ function TimeTrackingContent() {
         .order('start_time', { ascending: false }),
     ]);
 
+    if (activeRes.error) throw activeRes.error;
+    if (todayRes.error) throw todayRes.error;
+
     const active = activeRes.data?.[0] || null;
     if (active) {
       setActiveEntry({
@@ -93,6 +110,8 @@ function TimeTrackingContent() {
       else setIsLoading(true);
       try {
         await fetchData();
+      } catch (error: any) {
+        Alert.alert('Nie udało się pobrać czasu pracy', error?.message || 'Spróbuj odświeżyć ekran.');
       } finally {
         setIsLoading(false);
         setRefreshing(false);
@@ -201,7 +220,10 @@ function TimeTrackingContent() {
             const { error } = await supabase
               .from('time_entries')
               .update({ end_time: new Date().toISOString() })
-              .eq('id', activeEntry.id);
+              .eq('id', activeEntry.id)
+              .eq('employee_id', employee!.id)
+              .select('id')
+              .single();
 
             if (error) throw error;
 
@@ -284,6 +306,7 @@ function TimeTrackingContent() {
             <Feather name="file-text" size={14} color={colors.text.secondary} />
             <Text style={styles.activeTaskTitle}>{activeEntry.title || activeEntry.task_title}</Text>
           </View>
+          {renderDiscussionBadge(activeEntry.id)}
           {activeEntry.description && (
             <Text style={styles.activeTaskDesc}>{activeEntry.description}</Text>
           )}
@@ -384,6 +407,8 @@ function TimeTrackingContent() {
         </View>
       </View>
 
+      <TimeEntryDiscussions onThreadsChange={setDiscussionThreads} discussionEntryId={route.params?.discussionEntryId} discussionRequestId={route.params?.discussionRequestId} entries={activeEntry ? [activeEntry, ...todayEntries] : todayEntries} />
+
       {/* Today entries */}
       {todayEntries.length > 0 && (
         <View style={styles.entriesSection}>
@@ -397,6 +422,8 @@ function TimeTrackingContent() {
                 <Text style={styles.entryTitle} numberOfLines={1}>
                   {entry.title || entry.task_title || 'Bez tytułu'}
                 </Text>
+                {renderDiscussionBadge(entry.id)}
+                {!!entry.description && <Text style={styles.activeTaskDesc}>{entry.description}</Text>}
                 <View style={styles.entryMeta}>
                   <Text style={styles.entryTime}>
                     {formatTime(entry.start_time)} - {entry.end_time ? formatTime(entry.end_time) : '?'}
@@ -416,6 +443,7 @@ function TimeTrackingContent() {
         </View>
       )}
 
+      {employee?.id && <OwnTimeEntries employeeId={employee.id} refreshKey={refreshing} onSaved={() => void loadAll(true)} />}
       <View style={{ height: 40 }} />
     </ScrollView>
   );

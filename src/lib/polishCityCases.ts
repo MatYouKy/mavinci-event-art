@@ -196,7 +196,8 @@ export function getPolishCityCasesSmart(cityName: string, EXCEPTIONS: Record<str
   const key = raw.toLowerCase();
 
   // 1) wyjątki pełne (case-insensitive)
-  if (EXCEPTIONS[key]) return EXCEPTIONS[key];  
+  if (EXCEPTIONS[key]) return EXCEPTIONS[key];
+  if (key === 'opole') return { id: '', city_key: 'opole', nominative: 'Opole', genitive: 'Opola', locative: 'Opolu', locative_preposition: 'w' };
 
   const words = raw.split(/\s+/).filter(Boolean);
   if (words.length === 0) return { id: '', city_key: '', nominative: '', genitive: '', locative: '', locative_preposition: null };

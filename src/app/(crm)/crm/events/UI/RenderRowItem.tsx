@@ -86,6 +86,10 @@ export function EventEquipmentRow({
   const isCable = !!row?.cable_id || !!cable;
   const displayAsset = row?.equipment || cable;
   const displayName = row?.kit ? row.kit.name : displayAsset?.name || 'Nieznany';
+  const detailId = isCable ? (row?.cable_id || cable?.id) : (row?.equipment_id || row?.equipment?.id);
+  const detailHref = !isKit && detailId
+    ? `/crm/equipment/${isCable ? 'cables/' : ''}${detailId}`
+    : null;
   const unitLabel = isCable && cable?.stock_unit === 'meter' ? 'm' : 'szt.';
 
   const aKey = getKeyForEventRow(row);
@@ -158,9 +162,20 @@ export function EventEquipmentRow({
 
           <div className="flex min-w-0 flex-col">
             <div className="flex min-w-0 items-center gap-2">
-              <span className="truncate font-medium text-[#e5e4e2]">
-                {displayName}
-              </span>
+              {detailHref ? (
+                <a
+                  href={detailHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(event) => event.stopPropagation()}
+                  title="Otwórz szczegóły sprzętu w nowej karcie"
+                  className="truncate font-medium text-[#e5e4e2] transition-colors hover:text-[#d3bb73] hover:underline focus-visible:text-[#d3bb73] focus-visible:underline"
+                >
+                  {displayName}
+                </a>
+              ) : (
+                <span className="truncate font-medium text-[#e5e4e2]">{displayName}</span>
+              )}
 
               <span
                 className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] uppercase ${badge.cls}`}

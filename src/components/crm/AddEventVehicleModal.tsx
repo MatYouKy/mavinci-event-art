@@ -353,7 +353,7 @@ export default function AddEventVehicleModal({
         cancelled = true;
       };
     }
-    const completePeriod = Boolean(from && to);
+    const completePeriod = Boolean(from?.start_time && to?.end_time);
     if (
       completePeriod &&
       (!Number.isFinite(Date.parse(from!.start_time)) ||
@@ -422,7 +422,7 @@ export default function AddEventVehicleModal({
             : available.length
               ? completePeriod
                 ? 'Dostępni w całym terminie rezerwacji, z ważnymi wymaganymi kategoriami.'
-                : 'Najpierw ustal godziny w Timeline. Następnie wybierz kierowcę — sprawdzimy jego dostępność i uprawnienia w całym terminie.'
+                : 'Możesz przypisać kierowcę już teraz. Uprawnienia sprawdzono na dzień wydarzenia; dostępność czasową sprawdzimy po ustaleniu godzin w Timeline.'
               : completePeriod
                 ? 'Brak kierowców wolnych w tym terminie z ważnymi wymaganymi kategoriami.'
                 : 'Brak aktywnych pracowników z wymaganymi kategoriami ważnymi w dniu wydarzenia. Kategorie uzupełnisz w Kwalifikacje → Prawa jazdy.',
@@ -828,7 +828,14 @@ export default function AddEventVehicleModal({
       }
       setSaveStage('Zapisywanie przypisań do faz logistycznych…');
 
-      if (!isExternal && formData.vehicle_id) {
+      const hasReservationPeriod = Boolean(
+        availableFrom && availableUntil &&
+        Number.isFinite(Date.parse(availableFrom)) && Number.isFinite(Date.parse(availableUntil)) &&
+        Date.parse(availableUntil) > Date.parse(availableFrom),
+      );
+      // A phase assignment represents a dated booking, not just a chosen driver.
+      if (!isExternal && formData.vehicle_id && !formData.independent_schedule &&
+          hasReservationPeriod && /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(formData.phase_from_id)) {
         if (editingVehicleId) {
           const { data: phasesToClean, error: phasesError } = await supabase
             .from('event_phases')
@@ -881,7 +888,12 @@ export default function AddEventVehicleModal({
     } catch (error: any) {
       console.error('Error saving event vehicle:', error);
       if (!vehicleSaved) {
-        showSnackbar(error.message || 'Nie udało się zapisać pojazdu. Spróbuj ponownie.', 'error');
+        showSnackbar(
+          error.code === '23514' && error.message === 'Wybierz poprawny termin odbioru i zwrotu pojazdu.'
+            ? 'Baza odrzuciła przedział odbioru i zwrotu. Sama godzina w Timeline nie określa całej rezerwacji. Sprawdź, czy zastosowano migrację 20261006210000_assign_driver_before_timeline.sql.'
+            : error.message || 'Nie udało się zapisać pojazdu. Spróbuj ponownie.',
+          'error',
+        );
         savingRef.current = false;
         setLoading(false);
         onSavingChange?.(false);
@@ -1133,7 +1145,6 @@ export default function AddEventVehicleModal({
                     onChange={(id) => setFormData((previous) => ({ ...previous, driver_id: id }))}
                     disabled={
                       isExternal ||
-                      driverState === 'preview' ||
                       driverState === 'waiting' ||
                       checkingDrivers ||
                       driverState === 'error' ||
@@ -1157,18 +1168,10 @@ export default function AddEventVehicleModal({
                               : 'Wyszukaj kierowcę…'
                     }
                   />
-                  <p className="mt-1 text-xs text-[#e5e4e2]/70" role="status">
-                    {driverMessage}
-                  </p>
-                  {!isExternal && formData.vehicle_id && (
-                    <button data-crm-action="secondary"
-                      type="button"
-                      disabled={checkingDrivers || loading}
-                      onClick={() => setDriversRefresh((value) => value + 1)}
-                      className="mt-2 rounded px-2 py-1 text-xs text-[#d3bb73] hover:bg-white/5 disabled:opacity-40"
-                    >
-                      Odśwież kierowców
-                    </button>
+                  {driverState === 'error' && (
+                    <p className="mt-1 text-xs text-red-300" role="alert">
+                      {driverMessage}
+                    </p>
                   )}
                 </div>
               </div>

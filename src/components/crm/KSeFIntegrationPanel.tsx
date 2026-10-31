@@ -65,11 +65,16 @@ interface KSeFCredentials {
   last_auth_reference_number?: string | null;
   last_authenticated_at?: string | null;
   is_active: boolean;
+  auto_sync_enabled?: boolean;
+  auto_sync_last_attempt_at?: string | null;
+  auto_sync_last_success_at?: string | null;
+  auto_sync_last_error?: string | null;
   my_company?: {
     id: string;
     name: string;
     nip: string;
     is_default: boolean;
+    is_active: boolean;
   };
 }
 
@@ -344,6 +349,16 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
       c.my_company_id === selectedCompanyId ||
       (selectedCompanyId === null && c.my_company?.is_default),
   );
+  const autoSyncEnabled = selectedCredentials?.auto_sync_enabled === true
+    && selectedCredentials.my_company?.is_active === true;
+  const autoSyncLabel = autoSyncEnabled
+    ? 'Zaplanowana codziennie o 09:00 (czas polski)'
+    : 'Automatyczna synchronizacja wyłączona';
+  const formatAutoSyncDate = (value: string) => new Date(value).toLocaleString('pl-PL', {
+    timeZone: 'Europe/Warsaw',
+    dateStyle: 'short',
+    timeStyle: 'short',
+  });
 
   const currentInvoices = useMemo(() => {
     return activeTab === 'issued' ? issuedInvoices : receivedInvoices;
@@ -447,7 +462,7 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
         .select(
           `
         *,
-        my_company:my_companies(id, name, nip, is_default)
+        my_company:my_companies(id, name, nip, is_default, is_active)
       `,
         )
         .eq('is_active', true);
@@ -1164,7 +1179,7 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
             <div className="min-w-0">
               <p className="text-sm font-medium text-[#e5e4e2]">Połączenie z KSeF</p>
               <p className="mt-0.5 text-xs text-[#e5e4e2]/45">
-                Automatyczna synchronizacja codziennie o 09:30
+                {autoSyncLabel}
               </p>
             </div>
             <div className="shrink-0">
@@ -1246,8 +1261,10 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
                 <label className="mb-1 block text-xs text-[#e5e4e2]/50">Automatyzacja</label>
 
                 <div className="flex h-10 items-center gap-2 rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] px-3">
-                  <CheckCircle className="h-4 w-4 text-green-400" />
-                  <span className="text-sm text-green-400">Codziennie 09:30</span>
+                  <Calendar className="h-4 w-4 shrink-0 text-[#d3bb73]" />
+                  <span className="text-sm text-[#e5e4e2]">
+                    {autoSyncEnabled ? 'Zaplanowana: 09:00 (PL)' : 'Wyłączona'}
+                  </span>
                 </div>
               </div>
             </div>
@@ -1301,6 +1318,30 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
               </div>
             </div>
           </div>
+          {selectedCredentials && (
+            <div className="mt-3 space-y-1 border-t border-[#d3bb73]/10 pt-3 text-xs text-[#e5e4e2]/60">
+              <div className="flex flex-wrap gap-x-5 gap-y-1">
+                <span>
+                  Ostatnia próba automatyczna:{' '}
+                  {selectedCredentials.auto_sync_last_attempt_at
+                    ? formatAutoSyncDate(selectedCredentials.auto_sync_last_attempt_at)
+                    : 'brak zapisanego uruchomienia'}
+                </span>
+                <span>
+                  Ostatnia udana synchronizacja automatyczna:{' '}
+                  {selectedCredentials.auto_sync_last_success_at
+                    ? formatAutoSyncDate(selectedCredentials.auto_sync_last_success_at)
+                    : 'brak zapisanego wyniku'}
+                </span>
+              </div>
+              {selectedCredentials.auto_sync_last_error && (
+                <p className="break-words text-amber-300">
+                  Ostatnia próba nie została ukończona: {selectedCredentials.auto_sync_last_error}
+                </p>
+              )}
+              <p>Harmonogram używa czasu Europe/Warsaw. Jego włączenie nie oznacza jeszcze udanej synchronizacji.</p>
+            </div>
+          )}
         </div>
       )}
 
@@ -1986,11 +2027,16 @@ function KSeFSetupModal({
   const [nip, setNip] = useState(selectedCredentials?.nip || '');
   const [token, setToken] = useState('');
   const [isTestEnv, setIsTestEnv] = useState(selectedCredentials?.is_test_environment ?? true);
+  const [autoSyncEnabled, setAutoSyncEnabled] = useState(selectedCredentials?.auto_sync_enabled === true);
   const [myCompanyId, setMyCompanyId] = useState(selectedCredentials?.my_company_id || '');
   const [loading, setLoading] = useState(false);
   const [myCompanies, setMyCompanies] = useState<any[]>([]);
 
   const { showSnackbar } = useSnackbar();
+  const { isAdmin } = useCurrentEmployee();
+  const companyActive = selectedCredentials
+    ? selectedCredentials.my_company?.is_active === true
+    : myCompanies.some((company) => company.id === myCompanyId);
 
   useEffect(() => {
     loadMyCompanies();
@@ -2010,8 +2056,15 @@ function KSeFSetupModal({
     const normalizedToken = token.trim();
     const normalizedNip = nip.trim();
 
-    if (!normalizedNip || !normalizedToken || !myCompanyId) {
-      showSnackbar('Wszystkie pola są wymagane', 'error');
+    if (!normalizedNip || (!selectedCredentials && !normalizedToken) || !myCompanyId) {
+      showSnackbar('Wybierz firmę i podaj NIP. Nowa konfiguracja wymaga tokenu.', 'error');
+      return;
+    }
+
+    if (selectedCredentials && !normalizedToken && (
+      normalizedNip !== selectedCredentials.nip || isTestEnv !== selectedCredentials.is_test_environment
+    )) {
+      showSnackbar('Przy zmianie NIP lub środowiska podaj właściwy token', 'error');
       return;
     }
 
@@ -2021,9 +2074,16 @@ function KSeFSetupModal({
       const payload = {
         my_company_id: myCompanyId,
         nip: normalizedNip,
-        token: normalizedToken,
         is_test_environment: isTestEnv,
         is_active: true,
+        ...(isAdmin ? { auto_sync_enabled: companyActive && autoSyncEnabled } : {}),
+        ...(normalizedToken ? {
+          token: normalizedToken,
+          access_token: null,
+          access_token_valid_until: null,
+          refresh_token: null,
+          refresh_token_valid_until: null,
+        } : {}),
       };
 
       if (selectedCredentials) {
@@ -2060,10 +2120,21 @@ function KSeFSetupModal({
             <label className="mb-2 block text-sm text-[#e5e4e2]">Moja firma</label>
             <select
               value={myCompanyId}
-              onChange={(e) => setMyCompanyId(e.target.value)}
+              disabled={!!selectedCredentials}
+              onChange={(e) => {
+                setMyCompanyId(e.target.value);
+                setNip(myCompanies.find((company) => company.id === e.target.value)?.nip || '');
+                setToken('');
+                setAutoSyncEnabled(false);
+              }}
               className="w-full rounded border border-[#d3bb73]/20 bg-[#252945] px-3 py-2 text-[#e5e4e2]"
             >
               <option value="">Wybierz firmę</option>
+              {selectedCredentials && !myCompanies.some((company) => company.id === myCompanyId) && (
+                <option value={myCompanyId}>
+                  {selectedCredentials.my_company?.name || selectedCredentials.nip}
+                </option>
+              )}
               {myCompanies.map((company) => (
                 <option key={company.id} value={company.id}>
                   {company.name} ({company.nip})
@@ -2098,10 +2169,30 @@ function KSeFSetupModal({
               type="password"
               value={token}
               onChange={(e) => setToken(e.target.value)}
-              placeholder="Wprowadź token z KSeF"
+              placeholder={selectedCredentials ? 'Pozostaw puste, aby zachować zapisany token' : 'Wprowadź token z KSeF'}
               className="w-full rounded border border-[#d3bb73]/20 bg-[#252945] px-3 py-2 text-[#e5e4e2]"
             />
           </div>
+
+          {isAdmin && (
+            <label className="flex items-start gap-3 rounded-lg bg-[#d3bb73]/5 p-3">
+              <input
+                type="checkbox"
+                checked={companyActive && autoSyncEnabled}
+                disabled={!companyActive || loading}
+                onChange={(e) => setAutoSyncEnabled(e.target.checked)}
+                className="mt-0.5 h-4 w-4 accent-[#d3bb73] disabled:opacity-50"
+              />
+              <span>
+                <span className="block text-sm text-[#e5e4e2]">Synchronizuj automatycznie o 09:00</span>
+                <span className="mt-1 block text-xs text-[#e5e4e2]/60">
+                  {companyActive
+                    ? 'Codziennie, czas polski (Europe/Warsaw). Wyłączenie zachowuje historię firmy i możliwość ręcznej synchronizacji.'
+                    : 'Najpierw wybierz aktywną firmę. Nieaktywne firmy są pomijane w harmonogramie.'}
+                </span>
+              </span>
+            </label>
+          )}
 
           <div className="flex items-center gap-2">
             <input

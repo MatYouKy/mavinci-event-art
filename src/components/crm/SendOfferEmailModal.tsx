@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { X, Send, Mail, Loader } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { X, Send, Mail, Loader, Sparkles } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
@@ -49,6 +49,11 @@ export default function SendOfferEmailModal({
   const { showSnackbar } = useSnackbar();
   const { currentEmployee, loading: loadingEmployee } = useCurrentEmployee();
   const [loading, setLoading] = useState(false);
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiInstruction, setAiInstruction] = useState('Popraw błędy językowe i zredaguj wiadomość, zachowując jej sens.');
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiResult, setAiResult] = useState('');
+  const aiLock = useRef(false);
   const [loadingAccounts, setLoadingAccounts] = useState(true);
   const [emailAccounts, setEmailAccounts] = useState<EmailAccount[]>([]);
   const [formData, setFormData] = useState<UnifiedEmailDraft>({
@@ -176,7 +181,29 @@ W razie pytań proszę o kontakt.`),
     };
   }, [formData, clientName]);
 
+  const redactEmail = async () => {
+    if (aiLock.current || loading) return;
+    const draft = unifiedEmailHtmlToPlainText(formData.messageHtml);
+    if (!draft.trim() || !aiInstruction.trim()) {
+      showSnackbar('Wpisz wiadomość oraz polecenie dla AI.', 'warning'); return;
+    }
+    aiLock.current = true; setAiBusy(true); setAiResult('');
+    try {
+      const { data, error } = await supabase.functions.invoke('assist-inquiry', {
+        body: { action: 'edit_offer_email', subject: formData.subject, draft, additionalInstructions: aiInstruction },
+      });
+      if (error) {
+        const payload = error.context instanceof Response ? await error.context.clone().json().catch(() => null) : null;
+        throw new Error(payload?.error || error.message);
+      }
+      if (typeof data?.result?.body !== 'string' || !data.result.body.trim()) throw new Error('AI nie zwróciło treści wiadomości.');
+      setAiResult(data.result.body.trim());
+    } catch (error: any) { showSnackbar(error.message || 'Nie udało się zredagować wiadomości.', 'error'); }
+    finally { aiLock.current = false; setAiBusy(false); }
+  };
+
   const handleSend = async () => {
+    if (aiLock.current) return;
     if (!formData.to.trim()) {
       showSnackbar('Wprowadź adres email odbiorcy', 'error');
       return;
@@ -277,7 +304,7 @@ W razie pytań proszę o kontakt.`),
           </div>
           <button
             onClick={onClose}
-            disabled={loading}
+            disabled={loading || aiBusy}
             className="rounded-lg p-2 text-[#e5e4e2]/60 transition-colors hover:bg-[#d3bb73]/10 hover:text-[#e5e4e2]"
           >
             <X className="h-5 w-5" />
@@ -286,11 +313,27 @@ W razie pytań proszę o kontakt.`),
 
         <div className="space-y-4 p-6">
           <UnifiedEmailComposer
+            editorAction={<button type="button" disabled={loading || aiBusy} onClick={() => setAiOpen(value => !value)} className="flex items-center gap-2 rounded-lg bg-[#d3bb73]/10 px-3 py-2 text-sm text-[#d3bb73] disabled:opacity-50"><Sparkles className="h-4 w-4" />Redaguj AI</button>}
+            afterEditor={aiOpen && <div className="space-y-3 rounded-lg bg-black/10 p-3">
+              <label className="block text-sm text-[#e5e4e2]">Polecenie dla AI
+                <textarea maxLength={2000} rows={2} value={aiInstruction} disabled={loading || aiBusy} onChange={event => setAiInstruction(event.target.value)} placeholder="Np. popraw błędy lub napisz bardziej formalnie" className="mt-2 w-full rounded-lg border border-white/10 bg-[#250914] p-3" />
+              </label>
+              <button type="button" disabled={loading || aiBusy || !aiInstruction.trim()} onClick={() => void redactEmail()} className="rounded-lg bg-[#d3bb73] px-3 py-2 text-sm text-[#250914] disabled:opacity-50">{aiBusy ? 'Redagowanie…' : 'Przygotuj propozycję'}</button>
+              {aiResult && <>
+                <label className="block text-sm text-[#e5e4e2]">Propozycja treści
+                  <textarea rows={8} value={aiResult} disabled={loading || aiBusy} onChange={event => setAiResult(event.target.value)} className="mt-2 w-full rounded-lg border border-white/10 bg-[#250914] p-3" />
+                </label>
+                <div className="flex gap-2">
+                  <button type="button" disabled={loading || aiBusy || !aiResult.trim()} onClick={() => { setFormData(current => ({ ...current, messageHtml: plainTextToEmailHtml(aiResult.trim()) })); setAiResult(''); setAiOpen(false); }} className="rounded-lg bg-[#d3bb73] px-3 py-2 text-sm text-[#250914]">Zastosuj treść</button>
+                  <button type="button" disabled={loading || aiBusy} onClick={() => setAiResult('')} className="rounded-lg bg-white/5 px-3 py-2 text-sm text-[#e5e4e2]">Odrzuć</button>
+                </div>
+              </>}
+            </div>}
             draft={formData}
             onChange={setFormData}
             accounts={emailAccounts}
             accountsLoading={loadingAccounts || loadingEmployee}
-            disabled={loading}
+            disabled={loading || aiBusy}
             showPreview={showPreview}
             onShowPreviewChange={setShowPreview}
             previewHtml={previewHtml}
@@ -299,7 +342,7 @@ W razie pytań proszę o kontakt.`),
           >
           <div className="rounded-lg border border-blue-500/20 bg-blue-500/10 p-4">
             <p className="text-sm text-blue-400">
-              Oferta {offerNumber} zostanie ponownie wygenerowana i dołączona jako plik PDF.
+              Aktualny, wygenerowany PDF oferty {offerNumber} zostanie dołączony do wiadomości.
             </p>
           </div>
           </UnifiedEmailComposer>
@@ -308,14 +351,14 @@ W razie pytań proszę o kontakt.`),
         <div className="flex items-center justify-end gap-3 border-t border-[#d3bb73]/20 p-6">
           <button
             onClick={onClose}
-            disabled={loading}
+            disabled={loading || aiBusy}
             className="rounded-lg px-6 py-2.5 text-[#e5e4e2]/80 transition-colors hover:bg-[#d3bb73]/10 disabled:opacity-50"
           >
             Anuluj
           </button>
           <button
             onClick={handleSend}
-            disabled={loading || loadingAccounts || !formData.fromAccountId}
+            disabled={loading || aiBusy || loadingAccounts || !formData.fromAccountId}
             className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-2.5 font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:opacity-50"
           >
             {loading ? (

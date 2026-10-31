@@ -13,6 +13,7 @@ const LABELS: Record<string, string> = {
   'technika-sceniczna': 'Technika sceniczna',
   'quizy-teleturnieje': 'Quizy i teleturnieje',
   'wieczory-tematyczne': 'Wieczory tematyczne',
+  motywy: 'Motywy wieczorów',
   'symulatory-vr': 'Symulatory VR',
   portfolio: 'Portfolio',
   uslugi: 'Usługi',
@@ -20,6 +21,12 @@ const LABELS: Record<string, string> = {
   olsztyn: 'Olsztyn', ostroda: 'Ostróda', ilawa: 'Iława', gizycko: 'Giżycko',
   elk: 'Ełk', ketrzyn: 'Kętrzyn', mragowo: 'Mrągowo', mikolajki: 'Mikołajki',
   elblag: 'Elbląg', szczytno: 'Szczytno',
+  gdansk: 'Gdańsk', gdynia: 'Gdynia', sopot: 'Sopot', wejherowo: 'Wejherowo',
+  koscierzyna: 'Kościerzyna', bytow: 'Bytów', bialystok: 'Białystok',
+  grudziadz: 'Grudziądz', torun: 'Toruń', bydgoszcz: 'Bydgoszcz',
+  lomza: 'Łomża', plock: 'Płock', ostroleka: 'Ostrołęka', lochow: 'Łochów',
+  serock: 'Serock', warszawa: 'Warszawa', krakow: 'Kraków', wroclaw: 'Wrocław',
+  poznan: 'Poznań', lodz: 'Łódź', rzeszow: 'Rzeszów', katowice: 'Katowice',
 };
 
 function startCaseFromSlug(slug: string) {
@@ -31,7 +38,7 @@ function startCaseFromSlug(slug: string) {
     .join(' ');
 }
 
-export function buildBreadcrumbList(pathname?: string) {
+export function buildBreadcrumbList(pathname?: string, labels: Record<string, string> = {}) {
   // 🔐 fallback
   const safePath = pathname && typeof pathname === 'string' ? pathname : '/';
 
@@ -49,7 +56,7 @@ export function buildBreadcrumbList(pathname?: string) {
   for (const part of parts) {
     acc += `/${part}`;
     items.push({
-      name: LABELS[part] || startCaseFromSlug(part),
+      name: labels[part] || LABELS[part] || startCaseFromSlug(part),
       item: `https://mavinci.pl${acc}`,
     });
   }

@@ -76,6 +76,7 @@ export interface Preferences {
   events?: ViewModePreference;
   tasks?: ViewModePreference;
   offers?: ViewModePreference;
+  offerProductPicker?: ViewModePreference;
   contracts?: ViewModePreference;
   fleet?: ViewModePreference;
   employees?: ViewModePreference;
@@ -99,6 +100,7 @@ const modules = [
   { key: 'events', label: 'Wydarzenia' },
   { key: 'tasks', label: 'Zadania' },
   { key: 'offers', label: 'Oferty' },
+  { key: 'offerProductPicker', label: 'Wybór produktów do oferty i propozycji' },
   { key: 'contracts', label: 'Umowy' },
   { key: 'fleet', label: 'Flota' },
   { key: 'employees', label: 'Pracownicy' },
@@ -147,7 +149,7 @@ export default function SettingsPage() {
       return canViewModule('equipment');
     }
 
-    return canViewModule(module.key);
+    return canViewModule(module.key === 'offerProductPicker' ? 'offers' : module.key);
   });
 
   const visibleNotificationCategories = notificationCategories.filter((category) => {
@@ -596,7 +598,7 @@ export default function SettingsPage() {
                       onClick={() => updateViewMode(module.key, 'list')}
                       className={`flex items-center gap-2 rounded-lg px-4 py-2 transition-colors ${
                         (preferences[module.key as keyof Preferences] as any)?.viewMode ===
-                          'list' || !(preferences[module.key as keyof Preferences] as any)?.viewMode
+                          'list' || (module.key !== 'offerProductPicker' && !(preferences[module.key as keyof Preferences] as any)?.viewMode)
                           ? 'bg-[#d3bb73] text-[#1c1f33]'
                           : 'bg-[#1c1f33] text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
                       }`}
@@ -608,7 +610,7 @@ export default function SettingsPage() {
                     <button
                       onClick={() => updateViewMode(module.key, 'grid')}
                       className={`flex items-center gap-2 rounded-lg px-4 py-2 transition-colors ${
-                        (preferences[module.key] as any)?.viewMode === 'grid'
+                        ((preferences[module.key] as any)?.viewMode === 'grid' || (module.key === 'offerProductPicker' && !(preferences[module.key] as any)?.viewMode))
                           ? 'bg-[#d3bb73] text-[#1c1f33]'
                           : 'bg-[#1c1f33] text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
                       }`}
@@ -616,7 +618,7 @@ export default function SettingsPage() {
                       <LayoutGrid className="h-4 w-4" />
                       Kafelki
                     </button>
-                    <button
+                    {module.key !== 'offerProductPicker' && <button
                       onClick={() => updateViewMode(module.key, 'table')}
                       className={`flex items-center gap-2 rounded-lg px-4 py-2 transition-colors ${
                         (preferences[module.key] as any)?.viewMode === 'table'
@@ -626,7 +628,7 @@ export default function SettingsPage() {
                     >
                       <Table2 className="h-4 w-4" />
                       Tabela
-                    </button>
+                    </button>}
                   </div>
                 </div>
               ))}

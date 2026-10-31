@@ -1,134 +1,42 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { X, ChevronLeft, ChevronRight } from 'lucide-react';
 import Image from 'next/image';
-import { PolishCityCases } from '@/lib/polishCityCases';
 
-interface GalleryImage {
-  id: string;
-  image_url: string;
-  alt_text: string;
-  caption: string;
-}
+type GalleryImage = { id: string; image_url: string; alt_text: string; caption: string };
 
-type Props = {
-  images: GalleryImage[];
-  cityCases: PolishCityCases;
-};
-
-function capitalize(value: string) {
-  if (!value) return value;
-  return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
-}
-
-export default function ThemedPartyCitySharedGallery({ images, cityCases }: Props) {
-  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
-  const prep = cityCases.locative_preposition || 'w';
-
+export default function ThemedPartyCitySharedGallery({ images }: { images: GalleryImage[] }) {
+  const [selected, setSelected] = useState<number | null>(null);
+  const dialog = useRef<HTMLDialogElement>(null);
+  const opener = useRef<HTMLButtonElement | null>(null);
+  const active = selected !== null ? images[selected] : null;
+  function close() { setSelected(null); }
+  function move(direction: number) { setSelected(index => index === null ? null : (index + direction + images.length) % images.length); }
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (lightboxIndex === null) return;
-      if (e.key === 'Escape') setLightboxIndex(null);
-      if (e.key === 'ArrowLeft') setLightboxIndex((p) => (p! - 1 + images.length) % images.length);
-      if (e.key === 'ArrowRight') setLightboxIndex((p) => (p! + 1) % images.length);
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [lightboxIndex, images.length]);
-
-  if (!images || images.length === 0) return null;
-
-  return (
-    <>
-      <section className="border-b border-[#d3bb73]/10 px-6 py-20">
-        <div className="mx-auto max-w-7xl">
-          <h2 className="mb-4 text-center text-3xl font-light text-[#e5e4e2] md:text-4xl">
-            Galeria wieczorów tematycznych {prep} {capitalize(cityCases.locative)}
-          </h2>
-          <p className="mx-auto mb-12 max-w-2xl text-center text-[#e5e4e2]/60">
-            Wybrane realizacje imprez tematycznych zorganizowanych przez nasz zespół
-          </p>
-
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {images.map((img, idx) => (
-              <button
-                key={img.id}
-                onClick={() => setLightboxIndex(idx)}
-                className="group relative aspect-[4/3] overflow-hidden rounded-xl border border-[#d3bb73]/10 transition-all duration-300 hover:border-[#d3bb73]/40 hover:shadow-lg hover:shadow-[#d3bb73]/5"
-              >
-                <Image
-                  src={img.image_url}
-                  alt={img.alt_text || `Wieczór tematyczny ${prep} ${capitalize(cityCases.locative)}`}
-                  fill
-                  sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-                  className="object-cover transition-transform duration-500 group-hover:scale-110"
-                  loading="lazy"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-[#0f1119]/80 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-                  <div className="absolute bottom-4 left-4 right-4">
-                    <p className="text-sm font-light text-[#e5e4e2]">{img.alt_text}</p>
-                    {img.caption && (
-                      <p className="mt-1 text-xs text-[#e5e4e2]/60">{img.caption}</p>
-                    )}
-                  </div>
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {lightboxIndex !== null && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/95">
-          <button
-            onClick={() => setLightboxIndex(null)}
-            className="absolute right-4 top-4 z-10 rounded-full bg-white/10 p-2 text-white hover:bg-white/20"
-          >
-            <X className="h-6 w-6" />
-          </button>
-
-          {images.length > 1 && (
-            <>
-              <button
-                onClick={() =>
-                  setLightboxIndex((p) => (p! - 1 + images.length) % images.length)
-                }
-                className="absolute left-4 z-10 rounded-full bg-white/10 p-2 text-white hover:bg-white/20"
-              >
-                <ChevronLeft className="h-8 w-8" />
-              </button>
-              <button
-                onClick={() => setLightboxIndex((p) => (p! + 1) % images.length)}
-                className="absolute right-4 z-10 rounded-full bg-white/10 p-2 text-white hover:bg-white/20"
-              >
-                <ChevronRight className="h-8 w-8" />
-              </button>
-            </>
-          )}
-
-          <div className="relative mx-4 h-[80vh] w-full max-w-7xl">
-            <Image
-              src={images[lightboxIndex].image_url}
-              alt={images[lightboxIndex].alt_text || ''}
-              fill
-              className="object-contain"
-              sizes="100vw"
-            />
-            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-6">
-              <p className="text-center text-white">{images[lightboxIndex].alt_text}</p>
-              {images[lightboxIndex].caption && (
-                <p className="mt-1 text-center text-sm text-white/80">
-                  {images[lightboxIndex].caption}
-                </p>
-              )}
-              <p className="mt-2 text-center text-sm text-white/60">
-                {lightboxIndex + 1} / {images.length}
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
-  );
+    if (selected === null) {
+      dialog.current?.close();
+      opener.current?.focus();
+      return;
+    }
+    if (!dialog.current?.open) dialog.current?.showModal();
+  }, [selected]);
+  if (!images.length) return null;
+  return <section className="mx-auto max-w-7xl px-5 py-14 sm:px-6 md:py-20">
+    <h2 className="text-2xl font-light uppercase sm:text-3xl">Galeria motywów i oprawy wydarzeń</h2>
+    <p className="mt-5 max-w-3xl leading-7 text-white/75">Zdjęcia z biblioteki MAVINCI pokazują różne warianty oprawy. Konkretny zakres i opis wykonanych prac znajdziesz w realizacjach powyżej.</p>
+    <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {images.map((item, index) => <button key={item.id} type="button" onClick={event => { opener.current = event.currentTarget; setSelected(index); }} aria-label={`Powiększ: ${item.alt_text}`} className="group overflow-hidden rounded-2xl bg-white/[0.045] text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#d3bb73]/50">
+        <div className="relative aspect-[4/3]"><Image src={item.image_url} alt={item.alt_text} fill loading="lazy" sizes="(max-width: 639px) calc(100vw - 40px), (max-width: 1023px) 50vw, 400px" className="object-cover" /></div>
+        <span className="block p-4 text-sm leading-6 text-white/75">{item.caption || item.alt_text}</span>
+      </button>)}
+    </div>
+    <dialog ref={dialog} onCancel={close} onClose={close} onKeyDown={event => { if (event.key === 'ArrowLeft') { event.preventDefault(); move(-1); } if (event.key === 'ArrowRight') { event.preventDefault(); move(1); } }} aria-label="Powiększone zdjęcie" className="fixed inset-0 m-auto h-[90dvh] max-h-none w-[96vw] max-w-7xl rounded-2xl bg-[#190f1b] p-4 text-white backdrop:bg-black/90">
+      {active && <div className="flex h-full flex-col">
+        <div className="flex shrink-0 items-center justify-between gap-3"><p className="text-sm">{(selected ?? 0) + 1} / {images.length}</p><button type="button" autoFocus aria-label="Zamknij zdjęcie" onClick={close} className="rounded-full bg-white/10 p-3"><X size={22} /></button></div>
+        <div className="relative my-4 min-h-0 flex-1"><Image src={active.image_url} alt={active.alt_text} fill sizes="96vw" className="object-contain" /></div>
+        <div className="flex shrink-0 items-center justify-between gap-3"><button type="button" aria-label="Poprzednie zdjęcie" onClick={() => move(-1)} className="rounded-full bg-white/10 p-3"><ChevronLeft size={22} /></button><p className="text-center text-sm leading-6">{active.caption || active.alt_text}</p><button type="button" aria-label="Następne zdjęcie" onClick={() => move(1)} className="rounded-full bg-white/10 p-3"><ChevronRight size={22} /></button></div>
+      </div>}
+    </dialog>
+  </section>;
 }

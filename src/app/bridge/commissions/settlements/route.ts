@@ -36,6 +36,8 @@ export async function GET(request: Request) {
     const mode = query.get('mode') || 'crm';
     const accountType = query.get('accountType');
     const accountId = query.get('accountId');
+    const eventId = query.get('eventId');
+    if (eventId !== null && !isUuid(eventId)) return fail('Nieprawidłowe wydarzenie.');
     if (mode !== 'crm' && mode !== 'seller') return fail('Nieprawidłowy widok rozliczeń.');
     if (mode === 'seller' && (accountType !== null || accountId !== null)) {
       return fail('Portal sprzedawcy korzysta wyłącznie z własnego konta.', 403);
@@ -50,7 +52,11 @@ export async function GET(request: Request) {
       p_mode: mode, p_account_type: accountType, p_account_id: accountId,
     });
     if (error) return databaseFailure(error);
-    return NextResponse.json(data as CommissionSettlementsResponse, {
+    // Narrow only AFTER the existing account/RLS permission gate. An event id
+    // never grants access to another seller's commission or internal cost.
+    const result = data as CommissionSettlementsResponse;
+    if (eventId) result.commissions = result.commissions.filter(row => row.event_id === eventId);
+    return NextResponse.json(result, {
       headers: { 'Cache-Control': 'private, no-store' },
     });
   } catch {

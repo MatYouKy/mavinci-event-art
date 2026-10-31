@@ -2,6 +2,47 @@
 
 Worker Node.js który działa na VPS i pośredniczy w wysyłaniu emaili dla Supabase Edge Functions.
 
+## Aktualizacja wysyłki broszur — 20.10.2026
+
+Duże, zapisane PDF-y nie przechodzą już przez JSON/base64 w Edge Function.
+CRM przekazuje identyfikator zapisanej wysyłki. Funkcja sprawdza autora, skrzynkę,
+odbiorcę i treść, jednorazowo przejmuje próbę, a następnie przekazuje usłudze SMTP
+krótkotrwały adres dokładnie tego PDF. Worker pobiera go strumieniowo do prywatnego
+pliku tymczasowego i usuwa ten plik po próbie. Odbiorca nadal otrzymuje załącznik,
+nie link zamiast załącznika.
+
+Kolejność wdrożenia:
+
+1. Migracja `supabase/migrations/20261020190000_stream_brochure_email_attachments.sql`
+   (po wcześniejszych migracjach broszur).
+2. Zaktualizuj worker na VPS: `server.js` **oraz** `brochure-attachments.js`.
+   W jego istniejącym środowisku dodaj publiczny adres projektu:
+   `SUPABASE_URL=https://fuuljhhuhfojtmmfmskq.supabase.co`.
+   Nie zmieniaj `RELAY_SECRET`. Uruchom ponownie istniejący proces workera.
+3. Wdróż funkcję Supabase `send-email` z `supabase/functions/send-email/index.ts`.
+4. Wdróż aplikację Next.js.
+
+Skrypt `smtp-relay-worker/deploy-smtp-relay.sh` kopiuje oba pliki workera.
+Jeśli brakuje `SUPABASE_URL`, pobiera wyłącznie publiczny adres projektu
+z istniejącej konfiguracji aplikacji na VPS, zachowuje kopię `.env` i pozostawia
+sekrety bez zmian. Brak poprawnego adresu zatrzymuje restart. Gotowość jest
+potwierdzana przez `/api/capabilities`, nie tylko przez ogólny `/health`.
+Skrypt nie generuje PDF ani nie wysyła żadnej wiadomości.
+
+Nowa wersja sprawdza zgodność usługi przed rozpoczęciem wysyłki. Nie stosuje
+awaryjnego powrotu do dużych załączników base64 ani nie wysyła bez PDF.
+Adresy Storage muszą pochodzić z dokładnie skonfigurowanego projektu, używać HTTPS
+i ścieżki podpisanych plików `generated-brochures`; przekierowania są odrzucane.
+Limit PDF wynosi 50 MiB. Osobne limity serwera pocztowego nadal obowiązują.
+
+Wynik `not_sent` oznacza potwierdzony błąd przed przyjęciem wiadomości i pozwala
+użytkownikowi ponowić próbę. Timeout po rozpoczęciu SMTP nadal oznacza `uncertain`.
+Potwierdzenie SMTP jest zapisywane przed archiwizacją załączników; zapis kopii PDF
+w folderze Wysłane używa operacji Storage copy, bez pobierania pliku do Edge.
+Identyfikator próby i jednorazowe przejęcie chronią przed podwójnym wywołaniem.
+Istniejące wpisy `sending` / `uncertain` nie są odblokowywane przez migrację:
+ich wynik należy ustalić w logach usługi SMTP lub po identyfikatorze wiadomości.
+
 ## ⚡ Szybki start
 
 ```bash

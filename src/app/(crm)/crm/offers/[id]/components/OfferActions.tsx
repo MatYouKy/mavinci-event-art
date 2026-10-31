@@ -14,18 +14,29 @@ import {
   Lock,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
+import { requestOfferEnglish } from '@/hooks/useOfferLanguage';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useRouter } from 'next/navigation';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { IUser } from '@/types/auth.types';
 import { OfferStatus, offerStatusLabels } from '../../helpers/statusColors';
+import ConvertInquiryModal from '@/components/crm/inquiries/ConvertInquiryModal';
+import OfferDraftRevisionActions from './OfferDraftRevisionActions';
+import OfferLinkModal from './OfferLinkModal';
 import ReserveEquipmentModal from '@/components/crm/ReserveEquipmentModal';
 import FullScreenLoader from '@/components/UI/Loader/CustomModalLoader';
+import OfferPdfProgressSteps from '@/components/crm/offers/OfferPdfProgressSteps';
+import { OFFER_PDF_STEPS, type OfferPdfStep, type OfferPdfFailure } from '@/lib/offer-pdf/progress';
+import { readOfferPdfResult } from '@/lib/offer-pdf/readProgress';
 import { offerSource } from '@/lib/CRM/Offers/offerSource';
 import { offerPdfFileName } from '@/lib/CRM/Offers/offerPdfFileName';
 import { deleteOfferPdfFiles } from '@/lib/CRM/Offers/deleteOfferPdfFiles';
 
 interface OfferActionsProps {
+  language?: 'pl' | 'en';
+  englishReady?: boolean;
+  englishSignature?: string;
+  onEnglishStale?: () => void;
   offer: any;
   currentUser: IUser;
   showSendEmailModal: boolean;
@@ -36,6 +47,10 @@ interface OfferActionsProps {
 
 export default function OfferActions({
   offer,
+  language = 'pl',
+  englishReady = false,
+  englishSignature,
+  onEnglishStale,
   currentUser,
   setShowSendEmailModal,
   showSendEmailModal,
@@ -48,13 +63,62 @@ export default function OfferActions({
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const generationInProgress = useRef(false);
   const [pdfProgress, setPdfProgress] = useState('');
+  const [pdfStep, setPdfStep] = useState<OfferPdfStep>('queued');
+  const [pdfFailure, setPdfFailure] = useState<OfferPdfFailure | null>(null);
+  const [copiedPdfFailure, setCopiedPdfFailure] = useState(false);
+  const [englishPdf, setEnglishPdf] = useState<{ file_path: string; file_name: string; source_revision: number } | null>(null);
+  useEffect(() => {
+    let active = true;
+    if (offer?.id && !generatingPdf) void supabase.from('offer_language_documents').select('file_path,file_name,source_revision').eq('offer_id', offer.id).eq('language', 'en').order('created_at', { ascending: false }).limit(1).maybeSingle().then(({ data }) => { if (active) setEnglishPdf(data); });
+    return () => { active = false; };
+  }, [offer?.id, generatingPdf]);
+  const selectedPdfPath = language === 'en' ? englishPdf?.file_path : offer?.generated_pdf_url;
+  const selectedFileName = language === 'en' ? englishPdf?.file_name || offerPdfFileName(offer.offer_number).replace(/\.pdf$/i, '-EN.pdf') : offerPdfFileName(offer.offer_number);
+  const selectedPdfStale = language === 'en' ? englishPdf?.source_revision !== offer.content_revision : offer.modified_after_generation;
+  const canGenerate = language === 'pl' || englishReady;
   const { employee } = useCurrentEmployee();
   const [downloadingPdf, setDownloadingPdf] = useState(false);
   const [canSendEmail, setCanSendEmail] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [currentStatus, setCurrentStatus] = useState<OfferStatus>(offer?.status || 'draft');
   const [showReserveModal, setShowReserveModal] = useState(false);
+  const [showLinkModal, setShowLinkModal] = useState(false);
+  const [conversionData, setConversionData] = useState<{ inquiry: any; categories: any[]; companies: any[] } | null>(null);
+  const [loadingConversion, setLoadingConversion] = useState(false);
+  const conversionLock = useRef(false);
+  const openEventCreation = async () => {
+    if (conversionLock.current || !canSendEmail || !offer.inquiry_id) return;
+    conversionLock.current = true; setLoadingConversion(true);
+    try {
+      const [inquiryResult, categoriesResult, companiesResult] = await Promise.all([
+        supabase.from('tasks').select('id,title,inquiry_details,due_date,accepted_offer_id,event_id,contact_id,organization_id')
+          .eq('id', offer.inquiry_id).eq('is_inquiry', true).is('archived_at', null).single(),
+        supabase.from('event_categories').select('id,name').eq('is_active', true).order('order_index'),
+        supabase.from('my_companies').select('id,name,legal_name,is_default').eq('is_active', true).order('is_default', { ascending: false }),
+      ]);
+      if (inquiryResult.error) throw inquiryResult.error;
+      if (categoriesResult.error) throw categoriesResult.error;
+      if (companiesResult.error) throw companiesResult.error;
+      const inquiry = inquiryResult.data;
+      if (inquiry.event_id) { router.push(`/crm/events/${inquiry.event_id}`); return; }
+      if (inquiry.accepted_offer_id !== offer.id) throw new Error('W zapytaniu wybierz tę ofertę jako zaakceptowaną przed utworzeniem wydarzenia.');
+      setConversionData({ inquiry: { ...inquiry, title: offer.title || inquiry.title }, categories: categoriesResult.data || [], companies: companiesResult.data || [] });
+    } catch (error: any) { showSnackbar(error.message || 'Nie udało się otworzyć formularza wydarzenia', 'error'); }
+    finally { conversionLock.current = false; setLoadingConversion(false); }
+  };
   const [deletingPdf, setDeletingPdf] = useState(false);
+  const [amendmentSource, setAmendmentSource] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    setAmendmentSource(null);
+    if (offer?.id) void supabase.from('offer_amendments').select('source_offer_id')
+      .eq('offer_id', offer.id).maybeSingle().then(({ data }) => {
+        if (active) setAmendmentSource(data?.source_offer_id ?? null);
+      });
+    return () => { active = false; };
+  }, [offer?.id]);
+
 
   useEffect(() => {
     if (offer?.status) {
@@ -148,13 +212,10 @@ export default function OfferActions({
     }
   };
 
-  const handleGeneratePdf = async () => {
-    if (!offer || generationInProgress.current) return;
-    if (offer.status !== 'accepted' && offer.logistics_cost_net == null) {
-      showSnackbar('Oszacuj logistykę w sekcji „Pakiety oferty”. Wpisz 0, jeśli nie ma dodatkowego kosztu.', 'error');
-      document.getElementById('offer-packages-logistics')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      return;
-    }
+  const handleGeneratePdf = async (selectedLanguage: 'pl' | 'en' = language) => {
+    if (!offer || generationInProgress.current || (selectedLanguage === 'en' && !englishReady)) return;
+    const language = selectedLanguage;
+
 
     if (!employee?.id) {
       showSnackbar('Musisz być zalogowany', 'error');
@@ -162,46 +223,65 @@ export default function OfferActions({
     }
 
     generationInProgress.current = true;
+    let lastStep: OfferPdfStep = 'queued';
+    let lastDetail = 'Przygotowanie zlecenia generowania.';
+    let failureMeta: { code?: string; requestId?: string; status?: number } = {};
     try {
-      setPdfProgress('Przygotowujemy strony oferty, zdjęcia i kalkulację. Proszę chwilę poczekać.');
+      setPdfFailure(null);
+      setCopiedPdfFailure(false);
+      setPdfStep('queued');
+      setPdfProgress(language === 'en' ? 'Sprawdzamy zapisaną wersję EN i przygotowujemy zlecenie.' : 'Przygotowujemy zlecenie generowania.');
       setGeneratingPdf(true);
 
       const {
         data: { session },
       } = await supabase.auth.getSession();
-      if (!session) {
-        showSnackbar('Brak autoryzacji', 'error');
-        return;
-      }
+      if (!session) throw new Error('Brak autoryzacji. Zaloguj się ponownie.');
 
+      if (language === 'en') {
+        lastDetail = 'Sprawdzanie zapisanej wersji angielskiej.';
+        const saved = await requestOfferEnglish(offer.id, 'read');
+        if (!saved.ready || saved.signature !== englishSignature) {
+          onEnglishStale?.();
+          throw new Error('Angielska treść wymaga aktualizacji. Poczekaj na przygotowanie EN i ponów generowanie.');
+        }
+      }
       let result: any = null;
-      for (let attempt = 0; attempt < 2; attempt += 1) {
+      for (let attempt = 0; attempt < 1; attempt += 1) {
         const response = await fetch(
-          `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/generate-offer-pdf`,
+          '/bridge/offers/generate-pdf',
           {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
+              Accept: 'application/x-ndjson',
               Authorization: `Bearer ${session.access_token}`,
             },
             body: JSON.stringify({
               offerId: offer.id,
+              language,
+              expectedEnglishSignature: language === 'en' ? englishSignature : undefined,
               employeeId: employee.id,
               resourceMode: attempt === 0 ? 'standard' : 'compact',
             }),
+            signal: AbortSignal.timeout(300000),
           },
         );
 
-        result = await response.json().catch(() => ({}));
+        result = await readOfferPdfResult(response, progress => {
+          lastStep = progress.step;
+          lastDetail = progress.detail || '';
+          setPdfStep(progress.step);
+          setPdfProgress(progress.detail || OFFER_PDF_STEPS.find(step => step.id === progress.step)?.label || 'Generujemy PDF…');
+        });
         if (response.ok && result.success) break;
 
-        const resourceLimit = response.status === 546 || ['WORKER_RESOURCE_LIMIT', 'WORKER_LIMIT'].includes(result.code);
-        if (resourceLimit && attempt === 0) {
-          setPdfProgress('Przygotowanie dokumentu wymaga więcej czasu. Ponawiamy generowanie z zachowaniem jakości zdjęć i wybranego układu.');
-          showSnackbar('Generator przekroczył limit zasobów — ponawiam w trybie zoptymalizowanym...', 'info');
-          await new Promise((resolve) => setTimeout(resolve, 1200));
-          continue;
+        if (OFFER_PDF_STEPS.some(step => step.id === result.failedStep)) {
+          lastStep = result.failedStep;
+          setPdfStep(lastStep);
         }
+        failureMeta = { code: result.code, requestId: result.requestId, status: result.httpStatus || response.status };
+        const resourceLimit = response.status === 546 || ['WORKER_RESOURCE_LIMIT', 'WORKER_LIMIT'].includes(result.code);
 
         throw new Error(
           resourceLimit
@@ -212,14 +292,25 @@ export default function OfferActions({
 
       if (!result?.success) throw new Error('Błąd generowania PDF');
 
+      // Refresh the saved document before attempting its separate download.
+      onOfferUpdated?.();
+
       showSnackbar(
         `PDF wygenerowany pomyślnie (${result.pageCount} stron)${result.resourceMode === 'compact' ? ' — tryb zoptymalizowany' : ''}`,
         'success',
       );
 
       if (result.downloadUrl) {
-        setPdfProgress('PDF jest gotowy. Przygotowujemy pobranie pliku…');
-        const pdfResponse = await fetch(result.downloadUrl);
+        lastStep = 'download';
+        lastDetail = 'PDF został wygenerowany i zapisany. Pobieranie pliku.';
+        failureMeta = { requestId: result.requestId };
+        setPdfStep('download');
+        setPdfProgress('PDF jest gotowy. Pobieramy zapisany plik…');
+        const pdfResponse = await fetch(result.downloadUrl, { signal: AbortSignal.timeout(30000) });
+        if (!pdfResponse.ok) {
+          failureMeta.status = pdfResponse.status;
+          throw new Error('PDF został wygenerowany, ale pobranie nie powiodło się. Użyj przycisku pobierania oferty.');
+        }
         const blob = await pdfResponse.blob();
         const blobUrl = window.URL.createObjectURL(blob);
 
@@ -239,33 +330,42 @@ export default function OfferActions({
       onOfferUpdated?.();
     } catch (err: any) {
       console.error('Error generating PDF:', err);
-      showSnackbar(err.message || 'Błąd podczas generowania PDF', 'error');
+      const timeout = ['TimeoutError', 'AbortError'].includes(err?.name);
+      const connectionLost = timeout || err instanceof TypeError || /Utracono połączenie/.test(err?.message || '');
+      const message = lastStep === 'download' && connectionLost
+        ? 'PDF został zapisany, ale pobieranie zostało przerwane. Zamknij okno i użyj przycisku pobierania oferty.'
+        : timeout ? 'Przekroczono czas oczekiwania. Serwer może nadal zapisać PDF — odśwież ofertę i sprawdź plik przed ponowieniem.'
+        : err.message || 'Błąd podczas generowania PDF';
+      setPdfFailure({ step: lastStep, message, context: `${connectionLost ? 'Ostatni potwierdzony etap. ' : ''}${lastDetail}`, ...failureMeta, occurredAt: new Date().toISOString() });
+      setPdfProgress('Szczegóły są widoczne pod odpowiednim krokiem.');
     } finally {
       generationInProgress.current = false;
       setGeneratingPdf(false);
+      onOfferUpdated?.();
     }
   };
 
   const handleDownloadPdf = async () => {
-    if (!offer?.generated_pdf_url) return;
+    if (!selectedPdfPath) return;
 
     try {
       setDownloadingPdf(true);
       const { data, error } = await supabase.storage
         .from('generated-offers')
-        .createSignedUrl(offer.generated_pdf_url, 3600);
+        .createSignedUrl(selectedPdfPath, 3600);
 
       if (error || !data) {
         throw new Error('Nie udało się pobrać PDF');
       }
 
       const response = await fetch(data.signedUrl);
+      if (!response.ok) throw new Error('Nie udało się pobrać pliku PDF. Spróbuj ponownie.');
       const blob = await response.blob();
       const blobUrl = window.URL.createObjectURL(blob);
 
       const link = document.createElement('a');
       link.href = blobUrl;
-      link.download = offerPdfFileName(offer.offer_number);
+      link.download = selectedFileName;
       link.style.display = 'none';
       document.body.appendChild(link);
       link.click();
@@ -286,6 +386,18 @@ export default function OfferActions({
 
   return (
     <>
+      {conversionData && <ConvertInquiryModal {...conversionData} initialEventLocation={offer.event_location || null} initialEventDate={offer.event_date || offer.event?.event_date || null}
+        onClose={() => setConversionData(null)}
+        onBeforeConvert={async () => {
+          const { data, error } = await supabase.from('tasks').select('accepted_offer_id,contact_id,organization_id')
+            .eq('id', conversionData.inquiry.id).eq('is_inquiry', true).is('archived_at', null).single();
+          if (error) throw error;
+          if (data.accepted_offer_id !== offer.id) throw new Error('Zaakceptowana oferta w zapytaniu zmieniła się. Otwórz formularz ponownie.');
+          if (!data.contact_id && !data.organization_id) throw new Error('Uzupełnij klienta w powiązanym zapytaniu przed utworzeniem wydarzenia.');
+        }}
+        onConverted={(eventId) => { setConversionData(null); onOfferUpdated?.(); router.push(`/crm/events/${eventId}`); }} />}
+      {showLinkModal && <OfferLinkModal offer={offer} onClose={() => setShowLinkModal(false)}
+        onSaved={() => { onOfferUpdated?.(); router.refresh(); }} />}
       <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
         <h2 className="mb-4 text-lg font-light text-[#e5e4e2]">Akcje</h2>
         <div className="space-y-2">
@@ -305,7 +417,14 @@ export default function OfferActions({
             </select>
           </div>
 
-          {/* Przycisk Zarezerwuj Sprzęt - tylko dla draft/sent */}
+          {canSendEmail && offer.sales_channel !== 'seller_portal' && <OfferDraftRevisionActions offer={offer} onSaved={() => { onOfferUpdated?.(); router.refresh(); }} />}
+          {amendmentSource && currentStatus !== 'accepted' && (
+            <p className="rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+              Edytujesz zmianę oferty. Poprzednia rezerwacja pozostaje aktywna do zatwierdzenia tej wersji.
+              {' '}<a className="underline" href={`/crm/offers/${amendmentSource}`}>Poprzednia oferta</a>
+            </p>
+          )}
+          {/* Akceptacja zmiany zastępuje poprzednią rezerwację w jednej transakcji. */}
           {canSendEmail && offer.event_id && (currentStatus === 'draft' ||
             currentStatus === 'sent' ||
             currentStatus === 'accepted') && (
@@ -318,10 +437,24 @@ export default function OfferActions({
               ) : (
                 <Lock className="h-4 w-4" />
               )}
-              {currentStatus === 'accepted' ? 'Aktualizuj rezerwację' : 'Zarezerwuj sprzęt'}
+              {currentStatus === 'accepted' ? 'Aktualizuj rezerwację' : amendmentSource ? 'Zatwierdź zmianę i rezerwację' : 'Zarezerwuj sprzęt'}
             </button>
           )}
 
+          {canSendEmail && currentStatus === 'accepted' && !offer.event_id && offer.inquiry_id && offer.sales_channel !== 'seller_portal' && (
+            <button type="button" disabled={loadingConversion} onClick={() => void openEventCreation()}
+              className="flex w-full items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm text-black disabled:opacity-50">
+              <Calendar className="h-4 w-4" />
+              {loadingConversion ? 'Wczytywanie…' : 'Utwórz wydarzenie'}
+            </button>
+          )}
+          {canSendEmail && offer.sales_channel !== 'seller_portal' && (!offer.event_id || !offer.inquiry_id) && (
+            <button type="button" onClick={() => setShowLinkModal(true)}
+              className="flex w-full items-center gap-2 rounded-lg bg-[#d3bb73]/10 px-4 py-2 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/20">
+              <Calendar className="h-4 w-4" />
+              {!offer.event_id ? 'Powiąż z wydarzeniem lub zapytaniem' : 'Powiąż z zapytaniem'}
+            </button>
+          )}
           {source && <button
             type="button"
             onClick={() => router.push(source.href)}
@@ -331,10 +464,22 @@ export default function OfferActions({
             {source.actionLabel}
           </button>}
 
-          {!offer.generated_pdf_url || offer.modified_after_generation ? (
+          {source?.kind === 'event' && offer.inquiry_id && (
             <button
-              disabled={generatingPdf}
-              onClick={handleGeneratePdf}
+              type="button"
+              onClick={() => router.push(`/crm/inquiries/${offer.inquiry_id}`)}
+              className="flex w-full items-center gap-2 rounded-lg bg-[#d3bb73]/5 px-4 py-2 text-sm text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/10"
+            >
+              <FileText className="h-4 w-4" />
+              Przejdź do zapytania
+            </button>
+          )}
+
+          <p className="text-xs text-white/60">Język dokumentu: <strong>{language.toUpperCase()}</strong> · kwoty w PLN</p>
+          {!selectedPdfPath ? (
+            <button
+              disabled={generatingPdf || !canGenerate}
+              onClick={() => void handleGeneratePdf(language)}
               className="flex w-full items-center gap-2 rounded-lg bg-blue-500/10 px-4 py-2 text-sm text-blue-400 transition-colors hover:bg-blue-500/20"
             >
               {generatingPdf ? (
@@ -345,22 +490,26 @@ export default function OfferActions({
               ) : (
                 <>
                   <FileText className="h-4 w-4" />
-                  {offer.generated_pdf_url ? 'Regeneruj PDF' : 'Generuj PDF'}
+                  Generuj PDF ({language.toUpperCase()})
                 </>
               )}
             </button>
           ) : (
             <>
+              {selectedPdfStale && (
+                <p role="status" className="rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+                  Zapisany PDF nie zawiera ostatnich zmian oferty. Możesz go obejrzeć lub pobrać. Przed wysłaniem wygeneruj aktualną wersję.
+                </p>
+              )}
               <button
                 onClick={async () => {
-                  if (!offer.generated_pdf_url) return;
+                  if (!selectedPdfPath) return;
                   try {
-                    const { data } = await supabase.storage
+                    const { data, error } = await supabase.storage
                       .from('generated-offers')
-                      .createSignedUrl(offer.generated_pdf_url, 3600);
-                    if (data?.signedUrl) {
-                      window.open(data.signedUrl, '_blank');
-                    }
+                      .createSignedUrl(selectedPdfPath, 3600);
+                    if (error || !data?.signedUrl) throw error || new Error('Brak adresu PDF');
+                    window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
                   } catch (err) {
                     showSnackbar('Błąd podczas otwierania PDF', 'error');
                   }
@@ -369,7 +518,7 @@ export default function OfferActions({
                 title="Pokaż PDF"
               >
                 <Eye className="h-4 w-4" />
-                Podgląd PDF
+                Pokaż PDF ({language.toUpperCase()})
               </button>
               <button
                 onClick={handleDownloadPdf}
@@ -385,13 +534,13 @@ export default function OfferActions({
                 ) : (
                   <>
                     <Download className="h-4 w-4" />
-                    Pobierz PDF
+                    Pobierz PDF ({language.toUpperCase()})
                   </>
                 )}
               </button>
               <button
-                disabled={generatingPdf}
-                onClick={handleGeneratePdf}
+                disabled={generatingPdf || !canGenerate}
+                onClick={() => void handleGeneratePdf(language)}
                 className="flex w-full items-center gap-2 rounded-lg border border-blue-500/20 bg-blue-500/10 px-4 py-2 text-sm text-blue-400 transition-colors hover:bg-blue-500/20 disabled:opacity-50"
                 title="Wygeneruj ponownie PDF"
               >
@@ -403,11 +552,11 @@ export default function OfferActions({
                 ) : (
                   <>
                     <RefreshCw className="h-4 w-4" />
-                    Regeneruj PDF
+                    Regeneruj PDF ({language.toUpperCase()})
                   </>
                 )}
               </button>
-              {canSendEmail && (
+              {language === 'pl' && canSendEmail && !offer.modified_after_generation && (
                 <button
                   onClick={() => setShowSendEmailModal(true)}
                   className="flex w-full items-center gap-2 rounded-lg border border-green-500/20 bg-green-500/10 px-4 py-2 text-sm text-green-400 transition-colors hover:bg-green-500/20"
@@ -421,7 +570,7 @@ export default function OfferActions({
           )}
 
           {/* Przycisk usuwania PDF - tylko gdy PDF istnieje */}
-          {offer.generated_pdf_url && (
+          {language === 'pl' && offer.generated_pdf_url && (
             <button
               onClick={handleDeletePdf}
               disabled={deletingPdf}
@@ -446,10 +595,29 @@ export default function OfferActions({
       </div>
 
       <FullScreenLoader
-        show={generatingPdf}
-        title="Generowanie oferty PDF"
+        show={generatingPdf || !!pdfFailure}
+        failed={!!pdfFailure}
+        onClose={() => setPdfFailure(null)}
+        title={pdfFailure ? (pdfFailure.step === 'download' ? 'PDF zapisany — błąd pobierania' : 'Nie udało się ukończyć generowania PDF') : 'Generowanie oferty PDF'}
         description={pdfProgress}
-      />
+      >
+        <OfferPdfProgressSteps current={pdfStep} failure={pdfFailure} />
+        {pdfFailure && <div className="flex w-full flex-wrap justify-end gap-2">
+          <button type="button" className="rounded-lg bg-white/5 px-3 py-2 text-sm text-[#d3bb73] hover:bg-white/10" onClick={async () => {
+            const step = OFFER_PDF_STEPS.find(item => item.id === pdfFailure.step)?.label;
+            const details = [
+              `Oferta: ${offer.id}`, `Czas: ${pdfFailure.occurredAt}`, `Etap: ${step}`,
+              pdfFailure.context, `Błąd: ${pdfFailure.message}`,
+              pdfFailure.code && `Kod: ${pdfFailure.code}`,
+              pdfFailure.status && `HTTP: ${pdfFailure.status}`,
+              pdfFailure.requestId && `Identyfikator zgłoszenia: ${pdfFailure.requestId}`,
+            ].filter(Boolean).join('\n');
+            try { await navigator.clipboard.writeText(details); setCopiedPdfFailure(true); }
+            catch { showSnackbar('Nie udało się skopiować. Możesz zaznaczyć i skopiować komunikat ręcznie.', 'error'); }
+          }}>{copiedPdfFailure ? 'Skopiowano' : 'Kopiuj szczegóły'}</button>
+          <button type="button" onClick={() => setPdfFailure(null)} className="rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#210914] hover:brightness-110">Zamknij</button>
+        </div>}
+      </FullScreenLoader>
 
       {/* Modal rezerwacji sprzętu */}
       <ReserveEquipmentModal

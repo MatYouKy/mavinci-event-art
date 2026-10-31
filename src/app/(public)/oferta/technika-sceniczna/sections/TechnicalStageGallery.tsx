@@ -84,24 +84,15 @@ export default function TechnicalStageGallery() {
       }
 
       try {
-        const fileExt = file.name.split('.').pop();
-        const fileName = `technical-gallery/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
-
-        const { error: uploadError } = await supabase.storage
-          .from('site-images')
-          .upload(fileName, file);
-
-        if (uploadError) throw uploadError;
-
-        const {
-          data: { publicUrl },
-        } = supabase.storage.from('site-images').getPublicUrl(fileName);
-
-        await supabase.from('technical_stage_gallery').insert({
-          image_url: publicUrl,
-          title: file.name,
-          order_index: images.length,
+        const { uploadOptimizedImage } = await import('@/lib/storage');
+        const variants = await uploadOptimizedImage(file, 'technical-stage-gallery-optimized');
+        const { error } = await supabase.from('technical_stage_gallery').insert({
+          image_url: variants.desktop,
+          title: file.name.replace(/\.(jpe?g|png|webp)$/i, ''),
+          order_index: images.length + filesArray.indexOf(file),
+          is_visible: true,
         });
+        if (error) throw error;
       } catch (error) {
         console.error('Error uploading:', error);
         showSnackbar(`Błąd: ${file.name}`, 'error');
@@ -109,7 +100,7 @@ export default function TechnicalStageGallery() {
     }
 
     setUploading(false);
-    showSnackbar('Zdjęcia dodane', 'success');
+    await fetchImages();
   };
 
   const handleDelete = async (id: string) => {

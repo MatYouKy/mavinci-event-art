@@ -46,7 +46,17 @@ export function useOfferWizardLogic(opts: {
 
   const client = useOfferWizardClient({ isOpen: opts.isOpen, step, defaults: opts.defaults });
   const catalog = useOfferWizardCatalog({ isOpen: opts.isOpen, step });
-  const items = useOfferWizardItems();
+  const [offerData, setOfferData] = useState({
+    guest_count: '', guests_per_table: '10', table_count: '',
+    offer_number: '',
+    valid_until: '',
+    notes: '',
+    event_location: opts.eventDefaults?.location || '',
+    event_assumptions: opts.eventDefaults?.description || '',
+    event_assumption_items: normalizeEventAssumptionItems([], opts.eventDefaults?.description || ''),
+    event_goal: '',
+  });
+  const items = useOfferWizardItems({guest_count:offerData.guest_count===''?null:Number(offerData.guest_count),guests_per_table:Number(offerData.guests_per_table),table_count:offerData.table_count===''?null:Number(offerData.table_count)});
   const conflicts = useOfferWizardConflicts({ eventId: opts.eventId });
   const [targetNetPriceInput, setTargetNetPriceInput] = useState('');
 
@@ -73,15 +83,7 @@ export function useOfferWizardLogic(opts: {
     };
   }, [items.offerItems, targetNetPriceInput]);
 
-  const [offerData, setOfferData] = useState({
-    offer_number: '',
-    valid_until: '',
-    notes: '',
-    event_location: opts.eventDefaults?.location || '',
-    event_assumptions: opts.eventDefaults?.description || '',
-    event_assumption_items: normalizeEventAssumptionItems([], opts.eventDefaults?.description || ''),
-    event_goal: '',
-  });
+
 
   /**
    * ✅ ID sprzętów do wykluczenia z listy “manualnego sprzętu”

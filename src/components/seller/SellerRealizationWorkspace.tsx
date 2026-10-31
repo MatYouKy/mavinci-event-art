@@ -4,21 +4,26 @@ import { systemLabel } from '@/lib/ui/systemLabels';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, CalendarDays, Check, Clock3, FileText, Loader2, Mail, MapPin, MessageSquare, Phone, RefreshCw, Send } from 'lucide-react';
+import { ArrowLeft, CalendarDays, Clock3, FileText, Loader2, Mail, MapPin, MessageSquare, Phone, RefreshCw, Send } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { arrangementLocalDate, arrangementSchedule, type ArrangementContact } from '@/lib/seller/arrangements';
-import { deliveryStage, deliverySteps, deliveryTimestamp, preparationTasks, type PreparationTask, type SellerDeliveryState } from '@/lib/seller/delivery';
+import { deliveryStage, deliveryTimestamp, preparationTasks, type PreparationTask, type SellerDeliveryState } from '@/lib/seller/delivery';
 import { readSellerNotice, useSellerInbox } from '@/lib/seller/inbox';
 import { sellerOfferRequest } from '@/lib/seller/offerRequest.browser';
-import { sellerMoney } from '@/lib/seller/portal';
+import { onsiteContactMessage, type OnsiteContact } from '@/lib/seller/onsiteContact';
+import SellerOnsiteContactFields from './SellerOnsiteContactFields';
 import { useOfferRefresh } from '@/lib/seller/useOfferRefresh';
+import { SellerOfferSummary } from './SellerOfferOverview';
+import SellerJourney from './SellerJourney';
+import SellerRealizationCommission from './SellerRealizationCommission';
 import SellerOfferConversation from './SellerOfferConversation';
 import SellerRealizationDocuments from './SellerRealizationDocuments';
+import SellerRealizationWizard from './SellerRealizationWizard';
 import { TechnicalDetailsView } from '@/components/crm/locations/LocationTechnicalDetails';
 
 const card = 'min-w-0 scroll-mt-6 rounded-xl bg-[#1c1f33] p-4 sm:p-5';
 const button = 'inline-flex items-center justify-center gap-2 rounded-lg bg-[#d3bb73]/10 px-3 py-2.5 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/20 disabled:cursor-not-allowed disabled:opacity-40';
-type Draft = { task: PreparationTask; revision: number; text: string };
+type Draft = { task: PreparationTask; revision: number; text: string; contact?: OnsiteContact };
 
 function Contact({ contact }: { contact: Partial<ArrangementContact> }) {
   return <div className="min-w-0 space-y-2 rounded-lg bg-white/[0.03] p-3 text-sm">
@@ -51,7 +56,7 @@ export default function SellerRealizationWorkspace({ offerId }: { offerId: strin
     if (alive.current) setLoading(true);
     try {
       const result = await sellerOfferRequest(offerId) as SellerDeliveryState;
-      if (alive.current && current === sequence.current) { setData(result); setError(''); }
+      if (alive.current && current === sequence.current) { setData(previous => JSON.stringify(previous) === JSON.stringify(result) ? previous : result); setError(''); }
       return result;
     } catch (cause) {
       if (alive.current && current === sequence.current) setError(cause instanceof Error ? cause.message : 'Nie udało się wczytać realizacji.');
@@ -115,14 +120,25 @@ export default function SellerRealizationWorkspace({ offerId }: { offerId: strin
     setDraft({ task, revision: data?.seller_arrangements?.values.revision || 0, text: '' });
   };
   const submit = async () => {
-    if (!draft?.text.trim() || locked.current) return;
-    const text = draft.text.trim();
+    if (!draft || locked.current) return;
+    const onsiteContact = draft.task.key === 'contact' && draft.contact
+      ? { ...draft.contact, note: draft.text } : undefined;
+    let text: string;
+    try {
+      text = draft.task.key === 'contact' ? onsiteContactMessage(onsiteContact) : draft.text.trim();
+    } catch (cause) {
+      showSnackbar(cause instanceof Error ? cause.message : 'Sprawdź dane osoby kontaktowej.', 'error');
+      return;
+    }
+    if (!text) return;
     const key = JSON.stringify([offerId, draft.task.key, draft.revision, text]);
     if (pending.current?.key !== key) pending.current = { key, id: crypto.randomUUID() };
     const messageId = pending.current.id;
     locked.current = true; setSubmitting(true);
     try {
-      await sellerOfferRequest(offerId, { action: 'submit_preparation', taskKey: draft.task.key, revision: draft.revision, messageId, text });
+      await sellerOfferRequest(offerId, { action: 'submit_preparation', taskKey: draft.task.key, revision: draft.revision, messageId, text,
+        ...(onsiteContact ? { onsiteContact } : {}),
+      });
       if (!alive.current) return;
       // A successful write remains successful even if the following read fails.
       setData((current) => current?.seller_progress ? { ...current, seller_progress: { ...current.seller_progress,
@@ -149,22 +165,22 @@ export default function SellerRealizationWorkspace({ offerId }: { offerId: strin
   const isRealization = data.realization?.offer_status === 'accepted' || ['confirmed', 'cancelled'].includes(data.realization?.stage || '');
   if (!isRealization) return <div className="mx-auto max-w-3xl space-y-4 p-6 text-[#e5e4e2]"><h1 className="text-xl uppercase">Oferta oczekuje na decyzję</h1><p className="text-sm text-white/60">Ta oferta nie przeszła jeszcze do realizacji. Aktualną decyzję i dalsze kroki znajdziesz w jej podglądzie.</p><Link href={`/seller/offers/${offerId}`} className={button}>Przejdź do oferty</Link></div>;
 
-  const tasks = arrangements ? preparationTasks(arrangements, progress) : [];
+  const preparationVisible = stage.index >= 0 && isRealization;
+  const scheduleVisible = isRealization; // Planning is visible already; the status still requires explicit CRM confirmation.
+  const tasks = preparationVisible && stage.closed && arrangements ? preparationTasks(arrangements, progress) : [];
   const currentRevision = arrangements?.values.revision || 0;
   const latestSubmission = (key: string) => progress?.submissions.find((item) => item.task_key === key);
   const outstanding = tasks.filter((task) => !task.recorded && latestSubmission(task.key)?.arrangement_revision !== currentRevision);
   const preparedCount = tasks.length - outstanding.length;
   const clientAcceptance = progress?.acceptances[0];
   const readyToRead = Boolean(arrangements && progress);
-  let next = { title: 'Czekamy na potwierdzenie MAVINCI', detail: 'Oferta została zaakceptowana. Opiekun osobno potwierdzi wydarzenie. Nie wysyłaj oferty ponownie — możesz już sprawdzić przygotowania i kontynuować rozmowę.', owner: 'Opiekun MAVINCI', href: '#seller-realization-preparation', action: 'Sprawdź przygotowania' };
+  let next = { title: 'Czekamy na potwierdzenie opiekuna', detail: 'Oferta została przyjęta i trafiła do przygotowania w CRM. Opiekun planuje harmonogram, zespół i logistykę. Możesz przekazać potrzebne informacje poniżej; o potwierdzeniu realizacji dostaniesz osobne powiadomienie.', owner: 'Opiekun', href: '#seller-offer-conversation', action: 'Napisz do opiekuna' };
   if (stage.index === -1) next = { title: stage.cancelled ? 'Realizacja została anulowana' : 'Realizacja jest wstrzymana', detail: 'Historia, dokumenty i rozmowa pozostają dostępne. Dalsze działania ustal z opiekunem.', owner: 'Opiekun MAVINCI', href: '#seller-offer-conversation', action: 'Otwórz rozmowę' };
-  else if (stage.index === 5) next = { title: outstanding.length ? 'Jak przebiegła realizacja?' : 'Realizacja zakończona', detail: outstanding.length ? 'Możesz przekazać opiekunowi podsumowanie i uwagi klienta. To krok opcjonalny.' : 'Dokumenty i pełna historia ustaleń pozostają tutaj. Dziękujemy za współpracę.', owner: outstanding.length ? 'Ty — opcjonalnie' : 'Brak wymaganej czynności', href: outstanding.length ? '#seller-realization-preparation' : '#seller-realization-documents', action: outstanding.length ? 'Przekaż podsumowanie' : 'Przejrzyj dokumenty' };
+  else if (stage.index === 5) next = { title: outstanding.length ? 'Jak przebiegła realizacja?' : 'Realizacja zakończona', detail: outstanding.length ? 'Możesz przekazać opiekunowi podsumowanie i uwagi klienta. To krok opcjonalny.' : 'Dokumenty i pełna historia ustaleń pozostają tutaj. Dziękujemy za współpracę.', owner: outstanding.length ? 'Ty — opcjonalnie' : 'Brak wymaganej czynności', href: outstanding.length ? '#seller-realization-feedback' : '#seller-realization-documents', action: outstanding.length ? 'Przekaż podsumowanie' : 'Przejrzyj dokumenty' };
   else if (stage.index === 4) next = { title: 'Wydarzenie jest w realizacji', detail: 'W sprawach bieżących korzystaj z kontaktów do zespołu. Ustalenia i zmiany zapisuj we wspólnej rozmowie.', owner: 'Zespół realizacyjny', href: '#seller-realization-schedule', action: 'Harmonogram i kontakty' };
   else if (stage.index === 3) next = { title: 'Wszystko gotowe do realizacji', detail: 'Opiekun oznaczył realizację jako gotową. Sprawdź harmonogram i dostępność osoby kontaktowej na miejscu.', owner: 'Ty i zespół realizacyjny', href: '#seller-realization-schedule', action: 'Sprawdź harmonogram' };
-  else if (stage.index > 0) next = outstanding.length
-    ? { title: outstanding[0].title, detail: 'Przejrzyj wymagania poniżej i przekaż brakujące informacje. Zapis trafi do rozmowy z opiekunem.', owner: 'Ty', href: '#seller-realization-preparation', action: 'Przejdź do przygotowań' }
-    : { title: 'Informacje przekazane', detail: 'Na tej liście nie ma teraz brakujących odpowiedzi. Opiekun potwierdza przygotowanie i gotowość realizacji — samo wysłanie informacji nie zmienia etapu.', owner: 'Opiekun MAVINCI', href: '#seller-offer-conversation', action: 'Otwórz rozmowę' };
-  if (!readyToRead && stage.index >= 0) next = { title: 'Sprawdź dostępność danych', detail: 'Nie wczytaliśmy pełnych ustaleń lub przygotowań. Nie traktuj tego jako braku zadań. Odśwież widok lub skontaktuj się z opiekunem.', owner: 'Dane chwilowo niedostępne', href: '#seller-offer-conversation', action: 'Otwórz rozmowę' };
+  else next = { title: 'Przygotowanie krok po kroku', detail: 'Uzupełnij kontakt, miejsce i wymagania. Opiekun zatwierdzi dane lub przekaże uwagi. Następnie przygotuje plan realizacji do Twojego potwierdzenia. Każdy krok pokazuje, na czyją akcję czekamy.', owner: 'Sprzedawca i opiekun', href: '#seller-realization-preparation', action: 'Przejdź do przygotowań' };
+  if (!readyToRead && stage.index > 0) next = { title: 'Sprawdź dostępność danych', detail: 'Nie wczytaliśmy pełnych ustaleń lub przygotowań. Nie traktuj tego jako braku zadań. Odśwież widok lub skontaktuj się z opiekunem.', owner: 'Dane chwilowo niedostępne', href: '#seller-offer-conversation', action: 'Otwórz rozmowę' };
   const location = arrangements?.event?.location || arrangements?.offer.location;
 
   return <div className="min-h-screen p-4 text-[#e5e4e2] md:p-6">
@@ -173,25 +189,20 @@ export default function SellerRealizationWorkspace({ offerId }: { offerId: strin
         <div className="flex flex-wrap items-center justify-between gap-3"><Link href="/seller/realizations" className="inline-flex items-center gap-2 text-sm text-white/60 hover:text-[#d3bb73]"><ArrowLeft className="h-4 w-4"/>Moje realizacje</Link><button type="button" className={button} disabled={loading || submitting} onClick={refresh}><RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`}/>Odśwież</button></div>
         <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><p className="text-xs text-white/45">{data.offer_number} · Realizacja</p><h1 className="mt-2 break-words text-xl uppercase sm:text-2xl">{arrangements?.event?.name || data.title}</h1>{location && <p className="mt-2 flex items-center gap-2 text-sm text-white/55"><MapPin className="h-4 w-4 shrink-0"/>{location}</p>}</div><span className={`rounded-full px-3 py-2 text-xs ${stage.cancelled ? 'bg-rose-300/10 text-rose-200' : 'bg-[#d3bb73]/10 text-[#d3bb73]'}`}>{stage.label}</span></div>
       </header>
+      <SellerJourney state={data} />
       {error && <p role="alert" className="rounded-xl bg-amber-200/10 p-4 text-sm text-amber-100">{error} Wyświetlane dane mogą być nieaktualne.</p>}
       {[data.seller_arrangements_error, data.seller_progress_error].filter(Boolean).map((message) => <p role="alert" key={message} className="rounded-xl bg-amber-200/10 p-4 text-sm text-amber-100">{message}</p>)}
-      <nav aria-label="Etapy realizacji" className={`${card} overflow-x-auto`}>
-        <ol className="grid min-w-[650px] grid-cols-6 gap-3">{deliverySteps.map((label, index) => <li key={label} aria-current={stage.index === index ? 'step' : undefined} className={`space-y-2 text-xs ${stage.index === index ? 'text-[#d3bb73]' : index < stage.index ? 'text-white/75' : 'text-white/35'}`}><span className={`flex h-7 w-7 items-center justify-center rounded-full ${index <= stage.index ? 'bg-[#d3bb73]/15' : 'bg-white/5'}`}>{index < stage.index ? <Check className="h-3.5 w-3.5"/> : index + 1}</span><p>{label}</p></li>)}</ol>
-        <p className="mt-4 text-xs text-white/40">Etap wynika z decyzji MAVINCI, nie z samego upływu daty wydarzenia.</p>
-      </nav>
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <main className="min-w-0 space-y-5">
           <section id="seller-offer-review" className={`${card} space-y-3`} aria-labelledby="seller-next-action">
             <p className="text-xs uppercase text-[#d3bb73]">Następny krok · {next.owner}</p><h2 id="seller-next-action" className="text-lg uppercase">{next.title}</h2><p className="text-sm leading-6 text-white/60">{next.detail}</p><a href={next.href} className={button}>{next.action}</a>
           </section>
-          <nav aria-label="Sekcje realizacji" className="flex flex-wrap gap-2 text-xs"><a href="#seller-realization-summary" className={button}>Podsumowanie</a><a href="#seller-realization-preparation" className={button}>Przygotowanie</a><a href="#seller-realization-schedule" className={button}>Harmonogram i kontakty</a><a href="#seller-realization-documents" className={button}>Dokumenty</a></nav>
-          <section id="seller-realization-summary" className={`${card} space-y-4`}>
-            <h2 className="text-base uppercase">Podsumowanie realizacji</h2>
-            {arrangements && <div className="grid gap-4 text-sm sm:grid-cols-2"><div><p className="text-xs text-white/45">Klient</p><p className="mt-1">{[arrangements.client.company, arrangements.client.name].filter(Boolean).join(' · ') || 'Nie podano'}</p></div><div><p className="text-xs text-white/45">Wartość oferty dla klienta netto</p><p className="mt-1">{arrangements.offer.client_net == null ? 'Nie podano' : sellerMoney(arrangements.offer.client_net)}</p></div>{arrangements.values.room && <div><p className="text-xs text-white/45">Sala / przestrzeń</p><p className="mt-1">{arrangements.values.room}</p></div>}{arrangements.values.participant_count != null && <div><p className="text-xs text-white/45">Liczba uczestników</p><p className="mt-1">{arrangements.values.participant_count}</p></div>}</div>}
-            {progress && <div className="space-y-2"><h3 className="text-xs uppercase text-white/50">Zakres usług</h3>{progress.items.length ? <ul className="divide-y divide-white/5">{progress.items.map((item) => <li key={item.id} className="flex justify-between gap-4 py-2.5 text-sm"><span className="break-words">{item.name}</span><span className="shrink-0 text-white/55">{item.quantity} {item.unit}</span></li>)}</ul> : <p className="text-sm text-white/50">Brak pozycji zapisanych przy ofercie.</p>}</div>}
-            <p className="text-xs leading-5 text-white/45">Zmianę ceny, zakresu lub terminu zgłoś opiekunowi w rozmowie. Ten ekran nie zmienia zaakceptowanej oferty.</p>
-          </section>
-          <section id="seller-realization-preparation" className={`${card} space-y-4`}>
+          <nav aria-label="Sekcje realizacji" className="flex flex-wrap gap-2 text-xs"><a href="#seller-realization-summary" className={button}>Oferta</a>{preparationVisible && <a href="#seller-realization-preparation" className={button}>Przygotowanie</a>}{scheduleVisible && <a href="#seller-realization-schedule" className={button}>Harmonogram i kontakty</a>}<a href="#seller-realization-documents" className={button}>Dokumenty</a><a href="#seller-offer-conversation" className={button}>Rozmowa</a></nav>
+          <SellerOfferSummary id="seller-realization-summary" state={data} />
+          {preparationVisible && <div id="seller-realization-preparation" className="scroll-mt-6">
+            <SellerRealizationWizard key={offerId} offerId={offerId} refreshKey={externalRefresh}/>
+          </div>}
+          {preparationVisible && stage.closed && <section id="seller-realization-feedback" className={`${card} space-y-4`}>
             <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-base uppercase">{stage.closed ? 'Podsumowanie po realizacji' : 'Przygotowanie do realizacji'}</h2>{readyToRead && tasks.length > 0 && <span className="text-xs text-white/50">{preparedCount}/{tasks.length} · dane zapisane lub przekazane</span>}</div>
             <p className="text-xs leading-5 text-white/55">To lista informacji do uzgodnienia, nie automatyczne potwierdzenie gotowości. Odpowiedź trafia do tej samej rozmowy. Opiekun zatwierdza ustalenia osobno.</p>
             {!readyToRead ? <p className="text-sm text-white/50">Pełna lista przygotowań jest chwilowo niedostępna.</p> : !tasks.length ? <p className="text-sm text-white/50">{stage.cancelled ? 'Realizacja anulowana — nie ma aktywnych przygotowań.' : 'Brak dodatkowych informacji do przekazania.'}</p> : tasks.map((task) => {
@@ -205,23 +216,29 @@ export default function SellerRealizationWorkspace({ offerId }: { offerId: strin
                 {task.due && <p className="flex items-center gap-2 text-xs text-[#d3bb73]"><Clock3 className="h-3.5 w-3.5"/>Termin przekazania: {arrangementLocalDate(task.due)}</p>}
                 {submission && <p className="text-xs text-white/40">Ostatnia informacja: {deliveryTimestamp(submission.submitted_at)} · wersja ustaleń {submission.arrangement_revision}</p>}
                 {active && draft ? <form className="space-y-3" onSubmit={(event) => { event.preventDefault(); void submit(); }}>
-                  <label className="block text-xs text-white/60">Informacja dla opiekuna<textarea autoFocus rows={4} maxLength={4000} value={draft.text} disabled={submitting} onChange={(event) => { dirty.current = Boolean(event.target.value.trim()); setDraft({ ...draft, text: event.target.value }); }} placeholder={task.key === 'materials' ? 'Link do materiałów i krótki opis…' : 'Wpisz konkretne dane, odpowiedź lub propozycję…'} className="mt-2 w-full rounded-lg border border-white/10 bg-[#0f1119] p-3 text-sm outline-none focus:border-[#d3bb73]/30"/></label>
-                  <p className="text-xs text-white/40">Wiadomość będzie widoczna w rozmowie. Nie nadpisze harmonogramu, ceny ani zaakceptowanych ustaleń.</p>
-                  <div className="flex flex-wrap gap-2"><button type="submit" disabled={submitting || !draft.text.trim() || !data.chat?.can_start} className={button}>{submitting ? <Loader2 className="h-4 w-4 animate-spin"/> : <Send className="h-4 w-4"/>}{submitting ? 'Przekazywanie…' : 'Przekaż opiekunowi'}</button><button type="button" disabled={submitting} className={button} onClick={() => { if (!dirty.current || window.confirm('Odrzucić niewysłaną informację?')) { dirty.current = false; setDraft(null); pending.current = null; } }}>Anuluj</button></div>
+                  {task.key === 'contact' && <SellerOnsiteContactFields value={draft.contact} disabled={submitting}
+                    client={arrangements?.client} partnerId={data.chat?.sales_partner_id} companyId={data.chat?.my_company_id}
+                    onChange={contact => {
+                      dirty.current = true;
+                      setDraft(current => current?.task.key === 'contact' ? { ...current, contact } : current);
+                    }} />}
+                  <label className="block text-xs text-white/60">{task.key === 'contact' ? 'Dodatkowe informacje (opcjonalnie)' : 'Informacja dla opiekuna'}<textarea autoFocus={task.key !== 'contact'} rows={task.key === 'contact' ? 2 : 4} maxLength={task.key === 'contact' ? 2000 : 4000} value={draft.text} disabled={submitting} onChange={(event) => { dirty.current = Boolean(draft.contact || event.target.value.trim()); setDraft({ ...draft, text: event.target.value }); }} placeholder={task.key === 'contact' ? 'np. dostępność na miejscu, wskazówki dotyczące kontaktu…' : task.key === 'materials' ? 'Link do materiałów i krótki opis…' : 'Wpisz konkretne dane, odpowiedź lub propozycję…'} className="mt-2 w-full rounded-lg border border-white/10 bg-[#0f1119] p-3 text-sm outline-none focus:border-[#d3bb73]/30"/></label>
+                  <p className="text-xs text-white/40">{task.key === 'contact' ? 'Dane wybranej osoby zostaną przekazane opiekunowi w rozmowie do uzgodnienia. Nie zmienią automatycznie bazy kontaktów ani zaakceptowanych ustaleń.' : 'Wiadomość będzie widoczna w rozmowie. Nie nadpisze harmonogramu, ceny ani zaakceptowanych ustaleń.'}</p>
+                  <div className="flex flex-wrap gap-2"><button type="submit" disabled={submitting || (task.key === 'contact' ? !draft.contact : !draft.text.trim()) || !data.chat?.can_start} className={button}>{submitting ? <Loader2 className="h-4 w-4 animate-spin"/> : <Send className="h-4 w-4"/>}{submitting ? 'Przekazywanie…' : 'Przekaż opiekunowi'}</button><button type="button" disabled={submitting} className={button} onClick={() => { if (!dirty.current || window.confirm('Odrzucić niewysłaną informację?')) { dirty.current = false; setDraft(null); pending.current = null; } }}>Anuluj</button></div>
                 </form> : <button type="button" disabled={submitting || !data.chat?.can_start} className={button} onClick={() => openTask(task)}>{task.recorded || submission ? 'Uzupełnij informację' : 'Przekaż informacje'}</button>}
               </article>;
             })}
             {readyToRead && tasks.length > 0 && !data.chat?.can_start && <p className="text-xs text-amber-200">Przekazywanie informacji wymaga dostępu do rozmowy w tej marce.</p>}
-          </section>
-          <section id="seller-realization-schedule" className={`${card} space-y-5`}>
+          </section>}
+          {scheduleVisible && <section id="seller-realization-schedule" className={`${card} space-y-5`}>
             <h2 className="flex items-center gap-2 text-base uppercase"><CalendarDays className="h-4 w-4 text-[#d3bb73]"/>Harmonogram i kontakty</h2>
-            {arrangements ? <><p className="text-xs leading-5 text-white/45">Godziny w strefie Europe/Warsaw. Terminy bez oznaczenia „CRM” pochodzą z ustaleń oferty i wymagają potwierdzenia przez opiekuna.</p><dl className="grid gap-3 sm:grid-cols-2">{arrangementSchedule.map(([key, label]) => { const official = arrangements.event?.[key]; const value = official || arrangements.values[key]; return <div key={key} className="rounded-lg bg-white/[0.03] p-3"><dt className="text-xs text-white/45">{label}{official ? ' · CRM' : value ? ' · ustalenia oferty' : ''}</dt><dd className="mt-1 text-sm">{arrangementLocalDate(value)}</dd></div>; })}</dl>
+            {arrangements ? <><p className="text-xs leading-5 text-white/45">Godziny w strefie Europe/Warsaw. Terminy oznaczone „CRM” pochodzą z wydarzenia; pozostałe z ustaleń oferty. Sam plan nie oznacza potwierdzenia realizacji — obowiązuje status powyżej.</p><dl className="grid gap-3 sm:grid-cols-2">{arrangementSchedule.map(([key, label]) => { const official = arrangements.event?.[key]; const value = official || arrangements.values[key]; return <div key={key} className="rounded-lg bg-white/[0.03] p-3"><dt className="text-xs text-white/45">{label}{official ? ' · CRM' : value ? ' · ustalenia oferty' : ''}</dt><dd className="mt-1 text-sm">{arrangementLocalDate(value)}</dd></div>; })}</dl>
               {location && <p className="text-sm text-white/60">Miejsce: {location}</p>}
               <div className="space-y-3"><h3 className="text-sm uppercase">Opiekun i zespół MAVINCI</h3>{arrangements.team.length ? <div className="grid gap-3 sm:grid-cols-2">{arrangements.team.map((contact) => <Contact key={contact.id} contact={contact}/>)}</div> : <p className="text-sm text-white/50">Kontakty nie zostały jeszcze uzupełnione. Skorzystaj z rozmowy z opiekunem.</p>}</div>
-              <div className="space-y-3"><h3 className="text-sm uppercase">Kontakty po stronie klienta</h3><div className="grid gap-3 sm:grid-cols-2">{(arrangements.client.name || arrangements.client.phone || arrangements.client.email) && <Contact contact={{ name: arrangements.client.name || '', phone: arrangements.client.phone || '', email: arrangements.client.email || '', role: 'Klient z oferty' }}/>} {(arrangements.values.contacts || []).map((contact, index) => <Contact key={`${contact.name}:${index}`} contact={contact}/>)}</div>{!arrangements.values.contacts?.length && <p className="text-xs text-white/45">Osobę kontaktową na miejscu przekaż w sekcji przygotowań.</p>}</div>
+              <div className="space-y-3"><h3 className="text-sm uppercase">Kontakty po stronie klienta</h3><div className="grid gap-3 sm:grid-cols-2">{(arrangements.client.name || arrangements.client.phone || arrangements.client.email) && <Contact contact={{ name: arrangements.client.name || '', phone: arrangements.client.phone || '', email: arrangements.client.email || '', role: 'Klient z oferty' }}/>} {(arrangements.values.contacts || []).map((contact, index) => <Contact key={`${contact.name}:${index}`} contact={contact}/>)}</div>{!arrangements.values.contacts?.length && <p className="text-xs text-white/45">Aktualny kontakt na miejscu i jego zatwierdzenie znajdziesz w kroku „Kontakt na miejscu” powyżej.</p>}</div>
             </> : <p className="text-sm text-white/50">Harmonogram i kontakty są chwilowo niedostępne.</p>}
-          </section>
-          {arrangements?.values.venue_snapshot && <details className={card}>
+          </section>}
+          {scheduleVisible && arrangements?.values.venue_snapshot && <details className={card}>
             <summary className="cursor-pointer text-base uppercase">Przestrzeń i plany · {arrangements.values.venue_snapshot.room.name}</summary>
             <div className="mt-4 space-y-4"><p className="text-xs text-white/50">Informacje zapisane wraz z ustaleniami oferty. Późniejsze zmiany bazy hotelu nie nadpisują tego zapisu.</p><p className="whitespace-pre-wrap text-sm text-white/65">{arrangements.values.venue_snapshot.room.notes}</p><TechnicalDetailsView value={arrangements.values.venue_snapshot.room.technical}/><TechnicalDetailsView value={arrangements.values.venue_snapshot.technical_details}/></div>
           </details>}
@@ -231,7 +248,7 @@ export default function SellerRealizationWorkspace({ offerId }: { offerId: strin
               <div className="space-y-3 text-xs leading-5 text-white/55"><h3 className="text-sm uppercase">Akceptacja klienta</h3>{progress ? progress.acceptances.length ? <ul className="space-y-2">{progress.acceptances.map((acceptance) => <li key={acceptance.id}>{deliveryTimestamp(acceptance.confirmed_at)} · {acceptance.seller_name} potwierdził(a) akceptację klienta dla {data.documents.find((document) => document.id === acceptance.document_id)?.filename || 'zapisanej wersji PDF'}.{acceptance.source_key !== data.source_key && <span className="block text-amber-200">Potwierdzenie dotyczy wcześniejszej wersji. Nie oznacza zgody na późniejsze zmiany.</span>}</li>)}</ul> : <p>Brak osobno zapisanego potwierdzenia klienta. Historycznej prośby o akceptację nie traktujemy automatycznie jako zgody klienta.</p> : <p>Historia akceptacji jest chwilowo niedostępna.</p>}{data.review?.reviewed_at && <p>Ostatnia decyzja opiekuna: {deliveryTimestamp(data.review.reviewed_at)}.</p>}</div>
             </div>
           </details>
-          {progress?.commission_enabled && <Link href="/seller/commissions" className={button}>Przejdź do mojego wynagrodzenia</Link>}
+          {scheduleVisible && <SellerRealizationCommission key={data.realization?.event_id || offerId} eventId={data.realization?.event_id || null} revision={externalRefresh} commissionEnabled={progress?.commission_enabled} />}
         </main>
         <aside className="min-w-0 lg:sticky lg:top-6 lg:flex lg:max-h-[calc(100dvh-3rem)] lg:flex-col">
           {data.chat ? <SellerOfferConversation offerId={offerId} partnerId={data.chat.sales_partner_id} companyId={data.chat.my_company_id} canStart={data.chat.can_start} crm={false} compact standalone realization/>

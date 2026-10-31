@@ -12,9 +12,13 @@ function escapeXml(s: string) {
 export async function GET() {
   const sitemaps = [
     `${BASE_URL}/sitemap-pages.xml`,
+    `${BASE_URL}/sitemap-agencja-eventowa.xml`,
     `${BASE_URL}/sitemap-portfolio.xml`,
     `${BASE_URL}/sitemap-uslugi.xml`,
     `${BASE_URL}/sitemap-konferencje.xml`,
+    `${BASE_URL}/sitemap-kasyno.xml`,
+    `${BASE_URL}/sitemap-technika-sceniczna.xml`,
+    `${BASE_URL}/sitemap-wieczory-tematyczne.xml`,
     `${BASE_URL}/sitemap-quizy.xml`,
     `${BASE_URL}/image-sitemap.xml`,
   ];

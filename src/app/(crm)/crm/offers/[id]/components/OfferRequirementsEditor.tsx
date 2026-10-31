@@ -12,6 +12,7 @@ import {
 } from '@/lib/CRM/Offers/offerRequirements';
 
 type Props = {
+  preparedRequirements?: OfferRequirementEntry[];
   offer: any;
   canEdit: boolean;
   onSaved: () => void;
@@ -30,7 +31,7 @@ const parseStoredRequirements = (value: unknown): OfferRequirementEntry[] => {
   return [];
 };
 
-export default function OfferRequirementsEditor({ offer, canEdit: mayEdit, onSaved }: Props) {
+export default function OfferRequirementsEditor({ offer, canEdit: mayEdit, onSaved, preparedRequirements }: Props) {
   const { showSnackbar } = useSnackbar();
   const [editing, setEditing] = useState(false);
   const [requirements, setRequirements] = useState<OfferRequirementEntry[]>([]);
@@ -46,6 +47,7 @@ export default function OfferRequirementsEditor({ offer, canEdit: mayEdit, onSav
 
   useEffect(() => {
     if (editing) return;
+    if (preparedRequirements) { setRequirements(preparedRequirements); setLoading(false); return; }
     let cancelled = false;
     const load = async () => {
       setLoading(true);
@@ -72,7 +74,7 @@ export default function OfferRequirementsEditor({ offer, canEdit: mayEdit, onSav
     };
     void load();
     return () => { cancelled = true; };
-  }, [editing, offer.id, offer.offer_requirements, offer.status, offer.event?.category?.default_offer_template_category_id, offerItems]);
+  }, [preparedRequirements, editing, offer.id, offer.offer_requirements, offer.status, offer.event?.category?.default_offer_template_category_id, offerItems]);
 
   const updateRequirement = (key: string, patch: Partial<OfferRequirementEntry>) => {
     setRequirements((current) => current.map((item) => {
@@ -140,7 +142,7 @@ export default function OfferRequirementsEditor({ offer, canEdit: mayEdit, onSav
   };
 
   return (
-    <section className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-4 md:p-6">
+    <section data-offer-editing={editing} className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-4 md:p-6">
       <button
         type="button"
         onClick={() => setIsOpen((current) => !current)}

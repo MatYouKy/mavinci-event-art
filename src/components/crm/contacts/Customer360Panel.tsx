@@ -1,6 +1,7 @@
 'use client';
 
 import CustomerInquiryHistory from './CustomerInquiryHistory';
+import { isEligibleContactOwner } from './ownerEligibility';
 
 import { formatSystemSubject } from '@/lib/ui/systemLabels';
 import SystemBadge from '@/components/UI/SystemBadge';
@@ -222,7 +223,7 @@ export default function Customer360Panel({ contact, onOwnerSaved }: { contact: C
                 .order('sent_at', { ascending: false })
                 .limit(100)
             : Promise.resolve({ data: [], error: null }),
-          supabase.from('employees').select('id, name, surname, role').eq('is_active', true).order('surname'),
+          supabase.from('employees').select('id, name, surname, role, access_level, access_levels(slug)').eq('is_active', true).order('surname'),
         ]);
 
         const failed = [callsResult, organizationsResult, offersResult, directEventsResult, eventLinksResult, meetingsResult, inquiriesResult, contactsResult, receivedResult, sentResult, employeesResult]
@@ -341,7 +342,7 @@ export default function Customer360Panel({ contact, onOwnerSaved }: { contact: C
 
         if (active) {
           setData(nextState);
-          setEmployees(employeesResult.data || []);
+          setEmployees((employeesResult.data || []).filter(isEligibleContactOwner));
           setCanMerge(Boolean((employeesResult.data || []).find((employee: any) => employee.id === authData.user?.id)?.role === 'admin'));
         }
       } catch (loadError: any) {

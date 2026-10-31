@@ -124,7 +124,14 @@ export async function loadFinalInvoiceEventOrder(eventId: string): Promise<Final
       throw new Error(`Waluta wydarzenia „${event.name}” różni się od waluty jego uzgodnionych cen.`);
     }
     if (event.my_company_id && source.my_company_id && event.my_company_id !== source.my_company_id) {
-      throw new Error(`Wydarzenie „${event.name}” i jego źródło cen wskazują różne firmy wystawiające fakturę.`);
+      const { data: sourceAllowed, error: sourceAccessError } = await supabase.rpc('can_use_event_invoice_source', {
+        p_event_id: event.id,
+        p_source_kind: event.financial_source === 'calculation' ? 'calculation' : 'offer',
+        p_source_id: source.id,
+      });
+      if (sourceAccessError || sourceAllowed !== true) {
+        throw new Error(`Wydarzenie „${event.name}” i jego źródło cen wskazują różne firmy, bez potwierdzonego przeniesienia przez fakturę.`);
+      }
     }
     const calculatedNet = money(prefill.items.reduce((sum, item) => sum + money(item.quantity * item.price_net), 0));
     const calculatedVat = money(prefill.items.reduce((sum, item) => sum + money(money(item.quantity * item.price_net) * item.vat_rate / 100), 0));

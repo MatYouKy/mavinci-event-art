@@ -10,6 +10,8 @@ import { sellerMoney } from '@/lib/seller/portal';
 import { arrangementLocalDate, arrangementSchedule, sellerArrangementError, type ArrangementContact, type ArrangementScheduleKey, type SellerArrangements } from '@/lib/seller/arrangements';
 import SellerDatePicker from '@/app/(public)/seller/_components/SellerDatePicker';
 import SearchCombobox from '@/components/crm/SearchCombobox';
+import SellerEventSchedule, { SellerEventScheduleSummary } from './SellerEventSchedule';
+import { buildSellerEventSchedule, emptySellerEventDay, hasLegacySellerEventRange, sellerEventDaysFrom, type SellerEventDay } from '@/lib/seller/eventSchedule';
 import { TechnicalDetailsView } from '@/components/crm/locations/LocationTechnicalDetails';
 import { hotelContextError, type HotelVenueSnapshot, type SellerHotelContext } from '@/lib/seller/hotel';
 
@@ -20,6 +22,7 @@ type Draft = {
   room: string;
   venue_snapshot: HotelVenueSnapshot | null;
   participant_count: string;
+  event_days: SellerEventDay[] | null;
   schedule: Record<ArrangementScheduleKey, Slot>;
   materials_due_date: string;
   technical_requirements: string;
@@ -32,6 +35,7 @@ function draftFrom(data: SellerArrangements): Draft {
   const slot = (key: ArrangementScheduleKey): Slot => ({ date: values[key]?.slice(0, 10) || '', time: values[key]?.slice(11, 16) || '' });
   return {
     room: values.room || '', venue_snapshot: values.venue_snapshot || null, participant_count: values.participant_count == null ? '' : String(values.participant_count),
+    event_days: values.event_days ?? null,
     schedule: { setup_at: slot('setup_at'), starts_at: slot('starts_at'), ends_at: slot('ends_at'), teardown_at: slot('teardown_at') },
     materials_due_date: values.materials_due_date || '', technical_requirements: values.technical_requirements || '',
     logistics_requirements: values.logistics_requirements || '', contacts: values.contacts || [],
@@ -83,6 +87,7 @@ export default function SellerOfferArrangements({ offerId, crm, refreshKey = 0, 
   const [message, setMessage] = useState('');
   const [invalidDates, setInvalidDates] = useState<Record<string, boolean>>({});
   const [materialsValid, setMaterialsValid] = useState(true);
+  const [eventDaysValid, setEventDaysValid] = useState(true);
   const [formVersion, setFormVersion] = useState(0);
   const [hotel, setHotel] = useState<SellerHotelContext | null>(null);
   const [hotelError, setHotelError] = useState('');
@@ -94,7 +99,7 @@ export default function SellerOfferArrangements({ offerId, crm, refreshKey = 0, 
   const requestRef = useRef(0);
   const saveLock = useRef(false);
   const mounted = useRef(true);
-  const invalid = !materialsValid || Object.values(invalidDates).some(Boolean);
+  const invalid = !eventDaysValid || !materialsValid || Object.values(invalidDates).some(Boolean);
   const dirty = Boolean(draft && (JSON.stringify(draft) !== savedDraft || invalid));
   const dirtyRef = useRef(dirty); dirtyRef.current = dirty;
   const dateValidity = useCallback((key: ArrangementScheduleKey, valid: boolean) => {
@@ -106,6 +111,13 @@ export default function SellerOfferArrangements({ offerId, crm, refreshKey = 0, 
     dirtyRef.current = true;
     setDraft(next);
   };
+  const changeEventDays = (days: SellerEventDay[]) => {
+    if (!draft) return;
+    const next = buildSellerEventSchedule(days);
+    const slot = (value: string | null): Slot => ({ date: value?.slice(0, 10) || '', time: value?.slice(11, 16) || '' });
+    setInvalidDates(current => ({ ...current, starts_at: false, ends_at: false }));
+    changeDraft({ ...draft, event_days: days, schedule: { ...draft.schedule, starts_at: slot(next.starts_at), ends_at: slot(next.ends_at) } });
+  };
   const accept = useCallback((next: SellerArrangements, reset = false) => {
     const nextDraft = draftFrom(next);
     const serialized = JSON.stringify(nextDraft);
@@ -114,7 +126,7 @@ export default function SellerOfferArrangements({ offerId, crm, refreshKey = 0, 
       savedDraftRef.current = serialized;
       setDraft(nextDraft); setSavedDraft(serialized);
       setCustomRoom(Boolean(nextDraft.room && !nextDraft.venue_snapshot));
-      setInvalidDates({}); setMaterialsValid(true); setFormVersion((version) => version + 1);
+      setInvalidDates({}); setMaterialsValid(true); setEventDaysValid(true); setFormVersion((version) => version + 1);
     }
   }, []);
   const load = useCallback(async (foreground = false) => {
@@ -184,7 +196,9 @@ export default function SellerOfferArrangements({ offerId, crm, refreshKey = 0, 
     event.preventDefault();
     if (!data?.can_edit || !draft || saveLock.current) return;
     setError(''); setMessage('');
-    if (invalid) { setError('Popraw daty zaznaczone w formularzu.'); return; }
+    if (invalid) { setError('Popraw daty i godziny zaznaczone w formularzu.'); return; }
+    const dailySchedule = draft.event_days === null ? null : buildSellerEventSchedule(draft.event_days);
+    if (dailySchedule?.error) { setError(dailySchedule.error); return; }
     const schedule = {} as Record<ArrangementScheduleKey, string | null>;
     for (const [key, label] of arrangementSchedule) {
       const slot = draft.schedule[key];
@@ -204,6 +218,7 @@ export default function SellerOfferArrangements({ offerId, crm, refreshKey = 0, 
       const result = await supabase.rpc('save_seller_offer_arrangements', {
         p_offer: offerId, p_revision: data.values.revision,
         p_values: {
+          ...(dailySchedule ? { event_days: dailySchedule.days } : {}),
           ...schedule, room: draft.room, venue_snapshot: draft.venue_snapshot, participant_count: draft.participant_count === '' ? null : Number(draft.participant_count),
           materials_due_date: draft.materials_due_date || null, technical_requirements: draft.technical_requirements,
           logistics_requirements: draft.logistics_requirements, contacts: draft.contacts,
@@ -288,7 +303,16 @@ export default function SellerOfferArrangements({ offerId, crm, refreshKey = 0, 
             <label className="text-xs text-white/50">Liczba uczestników<input type="number" min={0} max={1000000} step={1} value={draft.participant_count} onChange={(event) => changeDraft({ ...draft, participant_count: event.target.value })} placeholder="Do ustalenia" className={field}/></label>
           </div>
           {draft.venue_snapshot && <details className="rounded-lg bg-white/[0.035] p-3"><summary className="cursor-pointer text-sm text-[#d3bb73]">{draft.venue_snapshot.organization_name} · {draft.venue_snapshot.room.name} — plany i informacje o przestrzeni</summary><div className="mt-3 space-y-3"><p className="whitespace-pre-wrap text-sm text-white/60">{draft.venue_snapshot.room.notes}</p><TechnicalDetailsView value={draft.venue_snapshot.room.technical}/><TechnicalDetailsView value={draft.venue_snapshot.technical_details}/></div></details>}
-          <div><p className="mb-3 text-xs text-white/50">Harmonogram ustaleń · czas polski (Europe/Warsaw)</p><div className="grid gap-3 xl:grid-cols-2">{arrangementSchedule.map(([key, label]) => <ScheduleField key={key} name={key} label={label} value={draft.schedule[key]} onValidity={dateValidity} onChange={(slot) => changeDraft({ ...draft, schedule: { ...draft.schedule, [key]: slot } })}/>)}</div></div>
+          {draft.event_days !== null && <SellerEventSchedule value={draft.event_days.length ? draft.event_days : [emptySellerEventDay()]} onChange={changeEventDays} onValidityChange={setEventDaysValid} />}
+          <div><p className="mb-3 text-xs text-white/50">Harmonogram ustaleń · czas polski (Europe/Warsaw)</p><div className="grid gap-3 xl:grid-cols-2">{arrangementSchedule.filter(([key]) => draft.event_days === null || key === 'setup_at' || key === 'teardown_at').map(([key, label]) => <ScheduleField key={key} name={key} label={label} value={draft.schedule[key]} onValidity={dateValidity} onChange={(slot) => changeDraft({ ...draft, schedule: { ...draft.schedule, [key]: slot } })}/>)}</div></div>
+          {draft.event_days === null && <button type="button" className={button} onClick={() => {
+            const current = {
+              starts_at: draft.schedule.starts_at.date && draft.schedule.starts_at.time ? draft.schedule.starts_at.date + 'T' + draft.schedule.starts_at.time : null,
+              ends_at: draft.schedule.ends_at.date && draft.schedule.ends_at.time ? draft.schedule.ends_at.date + 'T' + draft.schedule.ends_at.time : null,
+            };
+            if (hasLegacySellerEventRange(current) && !window.confirm('Dotychczasowy zakres nie określa godzin każdego dnia. Ustalić je osobno? Początek i koniec zostaną obliczone z nowych dni po zapisaniu ustaleń.')) return;
+            changeEventDays(sellerEventDaysFrom(current, draft.schedule.starts_at.date || data.offer.event_date?.slice(0, 10) || ''));
+          }}><Plus className="h-4 w-4" />Ustal godziny dla poszczególnych dni</button>}
           <div className="max-w-sm"><SellerDatePicker label="Termin dostarczenia materiałów" value={draft.materials_due_date} onChange={(value) => changeDraft({ ...draft, materials_due_date: value })} onValidityChange={setMaterialsValid}/></div>
           <details className="rounded-lg bg-white/[0.035] p-3"><summary className="cursor-pointer text-sm text-[#d3bb73]">Dodatkowe wymagania techniczne i logistyczne{draft.technical_requirements || draft.logistics_requirements ? ' · uzupełnione' : ' · opcjonalnie'}</summary><div className="mt-3 space-y-3">
             <label className="block text-xs text-white/50">Wymagania techniczne<textarea value={draft.technical_requirements} maxLength={3000} rows={3} onChange={(event) => changeDraft({ ...draft, technical_requirements: event.target.value })} placeholder="Wymagania dotyczące tego wydarzenia, poza opisem wybranej sali" className={field}/></label>
@@ -322,6 +346,7 @@ export default function SellerOfferArrangements({ offerId, crm, refreshKey = 0, 
           {arrangementSchedule.map(([key, label]) => <div key={key}><dt className="text-xs text-white/45">{label} · czas polski</dt><dd>{arrangementLocalDate(data.values[key])}</dd></div>)}
           <div><dt className="text-xs text-white/45">Materiały do</dt><dd>{arrangementLocalDate(data.values.materials_due_date)}</dd></div>
         </dl>
+        <SellerEventScheduleSummary days={data.values.event_days} />
         {data.values.venue_snapshot && <details className="rounded-lg bg-white/[0.035] p-3"><summary className="cursor-pointer text-sm text-[#d3bb73]">Plany i zapisane informacje o przestrzeni</summary><div className="mt-3 space-y-3"><p className="whitespace-pre-wrap text-sm">{data.values.venue_snapshot.room.notes}</p><TechnicalDetailsView value={data.values.venue_snapshot.room.technical}/><TechnicalDetailsView value={data.values.venue_snapshot.technical_details}/></div></details>}
         <div><p className="text-xs text-white/45">Wymagania techniczne</p><p className="mt-1 whitespace-pre-wrap break-words text-sm">{data.values.technical_requirements || 'Nie ustalono'}</p></div>
         <div><p className="text-xs text-white/45">Logistyka</p><p className="mt-1 whitespace-pre-wrap break-words text-sm">{data.values.logistics_requirements || 'Nie ustalono'}</p></div>

@@ -88,6 +88,9 @@ export function InvoiceFormModal({
 
     currency: invoice?.currency ?? prefill?.currency ?? 'PLN',
 
+    // Bank evidence belongs to this document, never to an AI scan or a copied invoice.
+    bank_debit_amount_pln: invoice?.bank_debit_amount_pln != null ? String(invoice.bank_debit_amount_pln) : '',
+
     notes: invoice?.notes ?? prefill?.notes ?? '',
     my_company_id: lockedCompanyId ?? invoice?.my_company_id ?? prefill?.my_company_id ?? '',
     category_id: invoice?.category_id ?? prefill?.category_id ?? '',
@@ -205,6 +208,13 @@ export function InvoiceFormModal({
       showSnackbar('Podaj poprawną datę zapłaty', 'error');
       return;
     }
+    const bankDebitInput = form.bank_debit_amount_pln.trim().replace(/\s/g, '');
+    const bankDebitAmountPln = bankDebitInput ? Number(bankDebitInput.replace(',', '.')) : null;
+    if (bankDebitInput && (!/^\d+(?:[.,]\d{1,2})?$/.test(bankDebitInput)
+      || !Number.isFinite(bankDebitAmountPln) || bankDebitAmountPln! <= 0 || bankDebitAmountPln! >= 10_000_000_000_000)) {
+      showSnackbar('Podaj dodatnią kwotę pobraną z konta w PLN, maksymalnie z dwoma miejscami po przecinku, albo pozostaw pole puste.', 'error');
+      return;
+    }
     if (form.payment_status === 'partially_paid') {
       const paid = Number(form.paid_amount || 0);
       const gross = Math.abs(Number(form.amount_gross || 0));
@@ -244,6 +254,9 @@ export function InvoiceFormModal({
       amount_net: form.amount_net ? Number(form.amount_net) : null,
       amount_gross: form.amount_gross ? Number(form.amount_gross) : null,
       currency: form.currency,
+      ...(bankDebitAmountPln !== null || invoice?.bank_debit_amount_pln != null
+        ? { bank_debit_amount_pln: bankDebitAmountPln }
+        : {}),
       file_url: filePath ?? (removeExistingFile ? null : invoice?.file_url ?? null),
       notes: form.notes.trim() || null,
       my_company_id: lockedCompanyId || form.my_company_id || null,
@@ -281,7 +294,9 @@ export function InvoiceFormModal({
     setSaving(false);
     if (error) {
       if (filePath) await supabase.storage.from(BUCKET).remove([filePath]);
-      showSnackbar(['PGRST204', '42703'].includes(error.code) && /contract_(term|start_date|end_date)/i.test(error.message)
+      showSnackbar(['PGRST204', '42703'].includes(error.code) && /bank_debit_amount_pln/i.test(error.message)
+        ? 'Kwota pobrana z konta wymaga aktualizacji bazy. Dokument nie został zapisany — podana kwota pozostaje w formularzu.'
+        : ['PGRST204', '42703'].includes(error.code) && /contract_(term|start_date|end_date)/i.test(error.message)
         ? 'Zakres umów wymaga wdrożenia aktualizacji bazy. Dokument nie został zapisany; nie zmieniaj rodzaju umowy, aby ominąć tę informację.'
         : 'Nie udało się zapisać dokumentu', 'error');
       return;
@@ -552,7 +567,7 @@ export function InvoiceFormModal({
 
         {form.payment_status === 'partially_paid' && (
           <div>
-            <label className={labelClass}>Faktycznie zapłacona kwota *</label>
+            <label className={labelClass}>Zapłacona kwota w walucie dokumentu ({form.currency}) *</label>
             <input
               type="number"
               min="0.01"
@@ -619,6 +634,26 @@ export function InvoiceFormModal({
             )}
           </select>
         </div>
+        {(form.currency.toUpperCase() !== 'PLN' || form.bank_debit_amount_pln !== '') && (
+          <div>
+            <label htmlFor="external-invoice-bank-debit-pln" className={labelClass}>
+              Kwota pobrana z konta (PLN)
+            </label>
+            <input
+              id="external-invoice-bank-debit-pln"
+              type="text"
+              inputMode="decimal"
+              className={inputClass}
+              value={form.bank_debit_amount_pln}
+              disabled={saving || aiReading}
+              placeholder="Opcjonalnie, np. 3 279,99"
+              onChange={(event) => {
+                setForm({ ...form, bank_debit_amount_pln: event.target.value });
+                setPaymentReviewed(false);
+              }}
+            />
+          </div>
+        )}
         <div className="sm:col-span-2">
           <label className={labelClass}>Uwagi</label>
           <textarea

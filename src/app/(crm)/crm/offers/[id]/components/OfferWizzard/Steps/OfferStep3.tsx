@@ -1,5 +1,11 @@
 'use client';
 import type { ProductSalesPackage } from '@/lib/CRM/Offers/productSalesPackages';
+import ProductPackageResourcesEditor from '@/components/crm/offers/ProductPackageResourcesEditor';
+import ProductPackageCostsEditor from '@/components/crm/offers/ProductPackageCostsEditor';
+import ModularProductConfigurator from '@/components/crm/offers/ModularProductConfigurator';
+import ModularPriceHint from '@/components/crm/offers/ModularPriceHint';
+import { createModularConfiguration } from '@/lib/CRM/Offers/offerAddons';
+import { modularTitle, modularScope } from '@/lib/CRM/Offers/modularProduct';
 import ProductAddonsEditor from '@/components/crm/offers/ProductAddonsEditor';
 import { createConfiguration, configurationPrice, validateConfiguration } from '@/lib/CRM/Offers/offerAddons';
 import { Fragment } from 'react';
@@ -68,12 +74,14 @@ function ProductThumbnail({
   priceNet,
   priceGross,
   pricePrefix = '',
+  quoteOnly = false,
 }: {
   product?: IProduct | null;
   size?: 'small' | 'large';
   priceNet?: number;
   priceGross?: number;
   pricePrefix?: string;
+  quoteOnly?: boolean;
 }) {
   const [thumbnailUrls, setThumbnailUrls] = useState<string[]>([]);
   const [thumbnailIndex, setThumbnailIndex] = useState(0);
@@ -179,13 +187,13 @@ function ProductThumbnail({
             <div className="rounded-lg bg-white/[0.03] p-2">
               <div className="text-[#e5e4e2]/45">Cena netto</div>
               <div className="mt-1 font-semibold text-[#d3bb73]">
-                {pricePrefix}{formatMoney(resolvedNetPrice)} zł
+                {quoteOnly ? 'Wycena indywidualna' : `${pricePrefix}${formatMoney(resolvedNetPrice)} zł`}
               </div>
             </div>
             <div className="rounded-lg bg-white/[0.03] p-2">
               <div className="text-[#e5e4e2]/45">Cena brutto</div>
               <div className="mt-1 font-semibold text-[#e5e4e2]">
-                {pricePrefix}{formatMoney(resolvedGrossPrice)} zł
+                {quoteOnly ? 'Wycena indywidualna' : `${pricePrefix}${formatMoney(resolvedGrossPrice)} zł`}
               </div>
             </div>
           </div>
@@ -253,11 +261,11 @@ export default function OfferStep3({
   );
 
   const getVariants = (product: IProduct) =>
-    (product.variants || product.offer_product_variants || []).filter(
+    (product.configuration_schema ? [] : product.variants || product.offer_product_variants || []).filter(
       (variant) => variant.is_active !== false,
     );
 
-  const getPackages = (product: IProduct) => product.sales_packages_enabled ? product.sales_packages || [] : [];
+  const getPackages = (product: IProduct) => !product.configuration_schema && product.sales_packages_enabled ? product.sales_packages || [] : [];
   const getSelectionMode = (product: IProduct) => getPackages(product).length ? selectionModes[product.id] || 'packages' : 'elements';
   const getChoices = (product: IProduct): CatalogChoice[] => getSelectionMode(product) === 'packages'
     ? getPackages(product).map(p => ({ id: p.id, name: p.name, price_net: p.price_net, scope: p.included_label, bonus: p.bonus, salesPackage: p }))
@@ -277,7 +285,7 @@ export default function OfferStep3({
     </div>;
   };
   const renderAddedSelection = (item: IOfferItem, product?: IProduct) => {
-    if (!product || !getPackages(product).length) return null;
+    if (item.pricing_configuration?.modular || !product || !getPackages(product).length) return null;
     const selection = item.pricing_configuration?.product_package;
     return <label className="block py-2 text-[#e5e4e2]/70">Wybrany zakres
       <select aria-label={`Wybrany zakres: ${product.name}`} value={selection ? `package:${selection.selected_id}` : item.product_variant_id ? `element:${item.product_variant_id}` : ''}
@@ -287,13 +295,14 @@ export default function OfferStep3({
           else {const v=getVariants(product).find(v=>v.id===id);if(v)addProductToOffer(product,v);}
         }} className="mt-1 w-full rounded-lg border border-white/10 bg-black/15 p-2 text-[#e5e4e2]">
         {!selection&&!item.product_variant_id&&<option value="">Wybierz zakres</option>}
-        <optgroup label="Pakiety">{getPackages(product).map(p=><option key={p.id} value={`package:${p.id}`}>{p.name} · {formatMoney(p.price_net)} zł netto</option>)}</optgroup>
+        <optgroup label="Pakiety">{getPackages(product).map(p=><option key={p.id} value={`package:${p.id}`}>{p.name} · {p.price_on_request && p.price_net <= 0 ? 'wycena indywidualna' : `${formatMoney(p.price_net)} zł netto`}</option>)}</optgroup>
         {!!getVariants(product).length&&<optgroup label="Elementy">{getVariants(product).map(v=><option key={v.id} value={`element:${v.id}`}>{v.name} · {formatMoney(v.price_net)} zł netto + dodatki</option>)}</optgroup>}
       </select><span className="mt-1 block text-[11px] text-[#e5e4e2]/45">Zmiana zakresu przywróci jego cenę katalogową i dodatki. Ilość oraz rabat pozostaną zachowane.</span>
     </label>;
   };
 
   const renderVariantPdfSettings = (item: IOfferItem, product?: IProduct) => {
+    if (item.pricing_configuration?.modular) return <span className="text-[11px] text-[#d3bb73]">Konfiguracja zestawu · pełna strona PDF</span>;
     if (item.pricing_configuration?.product_package) return <span className="text-[11px] text-[#d3bb73]">Elementy bez cen + pakiety</span>;
     if (item.pricing_configuration?.addons.length) return <span className="text-[11px] text-[#e5e4e2]/60">Wybrany zakres + kalkulacja dodatków</span>;
     if (!product || getVariants(product).length === 0) return null;
@@ -424,6 +433,7 @@ export default function OfferStep3({
                   <ProductThumbnail
                     product={product}
                     priceNet={lowestPrice}
+                    quoteOnly={Boolean(lowestChoice?.salesPackage?.price_on_request && lowestPrice <= 0)}
                     priceGross={lowestChoice?.price_gross}
                     pricePrefix={choices.length > 0 ? 'od ' : ''}
                   />
@@ -436,8 +446,7 @@ export default function OfferStep3({
                         )}
                       </div>
                       <span className="whitespace-nowrap font-medium text-[#d3bb73]">
-                        {choices.length > 0 && 'od '}
-                        {formatMoney(lowestPrice)} zł netto
+                        {lowestChoice?.salesPackage?.price_on_request && lowestPrice <= 0 ? 'Wycena indywidualna' : `${choices.length > 0 ? 'od ' : ''}${formatMoney(lowestPrice)} zł netto`}
                       </span>
                     </div>
                     {product.description && (
@@ -450,7 +459,7 @@ export default function OfferStep3({
                     {choices.length > 0 ? <div className="mt-2 space-y-2">
                       <div className={packageMode?'space-y-2':'flex flex-wrap gap-2'}>{choices.map(choice=><button key={choice.id} type="button" onClick={()=>addChoice(product,choice)}
                         className={`rounded-lg bg-black/15 px-3 py-2 text-left text-sm text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/10 ${packageMode?'w-full':''}`}>
-                        <span className="flex flex-wrap justify-between gap-2"><span className="font-medium">{choice.name}</span><span className="text-[#d3bb73]">{formatMoney(choice.price_net)} zł netto</span></span>
+                        <span className="flex flex-wrap justify-between gap-2"><span className="font-medium">{choice.name}</span><span className="text-[#d3bb73]">{choice.salesPackage?.price_on_request && choice.price_net <= 0 ? 'Wycena indywidualna' : `${formatMoney(choice.price_net)} zł netto`}</span></span>
                         {choice.scope&&<span className="mt-1 block text-xs text-[#e5e4e2]/60">{choice.scope}</span>}
                         {choice.bonus&&<span className="mt-1 block text-xs text-[#d3bb73]">{choice.bonus}</span>}
                       </button>)}</div>
@@ -488,6 +497,7 @@ export default function OfferStep3({
                         product={product}
                         size="small"
                         priceNet={selectedChoice?.price_net}
+                        quoteOnly={Boolean(selectedChoice?.salesPackage?.price_on_request && selectedChoice.price_net <= 0)}
                         priceGross={selectedChoice?.price_gross}
                       />
                     </td>
@@ -505,7 +515,7 @@ export default function OfferStep3({
                       {product.category?.name || '—'}
                     </td>
                     <td className="whitespace-nowrap px-2 py-2 font-medium text-[#d3bb73]">
-                      {formatMoney(selectedChoice?.price_net ?? product.base_price)} zł
+                      {selectedChoice?.salesPackage?.price_on_request && selectedChoice.price_net <= 0 ? 'Wycena indywidualna' : `${formatMoney(selectedChoice?.price_net ?? product.base_price)} zł`}
                     </td>
                     <td className="px-2 py-2">
                       {renderSelectionMode(product)}
@@ -584,13 +594,19 @@ export default function OfferStep3({
               <tbody className="divide-y divide-[#d3bb73]/10">
                 {addedCatalogItems.map((item) => {
                   const product = productById.get(item.product_id);
+                  const selection = item.pricing_configuration?.product_package;
+                  const selectedPackage = selection?.options.find(p=>p.id===selection.selected_id);
+                  const updatePackage = (patch: Partial<ProductSalesPackage>) => {
+                    if (!selection || !selectedPackage || !item.pricing_configuration) return;
+                    updateOfferItem(item.id, {pricing_configuration: {...item.pricing_configuration, product_package: {...selection, options: selection.options.map(p=>p.id===selectedPackage.id?{...p,...patch}:p)}}});
+                  };
                   return (
                     <Fragment key={item.id}><tr className="h-[51px] hover:bg-[#1c1f33]/70">
                       <td className="truncate px-3 font-medium text-[#e5e4e2]" title={item.name}>
                         {item.name}
                       </td>
                       <td className="whitespace-nowrap px-3 text-[#e5e4e2]/65">
-                        {item.quantity} {item.unit || 'szt.'}
+                        {item.quantity} {item.unit || 'szt.'} × <input aria-label={`Liczba dni: ${item.name}`} type="number" min="1" max="3650" step="1" value={item.days ?? 1} onChange={e => updateOfferItem(item.id, { days: Number(e.target.value) })} className="w-16 rounded-md bg-black/15 px-2 py-1" /> dni
                       </td>
                       <td className="whitespace-nowrap px-3 text-[#e5e4e2]/65">
                         {formatMoney(item.unit_price)} zł
@@ -612,15 +628,18 @@ export default function OfferStep3({
                       </td>
                     </tr>
                     <tr><td colSpan={6} className="px-3 pb-3"><details><summary className="cursor-pointer py-2 text-[#d3bb73]">Konfiguruj zakres i dodatki{item.pricing_configuration?.addons.length ? ` (${item.pricing_configuration.addons.length})` : ''}</summary>
+                      {item.pricing_configuration?.modular && <ModularProductConfigurator quantity={item.quantity} value={item.pricing_configuration.modular} onChange={modular => updateOfferItem(item.id, { pricing_configuration:createModularConfiguration(modular, item.pricing_configuration?.modular_price_source === 'manual' ? item.pricing_configuration.base_unit_price : undefined), name:modularTitle(modular), description:modularScope(modular).join('\n') })} />}
+                      {item.pricing_configuration?.modular && <ModularPriceHint value={item.pricing_configuration.modular} manual={item.pricing_configuration.modular_price_source === 'manual'} onReset={() => updateOfferItem(item.id, { pricing_configuration: createModularConfiguration(item.pricing_configuration!.modular!) })} />}
                       {renderAddedSelection(item, product)}
-                      <label className="block py-2">Cena bazowa netto / pakiet<input type="number" min="0" step="0.01" value={item.pricing_configuration?.base_unit_price ?? item.unit_price} onChange={e => {
-                        const c = { ...(item.pricing_configuration || createConfiguration(item.unit_price)), base_unit_price: Number(e.target.value) };
+                      <label className="block py-2">Liczba dni<input type="number" min="1" max="3650" step="1" value={item.days ?? 1} onChange={e => updateOfferItem(item.id, { days: Number(e.target.value) })} className="ml-2 rounded-lg bg-black/15 px-2 py-1" /></label><label className="block py-2">Cena bazowa netto / dzień<input type="number" min="0" step="0.01" value={item.pricing_configuration?.base_unit_price ?? item.unit_price} onChange={e => {
+                        const c = item.pricing_configuration?.modular ? createModularConfiguration(item.pricing_configuration.modular, e.target.valueAsNumber) : { ...(item.pricing_configuration || createConfiguration(item.unit_price)), base_unit_price: e.target.valueAsNumber };
                         updateOfferItem(item.id, { pricing_configuration: c, unit_price: configurationPrice(c) });
                       }} className="ml-3 rounded bg-black/20 p-2" /></label>
-                      <ProductAddonsEditor value={item.pricing_configuration?.addons || []} onChange={addons => {
+                      {!item.pricing_configuration?.modular && <ProductAddonsEditor value={item.pricing_configuration?.addons || []} onChange={addons => {
                         const c = { ...(item.pricing_configuration || createConfiguration(item.unit_price)), addons };
                         updateOfferItem(item.id, { pricing_configuration: c, unit_price: configurationPrice(c) });
-                      }} />
+                      }} />}
+                      {selectedPackage && <div className="my-3 space-y-2"><ProductPackageResourcesEditor value={selectedPackage} onChange={resources=>updatePackage({resources})}/><ProductPackageCostsEditor value={selectedPackage} salePriceNet={item.unit_price * (1 - (item.discount_percent || 0)/100)} onChange={cost_items=>updatePackage({cost_items})}/><p className="text-xs text-[#e5e4e2]/55">Cena sprzedaży dodatku nie jest kosztem pracownika. Uzupełnij stawki w obsadzie pakietu; rozliczenie gotówką korzysta z ustawień wynagrodzeń.</p></div>}
                       {item.pricing_configuration && validateConfiguration(item.pricing_configuration) && <p role="alert" className="py-2 text-red-300">{validateConfiguration(item.pricing_configuration)}</p>}
                     </details></td></tr></Fragment>
                   );

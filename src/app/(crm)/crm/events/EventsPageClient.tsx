@@ -2,11 +2,12 @@
 'use client';
 
 import type { EventStatus } from '@/components/crm/Calendar/types';
-import { useOperationalStages } from '@/hooks/useOperationalStages';
-import { OPERATIONAL_LABELS, usesOperationalStages } from '@/lib/CRM/events/operationalStages';
+import { refreshEventsPage } from './actions';
+import type { EventsPageSnapshot } from '@/lib/CRM/events/eventsPageSnapshot.server';
+import { OPERATIONAL_LABELS, usesOperationalStages, operationalFallback } from '@/lib/CRM/events/operationalStages';
 
 import { eventListState } from '@/lib/CRM/events/eventListState';
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Plus,
@@ -60,6 +61,15 @@ const moveKey = (arr: EventsTableColKey[], from: EventsTableColKey, to: EventsTa
  * to pokaż "first_name + last_name" zamiast "Brak klienta".
  * Dodatkowo trimming + fallbacki.
  */
+const normalizeEventSearch = (value: unknown): string =>
+  (typeof value === 'string' ? value : '')
+    .toLocaleLowerCase('pl-PL')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/ł/g, 'l')
+    .replace(/\s+/g, ' ')
+    .trim();
+
 const getContactLabel = (c?: any) => {
   const first = String(c?.first_name ?? '').trim();
   const last = String(c?.last_name ?? '').trim();
@@ -316,19 +326,20 @@ export default function EventsPageClient({
   initialData,
   currentEmployee,
 }: {
-  initialData: { events: EventRow[]; viewMode: ViewMode; categories: EventCategoryRow[] };
+  initialData: EventsPageSnapshot;
   currentEmployee: IEmployee;
 }) {
   const isUserAdmin =
     currentEmployee.role === 'admin' || currentEmployee.permissions?.includes('events_manage');
 
-  const { events: initialEvents, categories, viewMode: initialViewMode } = initialData;
+  const [snapshot, setSnapshot] = useState(initialData);
+  const { events, categories, viewMode: initialViewMode, payments: listPayments, operationalStates } = snapshot;
+  useEffect(() => { setSnapshot(initialData); }, [initialData]);
   const router = useRouter();
   const searchParams = useSearchParams();
   const { showSnackbar } = useSnackbar();
   const { setViewMode, getModulePrefs, setModulePrefs } = useUserPreferences() as any;
-  const [events, setEvents] = useState<any[]>(initialEvents);
-  const [filteredEvents, setFilteredEvents] = useState<any[]>([]);
+
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -375,13 +386,17 @@ export default function EventsPageClient({
 
   const [viewMode, setLocalViewMode] = useState<ViewMode>(initialViewMode as ViewMode);
 
+  const canViewEventBudget = events.some(event => event.budget_visible);
+
   const modulePrefs = (getModulePrefs?.('events') ?? {}) as any;
   const [colOrder, setColOrder] = useState<EventsTableColKey[]>(() => {
     const prefOrder = modulePrefs?.table?.colOrder as EventsTableColKey[] | undefined;
-    const base = prefOrder?.length ? prefOrder : DEFAULT_COL_ORDER;
+    const savedOrder = prefOrder?.length ? prefOrder : DEFAULT_COL_ORDER;
+    const base = canViewEventBudget && !savedOrder.includes('budget')
+      ? [...savedOrder.filter(k => k !== 'actions'), 'budget' as EventsTableColKey, ...savedOrder.filter(k => k === 'actions')] : savedOrder;
 
     // jeśli user nie ma prawa do budżetu – usuń budget z order
-    return isUserAdmin ? base : base.filter((k) => k !== 'budget');
+    return canViewEventBudget ? base : base.filter((k) => k !== 'budget');
   });
 
   const canViewEventStatus = isUserAdmin || hasScope('events_manage', currentEmployee);
@@ -391,14 +406,7 @@ export default function EventsPageClient({
     currentEmployee.permissions?.includes('admin') ||
     currentEmployee.permissions?.includes('events_manage');
 
-  const canViewEventBudget =
-    isUserAdmin ||
-    hasScope('finances_manage', currentEmployee) ||
-    hasScope('finances_view', currentEmployee) ||
-    hasScope('offers_manage', currentEmployee) ||
-    hasScope('offers_view', currentEmployee) ||
-    hasScope('invoices_manage', currentEmployee) ||
-    hasScope('invoices_view', currentEmployee);
+
 
   const canAddNewEvent =
     isUserAdmin ||
@@ -758,6 +766,7 @@ export default function EventsPageClient({
       if (!session?.user?.id) {
         throw new Error('Brak aktywnej sesji użytkownika');
       }
+      if (!currentEmployee?.id) throw new Error('Nie znaleziono profilu pracownika. Odśwież stronę.');
 
       /*
        * Pobieramy cały rekord bezpośrednio z tabeli events.
@@ -883,11 +892,13 @@ export default function EventsPageClient({
        * nowy event nie dziedziczy całego zespołu. Dodajemy jedynie osobę
        * wykonującą duplikowanie jako autora/koordynatora.
        */
-      const { error: assignmentError } = await supabase.from('employee_assignments').insert({
+      const { error: assignmentError } = await supabase.from('employee_assignments').upsert({
         event_id: duplicated.id,
-        employee_id: session.user.id,
+        employee_id: currentEmployee.id,
         role: 'Autor/Koordynator',
-      });
+        status: 'accepted',
+        responded_at: new Date().toISOString(),
+      }, { onConflict: 'event_id,employee_id', ignoreDuplicates: true });
 
       if (assignmentError) {
         console.warn(
@@ -948,28 +959,8 @@ export default function EventsPageClient({
     hasScope('invoices_view', currentEmployee);
 
   const operational = usesOperationalStages(currentEmployee);
-  const { states: operationalStates, stage: displayStatus } = useOperationalStages(events, operational);
-  const [listPayments,setListPayments]=useState<Record<string,any[]>>({});
-  useEffect(()=>{
-    let live=true;
-    setListPayments({});
-    if(!canViewCommercials || !events.length)return;
-    async function loadPayments(){
-      const result:Record<string,any[]>={};
-      for(let offset=0;offset<events.length;offset+=100){
-        const ids=events.slice(offset,offset+100).map(e=>e.id);
-        const [milestones,invoices]=await Promise.all([
-          supabase.from('event_payment_milestones').select('event_id,invoice_id,amount,paid_amount,due_date,status,paid_at').in('event_id',ids),
-          supabase.from('invoices').select('id,event_id,total_gross,payment_due_date,status,paid_date').in('event_id',ids)
-        ]);
-        const paidInvoices=new Set((invoices.data||[]).filter(i=>i.status==='paid'||i.paid_date).map(i=>i.id));
-        for(const p of milestones.data||[]){if(p.invoice_id&&paidInvoices.has(p.invoice_id))continue;(result[p.event_id]??=[]).push(p);}
-        for(const p of invoices.data||[]){if(!['issued','sent','overdue'].includes(p.status)||p.paid_date)continue;(result[p.event_id]??=[]).push({amount:p.total_gross,due_date:p.payment_due_date,status:p.status});}
-      }
-      if(live)setListPayments(result);
-    }
-    void loadPayments();return()=>{live=false;};
-  },[events,canViewCommercials]);
+  const displayStatus = (event: { id: string; status: string }) => operational
+    ? operationalStates[event.id] || operationalFallback(event.status) : event.status;
   const visualState=(event:any)=> operational
     ? { state: displayStatus(event)==='settled' ? 'settled' : displayStatus(event)==='in_progress' ? 'live' : displayStatus(event)==='cancelled' ? 'cancelled' : 'scheduled', label: OPERATIONAL_LABELS[displayStatus(event)] || 'Nowe wydarzenie', days: 0 }
     : eventListState(event,listPayments[event.id]||[]);
@@ -982,26 +973,43 @@ export default function EventsPageClient({
 
   const dragKeyRef = useRef<EventsTableColKey | null>(null);
 
-  useEffect(() => {
-    const channel = supabase
-      .channel('events-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'events',
-        },
-        () => {
-          fetchEvents();
-        },
-      )
-      .subscribe();
+  const refreshingList = useRef(false);
+  const refreshQueued = useRef(false);
+  const fetchEvents = useCallback(async () => {
+    refreshQueued.current = true;
+    if (refreshingList.current) return;
+    refreshingList.current = true;
+    try {
+      while (refreshQueued.current) {
+        refreshQueued.current = false;
+        const next = await refreshEventsPage();
+        setSnapshot(next);
+      }
+    } catch (error) {
+      console.error('Error refreshing events:', error);
+      showSnackbar('Nie udało się odświeżyć listy wydarzeń. Wyświetlam ostatnie pobrane dane.', 'error');
+    } finally { refreshingList.current = false; }
+  }, [showSnackbar]);
 
-    return () => {
-      supabase.removeChannel(channel);
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const scheduleRefresh = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => { void fetchEvents(); }, 250);
     };
-  }, []);
+    const channel = supabase.channel('events-complete-list');
+    for (const table of ['events', 'event_payment_milestones', 'invoices', 'invoice_event_allocations', 'invoice_settlements', 'event_warehouse_handoffs', 'event_equipment', 'employee_assignments', 'event_categories', 'organizations', 'contacts', 'locations', 'my_companies']) {
+      channel.on('postgres_changes', { event: '*', schema: 'public', table }, scheduleRefresh);
+    }
+    channel.subscribe();
+    window.addEventListener('focus', scheduleRefresh);
+    const fallback = setInterval(() => { if (!document.hidden) scheduleRefresh(); }, 60000);
+    return () => {
+      clearTimeout(timer); clearInterval(fallback);
+      window.removeEventListener('focus', scheduleRefresh);
+      void supabase.removeChannel(channel);
+    };
+  }, [fetchEvents]);
 
   const handleOpenEvent = (event: any) => {
     setOpeningEventName(event?.name || '');
@@ -1009,50 +1017,6 @@ export default function EventsPageClient({
 
     router.push(`/crm/events/${event.id}`);
   };
-
-  useEffect(() => {
-    applyFiltersAndSort();
-  }, [events, searchQuery, statusFilter, categoryFilter, sortField, sortDirection, showPastEvents, operationalStates, operational]);
-
-  const fetchEvents = async () => {
-    try {
-      const { data, error } = await supabase.from('events').select(
-        `
-          *,
-          organizations:organizations!events_organization_id_fkey(name, alias),
-          contacts(first_name, last_name),
-          event_categories(name, color),
-          locations(name, formatted_address, address, city, postal_code)
-        `,
-      ).order('event_date', { ascending: true });
-
-      if (error) {
-        console.error('Error fetching events:', error);
-        return;
-      }
-
-      if (data) {
-        const mine = await supabase.rpc('get_my_realizations');
-        const merged = new Map(data.map(e => [e.id,e]));
-        for (const row of mine.data || []) if (!merged.has(row.id)) merged.set(row.id,row);
-        setEvents(Array.from(merged.values()));
-        return;
-      }
-    } catch (err) {
-      console.error('Error:', err);
-    }
-
-    setEvents([]);
-  };
-
-  useEffect(() => {
-    let live=true;
-    void supabase.rpc('get_my_realizations').then(({data}) => {
-      if(!live || !data?.length)return;
-      setEvents(previous => { const merged=new Map(previous.map(e=>[e.id,e])); for(const row of data)if(!merged.has(row.id))merged.set(row.id,row);return Array.from(merged.values()); });
-    });
-    return()=>{live=false;};
-  }, [currentEmployee?.id]);
 
   const handleDeleteClick = (e: React.MouseEvent | null, event: any) => {
     if (e) e.stopPropagation();
@@ -1079,23 +1043,30 @@ export default function EventsPageClient({
     }
   };
 
-  const applyFiltersAndSort = () => {
+  const filteredEvents = useMemo(() => {
     let result = [...events];
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      result = result.filter(
-        (event) =>
-          event.name?.toLowerCase().includes(query) ||
-          event.location?.toLowerCase().includes(query) ||
-          event.locations?.name?.toLowerCase().includes(query) ||
-          event.locations?.address?.toLowerCase().includes(query) ||
-          event.locations?.city?.toLowerCase().includes(query) ||
-          event.organizations?.name?.toLowerCase().includes(query) ||
-          event.description?.toLowerCase().includes(query),
-      );
+    const searchTerms = normalizeEventSearch(searchQuery).split(' ').filter(Boolean);
+    if (searchTerms.length) {
+      result = result.filter((event) => {
+        const searchableText = [
+          event.name,
+          event.description,
+          event.location,
+          event.locations?.name,
+          event.locations?.formatted_address,
+          event.locations?.address,
+          event.locations?.city,
+          event.locations?.postal_code,
+          event.organizations?.name,
+          event.organizations?.alias,
+          event.contacts?.first_name,
+          event.contacts?.last_name,
+        ].map(normalizeEventSearch).join(' ');
+        return searchTerms.every(term => searchableText.includes(term));
+      });
     }
 
     if (statusFilter !== 'all') {
@@ -1125,8 +1096,8 @@ export default function EventsPageClient({
       }
 
       if (sortField === 'budget') {
-        aVal = Number(aVal || 0);
-        bVal = Number(bVal || 0);
+        aVal = a.budget_visible ? Number(a.invoice_budget?.find((item: any) => item.currency === 'PLN')?.amount ?? (a.invoice_budget?.length ? 0 : a.expected_revenue) ?? 0) : 0;
+        bVal = b.budget_visible ? Number(b.invoice_budget?.find((item: any) => item.currency === 'PLN')?.amount ?? (b.invoice_budget?.length ? 0 : b.expected_revenue) ?? 0) : 0;
       }
 
       if (sortField === 'name') {
@@ -1139,8 +1110,8 @@ export default function EventsPageClient({
       return 0;
     });
 
-    setFilteredEvents(result);
-  };
+    return result;
+  }, [events, searchQuery, statusFilter, categoryFilter, sortField, sortDirection, showPastEvents, operationalStates, operational]);
 
   const toggleSort = (field: SortField) => {
     if (sortField === field) {
@@ -1189,6 +1160,7 @@ export default function EventsPageClient({
 
   const handleSaveEvent = async (eventData: any) => {
     try {
+      if (!currentEmployee?.id) throw new Error('Nie znaleziono profilu pracownika. Odśwież stronę.');
       if (currentEmployee?.company_access_mode === 'selected' && !eventData.my_company_id) {
         showSnackbar('Wybierz markę realizującą wydarzenie', 'warning');
         return;
@@ -1229,13 +1201,15 @@ export default function EventsPageClient({
       }
 
       if (data && data[0] && session?.user?.id) {
-        const { error: assignmentError } = await supabase.from('employee_assignments').insert([
+        const { error: assignmentError } = await supabase.from('employee_assignments').upsert([
           {
             event_id: data[0].id,
-            employee_id: session.user.id,
+            employee_id: currentEmployee.id,
             role: 'Autor/Koordynator',
+            status: 'accepted',
+            responded_at: new Date().toISOString(),
           },
-        ]);
+        ], { onConflict: 'event_id,employee_id', ignoreDuplicates: true });
 
         if (assignmentError) {
           console.error('Error adding creator to team:', assignmentError);
@@ -1272,6 +1246,17 @@ export default function EventsPageClient({
       router.replace('/crm/events');
     }
   }, [searchParams, router, showSnackbar]);
+
+  const budgetLabel = (event: any) => {
+    if (!event.budget_visible) return '—';
+    if (event.invoice_budget?.length) return event.invoice_budget.map((item: any) =>
+      new Intl.NumberFormat('pl-PL', { style: 'currency', currency: item.currency }).format(Number(item.amount))
+    ).join(' / ');
+    return new Intl.NumberFormat('pl-PL', { style: 'currency', currency: 'PLN' }).format(Number(event.expected_revenue || 0));
+  };
+  const budgetTitle = (event: any) => event.invoice_budget?.length
+    ? 'Ostateczna wartość brutto z wystawionych faktur sprzedaży / końcowych, z uwzględnieniem korekt'
+    : 'Planowany budżet brutto';
 
   const renderCell: Record<EventsTableColKey, (event: any) => React.ReactNode> = {
     name: (event) => {
@@ -1332,8 +1317,8 @@ export default function EventsPageClient({
     ),
 
     budget: (event) => (
-      <span className="font-medium text-[#d3bb73]">
-        {event.expected_revenue ? event.expected_revenue.toLocaleString() : '0'} zł
+      <span title={budgetTitle(event)} className="font-medium text-[#d3bb73]">
+        {budgetLabel(event)}
       </span>
     ),
 
@@ -2154,11 +2139,11 @@ export default function EventsPageClient({
                     )}
                   </div>
 
-                  {canViewCommercials && (
+                  {canViewEventBudget && (
                     <div className="mt-3 text-sm text-[#e5e4e2]/70">
                       Budżet:{' '}
                       <span className="font-medium text-[#d3bb73]">
-                        {event.expected_revenue ? event.expected_revenue.toLocaleString() : '0'} zł
+                        {budgetLabel(event)}
                       </span>
                     </div>
                   )}
@@ -2271,7 +2256,7 @@ export default function EventsPageClient({
                     </div>
 
                     <div className="hidden md:block">
-                      {canViewCommercials && (
+                      {canViewEventBudget && (
                         <button
                           onClick={(e) => {
                             stop(e);
@@ -2349,12 +2334,12 @@ export default function EventsPageClient({
                   )}
                 </div>
 
-                {canViewCommercials && (
+                {canViewEventBudget && (
                   <div className="mt-4 flex items-center justify-between border-t border-[#d3bb73]/10 pt-4">
                     <div className="text-sm text-[#e5e4e2]/70">
                       Budżet:{' '}
                       <span className="font-medium text-[#d3bb73]">
-                        {event.expected_revenue ? event.expected_revenue.toLocaleString() : '0'} zł
+                        {budgetLabel(event)}
                       </span>
                     </div>
 

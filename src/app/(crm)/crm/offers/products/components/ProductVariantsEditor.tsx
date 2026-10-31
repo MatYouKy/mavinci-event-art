@@ -1,4 +1,5 @@
 'use client';
+import { QuantitySourceSelect } from '@/components/crm/offers/AudiencePricingEditor';
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import Image from 'next/image';
@@ -10,6 +11,7 @@ import type { IProductVariant } from '@/app/(crm)/crm/offers/types';
 import { supabase } from '@/lib/supabase/browser';
 
 type Props = {
+  textOnly?: boolean;
   elementMode?: boolean;
   editing?: boolean;
   sectionActions?: ReactNode;
@@ -19,16 +21,17 @@ type Props = {
   defaultServiceDurationHours?: number | null;
   defaultExtensionPriceNetPerHour?: number | null;
   disabled?: boolean;
-  onChange: (variants: IProductVariant[]) => void;
+  onChange: (variants: IProductVariant[], image?: { id: string; file?: File; remove?: boolean }) => void | Promise<void>;
+  onEditingChange?: (editing: boolean) => void;
+  isNewProduct?: boolean;
   imageUrls?: Record<string, string>;
   uploadingImageId?: string | null;
-  onImageUpload?: (variant: IProductVariant, file: File) => Promise<void>;
-  onImageDelete?: (variant: IProductVariant) => Promise<void>;
 };
 
 const round2 = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
 
 export function ProductVariantsEditor({
+  textOnly = false,
   elementMode = false,
   editing = true,
   sectionActions,
@@ -37,12 +40,12 @@ export function ProductVariantsEditor({
   vatRate,
   defaultServiceDurationHours,
   defaultExtensionPriceNetPerHour,
-  disabled,
+  disabled: externallyDisabled,
   onChange,
+  onEditingChange,
+  isNewProduct = false,
   imageUrls = {},
   uploadingImageId,
-  onImageUpload,
-  onImageDelete,
 }: Props) {
   const [draft, setDraft] = useState<IProductVariant | null>(null);
   const [draftFile, setDraftFile] = useState<File | null>(null);
@@ -50,6 +53,8 @@ export function ProductVariantsEditor({
   const [localImageUrl, setLocalImageUrl] = useState('');
   const [modalError, setModalError] = useState('');
   const [committing, setCommitting] = useState(false);
+  const [listError, setListError] = useState('');
+  const disabled = externallyDisabled || committing;
   const committingRef = useRef(false);
   const editorDialog = useRef<HTMLDialogElement>(null);
   useEffect(() => {
@@ -64,11 +69,12 @@ export function ProductVariantsEditor({
   }, [draft?.id, editing]);
   const editorImageUrl = localImageUrl || (!imageRemoved && draft ? imageUrls[draft.id] : '') || '';
   const startEdit = (variant: IProductVariant) => {
-    setDraft(structuredClone(variant)); setDraftFile(null); setImageRemoved(false); setModalError('');
+    if (disabled || committingRef.current) return;
+    setDraft(structuredClone(variant)); setDraftFile(null); setImageRemoved(false); setModalError(''); onEditingChange?.(true);
   };
   const closeEditor = () => {
     if (committingRef.current) return;
-    setDraft(null); setDraftFile(null); setImageRemoved(false); setModalError(''); closeAi();
+    setDraft(null); setDraftFile(null); setImageRemoved(false); setModalError(''); closeAi(); onEditingChange?.(false);
   };
   const stageImage = (file: File) => {
     if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 10 * 1024 * 1024) {
@@ -87,12 +93,10 @@ export function ProductVariantsEditor({
     const next = { ...draft, name: draft.name.trim(), ...(imageRemoved ? { offer_image_path: null } : {}) };
     const exists = variants.some(v => v.id === draft.id);
     try {
-      if (imageRemoved && onImageDelete) await onImageDelete(next);
-      if (draftFile && onImageUpload) await onImageUpload(next, draftFile);
-onChange((exists ? variants.map(v => v.id === next.id ? next : v) : [...variants, next]).map((v, i) => ({ ...v, display_order: i, is_recommended: next.is_recommended ? v.id === next.id : v.is_recommended })));
+      await onChange((exists ? variants.map(v => v.id === next.id ? next : v) : [...variants, next]).map((v, i) => ({ ...v, display_order: i, is_recommended: next.is_recommended ? v.id === next.id : v.is_recommended })), { id: next.id, file: draftFile || undefined, remove: imageRemoved });
       committingRef.current = false; closeEditor();
     } catch (error) {
-      setModalError(error instanceof Error ? error.message : 'Nie udało się przygotować zdjęcia.');
+      setModalError(error instanceof Error ? error.message : 'Nie udało się zapisać elementu. Spróbuj ponownie.');
     } finally { committingRef.current = false; setCommitting(false); }
   };
   const [aiBusy, setAiBusy] = useState(false);
@@ -149,22 +153,24 @@ onChange((exists ? variants.map(v => v.id === next.id ? next : v) : [...variants
     price_net: 0, price_gross: 0, service_duration_hours: null, extension_price_net_per_hour: null,
     is_recommended: false, is_active: true, display_order: variants.length,
   });
+  const commitList = async (next: IProductVariant[]) => {
+    if (disabled || !editing || committingRef.current) return;
+    committingRef.current = true; setCommitting(true); setListError('');
+    try { await onChange(next); }
+    catch (error) { setListError(error instanceof Error ? error.message : 'Nie udało się zapisać zmiany. Spróbuj ponownie.'); }
+    finally { committingRef.current = false; setCommitting(false); }
+  };
   const moveVariant = (from: number, to: number) => {
     if (disabled || !editing || to < 0 || to >= variants.length || from === to) return;
     const next = [...variants]; const [moved] = next.splice(from, 1); next.splice(to, 0, moved);
-    onChange(next.map((v, i) => ({ ...v, display_order: i })));
+    void commitList(next.map((v, i) => ({ ...v, display_order: i })));
   };
   const onDragEnd = ({source, destination}: DropResult) => { if (destination) moveVariant(source.index, destination.index); };
   const removeVariant = (index: number) => {
-    const next = variants.filter((_, variantIndex) => variantIndex !== index);
-    onChange(next.map((variant, displayOrder) => ({ ...variant, display_order: displayOrder })));
+    void commitList(variants.filter((_, variantIndex) => variantIndex !== index).map((variant, displayOrder) => ({ ...variant, display_order: displayOrder })));
   };
-
   const setRecommended = (index: number) => {
-    onChange(variants.map((variant, variantIndex) => ({
-      ...variant,
-      is_recommended: variantIndex === index && !variants[index].is_recommended,
-    })));
+    void commitList(variants.map((variant, variantIndex) => ({ ...variant, is_recommended: variantIndex === index && !variants[index].is_recommended })));
   };
 
   return (
@@ -173,12 +179,12 @@ onChange((exists ? variants.map(v => v.id === next.id ? next : v) : [...variants
         <div>
           <h2 className="text-lg font-medium text-[#e5e4e2]">{elementMode ? 'Elementy produktu' : 'Warianty produktu'}</h2>
           <p className="mt-1 max-w-3xl text-sm text-[#e5e4e2]/55">
-            {elementMode ? 'Elementy prezentowane bez cen, po maksymalnie trzy na stronie. Gotowe zestawy ustawisz w sekcji pakietów.' : 'Dodaj warianty i ustal ich kolejność. W PDF pojawią się po maksymalnie trzy na stronie. W ofercie zdecydujesz, czy pokazać ich porównanie, czy wydrukować tylko wybrany wariant.'}
+            {elementMode ? 'Elementy prezentowane bez cen, do trzech na pierwszej stronie i do pięciu na kolejnych. Gotowe zestawy ustawisz w sekcji pakietów.' : 'Dodaj warianty i ustal ich kolejność. W PDF pojawią się do trzech na pierwszej stronie i do pięciu na kolejnych. W ofercie zdecydujesz, czy pokazać ich porównanie, czy wydrukować tylko wybrany wariant.'}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
         {sectionActions}
-        {editing && <button
+        {editing && !textOnly && <button
           type="button"
           onClick={addVariant}
           disabled={disabled}
@@ -190,20 +196,22 @@ onChange((exists ? variants.map(v => v.id === next.id ? next : v) : [...variants
         </div>
       </div>
 
-      {variants.length === 0 ? <p className="rounded-lg bg-black/10 p-5 text-sm text-[#e5e4e2]/50">Brak pozycji. Dodaj pierwszy element w trybie edycji.</p> :
+      {listError && <p role="alert" className="mb-3 text-sm text-red-300">{listError}</p>}
+      {committing && !draft && <p role="status" className="mb-3 text-xs text-[#d3bb73]">Zapisywanie…</p>}
+      {variants.length === 0 ? <p className="rounded-lg bg-black/10 p-5 text-sm text-[#e5e4e2]/50">Brak pozycji. Użyj przycisku „Dodaj element”, aby rozpocząć.</p> :
         <DragDropContext onDragEnd={onDragEnd}><Droppable droppableId="product-variants">{provided => <div ref={provided.innerRef} {...provided.droppableProps} className="space-y-2">
-          {variants.map((variant, index) => <Draggable key={variant.id} draggableId={variant.id} index={index} isDragDisabled={!editing || disabled}>{drag =>
+          {variants.map((variant, index) => <Draggable key={variant.id} draggableId={variant.id} index={index} isDragDisabled={textOnly || !editing || disabled}>{drag =>
             <article ref={drag.innerRef} {...drag.draggableProps} className="flex items-center gap-3 rounded-xl bg-black/15 p-3">
-              {editing && <span {...drag.dragHandleProps} aria-label={`Przenieś: ${variant.name}`} className="text-[#e5e4e2]/35"><GripVertical className="h-4 w-4"/></span>}
+              {editing && !textOnly && <span {...drag.dragHandleProps} aria-label={`Przenieś: ${variant.name}`} className="text-[#e5e4e2]/35"><GripVertical className="h-4 w-4"/></span>}
               <span className="text-xs tabular-nums text-[#d3bb73]">{String(index + 1).padStart(2, '0')}</span>
               <div className="relative h-14 w-16 shrink-0 overflow-hidden rounded-lg bg-white/5">{imageUrls[variant.id] ? <Image src={imageUrls[variant.id]} alt={variant.offer_image_alt || variant.name} fill sizes="64px" className="object-cover"/> : <ImageIcon className="m-auto mt-4 h-6 w-6 text-white/20"/>}</div>
               <div className="min-w-0 flex-1"><div className="flex items-center gap-2"><h3 className="truncate text-sm font-medium text-[#e5e4e2]">{variant.name || 'Nowy element'}</h3>{variant.is_recommended && <Star aria-label="Rekomendowany" className="h-3.5 w-3.5 shrink-0 fill-current text-[#d3bb73]"/>}</div><p className="mt-1 line-clamp-2 text-xs text-[#e5e4e2]/55">{variant.short_description || variant.description || 'Brak opisu'}</p>{!elementMode && <p className="mt-1 text-xs text-[#d3bb73]">{Number(variant.price_net).toLocaleString('pl-PL', {style:'currency',currency:'PLN'})} netto</p>}</div>
-              {editing && <ResponsiveActionBar alwaysDropdown compact actions={[
+              {editing && <ResponsiveActionBar alwaysDropdown compact disabledBackground actions={[
                 {label:'Edytuj',icon:<Pencil className="h-4 w-4"/>,onClick:()=>startEdit(variant),disabled},
-                {label:variant.is_recommended?'Usuń rekomendację':'Rekomenduj',icon:<Star className="h-4 w-4"/>,onClick:()=>setRecommended(index),disabled},
-                {label:'Przenieś wyżej',icon:<ArrowUp className="h-4 w-4"/>,onClick:()=>moveVariant(index,index-1),disabled:disabled || index===0},
-                {label:'Przenieś niżej',icon:<ArrowDown className="h-4 w-4"/>,onClick:()=>moveVariant(index,index+1),disabled:disabled || index===variants.length-1},
-                {label:'Usuń z listy',icon:<Trash2 className="h-4 w-4"/>,onClick:()=>removeVariant(index),disabled,variant:'danger'},
+                {show:!textOnly,label:variant.is_recommended?'Usuń rekomendację':'Rekomenduj',icon:<Star className="h-4 w-4"/>,onClick:()=>setRecommended(index),disabled},
+                {show:!textOnly,label:'Przenieś wyżej',icon:<ArrowUp className="h-4 w-4"/>,onClick:()=>moveVariant(index,index-1),disabled:disabled || index===0},
+                {show:!textOnly,label:'Przenieś niżej',icon:<ArrowDown className="h-4 w-4"/>,onClick:()=>moveVariant(index,index+1),disabled:disabled || index===variants.length-1},
+                {show:!textOnly,label:'Usuń z listy',icon:<Trash2 className="h-4 w-4"/>,onClick:()=>removeVariant(index),disabled,variant:'danger'},
               ]}/>}
             </article>
           }</Draggable>)}{provided.placeholder}
@@ -212,7 +220,7 @@ onChange((exists ? variants.map(v => v.id === next.id ? next : v) : [...variants
         {draft && (()=>{const variant=draft;const index=variants.findIndex(v=>v.id===draft.id);return <div className="flex max-h-[90dvh] flex-col">
           <header className="flex shrink-0 items-center justify-between gap-3 bg-[#1c1f33] px-6 py-4"><h2 id="variant-editor-title" className="text-lg font-medium">{index < 0 ? 'Dodaj' : 'Edytuj'} {elementMode ? 'element produktu' : 'wariant produktu'}</h2><button type="button" onClick={closeEditor} disabled={committing} aria-label="Zamknij" className="rounded-lg p-2 hover:bg-white/5"><X className="h-5 w-5"/></button></header>
           <div className="min-h-0 overflow-y-auto px-6 py-4">
-            <div className="mb-4 flex flex-wrap gap-2"><button type="button" disabled={disabled || committing} onClick={()=>{setAiDraft(null);setAiError('');setAiVariantId(variant.id);}} className="flex items-center gap-2 rounded-lg bg-[#d3bb73]/10 px-3 py-2 text-sm text-[#d3bb73]"><Sparkles className="h-4 w-4"/> Opis AI</button><button type="button" disabled={disabled || committing} onClick={()=>updateVariant(index,{is_recommended:!variant.is_recommended})} aria-pressed={Boolean(variant.is_recommended)} className="flex items-center gap-2 rounded-lg bg-white/5 px-3 py-2 text-sm text-[#d3bb73]"><Star className={`h-4 w-4 ${variant.is_recommended?'fill-current':''}`}/>{variant.is_recommended?'Rekomendowany':'Rekomenduj (opcjonalnie)'}</button></div>
+            <div className="mb-4 flex flex-wrap gap-2"><button type="button" disabled={textOnly || disabled || committing} onClick={()=>{setAiDraft(null);setAiError('');setAiVariantId(variant.id);}} className="flex items-center gap-2 rounded-lg bg-[#d3bb73]/10 px-3 py-2 text-sm text-[#d3bb73]"><Sparkles className="h-4 w-4"/> Opis AI</button><button type="button" disabled={textOnly || disabled || committing} onClick={()=>updateVariant(index,{is_recommended:!variant.is_recommended})} aria-pressed={Boolean(variant.is_recommended)} className="flex items-center gap-2 rounded-lg bg-white/5 px-3 py-2 text-sm text-[#d3bb73]"><Star className={`h-4 w-4 ${variant.is_recommended?'fill-current':''}`}/>{variant.is_recommended?'Rekomendowany':'Rekomenduj (opcjonalnie)'}</button></div>
               <div className="grid items-start gap-5 sm:grid-cols-[minmax(0,0.9fr)_minmax(0,1fr)]">
                 <div className="min-w-0">
                   <label className="mb-1 block text-xs text-[#e5e4e2]/50">
@@ -277,7 +285,7 @@ onChange((exists ? variants.map(v => v.id === next.id ? next : v) : [...variants
                           <input
                             type="file"
                             accept="image/png,image/jpeg,image/webp"
-                            disabled={disabled || committing}
+                            disabled={textOnly || disabled || committing}
                             className="hidden"
                             onChange={async (event) => {
                               const file = event.currentTarget.files?.[0];
@@ -295,7 +303,7 @@ onChange((exists ? variants.map(v => v.id === next.id ? next : v) : [...variants
                               <input
                                 type="file"
                                 accept="image/png,image/jpeg,image/webp"
-                                disabled={disabled || committing}
+                                disabled={textOnly || disabled || committing}
                                 className="hidden"
                                 onChange={async (event) => {
                                   const file = event.currentTarget.files?.[0];
@@ -351,7 +359,7 @@ onChange((exists ? variants.map(v => v.id === next.id ? next : v) : [...variants
                           price_gross: round2(priceNet * (1 + vatRate / 100)),
                         });
                       }}
-                      disabled={disabled || committing}
+                      disabled={textOnly || disabled || committing}
                       className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#111421] px-3 py-2 text-[#e5e4e2]"
                     />
                   </div>
@@ -369,12 +377,13 @@ onChange((exists ? variants.map(v => v.id === next.id ? next : v) : [...variants
                           price_net: round2(priceGross / (1 + vatRate / 100)),
                         });
                       }}
-                      disabled={disabled || committing}
+                      disabled={textOnly || disabled || committing}
                       className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#111421] px-3 py-2 text-[#e5e4e2]"
                     />
                   </div>
                 </div>
 
+                <QuantitySourceSelect value={variant.quantity_source} onChange={quantity_source=>updateVariant(index,{quantity_source})} disabled={textOnly || disabled || committing}/>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <label className="mb-1 block text-xs text-[#e5e4e2]/50">
@@ -390,7 +399,7 @@ onChange((exists ? variants.map(v => v.id === next.id ? next : v) : [...variants
                           ? null
                           : Number(event.target.value),
                       })}
-                      disabled={disabled || committing}
+                      disabled={textOnly || disabled || committing}
                       placeholder={defaultServiceDurationHours
                         ? `Dziedziczy: ${defaultServiceDurationHours}`
                         : 'np. 6'}
@@ -411,7 +420,7 @@ onChange((exists ? variants.map(v => v.id === next.id ? next : v) : [...variants
                           ? null
                           : Number(event.target.value),
                       })}
-                      disabled={disabled || committing}
+                      disabled={textOnly || disabled || committing}
                       placeholder={defaultExtensionPriceNetPerHour
                         ? `Dziedziczy: ${defaultExtensionPriceNetPerHour}`
                         : 'np. 500'}
@@ -472,7 +481,7 @@ onChange((exists ? variants.map(v => v.id === next.id ? next : v) : [...variants
               </div>
 
           </div>
-          <footer className="shrink-0 bg-[#1c1f33] px-6 py-4">{modalError && <p role="alert" className="mb-3 text-sm text-red-300">{modalError}</p>}<p className="mb-3 text-xs text-[#e5e4e2]/50">Zmiany zatwierdzisz przyciskiem zapisu całej sekcji. Anulowanie modala pozostawi element bez zmian.</p><div className="flex justify-end gap-2"><button type="button" disabled={committing} onClick={closeEditor} className="rounded-lg bg-white/5 px-4 py-2 text-sm">Anuluj</button><button type="button" disabled={disabled || committing} onClick={()=>void applyDraft()} className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] disabled:opacity-40">{committing && <Loader2 className="h-4 w-4 animate-spin"/>}{committing?'Przygotowuję…':index<0?'Dodaj do listy':'Zastosuj zmiany'}</button></div></footer>
+          <footer className="shrink-0 bg-[#1c1f33] px-6 py-4">{modalError && <p role="alert" className="mb-3 text-sm text-red-300">{modalError}</p>}<p className="mb-3 text-xs text-[#e5e4e2]/50">{isNewProduct ? 'Element będzie dodany do katalogu przy zapisie nowego produktu.' : 'Zapisz, aby od razu zaktualizować produkt. Anulowanie pozostawi element bez zmian.'}</p><div className="flex justify-end gap-2"><button type="button" disabled={committing} onClick={closeEditor} className="rounded-lg bg-white/5 px-4 py-2 text-sm">Anuluj</button><button type="button" disabled={disabled || committing} onClick={()=>void applyDraft()} className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] disabled:opacity-40">{committing && <Loader2 className="h-4 w-4 animate-spin"/>}{committing?'Zapisywanie…':index<0?'Dodaj element':'Zapisz element'}</button></div></footer>
         </div>;})()}
       </dialog>
       <dialog

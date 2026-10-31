@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Search, Cable, ArrowLeft, Edit, Trash2, List, LayoutGrid, Table2 } from 'lucide-react';
+import { Plus, Search, Cable, ArrowLeft, Edit, Trash2, List, LayoutGrid, Table2, FolderTree } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
@@ -106,7 +106,7 @@ export default function CablesListPage({ initialViewMode }: { initialViewMode?: 
     <div className="min-h-screen bg-[#0f1117] text-[#e5e4e2] p-6">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-4">
             <button
               onClick={() => router.push('/crm/equipment')}
@@ -120,6 +120,8 @@ export default function CablesListPage({ initialViewMode }: { initialViewMode?: 
             </h1>
           </div>
 
+          <div className="flex flex-wrap items-center gap-2">
+          {canManageModule('equipment') && <Link href="/crm/equipment/cables/categories" className="inline-flex items-center gap-2 rounded-lg bg-[#1c1f33] px-4 py-2 text-[#d3bb73] hover:bg-white/5"><FolderTree className="h-4 w-4" />Kategorie</Link>}
           {canCreateInModule('equipment') && (
             <button
               onClick={() => router.push('/crm/equipment/cables/new')}
@@ -129,6 +131,7 @@ export default function CablesListPage({ initialViewMode }: { initialViewMode?: 
               Dodaj przewód
             </button>
           )}
+          </div>
         </div>
 
         {/* Search */}

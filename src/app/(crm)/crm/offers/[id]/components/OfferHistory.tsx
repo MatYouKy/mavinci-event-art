@@ -11,6 +11,7 @@ interface HistoryEntry {
   change_type: string;
   change_description: string;
   created_at: string;
+  new_values?: { in_place_update?: boolean };
   changed_by_employee?: {
     name: string;
     surname: string;
@@ -107,6 +108,7 @@ export default function OfferHistory({ offerId }: OfferHistoryProps) {
         Historia Zmian
       </h2>
 
+      {history.find(entry => entry.new_values?.in_place_update) && <p className="mb-4 rounded-lg bg-[#d3bb73]/10 p-3 text-sm text-[#d3bb73]">Oferta zaktualizowana po akceptacji: {new Date(history.find(entry => entry.new_values?.in_place_update)!.created_at).toLocaleString('pl-PL')}</p>}
       {history.length === 0 ? (
         <div className="py-8 text-center text-[#e5e4e2]/60">Brak historii zmian</div>
       ) : (
@@ -150,7 +152,7 @@ export default function OfferHistory({ offerId }: OfferHistoryProps) {
                 </div>
 
                 <p
-                  className={`mt-1 text-sm leading-relaxed ${getChangeTypeColor(entry.change_type)}`}
+                  className={`mt-1 whitespace-pre-line text-sm leading-relaxed ${getChangeTypeColor(entry.change_type)}`}
                 >
                   {entry.change_description}
                 </p>

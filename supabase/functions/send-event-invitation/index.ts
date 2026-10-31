@@ -938,9 +938,6 @@ body.mavinci-email, .wrapper { background-color:#faf6f7 !important; }
 
                 <tr>
                   <td class="bottom">
-                    <p class="bottom-text">
-                      Wiadomość wysłana z systemu <strong style="color: #d3bb73;">Mavinci CRM</strong>
-                    </p>
                     <p class="bottom-copy">
                       © ${new Date().getFullYear()} Mavinci Events. Wszelkie prawa zastrzeżone.
                     </p>

@@ -28,6 +28,7 @@ import { colors, spacing, typography } from '../theme';
 import { supabase, supabaseUrl, supabaseAnonKey } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import EmployeeAvatar from '../components/EmployeeAvatar';
+import ChatVideoPreview from '../components/ChatVideoPreview';
 import { Conversation } from './ChatListScreen';
 import {
   notifyChatConversationOpened,
@@ -130,6 +131,7 @@ export default function ChatScreen({ conversation, onBack }: Props) {
     }
   };
 
+  const [previewVideo, setPreviewVideo] = useState<string | null>(null);
   const [previewPdf, setPreviewPdf] = useState<string | null>(null);
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -902,6 +904,12 @@ export default function ChatScreen({ conversation, onBack }: Props) {
       return;
     }
 
+    if (item.message_type === 'video') {
+      Keyboard.dismiss();
+      setPreviewVideo(item.attachment_url);
+      return;
+    }
+
     if (item.attachment_filename?.toLowerCase().endsWith('.pdf') || item.message_type === 'file') {
       setPreviewPdf(item.attachment_url);
       return;
@@ -1366,6 +1374,10 @@ export default function ChatScreen({ conversation, onBack }: Props) {
             <Feather name="x" size={16} color={colors.text.tertiary} />
           </TouchableOpacity>
         </View>
+      )}
+
+      {previewVideo && (
+        <ChatVideoPreview uri={previewVideo} onClose={() => setPreviewVideo(null)} />
       )}
 
       <Modal

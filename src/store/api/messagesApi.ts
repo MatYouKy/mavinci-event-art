@@ -422,6 +422,28 @@ export const messagesApi = api.injectEndpoints({
       keepUnusedDataFor: 0,
     }),
 
+    getSentAttachments: builder.query<
+      { attachments: EmailAttachment[]; syncError?: string },
+      string
+    >({
+      queryFn: async (messageId, { signal }) => {
+        try {
+          const response = await fetch('/bridge/messages/sent-attachments', {
+            method: 'POST', credentials: 'same-origin', signal,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ messageId }),
+          });
+          const result = await response.json();
+          if (!response.ok) return { error: { status: response.status, data: result } };
+          return { data: result };
+        } catch {
+          return { error: { status: 'CUSTOM_ERROR', error: 'Nie udało się pobrać załączników.' } };
+        }
+      },
+      // The server persists completion; dropping the UI cache also allows a new attempt after an error.
+      keepUnusedDataFor: 0,
+    }),
+
     getMessageDetails: builder.query<
       MessageDetails,
       { id: string; type: 'contact_form' | 'sent' | 'received' }
@@ -1255,6 +1277,7 @@ export const {
   useGetMessagesListQuery,
   useGetMessageDetailsQuery,
   useGetReceivedAttachmentsQuery,
+  useGetSentAttachmentsQuery,
   useLazyGetMessageDetailsQuery,
   useSearchMessagesQuery,
   useLazySearchMessagesQuery,

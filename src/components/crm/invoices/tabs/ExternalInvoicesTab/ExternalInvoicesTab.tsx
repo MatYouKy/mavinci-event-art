@@ -47,6 +47,8 @@ export interface ExternalInvoice {
 
   amount_net: number | null;
   amount_gross: number | null;
+  /** Informational PLN bank debit; not the invoice or paid amount in its currency. */
+  bank_debit_amount_pln?: number | null;
 
   currency: string;
   file_url: string | null;

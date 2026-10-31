@@ -1,4 +1,5 @@
 'use client';
+import { TimeEntryDiscussion, TimeEntryDiscussionTarget, useTimeEntryDiscussions } from '@/components/crm/TimeEntryDiscussion';
 
 import EmployeeTimeSettlements from '@/components/crm/personnel/EmployeeTimeSettlements';
 
@@ -55,7 +56,9 @@ interface HistoryEntry {
   time_entry_id: string;
   action: 'created' | 'updated' | 'deleted';
   changed_at: string;
-  changed_by: string;
+  changed_by: string | null;
+  actor_name?: string | null;
+  actor_surname?: string | null;
   employee: IEmployee;
   employee_name: string;
   employee_surname: string;
@@ -82,6 +85,13 @@ const FIELD_LABELS: Record<string, string> = {
   is_billable: 'Płatne',
   hourly_rate: 'Stawka godzinowa',
   tags: 'Tagi',
+      task_id: 'Powiązane zadanie',
+      event_id: 'Powiązane wydarzenie',
+      employee_id: 'Pracownik',
+      personnel_contract_id: 'Umowa pracownika',
+      personnel_rate_snapshot: 'Warunki rozliczenia',
+      compensation_snapshot: 'Warunki wynagrodzenia',
+      created_at: 'Data utworzenia',
   task_id: 'Zadanie',
   event_id: 'Wydarzenie',
 };
@@ -91,6 +101,7 @@ export default function EmployeeTimeTrackingPage() {
   const params = useParams();
   const employeeId = params.employeeId as string;
   const { showSnackbar } = useSnackbar();
+  const discussions = useTimeEntryDiscussions();
   const { employee: currentEmployee, isAdmin } = useCurrentEmployee();
 
   const [loading, setLoading] = useState(true);
@@ -760,8 +771,19 @@ export default function EmployeeTimeTrackingPage() {
           </div>
           {viewMode === 'list' ? (
             <div className="space-y-3">
-            {entries.map((entry) => (
-              <div key={entry.id} className="rounded-lg border border-[#d3bb73]/5 bg-[#0f1119] p-4">
+            {Object.entries(entries.reduce<Record<string, typeof entries>>((days, entry) => {
+              const day = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Warsaw' }).format(new Date(entry.start_time));
+              (days[day] ||= []).push(entry);
+              return days;
+            }, {})).map(([day, dayEntries]) => (
+              <section key={day} className="rounded-xl bg-white/[0.03] p-3">
+                <header className="mb-3 flex flex-wrap items-center justify-between gap-2 px-1 py-2">
+                  <h4 className="font-semibold text-[#e5e4e2]">{new Date(`${day}T12:00:00`).toLocaleDateString('pl-PL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</h4>
+                  <span className="text-sm text-[#d3bb73]">{formatHours(dayEntries.reduce((sum, entry) => sum + (entry.duration_minutes || 0), 0))} · Wpisy: {dayEntries.length}</span>
+                </header>
+                <div className="space-y-2">
+                {dayEntries.map((entry) => (
+              <div key={entry.id} className={`rounded-lg border bg-[#0f1119] p-4 ${discussions.threads.some(t => t.time_entry_id === entry.id && !t.resolved) ? 'border-orange-400/80' : 'border-[#d3bb73]/5'}`}>
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1">
                     <div className="mb-2 flex items-center gap-3">
@@ -780,7 +802,8 @@ export default function EmployeeTimeTrackingPage() {
                         </span>
                       )}
                     </div>
-                    {entry.description && (
+                    
+                      {entry.description && (
                       <p className="mb-2 text-sm text-[#e5e4e2]/60">{entry.description}</p>
                     )}
                     {(entry.tasks?.events?.name || entry.events?.name) && (
@@ -811,26 +834,23 @@ export default function EmployeeTimeTrackingPage() {
                       </span>
                     </div>
                   </div>
-                  <div className="flex flex-col items-end gap-2">
-                    <div className="text-2xl font-bold text-[#d3bb73]">
-                      {formatHours(entry.duration_minutes || 0)}
+                  <div className="flex shrink-0 flex-col items-end gap-2">
+                    <div className="flex items-center gap-2">
+                      <div className="whitespace-nowrap text-2xl font-bold text-[#d3bb73]">
+                        {formatHours(entry.duration_minutes || 0)}
+                      </div>
+                      <TimeEntryDiscussion panelId={`discussion-panel-${entry.id}`} entry={entry} isAdmin={isAdmin} discussions={discussions} onDelete={isAdmin ? () => handleDelete(entry.id) : undefined} />
                     </div>
                     {entry.hourly_rate && (
                       <div className="text-xs text-[#e5e4e2]/40">{entry.hourly_rate} {entry.personnel_rate_snapshot?.currency || 'PLN'}/h {entry.personnel_rate_snapshot?.rate_basis === 'gross' ? 'brutto' : entry.personnel_rate_snapshot?.rate_basis === 'net' ? 'netto' : ''}</div>
                     )}
-                    {isAdmin && (
-                      <button
-                        onClick={() => handleDelete(entry.id)}
-                        className="mt-2 flex items-center gap-1 rounded-lg bg-red-500/10 px-3 py-1.5 text-sm text-red-400 transition-colors hover:bg-red-500/20"
-                        title="Usuń wpis"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                        Usuń
-                      </button>
-                    )}
                   </div>
                 </div>
+                <div id={`discussion-panel-${entry.id}`} className="empty:hidden mt-2 border-t border-orange-400/25 text-left" />
               </div>
+            ))}
+                </div>
+              </section>
             ))}
 
             {entries.length === 0 && (
@@ -856,7 +876,7 @@ export default function EmployeeTimeTrackingPage() {
                     <th className="px-3 py-3 text-center font-medium">Stawka</th>
                     <th className="px-3 py-3 text-center font-medium">Status</th>
                     {isAdmin && <th className="px-3 py-3 text-center font-medium">Edycje</th>}
-                    {isAdmin && <th className="px-3 py-3 text-center font-medium">Akcje</th>}
+                    <th className="px-3 py-3 text-center font-medium">Akcje</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#d3bb73]/5">
@@ -908,7 +928,8 @@ export default function EmployeeTimeTrackingPage() {
                       </td>
                       <td className="px-3 py-3">
                         <div className="max-w-xs">
-                          {entry.description && (
+                          
+                      {entry.description && (
                             <span className="truncate text-xs text-[#e5e4e2]/60">
                               {entry.description}
                             </span>
@@ -950,17 +971,9 @@ export default function EmployeeTimeTrackingPage() {
                           )}
                         </td>
                       )}
-                      {isAdmin && (
-                        <td className="px-3 py-3 text-center">
-                          <button
-                            onClick={() => handleDelete(entry.id)}
-                            className="inline-flex items-center gap-1 rounded-lg bg-red-500/10 px-2 py-1 text-xs text-red-400 transition-colors hover:bg-red-500/20"
-                            title="Usuń wpis"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </td>
-                      )}
+                      <td className="px-3 py-3 text-center">
+                          <TimeEntryDiscussion entry={entry} isAdmin={isAdmin} discussions={discussions} onDelete={isAdmin ? () => handleDelete(entry.id) : undefined} />
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -974,6 +987,8 @@ export default function EmployeeTimeTrackingPage() {
             </div>
           )}
         </div>
+
+        <TimeEntryDiscussionTarget entries={entries} discussions={discussions} isAdmin={isAdmin} />
 
         {history.length > 0 && (
           <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
@@ -1049,7 +1064,7 @@ export default function EmployeeTimeTrackingPage() {
                       </div>
                       <div className="text-right">
                         <div className="text-sm text-[#e5e4e2]">
-                          {item.employee_name} {item.employee_surname}
+                          {[item.actor_name, item.actor_surname].filter(Boolean).join(' ') || 'Autor niedostępny (starszy wpis lub system)'}
                           {!isAdmin && item.employee?.id === currentEmployee?.id && (
                             <span className="ml-2 text-xs text-[#e5e4e2]/40">(Ty)</span>
                           )}

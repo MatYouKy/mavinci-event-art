@@ -5,6 +5,7 @@
 import { supabase } from '@/lib/supabase/browser';
 import { DEFAULT_INVOICE_PAYMENT_TERM_DAYS, getInvoicePaymentDueDate } from './paymentTerm';
 import { getCurrentInvoiceIssuer } from './currentInvoiceIssuer';
+import { invoiceRecipientPayload, recipientDraftFromInvoice, type InvoiceRecipientDraft } from './ksefRecipient';
 
 interface ConvertResult {
   success: boolean;
@@ -20,6 +21,7 @@ export interface ConvertProformaOptions {
   paymentDueDate?: string;
   receivedPaymentConfirmed?: boolean;
   receivedPaymentDate?: string;
+  recipientDraft?: InvoiceRecipientDraft;
   buyerData?: {
     buyer_name?: string;
     buyer_nip?: string | null;
@@ -183,6 +185,17 @@ export async function convertProformaToInvoice(
       { net: 0, vat: 0, gross: 0 },
     );
 
+    const recipientDraft = options.recipientDraft ?? recipientDraftFromInvoice(proforma);
+    const recipientPayload = invoiceRecipientPayload(recipientDraft);
+    const buyerNip = options.buyerData?.buyer_nip === undefined
+      ? proforma.buyer_nip : options.buyerData.buyer_nip;
+    if (recipientDraft.mode !== 'same_as_buyer' && recipientDraft.data.internalId.trim()) {
+      const normalizedBuyerNip = String(buyerNip || '').replace(/^PL/i, '').replace(/[\s-]/g, '');
+      if (recipientDraft.data.internalId.trim().split('-')[0] !== normalizedBuyerNip) {
+        return { success: false, error: 'NIP w numerze wewnętrznym odbiorcy musi odpowiadać NIP nabywcy. Sprawdź obie strony przed wystawieniem faktury.' };
+      }
+    }
+
     const invoiceData = {
       invoice_number: invoiceNumber,
       auto_number: useAutoNumber,
@@ -207,7 +220,7 @@ export async function convertProformaToInvoice(
       buyer_is_private_person: proforma.buyer_is_private_person ?? false,
       buyer_contact_id: proforma.buyer_contact_id || null,
       billing_arrangement: proforma.billing_arrangement || 'direct',
-      service_recipient_organization_id: proforma.service_recipient_organization_id || null,
+      ...recipientPayload,
       service_recipient_contact_id: proforma.service_recipient_contact_id || null,
       seller_name: proforma.seller_name,
       seller_nip: proforma.seller_nip,
@@ -218,13 +231,14 @@ export async function convertProformaToInvoice(
       seller_email: proforma.seller_email,
       seller_phone: proforma.seller_phone,
       buyer_name: options.buyerData?.buyer_name ?? proforma.buyer_name,
-      buyer_nip: options.buyerData?.buyer_nip ?? proforma.buyer_nip,
+      buyer_nip: buyerNip,
       buyer_street: options.buyerData?.buyer_street ?? proforma.buyer_street,
       buyer_postal_code:
         options.buyerData?.buyer_postal_code ?? proforma.buyer_postal_code,
       buyer_city: options.buyerData?.buyer_city ?? proforma.buyer_city,
       buyer_country: proforma.buyer_country,
-      buyer_email: options.buyerData?.buyer_email ?? proforma.buyer_email,
+      buyer_email: options.buyerData?.buyer_email === undefined
+        ? proforma.buyer_email : options.buyerData.buyer_email,
       buyer_phone: proforma.buyer_phone,
       buyer_contact_person: proforma.buyer_contact_person,
       payment_method: proforma.payment_method,

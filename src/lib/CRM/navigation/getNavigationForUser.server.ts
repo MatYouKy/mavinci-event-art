@@ -7,7 +7,7 @@ import type { NavigationItem } from '@/app/(crm)/crm/mock/navigation';
 const hasPermission = (perms: string[], required: string) => {
   if (perms.includes('admin')) return true;
   if (perms.includes(required)) return true;
-  if (required === 'time_tracking_view' && perms.includes('time_tracking_view_own')) return true;
+  if (required === 'time_tracking_view') return true;
 
   if (['contracts_view', 'offers_view', 'events_view'].includes(required) && perms.includes(required.replace(/_view$/, '_create'))) return true;
 

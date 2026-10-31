@@ -1,4 +1,6 @@
 'use client';
+import OfferAudienceFields from '@/components/crm/offers/OfferAudienceFields';
+import { offerNeedsTables } from '@/lib/CRM/Offers/audiencePricing';
 
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase/browser';
@@ -297,12 +299,14 @@ function OfferWizardContent({
                 <p className="mt-2 text-xs text-white/50">Dostępne dane zostały uzupełnione z wydarzenia. Możesz je dostosować do tej oferty.</p>
               </div>
             <OfferStep2
+              needsTables={offerNeedsTables({ offer_items: offerItems })}
               offerData={offerData}
               setOfferData={setOfferData}
             />
             </div>
           )}
 
+          {(step === 3 || step === 4) && <OfferAudienceFields value={offerData} needsTables={offerNeedsTables({ offer_items: offerItems })} onChange={counts => setOfferData({ ...offerData, ...counts })} />}
           {/* Step 3: Katalog produktów */}
           {step === 3 && (
             <OfferStep3

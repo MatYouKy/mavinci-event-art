@@ -5,11 +5,11 @@ import type { IOfferItem, IOfferItemDraft } from '@/app/(crm)/crm/offers/types';
 import type { SelectedAltMap, EquipmentConflictRow } from '../types';
 import { IProduct } from '@/app/(crm)/crm/offers/types';
 
-const calcSubtotal = (qty: number, unitPrice: number, discountPercent: number) => {
+const calcSubtotal = (qty: number, unitPrice: number, discountPercent: number, days = 1) => {
   const q = Number.isFinite(qty) ? qty : 1;
   const p = Number.isFinite(unitPrice) ? unitPrice : 0;
   const d = Number.isFinite(discountPercent) ? discountPercent : 0;
-  return q * p * (1 - d / 100);
+  return q * days * p * (1 - d / 100);
 };
 
 export type OfferWizardState = {
@@ -31,6 +31,7 @@ export type OfferWizardState = {
     unit: string;
     unit_price: number;
     quantity: number;
+  days?: number;
     equipment_ids: string[];
     discount_percent: number;
     subcontractor_id: string;
@@ -82,6 +83,7 @@ export const offerWizardSlice = createSlice({
           existing.quantity,
           existing.unit_price,
           existing.discount_percent || 0,
+          existing.days ?? 1,
         ); //Ominąć
       } else {
         state.offerItems.push({
@@ -111,7 +113,7 @@ export const offerWizardSlice = createSlice({
       if (!item) return;
 
       Object.assign(item, patch);
-      item.subtotal = calcSubtotal(item.quantity, item.unit_price, item.discount_percent || 0);
+      item.subtotal = calcSubtotal(item.quantity, item.unit_price, item.discount_percent || 0, item.days ?? 1);
     },
 
     // ===== custom item UI/state
@@ -137,10 +139,11 @@ export const offerWizardSlice = createSlice({
         name: c.name,
         description: c.description,
         quantity: c.quantity,
+        days: c.days ?? 1,
         unit: c.unit,
         unit_price: c.unit_price,
         discount_percent: c.discount_percent,
-        subtotal: calcSubtotal(c.quantity, c.unit_price, c.discount_percent),
+        subtotal: calcSubtotal(c.quantity, c.unit_price, c.discount_percent, c.days ?? 1),
         equipment_ids: c.equipment_ids,
         subcontractor_id: c.subcontractor_id,
         needs_subcontractor: c.needs_subcontractor,

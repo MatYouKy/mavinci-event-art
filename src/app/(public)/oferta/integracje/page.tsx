@@ -6,6 +6,8 @@ import { supabaseServer } from '@/lib/supabaseServer';
 import OfferLayout from '../OfferLayout';
 import IntegracjePage from './IntegracjePage';
 import { cookies } from 'next/headers';
+import ThemedPartyOlsztynLink from '@/components/ThemedPartyOlsztynLink';
+import ThemedPartyScenarioLinks from '@/components/ThemedPartyScenarioLinks';
 
 const pageSlug = 'oferta/integracje';
 const STORAGE_SECTION = 'integrations';
@@ -28,6 +30,8 @@ export default async function Page() {
       section="integracje"
     >
       <IntegracjePage serverData={data || []} />
+      <ThemedPartyOlsztynLink />
+      <ThemedPartyScenarioLinks />
     </OfferLayout>
   );
 }

@@ -12,6 +12,7 @@ export type ContractClauseCategory =
 export type ContractClausesByCategory = Partial<Record<ContractClauseCategory, string>>;
 
 export interface IProductVariant {
+  quantity_source?: import('@/lib/CRM/Offers/audiencePricing').QuantitySource;
   id: string;
   product_id?: string;
   name: string;
@@ -36,12 +37,14 @@ export interface IProductVariant {
 }
 
 export interface IProduct {
+  quantity_source?: import('@/lib/CRM/Offers/audiencePricing').QuantitySource;
   related_service_ids?: string[];
   related_service_url?: string | null;
   related_service_label?: string | null;
   sales_packages?: ProductSalesPackage[];
   sales_packages_enabled?: boolean;
   pricing_addons?: ProductAddon[];
+  configuration_schema?: import('@/lib/CRM/Offers/modularProduct').ProductConfigurator | null;
   id: string;
   name: string;
   description: string;
@@ -53,6 +56,7 @@ export interface IProduct {
   service_duration_hours?: number | null;
   extension_price_net_per_hour?: number | null;
   offer_description?: string | null;
+  public_description?: string | null;
   offer_compact_description?: string | null;
   offer_requirements?: string[] | null;
   offer_additional_requirements?: Array<{
@@ -97,6 +101,7 @@ export interface IOfferItem {
   name: string;
   description?: string;
   quantity: number;
+  days?: number;
   unit?: string;
   unit_price: number;
   discount_percent: number; //Ominąć
@@ -141,6 +146,7 @@ export type IOfferWizardCustomItem = {
   unit_price: number;
   discount_percent: number;
   quantity: number;
+  days?: number;
   equipment_ids: string[];
   subcontractor_id: string;
   needs_subcontractor: boolean;
@@ -156,6 +162,7 @@ export type ProductStaffRow = {
 
   role: string;
   quantity: number;
+  days?: number;
   hourly_rate: number | null;
   estimated_hours: number | null;
 
@@ -173,6 +180,7 @@ export interface ProductEquipment {
   equipment_item_id: string | null;
   equipment_kit_id: string | null;
   quantity: number;
+  days?: number;
   is_optional: boolean;
   notes: string;
   equipment_item?: {

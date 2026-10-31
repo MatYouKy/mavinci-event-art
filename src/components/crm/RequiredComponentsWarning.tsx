@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Package,
   AlertTriangle,
@@ -93,6 +93,8 @@ export function RequiredComponentsWarning({
 }: RequiredComponentsWarningProps) {
   const [componentGroups, setComponentGroups] = useState<ComponentGroup[]>([]);
   const [selectedAlternatives, setSelectedAlternatives] = useState<Record<string, string>>({});
+  const checkVersion = useRef(0);
+  const savingComponents = useRef(false);
   const [componentQuantities, setComponentQuantities] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -117,6 +119,7 @@ export function RequiredComponentsWarning({
 
   useEffect(() => {
     void checkRequiredComponents();
+    return () => { checkVersion.current += 1; };
   }, [equipmentId, eventId, canVerifyInventory, equipmentRevision]);
 
   const getAvailability = (component: RequiredComponent) => {
@@ -146,7 +149,9 @@ export function RequiredComponentsWarning({
     const maximum = getMaximumQuantityToAdd(component);
     if (maximum <= 0) return 0;
     const selected = componentQuantities[component.id];
-    return Math.min(maximum, Math.max(1, Number(selected ?? maximum)));
+    const minimum = component.compatibility_type === 'optional' ? 0 : 1;
+    const defaultQuantity = component.compatibility_type === 'optional' && !component.compatibility_group ? 0 : maximum;
+    return Math.min(maximum, Math.max(minimum, Number(selected ?? defaultQuantity)));
   };
 
   const setSelectedQuantity = (component: RequiredComponent, quantity: number) => {
@@ -154,7 +159,7 @@ export function RequiredComponentsWarning({
     if (maximum <= 0) return;
     setComponentQuantities((current) => ({
       ...current,
-      [component.id]: Math.min(maximum, Math.max(1, Number(quantity || 1))),
+      [component.id]: Math.min(maximum, Math.max(component.compatibility_type === 'optional' ? 0 : 1, Number(quantity || 0))),
     }));
   };
 
@@ -375,12 +380,12 @@ export function RequiredComponentsWarning({
 
     const { error } = await supabase
       .from('event_equipment_component_reviews')
-      .update({
+      .upsert({
+        event_id: eventId,
+        equipment_id: equipmentId,
         dismissed_component_ids: Array.from(nextDismissed),
         updated_at: new Date().toISOString(),
-      })
-      .eq('event_id', eventId)
-      .eq('equipment_id', equipmentId);
+      }, { onConflict: 'event_id,equipment_id' });
 
     if (error) {
       console.error('Failed to persist dismissed component decision:', error);
@@ -422,6 +427,8 @@ export function RequiredComponentsWarning({
   );
 
   const checkRequiredComponents = async () => {
+    if (savingComponents.current) return;
+    const version = ++checkVersion.current;
     try {
       setLoading(true);
 
@@ -441,16 +448,18 @@ export function RequiredComponentsWarning({
           compatible_cable:cables!compatible_cable_id(id, name, description, length_meters, thumbnail_url, stock_unit)
         `)
         .eq('equipment_id', equipmentId)
-        .in('compatibility_type', ['required', 'recommended']);
+        .in('compatibility_type', ['required', 'recommended', 'optional']);
 
       if (error) throw error;
 
-      const { data: sourceRows } = await supabase
+      const { data: sourceRows, error: sourceError } = await supabase
         .from('event_equipment')
         .select('quantity')
         .eq('event_id', eventId)
         .eq('equipment_id', equipmentId)
         .or('status.is.null,status.not.in.(cancelled,returned)');
+      if (sourceError) throw sourceError;
+      if (version !== checkVersion.current) return;
       const sourceQuantity = Math.max(
         1,
         (sourceRows || []).reduce((sum, row: any) => sum + Number(row.quantity ?? 0), 0),
@@ -463,9 +472,8 @@ export function RequiredComponentsWarning({
         .eq('event_id', eventId)
         .eq('equipment_id', equipmentId)
         .maybeSingle();
-      if (reviewDecisionError && reviewDecisionError.code !== 'PGRST204') {
-        console.error('Failed to load component decisions:', reviewDecisionError);
-      }
+      if (reviewDecisionError) throw reviewDecisionError;
+      if (version !== checkVersion.current) return;
       const persistedDismissed = new Set<string>(reviewDecision?.dismissed_component_ids || []);
       setDismissedComponentIds(persistedDismissed);
 
@@ -489,7 +497,7 @@ export function RequiredComponentsWarning({
         const allKitIds = mapped.filter((c) => c.compatible_kit_id).map((c) => c.compatible_kit_id!);
         const allCableIds = mapped.filter((c) => c.compatible_cable_id).map((c) => c.compatible_cable_id!);
 
-        const { data: existingEquipment } =
+        const { data: existingEquipment, error: existingEquipmentError } =
           allEquipmentIds.length > 0
             ? await supabase
                 .from('event_equipment')
@@ -497,9 +505,9 @@ export function RequiredComponentsWarning({
                 .eq('event_id', eventId)
                 .or('status.is.null,status.not.in.(cancelled,returned)')
                 .in('equipment_id', allEquipmentIds)
-            : { data: [] };
+            : { data: [], error: null };
 
-        const { data: existingKits } =
+        const { data: existingKits, error: existingKitsError } =
           allKitIds.length > 0
             ? await supabase
                 .from('event_equipment')
@@ -507,9 +515,9 @@ export function RequiredComponentsWarning({
                 .eq('event_id', eventId)
                 .or('status.is.null,status.not.in.(cancelled,returned)')
                 .in('kit_id', allKitIds)
-            : { data: [] };
+            : { data: [], error: null };
 
-        const { data: existingCables } =
+        const { data: existingCables, error: existingCablesError } =
           allCableIds.length > 0
             ? await supabase
                 .from('event_equipment')
@@ -517,8 +525,12 @@ export function RequiredComponentsWarning({
                 .eq('event_id', eventId)
                 .or('status.is.null,status.not.in.(cancelled,returned)')
                 .in('cable_id', allCableIds)
-            : { data: [] };
+            : { data: [], error: null };
 
+        if (existingEquipmentError) throw existingEquipmentError;
+        if (existingKitsError) throw existingKitsError;
+        if (existingCablesError) throw existingCablesError;
+        if (version !== checkVersion.current) return;
         const sumById = (rows: any[], field: 'equipment_id' | 'kit_id' | 'cable_id') =>
           rows.reduce((map, row) => {
             const id = row[field];
@@ -531,7 +543,7 @@ export function RequiredComponentsWarning({
 
         const isComponentSatisfied = (component: RequiredComponent) => {
           const required = getRequiredQuantity(component, sourceQuantity);
-          const isRecommended = component.compatibility_type === 'recommended';
+          const isRecommended = component.compatibility_type !== 'required';
           if (component.compatible_equipment_id) {
             const existing = existingEquipmentQuantities.get(component.compatible_equipment_id) ?? 0;
             return isRecommended ? existing > 0 : existing >= required;
@@ -627,7 +639,7 @@ export function RequiredComponentsWarning({
     } catch (err: any) {
       console.error('Error checking required components:', err);
     } finally {
-      setLoading(false);
+      if (version === checkVersion.current) setLoading(false);
     }
   };
 
@@ -662,6 +674,9 @@ export function RequiredComponentsWarning({
   };
 
   const handleAddComponents = async () => {
+    if (savingComponents.current) return;
+    savingComponents.current = true;
+    checkVersion.current += 1;
     try {
       setAdding(true);
 
@@ -692,6 +707,7 @@ export function RequiredComponentsWarning({
           );
 
           if (selectedComponent) {
+            if (selectedComponent.compatibility_type === 'optional' && getSelectedQuantity(selectedComponent) <= 0) continue;
             const availability = getAvailability(selectedComponent);
             if (availability && !availability.isAvailable) {
               showSnackbar('Wybrany komponent nie jest dostępny w terminie wydarzenia', 'warning');
@@ -728,6 +744,7 @@ export function RequiredComponentsWarning({
         } else {
           // Add single required component
           const component = group.components[0];
+          if (component.compatibility_type === 'optional' && getSelectedQuantity(component) <= 0) continue;
           const availability = getAvailability(component);
           if (availability && !availability.isAvailable) {
             showSnackbar(
@@ -766,18 +783,40 @@ export function RequiredComponentsWarning({
         }
       }
 
+      // Confirmed optional omissions belong to this event, not only to modal state.
+      const omitted = componentGroups.filter(group => !group.isRequired).flatMap(group => {
+        if (group.groupName) {
+          const selected = group.components.find(c =>
+            (c.compatible_equipment_id || c.compatible_kit_id || c.compatible_cable_id) === selectedAlternatives[group.groupName!]);
+          return !selected || getSelectedQuantity(selected) <= 0 ? group.components.map(c => c.id) : [];
+        }
+        return getSelectedQuantity(group.components[0]) <= 0 ? [group.components[0].id] : [];
+      });
+      if (omitted.length) {
+        const { data: current, error: readError } = await supabase.from('event_equipment_component_reviews')
+          .select('dismissed_component_ids').eq('event_id', eventId).eq('equipment_id', equipmentId).maybeSingle();
+        if (readError) throw readError;
+        const dismissed = Array.from(new Set([...(current?.dismissed_component_ids || []), ...omitted]));
+        const { error: saveError } = await supabase.from('event_equipment_component_reviews').upsert({
+          event_id: eventId, equipment_id: equipmentId, dismissed_component_ids: dismissed,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'event_id,equipment_id' });
+        if (saveError) throw saveError;
+      }
       showSnackbar('Zaktualizowano komponenty wydarzenia', 'success');
       setShowModal(false);
       setComponentGroups([]);
       setSelectedAlternatives({});
       setComponentQuantities({});
       await onComponentsAdded?.();
-      onReviewFinished?.('reviewed');
     } catch (err: any) {
       console.error('Error adding components:', err);
       showSnackbar(err.message || 'Błąd podczas dodawania komponentów', 'error');
     } finally {
+      savingComponents.current = false;
       setAdding(false);
+      // Re-read persisted reservations; never declare missing required items resolved.
+      await checkRequiredComponents();
     }
   };
 
@@ -791,6 +830,7 @@ export function RequiredComponentsWarning({
     const maximum = getMaximumQuantityToAdd(component);
     if (maximum <= 0) return null;
     const selected = getSelectedQuantity(component);
+    const minimum = component.compatibility_type === 'optional' ? 0 : 1;
     const unit = component.compatible_cable?.stock_unit === 'meter' ? 'm' : 'szt.';
 
     return (
@@ -803,7 +843,7 @@ export function RequiredComponentsWarning({
           <button
             type="button"
             onClick={() => setSelectedQuantity(component, selected - 1)}
-            disabled={disabled || selected <= 1}
+            disabled={disabled || selected <= minimum}
             aria-label="Zmniejsz ilość"
             className="p-2 text-[#e5e4e2]/70 hover:bg-[#e5e4e2]/10 disabled:cursor-not-allowed disabled:opacity-30"
           >
@@ -811,7 +851,7 @@ export function RequiredComponentsWarning({
           </button>
           <input
             type="number"
-            min={1}
+            min={minimum}
             max={maximum}
             value={selected}
             disabled={disabled}
@@ -865,7 +905,7 @@ export function RequiredComponentsWarning({
               <div>
                 <h2 className="text-xl font-semibold text-[#e5e4e2]">Komponenty zestawu</h2>
                 <p className="mt-1 text-sm text-[#e5e4e2]/60">
-                  Sprawdź elementy wymagane i rekomendowane oraz ich dostępność
+                  Sprawdź elementy wymagane, rekomendowane i opcjonalne oraz ich dostępność
                 </p>
               </div>
               <button
@@ -885,7 +925,7 @@ export function RequiredComponentsWarning({
                   <AlertTriangle className="h-5 w-5 flex-shrink-0 text-yellow-400" />
                   <div className="text-sm text-yellow-400">
                     Elementy wymagane są niezbędne do działania. Rekomendowane warto dodać,
-                    jeśli będą potrzebne w tej realizacji.
+                    jeśli będą potrzebne w tej realizacji. Opcjonalne dodaj według potrzeb, wybierając ich ilość.
                   </div>
                 </div>
               </div>
@@ -906,7 +946,7 @@ export function RequiredComponentsWarning({
                               {group.groupName}
                             </h4>
                             <span className="rounded bg-blue-500/20 px-2 py-0.5 text-xs text-blue-400">
-                              {group.isRequired ? 'Wybierz JEDEN' : 'Rekomendowane'}
+                              {group.isRequired ? 'Wybierz JEDEN' : group.components.some((item) => item.compatibility_type === 'recommended') ? 'Rekomendowane' : 'Opcjonalne'}
                             </span>
                             <button
                               type="button"
@@ -920,7 +960,7 @@ export function RequiredComponentsWarning({
                           <p className="ml-7 mt-1 text-xs text-[#e5e4e2]/60">
                             {group.isRequired
                               ? 'Wybierz jeden z poniższych komponentów albo świadomie pomiń wymaganie dla tego wydarzenia'
-                              : 'Możesz wybrać jeden z rekomendowanych wariantów'}
+                              : 'Możesz wybrać jeden z poniższych wariantów'}
                           </p>
                         </div>
 
@@ -1077,7 +1117,7 @@ export function RequiredComponentsWarning({
                                     : 'bg-blue-500/20 text-blue-400'
                                 }`}
                               >
-                                {group.isRequired ? 'WYMAGANY' : 'REKOMENDOWANY'}
+                                {group.isRequired ? 'WYMAGANY' : component.compatibility_type === 'optional' ? 'OPCJONALNY' : 'REKOMENDOWANY'}
                               </span>
                             </div>
                             {!isKit && !isCable && component.compatible_equipment && (
@@ -1100,7 +1140,9 @@ export function RequiredComponentsWarning({
                             <div className="mt-2 text-xs text-green-400/80">
                               {group.isRequired
                                 ? 'Ten komponent jest niezbędny i zostanie dodany po zatwierdzeniu.'
-                                : 'Ten komponent warto dodać, jeśli będzie potrzebny w tej realizacji.'}
+                                : component.compatibility_type === 'optional'
+                                  ? 'Opcjonalny dodatek — ustaw ilość, jeśli chcesz go dodać do zestawu.'
+                                  : 'Ten komponent warto dodać, jeśli będzie potrzebny w tej realizacji.'}
                             </div>
                             {renderQuantitySelector(component)}
                             <button

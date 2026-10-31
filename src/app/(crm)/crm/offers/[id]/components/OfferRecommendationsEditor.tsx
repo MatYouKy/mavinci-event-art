@@ -2,13 +2,18 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
-import { Plus, Save, Trash2, Sparkles, ArrowUp, ArrowDown, GripVertical } from 'lucide-react';
+import { Plus, Save, Sparkles, GripVertical, Eye, Pencil, Trash2 } from 'lucide-react';
+import Dialog from '@mui/material/Dialog';
+import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import AddOfferItemModal, { ProductThumbnail } from './AddOfferItemModal';
 import type { OfferRecommendation } from './offerRecommendation';
 import ProductAddonsEditor from '@/components/crm/offers/ProductAddonsEditor';
-import { configurationPrice, createConfiguration, validateConfiguration } from '@/lib/CRM/Offers/offerAddons';
+import ModularProductConfigurator from '@/components/crm/offers/ModularProductConfigurator';
+import { modularTitle, modularScope } from '@/lib/CRM/Offers/modularProduct';
+import ModularPriceHint from '@/components/crm/offers/ModularPriceHint';
+import { configurationPrice, createModularConfiguration, createConfiguration, validateConfiguration } from '@/lib/CRM/Offers/offerAddons';
 
 type Props = { offer: any; canEdit: boolean; onSaved: () => void };
 const money = (value: number) => value.toLocaleString('pl-PL', { style: 'currency', currency: 'PLN' });
@@ -16,6 +21,13 @@ const money = (value: number) => value.toLocaleString('pl-PL', { style: 'currenc
 export default function OfferRecommendationsEditor({ offer, canEdit: mayEdit, onSaved }: Props) {
   const { showSnackbar } = useSnackbar();
   const [editing, setEditing] = useState(false);
+  const [editDraft, setEditDraft] = useState<OfferRecommendation | null>(null);
+  const updateDraft = (_id: string, patch: Partial<OfferRecommendation>) => setEditDraft(current => {
+    if (!current) return current;
+    const next = { ...current, ...patch, ...(patch.description !== undefined ? { description_override: true } : {}) };
+    if (next.pricing_configuration) next.unit_price = Math.round(configurationPrice(next.pricing_configuration) * (1 - (next.discount_percent ?? 0) / 100) * 100) / 100;
+    return next;
+  });
   const [items, setItems] = useState<OfferRecommendation[]>([]);
   const [original, setOriginal] = useState<OfferRecommendation[]>([]);
   const [dirty, setDirty] = useState(false);
@@ -31,7 +43,6 @@ export default function OfferRecommendationsEditor({ offer, canEdit: mayEdit, on
     // A product moved to the main offer must disappear even when other proposals
     // have local edits. Preserve those edits and their optimistic-lock snapshot.
     setItems(current => current.filter(item => !mainOfferProductIds.has(item.product_id)));
-    setOriginal(current => current.filter(item => !mainOfferProductIds.has(item.product_id)));
   }, [mainOfferProductIds]);
   const imagePathsKey = JSON.stringify(Array.from(new Set(items.map((item) => item.image_path).filter(Boolean))));
   useEffect(() => {
@@ -55,7 +66,7 @@ export default function OfferRecommendationsEditor({ offer, canEdit: mayEdit, on
 
   const persist = async (next: OfferRecommendation[]) => {
     if (!canEdit || savingRef.current) throw new Error('Nie można teraz zapisać propozycji.');
-    if (next.some((item) => !item.name.trim() || !Number.isFinite(item.quantity) || item.quantity <= 0 || !Number.isFinite(item.unit_price) || item.unit_price < 0)) {
+    if (next.some((item) => !item.name.trim() || !Number.isInteger(item.days ?? 1) || (item.days ?? 1) < 1 || (item.days ?? 1) > 3650 || !Number.isFinite(item.quantity) || item.quantity <= 0 || !Number.isFinite(item.unit_price) || item.unit_price < 0)) {
       throw new Error('Uzupełnij nazwę, dodatnią ilość i cenę nie mniejszą niż zero.');
     }
     for (const item of next) {
@@ -78,16 +89,19 @@ export default function OfferRecommendationsEditor({ offer, canEdit: mayEdit, on
       if (next.some((item) => quotedProducts.has(item.product_id))) {
         throw new Error('Produkt z propozycji jest już w głównej ofercie. Usuń go z propozycji i odśwież ofertę, aby wczytać aktualny katalog.');
       }
-      const { data, error } = await supabase.from('offers')
-        .update({ recommended_items: next })
-        .eq('id', offer.id)
-        .eq('recommended_items', JSON.stringify(original))
-        .select('id')
-        .maybeSingle();
+      // Package snapshots include resources and can exceed the URL limit.
+      // Compare and save them atomically through a POST body instead.
+      const { data, error } = await supabase.rpc('save_offer_recommendations', {
+        p_offer_id: offer.id,
+        p_expected_recommendations: original,
+        p_recommendations: next,
+      });
       if (error) throw error;
-      if (!data) throw new Error('Oferta została zmieniona w innym oknie lub nie masz prawa zapisu. Odśwież ofertę przed kolejną zmianą.');
-      setItems(next);
-      setOriginal(next);
+      if (!data || !Array.isArray(data.recommended_items)) throw new Error('Nie otrzymano potwierdzenia zapisu propozycji. Odśwież ofertę, aby sprawdzić zapisane dane.');
+      // Use the server snapshot: participant-based prices may be normalized there.
+      const saved = data.recommended_items as OfferRecommendation[];
+      setItems(saved);
+      setOriginal(saved);
       setDirty(false);
       onSaved();
     } finally {
@@ -114,15 +128,6 @@ export default function OfferRecommendationsEditor({ offer, canEdit: mayEdit, on
     }));
     setDirty(true);
   };
-  const move = (index: number, direction: number) => {
-    if (!canEdit || savingRef.current || index + direction < 0 || index + direction >= items.length) return;
-    setItems((current) => {
-      const next = [...current];
-      [next[index], next[index + direction]] = [next[index + direction], next[index]];
-      return next;
-    });
-    setDirty(true);
-  };
   const handleDragEnd = ({ source, destination }: DropResult) => {
     if (!canEdit || savingRef.current || !destination || source.index === destination.index) return;
     setItems(current => {
@@ -137,51 +142,64 @@ export default function OfferRecommendationsEditor({ offer, canEdit: mayEdit, on
   const inputClass = 'w-full rounded border border-[#d3bb73]/20 bg-[#0f1119] p-2 text-sm text-[#e5e4e2] disabled:opacity-70';
 
   return (
-    <section className="rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] p-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
+    <section data-offer-editing={editing || Boolean(editDraft)} className="rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] p-6">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0 flex-1">
           <h2 className="flex items-center gap-2 text-lg font-medium text-[#e5e4e2]"><Sparkles className="h-5 w-5 shrink-0 text-[#d3bb73]" />Zobacz, co warto dobrać do takiego wydarzenia</h2>
           <p className="mt-2 text-sm text-[#e5e4e2]/60">Proponowane produkty z indywidualnymi cenami. Poza wyceną i rezerwacją sprzętu; w PDF po kalkulacji i pakietach.</p>
           <p className="mt-2 text-xs text-[#e5e4e2]/45">Przy dodawaniu ukrywamy produkty obecne już w głównej ofercie, razem z ich wariantami.</p>
         </div>
-        {canEdit && <div className="flex gap-2">
-          <button type="button" disabled={saving} onClick={() => setShowAdd(true)} className="flex items-center gap-2 rounded-lg bg-[#d3bb73]/10 px-3 py-2 text-sm text-[#d3bb73] disabled:opacity-50"><Plus className="h-4 w-4" />Dodaj produkt</button>
-          {dirty && <button type="button" disabled={saving} onClick={save} className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-3 py-2 text-sm text-[#0f1119] disabled:opacity-50"><Save className="h-4 w-4" />{saving ? 'Zapisywanie…' : 'Zapisz'}</button>}
-        </div>}
-      </div>
-      {mayEdit && <div className="mt-3 flex gap-2">
+        <div className="ml-auto flex shrink-0 flex-col items-end gap-2">
+      {mayEdit && <div className="flex gap-2">
         {!editing ? <button type="button" className="rounded-lg bg-[#d3bb73]/10 px-3 py-2 text-sm text-[#d3bb73] disabled:opacity-50" onClick={() => setEditing(true)}>Edytuj</button>
         : <button type="button" disabled={saving} className="rounded-lg bg-[#d3bb73]/10 px-3 py-2 text-sm text-[#d3bb73] disabled:opacity-50" onClick={() => { setItems(original.filter(item => !mainOfferProductIds.has(item.product_id))); setDirty(false); setShowAdd(false); setEditing(false); }}>Anuluj</button>}
       </div>}
+        {canEdit && <div className="flex flex-wrap justify-end gap-2">
+          <button type="button" disabled={saving} onClick={() => setShowAdd(true)} className="flex items-center gap-2 rounded-lg bg-[#d3bb73]/10 px-3 py-2 text-sm text-[#d3bb73] disabled:opacity-50"><Plus className="h-4 w-4" />Dodaj produkt</button>
+          {dirty && <button type="button" disabled={saving} onClick={save} className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-3 py-2 text-sm text-[#0f1119] disabled:opacity-50"><Save className="h-4 w-4" />{saving ? 'Zapisywanie…' : 'Zapisz'}</button>}
+        </div>}
+        </div>
+      </div>
+
       {!items.length && <p className="mt-5 text-sm text-[#e5e4e2]/50">Wybierz produkty warte zaproponowania klientowi, np. telewizor, oświetlenie lub podest. Pusta sekcja nie pojawi się w PDF.</p>}
       {canEdit && items.length > 1 && <p className="mt-3 text-xs text-[#e5e4e2]/50">Przeciągnij za uchwyt, aby zmienić kolejność w PDF. Zatwierdź przyciskiem „Zapisz”.</p>}
       <DragDropContext onDragEnd={handleDragEnd} dragHandleUsageInstructions="Naciśnij spację, aby podnieść propozycję, użyj strzałek do zmiany kolejności i ponownie spacji, aby ją odłożyć. Escape anuluje przeciąganie.">
         <Droppable droppableId={`offer-recommendations-${offer.id}`} isDropDisabled={!canEdit}>
           {(dropProvided) => <div ref={dropProvided.innerRef} {...dropProvided.droppableProps} className="mt-5 space-y-3">
         {items.map((item, index) => <Draggable key={item.id} draggableId={item.id} index={index} isDragDisabled={!canEdit}>
-          {(provided, snapshot) => <div ref={provided.innerRef} {...provided.draggableProps} className={`rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-4 ${snapshot.isDragging ? 'shadow-lg shadow-black/25' : ''}`}>
+          {(provided, snapshot) => <div ref={provided.innerRef} {...provided.draggableProps} className={`rounded-lg border border-[#d3bb73]/10 bg-[#0f1118] p-4 ${snapshot.isDragging ? 'shadow-lg shadow-black/25' : ''}`}>
           <div className="flex items-start gap-3">
-            {canEdit && <button type="button" {...provided.dragHandleProps} aria-label={`Zmień kolejność propozycji: ${item.name}`} className="shrink-0 cursor-grab touch-none rounded p-1 text-[#e5e4e2]/40 hover:bg-[#d3bb73]/10 hover:text-[#d3bb73] active:cursor-grabbing"><GripVertical className="h-5 w-5" /></button>}
-            <ProductThumbnail src={item.image_path ? imageUrls[item.image_path] : null} />
-            <div className="min-w-0 flex-1 space-y-3">
-              <input aria-label="Nazwa proponowanego produktu" maxLength={160} value={item.name} disabled={!canEdit || saving} onChange={(event) => update(item.id, { name: event.target.value })} className={inputClass} />
-              <textarea aria-label="Opis proponowanego produktu" maxLength={500} rows={2} value={item.description} disabled={!canEdit || saving} onChange={(event) => update(item.id, { description: event.target.value })} className={inputClass} placeholder="Dlaczego warto wybrać ten produkt?" />
-              <div className="grid grid-cols-2 items-end gap-3 sm:grid-cols-3">
-                <label className="text-xs text-[#e5e4e2]/60">Ilość ({item.unit})<input type="number" min="0.01" step="0.01" value={item.quantity} disabled={!canEdit || saving} onChange={(event) => update(item.id, { quantity: event.target.valueAsNumber })} className={inputClass} /></label>
-                <label className="text-xs text-[#e5e4e2]/60">{item.pricing_configuration ? 'Cena bazowa netto' : 'Cena jednostkowa netto'}<input type="number" min="0" step="0.01" value={Number.isFinite(item.pricing_configuration?.base_unit_price ?? item.unit_price) ? (item.pricing_configuration?.base_unit_price ?? item.unit_price) : ''} disabled={!canEdit || saving} onChange={(event) => update(item.id, item.pricing_configuration ? { pricing_configuration: createConfiguration(event.target.valueAsNumber, item.pricing_configuration.addons, item.pricing_configuration.product_package) } : { unit_price: event.target.valueAsNumber })} className={inputClass} /></label>
-                {item.pricing_configuration && <label className="text-xs text-[#e5e4e2]/60">Rabat (%)<input type="number" min="0" max="100" step="0.01" value={Number.isFinite(item.discount_percent ?? 0) ? (item.discount_percent ?? 0) : ''} disabled={!canEdit || saving} onChange={(event) => update(item.id, { discount_percent: event.target.valueAsNumber })} className={inputClass} /></label>}
-                <p className="text-sm text-[#d3bb73]">{money(item.quantity * item.unit_price)} netto<span className="block text-xs text-[#e5e4e2]/60">{money(item.quantity * item.unit_price * (1 + vatRate / 100))} brutto</span></p>
+            {canEdit && <button type="button" {...provided.dragHandleProps} aria-label={`Zmień kolejność propozycji: ${item.name}`} className="shrink-0 cursor-grab touch-none p-1 text-[#e5e4e2]/40"><GripVertical className="h-5 w-5" /></button>}
+            <a href={`/produkty/${item.product_id}`} target="_blank" rel="noopener noreferrer" className="shrink-0">
+              {item.image_path && imageUrls[item.image_path] ? <img src={imageUrls[item.image_path]} alt={item.name} className="h-16 w-12 rounded-md object-cover md:h-24 md:w-20" /> : <ProductThumbnail src={null} />}
+            </a>
+            <div className="min-w-0 flex-1">
+              <h3 className="line-clamp-1 text-sm font-semibold text-[#e5e4e2] md:text-base"><a href={`/produkty/${item.product_id}`} target="_blank" rel="noopener noreferrer" className="underline decoration-[#d3bb73]/30 underline-offset-4">{item.name}</a></h3>
+              <p className="mt-0.5 line-clamp-2 text-xs leading-snug text-[#e5e4e2]/55 md:text-sm">{item.description}</p>
+              <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-[#e5e4e2]/55">
+                <span>Ilość: <strong className="text-[#e5e4e2]">{item.quantity} {item.unit} × {item.days ?? 1} dni</strong></span>
+                <span>Cena netto: <strong className="text-[#e5e4e2]">{money(item.unit_price)}</strong></span>
+                <span>Cena brutto (VAT {vatRate}%): <strong className="text-[#e5e4e2]">{money(item.unit_price * (1 + vatRate / 100))}</strong></span>
               </div>
-              {item.pricing_configuration && <details className="rounded-lg bg-black/10 p-3">
-                <summary className="cursor-pointer text-sm text-[#d3bb73]">Zakres i dodatki ({item.pricing_configuration.addons.length})</summary>
-                <div className="mt-3"><ProductAddonsEditor value={item.pricing_configuration.addons} disabled={!canEdit || saving} onChange={(addons) => update(item.id, { pricing_configuration: createConfiguration(item.pricing_configuration!.base_unit_price, addons, item.pricing_configuration!.product_package) })} /></div>
-              </details>}
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <span className="text-[10px] uppercase text-[#e5e4e2]/40">Układ w PDF</span>
+                <div className="inline-flex rounded-lg bg-white/5 p-1">
+                  {([{ value: 'compact', label: 'Kompaktowo · 3/str.' }, { value: 'full_page', label: 'Osobna strona' }, { value: 'visual', label: 'Duża grafika' }] as const).map(layout => <button key={layout.value} type="button" disabled={!mayEdit || saving} aria-pressed={(item.pdf_layout || 'compact') === layout.value} onClick={() => { setEditing(true); update(item.id, { pdf_layout: layout.value }); }} className={`rounded-md px-3 py-1 text-xs disabled:opacity-60 ${(item.pdf_layout || 'compact') === layout.value ? 'bg-[#6b0024] text-white' : 'text-[#e5e4e2]/60 hover:bg-white/5'}`}>{layout.label}</button>)}
+                </div>
+                <span className="text-xs text-[#d3bb73]">Poza wyceną</span>
+              </div>
             </div>
-            {canEdit && <div className="flex flex-col gap-2">
-              <button type="button" aria-label="Przenieś wyżej" disabled={saving || index === 0} onClick={() => move(index, -1)} className="text-[#d3bb73] disabled:opacity-25"><ArrowUp className="h-4 w-4" /></button>
-              <button type="button" aria-label="Przenieś niżej" disabled={saving || index === items.length - 1} onClick={() => move(index, 1)} className="text-[#d3bb73] disabled:opacity-25"><ArrowDown className="h-4 w-4" /></button>
-              <button type="button" aria-label={`Usuń propozycję ${item.name}`} disabled={saving} onClick={() => { setItems((current) => current.filter((row) => row.id !== item.id)); setDirty(true); }} className="text-red-400 disabled:opacity-25"><Trash2 className="h-4 w-4" /></button>
-            </div>}
+            <div className="shrink-0">
+              <ResponsiveActionBar disabledBackground mobileBreakpoint={4000} actions={[
+                { label: 'Otwórz produkt w CRM', icon: <Eye className="h-4 w-4" />, show: Boolean(item.product_id), onClick: () => window.open(`/crm/offers/products/${item.product_id}`, '_blank', 'noopener,noreferrer') },
+                { label: 'Edytuj', icon: <Pencil className="h-4 w-4" />, variant: 'primary', show: mayEdit, disabled: saving, onClick: () => { setEditing(true); setEditDraft(structuredClone(item)); } },
+                { label: 'Usuń', icon: <Trash2 className="h-4 w-4" />, variant: 'danger', show: mayEdit, disabled: saving, onClick: () => { setEditing(true); setItems(current => current.filter(row => row.id !== item.id)); setDirty(true); } },
+              ]} />
+            </div>
+          </div>
+          <div className="mt-4 flex items-end justify-between gap-3 border-t border-[#d3bb73]/10 pt-3">
+            <p className="text-xs text-[#e5e4e2]/50">Wartość netto: {money(item.quantity * (item.days ?? 1) * item.unit_price)}</p>
+            <div className="text-right"><p className="text-[10px] uppercase text-[#e5e4e2]/40">Brutto · VAT {vatRate}%</p><p className="text-xl font-semibold text-[#d3bb73]">{money(item.quantity * (item.days ?? 1) * item.unit_price * (1 + vatRate / 100))}</p></div>
           </div>
         </div>}
         </Draggable>)}
@@ -189,6 +207,35 @@ export default function OfferRecommendationsEditor({ offer, canEdit: mayEdit, on
           </div>}
         </Droppable>
       </DragDropContext>
+      <Dialog open={Boolean(editDraft)} onClose={() => { if (!saving) setEditDraft(null); }} fullWidth maxWidth="md">
+        {editDraft && <div className="bg-[#1c1f33] p-6 text-[#e5e4e2]">
+          <h2 className="mb-4 text-lg uppercase">Edytuj propozycję</h2>
+          <p className="mb-4 text-sm text-[#d3bb73]">Pozycja poza wyceną — nie zmienia sumy oferty.</p>
+          <fieldset disabled={saving} className="space-y-3">
+              <input aria-label="Nazwa proponowanego produktu" maxLength={160} value={editDraft.name} disabled={!canEdit || saving} onChange={(event) => updateDraft(editDraft.id, { name: event.target.value })} className={inputClass} />
+              <textarea aria-label="Opis proponowanego produktu" maxLength={5000} rows={editDraft.pdf_layout === 'full_page' ? 6 : 2} value={editDraft.description} disabled={!canEdit || saving} onChange={(event) => updateDraft(editDraft.id, { description: event.target.value })} className={inputClass} placeholder="Dlaczego warto wybrać ten produkt?" />
+              {editDraft.pricing_configuration?.modular && <ModularProductConfigurator quantity={editDraft.quantity} value={editDraft.pricing_configuration.modular} disabled={!canEdit || saving} onChange={modular => updateDraft(editDraft.id, { pricing_configuration:createModularConfiguration(modular, editDraft.pricing_configuration?.modular_price_source === 'manual' ? editDraft.pricing_configuration.base_unit_price : undefined), name:modularTitle(modular), description:modularScope(modular).join('\n') })} />}
+              {editDraft.pricing_configuration?.modular && <ModularPriceHint value={editDraft.pricing_configuration.modular} manual={editDraft.pricing_configuration.modular_price_source === 'manual'} disabled={!canEdit || saving} onReset={() => updateDraft(editDraft.id, { pricing_configuration: createModularConfiguration(editDraft.pricing_configuration!.modular!) })} />}
+              <div className="grid grid-cols-2 items-end gap-3 sm:grid-cols-3">
+                <label className="text-xs text-[#e5e4e2]/60">Liczba dni<input type="number" min="1" max="3650" step="1" value={editDraft.days ?? 1} disabled={!canEdit || saving} onChange={event => updateDraft(editDraft.id, { days: event.target.valueAsNumber })} className={inputClass} /></label><label className="text-xs text-[#e5e4e2]/60">Ilość ({editDraft.unit})<input type="number" min="0.01" step="0.01" value={editDraft.quantity} disabled={!canEdit || saving} onChange={(event) => updateDraft(editDraft.id, { quantity: event.target.valueAsNumber })} className={inputClass} /></label>
+                <label className="text-xs text-[#e5e4e2]/60">{editDraft.pricing_configuration ? 'Cena bazowa netto' : 'Cena jednostkowa netto'}<input type="number" min="0" step="0.01" value={Number.isFinite(editDraft.pricing_configuration?.base_unit_price ?? editDraft.unit_price) ? (editDraft.pricing_configuration?.base_unit_price ?? editDraft.unit_price) : ''} disabled={!canEdit || saving} onChange={(event) => updateDraft(editDraft.id, editDraft.pricing_configuration ? { pricing_configuration: editDraft.pricing_configuration.modular ? createModularConfiguration(editDraft.pricing_configuration.modular, event.target.valueAsNumber) : createConfiguration(event.target.valueAsNumber, editDraft.pricing_configuration.addons, editDraft.pricing_configuration.product_package) } : { unit_price: event.target.valueAsNumber })} className={inputClass} /></label>
+                {editDraft.pricing_configuration && <label className="text-xs text-[#e5e4e2]/60">Rabat (%)<input type="number" min="0" max="100" step="0.01" value={Number.isFinite(editDraft.discount_percent ?? 0) ? (editDraft.discount_percent ?? 0) : ''} disabled={!canEdit || saving} onChange={(event) => updateDraft(editDraft.id, { discount_percent: event.target.valueAsNumber })} className={inputClass} /></label>}
+                <p className="text-sm text-[#d3bb73]">{money(editDraft.quantity * (editDraft.days ?? 1) * editDraft.unit_price)} netto<span className="block text-xs text-[#e5e4e2]/60">{money(editDraft.quantity * (editDraft.days ?? 1) * editDraft.unit_price * (1 + vatRate / 100))} brutto</span></p>
+              </div>
+              {editDraft.pricing_configuration && !editDraft.pricing_configuration.modular && <details className="rounded-lg bg-black/10 p-3">
+                <summary className="cursor-pointer text-sm text-[#d3bb73]">Zakres i dodatki ({editDraft.pricing_configuration.addons.length})</summary>
+                <div className="mt-3"><ProductAddonsEditor value={editDraft.pricing_configuration.addons} disabled={!canEdit || saving} onChange={(addons) => updateDraft(editDraft.id, { pricing_configuration: createConfiguration(editDraft.pricing_configuration!.base_unit_price, addons, editDraft.pricing_configuration!.product_package) })} /></div>
+              </details>}
+          </fieldset>
+          <div className="mt-5 flex justify-end gap-2">
+            <button type="button" disabled={saving} onClick={() => setEditDraft(null)} className="rounded-lg bg-white/5 px-4 py-2">Anuluj</button>
+            <button type="button" disabled={saving} onClick={async () => {
+              try { await persist(items.map(item => item.id === editDraft.id ? editDraft : item)); setEditDraft(null); showSnackbar('Propozycja zapisana poza wyceną', 'success'); }
+              catch (error: any) { showSnackbar(error.message || 'Nie udało się zapisać propozycji', 'error'); }
+            }} className="rounded-lg bg-[#d3bb73] px-4 py-2 text-[#250914] disabled:opacity-50">{saving ? 'Zapisywanie…' : 'Zapisz'}</button>
+          </div>
+        </div>}
+      </Dialog>
       {showAdd && <AddOfferItemModal offerId={offer.id} excludedProductIds={new Set([...Array.from(mainOfferProductIds),...items.map(item=>item.product_id)])} onClose={() => setShowAdd(false)} onSuccess={() => {}} onAddRecommendation={async (item) => {
         if (mainOfferProductIds.has(item.product_id)) throw new Error('Ten produkt jest już w głównej ofercie. Nie dodawaj go ponownie do propozycji.');
         if (items.some((row) => row.product_id === item.product_id)) throw new Error('Ten produkt jest już na liście propozycji.');

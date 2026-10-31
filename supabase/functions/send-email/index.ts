@@ -32,10 +32,40 @@ async function assertSalesMailbox(service: any, accountId: string, userId: strin
 
 interface RelayEmailAttachment {
   filename: string;
-  content: string;
+  content?: string;
   contentType?: string;
   contentDisposition?: "attachment" | "inline";
   cid?: string;
+  // Created here from an authorized delivery, never accepted from the caller.
+  storageAttachment?: { kind: 'brochure-storage-v1'; url: string; sizeBytes: number };
+}
+
+async function requireBrochureRelay() {
+  const url = Deno.env.get('SMTP_RELAY_URL');
+  const secret = Deno.env.get('SMTP_RELAY_SECRET');
+  if (!url || !secret) throw new Error('Nie skonfigurowano usługi wysyłania poczty.');
+  const response = await fetch(`${url.replace(/\/+$/, '')}/api/capabilities`, {
+    headers: { Authorization: `Bearer ${secret}` }, signal: AbortSignal.timeout(10000),
+  }).catch(() => null);
+  if (!response) {
+    throw new Error('Nie można połączyć się z usługą SMTP. Sprawdź, czy worker jest uruchomiony i dostępny. Niczego nie wysłano.');
+  }
+  if (response.status === 401 || response.status === 403) {
+    throw new Error('Usługa SMTP odrzuciła autoryzację. Sprawdź zgodność SMTP_RELAY_SECRET z RELAY_SECRET workera. Niczego nie wysłano.');
+  }
+  if (response.status === 404) {
+    throw new Error('Zaktualizuj SMTP Relay Worker do wersji obsługującej zapisane broszury. Niczego nie wysłano.');
+  }
+  if (!response.ok) {
+    throw new Error(`Usługa SMTP jest niedostępna (HTTP ${response.status}). Niczego nie wysłano.`);
+  }
+  const capabilities = await response.json().catch(() => null);
+  if (capabilities?.brochureStorageAttachments !== 1) {
+    throw new Error('Usługa SMTP nie potwierdziła obsługi zapisanych broszur. Sprawdź wersję workera i adres SMTP_RELAY_URL. Niczego nie wysłano.');
+  }
+  if (capabilities.brochureStorageConfigured !== true) {
+    throw new Error('W konfiguracji SMTP Relay Worker ustaw SUPABASE_URL swojego projektu. Niczego nie wysłano.');
+  }
 }
 
 interface PreparedEmail {
@@ -136,6 +166,11 @@ interface EmailRequest {
 }
 
 interface EmailAccount {
+  imap_host: string;
+  imap_port: number;
+  imap_username: string;
+  imap_password: string;
+  imap_use_ssl: boolean;
   smtp_host: string;
   smtp_port: number;
   smtp_username: string;
@@ -154,10 +189,31 @@ Deno.serve(async (req: Request) => {
   }
 
   let isSaldeoDelivery = false;
+  let deliveryState: 'not_sent' | 'uncertain' | 'sent' = 'not_sent';
+  let acceptedMessageId: string | null = null;
+  let persistedSentEmailId: string | null = null;
+  let brochureDispatch: {
+    id: string; token: string; service: any; pdfPath: string; fileName: string; fileSize: number;
+  } | null = null;
+  const recordBrochureResult = async (values: Record<string, unknown>) => {
+    if (!brochureDispatch) return;
+    const { error } = await brochureDispatch.service.from('sales_brochure_deliveries')
+      .update(values).eq('id', brochureDispatch.id).eq('dispatch_token', brochureDispatch.token)
+      .in('status', ['sending', 'uncertain']);
+    if (error) console.error('[send-email] Could not persist brochure transport result:', error.code);
+  };
   try {
 
     const requestBody = await req.json();
     isSaldeoDelivery = requestBody?.saldeoDelivery != null;
+    if (requestBody.action === 'brochure_transport_capabilities') {
+      const service = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+      await salesDeliveryActor(req, requestBody, service, 'send-email');
+      await requireBrochureRelay();
+      return new Response(JSON.stringify({ success: true, brochureTransportVersion: 1 }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     const {
       to,
@@ -171,9 +227,12 @@ Deno.serve(async (req: Request) => {
       messageId,
       emailAccountId,
       smtpConfig,
-      attachments,
+      attachments = [],
       saldeoDelivery,
     }: EmailRequest = requestBody;
+    if (!Array.isArray(attachments) || attachments.some(item => !item || item.storageAttachment)) {
+      throw new Error('Załączniki ze Storage są dostępne wyłącznie przez zapisaną wysyłkę broszury.');
+    }
 
     let salesActor: { userId: string; scheduled: boolean; deliveryKey: string | null } | null = null;
     let salesEmployeeId: string | null = null;
@@ -219,6 +278,62 @@ Deno.serve(async (req: Request) => {
         salesEmployeeId = sender.id;
       }
     }
+    if (requestBody.brochureDeliveryId) {
+      if (!salesEmployeeId || !emailAccountId || smtpConfig || salesDocument || requestBody.inquiryId
+        || isSaldeoDelivery || cc || bcc || attachments.length || requestBody._scheduledDispatch) {
+        throw new Error('Nieprawidłowa wysyłka zapisanej broszury.');
+      }
+      const service = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+      const actorToken = req.headers.get('Authorization')!;
+      const actorClient = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!, {
+        global: { headers: { Authorization: actorToken } },
+      });
+      const [permission, scope, stored] = await Promise.all([
+        actorClient.rpc('can_manage_sales_brochures'),
+        actorClient.rpc('can_view_brochure_employee', { p_employee: salesEmployeeId }),
+        service.from('sales_brochure_deliveries')
+          .select('id,employee_id,generation_id,status,dispatch_token,transport_started_at,email_account_id,recipient_email,subject,body_html')
+          .eq('id', requestBody.brochureDeliveryId).maybeSingle(),
+      ]);
+      const delivery = stored.data;
+      if (permission.error || scope.error || !permission.data || !scope.data || stored.error || !delivery
+        || delivery.employee_id !== salesEmployeeId || delivery.email_account_id !== emailAccountId
+        || delivery.recipient_email !== to || delivery.subject !== providedSubject || delivery.body_html !== body
+        || !delivery.dispatch_token || delivery.dispatch_token !== requestBody.brochureDispatchToken) {
+        throw new Error('Brak dostępu do tej wersji wiadomości lub próby wysyłki broszury.');
+      }
+      // Repeated invocations cannot send the same attempt a second time.
+      // A rejected duplicate is NOT evidence that the first call did not send.
+      deliveryState = 'uncertain';
+      if (delivery.status !== 'sending' || delivery.transport_started_at) {
+        throw new Error('Ta próba wysyłki została już obsłużona. Odśwież jej stan; nie ponawiaj wysyłki.');
+      }
+      const { data: source, error: sourceError } = await service.from('sales_brochure_generations')
+        .select('pdf_path,file_name,file_size,created_by').eq('id', delivery.generation_id).maybeSingle();
+      if (sourceError || !source || source.created_by !== salesEmployeeId || !source.pdf_path
+        || !Number.isSafeInteger(source.file_size) || source.file_size <= 0 || source.file_size > 52428800) {
+        deliveryState = 'not_sent';
+        throw new Error('Brak poprawnego zapisanego PDF broszury (maksymalnie 50 MiB). Niczego nie wysłano.');
+      }
+      const { data: claimed, error: claimError } = await service.from('sales_brochure_deliveries')
+        .update({ transport_started_at: new Date().toISOString() })
+        .eq('id', delivery.id).eq('dispatch_token', delivery.dispatch_token).eq('status', 'sending')
+        .is('transport_started_at', null).select('id').maybeSingle();
+      if (claimError || !claimed) throw new Error('Nie można ponownie uruchomić tej próby. Odśwież stan wysyłki.');
+      brochureDispatch = {
+        id: delivery.id, token: delivery.dispatch_token, service,
+        pdfPath: source.pdf_path, fileName: source.file_name, fileSize: source.file_size,
+      };
+      deliveryState = 'not_sent';
+      await requireBrochureRelay();
+      const { data: signed, error: signedError } = await service.storage.from('generated-brochures')
+        .createSignedUrl(source.pdf_path, 600);
+      if (signedError || !signed?.signedUrl) throw new Error('Nie udało się udostępnić załącznika usłudze pocztowej. Niczego nie wysłano.');
+      attachments.push({
+        filename: source.file_name, contentType: 'application/pdf', contentDisposition: 'attachment',
+        storageAttachment: { kind: 'brochure-storage-v1', url: signed.signedUrl, sizeBytes: source.file_size },
+      });
+    }
     let subject = providedSubject;
     let persistedSubject = providedSubject;
     let saldeoActorId: string | null = null;
@@ -261,6 +376,7 @@ Deno.serve(async (req: Request) => {
     console.log('[send-email] Sending to:', to);
     
 
+    let imapSettings: { host: string; port: number; username: string; password: string; secure: boolean } | undefined;
     let smtpSettings: {
       host: string;
       port: number;
@@ -289,6 +405,8 @@ Deno.serve(async (req: Request) => {
       }
 
       const account = emailAccount as EmailAccount;
+      imapSettings = { host: account.imap_host, port: account.imap_port,
+        username: account.imap_username, password: account.imap_password, secure: account.imap_use_ssl };
       smtpSettings = {
         host: account.smtp_host,
         port: account.smtp_port,
@@ -321,6 +439,7 @@ Deno.serve(async (req: Request) => {
 
     const relayPayload = {
       smtpConfig: smtpSettings,
+      imapConfig: imapSettings,
       to,
       cc,
       bcc,
@@ -334,6 +453,9 @@ Deno.serve(async (req: Request) => {
 
     console.log('[send-email] Sending request to relay with attachments count:', attachments?.length || 0);
 
+    // From now on a connection failure is ambiguous, unless the relay explicitly
+    // confirms a failure BEFORE acceptance by SMTP.
+    deliveryState = 'uncertain';
     const relayResponse = await fetch(`${relayUrl}/api/send-email`, {
       method: "POST",
       headers: {
@@ -343,21 +465,29 @@ Deno.serve(async (req: Request) => {
       body: JSON.stringify(relayPayload),
     });
 
-    if (!relayResponse.ok) {
-      const errorData = await relayResponse.json();
-      throw new Error(`Relay error: ${errorData.error || 'Unknown error'}`);
-    }
-
     const relayResult = await relayResponse.json();
+    if (!relayResponse.ok || relayResult.success !== true) {
+      if (relayResult.deliveryState === 'not_sent') deliveryState = 'not_sent';
+      throw new Error(`Usługa pocztowa: ${relayResult.error || 'Brak potwierdzenia wysyłki'}`);
+    }
+    deliveryState = 'sent';
+    const warnings: string[] = [];
+    const sentCopy = relayResult.sentCopy || { status: 'unknown', warning: 'Usługa pocztowa nie potwierdziła zapisu kopii w folderze Wysłane. Wymagana aktualizacja usługi SMTP.' };
+    if (sentCopy.warning) warnings.push(sentCopy.warning);
+    let savedAttachments = 0;
+    acceptedMessageId = relayResult.messageId || null;
     const info = { messageId: relayResult.messageId };
+    // Persist acceptance before attachment archiving/other follow-up work.
+    // The CRM can then recover even when its HTTP request times out.
+    await recordBrochureResult({
+      status: 'sent', sent_at: new Date().toISOString(), message_id: acceptedMessageId, error_message: null,
+    });
 
     console.log('[send-email] Email sent successfully via relay. MessageId:', info.messageId);
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
-
-    let persistedSentEmailId: string | null = null;
 
     if (emailAccountId) {
       let employeeId: string | null = salesEmployeeId || saldeoActorId;
@@ -400,11 +530,14 @@ Deno.serve(async (req: Request) => {
             email_references: references || [],
             message_id: info.messageId,
             sent_at: new Date().toISOString(),
+            has_attachments: attachments.length > 0,
+            delivery_archive: { sentCopy, attachments: { expected: attachments.length, saved: 0, status: 'pending' } },
           })
           .select("id")
           .single();
         if (insertError) {
           console.error('[send-email] Failed to insert sent_emails record:', insertError);
+          warnings.push('Wiadomość wysłana, ale nie zapisano jej kopii w CRM.');
         } else {
           persistedSentEmailId = sentEmail.id;
         }
@@ -416,6 +549,24 @@ Deno.serve(async (req: Request) => {
     if (persistedSentEmailId && attachments?.length) {
       for (const attachment of attachments) {
         try {
+          if (attachment.storageAttachment && brochureDispatch) {
+            const storagePath = `sent/${persistedSentEmailId}/${crypto.randomUUID()}-broszura.pdf`;
+            const { error: copyError } = await supabase.storage.from('generated-brochures')
+              .copy(brochureDispatch.pdfPath, storagePath, { destinationBucket: 'email-attachments' });
+            if (copyError) throw copyError;
+            const { error: attachmentError } = await supabase.from('email_attachments').insert({
+              email_id: persistedSentEmailId, email_type: 'sent',
+              filename: brochureDispatch.fileName, content_type: 'application/pdf',
+              size_bytes: brochureDispatch.fileSize, storage_path: storagePath,
+            });
+            if (attachmentError) {
+              await supabase.storage.from('email-attachments').remove([storagePath]);
+              throw attachmentError;
+            }
+            savedAttachments += 1;
+            continue;
+          }
+          if (typeof attachment.content !== 'string') throw new Error('Brak treści załącznika do archiwizacji');
           const encoded = attachment.content.includes(",")
             ? attachment.content.split(",").pop() || ""
             : attachment.content;
@@ -445,10 +596,25 @@ Deno.serve(async (req: Request) => {
             await supabase.storage.from("email-attachments").remove([storagePath]);
             throw attachmentError;
           }
+          savedAttachments += 1;
         } catch (attachmentError) {
           console.error("[send-email] Failed to persist attachment:", attachment.filename, attachmentError);
         }
       }
+    }
+    if (persistedSentEmailId) {
+      const attachmentArchive = { expected: attachments.length, saved: savedAttachments,
+        status: savedAttachments === attachments.length ? 'complete' : 'partial' };
+      const { error: archiveError } = await supabase.from('sent_emails').update({
+        delivery_archive: { sentCopy, attachments: attachmentArchive },
+      }).eq('id', persistedSentEmailId);
+      if (archiveError || attachmentArchive.status !== 'complete') warnings.push('Nie zapisano pełnego archiwum załączników w CRM.');
+    }
+    if (brochureDispatch && persistedSentEmailId) {
+      const { error } = await supabase.from('sales_brochure_deliveries')
+        .update({ sent_email_id: persistedSentEmailId })
+        .eq('id', brochureDispatch.id).eq('dispatch_token', brochureDispatch.token).eq('status', 'sent');
+      if (error) console.error('[send-email] Could not link sent email:', error.code);
     }
 
     if (salesDocument && salesActor) {
@@ -473,9 +639,12 @@ Deno.serve(async (req: Request) => {
     return new Response(
       JSON.stringify({ 
         success: true, 
+        deliveryState: 'sent',
         messageId: info.messageId,
         message: "Email sent successfully",
-        sentEmailId: persistedSentEmailId
+        sentEmailId: persistedSentEmailId,
+        sentCopy,
+        warning: warnings.length ? `${warnings.join(' ')} Nie wysyłaj ponownie.` : null,
       }),
       {
         headers: {
@@ -489,10 +658,27 @@ Deno.serve(async (req: Request) => {
     // a log, stored CRM message, or HTTP response for the private Saldeo path.
     if (isSaldeoDelivery) console.error('[send-email] Private Saldeo delivery failed; details withheld');
     else console.error("Error sending email:", error);
+    // Failure to archive an already accepted message must never invite a resend.
+    if (deliveryState === 'sent') {
+      return new Response(JSON.stringify({
+        success: true, deliveryState: 'sent', messageId: acceptedMessageId,
+        sentEmailId: persistedSentEmailId,
+        warning: 'Serwer pocztowy przyjął wiadomość, ale nie udało się zapisać wszystkich informacji w CRM. Nie wysyłaj ponownie.',
+      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+    const errorMessage = isSaldeoDelivery
+      ? 'Nie udało się potwierdzić wysyłki do Saldeo. Sprawdź jej stan przed ponowieniem.'
+      : error instanceof Error ? error.message : 'Nieznany błąd usługi pocztowej';
+    await recordBrochureResult({
+      status: deliveryState === 'not_sent' ? 'failed' : 'uncertain',
+      error_message: deliveryState === 'not_sent' ? errorMessage
+        : `${errorMessage} Wynik wysyłki jest niepewny — sprawdź folder Wysłane przed ponowieniem.`,
+    }).catch(() => console.error('[send-email] Could not persist transport failure'));
     return new Response(
       JSON.stringify({ 
         success: false, 
-        error: isSaldeoDelivery ? 'Nie udało się potwierdzić wysyłki do Saldeo. Sprawdź jej stan przed ponowieniem.' : error instanceof Error ? error.message : "Unknown error"
+        deliveryState,
+        error: errorMessage,
       }),
       {
         status: 400,

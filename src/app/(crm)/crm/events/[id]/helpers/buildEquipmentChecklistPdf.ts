@@ -1,3 +1,4 @@
+import { checklistNoteRecords, type ChecklistNote } from '@/lib/CRM/equipmentChecklistNotes';
 import { ILocation } from '@/app/(crm)/crm/locations/type';
 
 interface EquipmentItem {
@@ -5,6 +6,7 @@ interface EquipmentItem {
   model?: string | null;
   brand?: string | null;
   quantity: number;
+  is_loaded?: boolean;
   cable_length?: number | null;
   is_kit?: boolean;
   expand_kit_in_checklist?: boolean;
@@ -35,7 +37,11 @@ export const buildEquipmentChecklistHtml = ({
   contactPhone,
   companyLogoUrl,
   externalItems,
+  checklistNotes,
+  checklistNoteItems,
 }: {
+  checklistNotes?: string | null;
+  checklistNoteItems?: ChecklistNote[] | null;
   eventName: string;
   eventDate: string;
   location: ILocation | any;
@@ -92,77 +98,6 @@ export const buildEquipmentChecklistHtml = ({
         `;
       };
 
-  const getRowUnits = (item: EquipmentItem) => {
-    if (item.is_kit && item.expand_kit_in_checklist && item.kit_items?.length) {
-      return 1 + item.kit_items.length;
-    }
-    return 1;
-  };
-
-  // Dostosuj po testach wydruku
-  const FIRST_PAGE_ROW_UNITS = 29;
-  const NEXT_PAGE_ROW_UNITS = 30;
-  const LAST_PAGE_RESERVED_UNITS = 2; // miejsce na numer strony + podpisy
-
-  const paginateEquipmentItems = (items: EquipmentItem[]) => {
-    if (!items.length) return [[]];
-
-    const pages: EquipmentItem[][] = [];
-    let currentPage: EquipmentItem[] = [];
-    let currentUnits = 0;
-    let pageIndex = 0;
-
-    const getLimitForCurrentPage = () => {
-      return pageIndex === 0 ? FIRST_PAGE_ROW_UNITS : NEXT_PAGE_ROW_UNITS;
-    };
-
-    for (const item of items) {
-      const rowUnits = getRowUnits(item);
-      const currentLimit = getLimitForCurrentPage();
-
-      if (currentUnits + rowUnits > currentLimit && currentPage.length > 0) {
-        pages.push(currentPage);
-        currentPage = [];
-        currentUnits = 0;
-        pageIndex += 1;
-      }
-
-      currentPage.push(item);
-      currentUnits += rowUnits;
-    }
-
-    if (currentPage.length > 0) {
-      pages.push(currentPage);
-    }
-
-    // Jeśli ostatnia strona jest zbyt zapchana, przenieś kilka rekordów na nową stronę
-    if (pages.length > 1) {
-      let lastPage = pages[pages.length - 1];
-      let lastUnits = lastPage.reduce((sum, item) => sum + getRowUnits(item), 0);
-
-      while (lastUnits > NEXT_PAGE_ROW_UNITS - LAST_PAGE_RESERVED_UNITS && lastPage.length > 1) {
-        const moved = lastPage.shift();
-        if (!moved) break;
-
-        const prevPage = pages[pages.length - 2];
-        const newOverflowPage = [moved, ...lastPage];
-
-        pages[pages.length - 2] = prevPage;
-        pages[pages.length - 1] = newOverflowPage;
-
-        lastPage = pages[pages.length - 1];
-        lastUnits = lastPage.reduce((sum, item) => sum + getRowUnits(item), 0);
-
-        const prevUnits = prevPage.reduce((sum, item) => sum + getRowUnits(item), 0);
-        if (prevUnits > NEXT_PAGE_ROW_UNITS) {
-          pages.splice(pages.length - 1, 0, [prevPage.pop() as EquipmentItem]);
-        }
-      }
-    }
-
-    return pages;
-  };
-
   const renderRows = (items: EquipmentItem[], startRowNumber: number) => {
     let rowNumber = startRowNumber;
 
@@ -173,7 +108,7 @@ export const buildEquipmentChecklistHtml = ({
             <td class="lp">${rowNumber++}</td>
             <td class="name">${renderMainLabel(item)}</td>
             <td class="qty">${Number(item.quantity ?? 1)}</td>
-            <td class="tick"><span class="cb"></span></td>
+            <td class="tick"><span class="cb${item.is_loaded ? ' checked' : ''}" aria-label="${item.is_loaded ? 'Załadowano w bazie' : 'Nie załadowano w bazie'}"></span></td>
             <td class="tick"><span class="cb"></span></td>
             <td class="notes"></td>
           </tr>
@@ -216,14 +151,27 @@ export const buildEquipmentChecklistHtml = ({
   };
 
   const locText = formatLocation(location);
-  const pages = paginateEquipmentItems(equipmentItems ?? []);
-  const totalPages = pages.length;
+  // Let the renderer break at actual row/note boundaries, rather than estimated row counts.
+  const pages = [equipmentItems ?? []];
+  const signaturesHtml = `
+    <div class="signatures">
+      <div class="signature-box"><div class="signature-line">Osoba po stronie Magazynu</div></div>
+      <div class="signature-box"><div class="signature-line">Osoba po stronie Event</div></div>
+    </div>`;
+  const noteRecords = checklistNoteRecords(checklistNoteItems, checklistNotes);
+  const notesHtml = noteRecords.length ? `
+    <div class="checklist-notes">
+      <h2>NOTATKI DO CHECKLISTY</h2>
+      <p>Zaznacz każdy punkt po zapoznaniu się z jego treścią.</p>
+      ${noteRecords.map(note => `<div class="checklist-note-record"><span class="note-checkbox${note.checked ? ' checked' : ''}"></span><div class="note-content">${esc(note.text)}</div></div>`).join('')}
+      <div class="notes-acknowledgement"><p>Podpisem potwierdzam zapoznanie się ze wszystkimi notatkami do checklisty.</p></div>
+    </div>` : '';
 
   let globalRowNumber = 1;
 
   const pagesHtml = pages
     .map((pageItems, pageIndex) => {
-      const isLastPage = pageIndex === totalPages - 1;
+      const isLastPage = pageIndex === pages.length - 1;
       const rows =
         pageItems.length > 0
           ? renderRows(pageItems, globalRowNumber)
@@ -277,6 +225,7 @@ export const buildEquipmentChecklistHtml = ({
               ${rows}
             </tbody>
           </table>
+          ${isLastPage ? notesHtml : ''}
                     ${
             isLastPage
               ? `
@@ -292,21 +241,12 @@ export const buildEquipmentChecklistHtml = ({
               `
                   : ''
               }
-              <div class="signatures">
-                <div class="signature-box">
-                  <div class="signature-line">Osoba po stronie Magazynu</div>
-                </div>
-                <div class="signature-box">
-                  <div class="signature-line">Osoba po stronie Event</div>
-                </div>
-              </div>
+              ${signaturesHtml}
             `
               : ''
           }
 
-          <div class="page-footer-meta">
-            <div class="page-number">Strona ${pageIndex + 1} / ${totalPages}</div>
-          </div>
+
 
 
         </section>
@@ -357,9 +297,7 @@ export const buildEquipmentChecklistHtml = ({
     }
 
     #equipment-checklist-print .page {
-      min-height: 252mm;
-      display: flex;
-      flex-direction: column;
+      display: block;
       box-sizing: border-box;
     }
 
@@ -459,6 +397,13 @@ export const buildEquipmentChecklistHtml = ({
       line-height: 1.05;
     }
 
+    /* A one-line label keeps the same minimum row height as name + model.
+       Taller descriptions still expand naturally. */
+    #equipment-checklist-print tr.row > td {
+      height: 30px;
+      box-sizing: border-box;
+    }
+
     #equipment-checklist-print tr.row {
       break-inside: avoid;
       page-break-inside: avoid;
@@ -488,6 +433,17 @@ export const buildEquipmentChecklistHtml = ({
       height: 12px;
       border: 1.6px solid #111;
       box-sizing: border-box;
+    }
+
+    #equipment-checklist-print .checked { position: relative; }
+    #equipment-checklist-print .checked::before,
+    #equipment-checklist-print .checked::after {
+      content: ''; position: absolute; left: 50%; top: 50%;
+      width: 11px; height: 2.5px; background: #000;
+      transform: translate(-50%, -50%) rotate(45deg);
+    }
+    #equipment-checklist-print .checked::after {
+      transform: translate(-50%, -50%) rotate(-45deg);
     }
 
     #equipment-checklist-print .notes {
@@ -557,6 +513,45 @@ export const buildEquipmentChecklistHtml = ({
       margin-bottom: 1px;
     }
 
+    #equipment-checklist-print .checklist-notes { margin-top: 5mm; }
+    #equipment-checklist-print .checklist-notes h2 { font-size: 12px; margin: 0 0 2mm; }
+    #equipment-checklist-print .checklist-note-record {
+      display: flex;
+      align-items: flex-start;
+      gap: 3mm;
+      padding: 0;
+      margin: 3mm 0;
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+    #equipment-checklist-print .note-checkbox {
+      display: block;
+      position: relative;
+      flex: 0 0 4mm;
+      /* html2canvas paints the first 16px text line below the flex item's
+         top edge. Match its visible centre, not the multiline block centre. */
+      margin: 8px 0 0;
+      padding: 0;
+      width: 4mm;
+      height: 4mm;
+      border: 1px solid #111827;
+      background: white;
+      box-sizing: border-box;
+    }
+    #equipment-checklist-print .note-content {
+      margin: 0;
+      padding: 0;
+      min-width: 0;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      font-size: 11px;
+      line-height: 16px;
+    }
+    #equipment-checklist-print .notes-acknowledgement {
+      margin-top: 5mm;
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
     #equipment-checklist-print .signatures {
       margin-top: 16mm;
       height: 10mm;

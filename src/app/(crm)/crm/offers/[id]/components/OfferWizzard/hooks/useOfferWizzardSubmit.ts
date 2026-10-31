@@ -1,4 +1,5 @@
 'use client';
+import { resolveAudienceConfiguration, audienceTables } from '@/lib/CRM/Offers/audiencePricing';
 import { validateConfiguration } from '@/lib/CRM/Offers/offerAddons';
 
 import { supabase } from '@/lib/supabase/browser';
@@ -20,6 +21,7 @@ export async function submitOfferWizard(params: {
   contactId?: string;
 
   offerData: {
+    guest_count?: string; guests_per_table?: string; table_count?: string;
     offer_number: string;
     valid_until: string;
     notes: string;
@@ -44,13 +46,18 @@ export async function submitOfferWizard(params: {
     gross: number;
   };
 }) {
+  const audience={guest_count:params.offerData.guest_count?Number(params.offerData.guest_count):null,guests_per_table:Number(params.offerData.guests_per_table || 10),table_count:params.offerData.table_count?Number(params.offerData.table_count):null};
+  if(audience.guest_count != null && audienceTables(audience)==null)throw new Error('Podaj poprawną liczbę osób i ustawienia stołów.');
   for (const item of params.offerItems) {
     if (item.pricing_configuration) {
+      const resolved=resolveAudienceConfiguration(item.pricing_configuration,audience,item.quantity);
+      if(resolved.error)throw new Error(`${item.name}: ${resolved.error}`);
       const error = validateConfiguration(item.pricing_configuration);
       if (error) throw new Error(`${item.name}: ${error}`);
     }
   }
   const offerDataToInsert: any = {
+    ...audience,
     event_id: params.eventId,
     title: params.eventTitle?.trim() || null,
     client_type: params.clientType,
@@ -96,13 +103,14 @@ export async function submitOfferWizard(params: {
     name: item.name,
     description: item.description || null,
     quantity: item.quantity,
+    days: item.days ?? 1,
     unit: item.unit,
     unit_price: item.unit_price,
     pricing_configuration: item.pricing_configuration || null,
     unit_cost: 0,
     discount_percent: item.discount_percent || 0,
     discount_amount: Math.round(
-      (Number(item.quantity || 0) * Number(item.unit_price || 0) * Number(item.discount_percent || 0) / 100 + Number.EPSILON) * 100,
+      (Number(item.quantity || 0) * Number(item.days ?? 1) * Number(item.unit_price || 0) * Number(item.discount_percent || 0) / 100 + Number.EPSILON) * 100,
     ) / 100,
     transport_cost: 0,
     logistics_cost: 0,

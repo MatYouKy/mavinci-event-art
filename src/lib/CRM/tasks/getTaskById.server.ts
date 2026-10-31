@@ -32,7 +32,6 @@ export interface Task {
   attachments?: any[];
 }
 
-// Jeśli nie znasz nazw FK — użyj tych z błędu PostgREST (PGRST201 / hint) albo podejrzyj w DB.
 export async function getTaskByIdServer(taskId: string): Promise<Task | null> {
   const supabase = createSupabaseServerClient(cookies());
 
@@ -66,16 +65,6 @@ export async function getTaskByIdServer(taskId: string): Promise<Task | null> {
           role,
           permissions
         )
-      ),
-
-      creator:employees!tasks_created_by_fkey (
-        id,
-        name,
-        surname,
-        avatar_url,
-        avatar_metadata,
-        role,
-        permissions
       ),
 
       comments:task_comments (
@@ -126,5 +115,24 @@ export async function getTaskByIdServer(taskId: string): Promise<Task | null> {
     return null;
   }
 
-  return data as unknown as Task | null;
+  if (!data) return null;
+
+  // Match the browser loader: author lookup must not depend on an embedded FK.
+  // Use the same authenticated client so employee visibility remains subject to RLS.
+  let creator: IEmployee | null = null;
+  if (data.created_by) {
+    const { data: employee, error: creatorError } = await supabase
+      .from('employees')
+      .select('id, name, surname, avatar_url, avatar_metadata, role, permissions')
+      .eq('id', data.created_by)
+      .maybeSingle();
+
+    if (creatorError) {
+      console.error('[getTaskByIdServer:creator]', creatorError);
+    } else {
+      creator = employee as unknown as IEmployee | null;
+    }
+  }
+
+  return { ...data, creator } as unknown as Task;
 }

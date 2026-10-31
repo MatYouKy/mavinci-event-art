@@ -86,6 +86,24 @@ function formatDate(value: string | null | undefined): string {
   }
 }
 
+interface XmlPartyData {
+  name: string | null;
+  nip: string | null;
+  address: string | null;
+  internalId: string | null;
+}
+
+interface XmlCorrectionDetails {
+  kind: 'party_data' | 'unknown';
+  buyerBefore: XmlPartyData | null;
+  buyerAfter: XmlPartyData;
+  recipientAfter: XmlPartyData | null;
+  recipientBeforeText: string | null;
+  recipientAfterText: string | null;
+  reason: string | null;
+  correctedInvoiceNumber: string | null;
+}
+
 interface XmlParsedData {
   items: any[];
   seller_name: string | null;
@@ -107,6 +125,7 @@ interface XmlParsedData {
   gross_amount: number | null;
   currency: string | null;
   invoice_number: string | null;
+  correction_details: XmlCorrectionDetails | null;
 }
 
 function getXmlTag(src: string, tag: string): string | null {
@@ -119,7 +138,17 @@ function getXmlBlock(src: string, tag: string): string | null {
   return m ? m[1] : null;
 }
 
+function getXmlBlocks(src: string, tag: string): string[] {
+  return Array.from(src.matchAll(new RegExp(`<(?:[a-zA-Z0-9_]+:)?${tag}\\b[^>]*>([\\s\\S]*?)<\\/(?:[a-zA-Z0-9_]+:)?${tag}>`, 'g')), (match) => match[1]);
+}
+
 function buildAddressFromXml(block: string): string | null {
+  const fa3Address = getXmlBlock(block, 'Adres') || block;
+  const addressLine1 = getXmlTag(fa3Address, 'AdresL1');
+  const addressLine2 = getXmlTag(fa3Address, 'AdresL2');
+  if (addressLine1 || addressLine2) {
+    return decodeTextEntities([addressLine1, addressLine2, getXmlTag(fa3Address, 'KodKraju')].filter(Boolean).join(', '));
+  }
   const adresPol = getXmlBlock(block, 'AdresPol') || getXmlBlock(block, 'AdresZagr') || block;
   const kodPocztowy = getXmlTag(adresPol, 'KodPocztowy');
   const miejscowosc = getXmlTag(adresPol, 'Miejscowosc');
@@ -139,6 +168,66 @@ function buildAddressFromXml(block: string): string | null {
   }
 
   return parts.length > 0 ? parts.join(', ') : null;
+}
+
+function readXmlParty(block: string): XmlPartyData {
+  return {
+    name: decodeTextEntities(getXmlTag(block, 'Nazwa')) || null,
+    nip: getXmlTag(block, 'NIP'),
+    address: buildAddressFromXml(block),
+    internalId: getXmlTag(block, 'IDWew'),
+  };
+}
+
+function readCorrectionDescription(fa: string, key: string): string | null {
+  const parts = getXmlBlocks(fa, 'DodatkowyOpis').map((block) => ({
+    key: decodeTextEntities(getXmlTag(block, 'Klucz')) || '',
+    value: decodeTextEntities(getXmlBlock(block, 'Wartosc')) || '',
+  })).filter((part) => part.key === key || part.key.startsWith(`${key} (`));
+  if (parts.length === 1 && parts[0].key === key) return parts[0].value || null;
+  const numbered = parts.map((part) => {
+    const suffix = part.key.slice(key.length).match(/^ \((\d+)\/(\d+)\)$/);
+    return suffix ? { index: Number(suffix[1]), total: Number(suffix[2]), value: part.value } : null;
+  }).sort((a, b) => (a?.index ?? 0) - (b?.index ?? 0));
+  if (!numbered.length || numbered.some((part, index) => !part || part.total !== numbered.length || part.index !== index + 1)) return null;
+  return numbered.map((part) => part!.value).join('');
+}
+
+function parseXmlCorrection(xml: string, fa: string, items: any[], grossRaw: string | null): XmlCorrectionDetails | null {
+  if (!['KOR', 'KOR_ZAL', 'KOR_ROZ'].includes(getXmlTag(fa, 'RodzajFaktury') || '') ||
+      !grossRaw?.trim() || Number(grossRaw) !== 0 || items.length) return null;
+  const buyersBefore = getXmlBlocks(fa, 'Podmiot2K');
+  const buyerBefore = buyersBefore.length === 1 ? readXmlParty(buyersBefore[0]) : null;
+  const buyerAfter = readXmlParty(getXmlBlock(xml, 'Podmiot2') || '');
+  const recipientBlock = getXmlBlocks(xml, 'Podmiot3').find((block) => getXmlTag(block, 'Rola') === '2');
+  const recipientBeforeText = readCorrectionDescription(fa, 'Odbiorca przed korektą');
+  const recipientAfterText = readCorrectionDescription(fa, 'Odbiorca po korekcie');
+  const scope = readCorrectionDescription(fa, 'Zakres korekty');
+  const normalized = (value: string | null) => (value || '').replace(/\s+/g, ' ').trim();
+  const sameBuyerNip = !!buyerBefore?.nip && normalized(buyerBefore.nip) === normalized(buyerAfter.nip);
+  const changedBuyer = !!buyerBefore?.name && !!buyerAfter.name && sameBuyerNip &&
+    (normalized(buyerBefore.name) !== normalized(buyerAfter.name) || normalized(buyerBefore.address) !== normalized(buyerAfter.address));
+  const changedRecipient = !!recipientBeforeText && !!recipientAfterText && normalized(recipientBeforeText) !== normalized(recipientAfterText) &&
+    scope === 'Wyłącznie dane nabywcy lub odbiorcy. Kwoty, pozycje i rozliczenie płatności faktury korygowanej pozostają bez zmian.';
+  const hasAmountChanges = Array.from(fa.matchAll(/<(?:[a-zA-Z0-9_]+:)?P_(?:13|14)(?:_[a-zA-Z0-9]+)*\b[^>]*>([^<]*)<\//g))
+    .some((match) => !match[1].trim() || !Number.isFinite(Number(match[1])) || Number(match[1]) !== 0);
+  const correctedInvoiceNumber = getXmlTag(getXmlBlock(fa, 'DaneFaKorygowanej') || '', 'NrFaKorygowanej');
+  // Samo P_15=0 nie dowodzi korekty danych: zmiany kwot mogą się bilansować.
+  const confirmedPartyCorrection = !!correctedInvoiceNumber && (changedBuyer || changedRecipient) && !hasAmountChanges &&
+    !getXmlBlock(fa, 'Platnosc') && !getXmlBlock(fa, 'Zamowienie') && !getXmlBlock(fa, 'Rozliczenie') &&
+    !getXmlBlock(fa, 'Podmiot1K') && !/<(?:[a-zA-Z0-9_]+:)?(?:FaWiersz|ZamowienieWiersz)\b/.test(fa) && buyersBefore.length <= 1;
+  return {
+    kind: confirmedPartyCorrection ? 'party_data' : 'unknown',
+    buyerBefore, buyerAfter,
+    recipientAfter: recipientBlock ? readXmlParty(recipientBlock) : null,
+    recipientBeforeText, recipientAfterText,
+    reason: decodeTextEntities(getXmlTag(fa, 'PrzyczynaKorekty')) || null,
+    correctedInvoiceNumber: decodeTextEntities(correctedInvoiceNumber) || null,
+  };
+}
+
+function formatXmlParty(party: XmlPartyData): string {
+  return [party.name, party.nip ? `NIP: ${party.nip}` : null, party.address, party.internalId ? `IDWew: ${party.internalId}` : null].filter(Boolean).join('\n');
 }
 
 function parseFullXml(xml: string | null | undefined): XmlParsedData {
@@ -163,6 +252,7 @@ function parseFullXml(xml: string | null | undefined): XmlParsedData {
     gross_amount: null,
     currency: null,
     invoice_number: null,
+    correction_details: null,
   };
 
   if (!xml || typeof xml !== 'string' || xml.length < 50) return empty;
@@ -259,6 +349,7 @@ function parseFullXml(xml: string | null | undefined): XmlParsedData {
       gross_amount: grossAmountRaw ? Number(grossAmountRaw) : null,
       currency,
       invoice_number: invoiceNumber || null,
+      correction_details: parseXmlCorrection(xml, fa, items, grossAmountRaw),
     };
   } catch {
     return {
@@ -282,6 +373,7 @@ function parseFullXml(xml: string | null | undefined): XmlParsedData {
       gross_amount: null,
       currency: null,
       invoice_number: null,
+      correction_details: null,
     };
   }
 }
@@ -441,9 +533,9 @@ export default function InvoiceDetailsModal({ invoice, onClose, overlayClassName
 
   const inv = enrichedInvoice;
   const invoiceDate = inv.issue_date || inv.ksef_issued_at;
-  const invoiceType = getInvoiceTypeLabel(inv.invoice_number);
   const currency = inv.currency || 'PLN';
   const isIssued = inv.invoice_type === 'issued';
+  const sourceXmlData = parseFullXml(inv?.xml_content);
 
   const xmlData = enrichedParsed
     ? {
@@ -467,8 +559,9 @@ export default function InvoiceDetailsModal({ invoice, onClose, overlayClassName
         gross_amount: enrichedParsed.gross_amount ?? null,
         currency: enrichedParsed.currency || null,
         invoice_number: enrichedParsed.invoice_number || null,
+        correction_details: sourceXmlData.correction_details,
       } as XmlParsedData
-    : parseFullXml(inv?.xml_content);
+    : sourceXmlData;
 
   const calculateVatRate = () => {
     if (inv.vat_rate) return inv.vat_rate;
@@ -494,6 +587,11 @@ export default function InvoiceDetailsModal({ invoice, onClose, overlayClassName
       : dbItems.length > 0
         ? dbItems
         : xmlData.items;
+  const correctionDetails = xmlData.correction_details;
+  const isPartyDataCorrection = correctionDetails?.kind === 'party_data' && items.length === 0;
+  const isUnconfirmedZeroCorrection = !!correctionDetails && !isPartyDataCorrection;
+  const invoiceType = isPartyDataCorrection ? 'Korygująca — dane stron'
+    : correctionDetails ? 'Korygująca' : getInvoiceTypeLabel(inv.invoice_number);
 
   const bankAccount = inv.bank_account_number || xmlData.bank_account_number || (isIssued ? myCompany?.bank_account : null) || null;
   const bankSwift = xmlData.bank_swift || null;
@@ -507,17 +605,17 @@ export default function InvoiceDetailsModal({ invoice, onClose, overlayClassName
   const sellerNip = inv.seller_nip || xmlData.seller_nip || (isIssued ? myCompany?.nip : null);
   const sellerAddress = inv.seller_address || xmlData.seller_address || (isIssued ? buildFullAddress(myCompany) : null);
 
-  const buyerName = decodeTextEntities(inv.buyer_name || xmlData.buyer_name) || 'Brak danych nabywcy';
-  const buyerNip = inv.buyer_nip || xmlData.buyer_nip || null;
-  const buyerAddress = inv.buyer_address || xmlData.buyer_address || null;
+  const buyerName = decodeTextEntities(isPartyDataCorrection ? correctionDetails.buyerAfter.name : inv.buyer_name || xmlData.buyer_name) || 'Brak danych nabywcy';
+  const buyerNip = isPartyDataCorrection ? correctionDetails.buyerAfter.nip : inv.buyer_nip || xmlData.buyer_nip || null;
+  const buyerAddress = isPartyDataCorrection ? correctionDetails.buyerAfter.address : inv.buyer_address || xmlData.buyer_address || null;
 
   const paymentDueDate = inv.payment_due_date || xmlData.payment_due_date || null;
   const paymentMethod = inv.payment_method || xmlData.payment_method || null;
   const paymentInfo = xmlData.payment_info || null;
 
-  const netAmount = inv.net_amount ?? xmlData.net_amount ?? null;
-  const grossAmount = inv.gross_amount ?? xmlData.gross_amount ?? null;
-  const vatAmount = inv.vat_amount ?? xmlData.vat_amount ?? (netAmount != null && grossAmount != null ? Number(grossAmount) - Number(netAmount) : null);
+  const netAmount = isPartyDataCorrection ? 0 : inv.net_amount ?? xmlData.net_amount ?? null;
+  const grossAmount = correctionDetails ? sourceXmlData.gross_amount : inv.gross_amount ?? xmlData.gross_amount ?? null;
+  const vatAmount = isPartyDataCorrection ? 0 : inv.vat_amount ?? xmlData.vat_amount ?? (netAmount != null && grossAmount != null ? Number(grossAmount) - Number(netAmount) : null);
   const footerNote = getPaymentAwareInvoiceFooterNote(myCompany?.invoice_footer_text, {
     paymentStatus: inv.payment_status === 'paid' || paymentInfo === 'Zapłacono'
       ? 'paid'
@@ -527,6 +625,8 @@ export default function InvoiceDetailsModal({ invoice, onClose, overlayClassName
   });
 
   const paymentStatusLabel = (() => {
+    if (isPartyDataCorrection) return 'Płatność nie dotyczy';
+    if (isUnconfirmedZeroCorrection) return 'Zakres korekty do weryfikacji';
     if (inv.payment_status === 'paid' || inv.payment_date) return 'Opłacona';
     if (inv.payment_status === 'partially_paid') return 'Częściowo opłacona';
     if (inv.payment_status === 'overdue') return 'Przeterminowana';
@@ -539,6 +639,7 @@ export default function InvoiceDetailsModal({ invoice, onClose, overlayClassName
   })();
 
   const paymentStatusClasses = (() => {
+    if (isPartyDataCorrection || isUnconfirmedZeroCorrection) return 'bg-gray-100 text-gray-700';
     if (inv.payment_status === 'paid' || inv.payment_date || paymentInfo === 'Zapłacono') {
       return 'bg-green-100 text-green-800';
     }
@@ -712,7 +813,29 @@ export default function InvoiceDetailsModal({ invoice, onClose, overlayClassName
             </div>
 
             {/* POZYCJE */}
-            <div className="mb-6">
+            {correctionDetails && (
+              <section className="mb-6 rounded-lg bg-gray-50 p-4 text-sm text-gray-800">
+                <h2 className="font-semibold">{isPartyDataCorrection ? 'Korekta danych — przed i po zmianie' : 'Zakres korekty wymaga weryfikacji'}</h2>
+                <p className="mt-2 text-gray-600">{isPartyDataCorrection
+                  ? 'Zmienia wyłącznie dane stron. Pozycje, kwoty i płatności faktury źródłowej pozostają bez zmian; ta korekta nie tworzy nowej należności.'
+                  : 'XML zawiera zerową różnicę wartości bez pozycji. Samo zero nie potwierdza korekty danych ani opłacenia dokumentu. Sprawdź treść korekty i fakturę źródłową.'}</p>
+                {correctionDetails.correctedInvoiceNumber && <p className="mt-2">Do faktury: <strong>{correctionDetails.correctedInvoiceNumber}</strong></p>}
+                {correctionDetails.reason && <p className="mt-1">Przyczyna: {correctionDetails.reason}</p>}
+                {(correctionDetails.buyerBefore || correctionDetails.recipientBeforeText || correctionDetails.recipientAfterText) && (
+                  <div className="mt-4 overflow-x-auto">
+                    <table className="w-full table-fixed text-left text-sm">
+                      <thead className="bg-gray-100 text-gray-700"><tr><th className="w-1/5 p-2">Dane</th><th className="p-2">Przed korektą</th><th className="p-2">Po korekcie</th></tr></thead>
+                      <tbody className="align-top">
+                        {correctionDetails.buyerBefore && <tr><th className="p-2 font-medium">Nabywca</th><td className="whitespace-pre-wrap break-words p-2">{formatXmlParty(correctionDetails.buyerBefore)}</td><td className="whitespace-pre-wrap break-words p-2">{formatXmlParty(correctionDetails.buyerAfter)}</td></tr>}
+                        {(correctionDetails.recipientBeforeText || correctionDetails.recipientAfterText) && <tr><th className="p-2 font-medium">Odbiorca</th><td className="whitespace-pre-wrap break-words p-2">{correctionDetails.recipientBeforeText || 'Brak opisu stanu przed zmianą'}</td><td className="whitespace-pre-wrap break-words p-2">{correctionDetails.recipientAfterText || 'Brak opisu stanu po zmianie'}</td></tr>}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                {correctionDetails.recipientAfter && !correctionDetails.recipientAfterText && <div className="mt-3 whitespace-pre-wrap"><strong>Odbiorca po korekcie</strong><p>{formatXmlParty(correctionDetails.recipientAfter)}</p></div>}
+              </section>
+            )}
+            {!isPartyDataCorrection && <div className="mb-6">
               <div className="mb-2 flex items-center gap-2 border-b border-gray-300 pb-1">
                 <FileText className="h-4 w-4 text-gray-600" />
                 <span className="text-sm font-bold uppercase tracking-wide text-gray-700">Pozycje</span>
@@ -770,19 +893,19 @@ export default function InvoiceDetailsModal({ invoice, onClose, overlayClassName
                     ) : (
                       <tr>
                         <td colSpan={7} className="px-2 py-4 text-center text-sm text-gray-500">
-                          Brak szczegółowych pozycji faktury
+                          {isUnconfirmedZeroCorrection ? 'Korekta nie zawiera pozycji — zakres zmiany wymaga weryfikacji.' : 'Brak szczegółowych pozycji faktury'}
                         </td>
                       </tr>
                     )}
                   </tbody>
                 </table>
               </div>
-            </div>
+            </div>}
 
             {/* KWOTA NALEŻNOŚCI */}
             <div className="mb-6 flex justify-end">
               <div className="rounded-lg border-2 border-gray-800 bg-gray-50 px-6 py-3">
-                <div className="text-xs uppercase tracking-wider text-gray-600">Kwota należności ogółem</div>
+                <div className="text-xs uppercase tracking-wider text-gray-600">{correctionDetails ? 'Różnica wartości korekty' : 'Kwota należności ogółem'}</div>
                 <div className="mt-1 text-2xl font-bold text-gray-900">
                   {formatAmount(grossAmount, xmlData.currency || currency)}
                 </div>
@@ -790,7 +913,7 @@ export default function InvoiceDetailsModal({ invoice, onClose, overlayClassName
             </div>
 
             {/* PODSUMOWANIE STAWEK PODATKU */}
-            <div className="mb-6">
+            {!correctionDetails && <div className="mb-6">
               <div className="mb-2 flex items-center gap-2 border-b border-gray-300 pb-1">
                 <span className="text-sm font-bold uppercase tracking-wide text-gray-700">Podsumowanie stawek podatku</span>
               </div>
@@ -843,10 +966,10 @@ export default function InvoiceDetailsModal({ invoice, onClose, overlayClassName
                   </tbody>
                 </table>
               </div>
-            </div>
+            </div>}
 
             {/* PŁATNOŚĆ */}
-            <div className="mb-6">
+            {!correctionDetails && <div className="mb-6">
               <div className="mb-2 flex items-center gap-2 border-b border-gray-300 pb-1">
                 <CreditCard className="h-4 w-4 text-gray-600" />
                 <span className="text-sm font-bold uppercase tracking-wide text-gray-700">Płatność</span>
@@ -878,10 +1001,10 @@ export default function InvoiceDetailsModal({ invoice, onClose, overlayClassName
                   <div className="font-medium text-gray-900">{formatDate(inv.payment_date)}</div>
                 </div>
               </div>
-            </div>
+            </div>}
 
             {/* RACHUNEK BANKOWY */}
-            {(bankAccount || vatBankAccount) && (
+            {!correctionDetails && (bankAccount || vatBankAccount) && (
               <div className="mb-6">
                 <div className="mb-2 flex items-center gap-2 border-b border-gray-300 pb-1">
                   <Banknote className="h-4 w-4 text-gray-600" />
@@ -931,7 +1054,7 @@ export default function InvoiceDetailsModal({ invoice, onClose, overlayClassName
             )}
 
             {/* Footer */}
-            {isIssued && footerNote && (
+            {!correctionDetails && isIssued && footerNote && (
               <div className="mb-4 rounded border border-gray-200 bg-gray-50 p-3 text-xs text-gray-700 whitespace-pre-wrap">
                 {footerNote}
               </div>

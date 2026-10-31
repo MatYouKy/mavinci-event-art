@@ -1,12 +1,14 @@
 'use client';
+import { resolveAudienceConfiguration, type OfferAudience } from '@/lib/CRM/Offers/audiencePricing';
 import { pricedPackageSelection, type ProductSalesPackage } from '@/lib/CRM/Offers/productSalesPackages';
-import { createConfiguration, configurationPrice } from '@/lib/CRM/Offers/offerAddons';
+import { productConfigurationSnapshot, modularTitle, modularScope } from '@/lib/CRM/Offers/modularProduct';
+import { createConfiguration, createModularConfiguration, configurationPrice } from '@/lib/CRM/Offers/offerAddons';
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { calcSubtotal, calcTotal } from '../utils';
 import { IOfferItem, IOfferWizardCustomItem, IProduct, IProductVariant } from '@/app/(crm)/crm/offers/types';
 
-export function useOfferWizardItems() {
+export function useOfferWizardItems(audience: OfferAudience = {}) {
   const [offerItems, setOfferItems] = useState<IOfferItem[]>([]);
   const offerItemsRef = useRef<IOfferItem[]>([]);
   // trzymamy ref w sync z realnym stanem
@@ -33,39 +35,54 @@ export function useOfferWizardItems() {
 
   // ✅ helper żeby zawsze ustawiać i ref, i state
   const setOfferItemsSafe = (next: IOfferItem[]) => {
-    offerItemsRef.current = next;
-    setOfferItems(next);
+    const resolved = next.map(item=>{
+      if(!item.pricing_configuration)return item;
+      const result=resolveAudienceConfiguration(item.pricing_configuration,audience,item.quantity);
+      if(result.error)return item;
+      const unitPrice=configurationPrice(result.configuration);
+      const source=result.configuration.quantity_source;
+      return {...item,pricing_configuration:result.configuration,quantity:result.quantity,unit_price:unitPrice,
+        unit:source==='guests'?'osoba':source==='tables'?'stół':item.unit,
+        subtotal:calcSubtotal(result.quantity,unitPrice,item.discount_percent || 0,item.days ?? 1)};
+    });
+    offerItemsRef.current = resolved;
+    setOfferItems(resolved);
   };
+
+  useEffect(()=>{setOfferItemsSafe(offerItemsRef.current);},[audience.guest_count,audience.guests_per_table,audience.table_count]);
 
   // ✅ teraz addProduct zwraca nextItems
   const addProduct = (product: IProduct, variant?: IProductVariant, salesPackage?: ProductSalesPackage) => {
-    const options = product.sales_packages_enabled ? product.sales_packages || [] : [];
+    const options = !product.configuration_schema && product.sales_packages_enabled ? product.sales_packages || [] : [];
     const selectedPackage = variant ? undefined : salesPackage || options[0];
     const basePrice = Number(selectedPackage?.price_net ?? variant?.price_net ?? product.base_price ?? 0);
-    const initialConfiguration = createConfiguration(basePrice, selectedPackage ? [] : product.pricing_addons || [],
+    const modular = product.configuration_schema ? productConfigurationSnapshot(product.configuration_schema) : null;
+    if (modular) variant = undefined;
+    const initialConfiguration = modular ? createModularConfiguration(modular) : createConfiguration(basePrice, selectedPackage && !selectedPackage.include_product_addons ? [] : product.pricing_addons || [],
       selectedPackage ? { selected_id: selectedPackage.id, options: structuredClone(options) } : undefined);
+    initialConfiguration.quantity_source=modular||selectedPackage?'manual':variant?.quantity_source || product.quantity_source || 'manual';
     const initialPrice = configurationPrice(initialConfiguration);
-    const name = selectedPackage ? `${product.name} — ${selectedPackage.name}` : variant ? `${product.name} — ${variant.name}` : product.name;
-    const description = selectedPackage ? [selectedPackage.included_label, selectedPackage.bonus].filter(Boolean).join('. ')
+    const name = modular ? modularTitle(modular) : selectedPackage ? `${product.name} — ${selectedPackage.name}` : variant ? `${product.name} — ${variant.name}` : product.name;
+    const description = modular ? modularScope(modular).join('\n') : selectedPackage ? [selectedPackage.included_label, selectedPackage.bonus].filter(Boolean).join('. ')
       : variant?.description || variant?.short_description || product.description || '';
     const selection = {
-      unit: selectedPackage ? 'pakiet' : product.unit,
+      unit: modular ? 'zestaw' : selectedPackage ? 'pakiet' : product.unit,
       name, description, product, product_variant_id: selectedPackage ? null : variant?.id || null,
       product_variant: selectedPackage ? null : variant || null,
       pricing_configuration: initialConfiguration, unit_price: initialPrice,
-      show_variant_prices_in_pdf: !selectedPackage,
-      show_product_variants_in_pdf: selectedPackage ? true : product.sales_packages_enabled ? false : true,
+      show_variant_prices_in_pdf: !modular && !selectedPackage,
+      show_product_variants_in_pdf: modular ? false : selectedPackage ? true : product.sales_packages_enabled ? false : true,
     };
     const prev = offerItemsRef.current;
     const existing = prev.find(item => item.product_id === product.id);
     let next: IOfferItem[];
     if (existing && (variant || selectedPackage)) {
       next = prev.map(item => item.id === existing.id ? { ...item, ...selection,
-        subtotal: calcSubtotal(item.quantity, initialPrice, item.discount_percent || 0),
+        subtotal: calcSubtotal(item.quantity, initialPrice, item.discount_percent || 0, item.days ?? 1),
       } : item);
     } else if (existing) {
       next = prev.map(item => item.id === existing.id ? { ...item, quantity: item.quantity + 1,
-        subtotal: calcSubtotal(item.quantity + 1, item.unit_price, item.discount_percent || 0),
+        subtotal: calcSubtotal(item.quantity + 1, item.unit_price, item.discount_percent || 0, item.days ?? 1),
       } : item);
     } else {
       next = [...prev, {
@@ -75,7 +92,7 @@ export function useOfferWizardItems() {
       }];
     }
     setOfferItemsSafe(next);
-    return next;
+    return offerItemsRef.current;
   };
 
   // ✅ remove zwraca next
@@ -83,7 +100,7 @@ export function useOfferWizardItems() {
     const prev = offerItemsRef.current;
     const next = prev.filter((i) => i.id !== id);
     setOfferItemsSafe(next);
-    return next;
+    return offerItemsRef.current;
   };
 
   // ✅ update zwraca next
@@ -94,7 +111,7 @@ export function useOfferWizardItems() {
       if (i.id !== id) return i;
       const updated: any = { ...i, ...patch };
       if (updated.pricing_configuration) {
-        if (patch.unit_price !== undefined && patch.pricing_configuration === undefined) {
+        if (!updated.pricing_configuration.modular && patch.unit_price !== undefined && patch.pricing_configuration === undefined) {
           const extras = configurationPrice(updated.pricing_configuration) - updated.pricing_configuration.base_unit_price;
           updated.pricing_configuration = { ...updated.pricing_configuration, base_unit_price: patch.unit_price - extras };
         }
@@ -102,18 +119,26 @@ export function useOfferWizardItems() {
           updated.unit = 'pakiet';
           updated.pricing_configuration = { ...updated.pricing_configuration, product_package: pricedPackageSelection(updated.pricing_configuration.product_package, updated.pricing_configuration.base_unit_price) };
         }
+        updated.pricing_configuration = { ...updated.pricing_configuration, ...createConfiguration(updated.pricing_configuration.base_unit_price, updated.pricing_configuration.addons, updated.pricing_configuration.product_package) };
+        if (updated.pricing_configuration.modular) {
+          const c = updated.pricing_configuration;
+          const manualPrice = patch.unit_price !== undefined && patch.pricing_configuration === undefined
+            ? patch.unit_price : c.modular_price_source === 'manual' ? c.base_unit_price : undefined;
+          updated.pricing_configuration = createModularConfiguration(c.modular, manualPrice);
+        }
         updated.unit_price = configurationPrice(updated.pricing_configuration);
       }
       updated.subtotal = calcSubtotal(
         updated.quantity,
         updated.unit_price,
         updated.discount_percent || 0,
+        updated.days ?? 1,
       );
       return updated;
     });
 
     setOfferItemsSafe(next);
-    return next;
+    return offerItemsRef.current;
   };
 
   const addCustomItem = () => {
@@ -121,6 +146,7 @@ export function useOfferWizardItems() {
       customItem.quantity,
       customItem.unit_price,
       customItem.discount_percent,
+      customItem.days ?? 1,
     );
 
     const newItem: IOfferWizardCustomItem = {
@@ -128,6 +154,7 @@ export function useOfferWizardItems() {
       name: customItem.name,
       description: customItem.description,
       quantity: customItem.quantity,
+      days: customItem.days ?? 1,
       unit: customItem.unit,
       unit_price: customItem.unit_price,
       discount_percent: customItem.discount_percent,
@@ -158,7 +185,7 @@ export function useOfferWizardItems() {
     setShowEquipmentSelector(false);
     setShowSubcontractorSelector(false);
 
-    return next;
+    return offerItemsRef.current;
   };
 
   return {

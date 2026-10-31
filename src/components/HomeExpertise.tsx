@@ -54,7 +54,7 @@ export default function HomeExpertise() {
               <h3>Eventy firmowe<br />i integracje</h3>
               <p className={styles.description}>Koncepcja, koordynacja i program, który angażuje. Konferencję lub galę łączymy z muzyką, wieczorem tematycznym i rozrywką.</p>
               <Link href="/oferta/integracje" className={styles.textLink}>Poznaj nasze integracje <ArrowRight size={18} aria-hidden="true" /></Link>
-              <Link href="/oferta" className={styles.secondaryLink}>Wszystkie formaty wydarzeń</Link>
+              <Link href="/agencja-eventowa" className={styles.secondaryLink}>Poznaj MAVINCI jako agencję eventową</Link>
             </div>
           </article>
 
@@ -70,7 +70,7 @@ export default function HomeExpertise() {
               <h3>Technika konferencji<br />i wydarzeń</h3>
               <p className={styles.description}>Meyer Sound, ekrany LED, światło i streaming. Dobieramy sprzęt, przygotowujemy montaż i prowadzimy realizację zgodnie z programem.</p>
               <Link href="/oferta/technika-sceniczna/olsztyn" className={styles.textLink}>Technika sceniczna w Olsztynie <ArrowRight size={18} aria-hidden="true" /></Link>
-              <Link href="/oferta/konferencje/olsztyn" className={styles.secondaryLink}>Obsługa konferencji w Olsztynie</Link>
+              <Link href="/oferta/konferencje/olsztyn" className={styles.secondaryLink}>Obsługa techniczna konferencji w Olsztynie</Link>
             </div>
           </article>
         </div>

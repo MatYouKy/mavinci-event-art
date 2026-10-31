@@ -56,6 +56,8 @@ export interface IOffer {
 }
 
 export interface IEvent {
+  seller_confirmation_required?: boolean;
+  seller_schedule_pending?: boolean;
   financial_source?: 'offer' | 'calculation' | null;
   permissionContext: EventPermissionContext;
   location_id: any;

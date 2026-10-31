@@ -60,6 +60,7 @@ export default function ContactQuickActions({context}:{context:RecipientContext}
  if(canManageOffers&&canViewBrochures)actions.push({label:'Wyślij broszurę',description:'Wybierz broszurę i przygotuj wiadomość z załącznikiem.',icon:<BookOpen className="h-4 w-4"/>,onClick:()=>setBrochure(true)});
  if(canManageOffers)actions.push({label:'Wyślij ofertę',description:'Wybierz powiązaną ofertę i otwórz wiadomość do odbiorcy.',icon:<FileText className="h-4 w-4"/>,onClick:()=>void loadOffers()});
  if(canCreateInModule('events'))actions.push({label:'Utwórz wydarzenie',description:'Otwórz kreator z danymi kontaktu i organizacji.',icon:<CalendarPlus className="h-4 w-4"/>,onClick:()=>void createEvent()});
+ if(canViewBrochures)actions.push({label:'Broszury klienta',description:'Otwórz i pobierz zapisane PDF-y bez ponownego generowania.',icon:<BookOpen className="h-4 w-4"/>,onClick:()=>router.push(`/crm/contacts/${context.id}?tab=brochures`)});
  if(canViewBrochures)actions.push({label:'Historia wysyłek broszur',description:'Sprawdź wiadomości, załączniki i stan wysyłki.',icon:<History className="h-4 w-4"/>,onClick:()=>{setAll(false);setHistory(true);}});
  return <>
   <InvoiceDocumentActionsMenu label="Szybkie akcje" actions={actions}/>

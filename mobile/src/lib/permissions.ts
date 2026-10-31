@@ -29,7 +29,8 @@ export const canView = (employee: PermissionEmployee, module: string): boolean =
   if (isAdmin(employee)) return true;
   if (['events', 'calendar'].includes(module) && employee.has_realizations) return true;
   return hasPermission(employee, `${module}_view`) || hasPermission(employee, `${module}_manage`)
-    || (['events', 'calendar'].includes(module) && hasPermission(employee, 'equipment_manage'));
+    || (['events', 'calendar'].includes(module) && hasPermission(employee, 'equipment_manage'))
+    || module === 'time_tracking';
 };
 
 export const canManage = (employee: PermissionEmployee, module: string): boolean => {

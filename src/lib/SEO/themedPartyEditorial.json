@@ -1,0 +1,210 @@
+{
+  "olsztyn": {
+    "title": "Imprezy i wieczory tematyczne dla firm w Olsztynie",
+    "metaTitle": "Imprezy tematyczne dla firm Olsztyn | Wieczory MAVINCI",
+    "description": "Imprezy i wieczory tematyczne dla firm w Olsztynie: Gatsby, Las Vegas, PRL, Hollywood. Scenariusz, DJ, dekoracje i własna technika MAVINCI. Zobacz realizacje.",
+    "lead": "Wieczór po konferencji, integracja pracowników czy gala firmowa? Łączymy wybrany motyw z programem dla gości, muzyką, dekoracjami i własną techniką. W Olsztynie i okolicach przygotowujemy zarówno całe wydarzenie, jak i jego wybrany zakres.",
+    "content": {
+      "intro_heading": "Impreza tematyczna, która łączy zespół",
+      "intro_text": "Temat wieczoru nadaje wspólny kierunek muzyce, oprawie sali i aktywnościom uczestników. Dla firmy oznacza to spójny program zamiast przypadkowego zestawu atrakcji. W MAVINCI dopasowujemy scenariusz do celu spotkania: rozmów po konferencji, integracji zespołów, podziękowania pracownikom albo wspólnego świętowania. Możemy połączyć DJ-a i prowadzenie z quizem, teleturniejem, kasynem rozrywkowym lub ustalonym programem artystycznym.",
+      "planning_heading": "Wieczór firmowy w Olsztynie — organizacja i logistyka",
+      "planning_text": "Nasze biuro i magazyn przy ul. Towarowej 20B w Olsztynie są bazą przygotowania sprzętu i transportu. Przy wydarzeniu w hotelu lub sali bankietowej ustalamy z obiektem godziny dostępu, rozładunek, zasilanie i miejsce na technikę. Jeżeli wieczór odbywa się po konferencji w tej samej sali, planujemy zmianę ustawienia oraz próby przed wejściem gości. Obsługujemy też wydarzenia w okolicach Olsztyna, m.in. w kierunku Dywit, Stawigudy, Gietrzwałdu i Barczewa; dojazd i harmonogram uwzględniamy w indywidualnej ofercie.",
+      "planning_checks": [
+        "Adres obiektu i dostęp do sali przed rozpoczęciem wieczoru.",
+        "Liczba gości, układ stołów, parkiet i przestrzeń na atrakcje.",
+        "Przerwa między konferencją, kolacją a częścią rozrywkową.",
+        "Zasady obiektu dotyczące głośności, efektów i zakończenia imprezy."
+      ]
+    }
+  },
+  "themeDescriptions": {
+    "Wieczór w stylu Las Vegas": "Kasyno rozrywkowe z ruletką, blackjackiem lub pokerem jako przestrzeń do rozmów i wspólnej zabawy. Goście poznają zasady przy stołach, a program można połączyć z DJ-em i oprawą glamour. Dobór stołów, dekoracji i godzin gry ustalamy w ofercie; zabawa odbywa się bez zakładów pieniężnych.",
+    "Wieczór w klimacie PRL": "Wieczór retro dla firm: muzyka znana z dawnych dekad, stylizowana oprawa i wspólny quiz. Pytania oraz zabawy mogą nawiązywać do historii firmy i wspomnień uczestników. Charakter dekoracji, prowadzenie i program dobieramy do grupy.",
+    "Wieczór James Bond": "Elegancki motyw szpiegowski na bankiet lub integrację. Kasyno rozrywkowe, muzyka filmowa i quiz mogą tworzyć kolejne części wieczoru. Scenariusz, dekoracje i ewentualne występy artystyczne wymagają osobnego ustalenia w ofercie.",
+    "Wieczór Gatsby / Lata 20.": "Motyw lat 20. na galę, jubileusz firmy lub taneczny wieczór. Łączymy oprawę inspirowaną art déco z muzyką i prowadzeniem; program można rozszerzyć o kasyno rozrywkowe oraz występ artystyczny. Wybrane elementy i ich zakres potwierdzamy przed realizacją.",
+    "Wieczór disco / lata 80.": "Taneczna integracja z DJ-em, przebojami dawnych dekad i światłem dopasowanym do parkietu. Muzyczny quiz lub teleturniej może otworzyć wieczór i pomóc zespołom się poznać. Repertuar i poziom aktywności uczestników ustalamy wspólnie.",
+    "Wieczór w stylu Hollywood": "Filmowa oprawa gali z podziękowaniami, prezentacją osiągnięć i wręczeniem firmowych wyróżnień. Scenariusz łączy wystąpienia, muzykę i materiały na ekranie z późniejszą zabawą. Dekoracje, multimedia i prowadzenie dobieramy do miejsca oraz programu.",
+    "Wieczór w stylu włoskim - Dolce Vita": "Swobodny wieczór firmowy inspirowany włoską atmosferą: muzyka, rozmowy i taneczna część spotkania. Klimat budujemy wybraną oprawą oraz światłem. Menu uzgadniamy z organizatorem i obiektem; catering lub dodatkowe pokazy nie są domyślnym elementem realizacji.",
+    "Wieczór maskaradowy - Wenecja": "Motyw weneckiego balu na elegancką imprezę firmową. Maski, zaproszenie do wspólnego dress code’u i muzyka mogą połączyć gości wokół jednego tematu. Dobieramy prowadzenie, oprawę świetlną i zakres dekoracji do wybranego scenariusza.",
+    "Wieczór hawajski - Aloha Party": "Tropikalny motyw na mniej formalną integrację: rytmy latino, taniec i wspólna zabawa. Wieczór można rozpocząć quizem lub teleturniejem zespołowym. Dekoracje, muzykę oraz aktywności dopasowujemy do sali i uczestników; realizacja plenerowa wymaga planu na pogodę.",
+    "Wieczór Mafijny - Ojciec Chrzestny": "Filmowy motyw na stylizowany bankiet: elegancki dress code, odpowiednio dobrana muzyka i światło. Program można uzupełnić o kasyno rozrywkowe lub quiz filmowy. Zakres scenografii i atrakcji potwierdzamy w indywidualnej ofercie."
+  },
+  "localCities": {
+    "ryn": {
+      "title": "Imprezy i wieczory tematyczne dla firm w Rynie",
+      "metaTitle": "Imprezy tematyczne Ryn — wieczory dla firm | MAVINCI",
+      "description": "Wieczory tematyczne i integracje dla firm w Rynie. Gatsby, Hollywood lub Las Vegas po konferencji: DJ, prowadzenie, dekoracje i technika MAVINCI.",
+      "lead": "Bankiet po konferencji, jubileusz czy integracja z noclegiem w Rynie? Przygotowujemy motyw, program dla gości, muzykę i oprawę sali. Dobieramy dekoracje, światło i nagłośnienie do wybranego obiektu oraz czasu dostępnego na montaż.",
+      "nearbyCitySlugs": [
+        "mikolajki",
+        "gizycko",
+        "mragowo",
+        "ketrzyn",
+        "elk",
+        "olsztyn"
+      ],
+      "content": {
+        "intro_heading": "Ryn: od konferencji do bankietu z motywem przewodnim",
+        "intro_text": "Ryn łączy mazurskie otoczenie jezior Ryńskiego i Ołów z historyczną zabudową. Przy planowaniu firmowego wieczoru warto wykorzystać charakter wybranej sali. Gatsby może nadać kierunek jubileuszowi, Hollywood — wręczeniu wyróżnień, a Las Vegas — swobodnym rozmowom przy stołach kasyna rozrywkowego. Motyw dobieramy do celu spotkania, a nie samej dekoracji. Możemy połączyć prowadzenie, DJ-a, quiz o firmie i wybrane atrakcje w scenariusz, który zaczyna się po zakończeniu konferencji.",
+        "planning_heading": "Plan sali i przejście z części biznesowej do wieczoru",
+        "planning_text": "Przy wydarzeniu w Rynie ustalamy, czy kolacja i konferencja korzystają z jednej przestrzeni. Jeżeli tak, montaż dekoracji i próbę muzyczną trzeba zmieścić w uzgodnionej przerwie albo przygotować wcześniej osobną strefę. W obiekcie historycznym pytamy gospodarza o możliwości mocowania dekoracji, trasę wniesienia urządzeń i użycie efektów. Przyjeżdżamy z zaplecza w Olsztynie; transport, realizatorów i godziny pracy wpisujemy do oferty. Wybór obiektu i dostępność sali pozostają osobnym ustaleniem z organizatorem.",
+        "planning_checks": [
+          "Rzut sali z miejscem na stoły bankietowe, parkiet i atrakcje.",
+          "Czas między ostatnią prezentacją a wejściem gości na kolację.",
+          "Zgoda obiektu na wybraną dekorację, światło i efekty.",
+          "Droga wniesienia stołów kasynowych oraz godziny demontażu."
+        ],
+        "faq": [
+          {
+            "question": "Jaki motyw wybrać na bankiet firmowy w Rynie?",
+            "answer": "Do jubileuszu można dopasować Gatsby, do gali z nagrodami Hollywood, a do wieczoru nastawionego na rozmowy Las Vegas. Są to propozycje scenariusza. Ostateczny wybór zależy od uczestników, aranżacji sali i czasu programu; zakres dekoracji i atrakcji określamy w ofercie."
+          },
+          {
+            "question": "Czy można zorganizować wieczór w tej samej sali co konferencję?",
+            "answer": "Tak, jeśli obiekt udostępnia czas na zmianę ustawienia i próby. Przygotowujemy plan przejścia z prezentacji do bankietu: ustawienie techniki, sceny świetlne, materiały na ekranie i rozpoczęcie programu. Gdy przerwa jest zbyt krótka, uzgadniamy oddzielną strefę lub mniejszy zakres przebudowy."
+          },
+          {
+            "question": "Czy macie stały lokal lub własny hotel w Rynie?",
+            "answer": "Nasze biuro i magazyn znajdują się w Olsztynie przy Towarowej 20B. Do Rynu przyjeżdżamy na wydarzenie w miejscu wskazanym przez organizatora. Nie reprezentujemy hoteli ani nie gwarantujemy ich dostępności; warunki pracy ustalamy z wybranym obiektem."
+          },
+          {
+            "question": "Co przesłać do wyceny wieczoru w Rynie?",
+            "answer": "Termin, nazwę obiektu, liczbę uczestników, program konferencji lub kolacji, wybrany motyw i budżet. Pomocne będą plan sali oraz godziny dostępu dla ekipy. Na tej podstawie określamy atrakcje, technikę, transport i obsługę."
+          }
+        ]
+      }
+    },
+    "gizycko": {
+      "title": "Imprezy i wieczory tematyczne dla firm w Giżycku",
+      "metaTitle": "Imprezy tematyczne Giżycko — integracje firmowe | MAVINCI",
+      "description": "Integracja tematyczna w Giżycku: wieczór po programie nad jeziorami, DJ, quiz, kasyno rozrywkowe i własna technika. Zaplanuj imprezę firmową z MAVINCI.",
+      "lead": "Po dniu spotkań lub aktywności na Mazurach zaproś zespół na wspólny wieczór w Giżycku. Motyw imprezy łączymy z muzyką, prowadzeniem i atrakcjami, a technikę oraz czas rozpoczęcia dopasowujemy do planu całego wyjazdu.",
+      "nearbyCitySlugs": [
+        "ryn",
+        "mikolajki",
+        "ketrzyn",
+        "elk",
+        "mragowo",
+        "olsztyn"
+      ],
+      "content": {
+        "intro_heading": "Wieczorna integracja po dniu nad mazurskimi jeziorami",
+        "intro_text": "Giżycko nad Niegocinem pozwala połączyć pobyt firmowy z programem wokół jezior. Jeśli organizator przewidział rejs lub aktywności na zewnątrz, część wieczorna powinna uwzględniać powrót uczestników, kolację i czas na odpoczynek. Proponujemy łagodne rozpoczęcie od muzyki i rozmów, następnie wspólny quiz lub teleturniej, a później parkiet. Motyw disco, Gatsby albo Las Vegas porządkuje oprawę, bez konieczności angażowania każdego uczestnika w obowiązkowe konkurencje. Aktywności dzienne i transport gości uzgadniamy oddzielnie.",
+        "planning_heading": "Hotel, strefa zewnętrzna i jeden harmonogram wieczoru",
+        "planning_text": "Dla wydarzenia w Giżycku potrzebujemy dokładnego obiektu, nie tylko nazwy miasta. Gdy program obejmuje taras, teren nad jeziorem i salę, określamy, które punkty odbywają się w każdej strefie i kiedy goście się przemieszczają. Wariant na deszcz ustalamy z gospodarzem przed montażem. Nagłośnienie, oświetlenie oraz ekran dobieramy do warunków pracy i zasad obiektu. Zaplecze MAVINCI jest w Olsztynie; dojazd zespołu i urządzeń planujemy niezależnie od transportu uczestników.",
+        "planning_checks": [
+          "Godzina powrotu grupy z programu dziennego i rozpoczęcia kolacji.",
+          "Rozdzielenie stref rozmów, atrakcji i parkietu.",
+          "Sala rezerwowa dla elementów zaplanowanych na zewnątrz.",
+          "Zasilanie, droga transportu urządzeń oraz zasady głośności."
+        ],
+        "faq": [
+          {
+            "question": "Czy wieczór w Giżycku może odbyć się po rejsie firmowym?",
+            "answer": "Tak. Dopasowujemy start muzyki i części prowadzonej do powrotu grupy oraz kolacji. Warto przewidzieć bufor w harmonogramie. Rejs i przewóz uczestników nie są automatycznie częścią zamówienia wieczoru tematycznego."
+          },
+          {
+            "question": "Czy można połączyć imprezę w sali i nad jeziorem?",
+            "answer": "Można zaplanować dwa miejsca programu, jeśli obiekt na to pozwala. Osobno ustalamy zasilanie, nagłośnienie, ochronę urządzeń oraz moment przejścia gości do sali. Przed wydarzeniem potrzebny jest wariant pogodowy i osoba zatwierdzająca zmianę programu."
+          },
+          {
+            "question": "Jak zintegrować pracowników, którzy nie chcą tańczyć?",
+            "answer": "Możemy zaproponować krótkie rundy quizu, teleturniej drużynowy lub strefę kasyna rozrywkowego. Te elementy pozwalają dołączyć do zabawy w różnym tempie. Uzgadniamy także miejsce na spokojne rozmowy poza bezpośrednim sąsiedztwem parkietu."
+          },
+          {
+            "question": "Czy przyjeżdżacie z własną techniką do Giżycka?",
+            "answer": "Tak. Własne nagłośnienie Meyer Sound, światło i multimedia dobieramy do programu. Zakres oraz dostępność sprzętu, montaż, transport z Olsztyna i obsługę potwierdzamy w indywidualnej ofercie."
+          }
+        ]
+      }
+    },
+    "elk": {
+      "title": "Imprezy i wieczory tematyczne dla firm w Ełku",
+      "metaTitle": "Imprezy tematyczne Ełk — wieczory i gale firmowe | MAVINCI",
+      "description": "Wieczory tematyczne dla firm w Ełku: integracje, jubileusze i gale z DJ-em, prowadzeniem, dekoracjami oraz multimediami. Poznaj propozycje MAVINCI.",
+      "lead": "Spotkanie zespołu, jubileusz lub gala z podziękowaniami w Ełku mogą mieć jeden spójny motyw. Przygotowujemy przebieg wieczoru, muzykę, atrakcje i własną technikę, z miejscem zarówno na część oficjalną, jak i swobodną integrację.",
+      "nearbyCitySlugs": [
+        "gizycko",
+        "ryn",
+        "mikolajki",
+        "mragowo",
+        "szczytno",
+        "olsztyn"
+      ],
+      "content": {
+        "intro_heading": "Ełk: firmowe podziękowania i wspólna zabawa w jednym scenariuszu",
+        "intro_text": "Przy spotkaniu pracowników w Ełku motyw wieczoru może wynikać z okazji: jubileuszu, zakończenia projektu albo podsumowania roku. Hollywood daje ramy dla wręczenia wyróżnień i prezentacji zespołów, a muzyczny wieczór retro może połączyć osoby z różnych działów. Możemy przygotować prowadzenie oraz quiz oparty na materiałach firmy. Jeśli plan pobytu obejmuje spacer nad Jeziorem Ełckim, organizator może potraktować go jako spokojne wprowadzenie przed kolacją; część prowadzoną rozpoczynamy po zebraniu grupy.",
+        "planning_heading": "Scenariusz gali, materiały na ekran i wejścia prowadzącego",
+        "planning_text": "W Ełku zaczynamy przygotowania od listy punktów programu oraz planu wybranej sali. Przy gali ustalamy kolejność wystąpień, sposób zapowiadania nagrodzonych, oprawę muzyczną i pliki wyświetlane na ekranie. Przed wejściem gości potrzebujemy czasu na sprawdzenie nazwisk, prezentacji i mikrofonów. Część taneczna lub kasyno rozrywkowe może rozpocząć się po zamknięciu oficjalnego programu. Dojazd z Olsztyna, transport dekoracji i techniki oraz demontaż uwzględniamy w uzgodnionym zakresie.",
+        "planning_checks": [
+          "Kolejność przemówień, wyróżnień i części integracyjnej.",
+          "Lista nazwisk, logotypy oraz zatwierdzone pliki do wyświetlenia.",
+          "Miejsce prowadzącego, widoczność ekranu i droga wejścia na scenę.",
+          "Czas na próbę przed kolacją i warunki zakończenia imprezy."
+        ],
+        "faq": [
+          {
+            "question": "Czy przygotujecie galę firmową w Ełku w stylu Hollywood?",
+            "answer": "Możemy oprzeć scenariusz na filmowej oprawie, zapowiedziach prowadzącego i wręczeniu firmowych wyróżnień. Organizator dostarcza zatwierdzoną listę osób oraz materiały firmy. Dekoracje, ekran, oświetlenie i ewentualne występy wybieramy do konkretnej sali i budżetu."
+          },
+          {
+            "question": "Czy quiz podczas integracji może dotyczyć naszej firmy?",
+            "answer": "Tak, po otrzymaniu materiałów możemy uzgodnić pytania nawiązujące do historii firmy, zespołów i projektów. Treść wymaga akceptacji organizatora. Dobieramy formę gry do liczby osób i czasu dostępnego w programie."
+          },
+          {
+            "question": "Czy możecie obsłużyć imprezę w siedzibie firmy w Ełku?",
+            "answer": "Tak, o ile przestrzeń pozwala na uzgodniony format. Przed ofertą potrzebujemy informacji o powierzchni, wejściu technicznym, zasilaniu, ustawieniu gości i zasadach korzystania z budynku. Nie trzeba wybierać hotelu, aby zamówić oprawę wieczoru."
+          },
+          {
+            "question": "Czy wszystkie atrakcje są w jednym pakiecie?",
+            "answer": "Zakres ustalamy indywidualnie: scenariusz, muzyka, prowadzenie, dekoracje, technika i wybrane atrakcje są wyszczególnione w ofercie. Wynajem sali, catering i noclegi wymagają osobnych uzgodnień."
+          }
+        ]
+      }
+    },
+    "warchaly": {
+      "title": "Imprezy i wieczory tematyczne dla firm w Warchałach",
+      "metaTitle": "Imprezy tematyczne Warchały — integracje | MAVINCI",
+      "description": "Imprezy tematyczne w Warchałach: wieczór podczas wyjazdu firmowego, DJ, quiz, dekoracje i własna technika. Zaplanuj integrację na Mazurach z MAVINCI.",
+      "lead": "Wyjazd firmowy do Warchał może łączyć szkolenie, odpoczynek i wspólny wieczór. Dopasowujemy motyw, DJ-a, prowadzenie i atrakcje do grupy, a sprzęt do sali lub uzgodnionej przestrzeni zewnętrznej.",
+      "nearbyCitySlugs": [
+        "szczytno",
+        "nidzica",
+        "olsztyn",
+        "mragowo",
+        "ryn",
+        "mikolajki"
+      ],
+      "content": {
+        "intro_heading": "Warchały: wieczór tematyczny podczas firmowego wyjazdu",
+        "intro_text": "Warchały w gminie Jedwabno, w otoczeniu jezior Świętajno i Brajnickiego, są miejscem, w którym firmowy program może przeplatać spotkania z odpoczynkiem. Część wieczorną warto dopasować do rytmu pobytu. Po szkoleniu można rozpocząć od kolacji i krótkiego quizu, a następnie przejść do muzyki i tańca. Dla mniej formalnej integracji proponujemy motyw disco lub Aloha, a dla eleganckiego bankietu Gatsby albo Las Vegas. Dobór motywu nie wymaga obowiązkowych przebrań; klimat można stworzyć światłem, muzyką i uzgodnionymi dekoracjami.",
+        "planning_heading": "Sala i plener w Warchałach — plan przygotowania wydarzenia",
+        "planning_text": "Przy organizacji wieczoru w Warchałach prosimy o nazwę obiektu, wskazanie konkretnej sali oraz miejsca dostawy sprzętu. Gdy część programu ma odbywać się na tarasie lub terenie zewnętrznym, uzgadniamy z gospodarzem wariant w sali, ochronę urządzeń i zasady korzystania z nagłośnienia. Przed ofertą ustalamy też dostępność sali po szkoleniu oraz godzinę zakończenia imprezy względem pobytu pozostałych gości. Własne zaplecze przy Towarowej 20B w Olsztynie pozwala nam przygotować uzgodniony sprzęt do wyjazdu; nie mamy oddziału ani własnej sali w Warchałach.",
+        "planning_checks": [
+          "Nazwa sali i dokładne miejsce rozładunku na terenie obiektu.",
+          "Czas wolny między szkoleniem, kolacją a integracją.",
+          "Wariant w sali dla programu przewidzianego na zewnątrz.",
+          "Zasilanie, zasady głośności i godzina zakończenia pracy ekipy."
+        ],
+        "faq": [
+          {
+            "question": "Czy organizujecie wieczory tematyczne w Warchałach koło Jedwabna?",
+            "answer": "Tak, możemy przygotować program i oprawę w obiekcie wskazanym przez organizatora w Warchałach. Przy zapytaniu podaj nazwę miejsca, datę i liczbę uczestników. Dojeżdżamy z biura i magazynu w Olsztynie; transport oraz dostępność potwierdzamy w ofercie."
+          },
+          {
+            "question": "Jaka integracja sprawdzi się po szkoleniu podczas wyjazdu do Warchał?",
+            "answer": "Można zaplanować krótki quiz drużynowy po kolacji, potem swobodne korzystanie z atrakcji i część muzyczną. Jeśli grupa ma intensywny dzień, proponujemy mniej punktów prowadzonych i więcej czasu na rozmowy. Ostateczny program uzgadniamy z organizatorem."
+          },
+          {
+            "question": "Czy impreza może rozpocząć się na tarasie, a zakończyć w sali?",
+            "answer": "Tak, jeśli pozwalają na to zasady obiektu i dostępne przestrzenie. Plan obejmuje wtedy dwie strefy, godziny przejścia i sposób przeniesienia lub osobnego przygotowania techniki. Warunki pogodowe i wariant w sali ustalamy przed wydarzeniem."
+          },
+          {
+            "question": "Czy organizacja obejmuje rezerwację noclegów i kolacji?",
+            "answer": "Ta oferta dotyczy programu, oprawy i uzgodnionych atrakcji. Noclegi, catering oraz rezerwację sali ustalamy osobno z organizatorem i wybranym obiektem. Przygotowanie wieczoru nie oznacza potwierdzenia dostępności hotelu."
+          }
+        ]
+      }
+    }
+  }
+}

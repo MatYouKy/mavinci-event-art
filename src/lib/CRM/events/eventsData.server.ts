@@ -75,8 +75,7 @@ if (viewModeError) {
   const { data, error } = await supabase
     .from('events')
     .select(`
-      id, name, event_date, event_end_date, location, status, category_id,
-      expected_revenue, created_by, created_at, my_company_id,
+      *,
       organizations:organizations!events_organization_id_fkey(name, alias),
       contacts(first_name, last_name),
       event_categories(name, color),

@@ -6,6 +6,11 @@ import { calculateFinalInvoice } from '@/lib/invoices/finalInvoiceCalculation';
 import { inheritFinalInvoicePresentation } from '@/lib/invoices/inheritFinalInvoicePresentation';
 import { DEFAULT_INVOICE_PAYMENT_TERM_DAYS, getInvoicePaymentDueDate } from '@/lib/invoices/paymentTerm';
 import FinalInvoicePreview from '@/components/crm/invoices/FinalInvoicePreview';
+import InvoiceRecipientEditor from '@/components/crm/invoices/InvoiceRecipientEditor';
+import {
+  recipientDraftFromInvoice, validateInvoiceRecipientDraft,
+  type InvoiceRecipientDraft,
+} from '@/lib/invoices/ksefRecipient';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -51,6 +56,9 @@ interface CandidateInvoice {
   billing_arrangement: 'direct' | 'hotel' | 'agency' | 'other' | null;
   service_recipient_organization_id: string | null;
   service_recipient_contact_id: string | null;
+  invoice_recipient_mode?: string | null;
+  invoice_recipient_data?: unknown;
+  ksef_recipient_snapshot?: unknown;
   buyer_name: string;
   buyer_contact_id: string | null;
   buyer_nip: string | null;
@@ -95,6 +103,7 @@ const candidateSelect = `
   total_net, total_vat, total_gross, paid_amount,
   event_id, related_invoice_id, organization_id, billing_arrangement,
   service_recipient_organization_id, service_recipient_contact_id,
+  invoice_recipient_mode, invoice_recipient_data, ksef_recipient_snapshot,
   buyer_name, buyer_contact_id, buyer_nip, buyer_street, buyer_postal_code, buyer_city, buyer_country,
   buyer_email, buyer_phone, buyer_contact_person,
   payment_method, bank_account, issue_place, my_company_id,
@@ -102,12 +111,20 @@ const candidateSelect = `
   seller_name, seller_nip, seller_street, seller_postal_code, seller_city, seller_country,
   invoice_items (position_number, name, unit, quantity, price_net, vat_rate, vat_code, vat_exemption_reason),
   invoice_order_items (position_number, name, unit, quantity, price_net, vat_rate, vat_code, vat_exemption_reason),
-  event:events(name),
+  event:events!invoices_event_id_fkey(name),
   organization:organizations!invoices_organization_id_fkey(id, name)
 `;
 
 const normalizedText = (value: string | null) => (value || '').trim().toLocaleLowerCase('pl-PL');
 const normalizedNip = (value: string | null) => (value || '').replace(/[^a-z\d]/gi, '').toUpperCase();
+
+const sameSavedRecipient = (left: CandidateInvoice, right: CandidateInvoice) => {
+  try {
+    return JSON.stringify(recipientDraftFromInvoice(left)) === JSON.stringify(recipientDraftFromInvoice(right));
+  } catch {
+    return false;
+  }
+};
 
 const matchesAdvanceContext = (invoice: CandidateInvoice, source: CandidateInvoice) => {
   const sourceNip = normalizedNip(source.buyer_nip);
@@ -128,7 +145,8 @@ const matchesAdvanceContext = (invoice: CandidateInvoice, source: CandidateInvoi
     invoice.organization_id === source.organization_id &&
     invoice.billing_arrangement === source.billing_arrangement &&
     invoice.service_recipient_organization_id === source.service_recipient_organization_id &&
-    invoice.service_recipient_contact_id === source.service_recipient_contact_id;
+    invoice.service_recipient_contact_id === source.service_recipient_contact_id &&
+    sameSavedRecipient(invoice, source);
 };
 
 async function loadAdvanceOrder(sourceId: string) {
@@ -272,6 +290,9 @@ export default function FinalInvoiceWizardModal({
   const [presentationMode, setPresentationMode] = useState<'inherited' | 'order'>('inherited');
   const itemDraft = useRef({ context: '', mode: 'inherited', edited: false });
   const [candidatesError, setCandidatesError] = useState<string | null>(null);
+  const [recipientState, setRecipientState] = useState<{
+    sourceId: string; draft: InvoiceRecipientDraft | null; error: string | null;
+  } | null>(null);
 
   const [eventOptions, setEventOptions] = useState<EventOpt[]>([]);
   const [orgOptions, setOrgOptions] = useState<OrgOpt[]>([]);
@@ -473,6 +494,19 @@ export default function FinalInvoiceWizardModal({
   const eventOrder = eventOrderState?.eventId === linkedEventId ? eventOrderState.order : null;
   const loadingEventOrder = Boolean(linkedEventId && eventOrderState?.eventId !== linkedEventId);
   const referenceInvoice = sourceAdvance ?? selectedInvoices[0];
+  const recipientDraft = recipientState?.sourceId === referenceInvoice?.id ? recipientState?.draft : null;
+  const recipientError = recipientState?.sourceId === referenceInvoice?.id ? recipientState?.error : null;
+  useEffect(() => {
+    if (!referenceInvoice) { setRecipientState(null); return; }
+    try {
+      const draft = recipientDraftFromInvoice(referenceInvoice);
+      setRecipientState((current) => current?.sourceId === referenceInvoice.id ? current
+        : { sourceId: referenceInvoice.id, draft, error: null });
+    } catch (error) {
+      setRecipientState({ sourceId: referenceInvoice.id, draft: null,
+        error: error instanceof Error ? error.message : 'Nie udało się odczytać zapisanego odbiorcy zaliczki.' });
+    }
+  }, [referenceInvoice]);
   const currencyCode = referenceInvoice?.currency_code || eventOrder?.currencyCode || 'PLN';
   const eventOrderError = (eventOrderState?.eventId === linkedEventId ? eventOrderState.error : null)
     || (eventOrder && referenceInvoice && eventOrder.currencyCode !== currencyCode
@@ -676,6 +710,17 @@ export default function FinalInvoiceWizardModal({
       showSnackbar('Wybierz co najmniej jedna fakture do rozliczenia', 'error');
       return;
     }
+    if (!recipientDraft) {
+      showSnackbar(recipientError || 'Poczekaj na odczyt odbiorcy z zaliczki.', 'error');
+      return;
+    }
+    const recipientErrors = validateInvoiceRecipientDraft(recipientDraft);
+    if (recipientErrors.length) { showSnackbar(recipientErrors.join(' '), 'error'); return; }
+    if (recipientDraft.mode !== 'same_as_buyer' && recipientDraft.data.internalId &&
+      recipientDraft.data.internalId.split('-')[0] !== normalizedNip(selectedInvoices[0].buyer_nip).replace(/^PL/, '')) {
+      showSnackbar('Numer wewnętrzny odbiorcy musi wskazywać NIP nabywcy faktury.', 'error');
+      return;
+    }
     if (items.some((i) => !i.name.trim())) {
       showSnackbar('Wszystkie pozycje musza miec nazwe', 'error');
       return;
@@ -701,7 +746,12 @@ export default function FinalInvoiceWizardModal({
       normalizeNip(invoice.buyer_nip) !== normalizeNip(reference.buyer_nip) ||
       (invoice.currency_code || 'PLN') !== (reference.currency_code || 'PLN') ||
       (!initialAdvanceInvoiceId && mode !== 'event' && invoice.event_id !== reference.event_id) ||
-      invoice.organization_id !== reference.organization_id
+      invoice.organization_id !== reference.organization_id ||
+      normalizedText(invoice.buyer_name) !== normalizedText(reference.buyer_name) ||
+      normalizedText(invoice.buyer_street) !== normalizedText(reference.buyer_street) ||
+      normalizedText(invoice.buyer_postal_code) !== normalizedText(reference.buyer_postal_code) ||
+      normalizedText(invoice.buyer_city) !== normalizedText(reference.buyer_city) ||
+      !sameSavedRecipient(invoice, reference)
     );
     if (incompatible) {
       showSnackbar(
@@ -741,6 +791,7 @@ export default function FinalInvoiceWizardModal({
         billingArrangement: ref.billing_arrangement || 'direct',
         serviceRecipientOrganizationId: ref.service_recipient_organization_id,
         serviceRecipientContactId: ref.service_recipient_contact_id,
+        recipientDraft,
         myCompanyId: myCompanyId || ref.my_company_id,
 
         customNumber: useCustomNumber ? customNumber : undefined,
@@ -1416,6 +1467,23 @@ export default function FinalInvoiceWizardModal({
             </div>
           </div>
 
+          {referenceInvoice && (
+            <section className="space-y-3 rounded-xl bg-[#d3bb73]/5 p-4">
+              <div className="text-sm text-[#e5e4e2]">
+                <p className="text-xs uppercase tracking-wide text-[#d3bb73]">Nabywca faktury końcowej</p>
+                <p className="mt-2 font-medium">{referenceInvoice.buyer_name}</p>
+                <p className="mt-1 text-[#e5e4e2]/70">NIP: {referenceInvoice.buyer_nip || 'Nie podano'}</p>
+                <p className="text-[#e5e4e2]/70">{referenceInvoice.buyer_street}, {referenceInvoice.buyer_postal_code} {referenceInvoice.buyer_city}</p>
+                <p className="mt-2 text-xs text-[#e5e4e2]/55">Dane nabywcy pochodzą z rozliczanych zaliczek, nie z bieżącej karty kontaktu.</p>
+              </div>
+              {recipientError && <p role="alert" className="text-sm text-red-300">{recipientError}</p>}
+              {recipientDraft && <InvoiceRecipientEditor
+                value={recipientDraft}
+                onChange={(draft) => setRecipientState({ sourceId: referenceInvoice.id, draft, error: null })}
+                disabled={creating}
+              />}
+            </section>
+          )}
           <FinalInvoicePreview
             calculation={calculation}
             advances={selectedInvoices}
@@ -1451,7 +1519,7 @@ export default function FinalInvoiceWizardModal({
           </button>
           <button
             onClick={handleCreate}
-            disabled={creating || orderUnavailable || !paymentDueDate || !selectedInvoices.length || totals.gross <= 0 || remainingGross < -0.01}
+            disabled={creating || orderUnavailable || !paymentDueDate || !selectedInvoices.length || !recipientDraft || Boolean(recipientError) || totals.gross <= 0 || remainingGross < -0.01}
             className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-2.5 font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:opacity-50"
           >
             {creating ? (

@@ -123,22 +123,53 @@ export default function CalendarMain({
   }, []);
 
   useEffect(() => {
+    let disposed = false;
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let inFlight = false;
+    let refreshAgain = false;
     const refreshCalendar = () => {
-      void refetchEvents();
+      if (disposed || document.hidden) return;
+      if (inFlight) { refreshAgain = true; return; }
+      if (timer) return;
+      timer = setTimeout(async () => {
+        timer = undefined;
+        if (disposed || document.hidden) return;
+        inFlight = true;
+        try { await refetchEvents(); }
+        finally {
+          inFlight = false;
+          if (refreshAgain) { refreshAgain = false; refreshCalendar(); }
+        }
+      }, 300);
     };
-    const channel = supabase
-      .channel('crm-calendar-live-data')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'events' }, refreshCalendar)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'meetings' }, refreshCalendar)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'tasks', filter: 'is_inquiry=eq.true' },
-        refreshCalendar,
-      )
-      .subscribe();
-
+    const syncVisibility = () => {
+      if (disposed) return;
+      if (document.hidden) {
+        clearTimeout(timer);
+        timer = undefined;
+        if (channel) { void supabase.removeChannel(channel); channel = null; }
+        return;
+      }
+      if (channel) return;
+      const next = supabase.channel(`crm-calendar-live-data:${crypto.randomUUID()}`);
+      channel = next;
+      next
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'events' }, refreshCalendar)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'meetings' }, refreshCalendar)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks', filter: 'is_inquiry=eq.true' }, refreshCalendar)
+        .subscribe(status => {
+          // Catch up after hidden tabs and disconnected sockets, once subscribed.
+          if (status === 'SUBSCRIBED' && channel === next) refreshCalendar();
+        });
+    };
+    syncVisibility();
+    document.addEventListener('visibilitychange', syncVisibility);
     return () => {
-      void supabase.removeChannel(channel);
+      disposed = true;
+      clearTimeout(timer);
+      document.removeEventListener('visibilitychange', syncVisibility);
+      if (channel) void supabase.removeChannel(channel);
     };
   }, [refetchEvents]);
 

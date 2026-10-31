@@ -1,9 +1,11 @@
 'use client';
+import OfferAudienceFields from '@/components/crm/offers/OfferAudienceFields';
 
 import type { EventAssumptionItem } from '@/lib/CRM/Offers/eventAssumptions';
 import LocationSelector from '@/components/crm/LocationSelector';
 
 interface OfferStep2Data {
+  guest_count: string; guests_per_table: string; table_count: string;
   offer_number: string;
   valid_until: string;
   notes: string;
@@ -14,6 +16,7 @@ interface OfferStep2Data {
 }
 
 interface OfferStep2Props {
+  needsTables?: boolean;
   offerData: OfferStep2Data;
   setOfferData: (data: OfferStep2Data) => void;
 }
@@ -21,6 +24,7 @@ interface OfferStep2Props {
 export default function OfferStep2({
   offerData,
   setOfferData,
+  needsTables = false,
 }: OfferStep2Props) {
   return (
     <div className="mx-auto max-w-2xl space-y-4">
@@ -46,6 +50,7 @@ export default function OfferStep2({
         />
       </div>
 
+      <OfferAudienceFields value={offerData} needsTables={needsTables} onChange={counts => setOfferData({ ...offerData, ...counts })} />
       <div>
         <label className="mb-2 block text-sm text-[#e5e4e2]/60">Miejsce wydarzenia</label>
         <LocationSelector

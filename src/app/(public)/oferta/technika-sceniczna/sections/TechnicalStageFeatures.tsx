@@ -166,15 +166,9 @@ export default function TechnicalStageFeatures() {
     if (!file) return;
     setUploading(true);
     try {
-      const fileName = `technika-features/${Date.now()}-${file.name}`;
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('site-images')
-        .upload(fileName, file, { contentType: file.type });
-
-      if (uploadError) throw uploadError;
-
-      const { data: urlData } = supabase.storage.from('site-images').getPublicUrl(uploadData.path);
-      setEditForm({ ...editForm, image_url: urlData.publicUrl });
+      const { uploadOptimizedImage } = await import('@/lib/storage');
+      const variants = await uploadOptimizedImage(file, 'technical-stage-features-optimized');
+      setEditForm(prev => ({ ...prev, image_url: variants.desktop }));
       showSnackbar('Zdjęcie załadowane', 'success');
     } catch (error) {
       console.error('Error uploading image:', error);

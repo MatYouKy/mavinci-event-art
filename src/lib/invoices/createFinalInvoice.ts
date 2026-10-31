@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase/browser';
 import { calculateFinalInvoice } from './finalInvoiceCalculation';
 import { DEFAULT_INVOICE_PAYMENT_TERM_DAYS, getInvoicePaymentDueDate } from './paymentTerm';
 import { getCurrentInvoiceIssuer } from './currentInvoiceIssuer';
+import { invoiceRecipientPayload, type InvoiceRecipientDraft } from './ksefRecipient';
 
 export interface FinalInvoiceItemInput {
   name: string;
@@ -33,6 +34,7 @@ export interface CreateFinalInvoiceOptions {
   billingArrangement?: 'direct' | 'hotel' | 'agency' | 'other';
   serviceRecipientOrganizationId?: string | null;
   serviceRecipientContactId?: string | null;
+  recipientDraft?: InvoiceRecipientDraft;
   myCompanyId?: string | null;
   customNumber?: string;
   issueDate?: string;
@@ -225,6 +227,7 @@ export async function createFinalInvoice(opts: CreateFinalInvoiceOptions): Promi
       related_invoice_id: opts.settledInvoices[0]?.id ?? null,
 
       ...opts.buyerData,
+      ...(opts.recipientDraft ? invoiceRecipientPayload(opts.recipientDraft) : {}),
     };
 
     if (opts.sellerData) {

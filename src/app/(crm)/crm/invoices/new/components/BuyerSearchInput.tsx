@@ -83,9 +83,9 @@ export default function BuyerSearchInput({
               {selectedContact.nip && (
                 <div className="text-xs text-[#e5e4e2]/60">NIP: {selectedContact.nip}</div>
               )}
-              {selectedContact.city && (
-                <div className="text-xs text-[#e5e4e2]/60">{selectedContact.city}</div>
-              )}
+              <div className="text-xs text-[#e5e4e2]/60">
+                {[selectedContact.street, [selectedContact.postal_code, selectedContact.city].filter(Boolean).join(' ')].filter(Boolean).join(', ') || 'Brak pełnego adresu — uzupełnij przed wystawieniem'}
+              </div>
             </div>
             <button
               onClick={handleClear}

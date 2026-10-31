@@ -1,22 +1,30 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Save, MapPin, Calendar, Tag, Image as ImageIcon } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { SimpleImageUploader } from '@/components/SimpleImageUploader';
 import { PortfolioGalleryEditor } from '@/components/PortfolioGalleryEditor';
-import { uploadImage } from '@/lib/storage';
+import { uploadOptimizedImage } from '@/lib/storage';
 import { supabase } from '@/lib/supabase/browser';
 import type { GalleryImage } from '@/lib/supabase/types';
 import { IUploadImage } from '@/types/image';
+import { PortfolioCityFields } from '@/components/PortfolioCityFields';
+import { portfolioCitySettings } from '@/lib/SEO/conferencePortfolio';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 
 export default function NewPortfolioPage() {
   const router = useRouter();
   const { showSnackbar } = useSnackbar();
   const [saving, setSaving] = useState(false);
+  const [citySettings, setCitySettings] = useState(() => portfolioCitySettings({}));
+  const [cityFieldsAvailable, setCityFieldsAvailable] = useState(false);
+  useEffect(() => {
+    supabase.from('portfolio_projects').select('reference_city_slugs').limit(0)
+      .then(({ error }) => setCityFieldsAvailable(!error));
+  }, []);
 
   // Stan formularza
   const [title, setTitle] = useState('');
@@ -50,9 +58,11 @@ export default function NewPortfolioPage() {
 
     setSaving(true);
     try {
-      const imageUrl = await uploadImage(imageData.file, 'portfolio');
+      const variants = await uploadOptimizedImage(imageData.file, 'portfolio');
+      const imageUrl = variants.desktop;
 
       const newProject = {
+        ...(cityFieldsAvailable ? citySettings : {}),
         title,
         category,
         image: imageUrl,
@@ -68,7 +78,7 @@ export default function NewPortfolioPage() {
             position: { posX: 0, posY: 0, scale: 1 },
           },
           mobile: {
-            src: imageUrl,
+            src: variants.mobile,
             position: { posX: 0, posY: 0, scale: 1 },
           },
         },
@@ -84,7 +94,7 @@ export default function NewPortfolioPage() {
       if (error) throw error;
 
       showSnackbar('Wydarzenie zostało dodane pomyślnie', 'success');
-      router.push(`/portfolio/${data.id}`);
+      router.push(`/portfolio/${data.slug || data.id}`);
     } catch (error) {
       console.error('Error saving project:', error);
       showSnackbar('Błąd podczas zapisywania wydarzenia', 'error');
@@ -178,6 +188,8 @@ export default function NewPortfolioPage() {
                     <span className="text-sm">{formatDate(eventDate)}</span>
                   </div>
                 </div>
+
+                <PortfolioCityFields value={citySettings} onChange={setCitySettings} available={cityFieldsAvailable} />
 
                 {/* Description */}
                 <textarea

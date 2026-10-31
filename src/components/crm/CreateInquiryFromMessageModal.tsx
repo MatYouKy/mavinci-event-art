@@ -36,6 +36,7 @@ export default function CreateInquiryFromMessageModal({
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [selectedEmployee, setSelectedEmployee] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [guestCount, setGuestCount] = useState('');
   const [saving, setSaving] = useState(false);
   const { showSnackbar } = useSnackbar();
 
@@ -63,6 +64,7 @@ export default function CreateInquiryFromMessageModal({
   };
 
   const handleCreate = async () => {
+    if (guestCount !== '' && (!Number.isInteger(Number(guestCount)) || Number(guestCount) < 1 || Number(guestCount) > 100000)) { showSnackbar('Podaj całkowitą liczbę osób od 1 do 100 000 lub zostaw pole puste.', 'error'); return; }
     setSaving(true);
     try {
       const { data: existingInquiry, error: existingInquiryError } = await supabase
@@ -145,6 +147,7 @@ export default function CreateInquiryFromMessageModal({
       }
 
       const inquiryDetails = {
+        guest_count: guestCount === '' ? null : Number(guestCount),
         client_email: senderEmail,
         client_text: senderName || senderEmail,
         client_phone: senderPhone,
@@ -244,6 +247,7 @@ export default function CreateInquiryFromMessageModal({
           showSnackbar('Konwersacja została powiązana z zapytaniem.', 'success'); onSuccess(id); onClose();
         }} /> : <>
         <div className="space-y-4 p-5">
+          <label className="block text-sm text-white/65">Liczba osób — opcjonalnie<input type="number" min={1} max={100000} step={1} disabled={saving} value={guestCount} onChange={e => setGuestCount(e.target.value)} placeholder="Nie ustalono" className="mt-1 w-full rounded-lg border border-white/10 bg-black/15 p-2" /></label>
           <div className="rounded-lg bg-[#1c1f33] p-3">
             <p className="mb-1 text-xs text-[#e5e4e2]/50">Tytuł zapytania</p>
             <p className="text-sm text-[#e5e4e2]">Zapytanie: {formatSystemSubject(message.subject)}</p>

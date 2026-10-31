@@ -665,12 +665,13 @@ export default function EventWizard({
 
       setCreatedEventId(data.id);
 
-      const { error: assignmentError } = await supabase.from('employee_assignments').insert([
+      const { error: assignmentError } = await supabase.from('employee_assignments').upsert([
         {
           event_id: data.id,
           employee_id: currentEmployee.id,
           role: 'Koordynator',
           status: 'accepted',
+          responded_at: new Date().toISOString(),
           can_edit_event: true,
           can_edit_agenda: true,
           can_edit_tasks: true,
@@ -681,7 +682,7 @@ export default function EventWizard({
           granted_by: session.user.id,
           permissions_updated_at: new Date().toISOString(),
         },
-      ]);
+      ], { onConflict: 'event_id,employee_id' });
 
       if (assignmentError) {
         console.error('Error adding creator to team:', assignmentError);

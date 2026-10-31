@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState, useId } from 'react';
-import { Check, ChevronDown, Search, X } from 'lucide-react';
+import { Check, ChevronDown, Loader2, Search, X } from 'lucide-react';
 
 export type SearchComboboxOption = {
   id: string;
@@ -24,6 +24,9 @@ export default function SearchCombobox({
   error,
   describedBy,
   filterOption,
+  resultsClassName = '',
+  onSearchChange,
+  loading = false,
 }: {
   value: string;
   options: SearchComboboxOption[];
@@ -38,12 +41,21 @@ export default function SearchCombobox({
   error?: boolean;
   describedBy?: string;
   filterOption?: (option: SearchComboboxOption, query: string) => boolean;
+  resultsClassName?: string;
+  onSearchChange?: (query: string) => void;
+  loading?: boolean;
 }) {
   const listId = useId();
   const wrapperRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [highlightedIndex, setHighlightedIndex] = useState(0);
+  const searchChangeRef = useRef(onSearchChange);
+  searchChangeRef.current = onSearchChange;
+  const changeQuery = (next: string) => {
+    setQuery(next);
+    searchChangeRef.current?.(next);
+  };
   const selected = options.find((option) => option.id === value);
 
   const filteredOptions = useMemo(() => {
@@ -61,7 +73,7 @@ export default function SearchCombobox({
     const handleOutside = (event: MouseEvent) => {
       if (!wrapperRef.current?.contains(event.target as Node)) {
         setOpen(false);
-        setQuery('');
+        changeQuery('');
       }
     };
     document.addEventListener('mousedown', handleOutside);
@@ -75,19 +87,22 @@ export default function SearchCombobox({
   const selectOption = (id: string) => {
     onChange(id);
     setOpen(false);
-    setQuery('');
+    changeQuery('');
   };
 
   return (
     <div ref={wrapperRef} className={`relative ${className}`}>
-      <Search className="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-[#e5e4e2]/30" />
+      {loading
+        ? <Loader2 aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 animate-spin text-[#d3bb73]" />
+        : <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-[#e5e4e2]/30" />}
       <input
         name={name}
         aria-invalid={error || false}
+        aria-busy={loading}
         aria-describedby={describedBy}
         aria-controls={open ? listId : undefined}
         aria-activedescendant={
-          open && filteredOptions[highlightedIndex] ? `${listId}-${highlightedIndex}` : undefined
+          open && !loading && filteredOptions[highlightedIndex] ? `${listId}-${highlightedIndex}` : undefined
         }
         style={error ? { borderColor: 'rgba(248,113,113,0.45)' } : undefined}
         role="combobox"
@@ -100,15 +115,15 @@ export default function SearchCombobox({
         onBlur={(event) => {
           if (!wrapperRef.current?.contains(event.relatedTarget as Node)) {
             setOpen(false);
-            setQuery('');
+            changeQuery('');
           }
         }}
         onFocus={() => {
           setOpen(true);
-          setQuery('');
+          changeQuery('');
         }}
         onChange={(event) => {
-          setQuery(event.target.value);
+          changeQuery(event.target.value);
           setOpen(true);
         }}
         onKeyDown={(event) => {
@@ -121,17 +136,17 @@ export default function SearchCombobox({
           } else if (event.key === 'ArrowUp') {
             event.preventDefault();
             setHighlightedIndex((current) => Math.max(current - 1, 0));
-          } else if (event.key === 'Enter' && open && filteredOptions[highlightedIndex]) {
+          } else if (event.key === 'Enter' && open) {
             event.preventDefault();
-            selectOption(filteredOptions[highlightedIndex].id);
+            if (!loading && filteredOptions[highlightedIndex]) selectOption(filteredOptions[highlightedIndex].id);
           } else if (event.key === 'Escape') {
             event.preventDefault();
             event.stopPropagation();
             setOpen(false);
-            setQuery('');
+            changeQuery('');
           }
         }}
-        className="w-full rounded-lg border border-[#d3bb73]/15 bg-[#0f1119] py-2.5 pl-9 pr-16 text-sm text-[#e5e4e2] outline-none placeholder:text-[#e5e4e2]/25 focus:border-[#d3bb73]/60 disabled:opacity-50"
+        className="w-full rounded-lg border border-[#d3bb73]/15 bg-[#0f1119] py-2.5 pl-9 pr-16 text-sm text-[#e5e4e2] outline-none placeholder:text-[#e5e4e2]/25 focus:border-[#d3bb73]/30 disabled:opacity-50"
       />
       {allowClear && value ? (
         <button
@@ -150,7 +165,7 @@ export default function SearchCombobox({
         disabled={disabled}
         onClick={() => {
           setOpen((current) => !current);
-          setQuery('');
+          changeQuery('');
         }}
         className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1.5 text-[#e5e4e2]/35 hover:bg-white/5 hover:text-[#e5e4e2] disabled:opacity-50"
       >
@@ -161,9 +176,11 @@ export default function SearchCombobox({
         <div
           id={listId}
           role="listbox"
-          className="absolute z-50 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-[#d3bb73]/20 bg-[#111522] p-1 shadow-2xl"
+          className={`absolute z-50 mt-1 max-h-64 w-full overflow-y-auto overscroll-contain rounded-lg border border-[#d3bb73]/20 bg-[#111522] p-1 shadow-2xl ${resultsClassName}`}
         >
-          {filteredOptions.length > 0 ? (
+          {loading ? (
+            <p role="status" className="px-3 py-6 text-center text-xs text-[#e5e4e2]/50">Szukam…</p>
+          ) : filteredOptions.length > 0 ? (
             filteredOptions.map((option, index) => (
               <button
                 id={`${listId}-${index}`}

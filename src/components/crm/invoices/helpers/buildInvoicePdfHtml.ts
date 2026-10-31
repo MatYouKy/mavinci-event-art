@@ -1,5 +1,7 @@
 import type { InvoiceItem } from '@/app/(crm)/crm/invoices/[id]/page';
+import type { FA3Recipient } from '@/lib/ksef/generateFA3XML';
 import { getPaymentAwareInvoiceFooterNote } from '@/lib/invoices/paymentAwareFooterNote';
+import { getInvoicePartyDataCorrection, type InvoicePartyDataBefore } from '@/lib/invoices/partyDataCorrection';
 
 export interface SettledInvoicePdfRef {
   id?: string;
@@ -12,7 +14,7 @@ export interface SettledInvoicePdfRef {
 }
 
 export interface InvoicePdfData {
-  paymentStatus?: 'unpaid' | 'partially_paid' | 'paid' | 'overdue' | 'refund_due' | 'partially_refunded' | 'refunded' | null;
+  paymentStatus?: 'unpaid' | 'partially_paid' | 'paid' | 'overdue' | 'refund_due' | 'partially_refunded' | 'refunded' | 'not_applicable' | null;
   paidAmount?: number | null;
   paidAt?: string | null;
 
@@ -41,6 +43,9 @@ export interface InvoicePdfData {
   buyerStreet: string;
   buyerCity: string;
   buyerPostalCode: string;
+  buyerCountryCode?: string;
+  /** Recipient captured on this invoice, never read from the current contact record. */
+  recipient?: FA3Recipient;
   totalNet: number;
   totalVat: number;
   totalGross: number;
@@ -48,8 +53,11 @@ export interface InvoicePdfData {
   companyLogoUrl?: string | null;
   isProforma: boolean;
   correctionReason?: string;
+  correctionKind?: string | null;
+  correctionPartyDataBefore?: InvoicePartyDataBefore | null;
   correctedInvoiceNumber?: string;
   correctedInvoiceIssueDate?: string;
+  correctedInvoiceKsefNumber?: string;
   items: Array<{
     positionNumber: number;
     name: string;
@@ -139,6 +147,15 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
   ) => (vatCode && ['zw', 'np', 'np I', 'np II', 'oo'].includes(vatCode) ? vatCode.toUpperCase() : `${vatCode || vatRate}%`);
 
   const isCorrectiveInvoice = data.invoiceType === 'corrective';
+  const partyDataBefore = getInvoicePartyDataCorrection({
+    invoice_type: data.invoiceType, correction_kind: data.correctionKind,
+    correction_party_data_before: data.correctionPartyDataBefore,
+  });
+  const isPartyDataCorrection = partyDataBefore !== null;
+  if (isPartyDataCorrection && (
+    [data.totalNet, data.totalVat, data.totalGross, data.paidAmount ?? 0].some((amount) => Number(amount) !== 0)
+    || data.items.length || data.invoice_items?.length || data.orderItems?.length || data.settledInvoices?.length
+  )) throw new Error('Korekta danych stron nie może zawierać zmiany kwot, pozycji ani rozliczenia płatności.');
   const currencyCode = data.currencyCode || 'PLN';
   const isFinalInvoice =
     data.invoiceType === 'final' || data.invoiceNumber?.startsWith('FKO/');
@@ -155,7 +172,7 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
     paymentMethod === 'gotowka' ||
     paymentMethod === 'cash';
 
-  const paymentStatus: 'unpaid' | 'partially_paid' | 'paid' | 'overdue' | 'refund_due' | 'partially_refunded' | 'refunded' =
+  const paymentStatus: NonNullable<InvoicePdfData['paymentStatus']> =
     data.paymentStatus || (isCash ? 'paid' : 'unpaid');
 
   const isRefund = isCorrectiveInvoice && data.totalGross < 0;
@@ -402,6 +419,36 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
         .join('')
     : '';
 
+  const partyCorrectionHtml = partyDataBefore ? (() => {
+    const afterBuyer = {
+      name: data.buyerName, nip: data.buyerNip, street: data.buyerStreet,
+      postalCode: data.buyerPostalCode, city: data.buyerCity, countryCode: data.buyerCountryCode || 'PL',
+    };
+    const rowsFor = (label: string, before: Record<string, unknown> | null, after: Record<string, unknown> | null, recipient: boolean) => {
+      const fields = [
+        ['name', 'Nazwa'], ['nip', 'NIP'], ['street', 'Ulica i numer'], ['postalCode', 'Kod pocztowy'],
+        ['city', 'Miejscowość'], ['countryCode', 'Kraj'], ...(recipient ? [['internalId', 'Numer wewnętrzny KSeF']] : []),
+      ];
+      return `<tr><th colspan="3">${esc(label)}</th></tr>` + fields.map(([key, title]) => {
+        const value = (party: Record<string, unknown> | null) => party
+          ? esc(party[key] || '-') : (key === 'name' ? 'Nie wskazano oddzielnego odbiorcy' : '-');
+        return `<tr><td>${esc(title)}</td><td>${value(before)}</td><td>${value(after)}</td></tr>`;
+      }).join('');
+    };
+    return `<table class="party-correction-table">
+      <colgroup><col style="width: 22%"/><col style="width: 39%"/><col style="width: 39%"/></colgroup>
+      <thead><tr><th>Pole</th><th>Przed korektą</th><th>Po korekcie</th></tr></thead>
+      <tbody>
+        ${rowsFor('Nabywca', { ...partyDataBefore.buyer }, afterBuyer, false)}
+        ${rowsFor('Odbiorca', partyDataBefore.recipient ? { ...partyDataBefore.recipient } : null, data.recipient ? { ...data.recipient } : null, true)}
+      </tbody>
+    </table>
+    <div class="settlement-box"><strong>Korekta danych - bez zmiany kwot.</strong>
+      <div>Zmiana netto: 0.00 ${esc(currencyCode)}; VAT: 0.00 ${esc(currencyCode)}; brutto: 0.00 ${esc(currencyCode)}.</div>
+      <div>Kwoty i rozliczenie płatności faktury pierwotnej pozostają bez zmian. Ta korekta nie tworzy nowej należności ani zwrotu.</div>
+    </div>`;
+  })() : '';
+
   const orderItemsHtml =
     data.invoiceType === 'advance' && data.orderItems?.length
       ? `
@@ -571,6 +618,13 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
 
     .party-right {
       padding-left: 12px;
+    }
+
+    .recipient {
+      margin-top: 14px;
+      overflow-wrap: anywhere;
+      break-inside: avoid;
+      page-break-inside: avoid;
     }
 
     .section-label {
@@ -805,11 +859,21 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
       ${data.buyerNip ? `<div>NIP: ${esc(data.buyerNip)}</div>` : ''}
       <div>${esc(data.buyerStreet)}</div>
       <div>${esc(data.buyerPostalCode)} ${esc(data.buyerCity)}</div>
+      ${data.recipient ? `
+      <div class="recipient">
+        <div class="section-label">Odbiorca</div>
+        <div class="strong">${esc(data.recipient.name)}</div>
+        ${data.recipient.nip ? `<div>NIP: ${esc(data.recipient.nip)}</div>` : ''}
+        <div>${esc(data.recipient.street)}</div>
+        <div>${esc(data.recipient.postalCode)} ${esc(data.recipient.city)}</div>
+        ${data.recipient.countryCode !== 'PL' ? `<div>${esc(data.recipient.countryCode)}</div>` : ''}
+        ${data.recipient.internalId ? `<div>Numer identyfikacji wewnętrznej KSeF: <strong>${esc(data.recipient.internalId)}</strong></div>` : ''}
+      </div>` : ''}
     </div>
   </div>
 
   <div class="title">
-    ${esc(getTypeLabel(data.invoiceType, data.invoiceNumber))} ${esc(data.invoiceNumber)}
+    ${esc(isPartyDataCorrection ? 'Faktura korygująca dane' : getTypeLabel(data.invoiceType, data.invoiceNumber))} ${esc(data.invoiceNumber)}
   </div>
 
   ${
@@ -819,6 +883,7 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
       <span style="color: #666;">Korekta do faktury:</span>
       <strong>${esc(data.correctedInvoiceNumber)}</strong>
       ${data.correctedInvoiceIssueDate ? ` z dnia <strong>${esc(formatDate(data.correctedInvoiceIssueDate))}</strong>` : ''}
+      ${data.correctedInvoiceKsefNumber ? `<br/><span style="color: #666;">Numer KSeF faktury korygowanej:</span> ${esc(data.correctedInvoiceKsefNumber)}` : ''}
       ${data.correctionReason ? `<br/><span style="color: #666;">Przyczyna korekty:</span> ${esc(data.correctionReason)}` : ''}
     </div>
   `
@@ -826,7 +891,7 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
   }
 
   ${
-    correctiveItems
+    isPartyDataCorrection ? partyCorrectionHtml : correctiveItems
       ? `
     <table>
       <colgroup>
@@ -955,6 +1020,7 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
   ${finalSettlementHtml}
 
   <div class="closing-section">
+  ${!isPartyDataCorrection ? `
   <div class="summary">
 <div class="summary-left">
   <div>
@@ -1032,6 +1098,8 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
       </div>
     </div>
   </div>
+
+  ` : ''}
 
   <div class="footer-note">
     ${footerNote ? `<span style="white-space: pre-wrap; font-weight: 700;">Uwagi:</span> ${esc(footerNote)}` : ''}

@@ -16,6 +16,7 @@ export default function InquiriesStackNavigator() {
   return (
     <PermissionGate module="inquiries">
       <Stack.Navigator
+        initialRouteName="InquiriesList"
         screenOptions={{
           headerShown: false,
           contentStyle: { backgroundColor: colors.background.primary },

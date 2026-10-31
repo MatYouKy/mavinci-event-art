@@ -1,8 +1,9 @@
 'use client';
 
+import { servicePath } from '@/lib/SEO/serviceUrls';
+
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase/browser';
-import Head from 'next/head';
 import {
   Mic,
   Camera,
@@ -76,16 +77,18 @@ const getIcon = (iconName: string) => {
   return iconMap[iconName] ?? null;
 };
 
-export function UslugiPageClient() {
+export function UslugiPageClient({ initialCategories = [], initialSearch = '' }: { initialCategories?: any[]; initialSearch?: string }) {
   const { isEditMode } = useEditMode();
   const { showSnackbar } = useSnackbar();
-  const [serviceCategories, setServiceCategories] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [serviceCategories, setServiceCategories] = useState<any[]>(initialCategories);
+  const [loading, setLoading] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(initialSearch);
   const [isContactFormOpen, setIsContactFormOpen] = useState(false);
   const [addingToCategoryId, setAddingToCategoryId] = useState<string | null>(null);
   const [editingServiceId, setEditingServiceId] = useState<string | null>(null);
+
+  useEffect(() => { setSearchQuery(initialSearch); }, [initialSearch]);
 
   useEffect(() => {
     loadServices();
@@ -174,61 +177,6 @@ export function UslugiPageClient() {
       sum + (cat.items?.filter((item: any) => item.is_active && item.is_premium).length || 0),
     0,
   );
-
-  // 🔗 Canonical dla tej strony
-  const canonicalUrl = 'https://mavinci.pl/oferta/uslugi';
-
-  // 📦 JSON-LD: ItemList (katalog usług)
-  const itemListJsonLd = {
-    '@type': 'ItemList',
-    name: 'Usługi Eventowe MAVINCI',
-    description: 'Kompletny katalog usług technicznych i kreatywnych dla wydarzeń',
-    numberOfItems: totalServices,
-    itemListElement: serviceCategories.map((category, idx) => ({
-      '@type': 'ListItem',
-      position: idx + 1,
-      item: {
-        '@type': 'Service',
-        name: category.name,
-        description: category.description,
-        provider: {
-          '@type': 'Organization',
-          name: 'MAVINCI Event & ART',
-        },
-      },
-    })),
-  };
-
-  // 🧭 JSON-LD: BreadcrumbList dla tej podstrony
-  const breadcrumbJsonLd = {
-    '@type': 'BreadcrumbList',
-    itemListElement: [
-      {
-        '@type': 'ListItem',
-        position: 1,
-        name: 'Strona główna',
-        item: 'https://mavinci.pl/',
-      },
-      {
-        '@type': 'ListItem',
-        position: 2,
-        name: 'Oferta',
-        item: 'https://mavinci.pl/oferta',
-      },
-      {
-        '@type': 'ListItem',
-        position: 3,
-        name: 'Katalog usług eventowych',
-        item: canonicalUrl,
-      },
-    ],
-  };
-
-  // 🔗 Jeden wspólny JSON-LD z @graph
-  const combinedJsonLd = {
-    '@context': 'https://schema.org',
-    '@graph': [itemListJsonLd, breadcrumbJsonLd],
-  };
 
   if (loading) {
     return (
@@ -430,7 +378,7 @@ export function UslugiPageClient() {
                         )}
 
                         <Link
-                          href={`/uslugi/${item.slug}`}
+                          href={servicePath(item)}
                           className={`block overflow-hidden rounded-xl border transition-all hover:scale-105 hover:transform ${
                             !item.is_active && isEditMode
                               ? 'border-red-500/40 bg-[#1c1f33]/50 opacity-60'

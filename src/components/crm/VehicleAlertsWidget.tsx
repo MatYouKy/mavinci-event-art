@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { supabase } from '@/lib/supabase/browser';
 import { Shield, AlertTriangle, FileText, Wrench, Clock, X } from 'lucide-react';
 
 interface VehicleAlert {
@@ -26,63 +27,52 @@ const VehicleAlertsWidget = ({ vehicleId, onAlertClick }: VehicleAlertsWidgetPro
   const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
-    fetchAlerts();
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let inFlight = false;
+    let refreshAgain = false;
+    setLoading(true);
+    setAlerts([]);
 
-    // Subscribe to realtime changes
-    const setupSubscription = async () => {
-      const { createClient } = await import('@/lib/supabase');
-      const supabase = createClient();
-
-      const channel = supabase
-        .channel(`vehicle_alerts_${vehicleId}`)
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'vehicle_alerts',
-            filter: `vehicle_id=eq.${vehicleId}`,
-          },
-          () => {
-            fetchAlerts();
-          }
-        )
-        .subscribe();
-
-      return () => {
-        supabase.removeChannel(channel);
-      };
-    };
-
-    setupSubscription();
-  }, [vehicleId]);
-
-  const fetchAlerts = async () => {
-    try {
-      const { createClient } = await import('@/lib/supabase');
-      const supabase = createClient();
-
-      const { data, error } = await supabase
-        .from('vehicle_alerts')
-        .select('*')
-        .eq('vehicle_id', vehicleId)
-        .eq('is_active', true)
-        .order('priority', { ascending: false })
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.error('Error fetching alerts:', error);
-        setAlerts([]);
-      } else {
+    const fetchAlerts = async () => {
+      if (controller.signal.aborted) return;
+      if (inFlight) { refreshAgain = true; return; }
+      inFlight = true;
+      try {
+        const { data, error } = await supabase.from('vehicle_alerts')
+          .select('*').eq('vehicle_id', vehicleId).eq('is_active', true)
+          .order('priority', { ascending: false }).order('created_at', { ascending: false })
+          .abortSignal(controller.signal);
+        if (controller.signal.aborted) return;
+        if (error) throw error;
         setAlerts(data || []);
+      } catch (error) {
+        if (!controller.signal.aborted) console.error('Error fetching alerts:', error);
+      } finally {
+        inFlight = false;
+        if (!controller.signal.aborted) {
+          setLoading(false);
+          if (refreshAgain) { refreshAgain = false; scheduleRefresh(); }
+        }
       }
-    } catch (error) {
-      console.error('Error:', error);
-      setAlerts([]);
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
+    const scheduleRefresh = () => {
+      if (controller.signal.aborted || timer) return;
+      timer = setTimeout(() => { timer = undefined; void fetchAlerts(); }, 300);
+    };
+    // Register synchronously so React always receives the channel cleanup.
+    const channel = supabase.channel(`vehicle-alerts:${vehicleId}:${crypto.randomUUID()}`)
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'vehicle_alerts', filter: `vehicle_id=eq.${vehicleId}`,
+      }, scheduleRefresh)
+      .subscribe(status => { if (status === 'SUBSCRIBED') scheduleRefresh(); });
+    void fetchAlerts();
+    return () => {
+      controller.abort();
+      clearTimeout(timer);
+      void supabase.removeChannel(channel);
+    };
+  }, [vehicleId]);
 
   const getIcon = (iconName: string) => {
     const icons: Record<string, any> = {

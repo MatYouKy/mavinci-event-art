@@ -31,6 +31,7 @@ import {
   parseGoogleMapsUrl,
   type GUSCompanyData,
 } from '@/lib/gus';
+import SearchCombobox from '@/components/crm/SearchCombobox';
 import OrganizationLocationPicker from '@/components/crm/contacts/organization/OrganizationLocationPicker';
 import AddLocationModal from '@/components/crm/AddLocationModal';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
@@ -108,6 +109,9 @@ export default function NewContactPage() {
   const [loadingGUS, setLoadingGUS] = useState(false);
   const [registryLookup, setRegistryLookup] = useState<GUSCompanyData | null>(null);
   const [loadingContacts, setLoadingContacts] = useState(false);
+  const [addingRepresentative, setAddingRepresentative] = useState(false);
+  const representativeLock = useRef(false);
+  const [additionalSignerIds, setAdditionalSignerIds] = useState<string[]>([]);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [submitted, setSubmitted] = useState(false);
   const [personSubmitted, setPersonSubmitted] = useState(false);
@@ -296,6 +300,39 @@ export default function NewContactPage() {
       setSelectedContactIds(selectedContactIds.filter((id) => id !== contactId));
     } else {
       setSelectedContactIds([...selectedContactIds, contactId]);
+    }
+  };
+
+  const useRegistryRepresentative = async (person: NonNullable<GUSCompanyData['representatives']>[number]) => {
+    if (representativeLock.current || !person.firstName.trim() || !person.lastName.trim()) return;
+    const normalize = (value: string) => value.trim().replace(/\s+/g, ' ').toLocaleLowerCase('pl-PL');
+    const matches = availableContacts.filter(contact => normalize(contact.full_name || `${contact.first_name} ${contact.last_name}`) === normalize(person.fullName));
+    if (matches.length) {
+      showSnackbar('Kontakt o takim imieniu i nazwisku już istnieje. Wybierz go w wyszukiwarce po sprawdzeniu danych.', 'info');
+      setFormData(prev => ({ ...prev, legalRepresentativeTitle: person.title }));
+      return;
+    }
+    representativeLock.current = true;
+    setAddingRepresentative(true);
+    try {
+      const { data, error } = await supabase.from('contacts').insert({
+        contact_type: 'contact', first_name: person.firstName.trim(), last_name: person.lastName.trim(),
+        position: person.title || null, status: 'active',
+      }).select().single();
+      if (error) throw error;
+      setAvailableContacts(prev => [...prev, data]);
+      setSelectedContactIds(prev => prev.includes(data.id) ? prev : [...prev, data.id]);
+      if (['joint', 'joint_with_proxy'].includes(formData.representationType) && formData.legalRepresentativeId) {
+        setAdditionalSignerIds(prev => prev.includes(data.id) ? prev : [...prev, data.id]);
+      } else {
+        setFormData(prev => ({ ...prev, legalRepresentativeId: data.id, legalRepresentativeTitle: person.title }));
+      }
+      showSnackbar('Utworzono kontakt i wybrano reprezentanta. Zapisz organizację, aby utrwalić powiązanie.', 'success');
+    } catch (error: any) {
+      showSnackbar(error.message || 'Nie udało się utworzyć kontaktu reprezentanta.', 'error');
+    } finally {
+      representativeLock.current = false;
+      setAddingRepresentative(false);
     }
   };
 
@@ -682,7 +719,7 @@ export default function NewContactPage() {
 
       const linkedContactIds = Array.from(
         new Set(
-          [...selectedContactIds, organizationData.legal_representative_id].filter(
+          [...selectedContactIds, ...additionalSignerIds, organizationData.legal_representative_id].filter(
             (contactId): contactId is string => Boolean(contactId),
           ),
         ),
@@ -699,6 +736,19 @@ export default function NewContactPage() {
           .insert(contactOrgLinks);
 
         if (linkError) throw linkError;
+      }
+
+      const signerRows = additionalSignerIds.filter(id => id !== organizationData.legal_representative_id).map(id => ({
+        organization_id: org.id, contact_id: id, can_sign_contracts: true,
+        title: availableContacts.find(contact => contact.id === id)?.position || null,
+      }));
+      if (signerRows.length) {
+        const { error: signerError } = await supabase.from('organization_decision_makers').insert(signerRows);
+        if (signerError) {
+          showSnackbar('Organizacja została zapisana, ale nie udało się zapisać dodatkowych reprezentantów. Uzupełnij ich w szczegółach organizacji.', 'warning');
+          router.push(`/crm/contacts/${org.id}`);
+          return;
+        }
       }
 
       showSnackbar(
@@ -1068,35 +1118,55 @@ export default function NewContactPage() {
                         <label className="mb-2 block text-sm font-medium text-gray-300">
                           Główny reprezentant / osoba uprawniona
                         </label>
-                        <select
+                        <SearchCombobox
                           value={formData.legalRepresentativeId}
-                          onChange={(event) => {
-                            const contactId = event.target.value;
-                            const selected = availableContacts.find(
-                              (contact) => contact.id === contactId,
-                            );
-                            setFormData((prev) => ({
-                              ...prev,
-                              legalRepresentativeId: contactId,
-                              legalRepresentativeTitle:
-                                selected?.position || prev.legalRepresentativeTitle,
+                          ariaLabel="Główny reprezentant / osoba uprawniona"
+                          placeholder="Wyszukaj kontakt po nazwisku lub adresie e-mail…"
+                          disabled={loadingContacts || addingRepresentative}
+                          options={availableContacts.map(contact => ({ id: contact.id, label: contact.full_name || `${contact.first_name} ${contact.last_name}`,
+                            description: [contact.position, contact.email].filter(Boolean).join(' · ') }))}
+                          onChange={contactId => {
+                            const selected = availableContacts.find(contact => contact.id === contactId);
+                            const normalize = (value: string) => value.trim().replace(/\s+/g, ' ').toLocaleLowerCase('pl-PL');
+                            const registryPeople = (registryLookup?.representatives || []).filter(person => selected && normalize(person.fullName) === normalize(selected.full_name || `${selected.first_name} ${selected.last_name}`));
+                            setFormData(prev => ({ ...prev, legalRepresentativeId: contactId,
+                              legalRepresentativeTitle: !contactId ? '' : registryPeople.length === 1 ? registryPeople[0].title : selected?.position || '',
                             }));
-                            if (contactId) {
-                              setSelectedContactIds((prev) =>
-                                prev.includes(contactId) ? prev : [...prev, contactId],
-                              );
-                            }
+                            if (contactId) setSelectedContactIds(prev => prev.includes(contactId) ? prev : [...prev, contactId]);
                           }}
-                          className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                        >
-                          <option value="">-- Wybierz spośród kontaktów --</option>
-                          {availableContacts.map((contact) => (
-                            <option key={contact.id} value={contact.id}>
-                              {contact.full_name}
-                            </option>
-                          ))}
-                        </select>
+                        />
                       </div>
+                      {['joint', 'joint_with_proxy'].includes(formData.representationType) && (
+                        <div className="md:col-span-2 space-y-3 rounded-lg bg-amber-500/10 p-3">
+                          <p className="text-sm text-amber-300">Reprezentacja łączna — wskaż co najmniej dwie osoby zgodnie z dokładną zasadą rejestru.</p>
+                          <p className="text-xs text-gray-300">Wskazano osób do podpisu: {new Set([formData.legalRepresentativeId, ...additionalSignerIds].filter(Boolean)).size}. Główny reprezentant jest uwzględniony w tej liczbie. Sam zapis organizacji nie potwierdza kompletności reprezentacji.</p>
+                          <SearchCombobox value="" ariaLabel="Dodaj osobę do współreprezentacji" placeholder="Wyszukaj dodatkową osobę uprawnioną do podpisu…"
+                            options={availableContacts.filter(contact => contact.id !== formData.legalRepresentativeId && !additionalSignerIds.includes(contact.id)).map(contact => ({ id: contact.id, label: contact.full_name || `${contact.first_name} ${contact.last_name}`, description: [contact.position, contact.email].filter(Boolean).join(' · ') }))}
+                            onChange={id => { if (id) setAdditionalSignerIds(prev => prev.includes(id) ? prev : [...prev, id]); }} />
+                          {additionalSignerIds.filter(id => id !== formData.legalRepresentativeId).map(id => (
+                            <label key={id} className="flex items-center gap-2 text-sm text-gray-300">
+                              <input type="checkbox" checked onChange={() => setAdditionalSignerIds(prev => prev.filter(value => value !== id))} />
+                              {availableContacts.find(contact => contact.id === id)?.full_name || 'Kontakt'} — uprawniony do podpisu / współreprezentacji
+                            </label>
+                          ))}
+                          <p className="text-xs text-gray-400">Jeśli osoby nie ma w bazie, utwórz jej kontakt z danych rejestrowych poniżej, a następnie wybierz ją tutaj.</p>
+                        </div>
+                      )}
+                      {!!registryLookup?.representatives?.length && (
+                        <div className="md:col-span-2 space-y-2 rounded-lg bg-white/5 p-3">
+                          <p className="text-sm text-gray-300">Osoby ujawnione w rejestrze</p>
+                          <p className="text-xs text-gray-400">Wybierz istniejący kontakt powyżej albo utwórz go z danych rejestrowych. Utworzenie kontaktu zapisuje go od razu w bazie.</p>
+                          {registryLookup.representatives.map((person, index) => (
+                            <div key={`${person.fullName}-${index}`} className="flex flex-wrap items-center justify-between gap-2 py-2">
+                              <div><p className="text-sm text-white">{person.fullName}</p><p className="text-xs text-[#d3bb73]">{person.title}</p></div>
+                              <button type="button" disabled={addingRepresentative || loadingContacts || !person.firstName || !person.lastName}
+                                onClick={() => void useRegistryRepresentative(person)}
+                                className="rounded-lg bg-[#d3bb73]/15 px-3 py-2 text-xs text-[#d3bb73] disabled:opacity-50">Dodaj kontakt i wybierz</button>
+                            </div>
+                          ))}
+                          <p className="text-xs text-amber-300">Główny reprezentant w CRM nie oznacza prawa do samodzielnej reprezentacji. Obowiązuje dokładna zasada z rejestru podana poniżej.</p>
+                        </div>
+                      )}
                       <div className="md:col-span-2">
                         <label className="mb-2 block text-sm font-medium text-gray-300">
                           Dokładna zasada reprezentacji
@@ -1157,9 +1227,8 @@ export default function NewContactPage() {
                     </div>
                     {registryLookup?.registryRoles?.some((role) => !role.nameAvailable) && (
                       <p className="mt-3 text-xs leading-5 text-amber-300">
-                        KRS potwierdził stanowiska i prokurę, ale ukrył dane osobowe. Wybierz
-                        właściwą osobę z kontaktów; system nie przypisze jej na podstawie
-                        zgadywania.
+                        Nie pobrano pełnych nazwisk dla części pozycji w KRS: {registryLookup.registryRoles.filter(role => !role.nameAvailable).map(role => role.title).join(', ')}.
+                        Pozostałe ujawnione osoby możesz wybrać powyżej.
                       </p>
                     )}
                   </div>

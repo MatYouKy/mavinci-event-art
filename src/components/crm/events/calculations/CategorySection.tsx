@@ -1,8 +1,6 @@
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import {
   AlertTriangle,
-  ArrowUp,
-  ArrowDown,
   GripVertical,
   Check,
   Package,
@@ -103,7 +101,6 @@ export function CategorySection({
   onUpdate,
   onRemove,
   onToggleEdit,
-  onMove,
   onReorder,
   reorderingDisabled,
 }: {
@@ -114,7 +111,6 @@ export function CategorySection({
   onUpdate: (index: number, patch: Partial<CalcItem>) => void;
   onRemove: (index: number) => void;
   onToggleEdit: (index: number, editing: boolean) => void;
-  onMove: (index: number, direction: -1 | 1) => void;
   onReorder: (category: Category, from: number, to: number) => void;
   reorderingDisabled?: boolean;
 }) {
@@ -162,10 +158,10 @@ export function CategorySection({
   }, [warehouseLoaded]);
 
   const numberInputClass =
-    'w-full min-w-[40px] max-w-[60px] rounded-md border border-[#d3bb73]/20 bg-[#0a0d1a] px-2 py-1 text-right tabular-nums text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none';
+    'w-full min-w-0 rounded-md border border-[#d3bb73]/20 bg-[#0a0d1a] px-2 py-1 text-right tabular-nums text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none';
 
   const priceInputClass =
-    'w-full min-w-[80px] max-w-[120px] rounded-md border border-[#d3bb73]/20 bg-[#0a0d1a] px-2 py-1 text-right tabular-nums text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none';
+    'w-full min-w-0 rounded-md border border-[#d3bb73]/20 bg-[#0a0d1a] px-2 py-1 text-right tabular-nums text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none';
 
   const categoryNetTotal = items.reduce((sum, item) => sum + rowNet(item), 0);
   const categoryGrossTotal = items.reduce((sum, item) => sum + rowGross(item), 0);
@@ -202,25 +198,30 @@ export function CategorySection({
           <div className="px-4 py-6 text-center text-sm text-[#e5e4e2]/40">Brak pozycji</div>
         ) : (
           <div className="overflow-x-auto">
-            <table ref={tableRef} className="w-full text-sm">
-              <thead className="bg-[#0a0d1a]/60 text-left text-xs uppercase tracking-wider text-[#e5e4e2]/60">
+            <table ref={tableRef} className="w-full min-w-[760px] table-fixed text-xs">
+              <colgroup>
+                {[3, 24, 14, 6, 5, 5, 10, 6, 11, 11, 5].map((width, index) => (
+                  <col key={index} style={{ width: `${width}%` }} />
+                ))}
+              </colgroup>
+              <thead className="bg-[#0a0d1a]/60 text-left text-xs uppercase tracking-normal text-[#e5e4e2]/60">
                 <tr>
-                  <th className="w-8 px-1 py-2">
+                  <th className="px-1 py-2">
                     <span className="sr-only">Kolejność</span>
                   </th>
-                  <th className="px-3 py-2">Nazwa</th>
-                  <th className="px-3 py-2">Opis</th>
-                  <th className="min-w-[90px] px-3 py-2">Ilość</th>
-                  <th className="min-w-[80px] px-3 py-2">Jedn.</th>
-                  <th className="min-w-[80px] px-3 py-2">{isTransport ? 'Km' : 'Dni'}</th>
+                  <th className="px-1.5 py-2">Nazwa</th>
+                  <th className="px-1.5 py-2">Opis</th>
+                  <th className="px-1.5 py-2">Ilość</th>
+                  <th className="px-1.5 py-2">Jedn.</th>
+                  <th className="px-1.5 py-2">{isTransport ? 'Km' : 'Dni'}</th>
 
-                  <th className="min-w-[120px] px-3 py-2">
+                  <th className="px-1.5 py-2">
                     {isTransport ? 'Stawka' : 'Cena jedn.'}
                   </th>
-                  <th className="min-w-[80px] px-3 py-2">VAT %</th>
-                  <th className="w-28 px-3 py-2 text-right">Netto</th>
-                  <th className="w-28 px-3 py-2 text-right">Brutto</th>
-                  <th className="w-10 px-3 py-2"></th>
+                  <th className="px-1.5 py-2">VAT %</th>
+                  <th className="px-1.5 py-2 text-right">Netto</th>
+                  <th className="px-1.5 py-2 text-right">Brutto</th>
+                  <th className="px-1.5 py-2"></th>
                 </tr>
               </thead>
               <Droppable droppableId={`calculation-${category}`}>
@@ -243,7 +244,7 @@ export function CategorySection({
                           {(dragProvided, snapshot) => {
                             const isEditing = !!it.editing;
                             const dragHandle = (
-                              <td className="w-8 px-1 py-2">
+                              <td className="px-1 py-2">
                                 <button
                                   type="button"
                                   {...dragProvided.dragHandleProps}
@@ -255,32 +256,6 @@ export function CategorySection({
                                   <GripVertical className="h-4 w-4" />
                                 </button>
                               </td>
-                            );
-                            const orderControls = (
-                              <div className="flex items-center gap-1">
-                                <button
-                                  type="button"
-                                  disabled={reorderingDisabled || categoryIndex === 0}
-                                  onClick={() => onMove(idx, -1)}
-                                  title="Przesuń w górę"
-                                  aria-label={`Przesuń ${it.name || 'pozycję'} w górę`}
-                                  className="rounded-md p-1 text-[#d3bb73] hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-25"
-                                >
-                                  <ArrowUp className="h-4 w-4" />
-                                </button>
-                                <button
-                                  type="button"
-                                  disabled={
-                                    reorderingDisabled || categoryIndex === items.length - 1
-                                  }
-                                  onClick={() => onMove(idx, 1)}
-                                  title="Przesuń w dół"
-                                  aria-label={`Przesuń ${it.name || 'pozycję'} w dół`}
-                                  className="rounded-md p-1 text-[#d3bb73] hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-25"
-                                >
-                                  <ArrowDown className="h-4 w-4" />
-                                </button>
-                              </div>
                             );
                             if (!isEditing) {
                               return (
@@ -300,42 +275,44 @@ export function CategorySection({
                                   onDoubleClick={() => onToggleEdit(idx, true)}
                                 >
                                   {dragHandle}
-                                  <td className="px-3 py-2 text-[#e5e4e2]">
-                                    <div className="flex items-center gap-2">
+                                  <td className="px-1.5 py-2 text-[#e5e4e2]">
+                                    <div className="flex min-w-0 items-center gap-1.5">
                                       <ItemThumbnail item={it} />
-                                      <span className="truncate">
+                                      <span className="min-w-0 line-clamp-2 break-words" title={it.name}>
                                         {it.name || <span className="text-[#e5e4e2]/40">—</span>}
                                       </span>
                                     </div>
                                     {it.source === 'vehicle' && it.source_label && <p className="mt-1 text-xs text-white/40">Wewnętrznie: {it.source_label}</p>}
                                   </td>
-                                  <td className="px-3 py-2 text-[#e5e4e2]/70">
-                                    {it.description || <span className="text-[#e5e4e2]/30">—</span>}
+                                  <td className="px-1.5 py-2 text-[#e5e4e2]/70">
+                                    <span className="line-clamp-2 break-words" title={it.description || undefined}>
+                                      {it.description || <span className="text-[#e5e4e2]/30">—</span>}
+                                    </span>
                                   </td>
-                                  <td className="px-3 py-2 text-[#e5e4e2]/80">{it.quantity}</td>
-                                  <td className="px-3 py-2 text-[#e5e4e2]/80">{it.unit}</td>
-                                  <td className="px-3 py-2 text-[#e5e4e2]/80">
+                                  <td className="px-1.5 py-2 text-[#e5e4e2]/80">{it.quantity}</td>
+                                  <td className="px-1.5 py-2 text-[#e5e4e2]/80">{it.unit}</td>
+                                  <td className="px-1.5 py-2 text-[#e5e4e2]/80">
                                     {isTransport ? `${it.days} km` : it.days}
                                   </td>
-                                  <td className="px-3 py-2 text-[#e5e4e2]/80">
+                                  <td className="px-1.5 py-2 text-[#e5e4e2]/80">
                                     {isTransport ? fmt(it.unit_price) : fmt(it.unit_price)}
                                   </td>
-                                  <td className="px-3 py-2 text-[#e5e4e2]/80">{it.vat_rate}%</td>
-                                  <td className="px-3 py-2 text-right text-[#e5e4e2]">
+                                  <td className="px-1.5 py-2 text-[#e5e4e2]/80">{it.vat_rate}%</td>
+                                  <td className="px-1.5 py-2 text-right text-[#e5e4e2]">
                                     {fmt(rowNet(it))}
                                   </td>
-                                  <td className="px-3 py-2 text-right text-[#d3bb73]">
+                                  <td className="px-1.5 py-2 text-right text-[#d3bb73]">
                                     {fmt(rowGross(it))}
                                   </td>
                                   <td
-                                    className="relative z-20 px-3 py-2 text-right"
+                                    className="relative z-20 px-1.5 py-2 text-right"
                                     onClick={(e) => e.stopPropagation()}
                                   >
                                     <div className="flex items-center justify-end gap-1">
-                                      {orderControls}
                                       <ResponsiveActionBar
                                         disabledBackground
-                                        mobileBreakpoint={2000}
+                                        alwaysDropdown
+                                        compact
                                         actions={[
                                           {
                                             label: 'Edytuj',
@@ -372,7 +349,7 @@ export function CategorySection({
                                 className="bg-[#0a0d1a]/30"
                               >
                                 {dragHandle}
-                                <td className="px-3 py-2">
+                                <td className="px-1.5 py-2">
                                   {category === 'equipment' ? (
                                     <EquipmentNameCell
                                       item={it}
@@ -389,7 +366,7 @@ export function CategorySection({
                                     />
                                   )}
                                 </td>
-                                <td className="px-3 py-2">
+                                <td className="px-1.5 py-2">
                                   <input
                                     value={it.description}
                                     onChange={(e) => onUpdate(idx, { description: e.target.value })}
@@ -397,7 +374,7 @@ export function CategorySection({
                                     className="w-full rounded-md border border-transparent bg-transparent px-2 py-1 text-[#e5e4e2]/80 focus:border-[#d3bb73]/40 focus:bg-[#0a0d1a] focus:outline-none"
                                   />
                                 </td>
-                                <td className="px-3 py-2">
+                                <td className="px-1.5 py-2">
                                   <input
                                     type="number"
                                     step="0.01"
@@ -408,14 +385,14 @@ export function CategorySection({
                                     className={numberInputClass}
                                   />
                                 </td>
-                                <td className="px-3 py-2">
+                                <td className="px-1.5 py-2">
                                   <input
                                     value={it.unit}
                                     onChange={(e) => onUpdate(idx, { unit: e.target.value })}
                                     className={numberInputClass}
                                   />
                                 </td>
-                                <td className="px-3 py-2">
+                                <td className="px-1.5 py-2">
                                   <input
                                     type="number"
                                     step="0.5"
@@ -426,7 +403,7 @@ export function CategorySection({
                                     className={numberInputClass}
                                   />
                                 </td>
-                                <td className="px-3 py-2">
+                                <td className="px-1.5 py-2">
                                   <input
                                     type="number"
                                     step="0.01"
@@ -437,7 +414,7 @@ export function CategorySection({
                                     className={priceInputClass}
                                   />
                                 </td>
-                                <td className="px-3 py-2">
+                                <td className="px-1.5 py-2">
                                   <input
                                     type="number"
                                     step="1"
@@ -448,15 +425,14 @@ export function CategorySection({
                                     className={numberInputClass}
                                   />
                                 </td>
-                                <td className="px-3 py-2 text-right text-[#e5e4e2]">
+                                <td className="px-1.5 py-2 text-right text-[#e5e4e2]">
                                   {fmt(rowNet(it))}
                                 </td>
-                                <td className="px-3 py-2 text-right text-[#d3bb73]">
+                                <td className="px-1.5 py-2 text-right text-[#d3bb73]">
                                   {fmt(rowGross(it))}
                                 </td>
-                                <td className="px-3 py-2 text-right">
+                                <td className="px-1.5 py-2 text-right">
                                   <div className="flex justify-end gap-1">
-                                    {orderControls}
                                     <button
                                       onClick={() => onToggleEdit(idx, false)}
                                       className="rounded-md p-1 text-emerald-400 hover:bg-emerald-500/10"
@@ -487,20 +463,20 @@ export function CategorySection({
                 <tr className="border-t border-[#d3bb73]/20 bg-[#0a0d1a]/80">
                   <td
                     colSpan={8}
-                    className="px-3 py-3 text-right text-xs font-semibold uppercase tracking-wider text-[#e5e4e2]/60"
+                    className="px-1.5 py-3 text-right text-xs font-semibold uppercase tracking-normal text-[#e5e4e2]/60"
                   >
                     Suma częściowa
                   </td>
 
-                  <td className="px-3 py-3 text-right font-semibold tabular-nums text-[#e5e4e2]">
+                  <td className="px-1.5 py-3 text-right font-semibold tabular-nums text-[#e5e4e2]">
                     {fmt(categoryNetTotal)}
                   </td>
 
-                  <td className="px-3 py-3 text-right font-semibold tabular-nums text-[#d3bb73]">
+                  <td className="px-1.5 py-3 text-right font-semibold tabular-nums text-[#d3bb73]">
                     {fmt(categoryGrossTotal)}
                   </td>
 
-                  <td className="px-3 py-3" />
+                  <td className="px-1.5 py-3" />
                 </tr>
               </tfoot>
             </table>

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Copy, FileText, Loader2, Pencil, Plus } from 'lucide-react';
+import { Copy, Download, FileText, Loader2, Pencil, Plus } from 'lucide-react';
 import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
 import FullScreenLoader from '@/components/UI/Loader/CustomModalLoader';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -39,14 +39,14 @@ export default function InquiryCalculationsPanel({
 }) {
   const { showSnackbar } = useSnackbar();
   const [rows, setRows] = useState(calculations);
-  const [busy, setBusy] = useState<{ id: string; action: 'duplicate' | 'pdf' | 'view' | 'select' } | null>(
+  const [busy, setBusy] = useState<{ id: string; action: 'duplicate' | 'pdf' | 'view' | 'download' | 'select' } | null>(
     null,
   );
   const busyRef = useRef(false);
   useEffect(() => setRows(calculations), [calculations]);
 
-  async function perform(calculation: Calculation, action: 'duplicate' | 'pdf' | 'view' | 'select') {
-    if (busyRef.current || (action !== 'view' && !canManage)) return;
+  async function perform(calculation: Calculation, action: 'duplicate' | 'pdf' | 'view' | 'download' | 'select') {
+    if (busyRef.current || (action !== 'view' && action !== 'download' && !canManage)) return;
     busyRef.current = true;
     setBusy({ id: calculation.id, action });
     const preview = action === 'view' ? window.open('about:blank', '_blank') : null;
@@ -77,6 +77,20 @@ export default function InquiryCalculationsPanel({
         );
         showSnackbar('PDF kalkulacji został wygenerowany.', 'success');
         onChanged();
+      } else if (action === 'download') {
+        if (!calculation.generated_pdf_path) throw new Error('Najpierw wygeneruj PDF.');
+        const { data: file, error } = await supabase.storage
+          .from('event-files')
+          .download(calculation.generated_pdf_path);
+        if (error || !file) throw error || new Error('Nie udało się pobrać PDF.');
+        const url = URL.createObjectURL(file);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${(calculation.name || 'Kalkulacja').replace(/[\\/:*?"<>|]/g, '_')}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.setTimeout(() => URL.revokeObjectURL(url), 10000);
       } else {
         if (!preview)
           throw new Error('Przeglądarka zablokowała nowe okno. Zezwól na otwieranie podglądu.');
@@ -176,6 +190,12 @@ export default function InquiryCalculationsPanel({
                   label: running && busy.action === 'view' ? 'Otwieram PDF…' : 'Pokaż PDF',
                   icon: <FileText className="h-4 w-4" />,
                   onClick: () => void perform(calculation, 'view'),
+                  disabled: Boolean(busy) || !calculation.generated_pdf_path,
+                },
+                {
+                  label: running && busy.action === 'download' ? 'Pobieram PDF…' : 'Pobierz PDF',
+                  icon: <Download className="h-4 w-4" />,
+                  onClick: () => void perform(calculation, 'download'),
                   disabled: Boolean(busy) || !calculation.generated_pdf_path,
                 },
               ]}

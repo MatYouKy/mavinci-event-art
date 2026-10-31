@@ -1,5 +1,7 @@
 'use client';
 
+import { servicePath } from '@/lib/SEO/serviceUrls';
+
 import { supabase } from '@/lib/supabase/browser';
 import { ArrowLeft, CheckCircle, Package } from 'lucide-react';
 import React, { FC, useEffect, useMemo, useState } from 'react';
@@ -113,7 +115,7 @@ export const RelatedServicesSection: FC<RelatedServicesSectionProps> = ({
       <div className="mx-auto max-w-7xl">
         <div className="mb-12 text-center">
           <h2 className="mb-4 text-3xl font-light text-[#e5e4e2] md:text-4xl">
-            Zobacz co najczęściej <span className="text-[#d3bb73]">Dobierają </span>Organizatorzy <span className="text-[#d3bb73]">{cityCases?.locative ? `${cityCases.locative_preposition ? cityCases.locative_preposition : 'w'} ${capitalize(cityCases.locative)}` : 'Olsztynie'}</span>
+            Rozwiązania dla organizatorów konferencji{cityCases?.locative && <> <span className="text-[#d3bb73]">{cityCases.locative_preposition || 'w'} {capitalize(cityCases.locative)}</span></>}
           </h2>
           <p className="text-lg text-[#e5e4e2]/70">
             Poznaj szczegóły naszych rozwiązań technicznych
@@ -261,7 +263,7 @@ export const RelatedServicesSection: FC<RelatedServicesSectionProps> = ({
               return (
                 <Link
                   key={`${item.id}-${idx}`}
-                  href={`/uslugi/${item.slug}`}
+                  href={servicePath(item)}
                   className="group relative w-full flex-shrink-0 overflow-hidden rounded-xl transition-all hover:-translate-y-1 hover:border-[#d3bb73]/40 sm:w-[calc(50%-12px)] lg:w-[calc(33.333%-16px)]"
                 >
                   <div className="relative aspect-[4/5] overflow-hidden rounded-lg bg-[#0f1119] sm:aspect-[8/9]">

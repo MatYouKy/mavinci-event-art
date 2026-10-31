@@ -1,10 +1,11 @@
+import { isEventOrganizer, showEventInvitation } from '../lib/eventInvitation';
 import RealizationActions from '../components/Events/RealizationActions';
 import { useOperationalStages } from '../hooks/useOperationalStages';
 import { OPERATIONAL_LABELS, usesOperationalStages } from '../lib/operationalStages';
 import RealizationWorkspace from '../components/Events/RealizationWorkspace';
 import { respondToAssignment } from '../services/assignmentResponse';
 import WarehouseHandoffPanel from '../components/Events/WarehouseHandoffPanel';
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useForegroundEffect } from '../hooks/useForegroundEffect';
 import { createRefreshQueue } from '../lib/refreshQueue';
 import {
@@ -59,16 +60,28 @@ interface MyAssignment {
 }
 
 function StandardEventDetailScreen({ eventId, onBack, initialTab }: Props) {
-  const { employee } = useAuth();
+  const { employee, session } = useAuth();
   const canManageEvent = isManagerOrAdmin(employee);
   const isWarehouseWorker = employee?.permissions?.includes('equipment_manage') === true;
-  const showWarehouseTab = isWarehouseWorker || initialTab === 'warehouse';
+  const [warehouseAccess, setWarehouseAccess] = useState<{ eventId: string; employeeId: string; allowed: boolean } | null>(null);
+  const showWarehouseTab = isWarehouseWorker && warehouseAccess?.eventId === eventId
+    && warehouseAccess?.employeeId === employee?.id && warehouseAccess?.allowed === true;
   const canViewBillingContext = canViewEventFinances(employee);
-  const [activeTab, setActiveTab] = useState<TabKey>(initialTab ?? (isWarehouseWorker ? 'warehouse' : 'details'));
+  const [activeTab, setActiveTab] = useState<TabKey>(initialTab && initialTab !== 'warehouse' ? initialTab : 'details');
   useEffect(() => {
-    if (initialTab) setActiveTab(initialTab);
-  }, [eventId, initialTab]);
+    setActiveTab(initialTab === 'warehouse' && !showWarehouseTab ? 'details' : initialTab ?? 'details');
+  }, [eventId, initialTab, showWarehouseTab]);
   const [event, setEvent] = useState<EventDetail | null>(null);
+  useEffect(() => {
+    let active = true;
+    if (!isWarehouseWorker || !employee?.id) return;
+    const employeeId = employee.id;
+    void supabase.rpc('can_prepare_warehouse_event', { p_event_id: eventId }).then(({ data, error }) => {
+      if (active) setWarehouseAccess({ eventId, employeeId, allowed: !error && data === true });
+    });
+    return () => { active = false; };
+  }, [eventId, employee?.id, isWarehouseWorker, event?.status]);
+
   const operational = usesOperationalStages(employee);
   const {stage: displayStatus} = useOperationalStages(event ? [{id:eventId,status:event.status}] : [],operational);
   const [agenda, setAgenda] = useState<AgendaData | null>(null);
@@ -106,7 +119,7 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab }: Props) {
   }, [employee?.id, eventId]);
 
   const respondToInvitation = async (newStatus: 'accepted' | 'rejected') => {
-    if (!myAssignment) return;
+    if (!myAssignment || !event || !showEventInvitation(event.created_by, employee?.id, session?.user.id, myAssignment.status)) return;
     setRespondingInvitation(true);
     try {
       const current = await respondToAssignment(myAssignment.id, newStatus);
@@ -148,7 +161,7 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab }: Props) {
         `
         id, name, description, event_date, event_end_date, status, created_by,
         ${canViewBillingContext ? 'notes, expected_revenue, budget, billing_arrangement, billing_organization_id,' : ''}
-        equipment_checklist_pdf_path, location,
+        equipment_checklist_pdf_path, equipment_checklist_notes, location,
         loading_confirmed, loading_confirmed_at, loading_confirmed_by, loading_notes,
         loading_locked, loading_unlock_requested, loading_unlock_requested_at,
         loading_unlock_requested_by, loading_unlock_reason,
@@ -274,6 +287,7 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab }: Props) {
       loading_confirmed_at: (data as any).loading_confirmed_at ?? null,
       loading_confirmed_by: (data as any).loading_confirmed_by ?? null,
       loading_notes: (data as any).loading_notes ?? null,
+      equipment_checklist_notes: (data as any).equipment_checklist_notes ?? null,
       loading_locked: (data as any).loading_locked ?? false,
       loading_unlock_requested: (data as any).loading_unlock_requested ?? false,
       loading_unlock_requested_at: (data as any).loading_unlock_requested_at ?? null,
@@ -807,12 +821,16 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab }: Props) {
 
   const [loadedEquipmentIds, setLoadedEquipmentIds] = useState<Set<string>>(new Set());
 
+  const loadingEquipmentWrites = useRef(new Set<string>());
+
   const toggleEquipmentLoaded = async (item: EventEquipmentItem) => {
     // If loading is locked, prevent unchecking
     if ((event as any)?.loading_locked && loadedEquipmentIds.has(item.id)) {
       return;
     }
 
+    if (loadingEquipmentWrites.current.has(item.id)) return;
+    loadingEquipmentWrites.current.add(item.id);
     const newLoaded = !loadedEquipmentIds.has(item.id);
     setLoadedEquipmentIds((prev) => {
       const next = new Set(prev);
@@ -823,14 +841,22 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab }: Props) {
       }
       return next;
     });
-    await supabase
-      .from('event_equipment')
-      .update({
-        is_loaded: newLoaded,
-        loaded_at: newLoaded ? new Date().toISOString() : null,
-        loaded_by: newLoaded ? (employee?.id ?? null) : null,
-      })
-      .eq('id', item.id);
+    try {
+      const { error } = await supabase.rpc('set_event_equipment_loaded', {
+        p_equipment_id: item.id,
+        p_loaded: newLoaded,
+      });
+      if (error) throw error;
+    } catch (error: any) {
+      setLoadedEquipmentIds((previous) => {
+        const next = new Set(previous);
+        if (newLoaded) next.delete(item.id); else next.add(item.id);
+        return next;
+      });
+      Alert.alert('Nie zapisano załadunku', error?.message || 'Spróbuj ponownie. Zaznaczenie zostało cofnięte.');
+    } finally {
+      loadingEquipmentWrites.current.delete(item.id);
+    }
   };
 
   if (isLoading) {
@@ -860,7 +886,6 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab }: Props) {
   }
 
   const tabs: { key: TabKey; label: string; icon: string; count?: number }[] = [
-    ...(showWarehouseTab ? [{ key: 'warehouse' as const, label: 'Magazyn', icon: 'package' }] : []),
     { key: 'details', label: 'Szczegóły', icon: 'info' },
     ...(isWeddingEvent
       ? ([
@@ -880,6 +905,7 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab }: Props) {
       icon: 'check-square',
       count: checklist.length + logistics.length,
     },
+    ...(showWarehouseTab ? [{ key: 'warehouse' as const, label: 'Magazyn', icon: 'package' }] : []),
     { key: 'team', label: 'Zespół', icon: 'users', count: event.employees.length },
     ...(showWarehouseTab || fleetAssignments.length > 0
       ? ([
@@ -931,7 +957,7 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab }: Props) {
       </View>
 
       {/* Invitation Banner */}
-      {myAssignment?.status === 'pending' && (
+      {event && showEventInvitation(event.created_by, employee?.id, session?.user.id, myAssignment?.status) && (
         <View style={styles.invitationBanner}>
           <View style={styles.invitationTextWrap}>
             <Feather name="mail" size={18} color="#f59e0b" />
@@ -965,13 +991,13 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab }: Props) {
           </View>
         </View>
       )}
-      {showAcceptedFeedback && (
+      {showAcceptedFeedback && !isEventOrganizer(event?.created_by, employee?.id, session?.user.id) && (
         <View style={styles.invitationAcceptedBanner}>
           <Feather name="check-circle" size={16} color="#22c55e" />
           <Text style={styles.invitationAcceptedText}>Zaproszenie zaakceptowane</Text>
         </View>
       )}
-      {myAssignment?.status === 'rejected' && (
+      {myAssignment?.status === 'rejected' && !isEventOrganizer(event?.created_by, employee?.id, session?.user.id) && (
         <View style={styles.invitationRejectedBanner}>
           <Feather name="x-circle" size={16} color="#ef4444" />
           <Text style={styles.invitationRejectedText}>Zaproszenie odrzucone</Text>
@@ -1024,18 +1050,8 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab }: Props) {
           />
         }
       >
-        {(activeTab === 'details' || activeTab === 'warehouse') && <RealizationActions eventId={eventId} onChanged={() => void loadAll(true)} />}
-        {(activeTab === 'warehouse' || (activeTab === 'details' && !showWarehouseTab)) && <WarehouseHandoffPanel key={eventId} eventId={eventId} status={event.status} onAccepted={() => { void loadAll(true); }} />}
-        {activeTab === 'warehouse' && <View style={{ paddingHorizontal: spacing.md, gap: 10 }}>
-          <Text style={{ color: colors.text.primary, fontWeight: '600' }}>Zakładki przygotowania wydarzenia</Text>
-          {tabs.filter(tab => tab.key !== 'warehouse').map(tab => <TouchableOpacity key={tab.key}
-            accessibilityRole="button" onPress={() => setActiveTab(tab.key)}
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 12, backgroundColor: colors.background.secondary }}>
-            <Feather name={tab.icon as any} size={20} color={colors.primary.gold} />
-            <Text style={{ flex: 1, color: colors.text.primary }}>{tab.key === 'checklist' ? 'Sprzęt, kompletacja i checklista' : tab.label}</Text>
-            <Feather name="chevron-right" size={18} color={colors.text.secondary} />
-          </TouchableOpacity>)}
-        </View>}
+        {activeTab === 'details' && <RealizationActions eventId={eventId} onChanged={() => void loadAll(true)} />}
+        {activeTab === 'warehouse' && showWarehouseTab && <WarehouseHandoffPanel key={eventId} eventId={eventId} status={event.status} onAccepted={() => { void loadAll(true); }} />}
         {activeTab === 'details' && <DetailsTab event={event} employee={employee as Employee} />}
         {activeTab === 'agenda' && !isWeddingEvent && <AgendaTab agenda={agenda} />}
         {activeTab === 'wedding' && isWeddingEvent && <WeddingCardTab card={weddingCard} />}

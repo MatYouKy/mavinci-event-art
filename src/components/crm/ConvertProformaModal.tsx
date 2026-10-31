@@ -6,6 +6,13 @@ import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { getRecordedProformaPaymentDate, parseProformaPaymentDate } from '@/lib/invoices/convertProformaToInvoice';
 import { DEFAULT_INVOICE_PAYMENT_TERM_DAYS, getInvoicePaymentDueDate } from '@/lib/invoices/paymentTerm';
+import InvoiceRecipientEditor from '@/components/crm/invoices/InvoiceRecipientEditor';
+import {
+  createEmptyInvoiceRecipientDraft,
+  invoiceRecipientPayload,
+  recipientDraftFromInvoice,
+  type InvoiceRecipientDraft,
+} from '@/lib/invoices/ksefRecipient';
 
 type TargetInvoiceType = 'vat' | 'advance';
 type NumberingMode = 'auto' | 'manual';
@@ -41,6 +48,11 @@ interface ProformaData {
   paid_date: string | null;
   paid_at: string | null;
   manual_paid_amount: number | null;
+  organization_id?: string | null;
+  service_recipient_organization_id?: string | null;
+  invoice_recipient_mode?: string | null;
+  invoice_recipient_data?: unknown;
+  ksef_recipient_snapshot?: unknown;
   invoice_items?: Array<{
     name: string;
     unit: string;
@@ -64,6 +76,8 @@ export default function ConvertProformaModal({
   const [autoPreview, setAutoPreview] = useState<string>('');
   const [proforma, setProforma] = useState<ProformaData | null>(null);
   const [loadingProforma, setLoadingProforma] = useState(true);
+  const [recipientDraft, setRecipientDraft] = useState<InvoiceRecipientDraft>(createEmptyInvoiceRecipientDraft);
+  const [recipientReadError, setRecipientReadError] = useState<string | null>(null);
   const paymentDatePicker = useRef<HTMLInputElement>(null);
 
   const today = new Date().toISOString().split('T')[0];
@@ -101,6 +115,13 @@ export default function ConvertProformaModal({
         .maybeSingle();
       if (data) {
         setProforma(data as ProformaData);
+        try {
+          setRecipientDraft(recipientDraftFromInvoice(data));
+          setRecipientReadError(null);
+        } catch (error) {
+          setRecipientDraft(createEmptyInvoiceRecipientDraft());
+          setRecipientReadError(error instanceof Error ? error.message : 'Sprawdź i wybierz ponownie odbiorcę faktury.');
+        }
         setForm((current) => ({
           ...current,
           receivedPaymentConfirmed: false,
@@ -170,7 +191,24 @@ export default function ConvertProformaModal({
     if (proforma) fetchNextNumber();
   }, [form.targetType, proforma]);
 
+  const validateRecipientForConversion = () => {
+    if (recipientReadError) throw new Error(recipientReadError);
+    invoiceRecipientPayload(recipientDraft);
+    if (recipientDraft.mode !== 'same_as_buyer' && recipientDraft.data.internalId.trim()) {
+      const buyerNip = editableBuyer.buyer_nip.replace(/^PL/i, '').replace(/[\s-]/g, '');
+      if (recipientDraft.data.internalId.trim().split('-')[0] !== buyerNip) {
+        throw new Error('NIP w numerze wewnętrznym odbiorcy musi odpowiadać NIP nabywcy. Sprawdź obie strony przed wystawieniem faktury.');
+      }
+    }
+  };
+
   const goToPreview = () => {
+    try {
+      validateRecipientForConversion();
+    } catch (error) {
+      showSnackbar(error instanceof Error ? error.message : 'Sprawdź dane odbiorcy.', 'error');
+      return;
+    }
     if (invalidPaymentTerm) {
       showSnackbar('Podaj termin płatności jako liczbę całkowitą dni od 0 oraz poprawną datę wystawienia.', 'error');
       return;
@@ -202,6 +240,7 @@ export default function ConvertProformaModal({
     }
     setLoading(true);
     try {
+      validateRecipientForConversion();
       const { convertProformaToInvoice } = await import('@/lib/invoices/convertProformaToInvoice');
       const result = await convertProformaToInvoice(proformaId, {
         targetType: form.targetType,
@@ -212,6 +251,7 @@ export default function ConvertProformaModal({
         paymentDueDate: form.targetType === 'advance' ? undefined : paymentDueDate || undefined,
         receivedPaymentConfirmed: form.receivedPaymentConfirmed,
         receivedPaymentDate: form.receivedPaymentDate,
+        recipientDraft,
         buyerData: {
           buyer_name: editableBuyer.buyer_name,
           buyer_nip: editableBuyer.buyer_nip || null,
@@ -227,7 +267,7 @@ export default function ConvertProformaModal({
 
       showSnackbar(
         form.targetType === 'advance'
-          ? 'Wystawiono opłaconą fakturę zaliczkową na całą kwotę pro formy'
+        ? 'Wystawiono opłaconą zaliczkę i oznaczono pro formę jako opłaconą'
           : 'Faktura została utworzona (szkic)',
         'success',
       );
@@ -343,6 +383,7 @@ export default function ConvertProformaModal({
                   <p className="mt-2 text-sm text-[#e5e4e2]/70">
                     To 100% tej pro formy — nie przeliczamy jej ponownie procentem.
                     Zaliczka potwierdzi otrzymaną wpłatę, a do zapłaty pozostanie 0,00 {currency}.
+                    Pro forma również zostanie oznaczona jako opłacona z tą samą datą — bez dodawania drugiej wpłaty.
                     Faktura końcowa obejmie pełne zamówienie pomniejszone o rozliczone zaliczki.
                   </p>
                 </div>
@@ -568,6 +609,25 @@ export default function ConvertProformaModal({
                 />
               </div>
             </div>
+            <div className="space-y-3">
+              <p className="text-sm text-[#e5e4e2]/65">
+                Nabywca i odbiorca są kopiowani z pro formy, bez odświeżania ich danymi aktualnego kontaktu.
+                Poniższe zmiany dotyczą wyłącznie nowej faktury.
+              </p>
+              {recipientReadError && (
+                <p role="alert" className="rounded-lg bg-red-500/10 p-3 text-sm text-red-300">
+                  {recipientReadError} Wybierz ponownie sposób wskazania odbiorcy i sprawdź jego dane.
+                </p>
+              )}
+              <InvoiceRecipientEditor
+                value={recipientDraft}
+                disabled={loading}
+                onChange={(value) => {
+                  setRecipientDraft(value);
+                  setRecipientReadError(null);
+                }}
+              />
+            </div>
           </div>
         ) : (
           <div className="space-y-5 p-6">
@@ -643,6 +703,21 @@ export default function ConvertProformaModal({
                   <div className="text-xs text-[#e5e4e2]/60">{editableBuyer.buyer_email}</div>
                 )}
               </div>
+            </div>
+
+            <div className="rounded-lg bg-[#d3bb73]/5 p-4">
+              <div className="mb-2 text-xs uppercase tracking-wider text-[#e5e4e2]/50">Odbiorca</div>
+              {recipientDraft.mode === 'same_as_buyer' ? (
+                <p className="text-sm text-[#e5e4e2]">Taki sam jak nabywca — {editableBuyer.buyer_name || '—'}.</p>
+              ) : (
+                <div className="space-y-1 text-sm text-[#e5e4e2]">
+                  <p className="font-medium">{recipientDraft.data.name}</p>
+                  <p className="text-[#e5e4e2]/70">{recipientDraft.data.street}, {recipientDraft.data.postalCode} {recipientDraft.data.city} · {recipientDraft.data.countryCode}</p>
+                  {recipientDraft.data.nip && <p className="text-[#e5e4e2]/70">NIP {recipientDraft.data.nip}</p>}
+                  {recipientDraft.data.internalId && <p className="text-[#d3bb73]">Numer wewnętrzny KSeF: {recipientDraft.data.internalId}</p>}
+                  <p className="pt-1 text-xs text-[#e5e4e2]/55">Te dane będą zapisane jako oddzielny odbiorca na nowej fakturze.</p>
+                </div>
+              )}
             </div>
 
             <div className="overflow-hidden rounded-lg border border-[#d3bb73]/10 bg-[#0a0d1a]">

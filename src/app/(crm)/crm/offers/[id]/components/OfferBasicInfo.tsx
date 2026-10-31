@@ -1,16 +1,20 @@
 'use client';
+import OfferAudienceFields from '@/components/crm/offers/OfferAudienceFields';
+import { OFFER_AUDIENCE_SAVED } from '@/components/crm/offers/useOfferAudience';
+import { offerNeedsTables } from '@/lib/CRM/Offers/audiencePricing';
 
 import { useState, useEffect, useCallback, forwardRef, useImperativeHandle, useRef } from 'react';
 import { Building2, Calculator, Calendar, DollarSign, FileText, Image as ImageIcon, MapPin, Upload, User } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
-import { EventAssumptionsEditor } from '@/components/crm/offers/EventAssumptionsEditor';
+import OfferAssumptionsSection from './OfferAssumptionsSection';
 import {
-  formatEventAssumptionItems,
   normalizeEventAssumptionItems,
 } from '@/lib/CRM/Offers/eventAssumptions';
 import ClientSelectorTabs from '@/components/crm/ClientSelectorTabs';
 import LocationSelector from '@/components/crm/LocationSelector';
+import SearchCombobox from '@/components/crm/SearchCombobox';
+import { resolveOfferSchedule } from '@/lib/CRM/Offers/offerSchedule';
 import { getOfferPricingTotals } from '@/lib/CRM/Offers/offerTotals';
 import { getCalculationNumber } from '@/lib/CRM/calculations/calculationNumber';
 import { optimizeOfferImage } from '@/lib/optimizeOfferImage';
@@ -92,6 +96,7 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
       offer.inquiry?.inquiry_details?.location_text ||
       '';
     const isSellerOffer = offer.sales_channel === 'seller_portal';
+    const needsTables = offerNeedsTables(offer);
     const resolvedClientType = (isSellerOffer ? (offer.portal_client_company ? 'business' : 'individual') : offer.client_type === 'individual'
       ? 'individual'
       : offer.client_type === 'business' || offer.organization_id
@@ -107,7 +112,7 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
       || offer.inquiry?.inquiry_details?.termin
       || offer.inquiry?.due_date
       || '';
-    const resolvedEventDate = offerEventDate;
+    const schedule = resolveOfferSchedule(offer);
 
     const [formData, setFormData] = useState({
       title: offer.title || inheritedOfferTitle,
@@ -117,6 +122,9 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
       event_id: offer.event_id || '',
       event_date: utcToLocalDatetimeString(offerEventDate),
       event_location: resolvedEventLocation,
+      guest_count: offer.guest_count == null ? '' : String(offer.guest_count),
+      guests_per_table: String(offer.guests_per_table ?? 10),
+      table_count: offer.table_count == null ? '' : String(offer.table_count),
       valid_until: String(offer.valid_until || '').slice(0, 10),
       notes: offer.notes || '',
       event_assumptions: legacyEventAssumptions,
@@ -188,6 +196,9 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
         event_id: offer.event_id || '',
         event_date: utcToLocalDatetimeString(offerEventDate),
         event_location: resolvedEventLocation,
+      guest_count: offer.guest_count == null ? '' : String(offer.guest_count),
+      guests_per_table: String(offer.guests_per_table ?? 10),
+      table_count: offer.table_count == null ? '' : String(offer.table_count),
         valid_until: String(offer.valid_until || '').slice(0, 10),
         notes: offer.notes || '',
         event_assumptions: legacyEventAssumptions,
@@ -279,14 +290,20 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
           return;
         }
 
-        const eventDate = localDatetimeStringToUTC(formData.event_date);
-        if (formData.event_date && !eventDate) {
+        const eventDate = schedule.fromInquiry ? offer.event_date || null : localDatetimeStringToUTC(formData.event_date);
+        if (!schedule.fromInquiry && formData.event_date && !eventDate) {
           showSnackbar('Podaj prawidłowy termin wydarzenia', 'warning');
           return;
         }
 
+        const guestCount = formData.guest_count === '' ? null : Number(formData.guest_count);
+        const tableCount = formData.table_count === '' ? null : Number(formData.table_count);
+        const guestsPerTable = Number(formData.guests_per_table);
+        if ((guestCount != null && (!Number.isInteger(guestCount) || guestCount < 1 || guestCount > 100000)) || (tableCount != null && (!Number.isInteger(tableCount) || tableCount < 1 || tableCount > 100000)) || !Number.isInteger(guestsPerTable) || guestsPerTable < 1 || guestsPerTable > 100) {
+          showSnackbar('Podaj poprawną liczbę osób i stołów oraz od 1 do 100 osób przy stole.', 'warning'); return;
+        }
         setLoading(true);
-        const eventDateChanged = formData.event_date !== utcToLocalDatetimeString(offerEventDate);
+        const eventDateChanged = !schedule.fromInquiry && formData.event_date !== utcToLocalDatetimeString(offerEventDate);
         if (eventDateChanged) {
           // Sprawdzamy dostępność kolumny przed zmianą kalkulacji, wydarzenia lub plików.
           const { error: eventDateError } = await supabase
@@ -326,7 +343,6 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
           if (heroUploadError) throw heroUploadError;
         }
 
-        const formattedAssumptions = formatEventAssumptionItems(formData.event_assumption_items);
         const { error } = await supabase
           .from('offers')
           .update({
@@ -341,11 +357,9 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
             event_id: formData.event_id || null,
             event_date: eventDate,
             event_location: formData.event_location.trim() || null,
+            guest_count: guestCount, guests_per_table: guestsPerTable, table_count: tableCount,
             valid_until: formData.valid_until || null,
             notes: formData.notes || '',
-            event_assumptions: formattedAssumptions || null,
-            event_assumption_items: formData.event_assumption_items,
-            event_goal: formData.event_goal.trim() || null,
             hero_image_path: heroImagePath,
             hero_image_alt: heroImagePath ? formData.hero_image_alt.trim() || null : null,
             info_page_sections: formData.info_page_sections.map((section) => ({
@@ -398,14 +412,22 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
       : offer.organization?.alias || offer.organization?.name || '';
     const contactEmail = isSellerOffer ? offer.portal_client_email : selectedContact?.email;
     const contactPhone = isSellerOffer ? offer.portal_client_phone : selectedContact?.mobile || selectedContact?.phone;
+    useEffect(() => {
+      const saved = (event: Event) => {
+        const detail = (event as CustomEvent).detail;
+        if (detail?.offerId !== offer.id) return;
+        const a = detail.audience;
+        setFormData(current => ({ ...current, guest_count: a.guest_count == null ? '' : String(a.guest_count), guests_per_table: String(a.guests_per_table ?? 10), table_count: a.table_count == null ? '' : String(a.table_count) }));
+        onUpdate();
+      };
+      window.addEventListener(OFFER_AUDIENCE_SAVED, saved);
+      return () => window.removeEventListener(OFFER_AUDIENCE_SAVED, saved);
+    }, [offer.id, onUpdate]);
+
     const editingContact = formData.client_type === 'business'
       ? offer.contact_person || offer.contact
       : offer.contact;
 
-    const assumptionItemsForDisplay = normalizeEventAssumptionItems(
-      offer.event_assumption_items,
-      legacyEventAssumptions,
-    ).filter((item) => item.value.trim() || item.badge_value?.trim());
     const totals = getOfferPricingTotals(offer);
     const selectedPricingCalculation = offer.calculation_snapshot || eventCalculations.find((calculation) =>
       calculation.id === offer.source_calculation_id,
@@ -414,7 +436,8 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
 
     if (!isEditing) {
       return (
-        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+        <>
+        <div data-offer-editing={isEditing} className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-lg font-light text-[#e5e4e2]">Informacje podstawowe</h2>
             {canEdit && <button type="button" onClick={() => setIsEditing(true)} className="rounded-lg bg-[#d3bb73]/10 px-3 py-2 text-sm text-[#d3bb73]">Edytuj</button>}
@@ -488,6 +511,8 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
             <div className="flex items-start gap-3">
               <Calculator className="mt-0.5 h-5 w-5 text-[#d3bb73]" />
               <div className="flex-1">
+                <p className="mb-2 text-sm text-[#e5e4e2]">Liczba osób: {offer.guest_count ?? 'Nie ustalono'}{needsTables && offer.guest_count ? ` · stoły: ${offer.table_count ?? Math.ceil(offer.guest_count / (offer.guests_per_table || 10))} (${offer.table_count ? 'ustawiono ręcznie' : `średnio ${offer.guests_per_table || 10} osób/stół`})` : ''}</p>
+                {canEdit && <button type="button" onClick={() => setIsEditing(true)} className="mb-3 text-sm text-[#d3bb73]">{offer.guest_count == null ? 'Uzupełnij liczbę osób' : 'Zmień liczbę osób'}</button>}
                 <p className="text-xs text-[#e5e4e2]/60">Źródło wyceny</p>
                 <p className="text-sm font-medium text-[#e5e4e2]">
                   {usesCalculationPricing ? 'Zaakceptowana kalkulacja' : 'Pozycje oferty'}
@@ -522,12 +547,10 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
             <div className="flex items-start gap-3">
               <Calendar className="mt-0.5 h-5 w-5 text-[#d3bb73]" />
               <div className="flex-1">
-                <p className="text-xs text-[#e5e4e2]/60">Data wydarzenia</p>
-                <p className="text-sm text-[#e5e4e2]">
-                  {resolvedEventDate
-                    ? new Date(resolvedEventDate).toLocaleDateString('pl-PL')
-                    : isSellerOffer ? 'Sprzedawca nie podał terminu' : '-'}
-                </p>
+                <p className="text-xs text-[#e5e4e2]/60">Początek wydarzenia</p>
+                <p className="text-sm text-[#e5e4e2]">{schedule.startLabel || 'Nie ustalono'}</p>
+                <p className="mt-3 text-xs text-[#e5e4e2]/60">Koniec wydarzenia</p>
+                <p className="text-sm text-[#e5e4e2]">{schedule.endLabel || 'Nie ustalono'}</p>
               </div>
             </div>
 
@@ -604,90 +627,48 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
               </div>
             )}
 
-            {assumptionItemsForDisplay.length > 0 ? (
-              <div className="border-t border-[#d3bb73]/10 pt-4">
-                <p className="mb-2 text-xs text-[#e5e4e2]/60">Założenia wydarzenia</p>
-                <div className="grid grid-cols-1 gap-2 xl:grid-cols-3">
-                  {assumptionItemsForDisplay.map((item, index) => {
-                    const explicitBadge = item.badge_value?.trim() || '';
-                    const rawValue = item.value.trim();
-                    const canUseValueAsBadge = !explicitBadge
-                      && rawValue.length > 0
-                      && rawValue.length <= 7
-                      && !rawValue.includes('\n');
-                    const badgeValue = explicitBadge
-                      || (canUseValueAsBadge ? rawValue : String(index + 1).padStart(2, '0'));
-                    const detail = canUseValueAsBadge ? '' : rawValue;
 
-                    return (
-                      <div
-                        key={`${item.key}-${index}`}
-                        className="flex min-h-24 items-center gap-3 rounded-xl border border-[#d3bb73]/10 bg-[#0f1118] p-3"
-                      >
-                        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-[#6b0024] px-1 text-center font-medium uppercase text-white shadow-inner shadow-black/20">
-                          <span className={badgeValue.length >= 6 ? 'text-xs' : badgeValue.length >= 4 ? 'text-sm' : 'text-base'}>
-                            {badgeValue}
-                          </span>
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-[11px] font-medium uppercase tracking-wide text-[#d3bb73]">
-                            {item.label}
-                          </p>
-                          {detail && (
-                            <p className="mt-1 whitespace-pre-wrap text-sm leading-5 text-[#e5e4e2]">
-                              {detail}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : legacyEventAssumptions ? (
-              <div className="border-t border-[#d3bb73]/10 pt-4">
-                <p className="mb-2 text-xs text-[#e5e4e2]/60">Założenia wydarzenia</p>
-                <p className="whitespace-pre-wrap text-sm leading-6 text-[#e5e4e2]">{legacyEventAssumptions}</p>
-              </div>
-            ) : null}
-
-            {(offer.event_goal || offer.inquiry?.inquiry_details?.event_goal) && (
-              <div className="border-t border-[#d3bb73]/10 pt-4">
-                <p className="mb-2 text-xs text-[#e5e4e2]/60">Cel wydarzenia</p>
-                <p className="whitespace-pre-wrap text-sm leading-6 text-[#e5e4e2]">
-                  {offer.event_goal || offer.inquiry?.inquiry_details?.event_goal}
-                </p>
-              </div>
-            )}
           </div>
         </div>
+        <OfferAssumptionsSection key={offer.id} offer={offer} canEdit={canEdit} onUpdate={onUpdate} />
+        </>
       );
     }
 
     return (
-      <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-light text-[#e5e4e2]">Edytuj informacje podstawowe</h2>
+      <>
+      <div data-offer-editing={isEditing} className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-light text-[#e5e4e2]">Informacje podstawowe</h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" disabled={loading} onClick={() => void handleSave()} className="rounded-lg bg-[#d3bb73] px-4 py-2 text-sm text-[#250914] disabled:opacity-50">{loading ? 'Zapisywanie…' : 'Zapisz'}</button>
+            <button type="button" disabled={loading} onClick={() => { setIsEditing(false); setHeroFile(null); setRemoveHero(false); setRefreshCalculation(false); }} className="rounded-lg bg-white/5 px-4 py-2 text-sm text-[#e5e4e2] disabled:opacity-50">Anuluj</button>
+          </div>
         </div>
 
         <fieldset disabled={loading} className="space-y-4">
           <div>
-            <label className="mb-2 block text-xs text-[#e5e4e2]/60">
-              <FileText className="mr-1 inline h-4 w-4" />
-              Tytuł oferty
-            </label>
-            <input
-              type="text"
-              value={formData.title}
-              maxLength={180}
-              onChange={(event) => setFormData({ ...formData, title: event.target.value })}
-              placeholder={inheritedOfferTitle || 'Np. Obsługa techniczna konferencji'}
-              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1118] px-3 py-2.5 text-sm text-[#e5e4e2] outline-none placeholder:text-[#e5e4e2]/30 focus:border-[#d3bb73]/50"
-            />
-            <p className="mt-1.5 text-[11px] text-[#e5e4e2]/40">
-              Ten tytuł będzie widoczny na stronie oferty i na okładce generowanego PDF.
-            </p>
+            <div className="grid grid-cols-[minmax(0,1fr)_7rem] items-start gap-3 sm:grid-cols-[minmax(0,1fr)_8rem]">
+              <div className="min-w-0">
+                <label htmlFor="offer-title" className="mb-2 block text-xs text-[#e5e4e2]/60">
+                  <FileText className="mr-1 inline h-4 w-4" />Tytuł oferty
+                </label>
+                <input id="offer-title" type="text" value={formData.title} maxLength={180}
+                  onChange={event => setFormData({ ...formData, title: event.target.value })}
+                  placeholder={inheritedOfferTitle || 'Np. Obsługa techniczna konferencji'}
+                  className="w-full rounded-lg border border-white/10 bg-[#0f1118] px-3 py-2.5 text-sm text-[#e5e4e2] outline-none placeholder:text-[#e5e4e2]/30 focus:border-white/20" />
+              </div>
+              <div className="min-w-0">
+                <label htmlFor="offer-guest-count" className="mb-2 flex h-4 items-center text-xs text-[#e5e4e2]/60">Liczba osób</label>
+                <input id="offer-guest-count" type="number" min={1} max={100000} step={1}
+                  value={formData.guest_count} onChange={event => setFormData({ ...formData, guest_count: event.target.value })}
+                  placeholder="Nie ustalono" title="Liczba uczestników do przeliczania oferty"
+                  className="w-full rounded-lg border border-white/10 bg-[#0f1118] px-3 py-2.5 text-sm text-[#e5e4e2] outline-none placeholder:text-[#e5e4e2]/30 focus:border-white/20" />
+              </div>
+            </div>
+            <p className="mt-1.5 text-[11px] text-[#e5e4e2]/40">Ten tytuł będzie widoczny na stronie oferty i na okładce generowanego PDF.</p>
           </div>
+          {needsTables && <OfferAudienceFields value={formData} needsTables showGuestCount={false} onChange={counts => setFormData({ ...formData, ...counts })} />}
           <div>
             <label className="mb-2 block text-xs text-[#e5e4e2]/60">
               <Building2 className="mr-1 inline h-4 w-4" />
@@ -725,27 +706,36 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
               <FileText className="mr-1 inline h-4 w-4" />
               Wydarzenie
             </label>
-            <select
+            <SearchCombobox
               value={formData.event_id}
-              onChange={(e) => setFormData({ ...formData, event_id: e.target.value })}
-              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1118] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
-            >
-              <option value="">Wybierz wydarzenie</option>
-              {events.map((event) => (
-                <option key={event.id} value={event.id}>
-                  {event.name}{' '}
-                  {event.event_date
-                    ? `(${new Date(event.event_date).toLocaleDateString('pl-PL')})`
-                    : ''}
-                </option>
-              ))}
-            </select>
+              onChange={(eventId) => setFormData(current => ({ ...current, event_id: eventId }))}
+              options={(selectedEvent && !events.some(event => event.id === selectedEvent.id)
+                ? [selectedEvent, ...events] : events).map(event => ({
+                id: event.id,
+                label: event.name || 'Wydarzenie bez nazwy',
+                description: event.event_date
+                  ? new Date(event.event_date).toLocaleDateString('pl-PL') : undefined,
+              }))}
+              placeholder="Wyszukaj wydarzenie po nazwie lub dacie…"
+              ariaLabel="Wydarzenie"
+              emptyLabel="Brak pasujących wydarzeń"
+              disabled={loading}
+            />
           </div>
 
+          {schedule.fromInquiry ? <div className="grid gap-4 sm:grid-cols-2">
+            <label className="text-xs text-[#e5e4e2]/60">Początek wydarzenia
+              <input readOnly value={schedule.startLabel || 'Nie ustalono'} className="mt-2 w-full rounded-lg border border-white/10 bg-[#0f1118] px-3 py-2.5 text-sm text-[#e5e4e2]" />
+            </label>
+            <label className="text-xs text-[#e5e4e2]/60">Koniec wydarzenia
+              <input readOnly value={schedule.endLabel || 'Nie ustalono'} className="mt-2 w-full rounded-lg border border-white/10 bg-[#0f1118] px-3 py-2.5 text-sm text-[#e5e4e2]" />
+            </label>
+            <p className="text-[11px] text-[#e5e4e2]/45 sm:col-span-2">Termin pobierany z zapytania. Początek i koniec zmienisz w jego sekcji „Miejsce i termin”.</p>
+          </div> : (
           <div>
             <label htmlFor="offer-event-date" className="mb-2 flex items-center gap-2 text-xs text-[#e5e4e2]/60">
               <Calendar className="h-4 w-4 text-[#d3bb73]" />
-              Termin wydarzenia
+              Początek wydarzenia
             </label>
             <input
               id="offer-event-date"
@@ -759,6 +749,7 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
               Termin zapisuje się w tej ofercie i jest używany w jej PDF. Nie zmienia terminu powiązanego wydarzenia.
             </p>
           </div>
+          )}
 
           <div className="rounded-xl border border-[#d3bb73]/15 bg-[#0f1118] p-4">
             <label className="mb-2 flex items-center gap-2 text-xs text-[#e5e4e2]/60">
@@ -911,6 +902,8 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
             </div>
           </div>
 
+
+
           <div>
             <label className="mb-2 block text-xs text-[#e5e4e2]/60">
               <MapPin className="mr-1 inline h-4 w-4" />
@@ -940,21 +933,7 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
             />
           </div>
 
-          <EventAssumptionsEditor
-            value={formData.event_assumption_items}
-            aiContext={{
-              inquiryId: offer.inquiry?.id || offer.inquiry_id || undefined,
-              eventCategory: String(offer.event?.category?.name || ''),
-              productNames: (offer.offer_items || [])
-                .map((item: any) => item.name || item.product?.name)
-                .filter(Boolean),
-            }}
-            onChange={(eventAssumptionItems) => setFormData({
-              ...formData,
-              event_assumption_items: eventAssumptionItems,
-              event_assumptions: formatEventAssumptionItems(eventAssumptionItems),
-            })}
-          />
+
 
           {formData.info_page_sections.some((section, index) => section.content.trim()
             || section.title !== DEFAULT_INFO_PAGE_SECTIONS[index].title) && (
@@ -1006,16 +985,7 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
             </div>
           </details>)}
 
-          <div>
-            <label className="mb-2 block text-xs text-[#e5e4e2]/60">Cel wydarzenia</label>
-            <textarea
-              value={formData.event_goal}
-              onChange={(e) => setFormData({ ...formData, event_goal: e.target.value })}
-              rows={3}
-              className="w-full resize-y rounded-lg border border-[#d3bb73]/20 bg-[#0f1118] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
-              placeholder="Rezultat, który klient chce osiągnąć…"
-            />
-          </div>
+
 
           <div>
             <label className="mb-2 block text-xs text-[#e5e4e2]/60">Notatki</label>
@@ -1028,13 +998,11 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
             />
           </div>
 
-          <div className="flex gap-2 pt-4">
-            <button type="button" disabled={loading} onClick={() => void handleSave()} className="rounded-lg bg-[#d3bb73] px-4 py-2 text-sm text-[#250914] disabled:opacity-50">{loading ? 'Zapisywanie…' : 'Zapisz'}</button>
-            <button type="button" disabled={loading} onClick={() => { setIsEditing(false); setHeroFile(null); setRemoveHero(false); setRefreshCalculation(false); }} className="rounded-lg bg-white/5 px-4 py-2 text-sm text-[#e5e4e2] disabled:opacity-50">Anuluj</button>
-          </div>
-          {loading && <p className="pt-1 text-xs text-[#e5e4e2]/60">Zapisywanie zmian...</p>}
+
         </fieldset>
       </div>
+      <OfferAssumptionsSection key={offer.id} offer={offer} canEdit={canEdit} onUpdate={onUpdate} previewGuestCount={formData.guest_count} />
+      </>
     );
   },
 );

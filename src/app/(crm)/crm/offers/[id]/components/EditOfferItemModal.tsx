@@ -1,4 +1,13 @@
 'use client';
+import ModularProductConfigurator from '@/components/crm/offers/ModularProductConfigurator';
+import { productConfigurationSnapshot, modularTitle, modularScope, type ProductConfigurationSnapshot } from '@/lib/CRM/Offers/modularProduct';
+import ModularPriceHint from '@/components/crm/offers/ModularPriceHint';
+import { createModularConfiguration } from '@/lib/CRM/Offers/offerAddons';
+import InlineOfferAudience from '@/components/crm/offers/InlineOfferAudience';
+import { resolveAudienceConfiguration, configurationNeedsTables, quantitySourceLabels, type QuantitySource } from '@/lib/CRM/Offers/audiencePricing';
+import { QuantitySourceSelect } from '@/components/crm/offers/AudiencePricingEditor';
+import { useOfferAudience } from '@/components/crm/offers/useOfferAudience';
+
 import ProductPackagePicker from '@/components/crm/offers/ProductPackagePicker';
 import { pricedPackageSelection, type ProductSalesPackage } from '@/lib/CRM/Offers/productSalesPackages';
 
@@ -39,12 +48,23 @@ export default function EditOfferItemModal({
     ...(item?.product_variant_id ? { [item.product_variant_id]: item.pricing_configuration?.base_unit_price ?? item.unit_price ?? 0 } : {}),
   }));
   const [quantity, setQuantity] = useState(item?.quantity ?? 1);
+  const [quantitySource,setQuantitySource]=useState<QuantitySource>(item?.pricing_configuration?.quantity_source || 'manual');
+  const {audience,error:audienceLoadError,loading:audienceLoading,saving:audienceSaving,saveAudience,reload:reloadAudience}=useOfferAudience(offerId);
+  const [audienceDirty,setAudienceDirty]=useState(false);
+  const [days, setDays] = useState(item?.days ?? 1);
   const [unitPrice, setUnitPrice] = useState(item?.pricing_configuration?.base_unit_price ?? item?.unit_price ?? 0);
+  const [manualModularPrice, setManualModularPrice] = useState(item?.pricing_configuration?.modular_price_source === 'manual');
   const [addons, setAddons] = useState<ProductAddon[]>(() => (item?.pricing_configuration?.addons || []).map(a => ({ ...a })));
+  const [modular, setModular] = useState<ProductConfigurationSnapshot | null>(() => item?.pricing_configuration?.modular ? structuredClone(item.pricing_configuration.modular) : null);
   const [packageOptions, setPackageOptions] = useState<ProductSalesPackage[]>(() => structuredClone(item?.pricing_configuration?.product_package?.options || (item?.product?.sales_packages_enabled ? item.product.sales_packages || [] : [])));
   const [selectedPackageId, setSelectedPackageId] = useState(item?.pricing_configuration?.product_package?.selected_id || '');
   const selectedPackage = packageOptions.find(p => p.id === selectedPackageId);
-  const configuration = createConfiguration(unitPrice, addons, selectedPackage ? pricedPackageSelection({ selected_id: selectedPackage.id, options: packageOptions }, unitPrice) : undefined);
+  const rawConfiguration = modular ? createModularConfiguration(modular, manualModularPrice ? unitPrice : undefined) : { ...createConfiguration(unitPrice, addons, selectedPackage ? pricedPackageSelection({ selected_id: selectedPackage.id, options: packageOptions }, unitPrice) : undefined), quantity_source: selectedPackage ? 'manual' as const : quantitySource };
+  const resolvedAudience=resolveAudienceConfiguration(rawConfiguration,audience,quantity);
+  const configuration=resolvedAudience.configuration;
+  const resolvedQuantity=resolvedAudience.quantity;
+  const audienceRequired = Boolean(selectedPackage?.audience_pricing) || rawConfiguration.quantity_source !== 'manual' || addons.some(a => a.quantity_source && a.quantity_source !== 'manual');
+  const audienceError=audienceLoadError || (audienceDirty ? 'Zapisz liczbę osób przyciskiem nad wyborem pakietu.' : resolvedAudience.error ? 'Uzupełnij i zapisz dane w sekcji Uczestnicy oferty powyżej.' : null);
   const configuredPrice = configurationPrice(configuration);
   const [discountPercent, setDiscountPercent] = useState(item?.discount_percent ?? 0);
   const [itemVatRate, setItemVatRate] = useState(vatRate);
@@ -64,15 +84,18 @@ export default function EditOfferItemModal({
     setSelectedPackageId(id);
     const selected = packageOptions.find(option => option.id === id);
     if (selected) {
+      setQuantity(1);
+      setQuantitySource('manual');
       setSelectedVariantId('');
       setUnitPrice(selected.price_net);
-      setAddons([]);
+      setAddons(selected.include_product_addons ? structuredClone(item.product?.pricing_addons || []) : []);
       setName(`${item.product?.name || item.name} — ${selected.name}`);
       return;
     }
 
     const variant = productVariants[0];
     setSelectedVariantId(variant?.id || '');
+    setQuantitySource(variant?.quantity_source || item.product?.quantity_source || 'manual');
     setUnitPrice(Number(variant?.price_net ?? item.product?.base_price ?? 0));
     setAddons((item.product?.pricing_addons || []).map(addon => ({ ...addon })));
     setName(variant
@@ -80,11 +103,11 @@ export default function EditOfferItemModal({
       : item.product?.name || item.name);
   };
 
-  const safeQuantity = Number.isFinite(quantity) ? quantity : 0;
+  const safeQuantity = Number.isFinite(resolvedQuantity) ? resolvedQuantity : 0;
   const safeUnitPrice = Number.isFinite(unitPrice) ? unitPrice : 0;
   const safeDiscountPercent = Number.isFinite(discountPercent) ? discountPercent : 0;
 
-  const netto = safeQuantity * configuredPrice;
+  const netto = safeQuantity * days * configuredPrice;
   const discountAmount = (netto * safeDiscountPercent) / 100;
   const nettoAfterDiscount = netto - discountAmount;
   const vatAmount = (nettoAfterDiscount * itemVatRate) / 100;
@@ -93,12 +116,15 @@ export default function EditOfferItemModal({
   const displayName = name || item.name || item.product?.name || 'Pozycja oferty';
 
   const handleSave = async () => {
+    if (audienceLoading || audienceSaving || audienceError) { showSnackbar(audienceError || 'Wczytywanie liczby uczestników…','error'); return; }
     const safeName = name.trim();
 
     if (!safeName) {
       showSnackbar('Nazwa pozycji nie może być pusta', 'error');
       return;
     }
+
+    if (!Number.isInteger(days) || days < 1 || days > 3650) { showSnackbar('Podaj liczbę dni od 1 do 3650.', 'error'); return; }
 
     if (safeQuantity <= 0) {
       showSnackbar('Ilość musi być większa od 0', 'error');
@@ -127,11 +153,13 @@ export default function EditOfferItemModal({
         .from('offer_items')
         .update({
           name: safeName,
+          ...(modular ? { description: modularScope(modular).join('\n') } : {}),
           ...(selectedPackage ? { description: [selectedPackage.included_label, selectedPackage.bonus].filter(Boolean).join('. ') } : {}),
           quantity: safeQuantity,
-          unit: selectedPackage ? 'pakiet' : item.product?.unit || item.unit,
+          days,
+          unit: modular ? 'zestaw' : selectedPackage ? 'pakiet' : quantitySource === 'guests' ? 'osoba' : quantitySource === 'tables' ? 'stół' : item.product?.unit || item.unit,
           unit_price: configuredPrice,
-          pricing_configuration: selectedPackage || addons.length || item.pricing_configuration ? configuration : null,
+          pricing_configuration: configuration,
           discount_amount: Math.round(discountAmount * 100) / 100,
           discount_percent: safeDiscountPercent,
           product_variant_id: selectedVariantId || null,
@@ -140,7 +168,7 @@ export default function EditOfferItemModal({
           show_product_variants_in_pdf: showProductVariantsInPdf,
         })
         .eq('id', item.id)
-        .select('id, name')
+        .select('*')
         .single();
 
       if (error) throw error;
@@ -161,15 +189,17 @@ export default function EditOfferItemModal({
         id: item.id,
         name: safeName,
         quantity: safeQuantity,
-          unit: selectedPackage ? 'pakiet' : item.product?.unit || item.unit,
+          days,
+          unit: modular ? 'zestaw' : selectedPackage ? 'pakiet' : quantitySource === 'guests' ? 'osoba' : quantitySource === 'tables' ? 'stół' : item.product?.unit || item.unit,
         unit_price: configuredPrice,
-          pricing_configuration: selectedPackage || addons.length || item.pricing_configuration ? configuration : null,
+          pricing_configuration: configuration,
           discount_amount: Math.round(discountAmount * 100) / 100,
         discount_percent: safeDiscountPercent,
         product_variant_id: selectedVariantId || null,
         variant_prices_net: { ...variantPrices, ...(selectedVariantId ? { [selectedVariantId]: safeUnitPrice } : {}) },
           show_variant_prices_in_pdf: showVariantPricesInPdf,
         show_product_variants_in_pdf: showProductVariantsInPdf,
+        ...data,
       });
 
       onClose();
@@ -237,22 +267,34 @@ export default function EditOfferItemModal({
               } } : p))} className="rounded-lg bg-[#d3bb73] px-3 py-2 text-[#1c1f33]">Pobierz sprzęt i obsadę z produktu</button>
             </> : <p className="text-xs text-[#e5e4e2]/65">Użyj przycisku „Sprzęt i obsada” poniżej. Jeśli pakiet ich nie wymaga, zatwierdź puste listy.</p>}
           </div>}
-          <ProductPackagePicker options={packageOptions.map(p=>p.id===selectedPackageId?{...p,price_net:unitPrice}:p)} selectedId={selectedPackageId} disabled={loading} discountPercent={discountPercent}
+              <InlineOfferAudience audience={audience} needsTables={configurationNeedsTables(rawConfiguration)} required={audienceRequired} loading={audienceLoading} saving={audienceSaving} loadError={audienceLoadError} disabled={loading} onSave={saveAudience} onRetry={reloadAudience} onDirtyChange={setAudienceDirty} />
+          {!modular && item.product?.configuration_schema && <div className="rounded-lg bg-[#d3bb73]/10 p-3 text-sm">
+            <p>Ta pozycja zachowuje wcześniejszą wycenę. Możesz świadomie zastąpić ją konfiguracją według obecnego cennika produktu.</p>
+            <button type="button" disabled={loading} className="mt-2 rounded-lg bg-[#d3bb73]/15 px-3 py-2 text-[#d3bb73]" onClick={() => {
+              const next = productConfigurationSnapshot(item.product!.configuration_schema!);
+              setModular(next); if (!manualModularPrice) setUnitPrice(createModularConfiguration(next).base_unit_price); setName(modularTitle(next));
+              setSelectedPackageId(''); setPackageOptions([]); setSelectedVariantId(''); setVariantPrices({}); setQuantitySource('manual'); setQuantity(1); setAddons([]); setShowVariantPricesInPdf(false); setShowProductVariantsInPdf(false);
+            }}>Przejdź na konfigurator — przelicz tę pozycję</button>
+          </div>}
+          {modular && <ModularProductConfigurator quantity={quantity} value={modular} disabled={loading} onChange={next => { setModular(next); if (!manualModularPrice) setUnitPrice(createModularConfiguration(next).base_unit_price); setName(modularTitle(next)); }} />}
+          {modular && <ModularPriceHint value={modular} manual={manualModularPrice} disabled={loading} onReset={() => { setManualModularPrice(false); setUnitPrice(createModularConfiguration(modular).base_unit_price); }} />}
+          {!modular && <ProductPackagePicker allowIndividual={!packageOptions.every(p=>p.price_on_request)} options={configuration.product_package?.options || packageOptions} selectedId={selectedPackageId} disabled={loading} discountPercent={discountPercent}
             onChange={options=>{setPackageOptions(options);const p=options.find(p=>p.id===selectedPackageId);if(p)setUnitPrice(p.price_net);}}
             onSelect={handleSelectPackage}
-          />
-          {!selectedPackage && productVariants.length > 0 && (
+          />}
+          {!modular && !selectedPackage && productVariants.length > 0 && (
             <div>
               <label className="mb-2 block text-xs font-medium uppercase tracking-wide text-[#e5e4e2]/55">
                 Wariant produktu
               </label>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                {productVariants.slice(0, 3).map((variant) => (
+                {productVariants.map((variant) => (
                   <button
                     key={variant.id}
                     type="button"
                     onClick={() => {
                       setSelectedVariantId(variant.id);
+                      setQuantitySource(variant.quantity_source || 'manual');
                       setUnitPrice(Number(variantPrices[variant.id] ?? variant.price_net ?? 0));
                       setName(`${item.product?.name || item.name} — ${variant.name}`);
                     }}
@@ -286,8 +328,14 @@ export default function EditOfferItemModal({
             </div>
           )}
 
-          <ProductAddonsEditor value={addons} onChange={setAddons} disabled={loading} />
-          {!item.pricing_configuration && !addons.length && Boolean(item.product?.pricing_addons?.length) && <button type="button" onClick={() => setAddons((item.product?.pricing_addons || []).map(a => ({ ...a })))} className="text-sm text-[#d3bb73]">Wczytaj obecne dodatki produktu do tej oferty</button>}
+          <div className="space-y-2 text-xs text-[#e5e4e2]/65">
+            {!modular && !selectedPackage && <QuantitySourceSelect value={quantitySource} onChange={setQuantitySource}/>}
+            {audience.guest_count && <p>Oferta dla {audience.guest_count} osób{configurationNeedsTables(configuration) ? ` · stoły: ${audience.table_count ?? Math.ceil(audience.guest_count/(audience.guests_per_table || 10))}` : ''}</p>}
+            {selectedPackage?.audience_pricing && <p>Cena obliczana automatycznie. Stawki zmienisz w ustawieniach pakietu.</p>}
+            {audienceError && <p role="alert" className="text-amber-300">{audienceError}</p>}
+          </div>
+          {!modular && <ProductAddonsEditor value={configuration.addons} onChange={setAddons} disabled={loading} />}
+          {!modular && !item.pricing_configuration && !addons.length && Boolean(item.product?.pricing_addons?.length) && <button type="button" onClick={() => setAddons((item.product?.pricing_addons || []).map(a => ({ ...a })))} className="text-sm text-[#d3bb73]">Wczytaj obecne dodatki produktu do tej oferty</button>}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-[#e5e4e2]/55">
@@ -297,23 +345,30 @@ export default function EditOfferItemModal({
                 type="number"
                 min="1"
                 step="1"
-                value={quantity}
+                value={resolvedQuantity}
+                disabled={quantitySource !== 'manual' && !selectedPackage}
                 onChange={(e) => setQuantity(Number(e.target.value))}
                 className={inputClass}
               />
             </div>
 
             <div>
+              <label className="mb-1.5 block text-xs font-medium text-[#e5e4e2]/55">Liczba dni</label>
+              <input type="number" min="1" max="3650" step="1" value={days} onChange={e => setDays(Number(e.target.value))} className={inputClass} />
+            </div>
+            <div>
               <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-[#e5e4e2]/55">
-                Cena bazowa netto / pakiet
+                Cena bazowa netto / dzień
               </label>
               <input
                 type="number"
                 min="0"
                 step="0.01"
-                value={unitPrice}
+                disabled={loading || Boolean(selectedPackage?.audience_pricing)}
+                value={selectedPackage?.audience_pricing || (modular && !manualModularPrice) ? configuration.base_unit_price : Number.isFinite(unitPrice) ? unitPrice : ''}
                 onChange={(e) => {
                   const price = e.target.value === '' ? NaN : Number(e.target.value);
+                      if (modular) setManualModularPrice(true);
                   setUnitPrice(price);
                   if (selectedVariantId) setVariantPrices(current => ({ ...current, [selectedVariantId]: price }));
                 }}

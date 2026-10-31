@@ -3,6 +3,8 @@ import { cookies } from 'next/headers';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { createSupabaseServerClient } from '@/lib/supabase/server.app';
 import { loadInvoiceFinanceAccess } from '@/lib/invoices/financeAccess';
+import { getInvoiceKsefRecipient, readInvoiceKsefRecipientSnapshot } from '@/lib/invoices/ksefRecipient';
+import { getInvoicePartyDataCorrection } from '@/lib/invoices/partyDataCorrection';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -52,7 +54,6 @@ function wait(ms: number) {
 function getDb(supabase: SupabaseClient<any>) {
   return {
     invoices: () => (supabase.from as any)('invoices'),
-    organizations: () => (supabase.from as any)('organizations'),
     ksefCredentials: () => (supabase.from as any)('ksef_credentials'),
     ksefInvoices: () => (supabase.from as any)('ksef_invoices'),
     invoiceHistory: () => (supabase.from as any)('invoice_history'),
@@ -67,16 +68,6 @@ async function fetchInvoice(supabase: SupabaseClient<any>, invoiceId: string) {
     .select('*, invoice_items(*), invoice_order_items(*)')
     .eq('id', invoiceId)
     .single();
-}
-
-async function fetchOrganization(supabase: SupabaseClient<any>, organizationId?: string | null) {
-  if (!organizationId) return { data: null, error: null };
-  const db = getDb(supabase);
-  return await db
-    .organizations()
-    .select('id, name, nip, email, phone, address, postal_code, city, country, alias, krs, regon')
-    .eq('id', organizationId)
-    .maybeSingle();
 }
 
 async function fetchActiveCredentials(supabase: SupabaseClient<any>, myCompanyId: string) {
@@ -231,7 +222,7 @@ async function enrichFinalInvoiceSettledInvoicesWithKsefNumbers(
     .map((inv: any) => inv.invoiceNumber ?? inv.invoice_number)
     .filter(Boolean);
 
-  const [{ data: invoiceRows }, { data: ksefByIdRows }, { data: ksefByNumberRows }] =
+  const [invoiceResult, ksefByIdResult, ksefByNumberResult] =
     await Promise.all([
       settledIds.length
         ? db
@@ -255,6 +246,13 @@ async function enrichFinalInvoiceSettledInvoicesWithKsefNumbers(
             .eq('sync_status', 'synced')
         : Promise.resolve({ data: [] }),
     ]);
+
+  if ([invoiceResult, ksefByIdResult, ksefByNumberResult].some((result) => 'error' in result && result.error)) {
+    throw new Error('Nie udało się odczytać rozliczanych zaliczek. Nie wysłano faktury końcowej do KSeF.');
+  }
+  const invoiceRows = invoiceResult.data;
+  const ksefByIdRows = ksefByIdResult.data;
+  const ksefByNumberRows = ksefByNumberResult.data;
 
   const ksefFromInvoicesById = new Map(
     (invoiceRows ?? []).map((row: any) => [row.id, row.ksef_reference_number]),
@@ -317,6 +315,114 @@ async function enrichFinalInvoiceSettledInvoicesWithKsefNumbers(
       };
     }),
   };
+}
+
+async function prepareStoredInvoiceForKsef(supabase: SupabaseClient<any>, storedInvoice: any) {
+  const invoice = { ...storedInvoice };
+  const partyDataBefore = getInvoicePartyDataCorrection(invoice);
+  if (partyDataBefore && !invoice.related_invoice_id) {
+    throw new Error('Korekta danych wymaga powiązania z fakturą źródłową. Wysyłka została wstrzymana.');
+  }
+  const recipientSnapshot = readInvoiceKsefRecipientSnapshot(invoice.ksef_recipient_snapshot);
+  if (!recipientSnapshot) {
+    throw new Error('Brak zapisanego kontekstu odbiorcy faktury. Przygotuj dane odbiorcy przed wysłaniem do KSeF.');
+  }
+  // SQL NULL is a legacy document. New documents must agree with the explicit
+  // choice made in the form; a saved recipient must never be silently omitted.
+  if (invoice.invoice_recipient_mode != null) {
+    const recipient = recipientSnapshot.recipient;
+    switch (invoice.invoice_recipient_mode) {
+      case 'same_as_buyer':
+        if (recipient !== null) {
+          throw new Error('Wybrano odbiorcę takiego samego jak nabywca, ale faktura zawiera oddzielnego odbiorcę. Sprawdź dane nabywcy i odbiorcy przed wysłaniem.');
+        }
+        break;
+      case 'organization':
+        if (!recipient || !invoice.service_recipient_organization_id ||
+            recipient.organizationId !== invoice.service_recipient_organization_id) {
+          throw new Error('Zapisany odbiorca nie odpowiada organizacji wybranej na fakturze. Sprawdź dane nabywcy i odbiorcy przed wysłaniem.');
+        }
+        break;
+      case 'manual':
+        if (!recipient || recipient.organizationId !== null) {
+          throw new Error('Nie zapisano kompletu ręcznie wprowadzonych danych odbiorcy. Sprawdź odbiorcę przed wysłaniem do KSeF.');
+        }
+        break;
+      default:
+        throw new Error('Nieznany sposób wskazania odbiorcy faktury. Wybierz odbiorcę przed wysłaniem do KSeF.');
+    }
+  }
+  if (invoice.is_proforma) throw new Error('Pro forma nie może być wysłana do KSeF.');
+  const isFinal = invoice.invoice_type === 'final' || invoice.invoice_number?.startsWith('FKO/');
+  if (isFinal && (!invoice.settlement_summary || !Array.isArray(invoice.settled_invoices) || !invoice.settled_invoices.length)) {
+    throw new Error('Faktura końcowa wymaga podsumowania i listy rozliczanych zaliczek.');
+  }
+  if (invoice.invoice_type === 'corrective' && invoice.related_invoice_id) {
+    const { data: related, error } = await getDb(supabase).invoices()
+      .select(partyDataBefore
+        ? 'invoice_type, is_proforma, my_company_id, seller_nip, currency_code, invoice_number, issue_date, ksef_reference_number, buyer_name, buyer_nip, buyer_street, buyer_postal_code, buyer_city, buyer_country, ksef_recipient_snapshot, total_gross, settlement_summary'
+        : 'invoice_type, total_gross, settlement_summary')
+      .eq('id', invoice.related_invoice_id).maybeSingle();
+    if (error || !related) throw new Error('Nie udało się odczytać faktury korygowanej. Wysyłka została wstrzymana.');
+    if (partyDataBefore) {
+      const text = (value: unknown) => String(value ?? '').replace(/\s+/g, ' ').trim();
+      const nip = (value: unknown) => text(value).replace(/^PL/i, '').replace(/[\s-]/g, '');
+      const country = (value: unknown) => {
+        const normalized = text(value).toUpperCase();
+        return !normalized || ['POLSKA', 'POLAND'].includes(normalized) ? 'PL' : normalized;
+      };
+      if (related.is_proforma || related.invoice_type === 'corrective' ||
+          related.my_company_id !== invoice.my_company_id || nip(related.seller_nip) !== nip(invoice.seller_nip) ||
+          text(related.currency_code || 'PLN').toUpperCase() !== text(invoice.currency_code || 'PLN').toUpperCase()) {
+        throw new Error('Korekta danych musi wskazywać fakturę tej samej firmy i waluty; nie można w ten sposób korygować pro formy ani innej korekty.');
+      }
+      if (text(invoice.corrected_invoice_number) !== text(related.invoice_number) ||
+          String(invoice.corrected_invoice_issue_date || '').slice(0, 10) !== String(related.issue_date || '').slice(0, 10) ||
+          (!!related.ksef_reference_number && (invoice.corrected_invoice_was_in_ksef !== true ||
+            text(invoice.corrected_invoice_ksef_number) !== text(related.ksef_reference_number)))) {
+        throw new Error('Odwołanie na korekcie danych nie odpowiada fakturze źródłowej. Sprawdź numer, datę i numer KSeF.');
+      }
+      const expectedBuyer = {
+        name: text(related.buyer_name), nip: nip(related.buyer_nip), street: text(related.buyer_street),
+        postalCode: text(related.buyer_postal_code), city: text(related.buyer_city), countryCode: country(related.buyer_country),
+      };
+      if (Object.entries(expectedBuyer).some(([key, value]) => text(partyDataBefore.buyer[key as keyof typeof expectedBuyer]) !== value) ||
+          partyDataBefore.buyer.nip !== nip(invoice.buyer_nip)) {
+        throw new Error('Dane nabywcy przed korektą nie odpowiadają zapisanej fakturze źródłowej lub zmieniono NIP. Nie można wysłać tej korekty danych.');
+      }
+      const sourceRecipient = readInvoiceKsefRecipientSnapshot(related.ksef_recipient_snapshot);
+      if (!sourceRecipient) throw new Error('Faktura źródłowa nie ma zapisanego odbiorcy. Nie można bezpiecznie zweryfikować korekty danych.');
+      const recipientFields = ['organizationId', 'name', 'nip', 'internalId', 'street', 'postalCode', 'city', 'countryCode', 'role'] as const;
+      if ((sourceRecipient.recipient === null) !== (partyDataBefore.recipient === null) ||
+          (sourceRecipient.recipient && partyDataBefore.recipient && recipientFields.some((key) =>
+            text(sourceRecipient.recipient![key]) !== text(partyDataBefore.recipient![key])))) {
+        throw new Error('Dane odbiorcy przed korektą nie odpowiadają zapisanej fakturze źródłowej. Wysyłka została wstrzymana.');
+      }
+    }
+    invoice.corrected_invoice_type = related.invoice_type;
+    invoice.corrected_amount_before = related.invoice_type === 'final'
+      ? Number(related.settlement_summary?.remainingGross ?? related.total_gross ?? 0)
+      : Number(related.total_gross ?? 0);
+  }
+  invoice.is_final_invoice = isFinal;
+  const invoiceForXml = isFinal
+    ? await enrichFinalInvoiceSettledInvoicesWithKsefNumbers(supabase, invoice)
+    : invoice;
+  const paymentDate = invoice.paid_date || invoice.payment_date || invoice.paid_at;
+  return prepareFA3Invoice({
+    ...invoiceForXml,
+    payment_date: paymentDate ? String(paymentDate).split('T')[0] : null,
+    paid_amount: invoice.payment_status === 'paid'
+      ? Math.abs(Number(invoice.paid_amount ?? invoice.total_gross ?? 0))
+      : Number(invoice.paid_amount ?? 0),
+  }, null, getInvoiceKsefRecipient(invoice));
+}
+
+function requireMatchingSeller(credentials: any, sellerNip: string) {
+  const credentialNip = String(credentials.nip ?? '').replace(/^PL/i, '').replace(/[\s-]/g, '');
+  if (credentialNip !== sellerNip) {
+    throw new Error('NIP aktywnej autoryzacji KSeF jest inny niż NIP sprzedawcy na fakturze. Sprawdź wybraną działalność i jej autoryzację.');
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -429,7 +535,7 @@ export async function POST(request: NextRequest) {
         const supabase = createClient(supabaseUrl, supabaseServiceKey);
         persistenceClient = supabase;
 
-        const { data: invoice, error: invoiceError } = await fetchInvoice(supabase, invoiceId);
+        let { data: invoice, error: invoiceError } = await fetchInvoice(supabase, invoiceId);
 
         if (invoiceError || !invoice) {
           emitProgress('validate', 'error', { message: 'Nie znaleziono faktury' });
@@ -457,7 +563,8 @@ export async function POST(request: NextRequest) {
           return;
         }
 
-        const { data: alreadySynced } = await checkExistingSyncedInvoice(supabase, invoiceId);
+        const { data: alreadySynced, error: syncedCheckError } = await checkExistingSyncedInvoice(supabase, invoiceId);
+        if (syncedCheckError) throw new Error('Nie udało się sprawdzić poprzedniej wysyłki faktury. Spróbuj ponownie po odświeżeniu statusu.');
         if (alreadySynced?.ksef_reference_number) {
           emitProgress('validate', 'error', { message: 'Faktura została już przyjęta przez KSeF' });
           emitResult({
@@ -496,55 +603,15 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        const organizationQuery = await fetchOrganization(supabase, invoice.organization_id);
-        if (organizationQuery.error) {
-          emitProgress('validate', 'error', { message: 'Błąd pobierania danych organizacji' });
-          emitResult({ success: false, error: 'Nie udało się pobrać danych organizacji do KSeF' });
-          controller.close();
-          return;
-        }
-        const organization = organizationQuery.data ?? null;
-
-        if (invoice.invoice_type === 'corrective' && invoice.related_invoice_id) {
-          const db = getDb(supabase);
-          const { data: relatedInv } = await db
-            .invoices()
-            .select('invoice_type, total_gross, settlement_summary')
-            .eq('id', invoice.related_invoice_id)
-            .maybeSingle();
-          if (relatedInv) {
-            invoice.corrected_invoice_type = relatedInv.invoice_type;
-            invoice.corrected_amount_before =
-              relatedInv.invoice_type === 'final'
-                ? Number(relatedInv.settlement_summary?.remainingGross ?? relatedInv.total_gross ?? 0)
-                : Number(relatedInv.total_gross ?? 0);
-          }
-        }
-
-        invoice.is_final_invoice = isFinalInvoice;
-        const invoiceForXml = isFinalInvoice
-          ? await enrichFinalInvoiceSettledInvoicesWithKsefNumbers(supabase, invoice)
-          : invoice;
-
-        const normalizedPaymentDate = invoice.paid_at
-          ? String(invoice.paid_at).split('T')[0]
-          : invoice.paid_date
-            ? String(invoice.paid_date).split('T')[0]
-            : invoice.payment_date
-              ? String(invoice.payment_date).split('T')[0]
-              : null;
-
-        const normalizedInvoiceForXml = {
-          ...invoiceForXml,
-          payment_date: normalizedPaymentDate,
-          paid_at: invoice.paid_at,
-          paid_amount:
-            invoice.payment_status === 'paid'
-              ? Math.abs(Number(invoice.paid_amount ?? invoice.total_gross ?? 0))
-              : Number(invoice.paid_amount ?? 0),
-        };
-
-        const preparedInvoice = prepareFA3Invoice(normalizedInvoiceForXml, organization);
+        // Freeze only this explicitly requested invoice, never backfill historical documents in bulk.
+        const { error: snapshotError } = await userClient.rpc('ensure_invoice_ksef_recipient_snapshot', {
+          p_invoice_id: invoiceId,
+        });
+        if (snapshotError) throw new Error(`Nie udało się przygotować danych odbiorcy: ${snapshotError.message}`);
+        const refreshedInvoice = await fetchInvoice(supabase, invoiceId);
+        if (refreshedInvoice.error || !refreshedInvoice.data) throw new Error('Nie udało się ponownie odczytać faktury po zapisaniu odbiorcy.');
+        invoice = refreshedInvoice.data;
+        let preparedInvoice = await prepareStoredInvoiceForKsef(supabase, invoice);
         const validation = validatePreparedFA3Invoice(preparedInvoice);
 
         if (!validation.valid) {
@@ -560,7 +627,7 @@ export async function POST(request: NextRequest) {
         currentStep = 'xml';
         emitProgress('xml', 'active', { message: 'Generowanie XML FA(3)' });
 
-        const xmlContent = generateFA3XML(preparedInvoice);
+        let xmlContent = generateFA3XML(preparedInvoice);
 
 
         if (DEBUG_XML_ONLY) {        
@@ -589,6 +656,8 @@ export async function POST(request: NextRequest) {
           controller.close();
           return;
         }
+
+        requireMatchingSeller(credentials, preparedInvoice.seller.nip);
 
         const isTestEnv = credentials.is_test_environment ?? false;
         let accessToken = credentials.access_token;
@@ -623,14 +692,28 @@ export async function POST(request: NextRequest) {
           return;
         }
 
-        const { error: claimError } = await supabase.rpc('begin_ksef_send_atomic', {
+        const { error: claimError } = await supabase.rpc('begin_ksef_send_with_snapshot_atomic', {
           p_invoice_id: invoiceId,
+          p_expected_updated_at: invoice.updated_at,
+          p_expected_snapshot: invoice.ksef_recipient_snapshot,
           p_actor: actorEmployeeId,
         });
         if (claimError) {
           throw new Error(`Nie udało się zablokować dokumentu do pojedynczej wysyłki KSeF: ${claimError.message}`);
         }
         ksefSendClaimed = true;
+
+        // Pending-state guards serialize item edits. Rebuild the exact locked version, not a stale preflight.
+        const claimedInvoice = await fetchInvoice(supabase, invoiceId);
+        if (claimedInvoice.error || !claimedInvoice.data || claimedInvoice.data.ksef_status !== 'pending') {
+          throw new Error('Nie udało się odczytać zablokowanej wersji faktury. Nie wysłano dokumentu do KSeF.');
+        }
+        if (claimedInvoice.data.my_company_id !== invoice.my_company_id) {
+          throw new Error('Firma faktury zmieniła się podczas przygotowania wysyłki. Otwórz dokument ponownie.');
+        }
+        preparedInvoice = await prepareStoredInvoiceForKsef(supabase, claimedInvoice.data);
+        requireMatchingSeller(credentials, preparedInvoice.seller.nip);
+        xmlContent = generateFA3XML(preparedInvoice);
 
         const keyMaterial = createSymmetricKeyMaterial(symmetricKeyCert.certificate);
 
@@ -680,6 +763,8 @@ export async function POST(request: NextRequest) {
 
         const encryptedInvoice = encryptInvoiceXml(xmlContent, keyMaterial);
 
+        // A timeout does not prove non-delivery. Keep the invoice pending from the moment dispatch starts.
+        invoiceMayHaveReachedKsef = true;
         const sendResponse = await sendKSeFInvoiceInSession(
           sessionId,
           encryptedInvoice,
@@ -687,7 +772,6 @@ export async function POST(request: NextRequest) {
           isTestEnv,
           { action: 'send-invoice', invoiceId, myCompanyId: invoice.my_company_id },
         );
-        invoiceMayHaveReachedKsef = true;
 
         emitProgress('encrypt', 'completed');
 
@@ -716,30 +800,12 @@ export async function POST(request: NextRequest) {
               { action: 'check-invoice-status', invoiceId, myCompanyId: invoice.my_company_id, attempt: i + 1 },
             );
 
-            const inv = sessionInvoices.invoices?.[0];
+            const sentReference = sendResponse.referenceNumber || sendResponse.invoiceReferenceNumber;
+            const inv = sessionInvoices.invoices?.find((candidate) =>
+              (sentReference && candidate.referenceNumber === sentReference) ||
+              candidate.invoiceHash === encryptedInvoice.invoiceHash,
+            );
             if (!inv) continue;
-
-            const foundKsefNumber =
-            inv.ksefNumber ||
-            inv.ksefReferenceNumber ||
-            inv.invoiceReferenceNumber ||
-            null;
-          
-          if (foundKsefNumber) {
-            ksefNumber = foundKsefNumber;
-          
-            acquisitionTimestamp =
-              inv.acquisitionDate ||
-              inv.acquisitionTimestamp ||
-              inv.invoicingDate ||
-              undefined;
-          
-            emitProgress('poll', 'completed', {
-              message: 'KSeF nadał numer referencyjny',
-            });
-          
-            break;
-          }
 
             const rawStatus = inv.status;
             if (rawStatus && typeof rawStatus === 'object') {
@@ -747,8 +813,16 @@ export async function POST(request: NextRequest) {
               const statusDescription = typeof (rawStatus as any).description === 'string' ? (rawStatus as any).description : undefined;
               const statusDetails = Array.isArray((rawStatus as any).details) ? (rawStatus as any).details : [];
 
+              // API referenceNumber identifies an attempt; only ksefNumber identifies an accepted invoice.
+              if (statusCode === 200 && inv.ksefNumber) {
+                ksefNumber = inv.ksefNumber;
+                acquisitionTimestamp = inv.acquisitionDate || inv.acquisitionTimestamp || inv.invoicingDate;
+                emitProgress('poll', 'completed', { message: 'KSeF przyjął fakturę i nadał numer' });
+                break;
+              }
+
               if (statusCode && statusCode >= 400) {
-                rejectionMessage = [statusDescription, ...statusDetails].filter(Boolean).join(' | ');
+                rejectionMessage = [statusDescription, ...statusDetails].filter(Boolean).join(' | ') || `KSeF odrzucił fakturę (kod ${statusCode}).`;
                 break;
               }
             }
@@ -831,7 +905,14 @@ export async function POST(request: NextRequest) {
         }
         console.error('Error sending invoice to KSeF:', error);
         emitProgress(currentStep, 'error', { message: error.message || String(error) });
-        emitResult({ success: false, error: error.message || 'Błąd podczas wysyłania faktury do KSeF' });
+        emitResult({
+          success: false,
+          pending: invoiceMayHaveReachedKsef,
+          error: invoiceMayHaveReachedKsef
+            ? 'Nie udało się potwierdzić wyniku wysyłki. Faktura mogła dotrzeć do KSeF — najpierw odśwież jej status, nie wysyłaj ponownie.'
+            : error.message || 'Błąd podczas wysyłania faktury do KSeF',
+          details: invoiceMayHaveReachedKsef ? error.message || String(error) : undefined,
+        });
       } finally {
         if (sessionId && accessTokenForClose) {
           try {

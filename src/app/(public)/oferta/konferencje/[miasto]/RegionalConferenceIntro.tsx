@@ -3,10 +3,11 @@ import { ArrowUpRight, MonitorPlay, Radio, Volume2 } from 'lucide-react';
 
 import type { ConferenceCityContent } from '@/lib/SEO/conferenceCityContent';
 import { SITE } from '@/lib/SEO/site';
+import { PSRWN_PROJECT_PATH } from '@/lib/SEO/conferenceOverview';
 
 const technicalLinks = [
   { title: 'Meyer Sound LINA', text: 'Własny system nagłośnienia i realizacja dźwięku dopasowana do sali oraz programu.', href: '/uslugi/systemy-line-array-meyer-sound-lina', icon: Volume2 },
-  { title: 'Ekrany LED', text: 'Prezentacje, materiały wideo i obraz z kamer. Dobór wielkości ekranu do publiczności.', href: '/uslugi/ekrany-led-do-konferencji-i-gall', icon: MonitorPlay },
+  { title: 'Ekrany LED', text: 'Prezentacje, materiały wideo i obraz z kamer. Dobór wielkości ekranu do publiczności.', href: '/uslugi/ekrany-led-do-konferencji-i-gal', icon: MonitorPlay },
   { title: 'Streaming', text: 'Transmisja konferencji, połączenia zdalne i nagranie. Jeden plan obrazu i dźwięku.', href: '/oferta/streaming', icon: Radio },
 ];
 
@@ -28,7 +29,7 @@ export default function RegionalConferenceIntro({ citySlug, cityName, content }:
 
     <div className="mt-10 grid gap-8 lg:grid-cols-2 lg:gap-12">
       <div>
-        <h3 className="text-xl font-light uppercase">Przygotowanie wydarzenia</h3>
+        <h3 className="text-xl font-light uppercase">{content?.planningHeading || 'Przygotowanie wydarzenia'}</h3>
         <p className="mt-4 leading-7 text-white/75">{content?.planning || 'Zakres techniczny dopasowujemy do obiektu, liczby uczestników, programu oraz wymagań transmisji. Przed wyceną ustalamy możliwości montażu i warunki pracy w sali.'}</p>
         {content && <>
           <h4 className="mt-6 text-base font-medium text-[#d3bb73]">Co ustalamy przed wyceną</h4>
@@ -38,26 +39,42 @@ export default function RegionalConferenceIntro({ citySlug, cityName, content }:
               <span>{item}</span>
             </li>)}
           </ul>
-          <details className="group mt-6 rounded-xl bg-white/[0.04] open:bg-white/[0.07]">
+          {content.venue.name && <details className="group mt-6 rounded-xl bg-white/[0.04] open:bg-white/[0.07]">
             <summary className="cursor-pointer px-5 py-4 text-sm font-medium leading-6 text-[#d3bb73] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#d3bb73]/50">Przykład planowania: {content.venue.name}</summary>
             <div className="px-5 pb-5">
               <p className="text-sm leading-6 text-white/75">{content.venue.fact}</p>
               <a href={content.venue.url} className="mt-3 inline-flex min-h-11 items-center text-sm text-[#d3bb73] underline underline-offset-4">Informacje o obiekcie — oficjalne źródło</a>
               <p className="mt-2 text-xs leading-5 text-white/55">Opis oparto na publicznej ofercie obiektu. Wyposażenie, zakres najmu i dostępność potwierdza gospodarz. Potwierdzone realizacje MAVINCI znajdziesz w portfolio.</p>
             </div>
-          </details>
+          </details>}
         </>}
         <p className="mt-5 text-sm leading-6 text-white/60">Biuro i magazyn MAVINCI: {SITE.office.street} w Olsztynie. Do miejsca wydarzenia przyjeżdżamy z techniką i zespołem. Ta strona opisuje obszar obsługi.</p>
         <Link href="#wycena-konferencji" className="mt-5 inline-flex min-h-12 items-center gap-3 rounded-full bg-[#d3bb73] px-5 py-3 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#e3cd8c]">Ustal zakres i wycenę <ArrowUpRight size={18} aria-hidden="true" /></Link>
       </div>
-      <figure className="self-start overflow-hidden rounded-2xl bg-white/[0.04]">
-        <Link href="/portfolio/konferencja-psrwn" prefetch={false}>
+      <figure id={citySlug === 'olsztyn' ? 'realizacja-psrwn' : undefined} className="scroll-mt-28 self-start overflow-hidden rounded-2xl bg-white/[0.04]">
+        <Link href={PSRWN_PROJECT_PATH} prefetch={false}>
           <img src="/images/expertise/technika-768.webp" srcSet="/images/expertise/technika-480.webp 480w, /images/expertise/technika-768.webp 768w, /images/expertise/technika-1280.webp 1280w" sizes="(min-width: 1280px) 580px, (min-width: 1024px) 45vw, (min-width: 768px) 720px, calc(100vw - 40px)" width={1280} height={854} loading="lazy" decoding="async" alt="Realizator MAVINCI przy stanowisku multimediów podczas konferencji PSRWN w Olsztynie" className="aspect-[16/10] w-full object-cover" />
         </Link>
         <figcaption className="p-5">
           <p className="text-xs text-[#d3bb73]">{citySlug === 'olsztyn' ? 'Realizacja w Olsztynie' : 'Przykład naszej pracy · Olsztyn'}</p>
-          <Link href="/portfolio/konferencja-psrwn" className="mt-2 inline-flex items-center gap-3 text-base leading-6 hover:text-[#d3bb73]">Konferencja PSRWN · Hotel Przystań <ArrowUpRight className="shrink-0" size={18} aria-hidden="true" /></Link>
-          <p className="mt-3 text-sm leading-6 text-white/70">Dwudniowa konferencja: multimedia, nagłośnienie, oświetlenie i streaming. Wieczorem także obsługa nagłośnienia bankietu z zespołem TRIO.</p>
+          <h3 className="mt-2 text-lg font-medium uppercase leading-7">
+            <Link href={PSRWN_PROJECT_PATH} className="inline-flex items-center gap-3 hover:text-[#d3bb73]">Konferencja PSRWN · Hotel Przystań <ArrowUpRight className="shrink-0" size={18} aria-hidden="true" /></Link>
+          </h3>
+          {citySlug === 'olsztyn' ? <>
+            <p className="mt-3 text-sm leading-6 text-white/75">Dwudniowe spotkanie Polskiego Stowarzyszenia Rzeczoznawców Wyceny Nieruchomości w Olsztynie łączyło program konferencyjny z wieczornym bankietem. MAVINCI odpowiadało za obsługę techniczną obu części wydarzenia.</p>
+            <dl className="mt-5 space-y-4 text-sm leading-6">
+              <div className="rounded-xl bg-black/15 p-4">
+                <dt className="font-medium text-[#d3bb73]">Wystąpienia na sali i udział online</dt>
+                <dd className="mt-1 text-white/75">Realizacja wizji i multimediów, nagłośnienie, oświetlenie oraz streaming konferencji. Obsługa obejmowała przekaz dla gości obecnych w hotelu i uczestników śledzących wydarzenie zdalnie.</dd>
+              </div>
+              <div className="rounded-xl bg-black/15 p-4">
+                <dt className="font-medium text-[#d3bb73]">Bankiet z muzyką na żywo</dt>
+                <dd className="mt-1 text-white/75">Wieczorem realizowaliśmy nagłośnienie dla zespołu TRIO. Zakres techniczny obejmował więc także część muzyczną po zakończeniu wystąpień konferencyjnych.</dd>
+              </div>
+            </dl>
+            <p className="mt-5 text-sm leading-6 text-white/75"><strong className="font-medium text-white/90">Co otrzymał organizator?</strong> Obsługę programu na sali, transmisję dla odbiorców online i techniczną oprawę bankietu w ramach jednej realizacji MAVINCI.</p>
+            <Link href={PSRWN_PROJECT_PATH} prefetch={false} className="mt-4 inline-flex min-h-11 items-center gap-2 text-sm text-[#d3bb73] underline underline-offset-4">Zobacz opis i zdjęcia konferencji PSRWN <ArrowUpRight size={16} aria-hidden="true" /></Link>
+          </> : <p className="mt-3 text-sm leading-6 text-white/70">Dwudniowa konferencja: multimedia, nagłośnienie, oświetlenie i streaming. Wieczorem także obsługa nagłośnienia bankietu z zespołem TRIO.</p>}
           <Link href="/dla-agencji-i-hoteli" className="mt-4 inline-flex min-h-11 items-center gap-2 text-sm text-[#d3bb73] underline underline-offset-4">Technika dla agencji i hoteli <ArrowUpRight size={16} aria-hidden="true" /></Link>
         </figcaption>
       </figure>

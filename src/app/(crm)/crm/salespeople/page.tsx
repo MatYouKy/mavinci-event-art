@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   BadgePercent,
   BarChart3,
@@ -16,76 +16,20 @@ import {
   Search,
   Tags,
   UserRound,
-  X,
 } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
-import {
-  CommissionPaymentMethod,
-  DEFAULT_DIVIDEND_TAX_RATE,
-  commissionPaymentLabels,
-  formatCommissionMoney,
-} from '@/lib/CRM/events/eventCommission';
+import { formatCommissionMoney } from '@/lib/CRM/events/eventCommission';
 import { supabase } from '@/lib/supabase/browser';
-import SearchCombobox from '@/components/crm/SearchCombobox';
+import CrmSellerProfileSettings, {
+  requestPortalAccess, partnerTypeLabels, partnerStatusLabels,
+  type PartnerType, type PartnerStatus, type PartnerProfile, type PersonOption,
+  type DirectoryData, type Organization, type Company, type BrandTerm,
+} from '@/components/seller/CrmSellerProfileSettings';
 import SellerInboxPanel, { SellerCountBadge } from '@/components/seller/SellerInboxPanel';
 import CrmSellerWorkspace from '@/components/seller/CrmSellerWorkspace';
 import { CrmCartesianChart } from '@/components/crm/charts/CrmCharts';
-import { sellerInboxCounts, type SellerInboxItem } from '@/lib/seller/inbox';
+import { sellerInboxCounts } from '@/lib/seller/inbox';
 import { refreshSellerSidebarBadge, useSellerSidebarBadge } from '@/lib/seller/sidebarBadge';
-
-type PartnerType = 'internal_employee' | 'hotel_employee' | 'agency_employee' | 'independent_referrer';
-type PartnerStatus = 'onboarding' | 'active' | 'inactive';
-type PersonSource = 'contact' | 'employee';
-
-type PartnerProfile = {
-  id: string;
-  employee_id: string | null;
-  contact_id: string | null;
-  partner_type: PartnerType;
-  organization_id: string | null;
-  status: PartnerStatus;
-  portal_enabled: boolean;
-  portal_auth_user_id: string | null;
-  notes: string | null;
-};
-
-type PersonOption = {
-  id: string;
-  label: string;
-  detail: string;
-  email: string | null;
-};
-
-type DirectoryData = {
-  employee_id: string;
-  is_admin: boolean;
-  can_manage: boolean;
-  profiles: PartnerProfile[];
-  inbox: SellerInboxItem[];
-};
-
-type Organization = {
-  id: string;
-  name: string;
-  alias: string | null;
-  business_type: string | null;
-};
-
-type Company = {
-  id: string;
-  name: string;
-};
-
-type BrandTerm = {
-  id?: string;
-  sales_partner_id?: string;
-  my_company_id: string;
-  commission_enabled: boolean;
-  default_commission_rate: number;
-  default_payment_method: CommissionPaymentMethod;
-  dividend_tax_rate: number;
-  is_active: boolean;
-};
 
 type CommissionSummaryRow = {
   sales_partner_id: string | null;
@@ -112,25 +56,13 @@ type PartnerOfferRow = {
   offer_items?: Array<{ name: string; product_id: string | null; quantity: number }>;
 };
 
-const partnerTypeLabels: Record<PartnerType, string> = {
-  internal_employee: 'Sprzedawca Mavinci',
-  hotel_employee: 'Pracownik hotelu',
-  agency_employee: 'Pracownik agencji',
-  independent_referrer: 'Niezależny polecający',
-};
-
-const partnerStatusLabels: Record<PartnerStatus, string> = {
-  onboarding: 'Do uzgodnienia',
-  active: 'Aktywny',
-  inactive: 'Nieaktywny',
-};
-
 const fieldClass =
-  'w-full rounded-lg border border-[#d3bb73]/15 bg-[#0f1119] px-3 py-2.5 text-sm text-[#e5e4e2] outline-none placeholder:text-[#e5e4e2]/25 focus:border-[#d3bb73]/60';
+  'w-full rounded-lg border border-[#d3bb73]/15 bg-[#0f1119] px-3 py-2.5 text-sm text-[#e5e4e2] outline-none placeholder:text-[#e5e4e2]/25 focus:border-[#d3bb73]/25';
 
 export default function SalespeoplePage() {
   const { showSnackbar } = useSnackbar();
   const searchParams = useSearchParams();
+  const router = useRouter();
   const deepLinkHandled = useRef(false);
   const loadRevision = useRef(0);
   const [directory, setDirectory] = useState<DirectoryData | null>(null);
@@ -141,7 +73,6 @@ export default function SalespeoplePage() {
   const sellerInbox = { ...sellerNotifications,
     items: sellerNotifications.employeeId === directory?.employee_id ? sellerNotifications.items : [] };
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [sendingPortalAccessFor, setSendingPortalAccessFor] = useState<string | null>(null);
   const [loadError, setLoadError] = useState('');
   const [profiles, setProfiles] = useState<PartnerProfile[]>([]);
@@ -155,16 +86,7 @@ export default function SalespeoplePage() {
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<'all' | PartnerType>('all');
   const [showForm, setShowForm] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [personSource, setPersonSource] = useState<PersonSource>('contact');
-  const [personId, setPersonId] = useState('');
-  const [partnerType, setPartnerType] = useState<PartnerType>('hotel_employee');
-  const [organizationId, setOrganizationId] = useState('');
-  const [status, setStatus] = useState<PartnerStatus>('active');
-  const [portalEnabled, setPortalEnabled] = useState(false);
-  const [portalAuthUserId, setPortalAuthUserId] = useState('');
-  const [notes, setNotes] = useState('');
-  const [draftTerms, setDraftTerms] = useState<Record<string, BrandTerm>>({});
+  const [newContactId, setNewContactId] = useState<string | undefined>();
 
   const loadData = useCallback(async (background = false) => {
     const revision = ++loadRevision.current;
@@ -185,13 +107,13 @@ export default function SalespeoplePage() {
       const partnerIds = access.profiles.map((profile) => profile.id);
       let contactQuery = supabase.from('contacts').select('id,full_name,email').order('full_name').limit(1500);
       if (!access.is_admin) contactQuery = contactQuery.eq('owner_id', access.employee_id);
-      const [employeesResult, contactsResult, organizationsResult, companiesResult, termsResult, commissionsResult, partnerOffersResult] =
+      const [employeesResult, contactsResult, organizationsResult, companiesResult, termsResult, commissionsResult, partnerOffersResult, defaultsResult] =
       await Promise.all([
         access.is_admin
           ? supabase.from('employees').select('id,name,surname,email').eq('is_active', true).order('surname')
           : Promise.resolve({ data: [], error: null }),
         contactQuery,
-        supabase.from('organizations').select('id,name,alias,business_type').order('name').limit(1000),
+        supabase.from('organizations').select('id,name,alias,business_type,location_id').order('name').limit(1000),
         supabase.from('my_companies').select('id,name').order('name'),
         partnerIds.length ? supabase
           .from('sales_partner_brand_terms')
@@ -208,13 +130,14 @@ export default function SalespeoplePage() {
           .in('sales_partner_id', partnerIds)
           .order('created_at', { ascending: false })
           .limit(250) : Promise.resolve({ data: [], error: null }),
+        partnerIds.length ? supabase.from('sales_partner_profiles').select('id,portal_default_company_id').in('id', partnerIds) : Promise.resolve({ data: [], error: null }),
       ]);
       if (revision !== loadRevision.current) return;
-      const detailError = [employeesResult, contactsResult, organizationsResult, companiesResult, termsResult, commissionsResult, partnerOffersResult]
+      const detailError = [employeesResult, contactsResult, organizationsResult, companiesResult, termsResult, commissionsResult, partnerOffersResult, defaultsResult]
         .find((response) => response.error)?.error;
       if (detailError) throw detailError;
       setDirectory(access);
-      setProfiles(access.profiles);
+      setProfiles(access.profiles.map(profile => ({ ...profile, portal_default_company_id: defaultsResult.data?.find(row => row.id === profile.id)?.portal_default_company_id || null })));
       setEmployees((employeesResult.data || []).map((employee) => ({
         id: employee.id,
         label: `${employee.name} ${employee.surname}`.trim(),
@@ -269,9 +192,7 @@ export default function SalespeoplePage() {
       setDirectory(null);
       setProfiles([]);
       setShowForm(false);
-      setEditingId(null);
-      setPersonSource('contact');
-      setPartnerType('hotel_employee');
+      setNewContactId(undefined);
       setTypeFilter('all');
       setLoading(true);
       deepLinkHandled.current = false;
@@ -288,38 +209,12 @@ export default function SalespeoplePage() {
     };
   }, [loadData]);
 
-  useEffect(() => {
-    if (!loading && editingId && !profiles.some((profile) => profile.id === editingId)) {
-      setShowForm(false);
-      setEditingId(null);
-    }
-  }, [editingId, loading, profiles]);
-
   const personMap = useMemo(
     () => new Map([...employees, ...contacts].map((person) => [person.id, person])),
     [contacts, employees],
   );
   const organizationMap = useMemo(
     () => new Map(organizations.map((organization) => [organization.id, organization])),
-    [organizations],
-  );
-
-  const personOptions = useMemo(
-    () => (personSource === 'employee' ? employees : contacts).map((person) => ({
-      id: person.id,
-      label: person.label,
-      description: person.detail,
-    })),
-    [contacts, employees, personSource],
-  );
-
-  const organizationOptions = useMemo(
-    () => organizations.map((organization) => ({
-      id: organization.id,
-      label: organization.alias || organization.name,
-      description: organization.alias ? organization.name : null,
-      keywords: organization.business_type || '',
-    })),
     [organizations],
   );
 
@@ -361,220 +256,50 @@ export default function SalespeoplePage() {
     };
   }, [partnerOffers]);
 
-  const resetForm = () => {
-    setEditingId(null);
-    setPersonSource('contact');
-    setPersonId('');
-    setPartnerType('hotel_employee');
-    setOrganizationId('');
-    setStatus('active');
-    setPortalEnabled(false);
-    setPortalAuthUserId('');
-    setNotes('');
-    setDraftTerms({});
-    setShowForm(false);
-  };
 
   const beginAdd = () => {
-    resetForm();
-    setDraftTerms(Object.fromEntries(companies.map((company) => [company.id, {
-      my_company_id: company.id,
-      commission_enabled: false,
-      default_commission_rate: 10,
-      default_payment_method: 'cash_dividend' as CommissionPaymentMethod,
-      dividend_tax_rate: DEFAULT_DIVIDEND_TAX_RATE,
-      is_active: false,
-    }])));
+    if (!canManage) return;
+    setNewContactId(undefined);
     setShowForm(true);
   };
 
-  const beginEdit = (profile: PartnerProfile) => {
-    const source: PersonSource = profile.employee_id ? 'employee' : 'contact';
-    const profileTerms = terms.filter((term) => term.sales_partner_id === profile.id);
-    setEditingId(profile.id);
-    setPersonSource(source);
-    setPersonId(profile.employee_id || profile.contact_id || '');
-    setPartnerType(profile.partner_type);
-    setOrganizationId(profile.organization_id || '');
-    setStatus(profile.status);
-    setPortalEnabled(profile.portal_enabled);
-    setPortalAuthUserId(profile.portal_auth_user_id || '');
-    setNotes(profile.notes || '');
-    setDraftTerms(Object.fromEntries(companies.map((company) => {
-      const saved = profileTerms.find((term) => term.my_company_id === company.id);
-      return [company.id, saved || {
-        my_company_id: company.id,
-        commission_enabled: false,
-        default_commission_rate: 10,
-        default_payment_method: 'cash_dividend' as CommissionPaymentMethod,
-        dividend_tax_rate: DEFAULT_DIVIDEND_TAX_RATE,
-        is_active: false,
-      }];
-    })));
-    setShowForm(true);
-  };
+  // Older links pointed to an editor above this list. Existing contact sellers
+  // now have one home: the sales workspace in their contact profile.
+  useEffect(() => {
+    if (loading || loadError || deepLinkHandled.current) return;
+    const contactId = searchParams.get('contactId');
+    const selectedProfile = profiles.find(profile =>
+      contactId ? profile.contact_id === contactId : profile.id === searchParams.get('seller'));
+    if (selectedProfile?.contact_id) {
+      deepLinkHandled.current = true;
+      const target = new URLSearchParams(searchParams.toString());
+      target.delete('contactId');
+      target.delete('seller');
+      target.delete('new');
+      target.set('tab', 'seller');
+      if (contactId) target.set('section', 'settings');
+      router.replace(`/crm/contacts/${selectedProfile.contact_id}?${target}${target.get('section') === 'settings' ? '#seller-profile-settings' : ''}`);
+      return;
+    }
+    if (contactId && canManage && contacts.some(contact => contact.id === contactId)) {
+      deepLinkHandled.current = true;
+      setNewContactId(contactId);
+      setShowForm(true);
+    } else if (searchParams.get('new') === '1' && canManage && !contactId) {
+      deepLinkHandled.current = true;
+      setShowForm(true);
+    }
+  }, [loading, loadError, profiles, contacts, canManage, searchParams, router]);
 
   useEffect(() => {
-    if (loading || deepLinkHandled.current) return;
-    const contactId = searchParams.get('contactId');
-    if (!contactId || !contacts.some((contact) => contact.id === contactId)) return;
-
-    deepLinkHandled.current = true;
-    const existingProfile = profiles.find((profile) => profile.contact_id === contactId);
-    if (existingProfile) {
-      const profileTerms = terms.filter((term) => term.sales_partner_id === existingProfile.id);
-      setEditingId(existingProfile.id);
-      setPersonSource('contact');
-      setPersonId(contactId);
-      setPartnerType(existingProfile.partner_type);
-      setOrganizationId(existingProfile.organization_id || '');
-      setStatus(existingProfile.status);
-      setPortalEnabled(existingProfile.portal_enabled);
-      setPortalAuthUserId(existingProfile.portal_auth_user_id || '');
-      setNotes(existingProfile.notes || '');
-      setDraftTerms(Object.fromEntries(companies.map((company) => {
-        const saved = profileTerms.find((term) => term.my_company_id === company.id);
-        return [company.id, saved || {
-          my_company_id: company.id,
-          commission_enabled: false,
-          default_commission_rate: 10,
-          default_payment_method: 'cash_dividend' as CommissionPaymentMethod,
-          dividend_tax_rate: DEFAULT_DIVIDEND_TAX_RATE,
-          is_active: false,
-        }];
-      })));
-      setShowForm(true);
-      return;
-    }
-
-    setEditingId(null);
-    setPersonSource('contact');
-    setPersonId(contactId);
-    setPartnerType('hotel_employee');
-    setOrganizationId('');
-    setStatus('active');
-    setPortalEnabled(true);
-    setPortalAuthUserId('');
-    setNotes('');
-    setDraftTerms(Object.fromEntries(companies.map((company) => [company.id, {
-      my_company_id: company.id,
-      commission_enabled: false,
-      default_commission_rate: 10,
-      default_payment_method: 'cash_dividend' as CommissionPaymentMethod,
-      dividend_tax_rate: DEFAULT_DIVIDEND_TAX_RATE,
-      is_active: false,
-    }])));
-    setShowForm(true);
-  }, [companies, contacts, loading, profiles, searchParams, terms]);
-
-  const requestPortalAccess = async (profileId: string, forceEmail = false) => {
-    const { data: sessionData } = await supabase.auth.getSession();
-    const accessToken = sessionData.session?.access_token;
-    if (!accessToken) throw new Error('Sesja wygasła. Zaloguj się ponownie.');
-
-    const response = await fetch('/bridge/seller/invite', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
-      body: JSON.stringify({ salesPartnerId: profileId, forceEmail }),
+    if (!showForm || !canManage) return;
+    const frame = window.requestAnimationFrame(() => {
+      const form = document.getElementById('seller-create-profile');
+      form?.scrollIntoView({ block: 'start', behavior: 'instant' });
+      form?.focus({ preventScroll: true });
     });
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.error || 'Nie udało się przygotować dostępu do portalu');
-    return result as { invited: boolean; alreadyLinked: boolean; emailSent: boolean; email: string };
-  };
-
-  const savePartner = async () => {
-    if (!canManage || (!isAdmin && (personSource !== 'contact' || partnerType === 'internal_employee'
-      || !contacts.some((contact) => contact.id === personId)))) {
-      showSnackbar('Możesz zarządzać tylko przypisanymi do Ciebie sprzedawcami zewnętrznymi.', 'warning');
-      return;
-    }
-    if (!personId) {
-      showSnackbar('Wybierz osobę z bazy pracowników lub kontaktów', 'warning');
-      return;
-    }
-    if (partnerType === 'hotel_employee' && !organizationId) {
-      showSnackbar('Pracownik hotelu musi mieć przypisany hotel', 'warning');
-      return;
-    }
-    if (portalEnabled && personSource !== 'contact') {
-      showSnackbar('Konto portalu hotelowego musi być powiązane z osobą z kartoteki kontaktów', 'warning');
-      return;
-    }
-    if (portalEnabled && !contacts.find((contact) => contact.id === personId)?.email) {
-      showSnackbar('Aby wysłać dane logowania, uzupełnij adres e-mail w kartotece kontaktu', 'warning');
-      return;
-    }
-    if (portalEnabled && status !== 'active') {
-      showSnackbar('Dostęp do portalu można nadać tylko aktywnemu sprzedawcy', 'warning');
-      return;
-    }
-    if (!Object.values(draftTerms).some((term) => term.is_active)) {
-      showSnackbar('Włącz co najmniej jedną markę dla sprzedawcy', 'warning');
-      return;
-    }
-
-    setSaving(true);
-    const profilePayload = {
-      employee_id: personSource === 'employee' ? personId : null,
-      contact_id: personSource === 'contact' ? personId : null,
-      partner_type: partnerType,
-      organization_id: organizationId || null,
-      status,
-      portal_enabled: portalEnabled,
-      portal_auth_user_id: portalEnabled ? (portalAuthUserId.trim() || null) : null,
-      notes: notes.trim() || null,
-      ...(!editingId ? { created_by: directory?.employee_id || null } : {}),
-    };
-    const profileResult = editingId
-      ? await supabase.from('sales_partner_profiles').update(profilePayload).eq('id', editingId).select('id').single()
-      : await supabase.from('sales_partner_profiles').insert(profilePayload).select('id').single();
-
-    if (profileResult.error || !profileResult.data?.id) {
-      setSaving(false);
-      showSnackbar(profileResult.error?.message || 'Nie udało się zapisać profilu sprzedawcy', 'error');
-      return;
-    }
-
-    const salesPartnerId = profileResult.data.id;
-    const termsPayload = Object.values(draftTerms).map((term) => ({
-      sales_partner_id: salesPartnerId,
-      my_company_id: term.my_company_id,
-      commission_enabled: term.commission_enabled,
-      default_commission_rate: Number(term.default_commission_rate || 0),
-      default_payment_method: term.default_payment_method,
-      dividend_tax_rate: Number(term.dividend_tax_rate || DEFAULT_DIVIDEND_TAX_RATE),
-      is_active: term.is_active,
-    }));
-    const { error: termsError } = await supabase
-      .from('sales_partner_brand_terms')
-      .upsert(termsPayload, { onConflict: 'sales_partner_id,my_company_id' });
-
-    if (termsError) {
-      setSaving(false);
-      showSnackbar(termsError.message || 'Profil zapisano, ale nie udało się zapisać warunków marek', 'error');
-      return;
-    }
-
-    let successMessage = editingId ? 'Profil sprzedawcy został zaktualizowany' : 'Sprzedawca został dodany';
-    if (portalEnabled) {
-      try {
-        const access = await requestPortalAccess(salesPartnerId);
-        successMessage = access.emailSent
-          ? `Sprzedawca zapisany. Wiadomość do ustawienia hasła wysłano na ${access.email}`
-          : `Sprzedawca zapisany. Konto ${access.email} jest połączone z portalem`;
-      } catch (error: any) {
-        setSaving(false);
-        showSnackbar(`Profil zapisano, ale konto portalu nie zostało aktywowane: ${error.message}`, 'warning');
-        await loadData();
-        return;
-      }
-    }
-
-    setSaving(false);
-    showSnackbar(successMessage, 'success');
-    resetForm();
-    await loadData();
-  };
+    return () => window.cancelAnimationFrame(frame);
+  }, [showForm, newContactId, canManage]);
 
   const updatePartnerStatus = async (profileId: string, nextStatus: PartnerStatus) => {
     const { error } = await supabase.from('sales_partner_profiles').update({ status: nextStatus }).eq('id', profileId);
@@ -679,49 +404,20 @@ export default function SalespeoplePage() {
             </section>
 
             {showForm && canManage && (
-              <section className="space-y-5 rounded-xl border border-[#d3bb73]/15 bg-[#1c1f33] p-5">
-                <div className="flex items-center justify-between gap-3">
-                  <div><h2 className="font-medium">{editingId ? 'Edytuj profil sprzedawcy' : 'Nowy sprzedawca'}</h2><p className="mt-1 text-xs text-[#e5e4e2]/40">Osoba pozostaje w swojej kartotece; tutaj zapisujesz tylko warunki handlowe.</p></div>
-                  <button type="button" onClick={resetForm} className="rounded p-1.5 text-[#e5e4e2]/40 hover:bg-white/5"><X className="h-4 w-4" /></button>
-                </div>
-
-                <div className="grid gap-3 md:grid-cols-3">
-                  <label className="text-xs text-[#e5e4e2]/55">Źródło osoby<select value={personSource} disabled={Boolean(editingId) || !isAdmin} onChange={(event) => { const source = event.target.value as PersonSource; setPersonSource(source); setPersonId(''); setPartnerType(source === 'employee' ? 'internal_employee' : 'hotel_employee'); }} className={`${fieldClass} mt-1.5 disabled:opacity-50`}><option value="contact">{isAdmin ? 'Kontakty CRM' : 'Moje kontakty zewnętrzne'}</option>{isAdmin && <option value="employee">Pracownicy Mavinci</option>}</select></label>
-                  <label className="text-xs text-[#e5e4e2]/55">Rodzaj współpracy<select value={partnerType} onChange={(event) => setPartnerType(event.target.value as PartnerType)} className={`${fieldClass} mt-1.5`}>{Object.entries(partnerTypeLabels).filter(([value]) => isAdmin || value !== 'internal_employee').map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-                  <label className="text-xs text-[#e5e4e2]/55">Status<select value={status} onChange={(event) => setStatus(event.target.value as PartnerStatus)} className={`${fieldClass} mt-1.5`}>{Object.entries(partnerStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-                </div>
-
-                <div>
-                  <label className="block text-xs text-[#e5e4e2]/55">Osoba</label>
-                  <SearchCombobox
-                    value={personId}
-                    options={personOptions}
-                    onChange={setPersonId}
-                    disabled={Boolean(editingId)}
-                    allowClear={!editingId}
-                    placeholder="Wyszukaj po imieniu, nazwisku lub e-mailu..."
-                    emptyLabel="Brak pasującej osoby"
-                    className="mt-1.5"
-                  />
-                </div>
-
-                <div className="grid gap-3 md:grid-cols-2">
-                  <label className="text-xs text-[#e5e4e2]/55">Hotel / organizacja {partnerType !== 'hotel_employee' && <span className="text-[#e5e4e2]/30">(opcjonalnie)</span>}<SearchCombobox value={organizationId} options={organizationOptions} onChange={setOrganizationId} placeholder="Wyszukaj hotel lub organizację..." emptyLabel="Brak pasującej organizacji" className="mt-1.5" /></label>
-                  <label className="text-xs text-[#e5e4e2]/55">Notatka<textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={2} className={`${fieldClass} mt-1.5 resize-y`} placeholder="Ustalenia dotyczące współpracy..." /></label>
-                </div>
-
-                <div>
-                  <h3 className="text-sm font-medium">Warunki dla marek</h3>
-                  <p className="mt-1 text-xs text-[#e5e4e2]/40">Każda marka może mieć inną stawkę i sposób rozliczenia.</p>
-                  <div className="mt-3 space-y-2">{companies.map((company) => { const term = draftTerms[company.id] || { my_company_id: company.id, commission_enabled: false, default_commission_rate: 10, default_payment_method: 'cash_dividend' as CommissionPaymentMethod, dividend_tax_rate: DEFAULT_DIVIDEND_TAX_RATE, is_active: false }; return <div key={company.id} className={`grid gap-3 rounded-lg border p-3 md:grid-cols-[minmax(200px,1fr)_140px_220px_120px] ${term.is_active ? 'border-[#d3bb73]/20 bg-[#d3bb73]/5' : 'border-white/5 bg-[#0f1119]'}`}><div className="space-y-2"><label className="flex items-center gap-3 text-sm"><input type="checkbox" checked={term.is_active} onChange={(event) => setDraftTerms({ ...draftTerms, [company.id]: { ...term, is_active: event.target.checked } })} /><span>{company.name}</span></label><label className="flex items-center gap-2 text-[11px] text-[#e5e4e2]/55"><input type="checkbox" disabled={!term.is_active} checked={term.commission_enabled} onChange={(event) => setDraftTerms({ ...draftTerms, [company.id]: { ...term, commission_enabled: event.target.checked } })} /><span>Rozliczenie prowizyjne</span></label></div><label className="text-[11px] text-[#e5e4e2]/45">Prowizja (%)<input type="number" min="0" step="0.01" disabled={!term.is_active || !term.commission_enabled} value={term.default_commission_rate} onChange={(event) => setDraftTerms({ ...draftTerms, [company.id]: { ...term, default_commission_rate: Number(event.target.value || 0) } })} className={`${fieldClass} mt-1 py-1.5 disabled:opacity-30`} /></label><label className="text-[11px] text-[#e5e4e2]/45">Sposób wypłaty<select disabled={!term.is_active || !term.commission_enabled} value={term.default_payment_method} onChange={(event) => setDraftTerms({ ...draftTerms, [company.id]: { ...term, default_payment_method: event.target.value as CommissionPaymentMethod } })} className={`${fieldClass} mt-1 py-1.5 disabled:opacity-30`}>{Object.entries(commissionPaymentLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label className="text-[11px] text-[#e5e4e2]/45">Podatek (%)<input type="number" min="0" max="99.99" step="0.01" disabled={!term.is_active || !term.commission_enabled || term.default_payment_method !== 'cash_dividend'} value={term.dividend_tax_rate} onChange={(event) => setDraftTerms({ ...draftTerms, [company.id]: { ...term, dividend_tax_rate: Number(event.target.value || 0) } })} className={`${fieldClass} mt-1 py-1.5 disabled:opacity-30`} /></label></div>; })}</div>
-                </div>
-
-                <div className={`rounded-lg border p-3 ${personSource === 'contact' ? 'border-sky-300/10 bg-sky-300/5' : 'border-white/5 bg-white/[0.02] opacity-45'}`}>
-                  <label className="flex items-start gap-3 text-sm"><input type="checkbox" checked={portalEnabled} disabled={personSource !== 'contact'} onChange={(event) => setPortalEnabled(event.target.checked)} className="mt-0.5" /><span><span className="block text-sky-100">Nadaj dostęp do portalu sprzedawcy</span><span className="mt-1 block text-xs text-sky-100/45">Po zapisaniu system utworzy lub połączy konto z adresem e-mail kontaktu i od razu wyśle zaproszenie. Portal pokaże wyłącznie dane tej osoby.</span></span></label>
-                  {portalEnabled && personSource === 'contact' && <p className="mt-3 text-xs text-sky-100/45">Kontakt będzie mógł się zalogować, wylogować, samodzielnie zmienić hasło oraz odzyskać je z ekranu logowania.</p>}
-                </div>
-
-                <div className="flex justify-end gap-2"><button type="button" onClick={resetForm} className="rounded-lg border border-white/10 px-4 py-2 text-sm text-[#e5e4e2]/60">Anuluj</button><button type="button" disabled={saving} onClick={savePartner} className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#111522] disabled:opacity-50">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Zapisz profil</button></div>
+              <section id="seller-create-profile" tabIndex={-1} className="scroll-mt-24 space-y-5 rounded-xl bg-[#1c1f33] p-5 focus:outline-none">
+                <h2 className="font-medium">Nowy sprzedawca</h2>
+                <CrmSellerProfileSettings
+                  key={newContactId || 'new'}
+                  contactId={newContactId}
+                  onCancel={() => setShowForm(false)}
+                  onSaved={profile => {
+                    setShowForm(false);
+                    router.push(profile.contactId
+                      ? `/crm/contacts/${profile.contactId}?tab=seller&section=settings#seller-profile-settings`
+                      : `/crm/salespeople?seller=${profile.id}&section=settings`);
+                    void loadData(true);
+                  }}
+                />
               </section>
             )}
 
@@ -752,7 +448,7 @@ export default function SalespeoplePage() {
                   emptyMessage="Brak sprzedawców spełniających filtry."
                 />
               </div>
-<div className="divide-y divide-white/5">{filteredProfiles.map((profile) => { const person = personMap.get(profile.employee_id || profile.contact_id || ''); const organization = organizationMap.get(profile.organization_id || ''); const profileTerms = terms.filter((term) => term.sales_partner_id === profile.id && term.is_active); const rows = commissionRows.filter((row) => row.sales_partner_id === profile.id && row.status !== 'cancelled'); const payable = rows.filter((row) => row.status !== 'paid').reduce((sum, row) => sum + Number(row.amount || 0), 0); const hasCommission = profileTerms.some((term) => term.commission_enabled); const profileHref = profile.contact_id ? `/crm/contacts/${profile.contact_id}?tab=seller` : `/crm/salespeople?seller=${profile.id}`; const alerts = sellerInboxCounts(sellerInbox.items, profile.id); const chatHref = `${profileHref}&section=chat`; const isSendingAccess = sendingPortalAccessFor === profile.id; return <div key={profile.id} className="grid gap-4 px-5 py-4 lg:grid-cols-[minmax(220px,1.2fr)_minmax(180px,1fr)_minmax(240px,1.4fr)_150px_auto] lg:items-center"><div className="min-w-0"><div className="flex items-center gap-2">{profile.partner_type === 'hotel_employee' ? <Hotel className="h-4 w-4 text-[#d3bb73]" /> : <UserRound className="h-4 w-4 text-[#d3bb73]" />}{profileHref ? <Link href={profileHref} className="truncate text-sm hover:text-[#d3bb73]">{person?.label || 'Nieznana osoba'}</Link> : <span className="truncate text-sm">{person?.label || 'Nieznana osoba'}</span>}</div><p className="mt-1 text-xs text-[#e5e4e2]/35">{partnerTypeLabels[profile.partner_type]}</p><div className="mt-2 flex flex-wrap gap-2">{alerts.reviews > 0 && <Link href={profileHref} className="flex items-center gap-1.5 rounded-md bg-amber-300/10 px-2 py-1 text-[10px] text-amber-200">Do decyzji <SellerCountBadge count={alerts.reviews} label="Oferty do decyzji" /></Link>}{alerts.messages > 0 && <Link href={chatHref} className="flex items-center gap-1.5 rounded-md bg-sky-300/10 px-2 py-1 text-[10px] text-sky-200">Wiadomości <SellerCountBadge count={alerts.messages} label="Nowe wiadomości" /></Link>}{alerts.notices > 0 && <Link href={profileHref} className="flex items-center gap-1.5 rounded-md bg-white/5 px-2 py-1 text-[10px] text-white/65">Powiadomienia <SellerCountBadge count={alerts.notices} label="Powiadomienia" /></Link>}<Link href={chatHref} className="rounded-md bg-white/5 px-2 py-1 text-[10px] text-[#d3bb73]">Otwórz rozmowy</Link></div></div><div><p className="text-sm text-[#e5e4e2]/70">{organization?.alias || organization?.name || 'Bez organizacji'}</p>{profile.portal_enabled && <p className={`mt-1 text-[11px] ${profile.portal_auth_user_id ? 'text-emerald-300/70' : 'text-amber-300/70'}`}>{profile.portal_auth_user_id ? 'dostęp do portalu nadany' : 'oczekuje na zaproszenie'}</p>}</div><div className="flex flex-wrap gap-1.5">{profileTerms.map((term) => { const company = companies.find((item) => item.id === term.my_company_id); return <span key={term.my_company_id} className="rounded bg-[#d3bb73]/10 px-2 py-1 text-[11px] text-[#d3bb73]">{company?.name || 'Marka'} · {term.commission_enabled ? `${term.default_commission_rate}%` : 'bez prowizji'}</span>; })}{profileTerms.length === 0 && <span className="text-xs text-amber-300/60">Brak aktywnej marki</span>}</div><div>{hasCommission ? <><p className="text-[10px] uppercase tracking-wide text-[#e5e4e2]/35">Do wypłaty</p><p className="mt-1 text-sm text-violet-200">{formatCommissionMoney(payable)}</p></> : <p className="text-xs text-[#e5e4e2]/35">Bez rozliczeń prowizyjnych</p>}</div><div className="flex items-center justify-end gap-2">{canInvitePortal && profile.portal_enabled && <button type="button" disabled={Boolean(sendingPortalAccessFor)} onClick={() => inviteToPortal(profile.id)} className="flex items-center gap-1 rounded-md bg-sky-300/10 px-2 py-1.5 text-[11px] text-sky-200 hover:bg-sky-300/15 disabled:cursor-wait disabled:opacity-50">{isSendingAccess ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MailPlus className="h-3.5 w-3.5" />} {profile.portal_auth_user_id ? 'Wyślij logowanie' : 'Zaproś'}</button>}{canManage && <Link href={`/crm/salespeople/${profile.id}/pricing`} title="Indywidualny cennik" className="rounded p-2 text-[#d3bb73] hover:bg-[#d3bb73]/10"><Tags className="h-4 w-4" /></Link>}{canManage ? <select value={profile.status} onChange={(event) => updatePartnerStatus(profile.id, event.target.value as PartnerStatus)} className="rounded border border-white/10 bg-[#0f1119] px-2 py-1.5 text-xs"><option value="onboarding">Do uzgodnienia</option><option value="active">Aktywny</option><option value="inactive">Nieaktywny</option></select> : <span className="text-xs text-[#e5e4e2]/45">{partnerStatusLabels[profile.status]}</span>}{canManage && <button type="button" onClick={() => beginEdit(profile)} className="rounded p-2 text-[#d3bb73] hover:bg-[#d3bb73]/10"><Pencil className="h-4 w-4" /></button>}</div></div>; })}{filteredProfiles.length === 0 && <p className="px-5 py-12 text-center text-sm text-[#e5e4e2]/35">Brak sprzedawców spełniających filtry.</p>}</div>
+<div className="divide-y divide-white/5">{filteredProfiles.map((profile) => { const person = personMap.get(profile.employee_id || profile.contact_id || ''); const organization = organizationMap.get(profile.organization_id || ''); const profileTerms = terms.filter((term) => term.sales_partner_id === profile.id && term.is_active); const rows = commissionRows.filter((row) => row.sales_partner_id === profile.id && row.status !== 'cancelled'); const payable = rows.filter((row) => row.status !== 'paid').reduce((sum, row) => sum + Number(row.amount || 0), 0); const hasCommission = profileTerms.some((term) => term.commission_enabled); const profileHref = profile.contact_id ? `/crm/contacts/${profile.contact_id}?tab=seller` : `/crm/salespeople?seller=${profile.id}`; const alerts = sellerInboxCounts(sellerInbox.items, profile.id); const chatHref = `${profileHref}&section=chat`; const isSendingAccess = sendingPortalAccessFor === profile.id; return <div key={profile.id} className="grid gap-4 px-5 py-4 lg:grid-cols-[minmax(220px,1.2fr)_minmax(180px,1fr)_minmax(240px,1.4fr)_150px_auto] lg:items-center"><div className="min-w-0"><div className="flex items-center gap-2">{profile.partner_type === 'hotel_employee' ? <Hotel className="h-4 w-4 text-[#d3bb73]" /> : <UserRound className="h-4 w-4 text-[#d3bb73]" />}{profileHref ? <Link href={profileHref} className="truncate text-sm hover:text-[#d3bb73]">{person?.label || 'Nieznana osoba'}</Link> : <span className="truncate text-sm">{person?.label || 'Nieznana osoba'}</span>}</div><p className="mt-1 text-xs text-[#e5e4e2]/35">{partnerTypeLabels[profile.partner_type]}</p><div className="mt-2 flex flex-wrap gap-2">{alerts.reviews > 0 && <Link href={profileHref} className="flex items-center gap-1.5 rounded-md bg-amber-300/10 px-2 py-1 text-[10px] text-amber-200">Do decyzji <SellerCountBadge count={alerts.reviews} label="Oferty do decyzji" /></Link>}{alerts.messages > 0 && <Link href={chatHref} className="flex items-center gap-1.5 rounded-md bg-sky-300/10 px-2 py-1 text-[10px] text-sky-200">Wiadomości <SellerCountBadge count={alerts.messages} label="Nowe wiadomości" /></Link>}{alerts.notices > 0 && <Link href={profileHref} className="flex items-center gap-1.5 rounded-md bg-white/5 px-2 py-1 text-[10px] text-white/65">Powiadomienia <SellerCountBadge count={alerts.notices} label="Powiadomienia" /></Link>}<Link href={chatHref} className="rounded-md bg-white/5 px-2 py-1 text-[10px] text-[#d3bb73]">Otwórz rozmowy</Link></div></div><div><p className="text-sm text-[#e5e4e2]/70">{organization?.alias || organization?.name || 'Bez organizacji'}</p>{profile.portal_enabled && <p className={`mt-1 text-[11px] ${profile.portal_auth_user_id ? 'text-emerald-300/70' : 'text-amber-300/70'}`}>{profile.portal_auth_user_id ? 'dostęp do portalu nadany' : 'oczekuje na zaproszenie'}</p>}</div><div className="flex flex-wrap gap-1.5">{profileTerms.map((term) => { const company = companies.find((item) => item.id === term.my_company_id); return <span key={term.my_company_id} className="rounded bg-[#d3bb73]/10 px-2 py-1 text-[11px] text-[#d3bb73]">{company?.name || 'Marka'} · {term.commission_enabled ? `${term.default_commission_rate}%` : 'bez prowizji'}</span>; })}{profileTerms.length === 0 && <span className="text-xs text-amber-300/60">Brak aktywnej marki</span>}</div><div>{hasCommission ? <><p className="text-[10px] uppercase tracking-wide text-[#e5e4e2]/35">Do wypłaty</p><p className="mt-1 text-sm text-violet-200">{formatCommissionMoney(payable)}</p></> : <p className="text-xs text-[#e5e4e2]/35">Bez rozliczeń prowizyjnych</p>}</div><div className="flex items-center justify-end gap-2">{canInvitePortal && profile.portal_enabled && <button type="button" disabled={Boolean(sendingPortalAccessFor)} onClick={() => inviteToPortal(profile.id)} className="flex items-center gap-1 rounded-md bg-sky-300/10 px-2 py-1.5 text-[11px] text-sky-200 hover:bg-sky-300/15 disabled:cursor-wait disabled:opacity-50">{isSendingAccess ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MailPlus className="h-3.5 w-3.5" />} {profile.portal_auth_user_id ? 'Wyślij logowanie' : 'Zaproś'}</button>}{canManage && <Link href={`/crm/salespeople/${profile.id}/pricing`} title="Indywidualny cennik" className="rounded p-2 text-[#d3bb73] hover:bg-[#d3bb73]/10"><Tags className="h-4 w-4" /></Link>}{canManage ? <select value={profile.status} onChange={(event) => updatePartnerStatus(profile.id, event.target.value as PartnerStatus)} className="rounded border border-white/10 bg-[#0f1119] px-2 py-1.5 text-xs"><option value="onboarding">Do uzgodnienia</option><option value="active">Aktywny</option><option value="inactive">Nieaktywny</option></select> : <span className="text-xs text-[#e5e4e2]/45">{partnerStatusLabels[profile.status]}</span>}{canManage && <Link href={`${profileHref}&section=settings#seller-profile-settings`} aria-label={`Otwórz ustawienia sprzedawcy: ${person?.label || 'wybrana osoba'}`} title="Ustawienia w profilu sprzedawcy" className="rounded p-2 text-[#d3bb73] hover:bg-[#d3bb73]/10"><Pencil className="h-4 w-4" aria-hidden="true" /></Link>}</div></div>; })}{filteredProfiles.length === 0 && <p className="px-5 py-12 text-center text-sm text-[#e5e4e2]/35">Brak sprzedawców spełniających filtry.</p>}</div>
             </section>
           </>
         )}

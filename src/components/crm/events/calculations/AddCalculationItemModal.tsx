@@ -1,12 +1,14 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import { X, Search, Package, Zap, AlertTriangle } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { CalcItem, Category } from './EventCalculationsTab';
 import { DEFAULT_VAT } from '../helpers/calculations/calculations.helper';
 import NextImage from 'next/image';
 import Popover from '@/components/UI/Tooltip';
+import CalculationVehicleTravel from './CalculationVehicleTravel';
 interface EquipmentOption {
   id: string;
   name: string;
@@ -25,6 +27,8 @@ interface EquipmentOption {
 }
 
 interface Props {
+  calculationId: string;
+  contextPanel?: ReactNode;
   category: Category;
   existingCount: number;
   existingItems: CalcItem[];
@@ -34,6 +38,8 @@ interface Props {
 }
 
 export function AddCalculationItemModal({
+  calculationId,
+  contextPanel,
   category,
   existingCount,
   existingItems,
@@ -45,7 +51,7 @@ export function AddCalculationItemModal({
     initialItem ? (['warehouse', 'product', 'vehicle'].includes(initialItem.source) ? initialItem.source as 'warehouse' | 'product' | 'vehicle' : 'manual')
       : category === 'equipment' ? 'warehouse' : 'manual',
   );
-  type CatalogOption = { id: string; label: string; name: string; description: string; price: number; unit: string; vat: number };
+  type CatalogOption = { id: string; label: string; name: string; description: string; price: number; unit: string; vat: number; thumbnail?: string | null; vehicleFuelType?: string; personnelCount?: number | null; minimumQuantity?: number };
   const [catalog, setCatalog] = useState<CatalogOption[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [selectedCatalog, setSelectedCatalog] = useState<CatalogOption | null>(initialItem && ['product', 'vehicle'].includes(initialItem.source) && initialItem.source_ref ? {
@@ -67,13 +73,20 @@ export function AddCalculationItemModal({
         const options: CatalogOption[] = [];
         for (let offset = 0; ; offset += 500) {
           const result = mode === 'product'
-            ? await supabase.from('offer_products').select('id,name,description,price_net,base_price,unit,vat_rate').eq('is_active', true).eq('is_personnel_service', true).order('id').range(offset, offset + 499)
-            : await supabase.from('vehicles').select('id,name,brand,model,registration_number,category,status').not('status', 'in', '(sold,scrapped,inactive)').order('id').range(offset, offset + 499);
+            ? await supabase.from('offer_products').select('id,name,description,price_net,base_price,unit,vat_rate,min_quantity,offer_image_path,offer_product_staff(quantity,product_variant_id,is_optional)').eq('is_active', true).eq('is_personnel_service', true).order('id').range(offset, offset + 499)
+            : await supabase.from('vehicles').select('id,name,brand,model,registration_number,category,status,fuel_type').not('status', 'in', '(sold,scrapped,inactive)').order('id').range(offset, offset + 499);
           if (result.error) throw result.error;
           for (const row of (result.data || []) as any[]) {
             const transportName = ['personal_car', 'bus', 'motorcycle'].includes(row.category) ? 'Transport osobowy' : 'Transport ciężarowy';
-            options.push(mode === 'product' ? { id: row.id, label: row.name, name: row.name, description: row.description || '', price: Number(row.price_net ?? row.base_price ?? 0), unit: row.unit || 'h', vat: Number(row.vat_rate ?? DEFAULT_VAT) }
-              : { id: row.id, label: [row.name || [row.brand, row.model].filter(Boolean).join(' '), row.registration_number].filter(Boolean).join(' · '), name: transportName, description: '', price: 0, unit: 'auto', vat: DEFAULT_VAT });
+            let thumbnail: string | null = null;
+            if (mode === 'product' && row.offer_image_path) {
+              const signed = await supabase.storage.from('offer-product-pages').createSignedUrl(row.offer_image_path, 3600);
+              thumbnail = signed.data?.signedUrl || null;
+            }
+            const baseStaff = (row.offer_product_staff || []).filter((person: any) => !person.product_variant_id && !person.is_optional);
+            const personnelCount = baseStaff.length ? baseStaff.reduce((total: number, person: any) => total + Number(person.quantity || 0), 0) : null;
+            options.push(mode === 'product' ? { id: row.id, thumbnail, personnelCount, minimumQuantity: Number(row.min_quantity) > 0 ? Number(row.min_quantity) : 1, label: row.name, name: row.name, description: row.description || '', price: Number(row.price_net ?? row.base_price ?? 0), unit: row.unit || 'h', vat: Number(row.vat_rate ?? DEFAULT_VAT) }
+              : { id: row.id, label: [row.name || [row.brand, row.model].filter(Boolean).join(' '), row.registration_number].filter(Boolean).join(' · '), vehicleFuelType: row.fuel_type, name: transportName, description: '', price: 0, unit: 'auto', vat: DEFAULT_VAT });
           }
           if ((result.data || []).length < 500) break;
         }
@@ -108,6 +121,9 @@ export function AddCalculationItemModal({
   const [days, setDays] = useState(initialItem?.days ?? 1);
   const [unitPrice, setUnitPrice] = useState(initialItem?.unit_price ?? 0);
   const [vatRate, setVatRate] = useState(initialItem?.vat_rate ?? DEFAULT_VAT);
+  const [travelBusy, setTravelBusy] = useState(false);
+  const [travelPending, setTravelPending] = useState(false);
+  const [transportEstimate, setTransportEstimate] = useState(initialItem?.transport_estimate ?? null);
   const [powerWatts, setPowerWatts] = useState<number | null>(initialItem?.power_watts ?? null);
 
   const loadEquipment = useCallback(async () => {
@@ -247,7 +263,8 @@ export function AddCalculationItemModal({
   const stockExceeded = selectedEquipment != null && quantity > selectedEquipment.stock_quantity;
 
   const handleSubmit = async () => {
-    if (submitLock.current || !name.trim()) return;
+    if (submitLock.current || travelBusy || !name.trim()) return;
+    if (travelPending) { setError('Zastosuj wynik kalkulatora lub wybierz ręczną stawkę transportu.'); return; }
     if (![quantity, days, unitPrice, vatRate].every(Number.isFinite) || quantity <= 0 || days <= 0 || unitPrice < 0 || vatRate < 0 || vatRate > 100 || !unit.trim()) {
       setError('Uzupełnij poprawną ilość, jednostkę, dni / kilometry, cenę i VAT.'); return;
     }
@@ -269,6 +286,7 @@ export function AddCalculationItemModal({
       position: initialItem?.position ?? existingCount,
       vat_rate: vatRate,
       editing: false,
+      transport_estimate: isTransport ? transportEstimate : null,
       power_watts: powerWatts,
       power_source_ref: selectedEquipment?.id ?? (!sourceChanged ? initialItem?.power_source_ref : null) ?? null,
       weight_kg: selectedEquipment?.weight_kg ?? (!sourceChanged ? initialItem?.weight_kg : null) ?? null,
@@ -295,16 +313,19 @@ export function AddCalculationItemModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#1c1f33]">
+      <div className={`grid min-h-0 max-h-[90dvh] w-full gap-4 overflow-y-auto ${contextPanel ? 'max-w-[1480px] lg:grid-cols-[minmax(300px,380px)_minmax(0,1fr)] lg:overflow-hidden' : 'max-w-5xl'}`}>
+      <div className={`flex h-[90dvh] min-h-0 min-w-0 w-full flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#1c1f33] ${contextPanel ? 'lg:col-start-2 lg:row-start-1' : ''}`}>
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-[#d3bb73]/10 px-6 py-4">
+        <div className="flex shrink-0 items-center justify-between border-b border-[#d3bb73]/10 px-6 py-4">
           <h3 className="text-lg font-medium text-[#e5e4e2]">{initialItem ? 'Edytuj pozycję' : 'Dodaj pozycję'}</h3>
           <button onClick={close} className="p-1 text-[#e5e4e2]/60 hover:text-[#e5e4e2]">
             <X className="h-5 w-5" />
           </button>
         </div>
 
-        <fieldset disabled={submitting} className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
+        {/* Keep scrolling on a regular block; fieldset has special intrinsic sizing in browsers. */}
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <fieldset disabled={submitting} className="m-0 min-w-0 border-0 px-6 py-4">
           {/* Mode Toggle for equipment category */}
           {category === 'equipment' && (
             <div className="mb-4 flex gap-2">
@@ -341,22 +362,37 @@ export function AddCalculationItemModal({
 
           {(category === 'staff' || category === 'transport') && <div className="mb-4 space-y-3">
             <div className="flex gap-2">{(['manual', category === 'staff' ? 'product' : 'vehicle'] as const).map(option => <button key={option} type="button" onClick={() => {
-              setMode(option); setSourceChanged(true); setSelectedCatalog(null); setName(''); setDescription(''); setUnitPrice(0); setPowerWatts(null); setSearch('');
+              setMode(option); setTransportEstimate(null); setTravelPending(false); setSourceChanged(true); setSelectedCatalog(null); setName(''); setDescription(''); setUnitPrice(0); setPowerWatts(null); setSearch('');
             }} className={`rounded-lg px-4 py-2 text-sm ${mode === option ? 'bg-[#d3bb73]/20 text-[#d3bb73]' : 'bg-white/5 text-white/60'}`}>
               {option === 'manual' ? 'Ręcznie' : option === 'product' ? 'Usługi personelu z katalogu' : 'Pojazdy z bazy'}
             </button>)}</div>
             {mode !== 'manual' && !selectedCatalog && <>
               <input aria-label="Szukaj w katalogu" value={search} onChange={e => setSearch(e.target.value)} placeholder={mode === 'product' ? 'Szukaj usługi personelu…' : 'Szukaj pojazdu…'} className={inputClass} />
               <div className="max-h-64 overflow-y-auto rounded-lg bg-black/15">
-                {catalogLoading ? <p className="p-4 text-sm text-white/50">Wczytuję…</p> : !catalog.length ? <p className="p-4 text-sm text-white/50">{mode === 'product' ? 'Brak usług. W karcie produktu zaznacz „Usługa personelu — bez sprzętu”.' : 'Brak dostępnych pojazdów.'}</p> : catalog.filter(option => option.label.toLocaleLowerCase('pl').includes(search.toLocaleLowerCase('pl'))).map(option => <button key={option.id} type="button" className="block w-full p-3 text-left text-sm text-white/80 hover:bg-white/5" onClick={() => {
-                  setSelectedCatalog(option); setSourceChanged(true); setName(option.name); setDescription(option.description); setUnitPrice(option.price); setUnit(option.unit); setVatRate(option.vat); setPowerWatts(null);
-                }}>{option.label}{mode === 'product' && <span className="ml-2 text-[#d3bb73]">{option.price.toFixed(2)} zł / {option.unit}</span>}</button>)}
+                {catalogLoading ? <p className="p-4 text-sm text-white/50">Wczytuję…</p> : !catalog.length ? <p className="p-4 text-sm text-white/50">{mode === 'product' ? 'Brak usług. Otwórz kartę produktu → Podstawowe informacje → Edytuj. Zaznacz „Usługa personelu — bez sprzętu” oraz „Produkt aktywny”, a następnie zapisz sekcję.' : 'Brak dostępnych pojazdów.'}</p> : catalog.filter(option => option.label.toLocaleLowerCase('pl').includes(search.toLocaleLowerCase('pl'))).map(option => <button key={option.id} type="button" className="flex w-full items-start gap-3 p-3 text-left text-sm text-white/80 hover:bg-white/5" onClick={() => {
+                  setSelectedCatalog(option); setTransportEstimate(null); setTravelPending(false); setSourceChanged(true); setName(option.name); setDescription(option.description); setUnitPrice(option.price); setUnit(option.unit); setVatRate(option.vat); setPowerWatts(null);
+                }}>
+                  {mode === 'product' && <div className="h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-white/5">
+                    {option.thumbnail ? <NextImage src={option.thumbnail} alt={option.name} width={56} height={56} unoptimized className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center"><Package className="h-6 w-6 text-white/30" /></div>}
+                  </div>}
+                  <div className="min-w-0 flex-1">
+                    <div className="font-medium">{option.label}</div>
+                    {mode === 'product' && <>
+                      <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-white/55">
+                        <span>Obsada: {option.personnelCount != null ? `${option.personnelCount.toLocaleString('pl-PL')} os.` : 'nie określono'}</span>
+                        <span>Jednostka: {option.unit}</span>
+                        <span>Min. ilość: {option.minimumQuantity?.toLocaleString('pl-PL') ?? 1} {option.unit}</span>
+                      </div>
+                      <div className="mt-1 text-[#d3bb73]">{option.price.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł netto / {option.unit}</div>
+                    </>}
+                  </div>
+                </button>)}
               </div>
             </>}
             {selectedCatalog && <div className="rounded-lg bg-black/15 p-3 text-sm text-white/65">
               <p>{mode === 'vehicle' ? 'Pojazd — informacja wewnętrzna: ' : 'Usługa z katalogu: '}{selectedCatalog.label}</p>
               {mode === 'vehicle' && <p className="mt-1 text-xs text-white/45">W kalkulacji dla klienta pojawią się wyłącznie nazwa i opis pozycji poniżej. Wybór pojazdu nie rezerwuje go.</p>}
-              <button type="button" className="mt-2 text-[#d3bb73]" onClick={() => { setSelectedCatalog(null); setName(''); }}>Zmień</button>
+              <button type="button" className="mt-2 text-[#d3bb73]" onClick={() => { setSelectedCatalog(null); setTransportEstimate(null); setTravelPending(false); setName(''); }}>Zmień</button>
             </div>}
           </div>}
 
@@ -591,6 +627,18 @@ export function AddCalculationItemModal({
                 />
               </div>
 
+              {isTransport && <div className="space-y-3">
+                <CalculationVehicleTravel
+                  key={selectedCatalog?.id || 'manual-transport'} calculationId={calculationId}
+                  vehicleId={mode === 'vehicle' ? selectedCatalog?.id || '' : ''}
+                  vehicleFuelType={selectedCatalog?.vehicleFuelType || catalog.find(option => option.id === selectedCatalog?.id)?.vehicleFuelType}
+                  initial={sourceChanged ? null : initialItem?.transport_estimate}
+                  distance={days} onBusyChange={setTravelBusy} onPendingChange={setTravelPending}
+                  onApply={result => { setDays(result.distance); if (result.rate !== undefined) setUnitPrice(result.rate); if (result.estimate) setTransportEstimate(result.estimate); }}
+                />
+                {travelPending && <button type="button" disabled={travelBusy} onClick={() => { setTravelPending(false); setTransportEstimate(null); }} className="text-sm text-[#d3bb73]">Użyj ręcznie wpisanego dystansu i stawki poniżej</button>}
+              </div>}
+
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
                 <div>
                   <label className="mb-1.5 block text-sm text-[#e5e4e2]/60">
@@ -626,10 +674,11 @@ export function AddCalculationItemModal({
                   </label>
                   <input
                     type="number"
-                    step={isTransport ? '1' : '0.5'}
+                    step={isTransport ? '0.1' : '0.5'}
                     min={isTransport ? '0' : '0.5'}
                     value={days}
-                    onChange={(e) => setDays(Number(e.target.value))}
+                    disabled={travelBusy}
+                    onChange={(e) => { setDays(Number(e.target.value)); if (isTransport) { setTransportEstimate(null); setTravelPending(false); } }}
                     className={inputClass}
                   />
                 </div>
@@ -652,9 +701,10 @@ export function AddCalculationItemModal({
                   </label>
                   <input
                     type="number"
-                    step="0.01"
+                    step={isTransport ? '0.000001' : '0.01'}
                     value={unitPrice}
-                    onChange={(e) => setUnitPrice(Number(e.target.value))}
+                    disabled={travelBusy}
+                    onChange={(e) => { setUnitPrice(Number(e.target.value)); if (isTransport) { setTransportEstimate(null); setTravelPending(false); } }}
                     className={inputClass}
                   />
                 </div>
@@ -679,7 +729,7 @@ export function AddCalculationItemModal({
                 <div className="flex items-center justify-between rounded-lg border border-white/10 bg-[#0a0d1a] px-4 py-3">
                   <div className="text-sm text-[#e5e4e2]/60">
                     {isTransport
-                      ? `${quantity} aut x ${unitPrice.toFixed(2)} zł/km x ${days} km`
+                      ? `${quantity} aut x ${unitPrice.toLocaleString('pl-PL', { maximumFractionDigits: 6 })} zł/km x ${days} km`
                       : `${quantity} x ${unitPrice.toFixed(2)} x ${days} dni`}
                   </div>
                   <div className="text-right">
@@ -695,10 +745,11 @@ export function AddCalculationItemModal({
             </div>
           )}
         </fieldset>
+        </div>
 
-        {error && <p role="alert" className="px-6 py-2 text-sm text-amber-200">{error}</p>}
+        {error && <p role="alert" className="shrink-0 px-6 py-2 text-sm text-amber-200">{error}</p>}
         {/* Footer */}
-        <div className="flex items-center justify-end gap-3 border-t border-[#d3bb73]/10 px-6 py-4">
+        <div className="flex shrink-0 items-center justify-end gap-3 border-t border-[#d3bb73]/10 px-6 py-4">
           <button
             onClick={close}
             className="rounded-lg px-4 py-2 text-sm text-[#e5e4e2]/70 hover:text-[#e5e4e2]"
@@ -707,12 +758,18 @@ export function AddCalculationItemModal({
           </button>
           <button
             onClick={handleSubmit}
-            disabled={submitting || !name.trim() || (mode === 'warehouse' && !selectedEquipment) || (['product', 'vehicle'].includes(mode) && !selectedCatalog)}
+            disabled={submitting || travelBusy || travelPending || !name.trim() || (mode === 'warehouse' && !selectedEquipment) || (['product', 'vehicle'].includes(mode) && !selectedCatalog)}
             className="rounded-lg bg-[#d3bb73] px-5 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-40"
           >
             {submitting ? 'Zapisuję…' : initialItem ? 'Zapisz zmiany' : 'Dodaj pozycję'}
           </button>
         </div>
+      </div>
+      {contextPanel && (
+        <aside aria-label="Kontekst rozmowy do kalkulacji" className="min-w-0 lg:col-start-1 lg:row-start-1 lg:max-h-[90dvh] lg:overflow-y-auto">
+          {contextPanel}
+        </aside>
+      )}
       </div>
     </div>
   );

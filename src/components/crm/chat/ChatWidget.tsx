@@ -55,6 +55,7 @@ export default function ChatWidget({ employee }: { employee: IEmployee }) {
   const { isOnline, employeeId } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
+  const [initialEmployeeId, setInitialEmployeeId] = useState<string | undefined>();
   const [view, setView] = useState<WidgetView>('list');
   const [activeConversation, setActiveConversation] = useState<Conversation | null>(null);
 
@@ -68,6 +69,21 @@ export default function ChatWidget({ employee }: { employee: IEmployee }) {
 
   // Never silently use another session's identity while CRM displays this employee.
   const currentEmployeeId = employeeId === employee.id ? employeeId : null;
+
+  useEffect(() => {
+    const openEmployee = (event: Event) => {
+      const target = (event as CustomEvent<{employeeId?: string}>).detail?.employeeId;
+      if (!currentEmployeeId || !target || target === currentEmployeeId) return;
+      const existing = conversations.find(conversation => !conversation.is_group &&
+        conversation.participants.length === 2 &&
+        conversation.participants.some(participant => participant.employee_id === target));
+      setIsOpen(true); setIsMinimized(false);
+      if (existing) { setActiveConversation(existing); setView('conversation'); }
+      else { setInitialEmployeeId(target); setView('new'); }
+    };
+    window.addEventListener('crm-chat-open-employee', openEmployee);
+    return () => window.removeEventListener('crm-chat-open-employee', openEmployee);
+  }, [currentEmployeeId, conversations]);
 
   // Request browser notification permission early
   useEffect(() => {
@@ -308,6 +324,7 @@ export default function ChatWidget({ employee }: { employee: IEmployee }) {
   };
 
   const handleNewConversation = () => {
+    setInitialEmployeeId(undefined);
     setView('new');
   };
 
@@ -399,6 +416,8 @@ export default function ChatWidget({ employee }: { employee: IEmployee }) {
               )}
               {view === 'new' && (
                 <ChatNewConversation
+                  key={initialEmployeeId || "manual"}
+                  initialEmployeeId={initialEmployeeId}
                   currentEmployeeId={currentEmployeeId}
                   onBack={() => setView('list')}
                   onConversationCreated={handleConversationCreated}

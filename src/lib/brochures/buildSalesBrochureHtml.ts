@@ -1,8 +1,10 @@
 import { composeBrochureContent, orderedBrochureKeys, parseComposer, type BrochureComposer, type BrochureDecorativePage } from './decorativePages';
 import { creativePageCss, renderCreativePage } from './renderCreativePage';
+import type { BrochureClient } from './recipient';
 
 export type SalesBrochureSnapshot = {
   recipientEmail?: string;
+  recipient?: BrochureClient | null;
   demoUrl?: string;
   demoAttribution?: { sourceId: string; brochureId: string; employeeId: string; recipientEmail: string; campaignId?: string };
   brochure: {

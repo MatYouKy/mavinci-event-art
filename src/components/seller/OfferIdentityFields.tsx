@@ -128,10 +128,23 @@ export function OfferVisualIdentityFields({ value, onChange, onUpload, disabled 
   </div>;
 }
 
-export function OrganizationIdentitySummary({ value, name }: { value: SellerBranding; name?: string | null }) {
-  return <section className="rounded-xl bg-[#1c1f33] p-5"><h2 className="text-sm font-medium">Branding organizacji{ name ? ` · ${name}` : ''}</h2><p className="mt-2 text-xs leading-5 text-white/50">Logo, zdjęcia obiektu, kolory i czcionkę ustawia opiekun w CRM. Dziedziczysz je automatycznie — uzupełnij tylko swoją wizytówkę.</p>
-    <div className="mt-4 grid items-center gap-4 sm:grid-cols-[180px_1fr]"><IdentityAssetPreview path={value.hotel_logo_url} alt="Logo organizacji" className="h-24" /><div className="space-y-3"><p className="text-xs text-white/60">Czcionka nagłówków: {value.heading_font_family || 'Noto Sans'}</p><div className="flex flex-wrap gap-3">{[value.brand_primary_color, value.brand_secondary_color, value.brand_surface_color].filter(Boolean).map((color, index) => <span key={index} className="flex items-center gap-2 text-xs text-white/50"><span className="h-5 w-5 rounded-full" style={{ backgroundColor: color! }} />{color}</span>)}</div><AssetLink path={value.brandbook_url} label="Brandbook organizacji" /></div></div>
-    {value.organization_branding_configured === false && <p className="mt-3 text-xs text-amber-200">Organizacja nie ma jeszcze ustawionego brandingu tej marki. Poproś opiekuna o jego uzupełnienie.</p>}
+export function OrganizationIdentitySummary({ value, name, shared = true }: { value: SellerBranding; name?: string | null; shared?: boolean }) {
+  return <section className="space-y-5 rounded-xl bg-[#1c1f33] p-5">
+    <header><h2 className="text-sm font-medium">{shared ? 'Branding organizacji' : 'Branding sprzedawcy'}{name ? ` · ${name}` : ''}</h2>
+      <p className="mt-2 text-xs leading-5 text-white/50">{shared
+        ? 'Wspólne ustawienia edytują przypisani sprzedawcy w swoim portalu. Zmiany nie nadpisują istniejących ofert ani zapisanych PDF-ów.'
+        : 'Ustawienia edytuje sprzedawca w swoim portalu. Poniżej aktualny podgląd.'}</p></header>
+    <div className="grid items-start gap-5 sm:grid-cols-2">
+      <div className="space-y-2"><h3 className="text-xs text-white/50">Logo</h3><IdentityAssetPreview path={value.hotel_logo_url} alt="Logo ofert" className="h-40" /></div>
+      <div className="space-y-2"><h3 className="text-xs text-white/50">Zdjęcie okładkowe</h3><IdentityAssetPreview path={value.hotel_cover_image_url} alt="Zdjęcie okładkowe obiektu" fit="cover" className="h-40" /></div>
+    </div>
+    {Boolean(value.venue_image_urls?.length) && <div><h3 className="mb-3 text-xs text-white/50">Galeria obiektu</h3><div className="grid gap-3 sm:grid-cols-3">{value.venue_image_urls?.map((path, index) => <IdentityAssetPreview key={`${path}-${index}`} path={path} alt={`Zdjęcie obiektu ${index + 1}`} className="h-28" />)}</div></div>}
+    <div className="space-y-3"><p className="text-sm">Czcionka nagłówków: {value.heading_font_family || 'Noto Sans'}</p>
+      <div className="flex flex-wrap gap-4">{([{ key: 'brand_primary_color', label: 'Kolor główny' }, { key: 'brand_secondary_color', label: 'Akcent' }, { key: 'brand_surface_color', label: 'Tło' }] as const).map((item) => value[item.key] && <span key={item.key} className="flex items-center gap-2 text-xs text-white/60"><span className="h-5 w-5 rounded-full" style={{ backgroundColor: value[item.key]! }} />{item.label}: {value[item.key]}</span>)}</div>
+      <div className="flex flex-wrap gap-4"><AssetLink path={value.heading_font_path} label="Plik czcionki" /><AssetLink path={value.brandbook_url} label="Otwórz brandbook" /></div>
+    </div>
+    {([{ key: 'brandbook_notes', label: 'Zasady używania marki' }, { key: 'footer_text', label: 'Tekst organizacji w ofercie' }, { key: 'disclosure_text', label: 'Informacja o partnerze / realizatorze' }] as const).map((item) => value[item.key] && <div key={item.key}><h3 className="text-xs text-white/45">{item.label}</h3><p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-white/70">{value[item.key]}</p></div>)}
+    {value.organization_branding_configured === false && <p className="text-xs text-amber-200">Organizacja nie ma jeszcze ustawionego brandingu tej marki. Może go uzupełnić każdy przypisany sprzedawca w swoim portalu.</p>}
   </section>;
 }
 

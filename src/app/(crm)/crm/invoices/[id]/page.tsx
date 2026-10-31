@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/browser';
 import {
@@ -40,6 +40,10 @@ import { useInvoiceFinanceAccess } from '@/hooks/useInvoiceFinanceAccess';
 import { resolveInvoiceIssuerName } from '@/lib/invoices/resolveInvoiceIssuerName';
 import { loadCanonicalBankPaymentDisplay, formatCanonicalBankPayment, type CanonicalBankPaymentDisplay } from '@/lib/invoices/canonicalBankPaymentDisplay';
 import { getPaymentAwareInvoiceFooterNote } from '@/lib/invoices/paymentAwareFooterNote';
+import { getInvoiceKsefRecipient } from '@/lib/invoices/ksefRecipient';
+import { getInvoicePartyDataCorrection } from '@/lib/invoices/partyDataCorrection';
+import InvoicePartyCorrectionComparison from '@/components/crm/invoices/InvoicePartyCorrectionComparison';
+import SystemBadge from '@/components/ui/SystemBadge';
 
 type KSeFSendSuccess = {
   ksef_reference_number: string;
@@ -58,7 +62,7 @@ interface Invoice {
   my_company_id: string | null;
   invoice_type: string;
   status: string;
-  payment_status: 'unpaid' | 'partially_paid' | 'paid' | 'overdue' | 'refund_due' | 'partially_refunded' | 'refunded' | null;
+  payment_status: 'unpaid' | 'partially_paid' | 'paid' | 'overdue' | 'refund_due' | 'partially_refunded' | 'refunded' | 'not_applicable' | null;
   paid_amount: number | null;
   paid_at: string | null;
   paid_date?: string | null;
@@ -75,6 +79,7 @@ interface Invoice {
   buyer_street: string;
   buyer_postal_code: string;
   buyer_city: string;
+  buyer_country?: string | null;
   payment_method: string;
   bank_account: string;
   total_net: number;
@@ -89,11 +94,14 @@ interface Invoice {
   billing_arrangement: 'direct' | 'hotel' | 'agency' | 'other';
   service_recipient_organization_id: string | null;
   service_recipient_contact_id: string | null;
+  ksef_recipient_snapshot?: unknown;
   buyer_contact_id: string | null;
   related_invoice_id: string | null;
   is_proforma: boolean;
   proforma_converted_to_invoice_id: string | null;
   correction_reason: string | null;
+  correction_kind?: 'amount' | 'party_data' | null;
+  correction_party_data_before?: unknown;
   correction_scope: string | null;
   corrected_invoice_number: string | null;
   corrected_invoice_issue_date: string | null;
@@ -192,6 +200,22 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
   const { employee } = useCurrentEmployee();
   const { access: financeAccess, loading: financeAccessLoading, error: financeAccessError } = useInvoiceFinanceAccess();
   const [invoice, setInvoice] = useState<Invoice | null>(null);
+  const recipientPreview = useMemo(() => {
+    try {
+      return {
+        recipient: invoice ? getInvoiceKsefRecipient(invoice) : undefined,
+        partyDataBefore: invoice ? getInvoicePartyDataCorrection(invoice) : null,
+        error: null,
+      };
+    } catch (error) {
+      return {
+        recipient: undefined,
+        partyDataBefore: null,
+        error: error instanceof Error ? error.message : 'Nie można odczytać danych odbiorcy zapisanych na fakturze.',
+      };
+    }
+  }, [invoice]);
+  const invoiceRecipient = recipientPreview.recipient;
   const [issuerPreview, setIssuerPreview] = useState<{
     invoiceId: string;
     name: string | null;
@@ -242,6 +266,8 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
   const [lastBase64, setLastBase64] = useState<string | null>(null);
   const [emailSentCount, setEmailSentCount] = useState(0);
   const [showRelations, setShowRelations] = useState(false);
+  const [changingStatus, setChangingStatus] = useState(false);
+  const statusChangeInFlight = useRef(false);
 
   const [finalSettlementPreview, setFinalSettlementPreview] = useState<{
     settledInvoices?: SettledInvoicePdfRef[];
@@ -548,6 +574,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
     setGenerating(true);
 
     try {
+      if (recipientPreview.error) throw new Error(recipientPreview.error);
       const resolvedEventId = invoice.event_id || relatedData.relatedInvoice?.event_id || null;
 
       const [{ data: freshItems }, { data: freshOrderItems }] = await Promise.all([
@@ -618,6 +645,8 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
         buyerStreet: invoice.buyer_street,
         buyerCity: invoice.buyer_city,
         buyerPostalCode: invoice.buyer_postal_code,
+        buyerCountryCode: ['POLSKA', 'POLAND', ''].includes(String(invoice.buyer_country ?? '').toUpperCase()) ? 'PL' : String(invoice.buyer_country).toUpperCase(),
+        recipient: invoiceRecipient,
         totalNet: invoice.total_net,
         totalVat: invoice.total_vat,
         totalGross: invoice.total_gross,
@@ -626,8 +655,11 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
           ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/company-logos/${invoice.company_logo_url}`
           : null,
         correctionReason: invoice.correction_reason || undefined,
+        correctionKind: invoice.correction_kind,
+        correctionPartyDataBefore: recipientPreview.partyDataBefore,
         correctedInvoiceNumber: invoice.corrected_invoice_number || undefined,
         correctedInvoiceIssueDate: invoice.corrected_invoice_issue_date || undefined,
+        correctedInvoiceKsefNumber: invoice.corrected_invoice_ksef_number || undefined,
         items: pdfItems.map((item: InvoiceItem) => ({
           positionNumber: item.position_number,
           name: item.name,
@@ -855,39 +887,95 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
     setShowSendEmailModal(true);
   };
 
-  const handleStatusChange = async (newStatus: string) => {
-    if (!invoice) return;
+  const handleStatusChange = async (newStatus: 'paid' | 'sent' | 'cancelled') => {
+    if (!invoice || statusChangeInFlight.current || !canChangeInvoiceStatus) return;
+    if (newStatus === 'paid' && !canMarkInvoicePaid) return;
+    if (newStatus === 'sent' && !canMarkInvoiceSent) return;
+    if (newStatus === 'cancelled' && !canCancelInvoice) return;
 
-    const safeStatus = newStatus;
-
-    const updateData: Record<string, string | number | null> = {
-      status: safeStatus,
-    };
-
-    if (safeStatus === 'paid') {
-      updateData.payment_status = 'paid';
-      updateData.paid_amount = Math.abs(Number(invoice.total_gross ?? 0));
-      updateData.paid_at = new Date().toISOString();
-      updateData.paid_date = new Date().toISOString().split('T')[0];
-    }
-
-    if (safeStatus !== 'paid' && ['paid', 'refunded'].includes(invoice.payment_status || '')) {
-      updateData.payment_status = 'unpaid';
-      updateData.paid_amount = 0;
-      updateData.paid_at = null;
-      updateData.paid_date = null;
-    }
-
+    statusChangeInFlight.current = true;
+    setChangingStatus(true);
     try {
-      const { error } = await supabase.from('invoices').update(updateData).eq('id', params.id);
+      const updateData: Record<string, string | number | null> = { status: newStatus };
+      if (newStatus === 'paid') {
+        // This is the target total paid, not another payment added to the full invoice value.
+        const targetPaidAmount = Number(isFinalInvoice(invoice)
+          ? invoice.settlement_summary?.remainingGross
+          : invoice.total_gross);
+        const now = new Date();
+        const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        let confirmedPaymentDate = '';
+        const confirmed = await showConfirm({
+          title: 'Potwierdź pełną zapłatę',
+          confirmText: 'Oznacz jako opłaconą',
+          message: (
+            <div className="space-y-3 text-left">
+              <p>Faktura <strong>{invoice.invoice_number}</strong> · {invoice.buyer_name}</p>
+              <p>Łączna potwierdzona zapłata: <strong>{targetPaidAmount.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {invoice.currency_code || 'PLN'}</strong>.</p>
+              {isFinalInvoice(invoice) && <p className="text-xs">To kwota po odjęciu rozliczonych zaliczek.</p>}
+              {canonicalBankPayment && <p className="text-xs">{formatCanonicalBankPayment(canonicalBankPayment)}</p>}
+              <label className="block text-sm">
+                Data pełnej zapłaty
+                <input
+                  type="date"
+                  required
+                  max={today}
+                  onChange={(event) => { confirmedPaymentDate = event.target.value; }}
+                  className="mt-1 block w-full rounded-lg border border-[#d3bb73]/10 bg-black/20 px-3 py-2 text-[#e5e4e2]"
+                />
+              </label>
+              <p className="text-xs text-[#e5e4e2]/60">Potwierdź po sprawdzeniu wpłaty. To ręczne potwierdzenie pełnego rozliczenia, nie dopasowanie do wyciągu.</p>
+            </div>
+          ),
+          validate: () => {
+            const parsedDate = new Date(`${confirmedPaymentDate}T12:00:00Z`);
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(confirmedPaymentDate)
+              || !Number.isFinite(parsedDate.getTime())
+              || parsedDate.toISOString().slice(0, 10) !== confirmedPaymentDate
+              || confirmedPaymentDate > today) {
+              showSnackbar('Podaj rzeczywistą datę zapłaty, nie późniejszą niż dzisiaj.', 'warning');
+              return false;
+            }
+            return true;
+          },
+        });
+        if (!confirmed) return;
+        updateData.payment_status = 'paid';
+        updateData.paid_amount = targetPaidAmount;
+        updateData.paid_at = new Date(`${confirmedPaymentDate}T12:00:00`).toISOString();
+        updateData.paid_date = confirmedPaymentDate;
+      } else if (newStatus === 'cancelled') {
+        const confirmed = await showConfirm(`Czy chcesz anulować fakturę ${invoice.invoice_number}?`, 'Anulowanie faktury');
+        if (!confirmed) return;
+      }
 
+      // Do not overwrite a payment/status changed by another user while this page was open.
+      let updateQuery = supabase.from('invoices').update(updateData)
+        .eq('id', invoice.id).eq('status', invoice.status);
+      updateQuery = invoice.payment_status == null
+        ? updateQuery.is('payment_status', null)
+        : updateQuery.eq('payment_status', invoice.payment_status);
+      updateQuery = invoice.paid_amount == null
+        ? updateQuery.is('paid_amount', null)
+        : updateQuery.eq('paid_amount', invoice.paid_amount);
+      const { data, error } = await updateQuery.select('id').maybeSingle();
       if (error) throw error;
+      if (!data) {
+        await fetchInvoice({ background: true });
+        showSnackbar('Nie zapisano zmiany. Dane mogły się zmienić lub nie masz uprawnień. Sprawdź odświeżoną fakturę.', 'warning');
+        return;
+      }
 
-      await fetchInvoice();
-      showSnackbar('Status faktury został zmieniony', 'success');
+      await fetchInvoice({ background: true });
+      showSnackbar(newStatus === 'paid'
+        ? 'Potwierdzono zapłatę. Rozliczenie powiązanego wydarzenia przeliczono automatycznie.'
+        : 'Status faktury został zmieniony', 'success');
     } catch (err) {
       console.error('Error updating status:', err);
-      showSnackbar('Błąd podczas zmiany statusu', 'error');
+      showSnackbar('Nie udało się zmienić statusu. Sprawdź płatności i powiązania faktury przed ponowną próbą.', 'error');
+    } finally {
+      statusChangeInFlight.current = false;
+      setChangingStatus(false);
     }
   };
 
@@ -1027,6 +1115,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
   }
 
   function getTypeLabel(type: string, invoiceNumber?: string) {
+    if (type === 'corrective' && invoice?.correction_kind === 'party_data') return 'Faktura korygująca dane';
     if (type === 'final' || invoiceNumber?.startsWith('FKO/')) {
       return 'Faktura końcowa';
     }
@@ -1043,7 +1132,8 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
   }
 
   const paymentStatus = invoice.payment_status || (invoice.status === 'paid' ? 'paid' : 'unpaid');
-  const paymentDate = invoice.paid_at || invoice.paid_date || null;
+  const isPartyDataCorrection = invoice.correction_kind === 'party_data';
+  const paymentDate = invoice.paid_date || invoice.paid_at || null;
 
 
   const previewSettlementSummary =
@@ -1174,6 +1264,22 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
     accepted: 'Zaakceptowana', rejected: 'Odrzucona', sent: 'Wysłana',
     pending: 'W trakcie wysyłki', error: 'Błąd wysyłki', draft: 'Szkic', not_sent: 'Niewysłana',
   } as Record<string, string>)[ksefStatus] || 'Status do sprawdzenia';
+  const canChangeInvoiceStatus = financeAccess.canManageCompanyFinance || financeAccess.canIssueInvoices;
+  const isProformaDocument = invoice.is_proforma || invoice.invoice_type === 'proforma';
+  const hasPaymentBasis = !isFinalInvoicePreview || (invoice.settlement_summary != null
+    && Number.isFinite(Number(invoice.settlement_summary.remainingGross)));
+  const canMarkInvoicePaid = canChangeInvoiceStatus
+    && !isPartyDataCorrection
+    && ['issued', 'sent', 'overdue', 'paid'].includes(invoice.status)
+    && ['unpaid', 'overdue', 'partially_paid'].includes(paymentStatus)
+    && !isProformaDocument && !isRefund && hasPaymentBasis
+    && Number.isFinite(paymentBaseAmount) && paymentBaseAmount > 0;
+  const canMarkInvoiceSent = canChangeInvoiceStatus && invoice.status === 'issued';
+  const canCancelInvoice = canChangeInvoiceStatus
+    && !['paid', 'cancelled'].includes(invoice.status)
+    && !['paid', 'partially_paid', 'partially_refunded', 'refunded'].includes(paymentStatus)
+    && paidAmount === 0 && !canonicalBankPayment
+    && !invoice.ksef_reference_number && !['pending', 'sent', 'accepted'].includes(ksefStatus);
 
   return (
     <PermissionGuard module={financeAccess.scope === 'sales' ? undefined : 'invoices'}>
@@ -1205,7 +1311,17 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
             </div>
 
             <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
-              {paymentStatus === 'paid' && <span className="inline-flex items-center gap-1.5 text-emerald-300"><CheckCircle className="h-3.5 w-3.5" />Opłacona</span>}
+              <SystemBadge value={paymentStatus} label={paymentStatus === 'refund_due' ? 'Do zwrotu' : paymentStatus === 'partially_refunded' ? 'Częściowo zwrócona' : undefined} />
+              {relatedData.event && (
+                <button
+                  type="button"
+                  onClick={() => router.push(`/crm/events/${relatedData.event!.id}?tab=finances`)}
+                  className="inline-flex items-center gap-1.5 text-[#d3bb73] hover:text-[#e5e4e2]"
+                >
+                  <Calendar className="h-3.5 w-3.5" />
+                  Wydarzenie: {relatedData.event.name}
+                </button>
+              )}
               {pdfPath && <span className="inline-flex items-center gap-1.5 text-[#e5e4e2]/55"><FileText className="h-3.5 w-3.5" />PDF gotowy</span>}
               {emailSentCount > 0 && <span className="text-[#e5e4e2]/55">Wysłano e-mail: {emailSentCount}×</span>}
               {!invoice.is_proforma && invoice.related_invoice_id && (
@@ -1264,6 +1380,13 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
               </div>
             )}
             {invoice.ksef_error && <p role="alert" className="mt-3 rounded-lg bg-red-500/10 p-3 text-sm text-red-300">{invoice.ksef_error}</p>}
+            {recipientPreview.error ? (
+              <p role="alert" className="mt-3 rounded-lg bg-red-500/10 p-3 text-sm text-red-300">{recipientPreview.error}</p>
+            ) : invoice.ksef_recipient_snapshot == null && invoice.service_recipient_organization_id && invoice.service_recipient_organization_id !== invoice.organization_id ? (
+              <p role="status" className="mt-3 text-xs text-[#d3bb73]">
+                Ta faktura ma powiązanego odbiorcę, ale nie ma utrwalonych danych odbiorcy z chwili jej wystawienia. Wizualizacja nie uzupełnia ich bieżącymi danymi kontaktu. Przed wysłaniem do KSeF sprawdź odbiorcę w podsumowaniu wysyłki.
+              </p>
+            ) : null}
             {canonicalBankPayment && (
               <details className="mt-3 text-xs text-emerald-200">
                 <summary className="cursor-pointer">{formatCanonicalBankPayment(canonicalBankPayment)}</summary>
@@ -1271,6 +1394,40 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
               </details>
             )}
             {bankPaymentReadError && <p role="status" className="mt-3 text-xs text-amber-200">Nie udało się odczytać dopasowań do wyciągu przez KSeF. Nie oznacza to braku zapłaty.</p>}
+            {(canMarkInvoicePaid || canMarkInvoiceSent || canCancelInvoice) && (
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-black/15 p-3" aria-label="Zmiana statusu faktury">
+                <div className="text-sm text-[#e5e4e2]/70">
+                  {canMarkInvoicePaid ? <>
+                    Pozostało do potwierdzenia: <strong className="text-[#d3bb73]">{Math.max(paymentBaseAmount - paidAmount, 0).toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {invoice.currency_code || 'PLN'}</strong>
+                    <p className="mt-1 text-xs text-[#e5e4e2]/50">Według statusu faktury. Sprawdź wpłatę przed potwierdzeniem.</p>
+                  </> : 'Zmiana statusu faktury'}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {canMarkInvoicePaid && (
+                    <button type="button" disabled={changingStatus} onClick={() => handleStatusChange('paid')}
+                      className="inline-flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#c4ac64] disabled:cursor-wait disabled:opacity-50">
+                      {changingStatus ? <Loader className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
+                      Oznacz jako opłaconą
+                    </button>
+                  )}
+                  {canMarkInvoiceSent && (
+                    <button type="button" disabled={changingStatus} onClick={() => handleStatusChange('sent')}
+                      className="inline-flex items-center gap-2 rounded-lg bg-white/5 px-3 py-2 text-sm text-[#e5e4e2]/80 hover:bg-white/10 disabled:opacity-50">
+                      <Send className="h-4 w-4" />Oznacz jako wysłaną
+                    </button>
+                  )}
+                  {canCancelInvoice && (
+                    <button type="button" disabled={changingStatus} onClick={() => handleStatusChange('cancelled')}
+                      className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-red-300 hover:bg-red-400/10 disabled:opacity-50">
+                      <XCircle className="h-4 w-4" />Anuluj fakturę
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+            {!hasPaymentBasis && !['draft', 'cancelled'].includes(invoice.status) && (
+              <p role="status" className="mt-3 text-xs text-amber-200">Przed potwierdzeniem zapłaty tej faktury końcowej trzeba uzupełnić jej zapisane rozliczenie zaliczek.</p>
+            )}
           </section>
 
           {showRelations && (relatedData.event ||
@@ -1488,7 +1645,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
                           <div>
                             <div className="mb-1 text-xs text-[#e5e4e2]/40">Zakres korekty</div>
                             <div className="text-[#e5e4e2]">
-                              {invoice.correction_scope === 'full'
+                              {isPartyDataCorrection ? 'Dane nabywcy / odbiorcy - bez zmiany kwot' : invoice.correction_scope === 'full'
                                 ? 'Calosc faktury'
                                 : 'Czesc faktury'}
                             </div>
@@ -1575,6 +1732,17 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
                 <div className="text-sm">
                   {invoice.buyer_postal_code} {invoice.buyer_city}
                 </div>
+                {invoiceRecipient && (
+                  <div className="mt-4 break-words" style={{ overflowWrap: 'anywhere' }}>
+                    <div className="mb-2 text-sm text-gray-600">Odbiorca</div>
+                    <div className="font-medium">{invoiceRecipient.name}</div>
+                    {invoiceRecipient.nip && <div>NIP: {invoiceRecipient.nip}</div>}
+                    <div>{invoiceRecipient.street}</div>
+                    <div>{invoiceRecipient.postalCode} {invoiceRecipient.city}</div>
+                    {invoiceRecipient.countryCode !== 'PL' && <div>{invoiceRecipient.countryCode}</div>}
+                    {invoiceRecipient.internalId && <div>Numer identyfikacji wewnętrznej KSeF: <strong>{invoiceRecipient.internalId}</strong></div>}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1585,7 +1753,29 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
               </div>
             </div>
 
-            {invoice.invoice_type === 'corrective' &&
+            {isPartyDataCorrection ? (
+              <div className="mb-8">
+                <div className="mb-4 rounded-lg bg-gray-50 p-3 text-sm">
+                  <div>Korekta do faktury: <strong>{invoice.corrected_invoice_number || '-'}</strong>
+                    {invoice.corrected_invoice_issue_date ? ` z dnia ${new Date(invoice.corrected_invoice_issue_date).toLocaleDateString('pl-PL')}` : ''}</div>
+                  {invoice.correction_reason && <div className="mt-2">Przyczyna korekty: {invoice.correction_reason}</div>}
+                </div>
+                {recipientPreview.partyDataBefore ? (
+                  <InvoicePartyCorrectionComparison
+                    printable
+                    beforeBuyer={recipientPreview.partyDataBefore.buyer}
+                    afterBuyer={{
+                      name: invoice.buyer_name, nip: invoice.buyer_nip, street: invoice.buyer_street,
+                      postalCode: invoice.buyer_postal_code, city: invoice.buyer_city,
+                      countryCode: ['POLSKA', 'POLAND', ''].includes(String(invoice.buyer_country ?? '').toUpperCase()) ? 'PL' : String(invoice.buyer_country).toUpperCase(),
+                    }}
+                    beforeRecipient={recipientPreview.partyDataBefore.recipient}
+                    afterRecipient={invoiceRecipient ?? null}
+                  />
+                ) : <p role="alert" className="text-red-700">{recipientPreview.error || 'Nie można odczytać danych sprzed korekty.'}</p>}
+                <p className="mt-4 text-sm"><strong>Zmiana kwoty: 0,00 {invoice.currency_code || 'PLN'}.</strong> Kwoty i rozliczenie płatności faktury pierwotnej pozostają bez zmian. Ta korekta nie tworzy nowej należności ani zwrotu.</p>
+              </div>
+            ) : invoice.invoice_type === 'corrective' &&
             items.some((i) => i.before_quantity != null) ? (
               <div className="mb-8">
                 {invoice.corrected_invoice_number && (
@@ -1881,7 +2071,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
               </table>
             )}
 
-            {previewSettledInvoices.length > 0 && (
+            {!isPartyDataCorrection && previewSettledInvoices.length > 0 && (
               <div className="mb-4 text-sm">
                 <div className="mb-2 font-bold">Rozliczane faktury zaliczkowe</div>
 
@@ -1906,7 +2096,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
               </div>
             )}
 
-            {previewSettlementSummary && (
+            {!isPartyDataCorrection && previewSettlementSummary && (
               <div className="mb-8 text-sm">
                 <div className="mb-2 font-bold">Rozliczenie zaliczek</div>
 
@@ -1963,7 +2153,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
               </div>
             )}
 
-            <div className="mb-5 grid grid-cols-2 gap-8 text-xs leading-snug">
+            {!isPartyDataCorrection && <div className="mb-5 grid grid-cols-2 gap-8 text-xs leading-snug">
               <div>
                 <div className="mb-2">
                   <span className="text-gray-600">Sposob platnosci:</span> {invoice.payment_method}
@@ -2019,6 +2209,8 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
               </div>
             </div>
 
+            }
+
             <div className="mb-5 text-[10px] leading-snug text-gray-600">
               {footerNote && (
                 <span style={{ whiteSpace: 'pre-wrap', fontWeight: '700' }}>Uwagi:</span>
@@ -2047,38 +2239,6 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
             </div>
           </div>
 
-          {invoice.status !== 'paid' && invoice.status !== 'cancelled' && (
-            <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
-              <h3 className="mb-4 text-lg font-medium text-[#e5e4e2]">Zmiana statusu</h3>
-              <div className="flex gap-3">
-                {invoice.status === 'issued' && (
-                  <button
-                    onClick={() => handleStatusChange('sent')}
-                    className="flex items-center gap-2 rounded-lg border border-blue-500/30 bg-blue-500/20 px-4 py-2 text-blue-400 hover:bg-blue-500/30"
-                  >
-                    <Send className="h-4 w-4" />
-                    Oznacz jako wyslana
-                  </button>
-                )}
-                {(invoice.status === 'issued' || invoice.status === 'sent') && (
-                  <button
-                    onClick={() => handleStatusChange('paid')}
-                    className="flex items-center gap-2 rounded-lg border border-green-500/30 bg-green-500/20 px-4 py-2 text-green-400 hover:bg-green-500/30"
-                  >
-                    <CheckCircle className="h-4 w-4" />
-                    Oznacz jako oplacona
-                  </button>
-                )}
-                <button
-                  onClick={() => handleStatusChange('cancelled')}
-                  className="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/20 px-4 py-2 text-red-400 hover:bg-red-500/30"
-                >
-                  <XCircle className="h-4 w-4" />
-                  Anuluj fakture
-                </button>
-              </div>
-            </div>
-          )}
         </div>
 
         <style jsx global>{`

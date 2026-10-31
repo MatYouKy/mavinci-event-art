@@ -349,6 +349,7 @@ export const offerWizardApi = createApi({
                 name,
                 description,
                 quantity,
+                days,
                 unit,
                 unit_price,
                 discount_percent,
@@ -364,10 +365,12 @@ export const offerWizardApi = createApi({
                 show_product_variants_in_pdf,
                 product_variant:offer_product_variants!product_variant_id(
                   id, product_id, name, short_description, description, benefits,
-                  price_net, price_gross, is_recommended, is_active, display_order,
+                  price_net, price_gross, is_recommended, is_active, display_order, quantity_source,
                   offer_image_path, offer_image_alt
                 ),
                 product:offer_products(
+                  english_version,
+                  translation_revision,
                   id,
                   name,
                   description,
@@ -376,14 +379,16 @@ export const offerWizardApi = createApi({
                   offer_image_path,
                   offer_page_variant,
                   pricing_addons,
+                  configuration_schema,
                   sales_packages,
                   sales_packages_enabled,
+                  quantity_source,
                   product_page_url,
                   offer_requirements,
                   offer_additional_requirements,
                   variants:offer_product_variants(
                     id, product_id, name, short_description, description, benefits,
-                    price_net, price_gross, is_recommended, is_active, display_order,
+                    price_net, price_gross, is_recommended, is_active, display_order, quantity_source,
                     offer_image_path, offer_image_alt
                   )
                 )
@@ -450,6 +455,7 @@ export const offerWizardApi = createApi({
                 description,
                 product_id,
                 quantity,
+                days,
                 unit_price,
                 discount_percent,
                 discount_amount,
@@ -461,10 +467,12 @@ export const offerWizardApi = createApi({
                 pricing_configuration,
                 product_variant:offer_product_variants!product_variant_id(
                   id, product_id, name, short_description, description, benefits,
-                  price_net, price_gross, is_recommended, is_active, display_order,
+                  price_net, price_gross, is_recommended, is_active, display_order, quantity_source,
                   offer_image_path, offer_image_alt
                 ),
                 product:offer_products(
+                  english_version,
+                  translation_revision,
                   id,
                   name,
                   description,
@@ -473,14 +481,16 @@ export const offerWizardApi = createApi({
                   offer_image_path,
                   offer_page_variant,
                   pricing_addons,
+                  configuration_schema,
                   sales_packages,
                   sales_packages_enabled,
+                  quantity_source,
                   product_page_url,
                   offer_requirements,
                   offer_additional_requirements,
                   variants:offer_product_variants(
                     id, product_id, name, short_description, description, benefits,
-                    price_net, price_gross, is_recommended, is_active, display_order,
+                    price_net, price_gross, is_recommended, is_active, display_order, quantity_source,
                     offer_image_path, offer_image_alt
                   )
                 )
@@ -772,6 +782,7 @@ export const offerWizardApi = createApi({
             name: item.name,
             description: item.description || null,
             quantity: item.quantity,
+            days: item.days ?? 1,
             unit: item.unit,
             unit_price: item.unit_price,
             pricing_configuration: item.pricing_configuration || null,

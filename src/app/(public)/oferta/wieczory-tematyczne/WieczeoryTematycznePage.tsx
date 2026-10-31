@@ -3,12 +3,14 @@
 import { useState, useEffect } from 'react';
 import { Wine, Sparkles, Music, Camera, Utensils, Users, Palette, Star, Clock, Award, Heart, CreditCard as Edit, Save, X, Plus, Trash2, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, XCircle } from 'lucide-react';
 import Image from 'next/image';
+import Link from 'next/link';
 import { supabase } from '@/lib/supabase/browser';
 import { useEditMode } from '@/contexts/EditModeContext';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { uploadImage } from '@/lib/storage';
 import { SimpleImageUploader } from '@/components/SimpleImageUploader';
 import { IUploadImage } from '@/types/image';
+import { SITE } from '@/lib/SEO/site';
 
 interface GalleryImage {
   id: string;
@@ -25,6 +27,7 @@ interface ThemeItem {
   description: string;
   keywords: string;
   image: string;
+  scenario_slug?: string;
 }
 
 const DEFAULT_THEMES: ThemeItem[] = [
@@ -90,6 +93,7 @@ interface ServerDataRow {
 
 interface Props {
   serverData?: ServerDataRow[];
+  scenarioPaths?: Record<string, string>;
 }
 
 function parseServerData(data: ServerDataRow[]) {
@@ -140,7 +144,7 @@ function parseServerData(data: ServerDataRow[]) {
   return { introImage, introText, introText2, seoImage, seoText, themes, gallery };
 }
 
-export default function WieczeoryTematycznePage({ serverData = [] }: Props) {
+export default function WieczeoryTematycznePage({ serverData = [], scenarioPaths = {} }: Props) {
   const { isEditMode } = useEditMode();
   const { showSnackbar } = useSnackbar();
 
@@ -534,6 +538,7 @@ export default function WieczeoryTematycznePage({ serverData = [] }: Props) {
                       <>
                         <h3 className="mb-2 text-lg font-medium text-[#d3bb73]">{theme.title}</h3>
                         <p className="text-sm leading-relaxed text-[#e5e4e2]/70">{theme.description}</p>
+                        {scenarioPaths[theme.scenario_slug || theme.title] && <Link href={scenarioPaths[theme.scenario_slug || theme.title]} className="mt-4 inline-flex min-h-11 items-center text-sm text-[#d3bb73] underline underline-offset-4">Program, zakres i realizacje ↗</Link>}
                       </>
                     )}
                   </div>
@@ -739,25 +744,25 @@ export default function WieczeoryTematycznePage({ serverData = [] }: Props) {
             </h2>
             <p className="mx-auto mb-8 max-w-2xl text-lg text-[#e5e4e2]/70">
               Skontaktuj się z nami - przygotujemy koncepcję wieczoru tematycznego dopasowaną
-              do Twojej okazji, grupy i budżetu. Bezpłatna konsultacja i wstępna wycena w 48h.
+              do Twojej okazji, grupy i budżetu. Prześlij termin, miejsce i liczbę uczestników.
             </p>
             <div className="flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
               <a href="/#kontakt" className="rounded-lg bg-[#d3bb73] px-8 py-3.5 font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90">
-                Zapytaj o wycene
+                Zapytaj o wycenę
               </a>
-              <a href="tel:+48123456789" className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 px-6 py-3.5 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/10">
+              <a href={SITE.phoneHref} className="flex items-center gap-2 rounded-lg bg-white/5 px-6 py-3.5 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/10">
                 <Heart className="h-4 w-4" />
-                Bezplatna konsultacja
+                {SITE.telephone}
               </a>
             </div>
             <div className="mt-10 flex flex-wrap justify-center gap-6 text-sm text-[#e5e4e2]/50">
               <span>Autorskie koncepty</span>
               <span className="text-[#d3bb73]/30">|</span>
-              <span>Wlasna scenografia</span>
+              <span>Oprawa dopasowana do motywu</span>
               <span className="text-[#d3bb73]/30">|</span>
-              <span>Cala Polska</span>
+              <span>Cała Polska</span>
               <span className="text-[#d3bb73]/30">|</span>
-              <span>Od 20 do 2000 osob</span>
+              <span>Zakres dobrany do grupy</span>
             </div>
           </div>
         </section>

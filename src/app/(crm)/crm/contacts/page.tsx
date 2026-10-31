@@ -23,6 +23,7 @@ import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import PermissionGuard from '@/components/crm/PermissionGuard';
+import SellerContactBadge, { useSellerContactBadges } from '@/components/crm/contacts/SellerContactBadge';
 
 import { useClients } from './hooks/useClient';
 import { ClientEntityType, ContactRow } from './types';
@@ -50,6 +51,7 @@ export default function ContactsPage() {
   const dispatch = useAppDispatch();
   const [activeTab, setActiveTab] = useState<TabFilter>('all');
   const { list: contacts, loading, create, updateById, deleteById } = useClients(activeTab);
+  const sellerBadges = useSellerContactBadges(contacts);
 
   const [searchTerm, setSearchTerm] = useState('');
   // const [contacts, setLocalContacts] = useState<UnifiedContact[]>([]);
@@ -251,6 +253,7 @@ export default function ContactsPage() {
                 </div>
               )}
               <h3 className="mb-1 font-semibold text-white">{contact.name}</h3>
+              {contact.source === 'contacts' && sellerBadges.ids.has(contact.id) && <span className="mb-2"><SellerContactBadge /></span>}
               <span
                 className={`rounded-full px-2 py-1 text-xs ${getContactTypeColor(
                   contact.entityType as ClientEntityType,
@@ -348,6 +351,7 @@ export default function ContactsPage() {
               <div className="grid min-w-0 flex-1 grid-cols-5 items-center gap-4">
                 <div className="col-span-1">
                   <h3 className="truncate font-semibold text-white">{contact.name}</h3>
+                  {contact.source === 'contacts' && sellerBadges.ids.has(contact.id) && <span className="my-1 inline-block"><SellerContactBadge /></span>}
                   <span
                     className={`inline-block rounded-full px-2 py-0.5 text-xs ${getContactTypeColor(
                       contact.entityType as ClientEntityType,
@@ -563,6 +567,7 @@ export default function ContactsPage() {
             </div>
           </div>
 
+          {sellerBadges.error && <div role="alert" className="mb-4 flex flex-wrap items-center gap-3 rounded-lg bg-amber-300/5 p-3 text-xs text-amber-100"><span>{sellerBadges.error}</span><button type="button" onClick={sellerBadges.refresh} className="rounded-md bg-white/5 px-3 py-2 text-[#d3bb73]">Ponów odczyt oznaczeń</button></div>}
           {loading ? (
             <div className="py-12 text-center">
               <div className="inline-block h-8 w-8 animate-spin rounded-full border-b-2 border-[#d3bb73]"></div>

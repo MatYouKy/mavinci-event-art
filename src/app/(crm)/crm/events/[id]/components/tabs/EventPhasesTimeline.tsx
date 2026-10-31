@@ -42,11 +42,9 @@ import {
   useGetEventEmployeesQuery,
   useGetEventVehiclesQuery,
   useGetEventEquipmentQuery,
-  useUpdateEventMutation,
 } from '../../../store/api/eventsApi';
 import { useAppDispatch } from '@/store/hooks';
 import { supabase } from '@/lib/supabase/client';
-import { localDatetimeStringToUTC, utcToLocalDatetimeString } from '@/lib/utils/dateTimeUtils';
 
 interface EventPhasesTimelineProps {
   eventId: string;
@@ -69,7 +67,6 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
   eventEndDate,
   initialPlannedSetupAt,
   initialPlannedTeardownAt,
-  onContractScheduleSaved,
 }) => {
   const dispatch = useAppDispatch();
   const { data: phases = [], isLoading } = useGetEventPhasesQuery(eventId, {
@@ -90,7 +87,6 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
   const applyingTravelRef = useRef(false);
   const [updatePhase] = useUpdatePhaseMutation();
   const [deletePhase] = useDeletePhaseMutation();
-  const [updateEvent, { isLoading: isSavingContractSchedule }] = useUpdateEventMutation();
   const { showSnackbar } = useSnackbar();
   const { showConfirm } = useDialog();
 
@@ -116,52 +112,37 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
   >({});
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [phaseAssignments, setPhaseAssignments] = useState<PhaseAssignmentsData[]>([]);
-  const initialSetupValue = utcToLocalDatetimeString(initialPlannedSetupAt);
-  const initialTeardownValue = utcToLocalDatetimeString(initialPlannedTeardownAt);
-  const [plannedSetupAt, setPlannedSetupAt] = useState(initialSetupValue);
-  const [plannedTeardownAt, setPlannedTeardownAt] = useState(initialTeardownValue);
-  const [savedPlannedSetupAt, setSavedPlannedSetupAt] = useState(initialSetupValue);
-  const [savedPlannedTeardownAt, setSavedPlannedTeardownAt] = useState(initialTeardownValue);
-
-  useEffect(() => {
-    const nextSetup = utcToLocalDatetimeString(initialPlannedSetupAt);
-    const nextTeardown = utcToLocalDatetimeString(initialPlannedTeardownAt);
-    setPlannedSetupAt(nextSetup);
-    setPlannedTeardownAt(nextTeardown);
-    setSavedPlannedSetupAt(nextSetup);
-    setSavedPlannedTeardownAt(nextTeardown);
-  }, [initialPlannedSetupAt, initialPlannedTeardownAt]);
-
-  const hasUnsavedContractSchedule =
-    plannedSetupAt !== savedPlannedSetupAt || plannedTeardownAt !== savedPlannedTeardownAt;
-
-  const handleSaveContractSchedule = async () => {
-    const setupUtc = localDatetimeStringToUTC(plannedSetupAt);
-    const teardownUtc = localDatetimeStringToUTC(plannedTeardownAt);
-
-    if (setupUtc && teardownUtc && new Date(teardownUtc) <= new Date(setupUtc)) {
-      showSnackbar('Planowany demontaż musi być później niż planowany montaż', 'error');
-      return;
+  const [importingContractPhase, setImportingContractPhase] = useState(false);
+  const importContractPhaseLock = useRef(false);
+  const normalizeContractPhase = (name: string) => name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+  const contractSchedule = [
+    { key: 'montaz', label: 'Montaż', legacy: initialPlannedSetupAt },
+    { key: 'demontaz', label: 'Demontaż', legacy: initialPlannedTeardownAt },
+  ].map(item => ({
+    ...item,
+    phase: [...phases].sort((a,b)=>Date.parse(a.start_time)-Date.parse(b.start_time)).find(phase =>
+      [phase.phase_type?.name || '', phase.name].some(name => {
+        const normalized = normalizeContractPhase(name);
+        return normalized === item.key || normalized.startsWith(`${item.key} `);
+      })),
+    type: phaseTypes.find(type=>normalizeContractPhase(type.name) === item.key),
+  }));
+  const importContractPhase = async (item: typeof contractSchedule[number]) => {
+    if (importContractPhaseLock.current || !item.type || !item.legacy) return;
+    const start = new Date(item.legacy);
+    const hours = Number(item.type.default_duration_hours);
+    if (!Number.isFinite(start.getTime()) || !Number.isFinite(hours) || hours <= 0) {
+      showSnackbar('Uzupełnij poprawny termin i domyślny czas trwania fazy.', 'error'); return;
     }
-
+    importContractPhaseLock.current = true; setImportingContractPhase(true);
     try {
-      await updateEvent({
-        id: eventId,
-        data: {
-          planned_setup_at: setupUtc,
-          planned_teardown_at: teardownUtc,
-        },
-      }).unwrap();
-      onContractScheduleSaved?.({
-        planned_setup_at: setupUtc,
-        planned_teardown_at: teardownUtc,
-      });
-      setSavedPlannedSetupAt(plannedSetupAt);
-      setSavedPlannedTeardownAt(plannedTeardownAt);
-      showSnackbar('Planowane terminy zapisane', 'success');
+      await createPhase({event_id:eventId,phase_type_id:item.type.id,name:item.label,
+        start_time:start.toISOString(),end_time:new Date(start.getTime()+hours*3600000).toISOString(),
+        sequence_order:Math.max(0,...phases.map(phase=>phase.sequence_order))+1}).unwrap();
+      showSnackbar('Termin dodano do Timeline. Umowa korzysta teraz z początku tej fazy.', 'success');
     } catch (error: any) {
-      showSnackbar(error?.message || 'Nie udało się zapisać planowanych terminów', 'error');
-    }
+      showSnackbar(error?.message || 'Nie udało się przenieść terminu na Timeline.', 'error');
+    } finally { importContractPhaseLock.current = false; setImportingContractPhase(false); }
   };
 
   // A logistics save can change phase times, not only vehicle assignments.
@@ -215,32 +196,38 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
     };
   }, [eventId, dispatch]);
 
-  // Realtime subscription dla przypisań pojazdów do faz
+  const currentPhasesRef = useRef(phases);
+  currentPhasesRef.current = phases;
+
+  // Data refreshes must not recreate the subscription to the same table.
   useEffect(() => {
     if (!eventId) return;
-
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let disposed = false;
     const channel = supabase
-      .channel(`event_phase_vehicles_${eventId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'event_phase_vehicles',
-        },
-        (payload) => {
-          // Invaliduj cache dla wszystkich faz tego wydarzenia
-          phases.forEach((phase) => {
-            dispatch(eventPhasesApi.util.invalidateTags([{ type: 'PhaseVehicles', id: phase.id }]));
-          });
-        },
-      )
-      .subscribe();
-
+      .channel(`event_phase_vehicles_${eventId}_${crypto.randomUUID()}`)
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'event_phase_vehicles',
+      }, payload => {
+        if (disposed) return;
+        const phaseId = (payload.new as { phase_id?: string })?.phase_id
+          || (payload.old as { phase_id?: string })?.phase_id;
+        if (phaseId && !currentPhasesRef.current.some(phase => phase.id === phaseId)) return;
+        // DELETE may contain only the primary key: refresh conservatively then.
+        if (timer) return;
+        timer = setTimeout(() => {
+          timer = undefined;
+          if (!disposed) dispatch(eventPhasesApi.util.invalidateTags(
+            currentPhasesRef.current.map(phase => ({ type: 'PhaseVehicles' as const, id: phase.id })),
+          ));
+        }, 300);
+      }).subscribe();
     return () => {
-      supabase.removeChannel(channel);
+      disposed = true;
+      clearTimeout(timer);
+      void supabase.removeChannel(channel);
     };
-  }, [eventId, phases, dispatch]);
+  }, [eventId, dispatch]);
 
   const timelineBounds = useMemo(() => {
     // Główne godziny wydarzenia to tylko agenda, ale timeline musi uwzględniać wszystkie fazy
@@ -741,41 +728,16 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
         </div>
       </div>
 
-      <div className="border-b border-[#d3bb73]/10 bg-[#171a2a] px-4 py-3">
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="mr-auto min-w-[220px]">
-            <div className="text-sm font-semibold text-[#e5e4e2]">Planowane terminy do umowy</div>
-            <p className="mt-1 text-xs text-[#e5e4e2]/45">
-              Te daty są niezależne od czasu trwania faz na osi.
-            </p>
-          </div>
-          <label className="grid min-w-[230px] gap-1.5 text-xs font-medium text-[#e5e4e2]/65">
-            Planowany montaż — data i godzina
-            <input
-              type="datetime-local"
-              value={plannedSetupAt}
-              onChange={(event) => setPlannedSetupAt(event.target.value)}
-              className="h-10 rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-3 text-sm text-[#e5e4e2] outline-none transition-colors focus:border-[#d3bb73]"
-            />
-          </label>
-          <label className="grid min-w-[230px] gap-1.5 text-xs font-medium text-[#e5e4e2]/65">
-            Planowany demontaż — data i godzina
-            <input
-              type="datetime-local"
-              value={plannedTeardownAt}
-              onChange={(event) => setPlannedTeardownAt(event.target.value)}
-              className="h-10 rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-3 text-sm text-[#e5e4e2] outline-none transition-colors focus:border-[#d3bb73]"
-            />
-          </label>
-          <button
-            type="button"
-            onClick={handleSaveContractSchedule}
-            disabled={!hasUnsavedContractSchedule || isSavingContractSchedule}
-            className="flex h-10 items-center gap-2 rounded-lg border border-[#d3bb73]/30 bg-[#d3bb73] px-4 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <Save className="h-4 w-4" />
-            {isSavingContractSchedule ? 'Zapisywanie…' : 'Zapisz terminy'}
-          </button>
+      <div className="border-b border-white/5 bg-white/[0.025] px-4 py-3">
+        <p className="text-sm font-medium text-[#e5e4e2]">Terminy montażu i demontażu w umowie</p>
+        <p className="mt-1 text-xs text-[#e5e4e2]/60">Umowa pobiera początek najwcześniejszej fazy danego rodzaju. Zmieniaj godziny na osi i zapisz Timeline; wcześniej wystawione dokumenty zachowują swoją treść.</p>
+        <div className="mt-3 flex flex-wrap gap-4">
+          {contractSchedule.map(item => <div key={item.key} className="flex flex-wrap items-center gap-2 text-sm text-[#e5e4e2]">
+            <span>{item.label}: {item.phase ? new Date(item.phase.start_time).toLocaleString('pl-PL',{timeZone:'Europe/Warsaw'}) : item.legacy ? `${new Date(item.legacy).toLocaleString('pl-PL',{timeZone:'Europe/Warsaw'})} — wcześniejszy termin umowy` : 'Brak fazy w Timeline'}</span>
+            {item.phase ? <button type="button" onClick={()=>{setSelectedPhase(item.phase!);setShowEditModal(true);}} className="text-xs text-[#d3bb73]">Edytuj fazę</button>
+              : item.legacy && item.type ? <button type="button" disabled={importingContractPhase || isLoading} onClick={()=>void importContractPhase(item)} className="text-xs text-[#d3bb73] disabled:opacity-40">Dodaj do Timeline ({item.type.default_duration_hours} godz.)</button>
+              : <button type="button" onClick={()=>setShowAddModal(true)} className="text-xs text-[#d3bb73]">Dodaj fazę</button>}
+          </div>)}
         </div>
       </div>
 

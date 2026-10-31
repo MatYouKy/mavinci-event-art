@@ -1,22 +1,8 @@
 import { Grid3x3, LayoutList, Package, Plus, Search, Table2 } from 'lucide-react';
-import { supabase } from '@/lib/supabase/browser';
 import { useEffect, useState } from 'react';
 import Image from 'next/image';
 import Popover from '@/components/UI/Tooltip';
 import { useUserPreferences } from '@/app/(crm)/crm/PreferencesClientProvider';
-
-const THUMBNAIL_BUCKET = 'offer-product-pages';
-
-const normalizeThumbnailPath = (value: unknown) => {
-  if (typeof value !== 'string') return '';
-  const trimmed = value.trim();
-  if (!trimmed) return '';
-  if (/^(?:https?:|data:|blob:)/i.test(trimmed)) return trimmed;
-
-  return trimmed
-    .replace(/^\/+/, '')
-    .replace(new RegExp(`^(?:public/)?${THUMBNAIL_BUCKET}/`), '');
-};
 
 type CatalogViewMode = 'grid' | 'list' | 'table';
 
@@ -61,9 +47,14 @@ function ProductThumbnail({
   product: any;
   size?: 'grid' | 'list' | 'table';
 }) {
-  const [thumbnailUrls, setThumbnailUrls] = useState<string[]>([]);
-  const [thumbnailIndex, setThumbnailIndex] = useState(0);
-  const thumbnailUrl = thumbnailUrls[thumbnailIndex] || '';
+  const sourceVersion = `${product?.offer_image_path || ''}|${product?.pdf_thumbnail_url || ''}|${product?.updated_at || ''}`;
+  const version = Array.from(sourceVersion).reduce((hash, character) => Math.imul(hash, 31) + character.charCodeAt(0) | 0, 0).toString(36);
+  const width = size === 'grid' ? 640 : size === 'table' ? 128 : 192;
+  const imageUrl = (width: number) => `/bridge/products/thumbnail?id=${encodeURIComponent(product.id)}&w=${width}&v=${encodeURIComponent(version)}`;
+  const thumbnailUrl = product?.offer_image_path || product?.pdf_thumbnail_url ? imageUrl(width) : '';
+  const previewUrl = thumbnailUrl ? imageUrl(680) : '';
+  const [failedThumbnail, setFailedThumbnail] = useState('');
+  const [failedPreview, setFailedPreview] = useState('');
   const prices = getProductPrices(product);
   const sizeClass = size === 'grid'
     ? 'aspect-video w-full'
@@ -71,46 +62,19 @@ function ProductThumbnail({
       ? 'h-11 w-16'
       : 'h-16 w-24';
 
-  useEffect(() => {
-    let cancelled = false;
-
-    const resolveUrls = async () => {
-      const candidates = [product?.offer_image_path, product?.pdf_thumbnail_url]
-        .map(normalizeThumbnailPath)
-        .filter(Boolean);
-      const bucket = supabase.storage.from(THUMBNAIL_BUCKET);
-      const resolved = await Promise.all(
-        candidates.map(async (candidate) => {
-          if (/^(?:https?:|data:|blob:)/i.test(candidate)) return candidate;
-          const { data, error } = await bucket.createSignedUrl(candidate, 3600);
-          if (!error && data?.signedUrl) return data.signedUrl;
-          return bucket.getPublicUrl(candidate).data.publicUrl;
-        }),
-      );
-
-      if (!cancelled) {
-        setThumbnailUrls([...new Set(resolved.filter(Boolean))]);
-        setThumbnailIndex(0);
-      }
-    };
-
-    void resolveUrls();
-    return () => {
-      cancelled = true;
-    };
-  }, [product?.id, product?.offer_image_path, product?.pdf_thumbnail_url]);
-
   const thumbnail = (
     <div className={`${sizeClass} relative shrink-0 overflow-hidden rounded-lg border border-[#d3bb73]/15 bg-[#0a0d1a]`}>
-      {thumbnailUrl ? (
+      {thumbnailUrl && failedThumbnail !== thumbnailUrl ? (
         <Image
           src={thumbnailUrl}
           alt={product?.name || 'Miniatura produktu'}
           fill
           unoptimized
+          loading="lazy"
+          decoding="async"
           sizes={size === 'grid' ? '(max-width: 768px) 100vw, 33vw' : '96px'}
           className={size === 'grid' ? 'object-cover' : 'object-contain'}
-          onError={() => setThumbnailIndex((current) => current + 1)}
+          onError={() => setFailedThumbnail(thumbnailUrl)}
         />
       ) : (
         <Package className="absolute left-1/2 top-1/2 h-6 w-6 -translate-x-1/2 -translate-y-1/2 text-[#e5e4e2]/20" />
@@ -128,15 +92,17 @@ function ProductThumbnail({
       content={
         <div className="space-y-3">
           <div className="relative aspect-video w-full overflow-hidden rounded-lg border border-[#d3bb73]/15 bg-[#090b12]">
-            {thumbnailUrl ? (
+            {previewUrl && failedPreview !== previewUrl ? (
               <Image
-                src={thumbnailUrl}
+                src={previewUrl}
                 alt={product?.name || 'Podgląd produktu'}
                 fill
                 unoptimized
+                loading="lazy"
+                decoding="async"
                 sizes="340px"
                 className="object-contain"
-                onError={() => setThumbnailIndex((current) => current + 1)}
+                onError={() => setFailedPreview(previewUrl)}
               />
             ) : (
               <Package className="absolute left-1/2 top-1/2 h-12 w-12 -translate-x-1/2 -translate-y-1/2 text-[#e5e4e2]/20" />

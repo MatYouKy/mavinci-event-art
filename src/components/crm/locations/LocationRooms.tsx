@@ -13,6 +13,7 @@ import {
 export type LocationRoom = {
   id: string;
   name: string;
+  kind?: 'indoor' | 'outdoor';
   notes?: string;
   technical?: TechnicalDetails;
 };
@@ -91,7 +92,7 @@ export function LocationRooms({ locationId, readOnly = false }: { locationId: st
   return (
     <section className="mt-6 rounded-xl bg-[#351020] p-4 text-[#e5e4e2] sm:p-6">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-lg uppercase">Sale i pomieszczenia</h2>
+        <h2 className="text-lg uppercase">Sale i przestrzenie zewnętrzne</h2>
         {!readOnly && rooms && !editing && (
           <button
             type="button"
@@ -99,12 +100,12 @@ export function LocationRooms({ locationId, readOnly = false }: { locationId: st
             className="rounded-lg bg-[#d3bb73] px-3 py-2 text-sm text-[#250914] disabled:opacity-50"
             onClick={() => setEditing({ id: crypto.randomUUID(), name: '', notes: '' })}
           >
-            Dodaj salę
+            Dodaj przestrzeń
           </button>
         )}
       </div>
       <p className="mb-4 text-sm text-white/60">
-        W wydarzeniu możesz wybrać kilka sal i wskazać miejsce sceny/DJ-a.
+        Dodaj sale oraz tereny na zewnątrz, np. ogród lub miejsce teambuildingu. Ta sama baza jest dostępna w wydarzeniach i ofertach sprzedawcy hotelowego.
       </p>
       {error && (
         <p role="alert" className="mb-3 text-sm text-red-300">
@@ -118,7 +119,7 @@ export function LocationRooms({ locationId, readOnly = false }: { locationId: st
           <table className="w-full text-left text-sm">
             <thead className="text-white/60">
               <tr>
-                <th className="px-2 py-3">Pomieszczenie</th>
+                <th className="px-2 py-3">Przestrzeń</th>
                 <th className="px-2 py-3">Wejście / piętro</th>
                 <th className="px-2 py-3">Materiały</th>
                 {!readOnly && <th className="w-12 px-2 py-3"><span className="sr-only">Akcje</span></th>}
@@ -129,6 +130,7 @@ export function LocationRooms({ locationId, readOnly = false }: { locationId: st
                 <tr key={room.id} className="align-top">
                   <td className="min-w-48 px-2 py-3">
                     <strong>{room.name}</strong>
+                    {room.kind === 'outdoor' && <p className="mt-1 text-xs text-[#d3bb73]">Teren na zewnątrz</p>}
                     <details className="mt-2">
                       <summary className="cursor-pointer text-[#d3bb73]">
                         Szczegóły i materiały
@@ -175,8 +177,9 @@ export function LocationRooms({ locationId, readOnly = false }: { locationId: st
       {!readOnly && editing && (
         <div className="mt-4">
           <h3 className="font-medium">
-            {rooms?.some((r) => r.id === editing.id) ? 'Edytuj salę' : 'Nowa sala'}
+            {rooms?.some((r) => r.id === editing.id) ? 'Edytuj przestrzeń' : 'Nowa przestrzeń'}
           </h3>
+          <label className="my-3 block text-sm">Rodzaj przestrzeni<select value={editing.kind || 'indoor'} onChange={e => setEditing({ ...editing, kind: e.target.value as 'indoor' | 'outdoor' })} className="mt-1 w-full rounded-lg border border-white/10 bg-black/15 px-3 py-2"><option value="indoor">Sala / wnętrze</option><option value="outdoor">Teren na zewnątrz</option></select></label>
           <TechnicalDetailsEditor
             key={editing.id}
             locationId={locationId}

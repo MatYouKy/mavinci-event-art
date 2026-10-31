@@ -9,6 +9,7 @@ export interface OrganizationFormValues {
   legal_form?: string | null;
   krs?: string | null;
   regon?: string | null;
+  ksef_internal_id?: string | null;
   address?: string | null;
   city?: string | null;
   postal_code?: string | null;
@@ -40,6 +41,7 @@ export type OrganizationFormErrors = Partial<
     | 'legal_form'
     | 'krs'
     | 'regon'
+    | 'ksef_internal_id'
     | 'address'
     | 'city'
     | 'postal_code'
@@ -102,6 +104,7 @@ export const organizationValidationSchema = yup.object({
     .required('Kod pocztowy jest wymagany')
     .matches(postalCodeRegex, 'Kod pocztowy musi mieć format 00-000'),
 
+  ksef_internal_id: yup.string().nullable().transform(normalizeOptionalString),
   alias: yup.string().nullable().transform(normalizeOptionalString),
   business_type: yup
     .mixed<'company' | 'hotel' | 'restaurant' | 'venue' | 'freelancer' | 'other'>()

@@ -1,9 +1,11 @@
 import express from 'express';
+import { prepareSentMessage, saveSentCopy } from './sent-copy.js';
 import nodemailer from 'nodemailer';
 import dotenv from 'dotenv';
 import { ImapFlow } from 'imapflow';
 import { registerAttachmentRoute } from './imap-attachments.js';
 import { timingSafeEqual } from 'node:crypto';
+import { brochureAttachmentsConfigured, prepareRelayAttachments } from './brochure-attachments.js';
 
 dotenv.config();
 
@@ -31,10 +33,19 @@ function verifyAuth(req, res, next) {
   next();
 }
 
+app.get('/api/capabilities', verifyAuth, (_req, res) => {
+  res.json({ brochureStorageAttachments: 1, brochureStorageConfigured: brochureAttachmentsConfigured() });
+});
+
 app.post('/api/send-email', verifyAuth, async (req, res) => {
+  let smtpStarted = false;
+  let acceptedMessageId = null;
+  let cleanupMessage = async () => {};
+  let cleanupAttachments = async () => {};
   try {
     const {
       smtpConfig,
+      imapConfig,
       to,
       cc,
       bcc,
@@ -49,6 +60,7 @@ app.post('/api/send-email', verifyAuth, async (req, res) => {
     if (!smtpConfig || !to || !subject || !body) {
       return res.status(400).json({
         success: false,
+        deliveryState: 'not_sent',
         error: 'Missing required fields: smtpConfig, to, subject, body',
       });
     }
@@ -58,6 +70,8 @@ app.post('/api/send-email', verifyAuth, async (req, res) => {
     console.log(`   SMTP: ${smtpConfig.host}:${smtpConfig.port}`);
     console.log(`   Attachments: ${attachments.length}`);
 
+    const prepared = await prepareRelayAttachments(attachments);
+    cleanupAttachments = prepared.cleanup;
     const transporter = nodemailer.createTransport({
       host: smtpConfig.host,
       port: smtpConfig.port,
@@ -82,6 +96,7 @@ app.post('/api/send-email', verifyAuth, async (req, res) => {
       console.error('❌ SMTP verification failed:', verifyError.message);
       return res.status(500).json({
         success: false,
+        deliveryState: 'not_sent',
         error: `SMTP connection failed: ${verifyError.message}`,
       });
     }
@@ -112,13 +127,7 @@ app.post('/api/send-email', verifyAuth, async (req, res) => {
       replyTo: replyToEmail,
       inReplyTo: inReplyTo || undefined,
       references: Array.isArray(references) && references.length > 0 ? references : undefined,
-      attachments: attachments.map((att) => ({
-        filename: att.filename,
-        content: Buffer.from(att.content, 'base64'),
-        contentType: att.contentType || 'application/octet-stream',
-        contentDisposition: att.contentDisposition || 'attachment',
-        cid: att.cid || undefined,
-      })),
+      attachments: prepared.attachments,
     };
 
     console.log('MAIL FROM DEBUG:', {
@@ -128,22 +137,42 @@ app.post('/api/send-email', verifyAuth, async (req, res) => {
       replyTo: mailOptions.replyTo,
     });
 
+    const composed = await prepareSentMessage(mailOptions);
+    cleanupMessage = composed.cleanup;
     console.log('📮 Sending email...');
-    const info = await transporter.sendMail(mailOptions);
+    smtpStarted = true;
+    await transporter.sendMail({ envelope: composed.envelope, raw: { path: composed.path }, messageId: composed.messageId });
+    acceptedMessageId = composed.messageId;
+    const info = { messageId: composed.messageId };
+    const sentCopy = await saveSentCopy(imapConfig, smtpConfig.host, composed);
 
     console.log(`✅ Email sent successfully. MessageId: ${info.messageId}`);
 
     return res.json({
       success: true,
+      deliveryState: 'sent',
       messageId: info.messageId,
       message: 'Email sent successfully',
+      sentCopy,
     });
   } catch (error) {
+    if (acceptedMessageId) {
+      return res.json({ success: true, deliveryState: 'sent', messageId: acceptedMessageId,
+        sentCopy: { status: 'failed', warning: 'Wiadomość wysłana, ale nie potwierdzono zapisu kopii na serwerze pocztowym. Nie wysyłaj ponownie.' } });
+    }
     console.error('❌ Error sending email:', error.message);
+    // An explicit SMTP rejection differs from a lost connection after DATA.
+    // Never declare a timeout "not sent": the server may have accepted it.
+    const rejected = Number(error.responseCode) >= 400 && Number(error.responseCode) < 600
+      && /^(CONN|EHLO|HELO|STARTTLS|AUTH(?: .*)?|MAIL FROM|RCPT TO|DATA)$/i.test(error.command || '');
     return res.status(500).json({
       success: false,
+      deliveryState: !smtpStarted || rejected ? 'not_sent' : 'uncertain',
       error: error.message,
     });
+  } finally {
+    await cleanupAttachments();
+    await cleanupMessage();
   }
 });
 

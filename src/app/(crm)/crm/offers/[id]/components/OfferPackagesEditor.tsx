@@ -9,7 +9,7 @@ import OfferLogisticsEstimateEditor from '@/components/crm/offers/OfferLogistics
 import { emptyLogisticsEstimate, summarizeLogisticsEstimate, type LogisticsEstimate } from '@/lib/CRM/Offers/logisticsEstimate';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 
-type Position = { id: string; product_id: string; product_variant_id: string | null; name: string; quantity: number; unit: string; unit_price: number };
+type Position = { id: string; product_id: string; product_variant_id: string | null; name: string; quantity: number; unit: string; unit_price: number; days: number };
 type PackageItem = { offer_item_id: string; product_id: string; product_variant_id: string | null; quantity: number };
 type Package = { id: string; name: string; description: string; price_net: number; list_price_net: number; discount_amount: number; discount_percent: number; is_recommended: boolean; items: PackageItem[] };
 type Logistics = { cost: string; price: string; enabled: boolean; description: string; estimate: LogisticsEstimate | null };
@@ -19,10 +19,10 @@ const round = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 const field = 'mt-1 w-full rounded-lg border border-white/10 bg-black/15 px-3 py-2 text-sm text-[#e5e4e2]';
 const button = 'rounded-lg bg-[#d3bb73]/10 px-3 py-2 text-sm text-[#d3bb73] disabled:opacity-40';
 const primary = 'rounded-lg bg-[#d3bb73] px-3 py-2 text-sm text-[#1c1f33] disabled:opacity-40';
-const logisticsFrom = (o: any): Logistics => ({ estimate: o.logistics_estimate ?? (o.logistics_cost_net == null ? emptyLogisticsEstimate() : null), cost: o.logistics_cost_net == null ? '' : String(o.logistics_cost_net), price: String(o.logistics_price_net ?? 0), enabled: Boolean(o.logistics_enabled), description: o.logistics_description || 'Transport, załadunek i obsługa logistyczna realizacji.' });
+const logisticsFrom = (o: any): Logistics => ({ estimate: o.logistics_estimate ?? (o.logistics_cost_net == null ? emptyLogisticsEstimate() : null), cost: String(o.logistics_cost_net ?? 0), price: String(o.logistics_price_net ?? 0), enabled: Boolean(o.logistics_enabled), description: o.logistics_description || 'Transport, załadunek i obsługa logistyczna realizacji.' });
 const validMoney = (s: string) => s.trim() !== '' && Number.isFinite(Number(s)) && Number(s) >= 0 && Number(s) <= 99999999.99 && Math.abs(Number(s) * 100 - Math.round(Number(s) * 100)) < 0.00001;
 
-export default function OfferPackagesEditor({ offer, canEdit, onSaved }: { offer: any; canEdit: boolean; onSaved?: () => void }) {
+export default function OfferPackagesEditor({ offer, canEdit, onSaved, preparedPackages }: { offer: any; canEdit: boolean; onSaved?: () => void; preparedPackages?: Package[] }) {
   const { showSnackbar } = useSnackbar();
   const dialog = useRef<HTMLDialogElement>(null);
   const submitting = useRef(false);
@@ -42,10 +42,13 @@ export default function OfferPackagesEditor({ offer, canEdit, onSaved }: { offer
   const [showCatalog, setShowCatalog] = useState(false);
   const positions: Position[] = useMemo(() => (offer.offer_items || []).filter((i: any) => i.id && (i.product_id || i.product?.id)).map((i: any) => ({
     id: i.id, product_id: i.product_id || i.product.id, product_variant_id: i.product_variant_id || null,
-    name: i.name || i.product?.name || 'Pozycja oferty', quantity: Number(i.quantity || 1), unit: i.unit || 'szt.', unit_price: Number(i.unit_price || 0),
+    name: i.name || i.product?.name || 'Pozycja oferty', quantity: Number(i.quantity || 1), unit: i.unit || 'szt.', unit_price: Number(i.unit_price || 0), days: Number(i.days ?? 1),
   })), [offer.offer_items]);
 
   const load = async () => {
+    if (preparedPackages) {
+      setPackages(preparedPackages); setLogistics(logisticsFrom(offer)); setLoading(false); setLoadError(''); return;
+    }
     setLoading(true); setLoadError('');
     try {
       const [rows, state] = await Promise.all([
@@ -61,7 +64,7 @@ export default function OfferPackagesEditor({ offer, canEdit, onSaved }: { offer
   };
   useEffect(() => { if (!modal && !submitting.current) void load(); /* Refresh only saved data; drafts stay local. */
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [offer.id, offer.content_revision]);
+  }, [offer.id, offer.content_revision, preparedPackages]);
   useEffect(() => {
     if (!modal) { dialog.current?.close(); return; }
     dialog.current?.showModal();
@@ -71,7 +74,7 @@ export default function OfferPackagesEditor({ offer, canEdit, onSaved }: { offer
   const close = () => { if (submitting.current) return; setModal(null); setError(''); };
   const open = (next: Modal) => { setError(''); setQuery(''); setShowCatalog(false); setModal(next); };
   const newPackage = () => open({ kind: 'package', creating: true, editing: true, value: { id: crypto.randomUUID(), name: '', description: '', price_net: 0, list_price_net: 0, discount_amount: 0, discount_percent: 0, is_recommended: false, items: [] } });
-  const listPrice = (items: PackageItem[]) => round(items.reduce((sum, i) => sum + Number(positions.find(p => p.id === i.offer_item_id)?.unit_price || 0) * i.quantity, 0));
+  const listPrice = (items: PackageItem[]) => round(items.reduce((sum, i) => sum + Number(positions.find(p => p.id === i.offer_item_id)?.unit_price || 0) * Number(positions.find(p => p.id === i.offer_item_id)?.days ?? 1) * i.quantity, 0));
   const calculate = (p: Package, amount = p.discount_amount): Package => {
     const list = listPrice(p.items), discount = Math.min(list, Math.max(0, amount));
     return { ...p, list_price_net: list, discount_amount: round(discount), discount_percent: list ? round(discount / list * 100) : 0, price_net: round(list - discount) };
@@ -116,7 +119,7 @@ export default function OfferPackagesEditor({ offer, canEdit, onSaved }: { offer
     void save(next.map(p => normalized.is_recommended && p.id !== normalized.id ? { ...p, is_recommended: false } : p), modal.creating && packages.length === 0 ? true : enabled);
   };
 
-  return <section id="offer-packages-logistics" className="rounded-xl bg-[#1c1f33] p-5 text-[#e5e4e2]">
+  return <section data-offer-editing={Boolean(modal)} id="offer-packages-logistics" className="rounded-xl bg-[#1c1f33] p-5 text-[#e5e4e2]">
     <header className="mb-4 flex flex-wrap items-start justify-between gap-3">
       <div><h2 className="flex items-center gap-2 text-lg uppercase"><Layers3 className="h-5 w-5 text-[#b94b69]" />Pakiety oferty</h2><p className="mt-1 text-sm text-[#e5e4e2]/55">Do trzech alternatyw z pozycji tej oferty. Każdy pakiet edytujesz oddzielnie.</p></div>
       {canEdit && <button type="button" onClick={newPackage} disabled={saving || loading || !!loadError || packages.length >= 3} className={button}><Plus className="mr-1 inline h-4 w-4" />Dodaj pakiet</button>}
@@ -140,7 +143,7 @@ export default function OfferPackagesEditor({ offer, canEdit, onSaved }: { offer
       </div>}</Droppable></DragDropContext>
       {!packages.length && <p className="py-2 text-sm text-[#e5e4e2]/50">Dodaj pierwszy pakiet, aby przygotować alternatywny zakres oferty.</p>}
       <div className="mt-4 flex items-center gap-3 rounded-xl bg-black/15 p-3">
-        <Truck className="h-5 w-5 shrink-0 text-[#d3bb73]" /><div className="min-w-0 flex-1"><h3 className="text-sm uppercase">Logistyka oferty</h3><p className="mt-1 text-xs text-[#e5e4e2]/55">{logistics.cost === '' ? 'Wymaga oszacowania przed wygenerowaniem oferty.' : `Koszt dla firmy: ${money(Number(logistics.cost))} zł netto`}</p><p className="mt-1 text-xs text-[#d3bb73]">{logistics.enabled ? `Doliczana klientowi: ${money(Number(logistics.price))} zł netto` : 'Bez osobnej dopłaty dla klienta — uwzględnij ją w cenach pozycji lub pakietów.'}</p></div>
+        <Truck className="h-5 w-5 shrink-0 text-[#d3bb73]" /><div className="min-w-0 flex-1"><h3 className="text-sm uppercase">Logistyka oferty</h3><p className="mt-1 text-xs text-[#e5e4e2]/55">{logistics.cost === '' ? 'Koszt dla firmy: 0,00 zł netto' : `Koszt dla firmy: ${money(Number(logistics.cost))} zł netto`}</p><p className="mt-1 text-xs text-[#d3bb73]">{logistics.enabled ? `Doliczana klientowi: ${money(Number(logistics.price))} zł netto` : 'Logistyka nie jest doliczana do oferty.'}</p></div>
         <button type="button" disabled={saving} className={button} onClick={()=>open({kind:'logistics',value:{...logistics},editing:canEdit})}>{canEdit ? 'Ustaw logistykę' : 'Podgląd'}</button>
       </div>
     </>}
@@ -158,9 +161,9 @@ export default function OfferPackagesEditor({ offer, canEdit, onSaved }: { offer
             </> : <><h4 className="uppercase text-[#d3bb73]">{draft.name}</h4><p className="whitespace-pre-wrap text-sm text-[#e5e4e2]/70">{draft.description}</p></>}
             <div className="space-y-2"><h4 className="text-sm uppercase">Pozycje pakietu ({draft.items.length})</h4>{draft.items.map((item,index)=>{
               const position=positions.find(p=>p.id===item.offer_item_id);
-              return <div key={item.offer_item_id || index} className="flex items-center gap-3 rounded-lg bg-black/15 p-3"><div className="min-w-0 flex-1 text-sm">{position?.name || 'Pozycja usunięta z oferty'}<p className="mt-1 text-xs text-[#e5e4e2]/50">{item.quantity} {position?.unit} · {money((position?.unit_price || 0)*item.quantity)} zł netto</p></div>{modal.editing && <button type="button" aria-label={`Usuń ${position?.name || 'pozycję'} z pakietu`} disabled={saving} onClick={()=>patch(calculate({...draft,items:draft.items.filter((_,i)=>i!==index)}))} className="p-1 text-red-200"><Trash2 className="h-4 w-4" /></button>}</div>;
+              return <div key={item.offer_item_id || index} className="flex items-center gap-3 rounded-lg bg-black/15 p-3"><div className="min-w-0 flex-1 text-sm">{position?.name || 'Pozycja usunięta z oferty'}<p className="mt-1 text-xs text-[#e5e4e2]/50">{item.quantity} {position?.unit} × {position?.days ?? 1} dni · {money((position?.unit_price || 0)*(position?.days ?? 1)*item.quantity)} zł netto</p></div>{modal.editing && <button type="button" aria-label={`Usuń ${position?.name || 'pozycję'} z pakietu`} disabled={saving} onClick={()=>patch(calculate({...draft,items:draft.items.filter((_,i)=>i!==index)}))} className="p-1 text-red-200"><Trash2 className="h-4 w-4" /></button>}</div>;
             })}</div>
-            {modal.editing && <><button type="button" disabled={saving} onClick={()=>setShowCatalog(v=>!v)} className={button}><Plus className="mr-1 inline h-4 w-4" />{showCatalog?'Zamknij listę pozycji':'Dodaj pozycje oferty'}</button>{showCatalog && <div className="rounded-xl bg-black/10 p-3"><input type="search" aria-label="Szukaj pozycji oferty" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Szukaj pozycji…" className={field} /><div className="mt-2 max-h-52 space-y-1 overflow-y-auto">{available.map(position=><button key={position.id} type="button" disabled={saving} onClick={()=>patch(calculate({...draft,items:[...draft.items,{offer_item_id:position.id,product_id:position.product_id,product_variant_id:position.product_variant_id,quantity:position.quantity}]}))} className="flex w-full items-center justify-between gap-3 rounded-lg bg-white/5 px-3 py-2 text-left text-sm"><span>{position.name}<small className="block text-[#e5e4e2]/50">{position.quantity} {position.unit} · {money(position.unit_price*position.quantity)} zł netto</small></span><span className="text-xs text-[#d3bb73]">Dodaj</span></button>)}{!available.length && <p className="py-3 text-xs text-[#e5e4e2]/50">Brak dostępnych pozycji. Już dodane są ukryte.</p>}</div><p className="mt-2 text-xs text-[#e5e4e2]/45">Zakres, ilość i wariant pochodzą z pozycji oferty. Zmienisz je w jej edytorze.</p></div>}</>}
+            {modal.editing && <><button type="button" disabled={saving} onClick={()=>setShowCatalog(v=>!v)} className={button}><Plus className="mr-1 inline h-4 w-4" />{showCatalog?'Zamknij listę pozycji':'Dodaj pozycje oferty'}</button>{showCatalog && <div className="rounded-xl bg-black/10 p-3"><input type="search" aria-label="Szukaj pozycji oferty" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Szukaj pozycji…" className={field} /><div className="mt-2 max-h-52 space-y-1 overflow-y-auto">{available.map(position=><button key={position.id} type="button" disabled={saving} onClick={()=>patch(calculate({...draft,items:[...draft.items,{offer_item_id:position.id,product_id:position.product_id,product_variant_id:position.product_variant_id,quantity:position.quantity}]}))} className="flex w-full items-center justify-between gap-3 rounded-lg bg-white/5 px-3 py-2 text-left text-sm"><span>{position.name}<small className="block text-[#e5e4e2]/50">{position.quantity} {position.unit} × {position.days} dni · {money(position.unit_price*position.quantity*position.days)} zł netto</small></span><span className="text-xs text-[#d3bb73]">Dodaj</span></button>)}{!available.length && <p className="py-3 text-xs text-[#e5e4e2]/50">Brak dostępnych pozycji. Już dodane są ukryte.</p>}</div><p className="mt-2 text-xs text-[#e5e4e2]/45">Zakres, ilość i wariant pochodzą z pozycji oferty. Zmienisz je w jej edytorze.</p></div>}</>}
             <div className="rounded-xl bg-black/15 p-4"><p className="text-sm text-[#e5e4e2]/60">Suma pozycji: {money(draft.list_price_net)} zł netto</p>{modal.editing && <div className="mt-3 grid grid-cols-2 gap-3"><label className="text-xs text-[#e5e4e2]/60">Rabat (%)<input type="number" min={0} max={100} step="0.01" disabled={saving} value={draft.discount_percent} onChange={e=>patch(calculate(draft,draft.list_price_net*Math.min(100,Math.max(0,Number(e.target.value)||0))/100))} className={field} /></label><label className="text-xs text-[#e5e4e2]/60">Rabat netto (zł)<input type="number" min={0} max={draft.list_price_net} step="0.01" disabled={saving} value={draft.discount_amount} onChange={e=>patch(calculate(draft,Number(e.target.value)||0))} className={field} /></label></div>}<p className="mt-3 text-lg text-[#d3bb73]">Cena pakietu: {money(draft.price_net)} zł netto</p><p className="mt-1 text-xs text-[#e5e4e2]/60">Dla klienta z logistyką: {money(totalWithLogistics(draft.price_net))} zł netto</p><p className="mt-2 text-xs text-[#e5e4e2]/50">{logistics.cost===''?'Koszt logistyki wymaga oszacowania.':`Wewnętrzny koszt wspólnej logistyki: ${money(Number(logistics.cost))} zł netto — uwzględniany raz dla wybranego pakietu.`}</p></div>
           </>}
           {modal.kind==='logistics' && <>

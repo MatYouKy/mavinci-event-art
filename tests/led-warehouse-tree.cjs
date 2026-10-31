@@ -1,0 +1,28 @@
+const fs=require('node:fs'),assert=require('node:assert/strict');
+const repo=process.env.LED_TEST_REPO||require('node:path').resolve(__dirname,'..');
+const root=process.env.LED_TEST_ROOT||repo;
+const ts=require(repo+'/node_modules/typescript');
+require.extensions['.ts']=(mod,path)=>mod._compile(ts.transpileModule(fs.readFileSync(path,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,path);
+const m=require(root+'/supabase/functions/_shared/modularProduct.ts');
+const id=n=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
+let count=0;const test=(n,f)=>{f();console.log('OK '+n);count++;};
+const tree={...m.warehouseStageDefaults(),roots:[{id:id(1),equipment_id:id(1),basis:'decks',quantity:1,required:true},{id:id(2),equipment_id:id(2),basis:'fixed',quantity:1,required:true},{id:id(3),equipment_id:id(3),basis:'fixed',quantity:1,required:true},{id:id(4),equipment_id:id(4),basis:'area',quantity:4,required:true},{id:id(5),equipment_id:id(5),basis:'manual',quantity:2,required:false}]};
+const catalog={version:1,profile:'led',multiplier:1,components:[],led_layout:'sections',led_tree:tree,led_cable_root_id:id(3)};
+const s=m.productConfigurationSnapshot(catalog);
+s.selection.led_sections=[{id:'one',name:'Lewy ekran',columns:2,rows:5},{id:'two',name:'Prawy ekran',columns:8,rows:5}];s.selection.area=12.5;
+const node=(n,rate,links=[])=>({id:id(n),name:'Element '+n,name_en:'Item '+n,rate,links});
+s.selection.led_equipment=Object.fromEntries([node(1,10,[{id:id(11),equipment_id:id(6),type:'required',group:'Mocowanie',quantity:1,mode:'per_item',min_height:null,max_height:null}]),node(2,100),node(3,2),node(4,1),node(5,20),node(6,1)].map(n=>[n.id,n]));s.selection.led_loaded_at=new Date().toISOString();
+test('required variant must be selected',()=>assert.ok(m.calculateModular(s).error));
+s.selection.led_choices={[id(1)+'/group:Mocowanie']:id(11)};
+test('module count, nested quantities, area accessories and automatic cables',()=>{const result=m.calculateModular(s);assert.equal(result.error,null);assert.equal(result.total,710);assert.equal(result.lines.find(l=>l.key===id(1)).quantity,50);assert.equal(result.lines.find(l=>l.key===id(3)).quantity,5);assert.equal(result.lines.find(l=>l.key===id(1)+'/'+id(11)).quantity,50);});
+test('optional root included only when enabled',()=>{const next=structuredClone(s);next.selection.led_enabled['root:'+id(5)]=true;assert.equal(m.calculateModular(next).total,750);});
+test('unknown variant is rejected',()=>{const next=structuredClone(s);next.selection.led_choices[id(1)+'/group:Mocowanie']='unknown';assert.ok(m.calculateModular(next).error);});
+test('missing rate contributes zero',()=>{const next=structuredClone(s);next.selection.led_equipment[id(2)].rate=null;assert.equal(m.calculateModular(next).error,null);assert.equal(m.calculateModular(next).total,610);});
+test('snapshots retain prices after catalog changes',()=>{const next=structuredClone(s);catalog.led_tree.roots[1].quantity=5;assert.equal(m.calculateModular(next).total,710);catalog.led_tree.roots[1].quantity=1;});
+test('reject cyclic equipment tree',()=>{const next=structuredClone(s);next.selection.led_equipment[id(6)].links=[{id:id(12),equipment_id:id(6),type:'required',group:null,quantity:1,mode:'per_item',min_height:null,max_height:null}];assert.ok(m.calculateModular(next).error);});
+test('warehouse stage retains 1×2 module arithmetic',()=>{const stage=m.warehouseStageSnapshot({...m.warehouseStageDefaults(),roots:[{id:id(1),equipment_id:id(1),basis:'decks',quantity:1,required:true}]});stage.selection.width=4;stage.selection.depth=2;stage.equipment={[id(1)]:node(1,150)};stage.loaded_at=new Date().toISOString();assert.equal(m.calculateWarehouseStage(stage).total,600);assert.equal(m.calculateWarehouseStage(stage).lines[0].quantity,4);});
+test('PDF scope uses chosen descendants and English names',()=>{assert.match(m.modularScope(s).join('\n'),/Element 6 — 50 szt/);assert.match(m.modularScope(s,true).join('\n'),/Item 6 — 50 pcs/);assert.equal(m.missingModularEnglish(s),false);});
+for(const file of ['LedProductConfigurationSection.tsx','LedWarehouseConfigurator.tsx','WarehouseStageConfigurator.tsx','ModularProductConfigurator.tsx']){const f=root+'/src/components/crm/offers/'+file;const d=ts.transpileModule(fs.readFileSync(f,'utf8'),{fileName:f,reportDiagnostics:true,compilerOptions:{jsx:ts.JsxEmit.ReactJSX,module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).diagnostics||[];assert.equal(d.filter(x=>x.category===1).length,0,file);}
+const program=ts.createProgram([root+'/supabase/functions/_shared/modularProduct.ts'],{noEmit:true,allowImportingTsExtensions:true,module:ts.ModuleKind.ESNext,moduleResolution:ts.ModuleResolutionKind.Bundler,target:ts.ScriptTarget.ES2022,strict:true,skipLibCheck:true,types:[]});
+const errors=ts.getPreEmitDiagnostics(program);assert.equal(errors.length,0,errors.map(e=>ts.flattenDiagnosticMessageText(e.messageText,'\n')).join('\n'));
+console.log(count+' tree checks; targeted model typecheck and UI syntax passed');

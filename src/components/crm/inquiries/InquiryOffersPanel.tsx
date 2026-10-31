@@ -69,6 +69,7 @@ export default function InquiryOffersPanel({ offers, selectedId, canManage, onCr
         </div>
       </div>
       {offer.package_mode && offer.pricing_source !== 'calculation' ? <p className="text-sm">{(offer.offer_packages || []).filter((pkg: any) => !offer.accepted_package_id || pkg.id === offer.accepted_package_id).map((pkg: any) => `${pkg.name}: ${Number(pkg.price_net).toLocaleString('pl-PL')} zł netto`).join(' · ')}</p> : <p className="text-sm">{getOfferPricingTotals(offer).gross.toLocaleString('pl-PL', { style: 'currency', currency: 'PLN' })} brutto{offer.pricing_source === 'calculation' ? ` · kalkulacja: ${offer.calculation_snapshot?.name || 'Zapisana wersja'}` : ' · pozycje oferty'}</p>}
+      {offer.guest_count != null && <p className="text-xs text-white/60">Oferta dla {offer.guest_count} osób</p>}
       {selectedId === offer.id && <p className="text-sm text-green-300">Wybrana przez klienta</p>}
 
     </article>)}

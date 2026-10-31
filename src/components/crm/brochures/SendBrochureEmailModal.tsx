@@ -7,6 +7,8 @@ import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import UnifiedEmailComposer, { buildUnifiedEmailHtml, hasUnifiedEmailBody, loadUnifiedEmailAccounts, type UnifiedEmailAccount, type UnifiedEmailDraft } from '@/components/crm/UnifiedEmailComposer';
 import BrochureRecipients from './BrochureRecipients';
+import BrochureValidationPanel from './BrochureValidationPanel';
+import { BrochureValidationError, type BrochureValidationIssue } from '@/lib/brochures/validation';
 import { brochureErrorMessage, readBrochureResponse, deliveryRequest, deliveryLabels, type Delivery, type Recipient, type RecipientContext } from './delivery';
 type Brochure={id:string;name:string;my_company_id:string};
 export default function SendBrochureEmailModal({brochureId,context,onClose,onSent}:{brochureId?:string;context?:RecipientContext;onClose:()=>void;onSent?:()=>void}) {
@@ -14,6 +16,8 @@ export default function SendBrochureEmailModal({brochureId,context,onClose,onSen
  const [brochures,setBrochures]=useState<Brochure[]>([]),[selected,setSelected]=useState(brochureId||''),[recipients,setRecipients]=useState<Recipient[]>([]),[accounts,setAccounts]=useState<UnifiedEmailAccount[]>([]),[loading,setLoading]=useState(true),[busy,setBusy]=useState(''),[error,setError]=useState(''),[locked,setLocked]=useState(false),[deliveries,setDeliveries]=useState<Delivery[]>([]),[pdf,setPdf]=useState('');
  const [draft,setDraft]=useState<UnifiedEmailDraft>({fromAccountId:'',to:'',cc:'',bcc:'',subject:'Propozycja współpracy eventowej — Mavinci',messageHtml:'<p>Dzień dobry,</p><p>w załączeniu przesyłam broszurę z propozycją współpracy oraz zakresem usług eventowych Mavinci.</p><p>Chętnie porozmawiam o potrzebach Państwa obiektu i możliwościach wspólnej realizacji wydarzeń.</p><p>Zapraszam do kontaktu.</p>'});
  const [showPreview,setShowPreview]=useState(false),[preview,setPreview]=useState(''),[previewLoading,setPreviewLoading]=useState(false);
+ const [validationIssues,setValidationIssues]=useState<BrochureValidationIssue[]>([]);
+ useEffect(()=>{setValidationIssues([]);},[selected]);
  const batch=useRef(crypto.randomUUID()),processing=useRef(false),prepared=useRef(new Map<string,Delivery>()),generated=useRef(new Map<string,string>());
  const brochure=brochures.find(b=>b.id===selected);
  const reportError=useCallback((message:string)=>{
@@ -26,7 +30,7 @@ export default function SendBrochureEmailModal({brochureId,context,onClose,onSen
  const prepare=async()=>{
   if(processing.current||!brochure)return;
   if(!recipients.length||!draft.fromAccountId||!draft.subject.trim()||!hasUnifiedEmailBody(draft.messageHtml)){reportError('Wybierz odbiorców, konto nadawcy oraz uzupełnij temat i treść.');return;}
-  processing.current=true;setLocked(true);setError('');
+  processing.current=true;setLocked(true);setError('');setValidationIssues([]);
   let stage='Odczyt przygotowanych wiadomości';
   let recipientEmail='';
   let preparationError='';
@@ -39,7 +43,7 @@ export default function SendBrochureEmailModal({brochureId,context,onClose,onSen
     let generationId=generated.current.get(r.email);
     if(!generationId){
      stage='Generowanie załącznika PDF';setBusy(`Przygotowywanie PDF ${i+1} z ${recipients.length} · ${r.email}`);
-     const response=await fetch('/bridge/brochures/generate-pdf',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({brochureId:selected,recipientEmail:r.email})});
+     const response=await fetch('/bridge/brochures/generate-pdf',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({brochureId:selected,recipientEmail:r.email,recipient:{contactId:r.contactId,organizationId:r.organizationId}})});
      const result=await readBrochureResponse<{generation?:{id?:string};error?:unknown}>(response,'Nie udało się wygenerować załącznika.');
      if(!result.generation?.id)throw new Error(brochureErrorMessage(result.error,'Generator nie zwrócił identyfikatora PDF.'));
      generationId=result.generation.id;generated.current.set(r.email,generationId);
@@ -49,6 +53,7 @@ export default function SendBrochureEmailModal({brochureId,context,onClose,onSen
    }
    onSent?.();
   }catch(e){
+   if(e instanceof BrochureValidationError)setValidationIssues(e.issues);
    preparationError=`${stage}${recipientEmail?` (${recipientEmail})`:''}: ${brochureErrorMessage(e,'Nie udało się przygotować wiadomości.')} Żadna wiadomość nie została wysłana w tym kroku.`;
    // Keep the original failure and prepared rows even if refreshing also fails.
    try{await refresh();}catch{/* No sending happened. */}
@@ -62,11 +67,12 @@ export default function SendBrochureEmailModal({brochureId,context,onClose,onSen
   let completed=false;
   let sendError='';
   try{
+   const reviewed=new Map(deliveries.map(row=>[row.id,row.draft_revision]));
    const rows=await refresh();
    for(const row of rows.filter(d=>d.status==='prepared'||d.status==='failed')){
     setBusy(`Wysyłanie do ${row.recipient_email}…`);
     try{
-     const sent=await deliveryRequest({action:'send',deliveryId:row.id});
+     const sent=await deliveryRequest({action:'send',deliveryId:row.id,expectedRevision:reviewed.get(row.id)});
      prepared.current.set(sent.recipient_email,sent);setDeliveries([...prepared.current.values()]);
     }catch(e){failures.push(`${row.recipient_email}: ${brochureErrorMessage(e,'Nie otrzymano potwierdzenia wysyłki. Sprawdź historię przed ponowieniem.')}`);}
    }
@@ -92,6 +98,7 @@ export default function SendBrochureEmailModal({brochureId,context,onClose,onSen
  <Modal open scrollBody onClose={()=>{if(!processing.current)onClose();}} title="Wyślij broszurę">
   <div className="space-y-5" aria-busy={Boolean(busy)}>
    {error&&<p role="alert" className="whitespace-pre-line text-sm text-amber-200">{error}</p>}
+   {validationIssues.length>0&&<BrochureValidationPanel brochureId={selected} issues={validationIssues} disabled={Boolean(busy)}/>}
    <label className="block text-sm text-white/70">Broszura<select disabled={loading||locked||Boolean(brochureId)} value={selected} onChange={e=>setSelected(e.target.value)} className="mt-2 w-full rounded-lg border border-white/5 bg-black/15 p-3 text-white"><option value="">Wybierz broszurę</option>{brochures.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}</select></label>
    <UnifiedEmailComposer draft={draft} onChange={setDraft} accounts={accounts} accountsLoading={loading} disabled={locked||Boolean(busy)} allowScheduling={false} recipientEditor={<BrochureRecipients value={recipients} onChange={setRecipients} context={context} disabled={locked||Boolean(busy)}/>} showPreview={showPreview} onShowPreviewChange={setShowPreview} previewHtml={preview} previewLoading={previewLoading}/>
    <p className="text-xs leading-5 text-white/50">Po przygotowaniu sprawdzisz załączniki i zatwierdzisz wysyłkę. Utworzymy {recipients.length} osobnych wiadomości. Treść i odbiorcy zostaną zablokowani dla przygotowanej wysyłki.</p>

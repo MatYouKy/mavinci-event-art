@@ -2,8 +2,10 @@ import { resolveCalculationPrintCompany } from '@/lib/CRM/calculations/calculati
 import { requestCalculationPdf } from '@/lib/CRM/calculations/calculationActions';
 import SendCalculationEmailModal from '../../SendCalculationEmailModal';
 import { ImportFromOfferModal } from './ImportFromOfferModal';
+import type { ReactNode } from 'react';
 import { AddCalculationItemModal } from './AddCalculationItemModal';
-import { useState } from 'react';
+import { useState, useRef } from 'react';
+import { Eye, Download } from 'lucide-react';
 import { useCallback } from 'react';
 import { useEffect } from 'react';
 import { useMemo } from 'react';
@@ -36,10 +38,12 @@ export function CalculationEditor({
   calculationId,
   eventId,
   inquiryContext,
+  itemModalContext,
   readOnly = false,
   onBack,
 }: {
   readOnly?: boolean;
+  itemModalContext?: ReactNode;
   calculationId: string;
   eventId: string | null;
   inquiryContext?: {
@@ -72,6 +76,8 @@ export function CalculationEditor({
   const [generatedPdfPath, setGeneratedPdfPath] = useState<string | null>(null);
   const [calculationCreatedAt, setCalculationCreatedAt] = useState<string | null>(null);
   const [generatingPdf, setGeneratingPdf] = useState(false);
+  const [pdfAction, setPdfAction] = useState<'preview' | 'download' | null>(null);
+  const pdfActionLock = useRef(false);
   const [showSendEmail, setShowSendEmail] = useState(false);
   const [company, setCompany] = useState<any>(null);
   const [defaultEmail, setDefaultEmail] = useState<string | null>(null);
@@ -195,6 +201,7 @@ export function CalculationEditor({
               days: Number(r.days),
               source: r.source,
               source_ref: r.source_ref,
+              transport_estimate: r.transport_estimate ?? null,
               source_label: r.source === 'vehicle' ? vehicleLabels.get(r.source_ref) || 'Pojazd z bazy' : null,
               position: r.position,
               vat_rate: r.vat_rate != null ? Number(r.vat_rate) : DEFAULT_VAT,
@@ -306,6 +313,7 @@ export function CalculationEditor({
       days: Number(item.days) || 1,
       source: item.source,
       source_ref: item.source_ref ?? null,
+      transport_estimate: item.category === 'transport' ? item.transport_estimate ?? null : null,
       position,
       vat_rate: Number(item.vat_rate ?? DEFAULT_VAT),
       power_watts: item.power_watts ?? null,
@@ -371,13 +379,6 @@ export function CalculationEditor({
       ...(item.category === category ? categoryItems[categoryIndex++] : item), position,
     })));
     setOrderChanged(true);
-  };
-
-  const moveItem = (index: number, direction: -1 | 1) => {
-    const current = items[index];
-    if (!current) return;
-    const from = items.filter((item) => item.category === current.category).indexOf(current);
-    reorderItems(current.category, from, from + direction);
   };
 
   const removeItem = async (index: number) => {
@@ -698,6 +699,47 @@ export function CalculationEditor({
     }
   };
 
+  const handleSavedPdf = async (action: 'preview' | 'download') => {
+    if (pdfActionLock.current || saving || generatingPdf || !generatedPdfPath || orderChanged) return;
+    pdfActionLock.current = true;
+    setPdfAction(action);
+    // Open synchronously so the browser does not treat the preview as a popup.
+    const preview = action === 'preview' ? window.open('', '_blank') : null;
+    if (preview) preview.opener = null;
+    try {
+      if (action === 'preview' && !preview) throw new Error('Przeglądarka zablokowała podgląd. Zezwól na otwieranie nowej karty lub wybierz „Pobierz PDF”.');
+      const { data: calculation, error: calculationError } = await supabase.from('event_calculations')
+        .select('name,generated_pdf_path,generated_pdf_revision,content_revision').eq('id', calculationId).single();
+      if (calculationError) throw calculationError;
+      if (!calculation.generated_pdf_path || calculation.generated_pdf_revision !== calculation.content_revision) {
+        setGeneratedPdfPath(null);
+        throw new Error('Kalkulacja zmieniła się od wygenerowania dokumentu. Wygeneruj aktualny PDF.');
+      }
+      if (action === 'preview') {
+        const { data, error } = await supabase.storage.from('event-files').createSignedUrl(calculation.generated_pdf_path, 300);
+        if (error || !data?.signedUrl) throw error || new Error('Nie udało się otworzyć PDF.');
+        if (preview && !preview.closed) preview.location.href = data.signedUrl;
+      } else {
+        const { data: file, error } = await supabase.storage.from('event-files').download(calculation.generated_pdf_path);
+        if (error || !file) throw error || new Error('Nie udało się pobrać PDF.');
+        const url = URL.createObjectURL(file);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${(calculation.name || 'Kalkulacja').replace(/[\\/:*?"<>|]/g, '_')}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.setTimeout(() => URL.revokeObjectURL(url), 10000);
+      }
+    } catch (error: any) {
+      preview?.close();
+      showSnackbar(error.message || 'Nie udało się odczytać PDF kalkulacji.', 'error');
+    } finally {
+      pdfActionLock.current = false;
+      setPdfAction(null);
+    }
+  };
+
   const handleOpenSendEmail = async () => {
     if (readOnly) return;
     if (!generatedPdfPath || orderChanged) {
@@ -750,8 +792,8 @@ export function CalculationEditor({
   }
 
   return (
-    <div><button type="button" onClick={onBack} className="mb-3 text-sm text-[#d3bb73]">Wróć do listy kalkulacji</button><fieldset disabled={readOnly || saving || generatingPdf}>
-    <div className="space-y-4">
+    <div><button type="button" onClick={onBack} className="mb-3 text-sm text-[#d3bb73]">Wróć do listy kalkulacji</button>
+    <div className="min-w-0 space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <button
@@ -763,6 +805,7 @@ export function CalculationEditor({
 
           <input
             value={name}
+            disabled={readOnly || saving || generatingPdf}
             onChange={(e) => { setName(e.target.value); setGeneratedPdfPath(null); }}
             className="rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-3 py-2 text-lg font-light text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
           />
@@ -773,12 +816,14 @@ export function CalculationEditor({
           actions={[
             {
               label: 'Importuj z oferty',
+              disabled: saving || generatingPdf || Boolean(pdfAction),
               onClick: () => setShowImport(true),
               icon: <Import className="h-4 w-4" />,
               show: !readOnly && Boolean(eventId || inquiryContext?.inquiryId),
             },
             {
               label: 'Drukuj',
+              disabled: saving || generatingPdf || Boolean(pdfAction),
               onClick: handlePrint,
               icon: <Printer className="h-4 w-4" />,
             },
@@ -786,7 +831,7 @@ export function CalculationEditor({
               label: generatingPdf ? 'Generuję...' : 'Generuj PDF',
               show: !readOnly,
               onClick: handleGeneratePdf,
-              disabled: generatingPdf,
+              disabled: saving || generatingPdf || Boolean(pdfAction),
               icon: generatingPdf ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
@@ -794,22 +839,37 @@ export function CalculationEditor({
               ),
             },
             {
+              label: pdfAction === 'preview' ? 'Otwieram PDF…' : 'Podgląd PDF',
+              show: Boolean(generatedPdfPath) && !orderChanged,
+              onClick: () => void handleSavedPdf('preview'),
+              disabled: saving || generatingPdf || Boolean(pdfAction),
+              icon: pdfAction === 'preview' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />,
+            },
+            {
+              label: pdfAction === 'download' ? 'Pobieram PDF…' : 'Pobierz PDF',
+              show: Boolean(generatedPdfPath) && !orderChanged,
+              onClick: () => void handleSavedPdf('download'),
+              disabled: saving || generatingPdf || Boolean(pdfAction),
+              icon: pdfAction === 'download' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />,
+            },
+            {
               label: 'Wyślij email',
               show: !readOnly,
               onClick: handleOpenSendEmail,
-              disabled: !generatedPdfPath || orderChanged,
+              disabled: !generatedPdfPath || orderChanged || saving || generatingPdf || Boolean(pdfAction),
               icon: <Mail className="h-4 w-4" />,
             },
             {
               label: saving ? 'Zapisywanie...' : 'Zapisz',
               show: !readOnly,
               onClick: handleSave,
-              disabled: saving,
+              disabled: saving || generatingPdf || Boolean(pdfAction),
               variant: 'primary',
               icon: <Save className="h-4 w-4" />,
             },
             {
               label: 'Usuń kalkulację',
+              disabled: saving || generatingPdf || Boolean(pdfAction),
               show: !readOnly,
               onClick: handleDeleteCalc,
               variant: 'danger',
@@ -819,6 +879,7 @@ export function CalculationEditor({
         />
       </div>
 
+      <fieldset className="min-w-0 space-y-4" disabled={readOnly || saving || generatingPdf}>
       <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
         {(Object.keys(CATEGORY_META) as Category[]).map((cat) => {
           const Icon = CATEGORY_META[cat].icon;
@@ -842,7 +903,7 @@ export function CalculationEditor({
       </div>
 
       <p className="text-xs text-[#e5e4e2]/60">
-        Przeciągnij pozycję za uchwyt po lewej lub użyj strzałek, aby zmienić kolejność w sekcji. Kliknij „Zapisz”, aby ją zachować.
+        Przeciągnij pozycję za uchwyt po lewej, aby zmienić kolejność w sekcji. Kliknij „Zapisz”, aby ją zachować.
         {orderChanged && <span className="ml-1 text-[#d3bb73]">Kolejność została zmieniona. Po zapisaniu wygeneruj ponownie PDF przed wysyłką.</span>}
       </p>
       {(Object.keys(CATEGORY_META) as Category[]).map((cat) => (
@@ -855,7 +916,6 @@ export function CalculationEditor({
           onUpdate={updateItem}
           onRemove={removeItem}
           onToggleEdit={toggleEdit}
-          onMove={moveItem}
           onReorder={reorderItems}
           reorderingDisabled={saving || generatingPdf}
         />
@@ -972,6 +1032,8 @@ export function CalculationEditor({
         <AddCalculationItemModal
           key={editingModalItem?.id || `new-${addModalCategory}`}
           initialItem={editingModalItem || undefined}
+          calculationId={calculationId}
+          contextPanel={itemModalContext}
           category={addModalCategory}
           existingItems={items}
           existingCount={items.filter((it) => it.category === addModalCategory).length}
@@ -979,7 +1041,7 @@ export function CalculationEditor({
           onClose={() => { setAddModalCategory(null); setEditingModalItem(null); }}
         />
       )}
-    </div>
-    </fieldset></div>
+    </fieldset>
+    </div></div>
   );
 }

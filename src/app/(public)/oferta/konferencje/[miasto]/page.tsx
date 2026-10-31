@@ -2,22 +2,24 @@ import { notFound } from 'next/navigation';
 import { cache } from 'react';
 import { getPublishedConferenceCities, getPublicPageMetadata, publicSupabase } from '@/lib/SEO/publicData';
 import { SITE, ORGANIZATION_ID, WEBSITE_ID } from '@/lib/SEO/site';
+import ConferenceCityDetails from './ConferenceCityDetails';
+import ConferenceCityHero from './ConferenceCityHero';
+import ConferenceServiceArea from './ConferenceServiceArea';
 import RegionalConferenceIntro from './RegionalConferenceIntro';
-import { readConferenceCityContent, readConferenceCityFaqs } from '@/lib/SEO/conferenceCityContent';
+import { resolveConferenceCityContent, readConferenceCityFaqs, getConferenceLocalProfile } from '@/lib/SEO/conferenceCityContent';
 import { Metadata } from 'next';
 import PageLayout from '@/components/Layout/PageLayout';
-import { CategoryBreadcrumb } from '@/components/CategoryBreadcrumb';
+import { ServerBreadcrumb } from '@/components/Layout/ServerBreadcrumb';
 import { getUserPermissions } from '@/lib/serverAuth';
-import EditableHeroSectionServer from '@/components/EditableHeroSectionServer';
 import { getPolishCityCasesSmart } from '@/lib/polishCityCases';
 
 import CityConferenceAdminClient from './CityConferenceAdminClient';
 import CityConferenceContent from './CityConferenceContent';
 import { TechnicalServices } from '../sections/TechnicalServices';
-import { getConferencesData } from '@/lib/conferences-data';
+import { getConferenceCityData } from '@/lib/conferences-data';
 import { AdvantagesSection } from '../sections/AdvantagesSection';
 import { PortfolioProjects } from '../sections/PortfolioProjects';
-import { ProcessSection } from '../sections/ProcessSection';
+import { ConferenceProcessSection } from '../sections/ConferenceProcessSection';
 import { CaseStudiesSection } from '../sections/CaseStudiesSection';
 import { cookies } from 'next/headers';
 import { FAQSection } from '../sections/FAQ/FAQSection';
@@ -26,33 +28,47 @@ import { loadCityCasesFromDb } from '@/lib/Pages/polishCityCases.server';
 
 export const dynamic = 'force-dynamic';
 
+// The head, schema and visible offer share one request-scoped server snapshot.
 const loadCityData = cache(async (slug: string) => {
   const published = await getPublishedConferenceCities();
   const city = published.find((place) => place.locality === slug);
   if (!city) return null;
-  const [cityPageSeo, exceptions, { data: heroImage }] = await Promise.all([
+  const [cityPageSeo, exceptions, { data: heroImage }, { data: cityHero }, conferenceData] = await Promise.all([
     getPublicPageMetadata(`oferta/konferencje/${slug}`), loadCityCasesFromDb(),
-    publicSupabase().from('konferencje_page_images').select('image_url')
+    publicSupabase().from('konferencje_page_images').select('*')
       .eq('is_active', true).eq('section', 'hero').limit(1).maybeSingle(),
+    publicSupabase().from('service_hero_images').select('*')
+      .eq('page_slug', `oferta/konferencje/${slug}`).eq('is_active', true).maybeSingle(),
+    getConferenceCityData(publicSupabase(), slug),
   ]);
   const cityCases = exceptions[slug] || getPolishCityCasesSmart(city.name, exceptions);
-  const title = `Obsługa techniczna konferencji ${cityCases.locative_preposition || 'w'} ${cityCases.locative}`;
+  const title = cityHero?.title?.trim() || `Obsługa techniczna konferencji ${cityCases.locative_preposition || 'w'} ${cityCases.locative}`;
   const description = cityPageSeo?.description || `MAVINCI: obsługa techniczna konferencji ${cityCases.locative_preposition || 'w'} ${cityCases.locative}. Nagłośnienie Meyer Sound, LED, oświetlenie i streaming. Własne zaplecze w Olsztynie.`;
-  return { city, cityCases, title, description, cityPageSeo,
-    content: readConferenceCityContent(cityPageSeo?.custom_schema),
+  const preferredCities = getConferenceLocalProfile(slug)?.nearbyCitySlugs || [];
+  const regionalCities = published.filter(place => place.locality !== slug &&
+    place.region?.toLocaleLowerCase('pl-PL') === city.region?.toLocaleLowerCase('pl-PL'));
+  const nearbyCities = [...regionalCities].sort((a, b) => {
+    const aIndex = preferredCities.indexOf(a.locality);
+    const bIndex = preferredCities.indexOf(b.locality);
+    return (aIndex < 0 ? preferredCities.length : aIndex) - (bIndex < 0 ? preferredCities.length : bIndex);
+  }).slice(0, 6).map(place => ({ locality: place.locality, name: place.name }));
+  return { city, cityCases, title, description, cityPageSeo, conferenceData,
+    cityNames: Object.fromEntries(published.map(place => [place.locality, place.name])),
+    content: resolveConferenceCityContent(cityPageSeo?.custom_schema, city.name, slug),
+    heroSettings: cityHero || {},
+    lead: cityHero?.description?.trim() || `Nagłośnienie Meyer Sound, ekrany LED, światło i streaming konferencji ${cityCases.locative_preposition || 'w'} ${cityCases.locative}. Dobieramy technikę do programu i sali, organizujemy transport, montaż oraz pracę realizatorów. Obsługujemy konferencje stacjonarne, hybrydowe i połączone z galą.`,
     localFaq: readConferenceCityFaqs(cityPageSeo?.custom_schema),
     metaTitle: cityPageSeo?.title || `Obsługa techniczna konferencji ${cityCases.nominative} | MAVINCI`,
-    image: cityPageSeo?.og_image || heroImage?.image_url || `${SITE.url}/logo-mavinci-crm.png`,
+    image: cityHero?.image_url || heroImage?.image_url || `${SITE.url}/logo-mavinci-crm.png`,
     canonicalUrl: `${SITE.url}/oferta/konferencje/${slug}`,
-    nearbyCities: published.filter(place => place.locality !== slug &&
-      place.region?.toLocaleLowerCase('pl-PL') === city.region?.toLocaleLowerCase('pl-PL')).slice(0, 6)
-      .map(place => ({ locality: place.locality, name: place.name })) };
+    nearbyCities };
 });
 
 export async function generateMetadata({ params }: { params: { miasto: string } }): Promise<Metadata> {
   const data = await loadCityData(params.miasto);
   if (!data) return { title: 'Nie znaleziono strony | MAVINCI', robots: { index: false } };
-  const { metaTitle: title, description, canonicalUrl: url, image } = data;
+  const { metaTitle: title, description, canonicalUrl: url } = data;
+  const image = data.cityPageSeo?.og_image || data.image;
   return { title: { absolute: title }, description, alternates: { canonical: url },
     openGraph: { type: 'website', title, description, url, siteName: SITE.name, locale: 'pl_PL',
       images: [{ url: image, alt: data.title }] },
@@ -60,18 +76,19 @@ export async function generateMetadata({ params }: { params: { miasto: string } 
 }
 
 export default async function CityConferencePage({ params }: { params: { miasto: string } }) {
-  const data = await loadCityData(params.miasto);
-  if (!data) notFound();
-  const { cityCases, image, description, title, city, canonicalUrl, nearbyCities, content, localFaq } = data;
-  const pageSlug = `oferta/konferencje/${city.locality}`;
-  const [{ hasWebsiteEdit }, conferenceData] = await Promise.all([
-    getUserPermissions(), getConferencesData(publicSupabase()),
+  const [data, { hasWebsiteEdit }] = await Promise.all([
+    loadCityData(params.miasto), getUserPermissions(),
   ]);
-  const { services, caseStudies, advantages, process, faq, portfolio } = conferenceData;
+  if (!data) notFound();
+  const { cityCases, image, description, title, city, canonicalUrl, nearbyCities, content, localFaq, heroSettings, lead } = data;
+  const pageSlug = `oferta/konferencje/${city.locality}`;
+  const { services, caseStudies, advantages, process, faq, portfolio } = data.conferenceData;
   const localQuestions = new Set(localFaq.map(item => item.question.trim().toLocaleLowerCase('pl-PL')));
+  const commonFaq = faq.filter((item: { question: string }) => !localQuestions.has(item.question.trim().toLocaleLowerCase('pl-PL')));
   const visibleFaq = [
     ...localFaq.map((item, index) => ({ ...item, id: `city-${city.locality}-${index}` })),
-    ...faq.filter((item: { id: string; question: string; answer: string }) => !localQuestions.has(item.question.trim().toLocaleLowerCase('pl-PL'))),
+    // The local offer already explains pricing, equipment and logistics in detail.
+    ...(content.benefits?.length && localFaq.length >= 4 ? commonFaq.slice(0, 3) : commonFaq),
   ];
   const customSchema = {
     '@context': 'https://schema.org', '@graph': [
@@ -81,42 +98,41 @@ export default async function CityConferencePage({ params }: { params: { miasto:
       { '@type': 'Service', '@id': `${canonicalUrl}#service`, name: title,
         url: canonicalUrl, description, image, provider: { '@id': ORGANIZATION_ID },
         serviceType: 'Techniczna obsługa konferencji',
-        areaServed: { '@type': 'City', name: cityCases.nominative } },
+        areaServed: { '@type': 'City', name: cityCases.nominative },
+        ...(portfolio.length > 0 && { subjectOf: portfolio.filter((project: { slug?: string }) => project.slug).map((project: { slug?: string }) => ({ '@id': `${SITE.url}/portfolio/${project.slug}#article` })) }) },
     ],
   };
   return (
-    <PageLayout pageSlug={pageSlug} customSchema={customSchema} cookieStore={cookies()}>
+    <PageLayout pageSlug={pageSlug} customSchema={customSchema} cookieStore={cookies()} breadcrumbLabels={{ [city.locality]: city.name }}>
       <main>
-      <EditableHeroSectionServer
-        whiteWordsCount={4}
-        section="konferencje-hero"
-        pageSlug={pageSlug}
-        initialImageUrl={image}
-        initialTitle={title}
-        initialDescription={description}
-      />
+      <ConferenceCityHero pageSlug={pageSlug} cityName={city.name} title={title} lead={lead}
+        cityForms={[cityCases.nominative, cityCases.genitive, cityCases.locative]}
+        image={image} settings={heroSettings} canEdit={hasWebsiteEdit} />
 
       <div className="left-0 top-0 min-h-screen w-full bg-[transparent]">
         <div className="mx-auto max-w-7xl px-5 pt-4 sm:px-6">
-          <CategoryBreadcrumb pageSlug={pageSlug} productName={title} hideMetadataButton />
+          <ServerBreadcrumb pageSlug={pageSlug} labels={{ [city.locality]: city.name }} />
         </div>
-        <CityConferenceAdminClient isAdmin={hasWebsiteEdit} pageSlug={pageSlug} cityName={cityCases.nominative} />
+        {hasWebsiteEdit && <CityConferenceAdminClient isAdmin pageSlug={pageSlug} cityName={cityCases.nominative} />}
         <RegionalConferenceIntro citySlug={city.locality} cityName={cityCases.nominative} content={content} />
-        <TechnicalServices services={services} cityCases={cityCases} />
-        <AdvantagesSection advantages={advantages} />
+        <ConferenceCityDetails content={content} cityName={city.name} />
+        <TechnicalServices services={services} cityCases={cityCases} showEditor={hasWebsiteEdit} />
+        {!content.benefits?.length && <AdvantagesSection advantages={advantages} />}
 
 
         {portfolio.length > 0 && (
-          <PortfolioProjects isEditMode={false} portfolioProjects={portfolio} />
+          <PortfolioProjects isEditMode={false} portfolioProjects={portfolio} cityName={city.name} cityNames={data.cityNames} />
         )}
 
+        <ConferenceServiceArea citySlug={city.locality} cityName={city.name} region={city.region} content={content} nearbyCities={nearbyCities} />
+
         <Stats />
-        <ProcessSection process={process} isEditingProcess={false} />
+        <ConferenceProcessSection process={process} />
 
         <CaseStudiesSection caseStudies={caseStudies} />
-        <FAQSection faq={visibleFaq} />
+        <FAQSection faq={visibleFaq} title={`${city.name} — pytania o obsługę konferencji`} />
 
-        <CityConferenceContent cityName={city.name} nearbyCities={nearbyCities} />
+        <CityConferenceContent citySlug={city.locality} cityName={city.name} nearbyCities={[]} />
       </div>
       </main>
     </PageLayout>

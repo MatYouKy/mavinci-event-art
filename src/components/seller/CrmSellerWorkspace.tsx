@@ -4,8 +4,8 @@ import { systemLabel } from '@/lib/ui/systemLabels';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
-import { BarChart3, Calendar, FileText, Loader2, MessageSquare, Palette, RefreshCw, Search, WalletCards } from 'lucide-react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { BarChart3, Calendar, FileText, Loader2, MessageSquare, RefreshCw, Search, Settings, WalletCards } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { sellerMoney, sellerStatusLabel } from '@/lib/seller/portal';
 import { sellerInboxCounts } from '@/lib/seller/inbox';
@@ -16,15 +16,41 @@ import { CrmCartesianChart } from '@/components/crm/charts/CrmCharts';
 import SellerChatPanel, { ChatBrand, ChatOffer } from './SellerChatPanel';
 import SellerInboxPanel, { SellerCountBadge } from './SellerInboxPanel';
 import CrmOfferBrandingPanel from './CrmOfferBrandingPanel';
+import CrmSellerProfileSettings from './CrmSellerProfileSettings';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 
 type Offer = ChatOffer & { status: string; client_name: string | null; created_at: string; event_date: string | null; event_id: string | null; client_total_net: number; partner_base_net: number; generated_at: string | null; brand_name: string; review_status: string | null; document_id: string | null };
 type Event = { id: string; name: string; event_date: string; status: string; brand_name: string; my_company_id: string };
 type Workspace = { brands: ChatBrand[]; offers: Offer[]; events: Event[]; can_view_offers: boolean };
 const reviewLabels: Record<string, string> = { pending: 'Do decyzji opiekuna', approved: 'Zasoby zaakceptowane', changes_requested: 'Do poprawy', rejected: 'Zapytanie odrzucone' };
 
+const workspaceSections = ['summary', 'offers', 'events', 'settlements', 'chat', 'settings'] as const;
+type WorkspaceSection = typeof workspaceSections[number];
+const sectionFromParams = (params: { get: (key: string) => string | null }): WorkspaceSection => {
+  if (params.get('conversation')) return 'chat';
+  if (params.get('tab') === 'settlements') return 'settlements'; // old contact links
+  const section = params.get('section');
+  if (section === 'branding') return 'settings';
+  return workspaceSections.includes(section as WorkspaceSection) ? section as WorkspaceSection : 'summary';
+};
+
 export default function CrmSellerWorkspace({ partnerId, contactId }: { partnerId: string; contactId?: string }) {
   const params = useSearchParams();
-  const [tab, setTab] = useState(params.get('conversation') || params.get('section') === 'chat' ? 'chat' : params.get('section') === 'branding' ? 'branding' : params.get('section') === 'settlements' ? 'settlements' : 'summary');
+  const router = useRouter();
+  const pathname = usePathname();
+  const { canViewModule } = useCurrentEmployee();
+  const canViewSettlements = canViewModule('finances');
+  const [tab, setTab] = useState<WorkspaceSection>(() => sectionFromParams(params));
+  const [settingsVisited, setSettingsVisited] = useState(() => sectionFromParams(params) === 'settings');
+  const [brandingOpen, setBrandingOpen] = useState(params.get('section') === 'branding');
+  const openSection = (section: WorkspaceSection) => {
+    setTab(section);
+    const next = new URLSearchParams(params.toString());
+    next.set('section', section);
+    if (pathname.startsWith('/crm/contacts/')) next.set('tab', 'seller');
+    if (section !== 'chat') next.delete('conversation');
+    router.replace(`${pathname}?${next}${section === 'settings' ? '#seller-profile-settings' : ''}`, { scroll: false });
+  };
   const [data, setData] = useState<Workspace | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
@@ -48,10 +74,21 @@ export default function CrmSellerWorkspace({ partnerId, contactId }: { partnerId
     return () => window.removeEventListener('seller-workspace-changed', update);
   }, [reload]);
   useEffect(() => {
-    if (params.get('conversation') || params.get('section') === 'chat') setTab('chat');
-    else if (params.get('section') === 'branding') setTab('branding');
-    else if (params.get('section') === 'settlements') setTab('settlements');
+    setTab(sectionFromParams(params));
+    if (params.get('section') === 'branding') setBrandingOpen(true);
   }, [params]);
+  const workspaceReady = Boolean(data);
+  useEffect(() => {
+    if (tab !== 'settings') return;
+    setSettingsVisited(true);
+    if (!workspaceReady) return;
+    const frame = window.requestAnimationFrame(() => {
+      const section = document.getElementById('seller-profile-settings');
+      section?.scrollIntoView({ block: 'start', behavior: 'instant' });
+      section?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [tab, workspaceReady]);
   useEffect(() => { setOfferPage(1); setEventPage(1); }, [brandId, query]);
   const brandOffers = useMemo(() => (data?.offers || []).filter((offer) => !brandId || offer.my_company_id === brandId), [data, brandId]);
   const stats = useMemo(() => {
@@ -77,16 +114,16 @@ export default function CrmSellerWorkspace({ partnerId, contactId }: { partnerId
   if (loading && !data) return <div className="flex items-center gap-2 py-10 text-sm text-white/50"><Loader2 className="h-4 w-4 animate-spin" />Wczytywanie sprzedaży sprzedawcy…</div>;
   if (error || !data) return <div className="rounded-xl bg-amber-300/5 p-5 text-sm text-amber-200"><p>{error || 'Brak danych sprzedaży.'}</p><button type="button" onClick={() => void reload()} className="mt-3 text-[#d3bb73]">Spróbuj ponownie</button></div>;
   return <div className="space-y-5 text-[#e5e4e2]">
-    <header className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-lg">Sprzedaż sprzedawcy</h2><p className="mt-1 text-xs text-white/45">Oferty, powiązane realizacje i ustalenia tej osoby w dostępnych dla Ciebie markach.</p></div><button type="button" onClick={() => void reload()} className="flex items-center gap-2 rounded-lg bg-white/5 px-3 py-2 text-xs text-[#d3bb73]"><RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />Odśwież</button></header>
+    <header className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-lg">Sprzedaż sprzedawcy</h2><p className="mt-1 text-xs text-white/45">Oferty, realizacje, rozmowy, rozliczenia prowizji i ustawienia sprzedawcy w jednym miejscu.</p></div><button type="button" onClick={() => void reload()} className="flex items-center gap-2 rounded-lg bg-white/5 px-3 py-2 text-xs text-[#d3bb73]"><RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />Odśwież</button></header>
     <nav className="flex flex-wrap gap-2" aria-label="Sprzedaż sprzedawcy">{[
       { id: 'summary', label: 'Podsumowanie', icon: BarChart3, count: 0 },
       { id: 'offers', label: `Oferty (${data.offers.length})`, icon: FileText, count: counts.reviews },
       { id: 'events', label: `Realizacje (${data.events.length})`, icon: Calendar, count: 0 },
-      { id: 'settlements', label: 'Rozliczenia', icon: WalletCards, count: 0 },
+      { id: 'settlements', label: 'Rozliczenia prowizji', icon: WalletCards, count: 0 },
       { id: 'chat', label: 'Rozmowy', icon: MessageSquare, count: counts.messages },
-      { id: 'branding', label: 'Branding i wizytówka', icon: Palette, count: 0 },
-    ].map((item) => <button data-crm-tab-active={tab === item.id} key={item.id} type="button" onClick={() => setTab(item.id)} className={`flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm ${tab === item.id ? 'bg-[#d3bb73]/15 text-[#d3bb73]' : 'bg-white/[0.03] text-white/55 hover:bg-white/5'}`}><item.icon className="h-4 w-4" />{item.label}<SellerCountBadge count={item.count} label={item.label} /></button>)}</nav>
-    {tab !== 'chat' && tab !== 'branding' && tab !== 'settlements' && <div className="flex flex-wrap gap-2">{[{ id: '', name: 'Wszystkie marki' }, ...data.brands].map((brand) => <button key={brand.id} type="button" onClick={() => setBrandId(brand.id)} className={`rounded-lg px-3 py-2 text-xs ${brandId === brand.id ? 'bg-[#d3bb73]/15 text-[#d3bb73]' : 'text-white/45 hover:bg-white/5'}`}>{brand.name}</button>)}</div>}
+      { id: 'settings', label: 'Ustawienia', icon: Settings, count: 0 },
+    ].filter(item => item.id !== 'settlements' || canViewSettlements).map((item) => <button data-crm-tab-active={tab === item.id} key={item.id} type="button" onClick={() => openSection(item.id as WorkspaceSection)} className={`flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm ${tab === item.id ? 'bg-[#d3bb73]/15 text-[#d3bb73]' : 'bg-white/[0.03] text-white/55 hover:bg-white/5'}`}><item.icon className="h-4 w-4" />{item.label}<SellerCountBadge count={item.count} label={item.label} /></button>)}</nav>
+    {tab !== 'chat' && tab !== 'settings' && tab !== 'settlements' && <div className="flex flex-wrap gap-2">{[{ id: '', name: 'Wszystkie marki' }, ...data.brands].map((brand) => <button key={brand.id} type="button" onClick={() => setBrandId(brand.id)} className={`rounded-lg px-3 py-2 text-xs ${brandId === brand.id ? 'bg-[#d3bb73]/15 text-[#d3bb73]' : 'text-white/45 hover:bg-white/5'}`}>{brand.name}</button>)}</div>}
     {tab === 'summary' && <>
       {!data.can_view_offers && <p className="text-sm text-amber-200">Twój zakres uprawnień nie obejmuje ofert. Dane handlowe nie są dostępne w tym widoku.</p>}
       {data.can_view_offers && <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{[
@@ -129,7 +166,7 @@ export default function CrmSellerWorkspace({ partnerId, contactId }: { partnerId
         </section>
       </div>
       <SellerInboxPanel partnerId={partnerId} />
-      <button type="button" onClick={() => setTab('settlements')} className="flex items-center gap-2 rounded-xl bg-white/5 px-4 py-3 text-left text-sm text-[#d3bb73] hover:bg-white/10"><WalletCards className="h-4 w-4" />Zobacz naliczenia, historię wypłat i kwoty pozostałe do rozliczenia</button>
+      {canViewSettlements && <button type="button" onClick={() => openSection('settlements')} className="flex items-center gap-2 rounded-xl bg-white/5 px-4 py-3 text-left text-sm text-[#d3bb73] hover:bg-white/10"><WalletCards className="h-4 w-4" />Zobacz naliczenia, historię wypłat i kwoty pozostałe do rozliczenia</button>}
     </>}
     {(tab === 'offers' || tab === 'events') && <div className="relative"><Search className="absolute left-3 top-3 h-4 w-4 text-white/35" /><input aria-label="Wyszukaj w sprzedaży sprzedawcy" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={tab === 'offers' ? 'Szukaj oferty, numeru lub klienta…' : 'Szukaj realizacji…'} className="w-full rounded-lg bg-[#1c1f33] py-2.5 pl-10 pr-3 text-sm outline-none ring-1 ring-white/5 focus:ring-[#d3bb73]/25" /></div>}
     {tab === 'offers' && <section className="space-y-2">{offers.slice((offerPage - 1) * 20, offerPage * 20).map((offer) => <article key={offer.id} className="flex flex-wrap items-center justify-between gap-4 rounded-xl bg-[#1c1f33] p-4">
@@ -137,8 +174,20 @@ export default function CrmSellerWorkspace({ partnerId, contactId }: { partnerId
       <div className="text-right"><p className="text-sm">{sellerMoney(offer.client_total_net)} netto</p><p className="mt-1 text-xs text-white/50">{sellerStatusLabel(offer.status)}</p>{offer.review_status && <p className={`mt-1 text-xs ${offer.review_status === 'pending' ? 'text-amber-200' : 'text-white/45'}`}>{reviewLabels[offer.review_status] || systemLabel(offer.review_status)}</p>}</div>
     </article>)}{!offers.length && <p className="p-8 text-center text-sm text-white/40">Brak pasujących ofert tego sprzedawcy.</p>}{offers.length > 20 && <div className="flex items-center justify-center gap-4 py-3 text-sm"><button disabled={offerPage === 1} onClick={() => setOfferPage((page) => page - 1)} className="text-[#d3bb73] disabled:opacity-30">Poprzednie</button><span>{offerPage} / {Math.ceil(offers.length / 20)}</span><button disabled={offerPage * 20 >= offers.length} onClick={() => setOfferPage((page) => page + 1)} className="text-[#d3bb73] disabled:opacity-30">Następne</button></div>}</section>}
     {tab === 'events' && <section className="space-y-2">{events.slice((eventPage - 1) * 20, eventPage * 20).map((event) => <Link key={event.id} href={`/crm/events/${event.id}`} className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-[#1c1f33] p-4"><span className="text-sm text-[#d3bb73]">{event.name}<span className="mt-1 block text-xs text-white/45">{event.brand_name}</span></span><span className="text-right text-xs text-white/60">{new Date(event.event_date).toLocaleDateString('pl-PL')}<span className="mt-1 block">{EVENT_STATUS_LABELS[event.status as keyof typeof EVENT_STATUS_LABELS] || systemLabel(event.status)}</span></span></Link>)}{!events.length && <p className="p-8 text-center text-sm text-white/40">Brak powiązanych realizacji dostępnych w Twoim zakresie uprawnień.</p>}{events.length > 20 && <div className="flex items-center justify-center gap-4 py-3 text-sm"><button disabled={eventPage === 1} onClick={() => setEventPage((page) => page - 1)} className="text-[#d3bb73] disabled:opacity-30">Poprzednie</button><span>{eventPage} / {Math.ceil(events.length / 20)}</span><button disabled={eventPage * 20 >= events.length} onClick={() => setEventPage((page) => page + 1)} className="text-[#d3bb73] disabled:opacity-30">Następne</button></div>}</section>}
-    {tab === 'settlements' && <CommissionSettlementsPanel key={contactId || partnerId} mode="crm" accountType={contactId ? 'contact' : 'partner'} accountId={contactId || partnerId} />}
+    {tab === 'settlements' && (canViewSettlements
+      ? <CommissionSettlementsPanel key={contactId || partnerId} mode="crm" accountType={contactId ? 'contact' : 'partner'} accountId={contactId || partnerId} />
+      : <p className="rounded-xl bg-white/5 p-5 text-sm text-white/55">Nie masz uprawnień do przeglądania rozliczeń prowizji.</p>)}
     {tab === 'chat' && <SellerChatPanel partnerId={partnerId} brands={data.brands} offers={data.offers} crm />}
-    {tab === 'branding' && <CrmOfferBrandingPanel key={partnerId} partnerId={partnerId} />}
+    {(settingsVisited || tab === 'settings') && <section id="seller-profile-settings" tabIndex={-1} hidden={tab !== 'settings'} className="scroll-mt-24 space-y-5 focus:outline-none" aria-label="Ustawienia sprzedawcy">
+      <div><h2 className="text-lg font-medium">Ustawienia sprzedawcy</h2><p className="mt-1 text-xs text-white/50">Organizacja nowych ofert, warunki współpracy i dostęp do portalu. Dane osobowe edytujesz w zakładce „Dane kontaktowe”.</p></div>
+      {/* Keep the editor mounted while navigating sales sections. Background
+          workspace refreshes and section changes must not erase unsaved input. */}
+      <CrmSellerProfileSettings key={partnerId} partnerId={partnerId} contactId={contactId} />
+      <details open={brandingOpen} onToggle={event => setBrandingOpen(event.currentTarget.open)} className="rounded-xl bg-white/[0.035] p-5">
+        <summary className="cursor-pointer text-sm font-medium text-[#d3bb73]">Branding i wizytówka — podgląd</summary>
+        <p className="mt-2 text-xs text-white/50">Sprzedawca zmienia logo, kolory i wygląd ofert w swoim portalu.</p>
+        {brandingOpen && <div className="mt-5"><CrmOfferBrandingPanel key={partnerId} partnerId={partnerId} /></div>}
+      </details>
+    </section>}
   </div>;
 }

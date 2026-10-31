@@ -3,7 +3,7 @@ import type { ProductSalesPackage } from '@/lib/CRM/Offers/productSalesPackages'
 
 import { hasOfferAddons, expandConfiguredItems, type OfferConfiguration } from '@/lib/CRM/Offers/offerAddons';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import { GripVertical, Pencil, Trash2, Eye, Plus, Package } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
@@ -34,6 +34,7 @@ interface OfferItem {
   name: string;
   description?: string | null;
   quantity: number;
+  days?: number;
   unit?: string | null;
   unit_price: number;
   discount_percent: number;
@@ -63,6 +64,7 @@ interface OfferItem {
 }
 
 interface OfferItemsProps {
+  canEdit?: boolean;
   items: OfferItem[];
   offerId: string;
   vatRate?: number;
@@ -83,6 +85,7 @@ const getOfferItemDescription = (item: OfferItem) => {
 
 export default function OfferItems({
   items,
+  canEdit = true,
   offerId,
   vatRate = 23,
   onItemsReordered,
@@ -93,11 +96,14 @@ export default function OfferItems({
 }: OfferItemsProps) {
   const { showSnackbar } = useSnackbar();
 
+  const saving = useRef(false);
   const [updating, setUpdating] = useState(false);
   const [updatingLayoutId, setUpdatingLayoutId] = useState<string | null>(null);
   const [updatingVariantPriceId, setUpdatingVariantPriceId] = useState<string | null>(null);
   const [thumbUrls, setThumbUrls] = useState<Record<string, string>>({});
   const [orderedItems, setOrderedItems] = useState<OfferItem[]>([]);
+
+  const savingPresentation = updating || updatingLayoutId !== null || updatingVariantPriceId !== null;
 
   const bucket = useMemo(() => supabase.storage.from('offer-product-pages'), []);
 
@@ -140,11 +146,11 @@ export default function OfferItems({
   }, [items, bucket]);
 
   useEffect(() => {
-    setOrderedItems([...items].sort((a, b) => a.display_order - b.display_order));
+    if (!saving.current) setOrderedItems([...items].sort((a, b) => a.display_order - b.display_order || a.id.localeCompare(b.id)));
   }, [items]);
 
   const handleDragEnd = async (result: DropResult) => {
-    if (!result.destination) return;
+    if (!canEdit || saving.current || !result.destination) return;
 
     const sourceIndex = result.source.index;
     const destinationIndex = result.destination.index;
@@ -160,27 +166,27 @@ export default function OfferItems({
       display_order: idx,
     }));
 
+    saving.current = true;
     setOrderedItems(nextWithOrder);
     setUpdating(true);
 
     try {
-      for (const it of nextWithOrder) {
-        const { error } = await supabase
-          .from('offer_items')
-          .update({ display_order: it.display_order })
-          .eq('id', it.id);
-
-        if (error) throw error;
-      }
+      const { error } = await supabase.rpc('reorder_offer_items', {
+        p_offer_id: offerId,
+        p_item_ids: nextWithOrder.map(item => item.id),
+        p_expected_item_ids: orderedItems.map(item => item.id),
+      });
+      if (error) throw error;
 
       showSnackbar('Kolejność pozycji zaktualizowana', 'success');
-      onItemsReordered();
     } catch (error: any) {
       console.error('Error reordering items:', error);
-      showSnackbar('Błąd podczas zmiany kolejności', 'error');
+      showSnackbar(error.message || 'Błąd podczas zmiany kolejności', 'error');
 
       setOrderedItems([...items].sort((a, b) => a.display_order - b.display_order));
     } finally {
+      saving.current = false;
+      onItemsReordered();
       setUpdating(false);
     }
   };
@@ -189,6 +195,8 @@ export default function OfferItems({
     itemId: string,
     layout: 'compact' | 'default' | 'visual',
   ) => {
+    if (!canEdit || saving.current) return;
+    saving.current = true;
     const previous = orderedItems;
     setOrderedItems((current) => current.map((item) => (
       item.id === itemId ? { ...item, offer_page_variant_override: layout } : item
@@ -209,16 +217,19 @@ export default function OfferItems({
             : 'Produkt otrzyma osobną stronę',
         'success',
       );
-      onItemsReordered();
     } catch (error: any) {
       setOrderedItems(previous);
       showSnackbar(error.message || 'Nie udało się zmienić układu produktu', 'error');
     } finally {
+      saving.current = false;
+      onItemsReordered();
       setUpdatingLayoutId(null);
     }
   };
 
   const updateVariantPriceVisibility = async (itemId: string, show: boolean) => {
+    if (!canEdit || saving.current) return;
+    saving.current = true;
     const previous = orderedItems;
     setOrderedItems((current) => current.map((item) => (
       item.id === itemId ? { ...item, show_variant_prices_in_pdf: show } : item
@@ -231,16 +242,19 @@ export default function OfferItems({
         .eq('id', itemId);
       if (error) throw error;
       showSnackbar(show ? 'Ceny wariantów pojawią się w PDF' : 'Ceny wariantów zostały ukryte w PDF', 'success');
-      onItemsReordered();
     } catch (error: any) {
       setOrderedItems(previous);
       showSnackbar(error.message || 'Nie udało się zmienić widoczności cen', 'error');
     } finally {
+      saving.current = false;
+      onItemsReordered();
       setUpdatingVariantPriceId(null);
     }
   };
 
   const updateVariantPageVisibility = async (itemId: string, show: boolean) => {
+    if (!canEdit || saving.current) return;
+    saving.current = true;
     const previous = orderedItems;
     setOrderedItems((current) => current.map((item) => (
       item.id === itemId ? { ...item, show_product_variants_in_pdf: show } : item
@@ -258,11 +272,12 @@ export default function OfferItems({
           : 'PDF potraktuje wybrany wariant jak zwykły produkt',
         'success',
       );
-      onItemsReordered();
     } catch (error: any) {
       setOrderedItems(previous);
       showSnackbar(error.message || 'Nie udało się zmienić widoczności wariantów', 'error');
     } finally {
+      saving.current = false;
+      onItemsReordered();
       setUpdatingVariantPriceId(null);
     }
   };
@@ -277,7 +292,7 @@ export default function OfferItems({
           </p>
         </div>
 
-        {onAddItem && (
+        {canEdit && onAddItem && (
           <button
             onClick={onAddItem}
             className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#d3bb73] px-3 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90 sm:w-auto"
@@ -311,11 +326,12 @@ export default function OfferItems({
                       || item.product?.offer_page_variant === 'visual'
                       ? item.product.offer_page_variant
                       : 'default';
-                    const hasAddons = hasOfferAddons(item);
+                    const isStageConfiguration = ['stage', 'warehouse_stage'].includes(item.pricing_configuration?.modular?.profile || '');
+                    const hasAddons = hasOfferAddons(item) || Boolean(item.pricing_configuration?.modular);
                     const hasPackages = Boolean(item.pricing_configuration?.product_package?.options?.length || (item.product?.sales_packages_enabled && !item.product_variant_id && item.product.sales_packages?.length));
                     const blockedByElements = (item.product?.variants || []).some(v => v.is_active !== false);
                     const requestedLayout = item.offer_page_variant_override || catalogLayout;
-                    const printLayout = hasAddons || hasPackages || (blockedByElements && requestedLayout === 'compact') ? 'default' : requestedLayout;
+                    const printLayout = isStageConfiguration ? (requestedLayout === 'compact' ? 'compact' : 'default') : hasAddons || hasPackages || (blockedByElements && requestedLayout === 'compact') ? 'default' : requestedLayout;
                     const hasProductVariants = !hasPackages && blockedByElements;
                     const showsVariantComparison = !hasAddons && hasProductVariants && item.show_product_variants_in_pdf !== false;
 
@@ -327,13 +343,13 @@ export default function OfferItems({
                         show: Boolean(item.product_id),
                       },
                       {
-                        label: 'Edytuj',
+                        label: 'Edytuj', show: canEdit,
                         icon: <Pencil className="h-4 w-4" />,
                         onClick: () => onEditItem(item),
                         variant: 'primary',
                       },
                       {
-                        label: 'Usuń',
+                        label: 'Usuń', show: canEdit,
                         icon: <Trash2 className="h-4 w-4" />,
                         onClick: () => onDeleteItem(item.id),
                         variant: 'danger',
@@ -345,7 +361,7 @@ export default function OfferItems({
                         key={item.id}
                         draggableId={item.id}
                         index={index}
-                        isDragDisabled={updating}
+                        isDragDisabled={!canEdit || savingPresentation}
                       >
                         {(provided, snapshot) => (
                           <div
@@ -432,7 +448,7 @@ export default function OfferItems({
                                 <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[#e5e4e2]/55">
                                   <span>
                                     Ilość:{' '}
-                                    <strong className="text-[#e5e4e2]">{item.quantity}</strong>
+                                    <strong className="text-[#e5e4e2]">{item.quantity} {item.unit || 'szt.'} × {item.days ?? 1} dni</strong>
                                   </span>
                                   <span>
                                     Cena netto:{' '}
@@ -455,8 +471,8 @@ export default function OfferItems({
                                   <div className={`inline-flex rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] p-0.5 ${showsVariantComparison || hasPackages ? 'opacity-40' : ''}`}>
                                     <button
                                       type="button"
-                                      disabled={updatingLayoutId === item.id || blockedByElements || showsVariantComparison || hasAddons || hasPackages}
-                                      onClick={() => !blockedByElements && !hasAddons && updatePrintLayout(item.id, 'compact')}
+                                      disabled={!canEdit || savingPresentation || (!isStageConfiguration && (blockedByElements || showsVariantComparison || hasAddons || hasPackages))}
+                                      onClick={() => (isStageConfiguration || (!blockedByElements && !hasAddons)) && updatePrintLayout(item.id, 'compact')}
                                       className={`rounded-md px-2.5 py-1 text-[11px] transition-colors ${
                                         printLayout === 'compact'
                                           ? 'bg-[#d3bb73] font-medium text-[#1c1f33]'
@@ -467,7 +483,7 @@ export default function OfferItems({
                                     </button>
                                     <button
                                       type="button"
-                                      disabled={updatingLayoutId === item.id || showsVariantComparison || hasPackages}
+                                      disabled={!canEdit || savingPresentation || showsVariantComparison || hasPackages}
                                       onClick={() => updatePrintLayout(item.id, 'default')}
                                       className={`rounded-md px-2.5 py-1 text-[11px] transition-colors ${
                                         printLayout === 'default'
@@ -475,11 +491,11 @@ export default function OfferItems({
                                           : 'text-[#e5e4e2]/55 hover:text-[#e5e4e2]'
                                       }`}
                                     >
-                                      Osobna strona
+                                      {isStageConfiguration ? 'Rozbudowany' : 'Osobna strona'}
                                     </button>
-                                    <button
+                                    {!isStageConfiguration && <button
                                       type="button"
-                                      disabled={updatingLayoutId === item.id || showsVariantComparison || hasPackages}
+                                      disabled={!canEdit || savingPresentation || showsVariantComparison || hasPackages}
                                       onClick={() => updatePrintLayout(item.id, 'visual')}
                                       className={`rounded-md px-2.5 py-1 text-[11px] transition-colors ${
                                         printLayout === 'visual'
@@ -488,20 +504,20 @@ export default function OfferItems({
                                       }`}
                                     >
                                       Duża grafika
-                                    </button>
+                                    </button>}
                                   </div>
-                                  {blockedByElements && !hasPackages && <p className="w-full text-xs text-[#d3bb73]">Produkt ma elementy lub warianty — układ kompaktowy jest wyłączony.</p>}
+                                  {!isStageConfiguration && blockedByElements && !hasPackages && <p className="w-full text-xs text-[#d3bb73]">Produkt ma elementy lub warianty — układ kompaktowy jest wyłączony.</p>}
                                   {hasPackages && <p className="w-full text-xs text-[#d3bb73]">Strony prezentacji elementów i wybór pakietu. Kalkulacja obejmuje tylko wybrany zakres.</p>}
-                                  {hasAddons && <p className="w-full text-xs text-[#d3bb73]">Dodatki wymagają szczegółowej kalkulacji — układ kompaktowy wyłączony.</p>}
-                                  {hasAddons && <div className="w-full space-y-1 text-xs text-[#e5e4e2]/70">{expandConfiguredItems([item]).map(row => <div key={row.id} className="flex justify-between gap-3"><span>{row.name} · {row.quantity} {row.unit} × {Number(row.unit_price).toFixed(2)} zł</span><span>{Number(row.subtotal).toFixed(2)} zł netto</span></div>)}</div>}
+                                  {!isStageConfiguration && hasAddons && <p className="w-full text-xs text-[#d3bb73]">Dodatki wymagają szczegółowej kalkulacji — układ kompaktowy wyłączony.</p>}
+                                  {hasAddons && <div className="w-full space-y-1 text-xs text-[#e5e4e2]/70">{expandConfiguredItems([item]).map(row => <div key={row.id} className="flex justify-between gap-3"><span>{row.name} · {row.quantity} {row.unit} × {row.days ?? 1} dni × {Number(row.unit_price).toFixed(2)} zł</span><span>{Number(row.subtotal).toFixed(2)} zł netto</span></div>)}</div>}
                                   {hasProductVariants && (
                                     <>
-                                      <button type="button" onClick={() => onEditItem(item)} className="rounded-lg bg-[#d3bb73]/10 px-2.5 py-1 text-[11px] text-[#d3bb73]">Edytuj ceny wariantów</button>
+                                      <button type="button" disabled={!canEdit} onClick={() => onEditItem(item)} className="rounded-lg bg-[#d3bb73]/10 px-2.5 py-1 text-[11px] text-[#d3bb73]">Edytuj ceny wariantów</button>
                                       <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-[#d3bb73]/15 bg-[#1c1f33] px-2.5 py-1 text-[11px] text-[#e5e4e2]/60">
                                         <input
                                           type="checkbox"
                                           checked={!hasAddons && item.show_product_variants_in_pdf !== false}
-                                          disabled={updatingVariantPriceId === item.id || hasAddons}
+                                          disabled={!canEdit || savingPresentation || hasAddons}
                                           onChange={(event) => void updateVariantPageVisibility(item.id, event.target.checked)}
                                           className="h-3.5 w-3.5 accent-[#d3bb73]"
                                         />
@@ -511,7 +527,7 @@ export default function OfferItems({
                                         <input
                                           type="checkbox"
                                           checked={item.show_variant_prices_in_pdf !== false}
-                                          disabled={updatingVariantPriceId === item.id || item.show_product_variants_in_pdf === false}
+                                          disabled={!canEdit || savingPresentation || item.show_product_variants_in_pdf === false}
                                           onChange={(event) => void updateVariantPriceVisibility(item.id, event.target.checked)}
                                           className="h-3.5 w-3.5 accent-[#d3bb73]"
                                         />

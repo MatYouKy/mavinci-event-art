@@ -17,14 +17,15 @@ interface EmployeeOption {
 }
 
 interface Props {
+  initialEmployeeId?: string;
   currentEmployeeId: string;
   onBack: () => void;
   onConversationCreated: (conv: Conversation) => void;
 }
 
-export default function ChatNewConversation({ currentEmployeeId, onBack, onConversationCreated }: Props) {
+export default function ChatNewConversation({ currentEmployeeId, initialEmployeeId, onBack, onConversationCreated }: Props) {
   const [employees, setEmployees] = useState<EmployeeOption[]>([]);
-  const [selected, setSelected] = useState<string[]>([]);
+  const [selected, setSelected] = useState<string[]>(initialEmployeeId ? [initialEmployeeId] : []);
   const [search, setSearch] = useState('');
   const [groupName, setGroupName] = useState('');
   const [isLoading, setIsLoading] = useState(true);

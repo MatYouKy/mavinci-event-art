@@ -112,6 +112,7 @@ export default function Footer({ profiles = [SITE.facebook] }: { profiles?: stri
             <h4 className="mb-4 text-base font-light text-[#e5e4e2] sm:mb-6 sm:text-lg">Firma</h4>
             <ul className="space-y-2.5 sm:space-y-3">
               {[
+                { name: 'Agencja eventowa', href: '/agencja-eventowa' },
                 { name: 'O Nas', href: '/o-nas' },
                 { name: 'Dla agencji i hoteli', href: '/dla-agencji-i-hoteli' },
                 { name: 'Portfolio', href: '/portfolio' },

@@ -2,7 +2,7 @@ import { PolishCityCases } from '@/lib/polishCityCases';
 
 function capitalize(value: string) {
   if (!value) return value;
-  return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
 type Props = {
@@ -19,12 +19,12 @@ export default function CasinoCityIntro({ cityCases, content }: Props) {
 
   const text =
     content?.intro_text ||
-    `Organizujemy profesjonalne kasyno rozrywkowe na eventy firmowe ${prep} ${capitalize(cityCases.locative)} i okolicach. Dostarczamy autentyczne stoły do gier kasynowych - ruletkę, blackjacka, pokera Texas Hold'em, koło fortuny i kości. Nasi doświadczeni krupierzy zapewniają niezapomnianą atmosferę Las Vegas na każdej imprezie. Kompletna oprawa kasynowa: dekoracje, oświetlenie, muzyka i profesjonalne żetony dla każdego gościa.`;
+    `Mobilne kasyno na firmowy wieczór ${prep} ${capitalize(cityCases.locative)}. Dobierz stoły do blackjacka, pokera i ruletki oraz uzgodnij zakres obsługi i oprawy. Program, transport i warunki realizacji potwierdzamy w indywidualnej ofercie.`;
 
   return (
-    <section className="border-b border-[#d3bb73]/10 px-6 py-20">
+    <section className="px-5 py-12 sm:px-6 md:py-16">
       <div className="mx-auto max-w-5xl">
-        <h2 className="mb-8 text-center text-3xl font-light text-[#e5e4e2] md:text-4xl">
+        <h2 className="mb-8 text-center text-3xl font-light uppercase text-[#e5e4e2] md:text-4xl">
           {heading}
         </h2>
         <div className="space-y-6 text-lg leading-relaxed text-[#e5e4e2]/80">

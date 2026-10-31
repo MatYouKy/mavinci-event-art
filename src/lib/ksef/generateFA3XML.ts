@@ -1,4 +1,5 @@
 import { getPaymentAwareInvoiceFooterNote } from '@/lib/invoices/paymentAwareFooterNote';
+import { getInvoicePartyDataCorrection, type InvoicePartyDataBefore } from '@/lib/invoices/partyDataCorrection';
 
 export type FA3VatCode = '23' | '8' | '5' | '0 KR' | '0 WDT' | '0 EX' | 'zw' | 'np I' | 'np II' | 'oo';
 
@@ -10,6 +11,8 @@ export type FA3VatSummary = {
 };
 
 export type FA3CorrectionData = {
+  kind?: 'amount' | 'party_data';
+  partyDataBefore?: InvoicePartyDataBefore;
   correctedInvoiceNumber: string;
   correctedInvoiceIssueDate: string;
   correctedInvoiceKsefNumber?: string;
@@ -44,7 +47,20 @@ export type FA3SettlementSummary = {
   remainingGross: number;
 };
 
+/** Odbiorca będący jednostką wewnętrzną nabywcy, zapisany wraz z fakturą. */
+export type FA3Recipient = {
+  name: string;
+  nip?: string;
+  internalId?: string;
+  street: string;
+  postalCode: string;
+  city: string;
+  countryCode: string;
+  role: 2;
+};
+
 export type FA3PreparedInvoice = {
+  recipient?: FA3Recipient;
   seller: {
     nip: string;
     name: string;
@@ -90,7 +106,7 @@ export type FA3PreparedInvoice = {
     paymentMethod: string;
     paymentDate?: string | null;
     paidAmount?: number | null;
-    paymentStatus?: 'unpaid' | 'partially_paid' | 'paid' | 'overdue' | 'refund_due' | 'partially_refunded' | 'refunded' | null;
+    paymentStatus?: 'unpaid' | 'partially_paid' | 'paid' | 'overdue' | 'refund_due' | 'partially_refunded' | 'refunded' | 'not_applicable' | null;
     totalNet: number;
     totalVat: number;
     totalGross: number;
@@ -134,6 +150,51 @@ type GenerateFA3XMLOptions = {
   debug?: boolean;
 };
 
+// Słowniki i ograniczenia FA(3) 1-0E, a nie bieżące słowniki środowiska JS:
+// https://crd.gov.pl/wzor/2025/06/25/13775/schemat.xsd
+const FA3_CURRENCIES = new Set(('AED AFN ALL AMD ANG AOA ARS AUD AWG AZN BAM BBD BDT BGN BHD BIF BMD BND BOB BOV BRL BSD BTN BWP BYN BZD CAD CDF CHE CHF CHW CLF CLP CNY COP COU CRC CUC CUP CVE CZK DJF DKK DOP DZD EGP ERN ETB EUR FJD FKP GBP GEL GGP GHS GIP GMD GNF GTQ GYD HKD HNL HRK HTG HUF IDR ILS IMP INR IQD IRR ISK JEP JMD JOD JPY KES KGS KHR KMF KPW KRW KWD KYD KZT LAK LBP LKR LRD LSL LYD MAD MDL MGA MKD MMK MNT MOP MRU MUR MVR MWK MXN MXV MYR MZN NAD NGN NIO NOK NPR NZD OMR PAB PEN PGK PHP PKR PLN PYG QAR RON RSD RUB RWF SAR SBD SCR SDG SEK SGD SHP SLL SOS SRD SSP STN SVC SYP SZL THB TJS TMT TND TOP TRY TTD TWD TZS UAH UGX USD USN UYI UYU UYW UZS VES VND VUV WST XAF XAG XAU XBA XBB XBC XBD XCD XCG XDR XOF XPD XPF XPT XSU XUA XXX YER ZAR ZMW ZWL').split(' '));
+const FA3_COUNTRIES = new Set(('AF AX AL DZ AD AO AI AQ AG AN SA AR AM AW AU AT AZ BS BH BD BB BE BZ BJ BM BT BY BO BQ BA BW BR BN IO BG BF BI XC CL CN HR CW CY TD ME DK DM DO DJ EG EC ER EE ET FK FJ PH FI FR TF GA GM GH GI GR GD GL GE GU GG GY GF GP GT GN GQ GW HT ES HN HK IN ID IQ IR IE IS IL JM JP YE JE JO KY KH CM CA QA KZ KE KG KI CO KM CG CD KP XK CR CU KW LA LS LB LR LY LI LT LV LU MK MG YT MO MW MV MY ML MT MP MA MQ MR MU MX XL FM UM MD MC MN MS MZ MM NA NR NP NL DE NE NG NI NU NF NO NC NZ PS OM PK PW PA PG PY PE PN PF PL GS PT PR CF CZ KR ZA RE RU RO RW EH BL KN LC MF VC SV SV WS AS SM SN RS SC SL SG SK SI SO LK PM US SZ SD SS SR SJ SH SY CH SE TJ TH TW TZ TG TK TO TT TN TR TM TV UG UA UY UZ VU WF VA HU VE GB VN IT TL CI BV CX IM SX CK VI VG HM CC MH FO SB ST TC ZM CV ZW AE XI').split(' '));
+const FA3_VAT_CODES = new Set<FA3VatCode>(['23', '8', '5', '0 KR', '0 WDT', '0 EX', 'zw', 'np I', 'np II', 'oo']);
+const POLISH_NIP_PATTERN = /^[1-9]((\d[1-9])|([1-9]\d))\d{7}$/;
+const INTERNAL_ID_PATTERN = /^[1-9]((\d[1-9])|([1-9]\d))\d{7}-\d{5}$/;
+const KSEF_NUMBER_PATTERN = /^([1-9]((\d[1-9])|([1-9]\d))\d{7}|M\d{9}|[A-Z]{3}\d{7})-(20[2-9][0-9]|2[1-9][0-9]{2}|[3-9][0-9]{3})(0[1-9]|1[0-2])(0[1-9]|[1-2][0-9]|3[0-1])-([0-9A-F]{6})-?([0-9A-F]{6})-([0-9A-F]{2})$/;
+
+function hasValidXmlCharacters(value: string): boolean {
+  return Array.from(value).every((character) => {
+    const code = character.codePointAt(0)!;
+    return code === 9 || code === 10 || code === 13 ||
+      (code >= 0x20 && code <= 0xd7ff) ||
+      (code >= 0xe000 && code <= 0xfffd) ||
+      (code >= 0x10000 && code <= 0x10ffff);
+  });
+}
+
+function isValidPolishNip(value?: string): boolean {
+  if (!value || !POLISH_NIP_PATTERN.test(value)) return false;
+  const weights = [6, 5, 7, 2, 3, 4, 5, 6, 7];
+  const checksum = weights.reduce((sum, weight, index) => sum + weight * Number(value[index]), 0) % 11;
+  return checksum !== 10 && checksum === Number(value[9]);
+}
+
+function isValidFA3Date(value: string, minimum: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?)?$/.test(value)) return false;
+  const date = formatDate(value);
+  const parsed = new Date(`${date}T00:00:00.000Z`);
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === date &&
+    date >= minimum && date <= '2050-01-01';
+}
+
+function validateFA3Text(errors: string[], label: string, value: string | undefined, maximum: number, required = false): void {
+  const normalized = (value || '').replace(/[\t\n\r ]+/g, ' ').trim();
+  if (required && !normalized) errors.push(`${label}: brak wartości`);
+  if (Array.from(normalized).length > maximum) errors.push(`${label}: maksymalnie ${maximum} znaków. Treść nie została skrócona.`);
+  if (value && !hasValidXmlCharacters(value)) errors.push(`${label}: niedozwolony znak XML; popraw treść przed wysłaniem`);
+}
+
+function validateFA3Number(errors: string[], label: string, value: number, maximum = 1e16): void {
+  if (!Number.isFinite(value) || Math.abs(value) >= maximum) errors.push(`${label}: nieprawidłowa wartość liczbowa`);
+}
+
 function normalizeSwift(swift?: string | null): string | undefined {
   const value = (swift || '').replace(/\s+/g, '').toUpperCase();
   return value || undefined;
@@ -159,7 +220,9 @@ function escapeXml(unsafe: string | null | undefined): string {
 }
 
 function normalizeNip(nip?: string | null): string | undefined {
-  const normalized = (nip || '').replace(/[^0-9]/g, '');
+  // Usuwamy tylko polski prefiks i formatowanie. Zagranicznego identyfikatora
+  // nie wolno zmieniać w pozorny polski NIP przez usunięcie jego liter.
+  const normalized = (nip || '').trim().replace(/^PL(?=[\s\d-])/i, '').replace(/[\s-]+/g, '');
   return normalized || undefined;
 }
 
@@ -175,7 +238,7 @@ function normalizeCountryCode(country?: string | null): string {
 
   if (/^[A-Z]{2}$/.test(value)) return value;
 
-  return 'PL';
+  return value;
 }
 
 function normalizeBankAccount(account?: string | null): string | undefined {
@@ -186,15 +249,6 @@ function normalizeBankAccount(account?: string | null): string | undefined {
 function normalizePhone(phone?: string | null): string | undefined {
   const value = (phone || '').trim();
   return value || undefined;
-}
-
-function normalizeCustomerToken(value?: string | null): string | undefined {
-  const normalized = (value || '')
-    .trim()
-    .replace(/\s+/g, ' ')
-    .slice(0, 256);
-
-  return normalized || undefined;
 }
 
 function normalizeBuyerInternalId(value?: string | null): string | undefined {
@@ -216,8 +270,7 @@ function normalizeKsefText(value?: string | null): string | undefined {
     .replace(/<br\s*\/?>/gi, ' ')
     .replace(/[\r\n\t]+/g, ' ')
     .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 512);
+    .trim();
 
   return normalized || undefined;
 }
@@ -227,7 +280,13 @@ function formatDate(date: string): string {
 }
 
 function formatDecimal(value: number): string {
-  return Number(value || 0).toFixed(2);
+  if (!Number.isFinite(value)) throw new Error('Nieprawidłowa kwota w fakturze KSeF');
+  return value.toFixed(2);
+}
+
+function formatPreciseDecimal(value: number, digits: number): string {
+  if (!Number.isFinite(value)) throw new Error('Nieprawidłowa ilość lub cena w fakturze KSeF');
+  return value.toFixed(digits).replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
 }
 
 function normalizeVatCode(code: unknown, rate: number): FA3VatCode {
@@ -254,6 +313,8 @@ function normalizeVatCode(code: unknown, rate: number): FA3VatCode {
     throw new Error('Pozycja niepodlegająca VAT wymaga wskazania: np I albo np II.');
   }
 
+  if (normalized) throw new Error(`Nieobsługiwany kod VAT: ${String(code)}. Popraw stawkę przed wysłaniem do KSeF.`);
+
   switch (rate) {
     case 23:
       return '23';
@@ -274,7 +335,7 @@ function getVatRateCode(code: FA3VatCode): string {
 
 
 
-function getPaymentMethodCode(method: string): string {
+function getPaymentMethodCode(method: string): string | undefined {
   const methodUpper = (method || '').toUpperCase();
 
   if (methodUpper.includes('PRZELEW') || methodUpper.includes('TRANSFER')) {
@@ -284,10 +345,40 @@ function getPaymentMethodCode(method: string): string {
     return '1';
   }
   if (methodUpper.includes('KARTA') || methodUpper.includes('CARD')) {
-    return '5';
+    return '2';
   }
+  if (methodUpper.includes('BON') || methodUpper.includes('VOUCHER')) return '3';
+  if (methodUpper.includes('CZEK') || methodUpper.includes('CHEQUE')) return '4';
+  if (methodUpper.includes('KREDYT') || methodUpper === 'CREDIT') return '5';
+  if (methodUpper.includes('BLIK') || methodUpper.includes('MOBIL')) return '7';
+  return undefined;
+}
 
-  return '6';
+function buildPaymentMethodXml(method: string): string {
+  if (!method) return '';
+  const code = getPaymentMethodCode(method);
+  return code ? `<FormaPlatnosci>${code}</FormaPlatnosci>`
+    : `<PlatnoscInna>1</PlatnoscInna><OpisPlatnosci>${escapeXml(method)}</OpisPlatnosci>`;
+}
+
+function buildPodmiot3Xml(recipient?: FA3Recipient): string {
+  if (!recipient) return '';
+  const identity = recipient.internalId
+    ? `<IDWew>${escapeXml(recipient.internalId)}</IDWew>`
+    : recipient.nip ? `<NIP>${escapeXml(recipient.nip)}</NIP>` : '<BrakID>1</BrakID>';
+  return `
+  <Podmiot3>
+    <DaneIdentyfikacyjne>
+      ${identity}
+      <Nazwa>${escapeXml(recipient.name)}</Nazwa>
+    </DaneIdentyfikacyjne>
+    <Adres>
+      <KodKraju>${escapeXml(recipient.countryCode)}</KodKraju>
+      <AdresL1>${escapeXml(recipient.street)}</AdresL1>
+      <AdresL2>${escapeXml(recipient.postalCode)} ${escapeXml(recipient.city)}</AdresL2>
+    </Adres>
+    <Rola>${recipient.role}</Rola>
+  </Podmiot3>`;
 }
 
 function buildPodmiot2Jst(data: FA3PreparedInvoice): string {
@@ -400,6 +491,8 @@ function buildAdnotacjeXml(data: FA3PreparedInvoice): string {
 }
 
 function buildPaymentXml(data: FA3PreparedInvoice): string {
+  // Korekta danych nie potwierdza nowej zapłaty ani nie tworzy zobowiązania.
+  if (data.invoice.correction?.kind === 'party_data') return '';
   const paymentDueDate = data.invoice.paymentDueDate
     ? formatDate(data.invoice.paymentDueDate)
     : null;
@@ -441,7 +534,7 @@ function buildPaymentXml(data: FA3PreparedInvoice): string {
       <ZaplataCzesciowa>
         <KwotaZaplatyCzesciowej>${formatDecimal(paidAmount)}</KwotaZaplatyCzesciowej>
         <DataZaplatyCzesciowej>${paymentDate}</DataZaplatyCzesciowej>
-        <FormaPlatnosci>${getPaymentMethodCode(data.invoice.paymentMethod)}</FormaPlatnosci>
+        ${buildPaymentMethodXml(data.invoice.paymentMethod)}
       </ZaplataCzesciowa>`
             : ''
       }
@@ -456,7 +549,7 @@ function buildPaymentXml(data: FA3PreparedInvoice): string {
       ${
         data.invoice.paymentMethod
           ? `
-      <FormaPlatnosci>${getPaymentMethodCode(data.invoice.paymentMethod)}</FormaPlatnosci>`
+      ${buildPaymentMethodXml(data.invoice.paymentMethod)}`
           : ''
       }
       ${
@@ -659,7 +752,12 @@ function buildOrderItems(invoice: any): FA3PreparedInvoice['invoice']['orderItem
   });
 }
 
-export function prepareFA3Invoice(invoice: any, organization: any): FA3PreparedInvoice {
+export function prepareFA3Invoice(
+  invoice: any,
+  _organization: any,
+  recipient?: FA3Recipient | null,
+): FA3PreparedInvoice {
+  const partyDataBefore = getInvoicePartyDataCorrection(invoice);
   const isFinalInvoice =
     invoice?.is_final_invoice === true ||
     invoice?.is_final === true ||
@@ -704,6 +802,16 @@ export function prepareFA3Invoice(invoice: any, organization: any): FA3PreparedI
     : undefined;
 
   return {
+    recipient: recipient ? {
+      name: recipient.name.trim(),
+      nip: normalizeNip(recipient.nip),
+      internalId: recipient.internalId?.trim() || undefined,
+      street: recipient.street.trim(),
+      postalCode: recipient.postalCode.trim(),
+      city: recipient.city.trim(),
+      countryCode: normalizeCountryCode(recipient.countryCode),
+      role: recipient.role,
+    } : undefined,
     seller: {
       nip: normalizeNip(invoice?.seller_nip) || '',
       name: pickFirstNonEmpty(invoice?.seller_name) || '',
@@ -715,28 +823,27 @@ export function prepareFA3Invoice(invoice: any, organization: any): FA3PreparedI
       phone: normalizePhone(pickFirstNonEmpty(invoice?.seller_phone)),
     },
     buyer: {
-      nip: normalizeNip(pickFirstNonEmpty(invoice?.buyer_nip, organization?.nip)),
-      name: pickFirstNonEmpty(invoice?.buyer_name, organization?.name) || '',
-      street: pickFirstNonEmpty(invoice?.buyer_street, organization?.address) || '',
-      postalCode: pickFirstNonEmpty(invoice?.buyer_postal_code, organization?.postal_code) || '',
-      city: pickFirstNonEmpty(invoice?.buyer_city, organization?.city) || '',
-      countryCode: normalizeCountryCode(
-        pickFirstNonEmpty(invoice?.buyer_country, organization?.country),
-      ),
-      email: pickFirstNonEmpty(invoice?.buyer_email, organization?.email),
-      phone: normalizePhone(pickFirstNonEmpty(invoice?.buyer_phone, organization?.phone)),
-      customerNumber: normalizeCustomerToken(
-        pickFirstNonEmpty(organization?.alias, organization?.krs, organization?.regon),
-      ),
+      // Dane zapisane na fakturze są jednym kompletem. Puste pole nie jest zgodą
+      // na uzupełnienie go z aktualnego kontaktu ani z danych odbiorcy usługi.
+      // Brakujące dane zatrzymuje walidacja, zamiast mieszać dwa adresy/podmioty.
+      nip: normalizeNip(invoice?.buyer_nip),
+      name: pickFirstNonEmpty(invoice?.buyer_name) || '',
+      street: pickFirstNonEmpty(invoice?.buyer_street) || '',
+      postalCode: pickFirstNonEmpty(invoice?.buyer_postal_code) || '',
+      city: pickFirstNonEmpty(invoice?.buyer_city) || '',
+      countryCode: normalizeCountryCode(invoice?.buyer_country),
+      email: pickFirstNonEmpty(invoice?.buyer_email),
+      phone: normalizePhone(pickFirstNonEmpty(invoice?.buyer_phone)),
+      customerNumber: undefined,
       // CRM nie przechowuje osobnego klucza powiązania danych nabywcy w korektach.
       // IDNabywcy jest fakultatywne: nie zastępujemy go nazwą, aliasem, KRS ani REGON.
       internalId: undefined,
-      isJst: organization?.is_jst ?? false,
-      isGv: organization?.is_gv ?? false,
+      isJst: invoice?.buyer_is_jst === true,
+      isGv: invoice?.buyer_is_gv === true,
     },
     invoice: {
       number: pickFirstNonEmpty(invoice?.invoice_number) || '',
-      currencyCode: pickFirstNonEmpty(invoice?.currency_code, invoice?.currency) || 'PLN',
+      currencyCode: (pickFirstNonEmpty(invoice?.currency_code, invoice?.currency) || 'PLN').toUpperCase(),
       marginProcedure: invoice?.margin_procedure ?? false,
       newTransport: invoice?.new_transport ?? false,
       splitPayment: invoice?.split_payment ?? false,
@@ -754,7 +861,7 @@ export function prepareFA3Invoice(invoice: any, organization: any): FA3PreparedI
       issueDate: invoice?.issue_date || '',
       saleDate: invoice?.sale_date || '',
       paymentDueDate: invoice?.payment_due_date || '',
-      paymentDate: invoice?.paid_at || invoice?.paid_date || invoice?.payment_date || null,
+      paymentDate: invoice?.payment_date || invoice?.paid_date || invoice?.paid_at || null,
       paidAmount: Number(invoice?.paid_amount ?? 0),
       paymentStatus: invoice?.payment_status ?? null,
       paymentMethod: pickFirstNonEmpty(invoice?.payment_method) || 'przelew',
@@ -777,8 +884,6 @@ export function prepareFA3Invoice(invoice: any, organization: any): FA3PreparedI
           invoice?.sellerBankSwiftCode,
           invoice?.my_company?.bank_swift_code,
           invoice?.myCompany?.bankSwiftCode,
-          organization?.bank_swift_code,
-          organization?.bankSwiftCode,
         ),
       ),
       footerNote: normalizeKsefText(getPaymentAwareInvoiceFooterNote(invoice?.footer_note, {
@@ -791,6 +896,8 @@ export function prepareFA3Invoice(invoice: any, organization: any): FA3PreparedI
       correction:
         invoice?.invoice_type === 'corrective'
           ? {
+              kind: partyDataBefore ? 'party_data' : 'amount',
+              partyDataBefore: partyDataBefore ?? undefined,
               correctedInvoiceNumber: invoice?.corrected_invoice_number || '',
               correctedInvoiceIssueDate: invoice?.corrected_invoice_issue_date || '',
               correctedInvoiceKsefNumber: invoice?.corrected_invoice_ksef_number || undefined,
@@ -816,12 +923,88 @@ export function validatePreparedFA3Invoice(
   const errors: string[] = [];
 
   const isCorrectiveType = ['KOR', 'KOR_ZAL', 'KOR_ROZ'].includes(data.invoice.type);
+  const isPartyDataCorrection = data.invoice.correction?.kind === 'party_data';
+
+  // Preflight dotyczy również bezpośrednich wywołań generatora. Nie poprawiamy
+  // w ciszy identyfikatorów, kwot ani treści wymaganej przez kontrahenta.
+  validateFA3Text(errors, 'Numer faktury', data.invoice.number, 256);
+  validateFA3Text(errors, 'Numer klienta', data.buyer.customerNumber, 256);
+  validateFA3Text(errors, 'Identyfikator nabywcy', data.buyer.internalId, 32);
+  validateFA3Text(errors, 'Opis płatności', data.invoice.paymentMethod, 256);
+  validateFA3Text(errors, 'Nazwa banku', data.invoice.bankName, 256);
+  validateFA3Text(errors, 'Adnotacje', data.invoice.footerNote, 256 * 9990);
+
+  const dates: Array<[string, string | null | undefined, string]> = [
+    ['Data wystawienia', data.invoice.issueDate, '2006-01-01'],
+    ['Data sprzedaży', data.invoice.saleDate, '2006-01-01'],
+    ['Termin płatności', data.invoice.paymentDueDate, '2016-07-01'],
+    ['Data zapłaty', data.invoice.paymentDate, '2016-07-01'],
+  ];
+  dates.forEach(([label, value, minimum]) => {
+    if (value && !isValidFA3Date(value, minimum)) errors.push(`${label}: nieprawidłowa data lub data poza zakresem FA(3) (${minimum}–2050-01-01)`);
+  });
+
+  if (!FA3_CURRENCIES.has(data.invoice.currencyCode)) errors.push('Kod waluty nie występuje w słowniku FA(3)');
+  if (!['VAT', 'ZAL', 'ROZ', 'KOR', 'KOR_ZAL', 'KOR_ROZ'].includes(data.invoice.type)) errors.push('Nieobsługiwany rodzaj faktury FA(3)');
+  if (data.invoice.marginProcedure) errors.push('Procedura marży wymaga dodatkowych danych, których ten generator jeszcze nie obsługuje. Wysyłka została zatrzymana.');
+  if (data.invoice.newTransport) errors.push('Nowy środek transportu wymaga dodatkowych danych, których ten generator jeszcze nie obsługuje. Wysyłka została zatrzymana.');
+  if (data.buyer.isJst || data.buyer.isGv) errors.push('Jednostka podrzędna JST lub członek grupy VAT wymaga odrębnej roli odbiorcy (8 lub 10). Nie można wysłać faktury z samym oznaczeniem JST/GV.');
+
+  ([['Sprzedawca', data.seller], ['Nabywca', data.buyer], ...(data.recipient ? [['Odbiorca', data.recipient]] : [])] as Array<[string, FA3PreparedInvoice['seller'] | FA3PreparedInvoice['buyer'] | FA3Recipient]>).forEach(([label, party]) => {
+    validateFA3Text(errors, `${label} — nazwa`, party.name, 512, true);
+    validateFA3Text(errors, `${label} — adres`, party.street, 512, true);
+    validateFA3Text(errors, `${label} — kod pocztowy i miejscowość`, `${party.postalCode} ${party.city}`, 512, true);
+    if (!FA3_COUNTRIES.has(party.countryCode)) errors.push(`${label}: nieprawidłowy kod kraju. Nie zastąpiono go automatycznie Polską.`);
+    const contact = party as { email?: string; phone?: string };
+    if (contact.email) {
+      validateFA3Text(errors, `${label} — e-mail`, contact.email, 255);
+      if (!/^.+@.+$/.test(contact.email)) errors.push(`${label}: nieprawidłowy adres e-mail`);
+    }
+    validateFA3Text(errors, `${label} — telefon`, contact.phone, 16);
+  });
+  validateFA3Text(errors, 'Miejsce wystawienia', data.seller.city, 256);
+
+  if (data.buyer.nip && !isValidPolishNip(data.buyer.nip)) {
+    errors.push('Nieprawidłowy NIP nabywcy. Zagranicznego identyfikatora nie można wysłać jako polskiego NIP; wymaga osobnej obsługi VAT UE / NrID.');
+  }
+
+  if (data.recipient) {
+    const recipient = data.recipient;
+    if (recipient.role !== 2) errors.push('Nieobsługiwana rola odbiorcy KSeF; wymagany odbiorca będący jednostką wewnętrzną nabywcy');
+    if (!recipient.postalCode || !recipient.city) errors.push('Odbiorca: uzupełnij kod pocztowy i miejscowość');
+    if (recipient.nip && !isValidPolishNip(recipient.nip)) errors.push('Odbiorca: nieprawidłowy NIP');
+    if (recipient.internalId) {
+      if (!INTERNAL_ID_PATTERN.test(recipient.internalId) || !isValidPolishNip(recipient.internalId.slice(0, 10))) {
+        errors.push('Odbiorca: IDWew musi mieć postać prawidłowy NIP–5 cyfr, np. 5252228219-00145');
+      } else if (recipient.internalId.slice(0, 10) !== data.buyer.nip) {
+        errors.push('Odbiorca: NIP w IDWew musi odpowiadać NIP nabywcy faktury');
+      }
+      if (recipient.nip && recipient.nip !== recipient.internalId.slice(0, 10)) errors.push('Odbiorca: NIP i IDWew wskazują różne podmioty — popraw dane przed wysłaniem');
+    }
+  }
+
+  if (data.invoice.bankAccount && !/^[A-Za-z0-9]{10,34}$/.test(data.invoice.bankAccount)) errors.push('Numer rachunku: wymagane 10–34 znaki bez spacji i znaków specjalnych');
+  if (data.invoice.bankSwiftCode && !/^[A-Z]{6}[A-Z0-9]{2}([A-Z0-9]{3})?$/.test(data.invoice.bankSwiftCode)) errors.push('Nieprawidłowy kod SWIFT banku');
+
+  validateFA3Number(errors, 'Suma netto', data.invoice.totalNet);
+  validateFA3Number(errors, 'Suma VAT', data.invoice.totalVat);
+  validateFA3Number(errors, 'Suma brutto', data.invoice.totalGross);
+  validateFA3Number(errors, 'Kwota zapłaty', Number(data.invoice.paidAmount ?? 0));
+  data.invoice.vatSummary.forEach((entry) => {
+    if (!FA3_VAT_CODES.has(entry.vatCode)) errors.push('Podsumowanie VAT zawiera nieobsługiwaną stawkę');
+    validateFA3Number(errors, 'Podsumowanie VAT — netto', entry.net);
+    validateFA3Number(errors, 'Podsumowanie VAT — podatek', entry.vat);
+    validateFA3Number(errors, 'Podsumowanie VAT — brutto', entry.gross);
+  });
+  if (data.invoice.currencyCode !== 'PLN' && data.invoice.vatSummary.some((entry) => Math.abs(entry.vat) >= 0.005)) {
+    errors.push('Faktura w walucie obcej z VAT wymaga kwot podatku przeliczonych na PLN. Ten generator nie ma jeszcze tych danych; nie wysłano niepełnej faktury.');
+  }
 
   if (!data.invoice.number) errors.push('Brak numeru faktury');
   if (!data.invoice.issueDate) errors.push('Brak daty wystawienia');
   if (!data.invoice.saleDate) errors.push('Brak daty sprzedaży');
 
-  if (!data.seller.nip || data.seller.nip.length !== 10) {
+  if (!isValidPolishNip(data.seller.nip)) {
     errors.push('Nieprawidłowy NIP sprzedawcy');
   }
 
@@ -838,11 +1021,29 @@ export function validatePreparedFA3Invoice(
   const internalIdError = buyerInternalIdValidationError(data.buyer.internalId);
   if (internalIdError) errors.push(internalIdError);
 
-  if (!data.invoice.items.length) {
+  if (!isPartyDataCorrection && !data.invoice.items.length) {
     errors.push('Brak pozycji faktury');
   }
 
+  if (data.invoice.items.length > 10000) errors.push('Faktura może zawierać maksymalnie 10 000 pozycji');
+
+  const validateLine = (item: FA3PreparedInvoice['invoice']['items'][number], label: string): void => {
+    validateFA3Text(errors, `${label} — nazwa`, item.name, 512);
+    validateFA3Text(errors, `${label} — jednostka`, item.unit, 256, true);
+    validateFA3Text(errors, `${label} — podstawa zwolnienia`, item.exemptionReason, 256);
+    validateFA3Number(errors, `${label} — ilość`, item.quantity);
+    validateFA3Number(errors, `${label} — cena netto`, item.priceNet, 1e14);
+    validateFA3Number(errors, `${label} — netto`, item.valueNet);
+    validateFA3Number(errors, `${label} — VAT`, item.vatAmount);
+    validateFA3Number(errors, `${label} — brutto`, item.valueGross);
+    if (!FA3_VAT_CODES.has(item.vatCode)) errors.push(`${label}: nieobsługiwana stawka VAT`);
+    if (!Number.isFinite(item.vatRate)) errors.push(`${label}: nieprawidłowa stawka VAT`);
+    const expectedRate = ['23', '8', '5'].includes(item.vatCode) ? Number(item.vatCode) : 0;
+    if (FA3_VAT_CODES.has(item.vatCode) && item.vatRate !== expectedRate) errors.push(`${label}: kod VAT nie odpowiada zapisanej stawce liczbowej`);
+  };
+
   data.invoice.items.forEach((item, index) => {
+    validateLine(item, `Pozycja ${index + 1}`);
     if (!item.name) errors.push(`Pozycja ${index + 1}: brak nazwy`);
     if (item.quantity < 0 || (!isCorrectiveType && item.quantity === 0)) {
       errors.push(`Pozycja ${index + 1}: nieprawidłowa ilość`);
@@ -861,11 +1062,15 @@ export function validatePreparedFA3Invoice(
     errors.push('Nieprawidłowa suma brutto');
   }
 
-  if (data.invoice.paymentStatus === 'paid' && !data.invoice.paymentDate) {
+  if (!isPartyDataCorrection && data.invoice.paymentStatus === 'not_applicable') {
+    errors.push('Status płatności „Nie dotyczy” jest przeznaczony wyłącznie dla korekty danych stron');
+  }
+
+  if (!isPartyDataCorrection && data.invoice.paymentStatus === 'paid' && !data.invoice.paymentDate) {
     errors.push('Faktura opłacona: brak daty zapłaty wymaganej przez FA(3)');
   }
 
-  if (data.invoice.paymentStatus === 'partially_paid') {
+  if (!isPartyDataCorrection && data.invoice.paymentStatus === 'partially_paid') {
     if (!data.invoice.paymentDate) {
       errors.push('Faktura częściowo opłacona: brak daty zapłaty');
     }
@@ -895,7 +1100,21 @@ export function validatePreparedFA3Invoice(
     }
 
     const fullVatCodes = new Set(data.invoice.vatSummary.map((entry) => entry.vatCode));
+    if (data.invoice.settledInvoices.length > 100) errors.push('FA(3) pozwala rozliczyć maksymalnie 100 faktur zaliczkowych');
+    if (data.invoice.settlementSummary) {
+      Object.values(data.invoice.settlementSummary).forEach((value) => validateFA3Number(errors, 'Rozliczenie zaliczek — kwota', value));
+    }
     data.invoice.settledInvoices.forEach((settled) => {
+      validateFA3Text(errors, 'Numer rozliczanej zaliczki', settled.invoiceNumber, 256, !settled.ksefReferenceNumber);
+      if (settled.ksefReferenceNumber && !KSEF_NUMBER_PATTERN.test(settled.ksefReferenceNumber)) errors.push(`Zaliczka ${settled.invoiceNumber}: nieprawidłowy numer KSeF`);
+      validateFA3Number(errors, 'Rozliczana zaliczka — netto', settled.totalNet);
+      validateFA3Number(errors, 'Rozliczana zaliczka — VAT', settled.totalVat);
+      validateFA3Number(errors, 'Rozliczana zaliczka — brutto', settled.totalGross);
+      settled.vatBreakdown?.forEach((entry) => {
+        if (!FA3_VAT_CODES.has(entry.vatCode)) errors.push(`Zaliczka ${settled.invoiceNumber}: nieobsługiwana stawka VAT`);
+        validateFA3Number(errors, 'Rozliczana zaliczka — podstawa VAT', entry.net);
+        validateFA3Number(errors, 'Rozliczana zaliczka — podatek', entry.vat);
+      });
       if (!settled.vatBreakdown?.length && fullVatCodes.size > 1) {
         errors.push(`Faktura końcowa: brak rozbicia VAT zaliczki ${settled.invoiceNumber}`);
       }
@@ -909,6 +1128,13 @@ export function validatePreparedFA3Invoice(
     if ((data.invoice.orderTotalGross ?? 0) + 0.01 < data.invoice.totalGross) {
       errors.push('Faktura zaliczkowa: kwota zaliczki przekracza wartość zamówienia');
     }
+    validateFA3Number(errors, 'Pełna wartość zamówienia', data.invoice.orderTotalGross ?? 0);
+    if (data.invoice.orderItems.length > 10000) errors.push('Zamówienie może zawierać maksymalnie 10 000 pozycji');
+    data.invoice.orderItems.forEach((item, index) => {
+      validateLine(item, `Zamówienie, pozycja ${index + 1}`);
+      if (!item.name || item.quantity <= 0 || item.priceNet < 0 || item.valueNet < 0) errors.push(`Zamówienie, pozycja ${index + 1}: uzupełnij nazwę, dodatnią ilość i prawidłowe kwoty`);
+      if (item.vatCode === 'zw' && !item.exemptionReason) errors.push(`Zamówienie, pozycja ${index + 1}: brak podstawy zwolnienia z VAT`);
+    });
   }
 
   if (isCorrectiveType) {
@@ -917,6 +1143,11 @@ export function validatePreparedFA3Invoice(
     if (!correction) {
       errors.push('Brak danych faktury korygowanej (DaneFaKorygowanej)');
     } else {
+      validateFA3Text(errors, 'Numer faktury korygowanej', correction.correctedInvoiceNumber, 256);
+      validateFA3Text(errors, 'Przyczyna korekty', correction.correctionReason, 256);
+      if (correction.correctedInvoiceIssueDate && !isValidFA3Date(correction.correctedInvoiceIssueDate, '2006-01-01')) errors.push('Nieprawidłowa data faktury korygowanej');
+      if (correction.correctedInvoiceWasInKsef && correction.correctedInvoiceKsefNumber && !KSEF_NUMBER_PATTERN.test(correction.correctedInvoiceKsefNumber)) errors.push('Nieprawidłowy numer KSeF faktury korygowanej');
+      if (correction.amountBeforeCorrection != null) validateFA3Number(errors, 'Kwota przed korektą', correction.amountBeforeCorrection);
       if (!correction.correctedInvoiceNumber) {
         errors.push('Brak numeru faktury korygowanej');
       }
@@ -928,7 +1159,7 @@ export function validatePreparedFA3Invoice(
       if (!correction.correctionReason) {
         errors.push('Brak przyczyny korekty');
       }
-      if (!correction.correctionType) {
+      if (!isPartyDataCorrection && !correction.correctionType) {
         errors.push('Brak typu skutku korekty w ewidencji VAT');
       }
 
@@ -938,9 +1169,55 @@ export function validatePreparedFA3Invoice(
     }
   }
 
+  if (isPartyDataCorrection) {
+    if (!isCorrectiveType) errors.push('Korekta danych stron wymaga rodzaju faktury korygującej');
+    const before = data.invoice.correction?.partyDataBefore;
+    if (!before || before.version !== 1 || !before.buyer || !Object.prototype.hasOwnProperty.call(before, 'recipient')) {
+      errors.push('Korekta danych: brak kompletnego, zapisanego stanu sprzed korekty');
+    } else {
+      const parties = [
+        ['Nabywca przed korektą', before.buyer],
+        ...(before.recipient ? [['Odbiorca przed korektą', before.recipient]] : []),
+      ] as Array<[string, InvoicePartyDataBefore['buyer'] | NonNullable<InvoicePartyDataBefore['recipient']>]>;
+      parties.forEach(([label, party]) => {
+        validateFA3Text(errors, `${label} — nazwa`, party.name, 512, true);
+        validateFA3Text(errors, `${label} — adres`, party.street, 512, true);
+        validateFA3Text(errors, `${label} — kod pocztowy i miejscowość`, `${party.postalCode} ${party.city}`, 512, true);
+        if (!party.postalCode || !party.city) errors.push(`${label}: brak kodu pocztowego lub miejscowości`);
+        if (!FA3_COUNTRIES.has(party.countryCode)) errors.push(`${label}: nieprawidłowy kod kraju`);
+      });
+      if (!isValidPolishNip(before.buyer.nip) || before.buyer.nip !== data.buyer.nip) {
+        errors.push('Korekta danych wymaga tego samego prawidłowego NIP nabywcy przed i po korekcie. Zmiana NIP wymaga odrębnego postępowania.');
+      }
+      if (before.recipient) {
+        validateFA3Text(errors, 'Odbiorca przed korektą — NIP', before.recipient.nip, 32);
+        validateFA3Text(errors, 'Odbiorca przed korektą — IDWew', before.recipient.internalId, 32);
+        if (before.recipient.role !== 2) errors.push('Nieobsługiwana rola odbiorcy przed korektą');
+      }
+      if (!buyerPartyDataChanged(data) && !recipientPartyDataChanged(data)) {
+        errors.push('Korekta danych: dane nabywcy i odbiorcy przed i po korekcie są identyczne');
+      }
+    }
+    if ([data.invoice.totalNet, data.invoice.totalVat, data.invoice.totalGross, Number(data.invoice.paidAmount ?? 0), Number(data.invoice.orderTotalGross ?? 0)]
+      .some((value) => value !== 0)) {
+      errors.push('Korekta danych stron nie może zmieniać kwot faktury ani zawierać kwoty zapłaty; różnica netto, VAT i brutto musi wynosić zero');
+    }
+    if (data.invoice.items.length || data.invoice.orderItems.length || data.invoice.vatSummary.length) {
+      errors.push('Korekta danych stron nie może zawierać pozycji kwotowych ani rozliczenia VAT');
+    }
+    if (data.invoice.isFinalInvoice || data.invoice.settledInvoices.length || data.invoice.settlementSummary) {
+      errors.push('Korekta danych stron nie może ponownie rozliczać zaliczek');
+    }
+    if (['partially_paid', 'refund_due', 'partially_refunded', 'refunded'].includes(data.invoice.paymentStatus || '')) {
+      errors.push('Korekta danych stron nie może tworzyć zapłaty częściowej ani zwrotu');
+    }
+  } else if (data.invoice.correction?.partyDataBefore) {
+    errors.push('Zapis danych sprzed korekty jest przeznaczony wyłącznie dla korekty danych stron');
+  }
+
   return {
     valid: errors.length === 0,
-    errors,
+    errors: Array.from(new Set(errors)),
   };
 }
 
@@ -956,7 +1233,7 @@ export function debugFA3PreparedInvoice(data: FA3PreparedInvoice): void {
   const podmiot2Xml = `
   <Podmiot2>
     <DaneIdentyfikacyjne>
-      ${data.buyer.nip ? `<NIP>${escapeXml(data.buyer.nip)}</NIP>` : ''}
+      ${data.buyer.nip ? `<NIP>${escapeXml(data.buyer.nip)}</NIP>` : '<BrakID>1</BrakID>'}
       <Nazwa>${escapeXml(data.buyer.name)}</Nazwa>
     </DaneIdentyfikacyjne>
     <Adres>
@@ -1002,11 +1279,50 @@ function buildPrzyczynaKorektyXml(data: FA3PreparedInvoice): string {
 
 function buildTypKorektyXml(data: FA3PreparedInvoice): string {
   const isCorrectiveType = ['KOR', 'KOR_ZAL', 'KOR_ROZ'].includes(data.invoice.type);
-  if (!isCorrectiveType) return '';
+  if (!isCorrectiveType || data.invoice.correction?.kind === 'party_data') return '';
 
   return data.invoice.correction?.correctionType
     ? `<TypKorekty>${data.invoice.correction.correctionType}</TypKorekty>`
     : '';
+}
+
+function samePartyAddress(
+  before: Pick<FA3Recipient, 'name' | 'nip' | 'street' | 'postalCode' | 'city' | 'countryCode'>,
+  after: Pick<FA3Recipient, 'name' | 'nip' | 'street' | 'postalCode' | 'city' | 'countryCode'>,
+): boolean {
+  const comparableText = (value?: string) => (value || '').replace(/\s+/g, ' ').trim();
+  return (['name', 'nip', 'street', 'postalCode', 'city', 'countryCode'] as const)
+    .every((key) => comparableText(before[key]) === comparableText(after[key]));
+}
+
+function buyerPartyDataChanged(data: FA3PreparedInvoice): boolean {
+  const before = data.invoice.correction?.partyDataBefore?.buyer;
+  return !!before && !samePartyAddress(before, data.buyer);
+}
+
+function recipientPartyDataChanged(data: FA3PreparedInvoice): boolean {
+  const before = data.invoice.correction?.partyDataBefore?.recipient ?? null;
+  const after = data.recipient ?? null;
+  if (!before || !after) return before !== after;
+  return !samePartyAddress(before, after) || (before.internalId || '').trim() !== (after.internalId || '').trim() || before.role !== after.role;
+}
+
+function buildPodmiot2KXml(data: FA3PreparedInvoice): string {
+  if (data.invoice.correction?.kind !== 'party_data' || !buyerPartyDataChanged(data)) return '';
+  const before = data.invoice.correction.partyDataBefore!.buyer;
+  // FA(3): Podmiot2K zawiera poprzednie dane nabywcy. IDNabywcy nie jest
+  // wymagane przy jednym nabywcy; nie zastępujemy go długą nazwą organizacji.
+  return `<Podmiot2K>
+      <DaneIdentyfikacyjne>
+        <NIP>${escapeXml(before.nip)}</NIP>
+        <Nazwa>${escapeXml(before.name)}</Nazwa>
+      </DaneIdentyfikacyjne>
+      <Adres>
+        <KodKraju>${escapeXml(before.countryCode)}</KodKraju>
+        <AdresL1>${escapeXml(before.street)}</AdresL1>
+        <AdresL2>${escapeXml(before.postalCode)} ${escapeXml(before.city)}</AdresL2>
+      </Adres>
+    </Podmiot2K>`;
 }
 
 function buildP15ZKXml(data: FA3PreparedInvoice): string {
@@ -1142,19 +1458,46 @@ function buildVatSummaryXml(data: FA3PreparedInvoice): string {
   return chunks.join('\n    ');
 }
 
+function buildAdditionalDescriptionChunks(key: string, value: string): string[] {
+  // Wartosc ma w FA(3) limit 256 znaków, również gdy źródłowa adnotacja jest
+  // dłuższa. Zachowujemy całość w kolejnych elementach zamiast obcinać tekst.
+  const characters = Array.from(value);
+  const count = Math.ceil(characters.length / 256);
+  const chunks: string[] = [];
+  for (let index = 0; index < count; index += 1) {
+    const label = count > 1 ? `${key} (${index + 1}/${count})` : key;
+    chunks.push(`
+    <DodatkowyOpis>
+      <Klucz>${escapeXml(label)}</Klucz>
+      <Wartosc>${escapeXml(characters.slice(index * 256, (index + 1) * 256).join(''))}</Wartosc>
+    </DodatkowyOpis>`);
+  }
+  return chunks;
+}
+
 function buildDodatkowyOpisXml(data: FA3PreparedInvoice): string {
   const chunks: string[] = [];
   const currencyCode = data.invoice.currencyCode;
+  const isPartyDataCorrection = data.invoice.correction?.kind === 'party_data';
 
-  if (data.invoice.footerNote) {
-    chunks.push(`
-    <DodatkowyOpis>
-      <Klucz>Adnotacje</Klucz>
-      <Wartosc>${escapeXml(data.invoice.footerNote)}</Wartosc>
-    </DodatkowyOpis>`);
+  if (isPartyDataCorrection) {
+    chunks.push(...buildAdditionalDescriptionChunks('Zakres korekty', 'Wyłącznie dane nabywcy lub odbiorcy. Kwoty, pozycje i rozliczenie płatności faktury korygowanej pozostają bez zmian.'));
+    if (recipientPartyDataChanged(data)) {
+      const describeRecipient = (recipient?: FA3Recipient | null) => recipient
+        ? `${recipient.name}; ${recipient.street}; ${recipient.postalCode} ${recipient.city}; ${recipient.countryCode}${recipient.nip ? `; NIP: ${recipient.nip}` : ''}${recipient.internalId ? `; IDWew: ${recipient.internalId}` : ''}; rola: odbiorca`
+        : 'Jak nabywca — bez odrębnego odbiorcy.';
+      // FA(3) nie zawiera Podmiot3K dla odbiorcy (rola 2). Nowe dane są
+      // w Podmiot3, a pełny stan przed/po zachowujemy bez obcinania w opisie.
+      chunks.push(...buildAdditionalDescriptionChunks('Odbiorca przed korektą', describeRecipient(data.invoice.correction?.partyDataBefore?.recipient)));
+      chunks.push(...buildAdditionalDescriptionChunks('Odbiorca po korekcie', describeRecipient(data.recipient)));
+    }
   }
 
-  if (data.invoice.paymentStatus === 'paid') {
+  if (data.invoice.footerNote) {
+    chunks.push(...buildAdditionalDescriptionChunks('Adnotacje', data.invoice.footerNote));
+  }
+
+  if (!isPartyDataCorrection && data.invoice.paymentStatus === 'paid') {
     const paymentDate = data.invoice.paymentDate
       ? formatDate(data.invoice.paymentDate)
       : undefined;
@@ -1164,15 +1507,11 @@ function buildDodatkowyOpisXml(data: FA3PreparedInvoice): string {
         ? Number(data.invoice.paidAmount)
         : Number(data.invoice.totalGross ?? 0);
 
-    chunks.push(`
-    <DodatkowyOpis>
-      <Klucz>Status płatności</Klucz>
-      <Wartosc>${escapeXml(
+    chunks.push(...buildAdditionalDescriptionChunks('Status płatności',
         `Opłacono${paymentDate ? ` dnia ${paymentDate}` : ''}, kwota ${formatDecimal(
           paidAmount,
         )} ${currencyCode}`,
-      )}</Wartosc>
-    </DodatkowyOpis>`);
+      ));
   }
 
   if (
@@ -1191,13 +1530,10 @@ function buildDodatkowyOpisXml(data: FA3PreparedInvoice): string {
       data.invoice.settlementSummary.remainingGross,
     )} ${currencyCode} brutto.`;
 
-    chunks.push(`
-    <DodatkowyOpis>
-      <Klucz>Rozliczenie zaliczek</Klucz>
-      <Wartosc>${escapeXml(value)}</Wartosc>
-    </DodatkowyOpis>`);
+    chunks.push(...buildAdditionalDescriptionChunks('Rozliczenie zaliczek', value));
   }
 
+  if (chunks.length > 10000) throw new Error('Adnotacje przekraczają limit 10 000 dodatkowych opisów FA(3). Treść nie została skrócona.');
   return chunks.join('');
 }
 
@@ -1207,10 +1543,13 @@ export function generateFA3XML(
   data: FA3PreparedInvoice,
   options: GenerateFA3XMLOptions = {},
 ): string {
+  const validation = validatePreparedFA3Invoice(data);
+  if (!validation.valid) throw new Error(`Nie można przygotować faktury do KSeF: ${validation.errors.join('; ')}`);
   const currentDateTime = new Date().toISOString();
   const podmiot1Extra = buildPodmiot1Extra(data);
   const podmiot2Extra = buildPodmiot2Extra(data);
   const podmiot2Jst = buildPodmiot2Jst(data);
+  const podmiot3Xml = buildPodmiot3Xml(data.recipient);
   const adnotacjeXml = buildAdnotacjeXml(data);
   const paymentXml = buildPaymentXml(data);
   const rodzajFaktury = data.invoice.type;
@@ -1218,6 +1557,7 @@ export function generateFA3XML(
   const daneFaKorygowanejXml = isCorrectiveType ? buildDaneFaKorygowanejXml(data) : '';
   const przyczynaKorektyXml = isCorrectiveType ? buildPrzyczynaKorektyXml(data) : '';
   const typKorektyXml = buildTypKorektyXml(data);
+  const podmiot2KXml = buildPodmiot2KXml(data);
   const p15zkXml = buildP15ZKXml(data);
   const finalInvoiceSettlementXml = buildFinalInvoiceSettlementXml(data);
 
@@ -1251,8 +1591,8 @@ const zamowienieXml = isAdvanceInvoice
         <NrWierszaZam>${index + 1}</NrWierszaZam>
         <P_7Z>${escapeXml(item.name)}</P_7Z>
         <P_8AZ>${escapeXml(item.unit)}</P_8AZ>
-        <P_8BZ>${formatDecimal(item.quantity)}</P_8BZ>
-        <P_9AZ>${formatDecimal(item.priceNet)}</P_9AZ>
+        <P_8BZ>${formatPreciseDecimal(item.quantity, 6)}</P_8BZ>
+        <P_9AZ>${formatPreciseDecimal(item.priceNet, 8)}</P_9AZ>
         <P_11NettoZ>${formatDecimal(item.valueNet)}</P_11NettoZ>
         <P_11VatZ>${formatDecimal(item.vatAmount)}</P_11VatZ>
         <P_12Z>${getVatRateCode(item.vatCode)}</P_12Z>
@@ -1271,8 +1611,8 @@ const dodatkowyOpisXml = buildDodatkowyOpisXml(data);
       <NrWierszaFa>${index + 1}</NrWierszaFa>
       <P_7>${escapeXml(item.name)}</P_7>
       <P_8A>${escapeXml(item.unit)}</P_8A>
-      <P_8B>${formatDecimal(item.quantity)}</P_8B>
-      <P_9A>${formatDecimal(item.priceNet)}</P_9A>
+      <P_8B>${formatPreciseDecimal(item.quantity, 6)}</P_8B>
+      <P_9A>${formatPreciseDecimal(item.priceNet, 8)}</P_9A>
       <P_11>${formatDecimal(item.valueNet)}</P_11>
       <P_12>${getVatRateCode(item.vatCode)}</P_12>${item.stanPrzed ? '\n      <StanPrzed>1</StanPrzed>' : ''}
     </FaWiersz>`,
@@ -1300,7 +1640,7 @@ const dodatkowyOpisXml = buildDodatkowyOpisXml(data);
   </Podmiot1>
   <Podmiot2>
     <DaneIdentyfikacyjne>
-      ${data.buyer.nip ? `<NIP>${escapeXml(data.buyer.nip)}</NIP>` : ''}
+      ${data.buyer.nip ? `<NIP>${escapeXml(data.buyer.nip)}</NIP>` : '<BrakID>1</BrakID>'}
       <Nazwa>${escapeXml(data.buyer.name)}</Nazwa>
     </DaneIdentyfikacyjne>
     <Adres>
@@ -1308,7 +1648,7 @@ const dodatkowyOpisXml = buildDodatkowyOpisXml(data);
       <AdresL1>${escapeXml(data.buyer.street)}</AdresL1>
       <AdresL2>${escapeXml(data.buyer.postalCode)} ${escapeXml(data.buyer.city)}</AdresL2>
     </Adres>${podmiot2Extra}${podmiot2Jst}
-  </Podmiot2>
+  </Podmiot2>${podmiot3Xml}
   <Fa>
     <KodWaluty>${escapeXml(data.invoice.currencyCode)}</KodWaluty>
     <P_1>${formatDate(data.invoice.issueDate)}</P_1>
@@ -1319,11 +1659,12 @@ const dodatkowyOpisXml = buildDodatkowyOpisXml(data);
     <P_15>${formatDecimal(faTotalGross)}</P_15>
     ${adnotacjeXml}
     <RodzajFaktury>${rodzajFaktury}</RodzajFaktury>
-    ${dodatkowyOpisXml}
     ${przyczynaKorektyXml}
     ${typKorektyXml}
     ${daneFaKorygowanejXml}
+    ${podmiot2KXml}
     ${p15zkXml}
+    ${dodatkowyOpisXml}
     ${finalInvoiceSettlementXml}
     ${invoiceRowsXml}
     ${paymentXml}

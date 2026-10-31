@@ -6,7 +6,7 @@ import { X, Plus, Trash2, Save } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import Image from 'next/image';
 import { ConferenceCityContentEditor } from './ConferenceCityContentEditor';
-import { readConferenceCityContent, type ConferenceCityContent } from '@/lib/SEO/conferenceCityContent';
+import { readConferenceCityContent, resolveConferenceCityContent, type ConferenceCityContent } from '@/lib/SEO/conferenceCityContent';
 
 interface PageMetadataModalProps {
   isOpen: boolean;
@@ -90,7 +90,7 @@ export function PageMetadataModal({ isOpen, onClose, pageSlug, pageName }: PageM
 
     if (data) {
       const customSchema = data.custom_schema || {};
-      setConferenceContent(isConferenceCity ? readConferenceCityContent(customSchema) : null);
+      setConferenceContent(isConferenceCity ? resolveConferenceCityContent(customSchema, pageName.replace(/^Konferencje\s*[—–-]\s*/, ''), pageSlug.split('/').pop()) : null);
 
       setMetadata(data);
       setKeywords(data.keywords || []);
@@ -105,7 +105,7 @@ export function PageMetadataModal({ isOpen, onClose, pageSlug, pageName }: PageM
       setFaq(Array.isArray(customSchema.faq) ? customSchema.faq : []);
     } else {
       setMetadata(null);
-      setConferenceContent(null);
+      setConferenceContent(isConferenceCity ? resolveConferenceCityContent(null, pageName.replace(/^Konferencje\s*[—–-]\s*/, ''), pageSlug.split('/').pop()) : null);
       setKeywords([]);
       setTitle('');
       setDescription('');
@@ -173,8 +173,15 @@ export function PageMetadataModal({ isOpen, onClose, pageSlug, pageName }: PageM
   };
 
   const handleSave = async () => {
-    if (conferenceContent && !readConferenceCityContent({ conferenceContent })) {
-      showSnackbar('Uzupełnij treść lokalną i poprawny adres HTTPS źródła obiektu.', 'error');
+    const cleanedContent = conferenceContent ? { ...conferenceContent,
+      checks: conferenceContent.checks.map(item => item.trim()).filter(Boolean),
+      costFactors: conferenceContent.costFactors?.map(item => item.trim()).filter(Boolean),
+      ...(conferenceContent.serviceArea ? { serviceArea: { ...conferenceContent.serviceArea,
+        locations: conferenceContent.serviceArea.locations.map(item => item.trim()).filter(Boolean),
+      } } : {}),
+    } : null;
+    if (cleanedContent && !readConferenceCityContent({ conferenceContent: cleanedContent })) {
+      showSnackbar('Uzupełnij treść, scenariusze, korzyści i opis obszaru obsługi. Opcjonalny obiekt wymaga nazwy, opisu i źródła HTTPS.', 'error');
       return;
     }
     setIsSaving(true);
@@ -201,7 +208,7 @@ export function PageMetadataModal({ isOpen, onClose, pageSlug, pageName }: PageM
       og_image: ogImage || null,
       custom_schema: {
         ...(metadata?.custom_schema || {}),
-        ...(conferenceContent ? { conferenceContent } : {}),
+        ...(cleanedContent ? { conferenceContent: cleanedContent } : {}),
         schemaMode: 'service',
         serviceType: serviceType || null,
         audienceType: audienceType || null,
@@ -583,7 +590,7 @@ export function PageMetadataModal({ isOpen, onClose, pageSlug, pageName }: PageM
           <div className="rounded border border-[#d3bb73]/20 bg-[#0f1119] p-4">
             <h3 className="mb-2 font-medium text-[#d3bb73]">Informacja</h3>
             <ul className="space-y-1 text-sm text-[#e5e4e2]/60">
-              <li>• Keywords są używane w meta tags dla SEO</li>
+              <li>• Pole keywords nie wpływa na ranking w Google; najważniejsza jest widoczna treść strony</li>
               <li>• Title i Description nadpisują wartości domyślne jeśli są wypełnione</li>
               <li>• OG Image jest używany dla podglądów na social media</li>
               <li>• Schema.org zasila dane strukturalne widoczne dla Google</li>

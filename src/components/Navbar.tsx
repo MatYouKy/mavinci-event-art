@@ -15,7 +15,7 @@ import { IEmployee } from '@/app/(crm)/crm/employees/type';
 import Image from 'next/image';
 
 const navLinks = [
-  { label: 'O Nas', href: '/o-nas' },
+  { label: 'Agencja eventowa', href: '/agencja-eventowa' },
   { label: 'Portfolio', href: '/portfolio' },
   { label: 'Zespół', href: '/zespol' },
   { label: 'Usługi', href: '/uslugi' },
@@ -54,7 +54,7 @@ export interface CategoryNode {
 }
 
 export const categoryNavLinks: CategoryNode[] = [
-  { label: 'O Nas', href: '/o-nas' },
+  { label: 'Agencja eventowa', href: '/agencja-eventowa' },
   { label: 'Portfolio', href: '/portfolio' },
   { label: 'Zespół', href: '/zespol' },
   { label: 'Usługi', href: '/uslugi', children: [] },

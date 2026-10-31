@@ -72,6 +72,12 @@ export function RealInvoiceCard({
               netto: {formatMoney(inv.amount_net, inv.currency)}
             </div>
           )}
+
+          {inv.bank_debit_amount_pln != null && inv.bank_debit_amount_pln > 0 && (
+            <div className="mt-1 text-xs font-normal text-[#e5e4e2]/65" title="Kwota pobrana z konta, podana ręcznie. Nie zmienia wartości dokumentu ani nie potwierdza dopasowania przelewu.">
+              Z konta: {formatMoney(inv.bank_debit_amount_pln, 'PLN')}
+            </div>
+          )}
         </div>
 
         {inv.file_url && (

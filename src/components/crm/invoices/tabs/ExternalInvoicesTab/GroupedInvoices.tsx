@@ -247,7 +247,14 @@ export function GroupedInvoices({
                                 <td className="whitespace-nowrap px-2.5 py-2 text-right text-[#e5e4e2]/60">{formatMoney(inv.amount_net, inv.currency)}</td>
                               )}
                               {isColumnVisible('gross') && (
-                                <td className="whitespace-nowrap px-2.5 py-2 text-right font-medium text-[#d3bb73]">{formatMoney(inv.amount_gross, inv.currency)}</td>
+                                <td className="whitespace-nowrap px-2.5 py-2 text-right font-medium text-[#d3bb73]">
+                                  {formatMoney(inv.amount_gross, inv.currency)}
+                                  {inv.bank_debit_amount_pln != null && inv.bank_debit_amount_pln > 0 && (
+                                    <div className="mt-1 text-xs font-normal text-[#e5e4e2]/65" title="Kwota pobrana z konta, podana ręcznie. Nie zmienia wartości dokumentu ani nie potwierdza dopasowania przelewu.">
+                                      Z konta: {formatMoney(inv.bank_debit_amount_pln, 'PLN')}
+                                    </div>
+                                  )}
+                                </td>
                               )}
                               {isColumnVisible('actions') && (
                               <td className="px-2.5 py-2">

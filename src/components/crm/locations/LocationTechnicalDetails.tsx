@@ -236,7 +236,12 @@ export function TechnicalDetailsEditor({
         const { error } = await supabase.storage
           .from(bucket)
           .upload(path, item.file, { contentType: format.contentType, upsert: false });
-        if (error) throw error;
+        if (error) {
+          const denied = /row.level security|permission denied/i.test(error.message);
+          throw new Error(denied
+            ? `Nie udało się przesłać pliku „${item.file.name}”: brak dostępu do magazynu materiałów lokalizacji. Sprawdź uprawnienia i reguły dostępu do plików.`
+            : `Nie udało się przesłać pliku „${item.file.name}”: ${error.message}`);
+        }
         const asset = { path, name: item.file.name, kind: item.kind };
         uploadedFiles.current.set(item.file, asset);
         uploaded.push(asset);

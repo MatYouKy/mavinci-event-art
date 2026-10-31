@@ -1,4 +1,5 @@
 import type { HotelVenueSnapshot } from './hotel';
+import { sellerEventDayLabel, type SellerEventDay } from './eventSchedule';
 
 export type ArrangementContact = {
   name: string;
@@ -19,6 +20,7 @@ export type SellerArrangements = {
   can_edit: boolean;
   values: Partial<Record<ArrangementScheduleKey, string | null>> & {
     revision: number;
+    event_days?: SellerEventDay[] | null;
     room?: string;
     venue_snapshot?: HotelVenueSnapshot | null;
     participant_count?: number | null;
@@ -73,6 +75,7 @@ export function sellerArrangementReviewNote(data: SellerArrangements) {
     values.room && `Sala / przestrzeń: ${values.room}`,
     values.participant_count != null && `Uczestnicy: ${values.participant_count}`,
     ...arrangementSchedule.map(([key, label]) => values[key] && `${label}: ${arrangementLocalDate(values[key])}`),
+    ...(values.event_days || []).map((day, index) => `Dzień ${index + 1}: ${sellerEventDayLabel(day)}`),
     values.materials_due_date && `Materiały do: ${arrangementLocalDate(values.materials_due_date)}`,
     'Godziny: Europe/Warsaw. Dyskusja i propozycje zmian pozostają w rozmowie o ofercie.',
   ].filter(Boolean).join('\n').slice(0, 5000);

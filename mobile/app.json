@@ -62,7 +62,8 @@
           "savePhotosPermission": "Mavinci CRM zapisuje wybrane zdjęcia z komunikatora w Twojej galerii.",
           "granularPermissions": []
         }
-      ]
+      ],
+      "expo-video"
     ],
     "ios": {
       "supportsTablet": true,

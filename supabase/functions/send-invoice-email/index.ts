@@ -2,6 +2,34 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { prepareInlineEmailImages } from "../_shared/emailInlineImages.ts";
 
+
+// Archive the actual attachment bytes accepted by SMTP, never a regenerated PDF.
+async function archiveSentAttachments(service: any, emailId: string, attachments: any[]) {
+  let saved = 0;
+  for (const attachment of attachments) {
+    try {
+      const binary = atob(attachment.content.includes(',') ? attachment.content.split(',').pop() : attachment.content);
+      const bytes = Uint8Array.from(binary, character => character.charCodeAt(0));
+      const path = `sent/${emailId}/${crypto.randomUUID()}-${attachment.filename.replace(/[^a-zA-Z0-9._-]+/g, '_')}`;
+      const contentType = attachment.contentType || 'application/octet-stream';
+      const upload = await service.storage.from('email-attachments').upload(path, bytes, { contentType, upsert: false });
+      if (upload.error) throw upload.error;
+      const metadata = await service.from('email_attachments').insert({
+        email_id: emailId, email_type: 'sent', filename: attachment.filename,
+        content_type: contentType, size_bytes: bytes.byteLength, storage_path: path,
+      });
+      if (metadata.error) {
+        await service.storage.from('email-attachments').remove([path]);
+        throw metadata.error;
+      }
+      saved += 1;
+    } catch {
+      console.error('Sent attachment archive failed');
+    }
+  }
+  return { expected: attachments.length, saved, status: saved === attachments.length ? 'complete' : 'partial' };
+}
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
@@ -36,20 +64,31 @@ const DEFAULT_EMAIL_BODY_TEMPLATE = `<div style="font-family: 'Helvetica Neue', 
       <img src="{{company_logo}}" alt="{{company_name}}" height="48" style="display: inline-block; max-height: 48px;" />
     </div>
     <div style="padding: 32px 28px; font-size: 14px; line-height: 1.6; color: #1c1f33;">
-      <div style="white-space: pre-wrap;">{{content}}</div>
+      <div style="white-space: normal;">{{content}}</div>
       {{pdf_link}}
     </div>
     <div style="padding: 24px 28px; border-top: 1px solid #ececec;">
       {{signature}}
     </div>
   </div>
-  <div style="max-width: 640px; margin: 12px auto 0; text-align: center; font-size: 11px; color: #888;">
-    Wiadomość wysłana z {{company_name}}
-  </div>
 </div>`;
 
+// Keep in sync with src/lib/emailBodyTemplate.ts and send-offer-email.
+const removeSystemEmailFooter = (html: string): string => {
+  const gap = '(?:\\s|&nbsp;|&#(?:160|x0*a0);|<\\/?(?:span|strong|b|em|i|a)\\b[^>]*>)*';
+  const notice = `Wiadomość${gap}wysłana${gap}z${gap}(?:systemu${gap})?(?:CRM${gap}Mavinci|Mavinci(?:${gap}CRM)?|{{\\s*company_name\\s*}})`;
+  const contents = `${gap}${notice}${gap}[.!]?${gap}`;
+  return (html || '')
+    .replace(
+      new RegExp(`<(p|div|span|td)\\b([^>]*)>${contents}<\\/\\1>`, 'gi'),
+      (_match, tag: string, attributes: string) =>
+        tag.toLowerCase() === 'td' ? `<td${attributes}></td>` : '',
+    )
+    .replace(new RegExp(`^${contents}$`, 'i'), '');
+};
+
 const renderTemplate = (template: string, values: Record<string, string>): string => {
-  let out = template;
+  let out = removeSystemEmailFooter(template);
   for (const [key, value] of Object.entries(values)) {
     const re = new RegExp(`{{\\s*${key}\\s*}}`, "g");
     out = out.replace(re, value ?? "");
@@ -106,6 +145,9 @@ Deno.serve(async (req: Request) => {
     });
   }
 
+  let acceptedMessageId: string | null = null;
+  let sentEmailId: string | null = null;
+  let deliveryAccepted = false;
   try {
     const {
       invoiceId,
@@ -315,7 +357,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const contentHtml = message.replace(/\n/g, "<br>");
-    const finalSignature = signatureHtml || emailAccount.signature || "";
+    const finalSignature = removeSystemEmailFooter(signatureHtml || emailAccount.signature || "");
     const expectedMessageText = normalizeMessageText(message);
     const preparedMessageText = normalizeMessageText(messageHtml || "");
     const messageHtmlContainsContent =
@@ -331,7 +373,7 @@ Deno.serve(async (req: Request) => {
         (!finalSignature || hasTemplatePlaceholder(bodyTemplate, "signature"))
           ? bodyTemplate
           : DEFAULT_EMAIL_BODY_TEMPLATE;
-      htmlBody = renderTemplate(safeBodyTemplate, {
+      htmlBody = renderTemplate(safeBodyTemplate.replace(/white-space\s*:\s*(?:pre-wrap|pre-line|break-spaces)(?:\s*!important)?/gi, 'white-space:normal'), {
         content: contentHtml,
         subject,
         recipient_name: recipientName ?? "",
@@ -369,6 +411,11 @@ Deno.serve(async (req: Request) => {
     htmlBody = preparedEmail.html;
 
     const relayPayload = {
+      imapConfig: {
+        host: emailAccount.imap_host, port: emailAccount.imap_port,
+        username: emailAccount.imap_username, password: emailAccount.imap_password,
+        secure: emailAccount.imap_use_ssl,
+      },
       smtpConfig: {
         host: emailAccount.smtp_host,
         port: emailAccount.smtp_port,
@@ -394,29 +441,42 @@ Deno.serve(async (req: Request) => {
       body: JSON.stringify(relayPayload),
     });
 
-    if (!relayResponse.ok) {
-      const errorData = await relayResponse.json();
-      throw new Error(`Relay error: ${errorData.error || 'Unknown error'}`);
-    }
-
     const relayResult = await relayResponse.json();
-    const info = { messageId: relayResult.messageId };
-
-    await supabase.from("sent_emails").insert({
-      employee_id: employee.id,
-      email_account_id: emailAccount.id,
-      to_address: to,
-      subject: subject,
-      body: storedHtmlBody,
-      message_id: info.messageId,
-      sent_at: new Date().toISOString(),
-    });
+    if (!relayResponse.ok || relayResult.success !== true) {
+      throw new Error(`Usługa pocztowa: ${relayResult.error || 'Brak potwierdzenia wysyłki'}`);
+    }
+    deliveryAccepted = true;
+    acceptedMessageId = relayResult.messageId || null;
+    const info = { messageId: acceptedMessageId };
+    const warnings: string[] = [];
+    const sentCopy = relayResult.sentCopy || { status: 'unknown', warning: 'Usługa pocztowa nie potwierdziła zapisu kopii w folderze Wysłane. Wymagana aktualizacja usługi SMTP.' };
+    if (sentCopy.warning) warnings.push(sentCopy.warning);
+    const sentAttachments = attachments;
+    const { data: sentEmail, error: sentError } = await supabase.from('sent_emails').insert({
+      employee_id: employee.id, email_account_id: emailAccount.id,
+      to_address: to, subject, body: storedHtmlBody, reply_to: emailAccount.email_address,
+      message_id: info.messageId, sent_at: new Date().toISOString(),
+      has_attachments: sentAttachments.length > 0,
+      delivery_archive: { sentCopy, attachments: { expected: sentAttachments.length, saved: 0, status: 'pending' } },
+    }).select('id').single();
+    if (sentError || !sentEmail) {
+      warnings.push('Wiadomość wysłana, ale nie zapisano jej kopii w CRM.');
+    } else {
+      sentEmailId = sentEmail.id;
+      const attachmentArchive = await archiveSentAttachments(supabase, sentEmail.id, sentAttachments);
+      const { error: archiveError } = await supabase.from('sent_emails').update({
+        delivery_archive: { sentCopy, attachments: attachmentArchive },
+      }).eq('id', sentEmail.id);
+      if (archiveError || attachmentArchive.status !== 'complete') warnings.push('Nie zapisano pełnego archiwum załączników w CRM.');
+    }
 
     return new Response(
       JSON.stringify({
         success: true,
         messageId: info.messageId,
-        message: "Invoice email sent successfully"
+        message: "Invoice email sent successfully",
+        warning: warnings.length ? `${warnings.join(' ')} Nie wysyłaj ponownie.` : null,
+        sentEmailId, sentCopy, deliveryState: 'sent'
       }),
       {
         headers: {
@@ -426,6 +486,12 @@ Deno.serve(async (req: Request) => {
       }
     );
   } catch (error) {
+    if (deliveryAccepted) {
+      return new Response(JSON.stringify({
+        success: true, deliveryState: 'sent', messageId: acceptedMessageId, sentEmailId,
+        warning: 'Wiadomość wysłana, ale zapis archiwum nie został zakończony. Nie wysyłaj ponownie.',
+      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
     console.error("Error sending invoice email:", error);
     return new Response(
       JSON.stringify({

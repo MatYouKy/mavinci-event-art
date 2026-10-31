@@ -627,6 +627,16 @@ export default function AdminDashboard() {
           {employeeStats.map((stats) => (
             <div
               key={stats.employee_id}
+              role="link"
+              tabIndex={0}
+              aria-label={`Czas pracy: ${stats.employee_name} ${stats.employee_surname}`}
+              onClick={() => router.push(`/crm/time-tracking/${stats.employee_id}`)}
+              onKeyDown={(event) => {
+                if (event.target === event.currentTarget && ['Enter', ' '].includes(event.key)) {
+                  event.preventDefault();
+                  router.push(`/crm/time-tracking/${stats.employee_id}`);
+                }
+              }}
               className="group w-full cursor-pointer rounded-lg bg-[#0f1119] p-4 text-left transition-colors hover:bg-[#0f1119]/80"
             >
               <div className="flex items-center justify-between">
@@ -688,7 +698,7 @@ export default function AdminDashboard() {
                                 href={`/crm/tasks/${activeEntries.get(stats.employee_id)?.task_id}`}
                                 target="_blank"
                                 className="inline-flex items-center gap-1 rounded bg-green-500/10 px-1.5 py-0.5 text-xs font-medium text-green-400 transition-colors hover:bg-green-500/20"
-                                title="Otwórz task"
+                                title="Otwórz zadanie" onClick={(event) => event.stopPropagation()}
                               >
                                 <ExternalLink className="h-3 w-3" />
                               </Link>

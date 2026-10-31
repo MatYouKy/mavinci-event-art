@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import SystemBadge from '@/components/UI/SystemBadge';
 import { offerSource } from '@/lib/CRM/Offers/offerSource';
 import { useRouter, useParams } from 'next/navigation';
@@ -12,6 +12,8 @@ import SendOfferEmailModal from '@/components/crm/SendOfferEmailModal';
 import ResponsiveActionBar, { Action } from '@/components/crm/ResponsiveActionBar';
 
 import OfferActions from './components/OfferActions';
+import ProductLanguageSwitch from '@/components/crm/offers/ProductLanguagePanel';
+import { useOfferLanguage } from '@/hooks/useOfferLanguage';
 import OfferItems from './components/OfferItems';
 import OfferHistory from './components/OfferHistory';
 import { OfferDetails } from './components/OfferDetails';
@@ -66,6 +68,12 @@ export default function OfferDetailPage() {
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [isEditingStatus, setIsEditingStatus] = useState(false);
   const [selectedStatus, setSelectedStatus] = useState('draft');
+  const contentRoot = useRef<HTMLDivElement>(null);
+  const offerLanguage = useOfferLanguage(offer, Boolean(currentUser));
+  const contentOffer = offerLanguage.offer || offer;
+  const polishEditing = offerLanguage.language === 'pl';
+  const sellerOffer = (offer as any)?.sales_channel === 'seller_portal';
+  const canEditCrmContent = polishEditing && canSendManage && !sellerOffer;
 
 
   useEffect(() => {
@@ -107,7 +115,7 @@ export default function OfferDetailPage() {
   }, [offer]);
 
   const handleDeleteOffer = useCallback(async () => {
-    if (!offer) return;
+    if (!offer || (offer as any).sales_channel === 'seller_portal') return;
 
     const confirmMessage = offer.event_id
       ? 'Czy na pewno chcesz usunąć tę ofertę?\n\nSprzęt automatycznie dodany z tej oferty zostanie usunięty z eventu.\nWszystkie pliki PDF zostaną usunięte.'
@@ -136,6 +144,7 @@ export default function OfferDetailPage() {
   }, [offer, offerId, router, showConfirm, showSnackbar]);
 
   const handleDeleteItem = async (itemId: string) => {
+    if (!canEditCrmContent) return;
     const confirmed = await showConfirm(
       'Czy na pewno chcesz usunąć tę pozycję?',
       'Tej operacji nie można cofnąć.',
@@ -165,7 +174,7 @@ export default function OfferDetailPage() {
   };
 
   const handleUpdateStatus = async () => {
-    if (!offer || selectedStatus === offer.status) {
+    if (!offer || sellerOffer || selectedStatus === offer.status) {
       setIsEditingStatus(false);
       return;
     }
@@ -199,7 +208,7 @@ export default function OfferDetailPage() {
   };
 
   const actions = useMemo(() => {
-    if (!canSendManage) return [] as Action[];
+    if (!canSendManage || sellerOffer) return [] as Action[];
 
     const result: Action[] = [];
 
@@ -213,7 +222,7 @@ export default function OfferDetailPage() {
     });
 
     return result;
-  }, [canSendManage, handleDeleteOffer]);
+  }, [canSendManage, sellerOffer, handleDeleteOffer]);
 
   if (isLoading) {
     return (
@@ -271,35 +280,40 @@ export default function OfferDetailPage() {
   const offerClientEmail = offerContact?.email || offer.organization?.email || inquiryDetails.client_email;
   const offerClientPhone = offerContact?.mobile || offerContact?.phone || inquiryDetails.client_phone;
   const offerTitle = String(
-    offer.title
-      || offer.event?.name
-      || offer.inquiry?.title?.replace(/^Zapytanie:\s*/i, '')
+    contentOffer.title
+      || contentOffer.event?.name
+      || contentOffer.inquiry?.title?.replace(/^Zapytanie:\s*/i, '')
       || 'Bez tytułu',
   ).trim();
 
   const source = offerSource(offer);
 
   const offerContent = <>
-    <OfferBasicInfo offer={offer} canEdit={canSendManage && (offer as any).sales_channel !== 'seller_portal'} onUpdate={handleOfferUpdated} />
+    <OfferBasicInfo key={offerLanguage.language} offer={contentOffer} canEdit={canEditCrmContent} onUpdate={handleOfferUpdated} />
     <OfferItems
-      items={offer.offer_items || []}
+      items={contentOffer.offer_items || []}
+      canEdit={canEditCrmContent}
       offerId={offer.id}
       vatRate={offer.tax_percent ?? 23}
       onItemsReordered={refetch}
-      onEditItem={(item) => { setEditingItem(item as IOfferItem); }}
+      onEditItem={(item) => { const original = offer.offer_items?.find((row: IOfferItem) => row.id === item.id); if (original && canEditCrmContent) setEditingItem(original); }}
       onDeleteItem={handleDeleteItem}
       onPreviewImage={setPreviewImage}
       onAddItem={() => setShowAddItemModal(true)}
     />
-    <OfferRequirementsEditor offer={offer} canEdit={canSendManage} onSaved={refetch} />
-    <OfferPackagesEditor offer={offer} canEdit={canSendManage} onSaved={refetch} />
-    <OfferRecommendationsEditor key={offer.id} offer={offer} canEdit={canSendManage} onSaved={refetch} />
-    <OfferHistory offerId={offer.id} />
+    <OfferRequirementsEditor key={offerLanguage.language} offer={contentOffer} preparedRequirements={polishEditing ? undefined : contentOffer.resolved_requirements} canEdit={canEditCrmContent} onSaved={refetch} />
+    <OfferPackagesEditor key={offerLanguage.language} offer={contentOffer} preparedPackages={polishEditing ? undefined : contentOffer.packages} canEdit={canEditCrmContent} onSaved={refetch} />
+    <OfferRecommendationsEditor key={`${offer.id}-${offerLanguage.language}`} offer={contentOffer} canEdit={canEditCrmContent} onSaved={refetch} />
+    <OfferHistory key={`${offer.id}:${offer.content_revision}`} offerId={offer.id} />
   </>;
 
   const offerInformation = <>
     {(offer as any).sales_channel !== 'seller_portal' && <OfferActions
       offer={offer}
+      language={offerLanguage.language}
+      englishReady={Boolean(offerLanguage.ready)}
+      englishSignature={offerLanguage.signature}
+      onEnglishStale={offerLanguage.prepare}
       currentUser={currentUser}
       showSendEmailModal={showSendEmailModal}
       setShowSendEmailModal={setShowSendEmailModal}
@@ -323,11 +337,11 @@ export default function OfferDetailPage() {
         { label: 'Zakres', value: inquiryDetails.scope || inquiryDetails.event_type, kind: 'scope' },
       ]}
     />}
-    <OfferDetails offer={offer} canEdit={canSendManage} onSaved={refetch} />
+    <OfferDetails offer={offer} canEdit={canSendManage && !sellerOffer} onSaved={refetch} />
   </>;
 
   return (
-    <div className="space-y-6">
+    <div ref={contentRoot} className="space-y-6">
       <div className="flex items-center justify-between">
         <div className="mt-4 flex items-center gap-4">
           <button
@@ -345,15 +359,31 @@ export default function OfferDetailPage() {
           </div>
         </div>
 
-        {canSendManage && (offer as any).sales_channel !== 'seller_portal' && <ResponsiveActionBar actions={actions} alwaysDropdown />}
+        {(offer as any).sales_channel !== 'seller_portal' && <div className="flex items-center gap-2">
+          <ProductLanguageSwitch language={offerLanguage.language} englishDisabled={!offerLanguage.ready} label="Język treści i PDF oferty" onChange={language => {
+            if (showAddItemModal || editingItem || contentRoot.current?.querySelector('[data-offer-editing="true"]')) {
+              showSnackbar('Zapisz lub anuluj otwartą edycję przed zmianą języka.', 'info'); return;
+            }
+            offerLanguage.switchLanguage(language);
+          }} />
+          {canSendManage && <ResponsiveActionBar actions={actions} alwaysDropdown disabledBackground />}
+        </div>}
       </div>
 
+      {(offer as any).sales_channel !== 'seller_portal' && <div className="text-sm text-white/60">
+        {offerLanguage.busy && <p role="status">Przygotowujemy zapisane teksty EN. Możesz nadal pracować w PL; przełącznik EN będzie dostępny po zakończeniu.</p>}
+        {offerLanguage.error && <div role="alert">{offerLanguage.error}<button type="button" disabled={offerLanguage.busy} onClick={offerLanguage.prepare} className="ml-3 rounded-lg bg-white/5 px-3 py-2 text-[#d3bb73]">Ponów przygotowanie EN</button></div>}
+        {offerLanguage.language === 'en' && <p>Wyświetlasz angielską treść. „Generuj PDF” przygotuje wersję EN. Zakres i ceny edytujesz po przełączeniu na PL.</p>}
+      </div>}
       {(offer as any).sales_channel === 'seller_portal' ? (
-        <SellerOfferWorkflow key={offerId} offerId={offerId} crm sidebarContent={offerInformation} onChanged={() => {
+        <SellerOfferWorkflow key={offerId} offerId={offerId} crm onChanged={() => {
           void refetch();
           dispatch(eventsApi.util.invalidateTags(['Events', 'EventDetails', 'EventOffers']));
         }}>
-          {offerContent}
+          <details className="rounded-xl bg-white/[0.03] p-4">
+            <summary className="cursor-pointer text-sm text-white/65">Historia oferty i decyzji</summary>
+            <div className="mt-4"><OfferHistory key={`${offer.id}:${offer.content_revision}`} offerId={offer.id}/></div>
+          </details>
         </SellerOfferWorkflow>
       ) : (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -362,7 +392,7 @@ export default function OfferDetailPage() {
         </div>
       )}
 
-      {showSendEmailModal && offer && (
+      {!sellerOffer && showSendEmailModal && offer && (
         <SendOfferEmailModal
           offerId={offer.id}
           offerNumber={offer.offer_number}
@@ -374,7 +404,7 @@ export default function OfferDetailPage() {
         />
       )}
 
-      {showAddItemModal && offer && (
+      {canEditCrmContent && showAddItemModal && offer && (
         <AddOfferItemModal
           offerId={offer.id}
           onClose={() => setShowAddItemModal(false)}
@@ -382,7 +412,7 @@ export default function OfferDetailPage() {
         />
       )}
 
-      {editingItem && (
+      {canEditCrmContent && editingItem && (
         <EditOfferItemModal
           item={editingItem}
           offerId={offer.id}

@@ -1,5 +1,8 @@
 'use client';
+import type { InquiryParticipants } from '../../../../../../supabase/functions/_shared/inquiryParticipants';
 
+import ConvertInquiryModal from '@/components/crm/inquiries/ConvertInquiryModal';
+import { parseInquiryContact } from '@/lib/CRM/inquiries/parseInquiryContact';
 import { inquiryTitleLabel, inquirySourceLabel, systemLabel } from '@/lib/ui/systemLabels';
 import InquiryAnalysisPanel from '@/components/crm/inquiries/InquiryAnalysisPanel';
 import InquiryContextEditor from '@/components/crm/inquiries/InquiryContextEditor';
@@ -12,8 +15,8 @@ import { InquiryQuestion } from '@/lib/CRM/inquiries/questions';
 import SystemBadge from '@/components/UI/SystemBadge';
 
 import { useDialog } from '@/contexts/DialogContext';
-import { matchOrganizationByEmail } from '@/lib/CRM/inquiries/matchOrganizationByEmail';
-import { getContactOrganizations, useInquiryContactOrganizations } from '@/lib/CRM/inquiries/useInquiryContactOrganizations';
+import InquiryClientModal from '@/components/crm/inquiries/InquiryClientModal';
+import { useInquiryContactOrganizations } from '@/lib/CRM/inquiries/useInquiryContactOrganizations';
 import { confirmAndRemoveInquiry } from '@/lib/CRM/inquiries/removeInquiry';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -36,6 +39,7 @@ import {
   Mail,
   MapPin,
   Phone,
+  Pencil,
   Plus,
   Save,
   Sparkles,
@@ -67,6 +71,7 @@ type InquiryClientLink = { contactId: string; organizationId: string | null };
 type Tab = 'notes' | 'overview' | 'tasks' | 'offers' | 'calculations' | 'history' | 'correspondence' | 'analysis' | 'team';
 
 type Recommendation = {
+  participants?: InquiryParticipants;
   client_needs?: string[];
   correspondence_findings?: Array<{ finding: string; source_keys: string[] }>;
   correspondence_message_count?: number;
@@ -93,8 +98,11 @@ type InquiryBriefDraft = {
   event_start_time: string;
   event_end_time: string;
   event_end_next_day: boolean;
+  event_single_day: boolean;
+  event_end_date: string;
   termin: string;
   scope: string;
+  guest_count: string;
   questions: InquiryQuestion[];
   conversation_notes: string;
   event_assumptions: string;
@@ -113,8 +121,11 @@ const createInquiryBriefDraft = (inquiry: any): InquiryBriefDraft => {
     event_start_time: String(details.event_start_time || ''),
     event_end_time: String(details.event_end_time || ''),
     event_end_next_day: details.event_end_next_day === true,
+    event_single_day: details.event_single_day !== undefined ? details.event_single_day === true : !details.event_end_date && !details.event_end_next_day,
+    event_end_date: String(details.event_end_date || ''),
     termin: String(details.termin !== undefined ? details.termin || '' : inquiry?.due_date || ''),
     scope: String(details.scope || ''),
+    guest_count: details.guest_count == null ? '' : String(details.guest_count),
     questions: Array.isArray(details.questions) ? details.questions : [],
     conversation_notes: String(details.conversation_notes || ''),
     event_assumptions: String(details.event_assumptions || ''),
@@ -151,6 +162,11 @@ const formatInquirySchedule = (details: any, fallback?: string | null) => {
   const value = details.termin !== undefined ? details.termin : fallback;
   const date = value ? new Date(value) : null;
   const dateLabel = date && !Number.isNaN(date.getTime()) ? date.toLocaleDateString('pl-PL') : value || '';
+  if (details.event_end_date && details.event_single_day !== true) {
+    const end = new Date(`${details.event_end_date}T12:00:00`);
+    const endLabel = Number.isNaN(end.getTime()) ? details.event_end_date : end.toLocaleDateString('pl-PL');
+    return `${dateLabel} ${details.event_start_time || ''} – ${endLabel} ${details.event_end_time || ''}`.trim();
+  }
   const hours = details.event_start_time || details.event_end_time
     ? `${details.event_start_time || '?'} – ${details.event_end_time || '?'}${details.event_end_next_day ? ' (następnego dnia)' : ''}`
     : details.event_start_time === undefined && details.event_end_time === undefined ? details.event_hours || details.hours || '' : '';
@@ -227,6 +243,11 @@ export default function InquiryWorkspaceClient({ initialData }: { initialData: a
   const [showHandoffModal, setShowHandoffModal] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [showConversionModal, setShowConversionModal] = useState(false);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState('');
+  const [savingTitle, setSavingTitle] = useState(false);
+  const titleSaveLock = useRef(false);
+  const originalTitleRef = useRef<string | null>(null);
   const [deletingInquiry, setDeletingInquiry] = useState(false);
   const deletingInquiryRef = useRef(false);
   const [creatingOffer, setCreatingOffer] = useState(false);
@@ -236,16 +257,22 @@ export default function InquiryWorkspaceClient({ initialData }: { initialData: a
   const [briefDraft, setBriefDraft] = useState<InquiryBriefDraft>(() => createInquiryBriefDraft(initialData.inquiry));
   const [briefDirty, setBriefDirty] = useState(false);
   const [editingContext, setEditingContext] = useState(false);
+  const [focusGuestCount, setFocusGuestCount] = useState(false);
+  const [extractingGuests, setExtractingGuests] = useState(false);
+  const guestExtractionLock = useRef(false);
+  const [guestSuggestion, setGuestSuggestion] = useState<InquiryParticipants | null>(null);
+  const [guestExtractionError, setGuestExtractionError] = useState('');
   const [savingBrief, setSavingBrief] = useState(false);
   const [assistantAutoError, setAssistantAutoError] = useState('');
   const creatingOfferRef = useRef(false);
   const briefRevisionRef = useRef(initialData.inquiry.brief_revision || 1);
   const pendingOfferIdRef = useRef<string | null>(null);
-  const pendingContactIdRef = useRef<string | null>(null);
+  const [showClientModal, setShowClientModal] = useState(false);
+  const clientChoiceRef = useRef<{ resolve: (value: InquiryClientLink) => void; reject: (error: Error) => void } | null>(null);
   const ensuringContactRef = useRef<Promise<InquiryClientLink> | null>(null);
   const [markingContact, setMarkingContact] = useState(false);
   const contactLock = useRef(false);
-  const [savingClient, setSavingClient] = useState(false);
+
   const briefDraftRef = useRef<InquiryBriefDraft>(createInquiryBriefDraft(initialData.inquiry));
 
   useEffect(() => {
@@ -302,12 +329,13 @@ export default function InquiryWorkspaceClient({ initialData }: { initialData: a
     else { setShowConversionModal(true); }
     router.replace(`/crm/inquiries/${inquiry.id}`, {scroll:false});
   }, [searchParams, employee, canLead, inquiry.id, inquiry.event_id, data.offers, router, showSnackbar]);
-  const clientEmail = inquiry.contact?.email || details.client_email || inquiry.organization?.email || '';
+  const inquiryContact = parseInquiryContact(details.client_text, details.client_email);
+  const clientEmail = inquiry.contact?.email || inquiryContact.email || inquiry.organization?.email || '';
   const clientPhone = inquiry.contact?.mobile || inquiry.contact?.phone || inquiry.organization?.phone || details.client_phone || '';
   const clientName = inquiry.contact?.full_name
     || inquiry.organization?.alias
     || inquiry.organization?.name
-    || details.client_text
+    || inquiryContact.fullName
     || inquiryTitleLabel(inquiry.title);
   const sourceMessage = details.source_message_content || inquiry.description || '';
   const sourceHref = details.received_email_id
@@ -329,6 +357,40 @@ export default function InquiryWorkspaceClient({ initialData }: { initialData: a
   }), [clientEmail, clientName, clientPhone, details.termin, inquiry.due_date, inquiry.id, inquiry.title, inquiry.contact_id]);
 
   const reload = () => router.refresh();
+
+  const startEditingTitle = () => {
+    originalTitleRef.current = inquiry.title ?? null;
+    setTitleDraft(inquiry.title || '');
+    setEditingTitle(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const saveTitle = async () => {
+    if (!canManage || titleSaveLock.current) return;
+    const title = titleDraft.trim();
+    if (!title) { showSnackbar('Wpisz nazwę zapytania.', 'warning'); return; }
+    titleSaveLock.current = true;
+    setSavingTitle(true);
+    try {
+      let query = supabase.from('tasks').update({ title }).eq('id', inquiry.id).is('archived_at', null);
+      query = originalTitleRef.current === null
+        ? query.is('title', null)
+        : query.eq('title', originalTitleRef.current);
+      const { data: saved, error } = await query.select('id,title').maybeSingle();
+      if (error) throw error;
+      if (!saved) throw new Error('Nie zapisano nazwy. Zapytanie mogło zostać zmienione lub nie masz już uprawnień. Odśwież dane.');
+      setData((current: any) => ({ ...current, inquiry: { ...current.inquiry, title: saved.title } }));
+      setEditingTitle(false);
+      showSnackbar('Nazwa zapytania została zapisana.', 'success');
+      reload();
+    } catch (error) {
+      showSnackbar(friendlyDataError(error, 'Nie udało się zapisać nazwy zapytania.'), 'error');
+    } finally {
+      titleSaveLock.current = false;
+      setSavingTitle(false);
+    }
+  };
+
 
   const invokeAssistant = async (payload: Record<string, unknown>) => {
     const { data: sessionData } = await supabase.auth.getSession();
@@ -374,8 +436,11 @@ export default function InquiryWorkspaceClient({ initialData }: { initialData: a
           event_end_time: draft.event_end_time || null,
           event_end_next_day: Boolean(draft.event_end_time && draft.event_end_next_day),
         } : {}),
+        event_single_day: draft.event_single_day,
+        event_end_date: draft.event_end_date || null,
         termin: draft.termin || null,
         scope: draft.scope.trim(),
+        guest_count: draft.guest_count === '' ? null : Number(draft.guest_count),
         preliminary_budget_min: draft.preliminary_budget_min || null,
         preliminary_budget_max: draft.preliminary_budget_max || null,
       };
@@ -421,6 +486,20 @@ export default function InquiryWorkspaceClient({ initialData }: { initialData: a
     } finally { setLoadingRecommendation(false); }
   };
 
+  const extractGuestCount = async () => {
+    if (!canManage || guestExtractionLock.current || loadingRecommendation || savingBrief || editingContext) return;
+    guestExtractionLock.current = true; setExtractingGuests(true); setLoadingRecommendation(true); setGuestExtractionError(''); setGuestSuggestion(null);
+    try {
+      if (briefDirty && !(await saveInquiryBrief(briefDraftRef.current))) return;
+      const result = await invokeAssistant({ action: 'recommend', requestId: crypto.randomUUID(), chatMessage: 'Odczytaj aktualną liczbę uczestników z tego zapytania i powiązanej korespondencji. Zwróć participants z dosłownym cytatem. Powierzchnia sali nie jest liczbą gości. Nie szacuj brakujących danych.' });
+      if (!result.participants) throw new Error('Obsługa pobierania liczby osób nie jest jeszcze dostępna w uruchomionej wersji AI. Możesz wpisać liczbę ręcznie.');
+      setGuestSuggestion(result.participants);
+      const { data: analyses } = await supabase.from('inquiry_analyses').select('*').eq('inquiry_id', inquiry.id).order('created_at', { ascending: false }).order('id', { ascending: false }).limit(30);
+      if (analyses) setData((current: any) => ({ ...current, analyses }));
+    } catch (error) { setGuestExtractionError(error instanceof Error ? error.message : 'Nie udało się odczytać liczby osób. Spróbuj ponownie.'); }
+    finally { guestExtractionLock.current = false; setExtractingGuests(false); setLoadingRecommendation(false); }
+  };
+
   const approveSummary = async (analysisId: string) => {
     const { data: saved, error } = await supabase.rpc('approve_inquiry_summary', {
       p_inquiry: inquiry.id, p_analysis: analysisId, p_revision: briefRevisionRef.current,
@@ -440,90 +519,12 @@ export default function InquiryWorkspaceClient({ initialData }: { initialData: a
 
   const ensureContact = (): Promise<InquiryClientLink> => {
     if (!canManage) return Promise.reject(new Error('Nie masz uprawnień do zmiany klienta zapytania.'));
+    if (inquiry.contact_id) return Promise.resolve({ contactId: inquiry.contact_id, organizationId: inquiry.organization_id || null });
     if (ensuringContactRef.current) return ensuringContactRef.current;
-    if (inquiry.contact_id && inquiry.organization_id) {
-      return Promise.resolve({ contactId: inquiry.contact_id, organizationId: inquiry.organization_id });
-    }
-    setSavingClient(true);
-    ensuringContactRef.current = (async () => {
-      try {
-        // A manual relationship from the client card takes precedence over domain guessing.
-        const manualOrganizations = !inquiry.organization_id && inquiry.contact_id
-          ? await getContactOrganizations(inquiry.contact_id) : [];
-        if (manualOrganizations.length > 1) {
-          throw new Error('Klient jest powiązany z kilkoma organizacjami. Wybierz organizację dla zapytania przed utworzeniem oferty.');
-        }
-        const match = inquiry.organization_id
-          ? { organization: inquiry.organization, ambiguous: false }
-          : manualOrganizations.length === 1
-            ? { organization: manualOrganizations[0], ambiguous: false }
-            : await matchOrganizationByEmail(clientEmail);
-        const organizationId = inquiry.organization_id || match.organization?.id || null;
-        const sourceName = String(details.client_text || clientName || '').trim();
-        const parts = sourceName.split(/\s+/).filter(Boolean);
-        const fallback = String(clientEmail || 'Nowy kontakt').split('@')[0].replace(/[._-]+/g, ' ');
-        const firstName = parts[0] || fallback || 'Nowy';
-        const lastName = parts.slice(1).join(' ') || '(zapytanie)';
-        const contactId = inquiry.contact_id || pendingContactIdRef.current || crypto.randomUUID();
-        pendingContactIdRef.current = contactId;
-        const contactPayload = {
-          id: contactId,
-          first_name: firstName,
-          last_name: lastName,
-          email: clientEmail || null,
-          phone: clientPhone || null,
-          lifecycle_status: 'prospect',
-          created_by: employee?.id || null,
-          notes: `Kontakt utworzony z zapytania ${inquiry.id}`,
-        };
-        if (!inquiry.contact_id) {
-          const { error } = await supabase.from('contacts')
-            .upsert(contactPayload, { onConflict: 'id', ignoreDuplicates: true });
-          if (error) throw error;
-        }
-        if (organizationId) {
-          const existing = await supabase.from('contact_organizations').select('id,is_current')
-            .eq('contact_id', contactId).eq('organization_id', organizationId).maybeSingle();
-          if (existing.error) throw existing.error;
-          if (existing.data && !existing.data.is_current) {
-            throw new Error('Ten klient ma zakończoną współpracę z dopasowaną organizacją. Sprawdź powiązanie w Karcie Klienta 360°.');
-          }
-          if (!existing.data) {
-            const { error } = await supabase.from('contact_organizations').upsert({
-              contact_id: contactId, organization_id: organizationId, is_current: true,
-              notes: `Powiązanie z zapytania ${inquiry.id}`,
-            }, { onConflict: 'contact_id,organization_id', ignoreDuplicates: true });
-            if (error) throw error;
-          }
-        }
-        // Preserve another user's choice if the inquiry changed while matching.
-        let update = supabase.from('tasks').update({ contact_id: contactId, organization_id: organizationId })
-          .eq('id', inquiry.id);
-        update = inquiry.organization_id ? update.eq('organization_id', inquiry.organization_id) : update.is('organization_id', null);
-        update = inquiry.contact_id ? update.eq('contact_id', inquiry.contact_id) : update.is('contact_id', null);
-        const linked = await update.select('id').maybeSingle();
-        if (linked.error) throw linked.error;
-        if (!linked.data) throw new Error('Dane klienta zostały zmienione lub nie masz dostępu do zapisu. Odśwież zapytanie.');
-        const contact = inquiry.contact || { ...contactPayload, full_name: `${firstName} ${lastName}`.trim() };
-        setData((current: any) => ({ ...current, inquiry: {
-          ...current.inquiry, contact_id: contactId, contact,
-          organization_id: organizationId, organization: match.organization || current.inquiry.organization,
-        } }));
-        if (organizationId) {
-          showSnackbar(`Klient został powiązany z organizacją ${match.organization?.alias || match.organization?.name || ''} i zapytaniem.`, 'success');
-        } else if (match.ambiguous) {
-          showSnackbar('Klient jest powiązany z zapytaniem. Domena pasuje do kilku organizacji — wybierz właściwą w Karcie Klienta 360°.', 'warning');
-        } else {
-          showSnackbar(inquiry.contact_id
-            ? 'Nie znaleziono jednoznacznego dopasowania organizacji po domenie e-mail. Możesz przypisać ją w Karcie Klienta 360°.'
-            : 'Klient został dodany i powiązany z zapytaniem.', inquiry.contact_id ? 'info' : 'success');
-        }
-        return { contactId, organizationId };
-      } finally {
-        ensuringContactRef.current = null;
-        setSavingClient(false);
-      }
-    })();
+    ensuringContactRef.current = new Promise<InquiryClientLink>((resolve, reject) => {
+      clientChoiceRef.current = { resolve, reject };
+      setShowClientModal(true);
+    });
     return ensuringContactRef.current;
   };
 
@@ -560,6 +561,7 @@ export default function InquiryWorkspaceClient({ initialData }: { initialData: a
         total_amount: 0,
         created_by: employee?.id || null,
         event_location: offerBrief.location_text || null,
+        guest_count: offerBrief.guest_count === '' ? null : Number(offerBrief.guest_count),
         event_assumptions: formatEventAssumptionItems(offerBrief.event_assumption_items) || offerBrief.scope || null,
         event_assumption_items: offerBrief.event_assumption_items,
         event_goal: offerBrief.event_goal || null,
@@ -684,6 +686,7 @@ export default function InquiryWorkspaceClient({ initialData }: { initialData: a
   };
 
   const actions = [
+    { label: 'Edytuj tytuł', icon: <Pencil className="h-4 w-4" />, onClick: startEditingTitle, show: canManage, disabled: savingTitle },
     { label: 'Zmień etap', icon: <ArrowRightLeft className="h-4 w-4" />, onClick: () => setShowStageModal(true), show: canLead },
     { label: 'Nowe zadanie', icon: <ClipboardList className="h-4 w-4" />, onClick: () => { setActiveTab('tasks'); setShowTaskModal(true); }, show: canManage },
     { label: 'Kalkulacja', icon: creatingCalculation ? <Loader2 className="h-4 w-4 animate-spin" /> : <Calculator className="h-4 w-4" />, onClick: () => void createCalculation(), disabled: creatingCalculation, show: canManage },
@@ -707,9 +710,8 @@ export default function InquiryWorkspaceClient({ initialData }: { initialData: a
   ];
 
   if (activeCalculationId) {
-    return (
-      <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(280px,360px)_minmax(0,1fr)]">
-        <InquirySourceContextPanel
+    const calculationSourceContext = (
+      <InquirySourceContextPanel
           inquiryTitle={inquiryTitleLabel(inquiry.title)}
           message={sourceMessage}
           sourceLabel={inquirySourceLabel(details)}
@@ -722,14 +724,19 @@ export default function InquiryWorkspaceClient({ initialData }: { initialData: a
             { label: 'Miejsce', value: details.location_text, kind: 'location' },
             { label: 'Zakres', value: details.scope || (details.event_type ? systemLabel(details.event_type, 'eventType') : null), kind: 'scope' },
           ]}
-          className="xl:sticky xl:top-4 xl:self-start"
+          className="min-w-0"
         />
+    );
+    return (
+      <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(280px,360px)_minmax(0,1fr)]">
+        <div className="xl:sticky xl:top-4 xl:self-start">{calculationSourceContext}</div>
         <div className="min-w-0">
           <CalculationEditor
             calculationId={activeCalculationId}
             eventId={inquiry.event_id || null}
             readOnly={!canManage}
             inquiryContext={calculationContext}
+            itemModalContext={calculationSourceContext}
             onBack={() => { setActiveCalculationId(null); reload(); }}
           />
         </div>
@@ -740,10 +747,29 @@ export default function InquiryWorkspaceClient({ initialData }: { initialData: a
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <Link href="/crm/inquiries" className="mb-3 inline-flex items-center gap-2 text-sm text-[#e5e4e2]/50 hover:text-[#d3bb73]"><ArrowLeft className="h-4 w-4" />Wróć do lejka</Link>
           <div className="flex flex-wrap items-center gap-3">
-            <h1 className="truncate text-2xl font-light text-[#e5e4e2]">{inquiryTitleLabel(inquiry.title)}</h1>
+            {editingTitle ? (
+              <form onSubmit={event => { event.preventDefault(); void saveTitle(); }} className="flex w-full flex-wrap items-end gap-2">
+                <label className="min-w-[220px] flex-1 text-sm text-[#e5e4e2]/70">
+                  Tytuł zapytania
+                  <input autoFocus value={titleDraft} onChange={event => setTitleDraft(event.target.value)} disabled={savingTitle} required
+                    onKeyDown={event => { if (event.key === 'Escape' && !savingTitle) setEditingTitle(false); }}
+                    className="mt-1 w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-base text-[#e5e4e2]" />
+                </label>
+                <button type="submit" disabled={savingTitle || !titleDraft.trim()} className="inline-flex items-center gap-2 rounded-lg bg-[#d3bb73] px-3 py-2 text-sm text-[#1c1f33] disabled:opacity-50">
+                  {savingTitle ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}{savingTitle ? 'Zapisuję…' : 'Zapisz'}
+                </button>
+                <button type="button" disabled={savingTitle} onClick={() => setEditingTitle(false)} className="rounded-lg bg-white/5 px-3 py-2 text-sm text-[#e5e4e2] disabled:opacity-50">Anuluj</button>
+              </form>
+            ) : (
+              <div className="flex w-full flex-wrap items-start justify-between gap-3">
+                <h1 className="min-w-0 flex-1 break-words text-2xl font-light text-[#e5e4e2]">{inquiryTitleLabel(inquiry.title)}</h1>
+                {canManage && <button type="button" onClick={startEditingTitle}
+                  className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-[#d3bb73]/15 px-3 py-2 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/25"><Pencil className="h-4 w-4" />Edytuj tytuł</button>}
+              </div>
+            )}
             <InquiryTypeBadges title={inquiry.title} details={details} />
             <span className="rounded-full border border-[#d3bb73]/20 bg-[#d3bb73]/10 px-3 py-1 text-xs text-[#d3bb73]">{STAGE_LABELS[inquiry.inquiry_stage] || systemLabel(inquiry.inquiry_stage)}</span>
           </div>
@@ -762,9 +788,10 @@ export default function InquiryWorkspaceClient({ initialData }: { initialData: a
         </div>
       </div>
 
+      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.8fr)]">
+        <div className="min-w-0 space-y-6">
       {activeTab === 'overview' && (
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.8fr)]">
-          <div className="space-y-6">
+        <div className="space-y-6">
             <section className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-5">
               <h2 className="text-lg font-light text-[#e5e4e2]">Treść i potrzeby klienta</h2>
               <p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-[#e5e4e2]/70">{details.source_message_content || inquiry.description || 'Brak treści zapytania.'}</p>
@@ -775,70 +802,6 @@ export default function InquiryWorkspaceClient({ initialData }: { initialData: a
               <Sparkles className="h-5 w-5 shrink-0" />
               <span>Otwórz analizę, ustalenia i rozmowę z AI</span>
             </button>
-          </div>
-
-          <div className="min-w-0 space-y-4 xl:sticky xl:top-4 xl:max-h-[calc(100dvh-105px)] xl:self-start xl:overflow-y-auto xl:overscroll-contain">
-            <section className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-5">
-              <h2 className="text-lg font-light text-[#e5e4e2]">Klient</h2>
-              <div className="mt-4 space-y-3 text-sm text-[#e5e4e2]/65">
-                <div className="flex items-center gap-2"><UserRound className="h-4 w-4 text-[#d3bb73]" />{clientName}</div>
-                {clientEmail && <a href={`mailto:${clientEmail}`} className="flex items-center gap-2 hover:text-[#d3bb73]"><Mail className="h-4 w-4" />{clientEmail}</a>}
-                {clientPhone && <a href={`tel:${clientPhone}`} className="flex items-center gap-2 hover:text-[#d3bb73]"><Phone className="h-4 w-4" />{clientPhone}</a>}
-              </div>
-              {canManage && (!inquiry.contact_id || (!inquiry.organization_id && clientEmail && !contactOrganizations.loading && !contactOrganizations.error && displayedOrganizations.length === 0)) && (
-                <button data-crm-action="secondary" type="button" disabled={savingClient}
-                  onClick={() => void ensureContact().catch((error) => showSnackbar(error.message, 'error'))}
-                  className="mt-4 inline-flex items-center gap-2 rounded-lg bg-white/5 px-3 py-2 text-sm text-[#d3bb73] hover:bg-white/10 disabled:opacity-50"
-                >
-                  {savingClient ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
-                  {savingClient ? 'Zapisuję powiązanie…' : inquiry.contact_id ? 'Powiąż organizację po e-mailu' : 'Dodaj klienta do bazy'}
-                </button>
-              )}
-              {!inquiry.organization_id && contactOrganizations.loading && displayedOrganizations.length === 0 && <p className="mt-3 text-xs text-white/45">Wczytuję organizację klienta…</p>}
-              {!inquiry.organization_id && contactOrganizations.error && <p role="alert" className="mt-3 text-xs text-amber-200">{contactOrganizations.error} <button type="button" onClick={() => void contactOrganizations.refresh()} className="underline">Ponów</button></p>}
-              {displayedOrganizations.map(organization => (
-                <Link key={organization.id} href={`/crm/contacts/${organization.id}`} className="mt-3 flex items-center gap-2 text-sm text-[#d3bb73] hover:underline">
-                  <Briefcase className="h-4 w-4 shrink-0" />
-                  {organization.alias || organization.name}
-                </Link>
-              ))}
-              {inquiry.contact_id && <Link href={`/crm/contacts/${inquiry.contact_id}`} className="mt-4 inline-flex text-sm text-[#d3bb73] hover:underline">Otwórz Kartę Klienta 360°</Link>}
-              <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
-                <div><Info icon={MapPin} label="Miejsce" value={details.location_text} />
-                  {details.location_id && <Link href={`/crm/locations/${details.location_id}`} className="mt-1 inline-block text-xs text-[#d3bb73] hover:underline">Otwórz lokalizację</Link>}</div>
-                <Info icon={CalendarClock} label="Termin / szacowane godziny" value={formatInquirySchedule(details, inquiry.due_date)} />
-                <div className="sm:col-span-2 xl:col-span-1 2xl:col-span-2"><Info icon={Target} label="Zakres" value={details.scope || (details.event_type ? systemLabel(details.event_type, 'eventType') : null)} /></div>
-                <div className="sm:col-span-2 xl:col-span-1 2xl:col-span-2"><Info icon={CircleDollarSign} label="Budżet / wartość" value={
-                  details.preliminary_budget_min != null && details.preliminary_budget_max != null && Number(details.preliminary_budget_min) !== Number(details.preliminary_budget_max)
-                    ? `${formatMoney(details.preliminary_budget_min)} – ${formatMoney(details.preliminary_budget_max)}`
-                    : details.preliminary_budget_min != null || details.preliminary_budget_max != null
-                      ? formatMoney(details.preliminary_budget_min ?? details.preliminary_budget_max)
-                      : inquiry.estimated_value ? formatMoney(inquiry.estimated_value) : details.budget
-                } /></div>
-              </div>
-              {canManage && !editingContext && <button type="button" disabled={savingBrief || loadingRecommendation} onClick={() => setEditingContext(true)} className="mt-3 text-sm text-[#d3bb73] hover:underline disabled:opacity-50">Uzupełnij / edytuj kontekst</button>}
-              {canManage && editingContext && <InquiryContextEditor initial={createInquiryBriefDraft(inquiry)} disabled={savingBrief || loadingRecommendation}
-                onCancel={() => setEditingContext(false)} onSave={context => saveInquiryBrief({ ...briefDraftRef.current, ...context })} />}
-            </section>
-
-            <section className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-5">
-              <h2 className="text-lg font-light text-[#e5e4e2]">Prowadzenie sprzedaży</h2>
-              <div className="mt-4 space-y-3 text-sm">
-                <Row label="Opiekun" value={inquiry.inquiry_owner ? `${inquiry.inquiry_owner.name} ${inquiry.inquiry_owner.surname}` : 'Nieprzypisane'} />
-                {canLead && inquiry.inquiry_owner_id && !['won','lost'].includes(inquiry.inquiry_stage) && <button type="button" onClick={() => setShowHandoffModal(true)} className="rounded-lg bg-[#d3bb73]/10 px-3 py-2 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/15">Przekaż / oddaj zapytanie</button>}
-                {showHandoffModal && inquiry.inquiry_owner_id && <InquiryHandoffModal inquiryId={inquiry.id} ownerId={inquiry.inquiry_owner_id} title={inquiry.title} onClose={() => setShowHandoffModal(false)} onSaved={() => { router.push('/crm/inquiries'); router.refresh(); }} />}
-                <div className="rounded-lg bg-white/5 p-3">
-                  <p className="flex items-center gap-2 text-sm">{inquiry.last_contact_at ? <CheckCircle2 className="h-4 w-4 text-emerald-400" /> : <Phone className="h-4 w-4 text-white/45" />}{inquiry.last_contact_at ? 'Kontakt podjęty' : 'Kontakt jeszcze niepodjęty'}</p>
-                  {inquiry.last_contact_at && <p className="mt-1 text-xs text-white/45">Ostatni kontakt: {formatDate(inquiry.last_contact_at)}</p>}
-                  {canManage && <button type="button" disabled={markingContact} onClick={() => void markContact()} className="mt-2 text-sm text-[#d3bb73] disabled:opacity-50">{markingContact ? 'Zapisuję…' : inquiry.last_contact_at ? 'Odnotuj kolejny kontakt' : 'Oznacz kontakt jako podjęty'}</button>}
-                </div>
-                <Row label="Następne działanie" value={formatDate(inquiry.next_action_at)} />
-                <Row label="Prawdopodobieństwo" value={`${inquiry.win_probability || 0}%`} />
-                <Row label="Szacowana wartość" value={formatMoney(inquiry.estimated_value)} />
-                {canLead && <><Link href={`/crm/inquiries?edit=${inquiry.id}`} className="block text-[#d3bb73]">Zmień opiekuna, etap i termin działania</Link>{inquiry.accepted_offer_id && <button type="button" className="text-[#d3bb73]" onClick={async () => { const reason = window.prompt('Powód ponownego otwarcia negocjacji'); if (!reason?.trim()) return; const { error } = await supabase.rpc('reopen_inquiry_negotiation', { p_inquiry: inquiry.id, p_reason: reason }); if (error) showSnackbar(error.message, 'error'); else reload(); }}>Otwórz negocjacje ponownie</button>}</>}
-              </div>
-            </section>
-          </div>
         </div>
       )}
 
@@ -873,6 +836,101 @@ export default function InquiryWorkspaceClient({ initialData }: { initialData: a
       {activeTab === 'notes' && <InquiryNotesPanel key={inquiry.id} inquiryId={inquiry.id} canWrite={canLead} phone={clientPhone} onSaved={reload} />}
       {activeTab === 'history' && <section className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-5"><h2 className="text-lg font-light text-[#e5e4e2]">Historia sprzedaży</h2>{(data.activity || []).map((entry: any) => <details key={entry.id} className="mt-4 rounded-lg bg-black/20 p-3"><summary className="text-sm">{entry.body} · {formatDate(entry.created_at)}</summary>{entry.metadata?.note && <p className="mt-2 whitespace-pre-wrap text-sm">{entry.metadata.note}</p>}{entry.metadata?.details?.questions?.map((q: any) => <p key={q.id} className="mt-2 text-sm">{q.question}: {q.answer || "Brak odpowiedzi"} · {q.source}</p>)}</details>)}<div className="mt-5 space-y-4">{data.history.map((entry: any) => <div key={entry.id} className="flex gap-3 border-l border-[#d3bb73]/20 pl-4"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[#d3bb73]" /><div><p className="text-sm text-[#e5e4e2]">{STAGE_LABELS[entry.from_stage] || 'Początek'} → {STAGE_LABELS[entry.to_stage] || systemLabel(entry.to_stage)}</p><p className="mt-1 text-xs text-[#e5e4e2]/40">{formatDate(entry.created_at)}{entry.changed_by_employee ? ` · ${entry.changed_by_employee.name} ${entry.changed_by_employee.surname}` : ''}</p>{entry.reason && <p className="mt-1 text-xs text-[#e5e4e2]/55">{entry.reason}</p>}</div></div>)}</div></section>}
 
+        </div>
+          <div className="order-first min-w-0 space-y-4 xl:order-last xl:sticky xl:top-4 xl:max-h-[calc(100dvh-105px)] xl:self-start xl:overflow-y-auto xl:overscroll-contain">
+            <section className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-5">
+              <h2 className="text-lg font-light text-[#e5e4e2]">Klient</h2>
+              <div className="mt-4 space-y-3 text-sm text-[#e5e4e2]/65">
+                <div className="flex items-center gap-2"><UserRound className="h-4 w-4 text-[#d3bb73]" />{clientName}</div>
+                {clientEmail && <a href={`mailto:${clientEmail}`} className="flex items-center gap-2 hover:text-[#d3bb73]"><Mail className="h-4 w-4" />{clientEmail}</a>}
+                {clientPhone && <a href={`tel:${clientPhone}`} className="flex items-center gap-2 hover:text-[#d3bb73]"><Phone className="h-4 w-4" />{clientPhone}</a>}
+              </div>
+              {canManage && <button data-crm-action="secondary" type="button"
+                onClick={() => setShowClientModal(true)}
+                className="mt-4 inline-flex items-center gap-2 rounded-lg bg-white/5 px-3 py-2 text-sm text-[#d3bb73] hover:bg-white/10">
+                <UserPlus className="h-4 w-4" />
+                {inquiry.contact_id ? 'Zmień klienta lub organizację' : 'Dodaj lub powiąż klienta'}
+              </button>}
+              {!inquiry.organization_id && contactOrganizations.loading && displayedOrganizations.length === 0 && <p className="mt-3 text-xs text-white/45">Wczytuję organizację klienta…</p>}
+              {!inquiry.organization_id && contactOrganizations.error && <p role="alert" className="mt-3 text-xs text-amber-200">{contactOrganizations.error} <button type="button" onClick={() => void contactOrganizations.refresh()} className="underline">Ponów</button></p>}
+              {displayedOrganizations.map(organization => (
+                <Link key={organization.id} href={`/crm/contacts/${organization.id}`} className="mt-3 flex items-center gap-2 text-sm text-[#d3bb73] hover:underline">
+                  <Briefcase className="h-4 w-4 shrink-0" />
+                  {organization.alias || organization.name}
+                </Link>
+              ))}
+              {inquiry.contact_id && <Link href={`/crm/contacts/${inquiry.contact_id}`} className="mt-4 inline-flex text-sm text-[#d3bb73] hover:underline">Otwórz Kartę Klienta 360°</Link>}
+              <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
+                <div><Info icon={MapPin} label="Miejsce" value={details.location_text} />
+                  {details.location_id && <Link href={`/crm/locations/${details.location_id}`} className="mt-1 inline-block text-xs text-[#d3bb73] hover:underline">Otwórz lokalizację</Link>}</div>
+                <Info icon={CalendarClock} label="Termin / szacowane godziny" value={formatInquirySchedule(details, inquiry.due_date)} />
+                <div className="space-y-2"><Info icon={UserRound} label="Liczba osób" value={details.guest_count == null ? 'Nie ustalono' : `${details.guest_count} osób`} />
+                  {details.guest_count == null && details.guest_count_text && <p className="text-xs text-white/55">Z wiadomości: {details.guest_count_text} — wymaga ustalenia liczby do wyceny.</p>}
+                  {canManage && <div className="flex flex-wrap gap-3 text-xs text-[#d3bb73]">
+                    <button type="button" disabled={savingBrief || loadingRecommendation} onClick={() => { setFocusGuestCount(true); setEditingContext(true); }}>{details.guest_count == null ? 'Dodaj liczbę osób' : 'Zmień liczbę osób'}</button>
+                    <button type="button" disabled={savingBrief || loadingRecommendation || editingContext} onClick={() => void extractGuestCount()}>{extractingGuests ? 'Odczytuję korespondencję…' : 'Pobierz z korespondencji'}</button>
+                  </div>}
+                  {extractingGuests && <p role="status" className="text-xs text-white/60">AI szuka informacji o uczestnikach w zapytaniu i wiadomościach.</p>}
+                  {guestExtractionError && <p role="alert" className="text-xs text-amber-200">{guestExtractionError}</p>}
+                  {guestSuggestion && <div className="space-y-2 rounded-lg bg-white/5 p-3 text-xs">
+                    <p>{guestSuggestion.kind === 'unknown' ? 'Nie znaleziono jednoznacznej liczby uczestników. Wpisz ją ręcznie po ustaleniu z klientem.' : `Znaleziono: ${guestSuggestion.text}`}</p>
+                    {guestSuggestion.evidence && <blockquote className="text-white/60">„{guestSuggestion.evidence}”</blockquote>}
+                    {guestSuggestion.kind === 'approximate' && <p className="text-white/60">To liczba przybliżona. Możesz przyjąć ją do wyceny.</p>}
+                    {guestSuggestion.kind === 'range' && <p className="text-white/60">Klient podał przedział. Wpisz ustaloną liczbę do wyceny — nie wybieramy automatycznie średniej ani maksimum.</p>}
+                    {guestSuggestion.count != null && canManage && <button type="button" disabled={savingBrief || loadingRecommendation || editingContext} className="text-[#d3bb73]" onClick={async () => {
+                      if (await saveInquiryBrief({ ...briefDraftRef.current, guest_count: String(guestSuggestion.count) })) setGuestSuggestion(null);
+                    }}>Użyj {guestSuggestion.count} osób w zapytaniu</button>}
+                  </div>}
+                </div>
+                <div className="sm:col-span-2 xl:col-span-1 2xl:col-span-2"><Info icon={Target} label="Zakres" value={details.scope || (details.event_type ? systemLabel(details.event_type, 'eventType') : null)} /></div>
+                <div className="sm:col-span-2 xl:col-span-1 2xl:col-span-2"><Info icon={CircleDollarSign} label="Budżet / wartość" value={
+                  details.preliminary_budget_min != null && details.preliminary_budget_max != null && Number(details.preliminary_budget_min) !== Number(details.preliminary_budget_max)
+                    ? `${formatMoney(details.preliminary_budget_min)} – ${formatMoney(details.preliminary_budget_max)}`
+                    : details.preliminary_budget_min != null || details.preliminary_budget_max != null
+                      ? formatMoney(details.preliminary_budget_min ?? details.preliminary_budget_max)
+                      : inquiry.estimated_value ? formatMoney(inquiry.estimated_value) : details.budget
+                } /></div>
+              </div>
+              {canManage && !editingContext && <button type="button" disabled={savingBrief || loadingRecommendation} onClick={() => { setFocusGuestCount(false); setEditingContext(true); }} className="mt-3 text-sm text-[#d3bb73] hover:underline disabled:opacity-50">Uzupełnij / edytuj kontekst</button>}
+              {canManage && editingContext && <InquiryContextEditor focusGuestCount={focusGuestCount} initial={createInquiryBriefDraft(inquiry)} disabled={savingBrief || loadingRecommendation}
+                onCancel={() => setEditingContext(false)} onSave={context => saveInquiryBrief({ ...briefDraftRef.current, ...context })} />}
+            </section>
+
+            <section className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-5">
+              <h2 className="text-lg font-light text-[#e5e4e2]">Prowadzenie sprzedaży</h2>
+              <div className="mt-4 space-y-3 text-sm">
+                <Row label="Opiekun" value={inquiry.inquiry_owner ? `${inquiry.inquiry_owner.name} ${inquiry.inquiry_owner.surname}` : 'Nieprzypisane'} />
+                {canLead && inquiry.inquiry_owner_id && !['won','lost'].includes(inquiry.inquiry_stage) && <button type="button" onClick={() => setShowHandoffModal(true)} className="rounded-lg bg-[#d3bb73]/10 px-3 py-2 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/15">Przekaż / oddaj zapytanie</button>}
+                {showHandoffModal && inquiry.inquiry_owner_id && <InquiryHandoffModal inquiryId={inquiry.id} ownerId={inquiry.inquiry_owner_id} title={inquiry.title} onClose={() => setShowHandoffModal(false)} onSaved={() => { router.push('/crm/inquiries'); router.refresh(); }} />}
+                <div className="rounded-lg bg-white/5 p-3">
+                  <p className="flex items-center gap-2 text-sm">{inquiry.last_contact_at ? <CheckCircle2 className="h-4 w-4 text-emerald-400" /> : <Phone className="h-4 w-4 text-white/45" />}{inquiry.last_contact_at ? 'Kontakt podjęty' : 'Kontakt jeszcze niepodjęty'}</p>
+                  {inquiry.last_contact_at && <p className="mt-1 text-xs text-white/45">Ostatni kontakt: {formatDate(inquiry.last_contact_at)}</p>}
+                  {canManage && <button type="button" disabled={markingContact} onClick={() => void markContact()} className="mt-2 text-sm text-[#d3bb73] disabled:opacity-50">{markingContact ? 'Zapisuję…' : inquiry.last_contact_at ? 'Odnotuj kolejny kontakt' : 'Oznacz kontakt jako podjęty'}</button>}
+                </div>
+                <Row label="Następne działanie" value={formatDate(inquiry.next_action_at)} />
+                <Row label="Prawdopodobieństwo" value={`${inquiry.win_probability || 0}%`} />
+                <Row label="Szacowana wartość" value={formatMoney(inquiry.estimated_value)} />
+                {canLead && <><Link href={`/crm/inquiries?edit=${inquiry.id}`} className="block text-[#d3bb73]">Zmień opiekuna, etap i termin działania</Link>{inquiry.accepted_offer_id && <button type="button" className="text-[#d3bb73]" onClick={async () => { const reason = window.prompt('Powód ponownego otwarcia negocjacji'); if (!reason?.trim()) return; const { error } = await supabase.rpc('reopen_inquiry_negotiation', { p_inquiry: inquiry.id, p_reason: reason }); if (error) showSnackbar(error.message, 'error'); else reload(); }}>Otwórz negocjacje ponownie</button>}</>}
+              </div>
+            </section>
+          </div>
+      </div>
+
+      {showClientModal && <InquiryClientModal inquiry={inquiry} firstName={inquiryContact.firstName} lastName={inquiryContact.lastName}
+        email={clientEmail || ''} phone={clientPhone || ''}
+        onClose={() => {
+          setShowClientModal(false);
+          clientChoiceRef.current?.reject(new Error('Anulowano wybór klienta.'));
+          clientChoiceRef.current = null; ensuringContactRef.current = null;
+        }}
+        onSaved={(contact, organization) => {
+          setData((current: any) => ({ ...current, inquiry: { ...current.inquiry, contact_id: contact.id, contact,
+            organization_id: organization?.id || null, organization } }));
+          clientChoiceRef.current?.resolve({ contactId: contact.id, organizationId: organization?.id || null });
+          clientChoiceRef.current = null; ensuringContactRef.current = null;
+          setShowClientModal(false);
+          showSnackbar('Klient i organizacja zostały zapisane i powiązane z zapytaniem.', 'success');
+        }} />}
       {showConversionModal && <ConvertInquiryModal inquiry={inquiry} categories={data.categories} companies={data.companies} onBeforeConvert={async () => { if (briefDirty && !(await saveInquiryBrief())) throw new Error('Zapisz dane przed utworzeniem wydarzenia.'); if (!inquiry.contact_id && !inquiry.organization_id) await ensureContact(); }} onClose={() => setShowConversionModal(false)} onConverted={(eventId) => router.push(`/crm/events/${eventId}`)} />}
       {showStageModal && canLead && <InquiryStageModal inquiry={inquiry} onClose={() => setShowStageModal(false)} onSaved={(saved) => {
         setData((current: any) => ({ ...current, inquiry: { ...current.inquiry, ...saved } }));
@@ -941,39 +999,32 @@ function RecommendationView({ recommendation }: { recommendation: Recommendation
   </div>;
 }
 
+function RecommendationText({ text }: { text: string }) {
+  const sources = new Map<string, { type: string; id: string }>();
+  // Source keys remain in the saved analysis; only their presentation changes.
+  const sourcePattern = /(?:[—–-]\s*)?[([]?\s*(received|sent):([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\s*[)\]]?/gi;
+  const content = text.replace(sourcePattern, (_match, type: string, id: string) => {
+    const normalizedType = type.toLowerCase();
+    sources.set(`${normalizedType}:${id}`, { type: normalizedType, id });
+    return '';
+  }).trim();
+  const category = /^(expressed|interpretation):\s*/i.exec(content);
+  return <span className="min-w-0 break-words">
+    {category && <span className="mb-0.5 block text-[11px] text-[#d3bb73]">{systemLabel(category[1], 'inquiryFinding')}</span>}
+    <span className="whitespace-pre-wrap">{category ? content.slice(category[0].length) : content}</span>
+    {sources.size > 0 && <span className="mt-1 flex flex-wrap gap-x-3 gap-y-1">{Array.from(sources.entries()).map(([key, source], index) => <Link
+      key={key}
+      href={`/crm/messages/${source.id}?type=${source.type}`}
+      className="text-[11px] text-[#d3bb73]/80 hover:underline"
+    >{source.type === 'received' ? 'E-mail odebrany' : 'E-mail wysłany'}{sources.size > 1 ? ` (${index + 1})` : ''}</Link>)}</span>}
+  </span>;
+}
+
 function RecommendationList({ title, items }: { title: string; items: string[] }) {
-  return <div className="rounded-lg border border-violet-300/10 bg-[#0f1119] p-4"><h3 className="text-sm font-medium text-violet-100">{title}</h3>{items.length ? <ul className="mt-3 space-y-2 text-xs leading-5 text-[#e5e4e2]/65">{items.map((item, index) => <li key={`${item}-${index}`} className="flex gap-2"><span className="text-violet-300">•</span><span>{item}</span></li>)}</ul> : <p className="mt-3 text-xs text-[#e5e4e2]/35">Brak sugestii</p>}</div>;
+  return <div className="rounded-lg border border-violet-300/10 bg-[#0f1119] p-4"><h3 className="text-sm font-medium text-violet-100">{title}</h3>{items.length ? <ul className="mt-3 space-y-2 text-xs leading-5 text-[#e5e4e2]/65">{items.map((item, index) => <li key={`${item}-${index}`} className="flex gap-2"><span className="text-violet-300">•</span><RecommendationText text={item} /></li>)}</ul> : <p className="mt-3 text-xs text-[#e5e4e2]/35">Brak sugestii</p>}</div>;
 }
 
 function RecordsPanel({ title, empty, actionLabel, onAction, rows, canManage = true }: { title: string; empty: string; actionLabel: string; onAction: () => void; rows: any[]; canManage?: boolean }) {
   return <section className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-5"><div className="flex items-center justify-between gap-4"><h2 className="text-lg font-light text-[#e5e4e2]">{title}</h2>{canManage && <button type="button" onClick={onAction} className="inline-flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33]"><Plus className="h-4 w-4" />{actionLabel}</button>}</div>{rows.length === 0 ? <div className="mt-5 rounded-lg border border-dashed border-[#d3bb73]/15 p-10 text-center text-sm text-[#e5e4e2]/40">{empty}</div> : <div className="mt-5 divide-y divide-[#d3bb73]/10 rounded-lg border border-[#d3bb73]/10">{rows.map((row) => { const content = <div className="flex items-center justify-between gap-4 px-4 py-3 transition-colors hover:bg-[#d3bb73]/5"><div className="min-w-0"><p className="truncate text-sm text-[#e5e4e2]">{row.title}</p><p className="mt-1 truncate text-xs text-[#e5e4e2]/40">{row.subtitle}</p></div><SystemBadge value={row.badge} className="shrink-0" /></div>; return row.href ? <Link key={row.id} href={row.href}>{content}</Link> : <button type="button" key={row.id} onClick={row.onClick} className="block w-full text-left">{content}</button>; })}</div>}</section>;
 }
 
-function ConvertInquiryModal({ inquiry, categories, companies, onBeforeConvert, onClose, onConverted }: { inquiry: any; categories: any[]; companies: any[]; onBeforeConvert: () => Promise<void>; onClose: () => void; onConverted: (eventId: string) => void }) {
-  const { showSnackbar } = useSnackbar();
-  const details = inquiry.inquiry_details || {};
-  const [name, setName] = useState(inquiryTitleLabel(inquiry.title));
-  const [date, setDate] = useState(toLocalInput(details.termin || inquiry.due_date));
-  const [categoryId, setCategoryId] = useState('');
-  const [companyId, setCompanyId] = useState(companies.find((item) => item.is_default)?.id || companies[0]?.id || '');
-  const [saving, setSaving] = useState(false);
-  const convertLock = useRef(false);
-  const convert = async () => {
-    if(convertLock.current) return;
-    if (!date || !Number.isFinite(new Date(date).getTime())) { showSnackbar('Uzupełnij poprawny termin wydarzenia', 'warning'); return; }
-    convertLock.current = true;
-    setSaving(true);
-    try {
-      await onBeforeConvert();
-    const { data, error } = await supabase.rpc(inquiry.accepted_offer_id ? 'prepare_inquiry_realization' : 'convert_inquiry_to_event', { p_inquiry_id: inquiry.id, p_event_name: name.trim(), p_event_date: new Date(date).toISOString(), p_category_id: categoryId || null, p_my_company_id: companyId || null });
-      if (error) throw error;
-    showSnackbar('Zapytanie zostało przekształcone w wydarzenie', 'success'); onConverted(data);
-    } catch (error: any) {
-      showSnackbar(error.message || 'Nie udało się utworzyć wydarzenia', 'error');
-    } finally {
-      convertLock.current = false;
-      setSaving(false);
-    }
-  };
-  return <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4" onMouseDown={() => { if(!convertLock.current) onClose(); }}><div className="w-full max-w-xl rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] p-5" onMouseDown={(event) => event.stopPropagation()}><h2 className="text-lg font-light text-[#e5e4e2]">Utwórz wydarzenie z zapytania</h2><p className="mt-1 text-xs text-[#e5e4e2]/45">Dokumenty i zadania zachowają powiązania. Przy zaakceptowanej ofercie przeniesiemy wycenę oraz plan zasobów i dodamy zadanie weryfikacji dostępności. Bez akceptacji utworzymy robocze wydarzenie, pozostawiając sprzedaż otwartą.</p><div className="mt-5 grid gap-4 sm:grid-cols-2"><label className="sm:col-span-2"><span className="mb-2 block text-xs text-[#e5e4e2]/50">Nazwa</span><input value={name} onChange={(event) => setName(event.target.value)} className="w-full rounded-lg border border-[#d3bb73]/15 bg-[#0f1119] px-3 py-2.5 text-sm text-[#e5e4e2]" /></label><label><span className="mb-2 block text-xs text-[#e5e4e2]/50">Termin *</span><input type="datetime-local" value={date} onChange={(event) => setDate(event.target.value)} className="w-full rounded-lg border border-[#d3bb73]/15 bg-[#0f1119] px-3 py-2.5 text-sm text-[#e5e4e2]" /></label><label><span className="mb-2 block text-xs text-[#e5e4e2]/50">Kategoria</span><select value={categoryId} onChange={(event) => setCategoryId(event.target.value)} className="w-full rounded-lg border border-[#d3bb73]/15 bg-[#0f1119] px-3 py-2.5 text-sm text-[#e5e4e2]"><option value="">Bez kategorii</option>{categories.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label className="sm:col-span-2"><span className="mb-2 block text-xs text-[#e5e4e2]/50">Działalność</span><select value={companyId} onChange={(event) => setCompanyId(event.target.value)} className="w-full rounded-lg border border-[#d3bb73]/15 bg-[#0f1119] px-3 py-2.5 text-sm text-[#e5e4e2]"><option value="">Nieprzypisana</option>{companies.map((item) => <option key={item.id} value={item.id}>{item.legal_name || item.name}</option>)}</select></label></div><div className="mt-5 flex justify-end gap-3"><button type="button" disabled={saving} onClick={onClose} className="rounded-lg px-4 py-2 text-sm text-[#e5e4e2]/60">Anuluj</button><button type="button" onClick={() => void convert()} disabled={!name.trim() || !date || saving} className="inline-flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] disabled:opacity-50">{saving && <Loader2 className="h-4 w-4 animate-spin" />}Utwórz wydarzenie</button></div></div></div>;
-}

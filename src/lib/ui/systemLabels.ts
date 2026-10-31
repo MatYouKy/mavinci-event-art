@@ -1,5 +1,7 @@
 /** Presentation only: never use translated labels as database or API values. */
 const labels = {
+  invoiceCorrectionKind: { amount: 'Korekta pozycji i kwot', party_data: 'Korekta danych nabywcy / odbiorcy' },
+  inquiryFinding: { expressed: 'Wskazane przez klienta', interpretation: 'Wniosek AI — do potwierdzenia' },
   formCategory: {
     event_inquiry: 'Zapytanie o wydarzenie', team_join: 'Zgłoszenie do zespołu',
     general: 'Wiadomość ogólna', services: 'Zapytanie o usługę', service: 'Zapytanie o usługę',
@@ -39,7 +41,7 @@ const labels = {
     awaiting_confirmation: 'Oczekuje na potwierdzenie', changes_requested: 'Wymaga zmian',
     contacted: 'Kontakt podjęty', qualified: 'Zakwalifikowane', proposal: 'Oferta wysłana',
     negotiation: 'Negocjacje', won: 'Wygrane', lost: 'Przegrane',
-    paid: 'Opłacone', unpaid: 'Nieopłacone', partially_paid: 'Częściowo opłacone',
+    paid: 'Opłacone', unpaid: 'Nieopłacone', partially_paid: 'Częściowo opłacone', not_applicable: 'Nie dotyczy',
     partial: 'Częściowo rozliczone', overdue: 'Po terminie', refunded: 'Zwrócone',
     settled: 'Rozliczone', incurred: 'Koszt poniesiony', issued: 'Wystawione',
     processed: 'Przetworzone', processing: 'Przetwarzanie', queued: 'W kolejce',
@@ -92,6 +94,7 @@ const fallbackLabels: Record<SystemLabelDomain, string> = {
   ownership: 'Inna forma własności', fuel: 'Inne paliwo', transmission: 'Inna skrzynia biegów', phase: 'Inna faza', skill: 'Inny poziom',
   absence: 'Inna nieobecność', vehicleAttribute: 'Inna właściwość',
   quizType: 'Inny typ pytania',
+  inquiryFinding: 'Ustalenie',
 };
 
 export function systemLabel(value: unknown, domain: SystemLabelDomain = 'status', options: { preserveCustom?: boolean; fallback?: string } = {}): string {

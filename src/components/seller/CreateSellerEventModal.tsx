@@ -7,12 +7,14 @@ import { CalendarDays, Loader2, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import SearchCombobox, { type SearchComboboxOption } from '@/components/crm/SearchCombobox';
 import { useLocations } from '@/app/(crm)/crm/locations/useLocations';
+import { SellerEventScheduleSummary } from './SellerEventSchedule';
+import SellerTimePicker from './SellerTimePicker';
 import SellerDatePicker from '@/app/(public)/seller/_components/SellerDatePicker';
 import { arrangementSchedule, type ArrangementScheduleKey, type SellerArrangements } from '@/lib/seller/arrangements';
 
 type Slot = { date: string; time: string };
 type EventDraft = {
-  event_id: string | null; source_key: string; revision: number; brand_name: string; offer_number: string;
+  event_id: string | null; confirmation_required?: boolean; event_updated_at?: string | null; location_id?: string | null; category_id?: string | null; source_key: string; revision: number; brand_name: string; offer_number: string;
   name: string; location: string; description: string;
   client: SellerArrangements['client']; arrangements: SellerArrangements['values'];
   items: { id: string; name: string; quantity: number; unit?: string }[];
@@ -27,7 +29,7 @@ function Schedule({ name, label, value, onChange, onValidity }: {
   const validity = useCallback((valid: boolean) => onValidity(name, valid), [name, onValidity]);
   return <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_7rem] gap-2">
     <SellerDatePicker label={label} value={value.date} onChange={(date) => onChange({ ...value, date })} onValidityChange={validity}/>
-    <label className="text-xs text-white/50">Godzina<input type="time" aria-label={`${label} — godzina`} value={value.time} onChange={(event) => onChange({ ...value, time: event.target.value })} className={field}/></label>
+    <SellerTimePicker label="Godzina" ariaLabel={`${label} — godzina`} value={value.time} onChange={(time) => onChange({ ...value, time })} align="right"/>
   </div>;
 }
 
@@ -65,7 +67,7 @@ export default function CreateSellerEventModal({ offerId, api, onClose, onCreate
       try {
         const next = await api({ action: 'event_draft' }) as EventDraft;
         if (!active) return;
-        setDraft(next); setName(next.name || ''); setLocation(next.location || ''); setLocationId(''); setDescription(next.description || '');
+        setDraft(next); setName(next.name || ''); setLocation(next.location || ''); setLocationId(next.location_id || ''); setCategory(next.category_id || ''); setDescription(next.description || '');
         const slot = (key: ArrangementScheduleKey): Slot => ({ date: next[key]?.slice(0, 10) || '', time: next[key]?.slice(11, 16) || '' });
         setSchedule({ setup_at: slot('setup_at'), starts_at: slot('starts_at'), ends_at: slot('ends_at'), teardown_at: slot('teardown_at') });
       } catch (cause: any) { if (active) setError(cause?.message || 'Nie udało się wczytać danych wydarzenia.'); }
@@ -92,17 +94,18 @@ export default function CreateSellerEventModal({ offerId, api, onClose, onCreate
     setError('');
     if (!confirmed) { setError('Zaznacz osobne potwierdzenie realizacji po sprawdzeniu danych wydarzenia.'); return; }
     if (Object.values(invalidDates).some(Boolean)) { setError('Popraw daty zaznaczone w formularzu.'); return; }
-    const values: Record<string, unknown> = { name: name.trim(), location: location.trim(), location_id: locationId || null, description, category_id: category || null };
+    const values: Record<string, unknown> = { event_updated_at: draft.event_updated_at || null, name: name.trim(), location: location.trim(), location_id: locationId || null, description, category_id: category || null };
     for (const [key, label] of arrangementSchedule) {
       const slot = schedule[key];
       if (Boolean(slot.date) !== Boolean(slot.time)) { setError(`${label}: uzupełnij datę oraz godzinę albo pozostaw oba pola puste.`); return; }
       values[key] = slot.date ? `${slot.date}T${slot.time}` : null;
     }
-    if (!values.name || !values.starts_at) { setError('Uzupełnij nazwę oraz datę i godzinę rozpoczęcia wydarzenia.'); return; }
+    if (!values.name || !values.starts_at || !values.ends_at) { setError('Uzupełnij nazwę oraz daty i godziny rozpoczęcia i zakończenia wydarzenia.'); return; }
+    if (String(values.ends_at) <= String(values.starts_at)) { setError('Koniec musi być późniejszy niż początek wydarzenia.'); return; }
     lock.current = true; setSaving(true);
     try {
       const result = await api({ action: 'create_event', sourceKey: draft.source_key, revision: draft.revision, values, confirm: true });
-      if (!result?.event_id) throw new Error('Nie otrzymano potwierdzenia utworzenia wydarzenia. Odśwież status przed ponowieniem.');
+      if (!result?.event_id) throw new Error('Nie otrzymano potwierdzenia zapisu wydarzenia. Odśwież status przed ponowieniem.');
       onCreated(result.event_id);
     } catch (cause: any) { setError(cause?.message || 'Nie udało się zapisać wydarzenia. Formularz pozostaje otwarty.'); }
     finally { lock.current = false; setSaving(false); }
@@ -123,16 +126,17 @@ export default function CreateSellerEventModal({ offerId, api, onClose, onCreate
         }
       }}>
       <header className="flex items-start justify-between gap-4 p-5 sm:p-6">
-        <div><h2 id="seller-event-title" className="flex items-center gap-2 text-lg uppercase"><CalendarDays className="h-5 w-5 text-[#d3bb73]"/>Potwierdź realizację i utwórz wydarzenie</h2><p className="mt-2 text-xs text-white/50">Drugi, osobny krok po akceptacji oferty. Sprawdź dane sprzedawcy. Zamknięcie formularza pozostawi realizację oczekującą na potwierdzenie CRM.</p></div>
+        <div><h2 id="seller-event-title" className="flex items-center gap-2 text-lg uppercase"><CalendarDays className="h-5 w-5 text-[#d3bb73]"/>Potwierdź realizację</h2><p className="mt-2 text-xs text-white/50">Wydarzenie powstaje już przy akceptacji oferty. Tutaj sprawdzasz jego dane i potwierdzasz realizację — bez tworzenia kolejnej kopii.</p></div>
         <button type="button" aria-label="Zamknij formularz" disabled={saving} className="rounded-lg p-2 hover:bg-white/5 disabled:opacity-40" onClick={onClose}><X className="h-5 w-5"/></button>
       </header>
       {loading && <p role="status" className="flex items-center gap-2 p-6"><Loader2 className="h-4 w-4 animate-spin"/>Wczytywanie danych sprzedawcy…</p>}
       {error && <p role="alert" className="mx-6 mb-4 rounded-lg bg-rose-300/10 p-3 text-sm text-rose-200">{error}</p>}
-      {draft?.event_id ? <div className="space-y-4 p-6"><p>Wydarzenie zostało już utworzone. Nie dodamy go drugi raz.</p><Link href={`/crm/events/${draft.event_id}`} className={button}>Przejdź do wydarzenia</Link></div> : draft && <form onSubmit={submit} className="px-5 pb-6 sm:px-6">
+      {draft?.event_id && draft.confirmation_required === false ? <div className="space-y-4 p-6"><p>To wydarzenie zostało już potwierdzone. Jego dalsze przygotowanie prowadzisz w CRM.</p><Link href={`/crm/events/${draft.event_id}`} className={button}>Przejdź do wydarzenia</Link></div> : draft && <form onSubmit={submit} className="px-5 pb-6 sm:px-6">
         <fieldset disabled={saving} className="min-w-0 space-y-5">
-          <div className="rounded-lg bg-white/[0.035] p-4 text-sm"><p>{draft.brand_name} · {draft.offer_number}</p><p className="mt-1 text-amber-200">Oferta zaakceptowana. Realizacja oczekuje na Twoje potwierdzenie poniżej.</p></div>
+          <div className="rounded-lg bg-white/[0.035] p-4 text-sm"><p>{draft.brand_name} · {draft.offer_number}</p><p className="mt-1 text-amber-200">Wydarzenie oczekuje na Twoje potwierdzenie. Oferta, sprzedawca i plan przygotowania pozostają powiązane.</p></div>
           <label className="block text-xs text-white/60">Nazwa wydarzenia *<input required maxLength={250} value={name} onChange={(event) => setName(event.target.value)} className={field}/></label>
-          <div className="grid gap-4 sm:grid-cols-2">{arrangementSchedule.map(([key, label]) => <Schedule key={key} name={key} label={label + (key === 'starts_at' ? ' *' : '')} value={schedule[key]} onChange={(value) => setSchedule((current) => ({ ...current, [key]: value }))} onValidity={dateValidity}/>)}</div>
+          <SellerEventScheduleSummary days={draft.arrangements.event_days} />
+          <div className="grid gap-4 sm:grid-cols-2">{arrangementSchedule.map(([key, label]) => <Schedule key={key} name={key} label={label + (key === 'starts_at' || key === 'ends_at' ? ' *' : '')} value={schedule[key]} onChange={(value) => setSchedule((current) => ({ ...current, [key]: value }))} onValidity={dateValidity}/>)}</div>
           <p className="text-xs text-white/45">Godziny w strefie Europe/Warsaw. Brakujących godzin nie uzupełniamy automatycznie.</p>
           <div>
             <p className="mb-1.5 text-xs text-white/60">Miejsce wydarzenia</p>
@@ -161,7 +165,7 @@ export default function CreateSellerEventModal({ offerId, api, onClose, onCreate
             <h3 className="text-sm uppercase">Klient i kontakty z oferty</h3>
             <p>{[draft.client.company, draft.client.name, draft.client.email, draft.client.phone].filter(Boolean).join(' · ') || 'Nie podano danych klienta'}</p>
             {draft.arrangements.contacts?.map((contact, index) => <p key={index} className="break-words text-xs text-white/60">{[contact.name, contact.role, contact.email, contact.phone].filter(Boolean).join(' · ')}</p>)}
-            <p className="text-xs text-white/45">Zachowamy te dane w opisie i powiązanych ustaleniach. Powiązanie z kartoteką klienta i sposób rozliczenia uzupełnisz w wydarzeniu — bez automatycznego zakładania duplikatów kontaktów.</p>
+            <p className="text-xs text-white/45">Dane z oferty pozostają w opisie i ustaleniach. Istniejące powiązania klienta są zachowane. Prywatnej bazy sprzedawcy nie kopiujemy automatycznie do CRM; klient i nabywca nie są zastępowani hotelem sprzedawcy.</p>
           </section>
           <section className="space-y-2 rounded-lg bg-white/[0.035] p-4 text-sm">
             <h3 className="text-sm uppercase">Zakres z zaakceptowanej oferty</h3>
@@ -169,11 +173,11 @@ export default function CreateSellerEventModal({ offerId, api, onClose, onCreate
             {draft.arrangements.room && <p className="text-xs text-white/60">Sala: {draft.arrangements.room}</p>}
             {draft.arrangements.technical_requirements && <p className="whitespace-pre-wrap text-xs text-white/60">Wymagania: {draft.arrangements.technical_requirements}</p>}
             {draft.arrangements.logistics_requirements && <p className="whitespace-pre-wrap text-xs text-white/60">Logistyka: {draft.arrangements.logistics_requirements}</p>}
-            <p className="text-xs text-white/45">Oferta, PDF i historia rozmowy pozostaną powiązane z wydarzeniem. Konkretne rezerwacje sprzętu oraz skład zespołu uzupełnisz w realizacji.</p>
+            <p className="text-xs text-white/45">Zakres sprzętu jest planem, nie potwierdzoną rezerwacją. W CRM uzupełnisz Timeline, zespół, agendę i logistykę. Zmiana dat tutaj nie nadpisuje ręcznie przygotowanych faz Timeline.</p>
           </section>
-          <label className="block text-xs text-white/60">Opis wydarzenia<textarea rows={4} maxLength={10000} value={description} onChange={(event) => setDescription(event.target.value)} className={field}/></label>
-          <label className="flex items-start gap-3 rounded-lg bg-[#d3bb73]/10 p-4 text-sm"><input type="checkbox" required checked={confirmed} onChange={(event)=>setConfirmed(event.target.checked)} className="mt-1"/><span>Potwierdzam realizację po sprawdzeniu terminu, zasobów i ustaleń. Utworzę potwierdzone wydarzenie w CRM, a sprzedawca otrzyma osobne powiadomienie.</span></label>
-          <div className="flex flex-wrap justify-end gap-3"><button type="button" onClick={onClose} className={button}>Dokończę później</button><button type="submit" disabled={!confirmed} className={button}>{saving && <Loader2 className="h-4 w-4 animate-spin"/>}{saving ? 'Potwierdzanie i zapisywanie…' : 'Potwierdź realizację i utwórz wydarzenie'}</button></div>
+          <label className="block text-xs text-white/60">Opis wydarzenia<textarea rows={4} maxLength={Math.max(10000, draft.description?.length || 0)} value={description} onChange={(event) => setDescription(event.target.value)} className={field}/></label>
+          <label className="flex items-start gap-3 rounded-lg bg-[#d3bb73]/10 p-4 text-sm"><input type="checkbox" required checked={confirmed} onChange={(event)=>setConfirmed(event.target.checked)} className="mt-1"/><span>Potwierdzam realizację po sprawdzeniu terminu, zasobów i ustaleń. Potwierdzę to wydarzenie w CRM, a sprzedawca otrzyma osobne powiadomienie.</span></label>
+          <div className="flex flex-wrap justify-end gap-3"><button type="button" onClick={onClose} className={button}>Dokończę później</button><button type="submit" disabled={!confirmed} className={button}>{saving && <Loader2 className="h-4 w-4 animate-spin"/>}{saving ? 'Potwierdzanie i zapisywanie…' : 'Potwierdź realizację'}</button></div>
         </fieldset>
       </form>}
     </div>

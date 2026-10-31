@@ -51,11 +51,15 @@ export default function SellerDatePicker({ value, onChange, label, onValidityCha
 
   useEffect(() => {
     if (!open) return;
-    const closeOutside = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    const closeOutside = (event: Event) => {
+      if (event.target instanceof Node && !rootRef.current?.contains(event.target)) setOpen(false);
     };
     document.addEventListener('pointerdown', closeOutside);
-    return () => document.removeEventListener('pointerdown', closeOutside);
+    document.addEventListener('focusin', closeOutside);
+    return () => {
+      document.removeEventListener('pointerdown', closeOutside);
+      document.removeEventListener('focusin', closeOutside);
+    };
   }, [open]);
 
   const choose = (next: string) => {
@@ -75,8 +79,6 @@ export default function SellerDatePicker({ value, onChange, label, onValidityCha
         setOpen(false);
         triggerRef.current?.focus();
       }
-    }} onBlur={(event) => {
-      if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOpen(false);
     }}>
       <label htmlFor={`${id}-input`} className="text-xs text-[#e5e4e2]/50">{label}</label>
       <div className="relative mt-1.5">

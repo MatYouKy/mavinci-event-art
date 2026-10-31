@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
     });
     const { data: profile, error: profileError } = await user
       .from('sales_partner_profiles')
-      .select('id,partner_type,status,portal_enabled,portal_auth_user_id,contact:contacts!contact_id(email,full_name)')
+      .select('id,partner_type,status,organization_id,portal_default_company_id,portal_enabled,portal_auth_user_id,contact:contacts!contact_id(email,full_name)')
       .eq('id', salesPartnerId)
       .maybeSingle();
     if (profileError || !profile) {
@@ -53,6 +53,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Profil nie jest aktywnym sprzedawcą zewnętrznym z włączonym portalem' }, { status: 400 });
     }
     if (!contact?.email) return NextResponse.json({ error: 'Kontakt nie ma adresu e-mail' }, { status: 400 });
+
+    // Validate the CRM assignment before creating an auth account or sending mail.
+    if (!profile.organization_id) return NextResponse.json({ error: 'Przypisz organizację do sprzedawcy przed wysłaniem zaproszenia.' }, { status: 400 });
+    const { data: organization, error: organizationError } = await admin.from('organizations').select('id,business_type,location_id').eq('id', profile.organization_id).maybeSingle();
+    if (organizationError || !organization) return NextResponse.json({ error: 'Nie udało się odczytać organizacji sprzedawcy. Niczego nie wysłano.' }, { status: 400 });
+    if ((profile.partner_type === 'hotel_employee' || organization.business_type === 'hotel') && !organization.location_id) {
+      return NextResponse.json({ error: 'Powiąż hotel z lokalizacją w CRM przed wysłaniem zaproszenia.' }, { status: 400 });
+    }
+    const { data: terms, error: termsError } = await admin.from('sales_partner_brand_terms').select('my_company_id,company:my_companies!my_company_id(is_active)').eq('sales_partner_id', profile.id).eq('is_active', true);
+    const activeTerms = (terms || []).filter(term => {
+      const company = Array.isArray(term.company) ? term.company[0] : term.company;
+      return company?.is_active === true;
+    });
+    if (termsError || !activeTerms.length || (activeTerms.length > 1 && !activeTerms.some(term => term.my_company_id === profile.portal_default_company_id))) {
+      return NextResponse.json({ error: 'Wskaż aktywny domyślny cennik nowych ofert w profilu sprzedawcy. Niczego nie wysłano.' }, { status: 400 });
+    }
 
     let linkedUser: any = null;
     const alreadyLinked = Boolean(profile.portal_auth_user_id);

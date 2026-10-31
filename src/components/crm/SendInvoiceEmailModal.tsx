@@ -5,6 +5,7 @@ import { X, Send, Mail, Loader, Paperclip } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { buildInvoicePdfHtml } from './invoices/helpers/buildInvoicePdfHtml';
+import { getInvoiceKsefRecipient } from '@/lib/invoices/ksefRecipient';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import {
   dispatchCrmEmail,
@@ -52,6 +53,7 @@ interface InvoiceData {
   buyer_street: string;
   buyer_city: string;
   buyer_postal_code: string;
+  ksef_recipient_snapshot?: unknown;
   total_net: number;
   total_vat: number;
   total_gross: number;
@@ -424,6 +426,7 @@ W razie pytań proszę o kontakt.`),
       buyerStreet: invoice.buyer_street,
       buyerCity: invoice.buyer_city,
       buyerPostalCode: invoice.buyer_postal_code,
+      recipient: getInvoiceKsefRecipient(invoice),
       totalNet: invoice.total_net,
       totalVat: invoice.total_vat,
       totalGross: invoice.total_gross,
@@ -591,6 +594,7 @@ W razie pytań proszę o kontakt.`),
           : 'Faktura wysłana przez email z załącznikiem PDF',
         'success',
       );
+      if (result.warning) showSnackbar(String(result.warning), 'warning');
       onSent?.();
       onClose();
     } catch (error: unknown | Error) {

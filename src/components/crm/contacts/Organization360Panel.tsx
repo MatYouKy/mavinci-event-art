@@ -1,6 +1,7 @@
 'use client';
 
 import CustomerInquiryHistory from './CustomerInquiryHistory';
+import { isEligibleContactOwner } from './ownerEligibility';
 
 import { systemLabel } from '@/lib/ui/systemLabels';
 import { formatSystemSubject } from '@/lib/ui/systemLabels';
@@ -60,25 +61,77 @@ export default function Organization360Panel({ organization }: { organization: O
   const [lifecycle, setLifecycle] = useState(organization.lifecycle_status || 'lead');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [domains, setDomains] = useState('');
+  const [savingDomains, setSavingDomains] = useState(false);
+  const [mailOffset, setMailOffset] = useState(0);
+  const [hasMoreMail, setHasMoreMail] = useState(false);
+  const [loadingMoreMail, setLoadingMoreMail] = useState(false);
+
+  const mailActivities = (rows: any[]): Activity[] => rows.map((item) => ({
+    id: `${item.direction}-${item.id}`, kind: 'email',
+    title: item.subject || 'Wiadomość bez tematu', date: item.occurred_at,
+    status: item.direction === 'sent' ? 'wysłana' : item.is_read ? 'przeczytana' : 'nieprzeczytana',
+    href: `/crm/messages/${item.id}?type=${item.direction}`,
+  }));
+
+  const loadMoreMail = async () => {
+    setLoadingMoreMail(true);
+    try {
+      const { data, error } = await supabase.rpc('organization360_correspondence', {
+        p_organization_id: organization.id, p_offset: mailOffset,
+      });
+      if (error) throw error;
+      const rows = data || [];
+      setActivities(current => [...new Map([...current, ...mailActivities(rows)].map(row => [row.id, row])).values()]
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+      setMailOffset(current => current + rows.length);
+      setHasMoreMail(rows.length === 100);
+    } catch {
+      showSnackbar('Nie udało się pobrać kolejnych wiadomości', 'error');
+    } finally { setLoadingMoreMail(false); }
+  };
+
+  const saveDomains = async () => {
+    let values: string[];
+    try {
+      values = [...new Set(domains.split(/[\s,;]+/).filter(Boolean).map(value => {
+        const url = new URL(/^https?:\/\//i.test(value) ? value : `https://${value}`);
+        if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password) throw new Error('Niepoprawny adres');
+        const domain = url.hostname.toLowerCase().replace(/^www\./, '').replace(/\.$/, '');
+        if (domain.length > 253 || !/^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,63}$/.test(domain)) throw new Error('Niepoprawna domena');
+        return domain;
+      }))];
+    } catch {
+      showSnackbar('Nie rozpoznano domeny. Wpisz np. firma.pl lub wklej adres https://www.firma.pl/. Kolejne adresy oddziel przecinkiem.', 'error');
+      return;
+    }
+    setSavingDomains(true);
+    try {
+      const { error } = await supabase.from('organizations').update({ correspondence_domains: values }).eq('id', organization.id);
+      if (error) throw error;
+      showSnackbar('Domeny organizacji zostały zapisane', 'success');
+      await load();
+    } catch { showSnackbar('Nie udało się zapisać domen organizacji', 'error'); }
+    finally { setSavingDomains(false); }
+  };
   const [stats, setStats] = useState({ openInquiries: 0, pipelineValue: 0, upcomingEvents: 0, overdueActions: 0 });
 
   const load = async () => {
     setLoading(true);
-    const email = organization.email?.trim().toLowerCase() || '';
     const now = Date.now();
-    const [calls, inquiries, offers, events, invoices, relations, employeeRows, received, sent] = await Promise.all([
+    const [calls, inquiries, offers, events, invoices, relations, employeeRows, correspondence, domainResult] = await Promise.all([
       supabase.from('crm_call_activities').select('id, outcome, status, started_at, next_action_at').eq('organization_id', organization.id).order('started_at', { ascending: false }).limit(100),
       supabase.from('tasks').select('id, title, inquiry_stage, status, estimated_value, next_action_at, created_at').eq('is_inquiry', true).eq('organization_id', organization.id).order('created_at', { ascending: false }).limit(100),
       supabase.from('offers').select('id, offer_number, status, created_at').eq('organization_id', organization.id).order('created_at', { ascending: false }).limit(100),
       supabase.from('events').select('id, name, status, event_date').eq('organization_id', organization.id).order('event_date', { ascending: false }).limit(100),
       supabase.from('invoices').select('id, invoice_number, status, issue_date, total_gross, organization_id, service_recipient_organization_id, billing_arrangement').or(`organization_id.eq.${organization.id},service_recipient_organization_id.eq.${organization.id}`).order('issue_date', { ascending: false }).limit(100),
       supabase.from('contact_organizations').select('position, is_primary, contact:contacts(id, full_name, email, phone, mobile)').eq('organization_id', organization.id).eq('is_current', true),
-      supabase.from('employees').select('id, name, surname').eq('is_active', true).order('surname'),
-      email ? supabase.from('received_emails').select('id, subject, received_date, from_address, is_read').ilike('from_address', `%${email}%`).order('received_date', { ascending: false }).limit(50) : Promise.resolve({ data: [], error: null }),
-      email ? supabase.from('sent_emails').select('id, subject, sent_at, to_address').ilike('to_address', `%${email}%`).order('sent_at', { ascending: false }).limit(50) : Promise.resolve({ data: [], error: null }),
+      supabase.from('employees').select('id, name, surname, role, access_level, access_levels(slug)').eq('is_active', true).order('surname'),
+      supabase.rpc('organization360_correspondence', { p_organization_id: organization.id, p_offset: 0 }),
+      supabase.from('organizations').select('correspondence_domains').eq('id', organization.id).single(),
     ]);
 
-    const error = [calls, inquiries, offers, events, invoices, relations, employeeRows, received, sent].find((result: any) => result.error)?.error;
+    const error = [calls, inquiries, offers, events, invoices, relations, employeeRows, correspondence, domainResult].find((result: any) => result.error)?.error;
     if (error) {
       console.error('Error loading organization 360:', error);
       showSnackbar(error.message || 'Nie udało się pobrać danych organizacji', 'error');
@@ -108,13 +161,15 @@ export default function Organization360Panel({ organization }: { organization: O
               : `${systemLabel(item.status)} · inny płatnik`,
         href: `/crm/invoices/${item.id}`,
       })),
-      ...(received.data || []).map((item: any) => ({ id: `received-${item.id}`, kind: 'email' as const, title: item.subject || 'Odebrana wiadomość', date: item.received_date, status: item.is_read ? 'przeczytana' : 'nieprzeczytana', href: `/crm/messages/${item.id}?type=received` })),
-      ...(sent.data || []).map((item: any) => ({ id: `sent-${item.id}`, kind: 'email' as const, title: item.subject || 'Wysłana wiadomość', date: item.sent_at, status: 'wysłana', href: `/crm/messages/${item.id}?type=sent` })),
+      ...mailActivities(correspondence.data || []),
     ].filter((item) => item.date).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
     setActivities(activityRows);
+    setDomains((domainResult.data?.correspondence_domains || []).join(', '));
+    setMailOffset(correspondence.data?.length || 0);
+    setHasMoreMail(correspondence.data?.length === 100);
     setContacts((relations.data || []).map((row: any) => ({ ...row.contact, position: row.position, is_primary: row.is_primary })).filter(Boolean));
-    setEmployees(employeeRows.data || []);
+    setEmployees((employeeRows.data || []).filter(isEligibleContactOwner));
     setStats({
       openInquiries: inquiryRows.filter((item: any) => !['won', 'lost'].includes(item.inquiry_stage)).length,
       pipelineValue: inquiryRows.filter((item: any) => !['won', 'lost'].includes(item.inquiry_stage)).reduce((sum: number, item: any) => sum + Number(item.estimated_value || 0), 0),
@@ -152,9 +207,18 @@ export default function Organization360Panel({ organization }: { organization: O
     ].map(([label, value, Icon]: any) => <div key={label} className="rounded-xl border border-gray-800 bg-[#1a1d2e] p-4"><div className="flex items-center justify-between text-sm text-gray-400"><span>{label}</span><Icon className="h-4 w-4 text-[#d3bb73]" /></div><div className="mt-2 text-2xl font-semibold text-white">{value}</div></div>)}</div>
 
     <div className="grid gap-5 xl:grid-cols-[minmax(0,1.6fr)_minmax(300px,0.8fr)]">
-      <section className="rounded-xl border border-gray-800 bg-[#1a1d2e]"><div className="border-b border-gray-800 px-5 py-4"><h2 className="font-semibold text-white">Historia organizacji</h2><p className="text-sm text-gray-400">Sprzedaż, realizacje, finanse i korespondencja</p></div>{activities.length === 0 ? <div className="flex min-h-60 items-center justify-center text-sm text-gray-500">Brak powiązanych aktywności</div> : <div className="divide-y divide-gray-800">{activities.map((activity) => { const config = KIND[activity.kind]; const Icon = config.icon; return <button key={activity.id} disabled={!activity.href} onClick={() => activity.href && router.push(activity.href)} className="flex w-full items-start gap-3 px-5 py-4 text-left enabled:hover:bg-white/[0.03]"><span className={`rounded-lg p-2 ${config.color}`}><Icon className="h-4 w-4" /></span><span className="min-w-0 flex-1"><span className="flex flex-wrap items-center gap-2"><span className="font-medium text-gray-100">{activity.title}</span><span className={`rounded-full px-2 py-0.5 text-[11px] ${config.color}`}>{config.label}</span>{activity.status && <SystemBadge value={activity.status} label={activity.kind === 'invoice' ? activity.status : undefined} />}</span><span className="mt-1 block text-xs text-gray-500">{new Date(activity.date).toLocaleString('pl-PL')}</span></span></button>; })}</div>}</section>
+      <section className="rounded-xl border border-gray-800 bg-[#1a1d2e]"><div className="border-b border-gray-800 px-5 py-4"><h2 className="font-semibold text-white">Historia organizacji</h2><p className="text-sm text-gray-400">Sprzedaż, realizacje, finanse i Twoja korespondencja z organizacją oraz jej kontaktami</p></div>{activities.length === 0 ? <div className="flex min-h-60 items-center justify-center text-sm text-gray-500">Brak powiązanych aktywności</div> : <div className="divide-y divide-gray-800">{activities.map((activity) => { const config = KIND[activity.kind]; const Icon = config.icon; return <button key={activity.id} disabled={!activity.href} onClick={() => activity.href && router.push(activity.href)} className="flex w-full items-start gap-3 px-5 py-4 text-left enabled:hover:bg-white/[0.03]"><span className={`rounded-lg p-2 ${config.color}`}><Icon className="h-4 w-4" /></span><span className="min-w-0 flex-1"><span className="flex flex-wrap items-center gap-2"><span className="font-medium text-gray-100">{activity.title}</span><span className={`rounded-full px-2 py-0.5 text-[11px] ${config.color}`}>{config.label}</span>{activity.status && <SystemBadge value={activity.status} label={activity.kind === 'invoice' ? activity.status : undefined} />}</span><span className="mt-1 block text-xs text-gray-500">{new Date(activity.date).toLocaleString('pl-PL')}</span></span></button>; })}</div>}{hasMoreMail && <button onClick={() => void loadMoreMail()} disabled={loadingMoreMail} className="m-5 text-sm text-[#d3bb73] disabled:opacity-50">{loadingMoreMail ? 'Ładowanie…' : 'Pokaż starszą korespondencję'}</button>}</section>
 
       <aside className="space-y-5">
+        <section className="rounded-xl border border-white/5 bg-[#1a1d2e] p-5">
+          <h3 className="font-semibold text-white">Domeny organizacji</h3>
+          <p className="mt-2 text-sm text-gray-400">Uwzględnij również swoje wiadomości do i od osób spoza listy kontaktów, korzystających z tych domen.</p>
+          <label className="mt-3 block text-xs text-gray-400">Domeny e-mail
+            <input value={domains} onChange={event => setDomains(event.target.value)} placeholder="firma.pl lub https://www.firma.pl/" className="mt-1.5 w-full rounded-lg border border-white/10 bg-[#0f1119] px-3 py-2.5 text-sm text-white" />
+          </label>
+          <p className="mt-2 text-xs text-gray-500">Możesz wkleić adres strony — zapiszemy samą domenę. Kolejne adresy oddziel przecinkiem. Dodaj wyłącznie domeny organizacji. Dopasowanie domeny nie udostępnia poczty innych sprzedawców.</p>
+          <button onClick={() => void saveDomains()} disabled={savingDomains} className="mt-3 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm text-[#1c1f33] disabled:opacity-50">{savingDomains ? 'Zapisywanie…' : 'Zapisz domeny'}</button>
+        </section>
         <section className="rounded-xl border border-[#d3bb73]/25 bg-[#d3bb73]/10 p-5"><h3 className="font-semibold text-[#e1cc8d]">Następne działanie</h3><p className="mt-2 text-sm leading-6 text-gray-200">{recommendation}</p></section>
         <section className="rounded-xl border border-gray-800 bg-[#1a1d2e] p-5"><div className="flex items-center gap-2"><Building2 className="h-5 w-5 text-[#d3bb73]" /><h3 className="font-semibold text-white">Odpowiedzialność</h3></div><div className="mt-4 space-y-3"><label className="block text-xs text-gray-400">Opiekun<select value={ownerId} onChange={(event) => setOwnerId(event.target.value)} className="mt-1.5 w-full rounded-lg border border-gray-700 bg-[#0f1119] px-3 py-2.5 text-sm text-white"><option value="">Brak opiekuna</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.name} {employee.surname}</option>)}</select></label><label className="block text-xs text-gray-400">Etap relacji<select value={lifecycle} onChange={(event) => setLifecycle(event.target.value)} className="mt-1.5 w-full rounded-lg border border-gray-700 bg-[#0f1119] px-3 py-2.5 text-sm text-white">{LIFECYCLE.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><button onClick={() => void saveOwnership()} disabled={saving} className="w-full rounded-lg bg-[#d3bb73] px-4 py-2.5 text-sm font-medium text-[#1c1f33] disabled:opacity-50">{saving ? 'Zapisywanie…' : 'Zapisz odpowiedzialność'}</button></div></section>
         <CustomerSegmentationPanel entityType="organization" entityId={organization.id} email={organization.email} />

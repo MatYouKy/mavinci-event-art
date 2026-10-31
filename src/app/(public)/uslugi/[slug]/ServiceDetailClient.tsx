@@ -1,5 +1,9 @@
 'use client';
 
+import { canonicalServiceSlug, servicePath } from '@/lib/SEO/serviceUrls';
+import { CONFERENCE_TECHNICAL_SLUGS } from '@/lib/SEO/conferenceOverview';
+import ConferenceOlsztynLink from '@/components/ConferenceOlsztynLink';
+
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -352,6 +356,10 @@ export default function ServiceDetailClient({
         </div>
       </section>
 
+      {service.is_active && CONFERENCE_TECHNICAL_SLUGS.has(canonicalServiceSlug(service)) && (
+        <ConferenceOlsztynLink context="service" />
+      )}
+
       {/* Gallery Section */}
       {(localGallery.length > 0 || isEditMode) && (
         <section className="bg-[#0f1119] px-6 py-20">
@@ -476,7 +484,7 @@ export default function ServiceDetailClient({
                 return (
                   <Link
                     key={`${item.id}-${idx}`}
-                    href={`/uslugi/${item.slug}`}
+                    href={servicePath(item)}
                     className="group relative w-full flex-shrink-0 overflow-hidden rounded-xl transition-all hover:-translate-y-1 hover:border-[#d3bb73]/40 sm:w-[calc(50%-12px)] lg:w-[calc(33.333%-16px)]"
                   >
                     <div className="relative aspect-[4/5] overflow-hidden rounded-lg bg-[#0f1119] sm:aspect-[8/9]">
@@ -522,7 +530,7 @@ export default function ServiceDetailClient({
         <ContactFormWithTracking
           isOpen={isContactFormOpen}
           onClose={() => setIsContactFormOpen(false)}
-          sourcePage={`/uslugi/${service.slug}`}
+          sourcePage={servicePath(service)}
         />
       )}
 

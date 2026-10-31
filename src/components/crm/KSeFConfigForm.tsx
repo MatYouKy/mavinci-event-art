@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 
 interface KSeFConfigFormProps {
   companyId: string;
@@ -24,6 +25,9 @@ export default function KSeFConfigForm({ companyId, onUpdate }: KSeFConfigFormPr
   const [nip, setNip] = useState('');
   const [token, setToken] = useState('');
   const [isTestEnv, setIsTestEnv] = useState(false);
+  const [autoSyncEnabled, setAutoSyncEnabled] = useState(false);
+  const [companyActive, setCompanyActive] = useState(true);
+  const [savedTestEnv, setSavedTestEnv] = useState(false);
   const [showToken, setShowToken] = useState(false);
   const [certificateKey, setCertificateKey] = useState('');
   const [certificatePassword, setCertificatePassword] = useState('');
@@ -37,8 +41,13 @@ export default function KSeFConfigForm({ companyId, onUpdate }: KSeFConfigFormPr
   const [testResult, setTestResult] = useState<'success' | 'error' | null>(null);
 
   const { showSnackbar } = useSnackbar();
+  const { isAdmin } = useCurrentEmployee();
 
   useEffect(() => {
+    setToken('');
+    setCertificateKey('');
+    setCertificatePassword('');
+    setTestResult(null);
     loadCredentials();
   }, [companyId]);
 
@@ -48,13 +57,14 @@ export default function KSeFConfigForm({ companyId, onUpdate }: KSeFConfigFormPr
 
       const { data: company, error: companyError } = await supabase
         .from('my_companies')
-        .select('nip')
+        .select('nip, is_active')
         .eq('id', companyId)
         .single();
 
       if (companyError) throw companyError;
 
       setNip(company.nip);
+      setCompanyActive(company.is_active === true);
 
       const { data: credentials, error: credError } = await supabase
         .from('ksef_credentials')
@@ -67,11 +77,17 @@ export default function KSeFConfigForm({ companyId, onUpdate }: KSeFConfigFormPr
       if (credentials) {
         setHasCredentials(true);
         setIsTestEnv(credentials.is_test_environment || false);
+        setSavedTestEnv(credentials.is_test_environment || false);
+        setAutoSyncEnabled(credentials.auto_sync_enabled === true);
         setHasCertificate(!!credentials.certificate_key);
         setCertificateUploadedAt(credentials.certificate_uploaded_at);
       } else {
         setHasCredentials(false);
         setHasCertificate(false);
+        setIsTestEnv(false);
+        setSavedTestEnv(false);
+        setAutoSyncEnabled(false);
+        setCertificateUploadedAt(null);
       }
     } catch (err) {
       console.error('Error loading credentials:', err);
@@ -104,8 +120,13 @@ export default function KSeFConfigForm({ companyId, onUpdate }: KSeFConfigFormPr
   const handleSave = async () => {
     const normalizedToken = token.trim();
 
-    if (!normalizedToken) {
+    if (!normalizedToken && !hasCredentials) {
       showSnackbar('Wypełnij token autoryzacyjny', 'error');
+      return;
+    }
+
+    if (!normalizedToken && hasCredentials && isTestEnv !== savedTestEnv) {
+      showSnackbar('Przy zmianie środowiska podaj token właściwy dla tego środowiska', 'error');
       return;
     }
 
@@ -117,13 +138,20 @@ export default function KSeFConfigForm({ companyId, onUpdate }: KSeFConfigFormPr
     try {
       setSaving(true);
 
-      const normalizedToken = token.trim();
-
       const updateData: any = {
-        token: normalizedToken,
         is_test_environment: isTestEnv,
         updated_at: new Date().toISOString(),
       };
+
+      if (isAdmin) updateData.auto_sync_enabled = companyActive && autoSyncEnabled;
+
+      if (normalizedToken) {
+        updateData.token = normalizedToken;
+        updateData.access_token = null;
+        updateData.access_token_valid_until = null;
+        updateData.refresh_token = null;
+        updateData.refresh_token_valid_until = null;
+      }
 
       if (certificateKey && certificatePassword) {
         updateData.certificate_key = certificateKey;
@@ -152,8 +180,7 @@ export default function KSeFConfigForm({ companyId, onUpdate }: KSeFConfigFormPr
       }
 
       showSnackbar('Konfiguracja KSeF została zapisana', 'success');
-
-      
+      setToken('');
       setHasCredentials(true);
       if (certificateKey) {
         setHasCertificate(true);
@@ -234,7 +261,7 @@ export default function KSeFConfigForm({ companyId, onUpdate }: KSeFConfigFormPr
 
       <div>
         <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
-          Token autoryzacyjny <span className="text-red-400">*</span>
+          Token autoryzacyjny {!hasCredentials && <span className="text-red-400">*</span>}
         </label>
         <div className="relative">
           <input
@@ -253,7 +280,9 @@ export default function KSeFConfigForm({ companyId, onUpdate }: KSeFConfigFormPr
           </button>
         </div>
         <p className="mt-2 text-xs text-[#e5e4e2]/60">
-          Token należy wygenerować w panelu KSeF (Ustawienia → Tokeny)
+          {hasCredentials
+            ? 'Pozostaw puste, aby zachować zapisany token. Wklej nowy wyłącznie przy jego zmianie.'
+            : 'Token należy wygenerować w panelu KSeF (Ustawienia → Tokeny)'}
         </p>
       </div>
 
@@ -366,6 +395,28 @@ export default function KSeFConfigForm({ companyId, onUpdate }: KSeFConfigFormPr
           </div>
         </label>
       </div>
+
+      {isAdmin && (
+        <label className="flex items-start gap-3 rounded-lg bg-[#d3bb73]/5 p-4">
+          <input
+            type="checkbox"
+            checked={companyActive && autoSyncEnabled}
+            disabled={!companyActive || saving}
+            onChange={(e) => setAutoSyncEnabled(e.target.checked)}
+            className="mt-0.5 h-4 w-4 accent-[#d3bb73] disabled:opacity-50"
+          />
+          <span>
+            <span className="block text-sm font-medium text-[#e5e4e2]">
+              Automatyczna synchronizacja codziennie o 09:00
+            </span>
+            <span className="mt-1 block text-xs text-[#e5e4e2]/60">
+              {companyActive
+                ? 'Czas polski (Europe/Warsaw), z uwzględnieniem zmiany czasu. Wyłączenie zachowuje firmę i jej historię; nie blokuje ręcznej synchronizacji.'
+                : 'Firma jest nieaktywna i nie uczestniczy w automatycznej synchronizacji.'}
+            </span>
+          </span>
+        </label>
+      )}
 
       {testResult && (
         <div

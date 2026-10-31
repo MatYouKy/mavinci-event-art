@@ -6,6 +6,8 @@ import { supabase } from '@/lib/supabase/browser';
 import InvoiceDetailsModal from '@/components/crm/InvoiceDetailsModal';
 import { buildInvoicePdfHtml, type InvoicePdfData } from '@/components/crm/invoices/helpers/buildInvoicePdfHtml';
 import type { Document } from './SaldeoDeliveryPanel';
+import { getInvoiceKsefRecipient } from '@/lib/invoices/ksefRecipient';
+import { getInvoicePartyDataCorrection } from '@/lib/invoices/partyDataCorrection';
 
 type Props = { item: Document; onClose: () => void };
 type Row = Record<string, any>;
@@ -62,7 +64,8 @@ function finiteNumber(value: unknown, label: string): number {
 
 function crmHtml(invoice: Row): string {
   const items = Array.isArray(invoice.invoice_items) ? invoice.invoice_items : [];
-  if (!items.length || !invoice.invoice_number || !invoice.seller_name || !invoice.buyer_name || !invoice.issue_date) {
+  const partyDataBefore = getInvoicePartyDataCorrection(invoice);
+  if ((!items.length && !partyDataBefore) || !invoice.invoice_number || !invoice.seller_name || !invoice.buyer_name || !invoice.issue_date) {
     throw new Error('Brak pełnych danych lub pozycji faktury CRM. Podgląd nie jest tworzony z samej kwoty i numeru.');
   }
   if ((invoice.invoice_type === 'final' || String(invoice.invoice_number).startsWith('FKO/')) && !invoice.settlement_summary) {
@@ -101,11 +104,15 @@ function crmHtml(invoice: Row): string {
     sellerCity: invoice.seller_city || '', sellerPostalCode: invoice.seller_postal_code || '',
     buyerName: invoice.buyer_name, buyerNip: invoice.buyer_nip || '', buyerStreet: invoice.buyer_street || '',
     buyerCity: invoice.buyer_city || '', buyerPostalCode: invoice.buyer_postal_code || '',
+    buyerCountryCode: ['POLSKA', 'POLAND', ''].includes(String(invoice.buyer_country ?? '').toUpperCase()) ? 'PL' : String(invoice.buyer_country).toUpperCase(),
+    recipient: getInvoiceKsefRecipient(invoice),
     totalNet: finiteNumber(invoice.total_net, 'suma netto'), totalVat: finiteNumber(invoice.total_vat, 'suma VAT'),
     totalGross: finiteNumber(invoice.total_gross, 'suma brutto'), currencyCode: invoice.currency_code || 'PLN',
     companyLogoUrl: logo, isProforma: invoice.invoice_type === 'proforma' || Boolean(invoice.is_proforma),
     correctionReason: invoice.correction_reason || undefined, correctedInvoiceNumber: invoice.corrected_invoice_number || undefined,
+    correctionKind: invoice.correction_kind, correctionPartyDataBefore: partyDataBefore,
     correctedInvoiceIssueDate: invoice.corrected_invoice_issue_date || undefined,
+    correctedInvoiceKsefNumber: invoice.corrected_invoice_ksef_number || undefined,
     items: items.map(mapItem), invoice_items: items,
     orderItems: Array.isArray(invoice.invoice_order_items) ? invoice.invoice_order_items.map(mapItem) : [],
     settledInvoices: Array.isArray(invoice.settled_invoices) ? invoice.settled_invoices : undefined,

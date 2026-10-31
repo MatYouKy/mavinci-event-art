@@ -126,6 +126,9 @@ async function fetchFromKrsSearchApi(path: string, body: Record<string, unknown>
 const inferRepresentationType = (rule?: string | null) => {
   const normalized = String(rule || '').toLocaleLowerCase('pl-PL');
   if (!normalized) return undefined;
+  // Alternative combinations involving board members and a proxy are joint representation.
+  // Keep the complete registry wording as the authoritative rule.
+  if (/prokurent/.test(normalized) && /(?:\balbo\b|\blub\b)/.test(normalized) && /(łącznie|współdział|dwóch|dwu |2 )/.test(normalized)) return 'joint' as const;
   if (/prokurent/.test(normalized) && /(łącznie|współdział|dwóch|dwu |2 )/.test(normalized)) {
     return 'joint_with_proxy' as const;
   }
@@ -225,6 +228,11 @@ async function fetchDataFromCeidg(nip: string) {
       name: String(company?.nazwa || listedCompany?.nazwa || '').trim() || undefined,
       regon: String(owner?.regon || '').trim() || undefined,
       address: address || undefined,
+      addressParts: {
+        street: String(businessAddress?.ulica || '').trim(),
+        buildingNumber: String(businessAddress?.budynek || '').trim(),
+        apartmentNumber: String(businessAddress?.lokal || '').trim(),
+      },
       city: String(businessAddress?.miasto || '').trim() || undefined,
       postalCode: String(businessAddress?.kod || '').trim() || undefined,
       country: String(businessAddress?.kraj || '').trim() || undefined,
@@ -507,6 +515,11 @@ async function fetchDataFromKrs(krs?: string | null) {
       city: String(registeredAddress?.miejscowosc || registeredOffice?.miejscowosc || '').trim() || undefined,
       postalCode: String(registeredAddress?.kodPocztowy || '').trim() || undefined,
       address: address || undefined,
+      addressParts: {
+        street: String(registeredAddress?.ulica || '').trim(),
+        buildingNumber: String(registeredAddress?.nrDomu || '').trim(),
+        apartmentNumber: String(registeredAddress?.nrLokalu || '').trim(),
+      },
       representationType: inferRepresentationType(rule),
       representationRule: rule || undefined,
       representationBasis: 'KRS, Dział 2',
@@ -556,6 +569,8 @@ async function enrichRegistryData<T extends { name?: string; krs?: string; regis
     ]),
   );
 
+  // Preserve atomic address parts from the same source as the selected street line.
+  const addressSource = (data as any).address ? data as any : ceidgData?.address ? ceidgData : krsData;
   return {
     ...data,
     name: (data as any).name || ceidgData?.name || '',
@@ -563,7 +578,8 @@ async function enrichRegistryData<T extends { name?: string; krs?: string; regis
       (data as any).alias ||
       inferOrganizationAlias({ name: ceidgData?.name || data.name, legalForm }),
     regon: (data as any).regon || ceidgData?.regon || '',
-    address: (data as any).address || ceidgData?.address || krsData?.address || '',
+    address: addressSource?.address || '',
+    addressParts: addressSource?.addressParts,
     city: (data as any).city || ceidgData?.city || krsData?.city || '',
     postalCode: (data as any).postalCode || ceidgData?.postalCode || krsData?.postalCode || '',
     country: (data as any).country || ceidgData?.country || krsData?.country || '',
@@ -965,6 +981,11 @@ async function fetchFromGus(clean: string, apiKey: string) {
     postalCode: extractValue(resultRaw, 'KodPocztowy'),
     city: extractValue(resultRaw, 'Miejscowosc'),
     address,
+    addressParts: {
+      street: extractValue(resultRaw, 'Ulica'),
+      buildingNumber: extractValue(resultRaw, 'NrNieruchomosci'),
+      apartmentNumber: extractValue(resultRaw, 'NrLokalu'),
+    },
     voivodeship: extractValue(resultRaw, 'Wojewodztwo'),
     registryEntityType,
     ...(fullReport || {}),

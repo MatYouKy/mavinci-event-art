@@ -9,6 +9,8 @@ import type { ChatOffer, SellerConversation } from './SellerChatPanel';
 import { SellerCountBadge } from './SellerInboxPanel';
 import SellerOfferArrangements from './SellerOfferArrangements';
 import SellerOfferConversation from './SellerOfferConversation';
+import SellerEventPreparation from './SellerEventPreparation';
+import SellerRealizationWizard from './SellerRealizationWizard';
 import SellerOwnerProfitPanel from './SellerOwnerProfitPanel';
 
 type EventSellerOffer = ChatOffer & {
@@ -30,6 +32,7 @@ export default function EventSellerCorrespondence({ eventId }: { eventId: string
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [arrangementsDirty, setArrangementsDirty] = useState(false);
+  const [wizardDirty, setWizardDirty] = useState(false);
   const [arrangementsRefresh, setArrangementsRefresh] = useState(0);
   const alive = useRef(true);
   const loadSequence = useRef(0);
@@ -78,8 +81,8 @@ export default function EventSellerCorrespondence({ eventId }: { eventId: string
 
   const selectOffer = (offerId: string) => {
     if (selectedOffer?.id === offerId) return;
-    if (arrangementsDirty && !window.confirm('Zmienić ofertę i porzucić niezapisane zmiany ustaleń?')) return;
-    setArrangementsDirty(false);
+    if ((arrangementsDirty || wizardDirty) && !window.confirm('Zmienić ofertę i porzucić niezapisane dane przygotowań?')) return;
+    setArrangementsDirty(false); setWizardDirty(false);
     setSelection({ requestKey, offerId });
   };
 
@@ -109,7 +112,13 @@ export default function EventSellerCorrespondence({ eventId }: { eventId: string
           <Link href={`/crm/offers/${selectedOffer.id}`} className="text-[#d3bb73] hover:underline">Oferta źródłowa: {selectedOffer.offer_number || selectedOffer.title || 'Otwórz ofertę'}</Link>
           <p className="text-xs leading-5 text-white/50">Ustalenia są wspólne z ofertą — nie tworzymy osobnej kopii. Ich zapis nie cofa akceptacji i nie zmienia automatycznie harmonogramu wydarzenia.</p>
         </div>
-        <SellerOfferArrangements key={selectedOffer.id} offerId={selectedOffer.id} crm refreshKey={arrangementsRefresh} onDirtyChange={setArrangementsDirty} onSaved={reload}/>
+        <SellerEventPreparation key={`preparation:${selectedOffer.id}`} offerId={selectedOffer.id} eventId={eventId}/>
+        <SellerRealizationWizard key={`wizard:${selectedOffer.id}`} offerId={selectedOffer.id} crm refreshKey={arrangementsRefresh} blocked={arrangementsDirty} onDirtyChange={setWizardDirty}/>
+        <details className="rounded-lg bg-white/[0.03] p-4">
+          <summary className="cursor-pointer text-sm text-[#d3bb73]">Dodatkowe ustalenia CRM</summary>
+          <p className="my-3 text-xs text-white/50">Zmiany terminu, miejsca i wymagań mogą wymagać ponownego potwierdzenia odpowiednich kroków. Dane osoby na miejscu zatwierdzaj w kreatorze powyżej.</p>
+          <SellerOfferArrangements key={selectedOffer.id} offerId={selectedOffer.id} crm refreshKey={arrangementsRefresh} onDirtyChange={setArrangementsDirty} onSaved={async () => { setArrangementsRefresh(value => value + 1); await reload(); }}/>
+        </details>
         <SellerOwnerProfitPanel key={`profit:${selectedOffer.id}`} offerId={selectedOffer.id} refreshKey={arrangementsRefresh}/>
       </div>
       <aside aria-label="Rozmowa o realizacji" className="flex min-w-0 flex-col lg:sticky lg:top-6 lg:max-h-[calc(100dvh-3rem)]">

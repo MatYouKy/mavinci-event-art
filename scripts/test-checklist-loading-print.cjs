@@ -1,0 +1,11 @@
+const fs=require('fs'),ts=require(process.cwd()+'/node_modules/typescript'),assert=require('assert/strict');
+const p='src/app/(crm)/crm/events/[id]/helpers/buildEquipmentChecklistPdf.ts';const e={};new Function('exports',ts.transpileModule(fs.readFileSync(p,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText)(e);
+const data={eventName:'Test',eventDate:'19.10.2026',location:{name:'Sala'},authorName:'Autor',authorNumber:'',equipmentItems:[{name:'Zestaw',quantity:1,is_loaded:true,is_kit:true,expand_kit_in_checklist:true,kit_items:[{name:'Element',quantity:2}]},{name:'Niezapakowany',quantity:1,is_loaded:false}],checklistNotes:'Zabrać dodatkowe przewody <ważne>'};
+const html=e.buildEquipmentChecklistHtml(data);
+assert.equal((html.match(/class="cb checked"/g)||[]).length,1);
+assert.equal((html.match(/class="cb"/g)||[]).length,5);
+assert.ok(html.includes('&lt;ważne&gt;'));
+assert.ok(html.includes('Załadowano w bazie'));
+data.equipmentItems[0].is_loaded=false;
+assert.equal((e.buildEquipmentChecklistHtml(data).match(/class="cb checked"/g)||[]).length,0);
+console.log('Checklist print: loaded/unloaded, kit children, return column and escaped notes passed.');

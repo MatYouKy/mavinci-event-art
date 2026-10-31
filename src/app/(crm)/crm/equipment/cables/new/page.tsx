@@ -45,9 +45,9 @@ export default function NewCablePage() {
     notes: '',
   });
 
-  const detailedCableCategories = cableCategories.filter((category) => category.parent_id);
-  const selectableCableCategories =
-    detailedCableCategories.length > 0 ? detailedCableCategories : cableCategories;
+  const selectableCableCategories = cableCategories.filter(
+    (category: any) => !cableCategories.some((child: any) => child.parent_id === category.id),
+  );
 
   // Load data
   useEffect(() => {

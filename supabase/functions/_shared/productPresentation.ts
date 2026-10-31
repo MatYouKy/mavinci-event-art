@@ -1,6 +1,7 @@
 export const COMPACT_PRODUCT_DESCRIPTION_LIMIT = 330;
 
 type PresentationProduct = {
+  configuration_schema?: {profile?: string} | null;
   offer_compact_description?: string | null;
   offer_description?: string | null;
   description?: string | null;
@@ -12,6 +13,7 @@ type PresentationProduct = {
 };
 
 export function compactProductBlockReason(product: PresentationProduct): string | null {
+  if (['stage', 'warehouse_stage'].includes(product.configuration_schema?.profile || '')) return null;
   if ((product.offer_product_variants || product.variants || []).some(v => v.is_active !== false)) {
     return 'Produkt ma aktywne elementy lub warianty, dlatego wymaga osobnej strony.';
   }

@@ -689,7 +689,7 @@ export default function EmailTemplateSettingsPage() {
                 </pre>
               ) : (
                 <div
-                  className="overflow-auto rounded-lg bg-white p-6"
+                  className="m-0 overflow-auto bg-white p-0 text-[#1c1f33]"
                   dangerouslySetInnerHTML={{
                     __html: renderSafeEmailBodyTemplate(editorHtml, previewValues),
                   }}

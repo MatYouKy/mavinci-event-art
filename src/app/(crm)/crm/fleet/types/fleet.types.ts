@@ -50,6 +50,7 @@ export interface VehicleDB {
   status: VehicleStatus | string;     // jeśli DB ma jeszcze inne
   category: VehicleCategory | string; // jeśli DB ma jeszcze inne
   fuel_type: string | null;
+  average_fuel_consumption?: number | null;
   current_mileage: number | null;
   color?: string | null;
   power_hp?: number | null;
@@ -192,6 +193,7 @@ export interface IVehicle {
   category: string;
   current_mileage: number;
   fuel_type: string;
+  average_fuel_consumption?: number | null;
   primary_image_url: string | null;
   thumb_url: string | null;
   all_images: { id: string; image_url: string; title: string | null }[];

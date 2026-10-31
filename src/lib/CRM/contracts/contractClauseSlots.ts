@@ -200,6 +200,7 @@ export const decorateContractClauseSlots = (html: string) => {
 export const placeContractClauses = (
   flow: string,
   sourceVariables: Record<string, string>,
+  overriddenKeys: string[] = [],
 ) => {
   const nextVariables = { ...sourceVariables };
   const declaredSlots = new Set<string>();
@@ -232,6 +233,7 @@ export const placeContractClauses = (
   // uzupełnienia warunki trafiają przed wymaganiami, a wymagania dodatkowe do
   // historycznej sekcji postanowień dodatkowych. Treść nie znika z umowy.
   if (
+    !overriddenKeys.includes('contract_clauses_requirements') &&
     !declaredSlots.has('contract_clauses_conditions') &&
     declaredSlots.has('contract_clauses_requirements') &&
     nextVariables.contract_clauses_conditions
@@ -242,6 +244,7 @@ export const placeContractClauses = (
     declaredSlots.add('contract_clauses_conditions');
   }
   if (
+    !overriddenKeys.includes('contract_clauses_general') &&
     !declaredSlots.has('contract_clauses_additional_requirements') &&
     declaredSlots.has('contract_clauses_general') &&
     nextVariables.contract_clauses_additional_requirements
@@ -257,7 +260,7 @@ export const placeContractClauses = (
     .map((category) => nextVariables[`contract_clauses_${category}`])
     .filter(Boolean);
 
-  nextVariables.contract_clauses_all = unplacedSections.join('');
+  if (!overriddenKeys.includes('contract_clauses_all')) nextVariables.contract_clauses_all = unplacedSections.join('');
   const hasCatchAllSlot = declaredSlots.has('contract_clauses_all');
   const unplacedClauseCategories = CATEGORY_NAMES.filter(
     (category) =>

@@ -12,14 +12,19 @@ import { useSnackbar } from '@/contexts/SnackbarContext';
 import { SimpleImageUploader } from '@/components/SimpleImageUploader';
 import { PortfolioGalleryEditor } from '@/components/PortfolioGalleryEditor';
 import PortfolioFeaturesEditor from '@/components/PortfolioFeaturesEditor';
-import { uploadImage } from '@/lib/storage';
+import { uploadOptimizedImage } from '@/lib/storage';
 import { IUploadImage } from '@/types/image';
 import { CategoryBreadcrumb } from '@/components/CategoryBreadcrumb';
 import Image from 'next/image';
+import ConferenceOlsztynLink from '@/components/ConferenceOlsztynLink';
+import { PortfolioCityFields } from '@/components/PortfolioCityFields';
+import { portfolioCitySettings } from '@/lib/SEO/conferencePortfolio';
+import { PSRWN_PROJECT_ID } from '@/lib/SEO/conferenceOverview';
 
 export default function PortfolioDetailClient({ initialProject }: { initialProject: PortfolioProject & { keywords?: string[]; meta_description?: string } }) {
   const { isEditMode } = useEditMode();
   const { showSnackbar } = useSnackbar();
+  const router = useRouter();
   const params = useParams();
   const slug = params.slug as string;
 
@@ -32,6 +37,8 @@ export default function PortfolioDetailClient({ initialProject }: { initialProje
   const [category, setCategory] = useState(initialProject.category);
   const [tags, setTags] = useState<string[]>(initialProject.tags || []);
   const [newTag, setNewTag] = useState('');
+  const [citySettings, setCitySettings] = useState(() => portfolioCitySettings(initialProject));
+  const cityFieldsAvailable = Object.prototype.hasOwnProperty.call(project || {}, 'reference_city_slugs');
   const [keywords, setKeywords] = useState<string[]>(initialProject.keywords || []);
   const [newKeyword, setNewKeyword] = useState('');
   const [metaDescription, setMetaDescription] = useState(initialProject.meta_description || '');
@@ -93,6 +100,7 @@ export default function PortfolioDetailClient({ initialProject }: { initialProje
     setTitle(proj.title);
     setCategory(proj.category);
     setTags(proj.tags || []);
+    setCitySettings(portfolioCitySettings(proj));
     setKeywords((proj as any).keywords || []);
     setMetaDescription((proj as any).meta_description || '');
     setLocation(proj.location || 'Polska');
@@ -126,20 +134,22 @@ export default function PortfolioDetailClient({ initialProject }: { initialProje
       let imageMetadata = project?.image_metadata;
 
       if (imageData?.file) {
-        imageUrl = await uploadImage(imageData.file, 'portfolio');
+        const variants = await uploadOptimizedImage(imageData.file, 'portfolio');
+        imageUrl = variants.desktop;
         imageMetadata = {
           desktop: {
             src: imageUrl,
             position: { posX: 0, posY: 0, scale: 1 },
           },
           mobile: {
-            src: imageUrl,
+            src: variants.mobile,
             position: { posX: 0, posY: 0, scale: 1 },
           },
         };
       }
 
       const payload = {
+        ...(cityFieldsAvailable ? citySettings : {}),
         title,
         category,
         tags,
@@ -166,7 +176,9 @@ export default function PortfolioDetailClient({ initialProject }: { initialProje
 
       showSnackbar('Wydarzenie zaktualizowane pomyślnie', 'success');
       setIsEditing(false);
-      fetchProject();
+      await fetchProject();
+      setImageData(null);
+      router.refresh();
     } catch (error) {
       console.error('Error saving project:', error);
       showSnackbar('Błąd podczas zapisywania wydarzenia', 'error');
@@ -377,6 +389,8 @@ export default function PortfolioDetailClient({ initialProject }: { initialProje
                     ))}
                   </div>
                 ) : null}
+
+                {isEditing && <PortfolioCityFields value={citySettings} onChange={setCitySettings} available={cityFieldsAvailable} />}
 
                 {/* SEO Keywords (only in edit mode) */}
                 {isEditing && (
@@ -648,6 +662,8 @@ export default function PortfolioDetailClient({ initialProject }: { initialProje
             </div>
           </section>
         )}
+
+        {project.id === PSRWN_PROJECT_ID && <ConferenceOlsztynLink context="portfolio" />}
 
         {/* Gallery Section */}
         {isEditing ? (

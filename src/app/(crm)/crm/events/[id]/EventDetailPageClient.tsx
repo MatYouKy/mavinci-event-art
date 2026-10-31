@@ -296,6 +296,7 @@ export default function EventDetailPageClient({
   const { refresh: refreshWorkspace } = useEventWorkspace();
 
   const { event: eventData, updateEvent } = useEvent(initialData);
+  const [signedContractEventId, setSignedContractEventId] = useState<string | null>(null);
   const [showStatusModal, setShowStatusModal] = useState(false);
 
   // ✅ uprawnienia do OFERT / FAKTUR / FINANSÓW (dopasuj nazwy scope do swoich)
@@ -912,6 +913,13 @@ export default function EventDetailPageClient({
         </div>
       </div>
 
+      {event.seller_confirmation_required && canViewSellerCorrespondence && event.status !== 'cancelled' && <section className="mb-5 space-y-3 rounded-xl bg-amber-300/10 p-4">
+        <h2 className="text-sm uppercase text-amber-200">Oferta sprzedawcy przyjęta — wydarzenie do przygotowania</h2>
+        <p className="text-sm text-white/65">Wydarzenie zostało utworzone przy akceptacji oferty. Uzupełnij Timeline, zespół, agendę i logistykę, a następnie osobno potwierdź realizację.</p>
+        {event.seller_schedule_pending && <p className="text-xs text-amber-200">Godziny są do ustalenia. Godzina 00:00 w kalendarzu jest wyłącznie oznaczeniem daty, nie ustalonym początkiem wydarzenia.</p>}
+        <button type="button" onClick={() => navigateToTab('seller-arrangements')} className="rounded-lg bg-[#d3bb73]/15 px-3 py-2 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/25">Przygotowanie i potwierdzenie realizacji</button>
+      </section>}
+
       <EventNavigation
         scrollRef={setTabsScrollElement}
         activeTab={activeTab}
@@ -1282,7 +1290,7 @@ export default function EventDetailPageClient({
 
       {activeTab === 'finances' && canViewCommercials && <EventFinancesTab eventId={eventId} />}
 
-      {activeTab === 'contract' && <EventPartnerArrangement key={eventId} eventId={eventId} canManage={!!canEventManage}><EventContractTab eventId={eventId} /></EventPartnerArrangement>}
+      {activeTab === 'contract' && <EventPartnerArrangement key={eventId} eventId={eventId} canManage={!!canEventManage} hideSection={signedContractEventId === eventId}><EventContractTab eventId={eventId} onSignedDocumentChange={present => setSignedContractEventId(present ? eventId : null)} /></EventPartnerArrangement>}
 
       {activeTab === 'seller-arrangements' && canViewSellerCorrespondence && (
         <EventSellerCorrespondence key={eventId} eventId={eventId} />

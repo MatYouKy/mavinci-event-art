@@ -1,3 +1,5 @@
+import { removeSystemEmailFooter } from '@/lib/emailBodyTemplate';
+
 export interface SignaturePlaceholderValues {
   full_name?: string;
   first_name?: string;
@@ -61,7 +63,7 @@ export function renderSignatureTemplate(
   values: SignaturePlaceholderValues,
 ): string {
   if (!template) return '';
-  let out = template;
+  let out = removeSystemEmailFooter(template);
 
   const optionalLinkKeys: Array<
     | 'company_facebook_url'
@@ -234,7 +236,7 @@ export function normalizeSignatureHtml(html: string): string {
     /<a\b[^>]*href\s*=\s*["'][^"']*(?:facebook\.com|instagram\.com|linkedin\.com|tiktok\.com|youtube\.com|mavinci\.pl|eventrulers\.pl)[^"']*["'][^>]*>/gi;
   const contactLinkPattern = /<a\b[^>]*href\s*=\s*["'](?:tel:|mailto:)[^"']*["'][^>]*>/gi;
 
-  let normalized = html
+  let normalized = removeSystemEmailFooter(html)
     .replace(/href\s*=\s*(["'])www\./gi, 'href=$1https://www.')
     .replace(socialLinkPattern, (tag) =>
       mergeInlineStyle(

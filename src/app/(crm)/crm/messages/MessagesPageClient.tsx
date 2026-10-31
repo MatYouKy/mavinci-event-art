@@ -758,9 +758,18 @@ export default function MessagesPageClient({
   const formatDate = (date: string) => {
     const messageDate = new Date(date);
     const now = new Date();
-    const diff = now.getTime() - messageDate.getTime();
-    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-    const time = messageDate.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
+    if (Number.isNaN(messageDate.getTime())) return 'Brak daty';
+    const timeZone = 'Europe/Warsaw';
+    const calendarDay = (value: Date) => {
+      const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone, year: 'numeric', month: '2-digit', day: '2-digit',
+      }).formatToParts(value);
+      const part = (type: string) => Number(parts.find(item => item.type === type)?.value);
+      return Date.UTC(part('year'), part('month') - 1, part('day'));
+    };
+    // Calendar days, not elapsed 24-hour windows (also correct across DST).
+    const days = Math.round((calendarDay(now) - calendarDay(messageDate)) / 86400000);
+    const time = messageDate.toLocaleTimeString('pl-PL', { timeZone, hour: '2-digit', minute: '2-digit' });
 
     if (days === 0) {
       return time;
@@ -768,10 +777,10 @@ export default function MessagesPageClient({
       return `wczoraj o ${time}`;
     } else if (days === 2) {
       return `przedwczoraj o ${time}`;
-    } else if (days < 7) {
+    } else if (days > 2 && days < 7) {
       return `${days} dni temu`;
     } else {
-      return messageDate.toLocaleDateString('pl-PL');
+      return `${messageDate.toLocaleDateString('pl-PL', { timeZone })}, ${time}`;
     }
   };
 
@@ -1130,7 +1139,8 @@ export default function MessagesPageClient({
                               onClick={(event) => event.stopPropagation()}
                               onDoubleClick={(event) => event.stopPropagation()}
                             >
-                              <span className="whitespace-nowrap text-[9px] leading-4 text-[#e5e4e2]/45">
+                              <span className="whitespace-nowrap text-[9px] leading-4 text-[#e5e4e2]/45"
+                                title={new Date(message.date).toLocaleString('pl-PL', { timeZone: 'Europe/Warsaw' })}>
                                 {formatDate(message.date)}
                               </span>
                               {(message.type === 'contact_form' || message.type === 'received') && (

@@ -1,6 +1,6 @@
 export type Recipient = { manualAddress?: boolean; email: string; name: string; contactId?: string; organizationId?: string };
 export type RecipientContext = { type: 'contact' | 'organization'; id: string; name: string; email?: string | null };
-export type Delivery = { id: string; batch_id: string; generation_id: string; brochure_id: string; employee_id: string; recipient_email: string; recipient_name: string; subject: string; body_html: string; status: 'prepared'|'sending'|'sent'|'failed'|'uncertain'; error_message: string|null; created_at: string; sent_at: string|null; contact_id: string|null; organization_id: string|null };
+export type Delivery = { id: string; batch_id: string; generation_id: string; brochure_id: string; employee_id: string; email_account_id: string; draft_revision: number; recipient_email: string; recipient_name: string; subject: string; body_html: string; status: 'prepared'|'sending'|'sent'|'failed'|'uncertain'; error_message: string|null; created_at: string; sent_at: string|null; contact_id: string|null; organization_id: string|null; retry_of_delivery_id?: string|null; superseded_at?: string|null };
 export const deliveryLabels: Record<Delivery['status'],string> = { prepared:'Gotowa do wysłania', sending:'Wysyłka rozpoczęta — oczekiwanie na potwierdzenie', sent:'Wysłano', failed:'Nie wysłano — można ponowić', uncertain:'Wynik niepewny — sprawdź folder Wysłane' };
 export const validRecipientEmail = (email: string) => email.length<=200 && /^[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]+$/.test(email);
 // Supabase errors can be plain objects rather than Error instances.
@@ -17,7 +17,12 @@ export async function readBrochureResponse<T>(response: Response, fallback: stri
     : response.status === 403 ? 'Brak dostępu do tej operacji.'
     : response.status === 504 ? 'Serwer nie zakończył operacji w wymaganym czasie. Sprawdź jej stan przed ponowieniem.'
     : `${fallback} (HTTP ${response.status})`;
-  if (!response.ok) throw new Error(brochureErrorMessage(result, httpMessage));
+  if (!response.ok) {
+    const issues = readBrochureIssues(result && typeof result === 'object' && 'issues' in result ? result.issues : null);
+    const message = brochureErrorMessage(result, httpMessage);
+    if (issues.length) throw new BrochureValidationError(message, issues);
+    throw new Error(message);
+  }
   if (!result || typeof result !== 'object' || Array.isArray(result)) {
     throw new Error(`${fallback} Serwer nie zwrócił prawidłowej odpowiedzi.`);
   }
@@ -30,3 +35,5 @@ export async function deliveryRequest(body: Record<string,unknown>): Promise<Del
   if(!result.delivery)throw new Error(brochureErrorMessage(result.error,'Nie udało się odczytać potwierdzenia operacji. Sprawdź historię przed ponowieniem.'));
   return result.delivery;
 }
+import { BrochureValidationError, readBrochureIssues } from '@/lib/brochures/validation';
+

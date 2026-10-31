@@ -57,7 +57,7 @@ export function navigateToInquiry(taskId: string) {
   if (navigationRef.isReady()) {
     navigationRef.navigate('Main', {
       screen: 'Inquiries',
-      params: { screen: 'InquiryDetail', params: { taskId } },
+      params: { screen: 'InquiryDetail', params: { taskId }, initial: false },
     });
   }
 }
@@ -200,6 +200,12 @@ export async function routeNotification(
   }
 
   const url = target.action_url ?? '';
+  const timeDiscussion = url.match(/\/crm\/time-tracking\/[0-9a-f-]{36}\?[^#]*discussion=([0-9a-f-]{36})/i);
+  if (timeDiscussion && navigationRef.isReady()) {
+    navigationRef.navigate('Main', { screen: 'TimeTracking', params: { discussionEntryId: timeDiscussion[1], discussionRequestId: Date.now() } });
+    return { meetingId: null };
+  }
+
 
   // The explicit message type in the URL is more reliable for legacy
   // notifications whose related_entity_type was saved incorrectly.

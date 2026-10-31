@@ -138,6 +138,7 @@ interface OfferItem {
   name: string;
   description: string | null;
   quantity: number;
+  days?: number | null;
   unit: string;
   unit_price: number;
   discount_percent: number | null;
@@ -166,7 +167,11 @@ export function generateOfferItemsTable(items: OfferItem[]): string {
   };
 
   const listItems = items.map((item) => {
-    const label = `${formatQuantity(item.quantity)}${escapeItemText(item.name || 'Produkt')}`;
+    const days = Number(item.days);
+    const durationSuffix = Number.isFinite(days) && days > 1
+      ? ` – ${days.toLocaleString('pl-PL')} dni`
+      : '';
+    const label = `${formatQuantity(item.quantity)}${escapeItemText(item.name || 'Produkt')}${durationSuffix}`;
     return `<span style="display:block;font-family:inherit;font-size:inherit;line-height:inherit;color:inherit;margin:0 0 2pt;padding-left:1.2em;text-indent:-1.2em;"><span aria-hidden="true">•</span> <strong style="font-family:inherit;font-size:inherit;line-height:inherit;">${label}</strong></span>`;
   }).join('');
 

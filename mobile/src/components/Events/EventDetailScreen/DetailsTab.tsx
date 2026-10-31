@@ -21,6 +21,7 @@ export interface EventBillingContact {
 }
 
 export interface EventDetail {
+  equipment_checklist_notes?: string | null;
   id: string;
   name: string;
   description: string | null;

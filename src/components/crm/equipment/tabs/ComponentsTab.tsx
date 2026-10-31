@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Plus, Trash2, Package, Search, X, Upload, Image as ImageIcon } from 'lucide-react';
+import { Plus, Pencil, Trash2, Package, Search, X, Upload, Image as ImageIcon } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { uploadImage } from '@/lib/storage';
 import Image from 'next/image';
+import { ComponentEditDialog } from './ComponentEditDialog';
 
 interface EquipmentItem {
   id: string;
@@ -29,7 +30,8 @@ interface EquipmentItem {
   }>;
 }
 
-export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
+export function ComponentsTab({ equipment, isEditing, onAdd, onDelete, onUpdated }: any) {
+  const [editingComponent, setEditingComponent] = useState<{ row: any; compatible: boolean } | null>(null);
   const [isAdding, setIsAdding] = useState(false);
   const [showEquipmentModal, setShowEquipmentModal] = useState(false);
   const [availableEquipment, setAvailableEquipment] = useState<EquipmentItem[]>([]);
@@ -817,12 +819,17 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
                     <div className="flex items-center gap-3">
                       <div className="font-medium text-[#d3bb73]">x{c.quantity}</div>
                       {isEditing && (
-                        <button
+                        <div className="flex items-center gap-1">
+                          <button type="button" onClick={() => setEditingComponent({ row: c, compatible: false })} aria-label="Edytuj element" title="Edytuj element" className="p-2 text-[#d3bb73] hover:bg-[#d3bb73]/10 rounded-lg">
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                          <button
                           onClick={() => onDelete(c.id)}
                           className="p-2 text-red-400 hover:text-red-300"
                         >
                           <Trash2 className="h-4 w-4" />
                         </button>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -940,12 +947,17 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
                       <div className="flex items-center gap-3">
                         <div className="font-medium text-[#d3bb73]">x{c.quantity}</div>
                         {isEditing && (
-                          <button
+                          <div className="flex items-center gap-1">
+                            <button type="button" onClick={() => setEditingComponent({ row: c, compatible: false })} aria-label="Edytuj element" title="Edytuj element" className="p-2 text-[#d3bb73] hover:bg-[#d3bb73]/10 rounded-lg">
+                              <Pencil className="h-4 w-4" />
+                            </button>
+                            <button
                             onClick={() => onDelete(c.id)}
                             className="p-2 text-red-400 hover:text-red-300"
                           >
                             <Trash2 className="h-4 w-4" />
                           </button>
+                          </div>
                         )}
                       </div>
                     </div>
@@ -1073,12 +1085,17 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
                                 )}
                               </div>
                               {isEditing && (
-                                <button
+                                <div className="flex items-center gap-1">
+                                  <button type="button" onClick={() => setEditingComponent({ row: item, compatible: true })} aria-label="Edytuj element" title="Edytuj element" className="p-2 text-[#d3bb73] hover:bg-[#d3bb73]/10 rounded-lg">
+                                    <Pencil className="h-4 w-4" />
+                                  </button>
+                                  <button
                                   onClick={() => handleDeleteCompatible(item.id)}
                                   className="p-2 text-red-400 hover:text-red-300"
                                 >
                                   <Trash2 className="h-4 w-4" />
                                 </button>
+                                </div>
                               )}
                             </div>
                           );
@@ -1200,12 +1217,17 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
                           )}
                         </div>
                         {isEditing && (
-                          <button
+                          <div className="flex items-center gap-1">
+                            <button type="button" onClick={() => setEditingComponent({ row: item, compatible: true })} aria-label="Edytuj element" title="Edytuj element" className="p-2 text-[#d3bb73] hover:bg-[#d3bb73]/10 rounded-lg">
+                              <Pencil className="h-4 w-4" />
+                            </button>
+                            <button
                             onClick={() => handleDeleteCompatible(item.id)}
                             className="p-2 text-red-400 hover:text-red-300"
                           >
                             <Trash2 className="h-4 w-4" />
                           </button>
+                          </div>
                         )}
                       </div>
                     </div>
@@ -1226,6 +1248,21 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
           </div>
         )}
       </div>
+
+      {editingComponent && isEditing && (
+        <ComponentEditDialog
+          key={editingComponent.row.id}
+          row={editingComponent.row}
+          compatible={editingComponent.compatible}
+          equipmentId={equipment.id}
+          onClose={() => setEditingComponent(null)}
+          onSaved={async () => {
+            if (editingComponent.compatible) await fetchCompatibleItems();
+            else await onUpdated?.();
+            setEditingComponent(null);
+          }}
+        />
+      )}
 
       {showCompatibleModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">

@@ -1,4 +1,5 @@
 "use client";
+import AudiencePricingEditor from './AudiencePricingEditor';
 import ProductPackageResourcesEditor from './ProductPackageResourcesEditor';
 import ProductPackageCostsEditor, { ProductPackageCostSummary } from './ProductPackageCostsEditor';
 import { useEffect, useId, useRef, useState } from 'react';
@@ -82,8 +83,8 @@ function PackageElementsPicker({ elements, selectedIds, packageName, onChange, d
   </div>;
 }
 
-type Props = { productId: string; value: ProductSalesPackage[]; enabled: boolean; elements: IProductVariant[]; canEdit: boolean; disabled?: boolean; onSave: (packages: ProductSalesPackage[], enabled: boolean) => Promise<void>; onEditingChange: (editing: boolean) => void };
-export default function ProductSalesPackagesSection({ productId, value, enabled, elements, canEdit, disabled, onSave, onEditingChange }: Props) {
+type Props = { textOnly?: boolean; productId: string; value: ProductSalesPackage[]; enabled: boolean; elements: IProductVariant[]; canEdit: boolean; disabled?: boolean; onSave: (packages: ProductSalesPackage[], enabled: boolean) => Promise<void>; onEditingChange: (editing: boolean) => void };
+export default function ProductSalesPackagesSection({ productId, value, enabled, elements, canEdit, disabled, onSave, onEditingChange, textOnly = false }: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   const listId = useId();
@@ -149,7 +150,7 @@ export default function ProductSalesPackagesSection({ productId, value, enabled,
     setActive(item); setDraft(item); setCreating(true); setDeleting(false); setError(''); onEditingChange(true);
   };
   const upload = async (id: string, file: File) => {
-    if (busy || submitting.current || preparingRef.current || !canEdit || !draft || productId === 'new') return;
+    if (textOnly || busy || submitting.current || preparingRef.current || !canEdit || !draft || productId === 'new') return;
     if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 10 * 1024 * 1024) { setError('Wybierz JPG, PNG lub WebP o wielkości do 10 MB.'); return; }
     preparingRef.current = true; setPreparing(true); setPreparingImageId(id); setDraggingImageId(null); setError('');
     try {
@@ -205,24 +206,24 @@ export default function ProductSalesPackagesSection({ productId, value, enabled,
   return <section aria-busy={saving || preparing} className="rounded-xl bg-[#1c1f33] p-5 sm:p-6">
     <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
       <div><h2 className="text-lg text-[#e5e4e2]">Pakiety · druga strona oferty</h2><p className="mt-1 text-xs text-[#e5e4e2]/55">Pakiety mają własne ceny, koszty realizacji i zdjęcia. Dodaj maksymalnie 3 pakiety.</p></div>
-      {canEdit && <button type="button" disabled={busy || Boolean(active) || value.length >= 3} onClick={add} className="flex items-center gap-2 rounded-lg bg-[#d3bb73]/10 px-3 py-2 text-sm text-[#d3bb73] disabled:opacity-40"><Plus className="h-4 w-4"/>Dodaj pakiet</button>}
+      {canEdit && !textOnly && <button type="button" disabled={busy || Boolean(active) || value.length >= 3} onClick={add} className="flex items-center gap-2 rounded-lg bg-[#d3bb73]/10 px-3 py-2 text-sm text-[#d3bb73] disabled:opacity-40"><Plus className="h-4 w-4"/>Dodaj pakiet</button>}
     </div>
-    <label className="mb-4 flex items-center gap-2 text-sm text-[#e5e4e2]/70"><input type="checkbox" checked={enabled} disabled={!canEdit || busy || Boolean(active) || !value.length} onChange={event => void saveList(value, event.target.checked)} className="accent-[#d3bb73]"/>Dwie strony: elementy bez cen + wybór pakietu</label>
+    <label className="mb-4 flex items-center gap-2 text-sm text-[#e5e4e2]/70"><input type="checkbox" checked={enabled} disabled={textOnly || !canEdit || busy || Boolean(active) || !value.length} onChange={event => void saveList(value, event.target.checked)} className="accent-[#d3bb73]"/>Dwie strony: elementy bez cen + wybór pakietu</label>
     {listError && <p role="alert" className="mb-3 text-sm text-red-200">{listError}</p>}
     {!displayed.length && <p className="text-sm text-[#e5e4e2]/50">Dodaj pakiet, aby przygotować drugą stronę oferty.</p>}
     <DragDropContext onDragEnd={onDragEnd}><Droppable droppableId={listId}>{provided => <div ref={provided.innerRef} {...provided.droppableProps} className="space-y-2">
-      {displayed.map((item, index) => <Draggable key={item.id} draggableId={item.id} index={index} isDragDisabled={!canEdit || busy || Boolean(active)}>{drag => <article ref={drag.innerRef} {...drag.draggableProps} className="flex items-center gap-3 rounded-lg bg-black/15 p-3">
-        {canEdit && <span {...drag.dragHandleProps} aria-label={`Przenieś pakiet: ${item.name}`} className="shrink-0 text-[#e5e4e2]/35"><GripVertical className="h-4 w-4"/></span>}
+      {displayed.map((item, index) => <Draggable key={item.id} draggableId={item.id} index={index} isDragDisabled={textOnly || !canEdit || busy || Boolean(active)}>{drag => <article ref={drag.innerRef} {...drag.draggableProps} className="flex items-center gap-3 rounded-lg bg-black/15 p-3">
+        {canEdit && !textOnly && <span {...drag.dragHandleProps} aria-label={`Przenieś pakiet: ${item.name}`} className="shrink-0 text-[#e5e4e2]/35"><GripVertical className="h-4 w-4"/></span>}
         <span className="text-xs tabular-nums text-[#d3bb73]">{String(index + 1).padStart(2, '0')}</span>
         {images[item.id] ? <img src={images[item.id]} alt={item.image_alt || item.name} className="h-14 w-14 shrink-0 rounded-lg object-cover"/> : <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-white/5 text-[#d3bb73]/45"><ImagePlus className="h-5 w-5"/></span>}
-        <div className="min-w-0 flex-1"><h3 className="break-words text-sm font-medium text-[#e5e4e2]">{item.name}</h3><p className="mt-1 line-clamp-1 text-xs text-[#e5e4e2]/55">{item.description || item.included_label}</p><p className="mt-1 text-xs text-[#d3bb73]">{item.price_net.toLocaleString('pl-PL')} zł netto</p></div>
+        <div className="min-w-0 flex-1"><h3 className="break-words text-sm font-medium text-[#e5e4e2]">{item.name}</h3><p className="mt-1 line-clamp-1 text-xs text-[#e5e4e2]/55">{item.description || item.included_label}</p><p className="mt-1 text-xs text-[#d3bb73]">{item.price_on_request && item.price_net <= 0 ? 'Wycena indywidualna' : `${item.price_net.toLocaleString('pl-PL')} zł netto`}</p></div>
         <ResponsiveActionBar alwaysDropdown compact actions={[
           { label: 'Podgląd', icon: <Eye className="h-4 w-4"/>, onClick: () => openPackage(item), disabled: busy },
           { label: 'Edytuj', icon: <Pencil className="h-4 w-4"/>, onClick: () => openPackage(item, 'edit'), show: canEdit, disabled: busy },
-          { label: 'Dodaj pakiet', icon: <Plus className="h-4 w-4"/>, onClick: add, show: canEdit, disabled: busy || value.length >= 3 },
-          { label: 'Przenieś wyżej', icon: <ArrowUp className="h-4 w-4"/>, onClick: () => move(index, index - 1), show: canEdit, disabled: busy || index === 0 },
-          { label: 'Przenieś niżej', icon: <ArrowDown className="h-4 w-4"/>, onClick: () => move(index, index + 1), show: canEdit, disabled: busy || index === displayed.length - 1 },
-          { label: 'Usuń', icon: <Trash2 className="h-4 w-4"/>, onClick: () => openPackage(item, 'delete'), variant: 'danger', show: canEdit, disabled: busy },
+          { label: 'Dodaj pakiet', icon: <Plus className="h-4 w-4"/>, onClick: add, show: canEdit && !textOnly, disabled: busy || value.length >= 3 },
+          { label: 'Przenieś wyżej', icon: <ArrowUp className="h-4 w-4"/>, onClick: () => move(index, index - 1), show: canEdit && !textOnly, disabled: busy || index === 0 },
+          { label: 'Przenieś niżej', icon: <ArrowDown className="h-4 w-4"/>, onClick: () => move(index, index + 1), show: canEdit && !textOnly, disabled: busy || index === displayed.length - 1 },
+          { label: 'Usuń', icon: <Trash2 className="h-4 w-4"/>, onClick: () => openPackage(item, 'delete'), variant: 'danger', show: canEdit && !textOnly, disabled: busy },
         ]}/>
       </article>}</Draggable>)}
       {provided.placeholder}
@@ -242,7 +243,7 @@ export default function ProductSalesPackagesSection({ productId, value, enabled,
             onDragLeave={event=>{event.preventDefault();if(!event.currentTarget.contains(event.relatedTarget as Node | null))setDraggingImageId(current=>current===p.id?null:current);}}
             onDrop={event=>{
               event.preventDefault();event.stopPropagation();setDraggingImageId(null);
-              if(busy||!canEdit||productId==='new')return;
+              if(textOnly||busy||!canEdit||productId==='new')return;
               if(event.dataTransfer.files.length>1){setError('Dodaj jedno zdjęcie do pakietu.');return;}
               const file=event.dataTransfer.files[0];if(file)void upload(p.id,file);
             }}
@@ -251,11 +252,11 @@ export default function ProductSalesPackagesSection({ productId, value, enabled,
             <input
               ref={node=>{if(node)imageInputs.current.set(p.id,node);else imageInputs.current.delete(p.id);}}
               type="file" accept="image/jpeg,image/png,image/webp" className="hidden"
-              disabled={busy||!canEdit||productId==='new'} aria-label={`Zdjęcie pakietu ${p.name || 'Nowy pakiet'}`}
+              disabled={textOnly||busy||!canEdit||productId==='new'} aria-label={`Zdjęcie pakietu ${p.name || 'Nowy pakiet'}`}
               onChange={event=>{const file=event.currentTarget.files?.[0];event.currentTarget.value='';if(file)void upload(p.id,file);}}
             />
             <button
-              type="button" disabled={busy||!canEdit||productId==='new'}
+              type="button" disabled={textOnly||busy||!canEdit||productId==='new'}
               onClick={()=>imageInputs.current.get(p.id)?.click()}
               aria-label={`${images[p.id]?'Zmień':'Dodaj'} zdjęcie pakietu ${p.name || 'Nowy pakiet'}`}
               aria-busy={preparingImageId===p.id}
@@ -272,18 +273,18 @@ export default function ProductSalesPackagesSection({ productId, value, enabled,
           <p className="text-xs text-[#e5e4e2]/40">JPG, PNG lub WebP · maks. 10 MB · automatyczna kompresja</p>
           {productId==='new'?<p className="text-xs text-[#e5e4e2]/50">Zapisz produkt, aby dodać zdjęcia pakietów.</p>:<p className="text-xs text-[#e5e4e2]/40">Zdjęcie dotyczy wyłącznie tego pakietu. Zapiszesz je przyciskiem „Zapisz pakiet”.</p>}
           {images[p.id]&&<button type="button" disabled={busy} onClick={()=>{const f=files.current.get(p.id);if(f)URL.revokeObjectURL(f.url);files.current.delete(p.id);setImages(current=>({...current,[p.id]:''}));change(p.id,{image_path:null});}} className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs text-red-200/80 hover:bg-white/5 disabled:opacity-40"><Trash2 className="h-3.5 w-3.5"/>Usuń zdjęcie pakietu</button>}
-          <PackageElementsPicker disabled={busy || !canEdit} elements={elements} selectedIds={p.element_ids} packageName={p.name || 'Nowy pakiet'} onChange={ids => change(p.id, { element_ids: ids })} />
+          <PackageElementsPicker disabled={textOnly || busy || !canEdit} elements={elements} selectedIds={p.element_ids} packageName={p.name || 'Nowy pakiet'} onChange={ids => change(p.id, { element_ids: ids })} />
         </div>
           <div className="min-w-0 space-y-4">
-        <div className="grid min-w-0 gap-3">{([['name','Nazwa',42],['description','Krótki opis',95],['included_label','Zakres widoczny dla klienta',95],['bonus','Bonus w cenie',65]] as const).map(([key,label,max])=><label key={key} className="text-xs text-[#e5e4e2]/65">{label}<input value={p[key]} maxLength={max} onChange={e=>change(p.id,{[key]:e.target.value})} className={field}/><span className="block text-right opacity-50">{p[key].length}/{max}</span></label>)}<label className="text-xs text-[#e5e4e2]/65">Pełna cena pakietu netto (zł)<input type="number" min={0} step="0.01" value={Number.isFinite(p.price_net)?p.price_net:''} onChange={e=>change(p.id,{price_net:e.target.valueAsNumber})} className={field}/></label><label className="text-xs text-[#e5e4e2]/65">Dodatkowa godzina netto (zł) — opcjonalnie<input type="number" min={0} step="0.01" value={p.extension_price_net_per_hour ?? ''} onChange={e=>change(p.id,{extension_price_net_per_hour:e.target.value === '' ? null : e.target.valueAsNumber})} placeholder="Nie pokazuj stawki" className={field}/><span className="mt-1 block text-xs text-[#e5e4e2]/40">Przedłużenie całego pakietu. Puste pole ukrywa informację; stawka nie jest doliczana do ceny bazowej.</span></label><p className="text-xs leading-5 text-[#e5e4e2]/50">W PDF bordowym tłem wyróżniamy wyłącznie pakiet wybrany w danej ofercie.</p></div>
-            <ProductPackageResourcesEditor value={p} disabled={busy || !canEdit} onChange={resources => change(p.id, { resources })}/>
-            <ProductPackageCostsEditor value={p} disabled={busy || !canEdit} onChange={cost_items => change(p.id, { cost_items })}/>
+        <div className="grid min-w-0 gap-3">{([['name','Nazwa',42],['description','Krótki opis',95],['included_label','Zakres widoczny dla klienta',95],['bonus','Bonus w cenie',65]] as const).map(([key,label,max])=><label key={key} className="text-xs text-[#e5e4e2]/65">{label}<input value={p[key]} maxLength={max} onChange={e=>change(p.id,{[key]:e.target.value})} className={field}/><span className="block text-right opacity-50">{p[key].length}/{max}</span></label>)}<label className="flex items-center gap-2 text-xs text-[#e5e4e2]/65"><input disabled={textOnly} type="checkbox" checked={Boolean(p.price_on_request)} onChange={e=>change(p.id,{price_on_request:e.target.checked})}/>Cena ustalana indywidualnie w ofercie</label><label className="flex items-center gap-2 text-xs text-[#e5e4e2]/65"><input disabled={textOnly} type="checkbox" checked={Boolean(p.include_product_addons)} onChange={e=>change(p.id,{include_product_addons:e.target.checked})}/>Udostępnij dodatki produktu po wybraniu pakietu</label><AudiencePricingEditor disabled={textOnly} value={p.audience_pricing} onChange={(audience_pricing,price)=>change(p.id,{audience_pricing,...(price==null?{}:{price_net:price})})}/><label className="text-xs text-[#e5e4e2]/65">Pełna cena pakietu netto (zł)<input disabled={textOnly || Boolean(p.audience_pricing)} type="number" min={0} step="0.01" value={Number.isFinite(p.price_net)?p.price_net:''} onChange={e=>change(p.id,{price_net:e.target.valueAsNumber})} className={field}/></label><label className="text-xs text-[#e5e4e2]/65">Dodatkowa godzina netto (zł) — opcjonalnie<input disabled={textOnly} type="number" min={0} step="0.01" value={p.extension_price_net_per_hour ?? ''} onChange={e=>change(p.id,{extension_price_net_per_hour:e.target.value === '' ? null : e.target.valueAsNumber})} placeholder="Nie pokazuj stawki" className={field}/><span className="mt-1 block text-xs text-[#e5e4e2]/40">Przedłużenie całego pakietu. Puste pole ukrywa informację; stawka nie jest doliczana do ceny bazowej.</span></label><p className="text-xs leading-5 text-[#e5e4e2]/50">W PDF bordowym tłem wyróżniamy wyłącznie pakiet wybrany w danej ofercie.</p></div>
+            <ProductPackageResourcesEditor value={p} disabled={textOnly || busy || !canEdit} onChange={resources => change(p.id, { resources })}/>
+            <ProductPackageCostsEditor value={p} disabled={textOnly || busy || !canEdit} onChange={cost_items => change(p.id, { cost_items })}/>
           </div>
         </div>
 
           </fieldset> : <div className="grid gap-5 sm:grid-cols-2">
             <div>{images[p.id] && <img src={images[p.id]} alt={p.image_alt || p.name} className="aspect-square w-full rounded-xl object-cover"/>}<h3 className="mt-3 text-xs text-[#e5e4e2]/50">Elementy pakietu</h3><ul className="mt-2 space-y-1 text-sm">{p.element_ids.map(id => <li key={id}>{elements.find(element => element.id === id)?.name || 'Element niedostępny'}</li>)}</ul>{!p.element_ids.length && <p className="mt-2 text-sm text-[#e5e4e2]/50">Nie wybrano elementów.</p>}</div>
-            <div className="space-y-3"><h3 className="text-lg">{p.name}</h3><p className="text-sm text-[#e5e4e2]/70">{p.description}</p><div><p className="text-xs text-[#e5e4e2]/50">Zakres widoczny dla klienta</p><p className="mt-1 text-sm">{p.included_label}</p></div><p className="text-lg text-[#d3bb73]">{p.price_net.toLocaleString('pl-PL')} zł netto</p>{p.bonus && <p className="text-sm text-[#d3bb73]">{p.bonus}</p>}{packageExtensionLabel(p) && <p className="text-xs text-[#e5e4e2]/65">{packageExtensionLabel(p)}</p>}<ProductPackageResourcesEditor value={p} readOnly/><ProductPackageCostSummary value={p}/>{Boolean(p.cost_items?.length) && <ul className="space-y-1 text-xs text-[#e5e4e2]/60">{p.cost_items!.map(cost => <li key={cost.id}>{cost.name}: {cost.quantity.toLocaleString('pl-PL')} × {cost.unit_cost_net.toLocaleString('pl-PL')} zł · {packageCostSettlementLabels[cost.settlement_method || 'invoice']} · koszt spółki: {packageCostLineNet(cost)?.toLocaleString('pl-PL') ?? 'nieustalony'} zł</li>)}</ul>}</div>
+            <div className="space-y-3"><h3 className="text-lg">{p.name}</h3><p className="text-sm text-[#e5e4e2]/70">{p.description}</p><div><p className="text-xs text-[#e5e4e2]/50">Zakres widoczny dla klienta</p><p className="mt-1 text-sm">{p.included_label}</p></div><p className="text-lg text-[#d3bb73]">{p.price_on_request && p.price_net <= 0 ? 'Wycena indywidualna' : `${p.price_net.toLocaleString('pl-PL')} zł netto`}</p>{p.bonus && <p className="text-sm text-[#d3bb73]">{p.bonus}</p>}{packageExtensionLabel(p) && <p className="text-xs text-[#e5e4e2]/65">{packageExtensionLabel(p)}</p>}<ProductPackageResourcesEditor value={p} readOnly/><ProductPackageCostSummary value={p}/>{Boolean(p.cost_items?.length) && <ul className="space-y-1 text-xs text-[#e5e4e2]/60">{p.cost_items!.map(cost => <li key={cost.id}>{cost.name}: {cost.quantity.toLocaleString('pl-PL')} × {cost.unit_cost_net.toLocaleString('pl-PL')} zł · {packageCostSettlementLabels[cost.settlement_method || 'invoice']} · koszt spółki: {packageCostLineNet(cost)?.toLocaleString('pl-PL') ?? 'nieustalony'} zł</li>)}</ul>}</div>
           </div>}
         </div>
         <footer className="flex shrink-0 flex-wrap justify-end gap-2 bg-black/10 px-5 py-4">

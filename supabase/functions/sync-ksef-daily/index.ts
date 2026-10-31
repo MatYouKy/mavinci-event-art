@@ -40,17 +40,16 @@ type ParsedInvoice = {
   invoice_items: Array<Record<string, unknown>>;
 };
 
-function decodeJwtRole(authorization: string | null) {
-  try {
-    const token = authorization?.replace(/^Bearer\s+/i, '').trim() || '';
-    const payload = token.split('.')[1];
-    if (!payload) return null;
-    const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
-    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
-    return JSON.parse(atob(padded))?.role || null;
-  } catch {
-    return null;
+function safeErrorMessage(error: unknown, credentials: Credentials) {
+  let message = error instanceof Error
+    ? error.message
+    : error && typeof error === 'object' && 'message' in error
+      ? String(error.message)
+      : String(error);
+  for (const secret of [credentials.token, credentials.access_token, credentials.refresh_token]) {
+    if (secret) message = message.split(secret).join('[ukryto]');
   }
+  return message.slice(0, 1500);
 }
 
 function baseUrl(isTestEnvironment: boolean) {
@@ -202,7 +201,10 @@ async function ensureAccessToken(supabase: any, credentials: Credentials) {
       if (error) throw error;
       return accessToken as string;
     } catch (error) {
-      console.warn('[KSEF_DAILY] refresh failed, starting full authentication', error);
+      console.warn(
+        '[KSEF_DAILY] refresh failed, starting full authentication',
+        safeErrorMessage(error, credentials),
+      );
     }
   }
 
@@ -405,6 +407,7 @@ async function syncDirection(
     .filter(Boolean);
   const existing = await existingReferences(supabase, refs);
   const rows: any[] = [];
+  const failures: string[] = [];
 
   for (const item of metadata) {
     const reference = item.ksefNumber || item.ksefReferenceNumber || item.referenceNumber;
@@ -444,7 +447,9 @@ async function syncDirection(
         synced_at: new Date().toISOString(),
       });
     } catch (error) {
-      console.error(`[KSEF_DAILY] ${reference}`, error);
+      const message = safeErrorMessage(error, credentials);
+      failures.push(`${reference}: ${message}`);
+      console.error(`[KSEF_DAILY] ${reference}`, message);
     }
   }
 
@@ -461,32 +466,72 @@ async function syncDirection(
   if (direction === 'issued') {
     for (const row of rows) {
       if (!row.invoice_number) continue;
-      const { data: localInvoice } = await supabase
+      const { data: localInvoice, error: localInvoiceError } = await supabase
         .from('invoices')
         .select('id, ksef_reference_number')
         .eq('my_company_id', credentials.my_company_id)
         .eq('invoice_number', row.invoice_number)
         .limit(1)
         .maybeSingle();
+      if (localInvoiceError) {
+        failures.push(`Powiązanie faktury lokalnej: ${safeErrorMessage(localInvoiceError, credentials)}`);
+        continue;
+      }
       if (localInvoice?.id && !localInvoice.ksef_reference_number) {
         const { error } = await supabase.rpc('reconcile_local_invoice_with_ksef_atomic', {
           p_invoice_id: localInvoice.id,
           p_ksef_reference_number: row.ksef_reference_number,
         });
-        if (error) console.error('[KSEF_DAILY] local invoice reconciliation', error);
+        if (error) {
+          const message = safeErrorMessage(error, credentials);
+          failures.push(`Powiązanie faktury lokalnej: ${message}`);
+          console.error('[KSEF_DAILY] local invoice reconciliation', message);
+        }
       }
     }
   }
 
-  await supabase.from('ksef_sync_log').insert({
+  return {
+    fetched: metadata.length,
+    inserted: rows.length,
+    failed: failures.length,
+    error: failures.length
+      ? `Nie ukończono ${failures.length} operacji. ${failures.slice(0, 3).join(' | ')}`.slice(0, 1500)
+      : null,
+  };
+}
+
+async function syncDirectionAndLog(
+  supabase: any,
+  credentials: Credentials,
+  accessToken: string,
+  direction: 'issued' | 'received',
+  dateFrom: string,
+  dateTo: string,
+) {
+  const startedAt = new Date().toISOString();
+  let result: { fetched: number; inserted: number; failed: number; error: string | null };
+  try {
+    result = await syncDirection(supabase, credentials, accessToken, direction, dateFrom, dateTo);
+  } catch (error) {
+    result = { fetched: 0, inserted: 0, failed: 1, error: safeErrorMessage(error, credentials) };
+  }
+  const { error: logError } = await supabase.from('ksef_sync_log').insert({
+    my_company_id: credentials.my_company_id,
     sync_type: direction,
-    status: 'success',
-    invoices_count: metadata.length,
-    started_at: new Date().toISOString(),
+    status: result.failed ? 'error' : 'success',
+    invoices_count: result.fetched,
+    error_message: result.error,
+    started_at: startedAt,
     completed_at: new Date().toISOString(),
   });
+  if (logError) throw logError;
+  return result;
+}
 
-  return { fetched: metadata.length, inserted: rows.length };
+async function updateSyncTelemetry(supabase: any, credentials: Credentials, values: Record<string, unknown>) {
+  const { error } = await supabase.from('ksef_credentials').update(values).eq('id', credentials.id);
+  if (error) throw error;
 }
 
 Deno.serve(async (request: Request) => {
@@ -501,11 +546,7 @@ Deno.serve(async (request: Request) => {
     ?.replace(/^Bearer\s+/i, '')
     .trim() || '';
 
-  if (
-    !serviceRoleKey ||
-    (providedToken !== serviceRoleKey &&
-      decodeJwtRole(request.headers.get('authorization')) !== 'service_role')
-  ) {
+  if (!serviceRoleKey || providedToken !== serviceRoleKey) {
     return new Response(JSON.stringify({ error: 'Forbidden' }), {
       status: 403,
       headers: { 'Content-Type': 'application/json' },
@@ -523,11 +564,21 @@ Deno.serve(async (request: Request) => {
     .from('ksef_credentials')
     .select('*')
     .eq('is_active', true)
+    .eq('auto_sync_enabled', true)
     .order('created_at', { ascending: true });
 
   if (error) {
     return new Response(JSON.stringify({ success: false, error: error.message }), { status: 500 });
   }
+
+  const { data: activeCompanies, error: companiesError } = await supabase
+    .from('my_companies')
+    .select('id')
+    .eq('is_active', true);
+  if (companiesError) {
+    return new Response(JSON.stringify({ success: false, error: companiesError.message }), { status: 500 });
+  }
+  const activeCompanyIds = new Set((activeCompanies || []).map((company) => company.id));
 
   const now = new Date();
   const from = new Date(now);
@@ -537,20 +588,55 @@ Deno.serve(async (request: Request) => {
   const results: Array<Record<string, unknown>> = [];
 
   for (const item of (credentials || []) as Credentials[]) {
+    const startedAt = new Date().toISOString();
     try {
+      if (!activeCompanyIds.has(item.my_company_id) || !item.token?.trim()) {
+        const reason = !activeCompanyIds.has(item.my_company_id)
+          ? 'Firma jest nieaktywna lub nie istnieje — pominięto automatyczną synchronizację.'
+          : 'Brak tokenu KSeF — pominięto automatyczną synchronizację.';
+        await updateSyncTelemetry(supabase, item, { auto_sync_last_error: reason });
+        results.push({ companyId: item.my_company_id, success: true, skipped: true, reason });
+        continue;
+      }
+      item.token = item.token.trim();
+      await updateSyncTelemetry(supabase, item, { auto_sync_last_attempt_at: startedAt });
       const accessToken = await ensureAccessToken(supabase, item);
-      const [issued, received] = await Promise.all([
-        syncDirection(supabase, item, accessToken, 'issued', dateFrom, dateTo),
-        syncDirection(supabase, item, accessToken, 'received', dateFrom, dateTo),
+      const settled = await Promise.allSettled([
+        syncDirectionAndLog(supabase, item, accessToken, 'issued', dateFrom, dateTo),
+        syncDirectionAndLog(supabase, item, accessToken, 'received', dateFrom, dateTo),
       ]);
-      results.push({ companyId: item.my_company_id, nip: item.nip, success: true, issued, received });
+      const [issued, received] = settled.map((result) => result.status === 'fulfilled'
+        ? result.value
+        : { fetched: 0, inserted: 0, failed: 1, error: safeErrorMessage(result.reason, item) });
+      const success = issued.failed === 0 && received.failed === 0;
+      const errorMessage = [issued.error, received.error].filter(Boolean).join(' | ').slice(0, 1500) || null;
+      await updateSyncTelemetry(supabase, item, {
+        auto_sync_last_error: errorMessage,
+        ...(success ? { auto_sync_last_success_at: new Date().toISOString() } : {}),
+      });
+      results.push({ companyId: item.my_company_id, success, issued, received, error: errorMessage });
     } catch (syncError) {
-      console.error('[KSEF_DAILY] company sync failed', item.my_company_id, syncError);
+      const message = safeErrorMessage(syncError, item);
+      console.error('[KSEF_DAILY] company sync failed', item.my_company_id, message);
+      const { error: logError } = await supabase.from('ksef_sync_log').insert({
+        my_company_id: item.my_company_id,
+        sync_type: 'manual',
+        status: 'error',
+        error_message: `Automatyczna synchronizacja: ${message}`,
+        started_at: startedAt,
+        completed_at: new Date().toISOString(),
+      });
+      if (logError) console.error('[KSEF_DAILY] log save failed', safeErrorMessage(logError, item));
+      const { error: telemetryError } = await supabase.from('ksef_credentials').update({
+        auto_sync_last_error: message,
+      }).eq('id', item.id);
+      if (telemetryError) {
+        console.error('[KSEF_DAILY] telemetry save failed', safeErrorMessage(telemetryError, item));
+      }
       results.push({
         companyId: item.my_company_id,
-        nip: item.nip,
         success: false,
-        error: syncError instanceof Error ? syncError.message : String(syncError),
+        error: message,
       });
     }
   }
@@ -560,7 +646,8 @@ Deno.serve(async (request: Request) => {
     JSON.stringify({
       success: failed === 0,
       executedAt: now.toISOString(),
-      companies: results.length,
+      companies: results.filter((result) => !result.skipped).length,
+      skipped: results.filter((result) => result.skipped).length,
       failed,
       results,
     }),

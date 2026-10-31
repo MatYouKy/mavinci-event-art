@@ -1,88 +1,36 @@
-import { unstable_noStore as noStore } from 'next/cache';
-
-import { Metadata } from 'next';
+import type { Metadata } from 'next';
 import PageLayout from '@/components/Layout/PageLayout';
 import { UslugiPageClient } from './UslugiPageClient';
-import { notFound } from 'next/navigation';
-import { createSupabaseServerClient } from '@/lib/supabase/server.app';
-import { cookies } from 'next/headers';
-async function loadServiceData(slug: string) {
-  noStore(); // Prevent caching for dynamic data
-  const supabase = createSupabaseServerClient(cookies());
+import { publicSupabase } from '@/lib/SEO/publicData';
+import { SITE, WEBSITE_ID } from '@/lib/SEO/site';
+import { servicePath } from '@/lib/SEO/serviceUrls';
 
-  const { data: serviceData, error: serviceError } = await supabase
-    .from('conferences_service_items')
-    .select(
-      `
-      *,
-      items:conferences_service_items(*)
-    `,
-    )
-    .eq('is_active', true)
-    .order('display_order');
+export const dynamic = 'force-dynamic';
+type Search = { q?: string | string[] };
+const title = 'Usługi eventowe i technika wydarzeń | MAVINCI';
+const description = 'Nagłośnienie, ekrany LED, oświetlenie, streaming, teleturnieje i atrakcje firmowe. Poznaj usługi MAVINCI w Olsztynie, na Warmii i Mazurach oraz w całej Polsce.';
+const url = `${SITE.url}/uslugi`;
 
-  if (!serviceData || serviceError) {
-    return null;
-  }
+export function generateMetadata({ searchParams }: { searchParams: Search }): Metadata {
+  return { title: { absolute: title }, description, alternates: { canonical: url },
+    ...(searchParams.q !== undefined && { robots: { index: false, follow: true } }),
+    openGraph: { type: 'website', title, description, url, siteName: SITE.name, locale: 'pl_PL', images: [{ url: `${SITE.url}/logo-mavinci-crm.png`, alt: SITE.name }] },
+    twitter: { card: 'summary_large_image', title, description, images: [`${SITE.url}/logo-mavinci-crm.png`] } };
 }
 
-export async function generateMetadata({
-  params,
-}: {
-  params: { slug: string };
-}): Promise<Metadata> {
-  const data = await loadServiceData('uslugi');
-
-  if (!data) {
-    return {
-      title: 'Lista Usług Eventowych| MAVINCI Event & ART',
-    };
-  }
-
-  const { service, heroImage } = data;
-  const canonicalUrl = `https://mavinci.pl/uslugi`;
-
-  // Use hero image for OG, fallback to thumbnail, then default
-  const ogImageUrl =
-    'https://fuuljhhuhfojtmmfmskq.supabase.co/storage/v1/object/public/site-images/hero/1760341625716-d0b65e.jpg';
-
-  return {
-    title: service.seo_title || `${service.name} | MAVINCI Event & ART`,
-    description:
-      service.seo_description ||
-      'Poznaj wszystkie nasze usługi eventowe: technika konferencyjna, nagłośnienie, oświetlenie, multimedia, streaming, sceny i atrakcje. Profesjonalna obsługa eventów',
-    keywords:
-      'usługi eventowe, kompleksowa obsługa eventów, obsługa techniczna konferencji, nagłośnienie konferencyjne, oświetlenie eventowe, multimedia eventowe, technika sceniczna, technika estradowa, realizacja wydarzeń, realizacja konferencji',
-    alternates: {
-      canonical: canonicalUrl,
-    },
-
-    openGraph: {
-      type: 'website',
-      url: canonicalUrl,
-      title: service.seo_title || service.name,
-      description: service.seo_description || service.description,
-      images: [
-        {
-          url: ogImageUrl,
-          alt: heroImage?.alt_text || service.name,
-        },
-      ],
-      siteName: 'MAVINCI Event & ART',
-    },
-    twitter: {
-      card: 'summary_large_image',
-      title: service.seo_title,
-      description: service.seo_description || service.description,
-      images: [ogImageUrl],
-    },
-  };
-}
-
-export default function UslugiPage() {
-  return (
-    <PageLayout pageSlug="uslugi" cookieStore={cookies()}>
-      <UslugiPageClient />
-    </PageLayout>
-  );
+export default async function UslugiPage({ searchParams }: { searchParams: Search }) {
+  const { data, error } = await publicSupabase().from('conferences_service_categories')
+    .select('*, items:conferences_service_items(*)').eq('is_active', true).order('display_order');
+  if (error) throw new Error('Nie udało się pobrać katalogu usług.');
+  const categories = (data || []).map(category => ({ ...category,
+    items: (category.items || []).filter((item: any) => item.is_active).sort((a: any, b: any) => a.display_order - b.display_order) }));
+  const query = typeof searchParams.q === 'string' ? searchParams.q.slice(0, 200) : '';
+  const services = categories.flatMap(category => category.items).filter((item: any) =>
+    !query || `${item.name} ${item.description || ''}`.toLocaleLowerCase('pl-PL').includes(query.toLocaleLowerCase('pl-PL')));
+  const schema = { '@context': 'https://schema.org', '@type': 'CollectionPage', '@id': `${url}#webpage`,
+    name: title, description, url, isPartOf: { '@id': WEBSITE_ID },
+    mainEntity: { '@type': 'ItemList', numberOfItems: services.length, itemListElement: services.map((item: any, index: number) => ({
+      '@type': 'ListItem', position: index + 1, name: item.name, url: `${SITE.url}${servicePath(item)}`,
+    })) } };
+  return <PageLayout pageSlug="uslugi" customSchema={schema}><UslugiPageClient initialCategories={categories} initialSearch={query} /></PageLayout>;
 }

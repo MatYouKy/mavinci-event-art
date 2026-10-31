@@ -13,6 +13,10 @@ import InvoiceNumberInput from './components/InvoiceNumberInput';
 import InvoiceBillingContext, {
   type BillingArrangement,
 } from './components/InvoiceBillingContext';
+import InvoiceRecipientEditor from '@/components/crm/invoices/InvoiceRecipientEditor';
+import InvoicePartyCorrectionComparison from '@/components/crm/invoices/InvoicePartyCorrectionComparison';
+import InvoiceBuyerCorrectionEditor, { buyerCorrectionDraftFromInvoice, normalizeCorrectionNip, type InvoiceBuyerCorrectionDraft } from './components/InvoiceBuyerCorrectionEditor';
+import { createEmptyInvoiceRecipientDraft, invoiceRecipientPayload, recipientDraftFromInvoice, validateInvoiceRecipientDraft, type InvoiceRecipientDraft } from '@/lib/invoices/ksefRecipient';
 import { MyCompany } from '../../settings/my-companies/page';
 import { loadInvoiceItemSourceChoices, type InvoiceItemSourceChoice } from '@/lib/invoices/invoiceItemSourceChoices';
 import { getNextAdvanceContext, type NextAdvanceContext } from '@/lib/invoices/nextAdvancePrefill';
@@ -23,6 +27,7 @@ interface EventOption {
   id: string;
   name: string;
   event_date: string | null;
+  my_company_id: string | null;
   organization_id: string | null;
   contact_person_id: string | null;
   billing_arrangement?: BillingArrangement | null;
@@ -57,6 +62,7 @@ interface Organization {
   postal_code: string | null;
   city: string | null;
   client_type?: string;
+  country?: string | null;
   email: string;
   phone: string;
   bank_name: string;
@@ -118,13 +124,18 @@ export default function NewInvoicePage() {
   const [nextAdvanceContext, setNextAdvanceContext] = useState<NextAdvanceContext | null>(null);
   const [advancePrefillLoading, setAdvancePrefillLoading] = useState(Boolean(advanceFrom));
   const [advancePrefillError, setAdvancePrefillError] = useState<string | null>(null);
-  const currencyCode = nextAdvanceContext?.source.currency_code || 'PLN';
-  const currencyLabel = currencyCode === 'PLN' ? 'zł' : currencyCode;
 
   const [loading, setLoading] = useState(false);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [organizationsLoading, setOrganizationsLoading] = useState(true);
+  const [organizationsError, setOrganizationsError] = useState<string | null>(null);
+  const organizationsRequest = useRef(0);
   const [myCompanies, setMyCompanies] = useState<MyCompany[]>([]);
   const [selectedCompanyId, setSelectedCompanyId] = useState<string>('');
+  const [eventCompanyLoading, setEventCompanyLoading] = useState(Boolean(eventId && !advanceFrom && urlType !== 'corrective'));
+  const [eventCompanyMessage, setEventCompanyMessage] = useState<string | null>(null);
+  const eventCompanyRequest = useRef(0);
+  const companyPrefilledForEvent = useRef<string | null>(null);
   const [settings, setSettings] = useState<any>(null);
   const [showAddBuyerModal, setShowAddBuyerModal] = useState(false);
   const [includeDefaultFooterNote, setIncludeDefaultFooterNote] = useState(true);
@@ -168,6 +179,10 @@ export default function NewInvoicePage() {
   const [correctionReason, setCorrectionReason] = useState('');
   const [correctionType, setCorrectionType] = useState<1 | 2 | 3>(2);
   const [correctionScope, setCorrectionScope] = useState<'full' | 'partial'>('full');
+  const [correctionKind, setCorrectionKind] = useState<'amount' | 'party_data'>('amount');
+  const [correctedBuyer, setCorrectedBuyer] = useState<InvoiceBuyerCorrectionDraft>(() => buyerCorrectionDraftFromInvoice({}));
+  const [originalRecipientDraft, setOriginalRecipientDraft] = useState<InvoiceRecipientDraft | null>(null);
+  const [partyDataConfirmed, setPartyDataConfirmed] = useState(false);
   const [relatedInvoiceId, setRelatedInvoiceId] = useState('');
   const [correctedInvoiceNumber, setCorrectedInvoiceNumber] = useState('');
   const [correctedInvoiceIssueDate, setCorrectedInvoiceIssueDate] = useState('');
@@ -191,10 +206,18 @@ export default function NewInvoicePage() {
   const [serviceRecipientOrganizationId, setServiceRecipientOrganizationId] =
     useState<string>('');
   const [serviceRecipientContactId, setServiceRecipientContactId] = useState<string>('');
+  const [recipientDraft, setRecipientDraft] = useState<InvoiceRecipientDraft>(createEmptyInvoiceRecipientDraft);
+  const [recipientPrefillError, setRecipientPrefillError] = useState<string | null>(null);
+  const [buyerOverrideConfirmed, setBuyerOverrideConfirmed] = useState(false);
+  const [originalInvoice, setOriginalInvoice] = useState<Record<string, any> | null>(null);
+  const [originalInvoiceLoading, setOriginalInvoiceLoading] = useState(false);
+  const partyEditRevision = useRef(0);
+  const partiesPrefilledForEvent = useRef<string | null>(null);
 
   const [isPaid, setIsPaid] = useState(false);
   const [paidDate, setPaidDate] = useState(new Date().toISOString().split('T')[0]);
   const [advancePercent, setAdvancePercent] = useState(30);
+  const [proformaPercent, setProformaPercent] = useState(100);
 
   const [privateBuyer, setPrivateBuyer] = useState({
     firstName: '',
@@ -205,6 +228,56 @@ export default function NewInvoicePage() {
     email: '',
     phone: '',
   });
+
+  const isPartyDataCorrection = invoiceType === 'corrective' && correctionKind === 'party_data';
+  const currencyCode = nextAdvanceContext?.source.currency_code || (invoiceType === 'corrective' ? originalInvoice?.currency_code : null) || 'PLN';
+  const currencyLabel = currencyCode === 'PLN' ? 'zł' : currencyCode;
+  const sourceBuyer = invoiceType === 'corrective' ? originalInvoice : nextAdvanceContext?.source;
+  const selectedBuyerOrganization: Organization | undefined = isPartyDataCorrection ? {
+    id: correctedBuyer.organizationId, name: correctedBuyer.name, nip: correctedBuyer.nip,
+    street: correctedBuyer.street, postal_code: correctedBuyer.postalCode, city: correctedBuyer.city,
+    country: correctedBuyer.countryCode, email: originalInvoice?.buyer_email || '', phone: originalInvoice?.buyer_phone || '',
+    bank_name: '', bank_account: '',
+  } : sourceBuyer ? {
+    id: sourceBuyer.organization_id || '', name: sourceBuyer.buyer_name || '', nip: sourceBuyer.buyer_nip || null,
+    street: sourceBuyer.buyer_street || '', postal_code: sourceBuyer.buyer_postal_code || '', city: sourceBuyer.buyer_city || '',
+    country: sourceBuyer.buyer_country || 'PL', email: sourceBuyer.buyer_email || '', phone: sourceBuyer.buyer_phone || '',
+    bank_name: '', bank_account: '',
+  } : organizations.find((organization) => organization.id === selectedOrgId);
+  const expectedEventBuyerId = linkedEvent?.billing_arrangement && linkedEvent.billing_arrangement !== 'direct'
+    ? linkedEvent.billing_organization_id : linkedEvent?.organization_id;
+  const buyerDiffersFromEvent = Boolean(invoiceType !== 'corrective' && !sourceBuyer && expectedEventBuyerId
+    && (buyerIsPrivatePerson || (selectedOrgId && selectedOrgId !== expectedEventBuyerId)));
+  const buyerPreviewName = buyerIsPrivatePerson ? `${privateBuyer.firstName} ${privateBuyer.lastName}`.trim() : selectedBuyerOrganization?.name || '';
+  const buyerPreviewAddress = buyerIsPrivatePerson
+    ? [privateBuyer.street, [privateBuyer.postalCode, privateBuyer.city].filter(Boolean).join(' ')].filter(Boolean).join(', ')
+    : [selectedBuyerOrganization?.street, [selectedBuyerOrganization?.postal_code, selectedBuyerOrganization?.city].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+
+  const handleRecipientChange = (draft: InvoiceRecipientDraft) => {
+    partyEditRevision.current += 1;
+    partiesPrefilledForEvent.current = selectedEventId || null;
+    setRecipientPrefillError(null);
+    setRecipientDraft(draft);
+    setPartyDataConfirmed(false);
+  };
+
+  const handleCorrectedBuyerChange = (draft: InvoiceBuyerCorrectionDraft) => {
+    setCorrectedBuyer(draft);
+    setSelectedOrgId(draft.organizationId);
+    setPartyDataConfirmed(false);
+  };
+
+  const handleCorrectionKindChange = (kind: 'amount' | 'party_data') => {
+    setCorrectionKind(kind);
+    setPartyDataConfirmed(false);
+    if (kind === 'party_data') {
+      setIsPaid(false);
+      setSelectedOrgId(correctedBuyer.organizationId);
+    } else if (originalInvoice) {
+      setSelectedOrgId(originalInvoice.organization_id || '');
+      if (originalRecipientDraft) setRecipientDraft(originalRecipientDraft);
+    }
+  };
 
   useEffect(() => {
     if (employeeLoading || financeAccessLoading || !financeAccess?.canIssueInvoices) return;
@@ -338,6 +411,22 @@ export default function NewInvoicePage() {
     };
   }, [selectedEventId, financeAccessLoading, financeAccess]);
 
+  const applyEventCompany = (event: EventOption | null, companies: MyCompany[]) => {
+    // Re-fetching context must not undo an explicit choice made in this form.
+    if (event && companyPrefilledForEvent.current === event.id) return;
+    companyPrefilledForEvent.current = event?.id || null;
+    const companyId = event?.my_company_id || '';
+    const available = companies.some((company) => company.id === companyId);
+    setSelectedCompanyId(available ? companyId : '');
+    setEventCompanyMessage(!event
+      ? 'Nie udało się odczytać działalności wydarzenia. Sprawdź dane wydarzenia przed wyborem firmy wystawiającej.'
+      : !companyId
+        ? 'Wydarzenie nie ma przypisanej działalności. Wybierz firmę wystawiającą fakturę.'
+        : !available
+          ? 'Działalność przypisana do wydarzenia jest nieaktywna lub nie masz uprawnień do wystawiania jej faktur. Nie wybrano innej firmy automatycznie.'
+          : null);
+  };
+
   const applyEventContext = (event: EventOption | null) => {
     setLinkedEvent(event);
     setServiceRecipientOrganizationId(event?.organization_id || '');
@@ -345,6 +434,7 @@ export default function NewInvoicePage() {
   };
 
   const fetchEventContext = async (linkedEventId: string, syncRecipients = true) => {
+    const partyRevision = partyEditRevision.current;
     if (!financeAccess?.canIssueInvoices || !canUseInvoiceEvent(linkedEventId)) {
       applyEventContext(null);
       return null;
@@ -357,7 +447,7 @@ export default function NewInvoicePage() {
     const { data, error } = await supabase
       .from('events')
       .select(
-        'id,name,event_date,organization_id,contact_person_id,billing_arrangement,billing_organization_id',
+        'id,name,event_date,my_company_id,organization_id,contact_person_id,billing_arrangement,billing_organization_id',
       )
       .eq('id', linkedEventId)
       .maybeSingle();
@@ -368,17 +458,23 @@ export default function NewInvoicePage() {
     }
 
     const event = (data as EventOption | null) || null;
+    if (syncRecipients && partyRevision !== partyEditRevision.current) return event;
     setLinkedEvent(event);
-    if (syncRecipients) {
+    if (syncRecipients && event && partyRevision === partyEditRevision.current
+      && partiesPrefilledForEvent.current !== event.id) {
+      partiesPrefilledForEvent.current = event.id;
       setServiceRecipientOrganizationId(event?.organization_id || '');
       setServiceRecipientContactId(event?.contact_person_id || '');
       const eventBillingArrangement = event?.billing_arrangement || 'direct';
       setBillingArrangement(eventBillingArrangement);
-      setSelectedOrgId(
-        eventBillingArrangement !== 'direct' && event?.billing_organization_id
-          ? event.billing_organization_id
-          : event?.organization_id || '',
-      );
+      const buyerId = eventBillingArrangement !== 'direct'
+        ? event.billing_organization_id || '' : event.organization_id || '';
+      setSelectedOrgId(buyerId);
+      setBuyerOverrideConfirmed(false);
+      setRecipientPrefillError(null);
+      setRecipientDraft(event.organization_id && event.organization_id !== buyerId
+        ? { ...createEmptyInvoiceRecipientDraft(), mode: 'organization', organizationId: event.organization_id }
+        : createEmptyInvoiceRecipientDraft());
     }
     return event;
   };
@@ -392,7 +488,7 @@ export default function NewInvoicePage() {
     let query = supabase
       .from('events')
       .select(
-        'id,name,event_date,organization_id,contact_person_id,billing_arrangement,billing_organization_id',
+        'id,name,event_date,my_company_id,organization_id,contact_person_id,billing_arrangement,billing_organization_id',
       )
       .eq('organization_id', organizationId)
       .order('event_date', { ascending: false });
@@ -410,7 +506,7 @@ export default function NewInvoicePage() {
       const preserved =
         linkedEvent?.id === preservedEventId
           ? linkedEvent
-          : await fetchEventContext(preservedEventId, !advanceFrom);
+          : await fetchEventContext(preservedEventId, false);
       if (preserved) events.unshift(preserved);
     }
 
@@ -418,14 +514,38 @@ export default function NewInvoicePage() {
   };
 
   const handleEventChange = async (linkedEventId: string) => {
+    const request = ++eventCompanyRequest.current;
+    partyEditRevision.current += 1;
+    partiesPrefilledForEvent.current = null;
+    setBuyerOverrideConfirmed(false);
+    const useEventCompany = !advanceFrom && invoiceType !== 'corrective';
     setSelectedEventId(linkedEventId);
     setBillingArrangement('direct');
-
-    await fetchEventContext(linkedEventId);
+    if (useEventCompany) {
+      companyPrefilledForEvent.current = null;
+      setEventCompanyMessage(null);
+      setEventCompanyLoading(Boolean(linkedEventId));
+      if (linkedEventId) setSelectedCompanyId('');
+    }
+    try {
+      const event = await fetchEventContext(linkedEventId);
+      if (request !== eventCompanyRequest.current) return;
+      if (useEventCompany && linkedEventId) applyEventCompany(event, myCompanies);
+    } catch (error) {
+      if (request === eventCompanyRequest.current && useEventCompany && linkedEventId) {
+        applyEventCompany(null, myCompanies);
+      }
+      console.error('Error loading event invoice company:', error);
+    } finally {
+      if (request === eventCompanyRequest.current) setEventCompanyLoading(false);
+    }
   };
 
   const handleBuyerSelect = (organizationId: string) => {
+    partyEditRevision.current += 1;
+    partiesPrefilledForEvent.current = selectedEventId || eventId || null;
     setSelectedOrgId(organizationId);
+    setBuyerOverrideConfirmed(false);
 
     if (!selectedEventId || !serviceRecipientOrganizationId) return;
     if (organizationId === serviceRecipientOrganizationId) {
@@ -436,6 +556,9 @@ export default function NewInvoicePage() {
   };
 
   const handleBillingArrangementChange = (arrangement: BillingArrangement) => {
+    partyEditRevision.current += 1;
+    partiesPrefilledForEvent.current = selectedEventId || null;
+    setBuyerOverrideConfirmed(false);
     setBillingArrangement(arrangement);
     setBuyerIsPrivatePerson(false);
 
@@ -454,7 +577,6 @@ export default function NewInvoicePage() {
       urlType === 'corrective' &&
       urlRelated &&
       !urlRelatedLoaded &&
-      organizations.length > 0 &&
       myCompanies.length > 0 &&
       availableInvoices.length > 0
     ) {
@@ -465,6 +587,14 @@ export default function NewInvoicePage() {
 
   const handleSelectOriginalInvoice = async (invoiceId: string) => {
     if (!financeAccess?.canIssueInvoices) return;
+    setOriginalInvoiceLoading(true);
+    try {
+    partyEditRevision.current += 1;
+    setOriginalInvoice(null);
+    setOriginalRecipientDraft(null);
+    setPartyDataConfirmed(false);
+    setRecipientPrefillError(null);
+    setRecipientDraft(createEmptyInvoiceRecipientDraft());
     setRelatedInvoiceId(invoiceId);
     if (!invoiceId) {
       setCorrectedInvoiceNumber('');
@@ -482,6 +612,21 @@ export default function NewInvoicePage() {
     const { data: origInvoice } = await originalQuery.maybeSingle();
 
     if (origInvoice) {
+      setOriginalInvoice(origInvoice);
+      setCorrectedBuyer(buyerCorrectionDraftFromInvoice(origInvoice));
+      partiesPrefilledForEvent.current = origInvoice.event_id || null;
+      try {
+        const savedRecipient = recipientDraftFromInvoice(origInvoice);
+        setRecipientDraft(savedRecipient);
+        setOriginalRecipientDraft(savedRecipient);
+      } catch (error) {
+        setRecipientPrefillError(error instanceof Error ? error.message : 'Nie można odczytać zapisanych danych odbiorcy faktury korygowanej.');
+      }
+      setBuyerIsPrivatePerson(Boolean(origInvoice.buyer_is_private_person));
+      const [firstName = '', ...lastName] = String(origInvoice.buyer_name || '').split(' ');
+      setPrivateBuyer({ firstName, lastName: lastName.join(' '), street: origInvoice.buyer_street || '',
+        postalCode: origInvoice.buyer_postal_code || '', city: origInvoice.buyer_city || '',
+        email: origInvoice.buyer_email || '', phone: origInvoice.buyer_phone || '' });
       setCorrectedInvoiceNumber(origInvoice.invoice_number || '');
       setCorrectedInvoiceIssueDate(origInvoice.issue_date || '');
       setSelectedOrgId(origInvoice.organization_id || '');
@@ -492,13 +637,9 @@ export default function NewInvoicePage() {
       setServiceRecipientContactId(origInvoice.service_recipient_contact_id || '');
 
       if (origInvoice.event_id) {
-        await fetchEventContext(
-          origInvoice.event_id,
-          !origInvoice.service_recipient_organization_id &&
-            !origInvoice.service_recipient_contact_id,
-        );
+        await fetchEventContext(origInvoice.event_id, false);
       } else {
-        applyEventContext(null);
+        setLinkedEvent(null);
       }
 
       if (origInvoice.sale_date) {
@@ -512,8 +653,9 @@ export default function NewInvoicePage() {
         .eq('sync_status', 'synced')
         .maybeSingle();
 
-      if (ksefRecord?.ksef_reference_number) {
-        setCorrectedInvoiceKsefNumber(ksefRecord.ksef_reference_number);
+      const originalKsefNumber = ksefRecord?.ksef_reference_number || origInvoice.ksef_reference_number;
+      if (originalKsefNumber) {
+        setCorrectedInvoiceKsefNumber(originalKsefNumber);
         setCorrectedInvoiceWasInKsef(true);
       } else {
         setCorrectedInvoiceKsefNumber('');
@@ -559,11 +701,44 @@ export default function NewInvoicePage() {
           }),
         );
       }
+    } else {
+      showSnackbar('Nie udało się odczytać faktury korygowanej. Nie podstawiono danych z innego źródła.', 'error');
+    }
+    } finally {
+      setOriginalInvoiceLoading(false);
+    }
+  };
+
+  const fetchBusinessClients = async () => {
+    const requestId = ++organizationsRequest.current;
+    setOrganizationsLoading(true);
+    setOrganizationsError(null);
+    try {
+      const { data, error } = await supabase.rpc('get_business_clients');
+      if (error) throw error;
+      if (!Array.isArray(data)) throw new Error('Nieprawidłowa odpowiedź listy organizacji.');
+      if (requestId !== organizationsRequest.current) return;
+      setOrganizations(data.map((client: any) => ({
+        id: client.id, name: client.name, nip: client.nip,
+        street: client.address, postal_code: client.postal_code, city: client.city,
+        country: client.country || 'PL', client_type: client.client_type,
+        email: client.email, phone: client.phone, bank_name: client.bank_name, bank_account: client.bank_account,
+      })));
+    } catch (error) {
+      if (requestId !== organizationsRequest.current) return;
+      console.error('Error fetching invoice buyer organizations:', error);
+      setOrganizations([]);
+      setOrganizationsError('Nie udało się pobrać organizacji z CRM. Spróbuj ponownie lub wpisz dane ręcznie.');
+    } finally {
+      if (requestId === organizationsRequest.current) setOrganizationsLoading(false);
     }
   };
 
   const fetchData = async () => {
     if (!financeAccess?.canIssueInvoices) return;
+    const issuerRequest = eventId && !advanceFrom && invoiceType !== 'corrective'
+      ? ++eventCompanyRequest.current : null;
+    if (issuerRequest !== null) setEventCompanyLoading(true);
     if (advanceFrom) {
       setAdvancePrefillLoading(true);
       setAdvancePrefillError(null);
@@ -577,10 +752,10 @@ export default function NewInvoicePage() {
         .in('status', ['issued', 'sent', 'paid'])
         .order('issue_date', { ascending: false });
       if (financeAccess.scope === 'sales') invoiceQuery = invoiceQuery.in('created_by', [financeAccess.employeeId, financeAccess.authUserId]);
-      const [settingsRes, businessClientsRes, companiesRes, allInvoicesRes, individualContactsRes] =
+      const [settingsRes, , companiesRes, allInvoicesRes, individualContactsRes] =
         await Promise.all([
           supabase.rpc('get_invoice_settings_for_creation'),
-          supabase.rpc('get_business_clients'),
+          fetchBusinessClients(),
           supabase
             .from('my_companies')
             .select('*')
@@ -602,6 +777,7 @@ export default function NewInvoicePage() {
           'Brak uprawnień do tworzenia faktur. Wymagane: invoices_manage lub finances_manage',
         );
       }
+      if (companiesRes.error) throw new Error('Nie udało się wczytać działalności dostępnych do wystawienia faktury.');
 
       if (settingsRes.data && settingsRes.data.length > 0) {
         setSettings(settingsRes.data[0]);
@@ -610,24 +786,6 @@ export default function NewInvoicePage() {
         if (defaultMethod) {
           setPaymentMethod(defaultMethod);
         }
-      }
-
-      if (businessClientsRes.data) {
-        const formattedClients = businessClientsRes.data.map((client: any) => ({
-          id: client.id,
-          name: client.name,
-          nip: client.nip,
-          street: client.address,
-          postal_code: client.postal_code,
-          city: client.city,
-          client_type: client.client_type,
-          email: client.email,
-          phone: client.phone,
-          bank_name: client.bank_name,
-          bank_account: client.bank_account,
-        }));
-
-        setOrganizations(formattedClients);
       }
 
       setIndividualContacts(
@@ -683,6 +841,9 @@ export default function NewInvoicePage() {
          */
         setSelectedCompanyId((prev) => {
           if (prev) return prev;
+          // The linked event (or source invoice) takes precedence over defaults.
+          // Keep this empty until its company is known, including invoice numbering.
+          if (eventId || selectedEventId || advanceFrom) return '';
 
           const defaultCompany = companiesList.find((c) => c.is_default);
           return defaultCompany?.id || companiesList[0]?.id || '';
@@ -712,6 +873,9 @@ export default function NewInvoicePage() {
         setBillingArrangement(source.billing_arrangement || 'direct');
         setServiceRecipientOrganizationId(source.service_recipient_organization_id || '');
         setServiceRecipientContactId(source.service_recipient_contact_id || '');
+        partiesPrefilledForEvent.current = source.event_id || null;
+        setRecipientDraft(recipientDraftFromInvoice(source));
+        setRecipientPrefillError(null);
         setBuyerIsPrivatePerson(Boolean(source.buyer_is_private_person));
         setSelectedIndividualId(source.buyer_contact_id || '');
         const [firstName = '', ...lastName] = String(source.buyer_name || '').split(' ');
@@ -737,17 +901,25 @@ export default function NewInvoicePage() {
         return;
       }
 
-      if (eventId) {
+      if (eventId && invoiceType !== 'corrective') {
         setSelectedEventId(eventId);
         const context = await fetchEventContext(eventId);
+        if (issuerRequest !== null && issuerRequest === eventCompanyRequest.current) {
+          applyEventCompany(context, finalCompaniesList);
+        }
         if (context?.event_date) setSaleDate(context.event_date.split('T')[0]);
       }
     } catch (err: any) {
       console.error('Error fetching data:', err);
       if (advanceFrom) setAdvancePrefillError(err.message || 'Nie udało się przygotować kolejnej zaliczki.');
+      if (issuerRequest !== null && issuerRequest === eventCompanyRequest.current) {
+        setSelectedCompanyId('');
+        setEventCompanyMessage('Nie udało się ustalić firmy wystawiającej na podstawie wydarzenia. Odśwież formularz, aby ponownie wczytać dane.');
+      }
       showSnackbar(err.message || 'Błąd podczas ładowania danych', 'error');
     } finally {
       if (advanceFrom) setAdvancePrefillLoading(false);
+      if (issuerRequest !== null && issuerRequest === eventCompanyRequest.current) setEventCompanyLoading(false);
     }
   };
 
@@ -894,8 +1066,8 @@ export default function NewInvoicePage() {
     ];
   };
 
-  const getAdvancePaymentItems = (orderItems: InvoiceItem[]) => {
-    const ratio = advancePercent / 100;
+  const getAdvancePaymentItems = (orderItems: InvoiceItem[], percent = advancePercent) => {
+    const ratio = percent / 100;
     return orderItems.map((item) => ({
       ...item,
       price_net: round2(Number(item.price_net) * ratio),
@@ -926,11 +1098,20 @@ export default function NewInvoicePage() {
   };
 
   const handleSubmit = async () => {
+    if (invoiceType === 'corrective' && originalInvoiceLoading) {
+      showSnackbar('Poczekaj na odczyt faktury pierwotnej, danych stron i numeru KSeF.', 'warning');
+      return;
+    }
+    if (eventCompanyLoading) {
+      showSnackbar('Poczekaj na wczytanie działalności przypisanej do wydarzenia.', 'warning');
+      return;
+    }
     if (!financeAccess?.canIssueInvoices || !canUseInvoiceEvent(selectedEventId)) {
       showSnackbar('Nie masz uprawnień do wystawienia faktury dla tego wydarzenia.', 'error');
       return;
     }
-    if (!isPaid && !calculatePaymentDueDate()) {
+    if ((!isPartyDataCorrection && !isPaid && !calculatePaymentDueDate())
+      || (isPartyDataCorrection && !getInvoicePaymentDueDate(issueDate, '0'))) {
       showSnackbar('Podaj poprawną datę wystawienia i termin płatności w pełnych dniach (0 lub więcej).', 'error');
       return;
     }
@@ -944,6 +1125,59 @@ export default function NewInvoicePage() {
     }
     if (!selectedCompanyId) {
       showSnackbar('Wybierz firmę wystawiającą fakturę', 'error');
+      return;
+    }
+    if (buyerDiffersFromEvent && !buyerOverrideConfirmed) {
+      showSnackbar('Wybrany nabywca różni się od nabywcy przypisanego do rozliczenia wydarzenia. Sprawdź obie strony i potwierdź zmianę w formularzu.', 'warning');
+      return;
+    }
+
+    if (isPartyDataCorrection) {
+      if (!originalInvoice || originalInvoice.is_proforma || !['vat', 'advance', 'final'].includes(originalInvoice.invoice_type)
+        || ['draft', 'cancelled', 'proforma'].includes(originalInvoice.status) || originalInvoice.buyer_is_private_person) {
+        showSnackbar('Korektę danych można przygotować do wystawionej faktury VAT, zaliczkowej lub końcowej z polskim NIP nabywcy.', 'error');
+        return;
+      }
+      const originalNip = normalizeCorrectionNip(originalInvoice.buyer_nip);
+      const nipChecksum = [6, 5, 7, 2, 3, 4, 5, 6, 7].reduce((sum, weight, index) => sum + Number(originalNip[index]) * weight, 0) % 11;
+      if (!/^\d{10}$/.test(originalNip) || nipChecksum !== Number(originalNip[9]) || normalizeCorrectionNip(correctedBuyer.nip) !== originalNip) {
+        showSnackbar('Korekta danych nie może zmieniać podatnika. Wymagany jest ten sam poprawny polski NIP co na fakturze pierwotnej.', 'error');
+        return;
+      }
+      if (correctedBuyer.source === 'organization' && !correctedBuyer.organizationId) {
+        showSnackbar('Wybierz organizację nabywcy z tym samym NIP lub przełącz na dane wpisane ręcznie.', 'error');
+        return;
+      }
+      if (![correctedBuyer.name, correctedBuyer.street, correctedBuyer.postalCode, correctedBuyer.city].every((part) => part.trim())
+        || !/^[A-Z]{2}$/.test(correctedBuyer.countryCode)) {
+        showSnackbar('Uzupełnij pełną nazwę i adres nabywcy po korekcie oraz dwuliterowy kod kraju.', 'error');
+        return;
+      }
+      if (!originalRecipientDraft || validateInvoiceRecipientDraft(originalRecipientDraft).length) {
+        showSnackbar('Brakuje wiarygodnych zapisanych danych odbiorcy sprzed korekty. Nie pobieramy ich automatycznie z obecnej karty organizacji.', 'error');
+        return;
+      }
+      const comparableBuyer = (buyer: InvoiceBuyerCorrectionDraft) => JSON.stringify([
+        buyer.name.trim(), normalizeCorrectionNip(buyer.nip), buyer.street.trim(), buyer.postalCode.trim(), buyer.city.trim(), buyer.countryCode.trim(),
+      ]);
+      const comparableRecipient = (recipient: InvoiceRecipientDraft) => recipient.mode === 'same_as_buyer' ? 'null' : JSON.stringify([
+        recipient.data.name.trim(), normalizeCorrectionNip(recipient.data.nip), recipient.data.internalId.trim(), recipient.data.street.trim(),
+        recipient.data.postalCode.trim(), recipient.data.city.trim(), recipient.data.countryCode.trim(),
+      ]);
+      if (comparableBuyer(correctedBuyer) === comparableBuyer(buyerCorrectionDraftFromInvoice(originalInvoice))
+        && comparableRecipient(recipientDraft) === comparableRecipient(originalRecipientDraft)) {
+        showSnackbar('Nie zmieniono danych nabywcy ani odbiorcy. Wprowadź poprawne dane po korekcie.', 'warning');
+        return;
+      }
+      if (!partyDataConfirmed) {
+        showSnackbar('Sprawdź tabelę danych przed i po korekcie oraz potwierdź poprawność zmian.', 'warning');
+        return;
+      }
+    }
+
+    const recipientErrors = validateInvoiceRecipientDraft(recipientDraft);
+    if (recipientPrefillError || recipientErrors.length) {
+      showSnackbar(recipientPrefillError || recipientErrors.join(' '), 'error');
       return;
     }
 
@@ -966,13 +1200,13 @@ export default function NewInvoicePage() {
         );
         return;
       }
-    } else if (!buyerIsPrivatePerson && !selectedOrgId && !nextAdvanceContext) {
+    } else if (!buyerIsPrivatePerson && !selectedOrgId && !nextAdvanceContext && !isPartyDataCorrection) {
       showSnackbar('Wybierz nabywcę', 'error');
       return;
     }
 
     if (
-      selectedEventId &&
+      !isPartyDataCorrection && selectedEventId &&
       billingArrangement !== 'direct' &&
       selectedOrgId === serviceRecipientOrganizationId
     ) {
@@ -986,7 +1220,7 @@ export default function NewInvoicePage() {
     }
 
     if (invoiceType === 'corrective') {
-      if (!relatedInvoiceId) {
+      if (!relatedInvoiceId || !originalInvoice) {
         showSnackbar('Wybierz fakturę do korekty', 'error');
         return;
       }
@@ -996,7 +1230,7 @@ export default function NewInvoicePage() {
         return;
       }
 
-      if (items.some((item) => !item.name.trim())) {
+      if (!isPartyDataCorrection && items.some((item) => !item.name.trim())) {
         showSnackbar('Wypełnij nazwy wszystkich pozycji faktury', 'error');
         return;
       }
@@ -1014,18 +1248,23 @@ export default function NewInvoicePage() {
       return;
     }
 
-    if (items.some((item) => item.vat_code === 'zw' && !item.vat_exemption_reason?.trim())) {
+    if (!isPartyDataCorrection && items.some((item) => item.vat_code === 'zw' && !item.vat_exemption_reason?.trim())) {
       showSnackbar('Podaj podstawę prawną dla każdej pozycji zwolnionej z VAT.', 'error');
       return;
     }
 
-    if (items.some((item) => item.vat_code === '0' || item.vat_code === 'np')) {
+    if (!isPartyDataCorrection && items.some((item) => item.vat_code === '0' || item.vat_code === 'np')) {
       showSnackbar('Dla 0% wybierz rodzaj transakcji (krajowa, WDT lub eksport), a dla „np.” wybierz np I albo np II.', 'error');
       return;
     }
 
     if (invoiceType !== 'corrective' && simplifiedInvoice && (!simplifiedServiceName.trim() || getCombinedItemsError())) {
       showSnackbar(getCombinedItemsError() || 'Wpisz własną nazwę pozycji zbiorczej.', 'error');
+      return;
+    }
+
+    if (invoiceType === 'proforma' && (!Number.isFinite(proformaPercent) || proformaPercent <= 0 || proformaPercent > 100)) {
+      showSnackbar('Wysokość proformy musi być większa od 0% i nie może przekraczać 100%.', 'error');
       return;
     }
 
@@ -1060,10 +1299,14 @@ export default function NewInvoicePage() {
 
       const selectedOrg = buyerIsPrivatePerson
         ? null
-        : organizations.find((o) => o.id === selectedOrgId);
+        : selectedBuyerOrganization;
 
       if (!buyerIsPrivatePerson && !selectedOrg && !nextAdvanceContext) {
-        throw new Error('Organization not found');
+        throw new Error('Nie udało się odczytać wybranego nabywcy. Wybierz go ponownie.');
+      }
+      if (!buyerIsPrivatePerson && selectedOrg && (!selectedOrg.name.trim() || !selectedOrg.street?.trim()
+        || !selectedOrg.postal_code?.trim() || !selectedOrg.city?.trim())) {
+        throw new Error('Uzupełnij pełną nazwę i adres nabywcy: ulicę, kod pocztowy oraz miejscowość.');
       }
 
       const selectedCompany = myCompanies.find((c) => c.id === selectedCompanyId);
@@ -1114,9 +1357,10 @@ export default function NewInvoicePage() {
         return;
       }
 
-      const orderItems = getItemsForInvoice();
+      const orderItems = isPartyDataCorrection ? [] : getItemsForInvoice();
       const documentItems =
-        invoiceType === 'advance' ? getAdvancePaymentItems(orderItems) : orderItems;
+        invoiceType === 'advance' ? getAdvancePaymentItems(orderItems)
+          : invoiceType === 'proforma' ? getAdvancePaymentItems(orderItems, proformaPercent) : orderItems;
       const orderTotals = calculateTotalsFor(orderItems);
       const documentTotals = calculateTotalsFor(documentItems);
 
@@ -1133,7 +1377,8 @@ export default function NewInvoicePage() {
         setNextAdvanceContext(freshContext);
       }
 
-      const invoiceEventId = settlementGroup?.primary_event_id || selectedEventId || null;
+      const invoiceEventId = isPartyDataCorrection ? originalInvoice?.event_id || null
+        : settlementGroup?.primary_event_id || selectedEventId || null;
 
       const invoiceData = {
         buyer_is_private_person: buyerIsPrivatePerson,
@@ -1141,11 +1386,11 @@ export default function NewInvoicePage() {
         auto_number: invoiceNumberIsAuto,
         invoice_type: invoiceType,
         is_proforma: invoiceType === 'proforma',
-        status: isPaid ? 'paid' : invoiceType === 'proforma' ? 'proforma' : 'draft',
-        paid_at: isPaid ? paidDate : null,
-        payment_status: isPaid ? 'paid' : 'unpaid',
-        paid_amount: isPaid ? documentTotals.totalGross : 0,
-        payment_due_date: isPaid ? paidDate : calculatePaymentDueDate(),
+        status: !isPartyDataCorrection && isPaid ? 'paid' : invoiceType === 'proforma' ? 'proforma' : 'draft',
+        paid_at: !isPartyDataCorrection && isPaid ? paidDate : null,
+        payment_status: isPartyDataCorrection ? 'not_applicable' : isPaid ? 'paid' : 'unpaid',
+        paid_amount: !isPartyDataCorrection && isPaid ? documentTotals.totalGross : 0,
+        payment_due_date: isPartyDataCorrection ? null : isPaid ? paidDate : calculatePaymentDueDate(),
         currency_code: currencyCode,
         order_total_net: invoiceType === 'advance' ? orderTotals.totalNet : null,
         order_total_vat: invoiceType === 'advance' ? orderTotals.totalVat : null,
@@ -1156,27 +1401,27 @@ export default function NewInvoicePage() {
         issue_date: issueDate,
         sale_date: saleDate,
         event_id: invoiceEventId,
-        organization_id: buyerIsPrivatePerson ? null : selectedOrgId,
+        organization_id: buyerIsPrivatePerson ? null : isPartyDataCorrection
+          ? correctedBuyer.source === 'organization' ? correctedBuyer.organizationId : null : selectedOrgId,
         billing_arrangement: selectedEventId ? billingArrangement : 'direct',
-        service_recipient_organization_id: selectedEventId
-          ? serviceRecipientOrganizationId || null
-          : null,
-        service_recipient_contact_id: selectedEventId ? serviceRecipientContactId || null : null,
+        ...invoiceRecipientPayload(recipientDraft),
+        service_recipient_contact_id: selectedEventId && recipientDraft.mode === 'organization'
+          && recipientDraft.organizationId === serviceRecipientOrganizationId ? serviceRecipientContactId || null : null,
 
         buyer_name: buyerIsPrivatePerson
           ? `${privateBuyer.firstName} ${privateBuyer.lastName}`.trim()
-          : nextAdvanceContext?.source.buyer_name || selectedOrg!.name,
+          : selectedOrg!.name,
 
-        buyer_nip: buyerIsPrivatePerson ? null : nextAdvanceContext?.source.buyer_nip || selectedOrg!.nip,
+        buyer_nip: buyerIsPrivatePerson ? null : selectedOrg!.nip,
 
-        buyer_street: buyerIsPrivatePerson ? privateBuyer.street : nextAdvanceContext?.source.buyer_street || selectedOrg?.street || '',
+        buyer_street: buyerIsPrivatePerson ? privateBuyer.street : selectedOrg?.street || '',
 
         buyer_postal_code: buyerIsPrivatePerson
           ? privateBuyer.postalCode
-          : nextAdvanceContext?.source.buyer_postal_code || selectedOrg?.postal_code || '',
+          : selectedOrg?.postal_code || '',
 
-        buyer_city: buyerIsPrivatePerson ? privateBuyer.city : nextAdvanceContext?.source.buyer_city || selectedOrg?.city || '',
-        buyer_country: nextAdvanceContext?.source.buyer_country || 'Polska',
+        buyer_city: buyerIsPrivatePerson ? privateBuyer.city : selectedOrg?.city || '',
+        buyer_country: isPartyDataCorrection ? correctedBuyer.countryCode : sourceBuyer?.buyer_country || selectedOrg?.country || 'PL',
         buyer_email: buyerIsPrivatePerson ? privateBuyer.email || null : selectedOrg?.email || null,
         buyer_phone: buyerIsPrivatePerson ? privateBuyer.phone || null : selectedOrg?.phone || null,
 
@@ -1190,7 +1435,7 @@ export default function NewInvoicePage() {
         seller_email: selectedCompany.email,
         seller_phone: selectedCompany.phone,
         seller_country: 'Polska',
-        payment_method: paymentMethod,
+        payment_method: isPartyDataCorrection ? null : paymentMethod,
         bank_name: selectedCompany.bank_name || '',
         bank_account: selectedCompany.bank_account || '',
         bank_swift_code: selectedCompany.bank_swift_code || null,
@@ -1207,6 +1452,7 @@ export default function NewInvoicePage() {
         ...(invoiceType === 'corrective'
           ? {
               related_invoice_id: relatedInvoiceId || null,
+              correction_kind: correctionKind,
               correction_reason: correctionReason,
               correction_type: correctionType,
               correction_scope: correctionScope,
@@ -1289,7 +1535,7 @@ export default function NewInvoicePage() {
         throw createError || new Error('Nie udało się utworzyć dokumentu');
       }
 
-      if (invoiceEventId && settlementGroup) {
+      if (!isPartyDataCorrection && invoiceEventId && settlementGroup) {
         const { error: settlementLinkError } = await supabase.rpc(
           'link_invoice_to_event_settlement',
           {
@@ -1362,7 +1608,7 @@ export default function NewInvoicePage() {
   const advanceTotals =
     invoiceType === 'advance'
       ? calculateTotalsFor(getAdvancePaymentItems(getItemsForInvoice()))
-      : null;
+      : invoiceType === 'proforma' ? calculateTotalsFor(getAdvancePaymentItems(getItemsForInvoice(), proformaPercent)) : null;
   const filteredIndividualContacts = individualContacts.filter((contact) => {
     const search = individualSearch.toLowerCase().trim();
 
@@ -1416,6 +1662,9 @@ export default function NewInvoicePage() {
                   checked={buyerIsPrivatePerson}
                   onChange={(e) => {
                     const checked = e.target.checked;
+                    partyEditRevision.current += 1;
+                    partiesPrefilledForEvent.current = selectedEventId || eventId || null;
+                    setBuyerOverrideConfirmed(false);
                     setBuyerIsPrivatePerson(checked);
 
                     setSelectedOrgId('');
@@ -1456,8 +1705,11 @@ export default function NewInvoicePage() {
               </label>
               <select
                 value={selectedCompanyId}
-                onChange={(e) => setSelectedCompanyId(e.target.value)}
-                disabled={Boolean(advanceFrom || (invoiceType === 'corrective' && relatedInvoiceId))}
+                onChange={(e) => {
+                  setSelectedCompanyId(e.target.value);
+                  setEventCompanyMessage(null);
+                }}
+                disabled={eventCompanyLoading || Boolean(advanceFrom || (invoiceType === 'corrective' && relatedInvoiceId))}
                 className="w-full rounded-lg border border-[#d3bb73]/30 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <option value="">Wybierz firmę...</option>
@@ -1468,6 +1720,21 @@ export default function NewInvoicePage() {
                   </option>
                 ))}
               </select>
+              {eventCompanyLoading ? (
+                <p className="mt-2 text-xs text-[#e5e4e2]/60">Wczytywanie działalności przypisanej do wydarzenia…</p>
+              ) : eventCompanyMessage ? (
+                <p role="alert" className="mt-2 text-xs text-amber-200">{eventCompanyMessage}</p>
+              ) : !advanceFrom && invoiceType !== 'corrective' && linkedEvent?.my_company_id && selectedCompanyId === linkedEvent.my_company_id ? (
+                <p className="mt-2 text-xs text-[#e5e4e2]/60">Działalność przypisana do wydarzenia: {linkedEvent.name}.</p>
+              ) : null}
+              {!eventCompanyLoading && linkedEvent && selectedCompanyId && invoiceType !== 'corrective'
+                && selectedCompanyId !== linkedEvent.my_company_id && (
+                <p className="mt-2 text-xs text-[#d3bb73]">
+                  {invoiceType === 'proforma'
+                    ? 'Pro forma nie zmieni firmy wydarzenia. Zdecyduje wystawiona na jej podstawie faktura.'
+                    : <>Po wystawieniu faktury firma wydarzenia zostanie zmieniona na {myCompanies.find((company) => company.id === selectedCompanyId)?.name}. Sam zapis szkicu nie zmienia przypisania.</>}
+                </p>
+              )}
               {invoiceType === 'corrective' && relatedInvoiceId && (
                 <div className="mt-2 text-xs text-orange-400">
                   Firma wystawiajaca zostala pobrana z faktury korygowanej
@@ -1572,6 +1839,17 @@ export default function NewInvoicePage() {
                 )}
 
                 <div className="mb-4">
+                  <label className="mb-2 block text-sm text-[#e5e4e2]/60" htmlFor="invoice-correction-kind">Co chcesz skorygować?</label>
+                  <select id="invoice-correction-kind" value={correctionKind}
+                    onChange={(event) => handleCorrectionKindChange(event.target.value as 'amount' | 'party_data')}
+                    className="w-full rounded-lg border border-[#d3bb73]/15 bg-black/20 px-4 py-3 text-[#e5e4e2]">
+                    <option value="amount">Pozycje lub kwoty faktury</option>
+                    <option value="party_data">Dane nabywcy / odbiorcy — bez zmiany kwot</option>
+                  </select>
+                  {isPartyDataCorrection && <p className="mt-2 text-xs leading-5 text-[#e5e4e2]/65">Popraw nazwę i adres tego samego podatnika lub dane odbiorcy. Nie zerujemy faktury pierwotnej i nie tworzymy nowej należności.</p>}
+                </div>
+
+                {!isPartyDataCorrection && <div className="mb-4">
                   <label className="mb-2 block text-sm text-[#e5e4e2]/60">Zakres korekty *</label>
                   <div className="flex gap-4">
                     <label className="flex cursor-pointer items-center gap-2">
@@ -1597,9 +1875,10 @@ export default function NewInvoicePage() {
                       <span className="text-sm text-[#e5e4e2]">Czesc faktury</span>
                     </label>
                   </div>
-                </div>
+                </div>}
 
                 <div>
+                  {!isPartyDataCorrection && <>
                   <label className="mb-2 block text-sm text-[#e5e4e2]/60">
                     Skutek korekty w ewidencji VAT *
                   </label>
@@ -1612,6 +1891,7 @@ export default function NewInvoicePage() {
                     <option value={2}>Korekta skutkująca w dacie wystawienia faktury korygującej</option>
                     <option value={3}>Inna data lub różne daty dla pozycji korekty</option>
                   </select>
+                  </>}
 
                   <label className="mb-2 block text-sm text-[#e5e4e2]/60">
                     Przyczyna korekty *
@@ -1628,7 +1908,7 @@ export default function NewInvoicePage() {
             )}
 
             <div className="grid grid-cols-1 gap-6">
-              {selectedEventId && linkedEvent && !advanceFrom && (
+              {selectedEventId && linkedEvent && !advanceFrom && invoiceType !== 'corrective' && (
                 <InvoiceBillingContext
                   eventName={linkedEvent.name}
                   eventDate={linkedEvent.event_date}
@@ -1688,13 +1968,21 @@ export default function NewInvoicePage() {
                   <p className="mt-1 text-[#e5e4e2]/50">{nextAdvanceContext.source.buyer_nip ? `NIP: ${nextAdvanceContext.source.buyer_nip} · ` : ''}{nextAdvanceContext.source.buyer_street}, {nextAdvanceContext.source.buyer_postal_code} {nextAdvanceContext.source.buyer_city}</p>
                   {linkedEvent && <p className="mt-1 text-[#e5e4e2]/50">Wydarzenie: {linkedEvent.name}</p>}
                 </div>
+              ) : isPartyDataCorrection && originalInvoice ? (
+                <InvoiceBuyerCorrectionEditor value={correctedBuyer} onChange={handleCorrectedBuyerChange}
+                  originalNip={originalInvoice.buyer_nip || ''} organizations={organizations} disabled={loading}
+                  organizationsLoading={organizationsLoading} organizationsError={organizationsError}
+                  onRetryOrganizations={() => { void fetchBusinessClients(); }} />
               ) : invoiceType === 'corrective' && relatedInvoiceId ? (
                 <div>
                   <label className="mb-2 block text-sm text-[#e5e4e2]/60">Nabywca *</label>
                   <div className="rounded-lg border border-orange-500/20 bg-[#0a0d1a]/50 px-4 py-3 text-[#e5e4e2]">
-                    {organizations.find((o) => o.id === selectedOrgId)?.name ||
+                    {selectedBuyerOrganization?.name ||
                       'Nabywca z faktury korygowanej'}
+                    <p className="mt-1 text-xs text-[#e5e4e2]/60">{[selectedBuyerOrganization?.street, [selectedBuyerOrganization?.postal_code, selectedBuyerOrganization?.city].filter(Boolean).join(' ')].filter(Boolean).join(', ')}</p>
+                    {selectedBuyerOrganization?.nip && <p className="mt-1 text-xs text-[#e5e4e2]/60">NIP: {selectedBuyerOrganization.nip}</p>}
                   </div>
+                  <p className="mt-2 text-xs text-[#e5e4e2]/55">W korekcie kwot dane stron pozostają takie jak na fakturze pierwotnej. Aby poprawić nazwę lub adres, wybierz powyżej korektę danych.</p>
                 </div>
               ) : buyerIsPrivatePerson ? (
                 <div className="rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/5 p-4">
@@ -1814,7 +2102,46 @@ export default function NewInvoicePage() {
                   onAddNew={() => setShowAddBuyerModal(true)}
                 />
               )}
-              {!buyerIsPrivatePerson && selectedOrgId && !eventId && !advanceFrom && (
+              <InvoiceRecipientEditor value={recipientDraft} onChange={handleRecipientChange}
+                autoLoadOrganization={!advanceFrom && invoiceType !== 'corrective'}
+                disabled={loading || (invoiceType === 'corrective' && !isPartyDataCorrection && Boolean(relatedInvoiceId))} />
+              {recipientPrefillError && <p role="alert" className="text-sm text-[#d3bb73]">{recipientPrefillError}</p>}
+              {buyerPreviewName && <div className="grid gap-3 sm:grid-cols-2" aria-label="Dane stron na przygotowywanej fakturze">
+                <section className="rounded-xl bg-black/15 p-4 text-sm">
+                  <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-[#d3bb73]">Nabywca na fakturze i w KSeF</h3>
+                  <p className="font-medium text-[#e5e4e2]">{buyerPreviewName}</p>
+                  <p className="mt-1 text-[#e5e4e2]/65">{buyerPreviewAddress || 'Brak adresu'}</p>
+                  {!buyerIsPrivatePerson && <p className="mt-1 text-[#e5e4e2]/65">NIP: {selectedBuyerOrganization?.nip || 'nie podano'}</p>}
+                </section>
+                <section className="rounded-xl bg-black/15 p-4 text-sm">
+                  <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-[#d3bb73]">Odbiorca na fakturze i w KSeF</h3>
+                  <p className="font-medium text-[#e5e4e2]">{recipientDraft.mode === 'same_as_buyer' ? buyerPreviewName : recipientDraft.data.name || 'Uzupełnij odbiorcę'}</p>
+                  <p className="mt-1 text-[#e5e4e2]/65">{recipientDraft.mode === 'same_as_buyer' ? buyerPreviewAddress
+                    : [recipientDraft.data.street, [recipientDraft.data.postalCode, recipientDraft.data.city].filter(Boolean).join(' ')].filter(Boolean).join(', ') || 'Brak adresu'}</p>
+                  {recipientDraft.mode === 'same_as_buyer' ? <p className="mt-2 text-xs text-[#e5e4e2]/55">Ten sam podmiot — bez osobnego odbiorcy w XML.</p> : <>
+                    {recipientDraft.data.nip && <p className="mt-1 text-[#e5e4e2]/65">NIP: {recipientDraft.data.nip}</p>}
+                    {recipientDraft.data.internalId && <p className="mt-1 text-[#d3bb73]">IDWew KSeF: {recipientDraft.data.internalId}</p>}
+                  </>}
+                </section>
+              </div>}
+              {isPartyDataCorrection && originalInvoice && originalRecipientDraft && <>
+                <InvoicePartyCorrectionComparison
+                  beforeBuyer={buyerCorrectionDraftFromInvoice(originalInvoice)} afterBuyer={correctedBuyer}
+                  beforeRecipient={originalRecipientDraft.mode === 'same_as_buyer' ? null : originalRecipientDraft.data}
+                  afterRecipient={recipientDraft.mode === 'same_as_buyer' ? null : recipientDraft.data} />
+                <label className="flex items-start gap-3 rounded-xl bg-[#d3bb73]/10 p-4 text-sm text-[#e5e4e2]">
+                  <input type="checkbox" checked={partyDataConfirmed} onChange={(event) => setPartyDataConfirmed(event.target.checked)} className="mt-1 h-4 w-4 accent-[#d3bb73]" />
+                  Sprawdziłem dane przed i po korekcie. Nabywca pozostaje tym samym podatnikiem, a kwoty faktury pierwotnej nie ulegają zmianie.
+                </label>
+              </>}
+              {buyerDiffersFromEvent && <div className="rounded-xl bg-[#d3bb73]/10 p-4 text-sm text-[#e5e4e2]">
+                <p>Nabywca zapisany w rozliczeniu wydarzenia: <strong>{organizations.find((organization) => organization.id === expectedEventBuyerId)?.name || 'inna organizacja niż wybrana powyżej'}</strong>.</p>
+                <label className="mt-3 flex items-start gap-3">
+                  <input type="checkbox" checked={buyerOverrideConfirmed} onChange={(event) => setBuyerOverrideConfirmed(event.target.checked)} className="mt-1 h-4 w-4 accent-[#d3bb73]" />
+                  Potwierdzam, że na tej fakturze nabywcą ma być wybrana powyżej osoba lub organizacja. Odbiorca nie zastępuje nabywcy.
+                </label>
+              </div>}
+              {!buyerIsPrivatePerson && selectedOrgId && !eventId && !advanceFrom && invoiceType !== 'corrective' && (
                 <div className="rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/5 p-4">
                   <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
                     Powiązane wydarzenie
@@ -1862,10 +2189,12 @@ export default function NewInvoicePage() {
                   type="date"
                   value={saleDate}
                   onChange={(e) => setSaleDate(e.target.value)}
+                  disabled={isPartyDataCorrection}
                   className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2]"
                 />
               </div>
 
+              {!isPartyDataCorrection && <>
               <div>
                 <label className="mb-2 block text-sm text-[#e5e4e2]/60">Sposób płatności *</label>
                 <select
@@ -1954,6 +2283,7 @@ export default function NewInvoicePage() {
                   </div>
                 </div>
               )}
+              </>}
             </div>
 
             {invoiceType !== 'corrective' && (
@@ -2009,6 +2339,15 @@ export default function NewInvoicePage() {
               </div>
             )}
 
+            {invoiceType === 'proforma' && <div className="rounded-lg bg-[#d3bb73]/5 p-4">
+              <div className="grid items-center gap-4 sm:grid-cols-[180px_1fr]">
+                <label className="block text-sm text-[#e5e4e2]">Wysokość proformy (%)
+                  <input type="number" min="0.01" max="100" step="0.01" value={Number.isFinite(proformaPercent) ? proformaPercent : ''} onChange={event => setProformaPercent(event.target.valueAsNumber)} className="mt-2 w-full rounded-lg border border-white/10 bg-[#0a0d1a] px-4 py-3" />
+                </label>
+                <p className="text-sm text-[#e5e4e2]/65">Procent pełnej wartości pozycji poniżej, pobranych z wydarzenia lub dodanych ręcznie. Np. 50% automatycznie przelicza kwoty netto, VAT i brutto proformy.</p>
+              </div>
+            </div>}
+
             {invoiceType === 'advance' && (
               <div className="rounded-lg border border-blue-500/25 bg-blue-500/10 p-4">
                 <div className="grid gap-4 md:grid-cols-[220px_1fr] md:items-end">
@@ -2038,7 +2377,7 @@ export default function NewInvoicePage() {
               </div>
             )}
 
-            <div className="border-t border-[#d3bb73]/10 pt-6">
+            {!isPartyDataCorrection && <div className="border-t border-[#d3bb73]/10 pt-6">
               <div className="mb-4 flex items-center justify-between">
                 <h3 className="text-lg font-medium text-[#e5e4e2]">
                   {invoiceType === 'corrective' ? 'Pozycje korekty' : advanceFrom ? 'Pełne zamówienie' : 'Pozycje faktury'}
@@ -2547,9 +2886,23 @@ export default function NewInvoicePage() {
                     })}
               </fieldset>
               </details>
-            </div>
+            </div>}
 
-            <div className="border-t border-[#d3bb73]/10 pt-6">
+            {isPartyDataCorrection && originalInvoice && <section className="rounded-xl bg-[#d3bb73]/5 p-5 text-sm text-[#e5e4e2]">
+              <h3 className="mb-3 font-medium text-[#d3bb73]">Kwoty pozostają bez zmian</h3>
+              <div className="overflow-x-auto"><table className="w-full text-left text-sm">
+                <thead><tr className="text-xs text-[#e5e4e2]/55"><th className="py-2 font-normal">Rozliczenie</th><th className="px-3 py-2 text-right font-normal">Netto</th><th className="px-3 py-2 text-right font-normal">VAT</th><th className="py-2 text-right font-normal">Brutto</th></tr></thead>
+                <tbody>
+                  <tr><th className="py-2 font-normal">Faktura pierwotna {originalInvoice.invoice_number}</th>
+                    <td className="px-3 py-2 text-right">{Number(originalInvoice.total_net || 0).toFixed(2)} {currencyCode}</td>
+                    <td className="px-3 py-2 text-right">{Number(originalInvoice.total_vat || 0).toFixed(2)} {currencyCode}</td>
+                    <td className="py-2 text-right">{Number(originalInvoice.total_gross || 0).toFixed(2)} {currencyCode}</td></tr>
+                  <tr className="text-[#d3bb73]"><th className="py-2 text-left font-medium">Zmiana kwot wskutek tej korekty</th><td className="px-3 py-2 text-right">0,00 {currencyCode}</td><td className="px-3 py-2 text-right">0,00 {currencyCode}</td><td className="py-2 text-right">0,00 {currencyCode}</td></tr>
+                </tbody>
+              </table></div>
+              <p className="mt-3 text-xs leading-5 text-[#e5e4e2]/60">Kwoty powyżej służą wyłącznie kontroli. Korekta danych nie stanowi nowego żądania zapłaty, zwrotu ani potwierdzenia opłacenia faktury pierwotnej.</p>
+            </section>}
+            {!isPartyDataCorrection && <div className="border-t border-[#d3bb73]/10 pt-6">
               <div className="rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/5 p-6">
                 <h3 className="mb-4 text-lg font-medium text-[#e5e4e2]">
                   {invoiceType === 'corrective' ? 'Kwota korekty' : 'Podsumowanie'}
@@ -2652,7 +3005,7 @@ export default function NewInvoicePage() {
 
                 {invoiceType !== 'corrective' && (
                   <>
-                    {invoiceType === 'advance' && advanceTotals && (
+                    {(invoiceType === 'advance' || invoiceType === 'proforma') && advanceTotals && (
                       <div className="mb-4 grid grid-cols-2 gap-4 rounded-lg border border-blue-500/20 bg-blue-500/10 p-4">
                         <div>
                           <div className="text-xs uppercase tracking-wide text-blue-300/70">
@@ -2664,7 +3017,7 @@ export default function NewInvoicePage() {
                         </div>
                         <div>
                           <div className="text-xs uppercase tracking-wide text-blue-300/70">
-                            Kwota tej zaliczki brutto ({advancePercent}%)
+                            {invoiceType === 'proforma' ? 'Kwota proformy brutto' : 'Kwota tej zaliczki brutto'} ({invoiceType === 'proforma' ? proformaPercent : advancePercent}%)
                           </div>
                           <div className="mt-1 text-xl font-medium text-[#d3bb73]">
                             {advanceTotals.totalGross.toFixed(2)} {currencyLabel}
@@ -2716,7 +3069,7 @@ export default function NewInvoicePage() {
                   </div>
                 )}
               </div>
-            </div>
+            </div>}
 
             <div className="flex justify-end gap-4 pt-6">
               <button
@@ -2727,11 +3080,11 @@ export default function NewInvoicePage() {
               </button>
               <button
                 onClick={handleSubmit}
-                disabled={loading || (invoiceType !== 'corrective' && itemSourcesLoading) || Boolean(advanceFrom && (advancePrefillLoading || advancePrefillError || !nextAdvanceContext))}
+                disabled={loading || eventCompanyLoading || (invoiceType === 'corrective' && originalInvoiceLoading) || (invoiceType !== 'corrective' && itemSourcesLoading) || Boolean(advanceFrom && (advancePrefillLoading || advancePrefillError || !nextAdvanceContext))}
                 className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-3 font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-50"
               >
                 <Save className="h-5 w-5" />
-                {loading ? 'Zapisywanie...' : 'Wystaw fakturę'}
+                {loading ? 'Zapisywanie...' : isPartyDataCorrection ? 'Zapisz korektę danych' : 'Wystaw fakturę'}
               </button>
             </div>
           </div>

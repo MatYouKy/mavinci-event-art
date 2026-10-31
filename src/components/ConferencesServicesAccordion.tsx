@@ -6,14 +6,8 @@ import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea
 import { supabase } from '@/lib/supabase/browser';
 import { useEditMode } from '@/contexts/EditModeContext';
 import { useMobile } from '@/hooks/useMobile';
-
-export const getIconFunction = (iconName: string | null) => {
-  if (!iconName) return CheckCircle;
-  const icons: any = {
-    CheckCircle,
-  };
-  return icons[iconName] ?? CheckCircle;
-};
+import { getIconFunction } from '@/lib/conferenceIcons';
+export { getIconFunction } from '@/lib/conferenceIcons';
 
 interface ServiceItem {
   id: string;

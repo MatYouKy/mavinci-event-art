@@ -41,6 +41,7 @@ export type TravelCalculatorResult = {
 
 export default function VehicleTravelCalculator({
   eventId,
+  calculationId, destination, onSettingsChange,
   offerId, locationId, destinationControls, initialFuel, initialRoundTrip = true,
   eventLocation,
   vehicleId,
@@ -54,6 +55,7 @@ export default function VehicleTravelCalculator({
 }: {
   travelPlan?: TravelPlan | null;
   eventId?: string;
+  calculationId?: string; destination?: string; onSettingsChange?: () => void;
   offerId?: string; locationId?: string | null; destinationControls?: ReactNode;
   initialFuel?: FuelEstimateSnapshot; initialRoundTrip?: boolean;
   eventLocation: string;
@@ -77,6 +79,7 @@ export default function VehicleTravelCalculator({
   const [history, setHistory] = useState<{
     vehicleId: string;
     value: number | null;
+    source?: 'vehicle' | 'history';
     error?: string;
   } | null>(null);
   const [quote, setQuote] = useState<PriceQuote | null>(initialFuel?.quote || null);
@@ -98,7 +101,7 @@ export default function VehicleTravelCalculator({
       ? calculateFuelCost(Number(distance), Number(consumption), Number(price))
       : null;
 
-  const endpoint = offerId ? '/bridge/offers/travel-estimate' : '/bridge/events/travel-estimate';
+  const endpoint = calculationId ? '/bridge/calculations/travel-estimate' : offerId ? '/bridge/offers/travel-estimate' : '/bridge/events/travel-estimate';
   const fuelSnapshot = (): FuelEstimateSnapshot => ({ fuel_type: fuelType, price: Number(price) > 0 ? Number(price) : null, consumption: Number(consumption) > 0 ? Number(consumption) : null, price_source: manualPrices[fuelType] !== undefined ? 'manual' : 'autocentrum', quote: manualPrices[fuelType] !== undefined ? null : quote });
 
   useEffect(() => {
@@ -115,22 +118,23 @@ export default function VehicleTravelCalculator({
     const from = new Date();
     from.setDate(from.getDate() - 90);
     void (async () => {
-      const { data, error } = await supabase
-        .from('fuel_entries')
-        .select('avg_consumption,distance_since_last')
-        .eq('vehicle_id', vehicleId)
-        .gte('date', from.toISOString().slice(0, 10))
-        .lte('date', new Date().toISOString().slice(0, 10))
-        .gt('avg_consumption', 0)
-        .gt('distance_since_last', 0);
-      if (active)
-        setHistory({
-          vehicleId,
-          value: error ? null : averageFuelConsumption(data || []),
-          error: error
-            ? 'Nie udało się pobrać historii tankowań. Wpisz spalanie ręcznie.'
-            : undefined,
-        });
+      const [vehicleResult, historyResult] = await Promise.all([
+        supabase.from('vehicles').select('average_fuel_consumption').eq('id', vehicleId).maybeSingle(),
+        supabase.from('fuel_entries').select('avg_consumption,distance_since_last')
+          .eq('vehicle_id', vehicleId)
+          .gte('date', from.toISOString().slice(0, 10))
+          .lte('date', new Date().toISOString().slice(0, 10))
+          .gt('avg_consumption', 0).gt('distance_since_last', 0),
+      ]);
+      const configured = Number(vehicleResult.data?.average_fuel_consumption);
+      const hasConfigured = !vehicleResult.error && Number.isFinite(configured) && configured > 0;
+      if (active) setHistory({
+        vehicleId,
+        value: hasConfigured ? configured : historyResult.error ? null : averageFuelConsumption(historyResult.data || []),
+        source: hasConfigured ? 'vehicle' : 'history',
+        error: !hasConfigured && (vehicleResult.error || historyResult.error)
+          ? 'Nie udało się pobrać pełnych danych o spalaniu. Możesz wpisać je ręcznie.' : undefined,
+      });
     })();
     return () => {
       active = false;
@@ -146,7 +150,7 @@ export default function VehicleTravelCalculator({
         const response = await fetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'fuel', eventId, offerId }),
+          body: JSON.stringify({ action: 'fuel', eventId, offerId, calculationId }),
           signal: controller.signal,
         });
         const data = await response.json();
@@ -162,7 +166,7 @@ export default function VehicleTravelCalculator({
       }
     })();
     return () => controller.abort();
-  }, [eventId, offerId, endpoint, priceRefresh]);
+  }, [eventId, offerId, calculationId, endpoint, priceRefresh]);
 
   useEffect(() => {
     routeController.current?.abort();
@@ -170,7 +174,7 @@ export default function VehicleTravelCalculator({
     setRoute(null);
     setRouteError('');
     onBusyChange(false);
-  }, [vehicleId, vehicleFuelType, eventId, offerId, locationId, eventLocation, onBusyChange]);
+  }, [vehicleId, vehicleFuelType, eventId, offerId, calculationId, destination, locationId, eventLocation, onBusyChange]);
 
   async function calculateRoute() {
     if (routeLoading) return;
@@ -184,7 +188,7 @@ export default function VehicleTravelCalculator({
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'route', eventId, offerId, locationId, origin, roundTrip }),
+        body: JSON.stringify({ action: 'route', eventId, offerId, calculationId, destination, locationId, origin, roundTrip }),
         signal: controller.signal,
       });
       const data = await response.json();
@@ -222,7 +226,7 @@ export default function VehicleTravelCalculator({
   return (
     <section className="space-y-4 rounded-xl border border-white/10 bg-[var(--brand-burgundy-800)] p-4">
       <h3 className="text-base text-[var(--brand-platinum)]">Trasa i koszt paliwa</h3>
-      {travelPlan && !offerId && (
+      {travelPlan && !offerId && !calculationId && (
         <div className="space-y-3 rounded-lg bg-white/5 p-3 text-sm">
           <p>
             Czas do harmonogramu: jazda z Google Maps + zapas + przerwy. Zapas: 20%, minimum 15 min.
@@ -290,7 +294,7 @@ export default function VehicleTravelCalculator({
         />
       </label>
       <p className="text-[var(--brand-platinum)]/70 text-sm">
-        {offerId ? 'Cel realizacji:' : 'Cel z zakładki Przegląd:'} {eventLocation || 'Brak lokalizacji — uzupełnij ją w Przeglądzie.'}
+        {offerId || calculationId ? 'Cel realizacji:' : 'Cel z zakładki Przegląd:'} {eventLocation || (calculationId ? 'Wpisz miejsce docelowe poniżej.' : 'Brak lokalizacji — uzupełnij ją w Przeglądzie.')}
       </p>
       {destinationControls}
       <label className="flex items-center gap-2 text-sm text-[var(--brand-platinum)]">
@@ -314,7 +318,7 @@ export default function VehicleTravelCalculator({
             className={`${field} mt-2`}
             value={fuelType}
             disabled={routeLoading}
-            onChange={(event) => setFuelOverride({ vehicleId, value: event.target.value })}
+            onChange={(event) => { setFuelOverride({ vehicleId, value: event.target.value }); onSettingsChange?.(); }}
           >
             {FUEL_TYPES.map((fuel) => (
               <option key={fuel.value} value={fuel.value}>
@@ -338,7 +342,7 @@ export default function VehicleTravelCalculator({
             disabled={!isLiquidFuel || routeLoading}
             placeholder="Uzupełnij spalanie"
             onChange={(event) =>
-              setManualConsumption((previous) => ({ ...previous, [vehicleId]: event.target.value }))
+              { setManualConsumption((previous) => ({ ...previous, [vehicleId]: event.target.value })); onSettingsChange?.(); }
             }
           />
         </label>
@@ -353,7 +357,7 @@ export default function VehicleTravelCalculator({
             disabled={!isLiquidFuel || routeLoading}
             placeholder={priceLoading ? 'Pobieranie…' : 'Uzupełnij cenę'}
             onChange={(event) =>
-              setManualPrices((previous) => ({ ...previous, [fuelType]: event.target.value }))
+              { setManualPrices((previous) => ({ ...previous, [fuelType]: event.target.value })); onSettingsChange?.(); }
             }
           />
         </label>
@@ -362,12 +366,14 @@ export default function VehicleTravelCalculator({
         <>
           <p className="text-[var(--brand-platinum)]/60 text-xs">
             {manualConsumption[vehicleId] !== undefined
-              ? 'Spalanie wpisane ręcznie.'
+              ? 'Spalanie zapisane dla tej kalkulacji lub wpisane ręcznie.'
+              : history?.vehicleId === vehicleId && history.source === 'vehicle'
+                ? 'Średnie spalanie z karty auta. Możesz je skorygować dla tego przejazdu, np. przy jeździe z przyczepą.'
               : history?.vehicleId === vehicleId && history.value
                 ? 'Spalanie z tankowań z ostatnich 90 dni, ważone przejechanym dystansem. Możesz je skorygować, np. dla jazdy z przyczepą.'
                 : history?.vehicleId === vehicleId && history.error
                   ? history.error
-                  : 'Jeśli brakuje historii tankowań, wpisz średnie spalanie auta.'}
+                  : 'Uzupełnij średnie spalanie na karcie auta lub wpisz je dla tego przejazdu.'}
           </p>
           <div className="text-[var(--brand-platinum)]/60 flex flex-wrap items-center gap-2 text-xs">
             {manualPrices[fuelType] !== undefined ? (
@@ -404,6 +410,7 @@ export default function VehicleTravelCalculator({
                   return next;
                 });
                 setPriceRefresh((value) => value + 1);
+                onSettingsChange?.();
               }}
             >
               Pobierz cenę
@@ -423,7 +430,7 @@ export default function VehicleTravelCalculator({
       <div className="flex flex-wrap items-center gap-3">
         <button
           type="button"
-          disabled={routeLoading || !origin.trim() || (!!offerId && !eventLocation)}
+          disabled={routeLoading || !origin.trim() || ((!!offerId || !!calculationId) && !eventLocation.trim())}
           onClick={calculateRoute}
           className="rounded-lg bg-[var(--brand-gold)] px-4 py-2 text-sm font-medium text-[var(--brand-burgundy-950)] disabled:opacity-50"
         >
@@ -469,7 +476,7 @@ export default function VehicleTravelCalculator({
       )}
       <p className="text-[var(--brand-platinum)]/50 text-xs">
         Koszt = łączny dystans × spalanie / 100 × cena litra. Po korekcie spalania lub ceny kliknij
-        „Zastosuj koszt”. {offerId ? 'Dystans i koszt zapiszesz przyciskiem „Zapisz logistykę”. Cena AutoCentrum jest ceną brutto; do szacunku przyjmujemy pełny wydatek na paliwo.' : 'Dystans i koszt zapiszesz razem z pojazdem.'}
+        „Zastosuj koszt”. {calculationId ? 'Dystans i stawkę zapiszesz razem z pozycją kalkulacji. Przeliczenie brutto na netto pokazano poniżej.' : offerId ? 'Dystans i koszt zapiszesz przyciskiem „Zapisz logistykę”. Cena AutoCentrum jest ceną brutto; do szacunku przyjmujemy pełny wydatek na paliwo.' : 'Dystans i koszt zapiszesz razem z pojazdem.'}
       </p>
     </section>
   );
