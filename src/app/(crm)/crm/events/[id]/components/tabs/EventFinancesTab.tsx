@@ -139,6 +139,37 @@ interface Props {
   eventId: string;
 }
 
+type EventFinanceAccess = {
+  canViewCosts: boolean;
+  canManageCosts: boolean;
+  canApproveCosts: boolean;
+  canPlanCommissions: boolean;
+  canApproveCommissions: boolean;
+};
+
+const NO_EVENT_FINANCE_ACCESS: EventFinanceAccess = {
+  canViewCosts: false,
+  canManageCosts: false,
+  canApproveCosts: false,
+  canPlanCommissions: false,
+  canApproveCommissions: false,
+};
+
+const BENEFICIARY_LABELS: Record<string, string> = {
+  salesperson: 'Sprzedawca',
+  hotel: 'Hotel / sala',
+  partner: 'Partner',
+  employee: 'Pracownik',
+  other: 'Inny',
+};
+
+const COMMISSION_STATUS_LABELS: Record<string, string> = {
+  planned: 'Planowana',
+  approved: 'Zatwierdzona',
+  paid: 'Wypłacona',
+  cancelled: 'Anulowana',
+};
+
 export default function EventFinancesTab({ eventId }: Props) {
   const router = useRouter();
   const { showSnackbar } = useSnackbar();
@@ -150,7 +181,9 @@ export default function EventFinancesTab({ eventId }: Props) {
   const [categories, setCategories] = useState<any[]>([]);
   const [clientInfo, setClientInfo] = useState<ClientInfo | null>(null);
   const [cashTransactions, setCashTransactions] = useState<CashTransaction[]>([]);
+  // isAdmin = zarządzanie finansami firmy (zatwierdzanie kosztów i prowizji).
   const [isAdmin, setIsAdmin] = useState(false);
+  const [financeAccess, setFinanceAccess] = useState<EventFinanceAccess>(NO_EVENT_FINANCE_ACCESS);
   const [showAddCashModal, setShowAddCashModal] = useState(false);
   const [showFinalInvoiceModal, setShowFinalInvoiceModal] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -192,6 +225,16 @@ export default function EventFinancesTab({ eventId }: Props) {
   }, [eventId]);
 
   const checkAdminPermissions = async () => {
+    // Ta sama decyzja co RLS: public.get_event_finance_access (zakres finansów + opiekun sprzedaży).
+    const { data, error } = await supabase.rpc('get_event_finance_access', { p_event_id: eventId });
+    if (!error && data && typeof data === 'object') {
+      const access = { ...NO_EVENT_FINANCE_ACCESS, ...(data as Partial<EventFinanceAccess>) };
+      setFinanceAccess(access);
+      setIsAdmin(Boolean(access.canApproveCosts));
+      return;
+    }
+
+    // Starsza baza bez funkcji: dotychczasowa reguła (administrator / finances_manage).
     const {
       data: { session },
     } = await supabase.auth.getSession();
@@ -200,12 +243,21 @@ export default function EventFinancesTab({ eventId }: Props) {
     const { data: employee } = await supabase
       .from('employees')
       .select('role, permissions')
-      .eq('id', session.user.id)
-      .single();
+      .or(`id.eq.${session.user.id},auth_user_id.eq.${session.user.id}`)
+      .limit(1)
+      .maybeSingle();
 
-    const hasFinancesAccess =
-      employee?.role === 'admin' || employee?.permissions?.includes('finances_manage');
+    const hasFinancesAccess = Boolean(
+      employee?.role === 'admin' || employee?.permissions?.includes('finances_manage'),
+    );
     setIsAdmin(hasFinancesAccess);
+    setFinanceAccess({
+      canViewCosts: hasFinancesAccess,
+      canManageCosts: hasFinancesAccess,
+      canApproveCosts: hasFinancesAccess,
+      canPlanCommissions: hasFinancesAccess,
+      canApproveCommissions: hasFinancesAccess,
+    });
   };
 
   const fetchFinancialData = async () => {
@@ -337,16 +389,14 @@ export default function EventFinancesTab({ eventId }: Props) {
         setAcceptedCalcName(null);
       }
 
-      // Pobierz transakcje gotówkowe (tylko dla adminów)
-      if (isAdmin) {
-        const cashRes = await supabase
-          .from('event_cash_transactions')
-          .select('*')
-          .eq('event_id', eventId)
-          .order('transaction_date', { ascending: false });
+      // Transakcje gotówkowe: widoczność rozstrzyga RLS (finanse firmy albo opiekun sprzedaży).
+      const cashRes = await supabase
+        .from('event_cash_transactions')
+        .select('*')
+        .eq('event_id', eventId)
+        .order('transaction_date', { ascending: false });
 
-        if (cashRes.data) setCashTransactions(cashRes.data);
-      }
+      if (cashRes.data) setCashTransactions(cashRes.data);
     } catch (err) {
       console.error('Error fetching financial data:', err);
       showSnackbar('Błąd podczas ładowania danych finansowych', 'error');
@@ -365,15 +415,20 @@ export default function EventFinancesTab({ eventId }: Props) {
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      const { data: employee } = await supabase
-        .from('employees')
-        .select('id')
-        .eq('email', user?.email)
-        .maybeSingle();
+      const { data: employee } = user
+        ? await supabase
+            .from('employees')
+            .select('id')
+            .or(`id.eq.${user.id},auth_user_id.eq.${user.id}`)
+            .limit(1)
+            .maybeSingle()
+        : { data: null };
 
       const { error } = await supabase.from('event_costs').insert({
         event_id: eventId,
         ...costForm,
+        // Opiekun sprzedaży planuje koszt; zatwierdza i oznacza płatność księgowość.
+        status: financeAccess.canApproveCosts ? costForm.status : 'pending',
         created_by: employee?.id,
       });
 
@@ -454,7 +509,8 @@ export default function EventFinancesTab({ eventId }: Props) {
         ? await supabase
             .from('employees')
             .select('id')
-            .eq('id', userId)
+            .or(`id.eq.${userId},auth_user_id.eq.${userId}`)
+            .limit(1)
             .maybeSingle()
         : { data: null };
       const { error } = await supabase.from('event_commissions').insert({
@@ -465,7 +521,7 @@ export default function EventFinancesTab({ eventId }: Props) {
         rate: commissionForm.calculation_type === 'percent' ? Number(commissionForm.rate || 0) : 0,
         base_amount: baseAmount,
         amount,
-        status: commissionForm.status,
+        status: financeAccess.canApproveCommissions ? commissionForm.status : 'planned',
         created_by: employee?.id || null,
       });
       if (error) throw error;
@@ -876,7 +932,7 @@ export default function EventFinancesTab({ eventId }: Props) {
                 <div className="text-sm font-medium text-[#e5e4e2]">Prowizje i polecenia</div>
                 <div className="mt-0.5 text-[11px] text-[#e5e4e2]/35">Sprzedawcy, hotele, sale, partnerzy i pozostali beneficjenci.</div>
               </div>
-              {isAdmin && commissionsAvailable && (
+              {(isAdmin || financeAccess.canPlanCommissions) && commissionsAvailable && (
                 <button data-crm-action="secondary"
                   type="button"
                   onClick={() => setShowAddCommission((visible) => !visible)}
@@ -955,7 +1011,7 @@ export default function EventFinancesTab({ eventId }: Props) {
                 <div key={commission.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-white/5 bg-[#0a0d1a] px-4 py-3 text-xs">
                   <div>
                     <span className="text-[#e5e4e2]">{commission.beneficiary_name}</span>
-                    <span className="ml-2 text-[#e5e4e2]/35">{commission.beneficiary_type} · {commission.status}</span>
+                    <span className="ml-2 text-[#e5e4e2]/35">{BENEFICIARY_LABELS[commission.beneficiary_type] || 'Inny'} · {COMMISSION_STATUS_LABELS[commission.status] || 'Nie określono'}</span>
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="text-[#d3bb73]">
@@ -980,6 +1036,11 @@ export default function EventFinancesTab({ eventId }: Props) {
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
                       </>
+                    )}
+                    {!isAdmin && financeAccess.canPlanCommissions && commission.status === 'planned' && (
+                      <button type="button" onClick={() => handleDeleteCommission(commission.id)} title="Usuń planowaną prowizję" className="rounded p-1 text-red-300 hover:bg-red-500/10">
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
                     )}
                   </div>
                 </div>
@@ -1123,6 +1184,7 @@ export default function EventFinancesTab({ eventId }: Props) {
             Koszty ({costs.length})
           </h3>
           <div className="flex items-center gap-3">
+            {financeAccess.canManageCosts && (
             <button
               onClick={() => setShowAddCost(!showAddCost)}
               className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm text-[#1c1f33] hover:bg-[#d3bb73]/90"
@@ -1130,6 +1192,7 @@ export default function EventFinancesTab({ eventId }: Props) {
               <Plus className="h-4 w-4" />
               Dodaj koszt
             </button>
+            )}
           </div>
         </div>
 
@@ -1185,6 +1248,7 @@ export default function EventFinancesTab({ eventId }: Props) {
                 />
               </div>
 
+              {financeAccess.canApproveCosts && (
               <div>
                 <label className="mb-2 block text-sm text-[#e5e4e2]/60">Status</label>
                 <select
@@ -1197,6 +1261,7 @@ export default function EventFinancesTab({ eventId }: Props) {
                   <option value="paid">Zapłacony</option>
                 </select>
               </div>
+              )}
 
               <div className="col-span-2">
                 <label className="mb-2 block text-sm text-[#e5e4e2]/60">Opis</label>
@@ -1231,7 +1296,11 @@ export default function EventFinancesTab({ eventId }: Props) {
 
         {/* Costs List */}
         {costs.length === 0 ? (
-          <div className="py-8 text-center text-[#e5e4e2]/40">Brak kosztów dla tego eventu</div>
+          <div className="py-8 text-center text-[#e5e4e2]/40">
+            {financeAccess.canViewCosts
+              ? 'Brak kosztów dla tego eventu'
+              : 'Koszty tego wydarzenia widzi księgowość i opiekun sprzedaży. Marża poniżej może nie uwzględniać wszystkich kosztów.'}
+          </div>
         ) : (
           <div className="space-y-3">
             {costs.map((cost) => (
@@ -1268,7 +1337,7 @@ export default function EventFinancesTab({ eventId }: Props) {
                       </div>
                     </div>
 
-                    {cost.status !== 'paid' && (
+                    {financeAccess.canApproveCosts && cost.status !== 'paid' && (
                       <button
                         onClick={() =>
                           handleUpdateCostStatus(
@@ -1283,12 +1352,16 @@ export default function EventFinancesTab({ eventId }: Props) {
                       </button>
                     )}
 
-                    <button
-                      onClick={() => handleDeleteCost(cost.id)}
-                      className="rounded-lg p-2 text-red-400 hover:bg-red-500/10"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+                    {(financeAccess.canApproveCosts ||
+                      (financeAccess.canManageCosts && cost.status === 'pending')) && (
+                      <button
+                        onClick={() => handleDeleteCost(cost.id)}
+                        className="rounded-lg p-2 text-red-400 hover:bg-red-500/10"
+                        title="Usuń koszt"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>

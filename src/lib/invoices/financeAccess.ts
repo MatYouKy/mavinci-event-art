@@ -4,6 +4,9 @@ export type InvoiceFinanceAccess = {
   employeeId: string;
   authUserId: string;
   scope: 'sales' | 'company' | 'none';
+  /** sales_lead = sprzedaż z kosztami i marżą własnych wydarzeń, bez wystawiania faktur. */
+  tier?: 'sales' | 'sales_lead' | 'company' | 'none';
+  canPlanOwnEventCosts?: boolean;
   canViewOwnInvoices: boolean;
   canIssueInvoices: boolean;
   canViewCompanyFinance: boolean;

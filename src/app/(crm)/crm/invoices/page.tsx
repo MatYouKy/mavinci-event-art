@@ -1125,7 +1125,7 @@ export default function InvoicesPage() {
                   <p className="mb-4 text-[#e5e4e2]/60">
                     {invoices.length === 0 ? 'Brak faktur' : 'Brak wyników wyszukiwania'}
                   </p>
-                  {invoices.length === 0 && (
+                  {invoices.length === 0 && canIssueAny && (
                     <button
                       onClick={() => router.push('/crm/invoices/new')}
                       className="text-[#d3bb73] hover:text-[#d3bb73]/80"
