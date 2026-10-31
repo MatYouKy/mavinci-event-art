@@ -1,5 +1,6 @@
 import { FetchBaseQueryError } from '@reduxjs/toolkit/query';
 import { api } from './api';
+import { inboxMailboxIds, mailboxFilter, readMailboxViewPreferences } from '@/lib/CRM/messages/mailboxPreferences';
 
 export type MessageType = 'contact_form' | 'sent' | 'received' | 'draft';
 export type MessageFolder =
@@ -79,7 +80,7 @@ export const messagesApi = api.injectEndpoints({
           const { data: currentEmployee } = user
             ? await supabase
                 .from('employees')
-                .select('permissions, can_receive_contact_forms')
+                .select('permissions, can_receive_contact_forms, preferences')
                 .eq('id', user.id)
                 .maybeSingle()
             : { data: null };
@@ -183,25 +184,9 @@ export const messagesApi = api.injectEndpoints({
             if (emailAccountId !== 'all') {
               sentQuery = sentQuery.eq('email_account_id', emailAccountId);
             } else if (user) {
-              const { data: personalAccounts } = await supabase
-                .from('employee_email_accounts')
-                .select('id')
-                .eq('employee_id', user.id)
-                .eq('is_active', true);
-
-              const { data: assignedAccounts } = await supabase
-                .from('employee_email_account_assignments')
-                .select('email_account_id')
-                .eq('employee_id', user.id);
-
-              const accountIds = [
-                ...(personalAccounts?.map((acc) => acc.id) || []),
-                ...(assignedAccounts?.map((acc) => acc.email_account_id) || []),
-              ];
-
-              if (accountIds.length > 0) {
-                sentQuery = sentQuery.in('email_account_id', accountIds);
-              }
+              // Własne i przypisane skrzynki bez ukrytych w Ustawieniach; pusta lista = brak wyników.
+              const accountIds = await inboxMailboxIds(supabase, user.id);
+              sentQuery = sentQuery.in('email_account_id', mailboxFilter(accountIds));
             }
 
             const { data: sentEmails } = await sentQuery;
@@ -264,25 +249,9 @@ export const messagesApi = api.injectEndpoints({
             if (emailAccountId !== 'all') {
               receivedQuery = receivedQuery.eq('email_account_id', emailAccountId);
             } else if (user) {
-              const { data: personalAccounts } = await supabase
-                .from('employee_email_accounts')
-                .select('id')
-                .eq('employee_id', user.id)
-                .eq('is_active', true);
-
-              const { data: assignedAccounts } = await supabase
-                .from('employee_email_account_assignments')
-                .select('email_account_id')
-                .eq('employee_id', user.id);
-
-              const accountIds = [
-                ...(personalAccounts?.map((acc) => acc.id) || []),
-                ...(assignedAccounts?.map((acc) => acc.email_account_id) || []),
-              ];
-
-              if (accountIds.length > 0) {
-                receivedQuery = receivedQuery.in('email_account_id', accountIds);
-              }
+              // Własne i przypisane skrzynki bez ukrytych w Ustawieniach; pusta lista = brak wyników.
+              const accountIds = await inboxMailboxIds(supabase, user.id);
+              receivedQuery = receivedQuery.in('email_account_id', mailboxFilter(accountIds));
             }
 
             const { data: receivedEmails } = await receivedQuery;
@@ -805,25 +774,9 @@ export const messagesApi = api.injectEndpoints({
             if (emailAccountId !== 'all') {
               sentQuery = sentQuery.eq('email_account_id', emailAccountId);
             } else if (user) {
-              const { data: personalAccounts } = await supabase
-                .from('employee_email_accounts')
-                .select('id')
-                .eq('employee_id', user.id)
-                .eq('is_active', true);
-
-              const { data: assignedAccounts } = await supabase
-                .from('employee_email_account_assignments')
-                .select('email_account_id')
-                .eq('employee_id', user.id);
-
-              const accountIds = [
-                ...(personalAccounts?.map((acc) => acc.id) || []),
-                ...(assignedAccounts?.map((acc) => acc.email_account_id) || []),
-              ];
-
-              if (accountIds.length > 0) {
-                sentQuery = sentQuery.in('email_account_id', accountIds);
-              }
+              // Własne i przypisane skrzynki bez ukrytych w Ustawieniach; pusta lista = brak wyników.
+              const accountIds = await inboxMailboxIds(supabase, user.id);
+              sentQuery = sentQuery.in('email_account_id', mailboxFilter(accountIds));
             }
 
             const { data: sentEmails } = await sentQuery;
@@ -887,28 +840,9 @@ export const messagesApi = api.injectEndpoints({
             if (emailAccountId !== 'all') {
               receivedQuery = receivedQuery.eq('email_account_id', emailAccountId);
             } else if (user) {
-              const [{ data: userAccounts }, { data: assignedAccounts }] = await Promise.all([
-                supabase
-                  .from('employee_email_accounts')
-                  .select('id')
-                  .eq('employee_id', user.id)
-                  .eq('is_active', true),
-                supabase
-                  .from('employee_email_account_assignments')
-                  .select('email_account_id')
-                  .eq('employee_id', user.id),
-              ]);
-
-              const accountIds = Array.from(
-                new Set([
-                  ...(userAccounts || []).map((account) => account.id),
-                  ...(assignedAccounts || []).map((assignment) => assignment.email_account_id),
-                ]),
-              );
-
-              if (accountIds.length > 0) {
-                receivedQuery = receivedQuery.in('email_account_id', accountIds);
-              }
+              // Własne i przypisane skrzynki bez ukrytych w Ustawieniach; pusta lista = brak wyników.
+              const accountIds = await inboxMailboxIds(supabase, user.id);
+              receivedQuery = receivedQuery.in('email_account_id', mailboxFilter(accountIds));
             }
 
             const { data: receivedEmails } = await receivedQuery;
@@ -988,7 +922,7 @@ export const messagesApi = api.injectEndpoints({
             return { data: { accounts: [], hasContactFormAccess: false, isAdmin: false } };
           }
 
-          const { data: actor, error: actorError } = await supabase.from('employees').select('id,permissions,can_receive_contact_forms,role,access_level').or(`id.eq.${user.id},auth_user_id.eq.${user.id}`).eq('is_active',true).maybeSingle();
+          const { data: actor, error: actorError } = await supabase.from('employees').select('id,permissions,can_receive_contact_forms,role,access_level,preferences').or(`id.eq.${user.id},auth_user_id.eq.${user.id}`).eq('is_active',true).maybeSingle();
           if (actorError) throw actorError;
           if (!actor) return { data: { accounts: [], hasContactFormAccess: false, isAdmin: false } };
           // Get personal accounts
@@ -1028,9 +962,11 @@ export const messagesApi = api.injectEndpoints({
 
           // Combine and deduplicate accounts
           const allUserAccounts = [...(personalAccounts || []), ...assignedAccounts];
+          // Skrzynki ukryte w Ustawieniach → Powiadomienia nie pojawiają się w Wiadomościach.
+          const mailboxPreferences = readMailboxViewPreferences(actor.preferences);
           const uniqueAccounts = Array.from(
             new Map(allUserAccounts.map((acc) => [acc.id, acc])).values(),
-          );
+          ).filter((acc) => !mailboxPreferences.hidden.has(acc.id));
 
           // Sort accounts
           const sortedAccounts = uniqueAccounts.sort((a, b) => {
@@ -1119,7 +1055,7 @@ export const messagesApi = api.injectEndpoints({
             await Promise.all([
               supabase
                 .from('employees')
-                .select('permissions, can_receive_contact_forms')
+                .select('permissions, can_receive_contact_forms, preferences')
                 .eq('id', user.id)
                 .maybeSingle(),
               supabase
@@ -1133,12 +1069,13 @@ export const messagesApi = api.injectEndpoints({
                 .eq('employee_id', user.id),
             ]);
 
+          const mailboxPreferences = readMailboxViewPreferences(employee?.preferences);
           const accountIds = Array.from(
             new Set([
               ...(personalAccounts || []).map((account) => account.id),
               ...(assignments || []).map((assignment) => assignment.email_account_id),
             ]),
-          );
+          ).filter((accountId) => !mailboxPreferences.hidden.has(accountId));
 
           const permissions: string[] = employee?.permissions || [];
           const canViewContactForms =
@@ -1178,8 +1115,10 @@ export const messagesApi = api.injectEndpoints({
 
           const byAccount: Record<string, number> = Object.fromEntries(accountCounts);
           const contactForm = contactResult.count || 0;
-          const total =
-            contactForm + Object.values(byAccount).reduce((sum, count) => sum + count, 0);
+          // Skrzynki wyciszone mają własny licznik, ale nie wchodzą do sumy.
+          const total = contactForm + Object.entries(byAccount)
+            .filter(([accountId]) => !mailboxPreferences.muted.has(accountId))
+            .reduce((sum, [, count]) => sum + count, 0);
 
           return { data: { total, contactForm, byAccount } };
         } catch (error) {
@@ -1207,7 +1146,7 @@ export const messagesApi = api.injectEndpoints({
             await Promise.all([
               supabase
                 .from('employees')
-                .select('permissions, can_receive_contact_forms')
+                .select('permissions, can_receive_contact_forms, preferences')
                 .eq('id', user.id)
                 .maybeSingle(),
               supabase
@@ -1221,10 +1160,12 @@ export const messagesApi = api.injectEndpoints({
                 .eq('employee_id', user.id),
             ]);
 
+          // Licznik w menu: bez skrzynek ukrytych i wyciszonych w Ustawieniach → Powiadomienia.
+          const mailboxPreferences = readMailboxViewPreferences(employee?.preferences);
           const accountIds = Array.from(new Set([
             ...(personalAccounts || []).map((account) => account.id),
             ...(assignments || []).map((assignment) => assignment.email_account_id),
-          ]));
+          ])).filter((accountId) => !mailboxPreferences.hidden.has(accountId) && !mailboxPreferences.muted.has(accountId));
 
           const permissions: string[] = employee?.permissions || [];
           const canViewContactForms =

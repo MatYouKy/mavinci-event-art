@@ -186,13 +186,24 @@ export default function EmailAccountsManagementPage() {
               Zarządzaj kontami email osobistymi, wspólnymi i systemowymi
             </p>
           </div>
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-3 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90"
-          >
-            <Plus className="h-5 w-5" />
-            Dodaj konto
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            {currentEmployee?.permissions?.includes('messages_manage') && (
+              <button
+                onClick={() => router.push('/crm/settings/email-accounts/control')}
+                className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 px-5 py-3 text-sm text-[#e5e4e2] hover:bg-[#d3bb73]/10"
+              >
+                <Eye className="h-5 w-5" />
+                Kontrola korespondencji
+              </button>
+            )}
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-3 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90"
+            >
+              <Plus className="h-5 w-5" />
+              Dodaj konto
+            </button>
+          </div>
         </div>
 
         <div className="space-y-8">

@@ -33,6 +33,8 @@ import {
   ScanLine,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
+import { useDispatch } from 'react-redux';
+import { api } from '@/store/api/api';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import ChangePasswordModal from '@/components/crm/ChangePasswordModal';
 import AddSystemEmailModal from '@/components/crm/AddSystemEmailModal';
@@ -84,6 +86,10 @@ export interface Preferences {
   dashboard?: DashboardPreferences;
   messages?: {
     mailboxOrder?: string[];
+    /** Skrzynki ukryte w Wiadomościach (bez listy, licznika i powiadomień). */
+    hiddenMailboxIds?: string[];
+    /** Skrzynki widoczne, ale bez powiadomień i bez licznika w menu. */
+    mutedMailboxIds?: string[];
   };
   offerWizard?: {
     catalogViewMode?: 'list' | 'table';
@@ -105,6 +111,14 @@ const modules = [
   { key: 'fleet', label: 'Flota' },
   { key: 'employees', label: 'Pracownicy' },
 ];
+
+const mailboxTypeLabel: Record<string, string> = {
+  personal: 'Twoja skrzynka',
+  shared: 'Wspólna',
+  system: 'Systemowa',
+};
+
+type MyMailbox = { id: string; account_name: string; email_address: string; account_type: string };
 
 const notificationCategories = [
   { key: 'messages', label: 'Wiadomości', desc: 'Nowe wiadomości od klientów' },
@@ -141,6 +155,9 @@ export default function SettingsPage() {
   const [emailAccounts, setEmailAccounts] = useState<any[]>([]);
   const [systemEmail, setSystemEmail] = useState<string | null>(null);
   const [uploadingSound, setUploadingSound] = useState(false);
+  const [myMailboxes, setMyMailboxes] = useState<MyMailbox[]>([]);
+  const dispatch = useDispatch();
+  const canControlMailboxes = Boolean(employee?.permissions?.includes('messages_manage'));
   const { canViewModule } = useCurrentEmployee();
   const visibleModules = modules.filter((module) => {
     if (!employee) return false;
@@ -161,6 +178,7 @@ export default function SettingsPage() {
     if (employee) {
       fetchPreferences();
       fetchEmailAccounts();
+      fetchMyMailboxes();
     }
   }, [employee]);
 
@@ -201,6 +219,49 @@ export default function SettingsPage() {
       console.error('Error fetching email accounts:', err);
       showSnackbar('Błąd podczas wczytywania kont email', 'error');
     }
+  };
+
+  // Skrzynki, które pracownik widzi w Wiadomościach: własne aktywne i przypisane.
+  const fetchMyMailboxes = async () => {
+    if (!employee?.id) return;
+    try {
+      const fields = 'id, account_name, email_address, account_type';
+      const [personalResult, assignmentResult] = await Promise.all([
+        supabase.from('employee_email_accounts').select(fields).eq('employee_id', employee.id).eq('is_active', true),
+        supabase.from('employee_email_account_assignments').select('email_account_id').eq('employee_id', employee.id),
+      ]);
+      if (personalResult.error) throw personalResult.error;
+      if (assignmentResult.error) throw assignmentResult.error;
+      const personal = (personalResult.data || []) as MyMailbox[];
+      const assignedIds = (assignmentResult.data || [])
+        .map((row) => row.email_account_id as string)
+        .filter((id) => !personal.some((account) => account.id === id));
+      let assigned: MyMailbox[] = [];
+      if (assignedIds.length > 0) {
+        const assignedResult = await supabase
+          .from('employee_email_accounts').select(fields).in('id', assignedIds).eq('is_active', true);
+        if (assignedResult.error) throw assignedResult.error;
+        assigned = (assignedResult.data || []) as MyMailbox[];
+      }
+      const order: Record<string, number> = { personal: 0, shared: 1, system: 2 };
+      setMyMailboxes([...personal, ...assigned].sort((a, b) =>
+        (order[a.account_type] ?? 9) - (order[b.account_type] ?? 9) || a.account_name.localeCompare(b.account_name)));
+    } catch (err) {
+      console.error('Error fetching mailboxes:', err);
+    }
+  };
+
+  const setMailboxPreference = (
+    accountId: string,
+    key: 'hiddenMailboxIds' | 'mutedMailboxIds',
+    enabled: boolean,
+  ) => {
+    setPreferences((prev) => {
+      const ids = new Set(prev.messages?.[key] || []);
+      if (enabled) ids.add(accountId);
+      else ids.delete(accountId);
+      return { ...prev, messages: { ...(prev.messages || {}), [key]: Array.from(ids) } };
+    });
   };
 
   const saveSystemEmail = async () => {
@@ -425,6 +486,8 @@ export default function SettingsPage() {
 
       showSnackbar('Ustawienia zostały zapisane', 'success');
       invalidateSellerSidebarBadge();
+      // Lista skrzynek i liczniki Wiadomości zależą od wyboru skrzynek.
+      dispatch(api.util.invalidateTags(['MessagesList']));
     } catch (err) {
       console.error('Error saving preferences:', err);
       showSnackbar('Błąd podczas zapisywania ustawień', 'error');
@@ -850,6 +913,72 @@ export default function SettingsPage() {
                   </p>
                 </section>
               )}
+
+              <section className="rounded-lg bg-[#0f1119] p-4" aria-label="Skrzynki pocztowe w Wiadomościach">
+                <h4 className="text-sm font-medium text-[#e5e4e2]">Skrzynki pocztowe</h4>
+                <p className="mt-2 text-xs leading-5 text-[#e5e4e2]/60">
+                  Wybierz, które z Twoich skrzynek widzisz w Wiadomościach i z których dostajesz powiadomienia o nowych mailach.
+                  Ukryta skrzynka znika z listy, z widoku „Wszystkie konta” i z licznika. Wyciszona zostaje na liście,
+                  ale nie wysyła powiadomień i nie zwiększa licznika w menu. Wybór nie zmienia uprawnień i można go cofnąć w każdej chwili.
+                </p>
+                {myMailboxes.length === 0 ? (
+                  <p className="mt-3 text-xs text-[#e5e4e2]/50">Nie masz własnych ani przypisanych skrzynek pocztowych.</p>
+                ) : (
+                  <div className="mt-4 overflow-x-auto">
+                    <table className="w-full text-left text-sm">
+                      <thead>
+                        <tr className="text-xs text-[#e5e4e2]/50">
+                          <th className="pb-2 font-normal">Skrzynka</th>
+                          <th className="px-2 pb-2 text-center font-normal">W Wiadomościach</th>
+                          <th className="px-2 pb-2 text-center font-normal">Powiadomienia</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {myMailboxes.map((mailbox) => {
+                          const hidden = (preferences.messages?.hiddenMailboxIds || []).includes(mailbox.id);
+                          const muted = (preferences.messages?.mutedMailboxIds || []).includes(mailbox.id);
+                          return (
+                            <tr key={mailbox.id} className="border-t border-white/5">
+                              <td className="min-w-0 py-2 pr-3">
+                                <span className="block truncate text-[#e5e4e2]">{mailbox.account_name}</span>
+                                <span className="block truncate text-xs text-[#e5e4e2]/50">
+                                  {mailbox.email_address} · {mailboxTypeLabel[mailbox.account_type] || mailbox.account_type}
+                                </span>
+                              </td>
+                              <td className="px-2 py-2 text-center">
+                                <input type="checkbox" checked={!hidden} disabled={saving}
+                                  aria-label={`Pokazuj ${mailbox.email_address} w Wiadomościach`}
+                                  onChange={(event) => setMailboxPreference(mailbox.id, 'hiddenMailboxIds', !event.target.checked)}
+                                  className="h-4 w-4 accent-[#d3bb73]" />
+                              </td>
+                              <td className="px-2 py-2 text-center">
+                                <input type="checkbox" checked={!hidden && !muted} disabled={saving || hidden}
+                                  aria-label={`Powiadomienia o nowych wiadomościach z ${mailbox.email_address}`}
+                                  onChange={(event) => setMailboxPreference(mailbox.id, 'mutedMailboxIds', !event.target.checked)}
+                                  className="h-4 w-4 accent-[#d3bb73]" />
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                <p className="mt-3 text-xs text-[#e5e4e2]/45">Użyj „Zapisz zmiany” poniżej.</p>
+                {canControlMailboxes && (
+                  <button type="button" onClick={() => router.push('/crm/settings/email-accounts/control')}
+                    className="mt-4 flex w-full items-center justify-between gap-3 rounded-lg bg-white/[0.03] p-3 text-left hover:bg-white/[0.06]">
+                    <span>
+                      <span className="block text-sm text-[#e5e4e2]">Kontrola korespondencji pracowników</span>
+                      <span className="mt-1 block text-xs leading-5 text-[#e5e4e2]/50">
+                        Podgląd dowolnej skrzynki tylko do odczytu — bez powiadomień i bez zmiany statusu wiadomości u pracownika.
+                        Każde wejście jest zapisywane w dzienniku.
+                      </span>
+                    </span>
+                    <ArrowRight className="h-4 w-4 shrink-0 text-[#d3bb73]" aria-hidden="true" />
+                  </button>
+                )}
+              </section>
 
               <div className="space-y-4">
                 <h4 className="text-sm font-medium text-[#e5e4e2]">Kanały powiadomień</h4>

@@ -1,5 +1,6 @@
 import 'server-only';
 import { createClient } from '@supabase/supabase-js';
+import { readMailboxViewPreferences } from './mailboxPreferences';
 
 type SupabaseErr = {
   message?: string;
@@ -21,7 +22,7 @@ export async function fetchUnreadCountServer(userId: string) {
     await Promise.all([
       supabaseAdmin
         .from('employees')
-        .select('permissions, can_receive_contact_forms')
+        .select('permissions, can_receive_contact_forms, preferences')
         .eq('id', userId)
         .maybeSingle(),
       supabaseAdmin
@@ -35,10 +36,12 @@ export async function fetchUnreadCountServer(userId: string) {
         .eq('employee_id', userId),
     ]);
 
+  // Licznik w menu: bez skrzynek ukrytych i wyciszonych w Ustawieniach → Powiadomienia.
+  const mailboxPreferences = readMailboxViewPreferences(employee?.preferences);
   const accountIds = Array.from(new Set([
     ...(personalAccounts || []).map((account) => account.id),
     ...(assignments || []).map((assignment) => assignment.email_account_id),
-  ]));
+  ])).filter((accountId) => !mailboxPreferences.hidden.has(accountId) && !mailboxPreferences.muted.has(accountId));
 
   const permissions: string[] = employee?.permissions || [];
   const canViewContactForms =
