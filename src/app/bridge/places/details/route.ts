@@ -1,8 +1,13 @@
 import { NextResponse } from 'next/server';
+import { requireSessionEmployee } from '@/lib/auth/requireEmployee.server';
 
 export const runtime = 'nodejs';
 
 export async function GET(req: Request) {
+  // Klucz Google Maps jest płatny — tylko dla zalogowanych pracowników CRM.
+  const access = await requireSessionEmployee(req);
+  if (!access.ok) return access.response;
+
   const url = new URL(req.url);
   const place_id = url.searchParams.get('place_id') || '';
   const sessiontoken = url.searchParams.get('sessiontoken') || '';

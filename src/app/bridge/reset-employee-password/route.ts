@@ -1,67 +1,62 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin.server';
+import { employeeHasAny, isUuid, requireSessionEmployee } from '@/lib/auth/requireEmployee.server';
+
+export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
   try {
-    const { employeeId, newPassword, requesterId } = await request.json();
+    // Wykonujący operację wynika z sesji, nigdy z treści żądania.
+    const access = await requireSessionEmployee(request);
+    if (!access.ok) return access.response;
 
-    if (!employeeId || !newPassword || !requesterId) {
-      return NextResponse.json(
-        { error: 'Brak wymaganych parametrów' },
-        { status: 400 }
-      );
+    const { employeeId, newPassword } = await request.json();
+
+    if (!isUuid(employeeId) || typeof newPassword !== 'string') {
+      return NextResponse.json({ error: 'Brak wymaganych parametrów' }, { status: 400 });
+    }
+    if (newPassword.length < 8) {
+      return NextResponse.json({ error: 'Hasło musi mieć co najmniej 8 znaków.' }, { status: 400 });
+    }
+
+    if (!employeeHasAny(access.employee, 'employees_manage')) {
+      return NextResponse.json({ error: 'Brak uprawnień do resetowania hasła' }, { status: 403 });
     }
 
     const supabaseAdmin = createSupabaseAdminClient();
-    const { data: requester, error: requesterError } = await supabaseAdmin
+    const { data: target } = await supabaseAdmin
       .from('employees')
-      .select('permissions, access_level')
-      .eq('id', requesterId)
+      .select('id, auth_user_id, role, access_level, permissions')
+      .eq('id', employeeId)
       .maybeSingle();
 
-    if (requesterError || !requester) {
+    if (!target) {
+      return NextResponse.json({ error: 'Nie znaleziono pracownika.' }, { status: 404 });
+    }
+
+    const targetIsAdmin =
+      target.role === 'admin' ||
+      target.access_level === 'admin' ||
+      (Array.isArray(target.permissions) && target.permissions.includes('admin'));
+    if (targetIsAdmin && !access.employee.isAdmin) {
       return NextResponse.json(
-        { error: 'Nie znaleziono użytkownika wykonującego operację' },
-        { status: 403 }
+        { error: 'Hasło administratora może zmienić tylko administrator.' },
+        { status: 403 },
       );
     }
 
-    const hasPermission =
-      requester.access_level === 'admin' ||
-      requester.permissions?.includes('employees_manage') ||
-      requester.permissions?.includes('admin');
-
-    if (!hasPermission) {
-      return NextResponse.json(
-        { error: 'Brak uprawnień do resetowania hasła' },
-        { status: 403 }
-      );
-    }
-
-    const { data, error } = await supabaseAdmin.auth.admin.updateUserById(
-      employeeId,
-      {
-        password: newPassword,
-      }
-    );
+    const { error } = await supabaseAdmin.auth.admin.updateUserById(target.auth_user_id || target.id, {
+      password: newPassword,
+    });
 
     if (error) {
-      console.error('Error updating password:', error);
-      return NextResponse.json(
-        { error: error.message || 'Błąd podczas resetowania hasła' },
-        { status: 500 }
-      );
+      console.error('Error updating password:', error.message);
+      return NextResponse.json({ error: 'Błąd podczas resetowania hasła' }, { status: 500 });
     }
 
-    return NextResponse.json({
-      success: true,
-      message: 'Hasło zostało zmienione pomyślnie',
-    });
-  } catch (error: any) {
+    return NextResponse.json({ success: true, message: 'Hasło zostało zmienione pomyślnie' });
+  } catch (error) {
     console.error('Error in reset-employee-password:', error);
-    return NextResponse.json(
-      { error: error.message || 'Wystąpił nieoczekiwany błąd' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Wystąpił nieoczekiwany błąd' }, { status: 500 });
   }
 }

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { employeeHasAny, requireSessionEmployee } from '@/lib/auth/requireEmployee.server';
 
 export const dynamic = 'force-dynamic';
 
@@ -87,8 +88,14 @@ function calculateRelevanceScore(tender: TenderRecord, config: FilterConfig): nu
   return Math.max(0, Math.min(100, score));
 }
 
-export async function POST() {
+export async function POST(request: Request) {
   try {
+    const access = await requireSessionEmployee(request);
+    if (!access.ok) return access.response;
+    if (!employeeHasAny(access.employee, 'tenders_view')) {
+      return NextResponse.json({ success: false, error: 'Brak dostępu do przetargów.' }, { status: 403 });
+    }
+
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 

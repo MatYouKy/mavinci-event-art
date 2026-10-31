@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { chromium } from 'playwright';
 import { buildAgendaHtml } from '@/app/(crm)/crm/events/[id]/helpers/buildAgendaPdf';
+import { canManageEvent, isUuid, requireSessionEmployee } from '@/lib/auth/requireEmployee.server';
+import { restrictPageNetwork } from '@/lib/pdf/restrictPageNetwork.server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -87,14 +89,40 @@ export async function POST(req: Request) {
   let browser: Awaited<ReturnType<typeof chromium.launch>> | null = null;
 
   try {
-    const body = (await req.json()) as Body;
-    const { eventId, agendaId, htmlPayload, eventName, fileName, createdBy, previousPdfPath } = body;
+    const access = await requireSessionEmployee(req);
+    if (!access.ok) return access.response;
 
-    if (!eventId || !agendaId || !htmlPayload) {
+    const body = (await req.json()) as Body;
+    const { eventId, agendaId, htmlPayload, eventName } = body;
+
+    if (!isUuid(eventId) || !isUuid(agendaId) || !htmlPayload) {
       return NextResponse.json({ error: 'Brak wymaganych danych' }, { status: 400 });
     }
 
+    if (!(await canManageEvent(access.client, eventId))) {
+      return NextResponse.json({ error: 'Brak uprawnień do agendy tego wydarzenia.' }, { status: 403 });
+    }
+
     const supabase = getSupabaseAdmin();
+
+    // Agenda i poprzedni PDF pochodzą z bazy, nigdy z treści żądania.
+    const { data: agenda } = await supabase
+      .from('event_agendas')
+      .select('id, event_id, generated_pdf_path')
+      .eq('id', agendaId)
+      .maybeSingle();
+    if (!agenda || agenda.event_id !== eventId) {
+      return NextResponse.json({ error: 'Nie znaleziono agendy wydarzenia.' }, { status: 404 });
+    }
+    const agendaFolderPrefix = `${eventId}/documents/agenda/`;
+    const previousPdfPath =
+      typeof agenda.generated_pdf_path === 'string' && agenda.generated_pdf_path.startsWith(agendaFolderPrefix)
+        ? agenda.generated_pdf_path
+        : null;
+    const createdBy = access.employee.id;
+    const fileName = typeof body.fileName === 'string'
+      ? body.fileName.replace(/[^a-z0-9._-]/gi, '-').replace(/\.{2,}/g, '.').slice(0, 120)
+      : '';
 
     const enrichedPayload = { ...htmlPayload };
 
@@ -102,7 +130,7 @@ export async function POST(req: Request) {
       const { data: employee, error: employeeError } = await supabase
         .from('employees')
         .select('name, surname, email, phone_number')
-        .eq('auth_user_id', createdBy)
+        .eq('id', createdBy)
         .maybeSingle();
 
       if (employeeError) {
@@ -128,6 +156,7 @@ export async function POST(req: Request) {
     });
 
     const page = await browser.newPage();
+    await restrictPageNetwork(page);
     await page.setContent(html, { waitUntil: 'networkidle' });
 
     await page.evaluate(async () => {
@@ -173,7 +202,9 @@ export async function POST(req: Request) {
       .replace(/[^a-z0-9]/gi, '-')
       .toLowerCase();
 
-    const finalFileName = fileName || `agenda-${safeEventName}-${timestamp}.pdf`;
+    const finalFileName = fileName && fileName.toLowerCase().endsWith('.pdf')
+      ? fileName
+      : `agenda-${safeEventName}-${timestamp}.pdf`;
 
     const storagePath = `${eventId}/documents/agenda/${finalFileName}`;
 

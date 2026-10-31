@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
+import { requireSessionEmployee } from '@/lib/auth/requireEmployee.server';
 
 export async function POST(request: NextRequest) {
+  const access = await requireSessionEmployee(request);
+  if (!access.ok) return access.response;
+
   try {
     const body = await request.json();
     const { path } = body;

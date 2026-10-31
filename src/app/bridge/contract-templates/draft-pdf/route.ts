@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { chromium } from 'playwright';
 import { buildContractHtml } from '@/app/(crm)/crm/events/[id]/helpers/buildContractHtml';
+import { requireSessionEmployee } from '@/lib/auth/requireEmployee.server';
+import { restrictPageNetwork } from '@/lib/pdf/restrictPageNetwork.server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -13,6 +15,9 @@ type Body = {
 
 export async function POST(req: Request) {
   try {
+    const access = await requireSessionEmployee(req);
+    if (!access.ok) return access.response;
+
     const body = (await req.json()) as Body;
     const { pagesHtml, cssText, title } = body;
 
@@ -38,6 +43,7 @@ export async function POST(req: Request) {
 
     try {
       const page = await browser.newPage();
+      await restrictPageNetwork(page, [baseUrl]);
 
       await page.setContent(html, { waitUntil: 'networkidle' });
 

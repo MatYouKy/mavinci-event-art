@@ -1,5 +1,6 @@
 import { createCipheriv, randomInt } from 'node:crypto';
 import { NextResponse } from 'next/server';
+import { requireSessionUser } from '@/lib/auth/requireEmployee.server';
 import {
   getLegalFormDisplayLabel,
   inferBusinessTypeFromRegistryData,
@@ -995,6 +996,10 @@ async function fetchFromGus(clean: string, apiKey: string) {
 
 export async function POST(req: Request) {
   try {
+    // Rejestry GUS/CEIDG mają limity i płatne klucze — tylko dla zalogowanych.
+    const access = await requireSessionUser(req);
+    if (!access.ok) return access.response;
+
     const { nip } = await req.json();
     const clean = cleanNip(nip || '');
 
