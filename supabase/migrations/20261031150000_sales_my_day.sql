@@ -1,5 +1,11 @@
 BEGIN;
 
+-- Na bazie produkcyjnej (31.10.2026) brakuje kolumn z 20251003145605_extend_offers_system,
+-- choć używają ich funkcje portalu sprzedawcy i ta migracja. Dodajemy je bez zmiany danych.
+ALTER TABLE public.offers
+  ADD COLUMN IF NOT EXISTS sent_at timestamptz,
+  ADD COLUMN IF NOT EXISTS viewed_at timestamptz;
+
 -- „Mój dzień” sprzedawcy: lista działań zamiast samych wskaźników zafakturowanych.
 -- Zwraca wyłącznie rekordy bieżącego pracownika (nie przyjmuje identyfikatora z zewnątrz).
 CREATE OR REPLACE FUNCTION public.get_my_sales_day()

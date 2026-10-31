@@ -5,6 +5,8 @@ BEGIN;
 --    powiadomienie z kwotą i linkiem — sprzedawca nie wystawia faktur (zakres sales_lead).
 
 ALTER TABLE public.offers
+  ADD COLUMN IF NOT EXISTS sent_at timestamptz,
+  ADD COLUMN IF NOT EXISTS viewed_at timestamptz,
   ADD COLUMN IF NOT EXISTS follow_up_reminders_sent text[] NOT NULL DEFAULT '{}';
 
 CREATE OR REPLACE FUNCTION public.offer_sales_owner_user_ids(p_offer_id uuid)
@@ -70,7 +72,7 @@ BEGIN
           WHEN 'expires_2d' THEN 'Oferta wygasa za 2 dni'
           WHEN 'no_reply_7d' THEN 'Oferta bez odpowiedzi od tygodnia'
           ELSE 'Oferta bez odpowiedzi od 3 dni' END,
-        label || CASE WHEN offer.viewed_at IS NULL THEN ' — klient jeszcze jej nie otworzył' ELSE ' — klient ją otworzył' END,
+        label || CASE WHEN offer.viewed_at IS NOT NULL THEN ' — klient ją otworzył' ELSE '' END,
         CASE kind WHEN 'no_reply_3d' THEN 'info' ELSE 'warning' END, 'system',
         coalesce('/crm/inquiries/' || offer.inquiry_id::text, '/crm/offers/' || offer.id::text),
         NULL, NULL, jsonb_build_object('offer_id', offer.id, 'reminder', kind), recipients);

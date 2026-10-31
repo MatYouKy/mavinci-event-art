@@ -198,7 +198,8 @@ export default function SalesDayPanel() {
                         <span className="min-w-0">
                           <span className="block truncate text-sm">{offer.title || offer.offer_number || 'Oferta'}</span>
                           <span className="text-xs text-[#e5e4e2]/45">
-                            {offer.viewed_at ? 'Klient otworzył ofertę' : 'Nieotwarta'} · {money(offer.total_amount)}
+                            {offer.viewed_at ? 'Klient otworzył ofertę · ' : ''}
+                            {money(offer.total_amount)}
                           </span>
                         </span>
                         <span className="shrink-0 text-xs text-[#e5e4e2]/60">{offer.days_waiting} dni</span>
