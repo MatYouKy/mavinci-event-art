@@ -11,6 +11,19 @@ Gałąź: `audyt-sprzedaz-2026-10` (od commitu `4db32540` — snapshot wcześnie
    `20260926120000_inquiry_sales_workflow`, `20260926195000_scope_sales_finance`, `20260529113115_create_tenders_system`,
    `20260901130000_add_business_notification_delivery_window`.
 
+## 2a. Zaległe migracje (wynik scripts/migration-status.sql z 31.10.2026)
+
+Sześć wcześniejszych migracji nie zostało zastosowanych. Żadna z nowych migracji od nich nie zależy, ale część funkcji aplikacji już ich używa.
+
+| Migracja | Co psuje brak | Decyzja |
+| --- | --- | --- |
+| `20260812162000_add_secure_mobile_fleet_operations` | aplikacja mobilna: tankowanie i zgłaszanie usterek (`record_vehicle_fuel_entry`, `report_vehicle_issue`) | Zastosować, **zaraz po niej** `20261031090000_reapply_vehicle_operation_guard` (przywraca nowszą wersję `can_record_vehicle_operation`) |
+| `20260901163000_atomic_wedding_people_and_schedule` | zapis osób i harmonogramu karty weselnej | Zastosować |
+| `20260901173000_sync_phase_vehicles_with_event_logistics` | tylko etykieta „z fazy” przy pojeździe | **Nie stosować** — zastąpiona przez `20260920210000_independent_vehicle_schedule`; jej wyzwalacz synchronizuje w przeciwnym kierunku i mógłby zapętlić zapis pojazdów |
+| `20261002140000_inquiry_team` | zespół zapytania (lista „zapytania zespołu”, panel zespołu) | Zastosować |
+| `20261006140000_manage_cable_categories` | ochrona hierarchii kategorii kabli w nowym ekranie | Zastosować |
+| `20261007120000_service_slug_history_and_repairs` | stare adresy usług (strona działa bez niej) | Zastosować |
+
 ## 2. Migracje — w tej kolejności
 
 | Plik | Co robi |

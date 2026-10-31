@@ -40,7 +40,7 @@ import KSeFIntegrationPanel from '@/components/crm/KSeFIntegrationPanel';
 import CanonicalFinancialDashboard from '@/components/crm/CanonicalFinancialDashboard';
 import FinancialEntriesTab from '@/components/crm/FinancialEntriesTab';
 import PermissionGuard from '@/components/crm/PermissionGuard';
-import SystemBadge from '@/components/ui/SystemBadge';
+import SystemBadge from '@/components/UI/SystemBadge';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useInvoiceFinanceAccess } from '@/hooks/useInvoiceFinanceAccess';
 import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';

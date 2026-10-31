@@ -43,7 +43,7 @@ import { getPaymentAwareInvoiceFooterNote } from '@/lib/invoices/paymentAwareFoo
 import { getInvoiceKsefRecipient } from '@/lib/invoices/ksefRecipient';
 import { getInvoicePartyDataCorrection } from '@/lib/invoices/partyDataCorrection';
 import InvoicePartyCorrectionComparison from '@/components/crm/invoices/InvoicePartyCorrectionComparison';
-import SystemBadge from '@/components/ui/SystemBadge';
+import SystemBadge from '@/components/UI/SystemBadge';
 
 type KSeFSendSuccess = {
   ksef_reference_number: string;

@@ -6,7 +6,7 @@ import { ArrowLeft, ArrowRight, CalendarDays, FileText, Loader2, RefreshCw } fro
 import { supabase } from '@/lib/supabase/browser';
 import type { SellerFinancialReport } from '@/lib/CRM/dashboard/sellerDashboardTypes';
 import { CrmCartesianChart } from '@/components/crm/charts/CrmCharts';
-import SystemBadge from '@/components/ui/SystemBadge';
+import SystemBadge from '@/components/UI/SystemBadge';
 
 const panelClass = 'rounded-xl bg-[var(--brand-burgundy-900,#3c1324)] p-5 sm:p-6';
 
