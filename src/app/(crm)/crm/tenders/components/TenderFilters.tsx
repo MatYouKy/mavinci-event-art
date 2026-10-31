@@ -85,6 +85,16 @@ export default function TenderFilters({ filters, onChange }: Props) {
         <label className="flex items-center gap-2 text-sm text-[#e5e4e2]/60">
           <input
             type="checkbox"
+            checked={filters.mine}
+            onChange={(e) => update({ mine: e.target.checked })}
+            className="rounded border-[#d3bb73]/30 bg-[#0a0d1a] text-[#d3bb73] focus:ring-[#d3bb73]/30"
+          />
+          Moje przetargi
+        </label>
+
+        <label className="flex items-center gap-2 text-sm text-[#e5e4e2]/60">
+          <input
+            type="checkbox"
             checked={filters.showHidden}
             onChange={(e) => update({ showHidden: e.target.checked })}
             className="rounded border-[#d3bb73]/30 bg-[#0a0d1a] text-[#d3bb73] focus:ring-[#d3bb73]/30"

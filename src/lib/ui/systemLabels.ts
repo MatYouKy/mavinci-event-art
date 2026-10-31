@@ -23,6 +23,7 @@ const labels = {
     sent: 'E-mail wychodzący', website: 'Strona WWW', phone: 'Telefon',
     facebook: 'Facebook', instagram: 'Instagram', messenger: 'Messenger', referral: 'Polecenie',
     seller: 'Portal sprzedawcy', sales_partner: 'Sprzedawca zewnętrzny', api: 'Integracja zewnętrzna',
+    tender: 'Przetarg',
   },
   status: {
     new: 'Nowe', todo: 'Do zrobienia', open: 'Otwarte', pending: 'Oczekuje', planned: 'Planowane',

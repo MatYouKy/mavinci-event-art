@@ -342,7 +342,9 @@ export default function InquiryWorkspaceClient({ initialData }: { initialData: a
     ? `/crm/messages/${details.received_email_id}?type=received`
     : details.source_message_id
       ? `/crm/messages/${details.source_message_id}?type=contact`
-      : null;
+      : details.tender_id
+        ? `/crm/tenders?tender=${details.tender_id}`
+        : null;
 
   const calculationContext = useMemo(() => ({
     inquiryId: inquiry.id,

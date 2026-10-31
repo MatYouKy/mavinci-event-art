@@ -1,6 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { supabase } from '@/lib/supabase/browser';
+import { useSnackbar } from '@/contexts/SnackbarContext';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import {
   X,
   ExternalLink,
@@ -14,6 +19,10 @@ import {
   ThumbsUp,
   ThumbsDown,
   Save,
+  UserCheck,
+  UserMinus,
+  ArrowRight,
+  Loader2,
 } from 'lucide-react';
 import type { Tender } from '../page';
 
@@ -21,6 +30,8 @@ interface Props {
   tender: Tender;
   onClose: () => void;
   onUpdate: (id: string, updates: Partial<Tender>) => void;
+  /** Aktualizacja widoku po operacji wykonanej już w bazie (bez ponownego zapisu). */
+  onLocalUpdate?: (id: string, updates: Partial<Tender>) => void;
 }
 
 const STATUS_OPTIONS = [
@@ -59,10 +70,81 @@ function getScoreBar(score: number) {
   );
 }
 
-export default function TenderDetailModal({ tender, onClose, onUpdate }: Props) {
+export default function TenderDetailModal({ tender, onClose, onUpdate, onLocalUpdate }: Props) {
+  const router = useRouter();
+  const { showSnackbar } = useSnackbar();
+  const { employee } = useCurrentEmployee();
   const [notes, setNotes] = useState(tender.notes || '');
   const [status, setStatus] = useState(tender.status);
   const [saving, setSaving] = useState(false);
+  const [working, setWorking] = useState<'assign' | 'inquiry' | null>(null);
+  const [assigneeName, setAssigneeName] = useState<string | null>(null);
+
+  const assignedToMe = Boolean(employee?.id && tender.assigned_to === employee.id);
+  const deadlinePassed = Boolean(
+    tender.submission_deadline && new Date(tender.submission_deadline).getTime() < Date.now(),
+  );
+
+  useEffect(() => {
+    let active = true;
+    if (!tender.assigned_to) {
+      setAssigneeName(null);
+      return;
+    }
+    supabase
+      .from('employees')
+      .select('name, surname')
+      .eq('id', tender.assigned_to)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (active) setAssigneeName(data ? [data.name, data.surname].filter(Boolean).join(' ') : 'Pracownik');
+      });
+    return () => {
+      active = false;
+    };
+  }, [tender.assigned_to]);
+
+  const handleAssign = async (assignToSelf: boolean) => {
+    if (!employee?.id) return;
+    setWorking('assign');
+    const { error } = await supabase.rpc('assign_tender', {
+      p_tender_id: tender.id,
+      p_employee_id: assignToSelf ? employee.id : null,
+    });
+    setWorking(null);
+    if (error) {
+      showSnackbar(error.message || 'Nie udało się zmienić opiekuna przetargu', 'error');
+      return;
+    }
+    const updates: Partial<Tender> = assignToSelf
+      ? {
+          assigned_to: employee.id,
+          is_watched: true,
+          status: ['new', 'reviewing'].includes(tender.status) ? 'interested' : tender.status,
+        }
+      : { assigned_to: null };
+    if (updates.status) setStatus(updates.status);
+    onLocalUpdate?.(tender.id, updates);
+    showSnackbar(assignToSelf ? 'Jesteś opiekunem przetargu' : 'Zwolniono przetarg', 'success');
+  };
+
+  const handleCreateInquiry = async () => {
+    setWorking('inquiry');
+    const { data, error } = await supabase.rpc('create_inquiry_from_tender', { p_tender_id: tender.id });
+    setWorking(null);
+    if (error || typeof data !== 'string') {
+      showSnackbar(error?.message || 'Nie udało się utworzyć zapytania', 'error');
+      return;
+    }
+    onLocalUpdate?.(tender.id, {
+      inquiry_id: data,
+      assigned_to: tender.assigned_to || employee?.id || null,
+      status: ['new', 'reviewing', 'interested'].includes(tender.status) ? 'preparing' : tender.status,
+      is_watched: true,
+    });
+    showSnackbar('Utworzono zapytanie z przetargu', 'success');
+    router.push(`/crm/inquiries/${data}`);
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -156,6 +238,65 @@ export default function TenderDetailModal({ tender, onClose, onUpdate }: Props) 
               </div>
             </div>
           )}
+
+          <div className="mb-5 rounded-lg bg-[#1c1f33] p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="text-xs text-[#e5e4e2]/50">Opiekun przetargu</div>
+                <div className="text-sm text-[#e5e4e2]">
+                  {tender.assigned_to ? assigneeName || '…' : 'Brak — przypisz się, aby dostawać przypomnienia o terminie'}
+                </div>
+              </div>
+              {assignedToMe ? (
+                <button
+                  type="button"
+                  onClick={() => handleAssign(false)}
+                  disabled={working !== null}
+                  className="flex items-center gap-1.5 rounded-lg bg-white/5 px-3 py-2 text-sm text-[#e5e4e2]/70 hover:bg-white/10 disabled:opacity-50"
+                >
+                  {working === 'assign' ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserMinus className="h-4 w-4" />}
+                  Zwolnij
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => handleAssign(true)}
+                  disabled={working !== null || !employee?.id}
+                  className="flex items-center gap-1.5 rounded-lg bg-[#d3bb73]/10 px-3 py-2 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/15 disabled:opacity-50"
+                >
+                  {working === 'assign' ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserCheck className="h-4 w-4" />}
+                  Przypisz do mnie
+                </button>
+              )}
+            </div>
+
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+              <p className="max-w-md text-xs text-[#e5e4e2]/45">
+                {tender.inquiry_id
+                  ? 'Przetarg prowadzisz w zapytaniu. Status przetargu aktualizuje się z etapu zapytania.'
+                  : 'Zapytanie przejmie zamawiającego, termin składania, wartość i opis. Dalej: kalkulacja i oferta w zapytaniu.'}
+              </p>
+              {tender.inquiry_id ? (
+                <Link
+                  href={`/crm/inquiries/${tender.inquiry_id}`}
+                  className="flex items-center gap-1.5 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90"
+                >
+                  Otwórz zapytanie <ArrowRight className="h-4 w-4" />
+                </Link>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleCreateInquiry}
+                  disabled={working !== null || deadlinePassed}
+                  title={deadlinePassed ? 'Termin składania ofert minął' : undefined}
+                  className="flex items-center gap-1.5 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-50"
+                >
+                  {working === 'inquiry' ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
+                  Utwórz zapytanie
+                </button>
+              )}
+            </div>
+          </div>
 
           <div className="mb-4 border-t border-[#d3bb73]/10 pt-4">
             <label className="mb-2 block text-xs text-[#e5e4e2]/50">Status</label>

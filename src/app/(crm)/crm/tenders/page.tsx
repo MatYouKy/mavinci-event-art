@@ -10,6 +10,7 @@ import ImportControls from './components/ImportControls';
 import TenderDetailModal from './components/TenderDetailModal';
 import Link from 'next/link';
 import { RefreshCw, Download, Settings } from 'lucide-react';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 
 export interface Tender {
   id: string;
@@ -31,6 +32,8 @@ export interface Tender {
   is_watched: boolean;
   is_hidden: boolean;
   assigned_to: string | null;
+  assigned_at?: string | null;
+  inquiry_id?: string | null;
   notes: string;
   manual_relevance: string | null;
   created_at: string;
@@ -43,6 +46,8 @@ export interface TenderFiltersState {
   status: string;
   isMatched: string;
   isWatched: boolean;
+  /** Tylko przetargi, których opiekunem jest zalogowany pracownik. */
+  mine: boolean;
   showHidden: boolean;
   minScore: number;
   sortBy: string;
@@ -56,6 +61,7 @@ const defaultFilters: TenderFiltersState = {
   status: '',
   isMatched: 'matched',
   isWatched: false,
+  mine: false,
   showHidden: false,
   showExpired: true,
   minScore: 0,
@@ -65,6 +71,7 @@ const defaultFilters: TenderFiltersState = {
 
 export default function TendersPage() {
   const searchParams = useSearchParams();
+  const { employee } = useCurrentEmployee();
   const requestedTenderId = searchParams.get('tender');
   const openedTenderIdRef = useRef<string | null>(null);
   const [tenders, setTenders] = useState<Tender[]>([]);
@@ -104,6 +111,10 @@ export default function TendersPage() {
 
       if (filters.isWatched) {
         query = query.eq('is_watched', true);
+      }
+
+      if (filters.mine && employee?.id) {
+        query = query.eq('assigned_to', employee.id);
       }
 
       if (!filters.showHidden) {
@@ -147,7 +158,7 @@ export default function TendersPage() {
     } finally {
       setLoading(false);
     }
-  }, [filters, page]);
+  }, [filters, page, employee?.id]);
 
   useEffect(() => {
     fetchTenders();
@@ -305,6 +316,10 @@ export default function TendersPage() {
           tender={selectedTender}
           onClose={() => setSelectedTender(null)}
           onUpdate={updateTender}
+          onLocalUpdate={(id, updates) => {
+            setTenders((prev) => prev.map((t) => (t.id === id ? { ...t, ...updates } : t)));
+            setSelectedTender((prev) => (prev && prev.id === id ? { ...prev, ...updates } : prev));
+          }}
         />
       )}
     </div>

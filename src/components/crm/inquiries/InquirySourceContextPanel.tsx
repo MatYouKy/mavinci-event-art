@@ -114,7 +114,7 @@ export default function InquirySourceContextPanel({
 
           {sourceHref && (
             <Link href={sourceHref} className="inline-flex items-center gap-2 text-xs text-[#d3bb73] hover:underline">
-              Otwórz wiadomość źródłową <ExternalLink className="h-3.5 w-3.5" />
+              {sourceHref.startsWith('/crm/tenders') ? 'Otwórz przetarg' : 'Otwórz wiadomość źródłową'} <ExternalLink className="h-3.5 w-3.5" />
             </Link>
           )}
         </div>
