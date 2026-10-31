@@ -8,6 +8,7 @@ import { IEmployee } from '@/app/(crm)/crm/employees/type';
 import ChatConversationList from './ChatConversationList';
 import ChatConversationView from './ChatConversationView';
 import ChatNewConversation from './ChatNewConversation';
+import { fetchChatUnreadCounts, markChatDelivered } from '@/lib/CRM/chat/chatReadState';
 
 export interface Conversation {
   id: string;
@@ -16,6 +17,8 @@ export interface Conversation {
   created_by: string;
   last_message_at: string;
   last_message_preview: string | null;
+  /** Nadawca ostatniej wiadomości (puste, gdy nadawcy nie ma już wśród pracowników). */
+  last_message_sender_id?: string | null;
   created_at: string;
   participants: ConversationParticipant[];
   unread_count: number;
@@ -26,6 +29,7 @@ export interface ConversationParticipant {
   conversation_id: string;
   employee_id: string;
   last_read_at: string | null;
+  last_delivered_at?: string | null;
   employee?: {
     id: string;
     name: string;
@@ -66,6 +70,8 @@ export default function ChatWidget({ employee }: { employee: IEmployee }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const chatSessionStartedAtRef = useRef(Date.now());
   const realtimeReadyRef = useRef(false);
+  const hasLoadedRef = useRef(false);
+  const recountTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Never silently use another session's identity while CRM displays this employee.
   const currentEmployeeId = employeeId === employee.id ? employeeId : null;
@@ -94,38 +100,39 @@ export default function ChatWidget({ employee }: { employee: IEmployee }) {
 
   const fetchConversations = useCallback(async () => {
     if (!currentEmployeeId) return;
-    setIsLoading(true);
+    // Spinner tylko przy pierwszym wczytaniu — odświeżenie listy nie miga.
+    if (!hasLoadedRef.current) setIsLoading(true);
     try {
       const { data: participations } = await supabase
         .from('employee_conversation_participants')
-        .select('conversation_id, last_read_at')
+        .select('conversation_id')
         .eq('employee_id', currentEmployeeId);
 
       if (!participations || participations.length === 0) {
         setConversations([]);
-        setIsLoading(false);
         return;
       }
 
       const convIds = participations.map((p) => p.conversation_id);
-      const lastReadMap = new Map(participations.map((p) => [p.conversation_id, p.last_read_at]));
 
-      const { data: convs } = await supabase
-        .from('employee_conversations')
-        .select('*')
-        .in('id', convIds)
-        .order('last_message_at', { ascending: false });
+      const [{ data: convs }, { data: allParticipants }, unreadCounts] = await Promise.all([
+        supabase
+          .from('employee_conversations')
+          .select('*')
+          .in('id', convIds)
+          .order('last_message_at', { ascending: false }),
+        supabase
+          .from('employee_conversation_participants')
+          .select('id, conversation_id, employee_id, last_read_at, last_delivered_at')
+          .in('conversation_id', convIds),
+        // Tylko wiadomości od innych osób, nowsze niż mój znacznik odczytu (liczy serwer).
+        fetchChatUnreadCounts(supabase),
+      ]);
 
       if (!convs) {
         setConversations([]);
-        setIsLoading(false);
         return;
       }
-
-      const { data: allParticipants } = await supabase
-        .from('employee_conversation_participants')
-        .select('id, conversation_id, employee_id, last_read_at')
-        .in('conversation_id', convIds);
 
       const empIds = Array.from(new Set((allParticipants || []).map((p) => p.employee_id)));
       const { data: employees } = await supabase
@@ -135,45 +142,57 @@ export default function ChatWidget({ employee }: { employee: IEmployee }) {
 
       const empMap = new Map((employees || []).map((e) => [e.id, e]));
 
-      // A conversation timestamp also advances for our own messages.
-      // Count unread incoming messages, using only this employee's read marker.
-      const unreadCounts = new Map<string, number>();
-      const candidates = convs.filter((conv) => {
-        const lastRead = lastReadMap.get(conv.id);
-        return conv.last_message_at && (!lastRead || new Date(conv.last_message_at) > new Date(lastRead));
-      });
-      let nextIndex = 0;
-      await Promise.all(Array.from({ length: Math.min(4, candidates.length) }, async () => {
-        while (nextIndex < candidates.length) {
-          const conv = candidates[nextIndex++];
-          let query = supabase.from('employee_messages')
-            .select('id', { count: 'exact', head: true })
-            .eq('conversation_id', conv.id)
-            .neq('sender_id', currentEmployeeId);
-          const lastRead = lastReadMap.get(conv.id);
-          if (lastRead) query = query.gt('created_at', lastRead);
-          const { count, error } = await query;
-          if (error) throw error;
-          unreadCounts.set(conv.id, count || 0);
-        }
-      }));
       const enriched: Conversation[] = convs.map((conv) => {
         const parts = (allParticipants || [])
           .filter((p) => p.conversation_id === conv.id)
           .map((p) => ({ ...p, employee: empMap.get(p.employee_id) }));
 
-        const unreadCount = unreadCounts.get(conv.id) || 0;
-
-        return { ...conv, participants: parts, unread_count: unreadCount };
+        return { ...conv, participants: parts, unread_count: unreadCounts.get(conv.id) || 0 };
       });
 
       setConversations(enriched);
+      // CRM jest otwarty, więc wiadomości dotarły — nadawca zobaczy „Dostarczono”.
+      void markChatDelivered(supabase);
     } catch (err) {
       console.error('[ChatWidget] fetchConversations error:', err);
     } finally {
+      hasLoadedRef.current = true;
       setIsLoading(false);
     }
   }, [currentEmployeeId]);
+
+  // Liczniki z serwera: po przeczytaniu rozmowy w innym oknie lub w aplikacji mobilnej, po powrocie do okna.
+  const recountUnread = useCallback(() => {
+    if (recountTimerRef.current) clearTimeout(recountTimerRef.current);
+    recountTimerRef.current = setTimeout(async () => {
+      recountTimerRef.current = null;
+      try {
+        const counts = await fetchChatUnreadCounts(supabase);
+        setConversations((prev) => prev.map((c) => ({ ...c, unread_count: counts.get(c.id) || 0 })));
+      } catch (err) {
+        console.error('[ChatWidget] recountUnread error:', err);
+      }
+    }, 300);
+  }, []);
+
+  useEffect(() => () => {
+    if (recountTimerRef.current) clearTimeout(recountTimerRef.current);
+  }, []);
+
+  useEffect(() => {
+    if (!currentEmployeeId) return;
+    const onActive = () => {
+      if (document.visibilityState !== 'visible') return;
+      recountUnread();
+      void markChatDelivered(supabase);
+    };
+    window.addEventListener('focus', onActive);
+    document.addEventListener('visibilitychange', onActive);
+    return () => {
+      window.removeEventListener('focus', onActive);
+      document.removeEventListener('visibilitychange', onActive);
+    };
+  }, [currentEmployeeId, recountUnread]);
 
   useEffect(() => {
     if (!currentEmployeeId) return;
@@ -279,8 +298,11 @@ export default function ChatWidget({ employee }: { employee: IEmployee }) {
               ...updated[idx],
               last_message_at: msg.created_at,
               last_message_preview: msg.content?.substring(0, 100) || null,
-              unread_count:
-                !isOwnMessage && !isActiveConv
+              last_message_sender_id: msg.sender_id,
+              // Własna wiadomość (także wysłana z telefonu) oznacza przeczytanie rozmowy, jak w Messengerze.
+              unread_count: isOwnMessage
+                ? 0
+                : !isActiveConv
                   ? updated[idx].unread_count + 1
                   : updated[idx].unread_count,
             };
@@ -290,6 +312,10 @@ export default function ChatWidget({ employee }: { employee: IEmployee }) {
             return updated;
           });
 
+          if (!isOwnMessage && !isActiveConv) {
+            void markChatDelivered(supabase, msg.conversation_id);
+          }
+
           if (!isOwnMessage && !isActiveConv && isNewInCurrentSession) {
             if (document.visibilityState === 'visible' && document.hasFocus()) {
               playChatSound();
@@ -298,8 +324,39 @@ export default function ChatWidget({ employee }: { employee: IEmployee }) {
           }
         },
       )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'employee_conversation_participants' },
+        (payload) => {
+          const row = payload.new as {
+            conversation_id: string;
+            employee_id: string;
+            last_read_at: string | null;
+            last_delivered_at: string | null;
+          };
+          // Status „Wyświetlono” na liście rozmów.
+          setConversations((prev) =>
+            prev.map((c) =>
+              c.id !== row.conversation_id
+                ? c
+                : {
+                    ...c,
+                    participants: c.participants.map((p) =>
+                      p.employee_id === row.employee_id
+                        ? { ...p, last_read_at: row.last_read_at, last_delivered_at: row.last_delivered_at }
+                        : p,
+                    ),
+                  },
+            ),
+          );
+          // Mój znacznik zmienił się (to okno, inna karta, telefon) — licznik z serwera.
+          if (row.employee_id === currentEmployeeId) recountUnread();
+        },
+      )
       .subscribe((status) => {
         realtimeReadyRef.current = status === 'SUBSCRIBED';
+        // Po ponownym połączeniu mogło coś umknąć.
+        if (status === 'SUBSCRIBED') recountUnread();
       });
 
     channelRef.current = channel;
@@ -307,7 +364,7 @@ export default function ChatWidget({ employee }: { employee: IEmployee }) {
       realtimeReadyRef.current = false;
       supabase.removeChannel(channel);
     };
-  }, [currentEmployeeId, fetchConversations, playChatSound]);
+  }, [currentEmployeeId, fetchConversations, playChatSound, recountUnread]);
 
   const openConversation = (conv: Conversation) => {
     setActiveConversation(conv);

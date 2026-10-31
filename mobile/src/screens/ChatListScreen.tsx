@@ -1,4 +1,5 @@
 import { fetchUnreadChatCounts } from '../services/unreadChat';
+import { chatPreviewPrefix, chatReceiptStatus, type ChatReadMarker } from '../lib/chatReadState';
 import React, { useState, useCallback } from 'react';
 import { useForegroundEffect } from '../hooks/useForegroundEffect';
 import { createRefreshQueue } from '../lib/refreshQueue';
@@ -33,6 +34,8 @@ export interface Conversation {
   created_by: string;
   last_message_at: string;
   last_message_preview: string | null;
+  /** Nadawca ostatniej wiadomości (puste, gdy nadawcy nie ma już wśród pracowników). */
+  last_message_sender_id?: string | null;
   created_at: string;
   participants: ConversationParticipant[];
   unread_count: number;
@@ -42,6 +45,7 @@ interface ConversationParticipant {
   id: string;
   employee_id: string;
   last_read_at: string;
+  last_delivered_at?: string | null;
   employee?: {
     id: string;
     name: string;
@@ -107,7 +111,7 @@ function ChatListContent({ onConversationPress, onNewChat }: Props) {
 
     const { data: allParticipants } = await supabase
       .from('employee_conversation_participants')
-      .select('id, conversation_id, employee_id, last_read_at')
+      .select('id, conversation_id, employee_id, last_read_at, last_delivered_at')
       .in('conversation_id', conversationIds);
 
     const participantEmployeeIds = [
@@ -168,13 +172,11 @@ function ChatListContent({ onConversationPress, onNewChat }: Props) {
         }
       )
       .on(
+        // Mój znacznik (licznik) i znaczniki rozmówców (status „Wyświetlono” mojej ostatniej wiadomości).
         'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'employee_conversation_participants', filter: `employee_id=eq.${employee.id}` },
-        (payload) => {
-          const row = payload.new as { employee_id?: string };
-          if (employee && row.employee_id === employee.id) {
-            queue.schedule();
-          }
+        { event: 'UPDATE', schema: 'public', table: 'employee_conversation_participants' },
+        () => {
+          queue.schedule();
         }
       )
       .subscribe();
@@ -290,8 +292,26 @@ function ChatListContent({ onConversationPress, onNewChat }: Props) {
     );
   };
 
+  // Status mojej ostatniej wiadomości (jak w Messengerze) i przedrostek „Ty: …”.
+  const ownLastMessageStatus = (conv: Conversation) => {
+    if (!employee || conv.sellerConversation || conv.last_message_sender_id !== employee.id || !conv.last_message_at) return null;
+    const markers = new Map<string, ChatReadMarker>(
+      conv.participants.map((p) => [p.employee_id, { last_read_at: p.last_read_at, last_delivered_at: p.last_delivered_at ?? null }]),
+    );
+    return chatReceiptStatus(conv.last_message_at, markers, employee.id);
+  };
+
+  const previewPrefix = (conv: Conversation) => {
+    if (!employee || conv.sellerConversation) return '';
+    return chatPreviewPrefix(conv, employee.id, (id) => {
+      const person = conv.participants.find((p) => p.employee_id === id)?.employee;
+      return person?.nickname || person?.name;
+    });
+  };
+
   const renderConversation = ({ item }: { item: Conversation }) => {
     const name = getConversationName(item);
+    const ownStatus = ownLastMessageStatus(item);
     const other = getOtherParticipant(item);
     const online = other ? isParticipantOnline(other.employee_id) : false;
     const hasUnread = item.unread_count > 0;
@@ -351,7 +371,12 @@ function ChatListContent({ onConversationPress, onNewChat }: Props) {
                 style={[styles.previewText, hasUnread && styles.previewUnread]}
                 numberOfLines={1}
               >
-                {item.last_message_preview || 'Rozpocznij rozmowę...'}
+                {!!ownStatus && (
+                  <Text style={ownStatus === 'read' ? { color: colors.primary.gold } : undefined}>
+                    {ownStatus === 'sent' ? '✓ ' : '✓✓ '}
+                  </Text>
+                )}
+                {item.last_message_preview ? `${previewPrefix(item)}${item.last_message_preview}` : 'Rozpocznij rozmowę...'}
               </Text>
               {hasUnread && (
                 <View style={styles.unreadBadge}>

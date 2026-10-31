@@ -6,6 +6,7 @@ import { supabase } from '../lib/supabase';
 import { useForegroundEffect } from '../hooks/useForegroundEffect';
 import { createRefreshQueue } from '../lib/refreshQueue';
 import { subscribeToIncomingChatMessages } from './realtimeNotifications';
+import { markChatDelivered } from '../lib/chatReadState';
 
 let _activeConversationId: string | null = null;
 let _onConversationLeave: (() => void) | null = null;
@@ -126,6 +127,8 @@ export function useUnreadChatCount(employeeId: string | undefined) {
     });
     refreshRef.current = queue.refresh;
     void queue.refresh();
+    // Aplikacja jest aktywna, więc wiadomości dotarły — nadawca zobaczy „Dostarczono”.
+    void markChatDelivered(supabase);
 
     const onRead = (readCount: number, persisted: boolean) => {
       if (signal.aborted) return;
@@ -136,10 +139,14 @@ export function useUnreadChatCount(employeeId: string | undefined) {
     _onConversationRead = onRead;
 
     const removeMessageListener = subscribeToIncomingChatMessages((recipientId) => {
-      if (recipientId === employeeId && !signal.aborted) queue.schedule();
+      if (recipientId !== employeeId || signal.aborted) return;
+      queue.schedule();
+      void markChatDelivered(supabase);
     });
     const pushSubscription = Notifications.addNotificationReceivedListener((notification) => {
-      if (notification.request.content.data?.type === 'chat_message') queue.schedule();
+      if (notification.request.content.data?.type !== 'chat_message') return;
+      queue.schedule();
+      void markChatDelivered(supabase);
     });
     const channel = supabase.channel(`chat_unread_badge_${employeeId}`)
       .on('postgres_changes', {

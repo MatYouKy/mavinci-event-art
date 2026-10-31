@@ -17,7 +17,9 @@ import {
   Pressable,
   Dimensions,
   Linking,
+  AppState,
 } from 'react-native';
+import { useIsFocused } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { Feather } from '@expo/vector-icons';
@@ -38,6 +40,18 @@ import {
 import * as FileSystem from 'expo-file-system/legacy';
 import { decode } from 'base64-arraybuffer';
 import { WebView } from 'react-native-webview';
+import {
+  CHAT_TYPING_EVENT,
+  CHAT_TYPING_SEND_INTERVAL_MS,
+  CHAT_TYPING_VISIBLE_MS,
+  chatReadersOf,
+  chatReceiptStatus,
+  chatTypingLabel,
+  chatTypingTopic,
+  markChatDelivered,
+  markChatRead,
+  setChatMessageReaction,
+} from '../lib/chatReadState';
 
 interface MessageReaction {
   emoji: string;
@@ -104,7 +118,10 @@ export default function ChatScreen({ conversation, onBack }: Props) {
   const [isLoadingOlder, setIsLoadingOlder] = useState(false);
   const [hasOlderMessages, setHasOlderMessages] = useState(true);
   const [isSending, setIsSending] = useState(false);
-  const [isTyping, setIsTyping] = useState(false);
+  const [typingIds, setTypingIds] = useState<string[]>([]);
+  const isFocused = useIsFocused();
+  const isFocusedRef = useRef(isFocused);
+  isFocusedRef.current = isFocused;
   const [pendingAttachment, setPendingAttachment] = useState<PendingAttachment | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [savingPhoto, setSavingPhoto] = useState(false);
@@ -156,7 +173,9 @@ export default function ChatScreen({ conversation, onBack }: Props) {
     };
   }, []);
   const flatListRef = useRef<FlatList>(null);
-  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const typingTimeoutsRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const typingChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const lastTypingSentRef = useRef(0);
   const initialReadNotifiedRef = useRef(false);
   const sendersRef = useRef<Map<string, SenderInfo>>(new Map());
   const loadingOlderRef = useRef(false);
@@ -166,6 +185,38 @@ export default function ChatScreen({ conversation, onBack }: Props) {
   const otherParticipantOnline = otherParticipant
     ? onlineEmployeeIds.includes(otherParticipant.employee_id)
     : false;
+
+  const participantName = (employeeId: string) => {
+    const person = conversation.participants.find((p) => p.employee_id === employeeId)?.employee;
+    return person?.nickname || person?.name || 'Ktoś';
+  };
+  const typingLabel = chatTypingLabel(typingIds.map(participantName), conversation.is_group);
+
+  const stopTyping = useCallback((employeeId: string) => {
+    const timeout = typingTimeoutsRef.current.get(employeeId);
+    if (timeout) clearTimeout(timeout);
+    typingTimeoutsRef.current.delete(employeeId);
+    setTypingIds((prev) => (prev.includes(employeeId) ? prev.filter((id) => id !== employeeId) : prev));
+  }, []);
+
+  const startTyping = useCallback((employeeId: string) => {
+    const timeout = typingTimeoutsRef.current.get(employeeId);
+    if (timeout) clearTimeout(timeout);
+    typingTimeoutsRef.current.set(employeeId, setTimeout(() => stopTyping(employeeId), CHAT_TYPING_VISIBLE_MS));
+    setTypingIds((prev) => (prev.includes(employeeId) ? prev : [...prev, employeeId]));
+  }, [stopTyping]);
+
+  const notifyTyping = () => {
+    if (!employee) return;
+    const now = Date.now();
+    if (now - lastTypingSentRef.current < CHAT_TYPING_SEND_INTERVAL_MS) return;
+    lastTypingSentRef.current = now;
+    void typingChannelRef.current?.send({
+      type: 'broadcast',
+      event: CHAT_TYPING_EVENT,
+      payload: { employee_id: employee.id },
+    });
+  };
 
   const conversationTitle =
     conversation.title ||
@@ -264,30 +315,27 @@ export default function ChatScreen({ conversation, onBack }: Props) {
     setIsLoadingOlder(false);
   }, [conversation.id, hasOlderMessages, isLoading, messages]);
 
+  // Jak w Messengerze: „wyświetlono” tylko, gdy rozmowa jest na ekranie, a aplikacja aktywna.
+  // Na innej zakładce lub w tle wiadomość jest jedynie „dostarczona” i nadal liczy się jako nieprzeczytana.
   const markAsRead = useCallback(async () => {
     if (!employee) return;
+    if (!isFocusedRef.current || AppState.currentState !== 'active') {
+      await markChatDelivered(supabase, conversation.id);
+      return;
+    }
 
     if (!initialReadNotifiedRef.current) {
       initialReadNotifiedRef.current = true;
       notifyChatConversationOpened(conversation.unread_count);
     }
 
-    const { error } = await supabase
-      .from('employee_conversation_participants')
-      .update({ last_read_at: new Date().toISOString() })
-      .eq('conversation_id', conversation.id)
-      .eq('employee_id', employee.id);
-
-    if (!error) notifyChatReadPersisted();
+    await markChatRead(supabase, conversation.id);
+    notifyChatReadPersisted();
   }, [employee, conversation.id, conversation.unread_count]);
 
   const markAsDelivered = useCallback(async () => {
     if (!employee) return;
-    await supabase
-      .from('employee_conversation_participants')
-      .update({ last_delivered_at: new Date().toISOString() })
-      .eq('conversation_id', conversation.id)
-      .eq('employee_id', employee.id);
+    await markChatDelivered(supabase, conversation.id);
   }, [employee, conversation.id]);
 
   const fetchParticipantsState = useCallback(async () => {
@@ -308,26 +356,49 @@ export default function ChatScreen({ conversation, onBack }: Props) {
   }, [conversation.id]);
 
   useForegroundEffect((signal) => {
-    setActiveChatConversation(conversation.id);
     userHasScrolledRef.current = false;
     setHasOlderMessages(true);
 
     const load = async () => {
       setIsLoading(true);
-      await Promise.all([
-        fetchMessages(),
-        fetchParticipantsState(),
-        markAsRead(),
-        markAsDelivered(),
-      ]);
+      await Promise.all([fetchMessages(), fetchParticipantsState()]);
       if (!signal.aborted) setIsLoading(false);
     };
     void load();
+  }, [fetchMessages, fetchParticipantsState]);
 
+  // Rozmowa na ekranie (ta zakładka, aplikacja aktywna): wyświetlono, bez powiadomień z tej rozmowy.
+  useForegroundEffect(() => {
+    if (!isFocused) {
+      void markAsDelivered();
+      return;
+    }
+    setActiveChatConversation(conversation.id);
+    void markAsRead();
     return () => {
       setActiveChatConversation(null);
     };
-  }, [fetchMessages, fetchParticipantsState, markAsRead, markAsDelivered]);
+  }, [isFocused, conversation.id, markAsRead, markAsDelivered]);
+
+  // „pisze…” — sygnał przez Realtime (broadcast), wspólny z CRM.
+  useForegroundEffect(() => {
+    const typingChannel = supabase
+      .channel(chatTypingTopic(conversation.id), { config: { broadcast: { self: false } } })
+      .on('broadcast', { event: CHAT_TYPING_EVENT }, ({ payload }) => {
+        const employeeId = (payload as { employee_id?: string } | undefined)?.employee_id;
+        if (employeeId && employeeId !== employee?.id) startTyping(employeeId);
+      })
+      .subscribe();
+    typingChannelRef.current = typingChannel;
+    const typingTimeouts = typingTimeoutsRef.current;
+    return () => {
+      typingChannelRef.current = null;
+      typingTimeouts.forEach((timeout) => clearTimeout(timeout));
+      typingTimeouts.clear();
+      setTypingIds([]);
+      return supabase.removeChannel(typingChannel);
+    };
+  }, [conversation.id, employee?.id, startTyping]);
 
   useForegroundEffect((signal) => {
     const channel = supabase
@@ -367,8 +438,8 @@ export default function ChatScreen({ conversation, onBack }: Props) {
           }
 
           if (newMsg.sender_id !== employee?.id) {
-            markAsRead();
-            markAsDelivered();
+            stopTyping(newMsg.sender_id);
+            void markAsRead();
           }
           setTimeout(() => {
             if (signal.aborted) return;
@@ -433,7 +504,7 @@ export default function ChatScreen({ conversation, onBack }: Props) {
     return () => {
       return supabase.removeChannel(channel);
     };
-  }, [conversation.id, markAsRead, markAsDelivered, employee?.id]);
+  }, [conversation.id, markAsRead, stopTyping, employee?.id]);
 
   const uploadAttachment = async (
     attachment: PendingAttachment,
@@ -538,6 +609,7 @@ export default function ChatScreen({ conversation, onBack }: Props) {
       return;
     }
     setInputText('');
+    lastTypingSentRef.current = 0;
     setPendingAttachment(null);
     Keyboard.dismiss();
 
@@ -705,14 +777,23 @@ export default function ChatScreen({ conversation, onBack }: Props) {
     const msgIndex = messages.findIndex((m) => m.id === messageId);
     if (msgIndex === -1 || !employee) return;
 
-    const msg = messages[msgIndex];
-    const newReaction = { emoji, user_id: employee.id };
+    await saveReaction(messageId, emoji);
+  };
 
-    const updatedMessages = [...messages];
-    updatedMessages[msgIndex] = { ...msg, reactions: newReaction };
-    setMessages(updatedMessages);
-
-    await supabase.from('employee_messages').update({ reactions: newReaction }).eq('id', messageId);
+  // Reakcja na własną lub cudzą wiadomość — zapis przez serwer, widoczna u wszystkich uczestników.
+  const saveReaction = async (messageId: string, emoji: string | null) => {
+    if (!employee) return;
+    const previous = messages.find((m) => m.id === messageId)?.reactions ?? null;
+    const optimistic = emoji ? { emoji, user_id: employee.id } : null;
+    setMessages((current) => current.map((m) => (m.id === messageId ? { ...m, reactions: optimistic } : m)));
+    try {
+      const saved = await setChatMessageReaction(supabase, messageId, emoji);
+      setMessages((current) => current.map((m) => (m.id === messageId ? { ...m, reactions: saved } : m)));
+    } catch (error) {
+      console.warn('[Chat] reaction error:', error);
+      setMessages((current) => current.map((m) => (m.id === messageId ? { ...m, reactions: previous } : m)));
+      Alert.alert('Nie zapisano reakcji', 'Sprawdź połączenie i spróbuj ponownie.');
+    }
   };
 
   const removeReaction = async (messageId: string) => {
@@ -720,12 +801,7 @@ export default function ChatScreen({ conversation, onBack }: Props) {
     const msgIndex = messages.findIndex((m) => m.id === messageId);
     if (msgIndex === -1) return;
 
-    const msg = messages[msgIndex];
-    const updatedMessages = [...messages];
-    updatedMessages[msgIndex] = { ...msg, reactions: null };
-    setMessages(updatedMessages);
-
-    await supabase.from('employee_messages').update({ reactions: null }).eq('id', messageId);
+    await saveReaction(messageId, null);
   };
 
   const handleLongPress = (id: string) => {
@@ -1014,19 +1090,17 @@ export default function ChatScreen({ conversation, onBack }: Props) {
   })();
 
   const getReceiptStatus = (msg: Message): 'sending' | 'sent' | 'delivered' | 'read' => {
-    if (msg.pending) return 'sending';
-    const created = new Date(msg.created_at).getTime();
-    let delivered = false;
-    for (const [empId, state] of participantsState.entries()) {
-      if (empId === employee?.id) continue;
-      if (state.last_read_at && new Date(state.last_read_at).getTime() >= created) {
-        return 'read';
-      }
-      if (state.last_delivered_at && new Date(state.last_delivered_at).getTime() >= created) {
-        delivered = true;
-      }
-    }
-    return delivered ? 'delivered' : 'sent';
+    if (msg.pending || !employee) return 'sending';
+    return chatReceiptStatus(msg.created_at, participantsState, employee.id);
+  };
+
+  // „Wyświetlono 23:10” w rozmowie 1:1, „Wyświetlili: Anna, Piotr” w grupie.
+  const readLabel = (msg: Message) => {
+    if (!employee) return '✓✓ Wyświetlono';
+    const readers = chatReadersOf(msg.created_at, participantsState, employee.id);
+    if (conversation.is_group) return `✓✓ Wyświetlili: ${readers.map(participantName).join(', ')}`;
+    const readAt = participantsState.get(readers[0] ?? '')?.last_read_at;
+    return readAt ? `✓✓ Wyświetlono ${formatMessageTime(readAt)}` : '✓✓ Wyświetlono';
   };
 
   const renderMessage = ({ item, index }: { item: Message; index: number }) => {
@@ -1204,7 +1278,7 @@ export default function ChatScreen({ conversation, onBack }: Props) {
                         ? '✓ Wysłano'
                         : receiptStatus === 'delivered'
                           ? '✓✓ Dostarczono'
-                          : '✓✓ Wyświetlono'}
+                          : readLabel(item)}
                   </Text>
                 )}
               </View>
@@ -1240,14 +1314,15 @@ export default function ChatScreen({ conversation, onBack }: Props) {
             <Text style={styles.headerTitle} numberOfLines={1}>
               {conversationTitle}
             </Text>
-            {!conversation.is_group && (
+            {(!conversation.is_group || !!typingLabel) && (
               <Text
+                numberOfLines={1}
                 style={[
                   styles.headerSubtitle,
-                  !isTyping && !otherParticipantOnline && styles.headerSubtitleOffline,
+                  !typingLabel && !otherParticipantOnline && styles.headerSubtitleOffline,
                 ]}
               >
-                {isTyping ? 'pisze...' : otherParticipantOnline ? 'aktywny(a)' : 'offline'}
+                {typingLabel || (otherParticipantOnline ? 'aktywny(a)' : 'offline')}
               </Text>
             )}
           </View>
@@ -1469,7 +1544,10 @@ export default function ChatScreen({ conversation, onBack }: Props) {
             placeholder={pendingAttachment ? 'Komentarz (opcjonalnie)...' : 'Aa'}
             placeholderTextColor={colors.text.tertiary}
             value={inputText}
-            onChangeText={setInputText}
+            onChangeText={(text) => {
+              setInputText(text);
+              if (text.trim()) notifyTyping();
+            }}
             onFocus={() => markAsRead()}
             multiline
             maxLength={2000}

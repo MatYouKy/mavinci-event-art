@@ -18,7 +18,7 @@ Zasada (AGENTS.md): moduł CRM dostępny w aplikacji mobilnej zmieniamy w obu mi
 | Sprzęt, flota | `crm/equipment`, `crm/fleet` | `EquipmentScreen`, `FleetScreen` |
 | Kontakty | `crm/contacts`, `crm/clients` | `ClientsScreen`, `Client360Modal` |
 | Pracownicy | `crm/employees` | `EmployeesScreen` |
-| Komunikator | `components/crm/chat` | `ChatListScreen`, `ChatScreen`, `SellerChatScreen` |
+| Komunikator | `components/crm/chat`, `lib/CRM/chat` | `ChatListScreen`, `ChatScreen`, `SellerChatScreen`, `services/unreadChat`, `services/chatNotifications` |
 | Uprawnienia | `lib/permissions.ts` | `mobile/src/lib/permissions.ts` (`isAdmin` uwzględnia uprawnienie „admin” jak w CRM) |
 | Powiadomienia | wyzwalacze i `enqueue_crm_business_notification` | `NotificationsScreen`, `navigationRef.routeNotification` / `routeSalesUrl` |
 
@@ -31,6 +31,7 @@ Oferty (w tym akceptacja rabatu i marży), faktury, finanse wydarzeń, sprzedawc
 Identyczne kopie pilnowane przez `scripts/ci/check-shared-copies.mjs`:
 
 - `src/lib/CRM/messages/mailboxPreferences.ts` ↔ `mobile/src/lib/mailboxPreferences.ts`
+- `src/lib/CRM/chat/chatReadState.ts` ↔ `mobile/src/lib/chatReadState.ts` (liczniki, „przeczytane” / „dostarczone”, „pisze…”, reakcje)
 
 ## Lista kontrolna zmiany w module
 
@@ -42,3 +43,14 @@ Identyczne kopie pilnowane przez `scripts/ci/check-shared-copies.mjs`:
 ## Stan na 31.10.2026 (wersja 1.1.0)
 
 Dodano w aplikacji: Wiadomości tylko z własnych i przypisanych skrzynek (wcześniej wszystko, co pozwalała baza — u administratora wszystkie skrzynki), filtr skrzynek, załączniki, ustawienia skrzynek, przetargi, Mój dzień, obsługa linków z powiadomień o przetargach i ofertach, `isAdmin` zgodny z CRM. Otwarcie cudzej wiadomości nie zmienia jej statusu „przeczytana”.
+
+## Stan na 31.10.2026 (wersja 1.2.0) — komunikator jak Messenger
+
+W CRM i w aplikacji jednakowo:
+- licznik nieprzeczytanych liczy serwer (`get_chat_unread_counts`): tylko wiadomości od innych osób — własna nieprzeczytana przez rozmówcę wiadomość nie zwiększa licznika,
+- „wyświetlono” tylko, gdy rozmowa jest na ekranie, a okno lub aplikacja jest aktywna (`mark_chat_read`); w tle — „dostarczono” (`mark_chat_delivered`),
+- wysłanie wiadomości oznacza przeczytanie rozmowy, także na innych urządzeniach,
+- „pisze…” (Realtime broadcast `chat_typing:<id rozmowy>`), „Wyświetlono 23:10” / „Wyświetlili: …”, „Ty: …” na liście rozmów,
+- reakcje na cudze wiadomości zapisywane przez `set_chat_message_reaction`,
+- licznik na ikonie aplikacji przychodzi w powiadomieniu push (`send-chat-push`, `chat_unread_totals`).
+

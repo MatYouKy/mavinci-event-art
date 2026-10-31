@@ -37,22 +37,46 @@ Deno.serve(async (req: Request) => {
     });
 
     const payload: WebhookPayload = await req.json();
-    const message = payload.record;
+    const messageId = payload?.record?.id;
 
-    console.log("[send-chat-push] Received payload:", JSON.stringify({
-      message_id: message?.id,
-      conversation_id: message?.conversation_id,
-      sender_id: message?.sender_id,
-      content_length: message?.content?.length,
-    }));
-
-    if (!message || !message.conversation_id || !message.sender_id) {
-      console.error("[send-chat-push] Invalid payload - missing required fields");
+    if (!messageId) {
+      console.error("[send-chat-push] Invalid payload - missing message id");
       return new Response(
         JSON.stringify({ error: "Invalid payload" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    // Funkcję wywołuje aplikacja nadawcy kluczem publicznym, więc treść, nadawcę i rozmowę
+    // bierzemy z bazy, a nie z żądania — nikt nie wyśle powiadomienia z wymyśloną treścią.
+    const { data: message, error: messageError } = await supabase
+      .from("employee_messages")
+      .select("id, conversation_id, sender_id, content, message_type, created_at")
+      .eq("id", messageId)
+      .maybeSingle();
+
+    if (messageError) throw new Error(`Error fetching message: ${messageError.message}`);
+    if (!message) {
+      return new Response(
+        JSON.stringify({ error: "Message not found" }),
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Powiadomienie tylko o świeżej wiadomości (ponowne wywołanie po czasie niczego nie wysyła).
+    if (Date.now() - Date.parse(message.created_at) > 5 * 60 * 1000) {
+      return new Response(
+        JSON.stringify({ success: true, sent: 0, message: "Message too old" }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    console.log("[send-chat-push] Message:", JSON.stringify({
+      message_id: message.id,
+      conversation_id: message.conversation_id,
+      sender_id: message.sender_id,
+      content_length: message.content?.length,
+    }));
 
     // Get all participants except the sender
     const { data: participants, error: participantsError } = await supabase
@@ -128,9 +152,20 @@ Deno.serve(async (req: Request) => {
         : message.content;
     } else if (message.message_type === "image") {
       body = "Przesłano zdjęcie";
+    } else if (message.message_type === "video") {
+      body = "Przesłano film";
     } else if (message.message_type === "file") {
       body = "Przesłano plik";
     }
+
+    // Licznik na ikonie aplikacji = nieprzeczytane wiadomości od innych osób (jak w aplikacji).
+    const { data: unreadTotals, error: unreadError } = await supabase
+      .rpc("chat_unread_totals", { p_employee_ids: recipientIds });
+    if (unreadError) console.error("[send-chat-push] Unread totals error:", unreadError.message);
+    const badgeByEmployee = new Map<string, number>(
+      ((unreadTotals ?? []) as { employee_id: string; unread_count: number | string }[])
+        .map((row) => [row.employee_id, Number(row.unread_count) || 0]),
+    );
 
     // Build Expo push messages
     const messages = tokens.map((t: { token: string; employee_id: string }) => ({
@@ -146,6 +181,7 @@ Deno.serve(async (req: Request) => {
       },
       priority: "high",
       channelId: "default",
+      ...(badgeByEmployee.has(t.employee_id) ? { badge: badgeByEmployee.get(t.employee_id) } : {}),
     }));
 
     console.log("[send-chat-push] Sending", messages.length, "push notifications");

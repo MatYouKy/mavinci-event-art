@@ -20,6 +20,19 @@ import {
   CheckCheck,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
+import {
+  CHAT_TYPING_EVENT,
+  CHAT_TYPING_SEND_INTERVAL_MS,
+  CHAT_TYPING_VISIBLE_MS,
+  chatReadersOf,
+  chatReceiptStatus,
+  chatSeenHeads,
+  chatTypingLabel,
+  chatTypingTopic,
+  markChatDelivered,
+  markChatRead,
+  setChatMessageReaction,
+} from '@/lib/CRM/chat/chatReadState';
 import { Conversation, ChatMessage } from './ChatWidget';
 
 interface Props {
@@ -47,6 +60,10 @@ function getMessageType(mimeType: string): string {
   if (ALLOWED_VIDEO_TYPES.includes(mimeType)) return 'video';
   return 'file';
 }
+
+/** Okno CRM jest na wierzchu i aktywne — tylko wtedy wiadomość jest naprawdę „wyświetlona”. */
+const isWindowActive = () =>
+  typeof document !== 'undefined' && document.visibilityState === 'visible' && document.hasFocus();
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -124,6 +141,10 @@ export default function ChatConversationView({
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragDepthRef = useRef(0);
+  const typingChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const typingTimeoutsRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const lastTypingSentRef = useRef(0);
+  const [typingIds, setTypingIds] = useState<string[]>([]);
 
   const otherParticipant = conversation.participants.find(
     (p) => p.employee_id !== currentEmployeeId,
@@ -141,13 +162,50 @@ export default function ChatConversationView({
 
   const otherIsOnline = otherParticipant ? isOnline(otherParticipant.employee_id) : false;
 
+  const participantName = (employeeId: string) => {
+    const employee = conversation.participants.find((p) => p.employee_id === employeeId)?.employee;
+    return employee?.nickname || employee?.name || 'Ktoś';
+  };
+  const typingLabel = chatTypingLabel(typingIds.map(participantName), conversation.is_group);
+
+  // Messenger: „wyświetlono” tylko, gdy rozmowa jest na ekranie i okno jest aktywne.
+  // W tle wiadomość jest jedynie „dostarczona” i nadal liczy się jako nieprzeczytana.
+  const syncReadState = () => {
+    if (isWindowActive()) void markChatRead(supabase, conversation.id);
+    else void markChatDelivered(supabase, conversation.id);
+  };
+
+  const stopTyping = (employeeId: string) => {
+    const timeout = typingTimeoutsRef.current.get(employeeId);
+    if (timeout) clearTimeout(timeout);
+    typingTimeoutsRef.current.delete(employeeId);
+    setTypingIds((prev) => (prev.includes(employeeId) ? prev.filter((id) => id !== employeeId) : prev));
+  };
+
+  const startTyping = (employeeId: string) => {
+    const timeout = typingTimeoutsRef.current.get(employeeId);
+    if (timeout) clearTimeout(timeout);
+    typingTimeoutsRef.current.set(employeeId, setTimeout(() => stopTyping(employeeId), CHAT_TYPING_VISIBLE_MS));
+    setTypingIds((prev) => (prev.includes(employeeId) ? prev : [...prev, employeeId]));
+  };
+
+  const notifyTyping = () => {
+    const now = Date.now();
+    if (now - lastTypingSentRef.current < CHAT_TYPING_SEND_INTERVAL_MS) return;
+    lastTypingSentRef.current = now;
+    void typingChannelRef.current?.send({
+      type: 'broadcast',
+      event: CHAT_TYPING_EVENT,
+      payload: { employee_id: currentEmployeeId },
+    });
+  };
+
   useEffect(() => {
     initialScrollCompletedRef.current = false;
     userHasScrolledRef.current = false;
     fetchMessages();
     fetchParticipantsState();
-    markAsRead();
-    markAsDelivered();
+    syncReadState();
 
     const channel = supabase
       .channel(`chat_messages_${conversation.id}`)
@@ -169,9 +227,23 @@ export default function ChatConversationView({
           });
           window.requestAnimationFrame(() => scrollToBottom());
           if (msg.sender_id !== currentEmployeeId) {
-            markAsRead();
-            markAsDelivered();
+            stopTyping(msg.sender_id);
+            syncReadState();
           }
+        },
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'employee_messages',
+          filter: `conversation_id=eq.${conversation.id}`,
+        },
+        (payload) => {
+          // Reakcje i edycje od innych uczestników na bieżąco.
+          const updated = payload.new as ChatMessage;
+          setMessages((prev) => prev.map((message) => (message.id === updated.id ? { ...message, ...updated } : message)));
         },
       )
       .on(
@@ -200,8 +272,33 @@ export default function ChatConversationView({
       )
       .subscribe();
 
+    // „pisze…” — sygnał przez Realtime (broadcast), bez zapisu w bazie.
+    const typingChannel = supabase
+      .channel(chatTypingTopic(conversation.id), { config: { broadcast: { self: false } } })
+      .on('broadcast', { event: CHAT_TYPING_EVENT }, ({ payload }) => {
+        const employeeId = (payload as { employee_id?: string } | undefined)?.employee_id;
+        if (employeeId && employeeId !== currentEmployeeId) startTyping(employeeId);
+      })
+      .subscribe();
+    typingChannelRef.current = typingChannel;
+
+    // Powrót do okna z otwartą rozmową = wyświetlenie nowych wiadomości.
+    const onWindowActive = () => {
+      if (isWindowActive()) void markChatRead(supabase, conversation.id);
+    };
+    window.addEventListener('focus', onWindowActive);
+    document.addEventListener('visibilitychange', onWindowActive);
+
+    const typingTimeouts = typingTimeoutsRef.current;
     return () => {
       supabase.removeChannel(channel);
+      supabase.removeChannel(typingChannel);
+      typingChannelRef.current = null;
+      typingTimeouts.forEach((timeout) => clearTimeout(timeout));
+      typingTimeouts.clear();
+      setTypingIds([]);
+      window.removeEventListener('focus', onWindowActive);
+      document.removeEventListener('visibilitychange', onWindowActive);
     };
   }, [conversation.id]);
 
@@ -210,6 +307,15 @@ export default function ChatConversationView({
       if (pendingPreview) URL.revokeObjectURL(pendingPreview);
     };
   }, [pendingPreview]);
+
+  // „pisze…” pod ostatnią wiadomością — przewiń, jeśli użytkownik jest na dole rozmowy.
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container || typingIds.length === 0) return;
+    if (container.scrollHeight - container.scrollTop - container.clientHeight < 120) {
+      container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+    }
+  }, [typingIds.length]);
 
   const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
     const container = messagesContainerRef.current;
@@ -319,22 +425,6 @@ export default function ChatConversationView({
     setIsLoadingOlder(false);
   };
 
-  const markAsRead = async () => {
-    await supabase
-      .from('employee_conversation_participants')
-      .update({ last_read_at: new Date().toISOString() })
-      .eq('conversation_id', conversation.id)
-      .eq('employee_id', currentEmployeeId);
-  };
-
-  const markAsDelivered = async () => {
-    await supabase
-      .from('employee_conversation_participants')
-      .update({ last_delivered_at: new Date().toISOString() })
-      .eq('conversation_id', conversation.id)
-      .eq('employee_id', currentEmployeeId);
-  };
-
   const fetchParticipantsState = async () => {
     const { data } = await supabase
       .from('employee_conversation_participants')
@@ -352,19 +442,18 @@ export default function ChatConversationView({
     }
   };
 
-  const getReceiptStatus = (msg: ChatMessage): 'sent' | 'delivered' | 'read' => {
-    const created = new Date(msg.created_at).getTime();
-    let delivered = false;
-    for (const [empId, state] of participantsState.entries()) {
-      if (empId === currentEmployeeId) continue;
-      if (state.last_read_at && new Date(state.last_read_at).getTime() >= created) {
-        return 'read';
-      }
-      if (state.last_delivered_at && new Date(state.last_delivered_at).getTime() >= created) {
-        delivered = true;
-      }
+  const getReceiptStatus = (msg: ChatMessage) =>
+    chatReceiptStatus(msg.created_at, participantsState, currentEmployeeId);
+
+  const receiptTitle = (msg: ChatMessage, status: 'sent' | 'delivered' | 'read') => {
+    if (status === 'sent') return 'Wysłano';
+    if (status === 'delivered') return 'Dostarczono — jeszcze nie wyświetlono';
+    const readers = chatReadersOf(msg.created_at, participantsState, currentEmployeeId);
+    if (!conversation.is_group) {
+      const readAt = participantsState.get(readers[0] ?? '')?.last_read_at;
+      return readAt ? `Wyświetlono ${formatMessageTime(readAt)}` : 'Wyświetlono';
     }
-    return delivered ? 'delivered' : 'sent';
+    return `Wyświetlili: ${readers.map(participantName).join(', ')}`;
   };
 
   const uploadFile = async (
@@ -406,6 +495,7 @@ export default function ChatConversationView({
       return;
     }
     setNewMessage('');
+    lastTypingSentRef.current = 0;
     setPendingFile(null);
     if (pendingPreview) {
       URL.revokeObjectURL(pendingPreview);
@@ -595,38 +685,28 @@ export default function ChatConversationView({
   const REACTION_EMOJIS = ['❤️', '😂', '😮', '😢', '😡', '👍'];
   const [removeReactionMsgId, setRemoveReactionMsgId] = useState<string | null>(null);
 
+  // Reakcja na własną lub cudzą wiadomość — zapis przez serwer, widoczna u wszystkich uczestników.
+  const saveReaction = async (messageId: string, emoji: string | null) => {
+    const previous = messages.find((m) => m.id === messageId)?.reactions ?? null;
+    const optimistic = emoji ? { emoji, user_id: currentEmployeeId } : null;
+    setMessages((current) => current.map((m) => (m.id === messageId ? { ...m, reactions: optimistic } : m)));
+    try {
+      const saved = await setChatMessageReaction(supabase, messageId, emoji);
+      setMessages((current) => current.map((m) => (m.id === messageId ? { ...m, reactions: saved } : m)));
+    } catch (error) {
+      console.error('[Chat] reaction error:', error);
+      setMessages((current) => current.map((m) => (m.id === messageId ? { ...m, reactions: previous } : m)));
+    }
+  };
+
   const setReaction = async (messageId: string, emoji: string) => {
     setReactionPickerMsgId(null);
-    const msgIndex = messages.findIndex((m) => m.id === messageId);
-    if (msgIndex === -1) return;
-
-    const msg = messages[msgIndex];
-    const newReaction = { emoji, user_id: currentEmployeeId };
-
-    const updatedMessages = [...messages];
-    updatedMessages[msgIndex] = { ...msg, reactions: newReaction };
-    setMessages(updatedMessages);
-
-    await supabase
-      .from('employee_messages')
-      .update({ reactions: newReaction })
-      .eq('id', messageId);
+    await saveReaction(messageId, emoji);
   };
 
   const removeReaction = async (messageId: string) => {
     setRemoveReactionMsgId(null);
-    const msgIndex = messages.findIndex((m) => m.id === messageId);
-    if (msgIndex === -1) return;
-
-    const msg = messages[msgIndex];
-    const updatedMessages = [...messages];
-    updatedMessages[msgIndex] = { ...msg, reactions: null };
-    setMessages(updatedMessages);
-
-    await supabase
-      .from('employee_messages')
-      .update({ reactions: null })
-      .eq('id', messageId);
+    await saveReaction(messageId, null);
   };
 
   const renderReactions = (msg: ChatMessage, isMine: boolean) => {
@@ -749,6 +829,28 @@ export default function ChatConversationView({
     );
   };
 
+  const visibleMessages = messages.filter((msg) => !deletedIds.has(msg.id));
+  // Jak w Messengerze: miniatura osoby pod ostatnią wiadomością, którą wyświetliła.
+  const seenHeads = chatSeenHeads(visibleMessages, participantsState, currentEmployeeId);
+
+  const renderSeenHead = (employeeId: string) => {
+    const employee = conversation.participants.find((p) => p.employee_id === employeeId)?.employee;
+    const readAt = participantsState.get(employeeId)?.last_read_at;
+    const label = `${participantName(employeeId)} — wyświetlono${readAt ? ` ${formatMessageTime(readAt)}` : ''}`;
+    return employee?.avatar_url ? (
+      <img key={employeeId} src={employee.avatar_url} alt={label} title={label} className="h-3.5 w-3.5 rounded-full object-cover" />
+    ) : (
+      <span
+        key={employeeId}
+        title={label}
+        aria-label={label}
+        className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[#d3bb73]/25 text-[7px] font-semibold text-[#d3bb73]"
+      >
+        {participantName(employeeId).charAt(0).toUpperCase()}
+      </span>
+    );
+  };
+
   return (
     <>
     <div
@@ -795,9 +897,15 @@ export default function ChatConversationView({
         </div>
         <div className="flex min-w-0 flex-1 flex-col">
           <span className="truncate text-sm font-medium text-[#e5e4e2]">{conversationName}</span>
-          <span className="text-[10px] text-[#e5e4e2]/40">
-            {otherIsOnline ? 'Online' : 'Offline'}
-          </span>
+          {typingLabel ? (
+            <span className="truncate text-[10px] text-[#d3bb73]">{typingLabel}</span>
+          ) : (
+            <span className="text-[10px] text-[#e5e4e2]/40">
+              {conversation.is_group
+                ? `${conversation.participants.length} uczestników`
+                : otherIsOnline ? 'Online' : 'Offline'}
+            </span>
+          )}
         </div>
         <div className="relative">
           <button
@@ -891,9 +999,7 @@ export default function ChatConversationView({
             <p className="text-xs text-[#e5e4e2]/40">Rozpocznij konwersację</p>
           </div>
         ) : (
-          messages
-            .filter((msg) => !deletedIds.has(msg.id))
-            .map((msg, idx, filtered) => {
+          visibleMessages.map((msg, idx, filtered) => {
               const isMine = msg.sender_id === currentEmployeeId;
               const isLastMine =
                 isMine &&
@@ -1053,20 +1159,51 @@ export default function ChatConversationView({
                           {formatMessageTime(msg.created_at)}
                         </span>
                         {isLastMine && receiptStatus === 'sent' && (
-                          <Check className="h-3 w-3 text-[#e5e4e2]/40" />
+                          <span title={receiptTitle(msg, 'sent')} className="inline-flex items-center gap-0.5 text-[#e5e4e2]/40">
+                            <Check className="h-3 w-3" />
+                            Wysłano
+                          </span>
                         )}
                         {isLastMine && receiptStatus === 'delivered' && (
-                          <CheckCheck className="h-3 w-3 text-[#e5e4e2]/40" />
+                          <span title={receiptTitle(msg, 'delivered')} className="inline-flex items-center gap-0.5 text-[#e5e4e2]/40">
+                            <CheckCheck className="h-3 w-3" />
+                            Dostarczono
+                          </span>
                         )}
-                        {isLastMine && receiptStatus === 'read' && (
-                          <CheckCheck className="h-3 w-3 text-[#d3bb73]" />
+                        {isLastMine && receiptStatus === 'read' && !seenHeads.has(msg.id) && (
+                          <span title={receiptTitle(msg, 'read')} className="inline-flex items-center gap-0.5 text-[#d3bb73]">
+                            <CheckCheck className="h-3 w-3" />
+                            Wyświetlono
+                          </span>
                         )}
                       </div>
                     </div>
                   </div>
+                  {seenHeads.has(msg.id) && (
+                    <div
+                      className="mt-0.5 flex justify-end gap-0.5 pr-0.5"
+                      title={isMine && isLastMine && receiptStatus ? receiptTitle(msg, receiptStatus) : undefined}
+                    >
+                      {seenHeads.get(msg.id)!.map(renderSeenHead)}
+                    </div>
+                  )}
                 </div>
               );
             })
+        )}
+        {typingIds.length > 0 && (
+          <div className="mt-2 flex items-center gap-1.5" aria-live="polite">
+            <div className="flex items-center gap-1 rounded-2xl rounded-bl-md bg-[#262940] px-3 py-2.5">
+              {[0, 150, 300].map((delay) => (
+                <span
+                  key={delay}
+                  className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#e5e4e2]/50"
+                  style={{ animationDelay: `${delay}ms` }}
+                />
+              ))}
+            </div>
+            <span className="sr-only">{typingLabel}</span>
+          </div>
         )}
         <div ref={messagesEndRef} />
       </div>
@@ -1120,7 +1257,10 @@ export default function ChatConversationView({
             type="text"
             placeholder={pendingFile ? 'Dodaj komentarz (opcjonalnie)...' : 'Napisz wiadomość...'}
             value={newMessage}
-            onChange={(e) => setNewMessage(e.target.value)}
+            onChange={(e) => {
+              setNewMessage(e.target.value);
+              if (e.target.value.trim()) notifyTyping();
+            }}
             onKeyDown={handleKeyDown}
             className="flex-1 bg-transparent text-sm text-[#e5e4e2] placeholder-[#e5e4e2]/30 outline-none"
             autoFocus

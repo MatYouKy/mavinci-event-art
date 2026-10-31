@@ -1,7 +1,8 @@
 'use client';
 
-import { Search, Plus } from 'lucide-react';
+import { Search, Plus, Check, CheckCheck } from 'lucide-react';
 import { useState } from 'react';
+import { chatPreviewPrefix, chatReceiptStatus, type ChatReadMarker } from '@/lib/CRM/chat/chatReadState';
 import { Conversation } from './ChatWidget';
 
 interface Props {
@@ -62,6 +63,20 @@ export default function ChatConversationList({
     return date.toLocaleDateString('pl-PL', { day: 'numeric', month: 'short' });
   };
 
+  const participantName = (conv: Conversation, employeeId: string) => {
+    const employee = conv.participants.find((p) => p.employee_id === employeeId)?.employee;
+    return employee?.nickname || employee?.name;
+  };
+
+  // Status mojej ostatniej wiadomości (jak w Messengerze): wysłana, dostarczona, wyświetlona.
+  const ownLastMessageStatus = (conv: Conversation) => {
+    if (conv.last_message_sender_id !== currentEmployeeId || !conv.last_message_at) return null;
+    const markers = new Map<string, ChatReadMarker>(
+      conv.participants.map((p) => [p.employee_id, { last_read_at: p.last_read_at, last_delivered_at: p.last_delivered_at ?? null }]),
+    );
+    return chatReceiptStatus(conv.last_message_at, markers, currentEmployeeId);
+  };
+
   const filtered = conversations.filter((conv) => {
     if (!search.trim()) return true;
     const name = getConversationName(conv).toLowerCase();
@@ -112,7 +127,10 @@ export default function ChatConversationList({
             )}
           </div>
         ) : (
-          filtered.map((conv) => (
+          filtered.map((conv) => {
+            const ownStatus = ownLastMessageStatus(conv);
+            const prefix = chatPreviewPrefix(conv, currentEmployeeId, (id) => participantName(conv, id));
+            return (
             <button
               key={conv.id}
               onClick={() => onSelect(conv)}
@@ -151,8 +169,13 @@ export default function ChatConversationList({
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className={`truncate text-xs ${conv.unread_count > 0 ? 'text-[#e5e4e2]/70' : 'text-[#e5e4e2]/40'}`}>
-                    {conv.last_message_preview || 'Brak wiadomości'}
+                  <span className={`flex min-w-0 items-center gap-1 text-xs ${conv.unread_count > 0 ? 'font-medium text-[#e5e4e2]/80' : 'text-[#e5e4e2]/40'}`}>
+                    {ownStatus === 'sent' && <Check aria-label="Wysłano" className="h-3 w-3 shrink-0" />}
+                    {ownStatus === 'delivered' && <CheckCheck aria-label="Dostarczono" className="h-3 w-3 shrink-0" />}
+                    {ownStatus === 'read' && <CheckCheck aria-label="Wyświetlono" className="h-3 w-3 shrink-0 text-[#d3bb73]" />}
+                    <span className="truncate">
+                      {conv.last_message_preview ? `${prefix}${conv.last_message_preview}` : 'Brak wiadomości'}
+                    </span>
                   </span>
                   {conv.unread_count > 0 && (
                     <span className="ml-2 flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-[#d3bb73] px-1 text-[9px] font-bold text-[#0f1119]">
@@ -162,7 +185,8 @@ export default function ChatConversationList({
                 </div>
               </div>
             </button>
-          ))
+            );
+          })
         )}
       </div>
     </div>
