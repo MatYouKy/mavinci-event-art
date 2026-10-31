@@ -1,36 +1,46 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Mavinci — strona WWW, CRM i portal sprzedawców
 
-## Getting Started
+Next.js 14 (App Router) + Supabase (Postgres, RLS, Edge Functions, pg_cron). Ten sam projekt obsługuje:
 
-First, run the development server:
+- stronę publiczną i SEO (`src/app/(public)`, `src/app/(sitemaps)`),
+- CRM (`src/app/(crm)/crm`): zapytania, przetargi, oferty, kalkulacje, wydarzenia, umowy, sprzęt, flota, faktury i KSeF,
+- portal sprzedawców zewnętrznych (`/seller`),
+- endpointy serwera (`src/app/bridge/**` — odpowiedniki `/api`),
+- aplikację mobilną (`mobile/`), synchronizację macOS (`macos-sync-app/`) i przekaźnik SMTP (`smtp-relay-worker/`).
+
+## Uruchomienie lokalne
 
 ```bash
-npm run dev
-# or
+yarn install
+cp .env.example .env   # uzupełnij klucze Supabase i integracji (plik .env nie trafia do repozytorium)
 yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Menedżer pakietów: **yarn** (jedyny lockfile: `yarn.lock`).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Zasady pracy
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- `AGENTS.md` — polskie etykiety wartości systemowych, typografia marki, obramowania w UI.
+- Uprawnienia: decyzję podejmuje baza (RLS i funkcje `SECURITY DEFINER`). Interfejs pyta o nią przez RPC
+  (np. `current_employee_can_manage_event`, `get_event_finance_access`, `get_invoice_finance_access`)
+  zamiast powtarzać reguły w komponentach.
+- Każdy endpoint `/bridge`, który używa klucza serwisowego, najpierw wywołuje
+  `requireSessionEmployee` (`src/lib/auth/requireEmployee.server.ts`).
+- Tożsamość pracownika w SQL: `public.current_crm_employee_id()` (dopasowuje `id` lub `auth_user_id`).
 
-## Learn More
+## Migracje bazy
 
-To learn more about Next.js, take a look at the following resources:
+- Pliki: `supabase/migrations/YYYYMMDDHHMMSS_nazwa.sql`, wersja musi być unikalna (sprawdza CI).
+- Stan bazy docelowej: `scripts/migration-status.sql` (uruchom w SQL Editor) i
+  `node scripts/check-migration-status.mjs applied.txt`.
+- Migracje stosujemy w kolejności nazw; Edge Functions wdrażamy po migracjach, aplikację na końcu.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Wdrożenie
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+`yarn deploy` — build standalone i wysyłka na VPS (`deploy.sh`). Przed wdrożeniem: migracje i Edge Functions.
 
-## Deploy on Vercel
+## Dokumentacja
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `docs/` — opisy procesów (zapytania, umowy personelu, kalkulacje, etykiety).
+- `docs/notes/` — notatki z wcześniejszych zmian i poprawek.
+- `docs/pending-migrations/` — skrypty SQL spoza katalogu migracji; przed użyciem sprawdź, czy nie zostały już zastosowane.

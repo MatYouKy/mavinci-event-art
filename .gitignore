@@ -57,3 +57,5 @@ macos-sync-app/.DS_Store
 macos-sync-app/DerivedData/
 macos-sync-app/**/*.xcuserdata/
 mobile/ios/
+# TypeScript incremental build cache
+*.tsbuildinfo
