@@ -15,6 +15,8 @@
 
 **Po `20261101190000_security_p0`:** funkcje `SECURITY DEFINER` wykonywalne przez anon: 6 (wyjątki z 4.5, wcześniej 470 łącznie z funkcjami triggerów); anon nie zapisuje treści strony, powiadomień, osób kontaktowych wydarzeń ani pojazdów i nie czyta tabeli `employees`; konto portalu sprzedawcy odcięte od tabel bez logiki portalu (P0-4). Liczby w tabelach poniżej to stan audytu sprzed P0, statusy wierszy — po P0.
 
+**Po `20261101210000_finance_recurring_contracts`:** doszły 3 tabele umów stałych (`finance_recurring_contracts`, `finance_recurring_contract_payments`, `finance_recurring_contract_files`) i prywatny bucket `finance-contracts` — wszystkie ✅ (odczyt F≥finance_view, zapis F=finance_manage przez RPC). Liczniki sekcji 3.1 i 3.15 je uwzględniają; podsumowanie wyżej i niżej to nadal stan audytu.
+
 **Storage:** 30 bucketów — ✅ 14 · ⚠️ 10 (w tym 2 ⚠️*) · ❌ 6. **Funkcje `SECURITY DEFINER` wywoływalne przez API:** 523 (319 także anon) — z kontrolą w treści: 390; bez kontroli, nieszkodliwe: 45; **bez kontroli, zapisujące lub ujawniające dane: 88** (❌ 26, ⚠️ 62).
 
 ### Legenda
@@ -110,7 +112,7 @@ Każda tabela i widok schematu `public` (470) przypisane do domeny. Kolumna „D
 
 Docelowo: poziom finansów w działalności (`finance_company_access[my_company_id]`). Faktury, KSeF, dokumenty kosztowe: F≥invoices; wystawianie: F≥invoices_issue (w praktyce administrator — fakturowanie zostaje u admina); bank, uzgodnienia, księgowość, ZUS/US: F≥finance_view (odczyt) / F=finance_manage (zmiany). Sprzedawca (poziom sales): tylko własna sprzedaż. Dziś polityki opierają się na `finance_can_view()/finance_can_manage()` + `finance_company_visible()`, gdzie „widok firmy” daje każde globalne finances_view/finances_manage/invoices_view/invoices_manage/ksef_manage — dlatego ⚠️* (wdrożone w `20261101165000_finance_company_access` — migracja przepisała te funkcje).
 
-*40 obiektów: ✅ 3 · ⚠️ 36 · ❌ 1 · ℹ️ 0*
+*43 obiekty: ✅ 6 · ⚠️ 36 · ❌ 1 · ℹ️ 0*
 
 | Tabela | Wrażl. | Docelowo | Obecnie (RLS) | Status / uwagi |
 |---|---|---|---|---|
@@ -133,6 +135,9 @@ Docelowo: poziom finansów w działalności (`finance_company_access[my_company_
 | `finance_declaration_lines` | wysoka | R: F≥finance_view<br>W: F=finance_manage (RPC) | R: finVIEW,firma · W: ✗ · ogr.: −sprzedawca | ⚠️* |
 | `finance_declaration_payments` | wysoka | R: F≥finance_view<br>W: F=finance_manage (RPC) | R: finVIEW,firma · W: ✗ · ogr.: −sprzedawca | ⚠️* |
 | `finance_declarations` | wysoka | R: F≥finance_view<br>W: F=finance_manage (RPC) | R: finVIEW,firma · W: ✗ · ogr.: −sprzedawca | ⚠️* |
+| `finance_recurring_contract_files` | wysoka | R: F≥finance_view<br>W: F=finance_manage (RPC) | R: F≥finance_view (umowa) · W: ✗ · ogr.: −sprzedawca | ✅ (`20261101210000_finance_recurring_contracts`) |
+| `finance_recurring_contract_payments` | wysoka | R: F≥finance_view<br>W: F=finance_manage (RPC) | R: F≥finance_view (umowa) · W: ✗ · ogr.: −sprzedawca | ✅ (`20261101210000_finance_recurring_contracts`) |
+| `finance_recurring_contracts` | wysoka | R: F≥finance_view<br>W: F=finance_manage (RPC) | R: F≥finance_view · W: ✗ · ogr.: −sprzedawca | ✅ (`20261101210000_finance_recurring_contracts`) |
 | `financial_entries` | wysoka | R: F≥finance_view<br>W: F=finance_manage | R: finMANAGE,firma ∨ finVIEW,firma · W: finMANAGE,firma · ogr.: zakres, −sprzedawca | ⚠️* |
 | `financial_payment_review_issues` | wysoka | R: F≥finance_view<br>W: F=finance_manage | R: finVIEW,firma · W: finMANAGE,firma[U] · ogr.: −sprzedawca | ⚠️* |
 | `financial_source_categories` | niska | R: F≥finance_view<br>W: F=finance_manage | R: finMANAGE ∨ finVIEW · W: finMANAGE · ogr.: −sprzedawca | ⚠️* |
@@ -656,7 +661,7 @@ Docelowo dla wszystkich tabel poniżej: anon czyta opublikowane wiersze, zapis t
 
 ### 3.15 Storage (buckety)
 
-*30 bucketów: ✅ 14 · ⚠️ 10 (w tym 2 ⚠️*) · ❌ 6.* Bucket „publiczny” udostępnia każdy plik pod stałym adresem `/storage/v1/object/public/<bucket>/<ścieżka>` bez logowania i bez RLS — polityki SELECT dotyczą tylko listowania i pobierania przez API.
+*31 bucketów: ✅ 15 · ⚠️ 10 (w tym 2 ⚠️*) · ❌ 6.* Bucket „publiczny” udostępnia każdy plik pod stałym adresem `/storage/v1/object/public/<bucket>/<ścieżka>` bez logowania i bez RLS — polityki SELECT dotyczą tylko listowania i pobierania przez API.
 
 | Bucket | Publ. | Obiekty | Zawartość | Docelowo | Obecnie | Status |
 |---|---|---|---|---|---|---|
@@ -669,6 +674,7 @@ Docelowo dla wszystkich tabel poniżej: anon czyta opublikowane wiersze, zapis t
 | `bank-statements` | nie | 36 | wyciągi bankowe | F≥finance_view (odczyt), F=finance_manage (zapis) | odczyt/usuwanie: `admin`, `ksef_manage`, `invoices_manage` (bez zakresu firm); INSERT: każdy zalogowany | ⚠️ |
 | `bank-supporting-documents` | nie | 0 | dokumenty do transakcji | j.w. | `finance_can_view/manage()` + firma | ⚠️* |
 | `finance-declarations` | nie | 0 | deklaracje ZUS/US | F≥finance_view / F=finance_manage | `finance_can_view/manage()` + firma | ⚠️* |
+| `finance-contracts` | nie | 0 | pliki umów stałych (najem, leasing, abonamenty) | F≥finance_view / F=finance_manage | odczyt: `finance_company_level_at_least(firma umowy, 'finance_view')`; zapis/usunięcie: `finance_company_manageable` (ścieżka `{firma}/{umowa}/…`) | ✅ (`20261101210000_finance_recurring_contracts`) |
 | `offer-product-pages` | nie | 155 | strony PDF produktów | odczyt EMP/SP przez generator; zapis P(offers_manage) | ALL: każdy zalogowany | ⚠️ |
 | `offer-template-pages` | nie | 28 | strony szablonów ofert | j.w. | polityki `offers_manage` znoszone przez „Authenticated can manage offer template pages” (ALL dla każdego) | ⚠️ |
 | `equipment-files` | tak | 28 | instrukcje sprzętu | odczyt PUB/EMP; zapis P(equipment_manage) | INSERT/UPDATE/DELETE: każdy zalogowany | ⚠️ |

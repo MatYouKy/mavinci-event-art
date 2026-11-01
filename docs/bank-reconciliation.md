@@ -1,9 +1,9 @@
 # Uzgadnianie wyciągów bankowych
 
-Ekran: **Faktury → Dokumenty i rozliczenia → Uzgodnienie wyciągów** (`BankReconciliationPanel`) oraz
-**ZUS i podatki** (`FinanceDeclarationsPanel`). Logika jest w bazie (migracje
-`20261101120000_bank_reconciliation_engine.sql` i `20261101130000_finance_declarations_payroll_fx.sql`);
-ekrany tylko ją pokazują.
+Ekran: **Faktury → Dokumenty i rozliczenia → Uzgodnienie wyciągów** (`BankReconciliationPanel`),
+**ZUS i podatki** (`FinanceDeclarationsPanel`) oraz **Umowy stałe** (`RecurringContractsPanel`). Logika jest w bazie
+(migracje `20261101120000_bank_reconciliation_engine.sql`, `20261101130000_finance_declarations_payroll_fx.sql`
+i `20261101210000_finance_recurring_contracts.sql`); ekrany tylko ją pokazują.
 
 ## 1. Dwa wyciągi → jedna potwierdzona lista operacji
 
@@ -15,20 +15,23 @@ paruje operacje obu plików:
 
 Operacją główną jest wiersz z MT940 (pełne tytuły, rachunek kontrahenta). Wiersz z PDF dostaje
 `canonical_transaction_id` (kopia) i zostaje jako potwierdzenie; jego opis jest widoczny przy operacji.
-Rozliczenia, wypłaty, płatności deklaracji i wyjaśnienia zapisane na kopii przechodzą na operację główną.
+Rozliczenia, wypłaty, płatności deklaracji i umów stałych oraz wyjaśnienia zapisane na kopii przechodzą na operację główną.
 `source_confirmation`: `confirmed` (jest w obu plikach), `unconfirmed` (brak w drugim pliku — do
 sprawdzenia), `single_source`. Usunięcie pliku z operacjami głównymi przenosi wszystko na kopię z drugiego pliku.
 
 ## 2. Blokady podwójnego rozliczenia (wyzwalacze, niezależnie od ekranu)
 
-- operacja nie może być rozliczona ponad swoją kwotę — **faktury, wypłaty i deklaracje liczą się razem**
+- operacja nie może być rozliczona ponad swoją kwotę — **faktury, wypłaty, deklaracje i umowy stałe liczą się razem**
   (`private.bank_transaction_allocated`),
 - faktura nie może być opłacona z wyciągu ponad należność — razem z jej kopiami w innych źródłach
   (KSeF ↔ faktura CRM, ten sam numer, strona, NIP i kwota w KSeF / CRM / spoza KSeF); dla dokumentów
   w walucie liczy się kwota w walucie dokumentu,
 - nie można rozliczać kopii operacji, transferu bieżący ↔ VAT ani roboczej kopii faktury
   (wpis KSeF bez numeru KSeF obok tej samej faktury z numerem),
-- płatność deklaracji musi być przelewem wychodzącym tej samej firmy.
+- płatność deklaracji musi być przelewem wychodzącym tej samej firmy,
+- płatność umowy stałej: ta sama działalność, kierunek jak w umowie (koszt — przelew wychodzący, przychód — wpływ),
+  waluta umowy, okres należący do umowy (cykl, początek, koniec, „rozliczaj od”); umowy, przy których kontrahent
+  wystawia faktury, nie przyjmują płatności (rozlicza się fakturę).
 
 ## 3. Reguły (`reconcile_bank_month`) — po imporcie wyciągu i przyciskiem „Uzgodnij automatycznie”
 
@@ -48,10 +51,14 @@ sprawdzenia), `single_source`. Usunięcie pliku z operacjami głównymi przenosi
 | 5 | wypłata z umowy: kwota + nazwisko lub rachunek odbiorcy + data ±10 dni, netto potwierdzone | powiązanie automatyczne |
 | 5 | jw., netto niepotwierdzone (albo brak uprawnień kadrowych) | propozycja „Potwierdź netto i powiąż” |
 | 5 | „WYNAGRODZENIE…” bez zapisanej wypłaty | wskazówka |
-| 6 | kwota = do zapłaty i kontrahent (NIP, rachunek znany z wcześniejszych płatności, nazwa) | propozycja |
-| 6 | kilka dokumentów z tą kwotą | wybór |
-| 7 | przelew PLN za dokument w walucie: zapisana kwota obciążenia PLN albo kurs ±4% od średniej | automatycznie (kwota PLN) / propozycja (kurs) |
-| 8 | płatność zbiorcza (Allegro, PayU…) = suma 2–6 faktur z okolic daty | propozycja |
+| 6 | umowa stała: rachunek kontrahenta = rachunek z umowy i kwota = kwota okresu (kierunek i waluta jak w umowie, umowa obowiązuje w dniu operacji) | przypięcie automatyczne do najwcześniejszego nieopłaconego okresu |
+| 6 | umowa stała: rachunek zgodny, kwota inna (np. dwa miesiące w jednym przelewie) | propozycja z podziałem na okresy i różnicą |
+| 6 | umowa stała: nazwa kontrahenta (albo NIP) w przelewie i kwota okresu | propozycja (zatwierdzenie dopisuje rachunek do umowy bez rachunku) |
+| 6 | kilka umów z tym samym rachunkiem / kontrahentem i kwotą | wybór |
+| 7 | kwota = do zapłaty i kontrahent (NIP, rachunek znany z wcześniejszych płatności, nazwa) | propozycja |
+| 7 | kilka dokumentów z tą kwotą | wybór |
+| 8 | przelew PLN za dokument w walucie: zapisana kwota obciążenia PLN albo kurs ±4% od średniej | automatycznie (kwota PLN) / propozycja (kurs) |
+| 9 | płatność zbiorcza (Allegro, PayU…) = suma 2–6 faktur z okolic daty | propozycja |
 | — | tytuł wskazuje fakturę, której nie ma | wskazówka |
 
 Numery faktur są szukane jako osobne słowa (lub, gdy długie, bez separatorów); daty z opisów operacji są
@@ -59,7 +66,7 @@ usuwane, a numery wyglądające jak data („04-2026”) pomijane.
 
 Decyzja człowieka jest ostateczna: odrzucona propozycja (`reject_bank_reconciliation_proposal`), cofnięte
 dopasowanie (`undo_bank_match`), odpięta wypłata (`undo_bank_personnel_payment`), odpięta deklaracja
-(`undo_bank_declaration_payment`) i cofnięte wyjaśnienie (`clear_bank_transaction_explanation`, zapis
+(`undo_bank_declaration_payment`), odpięta płatność umowy stałej (`undo_bank_recurring_contract_payment`) i cofnięte wyjaśnienie (`clear_bank_transaction_explanation`, zapis
 `rejected:…`) nie wracają przy kolejnym uzgodnieniu. Każde uruchomienie zapisuje podsumowanie w
 `bank_reconciliation_runs`. AI (panel miesiąca) może tylko podpowiadać — nie rozlicza samo.
 
@@ -117,3 +124,46 @@ symbol formularza także rozcięty przez MT940 (`PI T 4R`, `VA T 7`). Przelew na
   kwocie jest proponowany tylko przy kwocie co do grosza i zbliżonej dacie (karta: dokument od 3 dni przed do 14 dni
   po zakupie; przelew: wystawiony od 60 dni przed do 7 dni po albo termin od 30 dni przed do 14 dni po), i gdy
   przelew nie ma wyraźnie innego kontrahenta (pośrednicy płatności — Allegro, PayU, Przelewy24… — się nie liczą).
+
+## 6. Umowy stałe — najem, leasing, abonament, raty (`finance_recurring_contracts`, migracja `20261101210000`)
+
+Przykład: co miesiąc 450 zł do osoby prywatnej „MARIUSZ SKARUL”, tytuł „CZYNSZ GARAŻ NR 6, PRZY ULICY MARCINA KASPRZAKA 11…”,
+rachunek 62 1140 2004 0000 3902 7077 4694 — najem na czas nieokreślony, bez faktur. Dokument spoza KSeF tego nie opisze
+(jeden dokument = jedna kwota), dlatego umowa jest osobnym rejestrem, a przelewy przypisuje się do jej **okresów**.
+
+- **Umowa**: działalność, rodzaj (najem, leasing, abonament, raty ubezpieczenia, kredyt / pożyczka, inna), kierunek
+  (`cost` — płacimy, `income` — otrzymujemy), tytuł, kontrahent (nazwa, opcjonalnie NIP — **bez PESEL**), rachunek
+  kontrahenta (same cyfry), kwota brutto na okres, waluta, cykl (miesiąc / kwartał / rok — okresy liczone od miesiąca
+  początku umowy), dzień płatności (po nim nieopłacony okres jest „po terminie”; bez dnia — koniec pierwszego miesiąca
+  okresu), początek, koniec (puste = czas nieokreślony), **„rozliczaj płatności od”** (umowa zawarta dawno: wcześniejsze
+  okresy nie są pokazywane jako brak), status, „kontrahent wystawia faktury” (wtedy płatność rozlicza się z fakturą,
+  a umowa tylko informuje — automat i ręczne przypięcie jej nie używają), notatki.
+- **Pliki** umowy i aneksów: `finance_recurring_contract_files`, prywatny magazyn `finance-contracts`, ścieżka
+  `{działalność}/{umowa}/{plik}`.
+- **Płatności**: `finance_recurring_contract_payments` — umowa, okres (pierwszy dzień), operacja, kwota, `automatic` / `manual`,
+  powody, kto, kiedy; jedna pozycja na (umowa, okres, operacja) — ponowne przypięcie do tego samego okresu sumuje kwotę.
+- **Okresy** (`get_finance_recurring_contracts`): od pierwszego rozliczanego okresu do następnego miesiąca (i dalej, jeśli są
+  przedpłaty), najwyżej do końca umowy. Status okresu: opłacony / nadpłata / brak płatności (termin jeszcze nie minął) /
+  po terminie / przyszły / rozliczana fakturami.
+- **Automat** (reguła 6 w tabeli wyżej): domyślny okres = najwcześniejszy nieopłacony, nie późniejszy niż miesiąc po dacie
+  operacji. Nazwa kontrahenta pasuje, gdy pierwsze dwa znaczące słowa nazwy (bez form prawnych) są w treści przelewu
+  („Mariusz Skarul” → MARIUSZ i SKARUL; samo imię nie wystarcza). Zatwierdzenie propozycji albo ręczne przypięcie do umowy
+  bez rachunku dopisuje rachunek z przelewu — kolejne miesiące wiążą się już automatycznie. Podsumowanie przebiegu:
+  `auto_contracts`.
+- **Ręcznie**: „Przypisz do umowy (najem / abonament)” przy otwartej operacji (oba kierunki) —
+  `link_bank_transaction_to_recurring_contract(operacja, umowa, okres = NULL, kwota = NULL)`; kwota domyślna = pozostała kwota
+  operacji, najwyżej to, co zostało do zapłaty za okres. Okno podpowiada najlepiej pasującą umowę (rachunek, nazwa, kwota)
+  i pozwala utworzyć „Nową umowę z tej płatności” (kontrahent, rachunek, kwota, początek = data operacji, cykl miesięczny,
+  kierunek z operacji).
+- **Odpięcie** (`undo_bank_recurring_contract_payment`) zapisuje odrzucenie — automat nie przypnie tej operacji ponownie do tej
+  umowy; odrzucona propozycja działa tak samo.
+- **Edycja**: przy umowie z płatnościami nie można zmienić kierunku ani waluty, a zmiana początku, cyklu, końca lub „rozliczaj od”
+  nie może osierocić opłaconych okresów. Zmiana kwoty dotyczy wszystkich okresów — przy waloryzacji od danego miesiąca zakończ
+  umowę datą i dodaj nową od kolejnego okresu. „Usuń” przy umowie z płatnościami kończy ją (zostaje w historii).
+- **Widok miesiąca** (`get_bank_reconciliation_month`): przy operacji `contracts` (płatności umów, jak `declarations`);
+  operacja przypisana w całości ma status „Rozliczona”. Na poziomie miesiąca `contracts` — umowy obowiązujące w miesiącu:
+  należne za okresy zaczynające się w tym miesiącu, zapłacone w tym miesiącu, brak (karta „Umowy stałe: X opłacone,
+  Y bez płatności”).
+- **Uprawnienia**: odczyt — poziom finansów działalności ≥ `finance_view`; zmiany — `finance_manage` tej działalności,
+  wyłącznie przez RPC (tabele bez INSERT/UPDATE/DELETE dla zalogowanych). Zwykły pracownik, inna działalność, konto portalu
+  sprzedawcy i anon — brak dostępu (także do plików w magazynie).

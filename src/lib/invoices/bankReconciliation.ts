@@ -1,13 +1,13 @@
 /**
- * Uzgadnianie wyciągów — typy i etykiety ekranu „Uzgodnienie wyciągów” oraz rejestru deklaracji.
- * Logika jest w bazie (reconcile_bank_month, get_bank_reconciliation_month, get_finance_declarations);
- * tu tylko opis dla ludzi.
+ * Uzgadnianie wyciągów — typy i etykiety ekranu „Uzgodnienie wyciągów”, rejestru deklaracji i rejestru umów stałych.
+ * Logika jest w bazie (reconcile_bank_month, get_bank_reconciliation_month, get_finance_declarations,
+ * get_finance_recurring_contracts); tu tylko opis dla ludzi.
  */
 
 export type ReconciliationStatus = 'matched' | 'explained' | 'transfer' | 'proposal' | 'choice' | 'partial' | 'missing';
 
 export interface ReconciliationProposalDocument {
-  source: 'ksef' | 'invoice' | 'external' | 'declaration' | 'personnel';
+  source: 'ksef' | 'invoice' | 'external' | 'declaration' | 'personnel' | 'contract';
   id?: string;
   number?: string | null;
   party?: string | null;
@@ -41,6 +41,10 @@ export interface ReconciliationProposalDocument {
   /** Podpowiedź przy wyborze spośród kilku dokumentów (np. ręczna płatność z dnia przelewu). */
   suggested?: boolean;
   hint?: string | null;
+  /** Umowa stała: okres (period_start — pierwszy dzień, jak przy deklaracji), jego opis, kwota okresu z umowy i rodzaj umowy. */
+  period_label?: string;
+  contract_amount?: number;
+  contract_kind?: RecurringContractKind;
 }
 
 export interface ReconciliationProposal {
@@ -102,6 +106,23 @@ export interface ReconciliationDeclarationAllocation {
   status: DeclarationStatus;
 }
 
+/** Płatność umowy stałej przypięta do operacji. */
+export interface ReconciliationContractAllocation {
+  payment_id: string;
+  contract_id: string;
+  kind: RecurringContractKind;
+  title: string;
+  counterparty: string;
+  period_start: string;
+  period_label: string;
+  amount: number;
+  method: 'automatic' | 'manual';
+  reasons: string[] | null;
+  /** Kwota okresu z umowy i ile zapłacono za ten okres łącznie. */
+  period_amount: number;
+  period_paid: number;
+}
+
 export interface ReconciliationTransaction {
   id: string;
   statement_id: string;
@@ -121,6 +142,7 @@ export interface ReconciliationTransaction {
   allocations: ReconciliationAllocation[];
   personnel: ReconciliationPersonnelAllocation[];
   declarations: ReconciliationDeclarationAllocation[];
+  contracts?: ReconciliationContractAllocation[];
   explanation: { category: string; subtype: string | null; note: string | null; by: string | null } | null;
   proposal: ReconciliationProposal | null;
 }
@@ -165,6 +187,27 @@ export interface ReconciliationMonthDeclaration {
   status: DeclarationStatus;
 }
 
+/** Umowa stała obowiązująca w miesiącu uzgodnienia. */
+export interface ReconciliationMonthContract {
+  id: string;
+  kind: RecurringContractKind;
+  title: string;
+  counterparty: string;
+  direction: RecurringContractDirection;
+  currency: string;
+  amount: number;
+  billing_cycle: RecurringContractCycle;
+  expects_invoice: boolean;
+  /** Okresy zaczynające się w tym miesiącu (opis). */
+  periods: string[];
+  due: number;
+  due_date: string | null;
+  paid_for_periods: number;
+  paid_this_month: number;
+  missing: number;
+  status: 'paid' | 'missing' | 'overdue' | 'not_due' | 'invoice';
+}
+
 export interface ReconciliationMonth {
   company_id: string;
   year: number;
@@ -173,6 +216,7 @@ export interface ReconciliationMonth {
   last_run: { created_at: string; summary: Record<string, unknown> } | null;
   transactions: ReconciliationTransaction[];
   declarations: ReconciliationMonthDeclaration[];
+  contracts?: ReconciliationMonthContract[];
   paid_without_statement: ReconciliationDocumentRow[];
   shadow_documents: ReconciliationDocumentRow[];
   unpaid_due: ReconciliationDocumentRow[];
@@ -212,6 +256,10 @@ const PROPOSAL_RULES: Record<string, string> = {
   wynagrodzenie: 'Wypłata z umowy',
   wynagrodzenie_bez_wyplaty: 'Wynagrodzenie bez zapisanej wypłaty',
   cofniete: 'Cofnięte przez użytkownika',
+  umowa_stala: 'Umowa stała (najem, abonament…)',
+  umowa_inna_kwota: 'Umowa stała — inna kwota niż okres',
+  umowa_nazwa: 'Umowa stała — kontrahent i kwota',
+  umowa_brak_okresu: 'Umowa stała — brak nieopłaconego okresu',
 };
 
 export const proposalRuleLabel = (rule: string) => PROPOSAL_RULES[rule] || 'Propozycja';
@@ -262,6 +310,7 @@ export function reconciliationRunSentence(summary: Record<string, unknown> | nul
   if (n('auto_confirmed_manual')) parts.push(`${n('auto_confirmed_manual')} ${plural(n('auto_confirmed_manual'), 'ręczna płatność potwierdzona', 'ręczne płatności potwierdzone', 'ręcznych płatności potwierdzonych')} wyciągiem`);
   if (n('auto_fx')) parts.push(`${n('auto_fx')} ${plural(n('auto_fx'), 'płatność walutowa przypisana', 'płatności walutowe przypisane', 'płatności walutowych przypisanych')} do faktur`);
   if (n('auto_personnel')) parts.push(`${n('auto_personnel')} ${plural(n('auto_personnel'), 'wypłata powiązana', 'wypłaty powiązane', 'wypłat powiązanych')} z umowami`);
+  if (n('auto_contracts')) parts.push(`${n('auto_contracts')} ${plural(n('auto_contracts'), 'płatność przypisana', 'płatności przypisane', 'płatności przypisanych')} do umów stałych (najem, abonament…)`);
   if (n('auto_declarations')) parts.push(`${n('auto_declarations')} ${plural(n('auto_declarations'), 'przelew przypisany', 'przelewy przypisane', 'przelewów przypisanych')} do deklaracji ZUS / podatkowych`);
   if (n('auto_explained')) parts.push(`${n('auto_explained')} ${plural(n('auto_explained'), 'wyjaśniona', 'wyjaśnione', 'wyjaśnionych')} regułą (ZUS, podatki, opłaty)`);
   if (n('proposals')) parts.push(`${n('proposals')} ${plural(n('proposals'), 'propozycja', 'propozycje', 'propozycji')} do zatwierdzenia`);
@@ -384,3 +433,176 @@ const DOCUMENT_KIND_LABELS: Record<string, string> = {
 
 /** Rodzaj dokumentu po polsku (null, gdy nieznany). */
 export const documentKindLabel = (kind?: string | null): string | null => (kind ? DOCUMENT_KIND_LABELS[kind] ?? null : null);
+
+// Umowy stałe (najem, leasing, abonament, raty ubezpieczenia, kredyt / pożyczka) --------------------------------------
+
+export type RecurringContractKind = 'rent' | 'lease' | 'subscription' | 'insurance' | 'loan' | 'other';
+export type RecurringContractDirection = 'cost' | 'income';
+export type RecurringContractCycle = 'monthly' | 'quarterly' | 'yearly';
+export type RecurringContractStatus = 'active' | 'ended';
+/** paid / overpaid — opłacony; missing — brak płatności, termin jeszcze nie minął; overdue — po terminie;
+ *  upcoming — okres przyszły; invoice — umowa rozliczana fakturami kontrahenta. */
+export type RecurringPeriodStatus = 'paid' | 'overpaid' | 'missing' | 'overdue' | 'upcoming' | 'invoice';
+
+export interface RecurringContractPeriod {
+  period_start: string;
+  period_end: string;
+  label: string;
+  due_date: string;
+  amount: number;
+  paid: number;
+  missing: number;
+  status: RecurringPeriodStatus;
+}
+
+export interface RecurringContractPayment {
+  id: string;
+  period_start: string;
+  period_label: string;
+  transaction_id: string;
+  date: string;
+  amount: number;
+  method: 'automatic' | 'manual';
+  reasons: string[] | null;
+  title: string | null;
+  counterparty: string | null;
+  statement_year: number;
+  statement_month: number;
+}
+
+export interface RecurringContract {
+  id: string;
+  company_id: string;
+  kind: RecurringContractKind;
+  direction: RecurringContractDirection;
+  title: string;
+  counterparty_name: string;
+  counterparty_nip: string | null;
+  counterparty_account: string | null;
+  amount: number;
+  currency: string;
+  billing_cycle: RecurringContractCycle;
+  payment_day: number | null;
+  start_date: string;
+  end_date: string | null;
+  payments_from: string | null;
+  status: RecurringContractStatus;
+  expects_invoice: boolean;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+  periods: RecurringContractPeriod[];
+  payments: RecurringContractPayment[];
+  files: DeclarationFile[];
+  summary: {
+    periods: number;
+    paid: number;
+    overdue: number;
+    overdue_amount: number;
+    missing: number;
+    paid_total: number;
+    next_due_date: string | null;
+  };
+}
+
+export const RECURRING_CONTRACT_KIND_LABELS: Record<RecurringContractKind, string> = {
+  rent: 'Najem',
+  lease: 'Leasing',
+  subscription: 'Abonament',
+  insurance: 'Raty ubezpieczenia',
+  loan: 'Kredyt / pożyczka',
+  other: 'Inna umowa',
+};
+
+export const RECURRING_CONTRACT_DIRECTION_LABELS: Record<RecurringContractDirection, string> = {
+  cost: 'Koszt — płacimy',
+  income: 'Przychód — otrzymujemy',
+};
+
+export const RECURRING_CONTRACT_CYCLE_LABELS: Record<RecurringContractCycle, string> = {
+  monthly: 'co miesiąc',
+  quarterly: 'co kwartał',
+  yearly: 'co rok',
+};
+
+export const RECURRING_PERIOD_STATUS_META: Record<RecurringPeriodStatus, { label: string; chip: string; cell: string }> = {
+  paid: { label: 'Opłacony', chip: 'bg-green-500/15 text-green-300', cell: 'border-green-500/30 bg-green-500/20 text-green-200' },
+  overpaid: { label: 'Nadpłata', chip: 'bg-blue-500/15 text-blue-300', cell: 'border-blue-500/30 bg-blue-500/20 text-blue-200' },
+  missing: { label: 'Brak płatności', chip: 'bg-amber-500/15 text-amber-300', cell: 'border-amber-500/30 bg-amber-500/15 text-amber-200' },
+  overdue: { label: 'Po terminie', chip: 'bg-red-500/15 text-red-300', cell: 'border-red-500/40 bg-red-500/20 text-red-200' },
+  upcoming: { label: 'Przyszły', chip: 'bg-slate-500/20 text-slate-300', cell: 'border-slate-500/30 bg-slate-500/10 text-slate-300' },
+  invoice: { label: 'Rozliczana fakturami', chip: 'bg-slate-500/20 text-slate-300', cell: 'border-slate-500/30 bg-slate-500/10 text-slate-400' },
+};
+
+export const RECURRING_MONTH_STATUS_META: Record<ReconciliationMonthContract['status'], { label: string; chip: string }> = {
+  paid: { label: 'Opłacona', chip: 'bg-green-500/15 text-green-300' },
+  missing: { label: 'Brak płatności', chip: 'bg-amber-500/15 text-amber-300' },
+  overdue: { label: 'Po terminie', chip: 'bg-red-500/15 text-red-300' },
+  not_due: { label: 'Bez okresu w tym miesiącu', chip: 'bg-slate-500/20 text-slate-300' },
+  invoice: { label: 'Rozliczana fakturami', chip: 'bg-slate-500/20 text-slate-300' },
+};
+
+/** Rachunek bankowy: same cyfry (jak w bazie). */
+export const accountDigits = (value?: string | null) => String(value || '').replace(/\D/g, '');
+
+/** „62 1140 2004 0000 3902 7077 4694” dla polskiego rachunku (26 cyfr); inne — bez zmian. */
+export function formatAccount(value?: string | null): string {
+  const digits = accountDigits(value);
+  if (digits.length !== 26) return digits || '';
+  return `${digits.slice(0, 2)} ${digits.slice(2).replace(/(\d{4})(?=\d)/g, '$1 ')}`;
+}
+
+/** Tekst do porównań: wielkie litery bez polskich znaków, tylko litery i cyfry rozdzielone spacją (jak private.bank_norm). */
+export function normalizeBankText(value?: string | null): string {
+  return String(value || '')
+    .toUpperCase()
+    .replace(/Ł/g, 'L')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Z0-9]+/g, ' ')
+    .trim();
+}
+
+const NAME_STOPWORDS = new Set(['SPOLKA', 'SPOLKI', 'FIRMA', 'USLUGI', 'HANDLOWA', 'HANDEL', 'PRZEDSIEBIORSTWO', 'PPHU', 'PHU', 'FHU',
+  'GRUPA', 'POLSKA', 'POLSKIE', 'OGRANICZONA', 'ODPOWIEDZIALNOSCIA', 'AKCYJNA', 'KOMANDYTOWA', 'JAWNA', 'CYWILNA', 'ZOO', 'SKA', 'SPK',
+  'THE', 'AND', 'LTD', 'GMBH', 'INC', 'PANI', 'PAN']);
+
+/** Nazwa kontrahenta w przelewie — te same zasady co w bazie (pierwsze dwa znaczące słowa nazwy). */
+export function counterpartyNameMatches(name: string, bankText: string): boolean {
+  const words = normalizeBankText(name).split(' ').filter((w) => w.length >= 3 && !NAME_STOPWORDS.has(w)).slice(0, 2);
+  if (words.length === 0) return false;
+  const haystack = ` ${normalizeBankText(bankText)} `;
+  return words.every((w) => haystack.includes(` ${w} `));
+}
+
+/** Najwcześniejszy nieopłacony okres nie późniejszy niż miesiąc po dacie operacji (domyślny okres w bazie). */
+export function defaultContractPeriod(contract: Pick<RecurringContract, 'periods'>, transactionDate: string): RecurringContractPeriod | null {
+  const date = new Date(`${transactionDate.slice(0, 10)}T12:00:00`);
+  const limit = new Date(date.getFullYear(), date.getMonth() + 1, 1);
+  const limitKey = `${limit.getFullYear()}-${String(limit.getMonth() + 1).padStart(2, '0')}-01`;
+  return contract.periods.find((p) => Number(p.paid) < Number(p.amount) - 0.009 && p.period_start <= limitKey) ?? null;
+}
+
+/** Jak dobrze umowa pasuje do operacji (podpowiedź w oknie „Przypisz do umowy”). */
+export function contractMatchEvidence(
+  contract: Pick<RecurringContract, 'counterparty_account' | 'counterparty_name' | 'counterparty_nip' | 'amount'>,
+  transaction: { counterparty_account?: string | null; counterparty?: string | null; title?: string | null; remaining: number },
+): { account: boolean; name: boolean; amount: boolean; score: number } {
+  const txAccount = accountDigits(transaction.counterparty_account);
+  const text = `${transaction.counterparty || ''} ${transaction.title || ''}`;
+  const account = Boolean(contract.counterparty_account && txAccount && contract.counterparty_account === txAccount);
+  const name = counterpartyNameMatches(contract.counterparty_name, text)
+    || Boolean(contract.counterparty_nip && accountDigits(text).includes(contract.counterparty_nip));
+  const amount = Math.abs(Number(contract.amount) - Number(transaction.remaining)) <= 0.01;
+  return { account, name, amount, score: (account ? 4 : 0) + (name ? 2 : 0) + (amount ? 1 : 0) };
+}
+
+export const recurringContractSummarySentence = (c: Pick<RecurringContract, 'summary' | 'expects_invoice' | 'currency'>, money: (v: number) => string) => {
+  if (c.expects_invoice) return 'Kontrahent wystawia faktury — płatności rozliczasz z fakturami, umowa tylko informuje.';
+  const s = c.summary;
+  if (!s || s.periods === 0) return 'Brak okresów do rozliczenia.';
+  const parts = [`Opłacone ${s.paid} z ${s.periods} ${plural(s.periods, 'okresu', 'okresów', 'okresów')}`];
+  if (s.overdue) parts.push(`po terminie: ${s.overdue} (${money(s.overdue_amount)})`);
+  if (s.missing) parts.push(`do zapłaty w terminie: ${s.missing}`);
+  return `${parts.join(' · ')}.`;
+};

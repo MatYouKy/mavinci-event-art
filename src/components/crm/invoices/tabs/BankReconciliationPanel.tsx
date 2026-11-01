@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   ArrowLeftRight,
+  CalendarClock,
   Check,
   CheckCircle2,
   ChevronDown,
@@ -35,8 +36,10 @@ import BankTransactionAccountingModal from '@/components/crm/BankTransactionAcco
 import BankTransactionDetailsModal from '@/components/crm/BankTransactionDetailsModal';
 import { isPreviewableDocumentSource, useDocumentPreview } from '@/components/crm/invoices/useDocumentPreview';
 import { DeclarationLinkModal } from './FinanceDeclarationsPanel';
+import { RecurringContractLinkModal } from './RecurringContractsPanel';
 import {
   DECLARATION_STATUS_META,
+  RECURRING_MONTH_STATUS_META,
   RECONCILIATION_STATUS_META,
   RECONCILIATION_STATUS_ORDER,
   documentKindLabel,
@@ -55,6 +58,8 @@ interface Props {
   onOpenStatements?: () => void;
   /** Przejście do rejestru deklaracji ZUS i podatkowych. */
   onOpenDeclarations?: () => void;
+  /** Przejście do rejestru umów stałych (najem, leasing, abonamenty). */
+  onOpenContracts?: () => void;
 }
 
 interface Period {
@@ -74,7 +79,7 @@ const date = (value?: string | null) => (value ? new Date(`${value.slice(0, 10)}
 
 const text = (value?: string | null) => repairBrokenBankText(value).replace(/[˙]+/g, ' ').replace(/\s+/g, ' ').trim();
 
-const sourceLabel = (source: string) => ({ ksef: 'KSeF', external: 'Spoza KSeF', invoice: 'CRM', declaration: 'Deklaracja', personnel: 'Wypłata' } as Record<string, string>)[source] || source;
+const sourceLabel = (source: string) => ({ ksef: 'KSeF', external: 'Spoza KSeF', invoice: 'CRM', declaration: 'Deklaracja', personnel: 'Wypłata', contract: 'Umowa stała' } as Record<string, string>)[source] || source;
 
 const foreign = (amount?: number | null, currency?: string | null, rate?: number | null) =>
   amount != null && currency
@@ -107,7 +112,7 @@ function documentFacts(doc: {
   return parts.join(' · ');
 }
 
-export default function BankReconciliationPanel({ filterCompanyIds = null, onOpenStatements, onOpenDeclarations }: Props) {
+export default function BankReconciliationPanel({ filterCompanyIds = null, onOpenStatements, onOpenDeclarations, onOpenContracts }: Props) {
   const { showSnackbar } = useSnackbar();
   const { access } = useInvoiceFinanceAccess();
 
@@ -127,6 +132,7 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
   const [pickerFor, setPickerFor] = useState<ReconciliationTransaction | null>(null);
   const [explainFor, setExplainFor] = useState<ReconciliationTransaction | null>(null);
   const [declarationFor, setDeclarationFor] = useState<ReconciliationTransaction | null>(null);
+  const [contractFor, setContractFor] = useState<ReconciliationTransaction | null>(null);
   const [detailsFor, setDetailsFor] = useState<ReconciliationTransaction | null>(null);
   const { openPreview, previewModal, opening: previewOpening } = useDocumentPreview();
 
@@ -233,7 +239,8 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
       if (accountFilter !== 'all' && t.account_kind !== accountFilter) return false;
       if (!needle) return true;
       return [t.counterparty, t.title, t.source_description, String(t.amount), ...t.allocations.map((a) => a.number),
-        ...t.personnel.map((p) => p.recipient), ...(t.declarations || []).map((d) => d.label)]
+        ...t.personnel.map((p) => p.recipient), ...(t.declarations || []).map((d) => d.label),
+        ...(t.contracts || []).flatMap((c) => [c.title, c.counterparty])]
         .some((value) => text(value).toLowerCase().includes(needle));
     });
   }, [transactions, statusFilter, accountFilter, search]);
@@ -448,6 +455,38 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
         </div>
       )}
 
+      {/* Umowy stałe obowiązujące w miesiącu */}
+      {data && (data.contracts || []).some((c) => c.status !== 'not_due') && (() => {
+        const contracts = (data.contracts || []).filter((c) => c.status !== 'not_due');
+        const paid = contracts.filter((c) => c.status === 'paid').length;
+        const unpaid = contracts.filter((c) => c.status === 'missing' || c.status === 'overdue');
+        return (
+          <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] px-4 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="inline-flex items-center gap-1.5 text-sm font-medium text-[#e5e4e2]">
+                <CalendarClock className="h-4 w-4 text-[#d3bb73]" /> Umowy stałe: {paid} {paid === 1 ? 'opłacona' : 'opłacone'}, {unpaid.length} bez płatności
+              </span>
+              {onOpenContracts && (
+                <button type="button" onClick={onOpenContracts} className="text-[11px] text-[#d3bb73] hover:underline">Rejestr umów →</button>
+              )}
+            </div>
+            <p className="mt-0.5 text-[11px] text-[#e5e4e2]/45">Najem, leasing, abonamenty i raty z okresem zaczynającym się w tym miesiącu.</p>
+            <ul className="mt-2 flex flex-wrap gap-2">
+              {contracts.map((c) => (
+                <li key={c.id} className="flex items-center gap-2 rounded-lg bg-[#0f1119] px-2.5 py-1.5 text-xs">
+                  <span className="text-[#e5e4e2]">{c.title}</span>
+                  <span className="text-[#e5e4e2]/50">
+                    {c.periods.join(', ')} · {money(c.due, c.currency)}
+                    {Number(c.missing) > 0.009 && Number(c.paid_for_periods) > 0.009 ? ` · brakuje ${money(c.missing, c.currency)}` : ''}
+                  </span>
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] ${RECURRING_MONTH_STATUS_META[c.status].chip}`}>{RECURRING_MONTH_STATUS_META[c.status].label}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        );
+      })()}
+
       {/* Statusy */}
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-7">
         {RECONCILIATION_STATUS_ORDER.map((status) => {
@@ -477,10 +516,11 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
             <li><b>Opłacona ręcznie</b> — faktura oznaczona ręcznie jako opłacona i przelew z jej numerem i kwotą: ręczny wpis zamienia się w powiązanie z wyciągiem.</li>
             <li><b>Płatność kartą w walucie</b> — wyciąg podaje kwotę oryginalną (np. 44,03 USD). Gdy w dokumentach spoza KSeF jest faktura w tej walucie na tę kwotę, od tego sprzedawcy i z daty płatności (±7 dni) — przypisanie automatyczne z kursem banku. Sprzedawcę rozpoznajemy po nazwie w opisie albo z wcześniejszych płatności.</li>
             <li><b>ZUS i podatki</b> — przelew do ZUS lub na mikrorachunek podatkowy z okresem w tytule („ZUS DRA 03.2026”, „N 26M03 PIT-4R”) trafia do deklaracji za ten okres w rejestrze „ZUS i podatki”. Gdy rok w tytule nie pasuje do daty przelewu — wybierasz okres.</li>
+            <li><b>Umowy stałe</b> — przelew na rachunek z umowy (najem, leasing, abonament, raty) z kwotą okresu przypisuje się sam do najwcześniejszego nieopłaconego okresu w rejestrze „Umowy stałe”. Zgodny rachunek i inna kwota albo nazwa kontrahenta i kwota — propozycja do zatwierdzenia. Umowy z fakturami kontrahenta rozliczasz z fakturą.</li>
             <li><b>Wypłaty</b> — przelew z kwotą zapisanej wypłaty, nazwiskiem lub rachunkiem odbiorcy i datą (±10 dni) łączy się z umową. Jeśli netto nie jest potwierdzone, zatwierdzenie propozycji je potwierdza.</li>
             <li><b>Bez faktury</b> — opłaty bankowe i przelewy podatkowe bez symbolu deklaracji są wyjaśniane po tytule.</li>
             <li><b>Propozycje</b> — zgodna kwota i kontrahent (NIP, rachunek znany z wcześniejszych płatności, nazwa), płatność częściowa lub zbiorcza (np. koszyk Allegro): czekają na Twoje zatwierdzenie.</li>
-            <li><b>Ochrona przed podwójnym rozliczeniem</b> — operacja nie może być rozliczona ponad swoją kwotę (faktury, wypłaty i deklaracje razem), a faktura ponad należność, także gdy ta sama faktura jest w KSeF i w dokumentach spoza KSeF. Robocze kopie faktur bez numeru KSeF są pomijane.</li>
+            <li><b>Ochrona przed podwójnym rozliczeniem</b> — operacja nie może być rozliczona ponad swoją kwotę (faktury, wypłaty, deklaracje i umowy stałe razem), a faktura ponad należność, także gdy ta sama faktura jest w KSeF i w dokumentach spoza KSeF. Robocze kopie faktur bez numeru KSeF są pomijane.</li>
             <li><b>Twoja decyzja jest ostateczna</b> — odrzucona propozycja, cofnięte dopasowanie i cofnięte wyjaśnienie nie wracają przy kolejnym uzgodnieniu. AI w panelu miesiąca może tylko podpowiadać.</li>
           </ol>
         )}
@@ -558,7 +598,7 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
                   </div>
 
                   {/* Rozliczenia */}
-                  {(t.allocations.length > 0 || t.personnel.length > 0 || (t.declarations || []).length > 0) && (
+                  {(t.allocations.length > 0 || t.personnel.length > 0 || (t.declarations || []).length > 0 || (t.contracts || []).length > 0) && (
                     <div className="mt-2 flex flex-wrap gap-1.5 md:pl-24">
                       {t.allocations.map((a) => (
                         <span key={a.match_id} title={(a.reasons || []).join('\n')}
@@ -607,6 +647,21 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
                           )}
                         </span>
                       ))}
+                      {(t.contracts || []).map((c) => (
+                        <span key={c.payment_id} title={(c.reasons || []).join('\n')}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-green-500/20 bg-green-500/[0.07] px-2 py-1 text-[11px] text-green-200">
+                          <CalendarClock className="h-3 w-3" />
+                          Umowa: {c.title} · {c.period_label} · {money(c.amount, t.currency)} · {matchMethodLabel(c.method)}
+                          {Number(c.period_paid) < Number(c.period_amount) - 0.009 && (
+                            <span className="text-amber-200">· okres opłacony w części: {money(c.period_paid, t.currency)} z {money(c.period_amount, t.currency)}</span>
+                          )}
+                          {canManage && (
+                            <button type="button" disabled={busyKey === `undo-c:${c.payment_id}`} title="Odepnij od umowy"
+                              onClick={() => void callAction(`undo-c:${c.payment_id}`, () => supabase.rpc('undo_bank_recurring_contract_payment', { p_payment_id: c.payment_id }), 'Przelew odpięty od umowy. Nie zostanie przypięty ponownie automatycznie.')}
+                              className="ml-0.5 text-green-200/60 hover:text-red-300"><Undo2 className="h-3 w-3" /></button>
+                          )}
+                        </span>
+                      ))}
                     </div>
                   )}
 
@@ -651,6 +706,11 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
                             <span className="ml-auto whitespace-nowrap">{money(doc.amount, t.currency)}{foreign(doc.document_amount, doc.document_currency, doc.rate)}</span>
                             {doc.manual && <span className="whitespace-nowrap text-[10px] text-amber-200/80">opłacona ręcznie</span>}
                             {doc.source === 'declaration' && !doc.id && <span className="whitespace-nowrap text-[10px] text-amber-200/80">deklaracja zostanie założona</span>}
+                            {doc.source === 'contract' && doc.period_label && (
+                              <span className="whitespace-nowrap rounded bg-[#d3bb73]/10 px-1.5 py-0.5 text-[10px] text-[#d3bb73]">
+                                okres {doc.period_label}{doc.contract_amount != null && Math.abs(Number(doc.contract_amount) - Number(doc.amount)) > 0.009 ? ` (z ${money(doc.contract_amount, t.currency)})` : ''}
+                              </span>
+                            )}
                             {doc.confirm_net && <span className="whitespace-nowrap text-[10px] text-amber-200/80">netto do potwierdzenia</span>}
                             {isPreviewableDocumentSource(doc.source) && doc.id && (
                               <button type="button" disabled={previewOpening === doc.id}
@@ -714,6 +774,10 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
                           <ArrowLeftRight className="h-3.5 w-3.5" /> Wpłata własna
                         </button>
                       )}
+                      <button type="button" onClick={() => setContractFor(t)}
+                        className="inline-flex items-center gap-1 rounded-lg border border-[#e5e4e2]/15 px-2.5 py-1 text-[11px] text-[#e5e4e2]/70 hover:bg-white/5">
+                        <CalendarClock className="h-3.5 w-3.5" /> Przypisz do umowy (najem / abonament)
+                      </button>
                       {t.direction === 'debit' && (
                         <button type="button" onClick={() => setDeclarationFor(t)}
                           className="inline-flex items-center gap-1 rounded-lg border border-[#e5e4e2]/15 px-2.5 py-1 text-[11px] text-[#e5e4e2]/70 hover:bg-white/5">
@@ -786,6 +850,18 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
           transaction={{ id: declarationFor.id, date: declarationFor.date, amount: declarationFor.amount, remaining: declarationFor.remaining, title: text(declarationFor.title) }}
           onClose={() => setDeclarationFor(null)}
           onLinked={async () => { setDeclarationFor(null); await load(); }}
+        />
+      )}
+      {contractFor && period && (
+        <RecurringContractLinkModal
+          companyId={period.companyId}
+          transaction={{
+            id: contractFor.id, date: contractFor.date, amount: contractFor.amount, remaining: contractFor.remaining,
+            title: text(contractFor.title), counterparty: text(contractFor.counterparty), counterparty_account: contractFor.counterparty_account,
+            direction: contractFor.direction, currency: contractFor.currency,
+          }}
+          onClose={() => setContractFor(null)}
+          onLinked={async () => { setContractFor(null); await load(); }}
         />
       )}
       {explainFor && period && (
