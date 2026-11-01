@@ -302,6 +302,20 @@ export default function EventDetailPageClient({
   const [showStatusModal, setShowStatusModal] = useState(false);
 
   // ✅ uprawnienia do OFERT / FAKTUR / FINANSÓW (dopasuj nazwy scope do swoich)
+  // Wartości finansowe wydarzenia (budżet, płatnicy, zakładka Finanse): ta sama reguła co baza i aplikacja
+  // mobilna — public.can_view_event_commercials (poziom finansów w działalności wydarzenia, finances_view /
+  // finances_manage przy widocznym wydarzeniu albo sprzedawca tego wydarzenia z poziomem „Własna sprzedaż”).
+  const [financeValuesAccess, setFinanceValuesAccess] = useState<{ eventId: string; allowed: boolean } | null>(null);
+  useEffect(() => {
+    let active = true;
+    void supabase.rpc('can_view_event_commercials', { p_event_id: eventId }).then(({ data, error }) => {
+      if (active) setFinanceValuesAccess({ eventId, allowed: !error && data === true });
+    });
+    return () => { active = false; };
+  }, [eventId, currentEmployee?.id]);
+  const canViewFinanceValues = financeValuesAccess?.eventId === eventId && financeValuesAccess.allowed;
+
+  // Oferty i dane klienta: dotychczasowe uprawnienia ofert; stare invoices_view / invoices_manage nic już nie nadają.
   const canViewCommercials =
     isCreator ||
     currentEmployee?.role === 'admin' ||
@@ -309,8 +323,7 @@ export default function EventDetailPageClient({
     hasScope('finances_view', currentEmployee as IEmployee) ||
     hasScope('offers_manage', currentEmployee as IEmployee) ||
     hasScope('offers_view', currentEmployee as IEmployee) ||
-    hasScope('invoices_manage', currentEmployee as IEmployee) ||
-    hasScope('invoices_view', currentEmployee as IEmployee);
+    canViewFinanceValues;
 
   // Offer correspondence is commercial history, not a general team chat.
   // The RPC additionally enforces event access and the seller's brand scope.
@@ -953,7 +966,7 @@ export default function EventDetailPageClient({
               return tab.id === 'overview';
             }
 
-            if (tab.id === 'finances' && !canViewCommercials) {
+            if (tab.id === 'finances' && !canViewFinanceValues) {
               return false;
             }
 
@@ -1070,7 +1083,7 @@ export default function EventDetailPageClient({
               />
             )}
             <EventsDetailsTab
-              canViewCommercials={canViewCommercials}
+              canViewCommercials={canViewFinanceValues}
               initialEvent={event}
               location={location || null}
               organization={organization || null}
@@ -1110,7 +1123,7 @@ export default function EventDetailPageClient({
                 email: organization?.email || '',
               }}
             />}
-            {canViewCommercials && (
+            {canViewFinanceValues && (
               <>
                 <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
                   <div className="mb-4 flex items-center justify-between">
@@ -1291,7 +1304,7 @@ export default function EventDetailPageClient({
         <EventTasksBoard eventId={event.id} canManage={canManageTeam} />
       )}
 
-      {activeTab === 'finances' && canViewCommercials && <EventFinancesTab eventId={eventId} />}
+      {activeTab === 'finances' && canViewFinanceValues && <EventFinancesTab eventId={eventId} />}
 
       {activeTab === 'contract' && <EventPartnerArrangement key={eventId} eventId={eventId} canManage={!!canEventManage} hideSection={signedContractEventId === eventId}><EventContractTab eventId={eventId} onSignedDocumentChange={present => setSignedContractEventId(present ? eventId : null)} /></EventPartnerArrangement>}
 

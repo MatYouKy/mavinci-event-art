@@ -25,7 +25,7 @@
  * - locations_view, locations_manage, locations_create
  * - time_tracking_view, time_tracking_manage
  * - databases_view, databases_manage
- * - invoices_view, invoices_manage - faktury KSeF
+ * - invoices_view, invoices_manage - PRZESTARZAŁE: finanse nadaje employees.finance_company_access
  * - mavinci_live_view, mavinci_live_manage - panel i biblioteki Mavinci LIVE
  * - mavinci_live_light_magic, mavinci_live_quiz_show, mavinci_live_familiada,
  *   mavinci_live_wedding_show, mavinci_live_streaming - sekcje aplikacji desktopowej

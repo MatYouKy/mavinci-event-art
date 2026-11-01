@@ -1,41 +1,17 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { CompanyNumbering, CompanyNumberingCard } from '../CompanyNumberingCard';
 import { supabase } from '@/lib/supabase/browser';
 import { AlertTriangle } from 'lucide-react';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import { useInvoiceFinanceAccess } from '@/hooks/useInvoiceFinanceAccess';
+import { filterFinanceCompanies } from '@/lib/invoices/financeAccess';
 
 export function InvoiceSettingsTab() {
   const [companies, setCompanies] = useState<CompanyNumbering[]>([]);
   const [loading, setLoading] = useState(true);
   const [existingNumbers, setExistingNumbers] = useState<string[]>([]);
-  const { employee: currentEmployee, isAdmin, loading: employeeLoading, canManageModule } = useCurrentEmployee();
-
-  const canManageInvoices = useMemo(() => {
-    return canManageModule('invoices');
-  }, [currentEmployee]);
-
-
-
-  const allowedCompanyIdsKey = JSON.stringify((currentEmployee as any)?.my_company_ids ?? null);
-
-  const allowedCompanyIds = useMemo<string[] | null>(() => {
-    if (isAdmin) return null;
-  
-    const ids = (currentEmployee as any)?.my_company_ids;
-  
-    if (!Array.isArray(ids) || ids.length === 0) return null;
-  
-    return ids as string[];
-  }, [isAdmin, allowedCompanyIdsKey]);
-
-  const invoiceCompanyPermsKey = JSON.stringify(
-    (currentEmployee as any)?.invoice_company_permissions ?? {},
-  );
-  
-  const invoiceCompanyPerms = useMemo<Record<string, string[]>>(() => {
-    const raw = (currentEmployee as any)?.invoice_company_permissions;
-    return raw && typeof raw === 'object' ? raw : {};
-  }, [invoiceCompanyPermsKey]);
+  const { isAdmin, loading: employeeLoading } = useCurrentEmployee();
+  const { access: financeAccess, loading: financeAccessLoading } = useInvoiceFinanceAccess();
 
   const fetchData = useCallback(async () => {
     try {
@@ -58,21 +34,9 @@ export function InvoiceSettingsTab() {
 
       let companiesList = companiesRes.data || [];
 
+      // Numeracja i ustawienia faktur: tylko działalności z poziomem „Zarządzanie finansami”.
       if (!isAdmin) {
-        if (allowedCompanyIds) {
-          companiesList = companiesList.filter((c: any) => allowedCompanyIds.includes(c.id));
-        }
-        const hasAnyPerEntry = Object.values(invoiceCompanyPerms).some(
-          (v) => Array.isArray(v) && v.length > 0,
-        );
-        if (hasAnyPerEntry) {
-          companiesList = companiesList.filter((c: any) => {
-            const scopes = invoiceCompanyPerms[c.id] || [];
-            return scopes.includes('manage') || scopes.includes('issue') || scopes.includes('view_all') || scopes.includes('view_own');
-          });
-        } else if (!canManageInvoices) {
-          companiesList = [];
-        }
+        companiesList = filterFinanceCompanies(financeAccess, companiesList as Array<{ id: string }>, 'finance_manage') as typeof companiesList;
       }
 
       const companiesWithCount = companiesList.map((c: any) => ({
@@ -86,12 +50,12 @@ export function InvoiceSettingsTab() {
     } finally {
       setLoading(false);
     }
-  }, [isAdmin, allowedCompanyIds, invoiceCompanyPerms, canManageInvoices]);
+  }, [isAdmin, financeAccess]);
 
   useEffect(() => {
-    if (employeeLoading) return;
+    if (employeeLoading || financeAccessLoading) return;
     fetchData();
-  }, [fetchData, employeeLoading]);
+  }, [fetchData, employeeLoading, financeAccessLoading]);
 
   if (loading) {
     return (

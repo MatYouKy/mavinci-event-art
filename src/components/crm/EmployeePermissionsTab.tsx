@@ -9,6 +9,11 @@ import { getAllScopes } from '@/lib/permissions';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import {
+  FINANCE_COMPANY_LEVEL_OPTIONS,
+  normalizeFinanceCompanyAccess,
+  type FinanceCompanyLevel,
+} from '@/lib/financeCompanyAccess';
 
 interface Props {
   employeeId: string;
@@ -57,29 +62,6 @@ const mavinciLiveSectionScopes = [
   'mavinci_live_streaming',
 ] as const;
 
-const invoiceCompanyScopes: Array<{ key: string; label: string; description: string }> = [
-  {
-    key: 'view_own',
-    label: 'Podgląd faktur',
-    description: 'Może przeglądać faktury dotyczące tej działalności',
-  },
-  {
-    key: 'view_all',
-    label: 'Podgląd wszystkich faktur',
-    description: 'Widzi wszystkie faktury wystawione dla tej działalności',
-  },
-  {
-    key: 'issue',
-    label: 'Wystawianie faktur',
-    description: 'Może wystawiać nowe faktury dla tej działalności',
-  },
-  {
-    key: 'manage',
-    label: 'Zarządzanie fakturami',
-    description: 'Może edytować, usuwać i zmieniać status faktur tej działalności',
-  },
-];
-
 const availableEventTabs = [
   { value: 'overview', label: 'Przegląd', description: 'Podstawowe informacje o wydarzeniu' },
   { value: 'details', label: 'Szczegóły', description: 'Podstawowe informacje o wydarzeniu' },
@@ -112,36 +94,15 @@ const availableOrganizationTabs = [
   { value: 'history', label: 'Historia', description: 'Historia zmian i kontaktów' },
 ];
 
-const permissionCategories: PermissionCategory[] = ACCESS_SECTIONS.map(section => ({
+// Sekcja „Faktury” (invoices_view / invoices_manage) zastąpiona kartą „Finanse według działalności”.
+const permissionCategories: PermissionCategory[] = ACCESS_SECTIONS.filter(section => section.key !== 'invoices').map(section => ({
   key: section.key,
   label: section.label,
   extraPermissions: section.scopes.filter(scope => !scope.key.endsWith('_own_only') && scope.key !== `${section.key}_view` && scope.key !== `${section.key}_manage`),
 }));
 
-type FinanceAccessScope = 'inherit' | 'sales' | 'sales_lead' | 'company';
-
-const FINANCE_SCOPE_OPTIONS: Array<{ value: FinanceAccessScope; label: string; description: string }> = [
-  {
-    value: 'inherit',
-    label: 'Według roli',
-    description: 'Rola „Sprzedaż / Opiekun klienta” działa jak „Sprzedaż — własne faktury”; pozostałe według uprawnień do finansów.',
-  },
-  {
-    value: 'sales',
-    label: 'Sprzedaż — własne faktury',
-    description: 'Wystawia i widzi tylko własne faktury; koszty, bank, płace i KSeF są ukryte.',
-  },
-  {
-    value: 'sales_lead',
-    label: 'Sprzedaż i rentowność — bez fakturowania',
-    description: 'Koszty, marża i prowizje własnych wydarzeń; faktury wystawia administrator.',
-  },
-  {
-    value: 'company',
-    label: 'Finanse firmy',
-    description: 'Dotychczasowe uprawnienia finansowe według zaznaczeń poniżej.',
-  },
-];
+// Stare uprawnienia finansowe — od migracji 20261101165000 niczego nie nadają w bazie; przy zapisie są usuwane.
+const LEGACY_FINANCE_PERMISSIONS = ['invoices_view', 'invoices_manage', 'ksef_manage', 'bank_statements_view', 'bank_statements_manage'];
 
 export default function EmployeePermissionsTab({
   employeeId,
@@ -162,8 +123,8 @@ export default function EmployeePermissionsTab({
   const [companyAccessMode, setCompanyAccessMode] = useState<'all' | 'selected'>('all');
   const [rolePermissionsInherited, setRolePermissionsInherited] = useState(false);
   const [accessLevelPackage, setAccessLevelPackage] = useState<AccessLevelPackage | null>(null);
-  const [myCompanies, setMyCompanies] = useState<Array<{ id: string; name: string }>>([]);
-  const [invoiceCompanyPerms, setInvoiceCompanyPerms] = useState<Record<string, string[]>>({});
+  const [myCompanies, setMyCompanies] = useState<Array<{ id: string; name: string; is_active?: boolean | null }>>([]);
+  const [financeCompanyAccess, setFinanceCompanyAccess] = useState<Record<string, FinanceCompanyLevel>>({});
   const [contactFormNotifications, setContactFormNotifications] = useState(false);
   const [webhookNotifications, setWebhookNotifications] = useState(false);
   const [fleetComplianceNotifications, setFleetComplianceNotifications] = useState(false);
@@ -174,7 +135,6 @@ export default function EmployeePermissionsTab({
   const [salesTeams, setSalesTeams] = useState<SalesTeamOption[]>([]);
   const [salesTeamId, setSalesTeamId] = useState('');
   const [isSalesTeamManager, setIsSalesTeamManager] = useState(false);
-  const [financeAccessScope, setFinanceAccessScope] = useState<FinanceAccessScope>('inherit');
   const [webhookSourceSettings, setWebhookSourceSettings] = useState<Record<string, boolean>>({});
   const [notificationDefaultsEnabled, setNotificationDefaultsEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -213,11 +173,11 @@ export default function EmployeePermissionsTab({
         supabase
           .from('employees')
           .select(
-            'updated_at, role, access_level, access_level_id, permissions, event_tabs, contact_tabs, organization_tabs, my_company_ids, company_access_mode, role_permissions_inherited, invoice_company_permissions, sales_team_id, is_sales_team_manager, finance_access_scope, access_levels(name, default_permissions, event_tabs, contact_tabs, organization_tabs)',
+            'updated_at, role, access_level, access_level_id, permissions, event_tabs, contact_tabs, organization_tabs, my_company_ids, company_access_mode, role_permissions_inherited, finance_company_access, sales_team_id, is_sales_team_manager, access_levels(name, default_permissions, event_tabs, contact_tabs, organization_tabs)',
           )
           .eq('id', employeeId)
           .maybeSingle(),
-        supabase.from('my_companies').select('id, name').order('name'),
+        supabase.from('my_companies').select('id, name, is_active').order('name'),
         supabase
           .from('employee_notification_settings')
           .select('contact_form_enabled, webhook_notifications_enabled, fleet_compliance_enabled, inquiry_assignments_enabled, inquiry_followups_enabled, inquiry_escalations_enabled')
@@ -255,17 +215,10 @@ export default function EmployeePermissionsTab({
         (Array.isArray(relatedAccessLevel) ? relatedAccessLevel[0] : relatedAccessLevel) as AccessLevelPackage | null,
       );
       setMyCompanies(companiesRes.data || []);
-      setInvoiceCompanyPerms(
-        (data?.invoice_company_permissions as Record<string, string[]>) || {},
-      );
+      setFinanceCompanyAccess(normalizeFinanceCompanyAccess((data as any)?.finance_company_access));
       setSalesTeams((salesTeamsRes.data || []) as SalesTeamOption[]);
       setSalesTeamId(data?.sales_team_id || '');
       setIsSalesTeamManager(data?.is_sales_team_manager || false);
-      setFinanceAccessScope(
-        FINANCE_SCOPE_OPTIONS.some((option) => option.value === (data as any)?.finance_access_scope)
-          ? ((data as any).finance_access_scope as FinanceAccessScope)
-          : 'inherit',
-      );
 
       const adminNotificationDefaults =
         data?.role === 'admin' ||
@@ -429,8 +382,9 @@ export default function EmployeePermissionsTab({
     setMyCompanyIds((prev) => {
       const isOn = prev.includes(id);
       if (isOn) {
-        setInvoiceCompanyPerms((pp) => {
-          const next = { ...pp };
+        // Bez dostępu do działalności nie ma też dostępu do jej finansów.
+        setFinanceCompanyAccess((current) => {
+          const next = { ...current };
           delete next[id];
           return next;
         });
@@ -441,14 +395,18 @@ export default function EmployeePermissionsTab({
     setHasChanges(true);
   };
 
-  const toggleInvoiceCompanyPerm = (companyId: string, permKey: string) => {
-    if (!canEditThisEmployee) return;
-    setInvoiceCompanyPerms((prev) => {
-      const current = prev[companyId] || [];
-      const next = current.includes(permKey)
-        ? current.filter((p) => p !== permKey)
-        : [...current, permKey];
-      return { ...prev, [companyId]: next };
+  // Działalności, do których pracownik ma dostęp — tylko dla nich można określić dostęp do finansów.
+  const financeCompanies = myCompanies.filter(
+    (company) => company.is_active !== false && (companyAccessMode === 'all' || myCompanyIds.includes(company.id)),
+  );
+
+  const setFinanceCompanyLevel = (companyId: string, level: FinanceCompanyLevel) => {
+    if (!isAdmin) return;
+    setFinanceCompanyAccess((current) => {
+      const next = { ...current };
+      if (level === 'none') delete next[companyId];
+      else next[companyId] = level;
+      return next;
     });
     setHasChanges(true);
   };
@@ -511,7 +469,7 @@ export default function EmployeePermissionsTab({
       const { data: savedEmployee, error } = await supabase
         .from('employees')
         .update({
-          permissions,
+          permissions: permissions.filter((permission) => !LEGACY_FINANCE_PERMISSIONS.includes(permission)),
           updated_at: new Date().toISOString(),
           event_tabs: eventTabs.length > 0 ? eventTabs : null,
           contact_tabs: contactTabs.length > 0 ? contactTabs : null,
@@ -519,11 +477,18 @@ export default function EmployeePermissionsTab({
           company_access_mode: companyAccessMode,
           my_company_ids: companyAccessMode === 'all' ? [] : myCompanyIds,
           role_permissions_inherited: rolePermissionsInherited,
-          invoice_company_permissions: invoiceCompanyPerms,
           sales_team_id: salesTeamId || null,
           is_sales_team_manager: isSalesTeamManager,
-          // Zakres finansów zmienia wyłącznie administrator (wymusza to też trigger w bazie).
-          ...(isAdmin ? { finance_access_scope: financeAccessScope } : {}),
+          // Dostęp do finansów według działalności zmienia wyłącznie administrator (wymusza to też trigger
+          // w bazie). Zapisujemy tylko działalności, do których pracownik ma dostęp.
+          ...(isAdmin
+            ? {
+                finance_company_access: Object.fromEntries(
+                  Object.entries(financeCompanyAccess).filter(([companyId, level]) =>
+                    level !== 'none' && financeCompanies.some((company) => company.id === companyId)),
+                ),
+              }
+            : {}),
         })
         .eq('id', employeeId)
         .filter('updated_at', loadedUpdatedAt ? 'eq' : 'is', loadedUpdatedAt)
@@ -608,15 +573,6 @@ export default function EmployeePermissionsTab({
   };
 
   const getCategoryStatus = (category: PermissionCategory): string => {
-    if (category.key === 'invoices' && category.extraPermissions) {
-      const activePermissions = category.extraPermissions.filter((ep) =>
-        permissions.includes(ep.key),
-      );
-      if (activePermissions.length === 0) return 'Brak';
-      if (activePermissions.length === 1) return activePermissions[0].label.split(' ')[0];
-      return `${activePermissions.length} uprawnień`;
-    }
-
     const level = getPermissionLevel(category.key);
 
     if (category.key === 'mavinci_live') {
@@ -806,6 +762,62 @@ export default function EmployeePermissionsTab({
                 <span className="text-sm text-[#e5e4e2]">{company.name}</span>
               </label>
             ))}
+          </div>
+        )}
+      </div>
+
+      <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-5">
+        <div className="mb-4 flex items-start gap-3">
+          <Shield className="mt-0.5 h-5 w-5 text-[#d3bb73]" />
+          <div>
+            <h4 className="font-medium text-[#e5e4e2]">Finanse według działalności</h4>
+            <p className="mt-1 text-xs leading-5 text-[#e5e4e2]/60">
+              Dla każdej działalności, do której pracownik ma dostęp, określ, co widzi w finansach. Bez wybranego poziomu
+              nie widzi żadnych finansów tej działalności — także faktur, wyciągów i deklaracji. Fakturowanie zostaje przy
+              administratorze, chyba że nadasz „Wystawianie faktur”. Zmienia wyłącznie administrator.
+            </p>
+          </div>
+        </div>
+        {targetIsAdmin ? (
+          <p className="rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-3 text-sm text-[#e5e4e2]/70">
+            Administrator ma pełny dostęp do finansów wszystkich działalności.
+          </p>
+        ) : financeCompanies.length === 0 ? (
+          <p className="rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-3 text-sm text-[#e5e4e2]/70">
+            Najpierw przypisz pracownikowi działalność w sekcji „Marki i spółki”.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {financeCompanies.map((company) => {
+              const level = financeCompanyAccess[company.id] ?? 'none';
+              const option = FINANCE_COMPANY_LEVEL_OPTIONS.find((item) => item.value === level);
+              return (
+                <div key={company.id} className="grid gap-2 rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-3 md:grid-cols-[minmax(0,1fr)_minmax(0,18rem)] md:items-center">
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-[#e5e4e2]">{company.name}</div>
+                    <div className="mt-0.5 text-xs text-[#e5e4e2]/55">{option?.description}</div>
+                  </div>
+                  <label className="block">
+                    <span className="sr-only">Finanse tej działalności: {company.name}</span>
+                    <select
+                      value={level}
+                      onChange={(event) => setFinanceCompanyLevel(company.id, event.target.value as FinanceCompanyLevel)}
+                      disabled={!isAdmin}
+                      title="Finanse tej działalności"
+                      className="w-full rounded-lg border border-[#d3bb73]/30 bg-[#1c1f33] px-3 py-2 text-sm text-[#e5e4e2] focus:outline-none focus:ring-2 focus:ring-[#d3bb73]/50 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {FINANCE_COMPANY_LEVEL_OPTIONS.map((item) => (
+                        <option key={item.value} value={item.value}>{item.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              );
+            })}
+            <p className="pt-1 text-xs text-[#e5e4e2]/50">
+              Finanse tej działalności: poziom wyższy obejmuje niższe. Uprawnienie „Wartości finansowe wydarzeń” w sekcji
+              poniżej dotyczy tylko budżetów i kosztów widocznych wydarzeń, nie banku ani faktur.
+            </p>
           </div>
         )}
       </div>
@@ -1002,15 +1014,6 @@ export default function EmployeePermissionsTab({
                   <RecordScopeSelect module={category.key} permissions={permissions} disabled={!canEditThisEmployee || targetIsAdmin}
                     onChange={next => { setPermissions(next); setRolePermissionsInherited(false); setHasChanges(true); }} />
 
-                  {category.key === 'invoices' && (
-                    <div className="rounded-lg border border-blue-500/20 bg-blue-500/10 p-3">
-                      <p className="text-xs text-blue-200">
-                        Uprawnienia do faktur są zarządzane przez checkboxy poniżej (integracja z
-                        KSeF)
-                      </p>
-                    </div>
-                  )}
-
                   {category.key === 'mavinci_live' && level !== 'none' && (
                     <div className="rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/10 p-3">
                       <p className="text-xs leading-relaxed text-[#e5e4e2]/75">
@@ -1018,104 +1021,6 @@ export default function EmployeePermissionsTab({
                         a na karcie wydarzenia określasz projekty, poziom obsługi i okres dostępu.
                         Light Magic pozostaje zawsze dostępny jako moduł podstawowy.
                       </p>
-                    </div>
-                  )}
-
-                  {category.key === 'invoices' && (
-                    <div className="space-y-2 border-t border-[#d3bb73]/10 pt-3">
-                      <div className="text-sm font-medium text-[#e5e4e2]/80">
-                        Zakres danych finansowych
-                        <span className="mt-1 block text-xs font-normal text-[#e5e4e2]/60">
-                          Decyduje, które faktury, koszty i prowizje pracownik widzi i czy może wystawiać faktury.
-                          Zmienia wyłącznie administrator.
-                        </span>
-                      </div>
-                      <div className="grid gap-2 md:grid-cols-2">
-                        {FINANCE_SCOPE_OPTIONS.map((option) => (
-                          <label
-                            key={option.value}
-                            className={`flex cursor-pointer items-start gap-3 rounded-lg p-3 transition-colors ${
-                              financeAccessScope === option.value ? 'bg-[#d3bb73]/10' : 'bg-[#0f1119] hover:bg-white/5'
-                            } ${!isAdmin ? 'cursor-not-allowed opacity-60' : ''}`}
-                          >
-                            <input
-                              type="radio"
-                              name="finance-access-scope"
-                              value={option.value}
-                              checked={financeAccessScope === option.value}
-                              disabled={!isAdmin}
-                              onChange={() => {
-                                setFinanceAccessScope(option.value);
-                                setHasChanges(true);
-                              }}
-                              className="mt-0.5 h-4 w-4 border-[#d3bb73]/30 bg-[#0f1119] text-[#d3bb73] focus:ring-[#d3bb73]/50"
-                            />
-                            <span>
-                              <span className="block text-sm text-[#e5e4e2]">{option.label}</span>
-                              <span className="mt-0.5 block text-xs text-[#e5e4e2]/55">{option.description}</span>
-                            </span>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {category.key === 'invoices' && myCompanies.length > 0 && (
-                    <div className="space-y-3 border-t border-[#d3bb73]/10 pt-3">
-                      <div className="mb-2 text-sm font-medium text-[#e5e4e2]/80">
-                        Szczegółowe uprawnienia do faktur według marki
-                        <span className="mt-1 block text-xs font-normal text-[#e5e4e2]/60">
-                          Zakres marek ustawiasz wyżej. Tutaj określasz tylko czynności finansowe w każdej dostępnej marce.
-                        </span>
-                      </div>
-                      <div className="space-y-2">
-                        {myCompanies.filter((company) => companyAccessMode === 'all' || myCompanyIds.includes(company.id)).map((c) => {
-                          const scopes = invoiceCompanyPerms[c.id] || [];
-                          return (
-                            <div
-                              key={c.id}
-                              className="rounded-lg border border-[#d3bb73]/20 bg-[#0f1119]"
-                            >
-                              <div className="flex items-center gap-3 p-3">
-                                <span className="text-sm font-medium text-[#e5e4e2]">
-                                  {c.name}
-                                </span>
-                                {scopes.length > 0 && (
-                                  <span className="ml-auto text-xs text-[#d3bb73]">
-                                    {scopes.length} uprawnień
-                                  </span>
-                                )}
-                              </div>
-                              <div className="space-y-2 border-t border-[#d3bb73]/10 p-3">
-                                {invoiceCompanyScopes.map((scope) => (
-                                    <label
-                                      key={scope.key}
-                                      className="group flex cursor-pointer items-start gap-3"
-                                    >
-                                      <input
-                                        type="checkbox"
-                                        checked={scopes.includes(scope.key)}
-                                        onChange={() =>
-                                          toggleInvoiceCompanyPerm(c.id, scope.key)
-                                        }
-                                        disabled={!canEditThisEmployee}
-                                        className="mt-1 h-4 w-4 rounded border-[#d3bb73]/30 bg-[#0f1119] text-[#d3bb73] focus:ring-[#d3bb73]/50 focus:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50"
-                                      />
-                                      <div className="flex-1">
-                                        <div className="text-sm font-medium text-[#e5e4e2] transition-colors group-hover:text-[#d3bb73]">
-                                          {scope.label}
-                                        </div>
-                                        <div className="mt-0.5 text-xs text-[#e5e4e2]/60">
-                                          {scope.description}
-                                        </div>
-                                      </div>
-                                    </label>
-                                ))}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
                     </div>
                   )}
 

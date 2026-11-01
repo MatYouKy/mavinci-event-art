@@ -49,12 +49,13 @@ export async function POST(req: Request) {
       );
     }
 
+    // KSeF działalności (synchronizacja, token): „Zarządzanie finansami” w tej działalności (finance_company_manageable).
     const financeAccess = await loadInvoiceFinanceAccess(userSupabase);
     if (!financeAccess.canManageCompanyFinance) {
       return NextResponse.json({ success: false, error: 'Brak dostępu do konfiguracji KSeF firmy.' }, { status: 403 });
     }
     const { data: canManageCompany, error: permissionError } = await userSupabase.rpc(
-      "can_manage_invoice_company",
+      "finance_company_manageable",
       { p_company_id: companyId },
     );
 

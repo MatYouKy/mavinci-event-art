@@ -3,7 +3,9 @@
 import { useState, useEffect } from 'react';
 import { Building2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
-import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import { useInvoiceFinanceAccess } from '@/hooks/useInvoiceFinanceAccess';
+import { canFinanceCompany } from '@/lib/invoices/financeAccess';
+import type { FinanceCompanyLevel } from '@/lib/financeCompanyAccess';
 
 interface MyCompany {
   id: string;
@@ -19,7 +21,10 @@ interface CompanySelectorProps {
   showAllOption?: boolean;
   className?: string;
   label?: string;
+  /** Tylko działalności, w których pracownik może wystawiać faktury (poziom ≥ „Wystawianie faktur”). */
   requireIssue?: boolean;
+  /** Ekrany finansów: tylko działalności z co najmniej tym poziomem dostępu do finansów. */
+  minFinanceLevel?: FinanceCompanyLevel;
   emptyOptionLabel?: string;
 }
 
@@ -30,42 +35,45 @@ export default function CompanySelector({
   className = '',
   label = 'Firma',
   requireIssue = false,
+  minFinanceLevel,
   emptyOptionLabel = 'Wszystkie firmy',
 }: CompanySelectorProps) {
   const [companies, setCompanies] = useState<MyCompany[]>([]);
   const [loading, setLoading] = useState(true);
-  const { employee: currentEmployee, isAdmin } = useCurrentEmployee();
+  const { access: financeAccess, loading: financeAccessLoading } = useInvoiceFinanceAccess();
+  const requiredLevel: FinanceCompanyLevel | null = requireIssue ? 'invoices_issue' : minFinanceLevel ?? null;
 
   useEffect(() => {
+    if (requiredLevel && financeAccessLoading) return;
     loadCompanies();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentEmployee, isAdmin]);
+  }, [financeAccess, financeAccessLoading, requiredLevel]);
 
   const loadCompanies = async () => {
     try {
-      const { data, error } = await supabase
-        .from('my_companies')
-        .select('id, name, nip, is_default, is_active')
-        .eq('is_active', true)
-        .order('is_default', { ascending: false })
-        .order('name');
+      // Działalności dostępne dla pracownika (id, nazwa, NIP) — bez danych finansowych działalności,
+      // więc lista działa także w formularzach wydarzeń dla osób bez dostępu do finansów.
+      // Funkcja pochodzi z migracji 20261101171000; do czasu jej wdrożenia lista z my_companies (RLS:
+      // tylko działalności z dostępem do finansów).
+      let rows: MyCompany[] = [];
+      const accessible = await supabase.rpc('get_my_accessible_companies');
+      if (!accessible.error) {
+        rows = (accessible.data || []) as MyCompany[];
+      } else {
+        const fallback = await supabase
+          .from('my_companies')
+          .select('id, name, nip, is_default, is_active')
+          .eq('is_active', true)
+          .order('is_default', { ascending: false })
+          .order('name');
+        if (fallback.error) throw fallback.error;
+        rows = (fallback.data || []) as MyCompany[];
+      }
 
-      if (error) throw error;
+      let filtered = rows.filter((c) => c.is_active);
 
-      const allowed = (() => {
-        if (isAdmin) return null;
-        const ids = (currentEmployee as any)?.my_company_ids;
-        if (!Array.isArray(ids) || ids.length === 0) return null;
-        return ids as string[];
-      })();
-
-      let filtered = allowed
-        ? (data || []).filter((c) => allowed.includes(c.id))
-        : data || [];
-
-      if (requireIssue && !isAdmin) {
-        const perms = (currentEmployee as any)?.invoice_company_permissions || {};
-        filtered = filtered.filter((c) => Array.isArray(perms[c.id]) && perms[c.id].includes('issue'));
+      if (requiredLevel) {
+        filtered = filtered.filter((c) => canFinanceCompany(financeAccess, c.id, requiredLevel));
       }
 
       setCompanies(filtered);

@@ -109,6 +109,6 @@ export const getVisibleMenuItems = (employee: PermissionEmployee): MenuItem[] =>
   });
 };
 
-export const canViewEventFinances = (employee: PermissionEmployee): boolean =>
-  isAdmin(employee) || ['finances_manage','finances_view','offers_manage','offers_view','invoices_manage','invoices_view']
-    .some(scope => hasPermission(employee, scope));
+// Wartości finansowe wydarzeń: decyzja per wydarzenie w bazie (can_view_event_commercials) —
+// patrz useEventCommercialsAccess w lib/eventCommercialsAccess.ts. Dawna reguła oparta na uprawnieniach
+// (offers_*, invoices_*) pokazywała więcej niż CRM, więc została usunięta.

@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 import { createSupabaseServerClient } from '@/lib/supabase/server.app';
 import { fetchEventsInitialServer } from './eventsData.server';
 import { getCurrentEmployeeServerCached } from '@/lib/CRM/auth/getCurrentEmployeeServer';
+import { hasAnyFinanceCompanyLevel } from '@/lib/financeCompanyAccess';
 import { usesOperationalStages } from './operationalStages';
 
 export async function fetchEventsPageSnapshot() {
@@ -19,7 +20,8 @@ export async function fetchEventsPageSnapshot() {
   const events = Array.from(merged.values());
   const operational = usesOperationalStages(employee);
   const commercial = employee.role === 'admin' || employee.access_level === 'admin' ||
-    ['events_manage', 'finances_manage', 'finances_view', 'offers_manage', 'offers_view', 'invoices_manage', 'invoices_view'].some(p => employee.permissions?.includes(p));
+    ['events_manage', 'finances_manage', 'finances_view', 'offers_manage', 'offers_view'].some(p => employee.permissions?.includes(p))
+    || hasAnyFinanceCompanyLevel((employee as { finance_company_access?: unknown }).finance_company_access, 'sales');
   for (let offset = 0; offset < events.length; offset += 100) {
     const ids = events.slice(offset, offset + 100).map(e => e.id);
     await Promise.all([

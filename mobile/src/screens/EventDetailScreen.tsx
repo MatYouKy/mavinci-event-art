@@ -43,7 +43,8 @@ import {
   WeddingCardTab,
 } from '@/components/Events/EventDetailScreen/WeddingCardTab';
 import { mergeEventTeam } from '../lib/eventTeam';
-import { canViewEventFinances, isManagerOrAdmin } from '../lib/permissions';
+import { isManagerOrAdmin } from '../lib/permissions';
+import { useEventCommercialsAccess } from '../lib/eventCommercialsAccess';
 
 type TabKey = 'warehouse' | 'details' | 'agenda' | 'wedding' | 'checklist' | 'team' | 'fleet' | 'files';
 
@@ -66,7 +67,7 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab }: Props) {
   const [warehouseAccess, setWarehouseAccess] = useState<{ eventId: string; employeeId: string; allowed: boolean } | null>(null);
   const showWarehouseTab = isWarehouseWorker && warehouseAccess?.eventId === eventId
     && warehouseAccess?.employeeId === employee?.id && warehouseAccess?.allowed === true;
-  const canViewBillingContext = canViewEventFinances(employee);
+  const canViewBillingContext = useEventCommercialsAccess(eventId, employee?.id);
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab && initialTab !== 'warehouse' ? initialTab : 'details');
   useEffect(() => {
     setActiveTab(initialTab === 'warehouse' && !showWarehouseTab ? 'details' : initialTab ?? 'details');

@@ -1,4 +1,4 @@
-import { canViewEventFinances } from '../../../lib/permissions';
+import { useEventCommercialsAccess } from '../../../lib/eventCommercialsAccess';
 import { View, Text, StyleSheet, TouchableOpacity, Linking } from 'react-native';
 import { colors, spacing } from '../../../theme';
 import { Feather } from '@expo/vector-icons';
@@ -82,7 +82,7 @@ export function DetailsTab({ event, employee }: { event: EventDetail; employee: 
   const hasMapLocation = Boolean(getLocationMapLinks(mapLocation));
   const openDirections = () => showLocationDirections(mapLocation);
 
-  const canViewFinances = canViewEventFinances(employee);
+  const canViewFinances = useEventCommercialsAccess(event.id, employee?.id);
   const hasExpectedRevenue = typeof event.expected_revenue === 'number';
   const hasBudget = typeof event.budget === 'number';
 

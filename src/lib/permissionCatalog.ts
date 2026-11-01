@@ -116,12 +116,12 @@ export const PERMISSION_SCOPE_GROUPS: PermissionScopeGroup[] = [
   {
     key: 'finance',
     label: 'Finanse i dane',
-    description: 'Finanse wydarzeń, faktury, bazy danych i przetargi.',
+    description: 'Wartości finansowe wydarzeń, bazy danych i przetargi. Finanse działalności — w sekcji „Finanse według działalności”.',
     scopes: [
-      { key: 'finances_view', label: 'Podgląd finansów', description: 'Widzi wartości finansowe i koszty wydarzeń.' },
-      { key: 'finances_manage', label: 'Zarządzanie finansami', description: 'Może edytować budżety i dane finansowe.' },
-      { key: 'invoices_view', label: 'Podgląd faktur', description: 'Widzi faktury w swoim zakresie dostępu. Sprzedawca widzi tylko wystawione przez siebie dokumenty.' },
-      { key: 'invoices_manage', label: 'Zarządzanie fakturami', description: 'Może wystawiać i wysyłać faktury do KSeF w swoim zakresie. Dostęp sprzedawcy nie obejmuje finansów ani konfiguracji KSeF firmy.' },
+      // Faktury, KSeF, bank, deklaracje i dokumenty działalności nadaje wyłącznie „Finanse według działalności”
+      // (employees.finance_company_access). Stare invoices_view / invoices_manage / ksef_manage nic już nie nadają.
+      { key: 'finances_view', label: 'Wartości finansowe wydarzeń (budżet, koszty)', description: 'Widzi budżet, przychód, koszty i prowizje wydarzeń, które widzi, w dostępnych działalnościach. Nie obejmuje banku, faktur ani dokumentów działalności.' },
+      { key: 'finances_manage', label: 'Wartości finansowe wydarzeń (budżet, koszty) — edycja', description: 'Może edytować budżety, koszty i prowizje widocznych wydarzeń w dostępnych działalnościach. Nie obejmuje banku, faktur ani dokumentów działalności.' },
       { key: 'databases_view', label: 'Podgląd baz danych', description: 'Widzi udostępnione bazy danych.' },
       { key: 'databases_manage', label: 'Zarządzanie bazami danych', description: 'Może tworzyć, edytować i udostępniać bazy.' },
       { key: 'tenders_view', label: 'Podgląd przetargów', description: 'Widzi przetargi i wyniki dopasowania.' },

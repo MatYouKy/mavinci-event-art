@@ -40,6 +40,7 @@ import { ViewMode } from '../settings/page';
 import { EventCategoryRow, EventRow } from '@/lib/CRM/events/eventsData.server';
 import { IEmployee } from '../employees/type';
 import { hasScope } from './[id]/helpers/hasScope';
+import { hasAnyFinanceCompanyLevel } from '@/lib/financeCompanyAccess';
 import FullScreenLoader from '@/components/UI/Loader/CustomModalLoader';
 import { eventStatusLabels } from './[id]/components/tabs/EventsDetailsTab/EventDetailsAction';
 import { deleteEventSafely } from '@/lib/CRM/events/deleteEventSafely';
@@ -955,8 +956,8 @@ export default function EventsPageClient({
     hasScope('finances_view', currentEmployee) ||
     hasScope('offers_manage', currentEmployee) ||
     hasScope('offers_view', currentEmployee) ||
-    hasScope('invoices_manage', currentEmployee) ||
-    hasScope('invoices_view', currentEmployee);
+    // Dawne invoices_view / invoices_manage: teraz poziom finansów działalności (kwoty filtruje baza per wydarzenie).
+    hasAnyFinanceCompanyLevel(currentEmployee?.finance_company_access, 'invoices');
 
   const operational = usesOperationalStages(currentEmployee);
   const displayStatus = (event: { id: string; status: string }) => operational

@@ -3,8 +3,6 @@ import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { createSupabaseServerClient } from '@/lib/supabase/server.app';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin.server';
-import { canManage } from '@/lib/permissions';
-import { loadInvoiceFinanceAccess } from '@/lib/invoices/financeAccess';
 import { getOfferTotals } from '@/lib/CRM/Offers/offerTotals';
 import { getCommissionAmounts, type CommissionPaymentMethod } from '@/lib/CRM/events/eventCommission';
 
@@ -35,19 +33,18 @@ export async function POST(request: Request) {
     const user = createSupabaseServerClient(cookies());
     const { data: auth, error: authError } = await user.auth.getUser();
     if (authError || !auth.user) return fail('Zaloguj się ponownie.', 401);
-    const financeAccess = await loadInvoiceFinanceAccess(user);
-    if (!financeAccess.canManageCompanyFinance) {
-      return fail('Nie masz uprawnień do automatycznego naliczania prowizji firmy.', 403);
-    }
-    const [employeeResult, eventAccess, companyAccess, portalSession] = await Promise.all([
+    // Prowizje wydarzenia: ta sama reguła co w bazie (commission_settlement_can_access) — administrator,
+    // „Zarządzanie finansami” działalności wydarzenia albo finances_manage przy widocznym wydarzeniu.
+    const [employeeResult, eventAccess, companyAccess, portalSession, commissionAccess] = await Promise.all([
       user.from('employees').select('id,role,access_level,permissions').eq('is_active', true)
         .or(`id.eq.${auth.user.id},auth_user_id.eq.${auth.user.id}`).limit(1).maybeSingle(),
       user.rpc('current_employee_can_view_event', { p_event_id: eventId }),
       user.rpc('current_employee_can_access_event_company', { p_event_id: eventId }),
       user.rpc('current_session_is_seller_portal'),
+      user.rpc('commission_settlement_can_access', { p_event_id: eventId, p_manage: true }),
     ]);
-    if (employeeResult.error || eventAccess.error || companyAccess.error || portalSession.error ||
-      portalSession.data !== false || !canManage(employeeResult.data, 'finances') ||
+    if (employeeResult.error || eventAccess.error || companyAccess.error || portalSession.error || commissionAccess.error ||
+      portalSession.data !== false || !employeeResult.data || commissionAccess.data !== true ||
       eventAccess.data !== true || companyAccess.data !== true) {
       return fail('Nie masz uprawnień do naliczania prowizji dla tego wydarzenia.', 403);
     }

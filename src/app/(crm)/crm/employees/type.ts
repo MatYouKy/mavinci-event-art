@@ -10,6 +10,8 @@ export interface IEmployee {
   company_access_mode?: 'all' | 'selected';
   role_permissions_inherited?: boolean;
   invoice_company_permissions?: Record<string, string[]> | null;
+  /** Dostęp do finansów według działalności: {id_działalności: poziom} (migracja 20261101165000). */
+  finance_company_access?: Record<string, string> | null;
   sales_team_id?: string | null;
   is_sales_team_manager?: boolean;
   id: string;

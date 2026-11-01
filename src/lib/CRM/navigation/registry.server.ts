@@ -39,6 +39,8 @@ export type NavigationItemDTO = {
   iconKey: string; // string, bo to leci do klienta przez JSON
   module?: string;
   permissions?: string[]; // do filtrowania po uprawnieniach
+  /** Pozycja widoczna przy dostępie do finansów co najmniej „Własna sprzedaż” w którejś działalności. */
+  financeCompanyAccess?: boolean;
   children?: NavigationItemDTO[]; // submenu
 };
 
@@ -308,7 +310,7 @@ export const allNavigation: NavigationItemDTO[] = [
     href: '/crm/invoices',
     iconKey: 'invoices',
     module: 'invoices',
-    permissions: ['invoices_view'],
+    financeCompanyAccess: true,
   },
   {
     key: 'locations',

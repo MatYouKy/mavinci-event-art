@@ -18,7 +18,7 @@ const definitions = [
   ['personnel', 'Umowy i wynagrodzenia zespołu', ['/crm/employees/contracts', '/crm/employees/collaborators']],
   ['time_tracking', 'Czas pracy', ['/crm/time-tracking']],
   ['invoices', 'Faktury', ['/crm/invoices']],
-  ['finances', 'Finanse', ['/crm/finances']],
+  ['finances', 'Wartości finansowe wydarzeń', ['/crm/finances']],
   ['messages', 'Wiadomości', ['/crm/messages']],
   ['chat', 'Komunikator', ['/crm/chat']],
   ['marketing_campaigns', 'Marketing', ['/crm/campaigns', '/crm/mailing']],

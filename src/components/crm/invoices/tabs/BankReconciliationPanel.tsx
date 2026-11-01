@@ -26,6 +26,7 @@ import {
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useInvoiceFinanceAccess } from '@/hooks/useInvoiceFinanceAccess';
+import { canFinanceCompany } from '@/lib/invoices/financeAccess';
 import { repairBrokenBankText } from '@/lib/bankTextEncoding';
 import BankTransactionDocumentPickerModal from '@/components/crm/BankTransactionDocumentPickerModal';
 import BankTransactionAccountingModal from '@/components/crm/BankTransactionAccountingModal';
@@ -80,10 +81,11 @@ const OPEN_STATUSES: ReconciliationStatus[] = ['proposal', 'choice', 'partial', 
 export default function BankReconciliationPanel({ filterCompanyIds = null, onOpenStatements, onOpenDeclarations }: Props) {
   const { showSnackbar } = useSnackbar();
   const { access } = useInvoiceFinanceAccess();
-  const canManage = Boolean(access?.canManageCompanyFinance);
 
   const [periods, setPeriods] = useState<Period[]>([]);
   const [period, setPeriod] = useState<Period | null>(null);
+  // Uzgadnianie widzi poziom „Podgląd finansów” działalności wyciągu; akcje — tylko „Zarządzanie finansami” tej działalności.
+  const canManage = canFinanceCompany(access, period?.companyId, 'finance_manage');
   const [data, setData] = useState<ReconciliationMonth | null>(null);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
@@ -102,6 +104,7 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
   // Okresy z wgranymi wyciągami (firma + miesiąc), najnowsze pierwsze.
   useEffect(() => {
     let cancelled = false;
+    if (!access) return () => { cancelled = true; };
     (async () => {
       let query = supabase
         .from('bank_statements')
@@ -122,7 +125,7 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
       const next: Period[] = [];
       for (const row of (rows || []) as Array<{ my_company_id: string; statement_year: number; statement_month: number; my_companies?: { name?: string } | { name?: string }[] | null }>) {
         const key = `${row.my_company_id}:${row.statement_year}:${row.statement_month}`;
-        if (seen.has(key)) continue;
+        if (seen.has(key) || !canFinanceCompany(access, row.my_company_id, 'finance_view')) continue;
         seen.add(key);
         const company = Array.isArray(row.my_companies) ? row.my_companies[0] : row.my_companies;
         next.push({ companyId: row.my_company_id, companyName: company?.name || 'Firma', year: row.statement_year, month: row.statement_month });
@@ -134,7 +137,7 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [companyKey]);
+  }, [companyKey, access]);
 
   const load = useCallback(async () => {
     if (!period) return;

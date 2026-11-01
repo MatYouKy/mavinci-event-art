@@ -2,6 +2,7 @@ import 'server-only';
 import { cookies } from 'next/headers';
 import { createSupabaseServerClient } from '@/lib/supabase/server.app';
 import { allNavigation, type NavKey, type NavigationItemDTO } from './registry.server';
+import { hasAnyFinanceCompanyLevel } from '@/lib/financeCompanyAccess';
 import type { NavigationItem } from '@/app/(crm)/crm/mock/navigation';
 
 const hasPermission = (perms: string[], required: string) => {
@@ -37,7 +38,7 @@ export async function getNavigationForUserServer(): Promise<{
 
   const { data: employee, error } = await supabase
     .from('employees')
-    .select('id, permissions, role, access_level, navigation_order, auth_user_id')
+    .select('id, permissions, role, access_level, navigation_order, auth_user_id, finance_company_access')
     .eq('auth_user_id', user.id)
     .maybeSingle();
 
@@ -57,6 +58,9 @@ export async function getNavigationForUserServer(): Promise<{
     if (item.children?.length) {
       const children = item.children.map(filterItem).filter((child): child is NavigationItemDTO => child !== null);
       return children.length ? { ...item, children, href: children[0].href } : null;
+    }
+    if (item.financeCompanyAccess) {
+      return isAdmin || hasAnyFinanceCompanyLevel(employee.finance_company_access, 'sales') ? item : null;
     }
     return isAdmin || hasAll(perms, item.permissions) || (hasRealizations && ['/crm/events','/crm/calendar'].includes(item.href || '')) ? item : null;
   };

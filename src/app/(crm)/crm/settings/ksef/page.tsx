@@ -17,6 +17,8 @@ import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import KSeFConfigForm from '@/components/crm/KSeFConfigForm';
 import PermissionGuard from '@/components/crm/PermissionGuard';
+import { useInvoiceFinanceAccess } from '@/hooks/useInvoiceFinanceAccess';
+import { filterFinanceCompanies } from '@/lib/invoices/financeAccess';
 
 interface MyCompany {
   id: string;
@@ -33,6 +35,7 @@ interface MyCompany {
 
 export default function KSeFSettingsPage() {
   const router = useRouter();
+  const { access: financeAccess, loading: financeAccessLoading } = useInvoiceFinanceAccess();
   const { showSnackbar } = useSnackbar();
   const [companies, setCompanies] = useState<MyCompany[]>([]);
   const [selectedCompany, setSelectedCompany] = useState<string | null>(null);
@@ -40,8 +43,10 @@ export default function KSeFSettingsPage() {
   const [showHelp, setShowHelp] = useState(false);
 
   useEffect(() => {
+    if (financeAccessLoading) return;
     fetchCompanies();
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [financeAccessLoading, financeAccess]);
 
   const fetchCompanies = async () => {
     try {
@@ -65,7 +70,8 @@ export default function KSeFSettingsPage() {
         credentialsData?.map((c) => c.my_company_id) || []
       );
 
-      const companiesWithStatus = (companiesData || []).map((company) => ({
+      // Tylko działalności, w których pracownik ma „Zarządzanie finansami”.
+      const companiesWithStatus = filterFinanceCompanies(financeAccess, companiesData || [], 'finance_manage').map((company) => ({
         ...company,
         has_ksef: credentialMap.has(company.id),
       }));
@@ -93,8 +99,25 @@ export default function KSeFSettingsPage() {
     );
   }
 
+  // Konfiguracja KSeF działalności: „Zarządzanie finansami” w co najmniej jednej działalności (dane dostępowe
+  // KSeF filtruje RLS do działalności z tym poziomem). Stare uprawnienie invoices_manage nic już nie nadaje.
+  if (financeAccessLoading) {
+    return (
+      <div className="flex min-h-[400px] items-center justify-center">
+        <div className="text-lg text-[#d3bb73]">Ładowanie...</div>
+      </div>
+    );
+  }
+  if (!financeAccess?.canManageCompanyFinance) {
+    return (
+      <div role="alert" className="p-6 text-sm text-[#e5e4e2]/70">
+        Konfiguracja KSeF wymaga poziomu „Zarządzanie finansami” w co najmniej jednej działalności.
+      </div>
+    );
+  }
+
   return (
-    <PermissionGuard permission="invoices_manage">
+    <PermissionGuard>
       <div className="max-w-6xl">
         <div className="mb-8">
           <button

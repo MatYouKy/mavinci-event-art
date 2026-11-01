@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase/browser';
 import { AppRouterInstance } from 'next/dist/shared/lib/app-router-context.shared-runtime';
 import { useEffect, useMemo, useState } from 'react';
 import { allNavigation } from '../mock/navigation';
+import { hasAnyFinanceCompanyLevel } from '@/lib/financeCompanyAccess';
 
 type AccessState = 'granted' | 'denied' | 'checking';
 
@@ -15,13 +16,10 @@ function getSyncAccess(pathname: string, employee: Employee | null): AccessState
 
   if (isAdmin(employee)) return 'granted';
 
-  // jawny wyjątek dla modułu faktur
+  // Finanse: dostęp według działalności (co najmniej „Własna sprzedaż” w którejś działalności),
+  // nie według starych uprawnień invoices_view / invoices_manage. Zakres danych pilnuje RLS.
   if (pathname.startsWith('/crm/invoices')) {
-    const hasInvoicesAccess =
-      employee.permissions?.includes('invoices_view') ||
-      employee.permissions?.includes('invoices_manage');
-
-    return hasInvoicesAccess ? 'granted' : 'denied';
+    return hasAnyFinanceCompanyLevel(employee.finance_company_access, 'sales') ? 'granted' : 'denied';
   }
 
   const currentNav = allNavigation.find(

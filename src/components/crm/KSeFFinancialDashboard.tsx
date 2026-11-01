@@ -970,6 +970,7 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
               value={selectedCompanyId}
               onChange={setSelectedCompanyId}
               showAllOption={true}
+              minFinanceLevel="finance_view"
               className="w-64"
             />
           )}
@@ -1320,7 +1321,7 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
         <button type="button" onClick={() => setSelectedMonth(null)} className="rounded-lg bg-white/5 px-3 py-2 text-sm text-[#e5e4e2]">← Wszystkie miesiące</button>
         <h3 className="text-lg text-[#e5e4e2]">{MONTHS[selectedMonth.month - 1]} {selectedMonth.year} — wybierz działalność</h3>
         <p className="text-sm text-[#e5e4e2]/60">Rozliczenie miesiąca i paczka do Saldeo muszą dotyczyć jednej firmy.</p>
-        <CompanySelector value={selectedCompanyId} onChange={setSelectedCompanyId} showAllOption={false} className="max-w-sm" />
+        <CompanySelector value={selectedCompanyId} onChange={setSelectedCompanyId} showAllOption={false} minFinanceLevel="finance_view" className="max-w-sm" />
       </div>)}
 
       {uploadMonth && (
@@ -1359,6 +1360,7 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
                   value={selectedCompanyId}
                   onChange={setSelectedCompanyId}
                   showAllOption={true}
+                  minFinanceLevel="finance_manage"
                   emptyOptionLabel="Wybierz działalność…"
                   label="Działalność, której dotyczy wyciąg"
                 />

@@ -43,6 +43,7 @@ import PermissionGuard from '@/components/crm/PermissionGuard';
 import SystemBadge from '@/components/UI/SystemBadge';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useInvoiceFinanceAccess } from '@/hooks/useInvoiceFinanceAccess';
+import { canFinanceCompany } from '@/lib/invoices/financeAccess';
 import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
 import { useDialog } from '@/contexts/DialogContext';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -115,6 +116,7 @@ function InvoiceContextMenu({
   onCorrection,
   onIssueFinal,
   canManage,
+  canDelete,
   isAdmin,
 }: {
   invoice: Invoice;
@@ -122,7 +124,10 @@ function InvoiceContextMenu({
   onDelete: () => void;
   onCorrection: () => void;
   onIssueFinal: () => void;
+  /** Wystawianie i edycja faktur tej działalności (poziom ≥ „Wystawianie faktur”). */
   canManage: boolean;
+  /** Usuwanie faktury — „Zarządzanie finansami” tej działalności. */
+  canDelete: boolean;
   isAdmin: boolean;
 }) {
   const canIssueFinal =
@@ -207,7 +212,7 @@ function InvoiceContextMenu({
               <span className="text-orange-400">Wystaw korekte</span>
             </button>
           )}
-          {(canManage || isAdmin) && (
+          {canDelete && (
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -257,11 +262,7 @@ export default function InvoicesPage() {
   const companySelectionInitializedRef = useRef(false);
 
   const {
-    canViewModule,
-    canManageModule,
     isAdmin,
-    employee: currentEmployee,
-    sessionUserId,
     loading: permissionsLoading,
   } = useCurrentEmployee();
   const { access: financeAccess, loading: financeAccessLoading, error: financeAccessError } = useInvoiceFinanceAccess();
@@ -281,9 +282,10 @@ export default function InvoicesPage() {
     return () => { active = false; };
   }, [invoices, financeAccess]);
 
-  const canAccessKSeF = Boolean(financeAccess?.canViewCompanyFinance && canViewModule('invoices'));
-  const canManageInvoices = useMemo(() => canManageModule('invoices'), [canManageModule]);
-  const canManageFinances = useMemo(() => canManageModule('finances'), [canManageModule]);
+  // Widoczność wynika wyłącznie z poziomów dostępu do finansów według działalności (get_invoice_finance_access).
+  // KSeF i dokumenty: co najmniej „Podgląd faktur” w którejś działalności; ustawienia: „Zarządzanie finansami”.
+  const canAccessKSeF = Boolean(financeAccess && (financeAccess.isAdmin || financeAccess.invoiceViewCompanyIds.length > 0));
+  const canManageInvoices = Boolean(financeAccess && (financeAccess.isAdmin || financeAccess.financeManageCompanyIds.length > 0));
 
   const handleTabChange = useCallback(
     (tab: typeof activeTab) => {
@@ -321,7 +323,12 @@ export default function InvoicesPage() {
       return;
     }
 
-    if (requestedTab === 'ksef' && !canAccessKSeF) {
+    if ((requestedTab === 'ksef' || requestedTab === 'external') && !canAccessKSeF) {
+      setActiveTab('dashboard');
+      return;
+    }
+
+    if (requestedTab === 'expenses' && !financeAccess.canViewCompanyFinance) {
       setActiveTab('dashboard');
       return;
     }
@@ -334,22 +341,11 @@ export default function InvoicesPage() {
     setActiveTab(requestedTab as typeof activeTab);
   }, [canAccessKSeF, canManageInvoices, permissionsLoading, financeAccessLoading, financeAccess, isSalesView, router, searchParams]);
 
+  // Działalności, w których pracownik ma jakikolwiek dostęp do finansów (administrator: wszystkie).
   const allowedCompanyIds = useMemo<string[] | null>(() => {
-    if (isAdmin) return null;
-    const ids = (currentEmployee as any)?.my_company_ids;
-    if (!Array.isArray(ids) || ids.length === 0) return null;
-    return ids as string[];
-  }, [isAdmin, currentEmployee]);
-
-  const invoiceCompanyPerms = useMemo<Record<string, string[]>>(() => {
-    const raw = (currentEmployee as any)?.invoice_company_permissions;
-    return raw && typeof raw === 'object' ? raw : {};
-  }, [currentEmployee]);
-
-  const hasAnyInvoiceCompanyPerm = useMemo(
-    () => Object.values(invoiceCompanyPerms).some((v) => Array.isArray(v) && v.length > 0),
-    [invoiceCompanyPerms],
-  );
+    if (!financeAccess || financeAccess.isAdmin) return null;
+    return financeAccess.salesCompanyIds;
+  }, [financeAccess]);
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -366,29 +362,14 @@ export default function InvoicesPage() {
     return sortDirection === 'asc' ? '↑' : '↓';
   };
 
-  const companyHasPerm = useCallback(
-    (companyId: string | null | undefined, scope: 'view_own' | 'view_all' | 'issue' | 'manage') => {
-      if (isAdmin) return true;
-      if (!companyId) return false;
-      const scopes = invoiceCompanyPerms[companyId] || [];
-      return scopes.includes(scope);
-    },
-    [isAdmin, invoiceCompanyPerms],
-  );
-
   const issuableCompanyIds = useMemo<string[]>(() => {
-    if (isAdmin) return allowedCompanyIds ?? myCompanies.map((c) => c.id);
-    const perCompany = Object.entries(invoiceCompanyPerms)
-      .filter(([, scopes]) => Array.isArray(scopes) && scopes.includes('issue'))
-      .map(([id]) => id);
-    if (perCompany.length > 0) return perCompany;
-    if (canManageModule('invoices')) {
-      return allowedCompanyIds ?? myCompanies.map((c) => c.id);
-    }
-    return [];
-  }, [isAdmin, invoiceCompanyPerms, allowedCompanyIds, myCompanies, canManageModule]);
+    if (!financeAccess) return [];
+    if (financeAccess.isAdmin) return myCompanies.map((c) => c.id);
+    return financeAccess.invoiceIssueCompanyIds;
+  }, [financeAccess, myCompanies]);
 
-  const canIssueAny = Boolean(financeAccess?.canIssueInvoices && (isSalesView || isAdmin || issuableCompanyIds.length > 0));
+  // Sprzedawca (poziom „Własna sprzedaż”) nie wystawia faktur — robi to administrator lub osoba z „Wystawianiem faktur”.
+  const canIssueAny = Boolean(financeAccess?.canIssueInvoices && issuableCompanyIds.length > 0);
   const { showConfirm } = useDialog();
   const { showSnackbar } = useSnackbar();
 
@@ -514,11 +495,10 @@ export default function InvoicesPage() {
         )
         .order('issue_date', { ascending: false });
 
+      // RLS zwraca tylko faktury działalności z odpowiednim poziomem: „Własna sprzedaż” — własne faktury
+      // i faktury sprzedanych przez siebie wydarzeń, wyższe poziomy — wszystkie faktury działalności.
       if (allowedCompanyIds) {
         query = query.in('my_company_id', allowedCompanyIds);
-      }
-      if (financeAccess.scope === 'sales') {
-        query = query.in('created_by', [financeAccess.employeeId, financeAccess.authUserId]);
       }
 
       const { data, error } = await query;
@@ -632,7 +612,6 @@ export default function InvoicesPage() {
 
   const filteredInvoices = useMemo(() => {
     const filtered = invoices.filter((invoice) => {
-      if (isSalesView && invoice.created_by !== financeAccess?.employeeId && invoice.created_by !== financeAccess?.authUserId) return false;
       const matchesSearch =
         invoice.invoice_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
         invoice.buyer_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -645,27 +624,9 @@ export default function InvoicesPage() {
       const matchesCompany =
         selectedCompanyIds.size === 0 || selectedCompanyIds.has((invoice as any).my_company_id);
 
-      if (!isAdmin && !isSalesView) {
+      if (allowedCompanyIds) {
         const cid = invoice.my_company_id;
-        if (allowedCompanyIds && (!cid || !allowedCompanyIds.includes(cid))) return false;
-
-        if (hasAnyInvoiceCompanyPerm) {
-          if (!cid) return false;
-          const scopes = invoiceCompanyPerms[cid] || [];
-          const canViewAll = scopes.includes('view_all') || scopes.includes('manage');
-          const canViewOwn = canViewAll || scopes.includes('view_own') || scopes.includes('issue');
-
-          if (!canViewOwn) return false;
-          if (
-            !canViewAll &&
-            invoice.created_by !== currentEmployee?.id &&
-            invoice.created_by !== sessionUserId
-          ) {
-            return false;
-          }
-        } else if (!canManageInvoices) {
-          return false;
-        }
+        if (!cid || !allowedCompanyIds.includes(cid)) return false;
       }
 
       return matchesSearch && matchesType && matchesStatus && matchesCompany;
@@ -710,15 +671,7 @@ export default function InvoicesPage() {
     filterType,
     filterStatus,
     selectedCompanyIds,
-    isAdmin,
-    isSalesView,
-    financeAccess,
     allowedCompanyIds,
-    hasAnyInvoiceCompanyPerm,
-    invoiceCompanyPerms,
-    currentEmployee?.id,
-    sessionUserId,
-    canManageInvoices,
     sortKey,
     sortDirection,
   ]);
@@ -747,7 +700,7 @@ export default function InvoicesPage() {
   }
 
   return (
-    <PermissionGuard module={isSalesView ? undefined : 'invoices'}>
+    <PermissionGuard>
       <div className="min-h-screen min-w-0 overflow-x-hidden bg-[#0a0d1a] p-3 sm:p-6">
         <div className="mx-auto min-w-0 max-w-[1800px]">
           {/* Header */}
@@ -887,7 +840,9 @@ export default function InvoicesPage() {
             ]
               .filter((tab) => {
                 if (isSalesView) return ['dashboard', 'local', 'commissions'].includes(tab.id);
-                return tab.id !== 'ksef' || canAccessKSeF;
+                if (tab.id === 'ksef' || tab.id === 'external') return canAccessKSeF;
+                if (tab.id === 'expenses') return financeAccess.canViewCompanyFinance;
+                return true;
               })
               .map((tab) => {
                 const Icon = tab.icon;
@@ -912,11 +867,11 @@ export default function InvoicesPage() {
             <CanonicalFinancialDashboard
               filterCompanyIds={selectedCompanyIds.size > 0 ? Array.from(selectedCompanyIds) : null}
             />
-          ) : visibleTab === 'ksef' && financeAccess.canViewCompanyFinance ? (
+          ) : visibleTab === 'ksef' && canAccessKSeF ? (
             <KSeFIntegrationPanel
               filterCompanyIds={selectedCompanyIds.size > 0 ? Array.from(selectedCompanyIds) : null}
             />
-          ) : visibleTab === 'external' && financeAccess.canViewCompanyFinance ? (
+          ) : visibleTab === 'external' && canAccessKSeF ? (
             <AccountingWorkspaceTab
               filterCompanyIds={
                 selectedCompanyIds.size > 0 ? Array.from(selectedCompanyIds) : allowedCompanyIds
@@ -927,9 +882,9 @@ export default function InvoicesPage() {
           ) : visibleTab === 'commissions' ? (
             <CommissionRegisterPanel
               filterCompanyIds={selectedCompanyIds.size > 0 ? Array.from(selectedCompanyIds) : allowedCompanyIds}
-              canManage={canManageFinances && financeAccess.canManageCompanyFinance}
+              canManage={financeAccess.canManageCompanyFinance}
             />
-          ) : visibleTab === 'settings' && financeAccess.canViewCompanyFinance ? (
+          ) : visibleTab === 'settings' && canManageInvoices ? (
             <InvoiceSettingsTab />
           ) : (
             <>
@@ -1294,10 +1249,8 @@ export default function InvoicesPage() {
                                     });
                                     setShowFinalInvoiceWizard(true);
                                   }}
-                                  canManage={
-                                    canManageInvoices ||
-                                    companyHasPerm((invoice as any).my_company_id, 'manage')
-                                  }
+                                  canManage={canFinanceCompany(financeAccess, invoice.my_company_id, 'invoices_issue')}
+                                  canDelete={canFinanceCompany(financeAccess, invoice.my_company_id, 'finance_manage')}
                                   isAdmin={isAdmin}
                                 />
                               </div>

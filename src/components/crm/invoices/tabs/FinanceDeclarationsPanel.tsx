@@ -19,6 +19,7 @@ import {
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useInvoiceFinanceAccess } from '@/hooks/useInvoiceFinanceAccess';
+import { canFinanceCompany, filterFinanceCompanies } from '@/lib/invoices/financeAccess';
 import {
   DECLARATION_FORMS,
   DECLARATION_KIND_LABELS,
@@ -55,10 +56,11 @@ interface Props {
 export default function FinanceDeclarationsPanel({ filterCompanyIds = null, onOpenReconciliation }: Props) {
   const { showSnackbar } = useSnackbar();
   const { access } = useInvoiceFinanceAccess();
-  const canManage = Boolean(access?.canManageCompanyFinance);
 
   const [companies, setCompanies] = useState<Company[]>([]);
   const [companyId, setCompanyId] = useState<string>('');
+  // Deklaracje widzi poziom „Podgląd finansów” działalności; zmienia tylko „Zarządzanie finansami” tej działalności.
+  const canManage = canFinanceCompany(access, companyId, 'finance_manage');
   const [year, setYear] = useState(new Date().getFullYear());
   const [rows, setRows] = useState<FinanceDeclaration[]>([]);
   const [loading, setLoading] = useState(true);
@@ -71,20 +73,21 @@ export default function FinanceDeclarationsPanel({ filterCompanyIds = null, onOp
 
   useEffect(() => {
     let cancelled = false;
+    if (!access) return () => { cancelled = true; };
     (async () => {
       let query = supabase.from('my_companies').select('id,name').eq('is_active', true).order('name');
       if (filterCompanyIds) query = query.in('id', filterCompanyIds.length ? filterCompanyIds : ['00000000-0000-0000-0000-000000000000']);
       const { data, error } = await query;
       if (cancelled) return;
       if (error) { showSnackbar('Nie udało się wczytać firm.', 'error'); setLoading(false); return; }
-      const list = (data || []) as Company[];
+      const list = filterFinanceCompanies(access, (data || []) as Company[], 'finance_view');
       setCompanies(list);
       setCompanyId((current) => (current && list.some((c) => c.id === current) ? current : list[0]?.id || ''));
       if (list.length === 0) setLoading(false);
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [companyKey]);
+  }, [companyKey, access]);
 
   const load = useCallback(async () => {
     if (!companyId) return;

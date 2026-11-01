@@ -10,6 +10,8 @@ function accessSignature(access: InvoiceFinanceAccess): string {
     access.employeeId, access.authUserId, access.scope,
     access.canViewOwnInvoices, access.canIssueInvoices,
     access.canViewCompanyFinance, access.canManageCompanyFinance,
+    access.isAdmin, access.canViewEventFinance, access.canManageEventFinance,
+    Object.entries(access.companyLevels).sort(([a], [b]) => a.localeCompare(b)),
     [...access.managedSellerContactIds].sort(),
     [...access.managedSellerPartnerIds].sort(),
     [...access.soldEventIds].sort(),

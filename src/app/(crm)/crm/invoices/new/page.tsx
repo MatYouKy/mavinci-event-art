@@ -7,6 +7,7 @@ import { ArrowLeft, CalendarDays, Link2, Plus, Trash2, Save } from 'lucide-react
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useInvoiceFinanceAccess } from '@/hooks/useInvoiceFinanceAccess';
+import { filterFinanceCompanies } from '@/lib/invoices/financeAccess';
 import BuyerSearchInput from './components/BuyerSearchInput';
 import AddBuyerModal from './components/AddBuyerModal';
 import InvoiceNumberInput from './components/InvoiceNumberInput';
@@ -105,16 +106,13 @@ const grossFromNet = (net: number, vatRate: number) => {
 export default function NewInvoicePage() {
   const router = useRouter();
   const {
-    employee: currentEmployee,
     isAdmin,
     loading: employeeLoading,
-    canManageModule,
   } = useCurrentEmployee();
   const { access: financeAccess, loading: financeAccessLoading, error: financeAccessError } = useInvoiceFinanceAccess();
   const canUseInvoiceEvent = (id: string) => !id || Boolean(financeAccess && (
     financeAccess.scope === 'company' || financeAccess.soldEventIds.includes(id)
   ));
-  const canManageInvoices = canManageModule('invoices');
   const searchParams = useSearchParams();
   const { showSnackbar } = useSnackbar();
   const eventId = searchParams.get('event');
@@ -809,26 +807,8 @@ export default function NewInvoicePage() {
         let companiesList = companiesRes.data as MyCompany[];
 
         if (!isAdmin) {
-          const allowedIds = (currentEmployee as any)?.my_company_ids;
-          const invoicePerms = (currentEmployee as any)?.invoice_company_permissions || {};
-
-          const hasAllowedList = Array.isArray(allowedIds) && allowedIds.length > 0;
-
-          if (hasAllowedList) {
-            companiesList = companiesList.filter((c) => allowedIds.includes(c.id));
-          }
-
-          const hasAnyPerEntry = Object.values(invoicePerms).some(
-            (v) => Array.isArray(v) && v.length > 0,
-          );
-
-          if (hasAnyPerEntry) {
-            companiesList = companiesList.filter(
-              (c) => Array.isArray(invoicePerms[c.id]) && invoicePerms[c.id].includes('issue'),
-            );
-          } else if (!canManageInvoices && !financeAccess.canIssueInvoices) {
-            companiesList = [];
-          }
+          // Wystawianie faktur: tylko działalności z poziomem ≥ „Wystawianie faktur” (get_invoice_finance_access).
+          companiesList = filterFinanceCompanies(financeAccess, companiesList, 'invoices_issue');
         }
 
         finalCompaniesList = companiesList;

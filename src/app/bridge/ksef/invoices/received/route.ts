@@ -83,12 +83,13 @@ export async function POST(req: Request) {
     if (!authData.user) {
       return NextResponse.json({ success: false, error: 'Wymagane logowanie.' }, { status: 401 });
     }
+    // KSeF działalności (synchronizacja, token): „Zarządzanie finansami” w tej działalności (finance_company_manageable).
     const financeAccess = await loadInvoiceFinanceAccess(userClient);
     if (!financeAccess.canManageCompanyFinance) {
       return NextResponse.json({ success: false, error: 'Synchronizacja kosztów KSeF jest dostępna tylko dla finansów firmy.' }, { status: 403 });
     }
     const { data: canManageCompany, error: permissionError } = await userClient.rpc(
-      'can_manage_invoice_company',
+      'finance_company_manageable',
       { p_company_id: companyId },
     );
     if (permissionError || !canManageCompany) {
