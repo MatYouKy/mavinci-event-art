@@ -2526,6 +2526,14 @@ CREATE POLICY generated_offers_delete ON storage.objects FOR DELETE TO authentic
 -- 12. Folder „Faktury” w plikach wydarzenia — poziom finansów działalności wydarzenia ---------------------------------
 -- Dotąd folder miał oznaczenie invoices_manage, którego od 20261101165000 nic nie nadaje, a baza go nie sprawdzała:
 -- folder i faktury widział każdy z can_view_private_event_content (administrator, rola manager, autor wydarzenia).
+-- Ograniczenie CHECK w produkcji dopuszcza tylko stare oznaczenia — dopisujemy finance:invoices (i invoices_view),
+-- zostawiając dotychczasowe wartości, które mogą jeszcze wysyłać starsze wersje CRM.
+ALTER TABLE public.event_folders DROP CONSTRAINT IF EXISTS event_folders_required_permission_check;
+ALTER TABLE public.event_folders ADD CONSTRAINT event_folders_required_permission_check CHECK (
+  required_permission IS NULL OR required_permission = ANY (ARRAY[
+    'contracts_manage', 'finances_manage', 'offers_create', 'events_manage', 'invoices_manage', 'invoices_view',
+    'finance:invoices'
+  ]::text[]));
 UPDATE public.event_folders SET required_permission = 'finance:invoices'
 WHERE required_permission IN ('invoices_manage', 'invoices_view');
 COMMENT ON COLUMN public.event_folders.required_permission IS
