@@ -96,6 +96,7 @@ const fallbackLabels: Record<SystemLabelDomain, string> = {
   absence: 'Inna nieobecność', vehicleAttribute: 'Inna właściwość',
   quizType: 'Inny typ pytania',
   inquiryFinding: 'Ustalenie',
+  invoiceCorrectionKind: 'Inna korekta',
 };
 
 export function systemLabel(value: unknown, domain: SystemLabelDomain = 'status', options: { preserveCustom?: boolean; fallback?: string } = {}): string {

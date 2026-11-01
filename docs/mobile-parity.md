@@ -14,6 +14,7 @@ Zasada (AGENTS.md): moduł CRM dostępny w aplikacji mobilnej zmieniamy w obu mi
 | Wydarzenia | `crm/events` | `EventsScreen`, `EventDetailScreen`, `components/Events` |
 | Zadania | `crm/tasks` | `TasksScreen`, `TaskDetailScreen` |
 | Kalendarz i spotkania | `crm/calendar`, `crm/meetings` | `CalendarScreen`, `MeetingsScreen` |
+| Dni ustawowo wolne, wymiar czasu pracy | `PublicHolidaysPanel`, `SpecialDayNotice`, kalendarz, `NewInquiryModal`, `EventWizard`, `crm/time-tracking` | `CalendarScreen`, `NewInquiryModal`, `TimeTrackingScreen`, `components/SpecialDayNotice` |
 | Czas pracy | `crm/time-tracking` | `TimeTrackingScreen` |
 | Sprzęt, flota | `crm/equipment`, `crm/fleet` | `EquipmentScreen`, `FleetScreen` |
 | Kontakty | `crm/contacts`, `crm/clients` | `ClientsScreen`, `Client360Modal` |
@@ -32,10 +33,12 @@ Identyczne kopie pilnowane przez `scripts/ci/check-shared-copies.mjs`:
 
 - `src/lib/CRM/messages/mailboxPreferences.ts` ↔ `mobile/src/lib/mailboxPreferences.ts`
 - `src/lib/CRM/chat/chatReadState.ts` ↔ `mobile/src/lib/chatReadState.ts` (liczniki, „przeczytane” / „dostarczone”, „pisze…”, reakcje)
+- `src/lib/CRM/calendar/publicHolidays.ts` ↔ `mobile/src/lib/publicHolidays.ts` (święta, długie weekendy, dni „pomost”, wymiar czasu pracy)
 
 ## Lista kontrolna zmiany w module
 
 1. Reguła dostępu w bazie (RLS lub funkcja), nie tylko w interfejsie.
+1a. Ustawienia projektu (uprawnienia, zasięg i widoczność danych, reguły czasu pracy, dni wolne) obowiązują w aplikacji tak samo jak w CRM — aplikacja nigdy nie pokazuje więcej niż CRM tej samej osobie.
 2. Ten sam filtr, etykieta i komunikat w CRM i w aplikacji.
 3. Nowy typ powiadomienia lub link → obsługa w `routeNotification` / `routeSalesUrl`.
 4. Nowa wersja aplikacji (`version` w `mobile/app.json` i `mobile/package.json`, `cd mobile && yarn deploy`).
@@ -54,3 +57,7 @@ W CRM i w aplikacji jednakowo:
 - reakcje na cudze wiadomości zapisywane przez `set_chat_message_reaction`,
 - licznik na ikonie aplikacji przychodzi w powiadomieniu push (`send-chat-push`, `chat_unread_totals`).
 
+
+## Stan na 1.11.2026 (wersja 1.3.0) — dni ustawowo wolne
+
+W CRM i w aplikacji jednakowo: święta z tabeli `public_holidays` (ustawa + cotygodniowe porównanie ze źródłem zewnętrznym) zaznaczone w kalendarzu, wymiar czasu pracy pełnego etatu w miesiącu (kalendarz, czas pracy), ostrzeżenie przy dacie zapytania (i wydarzenia w CRM): święto, niedziela, długi weekend, dzień między świętem a weekendem, Sylwester. Data z kalendarza w aplikacji jest zapisywana jako data lokalna (wcześniej `toISOString` cofał ją o dzień).

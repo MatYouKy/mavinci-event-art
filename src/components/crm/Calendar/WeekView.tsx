@@ -4,6 +4,7 @@ import { CalendarViewProps } from './types';
 import { getWeekDays, getEventsForDate, isToday, formatTime, getEventPosition } from './utils';
 import { STATUS_COLORS, DAYS_OF_WEEK_FULL, HOURS } from './constants';
 import { Clock, MapPin } from 'lucide-react';
+import { toISODate } from '@/lib/CRM/calendar/publicHolidays';
 
 export default function WeekView({
   currentDate,
@@ -11,6 +12,7 @@ export default function WeekView({
   onDateClick,
   onEventClick,
   onEventHover,
+  holidays,
 }: CalendarViewProps) {
   const weekDays = getWeekDays(currentDate);
 
@@ -37,6 +39,9 @@ export default function WeekView({
               >
                 {day.getDate()}
               </div>
+              {holidays?.get(toISODate(day)) && (
+                <div className="mt-1 truncate text-[10px] font-medium text-red-300" title="Dzień ustawowo wolny">{holidays.get(toISODate(day))!.name}</div>
+              )}
             </div>
           );
         })}

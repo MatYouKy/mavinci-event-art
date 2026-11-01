@@ -25,6 +25,9 @@ import DayView from './DayView';
 import EmployeeView from './EmployeeView';
 import TimelineView from './TimelineView';
 import MobileCalendarView from './MobileCalendarView';
+import PublicHolidaysPanel from './PublicHolidaysPanel';
+import { usePublicHolidays } from '@/hooks/usePublicHolidays';
+import { holidayDateLabel, workingTimeNorm, workingTimeNormSentence } from '@/lib/CRM/calendar/publicHolidays';
 import EventWizard from '../EventWizard';
 import NewMeetingModal from '../NewMeetingModal';
 import NewInquiryModal from '../NewInquiryModal';
@@ -71,6 +74,12 @@ export default function CalendarMain({
   const tooltipTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [showFilters, setShowFilters] = useState(false);
+  const [showHolidays, setShowHolidays] = useState(false);
+  const { holidays } = usePublicHolidays(currentDate);
+  const monthNorm = useMemo(
+    () => workingTimeNorm(currentDate.getFullYear(), currentDate.getMonth() + 1, holidays),
+    [currentDate, holidays],
+  );
   const [categories, setCategories] = useState<any[]>([]);
   const [clients, setClients] = useState<any[]>([]);
   const [employees, setEmployees] = useState<any[]>([]);
@@ -853,8 +862,21 @@ export default function CalendarMain({
         </div>
       )}
 
+      <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] px-3 py-2 text-xs text-[#e5e4e2]/65">
+        <span className="capitalize text-[#e5e4e2]">{currentDate.toLocaleDateString('pl-PL', { month: 'long', year: 'numeric' })}:</span>
+        <span>{workingTimeNormSentence(monthNorm)}</span>
+        {monthNorm.holidays.length > 0 && (
+          <span className="text-red-300/90">Dni ustawowo wolne: {monthNorm.holidays.map((h) => `${holidayDateLabel(h)} (${h.name})`).join(', ')}</span>
+        )}
+        <button type="button" onClick={() => setShowHolidays(true)} className="ml-auto text-[#d3bb73] hover:underline">
+          Dni wolne i wymiar czasu pracy
+        </button>
+      </div>
+      {showHolidays && <PublicHolidaysPanel initialYear={currentDate.getFullYear()} onClose={() => setShowHolidays(false)} />}
+
       {view === 'month' && (
         <MonthView
+          holidays={holidays}
           currentDate={currentDate}
           events={events}
           onDateClick={handleNewEvent}
@@ -869,6 +891,7 @@ export default function CalendarMain({
 
       {view === 'week' && (
         <WeekView
+          holidays={holidays}
           currentDate={currentDate}
           events={events}
           onDateClick={handleNewEvent}

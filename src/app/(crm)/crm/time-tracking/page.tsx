@@ -32,6 +32,21 @@ import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { PersonnelEarnings, PersonnelTimeContractPicker } from '@/components/crm/personnel/PersonnelEarnings';
 import AdminDashboard from './AdminDashboard';
+import { usePublicHolidays } from '@/hooks/usePublicHolidays';
+import { holidayDateLabel, workingTimeNorm, workingTimeNormSentence } from '@/lib/CRM/calendar/publicHolidays';
+
+/** Wymiar czasu pracy pełnego etatu w bieżącym miesiącu (dni ustawowo wolne z tabeli public_holidays). */
+function MonthNormLine() {
+  const now = new Date();
+  const { holidays } = usePublicHolidays(now);
+  const norm = workingTimeNorm(now.getFullYear(), now.getMonth() + 1, holidays);
+  return (
+    <p className="mt-1 text-xs text-[#e5e4e2]/50">
+      <span className="capitalize">{now.toLocaleDateString('pl-PL', { month: 'long' })}</span>: {workingTimeNormSentence(norm)}
+      {norm.holidays.length > 0 && <span className="text-red-300/80"> · święta: {norm.holidays.map((h) => holidayDateLabel(h)).join(', ')}</span>}
+    </p>
+  );
+}
 
 interface TimeEntry {
   id: string;
@@ -400,6 +415,7 @@ export default function TimeTrackingPage() {
                 ? 'Raport czasu pracy zespołu'
                 : 'Loguj swój czas pracy i zarządzaj wpisami'}
             </p>
+            <MonthNormLine />
           </div>
           {isAdmin && (
             <div className="flex gap-2">

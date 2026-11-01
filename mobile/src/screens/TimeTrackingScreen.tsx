@@ -18,6 +18,8 @@ import { useAuth } from '../contexts/AuthContext';
 import PermissionGate from '../components/PermissionGate';
 import TimeEntryDiscussions from '../components/TimeEntryDiscussions';
 import OwnTimeEntries from '../components/OwnTimeEntries';
+import { usePublicHolidays } from '../hooks/usePublicHolidays';
+import { toISODate, workingTimeNorm, workingTimeNormSentence } from '../lib/publicHolidays';
 
 interface TimeEntry {
   id: string;
@@ -284,6 +286,8 @@ function TimeTrackingContent() {
         />
       }
     >
+      <MonthNormBanner />
+
       {/* Active timer or start form */}
       {activeEntry ? (
         <View style={styles.activeTimerCard}>
@@ -748,5 +752,21 @@ export default function TimeTrackingScreen() {
     <PermissionGate module="time_tracking">
       <TimeTrackingContent />
     </PermissionGate>
+  );
+}
+
+
+/** Wymiar czasu pracy pełnego etatu w bieżącym miesiącu — jak w kalendarzu CRM i aplikacji. */
+function MonthNormBanner() {
+  const today = toISODate(new Date());
+  const holidays = usePublicHolidays(today);
+  const norm = workingTimeNorm(Number(today.slice(0, 4)), Number(today.slice(5, 7)), holidays);
+  const monthName = new Date(`${today}T12:00:00`).toLocaleDateString('pl-PL', { month: 'long' });
+  return (
+    <View style={{ marginHorizontal: spacing.md, marginTop: spacing.md, padding: spacing.sm, borderRadius: 8, backgroundColor: colors.primary.gold + '14' }}>
+      <Text style={{ fontSize: 12, color: colors.text.secondary }}>
+        {monthName.charAt(0).toUpperCase() + monthName.slice(1)}: {workingTimeNormSentence(norm)}
+      </Text>
+    </View>
   );
 }

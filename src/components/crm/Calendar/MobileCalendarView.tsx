@@ -4,6 +4,9 @@ import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, ChevronRight, Clock, MapPin, Building2, Tag } from 'lucide-react';
 import { CalendarEvent } from './types';
+import SpecialDayNotice from '../SpecialDayNotice';
+import { usePublicHolidays } from '@/hooks/usePublicHolidays';
+import { toISODate } from '@/lib/CRM/calendar/publicHolidays';
 import { STATUS_COLORS, STATUS_LABELS, DAYS_OF_WEEK_SHORT } from './constants';
 
 interface MobileCalendarViewProps {
@@ -19,6 +22,7 @@ export default function MobileCalendarView({
 }: MobileCalendarViewProps) {
   const router = useRouter();
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const { holidays } = usePublicHolidays(currentDate);
 
   const getDaysInMonth = (date: Date) => {
     const year = date.getFullYear();
@@ -157,7 +161,7 @@ export default function MobileCalendarView({
                       : 'bg-[#0f1119] text-[#e5e4e2]/70 hover:bg-[#d3bb73]/10'
                 }`}
               >
-                <div className="text-sm">{date.getDate()}</div>
+                <div className={`text-sm ${!selected && holidays.has(toISODate(date)) ? 'font-semibold text-red-300' : ''}`}>{date.getDate()}</div>
                 {dayEvents.length > 0 && (
                   <div className="absolute bottom-1 left-1/2 flex -translate-x-1/2 gap-0.5">
                     {dayEvents.slice(0, 3).map((event, idx) => (
@@ -185,6 +189,7 @@ export default function MobileCalendarView({
           <h3 className="text-xs font-medium capitalize text-[#e5e4e2]">
             {selectedDateFormatted}
           </h3>
+          <SpecialDayNotice from={toISODate(selectedDate)} className="my-1.5" />
           <p className="text-[10px] text-[#e5e4e2]/60">
             {eventsForSelectedDate.length}{' '}
             {eventsForSelectedDate.length === 1 ? 'pozycja' : 'pozycji'}

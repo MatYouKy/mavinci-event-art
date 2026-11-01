@@ -39,6 +39,7 @@ import { eventStatusLabels } from '@/app/(crm)/crm/events/[id]/components/tabs/E
 import { OrganizationSearchSelect } from './events/wizard/OrganizationSearchSelect';
 import { SearchSelect } from './events/wizard/SearchSelect';
 import CompanySelector from './CompanySelector';
+import SpecialDayNotice from './SpecialDayNotice';
 
 const buildEventEquipmentRows = (selectedEquipment: any[], eventId: string) => {
   const mapped = (selectedEquipment ?? [])
@@ -1231,6 +1232,7 @@ export default function EventWizard({
                   />
                 </div>
               </div>
+              <SpecialDayNotice from={eventData.event_date || null} to={eventData.event_end_date || null} />
 
               <div>
                 <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">

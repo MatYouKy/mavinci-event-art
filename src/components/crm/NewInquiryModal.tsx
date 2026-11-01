@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { X, PhoneCall, Loader2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import SpecialDayNotice from './SpecialDayNotice';
 
 interface NewInquiryModalProps {
   isOpen: boolean;
@@ -318,6 +319,7 @@ export default function NewInquiryModal({ isOpen, onClose, initialDate, onSaved,
               onChange={(e) => setTermin(e.target.value)}
               className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
             />
+            <SpecialDayNotice from={termin || null} className="mt-2" />
           </div>
 
           <div ref={clientRef} className="relative">

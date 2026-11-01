@@ -5,6 +5,7 @@ import { getDaysInMonth, getEventOccurrencesForDate, isToday } from './utils';
 import { STATUS_COLORS } from './constants';
 import { DAYS_OF_WEEK } from './constants';
 import { Plus, Layers } from 'lucide-react';
+import { toISODate } from '@/lib/CRM/calendar/publicHolidays';
 
 interface MonthViewProps extends CalendarViewProps {
   onShowAllEvents?: (date: Date) => void;
@@ -17,6 +18,7 @@ export default function MonthView({
   onEventClick,
   onEventHover,
   onShowAllEvents,
+  holidays,
 }: MonthViewProps) {
   const days = getDaysInMonth(currentDate);
   const maxVisibleEvents = 2;
@@ -43,22 +45,32 @@ export default function MonthView({
           const dayEvents = getEventOccurrencesForDate(date, events);
           const today = isToday(date);
           const eventCount = dayEvents.length;
+          const holiday = holidays?.get(toISODate(date));
+          const sunday = date.getDay() === 0;
 
           return (
             <div
               key={index}
-              className={`bg-[#0f1117] h-[130px] p-2 relative hover:bg-[#d3bb73]/5 cursor-pointer transition-all border border-[#d3bb73]/5 hover:border-[#d3bb73]/20 flex flex-col group`}
+              title={holiday ? `Dzień ustawowo wolny: ${holiday.name}` : undefined}
+              className={`${holiday ? 'bg-red-500/[0.07]' : sunday ? 'bg-[#e5e4e2]/[0.02]' : 'bg-[#0f1117]'} h-[130px] p-2 relative hover:bg-[#d3bb73]/5 cursor-pointer transition-all border border-[#d3bb73]/5 hover:border-[#d3bb73]/20 flex flex-col group`}
               onClick={() => onDateClick(date)}
             >
               <div className="flex items-start justify-between mb-2">
-                <div
-                  className={`text-sm ${
-                    today
-                      ? 'w-7 h-7 flex items-center justify-center bg-[#d3bb73] text-[#1c1f33] rounded-full font-medium'
-                      : 'text-[#e5e4e2]/70'
-                  }`}
-                >
-                  {date.getDate()}
+                <div className="min-w-0">
+                  <div
+                    className={`text-sm ${
+                      today
+                        ? 'w-7 h-7 flex items-center justify-center bg-[#d3bb73] text-[#1c1f33] rounded-full font-medium'
+                        : holiday || sunday
+                          ? 'text-red-300/90'
+                          : 'text-[#e5e4e2]/70'
+                    }`}
+                  >
+                    {date.getDate()}
+                  </div>
+                  {holiday && (
+                    <div className="mt-0.5 max-w-[110px] truncate text-[10px] font-medium leading-tight text-red-300">{holiday.name}</div>
+                  )}
                 </div>
 
                 {eventCount > 0 && onShowAllEvents && (

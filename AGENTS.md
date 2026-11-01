@@ -29,6 +29,7 @@
 
 - Zmiana modułu CRM, który ma odpowiednik w aplikacji mobilnej (`mobile/`), obejmuje aplikację w tym samym commicie lub PR: te same reguły biznesowe, uprawnienia, filtry, etykiety i powiadomienia. Mapa modułów: `docs/mobile-parity.md`.
 - Logikę używaną w obu miejscach trzymaj w identycznych kopiach wymienionych w `scripts/ci/check-shared-copies.mjs` (Metro nie importuje plików spoza `mobile/`). CI zatrzymuje się przy rozbieżności.
+- Aplikacja mobilna nie może zostawać w tyle za ustawieniami projektu. Każde ustawienie pracownika i firmy — uprawnienia do modułów, zasięg danych (np. „tylko przypisane” / „wszystkie”, firmy, oddziały), widoczność finansów i danych osobowych, godziny pracy i reguły ewidencji — działa w aplikacji tak samo jak w CRM. Nowe lub zmienione ustawienie = ta sama reguła w bazie i obsługa w `mobile/` w tej samej zmianie; jeśli ekran w aplikacji nie obsługuje ustawienia, ma go ukryć, a nie pokazać więcej danych.
 - Reguły dostępu wymuszaj w bazie (RLS, funkcje), nie tylko w interfejsie — aplikacja mobilna czyta bazę bezpośrednio, więc filtr dodany tylko w CRM jej nie obejmuje.
 - Moduły dostępne tylko w CRM (oferty, faktury, finanse, ustawienia administracyjne) aplikacja otwiera w przeglądarce (`openInCrmWeb`). Nowy link w powiadomieniu musi mieć obsługę w `mobile/src/navigation/navigationRef.ts` (`routeNotification`, `routeSalesUrl`).
 - Jeśli zmiana świadomie nie dotyczy aplikacji, wpisz w opisie PR „Mobile: nie dotyczy — powód”. Bez tego kontrola parytetu w CI zatrzymuje PR.

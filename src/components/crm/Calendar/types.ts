@@ -85,4 +85,6 @@ export interface CalendarViewProps {
   onDateClick: (date: Date) => void;
   onEventClick: (event: CalendarEvent) => void;
   onEventHover?: (event: CalendarEvent | null, position?: { x: number; y: number }) => void;
+  /** Dni ustawowo wolne (klucz RRRR-MM-DD). */
+  holidays?: Map<string, { date: string; name: string }>;
 }

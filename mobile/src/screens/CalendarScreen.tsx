@@ -57,6 +57,9 @@ import PermissionGate from '../components/PermissionGate';
 import EventDetailScreen from './EventDetailScreen';
 import TaskDetailScreen from './TaskDetailScreen';
 import NewInquiryModal from './NewInquiryModal';
+import SpecialDayNotice from '../components/SpecialDayNotice';
+import { usePublicHolidays } from '../hooks/usePublicHolidays';
+import { holidayDateLabel, toISODate, workingTimeNorm, workingTimeNormSentence } from '../lib/publicHolidays';
 import { STATUS_COLORS, STATUS_LABELS } from './EventsScreen';
 import MeetingsScreen from './MeetingsScreen';
 
@@ -89,7 +92,13 @@ function CalendarContent({ onEventPress }: { onEventPress: (eventId: CalendarEve
   const operational = usesOperationalStages(employee);
   const {stage: displayStatus} = useOperationalStages(events.filter(e=>!e.is_meeting&&!e.is_inquiry), operational);
   const [isLoading, setIsLoading] = useState(true);
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedDate, setSelectedDate] = useState(toISODate(new Date()));
+  const [visibleMonth, setVisibleMonth] = useState(toISODate(new Date()).slice(0, 7));
+  const holidays = usePublicHolidays(`${visibleMonth}-01`);
+  const monthNorm = useMemo(
+    () => workingTimeNorm(Number(visibleMonth.slice(0, 4)), Number(visibleMonth.slice(5, 7)), holidays),
+    [visibleMonth, holidays],
+  );
   const [inquiryModalVisible, setInquiryModalVisible] = useState(false);
 
   const fetchEvents = useCallback(async () => {
@@ -323,6 +332,12 @@ function CalendarContent({ onEventPress }: { onEventPress: (eventId: CalendarEve
       }
     }
 
+    // Dni ustawowo wolne — czerwona kropka (jak czerwone oznaczenie w kalendarzu CRM).
+    holidays.forEach((holiday, date) => {
+      const existing = marks[date]?.dots || [];
+      marks[date] = { ...marks[date], dots: [{ key: 'holiday', color: colors.status.error }, ...existing].slice(0, 3) };
+    });
+
     if (selectedDate) {
       marks[selectedDate] = {
         ...marks[selectedDate],
@@ -332,7 +347,7 @@ function CalendarContent({ onEventPress }: { onEventPress: (eventId: CalendarEve
     }
 
     return marks;
-  }, [events, selectedDate]);
+  }, [events, selectedDate, holidays]);
 
   const eventsForSelectedDate = useMemo(() => {
     if (!selectedDate) return [];
@@ -435,6 +450,7 @@ function CalendarContent({ onEventPress }: { onEventPress: (eventId: CalendarEve
         firstDay={1}
         current={selectedDate}
         onDayPress={(day: DateData) => setSelectedDate(day.dateString)}
+        onMonthChange={(month: DateData) => setVisibleMonth(month.dateString.slice(0, 7))}
         markingType="multi-dot"
         markedDates={markedDates}
         theme={{
@@ -454,11 +470,19 @@ function CalendarContent({ onEventPress }: { onEventPress: (eventId: CalendarEve
         }}
         style={[styles.calendar, isWideLayout && styles.calendarWide]}
         />
+        <View style={styles.normBox}>
+          <Text style={styles.normText}>{workingTimeNormSentence(monthNorm)}</Text>
+          {monthNorm.holidays.length > 0 && (
+            <Text style={styles.normHolidays}>
+              Dni ustawowo wolne: {monthNorm.holidays.map((h) => `${holidayDateLabel(h)} (${h.name})`).join(', ')}
+            </Text>
+          )}
+        </View>
       </View>
 
       <View style={[styles.eventsSection, isWideLayout && styles.eventsSectionWide]}>
         <Text style={styles.sectionTitle}>
-          {selectedDate === new Date().toISOString().split('T')[0]
+          {selectedDate === toISODate(new Date())
             ? 'Dzisiaj'
             : new Date(selectedDate + 'T00:00:00').toLocaleDateString('pl-PL', {
                 weekday: 'long',
@@ -467,6 +491,8 @@ function CalendarContent({ onEventPress }: { onEventPress: (eventId: CalendarEve
               })}
           {eventsForSelectedDate.length > 0 && ` (${eventsForSelectedDate.length})`}
         </Text>
+
+        <SpecialDayNotice from={selectedDate} style={{ marginHorizontal: spacing.md, marginBottom: spacing.sm }} />
 
         {canAddInquiry && <TouchableOpacity style={styles.addInquiryBtn} onPress={() => setInquiryModalVisible(true)}>
           <Feather name="phone-call" size={16} color={colors.primary.gold} />
@@ -506,6 +532,9 @@ function CalendarContent({ onEventPress }: { onEventPress: (eventId: CalendarEve
 }
 
 const styles = StyleSheet.create({
+  normBox: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm, gap: 2 },
+  normText: { fontSize: 12, color: colors.text.secondary },
+  normHolidays: { fontSize: 12, color: '#fca5a5' },
   container: {
     flex: 1,
     backgroundColor: colors.background.primary,

@@ -20,6 +20,8 @@ import { Feather } from '@expo/vector-icons';
 import { colors, spacing, typography } from '../theme';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import SpecialDayNotice from '../components/SpecialDayNotice';
+import { toISODate } from '../lib/publicHolidays';
 import { SearchableDropdown } from '@/components/SearchableDropdown';
 import { sendTaskAssignmentPush } from '../services/taskAssignmentNotifications';
 
@@ -430,7 +432,7 @@ export default function NewInquiryModal({
                       locale="pl-PL"
                       onChange={(_, selectedDate) => {
                         if (selectedDate) {
-                          setEventDate(selectedDate.toISOString().split('T')[0]);
+                          setEventDate(toISODate(selectedDate));
                         }
                       }}
                       themeVariant="dark"
@@ -451,11 +453,12 @@ export default function NewInquiryModal({
                     onChange={(_, selectedDate) => {
                       setShowDatePicker(false);
                       if (selectedDate) {
-                        setEventDate(selectedDate.toISOString().split('T')[0]);
+                        setEventDate(toISODate(selectedDate));
                       }
                     }}
                   />
                 ))}
+              <SpecialDayNotice from={eventDate || null} style={{ marginTop: spacing.sm }} />
             </View>
           )}
 
