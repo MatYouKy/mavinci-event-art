@@ -233,6 +233,16 @@ Deno.serve(async (req: Request) => {
     if (!Array.isArray(attachments) || attachments.some(item => !item || item.storageAttachment)) {
       throw new Error('Załączniki ze Storage są dostępne wyłącznie przez zapisaną wysyłkę broszury.');
     }
+    // Wysyłka z podaną konfiguracją SMTP (bez skrzynki z CRM) nie przechodziła żadnej kontroli
+    // wywołującego: z publicznym kluczem anon każdy mógł wysyłać pocztę przez nasz relay SMTP
+    // na dowolny serwer. Dziś żaden klient CRM ani aplikacji z niej nie korzysta — tylko serwer.
+    if (smtpConfig) {
+      const bearer = req.headers.get('Authorization')?.replace(/^Bearer\s+/i, '').trim() || '';
+      const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+      if (!serviceKey || bearer !== serviceKey) {
+        throw new Error('Bezpośrednia konfiguracja SMTP jest dostępna wyłącznie dla serwera.');
+      }
+    }
 
     let salesActor: { userId: string; scheduled: boolean; deliveryKey: string | null } | null = null;
     let salesEmployeeId: string | null = null;

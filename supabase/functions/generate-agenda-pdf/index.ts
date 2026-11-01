@@ -28,6 +28,33 @@ Deno.serve(async (req: Request) => {
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+    // Dostęp do agendy sprawdzamy uprawnieniami wywołującego: RLS tabeli event_agendas
+    // (current_employee_can_view_event, zakres rekordów). Dopiero potem klient service_role
+    // składa dokument. Wcześniej każdy z publicznym kluczem anon mógł pobrać dowolną agendę.
+    const token = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "").trim();
+    const callerClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
+      global: { headers: { Authorization: `Bearer ${token}` } },
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const { data: userData, error: userError } = token
+      ? await callerClient.auth.getUser(token)
+      : { data: { user: null }, error: null };
+    if (userError || !userData.user) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Zaloguj się ponownie." }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+    const { data: visibleAgenda, error: visibilityError } = await callerClient
+      .from("event_agendas")
+      .select("id")
+      .eq("id", agendaId)
+      .maybeSingle();
+    if (visibilityError || !visibleAgenda) {
+      throw new Error("Agenda not found");
+    }
+
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     const { data: agenda, error: agendaError } = await supabase

@@ -45,6 +45,14 @@ Deno.serve(async (request) => {
     await service.rpc('finalize_mailing_campaign_batch', { p_campaign_id: recipient.campaign_id });
   }
 
-  if (eventType === 'clicked' && safeTarget) return Response.redirect(safeTarget, 302);
+  // Przekierowanie tylko z ważnym tokenem odbiorcy kampanii. Bez tego adres funkcji był otwartym
+  // przekierowaniem (dowolny URL w parametrze url) — gotowym narzędziem do phishingu w domenie projektu.
+  if (eventType === 'clicked' && safeTarget && recipient) return Response.redirect(safeTarget, 302);
+  if (eventType === 'clicked' && safeTarget) {
+    return new Response('Link jest nieprawidłowy lub wygasł.', {
+      status: 404,
+      headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' },
+    });
+  }
   return pixelResponse();
 });

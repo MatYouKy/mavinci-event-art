@@ -8,6 +8,24 @@ const corsHeaders = {
     "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
+// Funkcja wysyła push o dowolnej treści do wskazanych pracowników, więc wolno ją wywołać
+// wyłącznie z serwera. verify_jwt przepuszcza publiczny klucz anon (jest w kodzie strony),
+// dlatego bez tej kontroli każdy mógł rozesłać pracownikom fałszywe powiadomienia.
+// Dziś nie wywołuje jej żaden kod CRM, aplikacji ani bazy.
+function safeEqual(a: string, b: string): boolean {
+  if (!a || !b || a.length !== b.length) return false;
+  let diff = 0;
+  for (let index = 0; index < a.length; index += 1) diff |= a.charCodeAt(index) ^ b.charCodeAt(index);
+  return diff === 0;
+}
+
+/** Wywołanie serwerowe: klucz service_role albo sekret INTERNAL_FUNCTION_SECRET (nagłówek X-Internal-Function-Secret). */
+function isTrustedServerCall(req: Request): boolean {
+  const token = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "").trim();
+  return safeEqual(token, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "")
+    || safeEqual(req.headers.get("X-Internal-Function-Secret") || "", Deno.env.get("INTERNAL_FUNCTION_SECRET") || "");
+}
+
 interface PushPayload {
   employee_ids: string[];
   title: string;
@@ -18,6 +36,13 @@ interface PushPayload {
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders });
+  }
+
+  if (!isTrustedServerCall(req)) {
+    return new Response(JSON.stringify({ error: "Forbidden" }), {
+      status: 403,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 
   try {

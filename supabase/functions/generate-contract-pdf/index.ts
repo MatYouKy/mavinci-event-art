@@ -27,8 +27,23 @@ Deno.serve(async (req: Request) => {
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    // Umowę czytamy z uprawnieniami wywołującego, nie kluczem service_role: o dostępie decyduje
+    // RLS tabeli contracts (crm_contract_permission('view'), zakres marek i rekordów, blokada
+    // portalu sprzedawcy). Wcześniej każdy z publicznym kluczem anon mógł pobrać dowolną umowę.
+    const token = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "").trim();
+    const supabase = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
+      global: { headers: { Authorization: `Bearer ${token}` } },
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const { data: userData, error: userError } = token
+      ? await supabase.auth.getUser(token)
+      : { data: { user: null }, error: null };
+    if (userError || !userData.user) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Zaloguj się ponownie." }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
 
     const { data: contract, error } = await supabase
       .from("contracts")

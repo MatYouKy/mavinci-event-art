@@ -8,6 +8,31 @@ const corsHeaders = {
     "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
+// --- Kontrola wywołującego -------------------------------------------------------------
+// verify_jwt = false. Wywołują: trigger public.dispatch_notification_recipient_push (pg_net, dziś
+// bez nagłówka autoryzacji), receive-webhook i send-task-assignment-push (klucz service_role).
+// Treść pusha zawsze pochodzi z bazy, a wysyłka jest jednorazowa (notification_push_deliveries).
+
+function safeEqual(a: string, b: string): boolean {
+  if (!a || !b || a.length !== b.length) return false;
+  let diff = 0;
+  for (let index = 0; index < a.length; index += 1) diff |= a.charCodeAt(index) ^ b.charCodeAt(index);
+  return diff === 0;
+}
+
+/**
+ * Dozwolone: klucz service_role albo nagłówek X-Internal-Function-Secret równy INTERNAL_FUNCTION_SECRET.
+ * Dopóki INTERNAL_FUNCTION_SECRET nie jest ustawiony, przechodzi każde wywołanie (zgodność z obecnym
+ * triggerem). Po dodaniu nagłówka w triggerze ustawienie sekretu zamyka funkcję dla wszystkich innych.
+ */
+function isAllowedInvocation(req: Request): boolean {
+  const internalSecret = Deno.env.get("INTERNAL_FUNCTION_SECRET") || "";
+  if (!internalSecret) return true;
+  const token = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "").trim();
+  return safeEqual(token, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "")
+    || safeEqual(req.headers.get("X-Internal-Function-Secret") || "", internalSecret);
+}
+
 interface WebhookPayload {
   type: "INSERT";
   table: string;
@@ -64,6 +89,13 @@ function humanizeMessageEnums(value: string): string {
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders });
+  }
+
+  if (!isAllowedInvocation(req)) {
+    return new Response(JSON.stringify({ error: "Forbidden" }), {
+      status: 403,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 
   try {

@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Play, Loader as Loader2, FileCheck, Circle, RefreshCw } from 'lucide-react';
+import { supabase } from '@/lib/supabase/browser';
 
 type ImportSource = 'all' | 'bzp' | 'ted' | 'baza_konkurencyjnosci';
 interface ImportResult {
@@ -27,10 +28,17 @@ export default function ImportControls({ onImportComplete }: { onImportComplete:
         `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/fetch-tenders` +
         (source !== 'all' ? `?source=${source}` : '');
 
+      // Import uruchamia zalogowany pracownik — funkcja sprawdza dostęp do przetargów
+      // (current_employee_can_view_tenders), więc wysyłamy token sesji, nie klucz publiczny.
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData.session?.access_token;
+      if (!accessToken) throw new Error('Brak aktywnej sesji. Zaloguj się ponownie.');
+
       const response = await fetch(url, {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
+          Authorization: `Bearer ${accessToken}`,
+          apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
           'Content-Type': 'application/json',
         },
       });

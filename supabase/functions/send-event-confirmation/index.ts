@@ -27,6 +27,34 @@ const toPublicCompanyLogoUrl = (value: string, supabaseUrl: string): string => {
   return `${supabaseUrl}/storage/v1/object/public/company-logos/${value.replace(/^\/+/, '')}`;
 };
 
+type CallerCheck = { ok: true } | { ok: false; status: number; error: string };
+
+/**
+ * Potwierdzenie realizacji (z budżetem i pozycjami oferty) wysyła do klienta tylko osoba, która
+ * zarządza wydarzeniem — ta sama reguła co przycisk w CRM i baza:
+ * public.current_employee_can_manage_event() (administrator, events_manage, sprzedawca wydarzenia;
+ * nigdy konto portalu). Klucz service_role (wywołanie serwerowe) przechodzi bez tej kontroli.
+ * Wcześniej funkcja czytała dane klienta i oferty dla każdego z publicznym kluczem anon.
+ */
+async function requireEventManager(req: Request, supabaseUrl: string, eventId: string): Promise<CallerCheck> {
+  const token = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '').trim();
+  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+  if (token && serviceKey && token === serviceKey) return { ok: true };
+  const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
+  if (!token || !anonKey) return { ok: false, status: 401, error: 'Brak aktywnej sesji. Zaloguj się ponownie.' };
+  const userClient = createClient(supabaseUrl, anonKey, {
+    global: { headers: { Authorization: `Bearer ${token}` } },
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+  const { data: userData, error: userError } = await userClient.auth.getUser(token);
+  if (userError || !userData.user) return { ok: false, status: 401, error: 'Sesja wygasła. Zaloguj się ponownie.' };
+  const { data: canManage, error } = await userClient.rpc('current_employee_can_manage_event', { p_event_id: eventId });
+  if (error || canManage !== true) {
+    return { ok: false, status: 403, error: 'Brak uprawnień do wysłania potwierdzenia dla tego wydarzenia.' };
+  }
+  return { ok: true };
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 200, headers: corsHeaders });
@@ -41,6 +69,14 @@ Deno.serve(async (req: Request) => {
 
     if (!eventId) {
       throw new Error('eventId is required');
+    }
+
+    const caller = await requireEventManager(req, supabaseUrl, eventId);
+    if (!caller.ok) {
+      return new Response(JSON.stringify({ success: false, error: caller.error }), {
+        status: caller.status,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     const { data: event, error: eventError } = await supabase

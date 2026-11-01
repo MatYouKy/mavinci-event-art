@@ -46,6 +46,37 @@ const toPublicCompanyLogoUrl = (value: string, supabaseUrl: string): string => {
   return `${supabaseUrl}/storage/v1/object/public/company-logos/${value.replace(/^\/+/, '')}`;
 };
 
+type CallerCheck = { ok: true } | { ok: false; status: number; error: string };
+
+/**
+ * Zaproszenie wysyła zalogowany pracownik CRM (nie konto portalu sprzedawcy), który widzi
+ * wydarzenie — ta sama reguła co w bazie: public.current_employee_can_view_event(). Klucz
+ * service_role (wywołanie serwerowe) przechodzi bez tej kontroli. verify_jwt przepuszcza też
+ * publiczny klucz anon, więc wcześniej funkcja odczytywała przypisanie i zmieniała jego stan
+ * dla każdego, kto znał identyfikator.
+ */
+async function requireEventViewer(req: Request, supabaseUrl: string, eventId: string): Promise<CallerCheck> {
+  const token = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '').trim();
+  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+  if (token && serviceKey && token === serviceKey) return { ok: true };
+  const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
+  if (!token || !anonKey) return { ok: false, status: 401, error: 'Brak aktywnej sesji. Zaloguj się ponownie.' };
+  const userClient = createClient(supabaseUrl, anonKey, {
+    global: { headers: { Authorization: `Bearer ${token}` } },
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+  const { data: userData, error: userError } = await userClient.auth.getUser(token);
+  if (userError || !userData.user) return { ok: false, status: 401, error: 'Sesja wygasła. Zaloguj się ponownie.' };
+  const [portal, viewer] = await Promise.all([
+    userClient.rpc('current_session_is_seller_portal'),
+    userClient.rpc('current_employee_can_view_event', { p_event_id: eventId }),
+  ]);
+  if (portal.error || viewer.error || portal.data === true || viewer.data !== true) {
+    return { ok: false, status: 403, error: 'Brak dostępu do tego wydarzenia.' };
+  }
+  return { ok: true };
+}
+
 interface EventInvitationRequest {
   assignmentId: string;
   includePhases?: boolean;
@@ -141,6 +172,14 @@ Deno.serve(async (req: Request) => {
     const event = (Array.isArray(assignment.events)
       ? assignment.events[0] : assignment.events) as any;
     if (!employee || !event) throw new Error('Assignment employee or event not found');
+
+    const caller = await requireEventViewer(req, supabaseUrl, assignment.event_id);
+    if (!caller.ok) {
+      return new Response(JSON.stringify({ success: false, error: caller.error }), {
+        status: caller.status,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     // Defense in depth for older clients/assignments. Do not send an invitation
     // to the event author, a self-invited member, or an already accepted member.

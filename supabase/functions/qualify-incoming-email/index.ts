@@ -8,6 +8,49 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
+// --- Kontrola wywołującego -------------------------------------------------------------
+// Funkcję woła wyłącznie pg_cron (public.invoke_ai_email_qualification). verify_jwt przepuszcza
+// publiczny klucz anon, więc każdy mógł uruchamiać kwalifikację AI (koszty OpenAI, tworzenie
+// zapytań) i dostać w odpowiedzi identyfikatory zapytań oraz treść błędów.
+
+function safeEqual(a: string, b: string): boolean {
+  if (!a || !b || a.length !== b.length) return false;
+  let diff = 0;
+  for (let index = 0; index < a.length; index += 1) diff |= a.charCodeAt(index) ^ b.charCodeAt(index);
+  return diff === 0;
+}
+
+/** Rola z nagłówka JWT (podpis sprawdziła już bramka verify_jwt). */
+function jwtRole(token: string): string | null {
+  const part = token.split(".")[1];
+  if (!part) return null;
+  try {
+    const base64 = part.replace(/-/g, "+").replace(/_/g, "/");
+    const payload = JSON.parse(atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, "=")));
+    return typeof payload?.role === "string" ? payload.role : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Dozwolone: klucz service_role albo nagłówek X-Internal-Function-Secret równy INTERNAL_FUNCTION_SECRET.
+ * Dopóki INTERNAL_FUNCTION_SECRET nie jest ustawiony, działa też dotychczasowe wywołanie z pg_cron
+ * publicznym kluczem anon — ustawienie sekretu (po zmianie invoke_ai_email_qualification) je zamyka.
+ */
+function isAllowedInvocation(req: Request): boolean {
+  const token = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "").trim();
+  const internalSecret = Deno.env.get("INTERNAL_FUNCTION_SECRET") || "";
+  if (
+    safeEqual(token, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "") ||
+    safeEqual(req.headers.get("X-Internal-Function-Secret") || "", internalSecret)
+  ) {
+    return true;
+  }
+  if (internalSecret || !token) return false;
+  return safeEqual(token, Deno.env.get("SUPABASE_ANON_KEY") || "") || jwtRole(token) === "anon";
+}
+
 const SALES_CONFIDENCE_THRESHOLD = 0.75;
 const MODEL = Deno.env.get("OPENAI_EMAIL_CLASSIFIER_MODEL") || "gpt-5.6-luna";
 
@@ -201,12 +244,18 @@ Deno.serve(async (req: Request) => {
     });
   }
 
+  if (!isAllowedInvocation(req)) {
+    return new Response(JSON.stringify({ success: false, error: "Forbidden" }), {
+      status: 403,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const supabase = createClient(supabaseUrl, serviceRoleKey);
 
   try {
-    if (!req.headers.get("Authorization")) throw new Error("Missing authorization header");
     const requestBody = await req.json().catch(() => ({}));
     const batchSize = Math.min(Math.max(Number(requestBody.batchSize) || 10, 1), 25);
 

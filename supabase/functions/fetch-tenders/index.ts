@@ -8,6 +8,78 @@ const corsHeaders = {
     "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
+// --- Kontrola wywołującego -------------------------------------------------------------
+// verify_jwt = false: bez tej kontroli import (zapytania HTTP do BZP/TED, zapis przetargów,
+// powiadomienia) mógł uruchomić każdy, nawet bez klucza.
+
+function safeEqual(a: string, b: string): boolean {
+  if (!a || !b || a.length !== b.length) return false;
+  let diff = 0;
+  for (let index = 0; index < a.length; index += 1) diff |= a.charCodeAt(index) ^ b.charCodeAt(index);
+  return diff === 0;
+}
+
+function bearerToken(req: Request): string {
+  return (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "").trim();
+}
+
+/** Rola z nagłówka JWT (bez weryfikacji podpisu — używana tylko do rozpoznania publicznego klucza anon). */
+function jwtRole(token: string): string | null {
+  const part = token.split(".")[1];
+  if (!part) return null;
+  try {
+    const base64 = part.replace(/-/g, "+").replace(/_/g, "/");
+    const payload = JSON.parse(atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, "=")));
+    return typeof payload?.role === "string" ? payload.role : null;
+  } catch {
+    return null;
+  }
+}
+
+type InvocationCheck = { ok: true } | { ok: false; status: number; error: string };
+
+/**
+ * Import przetargów uruchamia:
+ * - serwer: klucz service_role albo nagłówek X-Internal-Function-Secret równy INTERNAL_FUNCTION_SECRET
+ *   (pg_cron po zmianie public.invoke_scheduled_tender_scan),
+ * - zalogowany pracownik z dostępem do przetargów — public.current_employee_can_view_tenders()
+ *   (przycisk „Importuj” w CRM; konto portalu sprzedawcy nie przechodzi),
+ * - tylko dopóki INTERNAL_FUNCTION_SECRET nie jest ustawiony: dotychczasowe wywołanie publicznym
+ *   kluczem anon (pg_cron i starsza wersja CRM). Ustawienie sekretu zamyka tę ścieżkę.
+ */
+async function authorizeInvocation(req: Request, supabaseUrl: string): Promise<InvocationCheck> {
+  const token = bearerToken(req);
+  const internalSecret = Deno.env.get("INTERNAL_FUNCTION_SECRET") || "";
+  if (
+    safeEqual(token, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "") ||
+    safeEqual(req.headers.get("X-Internal-Function-Secret") || "", internalSecret)
+  ) {
+    return { ok: true };
+  }
+  if (!token) return { ok: false, status: 401, error: "Brak autoryzacji" };
+
+  const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
+  if (safeEqual(token, anonKey) || jwtRole(token) === "anon") {
+    return internalSecret
+      ? { ok: false, status: 401, error: "Brak autoryzacji" }
+      : { ok: true };
+  }
+
+  const userClient = createClient(supabaseUrl, anonKey, {
+    global: { headers: { Authorization: `Bearer ${token}` } },
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+  const { data: userData, error: userError } = await userClient.auth.getUser(token);
+  if (userError || !userData.user) {
+    return { ok: false, status: 401, error: "Sesja wygasła. Zaloguj się ponownie." };
+  }
+  const { data: allowed, error: accessError } = await userClient.rpc("current_employee_can_view_tenders");
+  if (accessError || allowed !== true) {
+    return { ok: false, status: 403, error: "Brak uprawnień do importu przetargów." };
+  }
+  return { ok: true };
+}
+
 interface TenderRecord {
   external_id: string;
   source: string;
@@ -499,6 +571,15 @@ Deno.serve(async (req: Request) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+    const caller = await authorizeInvocation(req, supabaseUrl);
+    if (!caller.ok) {
+      return new Response(JSON.stringify({ success: false, error: caller.error }), {
+        status: caller.status,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const url = new URL(req.url);

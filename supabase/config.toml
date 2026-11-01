@@ -63,3 +63,9 @@ verify_jwt = true
 
 [functions.translate-offer]
 verify_jwt = true
+
+# Import przetargów: pg_cron wysyła klucz anon z Vault (JWT) i docelowo X-Internal-Function-Secret,
+# CRM wysyła token sesji. Dziś wdrożone z verify_jwt = false (bez wpisu tutaj); kontrola wywołującego
+# jest w funkcji — patrz docs/edge-functions-access.md.
+[functions.fetch-tenders]
+verify_jwt = true
