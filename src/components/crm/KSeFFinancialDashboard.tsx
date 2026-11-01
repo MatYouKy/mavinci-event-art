@@ -28,6 +28,7 @@ import { bankStatementImportFormat, resolveStatementAccount } from '@/lib/bankSt
 import { selectBankStatementsForUpload, validateBankStatementUploadAccount } from '@/lib/bankStatementUploadScope';
 import { assertBankStatementCanBeRemoved } from '@/lib/CRM/bankStatementRemovalGuard';
 import { linkDetectedVatTransfersForPeriod } from '@/lib/CRM/bankVatTransfers';
+import { reconciliationRunSentence } from '@/lib/invoices/bankReconciliation';
 import MonthlyAccountingDashboard from './invoices/tabs/MonthlyAccountingDashboard';
 import CompanySelector from './CompanySelector';
 import ResponsiveActionBar from './ResponsiveActionBar';
@@ -888,14 +889,25 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
         console.warn('Nie udało się oznaczyć zapisanej analizy jako nieaktualnej:', staleReportError);
       }
 
-      setUploadProgress({ step: 'Wyciąg gotowy. Oczekuje na wspólną analizę.', current: 8, total: 8 });
+      // Uzgodnienie miesiąca: potwierdzenie listy operacji z obu wyciągów, pewne dopasowania i propozycje.
+      setUploadProgress({ step: 'Uzgadnianie wyciągu z fakturami...', current: 8, total: 8 });
+      let reconciliationMessage = '';
+      const { data: reconciliation, error: reconciliationError } = await supabase.rpc('reconcile_bank_month', {
+        p_company_id: selectedCompanyId, p_year: year, p_month: month,
+      });
+      if (reconciliationError) {
+        console.warn('Wyciąg zapisano, ale uzgodnienie nie powiodło się.', reconciliationError);
+        reconciliationMessage = 'Uzgodnienie uruchom ręcznie w Dokumenty i rozliczenia → Uzgodnienie wyciągów.';
+      } else {
+        reconciliationMessage = `Uzgodnienie: ${reconciliationRunSentence(reconciliation as Record<string, unknown>)}`;
+      }
       await loadSummaries();
 
       setIsDragOver(false);
       setUploadStatementsRevision((current) => current + 1);
       showSnackbar(
-        `${fileType} dla ${uploadAccountType === 'vat' ? 'konta VAT' : 'konta bieżącego'} został dodany. Transakcji: ${transactions.length}. ${vatPairingWarning || 'Dodaj pozostałe wyciągi, a następnie uruchom wspólną Analizę AI.'}`,
-        vatPairingWarning ? 'warning' : 'success',
+        `${fileType} dla ${uploadAccountType === 'vat' ? 'konta VAT' : 'konta bieżącego'} został dodany. Transakcji: ${transactions.length}. ${vatPairingWarning ? `${vatPairingWarning} ` : ''}${reconciliationMessage}`,
+        vatPairingWarning || reconciliationError ? 'warning' : 'success',
       );
     } catch (error: any) {
       console.error('Error uploading bank statement:', error);

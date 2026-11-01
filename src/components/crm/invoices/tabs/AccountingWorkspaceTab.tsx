@@ -23,18 +23,18 @@ import {
   WalletCards,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
-import { BANK_STATEMENT_DEDUPLICATION_COLUMNS, deduplicateStatementTransactions, loadBankStatementTransactionPages } from '@/lib/bankStatementDeduplication';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import KSeFFinancialDashboard from '@/components/crm/KSeFFinancialDashboard';
-import UnmatchedTransactionsModal from '@/components/crm/UnmatchedTransactionsModal';
 import { ExternalInvoicesTab } from './ExternalInvoicesTab/ExternalInvoicesTab';
 import { PersonnelContractsRegistry } from './PersonnelContractsRegistry';
 import SaldeoDeliveryPanel from './SaldeoDeliveryPanel';
+import BankReconciliationPanel from './BankReconciliationPanel';
 import { repairBrokenBankText } from '@/lib/bankTextEncoding';
 import { decodeTextEntities } from '@/lib/textEncoding';
 import { externalDocumentKindLabel } from '@/lib/invoices/externalDocumentKinds';
 
 type WorkspaceSection =
+  | 'reconciliation'
   | 'control'
   | 'documents'
   | 'statements'
@@ -63,23 +63,6 @@ interface AccountingDocument {
   href?: string;
 }
 
-interface BankTransaction {
-  id: string;
-  statement_id: string;
-  transaction_date: string;
-  amount: number;
-  currency: string;
-  transaction_type: 'debit' | 'credit';
-  counterparty_name: string | null;
-  title: string | null;
-  match_status: 'unmatched' | 'partial' | 'matched' | null;
-  allocated_amount: number | null;
-  matched_document_count: number | null;
-  matched_invoice_id: string | null;
-  statementMonth?: number;
-  statementYear?: number;
-  companyId?: string | null;
-}
 
 interface Props {
   filterCompanyIds?: string[] | null;
@@ -91,7 +74,7 @@ const SECTIONS: Array<{
   shortLabel: string;
   icon: typeof FileText;
 }> = [
-  { id: 'control', label: 'Kontrola przepływów', shortLabel: 'Kontrola', icon: ListChecks },
+  { id: 'reconciliation', label: 'Uzgodnienie wyciągów', shortLabel: 'Uzgodnienie', icon: ListChecks },
   { id: 'documents', label: 'Wszystkie dokumenty', shortLabel: 'Dokumenty', icon: FolderOpen },
   { id: 'statements', label: 'Wyciągi i płatności', shortLabel: 'Wyciągi', icon: Landmark },
   { id: 'external', label: 'Dokumenty spoza KSeF', shortLabel: 'Poza KSeF', icon: Receipt },
@@ -101,6 +84,12 @@ const SECTIONS: Array<{
 
 function isWorkspaceSection(value: string | null): value is WorkspaceSection {
   return SECTIONS.some((section) => section.id === value);
+}
+
+// Dawna „Kontrola przepływów” została zastąpiona uzgodnieniem wyciągów (stare linki prowadzą do nowego ekranu).
+function requestedWorkspaceSection(value: string | null): WorkspaceSection {
+  if (value === 'control') return 'reconciliation';
+  return isWorkspaceSection(value) ? value : 'reconciliation';
 }
 
 const SOURCE_META: Record<DocumentSource, { label: string; className: string }> = {
@@ -162,37 +151,6 @@ function statusBadge(status: string) {
   );
 }
 
-function MetricCard({
-  icon: Icon,
-  label,
-  value,
-  hint,
-  tone = 'gold',
-}: {
-  icon: typeof FileText;
-  label: string;
-  value: string | number;
-  hint: string;
-  tone?: 'gold' | 'green' | 'orange' | 'blue';
-}) {
-  const tones = {
-    gold: 'text-[#d3bb73] bg-[#d3bb73]/10',
-    green: 'text-green-400 bg-green-500/10',
-    orange: 'text-orange-400 bg-orange-500/10',
-    blue: 'text-blue-400 bg-blue-500/10',
-  };
-
-  return (
-    <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-4">
-      <div className={`mb-2 inline-flex rounded-md p-2 ${tones[tone]}`}>
-        <Icon className="h-4 w-4" />
-      </div>
-      <div className="text-xl font-light leading-none text-[#e5e4e2]">{value}</div>
-      <div className="mt-1.5 text-xs font-medium text-[#e5e4e2]">{label}</div>
-      <div className="mt-1 text-[11px] leading-4 text-[#e5e4e2]/45">{hint}</div>
-    </div>
-  );
-}
 
 function DocumentsTable({
   documents,
@@ -274,19 +232,12 @@ export function AccountingWorkspaceTab({ filterCompanyIds = null }: Props) {
   const searchParams = useSearchParams();
   const { showSnackbar } = useSnackbar();
   const [section, setSection] = useState<WorkspaceSection>(() => {
-    const requestedSection = searchParams.get('section');
-    return isWorkspaceSection(requestedSection) ? requestedSection : 'control';
+    return requestedWorkspaceSection(searchParams.get('section'));
   });
   const [documents, setDocuments] = useState<AccountingDocument[]>([]);
-  const [transactions, setTransactions] = useState<BankTransaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [sourceFilter, setSourceFilter] = useState<DocumentSource | 'all'>('all');
-  const [matchPeriod, setMatchPeriod] = useState<{
-    month: number;
-    year: number;
-    companyId: string | null;
-  } | null>(null);
 
   const companyFilterKey =
     filterCompanyIds === null ? '*' : [...filterCompanyIds].sort().join(',');
@@ -308,8 +259,7 @@ export function AccountingWorkspaceTab({ filterCompanyIds = null }: Props) {
   );
 
   useEffect(() => {
-    const requestedSection = searchParams.get('section');
-    setSection(isWorkspaceSection(requestedSection) ? requestedSection : 'control');
+    setSection(requestedWorkspaceSection(searchParams.get('section')));
   }, [searchParams]);
 
   const loadWorkspaceData = useCallback(async () => {
@@ -318,52 +268,7 @@ export function AccountingWorkspaceTab({ filterCompanyIds = null }: Props) {
       const companyIds = companyFilterKey === '*' ? null : companyFilterKey.split(',').filter(Boolean);
       if (companyIds && companyIds.length === 0) {
         setDocuments([]);
-        setTransactions([]);
         return;
-      }
-
-      let statementsQuery = supabase
-        .from('bank_statements')
-        .select(BANK_STATEMENT_DEDUPLICATION_COLUMNS)
-        .order('statement_year', { ascending: false })
-        .order('statement_month', { ascending: false });
-      if (companyIds) statementsQuery = statementsQuery.in('my_company_id', companyIds);
-
-      const statementResult = await statementsQuery;
-      const statementRows = statementResult.data || [];
-      const statementMap = new Map(statementRows.map((row) => [row.id, row]));
-
-      if (statementRows.length > 0) {
-        const transactionRows = await loadBankStatementTransactionPages((from, to) =>
-          supabase
-            .from('bank_transactions')
-            .select(
-              'id, statement_id, transaction_date, posting_date, amount, currency, transaction_type, counterparty_name, counterparty_account, title, raw_description, reference_number, match_status, allocated_amount, matched_document_count, matched_invoice_id, accounting_review_status, private_transfer_detected',
-            )
-            .in(
-              'statement_id',
-              statementRows.map((row) => row.id),
-            )
-            .order('transaction_date', { ascending: false })
-            .order('id', { ascending: true })
-            .range(from, to),
-        );
-
-        setTransactions(
-          deduplicateStatementTransactions(transactionRows, statementMap).map((transaction) => {
-            const statement = statementMap.get(transaction.statement_id);
-            return {
-              ...transaction,
-              counterparty_name: repairBrokenBankText(transaction.counterparty_name) || null,
-              title: repairBrokenBankText(transaction.title) || null,
-              statementMonth: statement?.statement_month,
-              statementYear: statement?.statement_year,
-              companyId: statement?.my_company_id,
-            };
-          }),
-        );
-      } else {
-        setTransactions([]);
       }
 
       let ksefQuery = supabase
@@ -411,7 +316,6 @@ export function AccountingWorkspaceTab({ filterCompanyIds = null }: Props) {
       ]);
 
       const partialErrors = [
-        statementResult.error,
         ksefResult.error,
         localResult.error,
         externalResult.error,
@@ -523,25 +427,6 @@ export function AccountingWorkspaceTab({ filterCompanyIds = null }: Props) {
     void loadWorkspaceData();
   }, [loadWorkspaceData]);
 
-  const isMatched = (transaction: BankTransaction) =>
-    transaction.match_status === 'matched' ||
-    (!transaction.match_status && Boolean(transaction.matched_invoice_id));
-
-  const unresolvedTransactions = useMemo(
-    () => transactions.filter((transaction) => !isMatched(transaction)),
-    [transactions],
-  );
-  const missingOutflows = useMemo(
-    () =>
-      unresolvedTransactions.filter(
-        (transaction) => transaction.transaction_type === 'debit',
-      ),
-    [unresolvedTransactions],
-  );
-  const matchedCount = transactions.filter(isMatched).length;
-  const completeness = transactions.length
-    ? Math.round((matchedCount / transactions.length) * 100)
-    : 100;
   const filteredDocuments = useMemo(() => {
     const needle = search.trim().toLocaleLowerCase('pl-PL');
     return documents.filter((document) => {
@@ -570,42 +455,6 @@ export function AccountingWorkspaceTab({ filterCompanyIds = null }: Props) {
     if (document.source === 'ksef') {
       router.push('/crm/invoices?tab=ksef');
     }
-  };
-
-  const openMatching = (transaction: BankTransaction) => {
-    const transactionDate = new Date(transaction.transaction_date);
-    setMatchPeriod({
-      month: transaction.statementMonth || transactionDate.getMonth() + 1,
-      year: transaction.statementYear || transactionDate.getFullYear(),
-      companyId: transaction.companyId || null,
-    });
-  };
-
-  const exportMissingList = () => {
-    if (unresolvedTransactions.length === 0) {
-      showSnackbar('Brak nierozliczonych transakcji do eksportu', 'success');
-      return;
-    }
-    const escape = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
-    const rows = [
-      ['Data', 'Kierunek', 'Kontrahent', 'Tytuł', 'Kwota', 'Waluta', 'Status'],
-      ...unresolvedTransactions.map((transaction) => [
-        transaction.transaction_date,
-        transaction.transaction_type === 'debit' ? 'Wydatek' : 'Wpływ',
-        transaction.counterparty_name || '',
-        transaction.title || '',
-        Math.abs(Number(transaction.amount || 0)).toFixed(2),
-        transaction.currency || 'PLN',
-        transaction.match_status === 'partial' ? 'Częściowo rozliczona' : 'Brak dokumentu',
-      ]),
-    ];
-    const csv = `\uFEFF${rows.map((row) => row.map(escape).join(';')).join('\n')}`;
-    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
-    const link = window.document.createElement('a');
-    link.href = url;
-    link.download = `braki-dokumentow-${new Date().toISOString().slice(0, 10)}.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
   };
 
   return (
@@ -656,151 +505,15 @@ export function AccountingWorkspaceTab({ filterCompanyIds = null }: Props) {
         </div>
       </div>
 
-      {loading && documents.length === 0 ? (
+      {section !== 'reconciliation' && loading && documents.length === 0 ? (
         <div className="flex min-h-[320px] items-center justify-center rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] text-[#e5e4e2]/50">
           <Loader2 className="mr-2 h-5 w-5 animate-spin text-[#d3bb73]" /> Ładowanie rejestrów…
         </div>
-      ) : section === 'control' ? (
-        <div className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <MetricCard
-              icon={CheckCircle2}
-              label="Kompletność rozliczeń"
-              value={`${completeness}%`}
-              hint={`${matchedCount} z ${transactions.length} transakcji ma przypisane dokumenty`}
-              tone="green"
-            />
-            <MetricCard
-              icon={AlertTriangle}
-              label="Wydatki bez dokumentu"
-              value={missingOutflows.length}
-              hint="Płatności wychodzące wymagające faktury albo wyjaśnienia"
-              tone="orange"
-            />
-            <MetricCard
-              icon={LinkIcon}
-              label="Do rozliczenia"
-              value={unresolvedTransactions.length}
-              hint="Pełne i częściowe braki po imporcie wyciągów"
-              tone="blue"
-            />
-            <MetricCard
-              icon={FileText}
-              label="Dokumenty w rejestrze"
-              value={documents.length}
-              hint="KSeF, CRM, dokumenty kosztowe, umowy i zlecenia"
-            />
-          </div>
-
-          <div className="rounded-xl border border-blue-500/20 bg-blue-500/[0.07] p-5">
-            <div className="flex items-start gap-3">
-              <LinkIcon className="mt-0.5 h-5 w-5 shrink-0 text-blue-300" />
-              <div>
-                <div className="font-medium text-blue-200">Płatności zbiorcze są obsługiwane</div>
-                <p className="mt-1 text-sm leading-6 text-blue-100/65">
-                  Jedną transakcję — np. Allegro Pay — możesz rozdzielić na kilka faktur z KSeF,
-                  CRM i spoza KSeF. Każda pozycja ma własną przypisaną kwotę, a transakcja pozostaje
-                  częściowo rozliczona aż do wykorzystania całej wartości.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="overflow-hidden rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33]">
-            <div className="flex flex-col gap-3 border-b border-[#d3bb73]/10 p-5 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h3 className="font-medium text-[#e5e4e2]">Lista brakujących dokumentów</h3>
-                <p className="mt-1 text-xs text-[#e5e4e2]/45">
-                  Powstaje automatycznie na podstawie wgranych wyciągów.
-                </p>
-              </div>
-              <div className="flex gap-2">
-                <button data-crm-action="secondary"
-                  type="button"
-                  onClick={exportMissingList}
-                  className="inline-flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 px-3 py-2 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/10"
-                >
-                  <Download className="h-4 w-4" /> Eksport CSV
-                </button>
-                <button
-                  type="button"
-                  onClick={() => changeSection('statements')}
-                  className="inline-flex items-center gap-2 rounded-lg bg-[#d3bb73] px-3 py-2 text-xs font-medium text-[#0a0d1a] hover:bg-[#e5d799]"
-                >
-                  <Landmark className="h-4 w-4" /> Wgraj wyciąg
-                </button>
-              </div>
-            </div>
-
-            {unresolvedTransactions.length === 0 ? (
-              <div className="px-6 py-14 text-center text-green-400">
-                <CheckCircle2 className="mx-auto mb-3 h-10 w-10" />
-                Wszystkie zaimportowane transakcje są rozliczone.
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[850px]">
-                  <thead className="bg-[#0a0d1a]/50 text-left text-xs uppercase tracking-wider text-[#e5e4e2]/40">
-                    <tr>
-                      <th className="px-5 py-3">Data</th>
-                      <th className="px-5 py-3">Kontrahent i tytuł</th>
-                      <th className="px-5 py-3">Rodzaj</th>
-                      <th className="px-5 py-3 text-right">Kwota / rozliczono</th>
-                      <th className="px-5 py-3 text-right">Akcja</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[#d3bb73]/10">
-                    {unresolvedTransactions.slice(0, 40).map((transaction) => (
-                      <tr key={transaction.id} className="hover:bg-[#d3bb73]/[0.035]">
-                        <td className="px-5 py-4 text-sm text-[#e5e4e2]/60">
-                          {formatDate(transaction.transaction_date)}
-                        </td>
-                        <td className="max-w-[360px] px-5 py-4">
-                          <div className="truncate text-sm font-medium text-[#e5e4e2]">
-                            {transaction.counterparty_name || 'Nieznany kontrahent'}
-                          </div>
-                          <div className="mt-1 truncate text-xs text-[#e5e4e2]/45">
-                            {transaction.title || 'Brak tytułu przelewu'}
-                          </div>
-                        </td>
-                        <td className="px-5 py-4">
-                          <span
-                            className={`rounded-full px-2 py-1 text-xs ${
-                              transaction.transaction_type === 'debit'
-                                ? 'bg-orange-500/15 text-orange-300'
-                                : 'bg-green-500/15 text-green-300'
-                            }`}
-                          >
-                            {transaction.transaction_type === 'debit' ? 'Wydatek' : 'Wpływ'}
-                          </span>
-                        </td>
-                        <td className="px-5 py-4 text-right">
-                          <div className="text-sm font-medium text-[#e5e4e2]">
-                            {formatMoney(Math.abs(Number(transaction.amount)), transaction.currency)}
-                          </div>
-                          {Number(transaction.allocated_amount || 0) > 0 && (
-                            <div className="mt-1 text-xs text-blue-300">
-                              rozliczono {formatMoney(Number(transaction.allocated_amount), transaction.currency)}
-                            </div>
-                          )}
-                        </td>
-                        <td className="px-5 py-4 text-right">
-                          <button data-crm-action="secondary"
-                            type="button"
-                            onClick={() => openMatching(transaction)}
-                            className="inline-flex items-center gap-1 rounded-lg border border-[#d3bb73]/20 px-3 py-2 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/10"
-                          >
-                            Rozlicz <ArrowRight className="h-3.5 w-3.5" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        </div>
+      ) : section === 'reconciliation' ? (
+        <BankReconciliationPanel
+          filterCompanyIds={filterCompanyIds}
+          onOpenStatements={() => changeSection('statements')}
+        />
       ) : section === 'documents' ? (
         <div className="space-y-5">
           <div className="flex flex-col gap-3 rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-4 lg:flex-row lg:items-center">
@@ -874,17 +587,6 @@ export function AccountingWorkspaceTab({ filterCompanyIds = null }: Props) {
         <SaldeoDeliveryPanel filterCompanyIds={filterCompanyIds} />
       )}
 
-      {matchPeriod && (
-        <UnmatchedTransactionsModal
-          month={matchPeriod.month}
-          year={matchPeriod.year}
-          companyId={matchPeriod.companyId}
-          onClose={() => {
-            setMatchPeriod(null);
-            void loadWorkspaceData();
-          }}
-        />
-      )}
     </div>
   );
 }
