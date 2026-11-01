@@ -15,6 +15,8 @@ export type BankAccountingSubtype =
   | 'bank_fee'
   | 'own_transfer'
   | 'cash_settlement'
+  | 'owner_deposit'
+  | 'owner_withdrawal'
   | 'supplier_invoice_missing'
   | 'other';
 
@@ -44,6 +46,8 @@ export type BankAccountingAction = {
   documentLabel?: string;
   resolvesWithoutDocument?: boolean;
   alwaysPending?: boolean;
+  /** Tylko dla wpływów (credit) albo tylko dla wydatków (debit); brak = oba kierunki. */
+  direction?: 'credit' | 'debit';
 };
 
 export const BANK_ACCOUNTING_ACTIONS: BankAccountingAction[] = [
@@ -106,6 +110,22 @@ export const BANK_ACCOUNTING_ACTIONS: BankAccountingAction[] = [
     category: 'cash',
     defaultNote: 'Operacja związana z rozliczeniem gotówkowym — nie jest płatnością faktury z tego rachunku.',
     resolvesWithoutDocument: true,
+  },
+  {
+    subtype: 'owner_deposit',
+    label: 'Wpłata własna (środki właściciela, np. gotówka we wpłatomacie)',
+    category: 'own_transfer',
+    defaultNote: 'Wpłata własnych środków właściciela na rachunek firmy (np. gotówka we wpłatomacie). Nie jest przychodem i nie wymaga faktury.',
+    resolvesWithoutDocument: true,
+    direction: 'credit',
+  },
+  {
+    subtype: 'owner_withdrawal',
+    label: 'Wypłata własna (pobranie środków przez właściciela)',
+    category: 'own_transfer',
+    defaultNote: 'Wypłata środków z rachunku firmy na potrzeby własne właściciela (np. gotówka z bankomatu). Nie jest kosztem i nie wymaga faktury.',
+    resolvesWithoutDocument: true,
+    direction: 'debit',
   },
   {
     subtype: 'supplier_invoice_missing',
@@ -199,7 +219,8 @@ export default function BankTransactionAccountingModal({
 }) {
   const { showSnackbar } = useSnackbar();
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const initialAction = BANK_ACCOUNTING_ACTIONS.find((item) => item.subtype === initialSubtype) || BANK_ACCOUNTING_ACTIONS.at(-1)!;
+  const availableActions = BANK_ACCOUNTING_ACTIONS.filter((item) => !item.direction || item.direction === transaction.transaction_type);
+  const initialAction = availableActions.find((item) => item.subtype === initialSubtype) || availableActions.at(-1)!;
   const [subtype, setSubtype] = useState<BankAccountingSubtype>(initialAction.subtype);
   const [note, setNote] = useState(transaction.accounting_note || initialAction.defaultNote);
   const [file, setFile] = useState<File | null>(null);
@@ -413,11 +434,19 @@ export default function BankTransactionAccountingModal({
               }}
               className="mt-2 w-full rounded-lg border border-white/15 bg-[#1c1f33] px-3 py-2.5 text-sm text-[#e5e4e2] outline-none focus:border-[#d3bb73]/55"
             >
-              {BANK_ACCOUNTING_ACTIONS.map((item) => (
+              {availableActions.map((item) => (
                 <option key={item.subtype} value={item.subtype}>{item.label}</option>
               ))}
             </select>
           </label>
+
+          {(action.subtype === 'owner_deposit' || action.subtype === 'owner_withdrawal') && (
+            <div className="flex items-start gap-2 rounded-lg border border-amber-400/20 bg-amber-400/5 p-3 text-xs leading-relaxed text-amber-100/80">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
+              W działalności jednoosobowej wystarczy opis. W spółce (np. sp. z o.o.) wpłata lub wypłata wspólnika wymaga podstawy
+              — umowy pożyczki, dopłaty do kapitału albo rozliczenia zaliczki — wpisz ją w opisie dla księgowości.
+            </div>
+          )}
 
           <label className="block text-xs text-[#e5e4e2]/65">
             Opis księgowy

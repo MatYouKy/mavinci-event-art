@@ -83,6 +83,10 @@ const foreign = (amount?: number | null, currency?: string | null, rate?: number
 
 const OPEN_STATUSES: ReconciliationStatus[] = ['proposal', 'choice', 'partial', 'missing'];
 
+/** Wpłata gotówki we wpłatomacie / wpłata własna — podpowiadamy wyjaśnienie „Wpłata własna”. */
+const isCashDeposit = (t: { title: string | null; source_description: string | null }) =>
+  /WP[ŁL]ATA\s+(GOT[ÓO]WKI|W[ŁL]ASNA)|WP[ŁL]ATOMA/i.test(`${t.title || ''} ${t.source_description || ''}`);
+
 /** Rodzaj, daty i stan płatności dokumentu — żeby wybrać właściwy, gdy kilka ma tę samą kwotę. */
 function documentFacts(doc: {
   kind?: string | null; issueDate?: string | null; dueDate?: string | null; status?: string | null;
@@ -704,6 +708,12 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
                         className="inline-flex items-center gap-1 rounded-lg border border-[#e5e4e2]/15 px-2.5 py-1 text-[11px] text-[#e5e4e2]/70 hover:bg-white/5">
                         <ArrowLeftRight className="h-3.5 w-3.5" /> Wyjaśnij bez faktury
                       </button>
+                      {t.direction === 'credit' && isCashDeposit(t) && (
+                        <button type="button" onClick={() => setExplainFor(t)}
+                          className="inline-flex items-center gap-1 rounded-lg border border-[#d3bb73]/25 px-2.5 py-1 text-[11px] text-[#d3bb73] hover:bg-[#d3bb73]/10">
+                          <ArrowLeftRight className="h-3.5 w-3.5" /> Wpłata własna
+                        </button>
+                      )}
                       {t.direction === 'debit' && (
                         <button type="button" onClick={() => setDeclarationFor(t)}
                           className="inline-flex items-center gap-1 rounded-lg border border-[#e5e4e2]/15 px-2.5 py-1 text-[11px] text-[#e5e4e2]/70 hover:bg-white/5">
@@ -786,7 +796,7 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
             transaction_type: explainFor.direction, counterparty_name: text(explainFor.counterparty), title: text(explainFor.title),
             accounting_note: explainFor.explanation?.note ?? null,
           }}
-          initialSubtype="other"
+          initialSubtype={explainFor.direction === 'credit' && isCashDeposit(explainFor) ? 'owner_deposit' : 'other'}
           onClose={() => setExplainFor(null)}
           onSaved={async () => { setExplainFor(null); await load(); }}
         />

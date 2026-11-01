@@ -228,6 +228,8 @@ const SUBTYPES: Record<string, string> = {
   own_transfer: 'Przelew własny',
   automatic_vat_transfer: 'Transfer rachunek bieżący ↔ VAT',
   cash_settlement: 'Rozliczenie gotówkowe',
+  owner_deposit: 'Wpłata własna',
+  owner_withdrawal: 'Wypłata własna',
   supplier_invoice_missing: 'Brak faktury od dostawcy',
 };
 

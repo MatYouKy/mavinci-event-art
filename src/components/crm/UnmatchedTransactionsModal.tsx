@@ -301,7 +301,7 @@ export default function UnmatchedTransactionsModal({ month, year, companyId, onC
                               <div className="px-2 py-1.5 text-[10px] font-medium uppercase tracking-wide text-[#e5e4e2]/40">
                                 Wyjaśnij bez faktury
                               </div>
-                              {BANK_ACCOUNTING_ACTIONS.map((action) => (
+                              {BANK_ACCOUNTING_ACTIONS.filter((action) => !action.direction || action.direction === transaction.transaction_type).map((action) => (
                                 <button
                                   key={action.subtype}
                                   type="button"
