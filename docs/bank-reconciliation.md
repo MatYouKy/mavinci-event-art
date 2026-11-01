@@ -110,3 +110,10 @@ symbol formularza także rozcięty przez MT940 (`PI T 4R`, `VA T 7`). Przelew na
 - **Podgląd dokumentu**: „Podgląd” przy propozycji, w wyborze dokumentu i przy rozliczeniu — faktura KSeF jako
   wizualizacja XML, faktura CRM jako zapisany PDF lub wizualizacja, dokument spoza KSeF jako wgrany plik. Dostęp
   według uprawnień do finansów działalności (RLS faktur i magazynu plików).
+- **Odrzucenie propozycji**: dokument nie wraca do tej płatności (także przy kolejnych uzgodnieniach), ale dla innych
+  płatności — w tym i w kolejnych miesiącach — nadal czeka na dopasowanie; sam dokument niczego nie traci. Płatność
+  wraca do „Brak dokumentu”. „Odrzuć i wybierz inny” od razu otwiera wybór dokumentu dla tej płatności.
+- **Reguła „zgodna kwota” bez potwierdzenia kontrahenta** (migracja `20261101201000`): jedyny dokument o tej samej
+  kwocie jest proponowany tylko przy kwocie co do grosza i zbliżonej dacie (karta: dokument od 3 dni przed do 14 dni
+  po zakupie; przelew: wystawiony od 60 dni przed do 7 dni po albo termin od 30 dni przed do 14 dni po), i gdy
+  przelew nie ma wyraźnie innego kontrahenta (pośrednicy płatności — Allegro, PayU, Przelewy24… — się nie liczą).

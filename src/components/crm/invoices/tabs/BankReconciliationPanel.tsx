@@ -249,16 +249,24 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
     await load();
   };
 
-  const callAction = async (key: string, action: () => PromiseLike<{ error: { message?: string } | null }>, success: string) => {
+  const callAction = async (key: string, action: () => PromiseLike<{ error: { message?: string } | null }>, success: string): Promise<boolean> => {
     setBusyKey(key);
     const { error } = await action();
     setBusyKey(null);
     if (error) {
       showSnackbar(error.message || 'Operacja nie powiodła się.', 'error');
-      return;
+      return false;
     }
     showSnackbar(success, 'success');
     await load();
+    return true;
+  };
+
+  const REJECT_MESSAGE = 'Propozycja odrzucona. Ten dokument nie wróci do tej płatności; dla innych płatności nadal czeka na dopasowanie.';
+  const rejectProposal = (t: ReconciliationTransaction, thenPick = false) => {
+    if (!t.proposal) return;
+    void callAction(`reject:${t.id}`, () => supabase.rpc('reject_bank_reconciliation_proposal', { p_proposal_id: t.proposal!.id }), REJECT_MESSAGE)
+      .then((ok) => { if (ok && thenPick) setPickerFor(t); });
   };
 
   const acceptProposal = (t: ReconciliationTransaction) => {
@@ -666,10 +674,14 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
                               ? (t.proposal.kind === 'choose' ? 'Potwierdź netto i powiąż wybraną' : 'Potwierdź netto i powiąż')
                               : t.proposal.kind === 'choose' ? 'Zatwierdź wybrany' : 'Zatwierdź'}
                           </button>
-                          <button type="button" disabled={busyKey === `reject:${t.id}`}
-                            onClick={() => void callAction(`reject:${t.id}`, () => supabase.rpc('reject_bank_reconciliation_proposal', { p_proposal_id: t.proposal!.id }), 'Propozycja odrzucona — nie wróci przy kolejnym uzgodnieniu.')}
+                          <button type="button" disabled={busyKey === `reject:${t.id}`} onClick={() => rejectProposal(t)}
                             className="inline-flex items-center gap-1 rounded-lg border border-[#e5e4e2]/15 px-3 py-1.5 text-xs text-[#e5e4e2]/70 hover:bg-white/5 disabled:opacity-50">
                             <X className="h-3.5 w-3.5" /> Odrzuć
+                          </button>
+                          <button type="button" disabled={busyKey === `reject:${t.id}`} onClick={() => rejectProposal(t, true)}
+                            title="Odrzuć tę propozycję i od razu wybierz właściwy dokument dla tej płatności"
+                            className="inline-flex items-center gap-1 rounded-lg border border-[#d3bb73]/25 px-3 py-1.5 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/10 disabled:opacity-50">
+                            <FileSearch className="h-3.5 w-3.5" /> Odrzuć i wybierz inny
                           </button>
                         </div>
                       )}
