@@ -1,11 +1,12 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, FileText, Loader2, Search, SlidersHorizontal, X } from 'lucide-react';
+import { AlertTriangle, Eye, FileText, Loader2, Search, SlidersHorizontal, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { repairBrokenBankText } from '@/lib/bankTextEncoding';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { externalDocumentKindLabel } from '@/lib/invoices/externalDocumentKinds';
+import { isPreviewableDocumentSource, useDocumentPreview } from '@/components/crm/invoices/useDocumentPreview';
 import { loadExternalDocumentKinds } from '@/lib/invoices/loadExternalDocumentKinds';
 import { loadPersonnelPaymentBreakdowns, salaryPaymentNeedsNetConfirmation, type PersonnelPaymentBreakdown } from '@/lib/personnel/payrollMatching';
 import {
@@ -59,6 +60,11 @@ function money(value: number | string, currency = 'PLN') {
   return `${Number(value || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ' ')} ${currency}`;
 }
 
+function isPartiallyPaid(document: PickerDocument) {
+  return String(document.payment_status || '').toLowerCase() === 'partially_paid'
+    && Number(document.outstanding_amount || 0) > 0.009;
+}
+
 function isPaid(document: PickerDocument) {
   const status = String(document.payment_status || '')
     .normalize('NFD')
@@ -98,6 +104,22 @@ export default function BankTransactionDocumentPickerModal({
     Math.abs(Number(transaction.amount || 0)) - Number(transaction.allocated_amount || 0),
     0,
   );
+  const { openPreview, previewModal, opening: previewOpening } = useDocumentPreview();
+
+  /** Ile ta płatność rozliczy w dokumencie. Mniej niż pozostało do zapłaty = płatność częściowa (np. rata). */
+  const plannedAllocation = (document: PickerDocument) => {
+    const grossAmount = Math.abs(Number(document.gross_amount || 0));
+    const outstandingAmount = Math.abs(Number(document.outstanding_amount || 0));
+    const documentAmount = outstandingAmount > 0.009 ? outstandingAmount : grossAmount;
+    const sameCurrency = String(document.currency || 'PLN').toUpperCase()
+      === String(transaction.currency || 'PLN').toUpperCase();
+    const amount = document.document_source === 'personnel'
+      ? grossAmount
+      : sameCurrency ? Math.min(remainingAmount, documentAmount) : remainingAmount;
+    const partial = document.document_source !== 'personnel' && sameCurrency && !isPaid(document)
+      && amount > 0.009 && documentAmount - amount > 0.009;
+    return { amount, documentAmount, sameCurrency, partial, left: Math.max(documentAmount - amount, 0) };
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -247,15 +269,7 @@ export default function BankTransactionDocumentPickerModal({
     if (blockingReason(document, cashException)) return;
     if (paymentMethodConflict(document) && (!cashException || reviewNote.length < 3)) return;
     const grossAmount = Math.abs(Number(document.gross_amount || 0));
-    const outstandingAmount = Math.abs(Number(document.outstanding_amount || 0));
-    const documentAmount = outstandingAmount > 0.009 ? outstandingAmount : grossAmount;
-    const sameCurrency = String(document.currency || 'PLN').toUpperCase()
-      === String(transaction.currency || 'PLN').toUpperCase();
-    const allocationAmount = document.document_source === 'personnel'
-      ? grossAmount
-      : sameCurrency
-        ? Math.min(remainingAmount, documentAmount)
-        : remainingAmount;
+    const { amount: allocationAmount, documentAmount, sameCurrency, partial, left } = plannedAllocation(document);
 
     const exceptionReasons = cashException ? [
       'Świadomie potwierdzono ręczne dopasowanie do wyciągu mimo oznaczenia gotówki na fakturze KSeF. Oryginalny sposób płatności i XML pozostają bez zmian.',
@@ -301,7 +315,9 @@ export default function BankTransactionDocumentPickerModal({
           reasons: ['Dokument wybrany ręcznie ze szczegółowej analizy wyciągu', ...exceptionReasons],
         });
       }
-      showSnackbar(`Dopasowano ${document.document_number || 'wybrany dokument'}.`, 'success');
+      showSnackbar(partial
+        ? `Dopasowano część płatności do ${document.document_number || 'dokumentu'}. Faktura jest częściowo opłacona — pozostało ${money(left, document.currency)}.`
+        : `Dopasowano ${document.document_number || 'wybrany dokument'}.`, 'success');
       await onMatched();
     } catch (error: any) {
       showSnackbar(error?.message || 'Nie udało się dopasować dokumentu.', 'error');
@@ -405,14 +421,28 @@ export default function BankTransactionDocumentPickerModal({
                   const cashReviewAvailable = canConfirmCashException(document);
                   const matchable = reason === null || cashReviewAvailable;
                   const paid = isPaid(document);
+                  const partiallyPaid = !paid && isPartiallyPaid(document);
+                  const planned = plannedAllocation(document);
                   const wrongCurrency = document.document_source !== 'external'
                     && String(document.currency).toUpperCase() !== String(transaction.currency).toUpperCase();
                   return (
                     <tr key={`${document.document_source}:${document.document_id}`} className="border-b border-white/10 text-xs hover:bg-white/[0.03]">
                       <td className="px-3 py-2"><span className="rounded bg-sky-400/10 px-2 py-1 text-[10px] text-sky-100">{sourceLabels[document.document_source]}</span>{document.document_source === 'external' && <span className="mt-1 block text-[10px] text-[#e5e4e2]/60">{externalDocumentKindLabel(document.document_kind)}</span>}</td>
-                      <td className="truncate px-3 py-2 font-medium text-[#e5e4e2]" title={document.document_number}>{document.document_number || 'bez numeru'}</td>
+                      <td className="px-3 py-2 font-medium text-[#e5e4e2]" title={document.document_number}>
+                        <span className="block truncate">{document.document_number || 'bez numeru'}</span>
+                        {isPreviewableDocumentSource(document.document_source) && (
+                          <button type="button" disabled={previewOpening === document.document_id}
+                            onClick={() => void openPreview(document.document_source as 'ksef' | 'invoice' | 'external', document.document_id, document.document_number)}
+                            className="mt-0.5 inline-flex items-center gap-1 text-[10px] font-normal text-[#d3bb73] hover:underline disabled:opacity-50">
+                            <Eye className="h-3 w-3" /> Podgląd
+                          </button>
+                        )}
+                      </td>
                       <td className="truncate px-3 py-2 text-[#e5e4e2]/70" title={document.counterparty_name || ''}>{document.counterparty_name || '—'}</td>
-                      <td className="px-3 py-2 text-[#e5e4e2]/60">{document.issue_date ? new Date(document.issue_date).toLocaleDateString('pl-PL') : '—'}</td>
+                      <td className="px-3 py-2 text-[#e5e4e2]/60">
+                        {document.issue_date ? new Date(document.issue_date).toLocaleDateString('pl-PL') : '—'}
+                        {document.due_date && <span className="block text-[10px] text-[#e5e4e2]/45">termin {new Date(document.due_date).toLocaleDateString('pl-PL')}</span>}
+                      </td>
                       <td className="px-3 py-2 text-right font-medium text-[#d3bb73]">
                         {document.payroll?.paymentType === 'salary' && (
                           <span className="mb-1 block text-[10px] font-normal text-[#e5e4e2]/55">
@@ -430,7 +460,8 @@ export default function BankTransactionDocumentPickerModal({
                         )}
                       </td>
                       <td className="px-3 py-2">
-                        <span className={paid ? 'text-green-300' : 'text-amber-200'}>{paid ? 'Opłacona' : 'Nieopłacona'}</span>
+                        <span className={paid ? 'text-green-300' : 'text-amber-200'}>{paid ? 'Opłacona' : partiallyPaid ? 'Częściowo opłacona' : 'Nieopłacona'}</span>
+                        {partiallyPaid && <span className="block text-[10px] text-[#e5e4e2]/55">pozostało {money(document.outstanding_amount, document.currency)}</span>}
                         {document.is_matched && <span className="block text-[10px] text-[#e5e4e2]/35">już dopasowana</span>}
                         {!document.is_matched && paid && <span className="mt-1 block text-[10px] text-[#e5e4e2]/50">bez powiązania z wyciągiem</span>}
                         {paymentMethodConflict(document) && <span className="mt-1 block text-[10px] text-amber-200">Na dokumencie: gotówka</span>}
@@ -447,8 +478,13 @@ export default function BankTransactionDocumentPickerModal({
                           onClick={() => cashReviewAvailable ? openCashException(document) : void matchDocument(document)}
                           className="inline-flex items-center justify-center rounded-lg bg-[#d3bb73] px-3 py-1.5 text-[11px] font-medium text-[#141827] disabled:cursor-not-allowed disabled:opacity-35"
                         >
-                          {matchingId === document.document_id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <><FileText className="mr-1.5 h-3.5 w-3.5" />{cashReviewAvailable ? 'Potwierdź wyjątek' : 'Dopasuj'}</>}
+                          {matchingId === document.document_id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <><FileText className="mr-1.5 h-3.5 w-3.5" />{cashReviewAvailable ? 'Potwierdź wyjątek' : planned.partial ? 'Dopasuj część' : 'Dopasuj'}</>}
                         </button>
+                        {matchable && planned.partial && (
+                          <p className="mt-1 text-left text-[10px] leading-4 text-amber-200/90">
+                            Rozliczy {money(planned.amount, document.currency)} z {money(planned.documentAmount, document.currency)}. Faktura będzie częściowo opłacona — zostanie {money(planned.left, document.currency)} do kolejnej płatności.
+                          </p>
+                        )}
                         {reason && <p className="mt-1 text-left text-[10px] leading-4 text-[#e5e4e2]/55">{reason}</p>}
                       </td>
                     </tr>
@@ -459,6 +495,7 @@ export default function BankTransactionDocumentPickerModal({
           )}
         </div>
       </div>
+      {previewModal}
     </div>
   );
 }

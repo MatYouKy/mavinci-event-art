@@ -11,7 +11,9 @@ import {
   ChevronRight,
   HelpCircle,
   Download,
+  Eye,
   FileQuestion,
+  Info,
   FileSearch,
   Landmark,
   Link2,
@@ -30,11 +32,14 @@ import { canFinanceCompany } from '@/lib/invoices/financeAccess';
 import { repairBrokenBankText } from '@/lib/bankTextEncoding';
 import BankTransactionDocumentPickerModal from '@/components/crm/BankTransactionDocumentPickerModal';
 import BankTransactionAccountingModal from '@/components/crm/BankTransactionAccountingModal';
+import BankTransactionDetailsModal from '@/components/crm/BankTransactionDetailsModal';
+import { isPreviewableDocumentSource, useDocumentPreview } from '@/components/crm/invoices/useDocumentPreview';
 import { DeclarationLinkModal } from './FinanceDeclarationsPanel';
 import {
   DECLARATION_STATUS_META,
   RECONCILIATION_STATUS_META,
   RECONCILIATION_STATUS_ORDER,
+  documentKindLabel,
   explanationLabel,
   matchMethodLabel,
   proposalRuleLabel,
@@ -78,6 +83,26 @@ const foreign = (amount?: number | null, currency?: string | null, rate?: number
 
 const OPEN_STATUSES: ReconciliationStatus[] = ['proposal', 'choice', 'partial', 'missing'];
 
+/** Rodzaj, daty i stan płatności dokumentu — żeby wybrać właściwy, gdy kilka ma tę samą kwotę. */
+function documentFacts(doc: {
+  kind?: string | null; issueDate?: string | null; dueDate?: string | null; status?: string | null;
+  due?: number | null; paid?: number | null; manualPaid?: number | null; manualDate?: string | null;
+}, currency: string): string {
+  const parts: string[] = [];
+  const kind = documentKindLabel(doc.kind);
+  if (kind) parts.push(kind);
+  if (doc.issueDate) parts.push(`wystawiona ${date(doc.issueDate)}`);
+  if (doc.dueDate) parts.push(`termin ${date(doc.dueDate)}`);
+  const due = Number(doc.due || 0);
+  const paid = Number(doc.paid || 0);
+  if (doc.status === 'partially_paid' || (paid > 0.009 && due - paid > 0.009)) {
+    parts.push(`częściowo opłacona: ${money(paid, currency)} z ${money(due, currency)}, pozostało ${money(Math.max(due - paid, 0), currency)}`);
+  } else if (Number(doc.manualPaid || 0) > 0.009) {
+    parts.push(`oznaczona ręcznie jako opłacona${doc.manualDate ? ` ${date(doc.manualDate)}` : ''}`);
+  }
+  return parts.join(' · ');
+}
+
 export default function BankReconciliationPanel({ filterCompanyIds = null, onOpenStatements, onOpenDeclarations }: Props) {
   const { showSnackbar } = useSnackbar();
   const { access } = useInvoiceFinanceAccess();
@@ -98,6 +123,8 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
   const [pickerFor, setPickerFor] = useState<ReconciliationTransaction | null>(null);
   const [explainFor, setExplainFor] = useState<ReconciliationTransaction | null>(null);
   const [declarationFor, setDeclarationFor] = useState<ReconciliationTransaction | null>(null);
+  const [detailsFor, setDetailsFor] = useState<ReconciliationTransaction | null>(null);
+  const { openPreview, previewModal, opening: previewOpening } = useDocumentPreview();
 
   const companyKey = filterCompanyIds === null ? '*' : [...filterCompanyIds].sort().join(',');
 
@@ -168,6 +195,22 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
   const periodIndex = companyPeriods.findIndex((p) => p.year === period?.year && p.month === period?.month);
 
   const transactions = useMemo(() => data?.transactions || [], [data]);
+
+  // Przy wyborze spośród kilku dokumentów zaznacz wskazany przez bazę (np. ręczna płatność z dnia przelewu).
+  useEffect(() => {
+    if (!data) return;
+    setChoice((current) => {
+      let changed = false;
+      const next = { ...current };
+      for (const t of data.transactions) {
+        const proposal = t.proposal;
+        if (proposal?.kind !== 'choose' || next[proposal.id] !== undefined) continue;
+        const index = proposal.documents.findIndex((doc) => doc.suggested);
+        if (index >= 0) { next[proposal.id] = index; changed = true; }
+      }
+      return changed ? next : current;
+    });
+  }, [data]);
   const counts = useMemo(() => {
     const result = Object.fromEntries(RECONCILIATION_STATUS_ORDER.map((s) => [s, { count: 0, amount: 0 }])) as Record<ReconciliationStatus, { count: number; amount: number }>;
     transactions.forEach((t) => {
@@ -495,6 +538,10 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
                       </span>
                       <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${meta.chip}`}>{meta.label}</span>
                       {t.status === 'partial' && <span className="text-[10px] text-[#e5e4e2]/45">pozostało {money(t.remaining, t.currency)}</span>}
+                      <button type="button" onClick={() => setDetailsFor(t)}
+                        className="inline-flex items-center gap-1 text-[10px] text-[#e5e4e2]/45 hover:text-[#d3bb73]">
+                        <Info className="h-3 w-3" /> Szczegóły płatności
+                      </button>
                     </div>
                   </div>
 
@@ -506,6 +553,16 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
                           className="inline-flex items-center gap-1.5 rounded-lg border border-green-500/20 bg-green-500/[0.07] px-2 py-1 text-[11px] text-green-200">
                           <Check className="h-3 w-3" />
                           {sourceLabel(a.source)} {a.number || 'dokument'} · {money(a.amount, t.currency)}{foreign(a.document_amount, a.document_currency, a.exchange_rate)} · {matchMethodLabel(a.method)}
+                          {Number(a.doc_open || 0) > 0.009 && (
+                            <span className="text-amber-200" title={documentFacts({ kind: a.doc_kind, issueDate: a.issue_date, dueDate: a.due_date, status: a.doc_status, due: a.doc_due, paid: a.doc_paid, manualPaid: a.doc_manual }, t.currency)}>
+                              · faktura częściowo opłacona, pozostało {money(a.doc_open, t.currency)}
+                            </span>
+                          )}
+                          {isPreviewableDocumentSource(a.source) && a.document_id && (
+                            <button type="button" title="Podgląd dokumentu" disabled={previewOpening === a.document_id}
+                              onClick={() => void openPreview(a.source as 'ksef' | 'invoice' | 'external', a.document_id, a.number)}
+                              className="ml-0.5 text-green-200/60 hover:text-[#d3bb73]"><Eye className="h-3 w-3" /></button>
+                          )}
                           {canManage && (
                             <button type="button" disabled={busyKey === `undo:${a.match_id}`} title="Cofnij dopasowanie"
                               onClick={() => void callAction(`undo:${a.match_id}`, () => supabase.rpc('undo_bank_match', { p_transaction_id: t.id, p_match_id: a.match_id }), 'Dopasowanie cofnięte. Ten dokument nie zostanie ponownie przypisany automatycznie.')}
@@ -567,8 +624,11 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
                       <div className="text-[11px] font-medium text-amber-200">{proposalRuleLabel(t.proposal.rule)}</div>
                       <p className="mt-0.5 text-xs leading-5 text-[#e5e4e2]/75">{t.proposal.reason}</p>
                       <div className="mt-2 space-y-1">
-                        {t.proposal.documents.map((doc, index) => (
-                          <label key={`${doc.id || doc.number}:${index}`} className="flex flex-wrap items-center gap-2 text-xs text-[#e5e4e2]/80">
+                        {t.proposal.documents.map((doc, index) => {
+                          const facts = documentFacts({ kind: doc.doc_kind, issueDate: doc.issue_date, dueDate: doc.due_date, status: doc.payment_status, due: doc.due, paid: doc.paid, manualPaid: doc.manual_paid, manualDate: doc.manual_date }, t.currency);
+                          return (
+                          <div key={`${doc.id || doc.number}:${index}`} className={`rounded-md px-1.5 py-1 ${doc.suggested ? 'bg-green-500/[0.06] ring-1 ring-green-500/20' : ''}`}>
+                          <label className="flex flex-wrap items-center gap-2 text-xs text-[#e5e4e2]/80">
                             {t.proposal!.kind === 'choose' && (
                               <input type="radio" name={`choice-${t.proposal!.id}`} checked={choice[t.proposal!.id] === index}
                                 onChange={() => setChoice((c) => ({ ...c, [t.proposal!.id]: index }))} />
@@ -580,8 +640,23 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
                             {doc.manual && <span className="whitespace-nowrap text-[10px] text-amber-200/80">opłacona ręcznie</span>}
                             {doc.source === 'declaration' && !doc.id && <span className="whitespace-nowrap text-[10px] text-amber-200/80">deklaracja zostanie założona</span>}
                             {doc.confirm_net && <span className="whitespace-nowrap text-[10px] text-amber-200/80">netto do potwierdzenia</span>}
+                            {isPreviewableDocumentSource(doc.source) && doc.id && (
+                              <button type="button" disabled={previewOpening === doc.id}
+                                onClick={(event) => { event.preventDefault(); void openPreview(doc.source as 'ksef' | 'invoice' | 'external', doc.id!, doc.number); }}
+                                className="inline-flex items-center gap-1 whitespace-nowrap rounded border border-[#d3bb73]/20 px-1.5 py-0.5 text-[10px] text-[#d3bb73] hover:bg-[#d3bb73]/10 disabled:opacity-50">
+                                <Eye className="h-3 w-3" /> Podgląd
+                              </button>
+                            )}
                           </label>
-                        ))}
+                          {facts && <p className={`mt-0.5 text-[11px] text-[#e5e4e2]/50 ${t.proposal!.kind === 'choose' ? 'pl-6' : ''}`}>{facts}</p>}
+                          {doc.hint && (
+                            <p className={`mt-0.5 flex items-start gap-1 text-[11px] ${doc.suggested ? 'text-green-300' : 'text-[#e5e4e2]/50'} ${t.proposal!.kind === 'choose' ? 'pl-6' : ''}`}>
+                              <Info className="mt-0.5 h-3 w-3 shrink-0" />{doc.suggested ? 'Sugerowany: ' : ''}{doc.hint}
+                            </p>
+                          )}
+                          </div>
+                          );
+                        })}
                       </div>
                       {canManage && (
                         <div className="mt-2.5 flex gap-2">
@@ -675,6 +750,14 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
           onMatched={async () => { setPickerFor(null); await load(); }}
         />
       )}
+      {detailsFor && period && (
+        <BankTransactionDetailsModal
+          transaction={{ id: detailsFor.id, company_id: period.companyId, statement_id: detailsFor.statement_id }}
+          onClose={() => setDetailsFor(null)}
+          onMatchDocuments={canManage && OPEN_STATUSES.includes(detailsFor.status) ? () => { const target = detailsFor; setDetailsFor(null); setPickerFor(target); } : undefined}
+        />
+      )}
+      {previewModal}
       {declarationFor && period && (
         <DeclarationLinkModal
           companyId={period.companyId}

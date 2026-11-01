@@ -30,6 +30,17 @@ export interface ReconciliationProposalDocument {
   /** Wypłata: zatwierdzenie potwierdzi kwotę netto na konto. */
   confirm_net?: boolean;
   title?: string | null;
+  /** Rodzaj faktury: kod KSeF (VAT, ZAL, ROZ, KOR…), typ faktury CRM albo rodzaj dokumentu spoza KSeF. */
+  doc_kind?: string | null;
+  payment_status?: string | null;
+  /** Zapłacono łącznie (wyciąg + oznaczenia ręczne), z wyciągu i ręcznie. */
+  paid?: number;
+  bank_paid?: number;
+  manual_paid?: number;
+  manual_date?: string | null;
+  /** Podpowiedź przy wyborze spośród kilku dokumentów (np. ręczna płatność z dnia przelewu). */
+  suggested?: boolean;
+  hint?: string | null;
 }
 
 export interface ReconciliationProposal {
@@ -53,6 +64,15 @@ export interface ReconciliationAllocation {
   document_amount?: number;
   document_currency?: string;
   exchange_rate?: number;
+  doc_kind?: string | null;
+  issue_date?: string | null;
+  due_date?: string | null;
+  /** Stan dokumentu po wszystkich płatnościach: należność, zapłacono, pozostało, status. */
+  doc_due?: number;
+  doc_paid?: number;
+  doc_open?: number;
+  doc_manual?: number;
+  doc_status?: string | null;
 }
 
 export interface ReconciliationPersonnelAllocation {
@@ -352,3 +372,13 @@ export const declarationStatusSentence = (d: Pick<FinanceDeclaration, 'status' |
     default: return 'Wpisz kwotę z deklaracji i dodaj plik.';
   }
 };
+
+const DOCUMENT_KIND_LABELS: Record<string, string> = {
+  VAT: 'faktura', ZAL: 'zaliczkowa', ROZ: 'rozliczeniowa (końcowa)', KOR: 'korekta', KOR_ZAL: 'korekta zaliczkowej',
+  KOR_ROZ: 'korekta rozliczeniowej', UPR: 'uproszczona',
+  vat: 'faktura', advance: 'zaliczkowa', final: 'końcowa', corrective: 'korekta', proforma: 'proforma',
+  invoice: 'faktura', insurance_policy: 'polisa',
+};
+
+/** Rodzaj dokumentu po polsku (null, gdy nieznany). */
+export const documentKindLabel = (kind?: string | null): string | null => (kind ? DOCUMENT_KIND_LABELS[kind] ?? null : null);

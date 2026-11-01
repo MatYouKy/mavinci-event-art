@@ -91,3 +91,22 @@ Rozpoznanie przelewu: odbiorca ZUS (rachunek `xx 6000 0002 …`) albo mikrorachu
 (`xx 1010 0071 2222 …`, „URZĄD SKARBOWY”), okres z tytułu (`DRA 03.2026`, `26M03`, `26K1`, `25R`),
 symbol formularza także rozcięty przez MT940 (`PI T 4R`, `VA T 7`). Przelew na własny rachunek
 (rachunek VAT → bieżący z tytułem „ZUS DRA…”) nie jest płatnością deklaracji.
+
+## Szczegóły dokumentów, płatności częściowe i podgląd (01.11.2026)
+
+- **Kilka dokumentów z tą samą kwotą** (np. faktura zaliczkowa 50% i końcowa na tę samą kwotę): przy każdym dokumencie
+  widać rodzaj (zaliczkowa / rozliczeniowa / korekta — z XML KSeF, typu faktury CRM lub rodzaju dokumentu spoza KSeF),
+  datę wystawienia, termin płatności i stan płatności. Jeśli dokładnie jeden dokument jest oznaczony ręcznie jako
+  opłacony w dniu przelewu na tę samą kwotę, jest wskazany jako sugerowany i zaznaczony; dokument wystawiony po dacie
+  przelewu ma o tym informację. Wybór nadal zatwierdza użytkownik (`get_bank_reconciliation_month`, migracja
+  `20261101200000`).
+- **Płatność częściowa (rata)**: „Wybierz dokument” rozlicza najwyżej tyle, ile zostało z płatności i z faktury.
+  Gdy płatność jest mniejsza niż pozostała należność, przycisk ma nazwę „Dopasuj część” i pokazuje, ile zostanie do
+  zapłaty. Faktura dostaje status „częściowo opłacona” i czeka na kolejną płatność (historia wpłat KSeF:
+  `ksef_invoice_payments`, status liczony przez `recalculate_ksef_invoice_payment_status`). Przy rozliczonej operacji
+  chip dokumentu pokazuje „faktura częściowo opłacona, pozostało …”.
+- **Szczegóły płatności**: przy każdej operacji przycisk „Szczegóły płatności” otwiera pełne dane z wyciągu
+  (rachunek kontrahenta, opisy z obu plików, wyciąg, powiązania).
+- **Podgląd dokumentu**: „Podgląd” przy propozycji, w wyborze dokumentu i przy rozliczeniu — faktura KSeF jako
+  wizualizacja XML, faktura CRM jako zapisany PDF lub wizualizacja, dokument spoza KSeF jako wgrany plik. Dostęp
+  według uprawnień do finansów działalności (RLS faktur i magazynu plików).
