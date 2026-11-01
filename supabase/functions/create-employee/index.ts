@@ -7,6 +7,26 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Client-Info, Apikey',
 };
 
+type CallerCheck = { ok: true; userId: string } | { ok: false; status: number; error: string };
+
+/** Zalogowany administrator CRM (ta sama reguła co w bazie: public.current_employee_is_crm_admin()). */
+async function requireCrmAdmin(req: Request, supabaseUrl: string): Promise<CallerCheck> {
+  const token = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '').trim();
+  const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
+  if (!token || !anonKey) return { ok: false, status: 401, error: 'Brak aktywnej sesji. Zaloguj się ponownie.' };
+  const userClient = createClient(supabaseUrl, anonKey, {
+    global: { headers: { Authorization: `Bearer ${token}` } },
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+  const { data: userData, error: userError } = await userClient.auth.getUser(token);
+  if (userError || !userData.user) return { ok: false, status: 401, error: 'Sesja wygasła. Zaloguj się ponownie.' };
+  const { data: isAdmin, error } = await userClient.rpc('current_employee_is_crm_admin');
+  if (error || isAdmin !== true) {
+    return { ok: false, status: 403, error: 'Konta pracowników może zakładać tylko administrator.' };
+  }
+  return { ok: true, userId: userData.user.id };
+}
+
 interface CreateEmployeeRequest {
   email: string;
   password: string;
@@ -29,10 +49,27 @@ Deno.serve(async (req: Request) => {
     });
   }
 
+  if (req.method !== 'POST') {
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+      status: 405,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
   try {
     // Get Supabase URL from environment
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+
+    // Konto pracownika zakłada wyłącznie zalogowany administrator CRM. verify_jwt przepuszcza też publiczny
+    // klucz anon (jest w kodzie strony), więc bez tej kontroli każdy mógł założyć konto — także administratora.
+    const caller = await requireCrmAdmin(req, supabaseUrl);
+    if (!caller.ok) {
+      return new Response(JSON.stringify({ error: caller.error }), {
+        status: caller.status,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     // Create admin client with service role key
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
