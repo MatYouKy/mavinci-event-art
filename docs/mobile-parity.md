@@ -63,3 +63,19 @@ W CRM i w aplikacji jednakowo:
 ## Stan na 1.11.2026 (wersja 1.3.0) — dni ustawowo wolne
 
 W CRM i w aplikacji jednakowo: święta z tabeli `public_holidays` (ustawa + cotygodniowe porównanie ze źródłem zewnętrznym) zaznaczone w kalendarzu, wymiar czasu pracy pełnego etatu w miesiącu (kalendarz, czas pracy), ostrzeżenie przy dacie zapytania (i wydarzenia w CRM): święto, niedziela, długi weekend, dzień między świętem a weekendem, Sylwester. Data z kalendarza w aplikacji jest zapisywana jako data lokalna (wcześniej `toISOString` cofał ją o dzień).
+
+
+## Natywna aplikacja macOS — pierwszy etap (01.11.2026)
+
+Projekt `desktop/mac/` współdzieli z CRM i mobile Supabase Auth, tabele, RLS oraz istniejące RPC. Nie zmienia ich zachowania ani bieżących uprawnień. Natywne są: Mój dzień, listy i podglądy zapytań, własnych zadań, kontaktów, wydarzeń, ofert, przetargów oraz powiadomień. Akcje: prywatne zadanie i edycja, przejęcie zapytania, kontakt z kolejnym terminem, odroczenie, przeczytanie powiadomienia.
+
+Oferty w desktopie mają na razie podstawowy podgląd; mobilna obsługa ofert pozostaje dotychczasowa. Pozostałe akcje, złożone karty i pełne moduły nie są deklarowane jako gotowe. Szczegółowa lista braków oraz instrukcja: `desktop/mac/README.md` i pomoc wewnątrz aplikacji. Nie dodano tras `/api/mobile/*`, ponieważ obecny backend używa bezpośredniego Supabase; docelowy własny serwer ma odrębny opis kontraktu w `docs/desktop-native-api.md`.
+
+Migracja `20261101160000_native_workspace_sync.sql` przygotowuje wspólny transport przyrostowy, bez zmiany reguł biznesowych. Nie została zastosowana automatycznie. Mobile i przeglądarka zachowują istniejące pobieranie danych; przejście wszystkich klientów na ten transport pozostaje kolejnym etapem. Dopóki RPC nie jest wdrożone, desktop jawnie używa pełnych odczytów. Mobile: nie dotyczy — dodano klienta desktopowego i opcjonalny transport odczytu, bez zmian zachowania istniejących ekranów.
+
+
+### macOS 0.2 — nawigacja i wydarzenia
+
+Dzwonek przeniesiono na prawy górny pasek; poprawiono pełną wysokość tabel; wydarzenia otwierają osobną natywną stronę. Dodano natywny kalendarz z wydarzeniami, własnymi / zaproszonymi wystąpieniami spotkań i terminami zapytań oraz ręczne powiązanie CRM → Apple Calendar. Integracja jest lokalna dla Maca, bez importowania prywatnych wpisów do CRM. Moduł `calendar` ma opcjonalny transport przyrostowy w nowej migracji `20261101170000_native_calendar_sync.sql`, niewykonanej automatycznie.
+
+Strona wydarzenia odczytuje obszary z mapy zakładek CRM, uwzględnia dane weselne, zespół odpowiedzialności, logistykę, magazyn, ofertę, kalkulacje, finanse, umowy, podwykonawców, pliki, historię i LIVE. Część czynności jest natywna (szczegółowa macierz w `desktop/mac/README.md`), a pozostałe są jawnie oznaczone jako niewdrożone. Nie deklarujemy pełnego parytetu czynności. Nie zmieniono kodu ani zachowania klientów CRM/mobile. Mobile: nie dotyczy — rozbudowa klienta macOS, bez nowych reguł biznesowych lub zakresów dostępu.

@@ -34,3 +34,19 @@
 - Moduły dostępne tylko w CRM (oferty, faktury, finanse, ustawienia administracyjne) aplikacja otwiera w przeglądarce (`openInCrmWeb`). Nowy link w powiadomieniu musi mieć obsługę w `mobile/src/navigation/navigationRef.ts` (`routeNotification`, `routeSalesUrl`).
 - Jeśli zmiana świadomie nie dotyczy aplikacji, wpisz w opisie PR „Mobile: nie dotyczy — powód”. Bez tego kontrola parytetu w CI zatrzymuje PR.
 - Zmiany w aplikacji wymagają nowej wersji: podnieś `version` w `mobile/app.json` i `mobile/package.json`, a następnie `cd mobile && yarn deploy`.
+
+
+## Mavinci: natywna aplikacja macOS
+
+- `desktop/mac/` jest aplikacją SwiftUI macOS 14+, na tym samym poziomie co `mobile/`; nie zastępuje `macos-sync-app/`. Instrukcja i jawne braki: `desktop/mac/README.md`; kontrakt przyszłego własnego serwera: `docs/desktop-native-api.md`.
+- Każdy nowy moduł wykorzystuje istniejące reguły, zakres konta, RLS i RPC; nie przenoś uprawnień ani kalkulacji finansowych do Swift. Odwzoruj działanie CRM i mobile, a odłożone funkcje wpisuj do instrukcji.
+- Widoki macOS są natywne: tabele, zaznaczenie, menu kontekstowe, skróty i SF Symbols. Nie zastępuj czynności panelem WWW.
+- Backend jest źródłem prawdy. Lokalna kopia jest szyfrowana i oddzielona per konto / połączenie; offline tylko odczyt. Wylogowanie i zmiana zakresu usuwają starą kopię. Zapis wymaga potwierdzenia; nie ponawiaj automatycznie niepotwierdzonej operacji.
+- Rejestr synchronizacji przyrostowej: `native_workspace_sync` w migracjach `20261101160000_native_workspace_sync.sql` i `20261101170000_native_calendar_sync.sql`; nowy zbiór wymaga dopisania tam oraz w `Module` i `HTTPBackend`. Funkcja działa jako SECURITY INVOKER z istniejącymi RLS; nie utrzymuje starej migawki serwera. Przed wdrożeniem migracji klient jawnie korzysta z pełnych odczytów.
+- Do pakietu aplikacji trafiają wyłącznie publiczny adres i klucz Supabase anon/publishable. Nigdy service_role ani sekrety integracji. Sesje i konfiguracja zmienna lokalnie są w Keychain; po konfiguracji początkowej ustawienia połączenia zmienia administrator.
+- Aktualizacja instrukcji w aplikacji i README jest częścią zmiany zachowania. Nie wdrażaj migracji, CRM ani mobile jako skutku samego budowania aplikacji desktopowej.
+
+- Wydarzenia otwieramy na osobnej natywnej stronie z zakładkami (`EventPageView`), nigdy w zastępczym podglądzie ogólnym. Błędy układu pustego podglądu nie mogą zmniejszać wysokości tabel. Dzwonek i licznik powiadomień należą do prawego górnego paska narzędzi.
+- Kalendarz natywny korzysta z tych samych wydarzeń i wystąpień spotkań co CRM. Integracja EventKit jest włączana świadomie, kopiuje CRM → wskazany kalendarz Apple i nie importuje prywatnych wpisów. Nigdy nie proś o dostęp przy starcie ani nie usuwaj cudzych wpisów. Informuj o rzeczywistym zakresie synchronizacji.
+- Nowa czynność wydarzenia ma używać istniejącej reguły / RPC / pełnego procesu CRM. Samo dodanie zakładki i odczytu nie oznacza wdrożenia wszystkich czynności; utrzymuj dokładną macierz w README i ograniczenia w interfejsie. Zmiana agendy oznacza jej PDF jako nieaktualny przed zapisem. Finansów nie pobieraj przed serwerową kontrolą dostępu.
+- Developerska wersja z obsługą uprawnień systemowych to `desktop/mac/scripts/dev-app.sh` (debug `.app`, ten sam pęk kluczy); nie zastępuj jej samym `swift run` przy pracy nad EventKit.

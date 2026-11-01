@@ -911,3 +911,10 @@ Lista kontrolna dla każdej nowej tabeli, kolumny, funkcji, bucketu, uprawnienia
 11. **Test**: sprawdź zapytaniem jako `anon`, jako konto portalu sprzedawcy, jako technik/DJ i jako sprzedawca (np. `SET LOCAL role authenticated; SET LOCAL request.jwt.claims …`), że widzą tylko to, co w tabeli profili (sekcja 2).
 12. **Zaktualizuj ten plik** (`docs/access-model.md`): wiersz w domenie (wrażliwość, reguła docelowa, stan, status), funkcja w sekcji 4, bucket w 3.15, zmiana pakietu w sekcji 2.
 
+
+
+### macOS — natywny klient 0.2
+
+`desktop/mac/` używa publicznego klucza Supabase z sesją pracownika (bez service_role). Karta wydarzenia potwierdza EV(v/m) istniejącymi RPC; ustawienia zakładek, przypisanie, EVC i uprawnienia kosztów są odczytywane przed pobraniem danego obszaru. Budżet, przychód i dane handlowe są pobierane tylko przy `get_event_finance_access.canViewCommercials`; koszty przy `canViewCosts`, zapis oczekujących kosztów przy `canManageCosts` i z kontrolą RLS. Profil obejmuje `finance_company_access`, więc jego zmiana unieważnia szyfrowaną kopię konta. Aplikacja nie przelicza samodzielnie poziomów finansowych.
+
+Kalendarz pokazuje dostępne przez RLS wydarzenia oraz własne / zaproszone spotkania. Wyraźnie włączane, ręczne powiązanie z EventKit kopiuje nazwy, terminy i miejsca do wskazanego kalendarza Apple (może należeć do iCloud); nie importuje prywatnych danych do CRM i nie nadaje uprawnień CRM. Kopia Apple pozostaje po wylogowaniu. Podstawowe dane wydarzenia i zakładek trafiają do szyfrowanej kopii oddzielonej per konto / serwer, offline tylko do odczytu, z limitem 24 godzin. Niewykonana migracja `20261101170000_native_calendar_sync.sql` rozszerza wyłącznie odczytowy, invokerowy transport `native_workspace_sync`, bez zmiany polityk.

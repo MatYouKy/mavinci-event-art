@@ -1,0 +1,223 @@
+import SwiftUI
+import AppKit
+
+@main struct MavinciApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
+    @StateObject private var workspace = Workspace()
+    var body: some Scene {
+        WindowGroup("Mavinci") {
+            RootView().environmentObject(workspace).frame(minWidth: 1080, minHeight: 680)
+                .task { await workspace.restore() }
+        }
+        .defaultSize(width: 1280, height: 800)
+        .windowResizability(.contentMinSize)
+        .commands {
+            CommandGroup(replacing: .newItem) { }
+            CommandMenu("Mavinci") {
+                Button("Odśwież dane") { Task { await workspace.refresh() } }.keyboardShortcut("r").disabled(workspace.syncing || workspace.editing)
+                Divider()
+                Button("Mój dzień") { workspace.selection = .day }.keyboardShortcut("1")
+                Button("Zapytania") { if workspace.employee?.canView(.inquiries) == true { workspace.selection = .inquiries } }.keyboardShortcut("2")
+                Button("Moje zadania") { if workspace.employee?.canView(.tasks) == true { workspace.selection = .tasks } }.keyboardShortcut("3")
+                Button("Wydarzenia") { if workspace.employee?.canView(.events) == true { workspace.eventRoute=nil;workspace.selection = .events } }.keyboardShortcut("4")
+                Button("Kalendarz") { if workspace.employee?.canView(.calendar) == true { workspace.eventRoute=nil;workspace.selection = .calendar } }.keyboardShortcut("5")
+                Divider()
+                Button("Wyloguj") { Task { await workspace.logout() } }.disabled(workspace.loading || workspace.acting)
+            }
+        }
+        Settings { ConnectionView().environmentObject(workspace).frame(width: 560) }
+    }
+}
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApp.setActivationPolicy(.regular); NSApp.activate(ignoringOtherApps: true)
+    }
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+}
+
+struct RootView: View {
+    @EnvironmentObject var state: Workspace
+    @Environment(\.scenePhase) private var phase
+    @State private var help = false
+    var body: some View {
+        Group {
+            if state.employee != nil {
+                NavigationSplitView {
+                    List(selection: $state.selection) {
+                        Section("Miejsce pracy") {
+                            ForEach(state.modules.filter { $0 != .notifications }) { module in
+                                HStack {
+                                    Label(module.title, systemImage: module.symbol)
+                                    Spacer()
+                                    if module == .notifications && state.unread > 0 { Text("\(state.unread)").foregroundStyle(.secondary).monospacedDigit() }
+                                }.tag(module)
+                            }
+                        }
+                    }
+                    .navigationTitle("Mavinci")
+                    .navigationSplitViewColumnWidth(min: 210, ideal: 235, max: 300)
+                    .safeAreaInset(edge: .bottom) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(state.employee?.displayName ?? "").font(.headline)
+                            Label(state.offline ? "Kopia lokalna · tylko odczyt" : (state.syncing ? "Odświeżanie…" : "Połączono"), systemImage: state.offline ? "wifi.slash" : "checkmark.icloud")
+                                .font(.caption).foregroundStyle(state.offline ? .orange : .secondary)
+                            if state.compatibilityMode { Text("Pełne odświeżanie danych").font(.caption2).foregroundStyle(.secondary) }
+                            HStack {
+                                SettingsLink { Label("Ustawienia", systemImage: "gearshape") }.labelStyle(.iconOnly)
+                                Button { help = true } label: { Label("Instrukcja i zakres", systemImage: "questionmark.circle") }.labelStyle(.iconOnly)
+                                Spacer()
+                                Button("Wyloguj") { Task { await state.logout() } }.disabled(state.acting)
+                            }.buttonStyle(.borderless)
+                        }.padding().background(.bar)
+                    }
+                } detail: {
+                    VStack(spacing: 0) {
+                        if let error = state.error { MessageBar(text: error, warning: true) { state.error = nil } }
+                        if let notice = state.notice { MessageBar(text: notice, warning: false) { state.notice = nil } }
+                        if let route = state.eventRoute { EventPageView(eventID: route.id).id(route.id) }
+                        else if state.selection == .calendar { NativeCalendarView() }
+                        else if state.selection == .day { SalesDayView() }
+                        else if let module = state.selection, state.employee?.canView(module) == true { RecordsView(module: module).id(module) }
+                        else { ContentUnavailableView("Wybierz sekcję", systemImage: "sidebar.left") }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    .toolbar {
+                        ToolbarItemGroup(placement: .primaryAction) {
+                            Button {
+                                state.eventRoute = nil
+                                state.selection = .notifications
+                            } label: {
+                                ZStack(alignment: .topTrailing) {
+                                    Image(systemName: "bell")
+                                    if state.unread > 0 {
+                                        Text(state.unread > 99 ? "99+" : "\(state.unread)")
+                                            .font(.system(size: 8, weight: .bold)).padding(3)
+                                            .background(.red, in: Capsule()).foregroundStyle(.white).offset(x: 9, y: -8)
+                                    }
+                                }.frame(width: 28, height: 26)
+                            }.help("Powiadomienia: \(state.unread) nieprzeczytanych").accessibilityLabel("Powiadomienia")
+                        }
+                        ToolbarItem(placement: .primaryAction) {
+                            Button { Task { await state.refresh() } } label: { Label("Odśwież", systemImage: "arrow.clockwise") }
+                                .disabled(state.syncing || state.acting || state.editing)
+                        }
+                        ToolbarItem(placement: .primaryAction) { if state.syncing { ProgressView().controlSize(.small) } }
+                    }
+                }
+            } else { LoginView() }
+        }
+        .sheet(isPresented: $help) { HelpView() }
+        .onChange(of: state.selection) { _, next in
+            if let route = state.eventRoute, next != route.origin { state.eventRoute = nil }
+        }
+        .onOpenURL { url in
+            guard url.scheme == "mavinci",let id=url.pathComponents.last,UUID(uuidString:id) != nil else {return}
+            if url.host == "event" {state.showEvent(id)}
+            else if url.host == "meeting",state.employee?.canView(.calendar) == true {state.eventRoute=nil;state.selection = .calendar;state.focusedID="meeting:\(id)"}
+        }
+        .onChange(of: phase) { _, next in
+            if next == .active { Task { await state.refresh() } }
+        }
+        .task(id: state.employee?.id) {
+            while !Task.isCancelled && state.employee != nil {
+                do { try await Task.sleep(for: .seconds(60)) } catch { return }
+                if phase == .active { await state.refresh() }
+            }
+        }
+    }
+}
+struct MessageBar: View {
+    let text: String
+    let warning: Bool
+    let dismiss: () -> Void
+    var body: some View {
+        HStack(alignment: .top) {
+            Image(systemName: warning ? "exclamationmark.triangle" : "checkmark.circle")
+            Text(text).textSelection(.enabled)
+            Spacer()
+            Button(action: dismiss) { Image(systemName: "xmark") }.buttonStyle(.plain).accessibilityLabel("Zamknij komunikat")
+        }.font(.callout).padding(12).background(warning ? Color.orange.opacity(0.12) : Color.green.opacity(0.1))
+    }
+}
+
+struct LoginView: View {
+    @EnvironmentObject var state: Workspace
+    @State private var email = ""
+    @State private var password = ""
+    var body: some View {
+        VStack(spacing: 22) {
+            Image(systemName: "building.2.crop.circle").font(.system(size: 54)).foregroundStyle(.tint)
+            Text("Mavinci").font(.largeTitle.bold())
+            Text("Twoje miejsce pracy").foregroundStyle(.secondary)
+            if !state.connection.valid { ConnectionView() }
+            else {
+                Form {
+                    TextField("Adres e-mail", text: $email).textContentType(.username)
+                    SecureField("Hasło", text: $password).textContentType(.password)
+                }.formStyle(.grouped).frame(height: 130)
+                if let error = state.error { Text(error).font(.callout).foregroundStyle(.red).textSelection(.enabled) }
+                Button("Zaloguj się") {
+                    Task { await state.login(email: email, password: password); password = "" }
+                }.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
+                    .disabled(email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || password.isEmpty || state.loading)
+                if state.loading { ProgressView().controlSize(.small) }
+                Text("Użyj konta pracownika z CRM. Zakres danych wynika z jego aktualnych uprawnień.").font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
+            }
+        }.padding(36).frame(maxWidth: 540).frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+struct ConnectionView: View {
+    @EnvironmentObject var state: Workspace
+    @State private var draft = Connection()
+    @State private var saving = false
+    var body: some View {
+        Form {
+            Section("Połączenie") {
+                Picker("Źródło danych", selection: $draft.provider) {
+                    Text("Supabase").tag(Connection.Provider.supabase)
+                    Text("Własny serwer").tag(Connection.Provider.server)
+                }
+                TextField("Adres serwera", text: $draft.url)
+                if draft.provider == .supabase { SecureField("Publiczny klucz aplikacji", text: $draft.publicKey) }
+                if !draft.valid { Text("Wymagany jest adres HTTPS i klucz publiczny. Dla lokalnego serwera dopuszczalny jest HTTP na localhost.").font(.caption).foregroundStyle(.secondary) }
+                if draft.provider == .server { Text("Własny serwer wymaga interfejsu /api/native/v1 opisanego w dokumentacji projektu. Samo wpisanie adresu nie uruchamia migracji danych.").font(.caption).foregroundStyle(.secondary) }
+            }.disabled(!state.canConfigure || saving)
+            if state.canConfigure {
+                Button(saving ? "Zapisywanie…" : "Zapisz połączenie") {
+                    saving = true
+                    Task { await state.configure(draft); saving = false }
+                }.disabled(!draft.valid || saving || state.acting || state.syncing)
+                Text("Zmiana połączenia wyloguje konto i usunie jego lokalną kopię.").font(.caption).foregroundStyle(.secondary)
+            } else {
+                Text("Zmienne połączenia zmienia administrator po zalogowaniu. Pierwszą konfigurację aplikacji przygotowuje osoba instalująca.").font(.callout).foregroundStyle(.secondary)
+            }
+            if let error = state.error { Text(error).foregroundStyle(.red).font(.callout) }
+        }.formStyle(.grouped).padding().onAppear { draft = state.connection }
+    }
+}
+
+struct HelpView: View {
+    @Environment(\.dismiss) private var dismiss
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text("Praca w Mavinci na Macu").font(.title2.bold())
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    Text("Wybierz sekcję z paska bocznego. W tabelach wyszukuj, sortuj nagłówkami i zaznacz sprawę, aby zobaczyć jej szczegóły. Dostępne czynności znajdziesz w szczegółach i pod prawym przyciskiem myszy.")
+                    Text("⌘R odświeża dane, ⌘1 otwiera Mój dzień, ⌘2 zapytania, ⌘3 zadania. W Moich zadaniach ⌘N tworzy prywatne zadanie, a ⌘E edytuje zaznaczone.")
+                    Text("Zapytania: przejmij nieprzypisaną sprawę, zapisz wykonany kontakt lub odłóż przypomnienie o godzinę. Po wykonaniu kontaktu możesz wybrać termin kolejnego działania. Ostateczne uprawnienia sprawdza baza danych.")
+                    Text("Zadania: twórz prywatne zadania, zmieniaj tytuł, opis, priorytet, termin i etap. Zapis wymaga połączenia. Konflikt zmian wymaga odświeżenia; formularz zachowuje wpisany tekst.")
+                    Text("Bez internetu ostatnia zapisana kopia jest dostępna tylko do odczytu przez maksymalnie 24 godziny od pełnego udanego odświeżenia. Po powrocie do aplikacji uprawnienia są sprawdzane ponownie. Wylogowanie usuwa kopię i lokalną sesję.")
+                    Text("Zakres pierwszej wersji").font(.headline)
+                    Text("Wydarzenia mają pełną stronę z zakładkami. Możesz edytować dane i istniejące etapy, prowadzić agendę i zadania, dodawać osoby, odpowiadać na zaproszenia, planować oczekujące koszty, oznaczać załadunek oraz dodawać i otwierać pliki. Dostępne działania realizacji wynikają z uprawnień w bazie. Poszczególne zakładki wskazują pozostałe do wdrożenia czynności; pełna obsługa ofert, umów, kalkulacji, faktur, logistyki i edytora Mavinci LIVE nie jest jeszcze gotowa.")
+                    Text("Dzwonek powiadomień jest u góry po prawej, obok odświeżania. Wydarzenie otworzysz zaznaczeniem wiersza listy albo z kalendarza; przycisk Wróć przywraca listę.")
+                    Text("Kalendarz pokazuje wydarzenia, własne i zaproszone spotkania oraz terminy otwartych zapytań. Połącz z Kalendarzem Apple pozwala wybrać kalendarz i ręcznie zapisać lub zaktualizować kopię wydarzeń i spotkań. Apple nie przekazuje prywatnych wpisów do CRM. Uprawnienia kalendarza nadajesz dopiero po kliknięciu przycisku. Wylogowanie z CRM nie usuwa kopii zapisanej w Apple.")
+                    Text("Powiadomienia: oznaczaj pojedynczo jako przeczytane i otwieraj obsługiwane powiązania. Zaproszenia wymagające odpowiedzi nadal obsługuj w istniejącej aplikacji mobilnej lub CRM.")
+                    Text("Synchronizacja przyrostowa wymaga migracji native_workspace_sync w Supabase. Przed jej wdrożeniem aplikacja pobiera pełne listy i pokazuje informację „Pełne odświeżanie danych”.")
+                }.textSelection(.enabled)
+            }
+            HStack { Spacer(); Button("Gotowe") { dismiss() }.keyboardShortcut(.defaultAction) }
+        }.padding(28).frame(width: 650, height: 610)
+    }
+}

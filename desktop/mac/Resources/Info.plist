@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleName</key><string>Mavinci</string>
+<key>CFBundleDisplayName</key><string>Mavinci</string>
+<key>CFBundleIdentifier</key><string>pl.mavinci.desktop</string>
+<key>CFBundleExecutable</key><string>Mavinci</string>
+<key>CFBundlePackageType</key><string>APPL</string>
+<key>CFBundleShortVersionString</key><string>__VERSION__</string>
+<key>CFBundleVersion</key><string>__BUILD__</string>
+<key>LSMinimumSystemVersion</key><string>14.0</string>
+<key>NSHighResolutionCapable</key><true/>
+<key>CFBundleDevelopmentRegion</key><string>pl</string>
+<key>CFBundleLocalizations</key><array><string>pl</string></array>
+<key>NSAppTransportSecurity</key><dict><key>NSAllowsLocalNetworking</key><true/></dict>
+<key>NSCalendarsFullAccessUsageDescription</key><string>Mavinci zapisuje i aktualizuje wybrane wydarzenia CRM w kalendarzu wskazanym przez Ciebie. Nie importuje prywatnych wpisów do CRM.</string>
+<key>CFBundleURLTypes</key><array><dict><key>CFBundleURLName</key><string>pl.mavinci.desktop.event</string><key>CFBundleURLSchemes</key><array><string>mavinci</string></array></dict></array>
+</dict></plist>
