@@ -29,12 +29,14 @@ import { ExternalInvoicesTab } from './ExternalInvoicesTab/ExternalInvoicesTab';
 import { PersonnelContractsRegistry } from './PersonnelContractsRegistry';
 import SaldeoDeliveryPanel from './SaldeoDeliveryPanel';
 import BankReconciliationPanel from './BankReconciliationPanel';
+import FinanceDeclarationsPanel from './FinanceDeclarationsPanel';
 import { repairBrokenBankText } from '@/lib/bankTextEncoding';
 import { decodeTextEntities } from '@/lib/textEncoding';
 import { externalDocumentKindLabel } from '@/lib/invoices/externalDocumentKinds';
 
 type WorkspaceSection =
   | 'reconciliation'
+  | 'declarations'
   | 'control'
   | 'documents'
   | 'statements'
@@ -75,6 +77,7 @@ const SECTIONS: Array<{
   icon: typeof FileText;
 }> = [
   { id: 'reconciliation', label: 'Uzgodnienie wyciągów', shortLabel: 'Uzgodnienie', icon: ListChecks },
+  { id: 'declarations', label: 'ZUS i podatki', shortLabel: 'ZUS i podatki', icon: Landmark },
   { id: 'documents', label: 'Wszystkie dokumenty', shortLabel: 'Dokumenty', icon: FolderOpen },
   { id: 'statements', label: 'Wyciągi i płatności', shortLabel: 'Wyciągi', icon: Landmark },
   { id: 'external', label: 'Dokumenty spoza KSeF', shortLabel: 'Poza KSeF', icon: Receipt },
@@ -505,7 +508,7 @@ export function AccountingWorkspaceTab({ filterCompanyIds = null }: Props) {
         </div>
       </div>
 
-      {section !== 'reconciliation' && loading && documents.length === 0 ? (
+      {section !== 'reconciliation' && section !== 'declarations' && loading && documents.length === 0 ? (
         <div className="flex min-h-[320px] items-center justify-center rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] text-[#e5e4e2]/50">
           <Loader2 className="mr-2 h-5 w-5 animate-spin text-[#d3bb73]" /> Ładowanie rejestrów…
         </div>
@@ -513,6 +516,12 @@ export function AccountingWorkspaceTab({ filterCompanyIds = null }: Props) {
         <BankReconciliationPanel
           filterCompanyIds={filterCompanyIds}
           onOpenStatements={() => changeSection('statements')}
+          onOpenDeclarations={() => changeSection('declarations')}
+        />
+      ) : section === 'declarations' ? (
+        <FinanceDeclarationsPanel
+          filterCompanyIds={filterCompanyIds}
+          onOpenReconciliation={() => changeSection('reconciliation')}
         />
       ) : section === 'documents' ? (
         <div className="space-y-5">

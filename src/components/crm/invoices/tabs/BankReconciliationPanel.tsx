@@ -14,6 +14,7 @@ import {
   FileQuestion,
   FileSearch,
   Landmark,
+  Link2,
   Loader2,
   RefreshCw,
   Search,
@@ -28,7 +29,9 @@ import { useInvoiceFinanceAccess } from '@/hooks/useInvoiceFinanceAccess';
 import { repairBrokenBankText } from '@/lib/bankTextEncoding';
 import BankTransactionDocumentPickerModal from '@/components/crm/BankTransactionDocumentPickerModal';
 import BankTransactionAccountingModal from '@/components/crm/BankTransactionAccountingModal';
+import { DeclarationLinkModal } from './FinanceDeclarationsPanel';
 import {
+  DECLARATION_STATUS_META,
   RECONCILIATION_STATUS_META,
   RECONCILIATION_STATUS_ORDER,
   explanationLabel,
@@ -44,6 +47,8 @@ interface Props {
   filterCompanyIds?: string[] | null;
   /** Przejście do zakładki z wgrywaniem wyciągów. */
   onOpenStatements?: () => void;
+  /** Przejście do rejestru deklaracji ZUS i podatkowych. */
+  onOpenDeclarations?: () => void;
 }
 
 interface Period {
@@ -63,11 +68,16 @@ const date = (value?: string | null) => (value ? new Date(`${value.slice(0, 10)}
 
 const text = (value?: string | null) => repairBrokenBankText(value).replace(/[˙]+/g, ' ').replace(/\s+/g, ' ').trim();
 
-const sourceLabel = (source: string) => (source === 'ksef' ? 'KSeF' : source === 'external' ? 'Spoza KSeF' : source === 'invoice' ? 'CRM' : source);
+const sourceLabel = (source: string) => ({ ksef: 'KSeF', external: 'Spoza KSeF', invoice: 'CRM', declaration: 'Deklaracja', personnel: 'Wypłata' } as Record<string, string>)[source] || source;
+
+const foreign = (amount?: number | null, currency?: string | null, rate?: number | null) =>
+  amount != null && currency
+    ? ` = ${Number(amount).toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}${rate ? ` (kurs ${Number(rate).toLocaleString('pl-PL', { maximumFractionDigits: 4 })})` : ''}`
+    : '';
 
 const OPEN_STATUSES: ReconciliationStatus[] = ['proposal', 'choice', 'partial', 'missing'];
 
-export default function BankReconciliationPanel({ filterCompanyIds = null, onOpenStatements }: Props) {
+export default function BankReconciliationPanel({ filterCompanyIds = null, onOpenStatements, onOpenDeclarations }: Props) {
   const { showSnackbar } = useSnackbar();
   const { access } = useInvoiceFinanceAccess();
   const canManage = Boolean(access?.canManageCompanyFinance);
@@ -85,6 +95,7 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
   const [choice, setChoice] = useState<Record<string, number>>({});
   const [pickerFor, setPickerFor] = useState<ReconciliationTransaction | null>(null);
   const [explainFor, setExplainFor] = useState<ReconciliationTransaction | null>(null);
+  const [declarationFor, setDeclarationFor] = useState<ReconciliationTransaction | null>(null);
 
   const companyKey = filterCompanyIds === null ? '*' : [...filterCompanyIds].sort().join(',');
 
@@ -171,7 +182,8 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
       if (statusFilter !== 'todo' && statusFilter !== 'all' && t.status !== statusFilter) return false;
       if (accountFilter !== 'all' && t.account_kind !== accountFilter) return false;
       if (!needle) return true;
-      return [t.counterparty, t.title, t.source_description, String(t.amount), ...t.allocations.map((a) => a.number)]
+      return [t.counterparty, t.title, t.source_description, String(t.amount), ...t.allocations.map((a) => a.number),
+        ...t.personnel.map((p) => p.recipient), ...(t.declarations || []).map((d) => d.label)]
         .some((value) => text(value).toLowerCase().includes(needle));
     });
   }, [transactions, statusFilter, accountFilter, search]);
@@ -356,6 +368,28 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
         })}
       </div>
 
+      {/* Deklaracje ZUS i podatkowe tego miesiąca */}
+      {data && (data.declarations || []).length > 0 && (
+        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] px-4 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="inline-flex items-center gap-1.5 text-sm font-medium text-[#e5e4e2]"><Landmark className="h-4 w-4 text-[#d3bb73]" /> ZUS i podatki</span>
+            {onOpenDeclarations && (
+              <button type="button" onClick={onOpenDeclarations} className="text-[11px] text-[#d3bb73] hover:underline">Rejestr deklaracji →</button>
+            )}
+          </div>
+          <p className="mt-0.5 text-[11px] text-[#e5e4e2]/45">Deklaracje za poprzedni miesiąc i te, które mają przelew w tym wyciągu.</p>
+          <ul className="mt-2 flex flex-wrap gap-2">
+            {data.declarations.map((d) => (
+              <li key={d.id} className="flex items-center gap-2 rounded-lg bg-[#0f1119] px-2.5 py-1.5 text-xs">
+                <span className="text-[#e5e4e2]">{d.label}</span>
+                <span className="text-[#e5e4e2]/50">{d.amount_due == null ? 'bez kwoty' : money(d.amount_due)} · zapłacono {money(d.paid)}</span>
+                <span className={`rounded-full px-2 py-0.5 text-[10px] ${DECLARATION_STATUS_META[d.status].chip}`}>{DECLARATION_STATUS_META[d.status].label}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {/* Statusy */}
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-7">
         {RECONCILIATION_STATUS_ORDER.map((status) => {
@@ -383,9 +417,12 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
             <li><b>Dwa wyciągi → jedna lista.</b> Operacje z PDF i MT940 są parowane po saldzie (a gdy bank inaczej ułożył operacje z jednego dnia — po kwocie i dacie). Rozliczasz zawsze jedną operację.</li>
             <li><b>Numer i kwota</b> — numer faktury w tytule i kwota równa kwocie do zapłaty: rozliczenie automatyczne. Kilka numerów, których suma równa się przelewowi — też automatycznie.</li>
             <li><b>Opłacona ręcznie</b> — faktura oznaczona ręcznie jako opłacona i przelew z jej numerem i kwotą: ręczny wpis zamienia się w powiązanie z wyciągiem.</li>
-            <li><b>Bez faktury</b> — ZUS, przelewy do urzędu skarbowego i opłaty bankowe są wyjaśniane po tytule.</li>
+            <li><b>Płatność kartą w walucie</b> — wyciąg podaje kwotę oryginalną (np. 44,03 USD). Gdy w dokumentach spoza KSeF jest faktura w tej walucie na tę kwotę, od tego sprzedawcy i z daty płatności (±7 dni) — przypisanie automatyczne z kursem banku. Sprzedawcę rozpoznajemy po nazwie w opisie albo z wcześniejszych płatności.</li>
+            <li><b>ZUS i podatki</b> — przelew do ZUS lub na mikrorachunek podatkowy z okresem w tytule („ZUS DRA 03.2026”, „N 26M03 PIT-4R”) trafia do deklaracji za ten okres w rejestrze „ZUS i podatki”. Gdy rok w tytule nie pasuje do daty przelewu — wybierasz okres.</li>
+            <li><b>Wypłaty</b> — przelew z kwotą zapisanej wypłaty, nazwiskiem lub rachunkiem odbiorcy i datą (±10 dni) łączy się z umową. Jeśli netto nie jest potwierdzone, zatwierdzenie propozycji je potwierdza.</li>
+            <li><b>Bez faktury</b> — opłaty bankowe i przelewy podatkowe bez symbolu deklaracji są wyjaśniane po tytule.</li>
             <li><b>Propozycje</b> — zgodna kwota i kontrahent (NIP, rachunek znany z wcześniejszych płatności, nazwa), płatność częściowa lub zbiorcza (np. koszyk Allegro): czekają na Twoje zatwierdzenie.</li>
-            <li><b>Ochrona przed podwójnym rozliczeniem</b> — operacja nie może być rozliczona ponad swoją kwotę, a faktura ponad należność, także gdy ta sama faktura jest w KSeF i w dokumentach spoza KSeF. Robocze kopie faktur bez numeru KSeF są pomijane.</li>
+            <li><b>Ochrona przed podwójnym rozliczeniem</b> — operacja nie może być rozliczona ponad swoją kwotę (faktury, wypłaty i deklaracje razem), a faktura ponad należność, także gdy ta sama faktura jest w KSeF i w dokumentach spoza KSeF. Robocze kopie faktur bez numeru KSeF są pomijane.</li>
             <li><b>Twoja decyzja jest ostateczna</b> — odrzucona propozycja, cofnięte dopasowanie i cofnięte wyjaśnienie nie wracają przy kolejnym uzgodnieniu. AI w panelu miesiąca może tylko podpowiadać.</li>
           </ol>
         )}
@@ -459,13 +496,13 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
                   </div>
 
                   {/* Rozliczenia */}
-                  {t.allocations.length > 0 && (
+                  {(t.allocations.length > 0 || t.personnel.length > 0 || (t.declarations || []).length > 0) && (
                     <div className="mt-2 flex flex-wrap gap-1.5 md:pl-24">
                       {t.allocations.map((a) => (
                         <span key={a.match_id} title={(a.reasons || []).join('\n')}
                           className="inline-flex items-center gap-1.5 rounded-lg border border-green-500/20 bg-green-500/[0.07] px-2 py-1 text-[11px] text-green-200">
                           <Check className="h-3 w-3" />
-                          {sourceLabel(a.source)} {a.number || 'dokument'} · {money(a.amount, t.currency)} · {matchMethodLabel(a.method)}
+                          {sourceLabel(a.source)} {a.number || 'dokument'} · {money(a.amount, t.currency)}{foreign(a.document_amount, a.document_currency, a.exchange_rate)} · {matchMethodLabel(a.method)}
                           {canManage && (
                             <button type="button" disabled={busyKey === `undo:${a.match_id}`} title="Cofnij dopasowanie"
                               onClick={() => void callAction(`undo:${a.match_id}`, () => supabase.rpc('undo_bank_match', { p_transaction_id: t.id, p_match_id: a.match_id }), 'Dopasowanie cofnięte. Ten dokument nie zostanie ponownie przypisany automatycznie.')}
@@ -474,8 +511,28 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
                         </span>
                       ))}
                       {t.personnel.map((p) => (
-                        <span key={p.id} className="rounded-lg border border-green-500/20 bg-green-500/[0.07] px-2 py-1 text-[11px] text-green-200">
-                          Wypłata: {p.recipient} · {money(p.amount, t.currency)}
+                        <span key={p.id} title={(p.reasons || []).join('\n')}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-green-500/20 bg-green-500/[0.07] px-2 py-1 text-[11px] text-green-200">
+                          <Check className="h-3 w-3" />
+                          Wypłata: {p.recipient}{p.contract_number ? ` (umowa ${p.contract_number})` : ''} · {money(p.amount, t.currency)} · {matchMethodLabel(p.method)}
+                          {canManage && (
+                            <button type="button" disabled={busyKey === `undo-p:${p.id}`} title="Odepnij wypłatę"
+                              onClick={() => void callAction(`undo-p:${p.id}`, () => supabase.rpc('undo_bank_personnel_payment', { p_transaction_id: t.id, p_payment_id: p.id }), 'Wypłata odpięta. Nie zostanie powiązana ponownie automatycznie.')}
+                              className="ml-0.5 text-green-200/60 hover:text-red-300"><Undo2 className="h-3 w-3" /></button>
+                          )}
+                        </span>
+                      ))}
+                      {(t.declarations || []).map((d) => (
+                        <span key={d.payment_id} title={(d.reasons || []).join('\n')}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-green-500/20 bg-green-500/[0.07] px-2 py-1 text-[11px] text-green-200">
+                          <Landmark className="h-3 w-3" />
+                          {d.label} · {money(d.amount, t.currency)} · {matchMethodLabel(d.method)}
+                          <span className={`rounded-full px-1.5 py-px text-[9px] ${DECLARATION_STATUS_META[d.status].chip}`}>{DECLARATION_STATUS_META[d.status].label}</span>
+                          {canManage && (
+                            <button type="button" disabled={busyKey === `undo-d:${d.payment_id}`} title="Odepnij od deklaracji"
+                              onClick={() => void callAction(`undo-d:${d.payment_id}`, () => supabase.rpc('undo_bank_declaration_payment', { p_payment_id: d.payment_id }), 'Przelew odpięty od deklaracji. Nie zostanie przypięty ponownie automatycznie.')}
+                              className="ml-0.5 text-green-200/60 hover:text-red-300"><Undo2 className="h-3 w-3" /></button>
+                          )}
                         </span>
                       ))}
                     </div>
@@ -489,6 +546,10 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
                         {' · '}{t.explanation.by?.startsWith('rule:') ? 'reguła automatyczna' : 'wyjaśnione ręcznie'}
                         {t.explanation.note ? ` — ${t.explanation.note}` : ''}
                       </span>
+                      {canManage && t.status === 'explained' && t.explanation.category === 'tax_or_zus' && t.remaining > 0.009 && t.direction === 'debit' && (
+                        <button type="button" onClick={() => setDeclarationFor(t)}
+                          className="inline-flex items-center gap-1 text-teal-200/80 hover:text-[#d3bb73]"><Link2 className="h-3 w-3" /> Przypisz do deklaracji</button>
+                      )}
                       {canManage && t.status !== 'transfer' && (
                         <button type="button" disabled={busyKey === `clear:${t.id}`}
                           onClick={() => void callAction(`clear:${t.id}`, () => supabase.rpc('clear_bank_transaction_explanation', { p_transaction_id: t.id }), 'Wyjaśnienie cofnięte.')}
@@ -504,7 +565,7 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
                       <p className="mt-0.5 text-xs leading-5 text-[#e5e4e2]/75">{t.proposal.reason}</p>
                       <div className="mt-2 space-y-1">
                         {t.proposal.documents.map((doc, index) => (
-                          <label key={`${doc.id}:${index}`} className="flex items-center gap-2 text-xs text-[#e5e4e2]/80">
+                          <label key={`${doc.id || doc.number}:${index}`} className="flex flex-wrap items-center gap-2 text-xs text-[#e5e4e2]/80">
                             {t.proposal!.kind === 'choose' && (
                               <input type="radio" name={`choice-${t.proposal!.id}`} checked={choice[t.proposal!.id] === index}
                                 onChange={() => setChoice((c) => ({ ...c, [t.proposal!.id]: index }))} />
@@ -512,8 +573,10 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
                             <span className="rounded bg-[#0f1119] px-1.5 py-0.5 text-[10px] text-[#e5e4e2]/60">{sourceLabel(doc.source)}</span>
                             <span className="font-medium">{doc.number || 'Dokument bez numeru'}</span>
                             <span className="truncate text-[#e5e4e2]/50">{doc.party}</span>
-                            <span className="ml-auto whitespace-nowrap">{money(doc.amount, t.currency)}</span>
+                            <span className="ml-auto whitespace-nowrap">{money(doc.amount, t.currency)}{foreign(doc.document_amount, doc.document_currency, doc.rate)}</span>
                             {doc.manual && <span className="whitespace-nowrap text-[10px] text-amber-200/80">opłacona ręcznie</span>}
+                            {doc.source === 'declaration' && !doc.id && <span className="whitespace-nowrap text-[10px] text-amber-200/80">deklaracja zostanie założona</span>}
+                            {doc.confirm_net && <span className="whitespace-nowrap text-[10px] text-amber-200/80">netto do potwierdzenia</span>}
                           </label>
                         ))}
                       </div>
@@ -521,7 +584,9 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
                         <div className="mt-2.5 flex gap-2">
                           <button type="button" disabled={busyKey === `accept:${t.id}`} onClick={() => acceptProposal(t)}
                             className="inline-flex items-center gap-1 rounded-lg bg-[#d3bb73] px-3 py-1.5 text-xs font-medium text-[#0a0d1a] hover:bg-[#e5d799] disabled:opacity-50">
-                            <Check className="h-3.5 w-3.5" /> {t.proposal.kind === 'choose' ? 'Zatwierdź wybrany' : 'Zatwierdź'}
+                            <Check className="h-3.5 w-3.5" /> {t.proposal.documents.some((doc) => doc.confirm_net)
+                              ? (t.proposal.kind === 'choose' ? 'Potwierdź netto i powiąż wybraną' : 'Potwierdź netto i powiąż')
+                              : t.proposal.kind === 'choose' ? 'Zatwierdź wybrany' : 'Zatwierdź'}
                           </button>
                           <button type="button" disabled={busyKey === `reject:${t.id}`}
                             onClick={() => void callAction(`reject:${t.id}`, () => supabase.rpc('reject_bank_reconciliation_proposal', { p_proposal_id: t.proposal!.id }), 'Propozycja odrzucona — nie wróci przy kolejnym uzgodnieniu.')}
@@ -549,6 +614,12 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
                         className="inline-flex items-center gap-1 rounded-lg border border-[#e5e4e2]/15 px-2.5 py-1 text-[11px] text-[#e5e4e2]/70 hover:bg-white/5">
                         <ArrowLeftRight className="h-3.5 w-3.5" /> Wyjaśnij bez faktury
                       </button>
+                      {t.direction === 'debit' && (
+                        <button type="button" onClick={() => setDeclarationFor(t)}
+                          className="inline-flex items-center gap-1 rounded-lg border border-[#e5e4e2]/15 px-2.5 py-1 text-[11px] text-[#e5e4e2]/70 hover:bg-white/5">
+                          <Link2 className="h-3.5 w-3.5" /> Przypisz do deklaracji (ZUS / podatek)
+                        </button>
+                      )}
                     </div>
                   )}
                 </li>
@@ -567,7 +638,7 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
             empty="Każda ręcznie opłacona faktura ma potwierdzenie w wyciągu."
             rows={data.paid_without_statement.map((d) => ({
               key: `${d.source}:${d.id}`, label: `${sourceLabel(d.source)} ${d.number || ''}`, party: d.party,
-              amount: d.manual_paid, note: `opłacona ${date(d.payment_date)} · ${d.side === 'issued' ? 'sprzedaż' : 'koszt'}`,
+              amount: d.manual_paid, currency: d.currency || 'PLN', note: `opłacona ${date(d.payment_date)} · ${d.side === 'issued' ? 'sprzedaż' : 'koszt'}`,
             }))}
           />
           <DocumentList
@@ -576,7 +647,7 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
             empty="Brak zaległych faktur."
             rows={data.unpaid_due.map((d) => ({
               key: `${d.source}:${d.id}`, label: `${sourceLabel(d.source)} ${d.number || ''}`, party: d.party,
-              amount: d.open, note: `termin ${date(d.due_date || d.issue_date)} · ${d.side === 'issued' ? 'należność' : 'zobowiązanie'}`,
+              amount: d.open, currency: d.currency || 'PLN', note: `termin ${date(d.due_date || d.issue_date)} · ${d.side === 'issued' ? 'należność' : 'zobowiązanie'}`,
             }))}
           />
           <DocumentList
@@ -601,6 +672,14 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
           onMatched={async () => { setPickerFor(null); await load(); }}
         />
       )}
+      {declarationFor && period && (
+        <DeclarationLinkModal
+          companyId={period.companyId}
+          transaction={{ id: declarationFor.id, date: declarationFor.date, amount: declarationFor.amount, remaining: declarationFor.remaining, title: text(declarationFor.title) }}
+          onClose={() => setDeclarationFor(null)}
+          onLinked={async () => { setDeclarationFor(null); await load(); }}
+        />
+      )}
       {explainFor && period && (
         <BankTransactionAccountingModal
           transaction={{
@@ -622,7 +701,7 @@ function DocumentList({ title, hint, empty, rows }: {
   title: string;
   hint: string;
   empty: string;
-  rows: Array<{ key: string; label: string; party?: string | null; amount: number; note: string }>;
+  rows: Array<{ key: string; label: string; party?: string | null; amount: number; currency?: string; note: string }>;
 }) {
   const [expanded, setExpanded] = useState(false);
   const shown = expanded ? rows : rows.slice(0, 6);
@@ -643,7 +722,7 @@ function DocumentList({ title, hint, empty, rows }: {
                 <div className="truncate text-[#e5e4e2]/85">{row.label}</div>
                 <div className="truncate text-[10px] text-[#e5e4e2]/40">{row.party ? `${row.party} · ` : ''}{row.note}</div>
               </div>
-              <span className="whitespace-nowrap text-[#e5e4e2]/80">{money(row.amount)}</span>
+              <span className="whitespace-nowrap text-[#e5e4e2]/80">{money(row.amount, row.currency)}</span>
             </li>
           ))}
         </ul>
