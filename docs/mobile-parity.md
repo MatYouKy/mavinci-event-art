@@ -21,7 +21,7 @@ Zasada (AGENTS.md): moduł CRM dostępny w aplikacji mobilnej zmieniamy w obu mi
 | Pracownicy | `crm/employees` | `EmployeesScreen` |
 | Komunikator | `components/crm/chat`, `lib/CRM/chat` | `ChatListScreen`, `ChatScreen`, `SellerChatScreen`, `services/unreadChat`, `services/chatNotifications` |
 | Uprawnienia | `lib/permissions.ts` | `mobile/src/lib/permissions.ts` (`isAdmin` uwzględnia uprawnienie „admin” jak w CRM) |
-| Powiadomienia | wyzwalacze i `enqueue_crm_business_notification` | `NotificationsScreen`, `navigationRef.routeNotification` / `routeSalesUrl` |
+| Powiadomienia | wyzwalacze i `enqueue_crm_business_notification`; od `20261101190000_security_p0` baza zwraca tylko powiadomienia odbiorcy, odbiorca zmienia wyłącznie `is_read`/`read_at`, tworzą je tylko funkcje serwera | `NotificationsScreen`, `navigationRef.routeNotification` / `routeSalesUrl` (te same reguły RLS; aplikacja nie wstawia powiadomień) |
 | Finanse według działalności | `employees.finance_company_access`, karta „Finanse według działalności” w `EmployeePermissionsTab`, `lib/financeCompanyAccess.ts`, `get_invoice_finance_access`, `crm/invoices`, menu „Finanse” (migracje 20261101165000, 20261101171000) | Aplikacja nie ma modułu finansów działalności (faktury, KSeF, bank, deklaracje otwiera w CRM przez `openInCrmWeb`); dane chroni RLS — aplikacja nie widzi więcej niż CRM |
 | Wartości finansowe wydarzeń | `can_view_event_commercials` (baza), `EventDetailPageClient` (budżet, płatnicy, zakładka Finanse — wynik RPC per wydarzenie) | `lib/eventCommercialsAccess.ts` (`useEventCommercialsAccess` → RPC `can_view_event_commercials`), `EventDetailScreen`, `DetailsTab` |
 

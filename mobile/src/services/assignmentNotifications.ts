@@ -1,5 +1,9 @@
 import { supabase } from '../lib/supabase';
 
+// UWAGA (20261101190000_security_p0): RLS nie pozwala już wstawiać do notifications ani notification_recipients
+// z aplikacji — powiadomienia tworzą wyłącznie funkcje bazy i serwer (service_role). Funkcja nie jest używana;
+// przed użyciem przenieś zapis na serwer (tak samo jak w CRM).
+
 interface NotifyAssignmentParams {
   recipientEmployeeId: string;
   senderName: string;

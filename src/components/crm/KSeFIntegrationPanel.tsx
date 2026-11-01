@@ -58,9 +58,7 @@ interface KSeFCredentials {
   my_company_id: string;
   nip: string;
   is_test_environment: boolean;
-  access_token?: string | null;
   access_token_valid_until?: string | null;
-  refresh_token?: string | null;
   refresh_token_valid_until?: string | null;
   last_auth_reference_number?: string | null;
   last_authenticated_at?: string | null;
@@ -457,11 +455,14 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
 
   const loadCredentials = useCallback(async () => {
     try {
+      // Bez sekretów (token, tokeny dostępu, certyfikat) — baza nie udostępnia ich do odczytu z przeglądarki.
       const { data, error } = await supabase
         .from('ksef_credentials')
         .select(
           `
-        *,
+        id, my_company_id, nip, is_test_environment, access_token_valid_until, refresh_token_valid_until,
+        last_auth_reference_number, last_authenticated_at, is_active, auto_sync_enabled,
+        auto_sync_last_attempt_at, auto_sync_last_success_at, auto_sync_last_error,
         my_company:my_companies(id, name, nip, is_default, is_active)
       `,
         )
@@ -479,7 +480,8 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
         );
       });
 
-      setAllCredentials(filtered);
+      // my_company to relacja wiele-do-jednego (obiekt), choć typ zapytania bez wygenerowanych typów widzi tablicę.
+      setAllCredentials(filtered as unknown as KSeFCredentials[]);
 
       const defaultCredential = filtered.find((c: any) => c.my_company?.is_default) || filtered[0];
 

@@ -1,5 +1,9 @@
 import { supabase } from '@/lib/supabase/browser';
 
+// UWAGA (20261101190000_security_p0): RLS nie pozwala już wstawiać do notifications ani notification_recipients
+// z przeglądarki — powiadomienia tworzą wyłącznie funkcje bazy (SECURITY DEFINER) i serwer z kluczem service_role
+// (np. enqueue_crm_business_notification). Ten hook nie jest używany; przed użyciem przenieś zapis na serwer.
+
 interface NotificationData {
   title: string;
   message: string;

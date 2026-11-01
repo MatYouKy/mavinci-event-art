@@ -66,9 +66,10 @@ export default function KSeFConfigForm({ companyId, onUpdate }: KSeFConfigFormPr
       setNip(company.nip);
       setCompanyActive(company.is_active === true);
 
+      // Sekrety (token, klucz i hasło certyfikatu) nie są czytelne z przeglądarki — tylko pola stanu konfiguracji.
       const { data: credentials, error: credError } = await supabase
         .from('ksef_credentials')
-        .select('*')
+        .select('id, is_test_environment, auto_sync_enabled, certificate_uploaded_at')
         .eq('my_company_id', companyId)
         .maybeSingle();
 
@@ -79,7 +80,7 @@ export default function KSeFConfigForm({ companyId, onUpdate }: KSeFConfigFormPr
         setIsTestEnv(credentials.is_test_environment || false);
         setSavedTestEnv(credentials.is_test_environment || false);
         setAutoSyncEnabled(credentials.auto_sync_enabled === true);
-        setHasCertificate(!!credentials.certificate_key);
+        setHasCertificate(!!credentials.certificate_uploaded_at);
         setCertificateUploadedAt(credentials.certificate_uploaded_at);
       } else {
         setHasCredentials(false);

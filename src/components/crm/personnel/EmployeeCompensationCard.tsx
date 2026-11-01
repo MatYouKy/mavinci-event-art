@@ -16,13 +16,19 @@ import {
 const input = 'mt-1 w-full rounded-lg border border-white/10 bg-[#250914] px-3 py-2 text-sm';
 const fmt = (n: number) => n.toLocaleString('pl-PL', { style: 'currency', currency: 'PLN' });
 export default function EmployeeCompensationCard({ employeeId }: { employeeId: string }) {
-  const { isAdmin, canManageModule, canViewModule } = useCurrentEmployee();
-  const canEdit = isAdmin || canManageModule('employees') || canManageModule('finances');
-  const canView = canEdit || canViewModule('finances');
+  const { isAdmin, canManageModule, canViewModule, currentEmployee } = useCurrentEmployee();
+  // Płace (decyzja D1, 20261101190000 — ta sama reguła co public.compensation_can_access): podgląd — administrator,
+  // personnel_view / personnel_manage; zapis — administrator, personnel_manage. Pracownik widzi własne warunki
+  // (tylko do odczytu, bez wspólnych parametrów kosztów). employees_manage i finances_* nie dają dostępu.
+  const canEdit = isAdmin || canManageModule('personnel');
+  const canViewAll = canEdit || canViewModule('personnel');
+  const selfOnly = !canViewAll && Boolean(currentEmployee?.id) && currentEmployee?.id === employeeId;
+  const canView = canViewAll || selfOnly;
   const [settings, setSettings] = useState<CompensationSettings | null>(null);
   const [profile, setProfile] = useState<EmployeeCompensation | null>(null);
   const [original, setOriginal] = useState<string | null>(null);
   const [hours, setHours] = useState(160);
+  const [missing, setMissing] = useState(false);
   const [saved, setSaved] = useState(false),
     [busy, setBusy] = useState(false),
     [error, setError] = useState('');
@@ -30,16 +36,25 @@ export default function EmployeeCompensationCard({ employeeId }: { employeeId: s
     let live = true;
     setProfile(null);
     setSettings(null);
+    setMissing(false);
     setError('');
     setSaved(false);
     if (canView)
-      Promise.all([loadCompensationSettings(), loadEmployeeCompensation(employeeId)])
+      Promise.all([
+        // Własny podgląd: parametry kosztów są tylko dla kadr i administratora — bez nich bez porównania.
+        selfOnly ? loadCompensationSettings().catch(() => null) : loadCompensationSettings(),
+        loadEmployeeCompensation(employeeId),
+      ])
         .then(([s, p]) => {
           if (live) {
+            if (selfOnly && !p) {
+              setMissing(true);
+              return;
+            }
             setSettings(s);
             setProfile(p || emptyCompensation(employeeId));
             setOriginal(p?.updated_at || null);
-            setHours(s.reference_hours);
+            if (s) setHours(s.reference_hours);
           }
         })
         .catch(() => {
@@ -48,8 +63,8 @@ export default function EmployeeCompensationCard({ employeeId }: { employeeId: s
     return () => {
       live = false;
     };
-  }, [employeeId, canView]);
-  if (!canView) return null;
+  }, [employeeId, canView, selfOnly]);
+  if (!canView || missing) return null;
   const change = (patch: Partial<EmployeeCompensation>) => {
     setProfile((p) => (p ? { ...p, ...patch } : p));
     setSaved(false);
@@ -90,7 +105,7 @@ export default function EmployeeCompensationCard({ employeeId }: { employeeId: s
           {error}
         </p>
       )}
-      {!profile || !settings ? (
+      {!profile || (!settings && !selfOnly) ? (
         <p>Ładowanie ustawień…</p>
       ) : (
         <>
@@ -190,6 +205,7 @@ export default function EmployeeCompensationCard({ employeeId }: { employeeId: s
               Warunki zapisane. Historyczne stawki pozostają bez zmian.
             </p>
           )}
+          {settings && (
           <div className="mt-6 border-t border-white/5 pt-4">
             <h3 className="font-medium">Porównanie dla tej samej kwoty netto</h3>
             <label className="mt-3 block max-w-xs text-sm">
@@ -282,6 +298,7 @@ export default function EmployeeCompensationCard({ employeeId }: { employeeId: s
               <Link href="/crm/invoices?tab=external&section=contracts">Umowy i zarejestrowane wypłaty →</Link>
             </div>
           </div>
+          )}
         </>
       )}
     </section>

@@ -115,17 +115,8 @@ export default async function TeamPage() {
       }
     : undefined;
 
-  const supabase = createSupabaseServerClient(cookies());
-
-  const { data, error } = await supabase
-    .from('employees')
-    .select(
-      'id, name, surname, nickname, email, avatar_url, team_page_metadata, role, occupation, show_on_website, website_bio, linkedin_url, instagram_url, facebook_url, order_index',
-    )
-    .eq('show_on_website', true)
-    .order('order_index', { ascending: true })
-    .order('created_at', { ascending: true });
-
+  // Zespół: getTeamMembers (serwer). Bez logowania tabela employees nie jest dostępna — pola strony daje widok
+  // public.website_team_members (20261101190000_security_p0).
   const teamMembers = await getTeamMembersCached();
 
   return (

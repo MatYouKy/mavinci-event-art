@@ -4,13 +4,12 @@ import { supabase } from '@/lib/supabase/browser';
 
 export async function GET(request: Request) {
   try {
-    // Fetch employees marked as show_on_website=true for public display
+    // Pracownicy ze strony „Zespół” — widok z polami publicznymi (bez logowania tabela employees jest niedostępna).
     const { data, error } = await supabase
-      .from('employees')
+      .from('website_team_members')
       .select(
-        'id, name, surname, nickname, email, avatar_url, avatar_metadata, role, occupation, show_on_website, website_bio, linkedin_url, instagram_url, facebook_url, order_index, access_level, created_at',
+        'id, name, surname, nickname, email, avatar_url, avatar_metadata, occupation, website_bio, linkedin_url, instagram_url, facebook_url, order_index, created_at',
       )
-      .eq('show_on_website', true)
       .order('order_index', { ascending: true })
       .order('created_at', { ascending: true });
 
@@ -23,8 +22,8 @@ export async function GET(request: Request) {
     const teamMembers = (data || []).map((emp: any, index: number) => ({
       id: emp.id,
       name: `${emp.name || ''} ${emp.surname || ''}`.trim() || emp.nickname || 'Pracownik',
-      position: emp.occupation || emp.role || '',
-      role: emp.role || emp.occupation || '',
+      position: emp.occupation || '',
+      role: emp.occupation || '',
       email: emp.email,
       image: emp.avatar_url,
       image_metadata: emp.avatar_metadata,
@@ -34,7 +33,7 @@ export async function GET(request: Request) {
       linkedin: emp.linkedin_url,
       instagram: emp.instagram_url,
       facebook: emp.facebook_url,
-      is_visible: emp.show_on_website,
+      is_visible: true,
     }));
 
     return NextResponse.json(teamMembers);

@@ -46,7 +46,8 @@ async function getOrCreateInvoiceFolderId({
   const rpc = await supabase.rpc('get_or_create_documents_subfolder', {
     p_event_id: eventId,
     p_subfolder_name: 'Faktury',
-    p_required_permission: 'invoices_manage',
+    // Folder widoczny według poziomu finansów działalności wydarzenia (public.event_folder_permission_allows).
+    p_required_permission: 'finance:invoices',
     p_created_by: createdBy ?? null,
   });
 

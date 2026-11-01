@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createSupabaseServerClient } from "@/lib/supabase/server.app";
+import { supabase as ksefServiceClient } from "@/lib/ksef/db";
 import { loadInvoiceFinanceAccess } from '@/lib/invoices/financeAccess';
 import {
   getKSeFChallenge,
@@ -69,7 +70,9 @@ export async function POST(req: Request) {
       );
     }
 
-    const { data: credentials, error } = await userSupabase
+    // Token KSeF nie jest czytelny z sesji użytkownika (20261101190000_security_p0) — po sprawdzeniu uprawnień
+    // (finance_company_manageable powyżej) odczyt kluczem service_role po stronie serwera.
+    const { data: credentials, error } = await ksefServiceClient
       .from("ksef_credentials")
       .select("id, my_company_id, nip, token, is_test_environment, is_active")
       .eq("my_company_id", companyId)
