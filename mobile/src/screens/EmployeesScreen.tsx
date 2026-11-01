@@ -36,7 +36,8 @@ function EmployeesContent() {
   const fetchEmployees = useCallback(async () => {
     const { data, error } = await supabase
       .from('employees')
-      .select('*')
+      // Tylko pola potrzebne liście (jak katalog w CRM) — bez danych prywatnych, adresu, NIP i notatek.
+      .select('id,name,surname,nickname,email,phone:phone_number,occupation,role,access_level,permissions,is_active,avatar_url,avatar_metadata')
       .eq('is_active', true)
       .order('name', { ascending: true });
 
