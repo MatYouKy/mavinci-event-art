@@ -1,7 +1,7 @@
 'use client';
 
 import CustomerInquiryHistory from './CustomerInquiryHistory';
-import { isEligibleContactOwner } from './ownerEligibility';
+import CustomerOwnerField from './CustomerOwnerField';
 
 import { formatSystemSubject } from '@/lib/ui/systemLabels';
 import SystemBadge from '@/components/UI/SystemBadge';
@@ -127,6 +127,7 @@ export default function Customer360Panel({ contact, onOwnerSaved }: { contact: C
   const [error, setError] = useState<string | null>(null);
   const [employees, setEmployees] = useState<any[]>([]);
   const [ownerId, setOwnerId] = useState(contact.owner_id || '');
+  const [savedOwnerId, setSavedOwnerId] = useState<string | null>(contact.owner_id || null);
   const [lifecycle, setLifecycle] = useState(contact.lifecycle_status || 'lead');
   const [savingOwnership, setSavingOwnership] = useState(false);
   const [canMerge, setCanMerge] = useState(false);
@@ -342,7 +343,7 @@ export default function Customer360Panel({ contact, onOwnerSaved }: { contact: C
 
         if (active) {
           setData(nextState);
-          setEmployees((employeesResult.data || []).filter(isEligibleContactOwner));
+          setEmployees(employeesResult.data || []);
           setCanMerge(Boolean((employeesResult.data || []).find((employee: any) => employee.id === authData.user?.id)?.role === 'admin'));
         }
       } catch (loadError: any) {
@@ -366,7 +367,8 @@ export default function Customer360Panel({ contact, onOwnerSaved }: { contact: C
       .update({ owner_id: ownerId || null, lifecycle_status: lifecycle })
       .eq('id', contact.id);
     setSavingOwnership(false);
-    if (saveError) return showSnackbar(saveError.message || 'Nie udało się zapisać opiekuna', 'error');
+    if (saveError) { setOwnerId(savedOwnerId || ''); return showSnackbar(saveError.message || 'Nie udało się zapisać opiekuna', 'error'); }
+    setSavedOwnerId(ownerId || null);
     onOwnerSaved?.(ownerId || null);
     window.dispatchEvent(new Event('seller-workspace-changed'));
     showSnackbar('Opiekun i etap relacji zostały zapisane', 'success');
@@ -492,12 +494,7 @@ export default function Customer360Panel({ contact, onOwnerSaved }: { contact: C
           <section id="contact-responsibility" className="scroll-mt-6 rounded-xl bg-[#1a1d2e] p-5">
             <h2 className="font-semibold text-white">Odpowiedzialność za klienta</h2>
             <div className="mt-4 space-y-3">
-              <label className="block text-xs text-gray-400">Opiekun
-                <select value={ownerId} onChange={(event) => setOwnerId(event.target.value)} className="mt-1.5 w-full rounded-lg border border-gray-700 bg-[#0f1119] px-3 py-2.5 text-sm text-white">
-                  <option value="">Brak opiekuna</option>
-                  {employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.name} {employee.surname}</option>)}
-                </select>
-              </label>
+              <CustomerOwnerField value={ownerId} savedOwnerId={savedOwnerId} onChange={setOwnerId} />
               <label className="block text-xs text-gray-400">Etap relacji
                 <select value={lifecycle} onChange={(event) => setLifecycle(event.target.value)} className="mt-1.5 w-full rounded-lg border border-gray-700 bg-[#0f1119] px-3 py-2.5 text-sm text-white">
                   {LIFECYCLE.map(([value, label]) => <option key={value} value={value}>{label}</option>)}

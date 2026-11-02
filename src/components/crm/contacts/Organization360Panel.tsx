@@ -1,7 +1,7 @@
 'use client';
 
 import CustomerInquiryHistory from './CustomerInquiryHistory';
-import { isEligibleContactOwner } from './ownerEligibility';
+import CustomerOwnerField from './CustomerOwnerField';
 
 import { systemLabel } from '@/lib/ui/systemLabels';
 import { formatSystemSubject } from '@/lib/ui/systemLabels';
@@ -58,6 +58,7 @@ export default function Organization360Panel({ organization }: { organization: O
   const [contacts, setContacts] = useState<any[]>([]);
   const [employees, setEmployees] = useState<any[]>([]);
   const [ownerId, setOwnerId] = useState(organization.owner_id || '');
+  const [savedOwnerId, setSavedOwnerId] = useState<string | null>(organization.owner_id || null);
   const [lifecycle, setLifecycle] = useState(organization.lifecycle_status || 'lead');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -169,7 +170,7 @@ export default function Organization360Panel({ organization }: { organization: O
     setMailOffset(correspondence.data?.length || 0);
     setHasMoreMail(correspondence.data?.length === 100);
     setContacts((relations.data || []).map((row: any) => ({ ...row.contact, position: row.position, is_primary: row.is_primary })).filter(Boolean));
-    setEmployees((employeeRows.data || []).filter(isEligibleContactOwner));
+    setEmployees(employeeRows.data || []);
     setStats({
       openInquiries: inquiryRows.filter((item: any) => !['won', 'lost'].includes(item.inquiry_stage)).length,
       pipelineValue: inquiryRows.filter((item: any) => !['won', 'lost'].includes(item.inquiry_stage)).reduce((sum: number, item: any) => sum + Number(item.estimated_value || 0), 0),
@@ -191,7 +192,8 @@ export default function Organization360Panel({ organization }: { organization: O
     setSaving(true);
     const { error } = await supabase.from('organizations').update({ owner_id: ownerId || null, lifecycle_status: lifecycle }).eq('id', organization.id);
     setSaving(false);
-    if (error) return showSnackbar(error.message || 'Nie udało się zapisać opiekuna', 'error');
+    if (error) { setOwnerId(savedOwnerId || ''); return showSnackbar(error.message || 'Nie udało się zapisać opiekuna', 'error'); }
+    setSavedOwnerId(ownerId || null);
     showSnackbar('Opiekun i etap relacji zostały zapisane', 'success');
   };
 
@@ -220,7 +222,7 @@ export default function Organization360Panel({ organization }: { organization: O
           <button onClick={() => void saveDomains()} disabled={savingDomains} className="mt-3 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm text-[#1c1f33] disabled:opacity-50">{savingDomains ? 'Zapisywanie…' : 'Zapisz domeny'}</button>
         </section>
         <section className="rounded-xl border border-[#d3bb73]/25 bg-[#d3bb73]/10 p-5"><h3 className="font-semibold text-[#e1cc8d]">Następne działanie</h3><p className="mt-2 text-sm leading-6 text-gray-200">{recommendation}</p></section>
-        <section className="rounded-xl border border-gray-800 bg-[#1a1d2e] p-5"><div className="flex items-center gap-2"><Building2 className="h-5 w-5 text-[#d3bb73]" /><h3 className="font-semibold text-white">Odpowiedzialność</h3></div><div className="mt-4 space-y-3"><label className="block text-xs text-gray-400">Opiekun<select value={ownerId} onChange={(event) => setOwnerId(event.target.value)} className="mt-1.5 w-full rounded-lg border border-gray-700 bg-[#0f1119] px-3 py-2.5 text-sm text-white"><option value="">Brak opiekuna</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.name} {employee.surname}</option>)}</select></label><label className="block text-xs text-gray-400">Etap relacji<select value={lifecycle} onChange={(event) => setLifecycle(event.target.value)} className="mt-1.5 w-full rounded-lg border border-gray-700 bg-[#0f1119] px-3 py-2.5 text-sm text-white">{LIFECYCLE.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><button onClick={() => void saveOwnership()} disabled={saving} className="w-full rounded-lg bg-[#d3bb73] px-4 py-2.5 text-sm font-medium text-[#1c1f33] disabled:opacity-50">{saving ? 'Zapisywanie…' : 'Zapisz odpowiedzialność'}</button></div></section>
+        <section className="rounded-xl border border-gray-800 bg-[#1a1d2e] p-5"><div className="flex items-center gap-2"><Building2 className="h-5 w-5 text-[#d3bb73]" /><h3 className="font-semibold text-white">Odpowiedzialność</h3></div><div className="mt-4 space-y-3"><CustomerOwnerField value={ownerId} savedOwnerId={savedOwnerId} onChange={setOwnerId} /><label className="block text-xs text-gray-400">Etap relacji<select value={lifecycle} onChange={(event) => setLifecycle(event.target.value)} className="mt-1.5 w-full rounded-lg border border-gray-700 bg-[#0f1119] px-3 py-2.5 text-sm text-white">{LIFECYCLE.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><button onClick={() => void saveOwnership()} disabled={saving} className="w-full rounded-lg bg-[#d3bb73] px-4 py-2.5 text-sm font-medium text-[#1c1f33] disabled:opacity-50">{saving ? 'Zapisywanie…' : 'Zapisz odpowiedzialność'}</button></div></section>
         <CustomerSegmentationPanel entityType="organization" entityId={organization.id} email={organization.email} />
         <section className="rounded-xl border border-gray-800 bg-[#1a1d2e] p-5"><div className="flex items-center gap-2"><Users className="h-5 w-5 text-[#d3bb73]" /><h3 className="font-semibold text-white">Kontakty ({contacts.length})</h3></div><div className="mt-3 space-y-2">{contacts.map((contact) => <button key={contact.id} onClick={() => router.push(`/crm/contacts/${contact.id}`)} className="flex w-full items-center justify-between rounded-lg bg-[#0f1119] px-3 py-2 text-left"><span className="text-sm text-gray-200">{contact.full_name}</span><span className="text-xs text-gray-500">{contact.position || (contact.is_primary ? 'główny' : 'kontakt')}</span></button>)}</div></section>
       </aside>

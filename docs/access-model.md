@@ -920,6 +920,7 @@ Priorytety: **P0** — natychmiast (dostęp anonimowy, portal sprzedawcy, możli
 | D10 | `email_accounts` (stare hasła), `_backup_equipment_*` | usunąć | oczekuje |
 | D11 | `employees_public_list()` — publiczna lista wszystkich aktywnych pracowników (anon) | tylko pracownicy z `show_on_website` | oczekuje |
 | D12 | Publiczny odczyt aktywnych szablonów umów (`contract_templates`) | zamknąć, jeśli nie korzysta z niego strona/portal | oczekuje |
+| D13 | Opiekun kontaktu / organizacji (`owner_id`) | twórca zostaje opiekunem (każdy pracownik CRM); opiekun może przekazać lub zwolnić klienta; klienta bez opiekuna można przypisać tylko sobie; cudzego nie można przejąć; administrator zmienia wszystko; opiekunem może być każdy aktywny pracownik CRM | ✅ 02.11.2026 — `20261102090000_customer_owner_assignment` (wyzwalacze `set_default_customer_owner`, `protect_customer360_responsibility`, RPC `list_customer_owner_candidates`) |
 
 ## 7. Jak dodawać nowe dane
 
@@ -945,3 +946,10 @@ Lista kontrolna dla każdej nowej tabeli, kolumny, funkcji, bucketu, uprawnienia
 `desktop/mac/` używa publicznego klucza Supabase z sesją pracownika (bez service_role). Karta wydarzenia potwierdza EV(v/m) istniejącymi RPC; ustawienia zakładek, przypisanie, EVC i uprawnienia kosztów są odczytywane przed pobraniem danego obszaru. Budżet, przychód i dane handlowe są pobierane tylko przy `get_event_finance_access.canViewCommercials`; koszty przy `canViewCosts`, zapis oczekujących kosztów przy `canManageCosts` i z kontrolą RLS. Profil obejmuje `finance_company_access`, więc jego zmiana unieważnia szyfrowaną kopię konta. Aplikacja nie przelicza samodzielnie poziomów finansowych.
 
 Kalendarz pokazuje dostępne przez RLS wydarzenia oraz własne / zaproszone spotkania. Wyraźnie włączane, ręczne powiązanie z EventKit kopiuje nazwy, terminy i miejsca do wskazanego kalendarza Apple (może należeć do iCloud); nie importuje prywatnych danych do CRM i nie nadaje uprawnień CRM. Kopia Apple pozostaje po wylogowaniu. Podstawowe dane wydarzenia i zakładek trafiają do szyfrowanej kopii oddzielonej per konto / serwer, offline tylko do odczytu, z limitem 24 godzin. Niewykonana migracja `20261101170000_native_calendar_sync.sql` rozszerza wyłącznie odczytowy, invokerowy transport `native_workspace_sync`, bez zmiany polityk.
+
+
+### macOS 0.3 — zakres odczytu i czynności
+
+Listy Kalendarza i Wydarzeń używają jednego zbioru oraz wspólnego predykatu istniejących uprawnień w kliencie; nadal bez omijania RLS i bez modyfikacji przypisanych scopes. Filtry przeszłych / ukrytych poszerzają tylko prezentację dostępnych rekordów. Kontakty pochodzą wyłącznie z CRM; klient nie prosi o dostęp do prywatnej książki adresowej. Edycja kontaktu wymaga contacts_manage i RLS, ogranicza pola do podstawowych danych kontaktowych / adresowych / notatek oraz używa updated_at. Nie pobiera danych dokumentów osobistych ani rachunków.
+
+Przetargi używają istniejących RLS oraz assign_tender / create_inquiry_from_tender; podstawowe aktualizacje ograniczono do notes, status, is_watched, is_hidden i manual_relevance. Drawer oznacza wyłącznie powiadomienia własnego odbiorcy i otwiera tylko obsługiwane moduły po ponownej kontroli dostępu; doczytanie powiązania podlega RLS. Nowy native_workspace_sync_v3 jest osobnym, odczytowym SECURITY INVOKER (migracja 20261101213000, niewykonana automatycznie), z szerszą projekcją prezentacyjną bez nowych uprawnień do rekordów. Nie importuje prywatnych danych urządzenia.
