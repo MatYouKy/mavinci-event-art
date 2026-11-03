@@ -23,6 +23,7 @@ import { useDialog } from '@/contexts/DialogContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useMobile } from '@/hooks/useMobile';
 import TaskCard from '@/components/crm/TaskCard';
+import TaskSearchInput, { useTaskSearch } from '@/components/crm/TaskSearchInput';
 import SellerDatePicker from '@/app/(public)/seller/_components/SellerDatePicker';
 import {
   useGetTasksListQuery,
@@ -230,6 +231,7 @@ export function TasksPageClient({ initialTasks, inquiryId, employeeId, canManage
   const canMoveTasks = inquiryId ? Boolean(canManageInquiry) : canViewModule('tasks');
 
   const { currentData: tasks = initialTasks, isLoading: loading, isError, refetch } = useGetTasksListQuery(employeeId ? { employeeId } : inquiryId ? { inquiryId } : undefined, { refetchOnMountOrArgChange: true });
+  const { searchQuery, setSearchQuery, filteredTasks } = useTaskSearch(tasks);
   const [createTask] = useCreateTaskMutation();
   const [updateTask] = useUpdateTaskMutation();
   const [deleteTask] = useDeleteTaskMutation();
@@ -735,9 +737,9 @@ export function TasksPageClient({ initialTasks, inquiryId, employeeId, canManage
 
   const getTasksByColumn = useCallback(
     (columnId: string) => {
-      return tasks.filter((task) => task.board_column === columnId);
+      return filteredTasks.filter((task) => task.board_column === columnId);
     },
-    [tasks],
+    [filteredTasks],
   );
 
   const minSwipeDistance = 50;
@@ -804,6 +806,8 @@ export function TasksPageClient({ initialTasks, inquiryId, employeeId, canManage
             </button>
           )}
       </div>
+
+      <TaskSearchInput value={searchQuery} onChange={setSearchQuery} resultCount={filteredTasks.length} totalCount={tasks.length} />
 
       <div
         ref={scrollContainerRef}

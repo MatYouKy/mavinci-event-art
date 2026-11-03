@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import TaskSearchInput, { useTaskSearch } from '@/components/crm/TaskSearchInput';
 import {
   Plus,
   X,
@@ -60,6 +61,7 @@ export default function PrivateTasksBoardTab({
   const router = useRouter();
   const { currentEmployee, isAdmin } = useCurrentEmployee();
   const [tasks, setTasks] = useState<Task[]>(tasksState);
+  const { searchQuery, setSearchQuery, filteredTasks } = useTaskSearch(tasks);
   const [loading, setLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -776,7 +778,7 @@ export default function PrivateTasksBoardTab({
   };
 
   const getTasksByColumn = (columnId: string) => {
-    return tasks.filter((task) => task.board_column === columnId);
+    return filteredTasks.filter((task) => task.board_column === columnId);
   };
 
   const minSwipeDistance = 50;
@@ -865,7 +867,7 @@ export default function PrivateTasksBoardTab({
         </div>
       </div>
 
-      {/* ⬇️ dalej Twój render 1:1 */}
+      <TaskSearchInput value={searchQuery} onChange={setSearchQuery} resultCount={filteredTasks.length} totalCount={tasks.length} />
       <div
         ref={scrollContainerRef}
         className="flex-1 overflow-x-auto pb-4 max-w-[1400px] mx-auto"
