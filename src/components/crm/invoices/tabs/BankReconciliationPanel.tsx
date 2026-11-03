@@ -20,6 +20,7 @@ import {
   Link2,
   Loader2,
   RefreshCw,
+  RotateCcw,
   Search,
   Sparkles,
   Undo2,
@@ -37,17 +38,22 @@ import BankTransactionDetailsModal from '@/components/crm/BankTransactionDetails
 import { isPreviewableDocumentSource, useDocumentPreview } from '@/components/crm/invoices/useDocumentPreview';
 import { DeclarationLinkModal } from './FinanceDeclarationsPanel';
 import { RecurringContractLinkModal } from './RecurringContractsPanel';
+import BankRefundPairModal from './BankRefundPairModal';
 import {
   DECLARATION_STATUS_META,
   RECURRING_MONTH_STATUS_META,
   RECONCILIATION_STATUS_META,
   RECONCILIATION_STATUS_ORDER,
+  directionSign,
   documentKindLabel,
   explanationLabel,
   matchMethodLabel,
   proposalRuleLabel,
   reconciliationRunSentence,
+  refundCounterpartLabel,
+  refundOtherRole,
   type ReconciliationMonth,
+  type ReconciliationProposalDocument,
   type ReconciliationStatus,
   type ReconciliationTransaction,
 } from '@/lib/invoices/bankReconciliation';
@@ -79,7 +85,30 @@ const date = (value?: string | null) => (value ? new Date(`${value.slice(0, 10)}
 
 const text = (value?: string | null) => repairBrokenBankText(value).replace(/[˙]+/g, ' ').replace(/\s+/g, ' ').trim();
 
-const sourceLabel = (source: string) => ({ ksef: 'KSeF', external: 'Spoza KSeF', invoice: 'CRM', declaration: 'Deklaracja', personnel: 'Wypłata', contract: 'Umowa stała' } as Record<string, string>)[source] || source;
+const sourceLabel = (source: string) => ({ ksef: 'KSeF', external: 'Spoza KSeF', invoice: 'CRM', declaration: 'Deklaracja', personnel: 'Wypłata', contract: 'Umowa stała', refund: 'Zwrot płatności' } as Record<string, string>)[source] || source;
+
+/** „12.08” (ten sam rok) albo „12.08.2025”. */
+const shortDate = (value?: string | null, year?: number) => {
+  if (!value) return '—';
+  const d = new Date(`${value.slice(0, 10)}T12:00:00`);
+  return d.toLocaleDateString('pl-PL', d.getFullYear() === year
+    ? { day: '2-digit', month: '2-digit' } : { day: '2-digit', month: '2-digit', year: 'numeric' });
+};
+
+/** Druga operacja w propozycji „zwrot płatności”: dowód, pozostała kwota, wyciąg z innego miesiąca. */
+function refundFacts(doc: ReconciliationProposalDocument, currency: string, period: { year: number; month: number } | null): string {
+  const parts: string[] = [];
+  if (doc.evidence) parts.push(`dowód: ${doc.evidence}`);
+  if (doc.tx_amount != null && doc.remaining != null && Number(doc.remaining) < Number(doc.tx_amount) - 0.009) {
+    parts.push(`pozostało do rozliczenia ${money(doc.remaining, currency)} z ${money(doc.tx_amount, currency)}`);
+  }
+  if (period && doc.statement_year && doc.statement_month
+      && (doc.statement_year !== period.year || doc.statement_month !== period.month)) {
+    parts.push(`wyciąg ${String(doc.statement_month).padStart(2, '0')}/${doc.statement_year}`);
+  }
+  if (Number(doc.amount) < Number(doc.tx_amount || 0) - 0.009) parts.push(`zwrot częściowy — para ${money(doc.amount, currency)}`);
+  return parts.join(' · ');
+}
 
 const foreign = (amount?: number | null, currency?: string | null, rate?: number | null) =>
   amount != null && currency
@@ -133,7 +162,10 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
   const [explainFor, setExplainFor] = useState<ReconciliationTransaction | null>(null);
   const [declarationFor, setDeclarationFor] = useState<ReconciliationTransaction | null>(null);
   const [contractFor, setContractFor] = useState<ReconciliationTransaction | null>(null);
+  const [refundFor, setRefundFor] = useState<ReconciliationTransaction | null>(null);
   const [detailsFor, setDetailsFor] = useState<ReconciliationTransaction | null>(null);
+  // „Szczegóły płatności” drugiej operacji pary (z propozycji lub chipu zwrotu).
+  const [detailsOther, setDetailsOther] = useState<{ id: string; statement_id: string } | null>(null);
   const { openPreview, previewModal, opening: previewOpening } = useDocumentPreview();
 
   const companyKey = filterCompanyIds === null ? '*' : [...filterCompanyIds].sort().join(',');
@@ -240,7 +272,8 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
       if (!needle) return true;
       return [t.counterparty, t.title, t.source_description, String(t.amount), ...t.allocations.map((a) => a.number),
         ...t.personnel.map((p) => p.recipient), ...(t.declarations || []).map((d) => d.label),
-        ...(t.contracts || []).flatMap((c) => [c.title, c.counterparty])]
+        ...(t.contracts || []).flatMap((c) => [c.title, c.counterparty]),
+        ...(t.refunds || []).flatMap((r) => [r.other.counterparty, r.other.title, String(r.other.amount)])]
         .some((value) => text(value).toLowerCase().includes(needle));
     });
   }, [transactions, statusFilter, accountFilter, search]);
@@ -274,10 +307,13 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
   };
 
   const REJECT_MESSAGE = 'Propozycja odrzucona. Ten dokument nie wróci do tej płatności; dla innych płatności nadal czeka na dopasowanie.';
+  const REJECT_REFUND_MESSAGE = 'Propozycja odrzucona. Ta para płatność + zwrot nie wróci — ani przy tej operacji, ani przy drugiej.';
   const rejectProposal = (t: ReconciliationTransaction, thenPick = false) => {
     if (!t.proposal) return;
-    void callAction(`reject:${t.id}`, () => supabase.rpc('reject_bank_reconciliation_proposal', { p_proposal_id: t.proposal!.id }), REJECT_MESSAGE)
-      .then((ok) => { if (ok && thenPick) setPickerFor(t); });
+    const refund = t.proposal.rule === 'zwrot_platnosci';
+    void callAction(`reject:${t.id}`, () => supabase.rpc('reject_bank_reconciliation_proposal', { p_proposal_id: t.proposal!.id }),
+      refund ? REJECT_REFUND_MESSAGE : REJECT_MESSAGE)
+      .then((ok) => { if (ok && thenPick) (refund ? setRefundFor : setPickerFor)(t); });
   };
 
   const acceptProposal = (t: ReconciliationTransaction) => {
@@ -289,7 +325,8 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
     }
     void callAction(`accept:${t.id}`, () => supabase.rpc('accept_bank_reconciliation_proposal', {
       p_proposal_id: t.proposal!.id, p_document_index: index,
-    }), 'Płatność rozliczona.');
+    }), t.proposal.rule === 'zwrot_platnosci'
+      ? 'Płatność i zwrot powiązane — obie operacje są rozliczone bez faktury.' : 'Płatność rozliczona.');
   };
 
   // Lista dla księgowej: operacje bez dokumentu (brak, częściowe, propozycje do sprawdzenia).
@@ -517,10 +554,11 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
             <li><b>Płatność kartą w walucie</b> — wyciąg podaje kwotę oryginalną (np. 44,03 USD). Gdy w dokumentach spoza KSeF jest faktura w tej walucie na tę kwotę, od tego sprzedawcy i z daty płatności (±7 dni) — przypisanie automatyczne z kursem banku. Sprzedawcę rozpoznajemy po nazwie w opisie albo z wcześniejszych płatności.</li>
             <li><b>ZUS i podatki</b> — przelew do ZUS lub na mikrorachunek podatkowy z okresem w tytule („ZUS DRA 03.2026”, „N 26M03 PIT-4R”) trafia do deklaracji za ten okres w rejestrze „ZUS i podatki”. Gdy rok w tytule nie pasuje do daty przelewu — wybierasz okres.</li>
             <li><b>Umowy stałe</b> — przelew na rachunek z umowy (najem, leasing, abonament, raty) z kwotą okresu przypisuje się sam do najwcześniejszego nieopłaconego okresu w rejestrze „Umowy stałe”. Zgodny rachunek i inna kwota albo nazwa kontrahenta i kwota — propozycja do zatwierdzenia. Umowy z fakturami kontrahenta rozliczasz z fakturą.</li>
+            <li><b>Zwrot płatności (bez faktury)</b> — sklep nie zrealizował zamówienia i oddał pieniądze (albo my zwróciliśmy klientowi): operacja i jedna operacja przeciwnego kierunku z tą samą pozostałą kwotą (co do grosza), datą ±45 dni (także z sąsiedniego miesiąca) i wspólną nazwą sklepu w opisie (np. „MUSICCENTER”, także rozcięta przez MT940) albo tym samym rachunkiem — propozycja pary do zatwierdzenia. Nigdy automatycznie. Ręcznie: „Powiąż ze zwrotem” — także zwrot częściowy (reszta płatności czeka na fakturę).</li>
             <li><b>Wypłaty</b> — przelew z kwotą zapisanej wypłaty, nazwiskiem lub rachunkiem odbiorcy i datą (±10 dni) łączy się z umową. Jeśli netto nie jest potwierdzone, zatwierdzenie propozycji je potwierdza.</li>
             <li><b>Bez faktury</b> — opłaty bankowe i przelewy podatkowe bez symbolu deklaracji są wyjaśniane po tytule.</li>
             <li><b>Propozycje</b> — zgodna kwota i kontrahent (NIP, rachunek znany z wcześniejszych płatności, nazwa), płatność częściowa lub zbiorcza (np. koszyk Allegro): czekają na Twoje zatwierdzenie.</li>
-            <li><b>Ochrona przed podwójnym rozliczeniem</b> — operacja nie może być rozliczona ponad swoją kwotę (faktury, wypłaty, deklaracje i umowy stałe razem), a faktura ponad należność, także gdy ta sama faktura jest w KSeF i w dokumentach spoza KSeF. Robocze kopie faktur bez numeru KSeF są pomijane.</li>
+            <li><b>Ochrona przed podwójnym rozliczeniem</b> — operacja nie może być rozliczona ponad swoją kwotę (faktury, wypłaty, deklaracje, umowy stałe i pary zwrotu razem), a faktura ponad należność, także gdy ta sama faktura jest w KSeF i w dokumentach spoza KSeF. Robocze kopie faktur bez numeru KSeF są pomijane.</li>
             <li><b>Twoja decyzja jest ostateczna</b> — odrzucona propozycja, cofnięte dopasowanie i cofnięte wyjaśnienie nie wracają przy kolejnym uzgodnieniu. AI w panelu miesiąca może tylko podpowiadać.</li>
           </ol>
         )}
@@ -598,7 +636,8 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
                   </div>
 
                   {/* Rozliczenia */}
-                  {(t.allocations.length > 0 || t.personnel.length > 0 || (t.declarations || []).length > 0 || (t.contracts || []).length > 0) && (
+                  {(t.allocations.length > 0 || t.personnel.length > 0 || (t.declarations || []).length > 0 || (t.contracts || []).length > 0
+                    || (t.refunds || []).length > 0) && (
                     <div className="mt-2 flex flex-wrap gap-1.5 md:pl-24">
                       {t.allocations.map((a) => (
                         <span key={a.match_id} title={(a.reasons || []).join('\n')}
@@ -662,6 +701,24 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
                           )}
                         </span>
                       ))}
+                      {(t.refunds || []).map((r) => (
+                        <span key={r.pair_id} title={(r.reasons || []).join('\n')}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-green-500/20 bg-green-500/[0.07] px-2 py-1 text-[11px] text-green-200">
+                          <RotateCcw className="h-3 w-3" />
+                          {refundCounterpartLabel(refundOtherRole(r.role))}: {directionSign(r.other.direction)}{money(r.other.amount, r.other.currency)} z {shortDate(r.other.date, period?.year)}
+                          {r.other.counterparty ? ` · ${text(r.other.counterparty)}` : ''}
+                          {Math.abs(Number(r.amount) - Number(r.other.amount)) > 0.009 || Math.abs(Number(r.amount) - Number(t.amount)) > 0.009
+                            ? <span className="text-amber-200">· para {money(r.amount, t.currency)}{r.role === 'payment' && Number(r.amount) < Number(t.amount) - 0.009 ? ' (zwrot częściowy)' : ''}</span> : null}
+                          {' · '}{matchMethodLabel(r.method)}
+                          <button type="button" title="Szczegóły drugiej operacji" onClick={() => setDetailsOther({ id: r.other.id, statement_id: r.other.statement_id })}
+                            className="ml-0.5 text-green-200/60 hover:text-[#d3bb73]"><Info className="h-3 w-3" /></button>
+                          {canManage && (
+                            <button type="button" disabled={busyKey === `undo-r:${r.pair_id}`} title="Cofnij powiązanie płatności ze zwrotem"
+                              onClick={() => void callAction(`undo-r:${r.pair_id}`, () => supabase.rpc('undo_bank_refund_pair', { p_pair_id: r.pair_id }), 'Powiązanie cofnięte. Obie operacje wracają do rozliczenia, a ta para nie zostanie zaproponowana ponownie.')}
+                              className="ml-0.5 text-green-200/60 hover:text-red-300"><Undo2 className="h-3 w-3" /></button>
+                          )}
+                        </span>
+                      ))}
                     </div>
                   )}
 
@@ -692,7 +749,9 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
                       <p className="mt-0.5 text-xs leading-5 text-[#e5e4e2]/75">{t.proposal.reason}</p>
                       <div className="mt-2 space-y-1">
                         {t.proposal.documents.map((doc, index) => {
-                          const facts = documentFacts({ kind: doc.doc_kind, issueDate: doc.issue_date, dueDate: doc.due_date, status: doc.payment_status, due: doc.due, paid: doc.paid, manualPaid: doc.manual_paid, manualDate: doc.manual_date }, t.currency);
+                          const facts = doc.source === 'refund'
+                            ? refundFacts(doc, t.currency, period)
+                            : documentFacts({ kind: doc.doc_kind, issueDate: doc.issue_date, dueDate: doc.due_date, status: doc.payment_status, due: doc.due, paid: doc.paid, manualPaid: doc.manual_paid, manualDate: doc.manual_date }, t.currency);
                           return (
                           <div key={`${doc.id || doc.number}:${index}`} className={`rounded-md px-1.5 py-1 ${doc.suggested ? 'bg-green-500/[0.06] ring-1 ring-green-500/20' : ''}`}>
                           <label className="flex flex-wrap items-center gap-2 text-xs text-[#e5e4e2]/80">
@@ -712,6 +771,13 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
                               </span>
                             )}
                             {doc.confirm_net && <span className="whitespace-nowrap text-[10px] text-amber-200/80">netto do potwierdzenia</span>}
+                            {doc.source === 'refund' && doc.id && doc.statement_id && (
+                              <button type="button"
+                                onClick={(event) => { event.preventDefault(); setDetailsOther({ id: doc.id!, statement_id: doc.statement_id! }); }}
+                                className="inline-flex items-center gap-1 whitespace-nowrap rounded border border-[#d3bb73]/20 px-1.5 py-0.5 text-[10px] text-[#d3bb73] hover:bg-[#d3bb73]/10">
+                                <Info className="h-3 w-3" /> Szczegóły płatności
+                              </button>
+                            )}
                             {isPreviewableDocumentSource(doc.source) && doc.id && (
                               <button type="button" disabled={previewOpening === doc.id}
                                 onClick={(event) => { event.preventDefault(); void openPreview(doc.source as 'ksef' | 'invoice' | 'external', doc.id!, doc.number); }}
@@ -736,16 +802,20 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
                             className="inline-flex items-center gap-1 rounded-lg bg-[#d3bb73] px-3 py-1.5 text-xs font-medium text-[#0a0d1a] hover:bg-[#e5d799] disabled:opacity-50">
                             <Check className="h-3.5 w-3.5" /> {t.proposal.documents.some((doc) => doc.confirm_net)
                               ? (t.proposal.kind === 'choose' ? 'Potwierdź netto i powiąż wybraną' : 'Potwierdź netto i powiąż')
-                              : t.proposal.kind === 'choose' ? 'Zatwierdź wybrany' : 'Zatwierdź'}
+                              : t.proposal.rule === 'zwrot_platnosci'
+                                ? (t.proposal.kind === 'choose' ? 'Zatwierdź wybraną parę' : 'Zatwierdź parę')
+                                : t.proposal.kind === 'choose' ? 'Zatwierdź wybrany' : 'Zatwierdź'}
                           </button>
                           <button type="button" disabled={busyKey === `reject:${t.id}`} onClick={() => rejectProposal(t)}
                             className="inline-flex items-center gap-1 rounded-lg border border-[#e5e4e2]/15 px-3 py-1.5 text-xs text-[#e5e4e2]/70 hover:bg-white/5 disabled:opacity-50">
                             <X className="h-3.5 w-3.5" /> Odrzuć
                           </button>
                           <button type="button" disabled={busyKey === `reject:${t.id}`} onClick={() => rejectProposal(t, true)}
-                            title="Odrzuć tę propozycję i od razu wybierz właściwy dokument dla tej płatności"
+                            title={t.proposal.rule === 'zwrot_platnosci'
+                              ? 'Odrzuć tę parę i od razu wybierz właściwą drugą operację (zwrot lub płatność)'
+                              : 'Odrzuć tę propozycję i od razu wybierz właściwy dokument dla tej płatności'}
                             className="inline-flex items-center gap-1 rounded-lg border border-[#d3bb73]/25 px-3 py-1.5 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/10 disabled:opacity-50">
-                            <FileSearch className="h-3.5 w-3.5" /> Odrzuć i wybierz inny
+                            <FileSearch className="h-3.5 w-3.5" /> {t.proposal.rule === 'zwrot_platnosci' ? 'Odrzuć i wybierz inną operację' : 'Odrzuć i wybierz inny'}
                           </button>
                         </div>
                       )}
@@ -777,6 +847,13 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
                       <button type="button" onClick={() => setContractFor(t)}
                         className="inline-flex items-center gap-1 rounded-lg border border-[#e5e4e2]/15 px-2.5 py-1 text-[11px] text-[#e5e4e2]/70 hover:bg-white/5">
                         <CalendarClock className="h-3.5 w-3.5" /> Przypisz do umowy (najem / abonament)
+                      </button>
+                      <button type="button" onClick={() => setRefundFor(t)}
+                        title={t.direction === 'debit'
+                          ? 'Sklep lub kontrahent zwrócił pieniądze bez faktury — powiąż tę płatność z wpływem zwrotu'
+                          : 'To zwrot wcześniejszej płatności (albo nasza płatność zwrócona klientowi) — powiąż z drugą operacją'}
+                        className="inline-flex items-center gap-1 rounded-lg border border-[#e5e4e2]/15 px-2.5 py-1 text-[11px] text-[#e5e4e2]/70 hover:bg-white/5">
+                        <RotateCcw className="h-3.5 w-3.5" /> Powiąż ze zwrotem
                       </button>
                       {t.direction === 'debit' && (
                         <button type="button" onClick={() => setDeclarationFor(t)}
@@ -862,6 +939,24 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
           }}
           onClose={() => setContractFor(null)}
           onLinked={async () => { setContractFor(null); await load(); }}
+        />
+      )}
+      {refundFor && period && (
+        <BankRefundPairModal
+          companyId={period.companyId}
+          transaction={{
+            id: refundFor.id, statement_id: refundFor.statement_id, date: refundFor.date, amount: refundFor.amount,
+            remaining: refundFor.remaining, direction: refundFor.direction, currency: refundFor.currency,
+            counterparty: text(refundFor.counterparty), title: text(refundFor.title),
+          }}
+          onClose={() => setRefundFor(null)}
+          onLinked={async () => { setRefundFor(null); await load(); }}
+        />
+      )}
+      {detailsOther && period && (
+        <BankTransactionDetailsModal
+          transaction={{ id: detailsOther.id, company_id: period.companyId, statement_id: detailsOther.statement_id }}
+          onClose={() => setDetailsOther(null)}
         />
       )}
       {explainFor && period && (

@@ -17,6 +17,8 @@
 
 **Po `20261101210000_finance_recurring_contracts`:** doszły 3 tabele umów stałych (`finance_recurring_contracts`, `finance_recurring_contract_payments`, `finance_recurring_contract_files`) i prywatny bucket `finance-contracts` — wszystkie ✅ (odczyt F≥finance_view, zapis F=finance_manage przez RPC). Liczniki sekcji 3.1 i 3.15 je uwzględniają; podsumowanie wyżej i niżej to nadal stan audytu.
 
+**Po `20261103220000_bank_refund_pairs`:** doszła tabela par „płatność + zwrot” (`bank_transaction_refund_pairs`) — ✅ (odczyt F≥finance_view, zapis F=finance_manage przez RPC `link_bank_refund_pair` / `undo_bank_refund_pair`, akceptacja propozycji uzgodnienia). Licznik sekcji 3.1 ją uwzględnia.
+
 **Storage:** 30 bucketów — ✅ 14 · ⚠️ 10 (w tym 2 ⚠️*) · ❌ 6. **Funkcje `SECURITY DEFINER` wywoływalne przez API:** 523 (319 także anon) — z kontrolą w treści: 390; bez kontroli, nieszkodliwe: 45; **bez kontroli, zapisujące lub ujawniające dane: 88** (❌ 26, ⚠️ 62).
 
 ### Legenda
@@ -112,7 +114,7 @@ Każda tabela i widok schematu `public` (470) przypisane do domeny. Kolumna „D
 
 Docelowo: poziom finansów w działalności (`finance_company_access[my_company_id]`). Faktury, KSeF, dokumenty kosztowe: F≥invoices; wystawianie: F≥invoices_issue (w praktyce administrator — fakturowanie zostaje u admina); bank, uzgodnienia, księgowość, ZUS/US: F≥finance_view (odczyt) / F=finance_manage (zmiany). Sprzedawca (poziom sales): tylko własna sprzedaż. Dziś polityki opierają się na `finance_can_view()/finance_can_manage()` + `finance_company_visible()`, gdzie „widok firmy” daje każde globalne finances_view/finances_manage/invoices_view/invoices_manage/ksef_manage — dlatego ⚠️* (wdrożone w `20261101165000_finance_company_access` — migracja przepisała te funkcje).
 
-*43 obiekty: ✅ 6 · ⚠️ 36 · ❌ 1 · ℹ️ 0*
+*44 obiekty: ✅ 7 · ⚠️ 36 · ❌ 1 · ℹ️ 0*
 
 | Tabela | Wrażl. | Docelowo | Obecnie (RLS) | Status / uwagi |
 |---|---|---|---|---|
@@ -125,6 +127,7 @@ Docelowo: poziom finansów w działalności (`finance_company_access[my_company_
 | `bank_reconciliation_runs` | wysoka | R: F≥finance_view<br>W: SVC/RPC | R: finVIEW,firma · W: ✗ · ogr.: −sprzedawca | ⚠️* |
 | `bank_statements` | wysoka | R: F≥finance_view<br>W: F=finance_manage | R: ADM∨P(bank_statements_manage) ∨ finMANAGE,firma ∨ ADM∨P(bank_statements_view,bank_statements_manage) ∨ finVIEW,firma · W: ADM∨P(bank_statements_manage) ∨ finMANAGE,firma · ogr.: −sprzedawca, −SP | ⚠️ stare polityki P(bank_statements_view/manage) omijają zakres firm (dziś nikt nie ma tych uprawnień) |
 | `bank_transaction_invoice_matches` | wysoka | R: F≥finance_view<br>W: F=finance_manage (RPC) | R: finVIEW,firma · W: ✗ · ogr.: −sprzedawca | ⚠️* zapis tylko przez RPC — ale match_bank_transaction_to_documents jest wykonywalna przez anon bez kontroli (sekcja 4) |
+| `bank_transaction_refund_pairs` | wysoka | R: F≥finance_view<br>W: F=finance_manage (RPC) | R: F≥finance_view · W: ✗ · ogr.: −sprzedawca | ✅ (`20261103220000_bank_refund_pairs`) |
 | `bank_transaction_supporting_documents` | wysoka | R: F≥finance_view<br>W: F=finance_manage | R: finMANAGE,firma ∨ finVIEW,firma · W: finMANAGE,firma · ogr.: −sprzedawca | ⚠️* |
 | `bank_transactions` | wysoka | R: F≥finance_view<br>W: F=finance_manage | R: ADM∨P(bank_statements_manage) ∨ finMANAGE,firma ∨ ADM∨P(bank_statements_view,bank_statements_manage) ∨ finVIEW,firma · W: ADM∨P(bank_statements_manage) ∨ finMANAGE,firma · ogr.: −sprzedawca | ⚠️ jak bank_statements (stare uprawnienia bez zakresu firm) |
 | `bank_transactions_import_archive` | wysoka | R: SVC<br>W: SVC | brak polityk → tylko SVC | ✅ |

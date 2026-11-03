@@ -1,13 +1,13 @@
 /**
- * Uzgadnianie wyciągów — typy i etykiety ekranu „Uzgodnienie wyciągów”, rejestru deklaracji i rejestru umów stałych.
- * Logika jest w bazie (reconcile_bank_month, get_bank_reconciliation_month, get_finance_declarations,
- * get_finance_recurring_contracts); tu tylko opis dla ludzi.
+ * Uzgadnianie wyciągów — typy i etykiety ekranu „Uzgodnienie wyciągów”, rejestru deklaracji, rejestru umów stałych
+ * i par „płatność + zwrot”. Logika jest w bazie (reconcile_bank_month, get_bank_reconciliation_month,
+ * get_finance_declarations, get_finance_recurring_contracts, get_bank_refund_candidates); tu tylko opis dla ludzi.
  */
 
 export type ReconciliationStatus = 'matched' | 'explained' | 'transfer' | 'proposal' | 'choice' | 'partial' | 'missing';
 
 export interface ReconciliationProposalDocument {
-  source: 'ksef' | 'invoice' | 'external' | 'declaration' | 'personnel' | 'contract';
+  source: 'ksef' | 'invoice' | 'external' | 'declaration' | 'personnel' | 'contract' | 'refund';
   id?: string;
   number?: string | null;
   party?: string | null;
@@ -45,6 +45,16 @@ export interface ReconciliationProposalDocument {
   period_label?: string;
   contract_amount?: number;
   contract_kind?: RecurringContractKind;
+  /** Zwrot płatności (source = refund): id = druga operacja pary, jej rola wobec tej operacji, data, kierunek, kwota,
+   *  pozostała kwota i wyciąg. amount = kwota pary. */
+  role?: RefundRole;
+  date?: string | null;
+  direction?: 'credit' | 'debit';
+  tx_amount?: number;
+  remaining?: number;
+  statement_id?: string;
+  statement_year?: number;
+  statement_month?: number;
 }
 
 export interface ReconciliationProposal {
@@ -123,6 +133,36 @@ export interface ReconciliationContractAllocation {
   period_paid: number;
 }
 
+/** payment — zwrócona płatność (operacja wcześniejsza), refund — zwrot (operacja późniejsza, przeciwny kierunek). */
+export type RefundRole = 'payment' | 'refund';
+
+/** Druga operacja pary „płatność + zwrot”. */
+export interface ReconciliationRefundCounterpart {
+  id: string;
+  statement_id: string;
+  date: string;
+  amount: number;
+  direction: 'credit' | 'debit';
+  currency: string;
+  /** Sprzedawca z „Lokalizacja: …”, kontrahent albo tytuł. */
+  counterparty: string | null;
+  title: string | null;
+  statement_year: number;
+  statement_month: number;
+}
+
+/** Para „płatność + zwrot” (bez faktury) przy operacji: rola TEJ operacji i druga operacja pary. */
+export interface ReconciliationRefundPair {
+  pair_id: string;
+  role: RefundRole;
+  /** Kwota pary — przy zwrocie częściowym mniejsza niż płatność (reszta płatności nadal czeka na fakturę). */
+  amount: number;
+  method: 'automatic' | 'manual';
+  reasons: string[] | null;
+  created_at: string;
+  other: ReconciliationRefundCounterpart;
+}
+
 export interface ReconciliationTransaction {
   id: string;
   statement_id: string;
@@ -143,6 +183,7 @@ export interface ReconciliationTransaction {
   personnel: ReconciliationPersonnelAllocation[];
   declarations: ReconciliationDeclarationAllocation[];
   contracts?: ReconciliationContractAllocation[];
+  refunds?: ReconciliationRefundPair[];
   explanation: { category: string; subtype: string | null; note: string | null; by: string | null } | null;
   proposal: ReconciliationProposal | null;
 }
@@ -260,6 +301,7 @@ const PROPOSAL_RULES: Record<string, string> = {
   umowa_inna_kwota: 'Umowa stała — inna kwota niż okres',
   umowa_nazwa: 'Umowa stała — kontrahent i kwota',
   umowa_brak_okresu: 'Umowa stała — brak nieopłaconego okresu',
+  zwrot_platnosci: 'Zwrot płatności (bez faktury)',
 };
 
 export const proposalRuleLabel = (rule: string) => PROPOSAL_RULES[rule] || 'Propozycja';
@@ -315,6 +357,7 @@ export function reconciliationRunSentence(summary: Record<string, unknown> | nul
   if (n('auto_explained')) parts.push(`${n('auto_explained')} ${plural(n('auto_explained'), 'wyjaśniona', 'wyjaśnione', 'wyjaśnionych')} regułą (ZUS, podatki, opłaty)`);
   if (n('proposals')) parts.push(`${n('proposals')} ${plural(n('proposals'), 'propozycja', 'propozycje', 'propozycji')} do zatwierdzenia`);
   if (n('choices')) parts.push(`${n('choices')} do wyboru`);
+  if (n('refund_proposals')) parts.push(`${n('refund_proposals')} ${plural(n('refund_proposals'), 'operacja', 'operacje', 'operacji')} do zatwierdzenia jako płatność i zwrot (bez faktury)`);
   if (n('stopped_by_guard')) parts.push(`${n('stopped_by_guard')} zatrzymane przez kontrolę podwójnego rozliczenia`);
   const open = n('open_after');
   const head = parts.length ? parts.join(', ') : 'brak nowych dopasowań';
@@ -606,3 +649,60 @@ export const recurringContractSummarySentence = (c: Pick<RecurringContract, 'sum
   if (s.missing) parts.push(`do zapłaty w terminie: ${s.missing}`);
   return `${parts.join(' · ')}.`;
 };
+
+// Zwrot płatności: para „płatność + zwrot” bez faktury -------------------------------------------------------------
+
+/** Operacja, którą można powiązać jako drugą stronę pary (okno „Powiąż ze zwrotem”, RPC get_bank_refund_candidates). */
+export interface RefundCandidate {
+  id: string;
+  statement_id: string;
+  date: string;
+  amount: number;
+  remaining: number;
+  direction: 'credit' | 'debit';
+  currency: string;
+  counterparty: string | null;
+  title: string | null;
+  statement_year: number;
+  statement_month: number;
+  day_diff: number;
+  /** Pozostała kwota równa pozostałej kwocie tej operacji (co do grosza). */
+  same_amount: boolean;
+  same_account: boolean;
+  /** Wspólne wyróżniające słowa w opisie (np. MUSICCENTER). */
+  words: string[];
+  evidence?: string | null;
+  /** Para odrzucona albo cofnięta wcześniej — automat jej nie proponuje, ręcznie można ją powiązać. */
+  blocked: boolean;
+  explained: boolean;
+  score: number;
+  /** Rola tej operacji wobec operacji, z której otwarto okno. */
+  role: RefundRole;
+  suggested_amount: number;
+  reasons: string[];
+}
+
+export interface RefundCandidatesResult {
+  transaction: {
+    id: string;
+    date: string;
+    amount: number;
+    remaining: number;
+    direction: 'credit' | 'debit';
+    currency: string;
+    counterparty: string | null;
+    title: string | null;
+  };
+  candidates: RefundCandidate[];
+  total: number;
+  truncated: boolean;
+}
+
+/** Nazwa drugiej operacji pary: „Zwrot” (zwraca tę płatność) albo „Zwrócona płatność” (ta operacja ją zwraca). */
+export const refundCounterpartLabel = (otherRole: RefundRole) => (otherRole === 'refund' ? 'Zwrot' : 'Zwrócona płatność');
+
+/** Rola drugiej operacji pary, gdy znamy rolę tej operacji. */
+export const refundOtherRole = (ownRole: RefundRole): RefundRole => (ownRole === 'payment' ? 'refund' : 'payment');
+
+/** „+” dla wpływu, „−” dla wydatku. */
+export const directionSign = (direction?: string | null) => (direction === 'credit' ? '+' : '−');

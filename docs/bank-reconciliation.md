@@ -1,9 +1,10 @@
 # Uzgadnianie wyciągów bankowych
 
 Ekran: **Faktury → Dokumenty i rozliczenia → Uzgodnienie wyciągów** (`BankReconciliationPanel`),
-**ZUS i podatki** (`FinanceDeclarationsPanel`) oraz **Umowy stałe** (`RecurringContractsPanel`). Logika jest w bazie
-(migracje `20261101120000_bank_reconciliation_engine.sql`, `20261101130000_finance_declarations_payroll_fx.sql`
-i `20261101210000_finance_recurring_contracts.sql`); ekrany tylko ją pokazują.
+**ZUS i podatki** (`FinanceDeclarationsPanel`) oraz **Umowy stałe** (`RecurringContractsPanel`); okno **Powiąż ze zwrotem**
+(`BankRefundPairModal`). Logika jest w bazie (migracje `20261101120000_bank_reconciliation_engine.sql`,
+`20261101130000_finance_declarations_payroll_fx.sql`, `20261101210000_finance_recurring_contracts.sql`
+i `20261103220000_bank_refund_pairs.sql`); ekrany tylko ją pokazują.
 
 ## 1. Dwa wyciągi → jedna potwierdzona lista operacji
 
@@ -15,14 +16,15 @@ paruje operacje obu plików:
 
 Operacją główną jest wiersz z MT940 (pełne tytuły, rachunek kontrahenta). Wiersz z PDF dostaje
 `canonical_transaction_id` (kopia) i zostaje jako potwierdzenie; jego opis jest widoczny przy operacji.
-Rozliczenia, wypłaty, płatności deklaracji i umów stałych oraz wyjaśnienia zapisane na kopii przechodzą na operację główną.
+Rozliczenia, wypłaty, płatności deklaracji i umów stałych, pary „płatność + zwrot” oraz wyjaśnienia zapisane na kopii
+przechodzą na operację główną.
 `source_confirmation`: `confirmed` (jest w obu plikach), `unconfirmed` (brak w drugim pliku — do
 sprawdzenia), `single_source`. Usunięcie pliku z operacjami głównymi przenosi wszystko na kopię z drugiego pliku.
 
 ## 2. Blokady podwójnego rozliczenia (wyzwalacze, niezależnie od ekranu)
 
-- operacja nie może być rozliczona ponad swoją kwotę — **faktury, wypłaty, deklaracje i umowy stałe liczą się razem**
-  (`private.bank_transaction_allocated`),
+- operacja nie może być rozliczona ponad swoją kwotę — **faktury, wypłaty, deklaracje, umowy stałe i pary zwrotu liczą
+  się razem** (`private.bank_transaction_allocated`; kwota pary — po obu stronach),
 - faktura nie może być opłacona z wyciągu ponad należność — razem z jej kopiami w innych źródłach
   (KSeF ↔ faktura CRM, ten sam numer, strona, NIP i kwota w KSeF / CRM / spoza KSeF); dla dokumentów
   w walucie liczy się kwota w walucie dokumentu,
@@ -31,7 +33,9 @@ sprawdzenia), `single_source`. Usunięcie pliku z operacjami głównymi przenosi
 - płatność deklaracji musi być przelewem wychodzącym tej samej firmy,
 - płatność umowy stałej: ta sama działalność, kierunek jak w umowie (koszt — przelew wychodzący, przychód — wpływ),
   waluta umowy, okres należący do umowy (cykl, początek, koniec, „rozliczaj od”); umowy, przy których kontrahent
-  wystawia faktury, nie przyjmują płatności (rozlicza się fakturę).
+  wystawia faktury, nie przyjmują płatności (rozlicza się fakturę),
+- para „płatność + zwrot”: dwie różne operacje główne (nie kopie z drugiego wyciągu, nie przeniesienia własne) tej samej
+  działalności i waluty, o przeciwnych kierunkach; jedna para na dwie operacje.
 
 ## 3. Reguły (`reconcile_bank_month`) — po imporcie wyciągu i przyciskiem „Uzgodnij automatycznie”
 
@@ -55,10 +59,12 @@ sprawdzenia), `single_source`. Usunięcie pliku z operacjami głównymi przenosi
 | 6 | umowa stała: rachunek zgodny, kwota inna (np. dwa miesiące w jednym przelewie) | propozycja z podziałem na okresy i różnicą |
 | 6 | umowa stała: nazwa kontrahenta (albo NIP) w przelewie i kwota okresu | propozycja (zatwierdzenie dopisuje rachunek do umowy bez rachunku) |
 | 6 | kilka umów z tym samym rachunkiem / kontrahentem i kwotą | wybór |
-| 7 | kwota = do zapłaty i kontrahent (NIP, rachunek znany z wcześniejszych płatności, nazwa) | propozycja |
-| 7 | kilka dokumentów z tą kwotą | wybór |
-| 8 | przelew PLN za dokument w walucie: zapisana kwota obciążenia PLN albo kurs ±4% od średniej | automatycznie (kwota PLN) / propozycja (kurs) |
-| 9 | płatność zbiorcza (Allegro, PayU…) = suma 2–6 faktur z okolic daty | propozycja |
+| 7 | zwrot płatności: jedna operacja przeciwnego kierunku tej działalności (także z sąsiedniego miesiąca) z równą pozostałą kwotą (co do grosza), datą ±45 dni i wspólnym wyróżniającym słowem w opisie albo tym samym rachunkiem kontrahenta | propozycja pary „płatność + zwrot” (bez faktury) |
+| 7 | jw., kilka takich operacji | wybór |
+| 8 | kwota = do zapłaty i kontrahent (NIP, rachunek znany z wcześniejszych płatności, nazwa) | propozycja |
+| 8 | kilka dokumentów z tą kwotą | wybór |
+| 9 | przelew PLN za dokument w walucie: zapisana kwota obciążenia PLN albo kurs ±4% od średniej | automatycznie (kwota PLN) / propozycja (kurs) |
+| 10 | płatność zbiorcza (Allegro, PayU…) = suma 2–6 faktur z okolic daty | propozycja |
 | — | tytuł wskazuje fakturę, której nie ma | wskazówka |
 
 Numery faktur są szukane jako osobne słowa (lub, gdy długie, bez separatorów); daty z opisów operacji są
@@ -66,7 +72,8 @@ usuwane, a numery wyglądające jak data („04-2026”) pomijane.
 
 Decyzja człowieka jest ostateczna: odrzucona propozycja (`reject_bank_reconciliation_proposal`), cofnięte
 dopasowanie (`undo_bank_match`), odpięta wypłata (`undo_bank_personnel_payment`), odpięta deklaracja
-(`undo_bank_declaration_payment`), odpięta płatność umowy stałej (`undo_bank_recurring_contract_payment`) i cofnięte wyjaśnienie (`clear_bank_transaction_explanation`, zapis
+(`undo_bank_declaration_payment`), odpięta płatność umowy stałej (`undo_bank_recurring_contract_payment`), cofnięta para
+„płatność + zwrot” (`undo_bank_refund_pair`) i cofnięte wyjaśnienie (`clear_bank_transaction_explanation`, zapis
 `rejected:…`) nie wracają przy kolejnym uzgodnieniu. Każde uruchomienie zapisuje podsumowanie w
 `bank_reconciliation_runs`. AI (panel miesiąca) może tylko podpowiadać — nie rozlicza samo.
 
@@ -167,3 +174,55 @@ rachunek 62 1140 2004 0000 3902 7077 4694 — najem na czas nieokreślony, bez f
 - **Uprawnienia**: odczyt — poziom finansów działalności ≥ `finance_view`; zmiany — `finance_manage` tej działalności,
   wyłącznie przez RPC (tabele bez INSERT/UPDATE/DELETE dla zalogowanych). Zwykły pracownik, inna działalność, konto portalu
   sprzedawcy i anon — brak dostępu (także do plików w magazynie).
+
+## 7. Zwrot płatności bez faktury — para „płatność + zwrot” (`bank_transaction_refund_pairs`, migracja `20261103220000`)
+
+Przykład: 12.08.2026 z rachunku bieżącego wyszło −107,00 zł (BLIK, w MT940 „…www.musicce nter.com.pl…”, w PDF „Lokalizacja:
+www.musiccenter.com.pl”), a sklep — bez towaru i bez faktury — od razu oddał +107,00 zł. Obie operacje czekały na dokument,
+choć faktury nie będzie. Ten sam mechanizm działa w drugą stronę: klient zapłacił, my zwróciliśmy.
+
+- **Para**: działalność, operacja pierwotna (wcześniejsza — płatność), operacja zwrotu (późniejsza, przeciwny kierunek), kwota
+  pary, `automatic` / `manual`, powody, kto, kiedy. Kwota pary liczy się do limitu kwoty **obu** operacji razem z fakturami,
+  wypłatami, deklaracjami i umowami; operacja rozliczona w całości ma status „Rozliczona”. Jedna operacja może mieć kilka par
+  (np. dwa zwroty częściowe jednej płatności albo jeden zwrot dwóch płatności).
+- **Reguła automatu** (7 w tabeli wyżej, przed „zgodną kwotą”): operacja otwarta (bez wyjaśnienia, nie przeniesienie własne)
+  i **dokładnie jedna** operacja przeciwnego kierunku z tej samej działalności i waluty — także z sąsiedniego miesiąca — która:
+  ma pozostałą kwotę równą co do grosza, datę ±45 dni i
+  * wspólne wyróżniające słowo w opisie (z tytułu, opisu i kontrahenta obu wyciągów, PDF i MT940). Porównanie także po
+    usunięciu spacji, bo MT940 łamie słowa („MUSICCE NTER” = „MUSICCENTER”); kody pól MT940 („~32…”) są pomijane. Nie liczą
+    się: słowa ogólne (PRZELEW, PŁATNOŚĆ, ZAKUP, ZWROT, KARTA, BLIK, GODZ, LOKALIZACJA, WWW, COM, POLSKA, WŁASNA, formy prawne,
+    stopki wyciągów, duże miasta, nazwy miesięcy…), liczby, słowa z nazwy i adresu własnej działalności oraz słowa częste po obu
+    stronach rachunku (≥ 5 wydatków i ≥ 5 wpływów w ±120 dniach — np. nazwisko właściciela, kontrahent z obrotami w obie strony),
+  * albo ten sam rachunek kontrahenta (nie własny),
+
+  → propozycja do zatwierdzenia (źródło dokumentu `refund`: druga operacja — data, kwota, kierunek, sprzedawca / kontrahent,
+  tytuł, dowód). Kilka takich operacji → wybór (do 5). **Nigdy automatycznie** — parę zatwierdza człowiek. Propozycja powstaje
+  po obu stronach; zatwierdzenie jednej tworzy parę i zamyka propozycję tej samej pary po drugiej stronie (oraz propozycje
+  innych operacji wskazujące operację rozliczoną teraz w całości). Odrzucenie po jednej stronie zamyka propozycję po drugiej,
+  a para nie wraca przy kolejnych uzgodnieniach **po żadnej ze stron**. Podsumowanie przebiegu: `refund_proposals`
+  (liczba operacji z propozycją pary). Płatność kartą w obcej walucie bez faktury kończy się wcześniej wskazówką reguły
+  „karta w walucie” — taki zwrot łączy się ręcznie.
+- **Ręcznie**: „Powiąż ze zwrotem” przy otwartej operacji (oba kierunki) — okno z operacjami przeciwnego kierunku tej
+  działalności z ±90 dni, które mają jeszcze kwotę do rozliczenia (`get_bank_refund_candidates`): najpierw ta sama kwota,
+  potem wspólne słowo / rachunek, potem bliskość daty; przy każdej powody po polsku, wyszukiwanie (sklep, opis, kwota, data)
+  i „Szczegóły płatności”. `link_bank_refund_pair(operacja, druga operacja, kwota = NULL)` — kwota domyślna = mniejsza
+  z pozostałych kwot obu operacji; kontrola: przeciwny kierunek, ta sama działalność i waluta, kwota ≤ pozostałej po obu
+  stronach. Która operacja jest płatnością, wynika z daty (wcześniejsza; ten sam dzień — kolejność w wyciągu). Para odrzucona
+  albo cofnięta wcześniej jest w oknie oznaczona, ale ręcznie można ją powiązać (decyzja człowieka).
+- **Zwrot częściowy** (np. sklep oddał część zamówienia): wpisz kwotę zwrotu — płatność zostaje „Częściowo rozliczona”,
+  a reszta czeka na fakturę (dopasujesz ją jak zwykle; limit kwoty operacji obejmuje parę i fakturę). Zwrot w kolejnym
+  miesiącu: para łączy operacje z różnych wyciągów; przy każdej widać drugą stronę z datą.
+- **Widok miesiąca** (`get_bank_reconciliation_month`): przy operacji `refunds` — para (`pair_id`, rola tej operacji:
+  `payment` / `refund`, kwota pary, metoda, powody) i druga operacja (`other`: id, data, kwota, kierunek, sprzedawca / kontrahent,
+  tytuł, wyciąg). Chip „Zwrot: +107,00 zł z 12.08 · www.musiccenter.com.pl” przy płatności i „Zwrócona płatność: −107,00 zł z
+  12.08 · …” przy zwrocie, z „Cofnij”.
+- **Cofnięcie** (`undo_bank_refund_pair`): obie operacje wracają do rozliczenia, a odrzucenie zapisane po obu stronach blokuje
+  ponowne automatyczne zaproponowanie tej pary.
+- **Księgowo**: para płatność + zwrot bez faktury jest udokumentowana wyciągiem — dwie operacje się znoszą, nie ma kosztu ani
+  przychodu. Przy zwrocie częściowym reszta płatności nadal wymaga faktury (albo innego wyjaśnienia).
+- **Uprawnienia**: jak umowy stałe — odczyt poziom finansów działalności ≥ `finance_view`, zmiany `finance_manage` tej
+  działalności, wyłącznie przez RPC (tabela bez INSERT/UPDATE/DELETE dla zalogowanych). Zwykły pracownik, inna działalność,
+  konto portalu sprzedawcy i anon — brak dostępu.
+- **safeupdate**: Supabase odrzuca w wywołaniach z API każde UPDATE / DELETE bez WHERE (także w funkcjach). Migracja kończy się
+  kontrolą treści wszystkich funkcji plpgsql / sql w `public` i `private` i przerywa się, jeśli któraś ma takie polecenie
+  (SQL dynamiczny w `EXECUTE '…'` nie jest sprawdzany).
