@@ -1,4 +1,7 @@
 'use client';
+import { canClaimMessageInquiry } from '@/lib/CRM/messages/salesContext';
+import MessageSalesBadge from '@/components/crm/MessageSalesBadge';
+import { useRouter } from 'next/navigation';
 
 import { formatSystemSubject } from '@/lib/ui/systemLabels';
 import InquiryTypeBadges from '@/components/crm/inquiries/InquiryTypeBadges';
@@ -27,6 +30,7 @@ import MessageAttachments from './MessageAttachments';
 interface MessagePreviewPaneProps {
   message: MessageListItem | null;
   canManage: boolean;
+  canTrash?: boolean;
   canSend: boolean;
   onClose: () => void;
   onOpenInNewWindow: (message: MessageListItem) => void;
@@ -47,6 +51,7 @@ const formatMessageDate = (date: string) =>
 export function MessagePreviewPane({
   message,
   canManage,
+  canTrash = false,
   canSend,
   onClose,
   onOpenInNewWindow,
@@ -57,6 +62,7 @@ export function MessagePreviewPane({
   onCreateTask,
   onDelete,
 }: MessagePreviewPaneProps) {
+  const router = useRouter();
   const previewable = Boolean(message && message.type !== 'draft');
   const { currentData: details, isFetching, error, refetch } = useGetMessageDetailsQuery(
     {
@@ -119,7 +125,7 @@ export function MessagePreviewPane({
     );
   }
 
-  const canActOnInbound = details.type === 'received' || details.type === 'contact_form';
+  const canActOnInbound = !details.isDeleted && (details.type === 'received' || details.type === 'contact_form');
 
   return (
     <section className="flex h-full min-h-0 min-w-0 flex-1 flex-col bg-[#11141f]">
@@ -179,7 +185,7 @@ export function MessagePreviewPane({
                 ...(canManage && canActOnInbound ? [
                       {
                         label: 'Przypisz',
-                        onClick: () => onAssign(details),
+                        onClick: () => { const linked = (message.sales || details.sales)?.inquiries; if (linked?.length === 1) router.push(`/crm/inquiries/${linked[0].id}`); else onAssign(details); },
                         icon: <UserPlus className="h-4 w-4" />,
                       },
                       {
@@ -207,10 +213,10 @@ export function MessagePreviewPane({
                       },
                     ]
                   : []),
-                ...(canManage
+                ...(canTrash
                   ? [
                       {
-                        label: 'Przenieś do kosza',
+                        label: details.isDeleted ? 'Przywróć z kosza' : 'Przenieś do kosza',
                         onClick: () => onDelete(details),
                         icon: <Trash2 className="h-4 w-4" />,
                         variant: 'danger' as const,
@@ -220,6 +226,14 @@ export function MessagePreviewPane({
               ]}
             />
           </div>
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <MessageSalesBadge sales={message.sales || details.sales} onOpen={id => router.push(`/crm/inquiries/${id}`)} />
+          {canActOnInbound && <button type="button" className="rounded-lg bg-[#d3bb73]/15 px-3 py-2 text-sm text-[#d3bb73]" onClick={() => {
+            const linked = (message.sales || details.sales)?.inquiries;
+            if (linked?.length === 1 && !canClaimMessageInquiry(message.sales || details.sales)) router.push(`/crm/inquiries/${linked[0].id}`);
+            else onCreateInquiry({ ...details, sales: message.sales || details.sales });
+          }}>{canClaimMessageInquiry(message.sales || details.sales) ? 'Przypisz mnie do zapytania' : (message.sales || details.sales)?.inquiries.length ? 'Otwórz zapytanie' : 'Dodaj do zapytań i przypisz mnie'}</button>}
         </div>
       </header>
 

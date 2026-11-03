@@ -31,6 +31,7 @@ import { supabase, supabaseUrl, supabaseAnonKey } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import EmployeeAvatar from '../components/EmployeeAvatar';
 import ChatVideoPreview from '../components/ChatVideoPreview';
+import ChatMessageText, { showChatMessageActions } from '../components/ChatMessageText';
 import { Conversation } from './ChatListScreen';
 import {
   notifyChatConversationOpened,
@@ -808,7 +809,10 @@ export default function ChatScreen({ conversation, onBack }: Props) {
     if (isSelectMode) {
       toggleSelectMessage(id);
     } else {
-      setReactionPickerMsgId(id);
+      const message = messages.find(item => item.id === id);
+      if (!message) return;
+      setReactionPickerMsgId(null);
+      showChatMessageActions(message.content, () => setReactionPickerMsgId(id));
     }
   };
 
@@ -1199,17 +1203,21 @@ export default function ChatScreen({ conversation, onBack }: Props) {
                 {hasAttachment && renderAttachment(item, isMine)}
 
                 {hasCaption && (
-                  <Text
+                  <ChatMessageText
+                    content={item.content}
                     style={[styles.messageText, isMine && styles.messageTextMine, { marginTop: 6 }]}
-                  >
-                    {item.content}
-                  </Text>
+                    onLongPress={() => handleLongPress(item.id)}
+                    onSelect={isSelectMode ? () => toggleSelectMessage(item.id) : undefined}
+                  />
                 )}
 
                 {hasTextContent && (
-                  <Text style={[styles.messageText, isMine && styles.messageTextMine]}>
-                    {item.content}
-                  </Text>
+                  <ChatMessageText
+                    content={item.content}
+                    style={[styles.messageText, isMine && styles.messageTextMine]}
+                    onLongPress={() => handleLongPress(item.id)}
+                    onSelect={isSelectMode ? () => toggleSelectMessage(item.id) : undefined}
+                  />
                 )}
               </View>
 
@@ -1359,6 +1367,7 @@ export default function ChatScreen({ conversation, onBack }: Props) {
           data={visibleMessages}
           extraData={{ employeeId: employee?.id, senders, participantsState, selectedIds }}
           renderItem={renderMessage}
+          keyboardShouldPersistTaps="handled"
           initialNumToRender={MESSAGE_PAGE_SIZE}
           onScrollBeginDrag={() => {
             userHasScrolledRef.current = true;

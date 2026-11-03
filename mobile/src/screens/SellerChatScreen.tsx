@@ -10,6 +10,7 @@ import { useForegroundEffect } from '../hooks/useForegroundEffect';
 import { createRefreshQueue } from '../lib/refreshQueue';
 import { navigateToEvent } from '../navigation/navigationRef';
 import { colors } from '../theme';
+import ChatMessageText from '../components/ChatMessageText';
 
 type Message = { id: string; seq: number; sender_kind: string; sender_name: string; body: string; created_at: string; own: boolean };
 
@@ -140,7 +141,7 @@ export default function SellerChatScreen({ conversationId, onBack }: { conversat
       keyboardShouldPersistTaps="handled"
       renderItem={({ item }) => <View style={[styles.bubble, item.own && styles.own]}>
         <Text style={[styles.author, item.own && styles.ownText]}>{item.sender_name} · {item.sender_kind === 'seller' ? 'Sprzedawca' : 'MAVINCI'}</Text>
-        <Text selectable style={[styles.body, item.own && styles.ownText]}>{item.body}</Text>
+        <ChatMessageText content={item.body} style={[styles.body, item.own && styles.ownText]} />
         <Text style={[styles.time, item.own && styles.ownText]}>{new Date(item.created_at).toLocaleString('pl-PL')}</Text>
       </View>}
       ListFooterComponent={hasOlder ? <TouchableOpacity disabled={older} onPress={loadOlder}><Text style={styles.link}>{older ? 'Wczytywanie…' : 'Pokaż starsze wiadomości'}</Text></TouchableOpacity> : null}

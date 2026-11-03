@@ -16,11 +16,15 @@ import AppKit
             CommandMenu("Mavinci") {
                 Button("Odśwież dane") { Task { await workspace.refresh() } }.keyboardShortcut("r").disabled(workspace.syncing || workspace.editing)
                 Divider()
-                Button("Mój dzień") { workspace.selection = .day }.keyboardShortcut("1")
-                Button("Zapytania") { if workspace.employee?.canView(.inquiries) == true { workspace.selection = .inquiries } }.keyboardShortcut("2")
-                Button("Moje zadania") { if workspace.employee?.canView(.tasks) == true { workspace.selection = .tasks } }.keyboardShortcut("3")
-                Button("Wydarzenia") { if workspace.employee?.canView(.events) == true { workspace.eventRoute=nil;workspace.selection = .events } }.keyboardShortcut("4")
-                Button("Kalendarz") { if workspace.employee?.canView(.calendar) == true { workspace.eventRoute=nil;workspace.selection = .calendar } }.keyboardShortcut("5")
+                Button("Mój dzień") { workspace.switchSection(.day) }.keyboardShortcut("1")
+                Button("Zapytania") { if workspace.employee?.canView(.inquiries) == true { workspace.switchSection(.inquiries) } }.keyboardShortcut("2")
+                Button("Moje zadania") { if workspace.employee?.canView(.tasks) == true { workspace.switchSection(.tasks) } }.keyboardShortcut("3")
+                Button("Wydarzenia") { if workspace.employee?.canView(.events) == true { workspace.switchSection(.events) } }.keyboardShortcut("4")
+                Button("Kalendarz") { if workspace.employee?.canView(.calendar) == true { workspace.switchSection(.calendar) } }.keyboardShortcut("5")
+                Button("Kontakty") {workspace.switchSection(.contacts)}.keyboardShortcut("6")
+                Button("Oferty") {workspace.switchSection(.offers)}.keyboardShortcut("7")
+                Button("Przetargi") {workspace.switchSection(.tenders)}.keyboardShortcut("8")
+                Button("Powiadomienia") {workspace.notificationsVisible.toggle()}.keyboardShortcut("9")
                 Divider()
                 Button("Wyloguj") { Task { await workspace.logout() } }.disabled(workspace.loading || workspace.acting)
             }
@@ -50,7 +54,7 @@ struct RootView: View {
                                     Label(module.title, systemImage: module.symbol)
                                     Spacer()
                                     if module == .notifications && state.unread > 0 { Text("\(state.unread)").foregroundStyle(.secondary).monospacedDigit() }
-                                }.tag(module)
+                                }.contentShape(Rectangle()).tag(module).onTapGesture{state.switchSection(module)}
                             }
                         }
                     }
@@ -74,18 +78,30 @@ struct RootView: View {
                     VStack(spacing: 0) {
                         if let error = state.error { MessageBar(text: error, warning: true) { state.error = nil } }
                         if let notice = state.notice { MessageBar(text: notice, warning: false) { state.notice = nil } }
-                        if let route = state.eventRoute { EventPageView(eventID: route.id).id(route.id) }
+                        if let route = state.eventRoute { EventPageView(eventID: route.id,initialTab:route.tab).id(route.id) }
                         else if state.selection == .calendar { NativeCalendarView() }
+                        else if state.selection == .tasks { TaskBoardView() }
+                        else if state.selection == .tenders { TendersView() }
                         else if state.selection == .day { SalesDayView() }
                         else if let module = state.selection, state.employee?.canView(module) == true { RecordsView(module: module).id(module) }
                         else { ContentUnavailableView("Wybierz sekcję", systemImage: "sidebar.left") }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    .overlay {
+                        if state.notificationsVisible {
+                            GeometryReader { available in
+                                ZStack(alignment:.trailing){
+                                    Color.black.opacity(0.12).contentShape(Rectangle()).onTapGesture{state.notificationsVisible=false}
+                                    NotificationsDrawer().frame(width:min(480,max(300,available.size.width-28)),height:available.size.height)
+                                        .shadow(color:.black.opacity(0.16),radius:18,x:-6,y:0).transition(.move(edge:.trailing))
+                                }.frame(width:available.size.width,height:available.size.height)
+                            }
+                        }
+                    }
                     .toolbar {
                         ToolbarItemGroup(placement: .primaryAction) {
                             Button {
-                                state.eventRoute = nil
-                                state.selection = .notifications
+                                withAnimation(.easeInOut(duration:0.18)){state.notificationsVisible.toggle()}
                             } label: {
                                 ZStack(alignment: .topTrailing) {
                                     Image(systemName: "bell")
@@ -204,7 +220,10 @@ struct HelpView: View {
             Text("Praca w Mavinci na Macu").font(.title2.bold())
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
-                    Text("Wybierz sekcję z paska bocznego. W tabelach wyszukuj, sortuj nagłówkami i zaznacz sprawę, aby zobaczyć jej szczegóły. Dostępne czynności znajdziesz w szczegółach i pod prawym przyciskiem myszy.")
+                    Text("Wybierz sekcję z paska bocznego. Listy zajmują całą wysokość od pierwszego wejścia; szczegóły są po prawej przy odpowiedniej szerokości, a w mniejszym oknie w modalu. Kontakty pochodzą wyłącznie z CRM — aplikacja nie odczytuje prywatnej książki adresowej urządzenia. Edycja kontaktu wymaga contacts_manage i jest sprawdzana również przez bazę.")
+                    Text("Moje zadania to Kanban: Do zrobienia, W trakcie, Do sprawdzenia i Zakończone. Kliknięcie otwiera szczegóły. Przeciągnij kartę do innej kolumny lub użyj menu Przenieś do; zapis wymaga internetu i aktualnej wersji rekordu.")
+                    Text("Kalendarz i Wydarzenia używają wspólnego zakresu uprawnień i tego samego zbioru wydarzeń. Kolorowe obramowanie wpisu odpowiada kategorii w CRM. Wydarzenia i oferty domyślnie pomijają przeszłe i zamknięte rekordy; zaznacz Pokaż również ukryte lub Szukaj również w ukrytych, aby je odnaleźć. Filtr nie rozszerza uprawnień do danych.")
+                    Text("Przetargi domyślnie pokazują aktywne sprawy. Na liście są ocena dopasowania, zamawiający i czas do terminu. Szczegóły zawierają dane jak modal CRM oraz obserwowanie, opiekuna, utworzenie zapytania, notatki, status i ocenę manualną. Starsze i ukryte pozycje włączysz filtrem.")
                     Text("⌘R odświeża dane, ⌘1 otwiera Mój dzień, ⌘2 zapytania, ⌘3 zadania. W Moich zadaniach ⌘N tworzy prywatne zadanie, a ⌘E edytuje zaznaczone.")
                     Text("Zapytania: przejmij nieprzypisaną sprawę, zapisz wykonany kontakt lub odłóż przypomnienie o godzinę. Po wykonaniu kontaktu możesz wybrać termin kolejnego działania. Ostateczne uprawnienia sprawdza baza danych.")
                     Text("Zadania: twórz prywatne zadania, zmieniaj tytuł, opis, priorytet, termin i etap. Zapis wymaga połączenia. Konflikt zmian wymaga odświeżenia; formularz zachowuje wpisany tekst.")
@@ -213,7 +232,7 @@ struct HelpView: View {
                     Text("Wydarzenia mają pełną stronę z zakładkami. Możesz edytować dane i istniejące etapy, prowadzić agendę i zadania, dodawać osoby, odpowiadać na zaproszenia, planować oczekujące koszty, oznaczać załadunek oraz dodawać i otwierać pliki. Dostępne działania realizacji wynikają z uprawnień w bazie. Poszczególne zakładki wskazują pozostałe do wdrożenia czynności; pełna obsługa ofert, umów, kalkulacji, faktur, logistyki i edytora Mavinci LIVE nie jest jeszcze gotowa.")
                     Text("Dzwonek powiadomień jest u góry po prawej, obok odświeżania. Wydarzenie otworzysz zaznaczeniem wiersza listy albo z kalendarza; przycisk Wróć przywraca listę.")
                     Text("Kalendarz pokazuje wydarzenia, własne i zaproszone spotkania oraz terminy otwartych zapytań. Połącz z Kalendarzem Apple pozwala wybrać kalendarz i ręcznie zapisać lub zaktualizować kopię wydarzeń i spotkań. Apple nie przekazuje prywatnych wpisów do CRM. Uprawnienia kalendarza nadajesz dopiero po kliknięciu przycisku. Wylogowanie z CRM nie usuwa kopii zapisanej w Apple.")
-                    Text("Powiadomienia: oznaczaj pojedynczo jako przeczytane i otwieraj obsługiwane powiązania. Zaproszenia wymagające odpowiedzi nadal obsługuj w istniejącej aplikacji mobilnej lub CRM.")
+                    Text("Dzwonek otwiera panel powiadomień po prawej. Możesz oznaczyć pojedynczy wpis lub wszystkie jako przeczytane. Otwórz sprawę przechodzi do konkretnego zadania, zapytania, wydarzenia i obsługiwanej zakładki, kontaktu, oferty, przetargu lub spotkania, także gdy rekord jest schowany przez domyślne filtry. Sprawy bez gotowej sekcji natywnej są wyraźnie oznaczone.")
                     Text("Synchronizacja przyrostowa wymaga migracji native_workspace_sync w Supabase. Przed jej wdrożeniem aplikacja pobiera pełne listy i pokazuje informację „Pełne odświeżanie danych”.")
                 }.textSelection(.enabled)
             }

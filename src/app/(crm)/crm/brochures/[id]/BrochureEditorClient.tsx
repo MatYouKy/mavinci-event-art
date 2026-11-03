@@ -5,6 +5,7 @@ import type { ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeft,
+  ArchiveRestore,
   BookOpen,
   Building2,
   Download,
@@ -14,10 +15,12 @@ import {
   LayoutTemplate,
   Loader2,
   Megaphone,
+  Pencil,
   Plus,
   Save,
   Search,
   ShieldCheck,
+  Trash2,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -27,6 +30,7 @@ import BrochureImagePicker from './BrochureImagePicker';
 import BrochurePageList from './BrochurePageList';
 import BrochureDemoReport from './BrochureDemoReport';
 import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
+import BrochureManagementDialog, { type BrochureManagementAction } from '@/components/crm/brochures/BrochureManagementDialog';
 import SendBrochureEmailModal from '@/components/crm/brochures/SendBrochureEmailModal';
 import BrochureClientPicker from '@/components/crm/brochures/BrochureClientPicker';
 import type { BrochureClient } from '@/lib/brochures/recipient';
@@ -40,6 +44,8 @@ import { brochureAssetKey, brochurePalette, parseDecorativePages, parseComposer,
 type Brochure = {
   id: string;
   name: string;
+  status: 'draft' | 'ready' | 'archived';
+  updated_at: string;
   title: string;
   subtitle: string | null;
   introduction: string | null;
@@ -135,6 +141,7 @@ export default function BrochureEditorClient({ brochureId }: { brochureId: strin
   const [catalogQuery, setCatalogQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
+  const [managementAction, setManagementAction] = useState<BrochureManagementAction | null>(null);
   const [selectedPageKey, setSelectedPageKey] = useState('cover');
   const [libraryAssets, setLibraryAssets] = useState<BrochureImageAsset[]>([]);
   const [hotelAssets, setHotelAssets] = useState<BrochureImageAsset[]>([]);
@@ -161,19 +168,76 @@ export default function BrochureEditorClient({ brochureId }: { brochureId: strin
     ...(composer.coverImagePath ? [{ key: brochureAssetKey(composer.coverImageBucket, composer.coverImagePath), label: 'Okładka broszury', path: composer.coverImagePath, bucket: composer.coverImageBucket }] : []),
   ].map((asset) => [asset.key, asset])).values()], [productAssets, libraryAssets, hotelAssets, items, decorationPages, composer.coverImagePath, composer.coverImageBucket]);
   const onUploadBusy = useCallback((uploading: boolean) => setBusy(uploading ? 'upload-image' : null), []);
-  const assetPaths = JSON.stringify(decorationAssets.map(({ key, path, bucket }) => ({ key, path, bucket })));
+  // The picker needs names for the whole library, but signed URLs only for
+  // selected brochure images. Catalog thumbnails load lazily through the
+  // existing authenticated thumbnail endpoint, with server-side resizing.
+  const previewAssets = [
+    ...items.map((item) => ({ bucket: 'offer-product-pages' as const,
+      path: item.custom_image_path || item.variant?.offer_image_path || item.product.offer_image_path || '',
+    })),
+    ...decorationPages.map((page) => ({ bucket: page.imageBucket, path: page.imagePath })),
+    { bucket: composer.coverImagePath ? composer.coverImageBucket : 'offer-product-pages' as const,
+      path: composer.coverImagePath || brochure?.cover_image_path || '' },
+  ].filter((asset) => asset.path);
+  const assetPaths = JSON.stringify([...new Map(previewAssets.map((asset) =>
+    [brochureAssetKey(asset.bucket, asset.path), asset])).values()]);
+  // Scope cached private links to this editor and employee. Serialize successive
+  // effects so loading a library or saving a page cannot launch another burst.
+  const imageLoader = useMemo(() => ({
+    cache: new Map<string, { url: string; expires: number }>(),
+    queue: Promise.resolve(), retryAfter: 0,
+  }), [brochureId, employee?.id]);
+  const [imageRefresh, setImageRefresh] = useState(0);
+  useEffect(() => { setImageUrls({}); }, [imageLoader]);
   useEffect(() => {
     let active = true;
-    const assets: BrochureImageAsset[] = JSON.parse(assetPaths);
-    void Promise.all(assets.map(async (asset) => {
-      if (/^https?:\/\//i.test(asset.path)) return [asset.key, asset.path];
-      const { data } = await supabase.storage.from(asset.bucket).createSignedUrl(asset.path, 3600);
-      return [asset.key, data?.signedUrl || ''];
-    })).then((urls) => { if (active) setImageUrls((current) => ({ ...current, ...Object.fromEntries(urls) })); }).catch(() => {
-      if (active) showSnackbar('Nie udało się wczytać części zdjęć broszury.', 'error');
+    const assets: Array<Pick<BrochureImageAsset, 'bucket' | 'path'>> = JSON.parse(assetPaths);
+    imageLoader.queue = imageLoader.queue.then(async () => {
+      if (!active) return;
+      const urls: Record<string, string> = {};
+      const missing = new Map<string, string[]>();
+      const addUrl = (bucket: string, path: string, url: string) => {
+        urls[brochureAssetKey(bucket, path)] = url;
+        if (bucket === 'offer-product-pages') urls[path] = url;
+      };
+      for (const { bucket, path } of assets) {
+        if (/^https?:\/\//i.test(path)) { addUrl(bucket, path, path); continue; }
+        const cached = imageLoader.cache.get(brochureAssetKey(bucket, path));
+        if (cached && cached.expires > Date.now()) addUrl(bucket, path, cached.url);
+        else missing.set(bucket, [...(missing.get(bucket) || []), path]);
+      }
+      if (active) setImageUrls((current) => ({ ...current, ...urls }));
+      if (missing.size && imageLoader.retryAfter > Date.now()) return;
+      let partial = false;
+      for (const [bucket, paths] of missing) {
+        for (let offset = 0; offset < paths.length; offset += 50) {
+          if (!active) return;
+          // One bounded request at a time, with the same authenticated RLS.
+          const batch = paths.slice(offset, offset + 50);
+          const { data, error } = await supabase.storage.from(bucket).createSignedUrls(batch, 3600);
+          if (error) { imageLoader.retryAfter = Date.now() + 30_000; throw error; }
+          const returned = new Map((data || []).map((image) => [image.path, image]));
+          for (const path of batch) {
+            const image = returned.get(path);
+            const url = image && !image.error ? image.signedUrl || '' : '';
+            if (!url) partial = true;
+            imageLoader.cache.set(brochureAssetKey(bucket, path), {
+              url, expires: Date.now() + (url ? 40 * 60_000 : 30_000),
+            });
+            addUrl(bucket, path, url);
+          }
+          if (active) setImageUrls((current) => ({ ...current, ...urls }));
+        }
+      }
+      if (active && partial) showSnackbar('Nie udało się wczytać części zdjęć broszury. Spróbuj ponownie za chwilę.', 'warning');
+    }).catch(() => {
+      imageLoader.retryAfter = Date.now() + 30_000;
+      if (active) showSnackbar('Nie udało się wczytać zdjęć broszury. Spróbuj ponownie za chwilę.', 'error');
     });
-    return () => { active = false; };
-  }, [assetPaths, showSnackbar]);
+    // Refresh long-lived previews before their signed links expire.
+    const refresh = window.setTimeout(() => setImageRefresh((value) => value + 1), 45 * 60_000);
+    return () => { active = false; window.clearTimeout(refresh); };
+  }, [assetPaths, imageLoader, imageRefresh, showSnackbar]);
   useEffect(() => {
     let active = true;
     void Promise.all([
@@ -292,19 +356,6 @@ export default function BrochureEditorClient({ brochureId }: { brochureId: strin
     setEmployees((employeesRes.data || []) as Employee[]);
     setSelectedItemId((current) => current && normalizedItems.some((item) => item.id === current) ? current : normalizedItems[0]?.id || null);
 
-    const paths = Array.from(new Set([
-      ...normalizedProducts.flatMap((product) => [product.offer_image_path, ...product.variants.map((variant) => variant.offer_image_path)]),
-      ...normalizedItems.map((item) => item.custom_image_path),
-      loadedBrochure.cover_image_path,
-    ].filter(Boolean))) as string[];
-    const signed = await Promise.all(paths.map(async (path) => {
-      if (/^https?:\/\//i.test(path)) return [path, path] as const;
-      const { data } = await supabase.storage.from('offer-product-pages').createSignedUrl(path, 3600, {
-        transform: { width: 900, resize: 'cover', quality: 80 },
-      });
-      return [path, data?.signedUrl || ''] as const;
-    }));
-    setImageUrls((current) => ({ ...current, ...Object.fromEntries(signed) }));
     setPdfUrl(null); setOwnPdfVersion(null); setOwnPdfRecipient('');
     const { data: currentEmployeeId } = await supabase.rpc('current_brochure_employee_id');
     if (currentEmployeeId) {
@@ -541,6 +592,32 @@ export default function BrochureEditorClient({ brochureId }: { brochureId: strin
   if (employeeLoading || loading) return <div className="flex min-h-[60vh] items-center justify-center text-[#d3bb73]"><Loader2 className="h-7 w-7 animate-spin" /></div>;
   if (!brochure) return null;
 
+  const managementDialog = managementAction && <BrochureManagementDialog key={`${brochure.id}:${managementAction}`}
+    action={managementAction} brochure={brochure} canManage={canManage} hasUnsavedChanges={dirty}
+    onClose={() => setManagementAction(null)} onSuccess={(updated) => {
+      setBrochure((current) => current ? { ...current, ...updated,
+        modified_after_generation: current.modified_after_generation || updated.modified_after_generation,
+      } : current);
+      setManagementAction(null);
+      if (managementAction === 'remove') {
+        setDirty(false);
+        router.replace('/crm/brochures');
+      }
+    }} />;
+
+  if (brochure.status === 'archived') return (
+    <main className={`${styles.editor} min-h-screen bg-[#0f1119] p-5 text-[#e5e4e2]`}>
+      <div className="mx-auto max-w-2xl space-y-5 rounded-xl bg-[#1c1f33] p-6">
+        <button type="button" onClick={() => router.push('/crm/brochures')} className="inline-flex items-center gap-2 text-sm text-[#d3bb73]"><ArrowLeft className="h-4 w-4" /> Lista broszur</button>
+        <h1 className="break-words text-2xl font-light uppercase">{brochure.name}</h1>
+        <p className="text-sm leading-6 text-white/65">Ta broszura jest w archiwum. Zapisane wersje PDF i historia wysyłek nie zostały usunięte. Przywróć ją, aby ponownie edytować treść lub generować PDF.</p>
+        {pdfUrl && <a href={pdfUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-lg bg-white/10 px-4 py-2 text-sm text-[#d3bb73]"><Download className="h-4 w-4" /> Ostatni zapisany PDF</a>}
+        {canManage && <button type="button" onClick={() => setManagementAction('restore')} disabled={Boolean(managementAction)} className="inline-flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm text-[#1c1f33] disabled:opacity-50"><ArchiveRestore className="h-4 w-4" /> Przywróć broszurę</button>}
+      </div>
+      {managementDialog}
+    </main>
+  );
+
   return (
     <main className={`${styles.editor} min-h-screen bg-[#0f1119] p-4 text-[#e5e4e2] lg:p-6`}>
       <div className="mx-auto max-w-[1750px] space-y-5">
@@ -553,11 +630,13 @@ export default function BrochureEditorClient({ brochureId }: { brochureId: strin
             <button type="button" onClick={() => void generatePdf(true)} disabled={!canManage || !canViewResults || Boolean(busy) || !pageRows.some((p) => p.visible)} className="inline-flex items-center gap-2 rounded-lg bg-white/10 px-4 py-2.5 text-sm text-[#d3bb73] disabled:opacity-40">{busy === 'validate' ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />} Sprawdź broszurę</button>
             <button type="button" onClick={() => void generatePdf()} disabled={!canManage || !canViewResults || Boolean(busy) || !pageRows.some((p) => p.visible)} className="inline-flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2.5 text-sm font-medium text-[#1c1f33] disabled:opacity-40">{busy === 'pdf' ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />} {recipient ? 'Generuj PDF dla klienta' : 'Generuj PDF'}</button>
             <ResponsiveActionBar alwaysDropdown disabledBackground actions={[
+              { label: 'Zmień nazwę', icon: <Pencil className="h-4 w-4" />, onClick: () => setManagementAction('rename'), show: canManage, disabled: Boolean(busy) },
               { label: 'Studio stron', icon: <LayoutTemplate className="h-4 w-4" />, onClick: () => document.getElementById('brochure-page-studio')?.scrollIntoView({ behavior: 'smooth', block: 'start' }) },
               { label: busy === 'save' ? 'Zapisywanie…' : 'Zapisz', icon: busy === 'save' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />, onClick: () => void save(), disabled: !canManage || Boolean(busy) },
               { label: `Ostatni PDF v${ownPdfVersion}${ownPdfRecipient ? ` — ${ownPdfRecipient}` : ' — ogólny'}`, icon: <Download className="h-4 w-4" />, onClick: () => { if (pdfUrl) window.open(pdfUrl, '_blank', 'noopener,noreferrer'); }, show: Boolean(pdfUrl) },
               { label: 'Wyślij broszurę', icon: <FileText className="h-4 w-4" />, onClick: () => void openBrochureMail(), disabled: !canManage || !canViewResults || Boolean(busy) },
               { label: 'Utwórz szkic kampanii', icon: <Megaphone className="h-4 w-4" />, onClick: () => void createCampaign(), disabled: !canManage || !canViewResults || dirty || !brochure.current_pdf_path || brochure.modified_after_generation || Boolean(busy) },
+              { label: 'Usuń broszurę', icon: <Trash2 className="h-4 w-4" />, variant: 'danger', onClick: () => setManagementAction('remove'), show: canManage, disabled: Boolean(busy) },
             ]} />
           </div>
         </header>
@@ -618,9 +697,9 @@ export default function BrochureEditorClient({ brochureId }: { brochureId: strin
               <div className="border-b border-[#d3bb73]/10 p-4"><h2 className="text-sm font-medium">Katalog usług</h2><div className="mt-3 flex items-center gap-2 rounded-lg border border-[#d3bb73]/15 bg-[#0f1119] px-3"><Search className="h-4 w-4 text-[#d3bb73]" /><input value={catalogQuery} onChange={(event) => setCatalogQuery(event.target.value)} placeholder="Szukaj usługi…" className={`${styles.search} w-full bg-transparent py-2.5 text-sm outline-none`} /></div></div>
               <div className="max-h-[520px] space-y-2 overflow-y-auto p-2">
                 {catalogProducts.map((product) => {
-                  const imageUrl = product.offer_image_path ? imageUrls[product.offer_image_path] : '';
+                  const imageUrl = product.offer_image_path ? `/bridge/products/thumbnail?id=${encodeURIComponent(product.id)}&w=128&v=${encodeURIComponent(product.offer_image_path)}` : '';
                   const baseAdded = items.some((item) => item.product_id === product.id && !item.product_variant_id);
-                  return <div key={product.id} className="rounded-lg border border-[#d3bb73]/8 bg-[#0f1119] p-3"><div className="flex gap-3">{imageUrl ? <img src={imageUrl} alt="" className="h-12 w-16 rounded object-cover" /> : <div className="flex h-12 w-16 items-center justify-center rounded bg-[#1c1f33]"><ImageIcon className="h-4 w-4 text-[#e5e4e2]/25" /></div>}<div className="min-w-0 flex-1"><div className="truncate text-sm font-medium">{product.name}</div><div className="mt-0.5 text-[11px] text-[#e5e4e2]/35">{product.category?.name || 'Bez kategorii'}</div></div><button type="button" disabled={!canManage || baseAdded || Boolean(busy)} onClick={() => void addProduct(product, null)} className="self-start rounded-md border border-[#d3bb73]/20 p-1.5 text-[#d3bb73] disabled:opacity-25" title="Dodaj produkt bazowy"><Plus className="h-4 w-4" /></button></div>{product.variants.length > 0 && <div className="mt-2 flex flex-wrap gap-1.5">{product.variants.map((variant) => { const added = items.some((item) => item.product_variant_id === variant.id); return <button key={variant.id} type="button" disabled={!canManage || added || Boolean(busy)} onClick={() => void addProduct(product, variant)} className="rounded-full border border-[#d3bb73]/15 px-2.5 py-1 text-[11px] text-[#e5e4e2]/55 disabled:opacity-25">{added ? '✓ ' : '+ '}{variant.name}</button>; })}</div>}</div>;
+                  return <div key={product.id} className="rounded-lg border border-[#d3bb73]/8 bg-[#0f1119] p-3"><div className="flex gap-3">{imageUrl ? <img src={imageUrl} alt="" loading="lazy" decoding="async" className="h-12 w-16 rounded object-cover" /> : <div className="flex h-12 w-16 items-center justify-center rounded bg-[#1c1f33]"><ImageIcon className="h-4 w-4 text-[#e5e4e2]/25" /></div>}<div className="min-w-0 flex-1"><div className="truncate text-sm font-medium">{product.name}</div><div className="mt-0.5 text-[11px] text-[#e5e4e2]/35">{product.category?.name || 'Bez kategorii'}</div></div><button type="button" disabled={!canManage || baseAdded || Boolean(busy)} onClick={() => void addProduct(product, null)} className="self-start rounded-md border border-[#d3bb73]/20 p-1.5 text-[#d3bb73] disabled:opacity-25" title="Dodaj produkt bazowy"><Plus className="h-4 w-4" /></button></div>{product.variants.length > 0 && <div className="mt-2 flex flex-wrap gap-1.5">{product.variants.map((variant) => { const added = items.some((item) => item.product_variant_id === variant.id); return <button key={variant.id} type="button" disabled={!canManage || added || Boolean(busy)} onClick={() => void addProduct(product, variant)} className="rounded-full border border-[#d3bb73]/15 px-2.5 py-1 text-[11px] text-[#e5e4e2]/55 disabled:opacity-25">{added ? '✓ ' : '+ '}{variant.name}</button>; })}</div>}</div>;
                 })}
               </div>
             </div>
@@ -663,6 +742,7 @@ export default function BrochureEditorClient({ brochureId }: { brochureId: strin
           </aside>
         </section>
       </div>
+      {managementDialog}
     </main>
   );
 }

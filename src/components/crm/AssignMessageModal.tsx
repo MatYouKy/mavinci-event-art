@@ -80,7 +80,7 @@ export default function AssignMessageModal({
     try {
       const tableName = messageType === 'contact_form' ? 'contact_messages' : 'received_emails';
 
-      const { error } = await supabase
+      let request = supabase
         .from(tableName)
         .update({
           assigned_to: selectedEmployee,
@@ -88,15 +88,17 @@ export default function AssignMessageModal({
           assigned_by: currentEmployee?.id || null,
         })
         .eq('id', messageId);
-
+      request = currentAssignee ? request.eq('assigned_to', currentAssignee) : request.is('assigned_to', null);
+      const { data, error } = await request.select('id').maybeSingle();
       if (error) throw error;
+      if (!data) throw new Error('Przypisanie już się zmieniło. Odśwież wiadomość.');
 
       showSnackbar('Wiadomość została przypisana', 'success');
       onSuccess();
       onClose();
     } catch (err) {
       console.error('Error assigning message:', err);
-      showSnackbar('Błąd podczas przypisywania wiadomości', 'error');
+      showSnackbar((err as { message?: string })?.message || 'Błąd przypisywania wiadomości', 'error');
     } finally {
       setSaving(false);
     }
@@ -107,7 +109,7 @@ export default function AssignMessageModal({
     try {
       const tableName = messageType === 'contact_form' ? 'contact_messages' : 'received_emails';
 
-      const { error } = await supabase
+      let request = supabase
         .from(tableName)
         .update({
           assigned_to: null,
@@ -115,15 +117,17 @@ export default function AssignMessageModal({
           assigned_by: null,
         })
         .eq('id', messageId);
-
+      request = currentAssignee ? request.eq('assigned_to', currentAssignee) : request.is('assigned_to', null);
+      const { data, error } = await request.select('id').maybeSingle();
       if (error) throw error;
+      if (!data) throw new Error('Przypisanie już się zmieniło. Odśwież wiadomość.');
 
       showSnackbar('Przypisanie zostało usunięte', 'success');
       onSuccess();
       onClose();
     } catch (err) {
       console.error('Error unassigning message:', err);
-      showSnackbar('Błąd podczas usuwania przypisania', 'error');
+      showSnackbar((err as { message?: string })?.message || 'Błąd usuwania przypisania', 'error');
     } finally {
       setSaving(false);
     }

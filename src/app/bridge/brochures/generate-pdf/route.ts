@@ -4,6 +4,7 @@ import { cookies } from 'next/headers';
 import { brochurePalette, parseDecorativePages, parseComposer, resolvedBenefits, requiresPageImage, type BrochureImageBucket } from '@/lib/brochures/decorativePages';
 import { brochureFileName, brochurePageReferences, validateBrochureContent, type BrochureValidationIssue } from '@/lib/brochures/validation';
 import { validatePdfAssets, type BrochureImageSource } from '@/lib/brochures/validatePdfAssets.server';
+import { BROCHURE_PDF_SIZE_LIMIT, BROCHURE_IMAGE_PROFILES, installBrochureImageOptimization } from '@/lib/brochures/optimizePdfImages.server';
 import { createClient } from '@supabase/supabase-js';
 import { chromium } from 'playwright';
 import { loadPdfFont } from '@/lib/brochures/loadPdfFont.server';
@@ -20,15 +21,14 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 180;
 
-const BROCHURE_PDF_SIZE_LIMIT = 50 * 1024 * 1024;
 const formatPdfSize = (bytes: number) =>
-  `${new Intl.NumberFormat('pl-PL', { maximumFractionDigits: 2 }).format(bytes / (1024 * 1024))} MiB`;
+  `${new Intl.NumberFormat('pl-PL', { maximumFractionDigits: 2 }).format(bytes / 1_000_000)} MB`;
 
 const pdfSizeLimitResponse = (fileSizeBytes: number, limitBytes: number, storageRejected = false) =>
   NextResponse.json({
     error: storageRejected
       ? `Magazyn plików odrzucił PDF o rozmiarze ${formatPdfSize(fileSizeBytes)}. Limit broszur wynosi ${formatPdfSize(limitBytes)}. Administrator powinien sprawdzić także globalny limit plików w Supabase. PDF nie został zapisany.`
-      : `PDF ma ${formatPdfSize(fileSizeBytes)}, a dopuszczalny rozmiar broszury wynosi ${formatPdfSize(limitBytes)}. Zmniejsz rozdzielczość zdjęć lub podziel broszurę na mniejsze części. PDF nie został zapisany.`,
+      : `PDF ma ${formatPdfSize(fileSizeBytes)}, a dopuszczalny rozmiar broszury wynosi ${formatPdfSize(limitBytes)}. Automatyczna kompresja zdjęć osiągnęła już bezpieczne minimum jakości. Podziel broszurę na mniejsze części lub ogranicz rozbudowane grafiki wektorowe. PDF nie został zapisany.`,
     code: 'brochure_pdf_size_limit',
     fileSizeBytes,
     limitBytes,
@@ -54,6 +54,20 @@ const asStringArray = (value: unknown) => {
   if (!Array.isArray(value)) return [];
   return value.map((item) => String(item || '').trim()).filter(Boolean);
 };
+
+// Image signing also queries Postgres. Keep large brochures from taking all
+// Storage connections while other CRM requests and Realtime are running.
+async function mapBrochureImages<T, R>(values: T[], mapper: (value: T) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(values.length);
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(4, values.length) }, async () => {
+    while (next < values.length) {
+      const index = next++;
+      results[index] = await mapper(values[index]);
+    }
+  }));
+  return results;
+}
 
 export async function POST(request: Request) {
   let browser: Awaited<ReturnType<typeof chromium.launch>> | null = null;
@@ -238,12 +252,9 @@ export async function POST(request: Request) {
               return { reason: code === '404' || /not found|does not exist/i.test(message) ? 'missing'
                 : ['401', '403'].includes(code) || /permission|not authorized|row.level security|access denied/i.test(message) ? 'access' : 'temporary' };
             }
-            // Logos (including SVG) do not need a raster transformation.
-            if (logo) return { url: original.data.signedUrl, originalUrl: original.data.signedUrl };
-            const transformed = await storage.createSignedUrl(value, 3600, {
-              transform: { width: 1800, height: 2200, resize: 'contain', quality: 85 },
-            }).catch(() => null);
-            return { url: transformed?.data?.signedUrl || original.data.signedUrl, originalUrl: original.data.signedUrl };
+            // Compress in the renderer. Signing once avoids a second Storage
+            // request and an unnecessary remote image transformation.
+            return { url: original.data.signedUrl, originalUrl: original.data.signedUrl };
           } catch { return { reason: 'temporary' }; }
         })());
       }
@@ -282,14 +293,14 @@ export async function POST(request: Request) {
     const bodyFont = (fontsResult.data || []).find((font) => font.role === 'body');
     const bodyFontUrl = bodyFont?.file_url || (bodyFont?.storage_path ? admin.storage.from('company-logos').getPublicUrl(bodyFont.storage_path).data.publicUrl : /\bInter\b/i.test(bodyFont?.family || '') ? new URL('/fonts/Inter-Variable.ttf', request.url).href : null);
     const headingFontUrl = headingFont?.file_url || (headingFont?.storage_path ? admin.storage.from('company-logos').getPublicUrl(headingFont.storage_path).data.publicUrl : null);
-    const snapshotDecorations = await Promise.all(decorativePages.map(async (page) => ({
+    const snapshotDecorations = await mapBrochureImages(decorativePages, async (page) => ({
       ...page, imageUrl: requiresPageImage(page.layout)
         ? await signProductImage(page.imagePath, page.imageBucket, `decorative:${page.id}`)
         : null,
-    })));
+    }));
 
-    const snapshotItems = await Promise.all(
-      (itemsResult.data || []).map(async (row: any) => {
+    const snapshotItems = await mapBrochureImages(
+      itemsResult.data || [], async (row: any) => {
         const product = row.product || {};
         const variant = row.variant || null;
         const benefits = resolvedBenefits(row.custom_benefits, variant?.benefits, product.offer_benefits);
@@ -307,7 +318,7 @@ export async function POST(request: Request) {
           layout: row.page_layout || 'visual',
           category: product.category?.name || null,
         };
-      }),
+      },
     );
 
     if (!snapshotItems.length && !snapshotDecorations.length && composer.hiddenPages.length === 3) {
@@ -410,6 +421,11 @@ export async function POST(request: Request) {
       args: ['--no-sandbox', '--disable-setuid-sandbox', '--font-render-hinting=medium'],
     });
     const page = await browser.newPage();
+    // Match the actual print layout when calculating each image's target size.
+    await page.emulateMedia({ media: 'print' });
+    const imageOptimizer = await installBrochureImageOptimization(page, [
+      logoUrl || '', imageSources.get(logoUrl || '')?.originalUrl || '',
+    ]);
     let assetIssues: BrochureValidationIssue[];
     try {
       assetIssues = await validatePdfAssets(page, buildSalesBrochureHtml(renderSnapshot), references,
@@ -419,7 +435,14 @@ export async function POST(request: Request) {
       // Do not expose Playwright errors containing signed asset URLs.
       throw new BrochureRequestError('Nie udało się zakończyć sprawdzania materiałów broszury. Spróbuj ponownie za chwilę. Nie zmieniaj zdjęć na podstawie tego komunikatu — problem dotyczy działania generatora.', 503);
     }
-    if (assetIssues.length) return validationResponse(assetIssues);
+    if (assetIssues.length) {
+      const failedFiles = new Set(Array.from(imageOptimizer.failedSources).map(url => imageSources.get(url)?.fileName || brochureFileName(url)));
+      return validationResponse(assetIssues.map(issue => failedFiles.has(issue.fileName || '') ? {
+        ...issue, reason: 'temporary' as const,
+        message: 'Nie udało się przygotować pomniejszonej kopii tego obrazu. Pełny oryginał nie zostanie wstawiony do PDF.',
+        remedy: 'Spróbuj ponownie. Jeśli problem wraca dla tego samego pliku, wybierz mniejszy plik JPG, PNG lub WebP. Oryginał w bibliotece nie został zmieniony.',
+      } : issue));
+    }
     // Validate the actual composition after images and fonts settle; never publish clipped copy.
     const issues = await page.evaluate(() => {
       const errors: Array<{ pageKey: string; number: number }> = [];
@@ -452,14 +475,13 @@ export async function POST(request: Request) {
       remedy: 'Otwórz tę stronę. Skróć tekst, zmniejsz hasło albo zmień rozmiar lub położenie pola w Studio stron.',
     })));
     if (validateOnly) return NextResponse.json({ ok: true, issues: [], pageCount: references.length });
-    const pdf = await page.pdf({ format: 'A4', printBackground: true });
 
     // Read the deployed bucket limit: environments may still have an older
     // migration. Do not upload an oversized PDF or create a history entry for it.
     const { data: pdfBucket, error: pdfBucketError } = await admin.storage.getBucket('generated-brochures');
     if (pdfBucketError || !pdfBucket) {
       throw new BrochureRequestError(
-        `PDF ma ${formatPdfSize(pdf.byteLength)}, ale nie udało się odczytać limitu magazynu broszur. Spróbuj ponownie za chwilę. PDF nie został zapisany.`,
+        'Nie udało się odczytać limitu magazynu broszur. Spróbuj ponownie za chwilę. PDF nie został zapisany.',
         503,
       );
     }
@@ -467,6 +489,19 @@ export async function POST(request: Request) {
     const sizeLimit = typeof configuredLimit === 'number' && Number.isFinite(configuredLimit) && configuredLimit > 0
       ? Math.min(BROCHURE_PDF_SIZE_LIMIT, configuredLimit)
       : BROCHURE_PDF_SIZE_LIMIT;
+    let pdf: Buffer | null = null;
+    let compressionPass = 0;
+    try {
+      for (const profile of BROCHURE_IMAGE_PROFILES) {
+        compressionPass++;
+        await imageOptimizer.apply(profile);
+        pdf = await page.pdf({ format: 'A4', printBackground: true });
+        if (pdf.byteLength <= sizeLimit) break;
+      }
+    } catch {
+      throw new BrochureRequestError('Nie udało się zakończyć kompresji obrazów i przygotowania PDF. Spróbuj ponownie. Oryginały i wcześniej zapisane broszury nie zostały zmienione.', 503);
+    }
+    if (!pdf) throw new BrochureRequestError('Nie udało się utworzyć PDF broszury.', 503);
     if (pdf.byteLength > sizeLimit) return pdfSizeLimitResponse(pdf.byteLength, sizeLimit);
 
     const fileName = recipient ? brochureClientPdfFileName(recipient) : `broszura-${slugify(brochure.name)}-${new Date()
@@ -525,6 +560,9 @@ export async function POST(request: Request) {
       storagePath,
       fileName,
       pageCount: references.length,
+      fileSizeBytes: pdf.byteLength,
+      limitBytes: sizeLimit,
+      compressionPass,
       downloadUrl: signed?.signedUrl || null,
     });
   } catch (error: any) {

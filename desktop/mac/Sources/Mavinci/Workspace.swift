@@ -9,6 +9,8 @@ import Network
     @Published var eventRoute: EventRoute?
     @Published var refreshEventToken = UUID()
     @Published var focusedID: String?
+    @Published var focusToken = UUID()
+    @Published var notificationsVisible = false
     @Published var loading = false
     @Published var syncing = false
     @Published var acting = false
@@ -38,7 +40,10 @@ import Network
         }
         monitor.start(queue: DispatchQueue(label: "pl.mavinci.network"))
     }
-    func rows(_ module: Module) -> [Row] { snapshot?.collections[module.rawValue]?.rows ?? [] }
+    func rows(_ module: Module) -> [Row] {
+        if module == .events {return snapshot?.collections[Module.calendar.rawValue]?.rows.filter{$0["kind"]=="event"} ?? []}
+        return snapshot?.collections[module.rawValue]?.rows ?? []
+    }
     func restore() async {
         guard !loading, snapshot == nil, connection.valid else { return }
         loading = true
@@ -99,7 +104,7 @@ import Network
             if snapshot == nil { snapshot = Snapshot(employee: current) }
             verifiedConnection = true; offline = false; error = nil
             compatibilityMode = false
-            for module in modules where module != .day {
+            for module in modules where module != .day && module != .events {
                 guard ticket == generation else { return }
                 do {
                     let previous = snapshot?.collections[module.rawValue] ?? CollectionState()
@@ -164,6 +169,8 @@ import Network
     func allowed(_ command: String, row: Row? = nil) -> Bool {
         guard let employee else { return false }
         switch command {
+        case "contact_update": return employee.canView(.contacts) && employee.has("contacts_manage")
+        case "tender_update", "tender_assign", "tender_inquiry": return employee.canView(.tenders)
         case "task_create": return employee.canView(.tasks) && (employee.has("tasks_create") || employee.has("tasks_manage"))
         case "task_update": return employee.canView(.tasks)
         case "notification_read": return true
@@ -202,7 +209,7 @@ import Network
         generation = UUID()
         // Local sign-out is immediate; server revocation cannot keep data visible.
         backend = nil
-        snapshot = nil; selection = .day; focusedID = nil; eventRoute = nil
+        snapshot = nil; selection = .day; focusedID = nil; eventRoute = nil; notificationsVisible = false
         verifiedConnection = false; offline = false; syncing = false; acting = false; editing = false
         moduleErrors = [:]; compatibilityMode = false; notice = nil
         do { try Vault.delete("session-\(connection.identity)") }
@@ -220,25 +227,40 @@ import Network
             connection = next
         } catch { self.error = friendlyError(error) }
     }
+    func switchSection(_ module:Module) {
+        guard employee?.canView(module)==true else{return}
+        eventRoute=nil;focusedID=nil;notificationsVisible=false;selection=module
+    }
     func eventAPI() -> HTTPBackend? { backend }
+    func persistSnapshot() {if let snapshot {try? cache?.save(snapshot)}}
     func saveEventPage(_ page: EventPageCache) {
         guard employee != nil else { return }
         if snapshot?.eventPages == nil { snapshot?.eventPages = [:] }
         snapshot?.eventPages?[page.event.id] = page
         if let snapshot { try? cache?.save(snapshot) }
     }
-    func showEvent(_ id: String) {
+    func showEvent(_ id: String,tab:EventTab? = nil) {
         guard UUID(uuidString: id) != nil else { return }
-        eventRoute = EventRoute(id: id, origin: selection)
+        eventRoute = EventRoute(id: id, origin: selection, tab:tab)
     }
     func open(_ module: Module, id: String) {
-        if module == .events { showEvent(id); return }
-        let target: Module = module == .tasks && rows(.inquiries).contains(where: { $0.id == id }) ? .inquiries : module
-        guard employee?.canView(target) == true else { return }
-        guard rows(target).contains(where: { $0.id == id }) else {
-            notice = "Powiązana sprawa nie jest dostępna w bieżącym zakresie danych. Odśwież listę lub sprawdź uprawnienia."
-            return
+        Task {await navigate(module,id:id)}
+    }
+    @discardableResult func navigate(_ module:Module,id:String) async -> Bool {
+        let owner=employee
+        guard let owner,owner.canView(module),UUID(uuidString:id) != nil else {notice="Nie masz dostępu do tej sekcji.";return false}
+        if module == .events {showEvent(id);return true}
+        var record=rows(module).first{$0.id==id || (module == .calendar && $0["source_id"]==id)}
+        if record == nil,let backend,!offline {
+            do {record=try await backend.record(module,id:id)}
+            catch {self.error=friendlyError(error);return false}
         }
-        focusedID = id; selection = target
+        guard employee==owner,let record else {notice="Powiązana sprawa nie jest dostępna w bieżącym zakresie danych.";return false}
+        let target:Module = module == .tasks && record.fields["is_inquiry"]?.flag == true ? .inquiries:module
+        guard owner.canView(target) else {return false}
+        if snapshot?.collections[target.rawValue] == nil {snapshot?.collections[target.rawValue]=CollectionState()}
+        if !rows(target).contains(where:{$0.id==record.id}) {snapshot?.collections[target.rawValue]?.buckets["linked"]=Array((snapshot?.collections[target.rawValue]?.buckets["linked"] ?? []).filter{$0.id != record.id})+[record]}
+        eventRoute=nil;focusedID=record.id;selection=target;focusToken=UUID()
+        return true
     }
 }

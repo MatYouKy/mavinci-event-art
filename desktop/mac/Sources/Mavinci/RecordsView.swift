@@ -1,117 +1,109 @@
 import SwiftUI
 import AppKit
 
-struct RecordsView: View {
-    let module: Module
-    @EnvironmentObject var state: Workspace
-    @State private var search = ""
-    @State private var selection: String?
-    @State private var sortOrder = [KeyPathComparator(\Row.title)]
-    @State private var onlyMine = false
-    @State private var onlyOpen = true
-    @State private var editingTask: Row?
-    @State private var showEditor = false
-    var rows: [Row] {
-        let phrase = search.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: Locale(identifier: "pl_PL"))
-        return state.rows(module).filter { row in
-            let haystack = [row.title, row.email, row.phone, row["offer_number"], row.details["client_text"]?.text ?? ""].joined(separator: " ").folding(options: [.diacriticInsensitive, .caseInsensitive], locale: Locale(identifier: "pl_PL"))
-            if !phrase.isEmpty && !haystack.contains(phrase) { return false }
-            if onlyMine && module == .inquiries && row["inquiry_owner_id"] != state.employee?.id { return false }
-            if onlyOpen {
-                if [.inquiries, .tasks].contains(module) && ["completed", "done", "cancelled", "won", "lost"].contains(row.status) { return false }
-                if module == .notifications && row.fields["is_read"]?.flag == true { return false }
-            }
+@MainActor struct RecordsView: View {
+    let module:Module
+    @EnvironmentObject var state:Workspace
+    @State private var search=""
+    @State private var selection:String?
+    @State private var sortOrder=[KeyPathComparator(\Row.title)]
+    @State private var onlyMine=false
+    @State private var onlyOpen=true
+    @State private var includeHidden=false
+    @State private var status=""
+    @State private var modalID:String?
+    @State private var editingContact=false
+    private var archivable:Bool{module == .events || module == .offers}
+    private var rows:[Row] {
+        state.rows(module).filter{row in
+            if archivable && !includeHidden && WorkspacePresentation.isArchived(row,module:module){return false}
+            if !status.isEmpty && row["status"] != status{return false}
+            let text=[row.title,row.email,row.phone,row["offer_number"],row["description"],row.details["client_text"]?.text ?? ""].joined(separator:" ")
+            if !search.isEmpty && !text.localizedStandardContains(search){return false}
+            if onlyMine && module == .inquiries && row["inquiry_owner_id"] != state.employee?.id{return false}
+            if onlyOpen && module == .inquiries && ["completed","done","cancelled","won","lost"].contains(row.status){return false}
             return true
-        }.sorted(using: sortOrder)
+        }.sorted(using:sortOrder)
     }
-    var selected: Row? { state.rows(module).first { $0.id == selection } }
-    var body: some View {
-        VStack(spacing: 0) {
-            if let problem = state.moduleErrors[module.rawValue] {
-                MessageBar(text: problem, warning: true) { state.moduleErrors.removeValue(forKey: module.rawValue) }
-            }
-            HStack {
-                Text("\(rows.count) pozycji").font(.callout).foregroundStyle(.secondary)
-                if module == .inquiries { Toggle("Tylko moje", isOn: $onlyMine).toggleStyle(.checkbox) }
-                if [.inquiries, .tasks, .notifications].contains(module) {
-                    Toggle(module == .notifications ? "Nieprzeczytane" : "Otwarte", isOn: $onlyOpen).toggleStyle(.checkbox)
+    private var selected:Row?{state.rows(module).first{$0.id==selection}}
+    private var statusCodes:[String]{Set(state.rows(module).map{$0["status"]}.filter{!$0.isEmpty}).sorted()}
+    var body:some View {
+        GeometryReader { outer in
+            let wide=outer.size.width>=1000
+            VStack(spacing:0) {
+                if let problem=state.moduleErrors[module == .events ? "calendar":module.rawValue] {
+                    MessageBar(text:problem,warning:true){state.moduleErrors.removeValue(forKey:module.rawValue)}
                 }
-                Spacer()
-                if let date = state.snapshot?.collections[module.rawValue]?.lastSync {
-                    Text("Odświeżono \(date.formatted(date: .omitted, time: .shortened))").font(.caption).foregroundStyle(.secondary)
-                }
-            }.padding(12).background(.bar)
-            GeometryReader { available in
-              HSplitView {
-                Table(rows, selection: $selection, sortOrder: $sortOrder) {
-                    TableColumn(module == .contacts ? "Imię i nazwisko" : "Nazwa", value: \.title) { row in
-                        HStack(spacing: 6) {
-                            if module == .notifications && row.fields["is_read"]?.flag != true { Circle().fill(.blue).frame(width: 6, height: 6).accessibilityLabel("Nieprzeczytane") }
-                            Text(row.title).lineLimit(2)
-                        }
-                    }.width(min: 210, ideal: 340)
-                    TableColumn("Stan", value: \.status) { row in
-                        Text(module == .notifications ? (row.fields["is_read"]?.flag == true ? "Przeczytane" : "Nowe") : Labels.text(row.status)).foregroundStyle(.secondary)
-                    }.width(min: 100, ideal: 130, max: 180)
-                    TableColumn(module == .contacts ? "Telefon" : "Termin", value: \.date) { row in
-                        Text(module == .contacts ? (row.phone.isEmpty ? "—" : row.phone) : Labels.date(row.date)).monospacedDigit()
-                    }.width(min: 140, ideal: 160, max: 200)
-                }
-                .contextMenu(forSelectionType: String.self) { ids in
-                    if let id = ids.first, let row = rows.first(where: { $0.id == id }) {
-                        Button("Pokaż szczegóły") { if module == .events { state.showEvent(id) } else { selection = id } }
-                        if module == .tasks {
-                            Button("Edytuj zadanie") { edit(row) }.disabled(!state.canWrite || !state.allowed("task_update", row: row))
-                        }
-                        if module == .notifications {
-                            Button("Oznacz jako przeczytane") { Task { await state.perform("notification_read", row: row) } }.disabled(!state.canWrite || row.fields["is_read"]?.flag == true)
-                        }
-                        Divider()
-                        Button("Kopiuj nazwę") { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(row.title, forType: .string) }
+                HStack(spacing:14) {
+                    Text("\(rows.count) pozycji").font(.callout).foregroundStyle(.secondary)
+                    if module == .inquiries {
+                        Toggle("Tylko moje",isOn:$onlyMine).toggleStyle(.checkbox)
+                        Toggle("Otwarte",isOn:$onlyOpen).toggleStyle(.checkbox)
                     }
-                } primaryAction: { ids in
-                    if let id = ids.first { if module == .events { state.showEvent(id) } else { selection = id } }
+                    if archivable {
+                        Picker("Status",selection:$status){Text("Wszystkie statusy").tag("");ForEach(statusCodes,id:\.self){Text(Labels.text($0)).tag($0)}}.frame(maxWidth:230)
+                        Toggle(search.isEmpty ? "Pokaż również ukryte":"Szukaj również w ukrytych",isOn:$includeHidden).toggleStyle(.checkbox)
+                    }
+                    Spacer(minLength:0)
+                    if module == .contacts {
+                        Label("Kontakty CRM",systemImage:"building.2").font(.caption).foregroundStyle(.secondary)
+                        Button("Edytuj",systemImage:"square.and.pencil"){editingContact=true}.keyboardShortcut("e").disabled(selected==nil || !state.canWrite || !state.allowed("contact_update"))
+                    }
+                }.padding(.horizontal,14).frame(height:46).background(.bar)
+                GeometryReader { available in
+                    let side=wide && selected != nil && module != .events
+                    let sideWidth:CGFloat=350
+                    let tableWidth=max(1,available.size.width-(side ? sideWidth+1:0))
+                    HStack(alignment:.top,spacing:0) {
+                        table.frame(width:tableWidth,height:available.size.height,alignment:.topLeading)
+                        if side,let selected {
+                            Divider()
+                            inspector(selected).frame(width:sideWidth,height:available.size.height,alignment:.topLeading)
+                        }
+                    }.frame(width:available.size.width,height:available.size.height,alignment:.topLeading)
                 }
-                .overlay { if rows.isEmpty { ContentUnavailableView(search.isEmpty ? "Brak pozycji" : "Brak wyników", systemImage: module.symbol, description: Text(search.isEmpty ? "Odśwież dane lub zmień filtry." : "Zmień szukany tekst.")) } }
-                .frame(minWidth: 540, maxHeight: .infinity)
-                if module != .events, let row = selected {
-                    RecordInspector(row: row, module: module, editTask: { edit(row) }).id(row.id)
-                        .frame(minWidth: 320, idealWidth: 370, maxWidth: 480)
-                } else if module != .events {
-                    ContentUnavailableView("Wybierz pozycję", systemImage: "cursorarrow.click", description: Text("Zaznacz wiersz, aby zobaczyć szczegóły i dostępne czynności."))
-                        .frame(minWidth: 320, idealWidth: 370, maxWidth: 480)
+                if module == .contacts {
+                    Text("Wyłącznie kartoteka CRM. Aplikacja nie odczytuje ani nie łączy prywatnych kontaktów z telefonu lub Maca.").font(.caption).foregroundStyle(.secondary).frame(maxWidth:.infinity,alignment:.leading).padding(10).background(.bar)
                 }
-              }.frame(width: available.size.width, height: available.size.height)
-            }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            if [.contacts, .offers, .tenders].contains(module) {
-                Text("Pierwsza wersja: lista i podgląd danych. Tworzenie oraz edycja tego modułu są w kolejnych etapach.")
-                    .font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading).padding(10).background(.bar)
+            }.frame(width:outer.size.width,height:outer.size.height,alignment:.topLeading)
+            .onChange(of:selection){_,id in
+                guard let id else{return}
+                if module == .events{state.showEvent(id)}else if !wide{modalID=id}
+            }
+            .onChange(of:wide){_,value in if value{modalID=nil}else if let selection{modalID=selection}}
+            .onAppear{reveal(wide:wide)}
+            .onChange(of:state.focusToken){_,_ in reveal(wide:wide)}
+        }.navigationTitle(module.title).searchable(text:$search,prompt:"Szukaj w tej sekcji")
+        .sheet(isPresented:Binding(get:{modalID != nil},set:{if !$0{modalID=nil}})) {
+            if let row=state.rows(module).first(where:{$0.id==modalID}) {
+                VStack(spacing:0){HStack{Text("Szczegóły").font(.headline);Spacer();Button("Zamknij"){modalID=nil}.keyboardShortcut(.cancelAction)}.padding();inspector(row)}.frame(width:620,height:660)
+                    .sheet(isPresented:$editingContact){ContactEditor(contactID:row.id)}
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .navigationTitle(module.title)
-        .searchable(text: $search, prompt: "Szukaj w tej sekcji")
-        .toolbar {
-            if module == .tasks {
-                ToolbarItem {
-                    Button { editingTask = nil; showEditor = true } label: { Label("Nowe zadanie", systemImage: "plus") }
-                        .keyboardShortcut("n").disabled(!state.canWrite || !state.allowed("task_create"))
-                }
-                ToolbarItem {
-                    Button { if let selected { edit(selected) } } label: { Label("Edytuj", systemImage: "square.and.pencil") }
-                        .keyboardShortcut("e").disabled(selected == nil || !state.canWrite)
-                }
-            }
+        .sheet(isPresented:Binding(get:{editingContact && modalID==nil},set:{editingContact=$0})) {
+            if let selected{ContactEditor(contactID:selected.id)}
         }
-        .sheet(isPresented: $showEditor) { TaskEditor(row: editingTask) }
-        .onAppear { revealTarget() }
-        .onChange(of: state.focusedID) { _, _ in revealTarget() }
-        .onChange(of: selection) { _, id in if module == .events, let id { state.showEvent(id) } }
     }
-    private func edit(_ row: Row) { editingTask = row; showEditor = true }
-    private func revealTarget() {
-        guard let id = state.focusedID else { return }
-        onlyOpen = false; onlyMine = false; search = ""; selection = id
+    private var table:some View {
+        Table(rows,selection:$selection,sortOrder:$sortOrder) {
+            TableColumn(module == .contacts ? "Imię i nazwisko":"Nazwa",value:\.title){row in Text(row.title).lineLimit(2)}.width(min:230,ideal:420)
+            TableColumn("Stan",value:\.status){row in Text(Labels.text(row.status)).foregroundStyle(.secondary)}.width(min:100,ideal:140,max:180)
+            TableColumn(module == .contacts ? "Telefon":"Termin",value:\.date){row in Text(module == .contacts ? (row.phone.isEmpty ? "—":row.phone):Labels.date(row.date)).monospacedDigit()}.width(min:135,ideal:160,max:190)
+        }.contextMenu(forSelectionType:String.self){ids in
+            if let id=ids.first {
+                Button("Pokaż szczegóły"){selection=id}
+                if module == .contacts{Button("Edytuj kontakt CRM"){selection=id;editingContact=true}.disabled(!state.canWrite || !state.allowed("contact_update"))}
+            }
+        }primaryAction:{ids in if let id=ids.first{selection=id;if module == .events{state.showEvent(id)}}}
+        .overlay{if rows.isEmpty{ContentUnavailableView("Brak pozycji",systemImage:module.symbol,description:Text(archivable ? "Zmień filtry lub uwzględnij ukryte rekordy.":"Zmień wyszukiwanie lub odśwież dane."))}}
+    }
+    private func inspector(_ row:Row)->some View {
+        RecordInspector(row:row,module:module,editTask:{},editContact:module == .contacts ? {editingContact=true}:nil)
+    }
+    private func reveal(wide:Bool) {
+        guard let id=state.focusedID,state.rows(module).contains(where:{$0.id==id})else{return}
+        search="";status="";includeHidden=true;onlyOpen=false;onlyMine=false;selection=id
+        if !wide && module != .events{modalID=id}
     }
 }
 
@@ -119,6 +111,7 @@ struct RecordInspector: View {
     let row: Row
     let module: Module
     let editTask: () -> Void
+    var editContact: (() -> Void)? = nil
     @EnvironmentObject var state: Workspace
     @State private var followupSheet = false
     var body: some View {
@@ -129,6 +122,10 @@ struct RecordInspector: View {
                 if module != .contacts { field("Termin", Labels.date(row.date)) }
                 if !row["description"].isEmpty { field("Opis", row["description"]) }
                 if !row["message"].isEmpty { field("Treść", row["message"]) }
+                if module == .contacts, let editContact {
+                    Button("Edytuj kontakt CRM",systemImage:"square.and.pencil",action:editContact).disabled(!state.canWrite || !state.allowed("contact_update"))
+                    field("Stanowisko",row["position"]);field("Adres",row["address"]);field("Miejscowość",row["city"]);field("Kod pocztowy",row["postal_code"]);field("Kraj",row["country"]);field("Notatki",row["notes"])
+                }
                 if !row.phone.isEmpty {
                     field("Telefon", row.phone)
                     Button("Zadzwoń", systemImage: "phone") { openContact("tel", value: row.phone) }.disabled(state.offline)

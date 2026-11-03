@@ -121,6 +121,10 @@ export function OfferPage({
   const { employee, isAdmin } = useCurrentEmployee();
   const { showSnackbar } = useSnackbar();
 
+  const [catalogData, setCatalogData] = useState({ products, categories });
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [catalogError, setCatalogError] = useState('');
+  const [catalogAttempt, setCatalogAttempt] = useState(0);
   const [activeTab, setActiveTab] = useState<Tab>((searchParams.get('tab') as Tab) || 'offers');
   const [loading, setLoading] = useState(false);
 
@@ -165,7 +169,26 @@ export function OfferPage({
 
   useEffect(() => {
     filterProducts();
-  }, [productSearch, categoryFilter, products]);
+  }, [productSearch, categoryFilter, catalogData.products]);
+
+  useEffect(() => { setCatalogData({ products, categories }); }, [products, categories]);
+  useEffect(() => {
+    if (activeTab !== 'catalog') return;
+    const controller = new AbortController();
+    setCatalogLoading(true);
+    setCatalogError('');
+    void (async () => {
+      const [categoryResult, productResult] = await Promise.all([
+        supabase.from('event_categories').select('*').eq('is_active', true).order('order_index').abortSignal(controller.signal),
+        supabase.from('offer_products').select(`*,category:event_categories(id,name,icon_id,custom_icon:custom_icons(id,name,svg_code,preview_color)),variants:offer_product_variants(id,product_id,name,price_net,price_gross,is_recommended,is_active,display_order,offer_image_path,offer_image_alt)`).order('display_order').abortSignal(controller.signal),
+      ]);
+      if (controller.signal.aborted) return;
+      if (categoryResult.error || productResult.error) setCatalogError('Nie udało się wczytać katalogu. Spróbuj ponownie.');
+      else setCatalogData({ categories: categoryResult.data as any || [], products: productResult.data as any || [] });
+      setCatalogLoading(false);
+    })();
+    return () => controller.abort();
+  }, [activeTab, catalogAttempt, products, categories]);
 
   // Filter functions
   const filterOffers = () => {
@@ -183,7 +206,7 @@ export function OfferPage({
   };
 
   const filterProducts = () => {
-    let filtered = [...products];
+    let filtered = [...catalogData.products];
 
     if (productSearch) {
       filtered = filtered.filter(
@@ -360,10 +383,12 @@ export function OfferPage({
         />
       )}
 
-      {activeTab === 'catalog' && (
+      {activeTab === 'catalog' && catalogLoading && <p className="p-4 text-white/60">Wczytywanie katalogu…</p>}
+      {activeTab === 'catalog' && catalogError && <button className="p-4 text-red-400" onClick={() => setCatalogAttempt(value => value + 1)}>{catalogError}</button>}
+      {activeTab === 'catalog' && !catalogLoading && !catalogError && (
         <CatalogTab
           products={filteredProducts}
-          categories={categories}
+          categories={catalogData.categories}
           productSearch={productSearch}
           setProductSearch={setProductSearch}
           categoryFilter={categoryFilter}

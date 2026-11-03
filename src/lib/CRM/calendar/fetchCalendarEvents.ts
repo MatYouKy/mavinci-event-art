@@ -4,6 +4,10 @@ import { cookies } from 'next/headers';
 export async function fetchCalendarEventsServer() {
   const supabase = createSupabaseServerClient(cookies());
 
+  const today = new Date();
+  const start = new Date(today.getFullYear(), today.getMonth(), -6).toISOString();
+  const end = new Date(today.getFullYear(), today.getMonth() + 1, 8).toISOString();
+
   // Opcjonalnie: upewnij się, że jest user
   const {
     data: { user },
@@ -50,6 +54,8 @@ export async function fetchCalendarEventsServer() {
       )
     `,
     )
+    .lt('event_date', end)
+    .or(`event_end_date.gte.${start},and(event_end_date.is.null,event_date.gte.${start})`)
     .order('event_date', { ascending: true });
 
   if (error) {

@@ -9,6 +9,11 @@ import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const PAIRS = [
+  ['src/lib/CRM/messages/salesContext.ts', 'mobile/src/lib/messageSalesContext.ts'],
+  ['src/lib/CRM/refreshQueue.ts', 'mobile/src/lib/refreshQueue.ts'],
+  ['src/lib/CRM/messages/unreadCounts.ts', 'mobile/src/lib/unreadCounts.ts'],
+  ['src/lib/CRM/notifications/notificationFeed.ts', 'mobile/src/lib/notificationFeed.ts'],
+  ['src/lib/CRM/messages/attachmentPreview.ts', 'mobile/src/lib/attachmentPreview.ts'],
   ['src/lib/CRM/messages/mailboxPreferences.ts', 'mobile/src/lib/mailboxPreferences.ts'],
   ['src/lib/CRM/chat/chatReadState.ts', 'mobile/src/lib/chatReadState.ts'],
   ['src/lib/CRM/calendar/publicHolidays.ts', 'mobile/src/lib/publicHolidays.ts'],

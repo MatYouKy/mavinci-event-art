@@ -54,7 +54,7 @@ export default function BrochureImagePicker({ emptyLabel = 'Bez zdjęcia', broch
     setUploadName(file.name); setUploading(true); onBusy(true);
     try {
       await validateUploadedImage(file);
-      const optimized = await optimizeOfferImage(file, { maxWidth: 2200, maxHeight: 3000, quality: .9 });
+      const optimized = await optimizeOfferImage(file, { maxWidth: 1600, maxHeight: 2200, quality: .8, outputType: 'image/webp' });
       if (optimized !== file) await validateUploadedImage(optimized);
       const extension = optimized.type === 'image/png' ? 'png' : optimized.type === 'image/webp' ? 'webp' : 'jpg';
       const nextPath = `assets/brochures/${brochureId}/${crypto.randomUUID()}.${extension}`;

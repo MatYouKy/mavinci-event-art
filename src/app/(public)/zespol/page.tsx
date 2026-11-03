@@ -115,8 +115,8 @@ export default async function TeamPage() {
       }
     : undefined;
 
-  // Zespół: getTeamMembers (serwer). Bez logowania tabela employees nie jest dostępna — pola strony daje widok
-  // public.website_team_members (20261101190000_security_p0).
+  // Serwer udostępnia wyłącznie publiczne pola pracowników z show_on_website=true.
+  // Ten sam odczyt obsługuje stronę główną oraz /bridge/team-members.
   const teamMembers = await getTeamMembersCached();
 
   return (

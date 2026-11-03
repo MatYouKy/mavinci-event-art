@@ -1,4 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import MessageInquiryBadge from '../components/MessageInquiryBadge';
+import { readMailboxUnreadCounts } from '../lib/unreadCounts';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,8 +11,9 @@ import {
   RefreshControl,
   ScrollView,
 } from 'react-native';
+import { readMessageSalesContext, hasMessageInquiry, salesAiLabel, type MessageSalesContext } from '../lib/messageSalesContext';
 import { Feather } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { colors, spacing, typography, borderRadius } from '../theme';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -18,9 +21,10 @@ import PermissionGate from '../components/PermissionGate';
 import { humanizeMessageEnums } from '../lib/messageLabels';
 import { inboxMailboxIds, mailboxFilter } from '../lib/mailboxPreferences';
 
-type InboxTab = 'email' | 'forms';
+type InboxTab = 'email' | 'trash' | 'forms';
 
 interface EmailMessage {
+  sales?: MessageSalesContext;
   id: string;
   email_account_id: string;
   subject: string | null;
@@ -97,6 +101,11 @@ function MessagesContent() {
   const { employee } = useAuth();
   const [activeTab, setActiveTab] = useState<InboxTab>('email');
   const [emails, setEmails] = useState<EmailMessage[]>([]);
+  const emailsRef = useRef(emails);
+  emailsRef.current = emails;
+  const scope = `${employee?.id}:${activeTab}`;
+  const scopeRef = useRef(scope);
+  scopeRef.current = scope;
   const [forms, setForms] = useState<FormMessage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -124,16 +133,7 @@ function MessagesContent() {
     const list = ((data || []) as Mailbox[]).sort((a, b) =>
       (order[a.account_type] ?? 9) - (order[b.account_type] ?? 9) || a.account_name.localeCompare(b.account_name));
     setMailboxes(list);
-    const counts = await Promise.all(list.map(async (mailbox) => {
-      const { count } = await supabase
-        .from('received_emails')
-        .select('id', { count: 'exact', head: true })
-        .eq('email_account_id', mailbox.id)
-        .eq('is_read', false)
-        .is('deleted_at', null);
-      return [mailbox.id, count || 0] as const;
-    }));
-    setUnreadByMailbox(Object.fromEntries(counts));
+    setUnreadByMailbox(await readMailboxUnreadCounts(supabase, list.map(mailbox => mailbox.id)));
     return list;
   }, [employee?.id]);
 
@@ -145,22 +145,24 @@ function MessagesContent() {
     setErrorMessage(null);
 
     try {
-      if (activeTab === 'email') {
+      if (activeTab !== 'forms') {
         const list = await loadMailboxes();
         const visibleIds = list.map((mailbox) => mailbox.id);
         const scope = selectedMailbox !== 'all' && visibleIds.includes(selectedMailbox) ? [selectedMailbox] : visibleIds;
         if (selectedMailbox !== 'all' && !visibleIds.includes(selectedMailbox)) setSelectedMailbox('all');
         // Pusta lista skrzynek = brak wiadomości (nigdy zapytanie bez filtra skrzynek).
-        const { data, error } = await supabase
+        let query = supabase
           .from('received_emails')
           .select('id, email_account_id, subject, from_address, received_date, is_read, body_text, body_html')
           .in('email_account_id', mailboxFilter(scope))
-          .is('deleted_at', null)
           .order('received_date', { ascending: false })
           .limit(50);
+        query = activeTab === 'trash' ? query.not('deleted_at', 'is', null) : query.is('deleted_at', null);
+        const { data, error } = await query;
 
         if (error) throw error;
-        setEmails((data || []) as EmailMessage[]);
+        const sales = await readMessageSalesContext(supabase, (data || []).map(m => ({ id: m.id, type: 'received' })));
+        setEmails((data || []).map(m => ({ ...m, sales: sales[`received:${m.id}`] })) as EmailMessage[]);
       } else {
         const [contactResult, webhookResult] = await Promise.all([
           supabase
@@ -212,9 +214,29 @@ function MessagesContent() {
     }
   }, [activeTab, employee?.id, loadMailboxes, selectedMailbox]);
 
-  useEffect(() => {
-    fetchMessages();
-  }, [fetchMessages]);
+  useFocusEffect(useCallback(() => {
+    void fetchMessages();
+  }, [fetchMessages]));
+
+  useFocusEffect(useCallback(() => {
+    let active = true, busy = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const refresh = async () => {
+      if (!active || busy) return;
+      busy = true;
+      const requestedScope = scopeRef.current;
+      try {
+        const context = await readMessageSalesContext(supabase, emailsRef.current.map(m => ({ type: 'received', id: m.id })));
+        if (active && requestedScope === scopeRef.current) setEmails(current => current.map(m => ({ ...m, sales: context[`received:${m.id}`] || m.sales })));
+      } finally { busy = false; }
+    };
+    const schedule = () => { clearTimeout(timer); timer = setTimeout(() => void refresh(), 400); };
+    const channel = supabase.channel('mobile-mail-sales')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks', filter: 'is_inquiry=eq.true' }, schedule)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'email_ai_qualifications' }, schedule)
+      .subscribe();
+    return () => { active = false; clearTimeout(timer); void supabase.removeChannel(channel); };
+  }, [employee?.id]));
 
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
@@ -253,6 +275,8 @@ function MessagesContent() {
           {showMailbox && !!mailboxName(item.email_account_id) && (
             <Text style={styles.mailboxLabel} numberOfLines={1}>{mailboxName(item.email_account_id)}</Text>
           )}
+          {hasMessageInquiry(item.sales) && item.sales?.inquiries.map(i => <MessageInquiryBadge key={i.id} inquiry={i} />)}
+          {hasMessageInquiry(item.sales) && !!item.sales?.aiStatus && <Text style={styles.mailboxLabel}>{salesAiLabel(item.sales.aiStatus)}</Text>}
           {!!preview && <Text style={styles.messageSnippet} numberOfLines={2}>{preview}</Text>}
         </View>
         {!item.is_read ? <View style={styles.unreadDot} /> : <Feather name="chevron-right" size={16} color={colors.text.tertiary} />}
@@ -301,7 +325,7 @@ function MessagesContent() {
     );
   };
 
-  const data = activeTab === 'email' ? emails : forms;
+  const data = activeTab !== 'forms' ? emails : forms;
 
   return (
     <View style={styles.container}>
@@ -320,9 +344,13 @@ function MessagesContent() {
           <Feather name="file-text" size={16} color={activeTab === 'forms' ? colors.background.primary : colors.text.secondary} />
           <Text style={[styles.tabText, activeTab === 'forms' && styles.tabTextActive]}>Formularze WWW</Text>
         </TouchableOpacity>
+        <TouchableOpacity style={[styles.tab, activeTab === 'trash' && styles.tabActive]} onPress={() => setActiveTab('trash')}>
+          <Feather name="trash-2" size={16} color={activeTab === 'trash' ? colors.background.primary : colors.text.secondary} />
+          <Text style={[styles.tabText, activeTab === 'trash' && styles.tabTextActive]}>Kosz</Text>
+        </TouchableOpacity>
       </View>
 
-      {activeTab === 'email' && mailboxes.length > 1 && (
+      {activeTab !== 'forms' && mailboxes.length > 1 && (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.mailboxBar}
           contentContainerStyle={styles.mailboxBarContent}>
           {[{ id: 'all', account_name: 'Wszystkie' } as Pick<Mailbox, 'id' | 'account_name'>, ...mailboxes].map((mailbox) => {
@@ -352,7 +380,7 @@ function MessagesContent() {
           data={data as any[]}
           key={activeTab}
           keyExtractor={(item) => item.id}
-          renderItem={activeTab === 'email' ? (renderEmail as any) : (renderForm as any)}
+          renderItem={activeTab !== 'forms' ? (renderEmail as any) : (renderForm as any)}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -364,12 +392,12 @@ function MessagesContent() {
           ListHeaderComponent={errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
           ListEmptyComponent={
             <View style={styles.emptyState}>
-              <Feather name={activeTab === 'email' ? 'inbox' : 'file-text'} size={48} color={colors.text.tertiary} />
+              <Feather name={activeTab !== 'forms' ? 'inbox' : 'file-text'} size={48} color={colors.text.tertiary} />
               <Text style={styles.emptyText}>
-                {activeTab === 'email'
+                {activeTab !== 'forms'
                   ? mailboxes.length === 0
                     ? 'Brak skrzynek. Sprawdź Ustawienia → Skrzynki pocztowe.'
-                    : 'Brak wiadomości e-mail'
+                    : activeTab === 'trash' ? 'Kosz jest pusty' : 'Brak wiadomości e-mail'
                   : 'Brak wiadomości z formularzy'}
               </Text>
             </View>

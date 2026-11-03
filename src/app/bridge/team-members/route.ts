@@ -1,47 +1,22 @@
 import { NextResponse } from 'next/server';
-import { revalidatePath } from 'next/cache';
-import { supabase } from '@/lib/supabase/browser';
+import { getTeamMembers } from '@/lib/Pages/Home/getTeamMembers';
 
-export async function GET(request: Request) {
+// Re-read publication settings on each request. Query parameters (including
+// legacy ?all=true) must never expand this public endpoint's employee scope.
+export const dynamic = 'force-dynamic';
+
+export async function GET() {
   try {
-    // Pracownicy ze strony „Zespół” — widok z polami publicznymi (bez logowania tabela employees jest niedostępna).
-    const { data, error } = await supabase
-      .from('website_team_members')
-      .select(
-        'id, name, surname, nickname, email, avatar_url, avatar_metadata, occupation, website_bio, linkedin_url, instagram_url, facebook_url, order_index, created_at',
-      )
-      .order('order_index', { ascending: true })
-      .order('created_at', { ascending: true });
-
-    if (error) {
-      console.error('Error fetching employees:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-
-    // Transform employees data to match team_members structure for compatibility
-    const teamMembers = (data || []).map((emp: any, index: number) => ({
-      id: emp.id,
-      name: `${emp.name || ''} ${emp.surname || ''}`.trim() || emp.nickname || 'Pracownik',
-      position: emp.occupation || '',
-      role: emp.occupation || '',
-      email: emp.email,
-      image: emp.avatar_url,
-      image_metadata: emp.avatar_metadata,
-      alt: `${emp.name || ''} ${emp.surname || ''}`.trim(),
-      order_index: index,
-      bio: emp.website_bio,
-      linkedin: emp.linkedin_url,
-      instagram: emp.instagram_url,
-      facebook: emp.facebook_url,
-      is_visible: true,
-    }));
-
-    return NextResponse.json(teamMembers);
-  } catch (error) {
-    console.error('Unexpected error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return NextResponse.json(await getTeamMembers(), {
+      headers: { 'Cache-Control': 'no-store' },
+    });
+  } catch {
+    // Database details are logged on the server by getTeamMembers, not exposed publicly.
+    return NextResponse.json({ error: 'Nie udało się pobrać zespołu.' }, {
+      status: 500,
+      headers: { 'Cache-Control': 'no-store' },
+    });
   }
 }
 
-// POST removed - use /crm/employees to add new employees instead
-// This endpoint is read-only for displaying website team members
+// Read-only endpoint. Employee edits remain protected by CRM permissions and RLS.

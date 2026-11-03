@@ -4,6 +4,7 @@ import nodemailer from 'nodemailer';
 import dotenv from 'dotenv';
 import { ImapFlow } from 'imapflow';
 import { registerAttachmentRoute } from './imap-attachments.js';
+import { registerTrashRoute } from './imap-trash.js';
 import { timingSafeEqual } from 'node:crypto';
 import { brochureAttachmentsConfigured, prepareRelayAttachments } from './brochure-attachments.js';
 
@@ -296,12 +297,13 @@ app.post('/api/imap/read-state', verifyAuth, async (req, res) => {
 });
 
 registerAttachmentRoute(app, verifyAuth);
+registerTrashRoute(app, verifyAuth);
 
 app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'smtp-relay-worker',
-    capabilities: ['imap-attachments-v1'],
+    capabilities: ['imap-attachments-v1', 'imap-trash-v1'],
     timestamp: new Date().toISOString(),
   });
 });

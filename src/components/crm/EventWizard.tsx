@@ -149,7 +149,7 @@ export default function EventWizard({
   const [loading, setLoading] = useState(false);
   const [createdEventId, setCreatedEventId] = useState<string | null>(null);
   const [currentEmployeeId, setCurrentEmployeeId] = useState<string | null>(null);
-  const { addEmployee } = useEventTeam(createdEventId as string);
+  const { addEmployee } = useEventTeam(createdEventId || '', isOpen && Boolean(createdEventId));
   const [createEventMutation] = useCreateEventMutation();
 
   const { list: employeesList } = useEmployees({ activeOnly: true });

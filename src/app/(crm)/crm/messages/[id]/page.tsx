@@ -1,4 +1,7 @@
 'use client';
+import { canClaimMessageInquiry } from '@/lib/CRM/messages/salesContext';
+import { useMessageSalesContext } from '@/hooks/useMessageSalesContext';
+import MessageSalesBadge from '@/components/crm/MessageSalesBadge';
 
 import { formatSystemSubject } from '@/lib/ui/systemLabels';
 import InquiryTypeBadges from '@/components/crm/inquiries/InquiryTypeBadges';
@@ -10,6 +13,8 @@ import {
   useMarkMessageAsReadMutation,
   useToggleStarMessageMutation,
   useDeleteMessageMutation,
+  useRestoreMessageMutation,
+  useGetMailboxTrashPermissionsQuery,
 } from '@/store/api/messagesApi';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -32,7 +37,7 @@ import {
   MailCheck,
 } from 'lucide-react';
 import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
-import { useState, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import ComposeEmailModal from '@/components/crm/ComposeEmailModal';
 import AssignMessageModal from '@/components/crm/AssignMessageModal';
 import CreateInquiryFromMessageModal from '@/components/crm/CreateInquiryFromMessageModal';
@@ -93,7 +98,7 @@ export default function MessageDetailPage({ params }: PageProps) {
   );
 
   const {
-    data: message,
+    data: messageData,
     isLoading,
     error,
     refetch: refetchMessage,
@@ -102,9 +107,17 @@ export default function MessageDetailPage({ params }: PageProps) {
     type: messageType,
   });
 
+  const sales = useMessageSalesContext(messageType, params.id);
+  const message = useMemo(() => messageData ? { ...messageData, sales: sales || messageData.sales } : undefined, [messageData, sales]);
+
   const [markAsRead] = useMarkMessageAsReadMutation();
   const [toggleStar] = useToggleStarMessageMutation();
   const [deleteMessage] = useDeleteMessageMutation();
+  const [restoreMessage] = useRestoreMessageMutation();
+  const { data: trashMailboxIds = [] } = useGetMailboxTrashPermissionsQuery();
+  const trashBusy = useRef(false);
+  const canTrash = message?.type === 'contact_form' ? canManage
+    : Boolean(message?.email_account_id && trashMailboxIds.includes(message.email_account_id));
 
   useEffect(() => {
     if (
@@ -116,36 +129,7 @@ export default function MessageDetailPage({ params }: PageProps) {
     }
   }, [message, markAsRead]);
 
-  useEffect(() => {
-    if (!message || (message.type !== 'contact_form' && message.type !== 'received')) {
-      setLinkedInquiryId(null);
-      return;
-    }
-
-    let active = true;
-    supabase
-      .from('tasks')
-      .select('id')
-      .eq('is_inquiry', true)
-      .contains('inquiry_details', {
-        source_message_id: message.id,
-        source_message_type: message.type,
-      })
-      .limit(1)
-      .maybeSingle()
-      .then(({ data, error: inquiryError }) => {
-        if (!active) return;
-        if (inquiryError) {
-          console.error('Error finding inquiry linked to message:', inquiryError);
-          return;
-        }
-        setLinkedInquiryId(data?.id || null);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [message]);
+  useEffect(() => { setLinkedInquiryId(sales?.inquiries.length === 1 ? sales.inquiries[0].id : null); }, [sales]);
 
   useEffect(() => {
     let active = true;
@@ -228,25 +212,27 @@ export default function MessageDetailPage({ params }: PageProps) {
   };
 
   const handleDelete = async () => {
-    if (!message) return;
+    if (!message || !canTrash || trashBusy.current) return;
+    const restore = Boolean(message.isDeleted);
 
     const confirmed = await showConfirm({
-      title: 'Przenieś wiadomość do kosza',
-      message: 'Wiadomość będzie można później przywrócić z kosza.',
-      confirmText: 'Przenieś do kosza',
+      title: restore ? 'Przywróć wiadomość' : 'Przenieś wiadomość do kosza',
+      message: message.type === 'contact_form' ? 'Wiadomość będzie można przywrócić z kosza CRM.' : 'Zmiana zostanie zsynchronizowana z serwerem pocztowym, również w Thunderbirdzie.',
+      confirmText: restore ? 'Przywróć' : 'Przenieś do kosza',
       cancelText: 'Anuluj',
     });
     if (!confirmed) return;
 
     try {
-      await deleteMessage({ id: message.id, type: message.type }).unwrap();
+      trashBusy.current = true;
+      await (restore ? restoreMessage : deleteMessage)({ id: message.id, type: message.type }).unwrap();
 
-      showSnackbar('Wiadomość została przeniesiona do kosza', 'success');
+      showSnackbar(restore ? 'Wiadomość została przywrócona' : 'Wiadomość została przeniesiona do kosza', 'success');
       router.push('/crm/messages');
     } catch (error) {
       console.error('Error deleting message:', error);
-      showSnackbar('Błąd podczas usuwania wiadomości', 'error');
-    }
+      showSnackbar((error as { error?: string })?.error || 'Nie udało się potwierdzić zmiany wiadomości.', 'error');
+    } finally { trashBusy.current = false; }
   };
 
   const handleToggleRead = async () => {
@@ -463,7 +449,7 @@ export default function MessageDetailPage({ params }: PageProps) {
                         },
                         {
                           label: 'Przypisz',
-                          onClick: () => setShowAssignModal(true),
+                          onClick: () => { const links = message.sales?.inquiries || []; if (links.length) router.push(`/crm/inquiries/${links[0].id}`); else setShowAssignModal(true); },
                           icon: <UserPlus className="h-4 w-4" />,
                           variant: 'default' as const,
                           show: true,
@@ -526,10 +512,10 @@ export default function MessageDetailPage({ params }: PageProps) {
                         },
                       ]
                     : []),
-                  ...(canManage
+                  ...(canTrash
                     ? [
                         {
-                          label: 'Przenieś do kosza',
+                          label: message.isDeleted ? 'Przywróć z kosza' : 'Przenieś do kosza',
                           onClick: handleDelete,
                           icon: <Trash2 className="h-4 w-4" />,
                           variant: 'danger' as const,
@@ -558,7 +544,13 @@ export default function MessageDetailPage({ params }: PageProps) {
                     <strong className="text-white">Data:</strong>{' '}
                     {new Date(message.date).toLocaleString('pl-PL')}
                   </p>
-                  {message.assigned_employee && (
+                  <MessageSalesBadge sales={message.sales} onOpen={id => router.push(`/crm/inquiries/${id}`)} />
+                  {!message.isDeleted && (message.type === 'received' || message.type === 'contact_form') && <button className="rounded-lg bg-[#d3bb73]/15 px-3 py-2 text-sm text-[#d3bb73]" onClick={() => {
+                    const links = message.sales?.inquiries || [];
+                    if (links.length === 1 && !canClaimMessageInquiry(message.sales)) router.push(`/crm/inquiries/${links[0].id}`);
+                    else setShowCreateInquiryModal(true);
+                  }}>{canClaimMessageInquiry(message.sales) ? 'Przypisz mnie do zapytania' : message.sales?.inquiries.length ? 'Otwórz zapytanie' : 'Dodaj do zapytań i przypisz mnie'}</button>}
+                  {!message.sales?.inquiries.length && message.assigned_employee && (
                     <p>
                       <strong className="text-white">Przypisano:</strong>{' '}
                       {message.assigned_employee.name} {message.assigned_employee.surname}

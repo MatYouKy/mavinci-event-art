@@ -1,6 +1,6 @@
 # Mavinci na macOS
 
-Aktualna wersja: **0.2.0**. Bieżący zakres wydarzeń i kalendarza oraz dokładna macierz brakujących operacji znajdują się w sekcji „Aktualizacja 0.2” poniżej. Opis pierwszego etapu pozostawiono jako historię zakresu.
+Aktualna wersja: **0.3.0**. Bieżący zakres wydarzeń i kalendarza oraz dokładna macierz brakujących operacji znajdują się w sekcji „Aktualizacja 0.2” poniżej. Opis pierwszego etapu pozostawiono jako historię zakresu.
 
 Natywna aplikacja SwiftUI, macOS 14 lub nowszy, Swift 5.9+. Katalog `desktop/mac` jest równorzędny z `mobile`. Bez osadzonego panelu WWW i zewnętrznych bibliotek Swift.
 
@@ -145,3 +145,23 @@ Pakowanie aplikacji odbywa się przez nowy podpisany katalog i jego podmianę; n
 
 
 Aktualny profil macOS uwzględnia `employees.finance_company_access` (model z wdrożonej migracji `20261101165000`). Pobieranie budżetu / przychodu używa serwerowego `canViewCommercials`, a koszty osobnego `canViewCosts`; uprawnienia te nie są utożsamiane. Zmiana poziomów finansowych w profilu unieważnia starą kopię.
+
+
+## Aktualizacja 0.3 — codzienna praca sprzedawcy
+
+1. **Kalendarz:** każdy wpis ma delikatne obramowanie i tło w kolorze kategorii z CRM (taki sam kolor w siatce i liście dnia). Brak kategorii używa firmowego złotego. Zapytania mają przerywaną linię. Nie dodano ramek wokół wszystkich dni. Źródło koloru jest pobierane z bazy, a nie wyliczane z tytułu wydarzenia.
+2. **Moje zadania:** Kanban Do zrobienia / W trakcie / Do sprawdzenia / Zakończone, wyszukiwanie i opcjonalne ukrycie zakończonych. Przeciąganie między kolumnami lub menu Przenieś do zapisuje status i board_column istniejącą ścieżką z RLS i kontrolą updated_at. Nie ma optymistycznego przenoszenia ani kolejki offline. Priorytet i termin są na karcie. Szerokie okno pokazuje szczegóły obok tablicy; mniejsze otwiera modal. Tworzenie i edycja pozostają w formularzu natywnym.
+3. **Wysokość list:** usunięto HSplitView z list i zbiorów karty wydarzenia. Układ HStack dostaje dokładny rozmiar z GeometryReader, a tabela wysokość niezależną od zaznaczenia i pustego podglądu. Na listach podgląd pojawia się dopiero przy zaznaczeniu i odpowiedniej szerokości; w mniejszym oknie są szczegóły modalne.
+4. **Kontakty:** wyłącznie tabele CRM, bez frameworku Contacts, książki adresowej urządzenia, automatycznego importowania czy scalania prywatnych osób. Dotychczasowe dane już zapisane w CRM pozostają kartoteką CRM. Edytor zmienia imię, nazwisko, e-mail, telefon, komórkę, stanowisko, adres i notatki; wysyła wyłącznie zmienione pola i wymaga contacts_manage, aktualnej wersji oraz RLS. Nie udostępnia numerów dokumentów, PESEL ani rachunków bankowych.
+5. **Kalendarz i Wydarzenia:** jeden predykat dostępu w kliencie macOS i ten sam zbiór wydarzeń z calendar; lista nie odczytuje innej, osobno zawężonej kopii. Uwzględniane są istniejące uprawnienia do wydarzeń / kalendarza / realizacji. Nie zmieniono uprawnień zapisanych pracownikom ani RLS. Domyślnie są ukryte wydarzenia przeszłe (według końca, a gdy go nie ma początku), anulowane, zakończone i rozliczone; przyszłe wydarzenie ze statusem samego zafakturowania nie jest uznawane za zakończone. Status wybierzesz filtrem. Pokaż również ukryte / Szukaj również w ukrytych poszerza filtr, a nie uprawnienia.
+6. **Oferty:** analogiczny filtr domyślny: odrzucone, anulowane, wygasłe oraz związane z dawnym / zamkniętym wydarzeniem. Dla niezaakceptowanej oferty uwzględniany jest koniec ważności; historyczna data ważności zaakceptowanej oferty sama jej nie ukrywa. Wyszukiwanie i filtr statusu współpracują z włącznikiem ukrytych. To wyłącznie filtr widoku, bez masowej zmiany danych historycznych.
+7. **Przetargi:** domyślnie aktywne, przed terminem i nieukryte. Lista pokazuje tytuł, zamawiającego, dopasowanie /100, termin i odliczanie, lokalizację, stan i obserwowanie. Filtry: zakres aktywne / moje / obserwowane / dopasowane, stan, tekst, przeszłe i ukryte. Szczegóły zawierają dane modalu CRM: opis, CPV, publikację, termin, wartość / walutę, opiekuna, źródło, notatki, status i ocenę manualną. Można obserwować, ukryć, przypisać do siebie / zwolnić oraz utworzyć zapytanie przez te same RPC assign_tender / create_inquiry_from_tender. Zapytanie istniejące otwiera się bez tworzenia drugiego. Po terminie przycisk tworzenia jest zablokowany; baza ponownie sprawdza warunki. Gdy przetarg jest prowadzony w zapytaniu, jego status wynika z etapu zapytania.
+8. **Powiadomienia:** dzwonek otwiera drawer po prawej, bez opuszczania bieżącej sekcji. Są filtr nieprzeczytanych, pojedyncze i zbiorcze przeczytanie. Obsługiwane cele: zadanie, zapytanie, kontakt, wydarzenie / istniejąca zakładka, oferta, przetarg i spotkanie. Rekord spoza obecnych filtrów jest doczytywany autoryzowanym zapytaniem, a filtr ustawiany tak, żeby go pokazać. Nieobsługiwana sekcja ma komunikat, bez losowego przekierowania do strony głównej ani panelu WWW.
+
+### Transport i uprawnienia 0.3
+
+Nowa, niewykonana migracja `20261101213000_native_workspace_v3.sql` tworzy osobną odczytową funkcję `native_workspace_sync_v3`. Nazwa wersjonowana zapobiega korzystaniu ze starszej, zbyt ubogiej migawki. Funkcja ma SECURITY INVOKER, istniejące RLS i wąską projekcję pól. Zawiera kolory kategorii kalendarza, daty wydarzeń przy ofertach, pełne dane prezentacyjne przetargu, edytowalne pola kontaktu i metadata powiadomień. Bez migracji klient używa jawnie pełnych odczytów tych samych tabel — nie trzeba wykonywać migracji do samego uruchomienia nowej wersji. Migracja nie aktualizuje rekordów biznesowych, istniejących polityk, ról ani zakresów przypisanych pracownikom.
+
+Nie zmieniano klientów CRM/mobile ani ich katalogu uprawnień. Ujednolicenie dotyczy nawigacji i prezentacji klienta macOS, a zakres rekordów nadal wymusza baza. Rozszerzony kontrakt przyszłego własnego serwera opisano w docs/desktop-native-api.md.
+
+Przy zmianie sekcji powiadomienie o błędzie nie zwęża list. Skróty: ⌘1 Mój dzień, ⌘2 Zapytania, ⌘3 Kanban, ⌘4 Wydarzenia, ⌘5 Kalendarz, ⌘6 Kontakty, ⌘7 Oferty, ⌘8 Przetargi, ⌘9 panel powiadomień.

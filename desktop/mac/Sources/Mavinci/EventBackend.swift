@@ -7,12 +7,12 @@ extension HTTPBackend {
     }
     func calendarRows(employee: Employee) async throws -> [Row] {
         var result: [Row] = []
-        let events = try await read("events",Self.eventFields,[:])
+        let events = try await read("events",Self.eventFields+",category:event_categories(name,color)",[:])
         for event in events {
             var r = event.fields; r["kind"] = .string("event"); r["source_id"] = .string(event.id)
             result.append(Row(r))
         }
-        let select = "id,title,datetime_start,datetime_end,location_text,recurrence_days"
+        let select = "id,title,datetime_start,datetime_end,location_text,recurrence_days,color"
         let owned = try await read("meetings",select,["created_by":"eq.\(employee.id)","deleted_at":"is.null"])
         let invitations = try await read("meeting_participants","id,meeting_id",["employee_id":"eq.\(employee.id)"])
         var meetings = Dictionary(owned.map { ($0.id,$0) },uniquingKeysWith: { first,_ in first })

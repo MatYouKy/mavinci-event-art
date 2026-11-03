@@ -1,4 +1,5 @@
 'use client';
+import { readNotificationFeed, readRecentUnreadNotifications } from '@/lib/CRM/notifications/notificationFeed';
 
 import { systemNotificationText } from '@/lib/ui/systemLabels';
 
@@ -211,6 +212,14 @@ export default function NotificationCenter({
   const [deletingAll, setDeletingAll] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
+  const filterRef = useRef<'all' | 'unread'>('all');
+  const pagesRef = useRef(1);
+  const feedRevision = useRef(0);
+  const lastCatchUp = useRef(new Date().toISOString());
+  const [totalCount, setTotalCount] = useState(initialNotifications.length);
+  const [hasMore, setHasMore] = useState(false);
+  const [feedLoading, setFeedLoading] = useState(false);
+  const [feedError, setFeedError] = useState('');
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [customSoundUrl, setCustomSoundUrl] = useState<string | null>(null);
   const soundEnabledRef = useRef(true);
@@ -269,6 +278,15 @@ export default function NotificationCenter({
 
   useEffect(() => {
     setBanners([]);
+    setNotifications([]);
+    setUnreadCount(0);
+    setTotalCount(0);
+    setHasMore(false);
+    filterRef.current = 'all';
+    setFilter('all');
+    pagesRef.current = 1;
+    feedRevision.current += 1;
+    setFeedLoading(false);
     announcedNotificationIdsRef.current.clear();
     if (!sessionUserId) {
       setNotifications([]);
@@ -307,6 +325,7 @@ export default function NotificationCenter({
     refreshNotificationsRef.current = refresh;
 
     soundSessionStartedAtRef.current = Date.now();
+    lastCatchUp.current = new Date(soundSessionStartedAtRef.current).toISOString();
     realtimeReadyRef.current = false;
     preferencesLoadedRef.current = false;
     soundEnabledRef.current = true;
@@ -558,36 +577,27 @@ export default function NotificationCenter({
     try {
       if (!sessionUserId || signal.aborted) return;
 
-      const { data, error } = await supabase
-        .from('notification_recipients')
-        .select(
-          `
-          id,
-          is_read,
-          read_at,
-          created_at,
-          notifications (
-            id,
-            title,
-            message,
-            type,
-            category,
-            action_url,
-            created_at,
-            related_entity_type,
-            related_entity_id,
-            metadata
-          )
-        `,
-        )
-        .eq('user_id', sessionUserId)
-        .order('created_at', { ascending: false })
-        .abortSignal(signal);
-
-      if (signal.aborted) return;
-
-      if (error) throw error;
-
+      const revision = feedRevision.current;
+      const catchUpUntil = new Date().toISOString();
+      setFeedLoading(true);
+      const [result, recent] = await Promise.all([
+        readNotificationFeed(supabase, sessionUserId, pagesRef.current, filterRef.current === 'unread', false, signal),
+        readRecentUnreadNotifications(supabase, sessionUserId, lastCatchUp.current, signal),
+      ]);
+      if (signal.aborted || revision !== feedRevision.current) return;
+      const data = result.rows;
+      setUnreadCount(result.unread);
+      setTotalCount(result.total);
+      setHasMore(result.hasMore);
+      setFeedError('');
+      // Keep the watermark until the tab can announce notices; the existing ID
+      // deduplication prevents duplicate sounds after reconnect or pagination.
+      if (document.visibilityState === 'visible' && document.hasFocus()) {
+        recent.forEach((recipient: any) => announceNotification({ ...recipient.notifications,
+          recipient_id: recipient.id, recipient_created_at: recipient.created_at,
+          is_read: recipient.is_read, read_at: recipient.read_at }));
+        lastCatchUp.current = catchUpUntil;
+      }
       if (data) {
         const formattedNotifications = data.filter((recipient: any) => recipient.notifications).map((recipient: any) => ({
           ...recipient.notifications,
@@ -598,14 +608,33 @@ export default function NotificationCenter({
         }));
         notificationsRef.current = formattedNotifications;
         setNotifications(formattedNotifications);
-        setUnreadCount(formattedNotifications.filter((n: any) => !n.is_read).length);
+
         // Announce notices received since this session started, including ones
         // recovered after a dropped WebSocket message. Old history stays quiet.
         formattedNotifications.slice().reverse().forEach(announceNotification);
       }
     } catch (error) {
-      if (!signal.aborted) console.error('Error fetching notifications:', error);
+      if (!signal.aborted) {
+        setFeedError('Nie udało się odświeżyć powiadomień. Spróbuj ponownie.');
+        console.error('Error fetching notifications:', error);
+      }
+    } finally {
+      if (!signal.aborted) setFeedLoading(false);
     }
+  };
+
+  const chooseFilter = (next: 'all' | 'unread') => {
+    filterRef.current = next;
+    pagesRef.current = 1;
+    feedRevision.current += 1;
+    setFilter(next);
+    setNotifications([]);
+    void fetchNotifications();
+  };
+  const closePanel = () => {
+    setShowPanel(false);
+    pagesRef.current = 1;
+    feedRevision.current += 1;
   };
 
   const markAsRead = async (recipientId: string) => {
@@ -629,6 +658,7 @@ export default function NotificationCenter({
       );
       setUnreadCount((prev) => Math.max(0, prev - 1));
       void refreshSellerSidebarBadge();
+      void fetchNotifications();
     } catch (error) {
       console.error('Error marking as read:', error);
     }
@@ -642,9 +672,6 @@ export default function NotificationCenter({
       } = await supabase.auth.getUser();
       if (!user) return;
 
-      const unreadRecipientIds = notifications.filter((n) => !n.is_read).map((n) => n.recipient_id);
-
-      if (unreadRecipientIds.length === 0) return;
 
       const { error } = await supabase
         .from('notification_recipients')
@@ -652,7 +679,8 @@ export default function NotificationCenter({
           is_read: true,
           read_at: new Date().toISOString(),
         })
-        .in('id', unreadRecipientIds);
+        .eq('user_id', user.id)
+        .eq('is_read', false);
 
       if (error) throw error;
 
@@ -661,6 +689,7 @@ export default function NotificationCenter({
       );
       setUnreadCount(0);
       void refreshSellerSidebarBadge();
+      void fetchNotifications();
     } catch (error) {
       console.error('Error marking all as read:', error);
     } finally {
@@ -685,6 +714,7 @@ export default function NotificationCenter({
         setUnreadCount((prev) => Math.max(0, prev - 1));
       }
       void refreshSellerSidebarBadge();
+      void fetchNotifications();
     } catch (error) {
       console.error('Error deleting notification:', error);
     }
@@ -723,6 +753,7 @@ export default function NotificationCenter({
       setUnreadCount(0);
       showSnackbar(`Usunięto ${allRecipients.length} powiadomień`, 'success');
       void refreshSellerSidebarBadge();
+      void fetchNotifications();
     } catch (error) {
       console.error('Error deleting all notifications:', error);
       showSnackbar('Błąd podczas usuwania powiadomień', 'error');
@@ -897,7 +928,7 @@ export default function NotificationCenter({
 
       <div className="relative">
         <button
-          onClick={() => { if (!showPanel) void fetchNotifications(); setShowPanel(!showPanel); }}
+          onClick={() => { if (showPanel) closePanel(); else { setShowPanel(true); void fetchNotifications(); } }}
           className="relative rounded-lg p-1.5 transition-colors hover:bg-[#1c1f33] md:p-2"
         >
           <Bell className="h-5 w-5 text-[#e5e4e2] md:h-6 md:w-6" />
@@ -910,7 +941,7 @@ export default function NotificationCenter({
 
         {showPanel && (
           <>
-            <div className="fixed inset-0 z-40" onClick={() => setShowPanel(false)} />
+            <div className="fixed inset-0 z-40" onClick={closePanel} />
 
             <div className="fixed left-0 right-0 top-16 z-50 mx-auto flex max-h-[80vh] w-full max-w-md flex-col rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] shadow-2xl md:absolute md:left-auto md:right-0 md:top-12 md:mx-0 md:max-h-[600px] md:w-96 md:max-w-none">
               <div className="border-b border-[#d3bb73]/20 p-4">
@@ -919,7 +950,7 @@ export default function NotificationCenter({
                     <h3 className="text-lg font-bold text-[#e5e4e2]">Powiadomienia</h3>
                   </div>
                   <button
-                    onClick={() => setShowPanel(false)}
+                    onClick={closePanel}
                     className="rounded p-1 transition-colors hover:bg-[#0f1119]"
                   >
                     <X className="h-5 w-5 text-[#e5e4e2]" />
@@ -928,17 +959,17 @@ export default function NotificationCenter({
 
                 <div className="flex gap-2">
                   <button
-                    onClick={() => setFilter('all')}
+                    onClick={() => chooseFilter('all')}
                     className={`flex-1 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
                       filter === 'all'
                         ? 'bg-[#d3bb73] text-[#1c1f33]'
                         : 'bg-[#0f1119] text-[#e5e4e2] hover:bg-[#0f1119]/80'
                     }`}
                   >
-                    Wszystkie ({notifications.length})
+                    Wszystkie ({totalCount})
                   </button>
                   <button
-                    onClick={() => setFilter('unread')}
+                    onClick={() => chooseFilter('unread')}
                     className={`flex-1 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
                       filter === 'unread'
                         ? 'bg-[#d3bb73] text-[#1c1f33]'
@@ -978,7 +1009,7 @@ export default function NotificationCenter({
                   <div className="p-8 text-center text-[#e5e4e2]/60">
                     <Bell className="mx-auto mb-3 h-12 w-12 opacity-30" />
                     <p>
-                      {filter === 'unread'
+                      {feedLoading ? 'Wczytywanie…' : filter === 'unread'
                         ? 'Brak nieprzeczytanych powiadomień'
                         : 'Brak powiadomień'}
                     </p>
@@ -1171,6 +1202,12 @@ export default function NotificationCenter({
                     ))}
                   </div>
                 )}
+                {feedError && <button className="w-full p-3 text-sm text-red-400" onClick={() => void fetchNotifications()}>{feedError}</button>}
+                {hasMore && <button disabled={feedLoading} className="w-full p-3 text-sm text-[#d3bb73] disabled:opacity-50" onClick={() => {
+                  pagesRef.current += 1;
+                  feedRevision.current += 1;
+                  void fetchNotifications();
+                }}>{feedLoading ? 'Wczytywanie…' : 'Pokaż starsze powiadomienia'}</button>}
               </div>
             </div>
           </>

@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 
 struct EventPageView: View {
     let eventID: String
+    var initialTab:EventTab? = nil
     @EnvironmentObject var workspace: Workspace
     @StateObject private var store = EventPageStore()
     @State private var form: EventForm?
@@ -38,7 +39,7 @@ struct EventPageView: View {
             }
             ToolbarItem(placement:.primaryAction) { if store.loading || store.saving { ProgressView().controlSize(.small) } }
         }
-        .task(id:eventID) { await store.load(eventID,workspace:workspace) }
+        .task(id:eventID) { if let initialTab{store.selectedTab=initialTab}; await store.load(eventID,workspace:workspace) }
         .onChange(of:store.selectedTab) { _,_ in Task { await store.loadTab(workspace:workspace) } }
         .onChange(of:workspace.refreshEventToken) { _,_ in Task { await store.load(eventID,workspace:workspace) } }
         .onDisappear { store.cancel() }
@@ -159,7 +160,7 @@ struct EventDataView: View {
             }
             if let fileError { Text(fileError).font(.callout).foregroundStyle(.red).padding(10) }
             GeometryReader { available in
-              HSplitView {
+              HStack(alignment:.top,spacing:0) {
                 Table(entries,selection:$selected) {
                     TableColumn("Nazwa") { e in Text(e.title).lineLimit(2) }.width(min:210,ideal:360)
                     TableColumn("Zbiór") { e in Text(e.sectionTitle).foregroundStyle(.secondary) }.width(min:110,ideal:160)
@@ -173,7 +174,8 @@ struct EventDataView: View {
                     }
                 } primaryAction: { ids in selected=ids.first }
                 .overlay { if entries.isEmpty && !store.loading { ContentUnavailableView("Brak pozycji",systemImage:store.selectedTab.symbol,description:Text("Brak danych w wybranym zbiorze lub filtrze.")) } }
-                .frame(minWidth:520,maxHeight:.infinity)
+                .frame(width:max(1,available.size.width-381),height:available.size.height)
+                Divider()
                 ScrollView {
                     if let entry,let page=store.page {
                         VStack(alignment:.leading,spacing:18) {
@@ -194,7 +196,7 @@ struct EventDataView: View {
                             EventRecordFields(row:entry.row)
                         }.padding(20).frame(maxWidth:.infinity,alignment:.leading)
                     } else { ContentUnavailableView("Wybierz pozycję",systemImage:"cursorarrow.click").padding(.top,60) }
-                }.frame(minWidth:300,idealWidth:380,maxWidth:500,maxHeight:.infinity)
+                }.frame(width:380,height:available.size.height)
               }.frame(width:available.size.width,height:available.size.height)
             }.frame(maxWidth:.infinity,maxHeight:.infinity)
             if let gap=remainingActions {

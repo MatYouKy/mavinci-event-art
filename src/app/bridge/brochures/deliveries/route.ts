@@ -158,8 +158,8 @@ export async function POST(request: NextRequest) {
       await assertMailbox(delivery.email_account_id);
       const { data: source } = await userClient.from('sales_brochure_generations').select('pdf_path,file_size,created_by').eq('id', delivery.generation_id).maybeSingle();
       if (!source?.pdf_path || source.created_by !== employeeId) throw new Error('Brak dostępu do załączonego PDF.');
-      if (!Number.isSafeInteger(source.file_size) || source.file_size <= 0 || source.file_size > 52428800) {
-        throw new Error('Nieprawidłowy rozmiar zapisanego PDF. Maksymalny rozmiar broszury to 50 MiB.');
+      if (!Number.isSafeInteger(source.file_size) || source.file_size <= 0 || source.file_size > 30_000_000) {
+        throw new Error('Zapisany PDF przekracza limit 30 MB lub ma nieprawidłowy rozmiar. Wygeneruj broszurę ponownie, aby skompresować zdjęcia.');
       }
       const { data: { session } } = await userClient.auth.getSession();
       if (!session) throw new Error('Sesja wygasła. Zaloguj się ponownie.');

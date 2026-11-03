@@ -1,13 +1,15 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   useGetEventEmployeesQuery,
   useAddEventEmployeeMutation,
   useRemoveEventEmployeeMutation,
 } from '@/app/(crm)/crm/events/store/api/eventsApi';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import { readEventResponsibilities } from '@/lib/CRM/events/readEventResponsibilities';
+import { createRefreshQueue } from '@/lib/CRM/refreshQueue';
 import { supabase } from '@/lib/supabase/browser';
 
-export function useEventTeam(eventId: string) {
+export function useEventTeam(eventId: string, enabled = true) {
   const { showSnackbar } = useSnackbar();
 
   const {
@@ -16,26 +18,41 @@ export function useEventTeam(eventId: string) {
     error,
     refetch,
   } = useGetEventEmployeesQuery(eventId, {
-    skip: !eventId,
+    skip: !eventId || !enabled,
   });
 
   const [responsibilityTeam, setResponsibilityTeam] = useState<any[]>([]);
+  const refreshRef = useRef<(() => Promise<void>) | null>(null);
   const loadResponsibilities = useCallback(async () => {
-    const { data, error } = await supabase.rpc('get_event_responsibility_team', { p_event_id: eventId });
-    if (!error) setResponsibilityTeam(data || []);
-  }, [eventId]);
+    await refreshRef.current?.();
+  }, []);
   useEffect(() => {
-    void loadResponsibilities();
-    const refresh = () => void loadResponsibilities();
+    setResponsibilityTeam([]);
+    if (!eventId || !enabled) return;
+    const controller = new AbortController();
+    const queue = createRefreshQueue(controller.signal, async signal => {
+      if (document.hidden) return;
+      const { data, error } = await readEventResponsibilities(supabase, eventId);
+      if (!signal.aborted) setResponsibilityTeam(error ? [] : data || []);
+    });
+    refreshRef.current = queue.refresh;
+    const refresh = () => { if (!document.hidden) queue.schedule(); };
+    void queue.refresh();
     window.addEventListener('focus', refresh);
+    window.addEventListener('online', refresh);
     window.addEventListener('realization-manager-changed', refresh);
+    document.addEventListener('visibilitychange', refresh);
     const timer = setInterval(refresh, 60000);
     return () => {
+      controller.abort();
+      if (refreshRef.current === queue.refresh) refreshRef.current = null;
       clearInterval(timer);
       window.removeEventListener('focus', refresh);
+      window.removeEventListener('online', refresh);
       window.removeEventListener('realization-manager-changed', refresh);
+      document.removeEventListener('visibilitychange', refresh);
     };
-  }, [loadResponsibilities]);
+  }, [eventId, enabled]);
   const mergedTeam: any[] = employees.map((member: any) => ({
     ...member,
     responsibility_roles: responsibilityTeam.find(person => person.employee_id === member.employee_id)?.responsibility_roles || [],
@@ -96,7 +113,7 @@ export function useEventTeam(eventId: string) {
 
   // Realtime subscription - auto-refresh przy zmianach w employee_assignments
   useEffect(() => {
-    if (!eventId) return;
+    if (!eventId || !enabled) return;
 
     // Strona i modal używają tego hooka równocześnie. Każdy efekt musi
     // posiadać własny kanał, również podczas ponownego montowania w StrictMode.
@@ -123,7 +140,7 @@ export function useEventTeam(eventId: string) {
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [eventId, refetch, loadResponsibilities]);
+  }, [eventId, enabled, refetch, loadResponsibilities]);
 
   return {
     employees: mergedTeam,

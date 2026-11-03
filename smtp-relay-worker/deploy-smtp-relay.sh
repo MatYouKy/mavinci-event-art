@@ -14,6 +14,7 @@ rsync -avz \
   "${SCRIPT_DIR}/sent-copy.js" \
   "${SCRIPT_DIR}/brochure-attachments.js" \
   "${SCRIPT_DIR}/imap-attachments.js" \
+  "${SCRIPT_DIR}/imap-trash.js" \
   "${SCRIPT_DIR}/configure-attachments-env.cjs" \
   "${SCRIPT_DIR}/package.json" \
   "${SCRIPT_DIR}/yarn.lock" \

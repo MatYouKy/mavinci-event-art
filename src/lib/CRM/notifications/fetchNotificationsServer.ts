@@ -19,40 +19,20 @@ export async function fetchNotificationsServer(
 
   const { data, error } = await supabase
     .from('notification_recipients')
-    .select(`
-      id,
-      is_read,
-      read_at,
-      notifications (
-        id,
-        title,
-        message,
-        type,
-        category,
-        action_url,
-        created_at,
-        related_entity_type,
-        related_entity_id,
-        metadata
-      )
-    `)
+    .select(`id,is_read,read_at,created_at,notifications!inner(id,title,message,type,category,action_url,created_at,related_entity_type,related_entity_id,metadata)`)
     .eq('user_id', user.id)
-    .order('created_at', { ascending: false, foreignTable: 'notifications' })
-    .limit(limit);
-
+    .order('created_at', { ascending: false }).order('id', { ascending: false })
+    .limit(Math.min(limit, 50));
   if (error) {
     console.error('[fetchNotificationsServer] supabase error:', error);
     return { notifications: [], unreadCount: 0 };
   }
-
-  const notifications: Notification[] = (data ?? []).filter((recipient: any) => recipient.notifications).map((recipient: any) => ({
-    ...recipient.notifications,
-    recipient_id: recipient.id,
-    is_read: recipient.is_read,
-    read_at: recipient.read_at,
+  const notifications: Notification[] = (data ?? []).map((recipient: any) => ({
+    ...recipient.notifications, recipient_id: recipient.id, recipient_created_at: recipient.created_at,
+    is_read: recipient.is_read, read_at: recipient.read_at,
   }));
-
-  const unreadCount = notifications.filter((n) => !n.is_read).length;
-
-  return { notifications, unreadCount };
+  const { count } = await supabase.from('notification_recipients')
+    .select('id,notifications!inner(id)', { count: 'exact', head: true })
+    .eq('user_id', user.id).eq('is_read', false);
+  return { notifications, unreadCount: count ?? notifications.filter(n => !n.is_read).length };
 }

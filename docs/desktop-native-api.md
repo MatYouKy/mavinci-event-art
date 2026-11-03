@@ -61,3 +61,17 @@ Przyszły własny serwer powinien dodatkowo implementować:
 - `POST /api/native/v1/events/<id>/files?name=...&folder_id=...` — bajty pliku i właściwy Content-Type; autoryzacja folderu, limit i spójne metadata po stronie serwera.
 
 Własny serwer nadal nie jest wdrożony. Część wyspecjalizowanych operacji (np. załadunek konkretnej pozycji) wymaga dalszego uzupełnienia kontraktu przed użyciem tego trybu produkcyjnie. Obecna wersja pracuje przez Supabase.
+
+
+## Rozszerzenie 0.3 — listy, kontakty i przetargi
+
+Supabase: klient używa native_workspace_sync_v3 z tym samym protokołem kubełków. Zbiory mają dodatkowo pola zadeklarowane w HTTPBackend.contactFields / offerFields / tenderFields, metadata w notifications i kolory kategorii w calendar. Własny serwer musi zwracać ten bogatszy kształt rekordów przez swój dotychczasowy endpoint sync; kalendarz i lista wydarzeń bazują na jednym autoryzowanym zbiorze calendar.
+
+Dodatkowe trasy przygotowane w kliencie (własny serwer nadal niewdrożony):
+
+- GET /api/native/v1/records/<module>/<id>: pojedynczy dostępny rekord, także poza filtrami listy; moduły contacts, tenders, tasks/inquiries, offers, events, calendar (spotkanie normalizowane jak w kalendarzu).
+- PATCH /api/native/v1/records/<module>/<id>: {values, expected_updated_at}; tylko contacts lub tenders. Serwer narzuca allowlistę pól i aktualne uprawnienia, odrzuca konflikt oraz zwraca potwierdzony rekord w bogatym kształcie.
+- POST /api/native/v1/tenders/<id>/action: {action:assign|release|inquiry}; bieżący pracownik wynika z tokenu; zachowanie równoważne istniejącym RPC. Dla inquiry odpowiedź to ID zapytania jako JSON string.
+- POST /api/native/v1/notifications/read-all: oznacza wyłącznie własne powiadomienia bieżącego pracownika.
+
+Kanban używa istniejącego polecenia task_update. Zmiana kolumny ustawia board_column i status; poza in_progress czyści currently_working_by. Nie ma kolejki offline ani optymistycznego potwierdzenia zapisu. Zakresy danych i przejścia stanów pozostają na serwerze.

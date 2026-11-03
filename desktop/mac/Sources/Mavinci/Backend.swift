@@ -78,7 +78,7 @@ actor HTTPBackend: WorkspaceBackend {
         guard let response = response as? HTTPURLResponse else { throw AppError.invalidResponse }
         guard (200..<300).contains(response.statusCode) else {
             let failure = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
-            if path.hasSuffix("native_workspace_sync") {
+            if path.hasSuffix("native_workspace_sync_v3") {
                 if failure?["code"] as? String == "PGRST202" { throw AppError.missingSync }
                 if failure?["code"] as? String == "22023",body?["p_set"]?.text == "calendar",failure?["message"] as? String == "Nieznany zbiór." {throw AppError.missingSync}
             }
@@ -103,7 +103,7 @@ actor HTTPBackend: WorkspaceBackend {
         return rows[0]
     }
     func sync(_ module: Module, hashes: [String: String]) async throws -> SyncReply {
-        let data = try await request(native ? "/api/native/v1/sync" : "/rest/v1/rpc/native_workspace_sync",
+        let data = try await request(native ? "/api/native/v1/sync" : "/rest/v1/rpc/native_workspace_sync_v3",
             body: ["p_set": .string(module.rawValue), "p_hashes": .object(hashes.mapValues(JSONValue.string))])
         return try JSONDecoder().decode(SyncReply.self, from: data)
     }
@@ -120,10 +120,10 @@ actor HTTPBackend: WorkspaceBackend {
         throw AppError.invalidResponse
     }
     static let taskFields = "id,title,description,priority,status,board_column,due_date,created_at,updated_at,is_private,owner_id,created_by,event_id,is_inquiry,inquiry_stage,inquiry_owner_id,inquiry_details,next_action_at,archived_at,deleted_at"
-    static let contactFields = "id,first_name,last_name,email,phone,mobile,status,last_contact_date,tags"
+    static let contactFields = "id,first_name,last_name,full_name,email,phone,mobile,status,last_contact_date,tags,position,address,city,postal_code,country,notes,updated_at"
     static let eventFields = "id,name,description,event_date,event_end_date,status,location,created_by,created_at,updated_at"
-    static let offerFields = "id,title,offer_number,status,valid_until,inquiry_id,event_id,created_at,updated_at"
-    static let tenderFields = "id,title,status,submission_deadline,assigned_to,inquiry_id,created_at"
+    static let offerFields = "id,title,offer_number,status,valid_until,inquiry_id,event_id,created_at,updated_at,event:events(id,event_date,event_end_date,status)"
+    static let tenderFields = "id,external_id,source,title,description,contracting_authority,cpv_codes,location,publication_date,submission_deadline,estimated_value,currency,source_url,relevance_score,is_matched,status,is_watched,is_hidden,assigned_to,assigned_at,inquiry_id,notes,manual_relevance,created_at,updated_at"
     func fullRead(_ module: Module, employee: Employee) async throws -> [Row] {
         guard !native else { throw AppError.unsupported }
         switch module {
@@ -138,7 +138,7 @@ actor HTTPBackend: WorkspaceBackend {
         case .offers: return try await read("offers", Self.offerFields, [:])
         case .tenders: return try await read("tenders", Self.tenderFields, [:])
         case .notifications:
-            let rows = try await read("notification_recipients", "id,is_read,notification:notifications(id,title,message,category,related_entity_type,related_entity_id,action_url,created_at)", ["user_id": "eq.\(employee.id)"])
+            let rows = try await read("notification_recipients", "id,is_read,notification:notifications(id,title,message,category,related_entity_type,related_entity_id,action_url,metadata,created_at)", ["user_id": "eq.\(employee.id)"])
             return rows.compactMap { r in
                 var fields = r.fields["notification"]?.object ?? [:]
                 guard !fields.isEmpty, fields["related_entity_type"]?.text != "event_phase_assignment" else { return nil }

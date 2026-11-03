@@ -1,6 +1,6 @@
 import Foundation
 
-struct EventRoute { let id: String; let origin: Module? }
+struct EventRoute { let id: String; let origin: Module?; var tab: EventTab? = nil }
 enum EventTab: String, CaseIterable, Identifiable, Codable {
     case overview, phases, offer, agenda, wedding, finances, calculations, contract, equipment, team, logistics, subcontractors, files, tasks, history, seller = "seller-arrangements", live = "mavinci-live"
     var id: String { rawValue }

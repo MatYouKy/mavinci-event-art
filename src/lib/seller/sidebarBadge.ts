@@ -67,7 +67,14 @@ function subscribe(listener: () => void) {
   if (listeners.size === 1) {
     let active = true;
     let authUserId: string | null | undefined;
-    const reload = () => { if (document.visibilityState === 'visible') void refreshSellerSidebarBadge(); };
+    let reloadTimer: ReturnType<typeof setTimeout> | undefined;
+    const reload = () => {
+      if (!active || document.visibilityState !== 'visible' || reloadTimer) return;
+      reloadTimer = setTimeout(() => {
+        reloadTimer = undefined;
+        if (active && document.visibilityState === 'visible') void refreshSellerSidebarBadge();
+      }, 300);
+    };
     const timer = window.setInterval(reload, 30000);
     window.addEventListener('focus', reload);
     window.addEventListener('seller-workspace-changed', reload);
@@ -94,6 +101,7 @@ function subscribe(listener: () => void) {
     reload();
     stop = () => {
       active = false;
+      clearTimeout(reloadTimer);
       revision += 1;
       snapshot = empty;
       reloadAgain = false;

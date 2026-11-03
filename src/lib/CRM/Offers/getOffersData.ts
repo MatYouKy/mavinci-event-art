@@ -3,15 +3,18 @@ import { createSupabaseServerClient } from '@/lib/supabase/server.app';
 import { cache } from 'react';
 import { cookies } from 'next/headers';
 
-export const getOffersData = cache(async () => {
+export const getOffersData = cache(async (includeCatalog = false) => {
   const supabase = createSupabaseServerClient(cookies());
 
   // 1) offers + event + creator
-  const { data: offers, error: offersError } = await supabase
+  const offers: any[] = [];
+  for (let offset = 0; ; offset += 250) {
+  const { data: page, error: offersError } = await supabase
     .from('offers')
     .select(
       `
-      *,
+      id, title, offer_number, event_id, organization_id, contact_id, total_amount, valid_until, status, created_at, created_by,
+      logistics_enabled, logistics_price_net, totals_include_logistics, subtotal, discount_amount, discount_percent, tax_amount, tax_percent, pricing_source, calculation_snapshot,
       organization:organizations!organization_id(id, name, alias, email),
       contact:contacts!contact_id(id, full_name, first_name, last_name, company_name, email, phone, mobile),
       event:events!event_id(
@@ -23,9 +26,12 @@ export const getOffersData = cache(async () => {
       creator:employees!created_by(name, surname)
     `,
     )
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false }).order('id', { ascending: false }).range(offset, offset + 249);
 
   if (offersError) throw offersError;
+  offers.push(...(page || []));
+  if ((page || []).length < 250) break;
+  }
 
   // 2) dogrywamy org/contact (batch)
   const orgIds = (offers ?? []).map((o: any) => o?.event?.organization_id).filter(Boolean);
@@ -70,9 +76,9 @@ export const getOffersData = cache(async () => {
 
   // 3) reszta równolegle
   const [categoriesRes, productsRes, templatesRes] = await Promise.all([
-    supabase.from('event_categories').select('*').eq('is_active', true).order('order_index'),
+    includeCatalog ? supabase.from('event_categories').select('*').eq('is_active', true).order('order_index') : Promise.resolve({ data: [], error: null }),
 
-    supabase
+    includeCatalog ? supabase
       .from('offer_products')
       .select(
         `
@@ -95,9 +101,9 @@ export const getOffersData = cache(async () => {
         )
       `,
       )
-      .order('display_order'),
+      .order('display_order') : Promise.resolve({ data: [], error: null }),
 
-    supabase.from('offer_templates').select('*').order('is_default', { ascending: false }),
+    Promise.resolve({ data: [], error: null }), // The templates editor loads its own data.
   ]);
 
   if (categoriesRes.error) throw categoriesRes.error;

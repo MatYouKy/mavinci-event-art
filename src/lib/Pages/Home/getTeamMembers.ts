@@ -1,24 +1,9 @@
-import { ImageMetadata } from '@/lib/supabase/types';
-import { createClient } from '@supabase/supabase-js';
+import 'server-only';
+import type { IImageMetadata } from '@/types/image';
+import type { TeamMember } from '@/lib/supabase/types';
+import { createSupabaseAdminClient } from '@/lib/supabase/admin.server';
 
-export interface TeamMember {
-  id: string;
-  name: string;
-  role: string;
-  position?: string;
-  image: string;
-  alt?: string;
-  image_metadata?: ImageMetadata;
-  bio?: string;
-  email?: string;
-  linkedin?: string;
-  instagram?: string;
-  facebook?: string;
-  order_index: number;
-  is_visible?: boolean;
-  created_at?: string;
-  updated_at?: string;
-}
+export type { TeamMember } from '@/lib/supabase/types';
 
 type EmployeeRow = {
   id: string;
@@ -27,9 +12,9 @@ type EmployeeRow = {
   nickname: string | null;
   email: string | null;
   avatar_url: string | null;
-  team_page_metadata: any | null;
+  team_page_metadata: IImageMetadata | null;
+  avatar_metadata: IImageMetadata | null;
   occupation: string | null;
-  role: string | null;
   website_bio: string | null;
   linkedin_url: string | null;
   instagram_url: string | null;
@@ -37,19 +22,17 @@ type EmployeeRow = {
   order_index: number | null;
 };
 
-function getServerSupabase() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-  return createClient(url, key, { auth: { persistSession: false } });
-}
-
 export async function getTeamMembers(): Promise<TeamMember[]> {
-  const supabase = getServerSupabase();
+  const supabase = createSupabaseAdminClient();
+
+  // Service-role access is server-only. Keep this explicit public projection
+  // and the publication filter together: never return the full employee row.
+  // Both public pages and /bridge/team-members use this same boundary.
 
   const { data, error } = await supabase
     .from('employees')
     .select(
-      'id, name, surname, nickname, email, avatar_url, team_page_metadata, occupation, role, website_bio, linkedin_url, instagram_url, facebook_url, order_index, created_at'
+      'id, name, surname, nickname, email, avatar_url, team_page_metadata, avatar_metadata, occupation, website_bio, linkedin_url, instagram_url, facebook_url, order_index, created_at'
     )
     .eq('show_on_website', true)
     .order('order_index', { ascending: true })
@@ -68,23 +51,24 @@ export async function getTeamMembers(): Promise<TeamMember[]> {
 
     const displayName = fullName || fallbackName;
 
-    const position = emp.occupation || emp.role || '';
-    const role = emp.role || emp.occupation || '';
+    // Public role is the job title, never an internal CRM permission role.
+    const position = emp.occupation || '';
 
     return {
       id: emp.id,
       name: displayName,
       position,
-      role,
+      role: position,
       email: emp.email ?? undefined,
-      image: emp.avatar_url ?? null,
-      image_metadata: emp.team_page_metadata ?? undefined,
+      image: emp.avatar_url ?? '',
+      image_metadata: emp.team_page_metadata ?? emp.avatar_metadata ?? undefined,
       alt: fullName || displayName,
       bio: emp.website_bio ?? undefined,
       linkedin: emp.linkedin_url ?? undefined,
       instagram: emp.instagram_url ?? undefined,
       facebook: emp.facebook_url ?? undefined,
       order_index: emp.order_index ?? 0,
+      is_visible: true,
     };
   });
 }

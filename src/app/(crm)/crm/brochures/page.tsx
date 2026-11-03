@@ -1,13 +1,16 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { BookOpen, Building2, FilePlus2, FileText, Loader2, Plus, Search } from 'lucide-react';
+import { ArchiveRestore, BookOpen, Building2, FilePlus2, FileText, Loader2, Pencil, Plus, Search, Trash2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { parseDecorativePages, parseComposer } from '@/lib/brochures/decorativePages';
 import { createHotelBrochureTemplate, HOTEL_TEMPLATE_PRODUCT_IDS } from '@/lib/brochures/hotelTemplate';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
+import BrochureManagementDialog, { type BrochureManagementAction } from '@/components/crm/brochures/BrochureManagementDialog';
 
 type Brochure = {
   id: string;
@@ -40,6 +43,8 @@ export default function BrochuresPage() {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [query, setQuery] = useState('');
+  const [showArchived, setShowArchived] = useState(false);
+  const [management, setManagement] = useState<{ action: BrochureManagementAction; brochure: Brochure } | null>(null);
   const canManage = isAdmin || hasScope('offers_manage');
 
   const load = async () => {
@@ -47,7 +52,6 @@ export default function BrochuresPage() {
     const { data, error } = await supabase
       .from('sales_brochures')
       .select('id,name,title,audience_type,status,current_pdf_version,modified_after_generation,updated_at,brand_config,organization:organizations(name),items:sales_brochure_items(id,is_visible)')
-      .neq('status', 'archived')
       .order('updated_at', { ascending: false });
     if (error) {
       showSnackbar(
@@ -118,13 +122,14 @@ export default function BrochuresPage() {
 
   const filtered = useMemo(() => {
     const normalized = query.trim().toLowerCase();
-    if (!normalized) return brochures;
-    return brochures.filter((brochure) =>
+    const visible = brochures.filter((brochure) => (brochure.status === 'archived') === showArchived);
+    if (!normalized) return visible;
+    return visible.filter((brochure) =>
       `${brochure.name} ${brochure.title} ${brochure.organization?.name || ''}`
         .toLowerCase()
         .includes(normalized),
     );
-  }, [brochures, query]);
+  }, [brochures, query, showArchived]);
 
   return (
     <div className="min-h-screen bg-[#0f1119] px-5 py-6 text-[#e5e4e2] lg:px-8">
@@ -155,6 +160,13 @@ export default function BrochuresPage() {
           )}
         </header>
 
+        <div className="mb-4 flex flex-wrap gap-2" role="group" aria-label="Widok broszur">
+          <button type="button" aria-pressed={!showArchived} onClick={() => setShowArchived(false)}
+            className={`rounded-lg px-4 py-2 text-sm ${!showArchived ? 'bg-[#d3bb73]/20 text-[#d3bb73]' : 'bg-white/5 text-white/60'}`}>Aktywne</button>
+          <button type="button" aria-pressed={showArchived} onClick={() => setShowArchived(true)}
+            className={`rounded-lg px-4 py-2 text-sm ${showArchived ? 'bg-[#d3bb73]/20 text-[#d3bb73]' : 'bg-white/5 text-white/60'}`}>Archiwum</button>
+        </div>
+        {showArchived && <p className="mb-4 text-sm text-white/60">Broszury usunięte z aktywnej listy. Zapisane PDF-y klientów pozostają dostępne; w menu „⋮” możesz przywrócić broszurę.</p>}
         <div className="mb-5 flex items-center gap-3 rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] px-4 py-3">
           <Search className="h-4 w-4 text-[#d3bb73]" />
           <input
@@ -172,8 +184,8 @@ export default function BrochuresPage() {
         ) : filtered.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-[#d3bb73]/20 bg-[#1c1f33] px-6 py-20 text-center">
             <FilePlus2 className="mx-auto mb-4 h-12 w-12 text-[#d3bb73]/50" />
-            <h2 className="text-xl font-light">Brak broszur</h2>
-            <p className="mt-2 text-sm text-[#e5e4e2]/45">Utwórz pierwszą prezentację usług dla hoteli.</p>
+            <h2 className="text-xl font-light">{query.trim() ? 'Brak wyników' : showArchived ? 'Archiwum jest puste' : 'Brak broszur'}</h2>
+            <p className="mt-2 text-sm text-[#e5e4e2]/45">{query.trim() ? 'Zmień wyszukiwaną nazwę.' : showArchived ? 'Tutaj znajdziesz broszury usunięte z aktywnej listy.' : 'Utwórz pierwszą prezentację usług dla hoteli.'}</p>
           </div>
         ) : (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -181,18 +193,15 @@ export default function BrochuresPage() {
               const pageCount = (brochure.items || []).filter((i) => i.is_visible).length + parseDecorativePages(brochure.brand_config?.decorative_pages).filter((p) => p.isVisible).length + 3 - parseComposer(brochure.brand_config?.composer).hiddenPages.length;
               const ready = brochure.current_pdf_version > 0 && !brochure.modified_after_generation;
               return (
-                <button
-                  key={brochure.id}
-                  type="button"
-                  onClick={() => router.push(`/crm/brochures/${brochure.id}`)}
-                  className="group rounded-2xl border border-[#d3bb73]/10 bg-[#1c1f33] p-5 text-left transition hover:-translate-y-0.5 hover:border-[#d3bb73]/35"
-                >
-                  <div className="flex items-start justify-between gap-4">
+                <article key={brochure.id} className="relative">
+                <Link href={`/crm/brochures/${brochure.id}`}
+                  className="group block h-full rounded-2xl border border-[#d3bb73]/10 bg-[#1c1f33] p-5 text-left transition hover:bg-[#d3bb73]/5 focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#d3bb73]/40">
+                  <div className={`flex items-start justify-between gap-4 ${canManage ? 'pr-9' : ''}`}>
                     <div className="rounded-xl bg-[#d3bb73]/10 p-3 text-[#d3bb73]">
                       <FileText className="h-6 w-6" />
                     </div>
-                    <span className={`rounded-full px-2.5 py-1 text-xs ${ready ? 'bg-green-500/10 text-green-300' : 'bg-orange-500/10 text-orange-300'}`}>
-                      {ready ? `PDF v${brochure.current_pdf_version}` : brochure.current_pdf_version ? 'Wymaga aktualizacji' : 'Szkic'}
+                    <span className={`rounded-full px-2.5 py-1 text-xs ${showArchived ? 'bg-white/10 text-white/60' : ready ? 'bg-green-500/10 text-green-300' : 'bg-orange-500/10 text-orange-300'}`}>
+                      {showArchived ? 'Archiwum' : ready ? `PDF v${brochure.current_pdf_version}` : brochure.current_pdf_version ? 'Wymaga aktualizacji' : 'Szkic'}
                     </span>
                   </div>
                   <h2 className="mt-5 text-lg font-medium transition group-hover:text-[#d3bb73]">{brochure.name}</h2>
@@ -206,12 +215,27 @@ export default function BrochuresPage() {
                       </span>
                     )}
                   </div>
-                </button>
+                </Link>
+                {canManage && <div className="absolute right-4 top-5" role="group" aria-label={`Akcje broszury: ${brochure.name}`}>
+                  <ResponsiveActionBar alwaysDropdown compact disabledBackground actions={[
+                    { label: 'Zmień nazwę', icon: <Pencil className="h-4 w-4" />, onClick: () => setManagement({ action: 'rename', brochure }), show: !showArchived, disabled: Boolean(management) },
+                    { label: 'Usuń broszurę', icon: <Trash2 className="h-4 w-4" />, variant: 'danger', onClick: () => setManagement({ action: 'remove', brochure }), show: !showArchived, disabled: Boolean(management) },
+                    { label: 'Przywróć broszurę', icon: <ArchiveRestore className="h-4 w-4" />, onClick: () => setManagement({ action: 'restore', brochure }), show: showArchived, disabled: Boolean(management) },
+                  ]} />
+                </div>}
+                </article>
               );
             })}
           </div>
         )}
       </div>
+      {management && <BrochureManagementDialog key={`${management.brochure.id}:${management.action}`}
+        action={management.action} brochure={management.brochure} canManage={canManage}
+        onClose={() => setManagement(null)} onSuccess={(updated) => {
+          setBrochures((current) => current.map((brochure) => brochure.id === updated.id ? { ...brochure, ...updated } : brochure)
+            .sort((a, b) => b.updated_at.localeCompare(a.updated_at)));
+          setManagement(null);
+        }} />}
     </div>
   );
 }

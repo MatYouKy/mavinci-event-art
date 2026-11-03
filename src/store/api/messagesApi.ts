@@ -1,3 +1,5 @@
+import { withMessageSalesContext, type MessageSalesContext } from '@/lib/CRM/messages/salesContext';
+import { readMailboxUnreadCounts } from '@/lib/CRM/messages/unreadCounts';
 import { FetchBaseQueryError } from '@reduxjs/toolkit/query';
 import { api } from './api';
 import { inboxMailboxIds, mailboxFilter, readMailboxViewPreferences } from '@/lib/CRM/messages/mailboxPreferences';
@@ -12,6 +14,7 @@ export type MessageFolder =
   | 'trash';
 
 export interface MessageListItem {
+  sales?: MessageSalesContext;
   id: string;
   type: MessageType;
   from: string;
@@ -57,6 +60,24 @@ export interface FetchMessagesParams {
   filterType?: MessageFolder;
   includeBody?: boolean;
   showOnlyOpened?: boolean;
+}
+
+async function changeMessageTrash(id: string, type: MessageType, action: 'trash' | 'restore') {
+  if (type === 'received' || type === 'sent') {
+    const response = await fetch('/bridge/messages/trash', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, type, action }),
+    });
+    const result = await response.json().catch(() => null);
+    if (!response.ok || !result?.ok) throw new Error(result?.error || 'Serwer nie potwierdził zmiany. Ponów tę samą czynność.');
+    return;
+  }
+  const { supabase } = await import('@/lib/supabase/browser');
+  const table = type === 'contact_form' ? 'contact_messages' : type === 'draft' ? 'email_drafts' : null;
+  if (!table) throw new Error('Nieprawidłowy typ wiadomości.');
+  const { data, error } = await supabase.from(table)
+    .update({ deleted_at: action === 'trash' ? new Date().toISOString() : null }).eq('id', id).select('id').maybeSingle();
+  if (error || !data) throw new Error(error?.message || 'Brak uprawnień do zmiany tej wiadomości.');
 }
 
 export const messagesApi = api.injectEndpoints({
@@ -271,6 +292,7 @@ export const messagesApi = api.injectEndpoints({
                   assigned_to: msg.assigned_to,
                   assigned_employee: msg.assigned_employee,
                   email_account_id: msg.email_account_id,
+                  isDeleted: Boolean(msg.deleted_at),
                 })),
               );
             }
@@ -339,7 +361,7 @@ export const messagesApi = api.injectEndpoints({
 
           const pageEnd = offset + limit;
           const hasMore = filteredMessages.length > pageEnd;
-          const messages = filteredMessages.slice(offset, pageEnd);
+          const messages = await withMessageSalesContext(supabase, filteredMessages.slice(offset, pageEnd));
 
           return {
             data: {
@@ -453,6 +475,7 @@ export const messagesApi = api.injectEndpoints({
                 status: data.status,
                 assigned_to: data.assigned_to,
                 assigned_employee: data.assigned_employee,
+                isDeleted: Boolean(data.deleted_at),
                 originalData: data,
               };
             }
@@ -488,6 +511,7 @@ export const messagesApi = api.injectEndpoints({
                 isRead: true,
                 isStarred: false,
                 email_account_id: data.email_account_id,
+                isDeleted: Boolean(data.deleted_at),
                 originalData: data,
                 attachments: attachments || [],
                 attachmentsError: attachmentsError ? 'Nie udało się odczytać listy załączników.' : undefined,
@@ -527,6 +551,7 @@ export const messagesApi = api.injectEndpoints({
                 assigned_to: data.assigned_to,
                 assigned_employee: data.assigned_employee,
                 email_account_id: data.email_account_id,
+                isDeleted: Boolean(data.deleted_at),
                 originalData: data,
                 attachments: attachments || [],
                 attachmentsError: attachmentsError ? 'Nie udało się odczytać listy załączników.' : undefined,
@@ -542,7 +567,7 @@ export const messagesApi = api.injectEndpoints({
             return { error: err };
           }
 
-          return { data: messageData };
+          return { data: (await withMessageSalesContext(supabase, [messageData]))[0] };
         } catch (error) {
           console.error('Error fetching message details:', error);
           return { error: { status: 'CUSTOM_ERROR', error: String(error) } };
@@ -623,62 +648,36 @@ export const messagesApi = api.injectEndpoints({
       ],
     }),
 
-    deleteMessage: builder.mutation<
-      void,
-      { id: string; type: MessageType; permanent?: boolean }
-    >({
+    getMailboxTrashPermissions: builder.query<string[], void>({
+      queryFn: async () => {
+        const { supabase } = await import('@/lib/supabase/browser');
+        const { data, error } = await supabase.rpc('get_mailbox_trash_permissions');
+        return error ? { error: { status: 'CUSTOM_ERROR', error: error.message } } : { data: data || [] };
+      },
+      providesTags: ['MessagesList'],
+    }),
+    deleteMessage: builder.mutation<void, { id: string; type: MessageType; permanent?: boolean }>({
       queryFn: async ({ id, type, permanent = false }) => {
         try {
-          const { supabase } = await import('@/lib/supabase/browser');
-
-          const tableName =
-            type === 'contact_form'
-              ? 'contact_messages'
-              : type === 'received'
-                ? 'received_emails'
-                : type === 'draft'
-                  ? 'email_drafts'
-                  : 'sent_emails';
-
-          if (permanent) {
-            await supabase.from(tableName).delete().eq('id', id);
-          } else {
-            await supabase
-              .from(tableName)
-              .update({ deleted_at: new Date().toISOString() })
-              .eq('id', id);
-          }
-
+          if (permanent) throw new Error('Trwałe usuwanie nie jest dostępne. Użyj kosza.');
+          await changeMessageTrash(id, type, 'trash');
           return { data: undefined };
         } catch (error) {
-          return { error: { status: 'CUSTOM_ERROR', error: String(error) } };
+          return { error: { status: 'CUSTOM_ERROR', error: error instanceof Error ? error.message : 'Nie udało się przenieść wiadomości.' } };
         }
       },
-      invalidatesTags: [{ type: 'Message', id: 'LIST' }],
+      invalidatesTags: (result, error, { id }) => [{ type: 'Message', id }, { type: 'Message', id: 'LIST' }, 'MessagesList'],
     }),
-
     restoreMessage: builder.mutation<void, { id: string; type: MessageType }>({
       queryFn: async ({ id, type }) => {
         try {
-          const { supabase } = await import('@/lib/supabase/browser');
-
-          const tableName =
-            type === 'contact_form'
-              ? 'contact_messages'
-              : type === 'received'
-                ? 'received_emails'
-                : type === 'draft'
-                  ? 'email_drafts'
-                  : 'sent_emails';
-
-          await supabase.from(tableName).update({ deleted_at: null }).eq('id', id);
-
+          await changeMessageTrash(id, type, 'restore');
           return { data: undefined };
         } catch (error) {
-          return { error: { status: 'CUSTOM_ERROR', error: String(error) } };
+          return { error: { status: 'CUSTOM_ERROR', error: error instanceof Error ? error.message : 'Nie udało się przywrócić wiadomości.' } };
         }
       },
-      invalidatesTags: [{ type: 'Message', id: 'LIST' }],
+      invalidatesTags: (result, error, { id }) => [{ type: 'Message', id }, { type: 'Message', id: 'LIST' }, 'MessagesList'],
     }),
 
     searchMessages: builder.query<
@@ -713,6 +712,7 @@ export const messagesApi = api.injectEndpoints({
                 assigned_employee:employees!assigned_to(name, surname)
               `,
               )
+              .is('deleted_at', null)
               .order('created_at', { ascending: false });
 
             if (dateFrom) {
@@ -762,6 +762,7 @@ export const messagesApi = api.injectEndpoints({
               .select(
                 'id, to_address, subject, body, sent_at, email_account_id, employees!employee_id(name, surname, email, id)',
               )
+              .is('deleted_at', null)
               .order('sent_at', { ascending: false });
 
             if (dateFrom) {
@@ -828,6 +829,7 @@ export const messagesApi = api.injectEndpoints({
                 assigned_employee:employees!assigned_to(name, surname)
               `,
               )
+              .is('deleted_at', null)
               .order('received_date', { ascending: false });
 
             if (dateFrom) {
@@ -884,7 +886,7 @@ export const messagesApi = api.injectEndpoints({
 
           return {
             data: {
-              messages: filteredMessages,
+              messages: await withMessageSalesContext(supabase, filteredMessages),
               total: filteredMessages.length,
             },
           };
@@ -1084,22 +1086,7 @@ export const messagesApi = api.injectEndpoints({
             employee?.can_receive_contact_forms === true;
 
           const [accountCounts, contactResult] = await Promise.all([
-            Promise.all(
-              accountIds.map(async (accountId) => {
-                const { count, error } = await supabase
-                  .from('received_emails')
-                  .select('id', { count: 'exact', head: true })
-                  .eq('email_account_id', accountId)
-                  .eq('is_read', false)
-                  .is('deleted_at', null);
-
-                if (error) {
-                  console.warn('Could not count unread messages for account:', accountId, error);
-                }
-
-                return [accountId, count || 0] as const;
-              }),
-            ),
+            readMailboxUnreadCounts(supabase, accountIds),
             canViewContactForms
               ? supabase
                   .from('contact_messages')
@@ -1113,7 +1100,7 @@ export const messagesApi = api.injectEndpoints({
             console.warn('Could not count unread contact messages:', contactResult.error);
           }
 
-          const byAccount: Record<string, number> = Object.fromEntries(accountCounts);
+          const byAccount: Record<string, number> = accountCounts;
           const contactForm = contactResult.count || 0;
           // Skrzynki wyciszone mają własny licznik, ale nie wchodzą do sumy.
           const total = contactForm + Object.entries(byAccount)
@@ -1215,6 +1202,7 @@ export const messagesApi = api.injectEndpoints({
 });
 
 export const {
+  useGetMailboxTrashPermissionsQuery,
   useGetMessagesListQuery,
   useGetMessageDetailsQuery,
   useGetReceivedAttachmentsQuery,

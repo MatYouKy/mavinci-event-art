@@ -96,6 +96,11 @@ export default function CalendarMain({
     potentialInquiries: true,
   });
 
+  const calendarRange = useMemo(() => ({
+    start_date: new Date(currentDate.getFullYear(), currentDate.getMonth(), -6).toISOString(),
+    end_date: new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 8).toISOString(),
+  }), [currentDate]);
+
   const {
     data: calendarEvents,
     isLoading: eventsLoading,
@@ -103,7 +108,7 @@ export default function CalendarMain({
     isSuccess: eventsSuccess,
     error: eventsError,
     refetch: refetchEvents,
-  } = useGetCalendarEventsQuery();
+  } = useGetCalendarEventsQuery(calendarRange);
 
   const { data: filterOptions, isLoading: filterOptionsLoading } =
     useGetCalendarFilterOptionsQuery();

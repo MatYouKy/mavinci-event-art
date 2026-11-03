@@ -333,17 +333,13 @@ Deno.serve(async (req: Request) => {
         }
 
         let isContinuation = Boolean(conversation) && !currentMessageAlreadyLinked;
-        if (!conversation && (references || hasReplySubject)) {
-          const escapedSender = senderEmail.replace(/[%_]/g, "\\$&");
-          const { data: priorEmail } = await supabase
-            .from("received_emails")
-            .select("id, message_id, received_date")
-            .eq("email_account_id", email.email_account_id)
-            .neq("id", email.id)
-            .ilike("from_address", `%${escapedSender}%`)
-            .gte("received_date", new Date(Date.now() - 365 * 86400000).toISOString())
-            .limit(1)
-            .maybeSingle();
+        if (!conversation && references) {
+          const ids = references.match(/<[^>]+>/g) || references.split(/\s+/).filter(Boolean);
+          const candidates = [...new Set(ids.flatMap(id => [id, id.replace(/^<|>$/g, '')]))];
+          const { data: priorEmail, error: priorError } = await supabase.from("received_emails")
+            .select("id, message_id, received_date").eq("email_account_id", email.email_account_id)
+            .neq("id", email.id).in("message_id", candidates).order("received_date", { ascending: true }).limit(1).maybeSingle();
+          if (priorError) throw priorError;
           priorReceivedEmail = priorEmail;
           isContinuation = Boolean(priorEmail);
         }
@@ -390,6 +386,20 @@ Deno.serve(async (req: Request) => {
           last_message_at: email.received_date,
           updated_at: new Date().toISOString(),
         }).eq("id", conversation.id);
+
+        const { data: salesRows, error: salesError } = await supabase.rpc("crm_message_sales_context", {
+          p_messages: [{ type: "received", id: email.id }],
+        });
+        if (salesError) throw salesError;
+        const linkedInquiries = salesRows?.[0]?.inquiries || [];
+        if (linkedInquiries.length > 1) throw new Error("Wiadomość ma kilka powiązań z zapytaniami. Wymagana weryfikacja.");
+        if (linkedInquiries.length === 1) {
+          const { error: linkError } = await supabase.from("email_sales_conversations").update({
+            inquiry_id: linkedInquiries[0].id, status: "qualified", updated_at: new Date().toISOString(),
+          }).eq("id", conversation.id);
+          if (linkError) throw linkError;
+          isContinuation = true;
+        }
 
         if (isContinuation) {
           await supabase.from("email_ai_qualifications").update({
@@ -506,20 +516,13 @@ Deno.serve(async (req: Request) => {
           ].filter((line) => line !== null).join("\n");
 
           if (!inquiry) {
-            const { data, error } = await supabase.from("tasks").insert({
-              title: `Zapytanie e-mail: ${classification.event_type || email.subject || senderEmail}`.slice(0, 500),
-              description: description.slice(0, 10000),
-              priority: "urgent",
-              status: "todo",
-              board_column: "todo",
-              order_index: 0,
-              created_by: admin?.id || null,
-              is_inquiry: true,
-              inquiry_stage: "new",
-              inquiry_owner_id: null,
-              next_action_at: new Date(Date.now() + 2 * 3600000).toISOString(),
-              win_probability: Math.max(10, Math.min(80, Math.round(classification.confidence * 70))),
-              inquiry_details: {
+            const { data, error } = await supabase.rpc("crm_create_ai_email_inquiry", {
+              p_email_id: email.id,
+              p_title: `Zapytanie e-mail: ${classification.event_type || email.subject || senderEmail}`.slice(0, 500),
+              p_description: description.slice(0, 10000),
+              p_creator: admin?.id || null,
+              p_probability: Math.max(10, Math.min(80, Math.round(classification.confidence * 70))),
+              p_details: {
                 source_kind: "email_ai",
                 received_email_id: email.id,
                 conversation_id: conversation.id,
@@ -542,9 +545,9 @@ Deno.serve(async (req: Request) => {
                 ai_confidence: classification.confidence,
                 ai_reasoning: classification.reasoning,
               },
-            }).select("id").single();
+            });
             if (error) throw error;
-            inquiry = data;
+            inquiry = { id: data };
           }
         }
 
@@ -597,8 +600,8 @@ Deno.serve(async (req: Request) => {
 
         results.push({ id: job.id, status: qualificationStatus, inquiry_id: inquiry?.id || null });
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        const finalFailure = job.attempt_count >= 3;
+        const message = error instanceof Error ? error.message : typeof error === "object" && error && "message" in error ? String(error.message) : JSON.stringify(error);
+        const finalFailure = job.attempt_count >= 3 || /insufficient_quota|exceeded your current quota/i.test(message);
         await supabase.from("email_ai_qualifications").update({
           status: finalFailure ? "failed" : "pending",
           last_error: message.slice(0, 2000),
@@ -614,7 +617,7 @@ Deno.serve(async (req: Request) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = error instanceof Error ? error.message : typeof error === "object" && error && "message" in error ? String(error.message) : JSON.stringify(error);
     console.error("AI email qualification failed:", message);
     return new Response(JSON.stringify({ success: false, error: message }), {
       status: 500,

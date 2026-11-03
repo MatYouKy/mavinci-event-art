@@ -321,9 +321,9 @@ Deno.serve(async (req: Request) => {
       const { data: source, error: sourceError } = await service.from('sales_brochure_generations')
         .select('pdf_path,file_name,file_size,created_by').eq('id', delivery.generation_id).maybeSingle();
       if (sourceError || !source || source.created_by !== salesEmployeeId || !source.pdf_path
-        || !Number.isSafeInteger(source.file_size) || source.file_size <= 0 || source.file_size > 52428800) {
+        || !Number.isSafeInteger(source.file_size) || source.file_size <= 0 || source.file_size > 30_000_000) {
         deliveryState = 'not_sent';
-        throw new Error('Brak poprawnego zapisanego PDF broszury (maksymalnie 50 MiB). Niczego nie wysłano.');
+        throw new Error('Brak poprawnego PDF broszury do 30 MB. Wygeneruj broszurę ponownie z kompresją zdjęć. Niczego nie wysłano.');
       }
       const { data: claimed, error: claimError } = await service.from('sales_brochure_deliveries')
         .update({ transport_started_at: new Date().toISOString() })

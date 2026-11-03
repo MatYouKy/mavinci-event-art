@@ -1,3 +1,4 @@
+import { readNotificationFeed } from '../lib/notificationFeed';
 import { getEventNotificationTab } from '../lib/eventNotificationTarget';
 import { getSellerChatTarget } from '../lib/sellerChatTarget';
 import { navigateToSellerChat, routeSalesUrl } from '../navigation/navigationRef';
@@ -50,17 +51,23 @@ interface Notification {
 
 export default function NotificationsScreen() {
   const navigation = useNavigation<any>();
-  const { employee } = useAuth();
+  const { employee, session } = useAuth();
+  const userId = session?.user.id;
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [respondingId, setRespondingId] = useState<string | null>(null);
 
+  const pagesRef = useRef(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [loadingMore, setLoadingMore] = useState(false);
   const refreshRef = useRef<(() => Promise<void>) | null>(null);
 
   useForegroundEffect(
     (signal) => {
-      if (employee?.id) {
+      if (employee?.id && userId) {
+        pagesRef.current = 1;
         const queue = createRefreshQueue(signal, loadNotifications);
         refreshRef.current = queue.refresh;
         void queue.refresh();
@@ -73,7 +80,7 @@ export default function NotificationsScreen() {
               event: '*',
               schema: 'public',
               table: 'notification_recipients',
-              filter: `user_id=eq.${employee.id}`,
+              filter: `user_id=eq.${userId}`,
             },
             queue.schedule,
           )
@@ -97,7 +104,7 @@ export default function NotificationsScreen() {
         };
       }
     },
-    [employee?.id],
+    [employee?.id, userId],
   );
 
   const fetchNotifications = async () => {
@@ -105,45 +112,16 @@ export default function NotificationsScreen() {
   };
 
   const loadNotifications = async (signal: AbortSignal) => {
-    if (!employee?.id || signal.aborted) return;
+    if (!employee?.id || !userId || signal.aborted) return;
 
     try {
-      const { data, error } = await supabase
-        .from('notification_recipients')
-        .select(
-          `
-          id,
-          is_read,
-          notification:notifications(
-            id,
-            title,
-            message,
-            category,
-            related_entity_type,
-            related_entity_id,
-            action_url,
-            created_at,
-            metadata
-          )
-        `,
-        )
-        .eq('user_id', employee.id)
-        .order('created_at', { ascending: false })
-        .abortSignal(signal);
-
+      const result = await readNotificationFeed(supabase, userId, pagesRef.current, false, true, signal);
       if (signal.aborted) return;
-      if (error) throw error;
-
-      const formattedNotifications = (data || [])
-        .filter((item: any) => item.notification)
-        // Ukryj zdublowane zaproszenie fazowe — poprawne zaproszenie do
-        // wydarzenia przychodzi jako osobne powiadomienie (employee_assignments).
-        .filter((item: any) => item.notification.related_entity_type !== 'event_phase_assignment')
-        .map((item: any) => ({
-          ...item.notification,
-          is_read: item.is_read,
-          recipient_id: item.id,
-        }));
+      setHasMore(result.hasMore);
+      setUnreadCount(result.unread);
+      const formattedNotifications = result.rows.map((item: any) => ({
+        ...item.notifications, is_read: item.is_read, recipient_id: item.id,
+      }));
 
       const assignmentIds = Array.from(
         new Set<string>(
@@ -201,6 +179,7 @@ export default function NotificationsScreen() {
     } catch (error) {
       if (!signal.aborted) console.error('Error fetching notifications:', error);
     } finally {
+      setLoadingMore(false);
       if (!signal.aborted) {
         setLoading(false);
         setRefreshing(false);
@@ -218,19 +197,20 @@ export default function NotificationsScreen() {
       setNotifications((prev) =>
         prev.map((n) => (n.id === notificationId ? { ...n, is_read: true } : n)),
       );
+      void fetchNotifications();
     } catch (error) {
       console.error('Error marking notification as read:', error);
     }
   };
 
   const markAllAsRead = async () => {
-    if (!employee?.id) return;
+    if (!employee?.id || !userId) return;
 
     try {
       await supabase
         .from('notification_recipients')
         .update({ is_read: true, read_at: new Date().toISOString() })
-        .eq('user_id', employee.id)
+        .eq('user_id', userId!)
         .eq('is_read', false);
 
       fetchNotifications();
@@ -638,7 +618,7 @@ export default function NotificationsScreen() {
       {notifications.length > 0 && (
         <View style={styles.header}>
           <Text style={styles.headerTitle}>
-            Powiadomienia ({notifications.filter((n) => !n.is_read).length})
+            Powiadomienia ({unreadCount})
           </Text>
           <TouchableOpacity onPress={markAllAsRead} style={styles.markAllButton}>
             <Text style={styles.markAllText}>Oznacz wszystkie</Text>
@@ -658,6 +638,11 @@ export default function NotificationsScreen() {
             tintColor={colors.primary.gold}
           />
         }
+        ListFooterComponent={hasMore ? <TouchableOpacity disabled={loadingMore} style={styles.markAllButton} onPress={() => {
+          pagesRef.current += 1;
+          setLoadingMore(true);
+          void fetchNotifications();
+        }}><Text style={styles.markAllText}>{loadingMore ? 'Wczytywanie…' : 'Pokaż starsze powiadomienia'}</Text></TouchableOpacity> : null}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <Feather name="bell-off" color={colors.text.tertiary} size={48} />

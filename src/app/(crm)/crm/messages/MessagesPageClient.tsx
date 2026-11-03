@@ -1,4 +1,7 @@
 'use client';
+import { canClaimMessageInquiry, readMessageSalesContext } from '@/lib/CRM/messages/salesContext';
+import MessageSalesBadge from '@/components/crm/MessageSalesBadge';
+import { messageMatchesFolder } from '@/lib/CRM/messages/messageFolder';
 
 import { formatSystemSubject } from '@/lib/ui/systemLabels';
 
@@ -31,6 +34,8 @@ import {
   useLazyGetMessageDetailsQuery,
   useMarkMessageAsReadMutation,
   useDeleteMessageMutation,
+  useRestoreMessageMutation,
+  useGetMailboxTrashPermissionsQuery,
   useToggleStarMessageMutation,
   useLazySearchMessagesQuery,
   useGetEmailAccountsQuery,
@@ -133,6 +138,9 @@ export default function MessagesPageClient({
   const serverDataAppliedKeyRef = useRef<string | null>(null);
 
   const mailboxCacheKey = `${userId}:${selectedAccount}:${filterType}`;
+  const scopeRef = useRef(mailboxCacheKey);
+  scopeRef.current = mailboxCacheKey;
+  const searchGeneration = useRef(0);
 
   const {
     currentData: messagesData,
@@ -158,6 +166,11 @@ export default function MessagesPageClient({
 
   const [markAsRead] = useMarkMessageAsReadMutation();
   const [deleteMessage] = useDeleteMessageMutation();
+  const [restoreMessage] = useRestoreMessageMutation();
+  const { data: trashMailboxIds = [] } = useGetMailboxTrashPermissionsQuery();
+  const trashBusy = useRef(false);
+  const canTrashMessage = (message: MessageListItem) => message.type === 'contact_form' ? canManage
+    : Boolean(message.email_account_id && trashMailboxIds.includes(message.email_account_id));
   const [toggleStar] = useToggleStarMessageMutation();
   const [getMessageDetails] = useLazyGetMessageDetailsQuery();
   const { data: unreadCounts, refetch: refetchUnreadCounts } =
@@ -220,6 +233,8 @@ export default function MessagesPageClient({
       return;
     }
 
+    const generation = ++searchGeneration.current;
+    const scope = mailboxCacheKey;
     setIsSearchMode(true);
     setAllMessages([]);
 
@@ -232,15 +247,18 @@ export default function MessagesPageClient({
         filterType: filterType as any,
       }).unwrap();
 
-      setAllMessages(result.messages);
+      if (generation !== searchGeneration.current || scope !== scopeRef.current) return;
+      setAllMessages(result.messages.filter(m => messageMatchesFolder(m, selectedAccount, filterType)));
       showSnackbar(`Znaleziono ${result.total} wiadomości`, 'success');
     } catch (error) {
+      if (generation !== searchGeneration.current || scope !== scopeRef.current) return;
       console.error('Search error:', error);
       showSnackbar('Błąd podczas wyszukiwania', 'error');
     }
   };
 
   const handleClearSearch = () => {
+    searchGeneration.current++;
     setIsSearchMode(false);
     setSearchQuery('');
     setDateFrom('');
@@ -255,8 +273,10 @@ export default function MessagesPageClient({
   const refetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const refetchDebounced = useCallback(() => {
+    if (document.visibilityState !== 'visible') return;
     if (refetchTimer.current) clearTimeout(refetchTimer.current);
     refetchTimer.current = setTimeout(() => {
+      setOffset(0);
       refetch();
     }, 250);
   }, [refetch]);
@@ -272,24 +292,14 @@ export default function MessagesPageClient({
     if (messagesData?.messages && !isSearchMode) {
       serverDataAppliedKeyRef.current = mailboxCacheKey;
       if (offset === 0) {
-        setAllMessages((previous) => {
-          const merged = Array.from(
-            new Map(
-              [...messagesData.messages, ...previous].map((message) => [
-                `${message.type}:${message.id}`,
-                message,
-              ] as const),
-            ).values(),
-          ).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-
-          void writeMessageListCache(userId, selectedAccount, filterType, merged);
-          return merged;
-        });
+        const fresh = messagesData.messages.filter(m => messageMatchesFolder(m, selectedAccount, filterType));
+        setAllMessages(fresh);
+        void writeMessageListCache(userId, selectedAccount, filterType, fresh);
       } else {
         setAllMessages((prev: MessageListItem[]) => {
           const merged = Array.from(
             new Map(
-              [...prev, ...messagesData.messages].map((message) => [
+              [...prev.filter(m => messageMatchesFolder(m, selectedAccount, filterType)), ...messagesData.messages].map((message) => [
                 `${message.type}:${message.id}`,
                 message,
               ] as const),
@@ -306,6 +316,8 @@ export default function MessagesPageClient({
 
   useEffect(() => {
     let active = true;
+    searchGeneration.current++;
+    setIsSearchMode(false);
     const currentServerMessages = messagesData?.messages;
     serverDataAppliedKeyRef.current = currentServerMessages ? mailboxCacheKey : null;
     setOffset(0);
@@ -382,6 +394,23 @@ export default function MessagesPageClient({
     if (!currentEmployee || emailAccounts.length === 0) return;
 
     const channels: any[] = [];
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let running = false;
+    let pending = false;
+    let disposed = false;
+    const reloadCounts = () => {
+      if (disposed || timer) return;
+      if (running) { pending = true; return; }
+      timer = setTimeout(async () => {
+        timer = undefined;
+        running = true;
+        try { await refetchUnreadCounts(); }
+        finally {
+          running = false;
+          if (pending) { pending = false; reloadCounts(); }
+        }
+      }, 300);
+    };
 
     // Contact form tylko jeśli ma dostęp (albo manage)
     if (hasContactFormAccess || canManage) {
@@ -393,7 +422,7 @@ export default function MessagesPageClient({
             { event: '*', schema: 'public', table: 'contact_messages' },
             () => {
               refetchDebounced();
-              void refetchUnreadCounts();
+              reloadCounts();
             },
           )
           .subscribe(),
@@ -415,12 +444,24 @@ export default function MessagesPageClient({
         .channel('received_emails_changes')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'received_emails' }, () => {
           if (selectedAccount !== 'contact_form') refetchDebounced();
-          void refetchUnreadCounts();
+          reloadCounts();
         })
         .subscribe(),
     );
 
+    channels.push(supabase.channel('mail-sales-status')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks', filter: 'is_inquiry=eq.true' }, refetchDebounced)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'email_ai_qualifications' }, refetchDebounced)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'inquiry_email_links' }, refetchDebounced)
+      .subscribe());
+    const catchUp = () => { if (document.visibilityState === 'visible') refetchDebounced(); };
+    window.addEventListener('focus', catchUp);
+    document.addEventListener('visibilitychange', catchUp);
     return () => {
+      disposed = true;
+      window.removeEventListener('focus', catchUp);
+      document.removeEventListener('visibilitychange', catchUp);
+      clearTimeout(timer);
       channels.forEach((ch) => supabase.removeChannel(ch));
     };
   }, [
@@ -519,22 +560,26 @@ export default function MessagesPageClient({
     messageType: 'contact_form' | 'received',
     assignedTo: string | null,
   ) => {
+    const linked = allMessages.find(m => m.id === messageId && m.type === messageType)?.sales?.inquiries;
+    if (linked?.length) { router.push(`/crm/inquiries/${linked[0].id}`); return; }
     setMessageToAssign({ id: messageId, type: messageType, assignedTo });
     setShowAssignModal(true);
   };
 
-  const handleDelete = async (messageId: string, messageType: string) => {
+  const handleDelete = async (messageId: string, messageType: string, restore = false) => {
+    if (trashBusy.current) return;
     const confirmed = await showConfirm({
-      title: 'Usuń wiadomość',
-      message: 'Czy na pewno chcesz usunąć tę wiadomość? Ta operacja jest nieodwracalna.',
-      confirmText: 'Usuń',
+      title: restore ? 'Przywróć wiadomość' : 'Przenieś wiadomość do kosza',
+      message: messageType === 'contact_form' ? 'Wiadomość można przywrócić z kosza CRM.' : 'Zmiana zostanie zsynchronizowana z serwerem pocztowym, również w Thunderbirdzie. Wiadomość nie zostanie trwale usunięta.',
+      confirmText: restore ? 'Przywróć' : 'Przenieś do kosza',
       cancelText: 'Anuluj',
     });
 
     if (!confirmed) return;
 
     try {
-      await deleteMessage({ id: messageId, type: messageType as any }).unwrap();
+      trashBusy.current = true;
+      await (restore ? restoreMessage : deleteMessage)({ id: messageId, type: messageType as MessageType }).unwrap();
       setAllMessages((previous) => {
         const next = previous.filter(
           (message) => !(message.id === messageId && message.type === messageType),
@@ -544,14 +589,14 @@ export default function MessagesPageClient({
         }
         return next;
       });
-      showSnackbar('Wiadomość została usunięta', 'success');
+      showSnackbar(restore ? 'Wiadomość została przywrócona' : 'Wiadomość została przeniesiona do kosza', 'success');
       if (selectedMessageId === messageId) {
         setSelectedMessageId(null);
       }
     } catch (error) {
       console.error('Error deleting message:', error);
-      showSnackbar('Błąd podczas usuwania wiadomości', 'error');
-    }
+      showSnackbar((error as { error?: string })?.error || 'Nie udało się potwierdzić zmiany wiadomości.', 'error');
+    } finally { trashBusy.current = false; }
   };
 
   const handleMove = async (messageId: string) => {
@@ -563,6 +608,7 @@ export default function MessagesPageClient({
   const canCreateTasks = canCreateInModule('tasks');
 
   const handleCreateInquiry = (message: MessageListItem) => {
+    if (message.sales?.inquiries.length === 1 && !canClaimMessageInquiry(message.sales)) { router.push(`/crm/inquiries/${message.sales.inquiries[0].id}`); return; }
     setInquiryMessage(message);
   };
 
@@ -737,10 +783,11 @@ export default function MessagesPageClient({
   };
 
   const filteredMessages = useMemo(() => {
-    if (!searchQuery) return allMessages;
+    const scoped = allMessages.filter(m => messageMatchesFolder(m, selectedAccount, filterType));
+    if (!searchQuery) return scoped;
 
     const query = searchQuery.toLowerCase();
-    return allMessages.filter((msg) => {
+    return scoped.filter((msg) => {
       return (
         (msg.from || '').toLowerCase().includes(query) ||
         (msg.to || '').toLowerCase().includes(query) ||
@@ -748,7 +795,7 @@ export default function MessagesPageClient({
         (msg.preview || '').toLowerCase().includes(query)
       );
     });
-  }, [allMessages, searchQuery]);
+  }, [allMessages, searchQuery, selectedAccount, filterType]);
 
   const selectedMessage = useMemo(
     () => allMessages.find((message) => message.id === selectedMessageId) || null,
@@ -1143,7 +1190,7 @@ export default function MessagesPageClient({
                                 title={new Date(message.date).toLocaleString('pl-PL', { timeZone: 'Europe/Warsaw' })}>
                                 {formatDate(message.date)}
                               </span>
-                              {(message.type === 'contact_form' || message.type === 'received') && (
+                              {(message.type === 'contact_form' || message.type === 'received' || message.type === 'sent') && (
                                 <MessageActionsMenu
                                   messageId={message.id}
                                   messageType={message.type}
@@ -1180,6 +1227,9 @@ export default function MessagesPageClient({
                                       : undefined
                                   }
                                   canManage={canManage}
+                                  canTrash={canTrashMessage(message)}
+                                  isDeleted={filterType === 'trash' || message.isDeleted}
+                                  onRestore={() => handleDelete(message.id, message.type, true)}
                                 />
                               )}
                             </div>
@@ -1190,11 +1240,12 @@ export default function MessagesPageClient({
                             >
                               {typeInfo.label}
                             </span>
-                            {message.assigned_employee && (
+                            {!message.sales?.inquiries.length && message.assigned_employee && (
                               <span className="max-w-[110px] shrink-0 truncate rounded border border-purple-500/25 bg-purple-500/15 px-1.5 py-0.5 text-[9px] leading-3 text-purple-300">
                                 {message.assigned_employee.name} {message.assigned_employee.surname}
                               </span>
                             )}
+                            <MessageSalesBadge sales={message.sales} onOpen={id => router.push(`/crm/inquiries/${id}`)} />
                             <p className="min-w-0 flex-1 truncate text-[10px] leading-4 text-[#e5e4e2]/40">
                               {message.preview}
                             </p>
@@ -1240,7 +1291,8 @@ export default function MessagesPageClient({
                 }}
                 onCreateInquiry={handleCreateInquiry}
                 onCreateTask={canCreateTasks ? handleCreateTask : undefined}
-                onDelete={(message) => handleDelete(message.id, message.type)}
+                onDelete={(message) => handleDelete(message.id, message.type, Boolean(message.isDeleted))}
+                canTrash={Boolean(allMessages.find((message) => message.id === selectedMessageId && canTrashMessage(message)))}
               />
             </div>
           </div>
@@ -1333,8 +1385,14 @@ export default function MessagesPageClient({
           message={inquiryMessage}
           userId={userId}
           onClose={() => setInquiryMessage(null)}
-          onSuccess={() => {
+          onSuccess={async () => {
+            const source = inquiryMessage;
+            if (!source) return;
             setInquiryMessage(null);
+            const context = await readMessageSalesContext(supabase, [source]);
+            const sales = context[`${source.type}:${source.id}`];
+            setAllMessages(previous => previous.map(item => item.id === source.id && item.type === source.type ? { ...item, sales } : item));
+            refetchDebounced();
           }}
         />
       )}

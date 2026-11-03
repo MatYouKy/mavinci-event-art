@@ -3,12 +3,13 @@
 import { LinkEmailToInquiry } from '@/components/crm/inquiries/InquiryCorrespondencePanel';
 import { formatSystemSubject } from '@/lib/ui/systemLabels';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { X, User, ClipboardList } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { supabase } from '@/lib/supabase/browser';
 import type { MessageListItem } from '@/store/api/messagesApi';
-import { sendTaskAssignmentPush } from '@/lib/CRM/tasks/sendTaskAssignmentPush';
+import { canClaimMessageInquiry, messageInquirySaveFeedback } from '@/lib/CRM/messages/salesContext';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 
 interface Employee {
   id: string;
@@ -31,6 +32,8 @@ export default function CreateInquiryFromMessageModal({
   onClose,
   onSuccess,
 }: CreateInquiryFromMessageModalProps) {
+  const { employee } = useCurrentEmployee();
+  const saveLock = useRef(false);
   const [mode, setMode] = useState<'create' | 'link'>('create');
   const canLinkEmail = message.type === 'received' || message.type === 'sent';
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -39,6 +42,8 @@ export default function CreateInquiryFromMessageModal({
   const [guestCount, setGuestCount] = useState('');
   const [saving, setSaving] = useState(false);
   const { showSnackbar } = useSnackbar();
+
+  useEffect(() => { if (employee?.id) setSelectedEmployee(employee.id); }, [employee?.id]);
 
   useEffect(() => {
     fetchEmployees();
@@ -65,158 +70,25 @@ export default function CreateInquiryFromMessageModal({
 
   const handleCreate = async () => {
     if (guestCount !== '' && (!Number.isInteger(Number(guestCount)) || Number(guestCount) < 1 || Number(guestCount) > 100000)) { showSnackbar('Podaj całkowitą liczbę osób od 1 do 100 000 lub zostaw pole puste.', 'error'); return; }
+    if (saveLock.current || !selectedEmployee) return;
+    saveLock.current = true;
     setSaving(true);
     try {
-      const { data: existingInquiry, error: existingInquiryError } = await supabase
-        .from('tasks')
-        .select('id')
-        .eq('is_inquiry', true)
-        .contains('inquiry_details', {
-          source_message_id: message.id,
-          source_message_type: message.type,
-        })
-        .limit(1)
-        .maybeSingle();
-
-      if (existingInquiryError) throw existingInquiryError;
-      if (existingInquiry) {
-        showSnackbar('Ta wiadomość jest już powiązana z zapytaniem', 'info');
-        onSuccess(existingInquiry.id);
-        onClose();
-        return;
-      }
-
-      const title = `Zapytanie: ${formatSystemSubject(message.subject)}`;
-
-      let body = '';
-      let messageDate: string | null = null;
-      let senderName: string | null = null;
-      let senderEmail: string | null = message.from || null;
-      let senderPhone: string | null = null;
-
-      if (message.type === 'received') {
-        const { data: fullMsg, error: fullMsgError } = await supabase
-          .from('received_emails')
-          .select(
-            `
-            body_text,
-            body_html,
-            from_address,
-            received_date
-          `,
-          )
-          .eq('id', message.id)
-          .maybeSingle();
-
-        if (fullMsgError) {
-          throw fullMsgError;
-        }
-
-        body = fullMsg?.body_text || fullMsg?.body_html || message.preview || '';
-
-        messageDate = fullMsg?.received_date || null;
-        senderEmail = fullMsg?.from_address || message.from || null;
-        senderName = null;
-      }
-
-      if (message.type === 'contact_form') {
-        const { data: fullMsg, error: fullMsgError } = await supabase
-          .from('contact_messages')
-          .select(
-            `
-            message,
-            email,
-            name,
-            phone,
-            created_at
-          `,
-          )
-          .eq('id', message.id)
-          .maybeSingle();
-
-        if (fullMsgError) {
-          throw fullMsgError;
-        }
-
-        body = fullMsg?.message || message.preview || '';
-
-        messageDate = fullMsg?.created_at || null;
-        senderName = fullMsg?.name || null;
-        senderEmail = fullMsg?.email || message.from || null;
-        senderPhone = fullMsg?.phone || null;
-      }
-
-      const inquiryDetails = {
-        guest_count: guestCount === '' ? null : Number(guestCount),
-        client_email: senderEmail,
-        client_text: senderName || senderEmail,
-        client_phone: senderPhone,
-        source_message_id: message.id,
-        source_message_type: message.type,
-        source_message_date: messageDate,
-        source_message_content: body || null,
-      };
-      const formattedMessageDate = messageDate
-        ? new Intl.DateTimeFormat('pl-PL', {
-            dateStyle: 'long',
-            timeStyle: 'short',
-          }).format(new Date(messageDate))
-        : 'Brak daty';
-
-      const taskDescription = [
-        `Data wiadomości: ${formattedMessageDate}`,
-        senderName ? `Nadawca: ${senderName}` : null,
-        senderEmail ? `E-mail: ${senderEmail}` : null,
-        senderPhone ? `Telefon: ${senderPhone}` : null,
-        '',
-        'Treść wiadomości:',
-        body || 'Brak treści wiadomości',
-      ]
-        .filter((line): line is string => line !== null)
-        .join('\n');
-
-      const { data: taskData, error: taskError } = await supabase
-        .from('tasks')
-        .insert({
-          title,
-          description: taskDescription.slice(0, 10000),
-          priority: 'urgent',
-          status: 'todo',
-          board_column: 'todo',
-          order_index: 0,
-          created_by: userId,
-          is_inquiry: true,
-          inquiry_owner_id: selectedEmployee || null,
-          inquiry_details: inquiryDetails,
-        })
-        .select('id')
-        .single();
-
-      if (taskError) throw taskError;
-
-      if (selectedEmployee && taskData) {
-        const { data: assignment, error: assignError } = await supabase
-          .from('task_assignees')
-          .insert({
-            task_id: taskData.id,
-            employee_id: selectedEmployee,
-            assigned_by: userId,
-          })
-          .select('id')
-          .single();
-
-        if (assignError) throw assignError;
-
-        await sendTaskAssignmentPush(assignment.id);
-      }
-
-      showSnackbar('Utworzono zapytanie z wiadomości', 'success');
+      const { data, error } = await supabase.rpc('crm_create_inquiry_from_message', {
+        p_type: message.type, p_id: message.id, p_owner: selectedEmployee,
+        p_guest_count: guestCount === '' ? null : Number(guestCount),
+      });
+      if (error) throw error;
+      if (!data?.id) throw new Error('Serwer nie potwierdził zapisu zapytania.');
+      const taskData = { id: data.id };
+      showSnackbar(messageInquirySaveFeedback(data, selectedEmployee), data.ownerId === selectedEmployee ? 'success' : 'warning');
       onSuccess(taskData.id);
       onClose();
     } catch (err) {
       console.error('Error creating inquiry from message:', err);
-      showSnackbar('Nie udało się utworzyć zapytania', 'error');
+      showSnackbar((err as { message?: string })?.message || 'Nie udało się utworzyć zapytania', 'error');
     } finally {
+      saveLock.current = false;
       setSaving(false);
     }
   };
@@ -229,7 +101,7 @@ export default function CreateInquiryFromMessageModal({
             <div className="rounded-full bg-[#d3bb73]/10 p-2">
               <ClipboardList className="h-5 w-5 text-[#d3bb73]" />
             </div>
-            <h2 className="text-lg font-semibold text-[#e5e4e2]">Dodaj zapytanie</h2>
+            <h2 className="text-lg font-semibold text-[#e5e4e2]">{canClaimMessageInquiry(message.sales) ? 'Przypisz zapytanie' : 'Dodaj zapytanie'}</h2>
           </div>
           <button
             onClick={onClose}
@@ -260,7 +132,7 @@ export default function CreateInquiryFromMessageModal({
 
           <div>
             <p className="mb-2 text-sm font-medium text-[#e5e4e2]/70">
-              Przypisz pracownika (opcjonalnie)
+              Opiekun zapytania
             </p>
             {loading ? (
               <div className="flex items-center justify-center py-4">
@@ -268,22 +140,10 @@ export default function CreateInquiryFromMessageModal({
               </div>
             ) : (
               <div className="max-h-48 space-y-1 overflow-y-auto rounded-lg border border-[#d3bb73]/10 p-2">
-                <button
-                  onClick={() => setSelectedEmployee(null)}
-                  className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors ${
-                    selectedEmployee === null
-                      ? 'bg-[#d3bb73]/10 text-[#d3bb73]'
-                      : 'text-[#e5e4e2]/70 hover:bg-white/5'
-                  }`}
-                >
-                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#1c1f33]">
-                    <X className="h-4 w-4" />
-                  </div>
-                  <span className="text-sm">Bez przypisania</span>
-                </button>
                 {employees.map((emp) => (
                   <button
                     key={emp.id}
+                    disabled={saving}
                     onClick={() => setSelectedEmployee(emp.id)}
                     className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors ${
                       selectedEmployee === emp.id
@@ -321,10 +181,10 @@ export default function CreateInquiryFromMessageModal({
           </button>
           <button
             onClick={handleCreate}
-            disabled={saving}
+            disabled={saving || !selectedEmployee}
             className="rounded-lg bg-[#d3bb73] px-5 py-2 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#c5ad65] disabled:opacity-50"
           >
-            {saving ? 'Tworzenie...' : 'Utwórz zapytanie'}
+            {saving ? 'Zapisywanie…' : canClaimMessageInquiry(message.sales) ? (selectedEmployee === employee?.id ? 'Przypisz mnie' : 'Przypisz pracownika') : selectedEmployee === employee?.id ? 'Dodaj i przypisz mnie' : 'Dodaj i przypisz pracownika'}
           </button>
         </div>
         </>}

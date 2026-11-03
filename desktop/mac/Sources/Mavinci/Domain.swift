@@ -40,7 +40,8 @@ struct Row: Codable, Identifiable, Equatable {
     var title: String {
         if !self["title"].isEmpty { return self["title"] }
         if !self["name"].isEmpty { return self["name"] }
-        return [self["first_name"], self["last_name"]].filter { !$0.isEmpty }.joined(separator: " ")
+        let person=[self["first_name"],self["last_name"]].filter{!$0.isEmpty}.joined(separator:" ")
+        return person.isEmpty ? (self["full_name"].isEmpty ? self["email"]:self["full_name"]):person
     }
     var status: String {
         let codes = fields["is_inquiry"]?.flag == true ? [self["inquiry_stage"], self["board_column"], self["status"]] : [self["board_column"], self["status"]]
@@ -71,7 +72,11 @@ struct Employee: Codable, Equatable {
     let access_levels: JSONValue?
     var isAdmin: Bool { role == "admin" || access_level == "admin" || permissions?.contains("admin") == true }
     func has(_ scope: String) -> Bool { isAdmin || permissions?.contains(scope) == true }
+    var canViewEventWorkspace: Bool {
+        isAdmin || ["events_view","events_manage","events_create","events_view_planning","events_view_operational","calendar_view","calendar_manage","calendar_view_accepted_only","equipment_manage"].contains(where:has)
+    }
     func canView(_ module: Module) -> Bool {
+        if module == .events || module == .calendar {return canViewEventWorkspace}
         if module == .events && (has("events_view_planning") || has("events_view_operational") || has("equipment_manage")) { return true }
         return module == .day || module == .notifications || has("\(module.rawValue)_view") || has("\(module.rawValue)_manage")
     }
@@ -138,11 +143,16 @@ struct CollectionState: Codable {
     var hashes: [String: String] = [:]
     var buckets: [String: [Row]] = [:]
     var lastSync: Date?
-    var rows: [Row] { buckets.keys.sorted().flatMap { buckets[$0] ?? [] } }
+    var rows: [Row] {
+        let normal=buckets.keys.filter{$0 != "linked"}.sorted().flatMap{buckets[$0] ?? []}
+        let ids=Set(normal.map(\.id))
+        return normal+(buckets["linked"] ?? []).filter{!ids.contains($0.id)}
+    }
     mutating func apply(_ reply: SyncReply) throws {
         guard reply.hashes.count == 16, reply.hashes.keys.allSatisfy({ Int($0, radix: 16) != nil && $0.count == 1 }),
               reply.changed.keys.allSatisfy({ reply.hashes[$0] != nil }),
               reply.hashes.allSatisfy({ hashes[$0.key] == $0.value || reply.changed[$0.key] != nil }) else { throw AppError.invalidResponse }
+        buckets.removeValue(forKey:"linked")
         for (key, rows) in reply.changed { buckets[key] = rows }
         hashes = reply.hashes
         lastSync = Date()
@@ -188,7 +198,7 @@ enum Labels {
         "draft":"Szkic", "sent":"Wysłana", "accepted":"Zaakceptowana", "rejected":"Odrzucona", "expired":"Wygasła", "viewed":"Otwarta",
         "inquiry":"Zapytanie", "offer_to_send":"Oferta do wysłania", "offer_sent":"Oferta wysłana", "offer_accepted":"Oferta zaakceptowana", "in_preparation":"W przygotowaniu",
         "ready_for_live":"Gotowe do realizacji", "invoiced":"Zafakturowane", "settled":"Rozliczone", "confirmed":"Potwierdzone", "planning":"Planowanie",
-        "approved":"Zatwierdzono","paid":"Opłacono","partially_paid":"Częściowo opłacono","unpaid":"Nieopłacone","overdue":"Po terminie","planned":"Zaplanowano","transfer":"Przelew","cash":"Gotówka","direct":"Bezpośrednio","hotel":"Hotel","agency":"Agencja","other":"Inne","individual":"Osoba prywatna","company":"Firma","percentage":"Procentowo","fixed":"Kwotowo","payroll":"Wynagrodzenie pracownicze","cash_dividend":"Rozliczenie gotówkowe","manager":"Kierownik","warehouse":"Magazyn","driver":"Kierowca","employee":"Pracownik","view":"Podgląd","edit":"Edycja","run":"Uruchamianie","admin":"Administrator","reviewing":"W analizie", "interested":"Zainteresowanie", "preparing":"W przygotowaniu", "submitted":"Złożone", "pending":"Oczekujące", "archived":"Archiwalne"
+        "ignored":"Zignorowany","approved":"Zatwierdzono","paid":"Opłacono","partially_paid":"Częściowo opłacono","unpaid":"Nieopłacone","overdue":"Po terminie","planned":"Zaplanowano","transfer":"Przelew","cash":"Gotówka","direct":"Bezpośrednio","hotel":"Hotel","agency":"Agencja","other":"Inne","individual":"Osoba prywatna","company":"Firma","percentage":"Procentowo","fixed":"Kwotowo","payroll":"Wynagrodzenie pracownicze","cash_dividend":"Rozliczenie gotówkowe","manager":"Kierownik","warehouse":"Magazyn","driver":"Kierowca","employee":"Pracownik","view":"Podgląd","edit":"Edycja","run":"Uruchamianie","admin":"Administrator","reviewing":"W analizie", "interested":"Zainteresowanie", "preparing":"W przygotowaniu", "submitted":"Złożone", "pending":"Oczekujące", "archived":"Archiwalne"
     ]
     static func text(_ code: String) -> String { code.isEmpty ? "—" : (values[code] ?? "Inny stan") }
     static func date(_ raw: String) -> String {

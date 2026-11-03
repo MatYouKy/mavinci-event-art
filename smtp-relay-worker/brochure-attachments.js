@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 
-const MAX_PDF_BYTES = 50 * 1024 * 1024;
+const MAX_PDF_BYTES = 30_000_000;
 
 function storageOrigin() {
   try {
@@ -32,7 +32,7 @@ function validateStoredPdf(source) {
     || !url.pathname.startsWith('/storage/v1/object/sign/generated-brochures/')
     || !url.searchParams.get('token')
     || !Number.isSafeInteger(source.sizeBytes) || source.sizeBytes <= 0 || source.sizeBytes > MAX_PDF_BYTES) {
-    throw new Error('Nieprawidłowy zapisany załącznik broszury (maksymalnie 50 MiB).');
+    throw new Error('Nieprawidłowy zapisany załącznik broszury (maksymalnie 30 MB).');
   }
   return url;
 }

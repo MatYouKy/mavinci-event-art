@@ -1,5 +1,7 @@
 import type { MessageFolder, MessageListItem } from '@/store/api/messagesApi';
 
+import { messageMatchesFolder } from './messageFolder';
+
 const DATABASE_NAME = 'mavinci-crm-messages';
 const STORE_NAME = 'mailbox-lists';
 const DATABASE_VERSION = 1;
@@ -53,7 +55,7 @@ export async function readMessageListCache(
 
       request.onsuccess = () => {
         const record = request.result as MessageCacheRecord | undefined;
-        resolve(record ? sortNewestFirst(record.messages).slice(0, MAX_CACHED_MESSAGES) : []);
+        resolve(record ? sortNewestFirst(record.messages.filter(m => messageMatchesFolder(m, accountId, folder))).slice(0, MAX_CACHED_MESSAGES) : []);
       };
       request.onerror = () => resolve([]);
       transaction.oncomplete = () => database.close();
@@ -74,7 +76,7 @@ export async function writeMessageListCache(
     const database = await openDatabase();
     const uniqueMessages = Array.from(
       new Map(
-        sortNewestFirst(messages).map(
+        sortNewestFirst(messages.filter(m => messageMatchesFolder(m, accountId, folder))).map(
           (message) => [`${message.type}:${message.id}`, message] as const,
         ),
       ).values(),

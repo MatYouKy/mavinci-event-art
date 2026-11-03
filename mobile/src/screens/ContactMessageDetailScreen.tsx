@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import MessageInquiryBadge from '../components/MessageInquiryBadge';
+import React, { useCallback, useEffect, useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,7 +8,11 @@ import {
   ActivityIndicator,
   TouchableOpacity,
   Linking,
+  Alert,
 } from 'react-native';
+import { useAuth } from '../contexts/AuthContext';
+import { readMessageSalesContext, hasMessageInquiry, canClaimMessageInquiry, messageInquirySaveFeedback, type MessageSalesContext } from '../lib/messageSalesContext';
+import { navigateToInquiry } from '../navigation/navigationRef';
 import { Feather } from '@expo/vector-icons';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import type { RootStackParamList } from '../navigation/RootNavigator';
@@ -33,6 +38,10 @@ interface ContactMessage {
 }
 
 export default function ContactMessageDetailScreen() {
+  const { employee } = useAuth();
+  const [sales, setSales] = useState<MessageSalesContext>();
+  const [adding, setAdding] = useState(false);
+  const addLock = useRef(false);
   const route = useRoute<ContactDetailRoute>();
   const navigation = useNavigation<any>();
   const [message, setMessage] = useState<ContactMessage | null>(null);
@@ -68,6 +77,8 @@ export default function ContactMessageDetailScreen() {
         return;
       }
       setMessage(data);
+      const context = await readMessageSalesContext(supabase, [{ type: 'contact_form', id: data.id }]);
+      setSales(context[`contact_form:${data.id}`]);
 
       if (data.status === 'new') {
         const { error: updateError } = await supabase
@@ -88,6 +99,19 @@ export default function ContactMessageDetailScreen() {
   useEffect(() => {
     fetchMessage();
   }, [fetchMessage]);
+
+  const addInquiry = async () => {
+    if (!message || !employee?.id || addLock.current) return;
+    addLock.current = true; setAdding(true);
+    try {
+      const { data, error } = await supabase.rpc('crm_create_inquiry_from_message', { p_type: 'contact_form', p_id: message.id, p_owner: employee.id });
+      if (error) throw error;
+      if (!data?.id) throw new Error('Serwer nie potwierdził zapisu.');
+      if (data.ownerId !== employee.id) Alert.alert('Przypisanie zapytania', messageInquirySaveFeedback(data, employee.id));
+      await fetchMessage(); navigateToInquiry(data.id);
+    } catch (error) { Alert.alert('Zapytanie', (error as { message?: string })?.message || 'Nie udało się zapisać zapytania.'); }
+    finally { addLock.current = false; setAdding(false); }
+  };
 
   if (loading) {
     return (
@@ -111,6 +135,8 @@ export default function ContactMessageDetailScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      {hasMessageInquiry(sales) && sales?.inquiries.map(i => <TouchableOpacity key={i.id} style={styles.retryButton} onPress={() => navigateToInquiry(i.id)}><MessageInquiryBadge inquiry={i} /><Text style={{ color: colors.text.secondary }}>Otwórz zapytanie</Text></TouchableOpacity>)}
+      {(!sales?.inquiries.length || canClaimMessageInquiry(sales)) && <TouchableOpacity disabled={adding} style={styles.retryButton} onPress={() => void addInquiry()}><Text>{adding ? 'Zapisywanie…' : canClaimMessageInquiry(sales) ? 'Przypisz mnie do zapytania' : 'Dodaj do zapytań i przypisz mnie'}</Text></TouchableOpacity>}
       <View style={styles.sourceRow}>
         <View style={styles.sourceBadge}>
           <Feather name="globe" size={14} color={colors.primary.gold} />

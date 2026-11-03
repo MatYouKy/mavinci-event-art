@@ -146,7 +146,9 @@ struct CalendarLink:Codable {
                 Spacer()
                 Button("Połącz z Kalendarzem Apple…",systemImage:"calendar.badge.clock") {calendarSheet=true}
             }.padding(16).background(.bar)
-            HSplitView {
+            GeometryReader { available in
+              let detailWidth=min(340,max(245,available.size.width*0.33))
+              HStack(alignment:.top,spacing:0) {
                 ScrollView {
                     LazyVGrid(columns:Array(repeating:GridItem(.flexible(),spacing:4),count:7),spacing:5) {
                         ForEach(["Pon","Wt","Śr","Czw","Pt","Sob","Nd"],id:\.self) {Text($0).font(.caption.bold()).foregroundStyle(.secondary).frame(maxWidth:.infinity).padding(.vertical,8)}
@@ -154,19 +156,17 @@ struct CalendarLink:Codable {
                             if let date=day.date {dayCell(date)} else {Color.clear.frame(height:104)}
                         }
                     }.padding(14)
-                }.frame(minWidth:590,maxWidth:.infinity,maxHeight:.infinity)
+                }.frame(width:max(1,available.size.width-detailWidth-1),height:available.size.height)
+                Divider()
                 VStack(alignment:.leading,spacing:0) {
                     Text(CalendarDates.title(selectedDate,format:"EEEE, d MMMM").capitalized).font(.headline).padding(16)
                     List(dayRows(selectedDate)) { row in
                         Button {open(row)} label: {
-                            VStack(alignment:.leading,spacing:5) {
-                                Label(row.title,systemImage:row["kind"] == "meeting" ? "person.2":row["kind"] == "inquiry" ? "phone":"calendar").font(.headline)
-                                Text(Labels.date(row["event_date"])).font(.caption).foregroundStyle(.secondary)
-                                if !row["location"].isEmpty {Text(row["location"]).font(.caption).foregroundStyle(.secondary)}
-                            }.padding(.vertical,6).frame(maxWidth:.infinity,alignment:.leading).contentShape(Rectangle())
+                            calendarEntry(row,compact:false)
                         }.buttonStyle(.plain)
                     }.overlay {if dayRows(selectedDate).isEmpty {ContentUnavailableView("Brak spraw tego dnia",systemImage:"calendar")}}
-                }.frame(minWidth:300,idealWidth:360,maxWidth:480,maxHeight:.infinity)
+                }.frame(width:detailWidth,height:available.size.height)
+              }.frame(width:available.size.width,height:available.size.height,alignment:.topLeading)
             }.frame(maxWidth:.infinity,maxHeight:.infinity)
         }.frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.top).navigationTitle("Kalendarz")
         .onAppear {revealTarget()}
@@ -184,14 +184,33 @@ struct CalendarLink:Codable {
     }
     private func dayCell(_ date:Date) -> some View {
         let items=dayRows(date)
-        return Button {selectedDate=date} label: {
-            VStack(alignment:.leading,spacing:5) {
-                HStack {Text("\(c.component(.day,from:date))").font(.callout.bold()).foregroundStyle(c.isDateInToday(date) ? Color.accentColor:Color.primary);Spacer();if items.count>2 {Text("+\(items.count-2)").font(.caption2).foregroundStyle(.secondary)}}
-                ForEach(Array(items.prefix(2))) {row in Text(row.title).font(.caption2).lineLimit(2).frame(maxWidth:.infinity,alignment:.leading).foregroundStyle(row["kind"] == "inquiry" ? Color.orange:Color.primary)}
-                Spacer(minLength:0)
-            }.padding(8).frame(maxWidth:.infinity,minHeight:104,maxHeight:104,alignment:.topLeading)
-                .background(c.isDate(date,inSameDayAs:selectedDate) ? Color.accentColor.opacity(0.16):Color.secondary.opacity(0.05),in:RoundedRectangle(cornerRadius:6))
-        }.buttonStyle(.plain).accessibilityLabel(CalendarDates.title(date,format:"d MMMM yyyy")+", \(items.count) spraw")
+        return VStack(alignment:.leading,spacing:5){
+            HStack{
+                Button{selectedDate=date}label:{Text("\(c.component(.day,from:date))").font(.callout.bold()).foregroundStyle(c.isDateInToday(date) ? Color.accentColor:Color.primary)}.buttonStyle(.plain)
+                Spacer()
+                if items.count>2{Button("+\(items.count-2)"){selectedDate=date}.font(.caption2).buttonStyle(.plain).help("Pokaż wszystkie sprawy tego dnia")}
+            }
+            ForEach(Array(items.prefix(2))){row in
+                Button{selectedDate=date;open(row)}label:{calendarEntry(row,compact:true)}.buttonStyle(.plain)
+            }
+            Spacer(minLength:0)
+        }.padding(7).frame(maxWidth:.infinity,minHeight:132,maxHeight:132,alignment:.topLeading)
+          .background{
+              RoundedRectangle(cornerRadius:6).fill(c.isDate(date,inSameDayAs:selectedDate) ? Color.accentColor.opacity(0.12):Color.secondary.opacity(0.04)).onTapGesture{selectedDate=date}
+          }.accessibilityElement(children:.contain).accessibilityLabel(CalendarDates.title(date,format:"d MMMM yyyy"))
+    }
+    private func calendarEntry(_ row:Row,compact:Bool) -> some View {
+        let color=WorkspacePresentation.calendarColor(row)
+        return VStack(alignment:.leading,spacing:compact ? 2:6){
+            Text(row.title).font(compact ? .caption2.weight(.medium):.callout.weight(.semibold)).lineLimit(compact ? 2:3)
+                .foregroundStyle(color).frame(maxWidth:.infinity,alignment:.leading)
+            if !compact{
+                Text(Labels.date(row["event_date"])).font(.caption).foregroundStyle(.secondary)
+                if !row["location"].isEmpty{Text(row["location"]).font(.caption).foregroundStyle(.secondary).lineLimit(2)}
+            }
+        }.padding(compact ? 5:10).frame(maxWidth:.infinity,alignment:.leading)
+          .background(color.opacity(0.08),in:RoundedRectangle(cornerRadius:5))
+          .overlay(RoundedRectangle(cornerRadius:5).strokeBorder(color.opacity(0.5),style:StrokeStyle(lineWidth:1,dash:row["kind"]=="inquiry" ? [3,2]:[])))
     }
     private var calendarSettings:some View {
         VStack(alignment:.leading,spacing:18) {

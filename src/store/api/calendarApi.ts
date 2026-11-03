@@ -51,18 +51,13 @@ export const calendarApi = createApi({
           const params = filters || {};
 
           // Fetch events and meetings directly - RLS will handle security
-          const [eventsResult, meetingsResult, inquiriesResult] = await Promise.all([
-            supabase.from('events').select(`
+          let eventsQuery = supabase.from('events').select(`
                 id,
                 name,
-                description,
                 event_date,
                 event_end_date,
                 location,
                 status,
-                budget,
-                final_cost,
-                notes,
                 category_id,
                 organization_id,
                 contact_person_id,
@@ -76,8 +71,8 @@ export const calendarApi = createApi({
                   color,
                   custom_icons:icon_id(id, name, svg_code)
                 )
-              `),
-            supabase
+              `);
+          let meetingsQuery = supabase
               .from('meetings')
               .select(
                 `
@@ -98,8 +93,8 @@ export const calendarApi = createApi({
                 )
               `,
               )
-              .is('deleted_at', null),
-            supabase
+              .is('deleted_at', null);
+          const inquiriesQuery = supabase
               .from('tasks')
               .select(`
                 id,
@@ -116,8 +111,14 @@ export const calendarApi = createApi({
                 organizations:organizations!tasks_organization_id_fkey(id, name, alias),
                 contacts:contacts!tasks_contact_id_fkey(id, first_name, last_name, full_name)
               `)
-              .eq('is_inquiry', true),
-          ]);
+              .eq('is_inquiry', true);
+          if (params.start_date && params.end_date) {
+            eventsQuery = eventsQuery.lt('event_date', params.end_date)
+              .or(`event_end_date.gte.${params.start_date},and(event_end_date.is.null,event_date.gte.${params.start_date})`);
+            // Existing recurrence_days records are expanded by the views.
+            meetingsQuery = meetingsQuery.or(`recurrence_days.gt.0,and(datetime_start.lt.${params.end_date},or(datetime_end.gte.${params.start_date},and(datetime_end.is.null,datetime_start.gte.${params.start_date})))`);
+          }
+          const [eventsResult, meetingsResult, inquiriesResult] = await Promise.all([eventsQuery, meetingsQuery, inquiriesQuery]);
 
           if (eventsResult.error) {
             console.error('Error fetching events:', eventsResult.error);
