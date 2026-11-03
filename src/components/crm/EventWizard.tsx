@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   X,
   ChevronRight,
@@ -40,6 +40,10 @@ import { OrganizationSearchSelect } from './events/wizard/OrganizationSearchSele
 import { SearchSelect } from './events/wizard/SearchSelect';
 import CompanySelector from './CompanySelector';
 import SpecialDayNotice from './SpecialDayNotice';
+import {
+  eventWizardSchema, eventContactSchema, getValidationErrors, eventSaveError,
+  type ValidatedEventDetails,
+} from '@/lib/CRM/events/eventWizardValidation';
 
 const buildEventEquipmentRows = (selectedEquipment: any[], eventId: string) => {
   const mapped = (selectedEquipment ?? [])
@@ -147,6 +151,13 @@ export default function EventWizard({
   const dispatch = useDispatch();
   const [currentStep, setCurrentStep] = useState(1);
   const [loading, setLoading] = useState(false);
+  const [validationSubmitted, setValidationSubmitted] = useState(false);
+  const [contactSubmitted, setContactSubmitted] = useState(false);
+  const [contactSaving, setContactSaving] = useState(false);
+  const [saveError, setSaveError] = useState<ReturnType<typeof eventSaveError> | null>(null);
+  const detailsRef = useRef<HTMLFieldSetElement>(null);
+  const saveInFlight = useRef(false);
+  const contactInFlight = useRef(false);
   const [createdEventId, setCreatedEventId] = useState<string | null>(null);
   const [currentEmployeeId, setCurrentEmployeeId] = useState<string | null>(null);
   const { addEmployee } = useEventTeam(createdEventId || '', isOpen && Boolean(createdEventId));
@@ -172,7 +183,7 @@ export default function EventWizard({
     my_company_id: '',
   });
 
-  const [clientType, setClientType] = useState<ClientType>(initialClientType as ClientType);
+  const [clientType, setClientType] = useState<ClientType | ''>(initialClientType === 'company' ? 'business' : initialClientType || '');
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [filteredContacts, setFilteredContacts] = useState<Contact[]>([]);
@@ -185,6 +196,46 @@ export default function EventWizard({
     phone: '',
   });
   const [participants, setParticipants] = useState<any[]>([]);
+
+  const pendingContact = showNewContactForm && Object.values(newContact).some((value) => value.trim());
+  const validationContext = { statuses: Object.keys(eventStatusLabels), pendingContact };
+  const fieldErrors = useMemo<Record<string, string>>(() => validationSubmitted
+    ? getValidationErrors(eventWizardSchema, { ...eventData, clientType }, {
+        statuses: Object.keys(eventStatusLabels), pendingContact,
+      })
+    : {}, [validationSubmitted, eventData, clientType, pendingContact]);
+  const contactErrors = useMemo<Record<string, string>>(() => contactSubmitted
+    ? getValidationErrors(eventContactSchema, newContact) : {}, [contactSubmitted, newContact]);
+
+  useEffect(() => { setSaveError(null); }, [eventData, clientType]);
+
+  const focusField = (field: string) => {
+    requestAnimationFrame(() => {
+      const target = detailsRef.current?.querySelector<HTMLElement>(`[data-event-field="${field}"]`);
+      target?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      const control = target?.matches('input, select, textarea, button')
+        ? target : target?.querySelector<HTMLElement>('input, select, textarea, button');
+      (control || target)?.focus({ preventScroll: true });
+    });
+  };
+  const inputProps = (field: string, label: string) => ({
+    'data-event-field': field,
+    'aria-label': label,
+    'aria-invalid': !!fieldErrors[field],
+    'aria-describedby': fieldErrors[field] ? `event-error-${field}` : undefined,
+  });
+  const fieldError = (field: string) => fieldErrors[field]
+    ? <p id={`event-error-${field}`} className="mt-1 text-sm text-red-300">{fieldErrors[field]}</p>
+    : null;
+  const contactInputProps = (field: string, label: string) => ({
+    'data-event-field': `contact-${field}`,
+    'aria-label': label,
+    'aria-invalid': !!contactErrors[field],
+    'aria-describedby': contactErrors[field] ? `contact-error-${field}` : undefined,
+  });
+  const contactError = (field: string) => contactErrors[field]
+    ? <p id={`contact-error-${field}`} className="mt-1 text-sm text-red-300">{contactErrors[field]}</p>
+    : null;
 
   // Krok 2: Oferta (opcjonalnie)
   const [createOffer, setCreateOffer] = useState(false);
@@ -504,17 +555,22 @@ export default function EventWizard({
   };
 
   const handleCreateContact = async () => {
-    if (!newContact.first_name || !newContact.last_name) {
-      showSnackbar('Wypełnij imię i nazwisko', 'error');
+    if (contactInFlight.current || saveInFlight.current) return;
+    setContactSubmitted(true);
+    const errors = getValidationErrors(eventContactSchema, newContact);
+    if (Object.keys(errors).length) {
+      focusField(`contact-${Object.keys(errors)[0]}`);
       return;
     }
-
+    const validated = eventContactSchema.validateSync(newContact);
+    contactInFlight.current = true;
+    setContactSaving(true);
     try {
       const contactData: any = {
-        first_name: newContact.first_name,
-        last_name: newContact.last_name,
-        email: newContact.email || null,
-        phone: newContact.phone || null,
+        first_name: validated.first_name,
+        last_name: validated.last_name,
+        email: validated.email || null,
+        phone: validated.phone || null,
         contact_type: clientType === 'individual' ? 'individual' : 'contact',
       };
 
@@ -543,27 +599,35 @@ export default function EventWizard({
       setEventData({ ...eventData, contact_person_id: newContactData.id });
       setShowNewContactForm(false);
       setNewContact({ first_name: '', last_name: '', email: '', phone: '' });
+      setContactSubmitted(false);
       showSnackbar('Osoba kontaktowa dodana!', 'success');
     } catch (err: any) {
-      showSnackbar('Błąd: ' + err.message, 'error');
+      console.error('Error creating contact:', err);
+      showSnackbar('Nie udało się zapisać osoby kontaktowej. Dane pozostają w formularzu.', 'error');
+    } finally {
+      contactInFlight.current = false;
+      setContactSaving(false);
     }
-  };
-
-  const canProceed = () => {
-    if (currentStep === 1) {
-      return eventData.name && eventData.event_date && eventData.location;
-    }
-    return true;
   };
 
   const handleNext = async () => {
+    if (saveInFlight.current || contactInFlight.current || loading) return;
     if (currentStep === 1) {
-      if (createdEventId) {
-        // Event już istnieje - edytuj
-        await updateEvent();
-      } else {
-        // Utwórz nowy event
-        await createEvent();
+      setValidationSubmitted(true);
+      setSaveError(null);
+      const values = { ...eventData, clientType };
+      const errors = getValidationErrors(eventWizardSchema, values, validationContext);
+      if (Object.keys(errors).length) {
+        focusField(Object.keys(errors)[0]);
+        return;
+      }
+      const validated = eventWizardSchema.validateSync(values, { context: validationContext });
+      saveInFlight.current = true;
+      try {
+        if (createdEventId) await updateEvent(validated);
+        else await createEvent(validated);
+      } finally {
+        saveInFlight.current = false;
       }
     } else if (currentStep === steps.length) {
       await finishWizard();
@@ -606,7 +670,7 @@ export default function EventWizard({
     }
   };
 
-  const createEvent = async () => {
+  const createEvent = async (validated: ValidatedEventDetails) => {
     setLoading(true);
 
     try {
@@ -615,7 +679,7 @@ export default function EventWizard({
       } = await supabase.auth.getSession();
 
       if (!session?.user?.id) {
-        throw new Error('Brak aktywnej sesji użytkownika');
+        throw { code: 'AUTH_REQUIRED', message: 'Brak aktywnej sesji użytkownika' };
       }
 
       const { data: currentEmployee, error: employeeError } = await supabase
@@ -629,37 +693,37 @@ export default function EventWizard({
       }
 
       if (!currentEmployee?.id) {
-        throw new Error('Nie znaleziono pracownika powiązanego z zalogowanym użytkownikiem');
+        throw { code: 'EMPLOYEE_MISSING', message: 'Nie znaleziono pracownika powiązanego z zalogowanym użytkownikiem' };
       }
 
       const eventPayload: any = {
-        name: eventData.name,
+        name: validated.name,
         organization_id:
-          eventData.organization_id && eventData.organization_id.trim() !== ''
-            ? eventData.organization_id
+          validated.organization_id && validated.organization_id.trim() !== ''
+            ? validated.organization_id
             : null,
         contact_person_id:
-          eventData.contact_person_id && eventData.contact_person_id.trim() !== ''
-            ? eventData.contact_person_id
+          validated.contact_person_id && validated.contact_person_id.trim() !== ''
+            ? validated.contact_person_id
             : null,
         category_id:
-          eventData.category_id && eventData.category_id.trim() !== ''
-            ? eventData.category_id
+          validated.category_id && validated.category_id.trim() !== ''
+            ? validated.category_id
             : null,
-        event_date: localDatetimeStringToUTC(eventData.event_date),
-        event_end_date: eventData.event_end_date
-          ? localDatetimeStringToUTC(eventData.event_end_date)
+        event_date: localDatetimeStringToUTC(validated.event_date),
+        event_end_date: validated.event_end_date
+          ? localDatetimeStringToUTC(validated.event_end_date)
           : null,
-        location: eventData.location,
-        budget: eventData.budget ? parseFloat(eventData.budget) : null,
+        location: validated.location,
+        budget: validated.budget ?? null,
         description: eventData.description || null,
-        status: eventData.status,
+        status: validated.status,
         created_by: session.user.id,
         participants: participants.length > 0 ? participants : [],
-        location_id: eventData.location_id || null,
-        location_room_ids: eventData.location_room_ids,
-        stage_room_id: eventData.stage_room_id,
-        my_company_id: eventData.my_company_id || null,
+        location_id: validated.location_id || null,
+        location_room_ids: validated.location_room_ids,
+        stage_room_id: validated.stage_room_id,
+        my_company_id: validated.my_company_id || null,
       };
 
       const data = await createEventMutation(eventPayload).unwrap();
@@ -698,42 +762,43 @@ export default function EventWizard({
       setCurrentStep(2);
     } catch (err: any) {
       console.error('Error creating event:', err);
-      showSnackbar('Błąd podczas tworzenia eventu: ' + (err?.message || 'Nieznany błąd'), 'error');
+      setSaveError(eventSaveError(err));
+      focusField('save-error');
     } finally {
       setLoading(false);
     }
   };
 
-  const updateEvent = async () => {
+  const updateEvent = async (validated: ValidatedEventDetails) => {
     setLoading(true);
     try {
       const { error } = await supabase
         .from('events')
         .update({
-          name: eventData.name,
+          name: validated.name,
           organization_id:
-            eventData.organization_id && eventData.organization_id.trim() !== ''
-              ? eventData.organization_id
+            validated.organization_id && validated.organization_id.trim() !== ''
+              ? validated.organization_id
               : null,
           contact_person_id:
-            eventData.contact_person_id && eventData.contact_person_id.trim() !== ''
-              ? eventData.contact_person_id
+            validated.contact_person_id && validated.contact_person_id.trim() !== ''
+              ? validated.contact_person_id
               : null,
           category_id:
-            eventData.category_id && eventData.category_id.trim() !== ''
-              ? eventData.category_id
+            validated.category_id && validated.category_id.trim() !== ''
+              ? validated.category_id
               : null,
-          event_date: localDatetimeStringToUTC(eventData.event_date),
-          event_end_date: localDatetimeStringToUTC(eventData.event_end_date),
-          location: eventData.location,
-          budget: eventData.budget ? parseFloat(eventData.budget) : null,
+          event_date: localDatetimeStringToUTC(validated.event_date),
+          event_end_date: localDatetimeStringToUTC(validated.event_end_date),
+          location: validated.location,
+          budget: validated.budget ?? null,
           description: eventData.description || null,
-          status: eventData.status,
+          status: validated.status,
           participants: participants.length > 0 ? participants : [],
-          location_id: eventData.location_id || null,
-          location_room_ids: eventData.location_room_ids,
-          stage_room_id: eventData.stage_room_id,
-          my_company_id: eventData.my_company_id || null,
+          location_id: validated.location_id || null,
+          location_room_ids: validated.location_room_ids,
+          stage_room_id: validated.stage_room_id,
+          my_company_id: validated.my_company_id || null,
         })
         .eq('id', createdEventId);
 
@@ -743,7 +808,8 @@ export default function EventWizard({
       setCurrentStep(2);
     } catch (err: any) {
       console.error('Error updating event:', err);
-      showSnackbar('Błąd podczas aktualizacji: ' + err.message, 'error');
+      setSaveError(eventSaveError(err));
+      focusField('save-error');
     } finally {
       setLoading(false);
     }
@@ -859,6 +925,9 @@ export default function EventWizard({
   };
 
   const resetWizard = () => {
+    setValidationSubmitted(false);
+    setContactSubmitted(false);
+    setSaveError(null);
     setCurrentStep(1);
     setCreatedEventId(null);
     setClientType('business');
@@ -912,6 +981,7 @@ export default function EventWizard({
             </div>
           </div>
           <button
+            disabled={loading || contactSaving}
             onClick={() => {
               onClose();
               resetWizard();
@@ -968,7 +1038,26 @@ export default function EventWizard({
         <div className="flex-1 overflow-y-auto p-6">
           {/* Step 1: Szczegóły eventu */}
           {currentStep === 1 && (
-            <div className="mx-auto max-w-2xl space-y-4">
+            <fieldset ref={detailsRef} disabled={loading || contactSaving} aria-busy={loading || contactSaving} className="mx-auto min-w-0 max-w-2xl space-y-4">
+              {Object.keys(fieldErrors).length > 0 && (
+                <div role="alert" className="rounded-lg bg-red-500/10 p-4 text-sm text-red-200">
+                  <p className="font-medium">Popraw poniższe pola przed zapisem wydarzenia:</p>
+                  <ul className="mt-2 list-disc space-y-1 pl-5">
+                    {Object.entries(fieldErrors).map(([field, message]) => (
+                      <li key={field}><button type="button" onClick={() => focusField(field)} className="text-left underline underline-offset-2">{message}</button></li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {saveError && (
+                <div data-event-field="save-error" tabIndex={-1} role="alert" className="rounded-lg bg-red-500/10 p-4 text-sm text-red-200">
+                  <p>{saveError.message}</p>
+                  {saveError.details && <details className="mt-2">
+                    <summary className="cursor-pointer">Szczegóły dla administratora</summary>
+                    <pre className="mt-2 select-text whitespace-pre-wrap break-words font-sans text-xs">{saveError.details}</pre>
+                  </details>}
+                </div>
+              )}
               <div className="mb-6 rounded-lg border border-blue-500/20 bg-blue-500/10 p-4">
                 <div className="flex items-start gap-3">
                   <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-blue-400" />
@@ -981,15 +1070,18 @@ export default function EventWizard({
                   </div>
                 </div>
               </div>
-              <CompanySelector
-                value={eventData.my_company_id}
-                onChange={(myCompanyId) =>
-                  setEventData((prev) => ({ ...prev, my_company_id: myCompanyId as string }))
-                }
-                showAllOption={false}
-                label="Firma realizująca"
-                className="w-full"
-              />
+              <div role="group" tabIndex={-1} {...inputProps('my_company_id', 'Firma realizująca')}>
+                <CompanySelector
+                  value={eventData.my_company_id}
+                  onChange={(myCompanyId) =>
+                    setEventData((prev) => ({ ...prev, my_company_id: myCompanyId as string }))
+                  }
+                  showAllOption={false}
+                  label="Firma realizująca"
+                  className="w-full"
+                />
+                {fieldError('my_company_id')}
+              </div>
 
               <div>
                 <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
@@ -997,15 +1089,17 @@ export default function EventWizard({
                 </label>
                 <input
                   type="text"
+                  {...inputProps('name', 'Nazwa eventu')}
                   value={eventData.name}
                   onChange={(e) => setEventData({ ...eventData, name: e.target.value })}
                   className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
                   placeholder="np. Konferencja Tech Summit 2025"
                 />
+                {fieldError('name')}
               </div>
 
               {/* Typ klienta */}
-              <div>
+              <div role="group" tabIndex={-1} {...inputProps('clientType', 'Typ klienta')}>
                 <label className="mb-3 block text-sm font-medium text-[#e5e4e2]">
                   Typ klienta *
                 </label>
@@ -1052,20 +1146,25 @@ export default function EventWizard({
                 </div>
               </div>
 
+              {fieldError('clientType')}
+
               {/* Klient businessowy */}
               {clientType === 'business' && (
                 <>
-                  <OrganizationSearchSelect
-                    organizations={organizations}
-                    value={eventData.organization_id}
-                    onChange={(orgId) => {
-                      setEventData({
-                        ...eventData,
-                        organization_id: orgId,
-                        contact_person_id: '',
-                      });
-                    }}
-                  />
+                  <div role="group" tabIndex={-1} {...inputProps('organization_id', 'Organizacja')}>
+                    <OrganizationSearchSelect
+                      organizations={organizations}
+                      value={eventData.organization_id}
+                      onChange={(orgId) => {
+                        setEventData({
+                          ...eventData,
+                          organization_id: orgId,
+                          contact_person_id: '',
+                        });
+                      }}
+                    />
+                    {fieldError('organization_id')}
+                  </div>
 
                   {eventData.organization_id && (
                     <div>
@@ -1075,7 +1174,7 @@ export default function EventWizard({
                         </label>
                         <button
                           type="button"
-                          onClick={() => setShowNewContactForm(true)}
+                          onClick={() => { setContactSubmitted(false); setShowNewContactForm(true); }}
                           className="flex items-center gap-1 text-xs text-[#d3bb73] hover:text-[#d3bb73]/80"
                         >
                           <Plus className="h-3 w-3" />
@@ -1083,6 +1182,7 @@ export default function EventWizard({
                         </button>
                       </div>
                       <select
+                        {...inputProps('contact_person_id', 'Osoba kontaktowa')}
                         value={eventData.contact_person_id}
                         onChange={(e) =>
                           setEventData({ ...eventData, contact_person_id: e.target.value })
@@ -1096,6 +1196,7 @@ export default function EventWizard({
                           </option>
                         ))}
                       </select>
+                      {fieldError('contact_person_id')}
                       {filteredContacts.length === 1 && eventData.contact_person_id && (
                         <p className="mt-1 text-xs text-green-400">
                           ✓ Automatycznie wybrano jedyną osobę kontaktową
@@ -1115,25 +1216,28 @@ export default function EventWizard({
                     </label>
                     <button
                       type="button"
-                      onClick={() => setShowNewContactForm(true)}
+                      onClick={() => { setContactSubmitted(false); setShowNewContactForm(true); }}
                       className="flex items-center gap-1 text-xs text-[#d3bb73] hover:text-[#d3bb73]/80"
                     >
                       <Plus className="h-3 w-3" />
                       Dodaj nową
                     </button>
                   </div>
-                  <SearchSelect
-                    items={filteredContacts}
-                    value={eventData.contact_person_id}
-                    onChange={(id) => setEventData({ ...eventData, contact_person_id: id })}
-                    placeholder="Wybierz lub dodaj nową osobę"
-                    emptyText="Brak pasujących kontaktów"
-                    getLabel={(c) => c.full_name}
-                    // jeśli chcesz szukać też po emailu/telefonie, dodaj:
-                    // getSearchText={(c) => `${c.full_name} ${c.email ?? ''} ${c.phone ?? ''}`}
-                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
-                    dropdownClassName="absolute z-50 mt-2 max-h-72 w-full overflow-auto rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] shadow-lg"
-                  />
+                  <div role="group" tabIndex={-1} {...inputProps('contact_person_id', 'Osoba kontaktowa')}>
+                    <SearchSelect
+                      items={filteredContacts}
+                      value={eventData.contact_person_id}
+                      onChange={(id) => setEventData({ ...eventData, contact_person_id: id })}
+                      placeholder="Wybierz lub dodaj nową osobę"
+                      emptyText="Brak pasujących kontaktów"
+                      getLabel={(c) => c.full_name}
+                      // jeśli chcesz szukać też po emailu/telefonie, dodaj:
+                      // getSearchText={(c) => `${c.full_name} ${c.email ?? ''} ${c.phone ?? ''}`}
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
+                      dropdownClassName="absolute z-50 mt-2 max-h-72 w-full overflow-auto rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] shadow-lg"
+                    />
+                    {fieldError('contact_person_id')}
+                  </div>
                 </div>
               )}
 
@@ -1151,41 +1255,58 @@ export default function EventWizard({
                     </button>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
-                    <input
-                      type="text"
-                      placeholder="Imię *"
-                      value={newContact.first_name}
-                      onChange={(e) => setNewContact({ ...newContact, first_name: e.target.value })}
-                      className="rounded-lg border border-[#d3bb73]/20 bg-[#0f1117] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
-                    />
-                    <input
-                      type="text"
-                      placeholder="Nazwisko *"
-                      value={newContact.last_name}
-                      onChange={(e) => setNewContact({ ...newContact, last_name: e.target.value })}
-                      className="rounded-lg border border-[#d3bb73]/20 bg-[#0f1117] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
-                    />
+                    <div>
+                      <input
+                        type="text"
+                        placeholder="Imię *"
+                        {...contactInputProps('first_name', 'Imię')}
+                        value={newContact.first_name}
+                        onChange={(e) => setNewContact({ ...newContact, first_name: e.target.value })}
+                        className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1117] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
+                      />
+                      {contactError('first_name')}
+                    </div>
+                    <div>
+                      <input
+                        type="text"
+                        placeholder="Nazwisko *"
+                        {...contactInputProps('last_name', 'Nazwisko')}
+                        value={newContact.last_name}
+                        onChange={(e) => setNewContact({ ...newContact, last_name: e.target.value })}
+                        className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1117] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
+                      />
+                      {contactError('last_name')}
+                    </div>
                   </div>
-                  <input
-                    type="email"
-                    placeholder="Email"
-                    value={newContact.email}
-                    onChange={(e) => setNewContact({ ...newContact, email: e.target.value })}
-                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1117] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
-                  />
-                  <input
-                    type="tel"
-                    placeholder="Telefon"
-                    value={newContact.phone}
-                    onChange={(e) => setNewContact({ ...newContact, phone: e.target.value })}
-                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1117] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
-                  />
+                  <div>
+                    <input
+                      type="email"
+                      placeholder="Email"
+                      {...contactInputProps('email', 'E-mail')}
+                      value={newContact.email}
+                      onChange={(e) => setNewContact({ ...newContact, email: e.target.value })}
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1117] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
+                    />
+                    {contactError('email')}
+                  </div>
+                  <div>
+                    <input
+                      type="tel"
+                      placeholder="Telefon"
+                      {...contactInputProps('phone', 'Telefon')}
+                      value={newContact.phone}
+                      onChange={(e) => setNewContact({ ...newContact, phone: e.target.value })}
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1117] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
+                    />
+                    {contactError('phone')}
+                  </div>
                   <button
                     type="button"
                     onClick={handleCreateContact}
+                    disabled={contactSaving || loading}
                     className="w-full rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
                   >
-                    Dodaj osobę kontaktową
+                    {contactSaving ? 'Zapisywanie osoby…' : 'Dodaj osobę kontaktową'}
                   </button>
                 </div>
               )}
@@ -1193,6 +1314,7 @@ export default function EventWizard({
               <div>
                 <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Kategoria</label>
                 <select
+                  {...inputProps('category_id', 'Kategoria')}
                   value={eventData.category_id}
                   onChange={(e) => setEventData({ ...eventData, category_id: e.target.value })}
                   className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
@@ -1204,6 +1326,7 @@ export default function EventWizard({
                     </option>
                   ))}
                 </select>
+                {fieldError('category_id')}
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -1213,10 +1336,12 @@ export default function EventWizard({
                   </label>
                   <input
                     type="datetime-local"
+                    {...inputProps('event_date', 'Data rozpoczęcia')}
                     value={eventData.event_date}
                     onChange={(e) => setEventData({ ...eventData, event_date: e.target.value })}
                     className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
                   />
+                  {fieldError('event_date')}
                 </div>
 
                 <div>
@@ -1226,10 +1351,12 @@ export default function EventWizard({
                   <input
                     type="datetime-local"
                     min={eventData.event_date}
+                    {...inputProps('event_end_date', 'Data zakończenia')}
                     value={eventData.event_end_date}
                     onChange={(e) => setEventData({ ...eventData, event_end_date: e.target.value })}
                     className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
                   />
+                  {fieldError('event_end_date')}
                 </div>
               </div>
               <SpecialDayNotice from={eventData.event_date || null} to={eventData.event_end_date || null} />
@@ -1238,33 +1365,41 @@ export default function EventWizard({
                 <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
                   Lokalizacja *
                 </label>
-                <LocationSelector
-                  value={eventData.location}
-                  onChange={(value, locationData) => {
-                    const locId = (locationData as any)?.id ?? (locationData as any)?._id ?? null;
+                <div role="group" tabIndex={-1} {...inputProps('location', 'Lokalizacja')}>
+                  <LocationSelector
+                    value={eventData.location}
+                    onChange={(value, locationData) => {
+                      const locId = (locationData as any)?.id ?? (locationData as any)?._id ?? null;
 
-                    setEventData((prev) => ({
-                      ...prev,
-                      location: value,
-                      location_id: locId,
-                      location_room_ids: prev.location_id === locId ? prev.location_room_ids : [],
-                      stage_room_id: prev.location_id === locId ? prev.stage_room_id : null,
-                    }));
-                  }}
-                  placeholder="Wybierz z listy lub wyszukaj nową lokalizację..."
-                />
-                <EventRoomSelector
-                  locationId={eventData.location_id || null}
-                  selected={eventData.location_room_ids}
-                  stage={eventData.stage_room_id}
-                  onChange={(ids, stage) =>
-                    setEventData((prev) => ({
-                      ...prev,
-                      location_room_ids: ids,
-                      stage_room_id: stage,
-                    }))
-                  }
-                />
+                      setEventData((prev) => ({
+                        ...prev,
+                        location: value,
+                        location_id: locId,
+                        location_room_ids: prev.location_id === locId ? prev.location_room_ids : [],
+                        stage_room_id: prev.location_id === locId ? prev.stage_room_id : null,
+                      }));
+                    }}
+                    placeholder="Wybierz z listy lub wyszukaj nową lokalizację..."
+                  />
+                  {fieldError('location')}
+                  <div data-event-field="location_id" tabIndex={-1}>{fieldError('location_id')}</div>
+                </div>
+                <div role="group" tabIndex={-1} {...inputProps('location_room_ids', 'Sale realizacji')}>
+                  <EventRoomSelector
+                    locationId={eventData.location_id || null}
+                    selected={eventData.location_room_ids}
+                    stage={eventData.stage_room_id}
+                    onChange={(ids, stage) =>
+                      setEventData((prev) => ({
+                        ...prev,
+                        location_room_ids: ids,
+                        stage_room_id: stage,
+                      }))
+                    }
+                  />
+                  {fieldError('location_room_ids')}
+                  <div data-event-field="stage_room_id" tabIndex={-1}>{fieldError('stage_room_id')}</div>
+                </div>
                 <p className="mt-1 text-xs text-[#e5e4e2]/50">
                   Wybierz z zapisanych lokalizacji lub wyszukaj nową w Google Maps
                 </p>
@@ -1276,17 +1411,21 @@ export default function EventWizard({
                     Budżet (PLN)
                   </label>
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="decimal"
+                    {...inputProps('budget', 'Budżet (PLN)')}
                     value={eventData.budget}
                     onChange={(e) => setEventData({ ...eventData, budget: e.target.value })}
                     className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
                     placeholder="0"
                   />
+                  {fieldError('budget')}
                 </div>
 
                 <div>
                   <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Status</label>
                   <select
+                    {...inputProps('status', 'Status')}
                     value={eventData.status}
                     onChange={(e) => setEventData({ ...eventData, status: e.target.value })}
                     className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
@@ -1297,6 +1436,7 @@ export default function EventWizard({
                       </option>
                     ))}
                   </select>
+                  {fieldError('status')}
                 </div>
               </div>
 
@@ -1310,7 +1450,7 @@ export default function EventWizard({
                   placeholder="Dodatkowe informacje o evencie..."
                 />
               </div>
-            </div>
+            </fieldset>
           )}
 
           {/* Step 2: Oferta */}
@@ -1441,7 +1581,7 @@ export default function EventWizard({
         <div className="flex items-center justify-between border-t border-[#d3bb73]/10 p-6">
           <button
             onClick={handleBack}
-            disabled={currentStep === 1 || loading}
+            disabled={currentStep === 1 || loading || contactSaving}
             className="flex items-center gap-2 rounded-lg px-4 py-2 text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/10 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <ChevronLeft className="h-4 w-4" />
@@ -1461,7 +1601,7 @@ export default function EventWizard({
 
             <button
               onClick={handleNext}
-              disabled={!canProceed() || loading}
+              disabled={loading || contactSaving}
               className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-2 font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {loading ? (

@@ -1,3 +1,4 @@
+import { openInCrmWeb } from '../navigation/navigationRef';
 import { isEventOrganizer, showEventInvitation } from '../lib/eventInvitation';
 import RealizationActions from '../components/Events/RealizationActions';
 import { useOperationalStages } from '../hooks/useOperationalStages';
@@ -1051,6 +1052,7 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab }: Props) {
           />
         }
       >
+        {activeTab === 'details' && isEventOrganizer(event.created_by, employee?.id, session?.user?.id) && <TouchableOpacity onPress={() => openInCrmWeb('/crm/events/actions')} style={{ margin: 16, padding: 12, borderRadius: 10, backgroundColor: colors.background.secondary }}><Text style={{ color: colors.primary.gold }}>Moje wydarzenia — następne kroki i przypomnienia →</Text></TouchableOpacity>}
         {activeTab === 'details' && <RealizationActions eventId={eventId} onChanged={() => void loadAll(true)} />}
         {activeTab === 'warehouse' && showWarehouseTab && <WarehouseHandoffPanel key={eventId} eventId={eventId} status={event.status} onAccepted={() => { void loadAll(true); }} />}
         {activeTab === 'details' && <DetailsTab event={event} employee={employee as Employee} />}

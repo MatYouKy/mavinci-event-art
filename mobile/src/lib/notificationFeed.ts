@@ -36,7 +36,8 @@ export async function readNotificationFeed(client: SupabaseClient, userId: strin
     if (unreadOnly) q = q.eq('is_read', false);
     const result = await q;
     if (result.error) throw result.error;
-    rows.push(...(result.data || []));
+    rows.push(...(result.data || []).map((row: any) => ({ ...row, notifications: row.notifications?.metadata?.kind === 'event_workflow_digest'
+      ? { ...row.notifications, action_url: '/crm/events/actions' } : row.notifications })));
     if ((result.data || []).length < NOTIFICATION_PAGE_SIZE) break;
   }
   return { rows, total, unread, hasMore: rows.length < (unreadOnly ? unread : total) };
@@ -49,7 +50,8 @@ export async function readRecentUnreadNotifications(client: SupabaseClient, user
       .eq('is_read', false).gte('created_at', since).order('created_at').order('id')
       .range(page * NOTIFICATION_PAGE_SIZE, (page + 1) * NOTIFICATION_PAGE_SIZE - 1).abortSignal(signal);
     if (result.error) throw result.error;
-    rows.push(...(result.data || []));
+    rows.push(...(result.data || []).map((row: any) => ({ ...row, notifications: row.notifications?.metadata?.kind === 'event_workflow_digest'
+      ? { ...row.notifications, action_url: '/crm/events/actions' } : row.notifications })));
     if ((result.data || []).length < NOTIFICATION_PAGE_SIZE) break;
   }
   return rows;

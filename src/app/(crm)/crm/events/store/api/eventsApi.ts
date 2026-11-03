@@ -10,6 +10,9 @@ export type EventsApiErrorStatus = 'CUSTOM_ERROR' | 'FETCH_ERROR' | 'NOT_FOUND';
 export interface EventsApiError {
   status: EventsApiErrorStatus;
   message: string;
+  code?: string;
+  details?: string;
+  error?: string;
 }
 
 export type SelectedEquipment = {
@@ -165,14 +168,14 @@ export const eventsApi = createApi({
 
           if (error) {
             return {
-              error: { status: 'CUSTOM_ERROR', error: error.message } as unknown as EventsApiError,
+              error: { status: 'CUSTOM_ERROR', message: error.message, error: error.message, code: error.code, details: error.details },
             };
           }
 
           return { data: data as IEvent };
         } catch (error: any) {
           return {
-            error: { status: 'FETCH_ERROR', error: error.message } as unknown as EventsApiError,
+            error: { status: 'FETCH_ERROR', message: error.message, error: error.message },
           };
         }
       },

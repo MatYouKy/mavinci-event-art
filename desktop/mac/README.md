@@ -165,3 +165,6 @@ Nowa, niewykonana migracja `20261101213000_native_workspace_v3.sql` tworzy osobn
 Nie zmieniano klientów CRM/mobile ani ich katalogu uprawnień. Ujednolicenie dotyczy nawigacji i prezentacji klienta macOS, a zakres rekordów nadal wymusza baza. Rozszerzony kontrakt przyszłego własnego serwera opisano w docs/desktop-native-api.md.
 
 Przy zmianie sekcji powiadomienie o błędzie nie zwęża list. Skróty: ⌘1 Mój dzień, ⌘2 Zapytania, ⌘3 Kanban, ⌘4 Wydarzenia, ⌘5 Kalendarz, ⌘6 Kontakty, ⌘7 Oferty, ⌘8 Przetargi, ⌘9 panel powiadomień.
+
+
+Powiadomienia procesu wydarzeń: dzienny digest trafia wyłącznie do autora wydarzenia. Drawer udostępnia bezpośrednie przyciski do wydarzeń ujętych w podsumowaniu. Odroczenie przypomnienia i pełna kolejka kolejnych kroków są obecnie dostępne w CRM.

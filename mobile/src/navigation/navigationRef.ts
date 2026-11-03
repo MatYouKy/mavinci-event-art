@@ -85,6 +85,7 @@ const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
  */
 export function routeSalesUrl(url: string | null | undefined): boolean {
   if (!url) return false;
+  if (url === '/crm/events/actions') { openInCrmWeb(url); return true; }
   const inquiry = url.match(new RegExp(`/crm/inquiries/(${UUID})`, 'i'));
   if (inquiry) { navigateToInquiry(inquiry[1]); return true; }
   if (url.startsWith('/crm/tenders')) {

@@ -17,6 +17,13 @@ import SwiftUI
                 VStack(alignment:.leading,spacing:9){
                     HStack(alignment:.top,spacing:8){if row.fields["is_read"]?.flag != true{Circle().fill(.blue).frame(width:7,height:7).padding(.top,5)};Text(row.title).font(.callout.weight(.semibold)).textSelection(.enabled)}
                     if !row["message"].isEmpty{Text(row["message"]).font(.callout).foregroundStyle(.secondary).lineLimit(4).textSelection(.enabled)}
+                    if row.fields["metadata"]?.object["kind"]?.text == "event_workflow_digest" {
+                        ForEach(Array((row.fields["metadata"]?.object["actions"]?.array ?? []).enumerated()), id: \.offset) { _, action in
+                            if let eventID=action.object["event_id"]?.text,UUID(uuidString:eventID) != nil {
+                                Button(action.object["event_name"]?.text ?? "Otwórz wydarzenie") {state.showEvent(eventID)}.font(.caption)
+                            }
+                        }
+                    }
                     Text(Labels.date(row["created_at"])).font(.caption).foregroundStyle(.tertiary)
                     HStack{
                         Button("Otwórz sprawę",systemImage:"arrow.up.forward.app"){
@@ -47,6 +54,11 @@ import SwiftUI
         var type=row["related_entity_type"],id=row["related_entity_id"]
         var tab=metadata["tab"]?.text ?? metadata["event_tab"]?.text ?? ""
         let raw=row["action_url"]
+        if raw == "/crm/events/actions" || metadata["kind"]?.text == "event_workflow_digest" {
+            guard employee?.canView(.events)==true else{notice="Nie masz dostępu do wydarzeń.";return false}
+            selection = .events
+            return true
+        }
         if let url=URLComponents(string:raw),!raw.isEmpty {
             let parts=url.path.split(separator:"/").map(String.init)
             let q=Dictionary((url.queryItems ?? []).map{($0.name,$0.value ?? "")},uniquingKeysWith:{first,_ in first})

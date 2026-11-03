@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import EventWorkflowActionCard, { type EventWorkflowAction } from './EventWorkflowActionCard';
+import { createRefreshQueue } from '@/lib/CRM/refreshQueue';
 import {
   AlertTriangle,
   Check,
@@ -38,7 +40,7 @@ type WorkflowStage = {
   color: string;
   is_blocking: boolean;
   due_at: string | null;
-  status: 'completed' | 'overdue' | 'pending';
+  status: 'completed' | 'overdue' | 'pending' | 'waiting';
   completed: number;
   total: number;
   progress: number;
@@ -56,6 +58,8 @@ type WorkflowReadiness = {
   total: number;
   progress: number;
   stages: WorkflowStage[];
+  next_action?: EventWorkflowAction | null;
+  can_snooze?: boolean;
 };
 
 function formatDueDate(value: string | null) {
@@ -66,6 +70,7 @@ function formatDueDate(value: string | null) {
 function statusLabel(stage: WorkflowStage) {
   if (stage.status === 'completed') return 'Gotowe';
   if (stage.status === 'overdue') return 'Po terminie';
+  if (stage.status === 'waiting') return 'Kolejny krok / oczekiwanie';
   return 'W przygotowaniu';
 }
 
@@ -122,9 +127,11 @@ export default function EventWorkflowReadinessPanel({
   useEffect(() => {
     if (!available) return;
     const channel = supabase.channel(`event-workflow-readiness-${eventId}`);
-    const refresh = () => void loadReadiness(true);
+    const controller = new AbortController();
+    const queue = createRefreshQueue(controller.signal, async () => { if (!document.hidden) await loadReadiness(true); });
+    const refresh = () => queue.schedule();
 
-    ['offers', 'contracts', 'event_partner_arrangements', 'employee_assignments', 'event_equipment', 'event_vehicles', 'event_agendas', 'tasks', 'invoices', 'wedding_cards'].forEach((table) => {
+    ['offers', 'contracts', 'event_partner_arrangements', 'employee_assignments', 'event_equipment', 'event_vehicles', 'event_agendas', 'tasks', 'invoices', 'wedding_cards', 'event_payment_milestones', 'event_closeouts'].forEach((table) => {
       channel.on(
         'postgres_changes',
         { event: '*', schema: 'public', table, filter: `event_id=eq.${eventId}` },
@@ -141,7 +148,7 @@ export default function EventWorkflowReadinessPanel({
     }
 
     channel.subscribe();
-    return () => { void supabase.removeChannel(channel); };
+    return () => { controller.abort(); void supabase.removeChannel(channel); };
   }, [available, data?.instance_id, eventId, loadReadiness]);
 
   const overdueStages = useMemo(
@@ -224,6 +231,7 @@ export default function EventWorkflowReadinessPanel({
         </div>
       </div>
 
+      {data.next_action && <div className="p-4"><EventWorkflowActionCard key={data.next_action.requirement_id} action={data.next_action} canSnooze={Boolean(data.can_snooze)} onChanged={() => loadReadiness(true)} /></div>}
       <div className="divide-y divide-[#d3bb73]/10">
         {data.stages.map((stage) => {
           const expanded = expandedStages.has(stage.id);
