@@ -95,8 +95,8 @@ export default function Client360Modal({
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={styles.container}>
         <View style={styles.header}>
-          <View style={styles.avatar}><Text style={styles.initials}>{`${client.first_name[0] || ''}${client.last_name[0] || ''}`.toUpperCase()}</Text></View>
-          <View style={styles.headerText}><Text style={styles.title}>{client.first_name} {client.last_name}</Text><Text style={styles.subtitle}>Klient 360°</Text></View>
+          <View style={styles.avatar}><Text style={styles.initials}>{`${client.first_name?.trim()[0] || ''}${client.last_name?.trim()[0] || ''}`.toUpperCase() || '?'}</Text></View>
+          <View style={styles.headerText}><Text style={styles.title}>{[client.first_name, client.last_name].filter((part) => part?.trim()).join(' ') || client.email || 'Kontakt bez nazwy'}</Text><Text style={styles.subtitle}>Klient 360°</Text></View>
           <TouchableOpacity onPress={onClose} style={styles.close}><Feather name="x" size={22} color={colors.text.primary} /></TouchableOpacity>
         </View>
 

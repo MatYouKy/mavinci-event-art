@@ -1,16 +1,28 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 'use client';
 
-import EventNavigation from '@/components/crm/events/EventNavigation';
+import EventNavigation, { type EventNavigationGroup } from '@/components/crm/events/EventNavigation';
 import { getOfferPricingTotals, roundMoney } from '@/lib/CRM/Offers/offerTotals';
-import { RealizationPanel } from '@/components/crm/events/RealizationPanel';
 import EventStepsPanel from '@/components/crm/events/steps/EventStepsPanel';
+import EventKeyFactsCard from '@/components/crm/events/EventKeyFactsCard';
+import {
+  EVENT_ACCESS_AREAS,
+  EVENT_ACCESS_NONE,
+  EVENT_TAB_LABELS,
+  canViewEventArea,
+  eventAccessSummary,
+  normalizeEventTabId,
+  visibleEventTabGroups,
+  type EventAccess,
+  type EventTabId,
+} from '@/lib/events/access/eventAccess';
+import { eventMoney, fetchEventFinancials, type EventFinancialField, type EventFinancials } from '@/lib/CRM/events/eventFinancials';
 import {
   useState,
   useEffect,
   useCallback,
   useMemo,
-  useRef,
+  type ComponentType,
 } from 'react';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import {
@@ -44,6 +56,13 @@ import {
   HeartHandshake,
   MonitorPlay,
   Printer,
+  Info,
+  LayoutDashboard,
+  FolderOpen,
+  Calculator,
+  ScrollText,
+  Wallet,
+  ShieldAlert,
 } from 'lucide-react';
 import * as Icons from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
@@ -101,37 +120,40 @@ import { EventCategoryRow } from '@/lib/CRM/events/eventsData.server';
 import EventPartnerArrangement from '@/components/crm/events/contract/EventPartnerArrangement';
 import { EventContractTab } from '@/components/crm/events/contract/EventContractTab';
 import { deleteEventSafely } from '@/lib/CRM/events/deleteEventSafely';
-import WarehouseHandoffPanel from '@/components/crm/events/WarehouseHandoffPanel';
-import EventWorkflowReadinessPanel from '@/components/crm/events/EventWorkflowReadinessPanel';
 import EventPreflightPanel from '@/components/crm/events/EventPreflightPanel';
 import { useEventWorkspace } from '@/components/crm/events/EventWorkspaceProvider';
 import { EVENT_STATUS_BADGE_CLASSES } from '@/components/crm/events/eventStatusPalette';
-import { ADMIN_EVENT_TABS, CREATOR_EVENT_TABS } from '@/lib/CRM/events/eventTabs';
 import EventSellerCorrespondence from '@/components/seller/EventSellerCorrespondence';
 
-const EVENT_DETAIL_TAB_IDS = [
-  'overview',
-  'phases',
-  'equipment',
-  'team',
-  'files',
-  'tasks',
-  'offer',
-  'subcontractors',
-  'logistics',
-  'finances',
-  'contract',
-  'seller-arrangements',
-  'agenda',
-  'calculations',
-  'history',
-  'mavinci-live',
-] as const;
+type EventDetailTab = EventTabId;
 
-type EventDetailTab = (typeof EVENT_DETAIL_TAB_IDS)[number];
+/** Ikony zakładek (etykiety i grupy: EVENT_TAB_LABELS / EVENT_TAB_GROUPS we wspólnym eventAccess.ts). */
+const EVENT_TAB_ICONS: Record<EventTabId, ComponentType<{ className?: string }>> = {
+  overview: LayoutDashboard,
+  details: Info,
+  equipment: Package,
+  logistics: Truck,
+  team: Users,
+  phases: Clock,
+  agenda: ClipboardList,
+  subcontractors: UserCheck,
+  files: FolderOpen,
+  tasks: CheckSquare,
+  'mavinci-live': MonitorPlay,
+  offer: DollarSign,
+  calculations: Calculator,
+  contract: ScrollText,
+  'seller-arrangements': Icons.MessageSquare,
+  finances: Wallet,
+  history: History,
+};
 
-const isEventDetailTab = (value: string | null): value is EventDetailTab =>
-  Boolean(value && EVENT_DETAIL_TAB_IDS.includes(value as EventDetailTab));
+/** Dostęp zastępczy, gdy serwer nie przekazał obszarów (starsza wersja danych). Ta sama reguła co w eventsIdData.server. */
+function fallbackAccess(isAdmin: boolean, isCreator: boolean): EventAccess {
+  const areas = { ...EVENT_ACCESS_NONE.areas, operations: true };
+  if (isAdmin || isCreator) for (const area of EVENT_ACCESS_AREAS) areas[area] = true;
+  return { event_id: null, areas, roles: { ...(isAdmin ? { admin: true } : {}), ...(isCreator ? { seller: true } : {}) } };
+}
 
 interface Equipment {
   kit_id: unknown;
@@ -270,7 +292,6 @@ export default function EventDetailPageClient({
 
   const {
     canManageTeam: canManageTeamFromContext,
-    allowedEventTabs,
     userAssignmentStatus,
     hasLimitedAccess,
     isAdmin,
@@ -279,11 +300,19 @@ export default function EventDetailPageClient({
     canManageEvent,
   } = permissionContext;
 
-  const visibleEventTabs = useMemo(() => {
-    if (isAdmin) return ADMIN_EVENT_TABS;
-    if (isCreator) return CREATOR_EVENT_TABS;
-    return allowedEventTabs;
-  }, [isAdmin, isCreator, allowedEventTabs]);
+  // Obszary danych z bazy (get_event_access) — jedno źródło decyzji, które zakładki i sekcje widać.
+  const access = useMemo<EventAccess>(
+    () => permissionContext.access ?? fallbackAccess(isAdmin, isCreator),
+    [permissionContext.access, isAdmin, isCreator],
+  );
+  // Zawężenie zakładek z ustawień pracownika (null = bez zawężenia; administrator i prowadzący bez zawężenia).
+  const employeeEventTabs = permissionContext.employeeEventTabs ?? null;
+  const canViewClient = canViewEventArea(access, 'client');
+  const canViewOnsiteContact = canViewEventArea(access, 'onsite_contact');
+  const canViewValues = canViewEventArea(access, 'values');
+  const canViewCommercialDocs = canViewEventArea(access, 'commercial_docs');
+  // Oferty: zakładka Oferta (dokumenty handlowe) i planowany przychód w karcie Budżet (kwoty). RLS ofert decyduje ostatecznie.
+  const canLoadOffers = canViewCommercialDocs || canViewValues;
 
   // Jedna decyzja z bazy (current_employee_can_manage_event); starsza baza: dotychczasowa reguła.
   const canEventManage =
@@ -320,7 +349,7 @@ export default function EventDetailPageClient({
   }, [eventId, currentEmployee?.id]);
   const canViewFinanceValues = financeValuesAccess?.eventId === eventId && financeValuesAccess.allowed;
 
-  // Oferty i dane klienta: dotychczasowe uprawnienia ofert; stare invoices_view / invoices_manage nic już nie nadają.
+  // Dotychczasowa reguła akcji handlowych (status, oferty) — teraz dodatkowo wymaga obszaru commercial_docs.
   const canViewCommercials =
     isCreator ||
     currentEmployee?.role === 'admin' ||
@@ -332,13 +361,27 @@ export default function EventDetailPageClient({
 
   // Offer correspondence is commercial history, not a general team chat.
   // The RPC additionally enforces event access and the seller's brand scope.
-  const canViewSellerCorrespondence = canViewCommercials && (
+  const canViewSellerCorrespondence = canViewCommercialDocs && (
     isCreator || isAdmin || ['offers_view', 'offers_manage', 'finances_view', 'finances_manage']
       .some((scope) => hasScope(scope, currentEmployee as IEmployee))
   );
+  // Status i akcje sprzedażowe (Szczegóły): jak dotąd, a dodatkowo tylko z obszarem „oferta, umowa i formalności”.
+  const showDetailsAction = canViewCommercials && canViewCommercialDocs;
 
   const [event, setEvent] = useState<IEvent>(initialData);
   const [deletingEvent, setDeletingEvent] = useState(false);
+
+  // Kwoty z event_financials (tylko z obszarem „kwoty”). Kolumny kwot w `events` są po migracji puste.
+  const [financials, setFinancials] = useState<EventFinancials | null>(initialData.financials ?? null);
+  const money = useCallback(
+    (field: EventFinancialField) => eventMoney(event, financials, field),
+    [event, financials],
+  );
+  const reloadFinancials = useCallback(async () => {
+    if (!canViewValues) return;
+    const next = await fetchEventFinancials(supabase, eventId);
+    if (next) setFinancials(next);
+  }, [canViewValues, eventId]);
 
   useEffect(() => {
     if (!eventData || eventData.id !== eventId) return;
@@ -406,13 +449,14 @@ export default function EventDetailPageClient({
   }, [event?.location_id, initialLocation]);
 
   const [isConfirmed, setIsConfirmed] = useState(false);
-  const requestedTab = searchParams.get('tab');
+  // Domyślnie Przegląd; starsze adresy zakładek (np. z powiadomień) mapuje normalizeEventTabId.
   const [activeTab, setActiveTab] = useState<EventDetailTab>(
-    isEventDetailTab(requestedTab) ? requestedTab : 'overview',
+    () => normalizeEventTabId(searchParams.get('tab')) ?? 'overview',
   );
 
   const navigateToTab = useCallback(
-    (tab: EventDetailTab) => {
+    (requested: string) => {
+      const tab = normalizeEventTabId(requested) ?? 'overview';
       setActiveTab(tab);
       const nextSearchParams = new URLSearchParams(searchParams.toString());
       nextSearchParams.set('tab', tab);
@@ -421,47 +465,9 @@ export default function EventDetailPageClient({
     [eventId, router, searchParams],
   );
 
-  const tabsWheelCleanupRef = useRef<(() => void) | null>(null);
-  const setTabsScrollElement = useCallback((tabList: HTMLDivElement | null) => {
-    tabsWheelCleanupRef.current?.();
-    tabsWheelCleanupRef.current = null;
-    if (!tabList) return;
-
-    const handleWheel = (event: WheelEvent) => {
-      // Nad paskiem zakładek blokujemy pionowe przewijanie strony niezależnie
-      // od tego, czy pasek jest już na początku lub na końcu.
-      event.preventDefault();
-      event.stopPropagation();
-
-      const rawDelta =
-        Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
-      if (rawDelta === 0) return;
-
-      const deltaMultiplier =
-        event.deltaMode === 1 ? 18 : event.deltaMode === 2 ? tabList.clientWidth : 1;
-      const maxScrollLeft = Math.max(0, tabList.scrollWidth - tabList.clientWidth);
-      tabList.scrollLeft = Math.min(
-        maxScrollLeft,
-        Math.max(0, tabList.scrollLeft + rawDelta * deltaMultiplier),
-      );
-    };
-
-    tabList.addEventListener('wheel', handleWheel, { passive: false });
-    tabsWheelCleanupRef.current = () => {
-      tabList.removeEventListener('wheel', handleWheel);
-    };
-  }, []);
-
-  useEffect(
-    () => () => {
-      tabsWheelCleanupRef.current?.();
-    },
-    [],
-  );
 
   useEffect(() => {
-    const tabFromUrl = searchParams.get('tab');
-    const nextTab = isEventDetailTab(tabFromUrl) ? tabFromUrl : 'overview';
+    const nextTab = normalizeEventTabId(searchParams.get('tab')) ?? 'overview';
     setActiveTab((currentTab) => (currentTab === nextTab ? currentTab : nextTab));
   }, [searchParams]);
 
@@ -497,12 +503,12 @@ export default function EventDetailPageClient({
     isFetching: offersFetching,
     refetch: refetchOffers,
   } = useGetEventOffersQuery(eventId, {
-    skip: !canViewCommercials,
+    skip: !canLoadOffers,
     refetchOnMountOrArgChange: true,
   });
 
   useEffect(() => {
-    if (!canViewCommercials) return;
+    if (!canLoadOffers) return;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const refresh = () => {
       if (document.visibilityState !== 'visible') return;
@@ -520,13 +526,13 @@ export default function EventDetailPageClient({
       document.removeEventListener('visibilitychange', refresh);
       void supabase.removeChannel(channel);
     };
-  }, [eventId, canViewCommercials, refetchOffers]);
+  }, [eventId, canLoadOffers, refetchOffers]);
 
   useEffect(() => {
-    if (activeTab === 'offer' && canViewCommercials) {
+    if (activeTab === 'offer' && canLoadOffers) {
       void refetchOffers();
     }
-  }, [activeTab, canViewCommercials, refetchOffers]);
+  }, [activeTab, canLoadOffers, refetchOffers]);
 
   const [requiredMavinciLiveModules, setRequiredMavinciLiveModules] = useState<
     MavinciLiveModuleRequirement[]
@@ -552,11 +558,43 @@ export default function EventDetailPageClient({
     void loadRequiredMavinciLiveModules();
   }, [loadRequiredMavinciLiveModules, offersData]);
 
-  useEffect(() => {
-    if (activeTab === 'mavinci-live' && requiredMavinciLiveModules.length === 0) {
-      navigateToTab('overview');
-    }
-  }, [activeTab, navigateToTab, requiredMavinciLiveModules.length]);
+  // Zakładki: obszar z bazy + zawężenie z ustawień pracownika + warunki modułów (eventTabAllowed / visibleEventTabGroups).
+  const extraTabAllowed = useCallback(
+    (tab: EventTabId) => {
+      // Osoba z oczekującym / odrzuconym zaproszeniem widzi tylko Przegląd.
+      if (hasLimitedAccess && !isCreator && !isAdmin) return tab === 'overview';
+      if (tab === 'finances') return canViewFinanceValues;
+      if (tab === 'seller-arrangements') return canViewSellerCorrespondence;
+      if (tab === 'mavinci-live') return requiredMavinciLiveModules.length > 0;
+      return true;
+    },
+    [hasLimitedAccess, isCreator, isAdmin, canViewFinanceValues, canViewSellerCorrespondence, requiredMavinciLiveModules.length],
+  );
+  const tabGroups = useMemo(
+    () => visibleEventTabGroups(access, employeeEventTabs, extraTabAllowed),
+    [access, employeeEventTabs, extraTabAllowed],
+  );
+  const visibleTabIds = useMemo(() => new Set<EventTabId>(tabGroups.flatMap(group => group.tabs)), [tabGroups]);
+  const canOpenTab = useCallback((tab: string) => visibleTabIds.has(tab as EventTabId), [visibleTabIds]);
+  // Niedostępna (albo jeszcze wczytywana, np. Finanse / Mavinci LIVE) zakładka z adresu → Przegląd, bez zmiany adresu.
+  const effectiveTab: EventDetailTab | null = visibleTabIds.has(activeTab)
+    ? activeTab
+    : visibleTabIds.has('overview')
+      ? 'overview'
+      : null;
+  const navigationGroups = useMemo<EventNavigationGroup[]>(
+    () =>
+      tabGroups.map(group => ({
+        id: group.id,
+        label: group.label,
+        tabs: group.tabs.map(tab => ({
+          id: tab,
+          label: tab === 'agenda' && isWeddingEvent ? 'Karta weselna' : EVENT_TAB_LABELS[tab],
+          icon: tab === 'agenda' && isWeddingEvent ? HeartHandshake : EVENT_TAB_ICONS[tab],
+        })),
+      })),
+    [tabGroups, isWeddingEvent],
+  );
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const handleDeleteEvent = async () => {
@@ -613,8 +651,9 @@ export default function EventDetailPageClient({
         contact_person_id: event.contact_person_id || null,
         my_company_id: event.my_company_id || null,
         client_type: event.client_type || 'business',
-        expected_revenue: event.expected_revenue || null,
-        estimated_costs: event.estimated_costs || null,
+        // Kwoty z event_financials (zapis do events przenosi je wyzwalacz do kopii).
+        expected_revenue: money('expected_revenue') || null,
+        estimated_costs: money('estimated_costs') || null,
       };
 
       const result = await createEvent(duplicatedEvent as Partial<IEvent>).unwrap();
@@ -827,16 +866,12 @@ export default function EventDetailPageClient({
   }, [offersData, initialOffers, event?.financial_source]);
 
   const budgetOfferTotals = latestOffer ? getOfferPricingTotals(latestOffer) : null;
-  const plannedRevenue = budgetOfferTotals?.gross ?? Number(event?.expected_revenue || 0);
+  const plannedRevenue = budgetOfferTotals?.gross ?? Number(money('expected_revenue') || 0);
   const offerCostNet = latestOffer?.total_cost == null ? null : Number(latestOffer.total_cost);
   const offerProfitNet = budgetOfferTotals && offerCostNet != null
     ? roundMoney(budgetOfferTotals.net - offerCostNet) : null;
 
-  const actualRevenue = useMemo(() => {
-    // tu zostawiasz swoje event.actual_revenue
-    if (event?.actual_revenue != null) return Number(event.actual_revenue);
-    return 0;
-  }, [event?.actual_revenue]);
+  const actualRevenue = Number(money('actual_revenue') || 0);
 
   // if (isLoading) {
   //   return (
@@ -889,13 +924,13 @@ export default function EventDetailPageClient({
             </div>
 
             <div className="flex flex-col items-start gap-1 text-sm text-[#e5e4e2]/60 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
-              {event.client_type === 'business' && canViewCommercials && (
+              {event.client_type === 'business' && canViewClient && (
                 <div className="flex items-center gap-2">
                   <Building2 className="h-4 w-4" />
                   {organization ? organization.alias || organization.name : 'Brak klienta'}
                 </div>
               )}
-              {event.client_type === 'individual' && canViewCommercials && (
+              {event.client_type === 'individual' && canViewClient && (
                 <div className="flex items-center gap-2">
                   <User className="h-4 w-4" />
                   <span>
@@ -905,7 +940,7 @@ export default function EventDetailPageClient({
                   </span>
                 </div>
               )}
-              {event.client_type === 'business' && contact && canViewCommercials && (
+              {event.client_type === 'business' && contact && canViewClient && (
                 <div className="flex items-center gap-2">
                   <User className="h-4 w-4" />
                   <span>
@@ -942,59 +977,37 @@ export default function EventDetailPageClient({
 
       {event.seller_confirmation_required && canViewSellerCorrespondence && event.status !== 'cancelled' && <section className="mb-5 space-y-3 rounded-xl bg-amber-300/10 p-4">
         <h2 className="text-sm uppercase text-amber-200">Oferta sprzedawcy przyjęta — wydarzenie do przygotowania</h2>
-        <p className="text-sm text-white/65">Wydarzenie zostało utworzone przy akceptacji oferty. Uzupełnij Timeline, zespół, agendę i logistykę, a następnie osobno potwierdź realizację.</p>
+        <p className="text-sm text-white/65">Wydarzenie zostało utworzone przy akceptacji oferty. Uzupełnij harmonogram, zespół, agendę i logistykę, a następnie osobno potwierdź realizację.</p>
         {event.seller_schedule_pending && <p className="text-xs text-amber-200">Godziny są do ustalenia. Godzina 00:00 w kalendarzu jest wyłącznie oznaczeniem daty, nie ustalonym początkiem wydarzenia.</p>}
         <button type="button" onClick={() => navigateToTab('seller-arrangements')} className="rounded-lg bg-[#d3bb73]/15 px-3 py-2 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/25">Przygotowanie i potwierdzenie realizacji</button>
       </section>}
 
-      <EventNavigation
-        scrollRef={setTabsScrollElement}
-        activeTab={activeTab}
-        onChange={(id) => navigateToTab(id as EventDetailTab)}
-        tabs={[
-          { id: 'overview', label: 'Przegląd', icon: FileText },
-          { id: 'phases', label: 'Timeline', icon: Clock },
-          { id: 'offer', label: 'Oferta', icon: DollarSign },
-          { id: 'finances', label: 'Finanse', icon: DollarSign },
-          { id: 'contract', label: 'Umowa', icon: FileText },
-          { id: 'seller-arrangements', label: 'Ustalenia', icon: Icons.MessageSquare },
-          {
-            id: 'agenda',
-            label: isWeddingEvent ? 'Karta weselna' : 'Agenda',
-            icon: isWeddingEvent ? HeartHandshake : ClipboardList,
-          },
-          { id: 'calculations', label: 'Kalkulacje', icon: ClipboardList },
-          { id: 'equipment', label: 'Sprzęt', icon: Package },
-          { id: 'team', label: 'Zespół', icon: Users },
-          { id: 'logistics', label: 'Logistyka', icon: Truck },
-          { id: 'subcontractors', label: 'Podwykonawcy', icon: UserCheck },
-          { id: 'files', label: 'Pliki', icon: FileText },
-          { id: 'tasks', label: 'Zadania', icon: CheckSquare },
-          { id: 'history', label: 'Historia', icon: History },
-          { id: 'mavinci-live', label: 'Mavinci LIVE', icon: MonitorPlay },
-        ]
-          .filter((tab) => {
-            if (hasLimitedAccess && !isCreator && !isAdmin) {
-              return tab.id === 'overview';
-            }
+      {effectiveTab ? (
+        <EventNavigation
+          groups={navigationGroups}
+          activeTab={effectiveTab}
+          onChange={navigateToTab}
+          idPrefix="event-detail"
+          panelId="event-detail-panel"
+        />
+      ) : (
+        <section role="alert" className="flex items-start gap-3 rounded-xl bg-white/5 p-5 text-sm text-[#e5e4e2]/75">
+          <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-[#d3bb73]" aria-hidden />
+          <div>
+            <p className="font-medium text-[#e5e4e2]">Brak dostępu do danych tego wydarzenia</p>
+            <p className="mt-1 text-[#e5e4e2]/60">Twój zakres nie obejmuje danych tego wydarzenia. Jeśli to pomyłka, poproś administratora o dostęp.</p>
+          </div>
+        </section>
+      )}
 
-            if (tab.id === 'finances' && !canViewFinanceValues) {
-              return false;
-            }
+      <div
+        id="event-detail-panel"
+        role={effectiveTab ? 'tabpanel' : undefined}
+        aria-labelledby={effectiveTab ? `event-detail-tab-${effectiveTab}` : undefined}
+        className="space-y-6"
+      >
 
-            if (tab.id === 'seller-arrangements') {
-              return canViewSellerCorrespondence;
-            }
-
-            if (tab.id === 'mavinci-live' && requiredMavinciLiveModules.length === 0) {
-              return false;
-            }
-
-            return visibleEventTabs.includes(tab.id);
-          })}
-      />
-
-      {activeTab === 'overview' && (
+      {effectiveTab === 'overview' && (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           <div className="space-y-6 lg:col-span-2">
             {/* Banner z zaproszeniem dla użytkowników z ograniczonym dostępem */}
@@ -1082,151 +1095,149 @@ export default function EventDetailPageClient({
                 </div>
               </div>
             )}
-            <EventStepsPanel eventId={eventId} onNavigate={tab => navigateToTab(tab as EventDetailTab)} />
-            <RealizationPanel eventId={eventId} />
+            <EventStepsPanel eventId={eventId} onNavigate={navigateToTab} canOpenTab={canOpenTab} />
 
             {canEventManage && (
-              <EventPreflightPanel eventId={eventId} onNavigate={(tab) => navigateToTab(tab as EventDetailTab)} />
-            )}
-            {canEventManage && (
-              <EventWorkflowReadinessPanel
+              <EventPreflightPanel
                 eventId={eventId}
-                canManage={canEventManage}
-                canConfigure={isAdmin}
+                onNavigate={navigateToTab}
+                canOpenTab={canOpenTab}
+                hideCommercial={!canViewCommercialDocs}
+                defaultCollapsed
               />
             )}
-            <EventsDetailsTab
-              canViewCommercials={canViewFinanceValues}
-              initialEvent={event}
-              location={location || null}
-              organization={organization || null}
-              contact={contact}
-              hasLimitedAccess={hasLimitedAccess}
-              canManageTeam={canManageTeam}
-              isAdmin={isAdmin}
-              canEventManage={canEventManage}
-              isCreator={isCreator}
-            />
           </div>
 
           <div className="space-y-6">
-            <WarehouseHandoffPanel eventId={eventId} status={event.status} onAccepted={() => {
-              setEvent(current => ({ ...current, status: 'in_preparation' }));
-              void refetchTeam();
-              router.refresh();
-            }} />
-            {canViewCommercials && <EventDetailsAction
-              canEditStatus={Boolean(canEventManage)}
-              event={event}
-              categories={categories}
-              hasOffers={!!offersData && offersData.length > 0}
-              offersCount={offersData?.length || 0}
-              contact={{
-                id: contact?.id || '',
-                full_name: contact?.full_name || '',
-                first_name: contact?.first_name || '',
-                last_name: contact?.last_name || '',
-                email: contact?.email || '',
-                phone: contact?.phone || '',
-              }}
-              organization={{
-                id: organization?.id || '',
-                name: organization?.name || '',
-                alias: organization?.alias || '',
-                email: organization?.email || '',
-              }}
-            />}
-            {canViewFinanceValues && (
-              <>
-                <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
-                  <div className="mb-4 flex items-center justify-between">
-                    <h2 className="text-lg font-light text-[#e5e4e2]">Budżet</h2>
-
-                    {/* opcjonalnie: status źródła */}
-                    <div className="text-xs text-[#e5e4e2]/40">
-                      {offersFetching
-                        ? 'Aktualizuję…'
-                        : latestOffer
-                          ? 'Źródło: oferta'
-                          : event?.financial_source === 'calculation' ? 'Źródło: kalkulacja' : 'Źródło: wydarzenie'}
-                    </div>
-                  </div>
-
-                  <div className="space-y-3">
-                    <div>
-                      <p className="text-sm text-[#e5e4e2]/60">Przychód planowany</p>
-                      <p className="text-2xl font-light text-[#d3bb73]">
-                        {plannedRevenue.toLocaleString('pl-PL')} zł
-                      </p>
-
-                      {latestOffer && budgetOfferTotals && (
-                        <div className="mt-2 space-y-1 text-xs text-[#e5e4e2]/50">
-                          <a href={`/crm/offers/${latestOffer.id}`} target="_blank" rel="noopener noreferrer" className="block text-[#d3bb73] underline">{latestOffer.status === 'accepted' ? 'Zaakceptowana oferta' : 'Wstępny plan z oferty'} {latestOffer.offer_number}</a>
-                          {budgetOfferTotals.discountAmount > 0 && <>
-                            <div>Przed rabatem netto: {budgetOfferTotals.listNet.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł</div>
-                            <div className="text-[#d3bb73]">Rabat: −{budgetOfferTotals.discountAmount.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł</div>
-                          </>}
-                          <div>Netto{budgetOfferTotals.discountAmount > 0 ? ' po rabacie' : ''}: <span className="text-[#e5e4e2]/70">{budgetOfferTotals.net.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł</span></div>
-                          <div>VAT ({budgetOfferTotals.hasMixedVatRates ? 'wg stawek pozycji' : `${budgetOfferTotals.taxPercent}%`}): <span className="text-[#e5e4e2]/70">{budgetOfferTotals.taxAmount.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł</span></div>
-                          <div>Brutto: <span className="text-[#e5e4e2]/70">{budgetOfferTotals.gross.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł</span></div>
-                          {latestOffer.logistics_enabled && Number(latestOffer.logistics_price_net) > 0 && <div>W cenie przed rabatem: logistyka {Number(latestOffer.logistics_price_net).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł netto.</div>}
-                          <div className="pt-3">Koszty zapisane w ofercie: <span className="text-[#e5e4e2]/70">{offerCostNet == null ? 'Nie określono' : `${offerCostNet.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł netto`}</span></div>
-                          {offerProfitNet != null && <div>Wynik po zapisanych kosztach: <span className={offerProfitNet < 0 ? 'text-red-300' : 'text-[#d3bb73]'}>{offerProfitNet.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł netto</span></div>}
-                          {latestOffer.logistics_cost_net == null && <p className="text-amber-200">Koszt logistyki nie został jeszcze określony — koszty mogą być niepełne.</p>}
-                        </div>
-                      )}
-                    </div>
-
-                    <div>
-                      <p className="text-sm text-[#e5e4e2]/60">Przychód faktyczny</p>
-                      <p className="text-2xl font-light text-[#e5e4e2]">
-                        {actualRevenue.toLocaleString('pl-PL')} zł
-                      </p>
-                    </div>
-
-                    {plannedRevenue > 0 && actualRevenue > 0 && (
-                      <div>
-                        <p className="text-sm text-[#e5e4e2]/60">Realizacja</p>
-                        <p className="text-xl font-light text-[#e5e4e2]">
-                          {((actualRevenue / plannedRevenue) * 100).toFixed(1)}%
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </>
-            )}
-
-            {canViewCommercials && (
-              <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
-                <h2 className="mb-4 text-lg font-light text-[#e5e4e2]">Szybkie statystyki</h2>
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-[#e5e4e2]/60">Sprzęt</span>
-                    <span className="font-medium text-[#e5e4e2]">{equipment.length}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-[#e5e4e2]/60">Zespół</span>
-                    {/* <span className="font-medium text-[#e5e4e2]">{employees.length}</span> */}
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-[#e5e4e2]/60">Pliki</span>
-                    <span className="font-medium text-[#e5e4e2]">
-                      {event.attachments?.length || 0}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-[#e5e4e2]/60">Checklisty</span>
-                    {/* <span className="font-medium text-[#e5e4e2]">{checklists.length}</span> */}
-                  </div>
-                </div>
-              </div>
-            )}
+            <EventKeyFactsCard
+              eventId={eventId}
+              eventDate={event.event_date}
+              eventEndDate={event.event_end_date}
+              schedulePending={Boolean(event.seller_schedule_pending)}
+              locationName={location?.name || (typeof event.location === 'string' ? event.location : null)}
+              locationAddress={location?.formatted_address || [location?.address, location?.postal_code, location?.city].filter(Boolean).join(', ') || null}
+              mapsUrl={location?.google_maps_url || null}
+              equipmentCount={Array.isArray(equipment) ? equipment.length : null}
+              access={access}
+              onNavigate={navigateToTab}
+              canOpenTab={canOpenTab}
+            />
           </div>
         </div>
       )}
 
-      {activeTab === 'equipment' && (
+      {effectiveTab === 'details' && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+            <div className={`space-y-6 ${showDetailsAction || canViewValues ? 'lg:col-span-2' : 'lg:col-span-3'}`}>
+              <EventsDetailsTab
+                canViewCommercials={canViewValues}
+                canViewClient={canViewClient}
+                canViewOnsiteContact={canViewOnsiteContact}
+                initialEvent={event}
+                location={location || null}
+                organization={canViewClient ? organization || null : null}
+                contact={canViewClient ? contact : null}
+                hasLimitedAccess={hasLimitedAccess}
+                canManageTeam={canManageTeam}
+                isAdmin={isAdmin}
+                canEventManage={canEventManage}
+                isCreator={isCreator}
+              />
+            </div>
+
+            {(showDetailsAction || canViewValues) && (
+              <div className="space-y-6">
+                {showDetailsAction && <EventDetailsAction
+                  canEditStatus={Boolean(canEventManage)}
+                  event={event}
+                  categories={categories}
+                  hasOffers={!!offersData && offersData.length > 0}
+                  offersCount={offersData?.length || 0}
+                  contact={{
+                    id: contact?.id || '',
+                    full_name: contact?.full_name || '',
+                    first_name: contact?.first_name || '',
+                    last_name: contact?.last_name || '',
+                    email: contact?.email || '',
+                    phone: contact?.phone || '',
+                  }}
+                  organization={{
+                    id: organization?.id || '',
+                    name: organization?.name || '',
+                    alias: organization?.alias || '',
+                    email: organization?.email || '',
+                  }}
+                />}
+                {canViewValues && (
+                  <>
+                    <div className="rounded-xl bg-[#1c1f33] p-6">
+                      <div className="mb-4 flex items-center justify-between">
+                        <h2 className="text-lg font-light text-[#e5e4e2]">Budżet</h2>
+
+                        {/* opcjonalnie: status źródła */}
+                        <div className="text-xs text-[#e5e4e2]/40">
+                          {offersFetching
+                            ? 'Aktualizuję…'
+                            : latestOffer
+                              ? 'Źródło: oferta'
+                              : event?.financial_source === 'calculation' ? 'Źródło: kalkulacja' : 'Źródło: wydarzenie'}
+                        </div>
+                      </div>
+
+                      <div className="space-y-3">
+                        <div>
+                          <p className="text-sm text-[#e5e4e2]/60">Przychód planowany</p>
+                          <p className="text-2xl font-light text-[#d3bb73]">
+                            {plannedRevenue.toLocaleString('pl-PL')} zł
+                          </p>
+
+                          {latestOffer && budgetOfferTotals && (
+                            <div className="mt-2 space-y-1 text-xs text-[#e5e4e2]/50">
+                              <a href={`/crm/offers/${latestOffer.id}`} target="_blank" rel="noopener noreferrer" className="block text-[#d3bb73] underline">{latestOffer.status === 'accepted' ? 'Zaakceptowana oferta' : 'Wstępny plan z oferty'} {latestOffer.offer_number}</a>
+                              {budgetOfferTotals.discountAmount > 0 && <>
+                                <div>Przed rabatem netto: {budgetOfferTotals.listNet.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł</div>
+                                <div className="text-[#d3bb73]">Rabat: −{budgetOfferTotals.discountAmount.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł</div>
+                              </>}
+                              <div>Netto{budgetOfferTotals.discountAmount > 0 ? ' po rabacie' : ''}: <span className="text-[#e5e4e2]/70">{budgetOfferTotals.net.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł</span></div>
+                              <div>VAT ({budgetOfferTotals.hasMixedVatRates ? 'wg stawek pozycji' : `${budgetOfferTotals.taxPercent}%`}): <span className="text-[#e5e4e2]/70">{budgetOfferTotals.taxAmount.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł</span></div>
+                              <div>Brutto: <span className="text-[#e5e4e2]/70">{budgetOfferTotals.gross.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł</span></div>
+                              {latestOffer.logistics_enabled && Number(latestOffer.logistics_price_net) > 0 && <div>W cenie przed rabatem: logistyka {Number(latestOffer.logistics_price_net).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł netto.</div>}
+                              <div className="pt-3">Koszty zapisane w ofercie: <span className="text-[#e5e4e2]/70">{offerCostNet == null ? 'Nie określono' : `${offerCostNet.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł netto`}</span></div>
+                              {offerProfitNet != null && <div>Wynik po zapisanych kosztach: <span className={offerProfitNet < 0 ? 'text-red-300' : 'text-[#d3bb73]'}>{offerProfitNet.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł netto</span></div>}
+                              {latestOffer.logistics_cost_net == null && <p className="text-amber-200">Koszt logistyki nie został jeszcze określony — koszty mogą być niepełne.</p>}
+                            </div>
+                          )}
+                        </div>
+
+                        <div>
+                          <p className="text-sm text-[#e5e4e2]/60">Przychód faktyczny</p>
+                          <p className="text-2xl font-light text-[#e5e4e2]">
+                            {actualRevenue.toLocaleString('pl-PL')} zł
+                          </p>
+                        </div>
+
+                        {plannedRevenue > 0 && actualRevenue > 0 && (
+                          <div>
+                            <p className="text-sm text-[#e5e4e2]/60">Realizacja</p>
+                            <p className="text-xl font-light text-[#e5e4e2]">
+                              {((actualRevenue / plannedRevenue) * 100).toFixed(1)}%
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+
+          <p className="text-xs text-[#e5e4e2]/40">{eventAccessSummary(access)}</p>
+        </div>
+      )}
+
+      {effectiveTab === 'equipment' && (
         <EventEquipmentTab
           eventId={event?.id as string}
           contact={contact as ISimpleContact}
@@ -1239,7 +1250,7 @@ export default function EventDetailPageClient({
         />
       )}
 
-      {activeTab === 'team' && (
+      {effectiveTab === 'team' && (
         <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
           <div className="mb-6 flex items-center justify-between">
             <h2 className="text-lg font-light text-[#e5e4e2]">Zespół</h2>
@@ -1276,7 +1287,7 @@ export default function EventDetailPageClient({
         </div>
       )}
 
-      {activeTab === 'offer' && (
+      {effectiveTab === 'offer' && (
         <EventTabOffer
           offers={offersData || []}
           isConfirmed={isConfirmed}
@@ -1287,9 +1298,9 @@ export default function EventDetailPageClient({
         />
       )}
 
-      {activeTab === 'files' && <EventFilesExplorer eventId={eventId} />}
+      {effectiveTab === 'files' && <EventFilesExplorer eventId={eventId} canViewCommercialDocs={canViewCommercialDocs} />}
 
-      {activeTab === 'logistics' && event && (
+      {effectiveTab === 'logistics' && event && (
         <EventLogisticsPanel
           eventId={event.id}
           eventLocation={event.location?.formatted_address || [event.location?.name, event.location?.address, event.location?.city].filter(Boolean).join(', ')}
@@ -1298,9 +1309,9 @@ export default function EventDetailPageClient({
         />
       )}
 
-      {activeTab === 'subcontractors' && <EventSubcontractorsPanel eventId={eventId} />}
+      {effectiveTab === 'subcontractors' && <EventSubcontractorsPanel eventId={eventId} />}
 
-      {activeTab === 'phases' && event && (
+      {effectiveTab === 'phases' && event && (
         <EventPhasesTimeline
           eventId={event.id}
           eventStartDate={event.event_date}
@@ -1313,23 +1324,23 @@ export default function EventDetailPageClient({
         />
       )}
 
-      {activeTab === 'tasks' && event && (
+      {effectiveTab === 'tasks' && event && (
         <EventTasksBoard eventId={event.id} canManage={canManageTeam} />
       )}
 
-      {activeTab === 'finances' && canViewFinanceValues && <EventFinancesTab eventId={eventId} />}
+      {effectiveTab === 'finances' && canViewFinanceValues && <EventFinancesTab eventId={eventId} />}
 
-      {activeTab === 'contract' && <EventPartnerArrangement key={eventId} eventId={eventId} canManage={!!canEventManage} hideSection={signedContractEventId === eventId}><EventContractTab eventId={eventId} onSignedDocumentChange={present => setSignedContractEventId(present ? eventId : null)} /></EventPartnerArrangement>}
+      {effectiveTab === 'contract' && <EventPartnerArrangement key={eventId} eventId={eventId} canManage={!!canEventManage} hideSection={signedContractEventId === eventId}><EventContractTab eventId={eventId} onSignedDocumentChange={present => setSignedContractEventId(present ? eventId : null)} /></EventPartnerArrangement>}
 
-      {activeTab === 'seller-arrangements' && canViewSellerCorrespondence && (
+      {effectiveTab === 'seller-arrangements' && canViewSellerCorrespondence && (
         <EventSellerCorrespondence key={eventId} eventId={eventId} />
       )}
 
-      {activeTab === 'agenda' && isWeddingEvent && (
+      {effectiveTab === 'agenda' && isWeddingEvent && (
         <EventWeddingCardTab eventId={eventId} canManage={canEventManage} />
       )}
 
-      {activeTab === 'agenda' && !isWeddingEvent && (
+      {effectiveTab === 'agenda' && !isWeddingEvent && (
         <EventAgendaTab
           contact={contact as ContactRow | ISimpleContact}
           organization={organization as OrganizationRow}
@@ -1343,11 +1354,11 @@ export default function EventDetailPageClient({
         />
       )}
 
-      {activeTab === 'calculations' && (
+      {effectiveTab === 'calculations' && (
         <EventCalculationsTab eventId={eventId} contactPerson={contact as any} />
       )}
 
-      {activeTab === 'mavinci-live' && (
+      {effectiveTab === 'mavinci-live' && (
         <EventMavinciLiveTab
           eventId={eventId}
           eventName={event?.name || 'Wydarzenie'}
@@ -1357,7 +1368,7 @@ export default function EventDetailPageClient({
         />
       )}
 
-      {activeTab === 'history' && (
+      {effectiveTab === 'history' && (
         <div className="space-y-6">
           {/* Nagłówek z przyciskami widoku */}
           <div className="flex items-center justify-between">
@@ -1718,6 +1729,7 @@ export default function EventDetailPageClient({
           )}
         </div>
       )}
+      </div>
 
       {showAddEmployeeModal && (
         <AddEventEmployeeModal
@@ -1745,7 +1757,9 @@ export default function EventDetailPageClient({
           location={location}
           isOpen={showEditEventModal}
           onClose={() => setShowEditEventModal(false)}
-          event={event}
+          // Budżet z event_financials; pole budżetu tylko z obszarem „kwoty”.
+          event={{ ...event, budget: money('budget') ?? undefined }}
+          canEditBudget={canViewValues}
           onSave={async (updatedData) => {
             try {
               const { error } = await supabase.from('events').update(updatedData).eq('id', eventId);
@@ -1760,6 +1774,7 @@ export default function EventDetailPageClient({
                 ...prev,
                 ...updatedData,
               }));
+              if ('budget' in updatedData) void reloadFinancials();
 
               if (updatedData.location_id !== event.location_id) {
                 const newLocation = await getById(updatedData.location_id);

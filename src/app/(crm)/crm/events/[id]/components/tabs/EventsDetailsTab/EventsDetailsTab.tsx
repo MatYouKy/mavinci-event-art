@@ -30,9 +30,15 @@ import Image from 'next/image';
 import { EditRealizationCompanyModal } from './EditRealizationCompanyModal';
 import { supabase } from '@/lib/supabase/browser';
 import EventBillingContextCard from './EventBillingContextCard';
+import EventOnsiteContactsSection from '@/components/crm/events/EventOnsiteContacts';
 
 interface EventsDetailsTabProps {
+  /** Kontekst rozliczenia (płatnik, numer zamówienia) — obszar „kwoty”. */
   canViewCommercials?: boolean;
+  /** Dane klienta (organizacja, osoby, e-mail) — obszar „klient”. */
+  canViewClient?: boolean;
+  /** Bez danych klienta: imię, rola i telefon osoby na miejscu — obszar „kontakt na miejscu”. */
+  canViewOnsiteContact?: boolean;
   hasLimitedAccess: boolean;
   canManageTeam: boolean;
   isAdmin: boolean;
@@ -46,6 +52,8 @@ interface EventsDetailsTabProps {
 
 export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
   canViewCommercials = false,
+  canViewClient = true,
+  canViewOnsiteContact = false,
   hasLimitedAccess,
   contact,
   organization,
@@ -486,8 +494,11 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
             </div>
           )}  */}
 
-          {/* Ukryj klienta dla użytkowników z ograniczonym dostępem */}
-          {canSeeFullDetails && (
+          {/* Klient tylko z obszarem „klient”; bez niego — sam kontakt na miejscu (imię, rola, telefon). */}
+          {canSeeFullDetails && !canViewClient && canViewOnsiteContact && (
+            <EventOnsiteContactsSection eventId={event.id} />
+          )}
+          {canSeeFullDetails && canViewClient && (
             <div className="space-y-3">
               <div className="flex items-center gap-2">
                 <h3 className="text-sm font-medium text-[#e5e4e2]">Informacje o kliencie</h3>
@@ -595,18 +606,17 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
                             </a>
                           </div>
                         )}
-                        {contact.business_phone ||
-                          (contact.phone && (
-                            <div className="mt-1 flex items-center gap-2 text-sm text-[#e5e4e2]/60">
-                              <Phone className="h-3 w-3" />
-                              <a
-                                href={`tel:${contact.business_phone || contact.phone}`}
-                                className="text-[#e5e4e2] hover:text-[#d3bb73]"
-                              >
-                                {contact.business_phone || contact.phone}
-                              </a>
-                            </div>
-                          ))}
+                        {(contact.business_phone || contact.phone) && (
+                          <div className="mt-1 flex items-center gap-2 text-sm text-[#e5e4e2]/60">
+                            <Phone className="h-3 w-3" />
+                            <a
+                              href={`tel:${contact.business_phone || contact.phone}`}
+                              className="text-[#e5e4e2] hover:text-[#d3bb73]"
+                            >
+                              {contact.business_phone || contact.phone}
+                            </a>
+                          </div>
+                        )}
                       </>
                     ) : (
                       <p className="text-[#e5e4e2]">Brak klienta</p>

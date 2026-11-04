@@ -15,6 +15,9 @@ Każde wydarzenie od akceptacji oferty do rozliczenia ma listę kroków: **kto, 
 
 | Krok | Właściciel | Termin | Zamyka się |
 |---|---|---|---|
+| Uzupełnij kluczowe dane wydarzenia (Formalności) | Sprzedawca | akceptacja + 1 dzień | data, miejsce i klient uzupełnione |
+| Podpisana umowa z klientem (Formalności) | Sprzedawca | ok. 14 dni przed | umowa podpisana albo ustalenia z partnerem bez umowy |
+| Zaliczka lub zadatek wpłacone (Formalności) | Sprzedawca | termin zaliczki z harmonogramu | wszystkie zaliczki opłacone (tylko gdy są w harmonogramie) |
 | Przekaż realizację do magazynu | Sprzedawca (autor zaakceptowanej oferty) | akceptacja + 1 dzień | przycisk albo przyjęcie przez magazyn |
 | Przyjmij realizację do przygotowania | Magazyn (pula; przyjmujący zostaje opiekunem) | akceptacja + 2 dni, najpóźniej dzień przed | `accept_warehouse_event` |
 | Wyznacz kierownika realizacji | Prowadzący wydarzenie | ok. 14 dni przed, najpóźniej dzień przed | zakładka Zespół |
@@ -23,6 +26,10 @@ Każde wydarzenie od akceptacji oferty do rozliczenia ma listę kroków: **kto, 
 | Zapewnij brakujący sprzęt | Magazyn | 2 dni przed załadunkiem | przycisk albo rozwiązanie braku w rezerwacji |
 | Potwierdź wynajem zewnętrzny | Magazyn | 2 dni przed załadunkiem | przycisk |
 | Sprawdź stan: sprzęt z flagą „Sprawdzić stan przed wydaniem” (także w zestawach) | Magazyn | 2 dni przed załadunkiem | „Sprawdzone — OK” |
+| Karta weselna wysłana do akceptacji | Sprzedawca | 21 dni przed | karta wysłana albo zaakceptowana (tylko wesela) |
+| Zespół przypisany i potwierdzony | Prowadzący | 7 dni przed | są przyjęte zaproszenia i żadne nie czeka |
+| Agenda realizacji gotowa | Prowadzący | 5 dni przed | agenda zapisana |
+| Transport zaplanowany | Prowadzący | 2 dni przed załadunkiem | każde auto (poza zewnętrznymi) ma kierowcę |
 | Oznacz przygotowanie jako gotowe | Magazyn | dzień przed załadunkiem | `advance_warehouse_event('ready')` — **tylko gdy wszystkie kroki „wymagane przed gotowością” są zamknięte** |
 | Wydaj sprzęt — załadunek zgodny z listą | Magazyn | załadunek | przycisk: potwierdza i blokuje załadunek; nieodhaczone pozycje wymagają notatki |
 | Odbierz sprzęt i auto | Kierowca (gdy jest), inaczej kierownik | załadunek | przycisk albo odbiór auta z licznikiem |
@@ -36,6 +43,8 @@ Każde wydarzenie od akceptacji oferty do rozliczenia ma listę kroków: **kto, 
 Ręczne kroki dodaje magazyn, kierownik realizacji, sprzedawca albo prowadzący (`add_event_step`) — z właścicielem, terminem i opcją „Wymagane przed gotowością magazynu”.
 
 Terminy liczone są od daty wydarzenia; „przed załadunkiem” — od początku etapu „Załadunek” (bez etapu: 6 godzin przed startem). Zmiana dat, etapów lub oferty przelicza terminy otwartych kroków.
+
+Etapy „Formalności” i „Rozliczenie” widzą tylko osoby z obszarem handlowym (`docs/event-access.md`). Kroki formalności, zespołu, agendy, transportu i karty weselnej zastępują stary proces „Gotowość realizacji” — jego przypomnienia są wyłączone (`notify_overdue_event_workflows`).
 
 ## Konfiguracja
 

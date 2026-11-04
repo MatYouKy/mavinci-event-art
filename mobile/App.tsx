@@ -21,7 +21,7 @@ import { useMeetingReminderCleanup } from './src/services/meetingReminders';
 import { useRealtimePushNotifications } from './src/services/realtimeNotifications';
 import { useChatNotifications, setupChatNotificationFilter } from './src/services/chatNotifications';
 import { NotificationTargetData } from './src/navigation/navigationRef';
-import { syncCrmContactsIfEnabled } from './src/services/crmContactSync';
+import { removeSyncedCrmContactsIfEnabled, syncCrmContactsIfEnabled } from './src/services/crmContactSync';
 import { canView } from './src/lib/permissions';
 import { colors } from './src/theme';
 
@@ -82,6 +82,11 @@ function AppContent() {
     if (canView(employee, 'contacts')) {
       void syncCrmContactsIfEnabled().catch((error) => {
         console.warn('[Contacts] Background CRM sync failed:', error);
+      });
+    } else {
+      // Bez dostępu do kontaktów CRM (np. po zmianie uprawnień) kontakty zsynchronizowane wcześniej znikają z telefonu.
+      void removeSyncedCrmContactsIfEnabled().catch((error) => {
+        console.warn('[Contacts] Removing synced CRM contacts failed:', error);
       });
     }
     const notificationSubscription = addNotificationReceivedListener((notification) => {

@@ -1,5 +1,4 @@
-import { useEventCommercialsAccess } from '../../../lib/eventCommercialsAccess';
-import { View, Text, StyleSheet, TouchableOpacity, Linking } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Linking, Alert } from 'react-native';
 import { colors, spacing } from '../../../theme';
 import { Feather } from '@expo/vector-icons';
 import { getLocationMapLinks, showLocationDirections } from '../../../lib/locationMaps';
@@ -9,6 +8,7 @@ import { Employee } from '../../../lib/supabase';
 import { EventTeamMember } from './TeamTab';
 import { useCrmCall } from '../../../hooks/useCrmCall';
 import CallOutcomeModal from '../../CallOutcomeModal';
+import type { EventDetailVisibility, EventOnsiteContact } from '../../../lib/eventDetailAccess';
 
 export type EventBillingArrangement = 'direct' | 'hotel' | 'agency' | 'other';
 
@@ -69,9 +69,34 @@ const BILLING_ARRANGEMENT_LABELS: Record<EventBillingArrangement, string> = {
   other: 'Rozliczenie przez inny podmiot',
 };
 
-export function DetailsTab({ event, employee }: { event: EventDetail; employee: Employee }) {
+const ONSITE_SOURCE_LABELS: Record<EventOnsiteContact['source'], string> = {
+  client: 'Osoba kontaktowa klienta',
+  event: 'Kontakt wydarzenia',
+  venue: 'Obiekt',
+};
+
+function callOnsitePhone(phone: string) {
+  const number = phone.replace(/[^+\d]/g, '');
+  if (!number) return;
+  void Linking.openURL(`tel:${number}`).catch(() =>
+    Alert.alert('Kontakt na miejscu', 'Nie udało się otworzyć aplikacji telefonu.'),
+  );
+}
+
+export function DetailsTab({
+  event,
+  employee: _employee,
+  visibility,
+  onsiteContacts,
+}: {
+  event: EventDetail;
+  employee: Employee;
+  /** Sekcje według obszarów danych wydarzenia (get_event_access) — `lib/eventDetailAccess`. */
+  visibility: EventDetailVisibility;
+  /** „Kontakt na miejscu” (get_event_onsite_contacts); null — nie dotyczy albo jeszcze nie pobrano. */
+  onsiteContacts: EventOnsiteContact[] | null;
+}) {
   const { startCall, pendingCall, showOutcome, closeOutcome } = useCrmCall();
-  const permissions = employee?.permissions ?? [];
   const mapLocation = {
     name: event.location_name,
     address: event.location_address,
@@ -82,7 +107,11 @@ export function DetailsTab({ event, employee }: { event: EventDetail; employee: 
   const hasMapLocation = Boolean(getLocationMapLinks(mapLocation));
   const openDirections = () => showLocationDirections(mapLocation);
 
-  const canViewFinances = useEventCommercialsAccess(event.id, employee?.id);
+  // Dane klienta tylko z obszarem „Dane klienta”; rozliczenie — „Faktury i rozliczenie”; kwoty — „Kwoty i kalkulacje”.
+  const showClient = visibility.client && Boolean(event.organization_name || event.contact_name);
+  const showOnsite = !visibility.client && visibility.onsiteContact && onsiteContacts !== null;
+  const canViewBilling = visibility.billing;
+  const canViewValues = visibility.values;
   const hasExpectedRevenue = typeof event.expected_revenue === 'number';
   const hasBudget = typeof event.budget === 'number';
 
@@ -135,7 +164,7 @@ export function DetailsTab({ event, employee }: { event: EventDetail; employee: 
       </View>
 
       {/* Client */}
-      {Boolean(event.organization_name || event.contact_name) && (
+      {showClient && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Klient</Text>
           <View style={styles.infoGrid}>
@@ -162,7 +191,52 @@ export function DetailsTab({ event, employee }: { event: EventDetail; employee: 
         </View>
       )}
 
-      {canViewFinances && (
+      {/* Kontakt na miejscu — bez karty klienta (kierownik realizacji, kierowca, prowadzący) */}
+      {showOnsite && onsiteContacts && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Kontakt na miejscu</Text>
+          {onsiteContacts.length === 0 ? (
+            <Text style={styles.emptyText}>Nie wskazano kontaktu na miejscu.</Text>
+          ) : (
+            <View style={styles.infoGrid}>
+              {onsiteContacts.map((contact, index) => (
+                <View
+                  key={`${contact.source}-${contact.name}-${contact.phone ?? ''}-${index}`}
+                  style={[styles.onsiteContact, index > 0 && styles.onsiteContactNext]}
+                >
+                  <InfoRow
+                    icon={contact.source === 'venue' ? 'home' : 'user'}
+                    label={contact.role || ONSITE_SOURCE_LABELS[contact.source]}
+                    value={contact.is_primary ? `${contact.name} · główny kontakt` : contact.name}
+                  />
+                  {Boolean(contact.phone) && (
+                    <TouchableOpacity
+                      onPress={() => callOnsitePhone(contact.phone!)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Zadzwoń: ${contact.name}`}
+                    >
+                      <InfoRow icon="phone" label="Telefon" value={contact.phone ?? ''} highlight />
+                    </TouchableOpacity>
+                  )}
+                  {Boolean(contact.notes) && <Text style={styles.onsiteNotes}>{contact.notes}</Text>}
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+      )}
+
+      {/* Autor wydarzenia, gdy sekcja klienta jest ukryta */}
+      {!showClient && Boolean(event.creator_name) && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Wydarzenie</Text>
+          <View style={styles.infoGrid}>
+            <InfoRow icon="edit-3" label="Autor" value={event.creator_name} />
+          </View>
+        </View>
+      )}
+
+      {canViewBilling && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Rozliczenie wydarzenia</Text>
           <View style={styles.infoGrid}>
@@ -211,8 +285,8 @@ export function DetailsTab({ event, employee }: { event: EventDetail; employee: 
         </View>
       )}
 
-      {/* Financial - only for authorized employees */}
-      {canViewFinances && (hasExpectedRevenue || hasBudget) && (
+      {/* Kwoty — tylko z obszarem „Kwoty i kalkulacje” (event_financials) */}
+      {canViewValues && (hasExpectedRevenue || hasBudget) && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Finanse</Text>
           <View style={styles.infoGrid}>
@@ -288,4 +362,13 @@ const styles = StyleSheet.create({
     paddingTop: 8,
   },
   descriptionText: { fontSize: 13, color: colors.text.secondary, lineHeight: 20 },
+  emptyText: { fontSize: 13, color: colors.text.tertiary },
+  onsiteContact: { gap: 8 },
+  onsiteContactNext: {
+    marginTop: 4,
+    borderTopWidth: 1,
+    borderTopColor: colors.border.default,
+    paddingTop: 8,
+  },
+  onsiteNotes: { fontSize: 12, color: colors.text.secondary, lineHeight: 18 },
 });

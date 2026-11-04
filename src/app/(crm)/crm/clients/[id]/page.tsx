@@ -31,7 +31,6 @@ interface Event {
   event_date: string;
   location: string;
   status: string;
-  budget: number;
 }
 
 interface Offer {
@@ -128,7 +127,8 @@ export default function ClientDetailPage() {
 
       const { data: eventsData } = await supabase
         .from('events')
-        .select('id, name, event_date, location, status, budget')
+        // Kwoty wydarzeń są w event_financials (obszar „kwoty”); lista ich nie pokazuje.
+        .select('id, name, event_date, location, status')
         .eq('client_id', clientId)
         .order('event_date', { ascending: false });
 

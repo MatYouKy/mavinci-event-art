@@ -27,6 +27,7 @@ import {
   ChevronDown,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
+import { eventMoney, fetchEventFinancials } from '@/lib/CRM/events/eventFinancials';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
@@ -1129,6 +1130,8 @@ export function EventContractTab({ eventId, onSignedDocumentChange }: { eventId:
 
       if (eventError) throw eventError;
       if (!event) throw new Error('Nie znaleziono wydarzenia');
+      // Budżet z event_financials (events.budget jest po migracji puste; bez obszaru „kwoty” — brak wartości).
+      const eventFinancials = await fetchEventFinancials(supabase, event.id);
 
       const { data: eventClauseOverridesData, error: eventClauseOverridesError } =
         await supabase
@@ -1592,7 +1595,7 @@ export function EventContractTab({ eventId, onSignedDocumentChange }: { eventId:
       const useCalculationFinancials = Boolean(
         acceptedCalculation && (event.financial_source === 'calculation' || !offers),
       );
-      const fallbackBudget = Number(event.budget || 0);
+      const fallbackBudget = Number(eventMoney(event, eventFinancials, 'budget') || 0);
       const budgetNet = useCalculationFinancials
         ? calculationNet
         : offerTotals

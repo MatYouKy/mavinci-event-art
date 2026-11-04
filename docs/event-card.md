@@ -5,6 +5,7 @@ Przycisk **„Karta imprezy”** na wydarzeniu (`/crm/events/[id]`, pasek akcji)
 - **PDF:** `GET /bridge/events/<id>/card` (`?download=1` — do pobrania). Generuje serwer Next (Chromium, wspólny renderer `src/lib/print/pdfRenderer.server.ts`), logo do druku z brandbooka.
 - **Dostęp:** jak pulpit realizacji — `get_realization_workspace` (kierownik realizacji, autor, administrator, `events_manage`). Inne osoby dostają komunikat bez danych. Ciasteczko CRM albo `Authorization: Bearer`.
 - **Bez cen:** karta nie zawiera kwot, kosztów ani dokumentów finansowych (oferty, umowy, faktury, kalkulacje).
+- **Kontakty według obszarów:** bez obszaru „Dane klienta” (`docs/event-access.md`) karta pokazuje osoby kontaktowe z imieniem i telefonem, bez e-maili.
 
 ## Zawartość
 

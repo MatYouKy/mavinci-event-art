@@ -291,6 +291,57 @@ function getEventEquipmentDisplay(row: any): {
   return { name, brand, model, categoryName, isKit, cableLength, kitItems };
 }
 
+
+type CalculationEquipmentItem = {
+  id: string;
+  calculation_id: string;
+  category: string;
+  name: string;
+  description: string | null;
+  unit: string | null;
+  quantity: number | null;
+  days: number | null;
+  source: string | null;
+  source_ref: string | null;
+  position: number | null;
+};
+
+/**
+ * Pozycje sprzętowe zaakceptowanej kalkulacji bez cen (RPC get_event_calculation_equipment, obszar „realizacja”).
+ * Bezpośredni odczyt event_calculation_items wymaga obszaru „kwoty” — zostaje tylko, gdy RPC nie jest jeszcze wdrożone.
+ */
+async function loadCalculationEquipment(
+  eventId: string,
+): Promise<{ calculationId: string | null; items: CalculationEquipmentItem[] | null }> {
+  const { data, error } = await supabase.rpc('get_event_calculation_equipment', { p_event_id: eventId });
+  if (!error) {
+    const result = (data ?? {}) as { calculation_id?: string | null; items?: CalculationEquipmentItem[] | null };
+    return {
+      calculationId: result.calculation_id ?? null,
+      items: Array.isArray(result.items) ? result.items : [],
+    };
+  }
+  if (!['42883', 'PGRST202'].includes(error.code ?? '')) throw error;
+
+  const { data: eventData, error: eventError } = await supabase
+    .from('events')
+    .select('accepted_calculation_id, financial_source')
+    .eq('id', eventId)
+    .maybeSingle();
+  if (eventError) throw eventError;
+  if (!eventData?.accepted_calculation_id || eventData.financial_source !== 'calculation') {
+    return { calculationId: null, items: [] };
+  }
+  const { data: items, error: itemsError } = await supabase
+    .from('event_calculation_items')
+    .select('id, calculation_id, category, name, description, unit, quantity, days, source, source_ref, position')
+    .eq('calculation_id', eventData.accepted_calculation_id)
+    .eq('category', 'equipment')
+    .order('position');
+  if (itemsError) throw itemsError;
+  return { calculationId: eventData.accepted_calculation_id, items: (items ?? []) as CalculationEquipmentItem[] };
+}
+
 export const EventEquipmentTab: React.FC<{
   eventId: string;
   contact: ISimpleContact;
@@ -447,30 +498,20 @@ export const EventEquipmentTab: React.FC<{
   }, [eventId]);
 
   // Sprawdź czy jest zaakceptowana kalkulacja i pobierz elementy spoza magazynu
+  // (pozycje sprzętowe bez cen przez get_event_calculation_equipment — także dla magazynu bez obszaru „kwoty”).
   const fetchAcceptedCalculation = useCallback(async () => {
     if (!eventId) return;
 
     try {
-      const { data: eventData } = await supabase
-        .from('events')
-        .select('accepted_calculation_id, financial_source')
-        .eq('id', eventId)
-        .maybeSingle();
+      const { calculationId, items } = await loadCalculationEquipment(eventId);
 
-      if (!eventData?.accepted_calculation_id || eventData?.financial_source !== 'calculation') {
+      if (!calculationId) {
         setAcceptedCalcId(null);
         setExternalItems([]);
         return;
       }
 
-      setAcceptedCalcId(eventData.accepted_calculation_id);
-
-      const { data: items } = await supabase
-        .from('event_calculation_items')
-        .select('*')
-        .eq('calculation_id', eventData.accepted_calculation_id)
-        .eq('category', 'equipment')
-        .order('position');
+      setAcceptedCalcId(calculationId);
 
       if (!items) return;
 
@@ -691,14 +732,8 @@ export const EventEquipmentTab: React.FC<{
     try {
       setImportingFromCalc(true);
 
-      const { data: items, error: itemsError } = await supabase
-        .from('event_calculation_items')
-        .select('*')
-        .eq('calculation_id', acceptedCalcId)
-        .eq('category', 'equipment')
-        .order('position');
+      const { items } = await loadCalculationEquipment(eventId);
 
-      if (itemsError) throw itemsError;
       if (!items || items.length === 0) {
         showSnackbar('Brak pozycji sprzętowych w kalkulacji', 'info');
         return;

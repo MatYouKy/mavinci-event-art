@@ -12,6 +12,8 @@ import { View, Text, ScrollView, TouchableOpacity, Linking } from 'react-native'
 import { supabase } from '../../lib/supabase';
 import { colors } from '../../theme';
 import { OPERATIONAL_LABELS } from '../../lib/operationalStages';
+import { eventStepRealizationLink } from '../../lib/eventStepLinks';
+import { openInCrmWeb } from '../../navigation/navigationRef';
 const date = (s: any) => (s ? new Date(s).toLocaleString('pl-PL') : 'Termin nieustalony');
 export default function RealizationWorkspace({
   initialData,
@@ -158,6 +160,15 @@ export default function RealizationWorkspace({
           <EventStepsPanel
             eventId={data.id}
             onChanged={() => void refresh()}
+            stepLink={(step) => {
+              const target = eventStepRealizationLink(data.id, step.key);
+              if (!target) return null;
+              if (target.kind === 'crm') {
+                return { label: target.label, external: true, onPress: () => openInCrmWeb(target.path) };
+              }
+              if (target.tab === tab) return null;
+              return { label: target.label, external: false, onPress: () => setTab(target.tab as typeof tab) };
+            }}
             style={{ marginHorizontal: 0, marginTop: 12, marginBottom: 10 }}
           />
           {card(
@@ -181,13 +192,15 @@ export default function RealizationWorkspace({
               .filter(Boolean)
               .join('\n'),
           )}
-          {card(
-            'contact',
-            'Kontakt',
-            [data.contact?.name, data.contact?.phone, data.contact?.email]
-              .filter(Boolean)
-              .join('\n'),
-          )}
+          {/* Kontakt z RPC (zakres decyduje baza) — pusta karta, gdy kontakt jest poza zakresem osoby, się nie pokazuje. */}
+          {[data.contact?.name, data.contact?.phone, data.contact?.email].some(Boolean) &&
+            card(
+              'contact',
+              'Kontakt',
+              [data.contact?.name, data.contact?.phone, data.contact?.email]
+                .filter(Boolean)
+                .join('\n'),
+            )}
           {(data.location?.rooms || [])
             .filter((r: any) => data.location?.selected_rooms?.includes(r.id))
             .map((r: any) =>

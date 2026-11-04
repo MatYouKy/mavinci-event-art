@@ -18,6 +18,7 @@ const PAIRS = [
   ['src/lib/CRM/chat/chatReadState.ts', 'mobile/src/lib/chatReadState.ts'],
   ['src/lib/CRM/calendar/publicHolidays.ts', 'mobile/src/lib/publicHolidays.ts'],
   ['src/lib/events/steps/eventSteps.ts', 'mobile/src/lib/eventSteps.ts'],
+  ['src/lib/events/access/eventAccess.ts', 'mobile/src/lib/eventAccess.ts'],
 ];
 
 let failed = false;

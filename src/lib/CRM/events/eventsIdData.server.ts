@@ -6,6 +6,13 @@ import type { IEmployee } from '@/app/(crm)/crm/employees/type';
 import type { ViewMode } from '@/app/(crm)/crm/settings/page';
 import type { OrganizationRow } from '@/app/(crm)/crm/contacts/types';
 import { ADMIN_EVENT_TABS, CREATOR_EVENT_TABS } from '@/lib/CRM/events/eventTabs';
+import {
+  EVENT_ACCESS_AREAS,
+  EVENT_ACCESS_NONE,
+  parseEventAccess,
+  type EventAccess,
+} from '@/lib/events/access/eventAccess';
+import { fetchEventFinancials, type EventFinancials } from '@/lib/CRM/events/eventFinancials';
 
 export function getCookieStore(): CookieStoreLike {
   const store = cookies();
@@ -57,6 +64,14 @@ export type EventPermissionContext = {
   /** Decyzja bazy: public.current_employee_can_manage_event — ta sama co w RLS agendy i wydarzenia. */
   canManageEvent?: boolean;
   currentUserId: string | null;
+  /**
+   * Obszary danych wydarzenia z bazy (get_event_access) — jedno źródło decyzji, które zakładki i sekcje widać.
+   * Gdy funkcji jeszcze nie ma w bazie: administrator i prowadzący widzą wszystko, pozostali tylko dane operacyjne.
+   */
+  access?: EventAccess;
+  accessSource?: 'database' | 'fallback';
+  /** Zakładki zawężone w ustawieniach pracownika / poziomu dostępu (null = bez zawężenia). */
+  employeeEventTabs?: string[] | null;
 };
 
 export type EventRow = {
@@ -97,6 +112,8 @@ export type EventRow = {
 };
 
 export type EventByIdServerResult = EventRow & {
+  /** Kwoty z event_financials (tylko z obszarem „kwoty”; inaczej null). */
+  financials: EventFinancials | null;
   category: EventCategoryRow | null;
   organization: OrganizationRow | null;
   creator: IEmployee | null;
@@ -132,6 +149,29 @@ function normalizeTabs(value: unknown, fallback: string[]): string[] {
     return value.filter((tab): tab is string => typeof tab === 'string' && !!tab.trim());
   }
   return fallback;
+}
+
+/** Dostęp zastępczy, gdy get_event_access jest niedostępne (np. przed wdrożeniem migracji). */
+function fallbackEventAccess(eventId: string, isAdmin: boolean, isCreator: boolean): EventAccess {
+  if (isAdmin || isCreator) {
+    const areas = { ...EVENT_ACCESS_NONE.areas };
+    for (const area of EVENT_ACCESS_AREAS) areas[area] = true;
+    return {
+      event_id: eventId,
+      areas,
+      roles: { ...(isAdmin ? { admin: true } : {}), ...(isCreator ? { seller: true } : {}) },
+    };
+  }
+  // Wiersz wydarzenia przeszedł RLS, więc dane operacyjne są dostępne; reszta zostaje zamknięta.
+  return { event_id: eventId, areas: { ...EVENT_ACCESS_NONE.areas, operations: true }, roles: {} };
+}
+
+function explicitEventTabs(employee: any): string[] | null {
+  const own = Array.isArray(employee?.event_tabs) ? employee.event_tabs : [];
+  const level = Array.isArray(employee?.access_levels?.event_tabs) ? employee.access_levels.event_tabs : [];
+  const source = own.length > 0 ? own : level;
+  const tabs = source.filter((tab: unknown): tab is string => typeof tab === 'string' && !!tab.trim());
+  return tabs.length > 0 ? tabs : null;
 }
 
 type QueryResult<T> = { data: T; error: null } | { data: null; error: null };
@@ -287,9 +327,11 @@ export async function fetchEventByIdServer(
     Array.isArray((currentEmployee as any)?.permissions) &&
     (currentEmployee as any).permissions.includes('events_manage');
 
-  const [sellsEventResult, manageEventResult] = await Promise.all([
+  const [sellsEventResult, manageEventResult, accessResult, financials] = await Promise.all([
     supabase.rpc('current_employee_sells_event', { p_event_id: normalizedEventId }),
     supabase.rpc('current_employee_can_manage_event', { p_event_id: normalizedEventId }),
+    supabase.rpc('get_event_access', { p_event_id: normalizedEventId }),
+    fetchEventFinancials(supabase, normalizedEventId),
   ]);
   const sellsEvent = !sellsEventResult.error && sellsEventResult.data === true;
   // Opiekun sprzedaży prowadzi wydarzenie tak jak jego autor (agenda, status, zespół).
@@ -297,6 +339,14 @@ export async function fetchEventByIdServer(
   const canManageEvent = manageEventResult.error
     ? Boolean(isAdmin || canManageEvents || isCreator)
     : manageEventResult.data === true;
+
+  if (accessResult.error) {
+    console.warn('[fetchEventByIdServer] get_event_access unavailable, using fallback:', accessResult.error.message);
+  }
+  const access: EventAccess = accessResult.error
+    ? fallbackEventAccess(normalizedEventId, isAdmin, isCreator)
+    : parseEventAccess(accessResult.data);
+  const employeeEventTabs = isAdmin || isCreator ? null : explicitEventTabs(currentEmployee);
 
   const hasAcceptedOnlyCalendarView =
     !isAdmin &&
@@ -455,7 +505,15 @@ const realizationCompany = myCompany
     creator: (creator as unknown as IEmployee) ?? null,
     organization: (organization as OrganizationRow) ?? null,
     currentEmployee: (currentEmployee as unknown as IEmployee) ?? null,
-    permissionContext: { ...permissionContext, sellsEvent, canManageEvent },
+    financials,
+    permissionContext: {
+      ...permissionContext,
+      sellsEvent,
+      canManageEvent,
+      access,
+      accessSource: accessResult.error ? 'fallback' : 'database',
+      employeeEventTabs,
+    },
     employees: (eventEmployees as EventEmployeeAssignmentRow[]) ?? [],
   } as EventByIdServerResult;
 }

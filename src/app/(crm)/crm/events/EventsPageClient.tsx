@@ -3,6 +3,7 @@
 
 import type { EventStatus } from '@/components/crm/Calendar/types';
 import { refreshEventsPage } from './actions';
+import { eventMoney, fetchEventFinancials } from '@/lib/CRM/events/eventFinancials';
 import type { EventsPageSnapshot } from '@/lib/CRM/events/eventsPageSnapshot.server';
 import { OPERATIONAL_LABELS, usesOperationalStages, operationalFallback } from '@/lib/CRM/events/operationalStages';
 
@@ -786,6 +787,8 @@ export default function EventsPageClient({
       if (!sourceEvent) {
         throw new Error('Nie znaleziono wydarzenia do zduplikowania');
       }
+      // Kwoty są w event_financials (tylko z obszarem „kwoty”); bez dostępu kopia startuje bez kwot.
+      const sourceFinancials = await fetchEventFinancials(supabase, sourceEvent.id);
       if (changeDuplicateDate && !duplicateStartDate) {
         showSnackbar('Wybierz datę rozpoczęcia wydarzenia', 'error');
         return;
@@ -855,9 +858,9 @@ export default function EventsPageClient({
          * Dane finansowe zapisane bezpośrednio w events.
          * Właściwe źródło finansowe zostanie skopiowane niżej.
          */
-        expected_revenue: Number(sourceEvent.expected_revenue ?? 0),
-        estimated_costs: Number(sourceEvent.estimated_costs ?? 0),
-        budget: sourceEvent.budget ?? null,
+        expected_revenue: Number(eventMoney(sourceEvent, sourceFinancials, 'expected_revenue') ?? 0),
+        estimated_costs: Number(eventMoney(sourceEvent, sourceFinancials, 'estimated_costs') ?? 0),
+        budget: eventMoney(sourceEvent, sourceFinancials, 'budget'),
 
         /*
          * Kopia zawsze zaczyna jako nowe zapytanie.

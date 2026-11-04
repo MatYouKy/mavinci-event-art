@@ -7,6 +7,7 @@ import { IEvent } from '../../../type';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { ISimpleContact } from '../../EventDetailPageClient';
 import { utcToLocalDatetimeString, localDatetimeStringToUTC } from '@/lib/utils/dateTimeUtils';
+import { eventMoney } from '@/lib/CRM/events/eventFinancials';
 
 export function EditEventModal({
   isOpen,
@@ -45,7 +46,8 @@ export function EditEventModal({
     event_end_date: event.event_end_date || null,
     location: event.location || '',
     location_id: event.location_id || null,
-    budget: event.budget?.toString() || '',
+    // Kwoty są w event_financials (events.budget jest po migracji puste); zapis do events.budget nadal działa.
+    budget: eventMoney(event, event.financials, 'budget')?.toString() || '',
     status: event.status || '',
   });
 

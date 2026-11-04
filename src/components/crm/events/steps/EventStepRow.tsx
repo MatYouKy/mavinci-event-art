@@ -1,8 +1,23 @@
 'use client';
 import { useId, useState } from 'react';
 import Link from 'next/link';
-import { ChevronDown, Loader2, Lock, Package, Phone, Users, type LucideIcon } from 'lucide-react';
 import {
+  ChevronDown,
+  ClipboardList,
+  FileText,
+  Info,
+  Loader2,
+  Lock,
+  Package,
+  Phone,
+  Truck,
+  Users,
+  Wallet,
+  type LucideIcon,
+} from 'lucide-react';
+import { EVENT_TAB_LABELS, isEventTabId } from '@/lib/events/access/eventAccess';
+import {
+  EVENT_STEP_TARGET_TAB,
   EVENT_STEP_KIND_LABELS,
   EVENT_STEP_ROLE_LABELS,
   EVENT_STEP_STATUS_LABELS,
@@ -22,11 +37,38 @@ import {
 } from '@/lib/events/steps/eventSteps';
 import { EVENT_STEP_TONE_CHIP, EVENT_STEP_TONE_ROW, telHref } from './stepUi';
 
-/** Kroki, przy których warto przejść do miejsca, gdzie wykonuje się czynność. */
-const CONTEXT_LINKS: Record<string, { tab: string; label: string; icon: LucideIcon }> = {
-  dispatch_out: { tab: 'equipment', label: 'Lista załadunku', icon: Package },
-  manager_appointed: { tab: 'team', label: 'Zespół', icon: Users },
+/** Ikony zakładek, do których prowadzą kroki (miejsce, gdzie krok się zamyka). */
+const TAB_ICONS: Record<string, LucideIcon> = {
+  details: Info,
+  contract: FileText,
+  finances: Wallet,
+  agenda: ClipboardList,
+  team: Users,
+  logistics: Truck,
+  equipment: Package,
 };
+
+/** Etykiety bardziej konkretne niż nazwa zakładki. */
+const CONTEXT_LABELS: Record<string, string> = {
+  dispatch_out: 'Lista załadunku',
+  wedding_card: 'Karta weselna',
+};
+
+/** Zakładka, w której zamyka się krok: EVENT_STEP_TARGET_TAB, a kroki magazynu (braki, wynajem, sprawdzenia) → Sprzęt. */
+function stepTargetTab(key: string): string | null {
+  const direct = EVENT_STEP_TARGET_TAB[key];
+  if (direct) return direct;
+  const prefix = key.split(':')[0];
+  return prefix === 'shortage' || prefix === 'rental' || prefix === 'check' ? 'equipment' : null;
+}
+
+function stepContextLink(key: string): { tab: string; label: string; icon: LucideIcon } | undefined {
+  const tab = stepTargetTab(key);
+  if (!tab) return undefined;
+  const label = CONTEXT_LABELS[key] ?? (isEventTabId(tab) ? EVENT_TAB_LABELS[tab] : null);
+  if (!label) return undefined;
+  return { tab, label, icon: TAB_ICONS[tab] ?? FileText };
+}
 
 const NOTE_PREFIX: Partial<Record<EventStep['status'], string>> = {
   problem: 'Problem',
@@ -48,6 +90,7 @@ export default function EventStepRow({
   onAction,
   onNavigate,
   eventHref,
+  canOpenTab,
 }: {
   step: EventStep;
   /** Czynność w trakcie zapisu dla tego kroku. */
@@ -59,6 +102,8 @@ export default function EventStepRow({
   onNavigate?: (tab: string) => void;
   /** Adres wydarzenia — używany do linków kontekstowych poza stroną wydarzenia. */
   eventHref?: string;
+  /** Czy zakładka jest dostępna dla tej osoby (bez tego link do niedostępnej zakładki się nie pokazuje). */
+  canOpenTab?: (tab: string) => boolean;
 }) {
   const detailsId = useId();
   const blockedId = useId();
@@ -70,7 +115,8 @@ export default function EventStepRow({
   const due = eventStepDueLabel(step);
   const phoneHref = live ? telHref(step.assignee?.phone) : null;
   const blockedTitles = step.blocked_by.map(item => item.title).join(', ');
-  const context = live ? CONTEXT_LINKS[step.key] : undefined;
+  const contextLink = live ? stepContextLink(step.key) : undefined;
+  const context = contextLink && (!canOpenTab || canOpenTab(contextLink.tab)) ? contextLink : undefined;
   const hasMore = Boolean(step.details) || step.history.length > 0;
   const primaryAction = actions.length ? eventStepPrimaryAction(step, actions) : null;
   const busy = Boolean(pendingAction);
@@ -188,6 +234,7 @@ export default function EventStepRow({
               <button
                 type="button"
                 onClick={() => onNavigate(context.tab)}
+                title={`Przejdź do zakładki: ${context.label}`}
                 className="inline-flex items-center gap-1.5 rounded-lg bg-white/5 px-3 py-1.5 text-xs text-[#d3bb73] hover:bg-white/10"
               >
                 <context.icon className="h-3.5 w-3.5" aria-hidden />

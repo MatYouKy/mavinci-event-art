@@ -161,6 +161,12 @@ export function useEventStepActions(
 // Wiersz kroku
 // ---------------------------------------------------------------------------------------------------------------
 
+/**
+ * Link „Przejdź” — zakładka, w której krok się zamyka (EVENT_STEP_TARGET_TAB, `lib/eventStepLinks`):
+ * zakładka aplikacji albo CRM w przeglądarce (umowa, finanse).
+ */
+export type EventStepRowLink = { label: string; external: boolean; onPress: () => void };
+
 export function EventStepRow({
   step,
   busyKey,
@@ -169,6 +175,7 @@ export function EventStepRow({
   actionsMode = 'all',
   eventLabel,
   onOpenEvent,
+  link,
   now,
 }: {
   step: EventStep;
@@ -181,6 +188,8 @@ export function EventStepRow({
   /** Nazwa wydarzenia nad krokiem (lista „Moje kroki”). */
   eventLabel?: string;
   onOpenEvent?: () => void;
+  /** Link „Przejdź” do zakładki, w której krok się zamyka (pokazywany przy krokach do zrobienia). */
+  link?: EventStepRowLink | null;
   now?: Date;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -278,6 +287,19 @@ export function EventStepRow({
       )}
       {!!step.status_note && (
         <Text style={[styles.note, step.status === 'problem' && { color: ERROR_TEXT }]}>{step.status_note}</Text>
+      )}
+      {!!link && live && (
+        <TouchableOpacity
+          accessibilityRole="link"
+          accessibilityLabel={`Przejdź: ${link.label}`}
+          accessibilityHint={link.external ? 'Otwiera CRM w przeglądarce' : undefined}
+          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+          onPress={link.onPress}
+          style={styles.linkBtn}
+        >
+          <Feather name={link.external ? 'external-link' : 'arrow-right'} size={13} color={colors.primary.gold} />
+          <Text style={styles.linkText}>Przejdź: {link.label}</Text>
+        </TouchableOpacity>
       )}
 
       {hasMore && (
@@ -387,6 +409,7 @@ export default function EventStepsPanel({
   eventId,
   onChanged,
   refreshKey,
+  stepLink,
   style,
 }: {
   eventId: string;
@@ -394,6 +417,8 @@ export default function EventStepsPanel({
   onChanged?: () => void;
   /** Zmiana wartości wymusza odświeżenie (np. pociągnięcie ekranu). */
   refreshKey?: number;
+  /** Link „Przejdź” dla kroku (null — bez linku, np. zakładka już otwarta). */
+  stepLink?: (step: EventStep) => EventStepRowLink | null;
   style?: StyleProp<ViewStyle>;
 }) {
   const focused = useIsFocused();
@@ -643,6 +668,7 @@ export default function EventStepsPanel({
                   busyKey={runner.busyKey}
                   error={rowError?.stepId === step.id ? rowError.message : null}
                   onAction={runner.start}
+                  link={stepLink ? stepLink(step) : null}
                 />
               ))}
           </View>
@@ -736,6 +762,8 @@ const styles = StyleSheet.create({
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
   metaText: { color: colors.text.secondary, fontSize: typography.fontSizes.xs, flexShrink: 1 },
   callLink: { color: colors.primary.gold, fontSize: typography.fontSizes.xs, fontWeight: typography.fontWeights.semibold },
+  linkBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 4, alignSelf: 'flex-start' },
+  linkText: { color: colors.primary.gold, fontSize: typography.fontSizes.xs, fontWeight: typography.fontWeights.semibold },
   note: { color: colors.text.secondary, fontSize: typography.fontSizes.sm, fontStyle: 'italic', marginTop: 2 },
   expandBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 4, alignSelf: 'flex-start' },
   expandText: { color: colors.primary.gold, fontSize: typography.fontSizes.xs },

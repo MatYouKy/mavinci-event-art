@@ -5,6 +5,7 @@ import { IEmployee } from '../employees/type';
 import { IOfferItem } from '../offers/types';
 import { OrganizationRow } from '../contacts/types';
 import { EventPermissionContext } from '@/lib/CRM/events/eventsIdData.server';
+import type { EventFinancials } from '@/lib/CRM/events/eventFinancials';
 
 export type SelectedItem = {
   id: string;
@@ -72,6 +73,11 @@ export interface IEvent {
   planned_teardown_at?: string | null;
   location?: ILocation;
   status: string;
+  /**
+   * Kwoty (budget … actual_cash_revenue) są w tabeli event_financials — w `events` są zawsze puste.
+   * Czytaj przez `financials` / `eventMoney` (@/lib/CRM/events/eventFinancials); zapis do tych pól nadal działa.
+   */
+  financials?: EventFinancials | null;
   budget?: number;
   final_cost?: number;
   notes?: string;

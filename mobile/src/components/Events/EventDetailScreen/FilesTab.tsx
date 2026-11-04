@@ -22,8 +22,53 @@ export interface EventFile {
   document_type: string | null;
   folder_id: string | null;
   folder?: { name: string } | null;
+  /** Ścieżka folderu („Dokumenty / Agenda”) z folderów widocznych dla osoby. */
+  folder_path?: string | null;
   created_at: string;
   uploaded_by_employee: { name: string; surname: string } | null;
+}
+
+export type EventFolderRow = { id: string; name: string | null; parent_folder_id: string | null };
+
+/**
+ * Ścieżki folderów plików. Baza zwraca tylko foldery w zakresie osoby (foldery dokumentacji — oferty, umowy,
+ * faktury, kalkulacje — tylko obszarowi handlowemu), więc folder nadrzędny może nie przyjść albo już nie istnieć:
+ * ścieżka kończy się wtedy na ostatnim widocznym folderze, a plik bez widocznego folderu trafia do „Pozostałe”.
+ * Aplikacja nie tworzy folderów — foldery systemowe zakłada CRM i baza.
+ */
+export function withEventFolderPaths(files: EventFile[], folders: EventFolderRow[]): EventFile[] {
+  const byId = new Map<string, EventFolderRow>();
+  for (const folder of folders) if (folder?.id) byId.set(folder.id, folder);
+  const cache = new Map<string, string | null>();
+  const pathOf = (folderId: string): string | null => {
+    if (cache.has(folderId)) return cache.get(folderId) ?? null;
+    const names: string[] = [];
+    const seen = new Set<string>();
+    let current: string | null = folderId;
+    // Ochrona przed pętlą i zbyt głębokim drzewem (jak w bazie: 20 poziomów).
+    while (current && !seen.has(current) && seen.size < 20) {
+      seen.add(current);
+      const folder = byId.get(current);
+      if (!folder) break;
+      const name = folder.name?.trim();
+      if (name) names.unshift(name);
+      current = folder.parent_folder_id;
+    }
+    const path = names.length ? names.join(' / ') : null;
+    cache.set(folderId, path);
+    return path;
+  };
+  return files.map((file) => ({
+    ...file,
+    folder_path: file.folder_id ? pathOf(file.folder_id) ?? file.folder?.name?.trim() ?? null : null,
+  }));
+}
+
+/** Nazwa grupy pliku albo null (plik bez folderu lub folder poza zakresem osoby — grupa „Pozostałe”). */
+function folderLabel(file: EventFile): string | null {
+  if (!file.folder_id) return null;
+  const label = file.folder_path?.trim() || file.folder?.name?.trim();
+  return label || null;
 }
 
 export function FilesTab({ files }: { files: EventFile[] }) {
@@ -165,17 +210,18 @@ export function FilesTab({ files }: { files: EventFile[] }) {
   );
 
 
+  // Grupy według ścieżki folderu; pliki bez folderu i z folderem, którego osoba nie widzi — w „Pozostałe”.
   const folderNames = [
     ...new Set(
       files
-        .map((f) => f.folder?.name)
-        .filter(Boolean)
+        .map(folderLabel)
+        .filter((label): label is string => Boolean(label))
     ),
-  ] as string[];
+  ].sort((a, b) => a.localeCompare(b, 'pl-PL'));
 
 
   const ungrouped = files.filter(
-    (f) => !f.folder_id
+    (f) => !folderLabel(f)
   );
 
 
@@ -201,7 +247,7 @@ export function FilesTab({ files }: { files: EventFile[] }) {
 
           {files
             .filter(
-              (f) => f.folder?.name === folderName
+              (f) => folderLabel(f) === folderName
             )
             .map(renderFileRow)}
 

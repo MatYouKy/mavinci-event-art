@@ -28,10 +28,13 @@ type PanelState = 'loading' | 'ready' | 'hidden' | 'error';
 export default function EventStepsPanel({
   eventId,
   onNavigate,
+  canOpenTab,
   className = '',
 }: {
   eventId: string;
   onNavigate?: (tab: string) => void;
+  /** Czy zakładka (cel kroku) jest dostępna — link do niedostępnej zakładki się nie pokazuje. */
+  canOpenTab?: (tab: string) => boolean;
   /** Dodatkowe klasy sekcji (np. odstęp w układzie strony). */
   className?: string;
 }) {
@@ -288,6 +291,7 @@ export default function EventStepsPanel({
                     disabled={Boolean(pending)}
                     onAction={trigger}
                     onNavigate={onNavigate}
+                    canOpenTab={canOpenTab}
                   />
                 ))}
               </div>

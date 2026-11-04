@@ -5,6 +5,7 @@ import { fetchEventsInitialServer } from './eventsData.server';
 import { getCurrentEmployeeServerCached } from '@/lib/CRM/auth/getCurrentEmployeeServer';
 import { hasAnyFinanceCompanyLevel } from '@/lib/financeCompanyAccess';
 import { usesOperationalStages } from './operationalStages';
+import { fetchEventFinancialsMap } from './eventFinancials';
 
 export async function fetchEventsPageSnapshot() {
   const [initial, employee] = await Promise.all([fetchEventsInitialServer(), getCurrentEmployeeServerCached()]);
@@ -50,6 +51,18 @@ export async function fetchEventsPageSnapshot() {
         for (const row of invoices.data || []) {
           if (!['issued', 'sent', 'overdue'].includes(row.status) || row.paid_date || !row.event_id) continue;
           (payments[row.event_id] ??= []).push({ amount: row.total_gross, due_date: row.payment_due_date, status: row.status });
+        }
+      })(),
+      (async () => {
+        // Kwoty z event_financials (RLS: obszar „kwoty”) — np. planowany budżet, gdy nie ma jeszcze faktur.
+        const chunk = events.slice(offset, offset + 100);
+        const financials = await fetchEventFinancialsMap(db, ids);
+        for (const event of chunk) {
+          // Po migracji kolumny w events są puste; przed nią (brak tabeli) zostają dotychczasowe wartości.
+          const row = financials.get(event.id);
+          event.expected_revenue = row?.expected_revenue ?? event.expected_revenue ?? null;
+          event.budget = row?.budget ?? event.budget ?? null;
+          event.final_cost = row?.final_cost ?? event.final_cost ?? null;
         }
       })(),
       (async () => {

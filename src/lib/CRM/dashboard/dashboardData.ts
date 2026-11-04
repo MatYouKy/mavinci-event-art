@@ -7,6 +7,7 @@ import { canView } from '@/lib/permissions';
 import type { DashboardPreferences } from './dashboardConfig';
 import type { SellerFinancialReport } from './sellerDashboardTypes';
 import { createDashboardReadFetch } from './dashboardReadFetch.server';
+import { eventMoney, fetchEventFinancialsMap } from '@/lib/CRM/events/eventFinancials';
 
 export type DashboardStats = {
   totalEvents: number;
@@ -338,7 +339,8 @@ export async function fetchDashboardAnalyticsServer(): Promise<DashboardAnalytic
         .gte('created_at', startIso),
       supabase
         .from('events')
-        .select('created_at, event_date, status, actual_revenue, actual_costs')
+        // Kwoty są w event_financials (obszar „kwoty”) — doczytywane niżej.
+        .select('id, created_at, event_date, status, actual_revenue, actual_costs')
         .gte('event_date', startIso)
         .lte('event_date', endOfCurrentMonth.toISOString()),
       supabase
@@ -410,12 +412,18 @@ export async function fetchDashboardAnalyticsServer(): Promise<DashboardAnalytic
     if (bucket) bucket.offers += 1;
   });
 
+  const eventFinancials = await fetchEventFinancialsMap(
+    supabase,
+    (eventsRes.data ?? []).map((item) => item.id),
+  );
+
   (eventsRes.data ?? []).forEach((item) => {
     const bucket = buckets.get(monthKey(item.event_date));
     if (!bucket || item.status === 'cancelled') return;
+    const money = eventFinancials.get(item.id);
     bucket.events += 1;
-    bucket.revenue += Number(item.actual_revenue ?? 0);
-    bucket.costs += Number(item.actual_costs ?? 0);
+    bucket.revenue += Number(eventMoney(item, money, 'actual_revenue') ?? 0);
+    bucket.costs += Number(eventMoney(item, money, 'actual_costs') ?? 0);
     bucket.margin = bucket.revenue - bucket.costs;
   });
 

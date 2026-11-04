@@ -18,6 +18,11 @@ interface EditEventModalProps {
   location?: ISimpleLocation | null;
   contact?: ISimpleContact | null;
   onSave: (data: any) => void;
+  /**
+   * Pole budżetu tylko z obszarem „kwoty” (event_financials). Bez niego pole jest ukryte, a budżet nie trafia do zapisu.
+   * Wartość początkowa: `event.budget` — przekaż ją z event_financials.
+   */
+  canEditBudget?: boolean;
 }
 
 const toDatetimeLocalValue = (value: string | null): string => {
@@ -42,6 +47,7 @@ export default function EditEventModalNew({
   contact,
   location,
   onSave,
+  canEditBudget = true,
 }: EditEventModalProps) {
   const { categories } = useEventCategories();
   const { showAlert } = useDialog();
@@ -169,7 +175,7 @@ export default function EditEventModalNew({
       location_room_ids: formData.location_room_ids,
       stage_room_id: formData.stage_room_id,
 
-      budget: formData.budget !== '' ? parseFloat(formData.budget) : null,
+      ...(canEditBudget ? { budget: formData.budget !== '' ? parseFloat(formData.budget) : null } : {}),
 
       status: formData.status,
       my_company_id: formData.my_company_id || null,
@@ -343,7 +349,7 @@ export default function EditEventModalNew({
               </div>
 
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div>
+                {canEditBudget && <div>
                   <label className="mb-2 block text-sm text-[#e5e4e2]/60">Budżet (PLN)</label>
                   <input
                     type="number"
@@ -358,7 +364,7 @@ export default function EditEventModalNew({
                     placeholder="0.00"
                     step="0.01"
                   />
-                </div>
+                </div>}
 
                 <div>
                   <label className="mb-2 block text-sm text-[#e5e4e2]/60">Status</label>

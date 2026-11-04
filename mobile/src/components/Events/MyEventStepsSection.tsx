@@ -7,11 +7,12 @@ import { useAuth } from '../../contexts/AuthContext';
 import { canView } from '../../lib/permissions';
 import { useForegroundEffect } from '../../hooks/useForegroundEffect';
 import { createRefreshQueue } from '../../lib/refreshQueue';
-import { navigateToEvent } from '../../navigation/navigationRef';
+import { navigateToEvent, openInCrmWeb } from '../../navigation/navigationRef';
 import { colors, spacing, borderRadius, typography } from '../../theme';
 import { MyEventStep } from '../../lib/eventSteps';
+import { eventStepDetailLink } from '../../lib/eventStepLinks';
 import EventStepsHelpModal from './EventStepsHelpModal';
-import { EventStepRow, isEventStepsUnavailable, useEventStepActions } from './EventStepsPanel';
+import { EventStepRow, type EventStepRowLink, isEventStepsUnavailable, useEventStepActions } from './EventStepsPanel';
 
 /*
  * „Moje kroki” na Dashboardzie — kroki realizacji, które bieżąca osoba może wykonać teraz (RPC get_my_event_steps),
@@ -35,6 +36,23 @@ export default function MyEventStepsSection({ refreshKey }: { refreshKey: number
   const channelSuffix = useRef(Math.random().toString(36).slice(2, 10)).current;
   const employeeId = employee?.id;
   const canOpenEvents = canView(employee, 'events');
+  const isWarehouseWorker = employee?.permissions?.includes('equipment_manage') === true;
+
+  // „Przejdź”: zakładka wydarzenia, w której krok się zamyka; umowa i finanse — CRM w przeglądarce.
+  const stepLink = (step: MyEventStep): EventStepRowLink | null => {
+    const eventId = step.event?.id || step.event_id;
+    if (!eventId) return null;
+    const target = eventStepDetailLink(eventId, step.key, {
+      isWedding: step.key === 'wedding_card',
+      // Ekran wydarzenia sam wraca do „Szczegółów”, gdy zakładki Floty lub Magazynu nie ma.
+      hasFleet: true,
+      hasWarehouse: isWarehouseWorker,
+    });
+    if (!target) return null;
+    if (target.kind === 'crm') return { label: target.label, external: true, onPress: () => openInCrmWeb(target.path) };
+    if (!canOpenEvents) return null;
+    return { label: target.label, external: false, onPress: () => navigateToEvent(eventId, target.tab) };
+  };
 
   const load = useCallback(
     async (signal?: AbortSignal) => {
@@ -151,6 +169,7 @@ export default function MyEventStepsSection({ refreshKey }: { refreshKey: number
             step={step}
             eventLabel={label}
             onOpenEvent={canOpenEvents && step.event?.id ? () => navigateToEvent(step.event.id, 'details') : undefined}
+            link={stepLink(step)}
             actionsMode="primary"
             busyKey={runner.busyKey}
             error={rowError?.stepId === step.id ? rowError.message : null}

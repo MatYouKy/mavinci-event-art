@@ -3,6 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin.server';
 import { systemLabel } from '@/lib/ui/systemLabels';
 import { EVENT_STEP_ROLE_LABELS, EVENT_STEP_STATUS_LABELS, type EventStepRole, type EventStepStatus } from '@/lib/events/steps/eventSteps';
+import { canViewEventArea, parseEventAccess } from '@/lib/events/access/eventAccess';
 import type {
   EventCardData,
   EventCardEquipment,
@@ -92,6 +93,15 @@ export async function loadEventCardData(
   const ws = workspace as Json;
 
   const { data: responsibility } = await userClient.rpc('get_event_responsibility_team', { p_event_id: eventId });
+  // Obszary danych (migracja 20261105090000): bez obszaru „klient” karta pokazuje kontakt na miejscu (imię, telefon), bez e-maili.
+  const { data: accessData, error: accessError } = await userClient.rpc('get_event_access', { p_event_id: eventId });
+  // Brak funkcji (migracja jeszcze niewdrożona) = dotychczasowe zachowanie; inny błąd = bez danych klienta.
+  const accessMissing = accessError && ['PGRST202', '42883'].includes(String(accessError.code ?? ''));
+  const access = accessError ? null : parseEventAccess(accessData);
+  const showClientDetails = access ? canViewEventArea(access, 'client') : Boolean(accessMissing);
+  const showClientName = access
+    ? canViewEventArea(access, 'client') || canViewEventArea(access, 'sales_overview') || canViewEventArea(access, 'onsite_contact')
+    : Boolean(accessMissing);
 
   // Uzupełnienia po potwierdzeniu dostępu — tylko kolumny operacyjne (bez kwot, kosztów i danych finansowych).
   const admin = createSupabaseAdminClient();
@@ -184,7 +194,7 @@ export async function loadEventCardData(
   const clientContacts: EventCardPerson[] = [];
   const mainContact = ws.contact as Json;
   if (text(mainContact?.name)) {
-    clientContacts.push({ name: text(mainContact.name), role: 'Osoba kontaktowa', phone: mainContact.phone || null, email: mainContact.email || null });
+    clientContacts.push({ name: text(mainContact.name), role: 'Osoba kontaktowa', phone: mainContact.phone || null, email: showClientDetails ? mainContact.email || null : null });
   }
   for (const row of (contactsRes.data ?? []) as Json[]) {
     const contact = row.contact;
@@ -194,7 +204,7 @@ export async function loadEventCardData(
       name,
       role: text(row.role) || text(contact?.position) || null,
       phone: contact?.mobile || contact?.phone || contact?.business_phone || null,
-      email: contact?.email || null,
+      email: showClientDetails ? contact?.email || null : null,
       note: text(row.notes) || null,
     });
   }
@@ -473,7 +483,7 @@ export async function loadEventCardData(
       end,
     },
     manager,
-    client: { name: text(event.organization?.name) || text(mainContact?.name) || null, contacts: clientContacts },
+    client: { name: showClientName ? text(event.organization?.name) || text(mainContact?.name) || null : null, contacts: clientContacts },
     venue: {
       name: text(location.name) || null,
       address: [text(location.address), text(location.city) && !text(location.address).includes(text(location.city)) ? text(location.city) : ''].filter(Boolean).join(', ') || null,

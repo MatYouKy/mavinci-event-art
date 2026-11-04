@@ -28,6 +28,20 @@ type CallRow = {
   contact: { first_name: string; last_name: string } | null;
 };
 
+/** Nazwa kontaktu bez „null” / „undefined” (część kontaktów ma tylko imię albo tylko nazwisko). */
+function contactName(contact: { first_name?: string | null; last_name?: string | null } | null | undefined): string {
+  return [contact?.first_name, contact?.last_name]
+    .map((part) => (typeof part === 'string' ? part.trim() : ''))
+    .filter(Boolean)
+    .join(' ');
+}
+
+function contactInitials(contact: { first_name?: string | null; last_name?: string | null }): string {
+  const first = typeof contact.first_name === 'string' ? contact.first_name.trim()[0] || '' : '';
+  const last = typeof contact.last_name === 'string' ? contact.last_name.trim()[0] || '' : '';
+  return `${first}${last}`.toUpperCase() || '?';
+}
+
 const OUTCOME_LABELS: Record<string, string> = {
   connected: 'Rozmowa odbyta', no_answer: 'Brak odpowiedzi', busy: 'Zajęte',
   voicemail: 'Poczta głosowa', wrong_number: 'Błędny numer',
@@ -79,7 +93,12 @@ export default function ClientsScreen() {
     setSyncing(true);
     try {
       const result = await syncAvailableCrmContacts();
-      Alert.alert('Kontakty zsynchronizowane', `${result.total} kontaktów Mavinci CRM jest aktualnych w telefonie.\nNowe: ${result.created}, zaktualizowane: ${result.updated}.`);
+      const details = [
+        `Nowe: ${result.created}, zaktualizowane: ${result.updated}.`,
+        result.removed > 0 ? `Usunięte z telefonu (poza Twoim zakresem lub usunięte w CRM): ${result.removed}.` : '',
+        result.failed > 0 ? `Nie udało się zapisać: ${result.failed} — spróbuj ponownie później.` : '',
+      ].filter(Boolean).join('\n');
+      Alert.alert('Kontakty zsynchronizowane', `${result.total} kontaktów Mavinci CRM jest aktualnych w telefonie.\n${details}`);
     } catch (error: any) {
       Alert.alert('Nie udało się zsynchronizować', error?.message || 'Sprawdź uprawnienia aplikacji.');
     } finally {
@@ -97,11 +116,12 @@ export default function ClientsScreen() {
       <View style={styles.search}><Feather name="search" size={18} color={colors.text.tertiary} /><TextInput value={search} onChangeText={setSearch} placeholder="Szukaj po nazwie, numerze lub e-mailu…" placeholderTextColor={colors.text.tertiary} style={styles.searchInput} /></View>
       <View style={styles.switcher}><TouchableOpacity onPress={() => setView('contacts')} style={[styles.switchButton, view === 'contacts' && styles.switchButtonActive]}><Feather name="users" size={15} color={view === 'contacts' ? colors.background.primary : colors.text.secondary} /><Text style={[styles.switchText, view === 'contacts' && styles.switchTextActive]}>Kontakty ({filtered.length})</Text></TouchableOpacity><TouchableOpacity onPress={() => setView('calls')} style={[styles.switchButton, view === 'calls' && styles.switchButtonActive]}><Feather name="phone-call" size={15} color={view === 'calls' ? colors.background.primary : colors.text.secondary} /><Text style={[styles.switchText, view === 'calls' && styles.switchTextActive]}>Historia ({calls.length})</Text></TouchableOpacity></View>
       {loading ? <View style={styles.center}><ActivityIndicator color={colors.primary.gold} /></View> : (
-        view === 'contacts' ? <FlatList data={filtered} keyExtractor={(item) => item.id} contentContainerStyle={styles.list} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void fetchContacts(); }} tintColor={colors.primary.gold} />} ListEmptyComponent={<View style={styles.center}><Feather name="users" color={colors.text.tertiary} size={40} /><Text style={styles.empty}>Brak kontaktów z numerem telefonu</Text></View>} renderItem={({ item }) => {
+        view === 'contacts' ? <FlatList data={filtered} keyExtractor={(item) => item.id} contentContainerStyle={styles.list} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void fetchContacts(); }} tintColor={colors.primary.gold} />} ListEmptyComponent={<View style={styles.center}><Feather name="users" color={colors.text.tertiary} size={40} /><Text style={styles.empty}>Brak kontaktów z numerem telefonu w Twoim zakresie</Text></View>} renderItem={({ item }) => {
           const phone = item.mobile || item.phone;
-          return <TouchableOpacity onPress={() => setSelectedContact(item)} activeOpacity={0.75} style={styles.card}><View style={styles.avatar}><Text style={styles.initials}>{`${item.first_name[0] || ''}${item.last_name[0] || ''}`.toUpperCase()}</Text></View><View style={styles.details}><Text style={styles.name}>{item.first_name} {item.last_name}</Text>{phone && <Text style={styles.phone}>{phone}</Text>}{item.email && <Text style={styles.email} numberOfLines={1}>{item.email}</Text>}{item.last_contact_date && <Text style={styles.lastContact}>Ostatni kontakt: {new Date(item.last_contact_date).toLocaleDateString('pl-PL')}</Text>}</View>{phone && <TouchableOpacity onPress={() => void startCall({ phoneNumber: phone, displayName: `${item.first_name} ${item.last_name}`, contactId: item.id })} style={styles.callButton}><Feather name="phone" size={20} color={colors.background.primary} /></TouchableOpacity>}<Feather name="chevron-right" size={18} color={colors.text.tertiary} /></TouchableOpacity>;
+          return <TouchableOpacity onPress={() => setSelectedContact(item)} activeOpacity={0.75} style={styles.card}><View style={styles.avatar}><Text style={styles.initials}>{contactInitials(item)}</Text></View><View style={styles.details}><Text style={styles.name}>{contactName(item) || item.email || 'Kontakt bez nazwy'}</Text>{phone && <Text style={styles.phone}>{phone}</Text>}{item.email && <Text style={styles.email} numberOfLines={1}>{item.email}</Text>}{item.last_contact_date && <Text style={styles.lastContact}>Ostatni kontakt: {new Date(item.last_contact_date).toLocaleDateString('pl-PL')}</Text>}</View>{phone && <TouchableOpacity onPress={() => void startCall({ phoneNumber: phone, displayName: contactName(item) || phone, contactId: item.id })} style={styles.callButton}><Feather name="phone" size={20} color={colors.background.primary} /></TouchableOpacity>}<Feather name="chevron-right" size={18} color={colors.text.tertiary} /></TouchableOpacity>;
         }} /> : <FlatList data={calls} keyExtractor={(item) => item.id} contentContainerStyle={styles.list} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void fetchContacts(); }} tintColor={colors.primary.gold} />} ListEmptyComponent={<View style={styles.center}><Feather name="phone-off" color={colors.text.tertiary} size={40} /><Text style={styles.empty}>Brak zapisanych połączeń</Text></View>} renderItem={({ item }) => {
-          const displayName = item.contact ? `${item.contact.first_name} ${item.contact.last_name}` : item.phone_number;
+          // Kontakt spoza zakresu osoby (RLS) przychodzi jako pusty — wtedy pokazujemy sam numer.
+          const displayName = contactName(item.contact) || item.phone_number;
           return <View style={styles.card}><View style={[styles.avatar, item.outcome === 'connected' && { backgroundColor: '#10b98125' }]}><Feather name={item.outcome === 'connected' ? 'phone-call' : 'phone-missed'} size={19} color={item.outcome === 'connected' ? '#10b981' : colors.primary.gold} /></View><View style={styles.details}><Text style={styles.name}>{displayName}</Text><Text style={styles.phone}>{item.phone_number}</Text><Text style={styles.lastContact}>{item.outcome ? OUTCOME_LABELS[item.outcome] || item.outcome : 'Brak zapisanego wyniku'} · {new Date(item.started_at).toLocaleString('pl-PL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</Text>{item.next_action_at && <Text style={styles.nextAction}>Następny kontakt: {new Date(item.next_action_at).toLocaleString('pl-PL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</Text>}</View><TouchableOpacity onPress={() => void startCall({ phoneNumber: item.phone_number, displayName, contactId: item.contact_id })} style={styles.callButton}><Feather name="phone" size={20} color={colors.background.primary} /></TouchableOpacity></View>;
         }} />
       )}
@@ -112,7 +132,7 @@ export default function ClientsScreen() {
         onClose={() => setSelectedContact(null)}
         onCall={(selected) => {
           const phone = selected.mobile || selected.phone;
-          if (phone) void startCall({ phoneNumber: phone, displayName: `${selected.first_name} ${selected.last_name}`, contactId: selected.id });
+          if (phone) void startCall({ phoneNumber: phone, displayName: contactName(selected) || phone, contactId: selected.id });
         }}
       />
       </>}

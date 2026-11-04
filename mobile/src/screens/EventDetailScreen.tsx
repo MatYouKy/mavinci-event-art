@@ -7,7 +7,7 @@ import RealizationWorkspace from '../components/Events/RealizationWorkspace';
 import EventCardButton from '../components/Events/EventCardButton';
 import { respondToAssignment } from '../services/assignmentResponse';
 import WarehouseHandoffPanel from '../components/Events/WarehouseHandoffPanel';
-import EventStepsPanel from '../components/Events/EventStepsPanel';
+import EventStepsPanel, { type EventStepRowLink } from '../components/Events/EventStepsPanel';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useForegroundEffect } from '../hooks/useForegroundEffect';
 import { createRefreshQueue } from '../lib/refreshQueue';
@@ -32,7 +32,7 @@ import {
   EventEquipmentItem,
   LogisticsItem,
 } from '@/components/Events/EventDetailScreen/ChecklistTab';
-import { EventFile, FilesTab } from '@/components/Events/EventDetailScreen/FilesTab';
+import { EventFile, FilesTab, withEventFolderPaths } from '@/components/Events/EventDetailScreen/FilesTab';
 import { AgendaData, AgendaTab } from '@/components/Events/EventDetailScreen/AgendaTab';
 import {
   DetailsTab,
@@ -48,6 +48,17 @@ import {
 import { mergeEventTeam } from '../lib/eventTeam';
 import { isManagerOrAdmin } from '../lib/permissions';
 import { useEventCommercialsAccess } from '../lib/eventCommercialsAccess';
+import {
+  type EventAccessResult,
+  type EventDetailVisibility,
+  type EventOnsiteContact,
+  eventDetailVisibility,
+  fetchEventAccess,
+  fetchEventAmounts,
+  fetchEventOnsiteContacts,
+} from '../lib/eventDetailAccess';
+import { eventStepDetailLink } from '../lib/eventStepLinks';
+import type { EventStep } from '../lib/eventSteps';
 
 type TabKey = 'warehouse' | 'details' | 'agenda' | 'wedding' | 'checklist' | 'team' | 'fleet' | 'files';
 
@@ -72,7 +83,16 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
   const [warehouseAccess, setWarehouseAccess] = useState<{ eventId: string; employeeId: string; allowed: boolean } | null>(null);
   const showWarehouseTab = isWarehouseWorker && warehouseAccess?.eventId === eventId
     && warehouseAccess?.employeeId === employee?.id && warehouseAccess?.allowed === true;
-  const canViewBillingContext = useEventCommercialsAccess(eventId, employee?.id);
+  // Obszary danych wydarzenia (get_event_access) — te same co w CRM. Przed wdrożeniem migracji (brak RPC)
+  // ekran działa jak dotąd: dane rozliczeniowe i kwoty według can_view_event_commercials.
+  const [accessState, setAccessState] = useState<{ eventId: string; result: EventAccessResult } | null>(null);
+  const accessResult = accessState?.eventId === eventId ? accessState.result : null;
+  const canViewBillingContext = useEventCommercialsAccess(
+    accessResult && accessResult.mode !== 'ready' ? eventId : null,
+    employee?.id,
+  );
+  const visibility = eventDetailVisibility(accessResult, canViewBillingContext);
+  const [onsiteContacts, setOnsiteContacts] = useState<EventOnsiteContact[] | null>(null);
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab && initialTab !== 'warehouse' ? initialTab : 'details');
   useEffect(() => {
     setActiveTab(initialTab === 'warehouse' && !showWarehouseTab ? 'details' : initialTab ?? 'details');
@@ -161,22 +181,28 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
     );
   };
 
-  const fetchEvent = useCallback(async () => {
+  const fetchEvent = useCallback(async (access: EventDetailVisibility) => {
+    const billingContext = access.billing;
+    // Kwoty: przed migracją obszarów z kolumn `events`, potem wyłącznie z `event_financials` (obszar „kwoty”).
+    const legacyAmounts = access.mode === 'legacy' && access.values;
+    // Nazwa organizacji klienta: dane klienta albo nabywca w rozliczeniu (gdy nie wskazano osobnego płatnika).
+    const withClientOrganization = access.client || billingContext;
     const { data, error } = await supabase
       .from('events')
       .select(
         `
         id, name, description, event_date, event_end_date, status, created_by,
-        ${canViewBillingContext ? 'notes, expected_revenue, budget, billing_arrangement, billing_organization_id,' : ''}
+        ${billingContext ? 'notes, billing_arrangement, billing_organization_id,' : ''}
+        ${legacyAmounts ? 'expected_revenue, budget,' : ''}
         equipment_checklist_pdf_path, equipment_checklist_notes, location,
         loading_confirmed, loading_confirmed_at, loading_confirmed_by, loading_notes,
         loading_locked, loading_unlock_requested, loading_unlock_requested_at,
         loading_unlock_requested_by, loading_unlock_reason,
         event_categories(name, color),
         locations(name, formatted_address, address, city, postal_code, country, latitude, longitude, google_place_id),
-        client_organization:organizations!events_organization_id_fkey(id, name, alias),
-        ${canViewBillingContext ? 'billing_organization:organizations!events_billing_organization_id_fkey(id, name, alias),' : ''}
-        client_contact:contacts!events_contact_person_id_fkey(id, first_name, last_name, phone, mobile, email),
+        ${withClientOrganization ? 'client_organization:organizations!events_organization_id_fkey(id, name, alias),' : ''}
+        ${billingContext ? 'billing_organization:organizations!events_billing_organization_id_fkey(id, name, alias),' : ''}
+        ${access.client ? 'client_contact:contacts!events_contact_person_id_fkey(id, first_name, last_name, phone, mobile, email),' : ''}
         creator:employees!created_by(name, surname)
       `,
       )
@@ -185,6 +211,11 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
 
     if (error) throw error;
     if (!data) return null;
+    const amounts = legacyAmounts
+      ? { expected_revenue: (data as any).expected_revenue ?? null, budget: (data as any).budget ?? null }
+      : access.values
+        ? await fetchEventAmounts(eventId)
+        : { expected_revenue: null, budget: null };
 
     setChecklistPdfPath((data as any).equipment_checklist_pdf_path || null);
 
@@ -228,7 +259,7 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
       : null;
 
     let billingContacts: EventBillingContact[] = [];
-    if (canViewBillingContext && (data as any).billing_organization_id) {
+    if (billingContext && (data as any).billing_organization_id) {
       const { data: billingContactRows, error: billingContactsError } = await supabase
         .from('event_billing_contacts')
         .select(
@@ -266,9 +297,9 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
       event_date: data.event_date,
       event_end_date: data.event_end_date,
       status: data.status,
-      notes: data.notes,
-      expected_revenue: data.expected_revenue,
-      budget: (data as any).budget ?? null,
+      notes: (data as any).notes ?? null,
+      expected_revenue: typeof amounts.expected_revenue === 'number' ? amounts.expected_revenue : null,
+      budget: typeof amounts.budget === 'number' ? amounts.budget : null,
       category_name: cat?.name ?? null,
       category_color: cat?.color ?? null,
       location_name: loc?.name || (data as any).location || null,
@@ -283,7 +314,7 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
       billing_organization_id: (data as any).billing_organization_id ?? null,
       billing_contacts: billingContacts,
       contact_name: contact
-        ? `${contact.first_name || ''} ${contact.last_name || ''}`.trim()
+        ? `${contact.first_name || ''} ${contact.last_name || ''}`.trim() || null
         : null,
       contact_id: contact?.id ?? null,
       contact_phone: contact?.mobile || contact?.phone || null,
@@ -302,16 +333,32 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
       loading_unlock_reason: (data as any).loading_unlock_reason ?? null,
       employees: mergeEventTeam(assignments || [], responsibilityResult.data || []),
     } as EventDetail;
+  }, [eventId]);
+
+  /** Obszary osoby na wydarzeniu; zapisuje wynik i zwraca sekcje do pokazania. */
+  const resolveAccess = useCallback(async (): Promise<EventDetailVisibility> => {
+    const result = await fetchEventAccess(eventId);
+    setAccessState({ eventId, result });
+    return eventDetailVisibility(result, canViewBillingContext);
   }, [canViewBillingContext, eventId]);
+
+  /** „Kontakt na miejscu” — tylko gdy osoba nie widzi pełnych danych klienta. */
+  const fetchOnsiteContacts = useCallback(
+    (access: EventDetailVisibility) =>
+      access.onsiteContact && !access.client ? fetchEventOnsiteContacts(eventId) : Promise.resolve(null),
+    [eventId],
+  );
 
   const refreshEventState = useCallback(async () => {
     try {
-      const nextEvent = await fetchEvent();
+      const access = await resolveAccess();
+      const [nextEvent, nextOnsite] = await Promise.all([fetchEvent(access), fetchOnsiteContacts(access)]);
       if (nextEvent) setEvent(nextEvent);
+      setOnsiteContacts(nextOnsite);
     } catch (error) {
       console.error('Error refreshing event:', error);
     }
-  }, [fetchEvent]);
+  }, [fetchEvent, fetchOnsiteContacts, resolveAccess]);
 
   const fetchWeddingCard = useCallback(async (): Promise<WeddingCardData | null> => {
     const { data: card, error: cardError } = await supabase
@@ -524,7 +571,19 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
         console.error('Error loading event files:', error);
         return [];
       }
-      return (data || []) as EventFile[];
+      const rows = (data || []) as EventFile[];
+      if (!rows.some((file) => file.folder_id)) return rows;
+      // Ścieżki folderów. Baza zwraca tylko foldery w zakresie osoby (dokumentacja tylko dla obszaru handlowego),
+      // więc brakujący folder nadrzędny skraca ścieżkę, a plik bez widocznego folderu trafia do „Pozostałe”.
+      const { data: folders, error: foldersError } = await supabase
+        .from('event_folders')
+        .select('id, name, parent_folder_id')
+        .eq('event_id', eventId);
+      if (foldersError) {
+        console.warn('Error loading event folders:', foldersError);
+        return rows;
+      }
+      return withEventFolderPaths(rows, folders || []);
     },
     [eventId],
   );
@@ -582,7 +641,12 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
       setLoadError(null);
 
       try {
-        const [ev, nextWeddingCard] = await Promise.all([fetchEvent(), fetchWeddingCard()]);
+        const access = await resolveAccess();
+        const [ev, nextWeddingCard, nextOnsite] = await Promise.all([
+          fetchEvent(access),
+          fetchWeddingCard(),
+          fetchOnsiteContacts(access),
+        ]);
         const eventUsesWeddingCard =
           Boolean(nextWeddingCard) ||
           ev?.category_name?.trim().toLocaleLowerCase('pl-PL').startsWith('wesel') === true;
@@ -598,11 +662,14 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
         const [ag, ch, fi, fleet, assignment] = await Promise.all([
           eventUsesWeddingCard ? Promise.resolve(null) : fetchAgenda(),
           fetchChecklist(),
-          fetchFiles(canViewSubfolders),
+          // Po migracji obszarów pliki w folderach operacyjnych widzi cała ekipa, a dokumentację — tylko obszar
+          // handlowy; decyduje RLS (jak w CRM). Wcześniej ekipa widziała wyłącznie pliki bez folderu.
+          fetchFiles(canViewSubfolders || access.mode === 'ready'),
           fetchFleet(),
           fetchMyAssignment(),
         ]);
         if (ev) setEvent(ev);
+        setOnsiteContacts(nextOnsite);
         setWeddingCard(nextWeddingCard);
         setAgenda(ag);
         setChecklist(ch.checklist);
@@ -630,6 +697,8 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
       employee?.access_level,
       employee?.id,
       employee?.role,
+      resolveAccess,
+      fetchOnsiteContacts,
       fetchEvent,
       fetchWeddingCard,
       fetchAgenda,
@@ -829,6 +898,7 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
   const [loadedEquipmentIds, setLoadedEquipmentIds] = useState<Set<string>>(new Set());
 
   const loadingEquipmentWrites = useRef(new Set<string>());
+  const contentScrollRef = useRef<ScrollView>(null);
 
   const toggleEquipmentLoaded = async (item: EventEquipmentItem) => {
     // If loading is locked, prevent unchecking
@@ -928,6 +998,27 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
       ? ([{ key: 'files', label: 'Pliki', icon: 'file', count: files.length }] as const)
       : []),
   ];
+
+  // „Przejdź” przy kroku realizacji: zakładka, w której krok się zamyka (EVENT_STEP_TARGET_TAB, wspólne z CRM).
+  // Zakładki aplikacji otwieramy tutaj, umowę i finanse — w CRM w przeglądarce (tylko w zakresie osoby).
+  const openTab = (tab: TabKey) => {
+    setActiveTab(tab);
+    contentScrollRef.current?.scrollTo({ y: 0, animated: false });
+  };
+  const stepLink = (step: EventStep): EventStepRowLink | null => {
+    const target = eventStepDetailLink(eventId, step.key, {
+      isWedding: isWeddingEvent,
+      hasWarehouse: showWarehouseTab,
+      hasFleet: tabs.some((tab) => tab.key === 'fleet'),
+      access: accessResult ? accessResult.access : null,
+    });
+    if (!target) return null;
+    if (target.kind === 'crm') {
+      return { label: target.label, external: true, onPress: () => openInCrmWeb(target.path) };
+    }
+    if (target.tab === activeTab || !tabs.some((tab) => tab.key === target.tab)) return null;
+    return { label: target.label, external: false, onPress: () => openTab(target.tab) };
+  };
 
   return (
     <View style={styles.container}>
@@ -1048,6 +1139,7 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
 
       {/* Tab content */}
       <ScrollView
+        ref={contentScrollRef}
         style={styles.scrollView}
         refreshControl={
           <RefreshControl
@@ -1063,10 +1155,25 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
         {activeTab === 'details' && isEventOrganizer(event.created_by, employee?.id, session?.user?.id) && <TouchableOpacity onPress={() => openInCrmWeb('/crm/events/actions')} style={{ margin: 16, padding: 12, borderRadius: 10, backgroundColor: colors.background.secondary }}><Text style={{ color: colors.primary.gold }}>Moje wydarzenia — następne kroki i przypomnienia →</Text></TouchableOpacity>}
         {activeTab === 'details' && canPrintCard && <EventCardButton eventId={eventId} />}
         {activeTab === 'details' && <RealizationActions eventId={eventId} onChanged={() => void loadAll(true)} />}
-        {activeTab === 'details' && <EventStepsPanel eventId={eventId} refreshKey={stepsRefreshKey} onChanged={() => void refreshEventState()} />}
+        {activeTab === 'details' && accessResult?.mode === 'error' && (
+          <View style={styles.accessNotice} accessibilityRole="alert">
+            <Feather name="shield" size={16} color={colors.primary.gold} />
+            <Text style={styles.accessNoticeText}>
+              Nie udało się sprawdzić Twojego zakresu danych tego wydarzenia. Dane klienta i kwoty są ukryte — pociągnij ekran w dół, aby odświeżyć.
+            </Text>
+          </View>
+        )}
+        {activeTab === 'details' && <EventStepsPanel eventId={eventId} refreshKey={stepsRefreshKey} onChanged={() => void refreshEventState()} stepLink={stepLink} />}
         {activeTab === 'warehouse' && showWarehouseTab && <WarehouseHandoffPanel key={eventId} eventId={eventId} status={event.status} onAccepted={() => { void loadAll(true); }} />}
-        {activeTab === 'warehouse' && showWarehouseTab && <EventStepsPanel eventId={eventId} refreshKey={stepsRefreshKey} onChanged={() => void refreshEventState()} />}
-        {activeTab === 'details' && <DetailsTab event={event} employee={employee as Employee} />}
+        {activeTab === 'warehouse' && showWarehouseTab && <EventStepsPanel eventId={eventId} refreshKey={stepsRefreshKey} onChanged={() => void refreshEventState()} stepLink={stepLink} />}
+        {activeTab === 'details' && (
+          <DetailsTab
+            event={event}
+            employee={employee as Employee}
+            visibility={visibility}
+            onsiteContacts={onsiteContacts}
+          />
+        )}
         {activeTab === 'agenda' && !isWeddingEvent && <AgendaTab agenda={agenda} />}
         {activeTab === 'wedding' && isWeddingEvent && <WeddingCardTab card={weddingCard} />}
         {activeTab === 'checklist' && (
@@ -1203,6 +1310,17 @@ const styles = StyleSheet.create({
   tabBadgeText: { fontSize: 9, color: colors.primary.gold, fontWeight: '700' },
 
   scrollView: { flex: 1 },
+  accessNotice: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    marginHorizontal: spacing.md,
+    marginTop: spacing.md,
+    padding: 12,
+    borderRadius: 10,
+    backgroundColor: 'rgba(211, 187, 115, 0.08)',
+  },
+  accessNoticeText: { flex: 1, fontSize: 13, lineHeight: 18, color: colors.text.secondary },
 
   pdfButton: {
     flexDirection: 'row',

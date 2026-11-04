@@ -13,6 +13,7 @@ import { fetchEventOffersServer } from '@/lib/CRM/Offers/fetchEventOffers.server
 import { fetchEventCategoriesServer } from '@/lib/CRM/events/eventsData.server';
 import { EventWorkspaceProvider } from '@/components/crm/events/EventWorkspaceProvider';
 import { notFound, redirect } from 'next/navigation';
+import { eventMoney } from '@/lib/CRM/events/eventFinancials';
 
 export default async function EventPage({
   params,
@@ -33,19 +34,23 @@ export default async function EventPage({
   }
 
   const location = await getLocationById(event.location_id);
-  const contact = await getContactById(event.contact_person_id as UUID);
+  // Dane klienta tylko z obszarem „klient” (RLS i tak nie zwróci rekordu — bez zbędnego zapytania).
+  const canViewClient = event.permissionContext.access?.areas.client === true;
+  const contact = canViewClient ? await getContactById(event.contact_person_id as UUID) : null;
   const categories = await fetchEventCategoriesServer();
   const offers = await fetchEventOffersServer(params.id);
 
   const acceptedOffer = offers.find((offer) => offer.status === 'accepted');
+  // Kwoty wydarzenia są w event_financials (events.expected_revenue jest po migracji zawsze puste).
+  const storedExpectedRevenue = eventMoney(event, event.financials, 'expected_revenue');
   const updateEventsByOffers = {
     ...event,
     expected_revenue:
       event.financial_source === 'calculation'
-        ? event.expected_revenue
+        ? storedExpectedRevenue
         : acceptedOffer
           ? getOfferPricingTotals(acceptedOffer).gross
-          : event.expected_revenue,
+          : storedExpectedRevenue,
   };
 
   return (

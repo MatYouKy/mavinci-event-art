@@ -95,7 +95,7 @@ export default function RealizationWorkspace({ initialData: d }: { initialData: 
       <div className={tab === 'overview' ? 'lg:col-span-2' : ''}>
       {tab === 'overview' && (
         <>
-          <EventStepsPanel eventId={d.id} onNavigate={setTab} className="mb-4" />
+          <EventStepsPanel eventId={d.id} onNavigate={setTab} canOpenTab={id => tabs.some(item => item.id === id)} className="mb-4" />
           {card(
             'scope',
             'Zakres realizacji',

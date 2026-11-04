@@ -8,7 +8,14 @@
 
 export type EventStepRole = 'sales' | 'warehouse' | 'manager' | 'driver' | 'admin' | 'author';
 export type EventStepStatus = 'open' | 'in_progress' | 'done' | 'problem' | 'skipped' | 'archived';
-export type EventStepStage = 'handoff' | 'preparation' | 'dispatch' | 'realization' | 'return' | 'settlement';
+export type EventStepStage =
+  | 'formalities'
+  | 'handoff'
+  | 'preparation'
+  | 'dispatch'
+  | 'realization'
+  | 'return'
+  | 'settlement';
 export type EventStepKind = 'handoff' | 'order' | 'stock_check' | 'venue_confirmation' | 'task' | 'approval';
 export type EventStepSource = 'system' | 'product' | 'equipment' | 'shortage' | 'rental' | 'manual';
 export type EventStepAction = 'take' | 'start' | 'done' | 'problem' | 'reopen' | 'skip';
@@ -64,6 +71,8 @@ export type EventStepsSnapshot = {
   steps: EventStep[];
   waiting_for: EventStep[];
   progress: Partial<Record<EventStepStage, { total: number; done: number }>>;
+  /** Czy bieżąca osoba widzi etapy handlowe (Formalności, Rozliczenie). */
+  show_commercial?: boolean;
 };
 
 export type MyEventStep = EventStep & {
@@ -80,6 +89,7 @@ export const EVENT_STEP_ROLE_LABELS: Record<EventStepRole, string> = {
 };
 
 export const EVENT_STEP_STAGE_LABELS: Record<EventStepStage, string> = {
+  formalities: 'Formalności',
   handoff: 'Przekazanie',
   preparation: 'Przygotowanie i zamówienia',
   dispatch: 'Wydanie sprzętu',
@@ -89,6 +99,7 @@ export const EVENT_STEP_STAGE_LABELS: Record<EventStepStage, string> = {
 };
 
 export const EVENT_STEP_STAGE_ORDER: EventStepStage[] = [
+  'formalities',
   'handoff',
   'preparation',
   'dispatch',
@@ -135,6 +146,9 @@ export function eventStepTone(step: Pick<EventStep, 'status' | 'overdue' | 'bloc
   return step.blocked_by.length ? 'muted' : 'neutral';
 }
 
+/** Etapy widoczne tylko dla obszaru handlowego (baza filtruje je także w RLS). */
+export const EVENT_STEP_COMMERCIAL_STAGES: EventStepStage[] = ['formalities', 'settlement'];
+
 /** Kroki wynikające z procesu: zamykają się same i nie da się ich „otworzyć ponownie” z listy kroków. */
 const PROCESS_STEP_KEYS = new Set([
   'warehouse_accept',
@@ -145,7 +159,31 @@ const PROCESS_STEP_KEYS = new Set([
   'realization_complete',
   'settlement_invoice',
   'settlement_paid',
+  'formal_details',
+  'formal_contract',
+  'formal_deposit',
+  'wedding_card',
+  'team_ready',
+  'agenda_ready',
+  'transport_planned',
 ]);
+
+/** Zakładka wydarzenia, w której zamyka się krok (link „Przejdź”). */
+export const EVENT_STEP_TARGET_TAB: Record<string, string> = {
+  formal_details: 'details',
+  formal_contract: 'contract',
+  formal_deposit: 'finances',
+  wedding_card: 'agenda',
+  team_ready: 'team',
+  agenda_ready: 'agenda',
+  transport_planned: 'logistics',
+  manager_appointed: 'team',
+  dispatch_out: 'equipment',
+  warehouse_ready: 'equipment',
+  return_check: 'equipment',
+  settlement_invoice: 'finances',
+  settlement_paid: 'finances',
+};
 
 const LIVE_STATUSES: EventStepStatus[] = ['open', 'in_progress', 'problem'];
 
@@ -369,6 +407,10 @@ export const EVENT_STEPS_HELP: EventStepsHelpSection[] = [
     ],
     steps: [
       {
+        title: 'Formalności',
+        how: 'Etap „Formalności” pokazuje: kluczowe dane wydarzenia (data, miejsce, klient), podpisaną umowę i zaliczkę z harmonogramu płatności. Kroki zamykają się same, gdy uzupełnisz dane w zakładkach Szczegóły, Umowa i Finanse. Widzą je tylko osoby z dostępem handlowym.',
+      },
+      {
         title: 'Przekaż realizację do magazynu',
         how: 'Na wydarzeniu w sekcji „Kroki realizacji” kliknij „Przekazane do magazynu”, gdy oferta, sprzęt i dane są kompletne. Krok zamknie się sam, jeśli magazyn przyjmie realizację wcześniej.',
       },
@@ -381,12 +423,17 @@ export const EVENT_STEPS_HELP: EventStepsHelpSection[] = [
         how: 'Zakładka „Zespół” → kierownik realizacji. Krok zamknie się sam. Bez kierownika magazyn nie oznaczy przygotowania jako gotowego.',
       },
       {
+        title: 'Zespół, agenda i transport (prowadzący wydarzenie)',
+        how: 'Kroki zamykają się same: zespół — gdy wszyscy zaproszeni potwierdzą udział; agenda — po jej przygotowaniu; transport — gdy każde auto ma kierowcę. Na weselu dochodzi „Karta weselna wysłana do akceptacji”.',
+      },
+      {
         title: 'Dodatkowe ustalenia',
         how: '„Dodaj krok” na wydarzeniu, np. „Potwierdź godzinę wjazdu z obiektem”. Wybierz właściciela i termin — dostanie przypomnienie.',
       },
     ],
     closeScope: [
-      'Kroki „Przekaż realizację”, „Potwierdź wymagania usług” i (jako prowadzący) „Wyznacz kierownika” są zrobione.',
+      'Formalności zamknięte: dane wydarzenia, podpisana umowa, zaliczka (jeśli jest w harmonogramie).',
+      'Kroki „Przekaż realizację”, „Potwierdź wymagania usług” i (jako prowadzący) „Wyznacz kierownika”, zespół, agenda i transport są zrobione.',
       'Na wydarzeniu nie ma Twoich kroków „Do zrobienia” ani „Problem” — sprawdzisz to w „Moje kroki”.',
       'Po wydarzeniu: koszty i ustalenia z klientem przekazane do rozliczenia. Fakturę wystawia administrator.',
     ],
@@ -536,7 +583,8 @@ export const EVENT_STEPS_HELP: EventStepsHelpSection[] = [
 export const EVENT_STEPS_RULES: string[] = [
   'Każdy krok ma właściciela (rolę i osobę) oraz termin. Krok zamyka jego właściciel przyciskiem — system zapisuje kto i kiedy.',
   '„Czekamy na” pokazuje kroki, które można wykonać teraz: kto, co i do kiedy. Kłódka oznacza krok czekający na wcześniejsze kroki.',
-  'Kroki z procesu (przyjęcie przez magazyn, gotowość, kierownik, załadunek, start, zakończenie, faktura, wpłata) zamykają się same, gdy zdarzy się to w systemie.',
+  'Kroki z procesu (dane wydarzenia, umowa, zaliczka, zespół, agenda, transport, przyjęcie przez magazyn, gotowość, kierownik, załadunek, start, zakończenie, faktura, wpłata) zamykają się same, gdy zdarzy się to w systemie.',
+  'Formalności i rozliczenie widzą tylko osoby z dostępem handlowym. Magazyn, kierownik realizacji i ekipa widzą kroki realizacji bez kwot i dokumentów.',
   'Zmiana oferty, sprzętu, etapów lub dat przelicza kroki i terminy automatycznie.',
   'Powiadomienia: nowy krok (najwcześniej tydzień przed terminem), dzień przed terminem, po terminie (także kierownik i prowadzący), 2 dni po terminie — administratorzy.',
   'Problem zgłaszaj w kroku z opisem — kierownik i prowadzący dostaną powiadomienie, a krok zostanie oznaczony na czerwono.',

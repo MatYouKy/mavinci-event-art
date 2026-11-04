@@ -63,16 +63,39 @@ interface ContextMenuState {
   type: 'file' | 'folder' | null;
 }
 
-export default function EventFilesExplorer({ eventId }: { eventId: string }) {
+/**
+ * Nazwy folderów dokumentacji handlowej (oferty, umowy, faktury, kalkulacje, rozliczenia) — ta sama reguła co
+ * private.event_folder_is_formal_name w bazie (migracja 20261105090000). Taki folder dostaje widoczność „formal”
+ * i widzą go tylko osoby z obszarem „oferta, umowa i formalności”.
+ */
+const FORMAL_FOLDER_NAME = /(umow|faktur|ofert|kalkulac|rozlicz|płatno|platno|kosztorys|finans)/;
+const isFormalFolderName = (name: string) => FORMAL_FOLDER_NAME.test(name.toLocaleLowerCase('pl-PL'));
+const FORMAL_FOLDER_BLOCKED =
+  'Ta nazwa jest zarezerwowana dla dokumentacji handlowej (oferty, umowy, faktury, kalkulacje, rozliczenia). Taki folder byłby dla Ciebie niewidoczny — wybierz inną nazwę.';
+
+export default function EventFilesExplorer({
+  eventId,
+  canViewCommercialDocs = true,
+}: {
+  eventId: string;
+  /** Obszar „oferta, umowa i formalności”: bez niego nie można założyć folderu dokumentacji (byłby niewidoczny). */
+  canViewCommercialDocs?: boolean;
+}) {
   return (
     <div className="space-y-4">
       <MacFolderSyncPanel key={eventId} eventId={eventId} />
-      <EventFilesExplorerContent key={eventId} eventId={eventId} />
+      <EventFilesExplorerContent key={eventId} eventId={eventId} canViewCommercialDocs={canViewCommercialDocs} />
     </div>
   );
 }
 
-function EventFilesExplorerContent({ eventId }: { eventId: string }) {
+function EventFilesExplorerContent({
+  eventId,
+  canViewCommercialDocs,
+}: {
+  eventId: string;
+  canViewCommercialDocs: boolean;
+}) {
   const { showSnackbar } = useSnackbar();
   const { showConfirm } = useDialog();
   const [folders, setFolders] = useState<FolderItem[]>([]);
@@ -352,6 +375,10 @@ function EventFilesExplorerContent({ eventId }: { eventId: string }) {
 
   const handleCreateFolder = async () => {
     if (!newFolderName.trim()) return;
+    if (!canViewCommercialDocs && isFormalFolderName(newFolderName.trim())) {
+      showSnackbar(FORMAL_FOLDER_BLOCKED, 'error');
+      return;
+    }
 
     const {
       data: { session },
@@ -452,6 +479,11 @@ function EventFilesExplorerContent({ eventId }: { eventId: string }) {
 
   const handleRename = async () => {
     if (!renameItem || !renameValue.trim()) return;
+
+    if (renameItem.type === 'folder' && !canViewCommercialDocs && isFormalFolderName(renameValue.trim())) {
+      showSnackbar(FORMAL_FOLDER_BLOCKED, 'error');
+      return;
+    }
 
     if (renameItem.type === 'folder') {
       const { error } = await supabase
