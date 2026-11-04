@@ -2,6 +2,7 @@ import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin.server';
 import { systemLabel } from '@/lib/ui/systemLabels';
+import { EVENT_STEP_ROLE_LABELS, EVENT_STEP_STATUS_LABELS, type EventStepRole, type EventStepStatus } from '@/lib/events/steps/eventSteps';
 import type {
   EventCardData,
   EventCardEquipment,
@@ -94,7 +95,7 @@ export async function loadEventCardData(
 
   // Uzupełnienia po potwierdzeniu dostępu — tylko kolumny operacyjne (bez kwot, kosztów i danych finansowych).
   const admin = createSupabaseAdminClient();
-  const [eventRes, contactsRes, vehiclesRes, phasesRes, equipmentRes, offersRes, handoffRes, subcontractorsRes, weddingRes, generatorRes] =
+  const [eventRes, contactsRes, vehiclesRes, phasesRes, equipmentRes, offersRes, handoffRes, subcontractorsRes, weddingRes, generatorRes, stepsRes] =
     await Promise.all([
       admin
         .from('events')
@@ -131,6 +132,14 @@ export async function loadEventCardData(
         .eq('event_id', eventId)
         .maybeSingle(),
       admin.from('employees').select('name,surname').or(`auth_user_id.eq.${authUserId},id.eq.${authUserId}`).maybeSingle(),
+      // Kroki realizacji (migracja 20261104200000). Przed wdrożeniem migracji zapytanie zwraca błąd — karta używa wtedy braków i wynajmów.
+      admin
+        .from('event_steps')
+        .select('step_key,stage,kind,source,title,quantity,unit,supplier,owner_role,due_at,status,status_note,expected_at,blocks_ready,sort_order,assignee:employees!event_steps_assignee_id_fkey(name,surname)')
+        .eq('event_id', eventId)
+        .in('stage', ['handoff', 'preparation'])
+        .neq('status', 'archived')
+        .order('sort_order', { ascending: true }),
     ]);
 
   if (eventRes.error || !eventRes.data) {
@@ -359,6 +368,43 @@ export async function loadEventCardData(
     }
   }
   equipment.sort((a, b) => text(a.group).localeCompare(text(b.group), 'pl') || a.name.localeCompare(b.name, 'pl'));
+
+  // „Do przygotowania i zamówienia” z kroków realizacji: zamówienia z wyprzedzeniem, sprawdzenia stanu, braki,
+  // wynajmy, potwierdzenia z klientem i obiektem, ręczne kroki — z właścicielem, terminem i stanem.
+  const stepRows: Json[] = stepsRes.error ? [] : (stepsRes.data ?? []);
+  if (stepRows.length) {
+    const nowMs = Date.now();
+    const prepSteps = stepRows.filter((step) => step.stage === 'preparation');
+    preparation.length = 0;
+    for (const step of prepSteps) {
+      const live = ['open', 'in_progress', 'problem'].includes(text(step.status));
+      const quantity = step.quantity != null ? ` — ${String(step.quantity).replace(/\.00$/, '').replace('.', ',')}${text(step.unit) ? ` ${text(step.unit)}` : ''}` : '';
+      const supplier = text(step.supplier) ? ` · dostawca: ${text(step.supplier)}` : '';
+      const owner = [EVENT_STEP_ROLE_LABELS[step.owner_role as EventStepRole] || '', fullName(step.assignee)].filter(Boolean).join(': ');
+      const statusText = [
+        EVENT_STEP_STATUS_LABELS[step.status as EventStepStatus] || text(step.status),
+        step.expected_at && live ? `dostawa ${formatShort(step.expected_at)}` : '',
+        step.status === 'problem' ? text(step.status_note) : '',
+      ].filter(Boolean).join(' · ');
+      preparation.push({
+        label: `${text(step.title)}${quantity}${supplier}`,
+        dueDate: text(step.due_at) || null,
+        owner,
+        status: statusText,
+        urgent: live && (step.status === 'problem' || (step.due_at ? new Date(step.due_at).getTime() < nowMs : false)),
+      });
+    }
+    const openBlocking = prepSteps.filter((step) => step.blocks_ready && ['open', 'in_progress', 'problem'].includes(text(step.status)));
+    if (openBlocking.length) {
+      notices.push(`Niezamknięte kroki przygotowania (${openBlocking.length}): ${openBlocking.slice(0, 4).map((step) => text(step.title)).join('; ')}${openBlocking.length > 4 ? '…' : ''}.`);
+    }
+    const handoffOpen = stepRows.filter((step) => step.stage === 'handoff' && ['open', 'in_progress', 'problem'].includes(text(step.status)));
+    for (const step of handoffOpen) {
+      if (step.step_key === 'warehouse_accept') continue; // ten sam komunikat niżej („Magazyn nie przyjął…”).
+      if (step.step_key === 'manager_appointed') continue; // komunikat o kierowniku jest wyżej.
+      notices.push(`Czekamy na: ${text(step.title)} — ${EVENT_STEP_ROLE_LABELS[step.owner_role as EventStepRole] || 'osoba odpowiedzialna'}${fullName(step.assignee) ? ` (${fullName(step.assignee)})` : ''}.`);
+    }
+  }
 
   // Notatki do checklisty sprzętu.
   const checklistNotes = Array.isArray(event.equipment_checklist_note_items)

@@ -50,6 +50,7 @@ import { ProductEquipment } from '../components/ProductEquipment';
 import { ProductStaffSection } from '../components/ProductStuffSection';
 import { ProductContractClauses } from '../components/StructuredProductContractClauses';
 import { ProductMavinciLiveModules } from '../components/ProductMavinciLiveModules';
+import ProductPreparationItems from '../components/ProductPreparationItems';
 import { ProductOfferCardPreview } from '../components/ProductOfferCardPreview';
 import { ProductVariantsEditor } from '../components/ProductVariantsEditor';
 import ProductCardImageSection from '../components/ProductCardImageSection';
@@ -1942,6 +1943,9 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
               renderView={(product) => (<dl className="grid gap-4 sm:grid-cols-2">{[['Pojazd', product.requires_vehicle ? 'Wymagany' : 'Niewymagany'], ['Kierowca', product.requires_driver ? 'Wymagany' : 'Niewymagany'], ['Montaż', `${product.setup_time_hours || 0} h`], ['Demontaż', `${product.teardown_time_hours || 0} h`], ['Maksymalna ilość', product.max_quantity == null ? 'Bez limitu' : String(product.max_quantity)]].map(([label, value]) => <div key={label}><dt className="text-xs text-[#e5e4e2]/45">{label}</dt><dd className="mt-1 text-sm text-[#e5e4e2]">{value}</dd></div>)}</dl>)}
               renderEditor={(product, setProduct) => (<div className="space-y-4">{([['requires_vehicle', 'Wymaga pojazdu'], ['requires_driver', 'Wymaga kierowcy']] as const).map(([key, label]) => <label key={key} className="flex items-center gap-2 text-sm text-[#e5e4e2]"><input type="checkbox" checked={Boolean(product[key])} onChange={e => setProduct({ ...product, [key]: e.target.checked })} className="accent-[#d3bb73]" />{label}</label>)}<div className="grid gap-4 sm:grid-cols-2">{([['setup_time_hours', 'Montaż (h)'], ['teardown_time_hours', 'Demontaż (h)']] as const).map(([key, label]) => <label key={key} className="text-sm text-[#e5e4e2]/65">{label}<input type="number" min="0" step="0.25" value={product[key] || 0} onChange={e => setProduct({ ...product, [key]: Number(e.target.value) })} className="mt-1 w-full rounded-lg border border-white/10 bg-black/15 px-3 py-2 text-sm text-[#e5e4e2]" /></label>)}<label className="text-sm text-[#e5e4e2]/65">Maksymalna ilość<input type="number" min="0" step="0.01" value={product.max_quantity ?? ''} onChange={e => setProduct({ ...product, max_quantity: e.target.value === '' ? null : Number(e.target.value) })} placeholder="Bez limitu" className="mt-1 w-full rounded-lg border border-white/10 bg-black/15 px-3 py-2 text-sm text-[#e5e4e2]" /></label></div></div>)}
             /></ProductSettingsDrawer>
+{productId !== 'new' && (<ProductSettingsDrawer title="Przygotowanie i zamówienia" description="Co zamówić, sprawdzić lub potwierdzić przed każdym wydarzeniem z tą usługą — kroki realizacji z terminem i osobą odpowiedzialną.">
+            <ProductPreparationItems productId={productId} />
+          </ProductSettingsDrawer>)}
 {persistedProductVariants.length > 0 && (<ProductSettingsDrawer title="Zakres konfiguracji wariantu" description="Wybierz produkt bazowy lub wariant dla sprzętu, obsady i klauzul.">        {persistedProductVariants.length > 0 && (
           <section className="rounded-xl border border-[#d3bb73]/25 bg-[#1c1f33] p-6 ">
             <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_1fr] lg:items-end">

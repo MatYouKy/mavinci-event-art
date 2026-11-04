@@ -1,6 +1,7 @@
 import { AgendaTab } from './EventDetailScreen/AgendaTab';
 import RealizationActions from './RealizationActions';
 import EventCardButton from './EventCardButton';
+import EventStepsPanel from './EventStepsPanel';
 import { TeamTab } from './EventDetailScreen/TeamTab';
 import { mergeEventTeam } from '../../lib/eventTeam';
 import { useAuth } from '../../contexts/AuthContext';
@@ -154,6 +155,11 @@ export default function RealizationWorkspace({
       {tab === 'overview' && (
         <>
           <EventCardButton eventId={data.id} />
+          <EventStepsPanel
+            eventId={data.id}
+            onChanged={() => void refresh()}
+            style={{ marginHorizontal: 0, marginTop: 12, marginBottom: 10 }}
+          />
           {card(
             'scope',
             'Zakres realizacji',

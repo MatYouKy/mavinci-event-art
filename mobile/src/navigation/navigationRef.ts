@@ -94,7 +94,12 @@ export function routeSalesUrl(url: string | null | undefined): boolean {
     return true;
   }
   const event = url.match(new RegExp(`/crm/events/(${UUID})`, 'i'));
-  if (event) { navigateToEvent(event[1]); return true; }
+  if (event) {
+    // np. /crm/events/<id>?tab=overview (kroki realizacji) → zakładka Szczegóły.
+    const tab = url.match(/[?&]tab=([a-z_]+)/i)?.[1];
+    navigateToEvent(event[1], tab ? getEventNotificationTab({ initial_tab: tab }) : undefined);
+    return true;
+  }
   if (/^\/crm\/(offers|invoices|settings|salespeople)(\/|\?|$)/i.test(url)) { openInCrmWeb(url); return true; }
   return false;
 }

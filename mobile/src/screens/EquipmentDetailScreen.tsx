@@ -91,6 +91,9 @@ export default function EquipmentDetailScreen({ equipmentId, isKit, onBack }: Pr
   const [locationName, setLocationName] = useState<string | null>(null);
   const [gallery, setGallery] = useState<string[]>([]);
   const [kitItems, setKitItems] = useState<{ id: string; name: string; quantity: number }[]>([]);
+  // Sprawdzenie stanu przed wydaniem (kroki realizacji, migracja 20261104200000) — osobny odczyt, żeby brak
+  // nowych kolumn przed wdrożeniem migracji nie blokował całej karty sprzętu.
+  const [preCheck, setPreCheck] = useState<{ instructions: string | null } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -183,6 +186,17 @@ export default function EquipmentDetailScreen({ equipmentId, isKit, onBack }: Pr
             setLocationName(loc?.name ?? null);
           }
         }
+
+        const { data: preCheckData, error: preCheckError } = await supabase
+          .from('equipment_items')
+          .select('requires_pre_check, pre_check_instructions')
+          .eq('id', equipmentId)
+          .maybeSingle();
+        setPreCheck(
+          !preCheckError && (preCheckData as any)?.requires_pre_check
+            ? { instructions: (preCheckData as any).pre_check_instructions?.trim() || null }
+            : null,
+        );
 
         // Fetch units
         const { data: unitsData } = await supabase
@@ -302,6 +316,24 @@ export default function EquipmentDetailScreen({ equipmentId, isKit, onBack }: Pr
             {locationName && <InfoRow icon="map-pin" label="Lokalizacja" value={locationName} />}
           </View>
         </View>
+
+        {/* Pre-check before every dispatch */}
+        {!isKit && preCheck && (
+          <View style={styles.section}>
+            <View style={styles.preCheckBox}>
+              <View style={styles.preCheckHeader}>
+                <Feather name="alert-triangle" size={16} color={colors.status.warning} />
+                <Text style={styles.preCheckTitle}>Sprawdzić stan przed każdym wydaniem</Text>
+              </View>
+              <Text style={styles.preCheckText}>
+                {preCheck.instructions || 'Instrukcja testu nie została dodana. Sprawdź działanie sprzętu przed wydaniem.'}
+              </Text>
+              <Text style={styles.preCheckHint}>
+                Każde wydarzenie z tym sprzętem dostaje krok „Sprawdź stan” dla magazynu.
+              </Text>
+            </View>
+          </View>
+        )}
 
         {/* Description */}
         {equipment.description && (
@@ -636,6 +668,32 @@ const styles = StyleSheet.create({
   },
   infoValueHighlight: {
     color: colors.status.success,
+  },
+  preCheckBox: {
+    padding: spacing.md,
+    borderRadius: 10,
+    backgroundColor: 'rgba(245, 158, 11, 0.12)',
+    gap: 6,
+  },
+  preCheckHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  preCheckTitle: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text.primary,
+  },
+  preCheckText: {
+    fontSize: 13,
+    color: colors.text.primary,
+    lineHeight: 20,
+  },
+  preCheckHint: {
+    fontSize: 12,
+    color: colors.text.secondary,
   },
   descriptionText: {
     fontSize: 13,

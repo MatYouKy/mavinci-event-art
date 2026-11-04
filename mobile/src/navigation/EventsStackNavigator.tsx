@@ -5,10 +5,11 @@ import EventsScreen, { EventListItem } from '../screens/EventsScreen';
 import EventDetailScreen from '../screens/EventDetailScreen';
 import PermissionGate from '../components/PermissionGate';
 import PdfViewerScreen from '../screens/PdfViewerScreen';
+import { EventNotificationTab } from '../lib/eventNotificationTarget';
 
 export type EventsStackParamList = {
   EventsList: undefined;
-  EventDetail: { eventId: string; initialTab?: 'fleet' | 'team' | 'warehouse' };
+  EventDetail: { eventId: string; initialTab?: EventNotificationTab };
   PdfViewer: { url: string };
 };
 
@@ -19,7 +20,7 @@ function EventDetailWrapper() {
   const navigation = useNavigation();
   const { eventId, initialTab } = route.params as {
     eventId: string;
-    initialTab?: 'fleet' | 'team' | 'warehouse';
+    initialTab?: EventNotificationTab;
   };
 
   return (

@@ -47,6 +47,22 @@ export default function NewEquipmentPage() {
     }
   }, [canCreate, employeeLoading, router]);
 
+  // „Sprawdzenie przed wydaniem” pokazujemy dopiero, gdy baza ma te kolumny (migracja kroków realizacji).
+  const [preCheckSupported, setPreCheckSupported] = useState(false);
+  useEffect(() => {
+    let active = true;
+    void supabase
+      .from('equipment_items')
+      .select('requires_pre_check')
+      .limit(1)
+      .then(({ error }) => {
+        if (active) setPreCheckSupported(!error);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const [formData, setFormData] = useState({
     name: '',
     category_id: '',
@@ -71,6 +87,8 @@ export default function NewEquipmentPage() {
     initial_quantity: '0',
     storage_location_id: '',
     min_stock_level: '0',
+    requires_pre_check: false,
+    pre_check_instructions: '',
   });
 
   const [components, setComponents] = useState<Component[]>([]);
@@ -228,6 +246,10 @@ export default function NewEquipmentPage() {
           barcode: formData.barcode || null,
           notes: formData.notes || null,
           storage_location_id: formData.storage_location_id || null,
+          // Wysyłane tylko po zaznaczeniu — domyślnie baza ustawia „bez sprawdzenia”.
+          ...(preCheckSupported && formData.requires_pre_check
+            ? { requires_pre_check: true, pre_check_instructions: formData.pre_check_instructions.trim() || null }
+            : {}),
           is_active: true,
         })
         .select()
@@ -840,6 +862,41 @@ export default function NewEquipmentPage() {
             </div>
           )}
         </div>
+
+        {preCheckSupported && (<div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+          <h3 className="mb-3 text-lg font-medium text-[#e5e4e2]">Sprawdzenie przed wydaniem</h3>
+          <label className="flex items-start gap-2 text-sm text-[#e5e4e2]">
+            <input
+              type="checkbox"
+              name="requires_pre_check"
+              checked={formData.requires_pre_check}
+              aria-describedby="new-equipment-pre-check-hint"
+              onChange={(e) => setFormData((prev) => ({ ...prev, requires_pre_check: e.target.checked }))}
+              className="mt-0.5 accent-[#d3bb73]"
+            />
+            Sprawdzić stan przed każdym wydaniem
+          </label>
+          <p id="new-equipment-pre-check-hint" className="mt-1 pl-6 text-xs text-[#e5e4e2]/50">
+            Każde wydarzenie z tym sprzętem dostanie krok dla magazynu.
+          </p>
+          {formData.requires_pre_check && (
+            <div className="mt-4">
+              <label htmlFor="new-equipment-pre-check-instructions" className="mb-2 block text-sm text-[#e5e4e2]/60">
+                Instrukcja sprawdzenia
+              </label>
+              <textarea
+                id="new-equipment-pre-check-instructions"
+                name="pre_check_instructions"
+                value={formData.pre_check_instructions}
+                onChange={handleInputChange}
+                rows={3}
+                maxLength={2000}
+                className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
+                placeholder="Np. Uruchom na 5 minut, sprawdź szczelność zbiornika, poziom płynu i przewód zasilający."
+              />
+            </div>
+          )}
+        </div>)}
 
         <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
           <label className="mb-2 block text-sm text-[#e5e4e2]/60">Notatki</label>

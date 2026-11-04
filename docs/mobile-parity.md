@@ -25,6 +25,7 @@ Zasada (AGENTS.md): moduł CRM dostępny w aplikacji mobilnej zmieniamy w obu mi
 | Powiadomienia | wyzwalacze i `enqueue_crm_business_notification`; od `20261101190000_security_p0` baza zwraca tylko powiadomienia odbiorcy, odbiorca zmienia wyłącznie `is_read`/`read_at`, tworzą je tylko funkcje serwera | `NotificationsScreen`, `navigationRef.routeNotification` / `routeSalesUrl` (te same reguły RLS; aplikacja nie wstawia powiadomień) |
 | Finanse według działalności | `employees.finance_company_access`, karta „Finanse według działalności” w `EmployeePermissionsTab`, `lib/financeCompanyAccess.ts`, `get_invoice_finance_access`, `crm/invoices`, menu „Finanse” (migracje 20261101165000, 20261101171000) | Aplikacja nie ma modułu finansów działalności (faktury, KSeF, bank, deklaracje otwiera w CRM przez `openInCrmWeb`); dane chroni RLS — aplikacja nie widzi więcej niż CRM |
 | Karta imprezy (druk) | przycisk „Karta imprezy” w `EventDetailPageClient` i `RealizationWorkspace`, PDF `GET /bridge/events/[id]/card` (dostęp jak `get_realization_workspace`, bez cen), `docs/event-card.md` | `components/Events/EventCardButton` w szczegółach wydarzenia i pulpicie realizacji — otwiera `/crm/events/<id>?karta=1` w przeglądarce (ten sam PDF z serwera CRM) |
+| Kroki realizacji (odpowiedzialność, terminy, „Czekamy na”) | `components/crm/events/steps` (`EventStepsPanel` na wydarzeniu i w `RealizationWorkspace`, `MyEventStepsSection` na `/crm/events/actions`, `EventStepsHelpModal`), konfiguracja: `ProductPreparationItems` (usługa), „Sprawdzić stan przed wydaniem” (sprzęt); RPC `get_event_steps`, `update_event_step`, `add_event_step`, `get_my_event_steps`, `docs/event-steps.md` | `components/Events/EventStepsPanel` (Szczegóły, Magazyn, pulpit realizacji), `MyEventStepsSection` na Dashboardzie, `EventStepsHelpModal`, `EventStepForms`; te same RPC; sprzęt pokazuje flagę sprawdzenia (tylko odczyt — konfiguracja usług i sprzętu w CRM) |
 | Wartości finansowe wydarzeń | `can_view_event_commercials` (baza), `EventDetailPageClient` (budżet, płatnicy, zakładka Finanse — wynik RPC per wydarzenie) | `lib/eventCommercialsAccess.ts` (`useEventCommercialsAccess` → RPC `can_view_event_commercials`), `EventDetailScreen`, `DetailsTab` |
 
 ## Tylko w CRM (otwierane w przeglądarce)
@@ -38,6 +39,7 @@ Identyczne kopie pilnowane przez `scripts/ci/check-shared-copies.mjs`:
 - `src/lib/CRM/messages/mailboxPreferences.ts` ↔ `mobile/src/lib/mailboxPreferences.ts`
 - `src/lib/CRM/chat/chatReadState.ts` ↔ `mobile/src/lib/chatReadState.ts` (liczniki, „przeczytane” / „dostarczone”, „pisze…”, reakcje)
 - `src/lib/CRM/calendar/publicHolidays.ts` ↔ `mobile/src/lib/publicHolidays.ts` (święta, długie weekendy, dni „pomost”, wymiar czasu pracy)
+- `src/lib/events/steps/eventSteps.ts` ↔ `mobile/src/lib/eventSteps.ts` (kroki realizacji: typy, etykiety, reguły przycisków, notatki wymagane jak w bazie, treść pomocy dla ról)
 
 ## Lista kontrolna zmiany w module
 
@@ -137,3 +139,7 @@ Wspólna logika bazy wyznacza jeden bieżący warunek wydarzenia. Zadania automa
 - Mobile: nie dotyczy — natywna lista wydarzeń nie zawiera kreatora tworzenia wydarzenia. Walidacja obowiązuje przy korzystaniu z tego kreatora CRM także na telefonie. Bez zmian uprawnień lub reguł bazy.
 - macOS: nie dotyczy — zmiana dotyczy kreatora CRM, nie natywnych formularzy edycji istniejącego wydarzenia.
 - Zmiana lokalna, bez migracji i deployu. Zgodnie z `.build-policy.md` nie uruchamiano builda, typechecka, linta ani testów.
+
+
+### Kroki realizacji wydarzenia (2026-11-04, mobile 1.3.10)
+CRM i mobile korzystają z tych samych RPC i tej samej wspólnej kopii `eventSteps.ts`: kroki z właścicielem (rola + osoba) i terminem, „Czekamy na”, „Moje kroki”, przyciski zgodne z regułami bazy (rozdział sprzedawca / magazyn, pominięcie tylko administrator lub `events_manage` z powodem), ikona pomocy z zakresem obowiązków i tym, jak zamknąć swój zakres dla każdej roli. „Gotowe” w magazynie wymaga zamknięcia kroków przygotowania — także z panelu magazynu w obu aplikacjach (blokada w `advance_warehouse_event`). Powiadomienia kroków prowadzą do wydarzenia (`/crm/events/<id>?tab=overview` → Szczegóły). Konfiguracja usług („Przygotowanie i zamówienia”) i sprzętu („Sprawdzić stan przed wydaniem”) jest w CRM; aplikacja pokazuje flagę sprzętu tylko do odczytu. Migracja `20261104200000_event_realization_steps.sql` do uruchomienia w SQL Editor; do tego czasu panele kroków są ukryte, a zapis sprzętu działa jak dotąd. Kod zapisany; zgodnie z .build-policy.md bez builda, typechecka i lintowania. Publikacja aplikacji po stronie użytkownika.

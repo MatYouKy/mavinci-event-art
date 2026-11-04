@@ -36,6 +36,8 @@ const FIELD_LABELS: Record<string, string> = {
   power_consumption: 'Pobór mocy',
   storage_location_id: 'Lokalizacja',
   thumbnail: 'Miniatura',
+  requires_pre_check: 'Sprawdzenie stanu przed wydaniem',
+  pre_check_instructions: 'Instrukcja sprawdzenia',
 };
 
 const CHANGE_TYPE_CONFIG = {

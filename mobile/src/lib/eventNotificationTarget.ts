@@ -5,6 +5,8 @@ export function getEventNotificationTab(target: {
 }): EventNotificationTab | undefined {
   const tab = target.initial_tab || target.metadata?.initial_tab;
   if (tabs.includes(tab)) return tab as EventNotificationTab;
+  // CRM „Przegląd” (powiadomienia kroków realizacji: ?tab=overview) = zakładka Szczegóły z panelem „Kroki realizacji”.
+  if (tab === 'overview') return 'details';
   if (target.metadata?.kind === 'vehicle_pickup') return 'fleet';
   if (typeof target.metadata?.warehouse_key === 'string') return 'warehouse';
   return undefined;

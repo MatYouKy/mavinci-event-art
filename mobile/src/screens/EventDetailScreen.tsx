@@ -7,6 +7,7 @@ import RealizationWorkspace from '../components/Events/RealizationWorkspace';
 import EventCardButton from '../components/Events/EventCardButton';
 import { respondToAssignment } from '../services/assignmentResponse';
 import WarehouseHandoffPanel from '../components/Events/WarehouseHandoffPanel';
+import EventStepsPanel from '../components/Events/EventStepsPanel';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useForegroundEffect } from '../hooks/useForegroundEffect';
 import { createRefreshQueue } from '../lib/refreshQueue';
@@ -104,6 +105,7 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
   const [showAcceptedFeedback, setShowAcceptedFeedback] = useState(false);
   const [canViewPrivateFiles, setCanViewPrivateFiles] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [stepsRefreshKey, setStepsRefreshKey] = useState(0);
   const isWeddingEvent =
     Boolean(weddingCard) ||
     event?.category_name?.trim().toLocaleLowerCase('pl-PL').startsWith('wesel') === true;
@@ -1050,7 +1052,10 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
-            onRefresh={() => loadAll(true)}
+            onRefresh={() => {
+              setStepsRefreshKey((key) => key + 1);
+              void loadAll(true);
+            }}
             tintColor={colors.primary.gold}
           />
         }
@@ -1058,7 +1063,9 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
         {activeTab === 'details' && isEventOrganizer(event.created_by, employee?.id, session?.user?.id) && <TouchableOpacity onPress={() => openInCrmWeb('/crm/events/actions')} style={{ margin: 16, padding: 12, borderRadius: 10, backgroundColor: colors.background.secondary }}><Text style={{ color: colors.primary.gold }}>Moje wydarzenia — następne kroki i przypomnienia →</Text></TouchableOpacity>}
         {activeTab === 'details' && canPrintCard && <EventCardButton eventId={eventId} />}
         {activeTab === 'details' && <RealizationActions eventId={eventId} onChanged={() => void loadAll(true)} />}
+        {activeTab === 'details' && <EventStepsPanel eventId={eventId} refreshKey={stepsRefreshKey} onChanged={() => void refreshEventState()} />}
         {activeTab === 'warehouse' && showWarehouseTab && <WarehouseHandoffPanel key={eventId} eventId={eventId} status={event.status} onAccepted={() => { void loadAll(true); }} />}
+        {activeTab === 'warehouse' && showWarehouseTab && <EventStepsPanel eventId={eventId} refreshKey={stepsRefreshKey} onChanged={() => void refreshEventState()} />}
         {activeTab === 'details' && <DetailsTab event={event} employee={employee as Employee} />}
         {activeTab === 'agenda' && !isWeddingEvent && <AgendaTab agenda={agenda} />}
         {activeTab === 'wedding' && isWeddingEvent && <WeddingCardTab card={weddingCard} />}

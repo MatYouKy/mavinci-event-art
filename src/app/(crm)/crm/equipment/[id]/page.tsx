@@ -242,6 +242,7 @@ export default function EquipmentDetailPage() {
         power_notes: editForm.power_specs?.power_notes || null,
       });
 
+      const hasPreCheckColumns = Boolean(equipment && 'requires_pre_check' in equipment);
       const payload = removeUndefined({
         name: editForm.name,
         warehouse_category_id: normalizeUuid(editForm.warehouse_category_id),
@@ -265,6 +266,16 @@ export default function EquipmentDetailPage() {
         barcode: editForm.barcode || null,
         notes: editForm.notes || null,
         power_specs: powerSpecs,
+        // Kolumny z migracji kroków realizacji — wysyłane tylko, gdy baza je zwraca (bez nich zapis by się nie udał).
+        ...(hasPreCheckColumns
+          ? {
+              requires_pre_check: Boolean(editForm.requires_pre_check),
+              pre_check_instructions:
+                typeof editForm.pre_check_instructions === 'string' && editForm.pre_check_instructions.trim()
+                  ? editForm.pre_check_instructions.trim()
+                  : null,
+            }
+          : {}),
       });
 
       await updateEquipmentMutation({ id: equipmentId, payload }).unwrap();
@@ -294,6 +305,23 @@ export default function EquipmentDetailPage() {
         },
         { name: 'serial_number', old: equipment?.serial_number, new: editForm.serial_number },
         { name: 'power_specs', old: equipment?.power_specs, new: powerSpecs },
+        ...(hasPreCheckColumns
+          ? [
+              {
+                name: 'requires_pre_check',
+                old: equipment?.requires_pre_check ? 'Tak' : 'Nie',
+                new: editForm.requires_pre_check ? 'Tak' : 'Nie',
+              },
+              {
+                name: 'pre_check_instructions',
+                old: equipment?.pre_check_instructions ?? null,
+                new:
+                  typeof editForm.pre_check_instructions === 'string' && editForm.pre_check_instructions.trim()
+                    ? editForm.pre_check_instructions.trim()
+                    : null,
+              },
+            ]
+          : []),
       ];
       for (const f of fieldsToLog) await logChange(f.name, f.old, f.new);
 

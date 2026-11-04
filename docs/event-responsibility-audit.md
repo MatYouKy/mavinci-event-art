@@ -2,6 +2,10 @@
 
 Stan na bazie produkcyjnej i kodzie po commicie „Karta imprezy”. Nazwy tabel i funkcji — jak w bazie.
 
+## Stan wdrożenia (2026-11-04)
+
+Etap 1 wdrożony jako **kroki realizacji** (`docs/event-steps.md`, migracja `20261104200000_event_realization_steps.sql`): zamówienia z wyprzedzeniem i sprawdzenia stanu z konfiguracji usług i sprzętu, dwustronne przekazanie sprzedaż → magazyn, właściciel i termin każdego kroku, „Czekamy na”, „Moje kroki”, przypomnienia i eskalacja, pomoc dla każdej roli (CRM i aplikacja). Zamknięte luki: 1 (zamówienia z wyprzedzeniem), 3 (część: „Gotowe” wymaga zamknięcia kroków przygotowania i kierownika), 4 (część: potwierdzenie wydania przez RPC z rolą magazynu), 5 (termin i eskalacja przyjęcia przez magazyn), 7 (role w krokach zamiast tylko autora; stary proces zamknięty dla rozliczonych wydarzeń). Do zrobienia: etap 2 (ręczne statusy, odblokowanie załadunku przez RPC, faktury opłacane tylko w finansach, `validate_event_status_change`) i etap 3 (zwrot po pozycjach, pasażerowie aut).
+
 ## Przepływ dziś
 
 | # | Krok | Gdzie jest stan | Kto może zmienić | Potwierdzenie / blokada |

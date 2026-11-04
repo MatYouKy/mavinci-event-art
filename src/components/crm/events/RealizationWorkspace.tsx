@@ -7,6 +7,7 @@ import EventNavigation from './EventNavigation';
 import { supabase } from '@/lib/supabase/browser';
 import { TechnicalDetailsView } from '@/components/crm/locations/LocationTechnicalDetails';
 import { RealizationPanel } from './RealizationPanel';
+import EventStepsPanel from './steps/EventStepsPanel';
 const date = (v: any) => (v ? new Date(v).toLocaleString('pl-PL') : 'Termin nieustalony');
 const safeUrl = (s: string) => {
   try {
@@ -94,6 +95,7 @@ export default function RealizationWorkspace({ initialData: d }: { initialData: 
       <div className={tab === 'overview' ? 'lg:col-span-2' : ''}>
       {tab === 'overview' && (
         <>
+          <EventStepsPanel eventId={d.id} onNavigate={setTab} className="mb-4" />
           {card(
             'scope',
             'Zakres realizacji',

@@ -4,6 +4,7 @@
 import EventNavigation from '@/components/crm/events/EventNavigation';
 import { getOfferPricingTotals, roundMoney } from '@/lib/CRM/Offers/offerTotals';
 import { RealizationPanel } from '@/components/crm/events/RealizationPanel';
+import EventStepsPanel from '@/components/crm/events/steps/EventStepsPanel';
 import {
   useState,
   useEffect,
@@ -1081,6 +1082,7 @@ export default function EventDetailPageClient({
                 </div>
               </div>
             )}
+            <EventStepsPanel eventId={eventId} onNavigate={tab => navigateToTab(tab as EventDetailTab)} />
             <RealizationPanel eventId={eventId} />
 
             {canEventManage && (

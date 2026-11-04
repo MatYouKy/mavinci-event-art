@@ -209,6 +209,63 @@ export function DetailsTab({
           </div>
         </div>
 
+        {'requires_pre_check' in equipment && (<div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
+          <h3 className="text-lg font-medium text-[#e5e4e2]">Sprawdzenie przed wydaniem</h3>
+          {isEditing ? (
+            <div className="mt-4 space-y-4">
+              <div>
+                <label className="flex items-start gap-2 text-sm text-[#e5e4e2]">
+                  <input
+                    type="checkbox"
+                    name="requires_pre_check"
+                    checked={Boolean(editForm.requires_pre_check)}
+                    aria-describedby="equipment-pre-check-hint"
+                    onChange={(event) =>
+                      onInputChange({ target: { name: 'requires_pre_check', value: event.target.checked } } as any)
+                    }
+                    className="mt-0.5 accent-[#d3bb73]"
+                  />
+                  Sprawdzić stan przed każdym wydaniem
+                </label>
+                <p id="equipment-pre-check-hint" className="mt-1 pl-6 text-xs text-[#e5e4e2]/50">
+                  Każde wydarzenie z tym sprzętem dostanie krok dla magazynu.
+                </p>
+              </div>
+              {editForm.requires_pre_check && (
+                <div>
+                  <label htmlFor="equipment-pre-check-instructions" className="block text-sm text-[#e5e4e2]/60 mb-2">
+                    Instrukcja sprawdzenia
+                  </label>
+                  <textarea
+                    id="equipment-pre-check-instructions"
+                    name="pre_check_instructions"
+                    value={editForm.pre_check_instructions || ''}
+                    onChange={onInputChange}
+                    rows={3}
+                    maxLength={2000}
+                    placeholder="Np. Uruchom na 5 minut, sprawdź szczelność zbiornika, poziom płynu i przewód zasilający."
+                    className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                  />
+                </div>
+              )}
+            </div>
+          ) : equipment.requires_pre_check ? (
+            <div className="mt-3 space-y-2 text-sm">
+              <p className="text-[#e5e4e2]">Tak — sprawdzić stan przed każdym wydaniem.</p>
+              <p className="text-xs text-[#e5e4e2]/50">Każde wydarzenie z tym sprzętem dostanie krok dla magazynu.</p>
+              {equipment.pre_check_instructions ? (
+                <pre className="whitespace-pre-wrap rounded-lg bg-black/15 px-3 py-2 font-sans text-[#e5e4e2]/80">
+                  {equipment.pre_check_instructions}
+                </pre>
+              ) : (
+                <p className="text-xs text-[#e5e4e2]/50">Brak instrukcji sprawdzenia.</p>
+              )}
+            </div>
+          ) : (
+            <p className="mt-3 text-sm text-[#e5e4e2]/60">Nie wymaga sprawdzenia przed wydaniem.</p>
+          )}
+        </div>)}
+
         <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
           <EquipmentSkillRequirementsPanel equipmentId={equipment.id} canEdit={canEdit} />
         </div>
