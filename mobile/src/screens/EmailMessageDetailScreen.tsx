@@ -11,7 +11,7 @@ import {
   Platform,
   Alert,
 } from 'react-native';
-import ReactNativeBlobUtil from 'react-native-blob-util';
+import { getBlobUtil } from '../lib/nativeBlobUtil';
 import { decode } from 'base64-arraybuffer';
 import { attachmentPreview, matchesPreviewBytes } from '../lib/attachmentPreview';
 import { readMessageSalesContext, hasMessageInquiry, canClaimMessageInquiry, messageInquirySaveFeedback, salesAiLabel, type MessageSalesContext } from '../lib/messageSalesContext';
@@ -89,7 +89,8 @@ export default function EmailMessageDetailScreen() {
   const previewFiles = useRef(new Set<string>());
   useEffect(() => () => {
     attachmentGeneration.current++;
-    for (const path of previewFiles.current) void ReactNativeBlobUtil.fs.unlink(path).catch(() => undefined);
+    const blobUtil = getBlobUtil();
+    if (blobUtil) for (const path of previewFiles.current) void blobUtil.fs.unlink(path).catch(() => undefined);
     previewFiles.current.clear();
   }, [route.params.messageId]);
   const changeTrash = () => {
@@ -196,9 +197,11 @@ export default function EmailMessageDetailScreen() {
     const generation = attachmentGeneration.current;
     let path: string | null = null;
     let headerPath: string | null = null;
+    // W Expo Go nie ma modułu natywnego — wtedy otwieramy podpisany link jak przy pobieraniu.
+    const ReactNativeBlobUtil = getBlobUtil();
     try {
       const format = attachmentPreview(attachment.filename, attachment.content_type);
-      if (downloadOnly || !format || Platform.OS === 'web') {
+      if (downloadOnly || !format || Platform.OS === 'web' || !ReactNativeBlobUtil) {
         await downloadAttachment(attachment); return;
       }
       const { data, error } = await supabase.storage.from('email-attachments').createSignedUrl(attachment.storage_path, 300);
@@ -218,8 +221,8 @@ export default function EmailMessageDetailScreen() {
     } catch (error) {
       if (generation === attachmentGeneration.current) Alert.alert('Podgląd załącznika', error instanceof Error ? error.message : 'Nie udało się otworzyć podglądu. Użyj przycisku pobierania.');
     } finally {
-      if (headerPath) { void ReactNativeBlobUtil.fs.unlink(headerPath).catch(() => undefined); previewFiles.current.delete(headerPath); }
-      if (path && generation !== attachmentGeneration.current) void ReactNativeBlobUtil.fs.unlink(path).catch(() => undefined);
+      if (headerPath && ReactNativeBlobUtil) { void ReactNativeBlobUtil.fs.unlink(headerPath).catch(() => undefined); previewFiles.current.delete(headerPath); }
+      if (path && ReactNativeBlobUtil && generation !== attachmentGeneration.current) void ReactNativeBlobUtil.fs.unlink(path).catch(() => undefined);
       attachmentBusy.current = false;
       if (generation === attachmentGeneration.current) setOpeningAttachment(null);
     }
