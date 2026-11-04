@@ -4,8 +4,6 @@ import { useState, useEffect } from 'react';
 import { X, Send, Mail, Loader, Paperclip } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
-import { buildInvoicePdfHtml } from './invoices/helpers/buildInvoicePdfHtml';
-import { getInvoiceKsefRecipient } from '@/lib/invoices/ksefRecipient';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import {
   dispatchCrmEmail,
@@ -29,52 +27,6 @@ interface SendInvoiceEmailModalProps {
   pdfStoragePath?: string | null;
   onClose: () => void;
   onSent?: () => void;
-}
-
-interface InvoiceData {
-  id: string;
-  invoice_number: string;
-  invoice_type: string;
-  is_proforma: boolean;
-  issue_date: string;
-  sale_date: string;
-  issue_place: string;
-  payment_method: string;
-  payment_due_date: string;
-  bank_account: string;
-  bank_name: string;
-  seller_name: string;
-  seller_nip: string;
-  seller_street: string;
-  seller_city: string;
-  seller_postal_code: string;
-  buyer_name: string;
-  buyer_nip: string;
-  buyer_street: string;
-  buyer_city: string;
-  buyer_postal_code: string;
-  ksef_recipient_snapshot?: unknown;
-  total_net: number;
-  total_vat: number;
-  total_gross: number;
-  company_logo_url: string | null;
-  status: string;
-  footer_note: string;
-  signature_name: string;
-  website: string;
-}
-
-interface InvoiceItem {
-  id: string;
-  position_number: number;
-  name: string;
-  unit: string;
-  quantity: number;
-  price_net: number;
-  vat_rate: number;
-  value_net: number;
-  vat_amount: number;
-  value_gross: number;
 }
 
 interface RecipientOption {
@@ -385,67 +337,7 @@ W razie pytań proszę o kontakt.`),
   }, [formData, selectedRecipientName, clientName, invoiceCompanyId]);
 
   const generateInvoicePDF = async (): Promise<{ base64: string; filename: string }> => {
-    const [invoiceRes, itemsRes] = await Promise.all([
-      supabase.from('invoices').select('*').eq('id', invoiceId).single(),
-      supabase
-        .from('invoice_items')
-        .select('*')
-        .eq('invoice_id', invoiceId)
-        .order('position_number'),
-    ]);
-
-    if (invoiceRes.error || !invoiceRes.data) {
-      throw new Error('Nie znaleziono faktury');
-    }
-
-    const invoice = invoiceRes.data as InvoiceData;
-    const items = (itemsRes.data || []) as InvoiceItem[];
-
-    const html = buildInvoicePdfHtml({
-      buyerIsPrivatePerson: invoice.buyer_nip ? false : true,
-      isProforma: invoice.is_proforma,
-      footerNote: invoice.footer_note,
-      signatureName: invoice.signature_name,
-      website: invoice.website,
-      invoiceNumber: invoice.invoice_number,
-      invoiceType: invoice.invoice_type,
-      issueDate: invoice.issue_date,
-      saleDate: invoice.sale_date,
-      issuePlace: invoice.issue_place,
-      paymentMethod: invoice.payment_method,
-      paymentDueDate: invoice.payment_due_date,
-      bankAccount: invoice.bank_account,
-      bankName: invoice.bank_name,
-      sellerName: invoice.seller_name,
-      sellerNip: invoice.seller_nip,
-      sellerStreet: invoice.seller_street,
-      sellerCity: invoice.seller_city,
-      sellerPostalCode: invoice.seller_postal_code,
-      buyerName: invoice.buyer_name,
-      buyerNip: invoice.buyer_nip,
-      buyerStreet: invoice.buyer_street,
-      buyerCity: invoice.buyer_city,
-      buyerPostalCode: invoice.buyer_postal_code,
-      recipient: getInvoiceKsefRecipient(invoice),
-      totalNet: invoice.total_net,
-      totalVat: invoice.total_vat,
-      totalGross: invoice.total_gross,
-      companyLogoUrl: invoice.company_logo_url
-        ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/company-logos/${invoice.company_logo_url}`
-        : null,
-      items: items.map((item) => ({
-        positionNumber: item.position_number,
-        name: item.name,
-        unit: item.unit,
-        quantity: item.quantity,
-        priceNet: item.price_net,
-        vatRate: item.vat_rate,
-        valueNet: item.value_net,
-        vatAmount: item.vat_amount,
-        valueGross: item.value_gross,
-      })),
-    });
-
+    // PDF powstaje na serwerze Next z danych zapisanych na fakturze (ten sam wydruk co podgląd).
     const response = await fetch('/bridge/invoices/invoice-pdf', {
       method: 'POST',
       headers: {
@@ -453,7 +345,6 @@ W razie pytań proszę o kontakt.`),
       },
       body: JSON.stringify({
         invoiceId,
-        html,
         fileName: `Faktura_${invoiceNumber}.pdf`,
       }),
     });

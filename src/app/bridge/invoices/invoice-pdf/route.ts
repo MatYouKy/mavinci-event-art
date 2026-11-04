@@ -1,14 +1,13 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { createClient } from '@supabase/supabase-js';
-import { chromium } from 'playwright';
 import { createSupabaseServerClient } from '@/lib/supabase/server.app';
-import { buildInvoicePdfHtml } from '@/components/crm/invoices/helpers/buildInvoicePdfHtml';
-import { generateKsefInvoiceQrDataUrl } from '@/lib/ksef/qr';
-import { resolveInvoiceIssuerName } from '@/lib/invoices/resolveInvoiceIssuerName';
-import { resolveInvoicePrintLogo } from '@/lib/invoices/resolveInvoicePrintLogo';
-import { getInvoiceKsefRecipient } from '@/lib/invoices/ksefRecipient';
-import { getInvoicePartyDataCorrection } from '@/lib/invoices/partyDataCorrection';
+import {
+  buildInvoicePrintDocument,
+  INVOICE_PRINT_SELECT,
+  InvoicePrintError,
+  renderInvoicePdf,
+} from '@/lib/invoices/print/renderInvoicePdf.server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -25,14 +24,6 @@ const getSupabaseAdmin = () => {
     auth: { persistSession: false },
   });
 };
-
-const escapeHtml = (value: unknown) =>
-  String(value ?? '')
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#039;');
 
 async function getOrCreateInvoiceFolderId({
   supabase,
@@ -67,124 +58,6 @@ async function getOrCreateInvoiceFolderId({
   }
 
   throw rpc.error || new Error('Nie udalo sie uzyskac folderu Faktury');
-}
-
-async function inlineExternalImages(rawHtml: string): Promise<string> {
-  const imgRegex = /<img\s+([^>]*?)src="(https?:\/\/[^"]+)"([^>]*?)>/gi;
-  let result = rawHtml;
-  const matches = Array.from(rawHtml.matchAll(imgRegex));
-
-  for (const match of matches) {
-    const fullTag = match[0];
-    const url = match[2];
-    try {
-      const allowedOrigin = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL!).origin;
-      if (new URL(url).origin !== allowedOrigin) {
-        result = result.replace(fullTag, '');
-        continue;
-      }
-      const resp = await fetch(url, { signal: AbortSignal.timeout(8000) });
-      if (!resp.ok) continue;
-      const buf = Buffer.from(await resp.arrayBuffer());
-      const contentType = resp.headers.get('content-type') || 'image/png';
-      const dataUri = `data:${contentType};base64,${buf.toString('base64')}`;
-      result = result.replace(fullTag, fullTag.replace(url, dataUri));
-    } catch {
-      // skip
-    }
-  }
-  return result;
-}
-
-const numberOrZero = (value: unknown) => Number(value ?? 0);
-
-function buildCanonicalPdfHtml(invoice: any, companyLogoUrl: string): string {
-  const items = Array.isArray(invoice.invoice_items) ? invoice.invoice_items : [];
-  const orderItems = Array.isArray(invoice.invoice_order_items) ? invoice.invoice_order_items : [];
-  const settledInvoices = Array.isArray(invoice.settled_invoices)
-    ? invoice.settled_invoices.map((settled: any) => ({
-        id: settled.id,
-        invoiceNumber: settled.invoiceNumber ?? settled.invoice_number ?? '',
-        invoiceType: settled.invoiceType ?? settled.invoice_type ?? 'advance',
-        issueDate: settled.issueDate ?? settled.issue_date ?? null,
-        totalNet: numberOrZero(settled.totalNet ?? settled.total_net),
-        totalVat: numberOrZero(settled.totalVat ?? settled.total_vat),
-        totalGross: numberOrZero(settled.totalGross ?? settled.total_gross),
-      }))
-    : [];
-
-  return buildInvoicePdfHtml({
-    paymentStatus: invoice.payment_status ?? (invoice.status === 'paid' ? 'paid' : 'unpaid'),
-    paidAmount: numberOrZero(invoice.paid_amount),
-    paidAt: invoice.paid_at ?? invoice.paid_date ?? null,
-    buyerIsPrivatePerson: Boolean(invoice.buyer_is_private_person),
-    footerNote: invoice.footer_note ?? '',
-    signatureName: invoice.signature_name ?? '',
-    showPreviewWatermark: true,
-    website: invoice.website ?? null,
-    invoiceNumber: invoice.invoice_number,
-    invoiceType: invoice.invoice_type === 'proforma' || invoice.is_proforma ? 'proforma' : invoice.invoice_type,
-    issueDate: invoice.issue_date,
-    saleDate: invoice.sale_date,
-    issuePlace: invoice.issue_place ?? '',
-    paymentMethod: invoice.payment_method ?? 'Przelew',
-    paymentDueDate: invoice.payment_due_date,
-    bankAccount: invoice.bank_account ?? '',
-    bankName: invoice.bank_name ?? '',
-    sellerName: invoice.seller_name ?? '',
-    sellerNip: invoice.seller_nip ?? '',
-    sellerStreet: invoice.seller_street ?? '',
-    sellerCity: invoice.seller_city ?? '',
-    sellerPostalCode: invoice.seller_postal_code ?? '',
-    buyerName: invoice.buyer_name ?? '',
-    buyerNip: invoice.buyer_nip ?? '',
-    buyerStreet: invoice.buyer_street ?? '',
-    buyerCity: invoice.buyer_city ?? '',
-    buyerPostalCode: invoice.buyer_postal_code ?? '',
-    buyerCountryCode: ['POLSKA', 'POLAND', ''].includes(String(invoice.buyer_country ?? '').toUpperCase()) ? 'PL' : String(invoice.buyer_country).toUpperCase(),
-    recipient: getInvoiceKsefRecipient(invoice),
-    totalNet: numberOrZero(invoice.total_net),
-    totalVat: numberOrZero(invoice.total_vat),
-    totalGross: numberOrZero(invoice.total_gross),
-    currencyCode: invoice.currency_code ?? 'PLN',
-    companyLogoUrl,
-    isProforma: invoice.invoice_type === 'proforma' || Boolean(invoice.is_proforma),
-    correctionReason: invoice.correction_reason ?? undefined,
-    correctionKind: invoice.correction_kind,
-    correctionPartyDataBefore: getInvoicePartyDataCorrection(invoice),
-    correctedInvoiceNumber: invoice.corrected_invoice_number ?? undefined,
-    correctedInvoiceIssueDate: invoice.corrected_invoice_issue_date ?? undefined,
-    correctedInvoiceKsefNumber: invoice.corrected_invoice_ksef_number ?? undefined,
-    items: items.map((item: any, index: number) => ({
-      positionNumber: Number(item.position_number ?? index + 1),
-      name: item.name ?? '',
-      unit: item.unit ?? 'szt.',
-      quantity: numberOrZero(item.quantity),
-      priceNet: numberOrZero(item.price_net),
-      vatRate: numberOrZero(item.vat_rate),
-      vatCode: item.vat_code,
-      vatExemptionReason: item.vat_exemption_reason ?? null,
-      valueNet: numberOrZero(item.value_net),
-      vatAmount: numberOrZero(item.vat_amount),
-      valueGross: numberOrZero(item.value_gross),
-    })),
-    invoice_items: items,
-    orderItems: orderItems.map((item: any, index: number) => ({
-      positionNumber: Number(item.position_number ?? index + 1),
-      name: item.name ?? '',
-      unit: item.unit ?? 'szt.',
-      quantity: numberOrZero(item.quantity),
-      priceNet: numberOrZero(item.price_net),
-      vatRate: numberOrZero(item.vat_rate),
-      vatCode: item.vat_code,
-      vatExemptionReason: item.vat_exemption_reason ?? null,
-      valueNet: numberOrZero(item.value_net),
-      vatAmount: numberOrZero(item.vat_amount),
-      valueGross: numberOrZero(item.value_gross),
-    })),
-    settledInvoices,
-    settlementSummary: invoice.settlement_summary ?? undefined,
-  });
 }
 
 export async function POST(req: Request) {
@@ -231,95 +104,18 @@ export async function POST(req: Request) {
     const supabase = getSupabaseAdmin();
     const { data: invoice, error: invoiceError } = await supabase
       .from('invoices')
-      .select('*,invoice_items(*),invoice_order_items(*)')
+      .select(INVOICE_PRINT_SELECT)
       .eq('id', invoiceId)
       .maybeSingle();
     if (invoiceError || !invoice) {
       return NextResponse.json({ error: 'Nie znaleziono faktury.' }, { status: 404 });
     }
 
-    const issuerName = await resolveInvoiceIssuerName(supabase, invoice);
-    if (!issuerName) {
-      return NextResponse.json(
-        {
-          error: 'Nie można ustalić imienia i nazwiska osoby wystawiającej fakturę. Uzupełnij dane wystawiającego w fakturze lub imię i nazwisko jej autora w CRM, a następnie wygeneruj PDF ponownie.',
-        },
-        { status: 422 },
-      );
-    }
+    // Ten sam wydruk co podgląd (`/bridge/invoices/invoice-pdf/preview`): wspólny szablon i renderer.
+    const printDocument = await buildInvoicePrintDocument(supabase, invoice);
+    const { pdf: pdfBuffer } = await renderInvoicePdf(printDocument);
 
-    const companyLogoUrl = await resolveInvoicePrintLogo(supabase, invoice.my_company_id);
-    let htmlWithKsef = buildCanonicalPdfHtml({ ...invoice, signature_name: issuerName }, companyLogoUrl);
-    const qrPlaceholder = '<div id="ksef-verification-placeholder"></div>';
-    if (invoice.ksef_reference_number && invoice.ksef_status === 'accepted') {
-      const [{ data: ksefInvoice }, { data: credentials }] = await Promise.all([
-        supabase
-          .from('ksef_invoices')
-          .select('xml_content,ksef_reference_number,sync_status')
-          .eq('invoice_id', invoice.id)
-          .eq('ksef_reference_number', invoice.ksef_reference_number)
-          .eq('sync_status', 'synced')
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle(),
-        supabase
-          .from('ksef_credentials')
-          .select('is_test_environment')
-          .eq('my_company_id', invoice.my_company_id)
-          .eq('is_active', true)
-          .order('updated_at', { ascending: false })
-          .limit(1)
-          .maybeSingle(),
-      ]);
-
-      if (ksefInvoice?.xml_content) {
-        const qr = await generateKsefInvoiceQrDataUrl({
-          sellerNip: invoice.seller_nip,
-          issueDate: invoice.issue_date,
-          xmlContent: ksefInvoice.xml_content,
-          environment: credentials?.is_test_environment ? 'test' : 'production',
-        });
-        htmlWithKsef = htmlWithKsef.replace(
-          qrPlaceholder,
-          `<div class="ksef-verification"><a href="${escapeHtml(qr.verificationUrl)}"><img src="${qr.dataUrl}" alt="Kod weryfikacyjny KSeF" /></a><div class="ksef-label">${escapeHtml(ksefInvoice.ksef_reference_number)}</div></div>`,
-        );
-      }
-    }
-    htmlWithKsef = htmlWithKsef.replace(qrPlaceholder, '');
-
-    const html = await inlineExternalImages(htmlWithKsef);
-
-    const browser = await chromium.launch({
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--font-render-hinting=medium'],
-    });
-
-    try {
-      const context = await browser.newContext({ javaScriptEnabled: false });
-      const page = await context.newPage();
-      await page.route('**/*', (route) => route.abort());
-      await page.setContent(html, { waitUntil: 'load' });
-
-      const pdfBuffer = await page.pdf({
-        format: 'A4',
-        preferCSSPageSize: true,
-        printBackground: true,
-        displayHeaderFooter: true,
-        headerTemplate: '<span></span>',
-        footerTemplate: `
-          <div style="width:100%;padding:0 10mm;color:#777;font-size:8px;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;box-sizing:border-box;">
-            <span></span>
-            <span><span class="pageNumber"></span> / <span class="totalPages"></span></span>
-            <span style="text-align:right;white-space:nowrap;">${escapeHtml(invoice.website ?? '')}</span>
-          </div>
-        `,
-        margin: {
-          top: '10mm',
-          right: '10mm',
-          bottom: '17mm',
-          left: '10mm',
-        },
-      });
-
+    {
       const base64 = Buffer.from(pdfBuffer).toString('base64');
       const finalFileName = fileName || 'faktura.pdf';
 
@@ -472,11 +268,12 @@ export async function POST(req: Request) {
         contentType: 'application/pdf',
         storagePath,
       });
-    } finally {
-      await browser.close();
     }
   } catch (e: any) {
+    if (e instanceof InvoicePrintError) {
+      return NextResponse.json({ error: e.message }, { status: e.status });
+    }
     console.error('Invoice PDF generate API error:', e);
-    return NextResponse.json({ error: e?.message || 'Blad generowania PDF' }, { status: 500 });
+    return NextResponse.json({ error: e?.message || 'Błąd generowania PDF' }, { status: 500 });
   }
 }

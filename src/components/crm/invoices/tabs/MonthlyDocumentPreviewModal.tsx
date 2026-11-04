@@ -4,17 +4,14 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { Download, ExternalLink, FileText, Loader2, Printer, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import InvoiceDetailsModal from '@/components/crm/InvoiceDetailsModal';
-import { buildInvoicePdfHtml, type InvoicePdfData } from '@/components/crm/invoices/helpers/buildInvoicePdfHtml';
 import type { Document } from './SaldeoDeliveryPanel';
-import { getInvoiceKsefRecipient } from '@/lib/invoices/ksefRecipient';
-import { getInvoicePartyDataCorrection } from '@/lib/invoices/partyDataCorrection';
+import { invoicePdfFileName } from '@/lib/invoices/print/invoicePrintData';
 
 type Props = { item: Document; onClose: () => void };
 type Row = Record<string, any>;
 type StoredFile = { bucket: string; path: string; filename: string };
 type LoadedPreview =
-  | { kind: 'file'; blob: Blob; mime: string; filename: string }
-  | { kind: 'crm'; html: string; notice: string }
+  | { kind: 'file'; blob: Blob; mime: string; filename: string; notice?: string }
   | { kind: 'ksef'; invoice: Row; notice: string };
 type Preview = LoadedPreview & { url?: string };
 
@@ -57,69 +54,6 @@ function hasCompleteKsefXml(row: Row): boolean {
     && has('Podmiot1') && has('Podmiot2') && has('Fa') && has('P_2') && has('P_15');
 }
 
-function finiteNumber(value: unknown, label: string): number {
-  if (value == null || value === '' || !Number.isFinite(Number(value))) throw new Error(`Brak pełnych danych dokumentu: ${label}. Nie można przygotować wiarygodnej wizualizacji.`);
-  return Number(value);
-}
-
-function crmHtml(invoice: Row): string {
-  const items = Array.isArray(invoice.invoice_items) ? invoice.invoice_items : [];
-  const partyDataBefore = getInvoicePartyDataCorrection(invoice);
-  if ((!items.length && !partyDataBefore) || !invoice.invoice_number || !invoice.seller_name || !invoice.buyer_name || !invoice.issue_date) {
-    throw new Error('Brak pełnych danych lub pozycji faktury CRM. Podgląd nie jest tworzony z samej kwoty i numeru.');
-  }
-  if ((invoice.invoice_type === 'final' || String(invoice.invoice_number).startsWith('FKO/')) && !invoice.settlement_summary) {
-    throw new Error('Brak zapisanego PDF i kompletnego podsumowania rozliczenia faktury końcowej. Otwórz fakturę w sekcji lokalnych faktur, aby przygotować jej właściwy PDF.');
-  }
-  const mapItem = (item: Row, index: number): InvoicePdfData['items'][number] => ({
-    positionNumber: Number(item.position_number ?? index + 1),
-    name: String(item.name || ''), unit: String(item.unit || ''),
-    quantity: finiteNumber(item.quantity, 'ilość pozycji'),
-    priceNet: finiteNumber(item.price_net, 'cena netto pozycji'),
-    vatRate: finiteNumber(item.vat_rate, 'stawka VAT pozycji'),
-    vatCode: item.vat_code, vatExemptionReason: item.vat_exemption_reason,
-    valueNet: finiteNumber(item.value_net, 'wartość netto pozycji'),
-    vatAmount: finiteNumber(item.vat_amount, 'VAT pozycji'),
-    valueGross: finiteNumber(item.value_gross, 'wartość brutto pozycji'),
-  });
-  let logo: string | null = null;
-  const configuredOrigin = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://invalid.local').origin;
-  if (invoice.company_logo_url) {
-    const candidate = /^https?:\/\//i.test(invoice.company_logo_url)
-      ? new URL(invoice.company_logo_url)
-      : new URL(`/storage/v1/object/public/company-logos/${invoice.company_logo_url}`, configuredOrigin);
-    if (candidate.origin === configuredOrigin) logo = candidate.href;
-  }
-  return buildInvoicePdfHtml({
-    showPreviewWatermark: true,
-    paymentStatus: invoice.payment_status || (invoice.status === 'paid' ? 'paid' : 'unpaid'),
-    paidAmount: invoice.paid_amount == null ? null : Number(invoice.paid_amount), paidAt: invoice.paid_at,
-    buyerIsPrivatePerson: Boolean(invoice.buyer_is_private_person),
-    footerNote: invoice.footer_note || '', signatureName: invoice.signature_name || '', website: invoice.website || null,
-    invoiceNumber: invoice.invoice_number, invoiceType: invoice.is_proforma ? 'proforma' : invoice.invoice_type,
-    issueDate: invoice.issue_date, saleDate: invoice.sale_date || '', issuePlace: invoice.issue_place || '',
-    paymentMethod: invoice.payment_method || '', paymentDueDate: invoice.payment_due_date || '',
-    bankAccount: invoice.bank_account || '', bankName: invoice.bank_name || '',
-    sellerName: invoice.seller_name, sellerNip: invoice.seller_nip || '', sellerStreet: invoice.seller_street || '',
-    sellerCity: invoice.seller_city || '', sellerPostalCode: invoice.seller_postal_code || '',
-    buyerName: invoice.buyer_name, buyerNip: invoice.buyer_nip || '', buyerStreet: invoice.buyer_street || '',
-    buyerCity: invoice.buyer_city || '', buyerPostalCode: invoice.buyer_postal_code || '',
-    buyerCountryCode: ['POLSKA', 'POLAND', ''].includes(String(invoice.buyer_country ?? '').toUpperCase()) ? 'PL' : String(invoice.buyer_country).toUpperCase(),
-    recipient: getInvoiceKsefRecipient(invoice),
-    totalNet: finiteNumber(invoice.total_net, 'suma netto'), totalVat: finiteNumber(invoice.total_vat, 'suma VAT'),
-    totalGross: finiteNumber(invoice.total_gross, 'suma brutto'), currencyCode: invoice.currency_code || 'PLN',
-    companyLogoUrl: logo, isProforma: invoice.invoice_type === 'proforma' || Boolean(invoice.is_proforma),
-    correctionReason: invoice.correction_reason || undefined, correctedInvoiceNumber: invoice.corrected_invoice_number || undefined,
-    correctionKind: invoice.correction_kind, correctionPartyDataBefore: partyDataBefore,
-    correctedInvoiceIssueDate: invoice.corrected_invoice_issue_date || undefined,
-    correctedInvoiceKsefNumber: invoice.corrected_invoice_ksef_number || undefined,
-    items: items.map(mapItem), invoice_items: items,
-    orderItems: Array.isArray(invoice.invoice_order_items) ? invoice.invoice_order_items.map(mapItem) : [],
-    settledInvoices: Array.isArray(invoice.settled_invoices) ? invoice.settled_invoices : undefined,
-    settlementSummary: invoice.settlement_summary || undefined,
-  });
-}
-
 async function loadPreview(item: Document): Promise<LoadedPreview> {
   const original = item.previewFile || (item.bucket && item.path ? { bucket: item.bucket, path: item.path, filename: item.filename } : null);
   let fileError = '';
@@ -128,13 +62,25 @@ async function loadPreview(item: Document): Promise<LoadedPreview> {
     catch (cause) { fileError = cause instanceof Error ? cause.message : 'Nie można odczytać pliku źródłowego.'; }
   }
   if (item.source === 'local_invoice') {
-    const { data, error } = await supabase.from('invoices').select('*,invoice_items(*),invoice_order_items(*)').eq('id', item.id).maybeSingle();
+    const { data, error } = await supabase.from('invoices').select('id,invoice_number,invoice_type,is_proforma,pdf_url').eq('id', item.id).maybeSingle();
     if (error || !data) throw new Error('Nie można odczytać pełnych danych faktury CRM.');
     if (data.pdf_url && data.pdf_url !== original?.path) {
       try { return await loadStoredFile({ bucket: 'event-files', path: data.pdf_url, filename: `Faktura_${data.invoice_number}.pdf` }); }
       catch (cause) { fileError = cause instanceof Error ? cause.message : 'Nie można odczytać zapisanego PDF.'; }
     }
-    return { kind: 'crm', html: crmHtml(data), notice: [fileError, 'Wizualizacja z pełnych danych CRM, przygotowana tym samym szablonem co lokalne faktury. To nie jest zapisany oryginał PDF. Podgląd niczego nie zmienia ani nie zapisuje.'].filter(Boolean).join(' ') };
+    // Wydruk z serwera Next — ten sam szablon i plik co na stronie faktury (bez zapisu).
+    const response = await fetch(`/bridge/invoices/invoice-pdf/preview?invoiceId=${encodeURIComponent(item.id)}`, { credentials: 'same-origin', cache: 'no-store' });
+    if (!response.ok) {
+      const body = await response.json().catch(() => null);
+      throw new Error([fileError, body?.error || 'Nie udało się przygotować wydruku faktury CRM.'].filter(Boolean).join(' '));
+    }
+    const blob = await response.blob();
+    if ((await fileMime(blob)) !== 'application/pdf') throw new Error('Serwer nie zwrócił pliku PDF faktury.');
+    return {
+      kind: 'file', blob: new Blob([blob], { type: 'application/pdf' }), mime: 'application/pdf',
+      filename: invoicePdfFileName(data.invoice_number, data.invoice_type === 'proforma' || Boolean(data.is_proforma)),
+      notice: [fileError, 'Aktualny wydruk faktury CRM przygotowany na serwerze tym samym szablonem co PDF faktury. To nie jest zapisany oryginał. Podgląd niczego nie zmienia ani nie zapisuje.'].filter(Boolean).join(' '),
+    };
   }
   let ksefId = item.source === 'ksef' ? item.id : '';
   let ksefReference = '';
@@ -158,7 +104,6 @@ export default function MonthlyDocumentPreviewModal({ item, onClose }: Props) {
   const titleId = useId();
   const dialog = useRef<HTMLDialogElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
-  const htmlFrame = useRef<HTMLIFrameElement>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -196,8 +141,7 @@ export default function MonthlyDocumentPreviewModal({ item, onClose }: Props) {
   }, [item.key, item.id, item.source, item.ksefReference, item.bucket, item.path, item.filename, item.previewFile?.bucket, item.previewFile?.path, item.previewFile?.filename, revision]);
 
   const printPreview = () => {
-    if (preview?.kind === 'crm') { htmlFrame.current?.contentWindow?.focus(); htmlFrame.current?.contentWindow?.print(); }
-    else if (preview?.kind === 'ksef') window.print();
+    if (preview?.kind === 'ksef') window.print();
   };
 
   return <dialog ref={dialog} aria-labelledby={titleId} onCancel={(event) => { event.preventDefault(); close(); }} onClick={(event) => { if (event.target === event.currentTarget) close(); }} className="m-auto h-[92dvh] max-h-[92dvh] w-[min(1180px,calc(100vw-24px))] max-w-none overflow-hidden rounded-2xl border-0 bg-[var(--brand-burgundy-950)] p-0 text-[#e5e4e2] shadow-2xl backdrop:bg-black/75 open:flex open:flex-col">
@@ -205,10 +149,10 @@ export default function MonthlyDocumentPreviewModal({ item, onClose }: Props) {
       <div className="min-w-0 flex-1"><h2 id={titleId} className="flex items-center gap-2 font-atom text-lg uppercase"><FileText size={18} className="shrink-0 text-[var(--brand-gold)]" />Podgląd dokumentu</h2><p className="mt-1 break-words text-sm [overflow-wrap:anywhere]">{item.number}</p></div>
       <div className="flex flex-wrap items-center gap-2">
         {preview?.kind === 'file' && preview.url && <>
-          <a className={buttonClass} href={preview.url} download={preview.filename}><Download size={16} />Pobierz oryginał</a>
+          <a className={buttonClass} href={preview.url} download={preview.filename}><Download size={16} />{preview.notice ? 'Pobierz PDF' : 'Pobierz oryginał'}</a>
           {preview.mime === 'application/pdf' && <a className={buttonClass} href={preview.url} target="_blank" rel="noopener noreferrer"><ExternalLink size={16} />Otwórz PDF</a>}
         </>}
-        {(preview?.kind === 'crm' || preview?.kind === 'ksef') && <button type="button" onClick={printPreview} className={buttonClass}><Printer size={16} />Drukuj / zapisz wizualizację jako PDF</button>}
+        {preview?.kind === 'ksef' && <button type="button" onClick={printPreview} className={buttonClass}><Printer size={16} />Drukuj / zapisz wizualizację jako PDF</button>}
         <button ref={closeButton} type="button" onClick={close} className={`${buttonClass} !p-2`} aria-label="Zamknij podgląd dokumentu"><X size={20} /></button>
       </div>
     </header>
@@ -216,10 +160,9 @@ export default function MonthlyDocumentPreviewModal({ item, onClose }: Props) {
       {loading && <p role="status" className="flex items-center gap-3 p-6 text-sm"><Loader2 size={20} className="animate-spin text-[var(--brand-gold)]" />Wczytywanie dokumentu źródłowego…</p>}
       {error && <div role="alert" className="space-y-4 p-6"><p className="max-w-3xl text-sm leading-6 text-amber-200">{error}</p><button type="button" onClick={() => setRevision((value) => value + 1)} className={buttonClass}>Spróbuj ponownie</button></div>}
       {preview?.kind === 'file' && preview.url && <div className="flex h-full min-h-[300px] flex-col">
-        <p className="shrink-0 px-4 py-2 text-xs text-[#e5e4e2]/60 print:hidden">Oryginał pliku zapisany w CRM. Podgląd nie zmienia dokumentu.</p>
+        <p className="shrink-0 px-4 py-2 text-xs text-[#e5e4e2]/60 print:hidden">{preview.notice || 'Oryginał pliku zapisany w CRM. Podgląd nie zmienia dokumentu.'}</p>
         {preview.mime === 'application/pdf' ? <iframe src={preview.url} title={`Faktura ${item.number}`} className="min-h-[300px] w-full flex-1 border-0 bg-white" /> : ['image/png', 'image/jpeg', 'image/webp'].includes(preview.mime) ? <div className="min-h-0 flex-1 overflow-auto p-3"><img src={preview.url} alt={`Dokument ${item.number}`} className="mx-auto h-auto max-w-full rounded-lg object-contain" /></div> : <p className="p-5 text-sm text-[#e5e4e2]/65">Plik nie jest rozpoznanym PDF-em ani obsługiwanym obrazem. Możesz pobrać oryginał powyżej; nie wyświetlamy nieznanego formatu jako faktury.</p>}
       </div>}
-      {preview?.kind === 'crm' && <div className="flex h-full min-h-[300px] flex-col"><p className="shrink-0 px-4 py-3 text-xs leading-5 text-[#e5e4e2]/65 print:hidden">{preview.notice}</p><iframe ref={htmlFrame} srcDoc={preview.html} sandbox="allow-same-origin allow-modals" title={`Wizualizacja faktury CRM ${item.number}`} className="min-h-[300px] w-full flex-1 border-0 bg-white" /></div>}
       {preview?.kind === 'ksef' && <><p className="px-4 py-3 text-xs leading-5 text-[#e5e4e2]/65 print:hidden">{preview.notice}</p><InvoiceDetailsModal key={item.key} invoice={preview.invoice} embedded readOnly onClose={close} /></>}
     </div>
   </dialog>;

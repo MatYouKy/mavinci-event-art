@@ -29,7 +29,6 @@ import FinalInvoiceWizardModal from '@/components/crm/FinalInvoiceWizardModal';
 import InvoiceDocumentActionsMenu, { type InvoiceDocumentAction } from '@/components/crm/invoices/InvoiceDocumentActionsMenu';
 import PermissionGuard from '@/components/crm/PermissionGuard';
 import { useDialog } from '@/contexts/DialogContext';
-import Image from 'next/image';
 import ResponsiveActionBar, { Action } from '@/components/crm/ResponsiveActionBar';
 import {
   buildInvoicePdfHtml,
@@ -39,10 +38,10 @@ import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useInvoiceFinanceAccess } from '@/hooks/useInvoiceFinanceAccess';
 import { resolveInvoiceIssuerName } from '@/lib/invoices/resolveInvoiceIssuerName';
 import { loadCanonicalBankPaymentDisplay, formatCanonicalBankPayment, type CanonicalBankPaymentDisplay } from '@/lib/invoices/canonicalBankPaymentDisplay';
-import { getPaymentAwareInvoiceFooterNote } from '@/lib/invoices/paymentAwareFooterNote';
 import { getInvoiceKsefRecipient } from '@/lib/invoices/ksefRecipient';
 import { getInvoicePartyDataCorrection } from '@/lib/invoices/partyDataCorrection';
-import InvoicePartyCorrectionComparison from '@/components/crm/invoices/InvoicePartyCorrectionComparison';
+import InvoicePrintPreview, { invoicePrintCaption } from '@/components/crm/invoices/print/InvoicePrintPreview';
+import { invoicePdfFileName } from '@/lib/invoices/print/invoicePrintData';
 import SystemBadge from '@/components/UI/SystemBadge';
 
 type KSeFSendSuccess = {
@@ -89,6 +88,7 @@ interface Invoice {
   issue_place: string;
   pdf_url: string | null;
   pdf_generated_at: string | null;
+  updated_at?: string | null;
   event_id: string | null;
   organization_id: string | null;
   billing_arrangement: 'direct' | 'hotel' | 'agency' | 'other';
@@ -861,15 +861,25 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
       return;
     }
 
+    // Bez zapisanego PDF drukujemy aktualny wydruk z serwera (ten sam co w podglądzie).
+    const printFromPreview = () => {
+      if (!invoice) return;
+      const printWindow = window.open(
+        `/bridge/invoices/invoice-pdf/preview?invoiceId=${encodeURIComponent(invoice.id)}`,
+        '_blank',
+      );
+      printWindow?.addEventListener('load', () => printWindow.print());
+    };
+
     if (!pdfPath) {
-      window.print();
+      printFromPreview();
       return;
     }
 
     try {
       const url = await getSignedUrl(pdfPath);
       if (!url) {
-        window.print();
+        printFromPreview();
         return;
       }
       const printWindow = window.open(url, '_blank');
@@ -879,7 +889,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
         });
       }
     } catch {
-      window.print();
+      printFromPreview();
     }
   };
 
@@ -1133,14 +1143,10 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
 
   const paymentStatus = invoice.payment_status || (invoice.status === 'paid' ? 'paid' : 'unpaid');
   const isPartyDataCorrection = invoice.correction_kind === 'party_data';
-  const paymentDate = invoice.paid_date || invoice.paid_at || null;
 
 
   const previewSettlementSummary =
     invoice.settlement_summary ?? finalSettlementPreview?.settlementSummary;
-
-  const previewSettledInvoices =
-    invoice.settled_invoices ?? finalSettlementPreview?.settledInvoices ?? [];
 
   const isFinalInvoicePreview =
     invoice.invoice_type === 'final' || invoice.invoice_number?.startsWith('FKO/');
@@ -1149,78 +1155,9 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
     ? Number(previewSettlementSummary?.remainingGross ?? invoice.total_gross ?? 0)
     : Number(invoice.total_gross ?? 0);
 
-  const companyLogoUrl = invoice?.my_company?.logo_url || invoice?.company_logo_url || null;
-  const money = (value: number) => {
-    const rounded = Number(value.toFixed(2));
-    return Object.is(rounded, -0) ? 0 : rounded;
-  };
-
-  const getCorrectionValues = (item: InvoiceItem) => {
-    const vatRate = Number(item.vat_rate ?? 0);
-
-    const beforeQty = Number(item.before_quantity ?? 0);
-    const beforePrice = Number(item.before_price_net ?? item.price_net ?? 0);
-    const beforeNet = money(Number(item.before_value_net ?? beforeQty * beforePrice));
-    const beforeVat = money(Number(item.before_vat_amount ?? (beforeNet * vatRate) / 100));
-    const beforeGross = money(Number(item.before_value_gross ?? beforeNet + beforeVat));
-
-    const correctionNet = money(Number(item.value_net ?? 0));
-    const correctionVat = money(Number(item.vat_amount ?? (correctionNet * vatRate) / 100));
-    const correctionGross = money(Number(item.value_gross ?? correctionNet + correctionVat));
-
-    const correctionQty =
-      correctionNet !== 0 && beforePrice !== 0
-        ? money(Math.abs(correctionNet / beforePrice))
-        : Math.abs(Number(item.before_quantity ?? 1));
-
-    const correctionPrice =
-      correctionQty !== 0 ? money(correctionNet / correctionQty) : correctionNet;
-
-    return {
-      vatRate,
-
-      beforeQty,
-      beforePrice,
-      beforeNet,
-      beforeVat,
-      beforeGross,
-
-      correctionQty,
-      correctionPrice: -correctionPrice,
-      correctionNet: -correctionNet,
-      correctionVat: -correctionVat,
-      correctionGross: -correctionGross,
-    };
-  };
-
-  const formatSignedMoney = (value?: number) => {
-    const number = Number(value || 0);
-    return `${number > 0 ? '+' : ''}${number.toFixed(2)}`;
-  };
-
-  // const formatSignedQuantity = (value?: number) => {
-  //   const number = Number(value || 0);
-  //   if (!number) return '0';
-  //   return `${number > 0 ? '+' : ''}${number}`;
-  // };
   const paidAmount = Number(invoice.paid_amount ?? 0);
   const isRefund = invoice.invoice_type === 'corrective' && Number(invoice.total_gross ?? 0) < 0;
   const paymentBaseAmount = isRefund ? Math.abs(previewAmountToPay) : previewAmountToPay;
-  const footerNote = getPaymentAwareInvoiceFooterNote(invoice.footer_note, {
-    paymentStatus,
-    amountDue: previewAmountToPay,
-    paidAmount,
-    isRefund,
-  });
-
-  const amountToDisplay =
-    paymentStatus === 'paid' || paymentStatus === 'refunded'
-      ? paidAmount > 0
-        ? paidAmount
-        : paymentBaseAmount
-      : paymentStatus === 'partially_paid' || paymentStatus === 'partially_refunded'
-        ? Math.max(paymentBaseAmount - paidAmount, 0)
-        : paymentBaseAmount;
 
   const canCreateRelatedDocument = !invoice.is_proforma
     && ['issued', 'sent', 'paid', 'overdue'].includes(invoice.status);
@@ -1266,6 +1203,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
   } as Record<string, string>)[ksefStatus] || 'Status do sprawdzenia';
   const canChangeInvoiceStatus = financeAccess.canManageCompanyFinance || financeAccess.canIssueInvoices;
   const isProformaDocument = invoice.is_proforma || invoice.invoice_type === 'proforma';
+  const printCaption = invoicePrintCaption(invoice);
   const hasPaymentBasis = !isFinalInvoicePreview || (invoice.settlement_summary != null
     && Number.isFinite(Number(invoice.settlement_summary.remainingGross)));
   const canMarkInvoicePaid = canChangeInvoiceStatus
@@ -1667,611 +1605,26 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
             </div>
           )}
 
-          <div
-            className="invoice-preview mx-auto mb-6 flex flex-col rounded-xl bg-white text-black"
-            style={{ width: '794px', minHeight: '1123px', padding: '42px 48px' }}
-          >
-            <div className="-mx-12 -mt-[42px] mb-6 bg-gray-100 py-1.5 text-center text-xs font-bold uppercase tracking-[0.15em] text-gray-600">
-              {invoice.is_proforma || invoice.invoice_type === 'proforma' ? 'Wizualizacja pro formy' : 'Wizualizacja faktury'}
-            </div>
-            <div className="mb-6 flex items-start justify-between">
-              <div className="flex items-center gap-4">
-                {companyLogoUrl ? (
-                  <Image
-                    width={256}
-                    height={256}
-                    src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/company-logos/${companyLogoUrl}`}
-                    alt="Logo firmy"
-                    className="max-h-32 max-w-[300px] object-contain"
-                  />
-                ) : null}
-              </div>
-              <div className="space-y-2 text-right text-xs leading-tight">
-                <div>
-                  <div className="text-[10px] uppercase tracking-wide text-gray-500">
-                    Miejsce wystawienia
-                  </div>
-                  <div className="font-medium text-black">{invoice.issue_place}</div>
-                </div>
-
-                <div>
-                  <div className="text-[10px] uppercase tracking-wide text-gray-500">
-                    Data wystawienia
-                  </div>
-                  <div className="font-medium text-black">
-                    {new Date(invoice.issue_date).toLocaleDateString('pl-PL')}
-                  </div>
-                </div>
-
-                <div>
-                  <div className="text-[10px] uppercase tracking-wide text-gray-500">
-                    Data sprzedaży
-                  </div>
-                  <div className="font-medium text-black">
-                    {new Date(invoice.sale_date).toLocaleDateString('pl-PL')}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="mb-3 grid grid-cols-2 gap-8 text-sm leading-snug">
-              <div>
-                <div className="mb-2 text-sm text-gray-600">Sprzedawca</div>
-                <div className="font-medium">{invoice.seller_name}</div>
-                <div className="text-sm">NIP: {invoice.seller_nip}</div>
-                <div className="text-sm">{invoice.seller_street}</div>
-                <div className="text-sm">
-                  {invoice.seller_postal_code} {invoice.seller_city}
-                </div>
-              </div>
-              <div>
-                <div className="mb-2 text-sm text-gray-600">Nabywca</div>
-                <div className="font-medium">{invoice.buyer_name}</div>
-                {invoice.buyer_nip && <div className="text-sm">NIP: {invoice.buyer_nip}</div>}
-                <div className="text-sm">{invoice.buyer_street}</div>
-                <div className="text-sm">
-                  {invoice.buyer_postal_code} {invoice.buyer_city}
-                </div>
-                {invoiceRecipient && (
-                  <div className="mt-4 break-words" style={{ overflowWrap: 'anywhere' }}>
-                    <div className="mb-2 text-sm text-gray-600">Odbiorca</div>
-                    <div className="font-medium">{invoiceRecipient.name}</div>
-                    {invoiceRecipient.nip && <div>NIP: {invoiceRecipient.nip}</div>}
-                    <div>{invoiceRecipient.street}</div>
-                    <div>{invoiceRecipient.postalCode} {invoiceRecipient.city}</div>
-                    {invoiceRecipient.countryCode !== 'PL' && <div>{invoiceRecipient.countryCode}</div>}
-                    {invoiceRecipient.internalId && <div>Numer identyfikacji wewnętrznej KSeF: <strong>{invoiceRecipient.internalId}</strong></div>}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="mb-2 text-center">
-              <div className="text-2xl font-bold">
-                {getTypeLabel(invoice.invoice_type, invoice.invoice_number)}{' '}
-                {invoice.invoice_number}
-              </div>
-            </div>
-
-            {isPartyDataCorrection ? (
-              <div className="mb-8">
-                <div className="mb-4 rounded-lg bg-gray-50 p-3 text-sm">
-                  <div>Korekta do faktury: <strong>{invoice.corrected_invoice_number || '-'}</strong>
-                    {invoice.corrected_invoice_issue_date ? ` z dnia ${new Date(invoice.corrected_invoice_issue_date).toLocaleDateString('pl-PL')}` : ''}</div>
-                  {invoice.correction_reason && <div className="mt-2">Przyczyna korekty: {invoice.correction_reason}</div>}
-                </div>
-                {recipientPreview.partyDataBefore ? (
-                  <InvoicePartyCorrectionComparison
-                    printable
-                    beforeBuyer={recipientPreview.partyDataBefore.buyer}
-                    afterBuyer={{
-                      name: invoice.buyer_name, nip: invoice.buyer_nip, street: invoice.buyer_street,
-                      postalCode: invoice.buyer_postal_code, city: invoice.buyer_city,
-                      countryCode: ['POLSKA', 'POLAND', ''].includes(String(invoice.buyer_country ?? '').toUpperCase()) ? 'PL' : String(invoice.buyer_country).toUpperCase(),
-                    }}
-                    beforeRecipient={recipientPreview.partyDataBefore.recipient}
-                    afterRecipient={invoiceRecipient ?? null}
-                  />
-                ) : <p role="alert" className="text-red-700">{recipientPreview.error || 'Nie można odczytać danych sprzed korekty.'}</p>}
-                <p className="mt-4 text-sm"><strong>Zmiana kwoty: 0,00 {invoice.currency_code || 'PLN'}.</strong> Kwoty i rozliczenie płatności faktury pierwotnej pozostają bez zmian. Ta korekta nie tworzy nowej należności ani zwrotu.</p>
-              </div>
-            ) : invoice.invoice_type === 'corrective' &&
-            items.some((i) => i.before_quantity != null) ? (
-              <div className="mb-8">
-                {invoice.corrected_invoice_number && (
-                  <div className="mb-4 text-center text-sm">
-                    Dotyczy:{' '}
-                    {relatedData.relatedInvoice?.invoice_type === 'final'
-                      ? 'Faktura koncowa'
-                      : 'Faktura'}{' '}
-                    {invoice.corrected_invoice_number} z dnia:{' '}
-                    {invoice.corrected_invoice_issue_date
-                      ? new Date(invoice.corrected_invoice_issue_date).toLocaleDateString('pl-PL')
-                      : '-'}
-                  </div>
-                )}
-                <table className="mb-4 w-full text-sm">
-                  <thead className="bg-gray-100">
-                    <tr>
-                      <th className="border border-gray-300 px-1.5 py-1 text-left">Lp.</th>
-                      <th className="border border-gray-300 px-1.5 py-1 text-left">
-                        Nazwa towaru lub uslugi
-                      </th>
-                      <th className="border border-gray-300 px-1.5 py-1">Jm.</th>
-                      <th className="border border-gray-300 px-1.5 py-1">Ilosc</th>
-                      <th className="border border-gray-300 px-1.5 py-1">Cena netto</th>
-                      <th className="border border-gray-300 px-1.5 py-1">Wartosc netto</th>
-                      <th className="border border-gray-300 px-1.5 py-1">Stawka VAT</th>
-                      <th className="border border-gray-300 px-1.5 py-1">Kwota VAT</th>
-                      <th className="border border-gray-300 px-1.5 py-1">Wartosc brutto</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {items.map((item) => {
-                      const correction = getCorrectionValues(item);
-                      return (
-                        <tr key={item.id} className="group">
-                          <td className="border border-gray-300 px-1.5 py-1 align-top" rowSpan={3}>
-                            {item.position_number}
-                          </td>
-                          <td colSpan={8} className="border border-gray-300 p-0">
-                            <table className="w-full">
-                              <tbody>
-                                <tr>
-                                  <td className="border-b border-gray-200 px-1.5 py-1 text-left">
-                                    <span className="text-xs text-gray-500">Przed korektą:</span>
-                                    <br />
-                                    {item.name}
-                                  </td>
-
-                                  <td className="w-[50px] border-b border-gray-200 px-1.5 py-1 text-center">
-                                    {item.unit}
-                                  </td>
-
-                                  <td className="w-[60px] border-b border-gray-200 px-1.5 py-1 text-right">
-                                    {correction.beforeQty}
-                                  </td>
-
-                                  <td className="w-[80px] border-b border-gray-200 px-1.5 py-1 text-right">
-                                    {correction.beforePrice.toFixed(2)}
-                                  </td>
-
-                                  <td className="w-[90px] border-b border-gray-200 px-1.5 py-1 text-right">
-                                    {correction.beforeNet.toFixed(2)}
-                                  </td>
-
-                                  <td className="w-[50px] border-b border-gray-200 px-1.5 py-1 text-center">
-                                    {item.vat_rate}%
-                                  </td>
-
-                                  <td className="w-[80px] border-b border-gray-200 px-1.5 py-1 text-right">
-                                    {correction.beforeVat.toFixed(2)}
-                                  </td>
-
-                                  <td className="w-[90px] border-b border-gray-200 px-1.5 py-1 text-right">
-                                    {correction.beforeGross.toFixed(2)}
-                                  </td>
-                                </tr>
-
-                                <tr>
-                                  <td className="border-b border-gray-200 px-1.5 py-1 text-left">
-                                    <span className="text-xs text-gray-500">Korekta:</span>
-                                    <br />
-                                    {item.name}
-                                  </td>
-
-                                  <td className="border-b border-gray-200 px-1.5 py-1 text-center">
-                                    {item.unit}
-                                  </td>
-
-                                  <td className="border-b border-gray-200 px-1.5 py-1 text-right">
-                                    {correction.correctionQty}
-                                  </td>
-
-                                  <td className="border-b border-gray-200 px-1.5 py-1 text-right">
-                                    {correction.correctionPrice < 0 ? '' : '-'}
-                                    {Math.abs(correction.correctionPrice).toFixed(2)}
-                                  </td>
-
-                                  <td className="border-b border-gray-200 px-1.5 py-1 text-right">
-                                    {correction.correctionNet < 0 ? '' : '-'}
-                                    {Math.abs(correction.correctionNet).toFixed(2)}
-                                  </td>
-
-                                  <td className="border-b border-gray-200 px-1.5 py-1 text-center">
-                                    {item.vat_rate}%
-                                  </td>
-
-                                  <td className="border-b border-gray-200 px-1.5 py-1 text-right">
-                                    {correction.correctionVat < 0 ? '' : '-'}
-                                    {Math.abs(correction.correctionVat).toFixed(2)}
-                                  </td>
-
-                                  <td className="border-b border-gray-200 px-1.5 py-1 text-right">
-                                    {correction.correctionGross < 0 ? '' : '-'}
-                                    {Math.abs(correction.correctionGross).toFixed(2)}
-                                  </td>
-                                </tr>
-                                {/* <tr className="bg-gray-50 font-medium">
-                                  <td className="px-1.5 py-1 text-left">
-                                    <span className="text-xs">Korekta</span>
-                                  </td>
-                                  <td className="px-1.5 py-1 text-center"></td>
-                                  <td className="px-1.5 py-1 text-right">
-                                    {formatSignedQuantity(correction.correctionQty)}
-                                  </td>
-                                  <td className="px-1.5 py-1 text-right">
-                                    {formatSignedMoney(correction.correctionPrice)}
-                                  </td>
-                                  <td className="px-1.5 py-1 text-right">
-                                    {item.value_net.toFixed(2)}
-                                  </td>
-                                  <td className="px-1.5 py-1 text-center">{item.vat_rate}%</td>
-                                  <td className="px-1.5 py-1 text-right">
-                                    {item.vat_amount.toFixed(2)}
-                                  </td>
-                                  <td className="px-1.5 py-1 text-right">
-                                    {item.value_gross.toFixed(2)}
-                                  </td>
-                                </tr> */}
-                              </tbody>
-                            </table>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-
-                {(() => {
-                  const totalBeforeNet = items.reduce(
-                    (sum, i) => sum + (i.before_quantity ?? 0) * (i.before_price_net ?? 0),
-                    0,
-                  );
-                  const totalAfterNet = items.reduce((sum, i) => {
-                    const aq = i.after_quantity ?? i.before_quantity ?? 0;
-                    const ap = i.after_price_net ?? i.before_price_net ?? 0;
-                    return sum + aq * ap;
-                  }, 0);
-                  const totalBeforeVat = items.reduce(
-                    (sum, i) =>
-                      sum +
-                      Math.round(
-                        (i.before_quantity ?? 0) * (i.before_price_net ?? 0) * i.vat_rate,
-                      ) /
-                        100,
-                    0,
-                  );
-                  const totalAfterVat = items.reduce((sum, i) => {
-                    const aq = i.after_quantity ?? i.before_quantity ?? 0;
-                    const ap = i.after_price_net ?? i.before_price_net ?? 0;
-                    return sum + Math.round(aq * ap * i.vat_rate) / 100;
-                  }, 0);
-                  const totalBeforeGross = totalBeforeNet + totalBeforeVat;
-                  const totalAfterGross = totalAfterNet + totalAfterVat;
-                  return (
-                    <table className="mb-4 ml-auto w-auto text-sm">
-                      <tbody>
-                        <tr className="font-medium">
-                          <td className="border border-gray-300 bg-gray-100 px-3 py-1 text-right">
-                            Przed korektą:
-                          </td>
-                          <td className="border border-gray-300 px-3 py-1 text-right">
-                            {totalBeforeNet.toFixed(2)}
-                          </td>
-                          <td className="border border-gray-300 px-3 py-1 text-right">
-                            {totalBeforeVat.toFixed(2)}
-                          </td>
-                          <td className="border border-gray-300 px-3 py-1 text-right">
-                            {totalBeforeGross.toFixed(2)}
-                          </td>
-                        </tr>
-                        <tr className="font-medium">
-                          <td className="border border-gray-300 bg-gray-100 px-3 py-1 text-right">
-                            Korekta:
-                          </td>
-                          <td className="border border-gray-300 px-3 py-1 text-right">
-                            {invoice.total_net.toFixed(2)}
-                          </td>
-                          <td className="border border-gray-300 px-3 py-1 text-right">
-                            {invoice.total_vat.toFixed(2)}
-                          </td>
-                          <td className="border border-gray-300 px-3 py-1 text-right">
-                            {invoice.total_gross.toFixed(2)}
-                          </td>
-                        </tr>
-                        <tr className="font-bold">
-                          <td className="border border-gray-300 bg-gray-100 px-3 py-1 text-right">
-                            Po korekcie:
-                          </td>
-                          <td className="border border-gray-300 px-3 py-1 text-right">
-                            {totalAfterNet.toFixed(2)}
-                          </td>
-                          <td className="border border-gray-300 px-3 py-1 text-right">
-                            {totalAfterVat.toFixed(2)}
-                          </td>
-                          <td className="border border-gray-300 px-3 py-1 text-right">
-                            {totalAfterGross.toFixed(2)}
-                          </td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  );
-                })()}
-
-                <div className="border border-gray-300 bg-gray-100 p-3 text-sm font-bold">
-                  <div className="flex justify-between">
-                    <span>{invoice.total_gross < 0 ? 'Razem do zwrotu:' : 'Suma korekt:'}</span>
-                    <span>{formatSignedMoney(invoice.total_gross)} PLN</span>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <table className="mb-8 w-full text-sm">
-                <thead className="bg-gray-100">
-                  <tr>
-                    <th className="border border-gray-300 px-1.5 py-1 text-left">Lp.</th>
-                    <th className="border border-gray-300 px-1.5 py-1 text-left">
-                      Nazwa towaru lub uslugi
-                    </th>
-                    <th className="border border-gray-300 px-1.5 py-1">Jm.</th>
-                    <th className="border border-gray-300 px-1.5 py-1">Ilosc</th>
-                    <th className="border border-gray-300 px-1.5 py-1">Cena netto</th>
-                    <th className="border border-gray-300 px-1.5 py-1">Wartosc netto</th>
-                    <th className="border border-gray-300 px-1.5 py-1">Stawka VAT</th>
-                    <th className="border border-gray-300 px-1.5 py-1">Kwota VAT</th>
-                    <th className="border border-gray-300 px-1.5 py-1">Wartosc brutto</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((item) => (
-                    <tr key={item.id}>
-                      <td className="border border-gray-300 px-1.5 py-1">{item.position_number}</td>
-                      <td className="border border-gray-300 px-1.5 py-1">{item.name}</td>
-                      <td className="border border-gray-300 px-1.5 py-1 text-center">
-                        {item.unit}
-                      </td>
-                      <td className="border border-gray-300 px-1.5 py-1 text-right">
-                        {item.quantity}
-                      </td>
-                      <td className="border border-gray-300 px-1.5 py-1 text-right">
-                        {item.price_net.toFixed(2)}
-                      </td>
-                      <td className="border border-gray-300 px-1.5 py-1 text-right">
-                        {item.value_net.toFixed(2)}
-                      </td>
-                      <td className="border border-gray-300 px-1.5 py-1 text-center">
-                        {item.vat_rate}%
-                      </td>
-                      <td className="border border-gray-300 px-1.5 py-1 text-right">
-                        {item.vat_amount.toFixed(2)}
-                      </td>
-                      <td className="border border-gray-300 px-1.5 py-1 text-right font-medium">
-                        {item.value_gross.toFixed(2)}
-                      </td>
-                    </tr>
-                  ))}
-
-                  <tr className="bg-gray-100 font-bold">
-                    <td colSpan={5} className="border border-gray-300 px-1.5 py-1 text-right">
-                      Razem
-                    </td>
-                    <td className="border border-gray-300 px-1.5 py-1 text-right">
-                      {invoice.total_net.toFixed(2)}
-                    </td>
-                    <td className="border border-gray-300 px-1.5 py-1"></td>
-                    <td className="border border-gray-300 px-1.5 py-1 text-right">
-                      {invoice.total_vat.toFixed(2)}
-                    </td>
-                    <td className="border border-gray-300 px-1.5 py-1 text-right">
-                      {invoice.total_gross.toFixed(2)}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            )}
-
-            {!isPartyDataCorrection && previewSettledInvoices.length > 0 && (
-              <div className="mb-4 text-sm">
-                <div className="mb-2 font-bold">Rozliczane faktury zaliczkowe</div>
-
-                <div className="overflow-hidden border border-gray-300">
-                  {previewSettledInvoices.map((inv) => (
-                    <div
-                      key={inv.id || inv.invoiceNumber}
-                      className="flex justify-between border-b border-gray-300 px-2 py-1 last:border-b-0"
-                    >
-                      <span>
-                        {inv.invoiceNumber}
-                        {inv.issueDate
-                          ? ` z dnia ${new Date(inv.issueDate).toLocaleDateString('pl-PL')}`
-                          : ''}
-                      </span>
-                      <span className="font-medium">
-                        {Number(inv.totalGross || 0).toFixed(2)} PLN brutto
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {!isPartyDataCorrection && previewSettlementSummary && (
-              <div className="mb-8 text-sm">
-                <div className="mb-2 font-bold">Rozliczenie zaliczek</div>
-
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-100">
-                    <tr>
-                      <th className="border border-gray-300 p-2 text-left">Opis</th>
-                      <th className="border border-gray-300 p-2 text-right">Netto</th>
-                      <th className="border border-gray-300 p-2 text-right">VAT</th>
-                      <th className="border border-gray-300 p-2 text-right">Brutto</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <td className="border border-gray-300 p-2">Wartość faktury końcowej</td>
-                      <td className="border border-gray-300 p-2 text-right">
-                        {previewSettlementSummary.invoiceTotalNet.toFixed(2)}
-                      </td>
-                      <td className="border border-gray-300 p-2 text-right">
-                        {previewSettlementSummary.invoiceTotalVat.toFixed(2)}
-                      </td>
-                      <td className="border border-gray-300 p-2 text-right font-medium">
-                        {previewSettlementSummary.invoiceTotalGross.toFixed(2)}
-                      </td>
-                    </tr>
-
-                    <tr>
-                      <td className="border border-gray-300 p-2">Rozliczone zaliczki</td>
-                      <td className="border border-gray-300 p-2 text-right">
-                        {previewSettlementSummary.settledNet.toFixed(2)}
-                      </td>
-                      <td className="border border-gray-300 p-2 text-right">
-                        {previewSettlementSummary.settledVat.toFixed(2)}
-                      </td>
-                      <td className="border border-gray-300 p-2 text-right font-medium">
-                        {previewSettlementSummary.settledGross.toFixed(2)}
-                      </td>
-                    </tr>
-
-                    <tr className="bg-gray-100 font-bold">
-                      <td className="border border-gray-300 p-2">Pozostało do zapłaty</td>
-                      <td className="border border-gray-300 p-2 text-right">
-                        {previewSettlementSummary.remainingNet.toFixed(2)}
-                      </td>
-                      <td className="border border-gray-300 p-2 text-right">
-                        {previewSettlementSummary.remainingVat.toFixed(2)}
-                      </td>
-                      <td className="border border-gray-300 p-2 text-right">
-                        {previewSettlementSummary.remainingGross.toFixed(2)}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            {!isPartyDataCorrection && <div className="mb-5 grid grid-cols-2 gap-8 text-xs leading-snug">
-              <div>
-                <div className="mb-2">
-                  <span className="text-gray-600">Sposob platnosci:</span> {invoice.payment_method}
-                </div>
-                <div className="mb-2">
-                  <span className="text-gray-600">Termin platnosci:</span>{' '}
-                  {new Date(invoice.payment_due_date).toLocaleDateString('pl-PL')}
-                </div>
-                <div className="mb-2">
-                  <span className="text-gray-600">Status płatności:</span>{' '}
-                  {paymentStatus === 'refunded'
-                    ? `Zwrot wykonany${paymentDate ? ` (${new Date(paymentDate).toLocaleDateString('pl-PL')})` : ''}`
-                    : paymentStatus === 'partially_refunded'
-                      ? `Częściowo zwrócono: ${paidAmount.toFixed(2)} ${invoice.currency_code || 'PLN'}`
-                      : paymentStatus === 'refund_due'
-                        ? 'Do zwrotu nabywcy'
-                  : paymentStatus === 'paid'
-                    ? `Zapłacono${paymentDate ? ` (${new Date(paymentDate).toLocaleDateString('pl-PL')})` : ''}`
-                    : paymentStatus === 'partially_paid'
-                      ? `Częściowo zapłacono: ${paidAmount.toFixed(2)} ${invoice.currency_code || 'PLN'}`
-                      : 'Do zapłaty'}
-                </div>
-                <div>
-                  <span className="text-gray-600">Numer konta:</span>
-                  <div className="font-mono">{invoice.bank_account}</div>
-                </div>
-                <div>
-                  <span className="text-gray-600">Nazwa banku:</span>
-                  <div className="font-mono">{invoice.bank_name}</div>
-                </div>
-              </div>
-              <div>
-                <div className="mb-2">
-                  <span className="text-gray-600">
-                    {invoice.invoice_type === 'corrective'
-                      ? isRefund
-                        ? paymentStatus === 'refunded'
-                          ? 'Zwrócono:'
-                          : paymentStatus === 'partially_refunded'
-                            ? 'Pozostało do zwrotu:'
-                            : 'Do zwrotu:'
-                        : 'Kwota korekty:'
-                      : paymentStatus === 'paid'
-                        ? 'Zapłacono:'
-                        : paymentStatus === 'partially_paid'
-                          ? 'Pozostało do zapłaty:'
-                          : 'Do zapłaty:'}
-                  </span>{' '}
-                  <span className="text-base font-bold">
-                    {amountToDisplay.toFixed(2)} {invoice.currency_code || 'PLN'}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            }
-
-            <div className="mb-5 text-[10px] leading-snug text-gray-600">
-              {footerNote && (
-                <span style={{ whiteSpace: 'pre-wrap', fontWeight: '700' }}>Uwagi:</span>
-              )}{' '}
-              {footerNote && (
-                <span style={{ whiteSpace: 'pre-wrap' }}>{footerNote}</span>
-              )}
-            </div>
-
-            <div className="flex justify-end">
-              <div className="w-64 border-t border-gray-300 pt-2 text-center text-xs">
-                <div className="mb-1 text-sm">
-                  {invoiceSignatureName || (issuerPreview?.invoiceId !== invoice.id
-                    ? 'Odczytywanie danych wystawcy…'
-                    : issuerPreview.error ? 'Nie udało się odczytać danych wystawcy'
-                    : 'Brak imienia i nazwiska wystawcy — uzupełnij jego profil')}
-                </div>
-                <div className="text-[10px] leading-snug text-gray-600">
-                  Podpis osoby upoważnionej do wystawienia
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-[auto] text-center text-xs text-gray-500">
-              {invoice.website || 'www.mavinci.pl'}
-            </div>
-          </div>
+          <InvoicePrintPreview
+            invoiceId={invoice.id}
+            revision={[
+              invoice.updated_at,
+              invoice.pdf_generated_at,
+              invoice.payment_status,
+              invoice.paid_amount,
+              invoice.ksef_status,
+              invoice.ksef_reference_number,
+              items.length,
+            ].map((value) => String(value ?? '')).join('|')}
+            caption={printCaption.caption}
+            tone={printCaption.tone}
+            fileName={invoicePdfFileName(invoice.invoice_number, isProformaDocument)}
+            height={1180}
+            className="mx-auto mb-6 w-full max-w-[920px]"
+          />
 
         </div>
 
-        <style jsx global>{`
-          @media print {
-            body * {
-              visibility: hidden;
-            }
-
-            .invoice-preview,
-            .invoice-preview * {
-              visibility: visible;
-            }
-
-            .invoice-preview {
-              position: absolute;
-              left: 0;
-              top: 0;
-              width: 100%;
-              min-height: calc(297mm - 27mm);
-              margin: 0;
-              padding: 0;
-              background: white;
-              box-shadow: none;
-              border-radius: 0;
-              box-sizing: border-box;
-            }
-
-            @page {
-              size: A4;
-              margin: 10mm 10mm 17mm;
-            }
-          }
-        `}</style>
 
         {generating && (
           <div

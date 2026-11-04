@@ -2,6 +2,10 @@ import type { InvoiceItem } from '@/app/(crm)/crm/invoices/[id]/page';
 import type { FA3Recipient } from '@/lib/ksef/generateFA3XML';
 import { getPaymentAwareInvoiceFooterNote } from '@/lib/invoices/paymentAwareFooterNote';
 import { getInvoicePartyDataCorrection, type InvoicePartyDataBefore } from '@/lib/invoices/partyDataCorrection';
+import { amountInWordsPl } from '@/lib/invoices/print/amountInWords';
+
+/** Zmiana wersji = nowy podgląd wydruku u wszystkich (pamięć podręczna podglądu). */
+export const INVOICE_PRINT_TEMPLATE_VERSION = '2026-11-04.1';
 
 export interface SettledInvoicePdfRef {
   id?: string;
@@ -12,6 +16,8 @@ export interface SettledInvoicePdfRef {
   totalVat: number;
   totalGross: number;
 }
+
+type VatCode = '23' | '8' | '5' | '0' | '0 KR' | '0 WDT' | '0 EX' | 'zw' | 'np' | 'np I' | 'np II' | 'oo';
 
 export interface InvoicePdfData {
   paymentStatus?: 'unpaid' | 'partially_paid' | 'paid' | 'overdue' | 'refund_due' | 'partially_refunded' | 'refunded' | 'not_applicable' | null;
@@ -33,11 +39,15 @@ export interface InvoicePdfData {
   paymentDueDate: string;
   bankAccount: string;
   bankName?: string;
+  bankSwift?: string;
   sellerName: string;
   sellerNip: string;
   sellerStreet: string;
   sellerCity: string;
   sellerPostalCode: string;
+  sellerCountryCode?: string;
+  sellerEmail?: string;
+  sellerPhone?: string;
   buyerName: string;
   buyerNip?: string;
   buyerStreet: string;
@@ -52,6 +62,8 @@ export interface InvoicePdfData {
   currencyCode?: string;
   companyLogoUrl?: string | null;
   isProforma: boolean;
+  /** Numer KSeF przyjętej faktury (pokazywany w nagłówku wydruku). */
+  ksefNumber?: string;
   correctionReason?: string;
   correctionKind?: string | null;
   correctionPartyDataBefore?: InvoicePartyDataBefore | null;
@@ -65,7 +77,7 @@ export interface InvoicePdfData {
     quantity: number;
     priceNet: number;
     vatRate: number;
-    vatCode?: '23' | '8' | '5' | '0' | '0 KR' | '0 WDT' | '0 EX' | 'zw' | 'np' | 'np I' | 'np II' | 'oo';
+    vatCode?: VatCode;
     vatExemptionReason?: string | null;
     valueNet: number;
     vatAmount: number;
@@ -80,7 +92,7 @@ export interface InvoicePdfData {
     quantity: number;
     priceNet: number;
     vatRate: number;
-    vatCode?: '23' | '8' | '5' | '0' | '0 KR' | '0 WDT' | '0 EX' | 'zw' | 'np' | 'np I' | 'np II' | 'oo';
+    vatCode?: VatCode;
     vatExemptionReason?: string | null;
     valueNet: number;
     vatAmount: number;
@@ -115,6 +127,11 @@ function getTypeLabel(type: string, invoiceNumber?: string) {
   return labels[type] || 'Faktura VAT';
 }
 
+const COUNTRY_NAMES: Record<string, string> = {
+  PL: 'Polska', DE: 'Niemcy', CZ: 'Czechy', SK: 'Słowacja', LT: 'Litwa', GB: 'Wielka Brytania', FR: 'Francja',
+  NL: 'Holandia', AT: 'Austria', IT: 'Włochy', ES: 'Hiszpania', US: 'Stany Zjednoczone', UA: 'Ukraina',
+};
+
 export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
   const esc = (s: unknown) =>
     String(s ?? '')
@@ -124,9 +141,15 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
       .replaceAll('"', '&quot;')
       .replaceAll("'", '&#039;');
 
+  /** Daty z bazy (YYYY-MM-DD) bez przesunięcia strefy czasowej: 04.11.2026. */
   const formatDate = (value?: string | null) => {
     if (!value) return '';
-    return new Date(value).toLocaleDateString('pl-PL');
+    const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value));
+    if (match) return `${match[3]}.${match[2]}.${match[1]}`;
+    const date = new Date(value);
+    return Number.isNaN(date.getTime())
+      ? String(value)
+      : date.toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit', year: 'numeric' });
   };
 
   const money = (value?: number | null) => {
@@ -134,17 +157,40 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
     return Object.is(rounded, -0) ? 0 : rounded;
   };
 
-  const formatMoney = (value?: number | null) => money(value).toFixed(2);
+  /** 12 840,00 — separator tysięcy zawsze (także 8 500,00), przecinek dziesiętny. */
+  const formatMoney = (value?: number | null) => {
+    const number = money(value);
+    const [whole, fraction] = Math.abs(number).toFixed(2).split('.');
+    const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+    return `${number < 0 ? '−' : ''}${grouped},${fraction}`;
+  };
 
   const formatSignedMoney = (value?: number | null) => {
     const number = money(value);
-    return `${number > 0 ? '+' : ''}${number.toFixed(2)}`;
+    return `${number > 0 ? '+' : ''}${formatMoney(number)}`;
   };
 
-  const vatLabel = (
-    vatRate: number,
-    vatCode?: '23' | '8' | '5' | '0' | '0 KR' | '0 WDT' | '0 EX' | 'zw' | 'np' | 'np I' | 'np II' | 'oo',
-  ) => (vatCode && ['zw', 'np', 'np I', 'np II', 'oo'].includes(vatCode) ? vatCode.toUpperCase() : `${vatCode || vatRate}%`);
+  const formatQuantity = (value?: number | null) => {
+    const number = Number(value || 0);
+    const text = Number.isInteger(number) ? String(number) : String(Number(number.toFixed(4)));
+    const [whole, fraction] = text.replace('-', '').split('.');
+    const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+    return `${number < 0 ? '−' : ''}${grouped}${fraction ? `,${fraction}` : ''}`;
+  };
+
+  const vatLabel = (vatRate: number, vatCode?: VatCode) =>
+    vatCode && ['zw', 'np', 'np I', 'np II', 'oo'].includes(vatCode) ? vatCode.toUpperCase() : `${vatCode || vatRate}%`;
+
+  const formatAccount = (value?: string | null) => {
+    const raw = String(value || '').trim();
+    const compact = raw.replace(/\s+/g, '');
+    if (/^(PL)?\d{26}$/i.test(compact)) {
+      const prefix = compact.length === 28 ? `${compact.slice(0, 2).toUpperCase()} ` : '';
+      const digits = compact.length === 28 ? compact.slice(2) : compact;
+      return `${prefix}${digits.slice(0, 2)} ${digits.slice(2).replace(/(\d{4})(?=\d)/g, '$1 ')}`;
+    }
+    return raw;
+  };
 
   const isCorrectiveInvoice = data.invoiceType === 'corrective';
   const partyDataBefore = getInvoicePartyDataCorrection({
@@ -199,38 +245,52 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
     isRefund,
   });
 
+  const isSettled = paymentStatus === 'paid' || paymentStatus === 'refunded';
+
   const paymentLabel = isRefund
     ? paymentStatus === 'refunded'
-      ? 'Zwrócono:'
+      ? 'Zwrócono'
       : paymentStatus === 'partially_refunded'
-        ? 'Pozostało do zwrotu:'
-        : 'Do zwrotu:'
+        ? 'Pozostało do zwrotu'
+        : 'Do zwrotu'
     : isCorrectiveInvoice
-      ? 'Suma korekt:'
+      ? 'Suma korekt'
     : paymentStatus === 'paid'
-      ? 'Zapłacono:'
+      ? 'Zapłacono'
       : paymentStatus === 'partially_paid'
-        ? 'Pozostało do zapłaty:'
-        : 'Do zapłaty:';
+        ? 'Pozostało do zapłaty'
+        : 'Do zapłaty';
 
-  const paymentInfoHtml =
-    paymentStatus === 'paid' || paymentStatus === 'refunded'
-      ? `
-        <div style="margin-top: 4px; font-size: 10px; color: #666;">
-          ${paymentStatus === 'refunded'
-            ? (data.paidAt ? `Zwrot wykonano dnia: ${esc(formatDate(data.paidAt))}` : 'Zwrot wykonany')
-            : (data.paidAt ? `Opłacono dnia: ${esc(formatDate(data.paidAt))}` : 'Faktura opłacona')}
-        </div>
-      `
-      : paymentStatus === 'partially_paid' || paymentStatus === 'partially_refunded'
-        ? `
-          <div style="margin-top: 4px; font-size: 10px; color: #666;">
-            ${paymentStatus === 'partially_refunded' ? 'Zwrócono' : 'Zapłacono'}: ${formatMoney(paidAmount)} ${esc(currencyCode)}${
-              data.paidAt ? ` dnia ${esc(formatDate(data.paidAt))}` : ''
-            }
-          </div>
-        `
-        : '';
+  const displayedAmount = isSettled ? paidAmount : remainingAmount;
+  const displayedAmountText = isSettled
+    ? formatMoney(paidAmount)
+    : isCorrectiveInvoice
+      ? (isRefund ? formatMoney(remainingAmount) : formatSignedMoney(remainingAmount))
+      : formatMoney(remainingAmount);
+
+  const paymentStatusText = isSettled
+    ? paymentStatus === 'refunded'
+      ? 'Zwrot wykonany'
+      : isCash ? 'Zapłacono gotówką' : 'Zapłacono'
+    : paymentStatus === 'partially_paid'
+      ? 'Częściowo opłacono'
+      : paymentStatus === 'partially_refunded'
+        ? 'Częściowo zwrócono'
+        : paymentStatus === 'refund_due' || isRefund
+          ? 'Do zwrotu'
+          : paymentStatus === 'overdue'
+            ? 'Po terminie płatności'
+            : 'Do zapłaty';
+
+  const paymentDetailText = isSettled
+    ? paymentStatus === 'refunded'
+      ? (data.paidAt ? `Zwrot wykonano dnia ${formatDate(data.paidAt)}` : 'Zwrot wykonany')
+      : (data.paidAt ? `Opłacono dnia ${formatDate(data.paidAt)}` : 'Faktura opłacona')
+    : paymentStatus === 'partially_paid' || paymentStatus === 'partially_refunded'
+      ? `${paymentStatus === 'partially_refunded' ? 'Zwrócono' : 'Wpłacono'} ${formatMoney(paidAmount)} ${currencyCode}${
+          data.paidAt ? ` dnia ${formatDate(data.paidAt)}` : ''
+        }`
+      : '';
 
   const invoiceItems =
     data.items && data.items.length > 0
@@ -288,136 +348,286 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
     };
   };
 
-  const finalSettlementHtml =
-    isFinalInvoice && data.settlementSummary
-      ? `
-      <div class="settlement-box">
-        <div class="settlement-title">Rozliczenie zaliczek</div>
-        <table class="settlement-table">
-          <colgroup>
-            <col style="width: 46%" />
-            <col style="width: 18%" />
-            <col style="width: 18%" />
-            <col style="width: 18%" />
-          </colgroup>
-          <thead>
-            <tr>
-              <th>Opis</th>
-              <th>Netto</th>
-              <th>VAT</th>
-              <th>Brutto</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>Wartość faktury końcowej</td>
-              <td class="right">${formatMoney(data.settlementSummary.invoiceTotalNet)}</td>
-              <td class="right">${formatMoney(data.settlementSummary.invoiceTotalVat)}</td>
-              <td class="right strong">${formatMoney(data.settlementSummary.invoiceTotalGross)}</td>
-            </tr>
-            <tr>
-              <td>Rozliczone zaliczki</td>
-              <td class="right">${formatMoney(data.settlementSummary.settledNet)}</td>
-              <td class="right">${formatMoney(data.settlementSummary.settledVat)}</td>
-              <td class="right strong">${formatMoney(data.settlementSummary.settledGross)}</td>
-            </tr>
-            <tr>
-              <td class="strong">Pozostało do zapłaty</td>
-              <td class="right strong">${formatMoney(data.settlementSummary.remainingNet)}</td>
-              <td class="right strong">${formatMoney(data.settlementSummary.remainingVat)}</td>
-              <td class="right strong">${formatMoney(data.settlementSummary.remainingGross)}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    `
-      : '';
-
-  const settledInvoicesHtml =
-    isFinalInvoice && data.settledInvoices?.length
-      ? `
-      <div class="advance-list">
-        <div class="settlement-title">Rozliczane faktury zaliczkowe</div>
-        ${data.settledInvoices
-          .map(
-            (inv) => `
-              <div class="advance-row">
-                ${esc(inv.invoiceNumber)}
-                ${inv.issueDate ? ` z dnia ${esc(formatDate(inv.issueDate))}` : ''}
-                — ${formatMoney(inv.totalGross)} ${esc(currencyCode)} brutto
-              </div>
-            `,
-          )
-          .join('')}
-      </div>
-    `
-      : '';
-
   const correctiveItems =
     isCorrectiveInvoice && data.invoice_items?.some((i) => i.before_quantity != null)
       ? data.invoice_items
       : null;
+
+  /** Zestawienie według stawek VAT (art. 106e ust. 1 pkt 13–14): netto, VAT i brutto dla każdej stawki. */
+  type RateRow = { label: string; order: number; net: number; vat: number; gross: number };
+  const rateOrder = (label: string) => {
+    const percent = Number.parseFloat(label);
+    if (Number.isFinite(percent)) return 100 - percent;
+    return 200 + ['ZW', 'NP', 'NP I', 'NP II', 'OO'].indexOf(label);
+  };
+  const summarizeRates = (rows: Array<{ label: string; net: number; vat: number; gross: number }>) => {
+    const map = new Map<string, RateRow>();
+    for (const row of rows) {
+      const entry = map.get(row.label) ?? { label: row.label, order: rateOrder(row.label), net: 0, vat: 0, gross: 0 };
+      entry.net += row.net;
+      entry.vat += row.vat;
+      entry.gross += row.gross;
+      map.set(row.label, entry);
+    }
+    return [...map.values()].sort((a, b) => a.order - b.order);
+  };
+
+  const rateRows = correctiveItems
+    ? summarizeRates(correctiveItems.map((item) => {
+        const c = getCorrectionValues(item);
+        return { label: vatLabel(c.vatRate, item.vat_code), net: c.correctionNet, vat: c.correctionVat, gross: c.correctionGross };
+      }))
+    : summarizeRates(invoiceItems.map((item) => ({
+        label: vatLabel(item.vatRate, item.vatCode),
+        net: Number(item.valueNet || 0),
+        vat: Number(item.vatAmount || 0),
+        gross: Number(item.valueGross || 0),
+      })));
+
+  const exemptionReasons = [...new Set(
+    [...invoiceItems, ...(data.orderItems ?? [])]
+      .filter((item) => item.vatCode === 'zw' && item.vatExemptionReason)
+      .map((item) => String(item.vatExemptionReason)),
+  )];
+
+  const typeLabel = isPartyDataCorrection ? 'Faktura korygująca dane' : getTypeLabel(data.invoiceType, data.invoiceNumber);
+  const visualizationLabel = data.isProforma ? 'Wizualizacja pro formy' : 'Wizualizacja faktury';
+  const signed = correctiveItems ? formatSignedMoney : formatMoney;
+
+  const partyLines = (party: {
+    name?: string | null; nip?: string | null; street?: string | null; postalCode?: string | null; city?: string | null;
+    countryCode?: string | null; email?: string | null; phone?: string | null; extra?: string;
+  }) => `
+    <div class="party-name">${esc(party.name)}</div>
+    ${party.street ? `<div>${esc(party.street)}</div>` : ''}
+    ${party.postalCode || party.city ? `<div>${esc([party.postalCode, party.city].filter(Boolean).join(' '))}</div>` : ''}
+    ${party.countryCode && party.countryCode !== 'PL' ? `<div>${esc(COUNTRY_NAMES[party.countryCode] || party.countryCode)}</div>` : ''}
+    ${party.nip ? `<div class="party-id"><span>NIP</span> ${esc(party.nip)}</div>` : ''}
+    ${party.email || party.phone ? `<div class="party-contact">${[party.email, party.phone].filter(Boolean).map(esc).join(' · ')}</div>` : ''}
+    ${party.extra || ''}
+  `;
 
   const rows = invoiceItems.length
     ? invoiceItems
         .map(
           (item) => `
           <tr>
-            <td>${item.positionNumber}</td>
-            <td>
+            <td class="num muted">${item.positionNumber}</td>
+            <td class="name">
               ${esc(item.name)}
               ${item.vatCode === 'zw' && item.vatExemptionReason ? `<div class="item-note">Podstawa zwolnienia: ${esc(item.vatExemptionReason)}</div>` : ''}
             </td>
-            <td class="center">${esc(item.unit)}</td>
-            <td class="right">${item.quantity}</td>
-            <td class="right">${formatMoney(item.priceNet)}</td>
-            <td class="right">${formatMoney(item.valueNet)}</td>
+            <td class="num">${formatQuantity(item.quantity)}</td>
+            <td class="center muted">${esc(item.unit)}</td>
+            <td class="num">${formatMoney(item.priceNet)}</td>
+            <td class="num">${formatMoney(item.valueNet)}</td>
             <td class="center">${esc(vatLabel(item.vatRate, item.vatCode))}</td>
-            <td class="right">${formatMoney(item.vatAmount)}</td>
-            <td class="right strong">${formatMoney(item.valueGross)}</td>
+            <td class="num">${formatMoney(item.vatAmount)}</td>
+            <td class="num strong">${formatMoney(item.valueGross)}</td>
           </tr>
         `,
         )
         .join('')
     : `
       <tr>
-        <td colspan="9" class="center">Brak pozycji</td>
+        <td colspan="9" class="center muted">Brak pozycji</td>
       </tr>
     `;
 
+  const standardItemsHtml = `
+    <table class="items">
+      <colgroup>
+        <col style="width: 4%" />
+        <col style="width: 33%" />
+        <col style="width: 6.5%" />
+        <col style="width: 5.5%" />
+        <col style="width: 11%" />
+        <col style="width: 11.5%" />
+        <col style="width: 6%" />
+        <col style="width: 10%" />
+        <col style="width: 12.5%" />
+      </colgroup>
+      <thead>
+        <tr>
+          <th class="num">Lp.</th>
+          <th>Nazwa towaru lub usługi</th>
+          <th class="num">Ilość</th>
+          <th class="center">J.m.</th>
+          <th class="num">Cena netto</th>
+          <th class="num">Wartość netto</th>
+          <th class="center">VAT</th>
+          <th class="num">Kwota VAT</th>
+          <th class="num">Wartość brutto</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+
   const correctiveItemsHtml = correctiveItems
-    ? correctiveItems
+    ? `
+    <table class="items corrective">
+      <colgroup>
+        <col style="width: 4%" />
+        <col style="width: 23%" />
+        <col style="width: 10%" />
+        <col style="width: 6%" />
+        <col style="width: 7%" />
+        <col style="width: 10%" />
+        <col style="width: 11%" />
+        <col style="width: 6%" />
+        <col style="width: 10%" />
+        <col style="width: 13%" />
+      </colgroup>
+      <thead>
+        <tr>
+          <th class="num">Lp.</th>
+          <th>Nazwa towaru lub usługi</th>
+          <th></th>
+          <th class="num">Ilość</th>
+          <th class="center">J.m.</th>
+          <th class="num">Cena netto</th>
+          <th class="num">Wartość netto</th>
+          <th class="center">VAT</th>
+          <th class="num">Kwota VAT</th>
+          <th class="num">Wartość brutto</th>
+        </tr>
+      </thead>
+      ${correctiveItems
         .map((item, idx) => {
-          const correction = getCorrectionValues(item);
-
+          const c = getCorrectionValues(item);
           return `
-            <tr style="background: #f9fafb;">
-              <td rowspan="2" style="vertical-align: middle;">${idx + 1}</td>
-              <td rowspan="2" style="vertical-align: middle;">${esc(item.name)}</td>
-              <td style="font-size: 9px; color: #666;">Przed korektą</td>
-              <td class="center">${esc(item.unit)}</td>
-              <td class="right">${correction.beforeQty}</td>
-              <td class="right">${formatMoney(correction.beforePrice)}</td>
-              <td class="right">${formatMoney(correction.beforeNet)}</td>
-              <td class="center">${esc(vatLabel(correction.vatRate, item.vat_code))}</td>
-              <td class="right">${formatMoney(correction.beforeVat)}</td>
-              <td class="right">${formatMoney(correction.beforeGross)}</td>
+          <tbody class="correction-group">
+            <tr class="before">
+              <td rowspan="3" class="num muted">${idx + 1}</td>
+              <td rowspan="3" class="name">${esc(item.name)}</td>
+              <td class="row-tag">Przed korektą</td>
+              <td class="num">${formatQuantity(c.beforeQty)}</td>
+              <td class="center muted">${esc(item.unit)}</td>
+              <td class="num">${formatMoney(c.beforePrice)}</td>
+              <td class="num">${formatMoney(c.beforeNet)}</td>
+              <td class="center">${esc(vatLabel(c.vatRate, item.vat_code))}</td>
+              <td class="num">${formatMoney(c.beforeVat)}</td>
+              <td class="num">${formatMoney(c.beforeGross)}</td>
             </tr>
-
-            <tr>
-              <td style="font-size: 9px; color: #666;">Po korekcie</td>
-              <td class="center">${esc(item.unit)}</td>
-              <td class="right">${correction.afterQty}</td>
-              <td class="right">${formatMoney(correction.afterPrice)}</td>
-              <td class="right">${formatMoney(correction.afterNet)}</td>
-              <td class="center">${esc(vatLabel(correction.vatRate, item.vat_code))}</td>
-              <td class="right">${formatMoney(correction.afterVat)}</td>
-              <td class="right strong">${formatMoney(correction.afterGross)}</td>
+            <tr class="after">
+              <td class="row-tag">Po korekcie</td>
+              <td class="num">${formatQuantity(c.afterQty)}</td>
+              <td class="center muted">${esc(item.unit)}</td>
+              <td class="num">${formatMoney(c.afterPrice)}</td>
+              <td class="num">${formatMoney(c.afterNet)}</td>
+              <td class="center">${esc(vatLabel(c.vatRate, item.vat_code))}</td>
+              <td class="num">${formatMoney(c.afterVat)}</td>
+              <td class="num">${formatMoney(c.afterGross)}</td>
             </tr>
-          `;
+            <tr class="difference">
+              <td class="row-tag strong">Różnica</td>
+              <td colspan="3"></td>
+              <td class="num strong">${formatSignedMoney(c.correctionNet)}</td>
+              <td></td>
+              <td class="num strong">${formatSignedMoney(c.correctionVat)}</td>
+              <td class="num strong">${formatSignedMoney(c.correctionGross)}</td>
+            </tr>
+          </tbody>`;
         })
-        .join('')
+        .join('')}
+    </table>`
     : '';
+
+  const correctionTotalsHtml = correctiveItems
+    ? (() => {
+        const totals = correctiveItems.reduce(
+          (sum, item) => {
+            const c = getCorrectionValues(item);
+            return {
+              beforeNet: sum.beforeNet + c.beforeNet,
+              beforeVat: sum.beforeVat + c.beforeVat,
+              beforeGross: sum.beforeGross + c.beforeGross,
+              correctionNet: sum.correctionNet + c.correctionNet,
+              correctionVat: sum.correctionVat + c.correctionVat,
+              correctionGross: sum.correctionGross + c.correctionGross,
+            };
+          },
+          { beforeNet: 0, beforeVat: 0, beforeGross: 0, correctionNet: 0, correctionVat: 0, correctionGross: 0 },
+        );
+        return `
+        <table class="totals-table">
+          <colgroup><col style="width: 31%" /><col style="width: 23%" /><col style="width: 21%" /><col style="width: 25%" /></colgroup>
+          <thead>
+            <tr><th>Korekta</th><th class="num">Netto</th><th class="num">VAT</th><th class="num">Brutto</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Przed korektą</td><td class="num">${formatMoney(totals.beforeNet)}</td><td class="num">${formatMoney(totals.beforeVat)}</td><td class="num">${formatMoney(totals.beforeGross)}</td></tr>
+            <tr><td>Po korekcie</td><td class="num">${formatMoney(totals.beforeNet + totals.correctionNet)}</td><td class="num">${formatMoney(totals.beforeVat + totals.correctionVat)}</td><td class="num">${formatMoney(totals.beforeGross + totals.correctionGross)}</td></tr>
+            <tr class="total"><td>Różnica</td><td class="num">${formatSignedMoney(totals.correctionNet)}</td><td class="num">${formatSignedMoney(totals.correctionVat)}</td><td class="num">${formatSignedMoney(totals.correctionGross)}</td></tr>
+          </tbody>
+        </table>`;
+      })()
+    : '';
+
+  const vatSummaryHtml = `
+    <table class="totals-table">
+      <colgroup><col style="width: 31%" /><col style="width: 23%" /><col style="width: 21%" /><col style="width: 25%" /></colgroup>
+      <thead>
+        <tr>
+          <th>Stawka VAT</th>
+          <th class="num">Netto</th>
+          <th class="num">VAT</th>
+          <th class="num">Brutto</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rateRows
+          .map((row) => `<tr><td>${esc(row.label)}</td><td class="num">${signed(row.net)}</td><td class="num">${signed(row.vat)}</td><td class="num">${signed(row.gross)}</td></tr>`)
+          .join('')}
+        <tr class="total">
+          <td>Razem</td>
+          <td class="num">${signed(data.totalNet)}</td>
+          <td class="num">${signed(data.totalVat)}</td>
+          <td class="num">${signed(data.totalGross)}</td>
+        </tr>
+      </tbody>
+    </table>`;
+
+  const settlementTableHtml =
+    isFinalInvoice && data.settlementSummary
+      ? (() => {
+          const summary = data.settlementSummary;
+          const advances = data.settledInvoices ?? [];
+          return `
+        <table class="totals-table">
+          <colgroup><col style="width: 40%" /><col style="width: 20%" /><col style="width: 18%" /><col style="width: 22%" /></colgroup>
+          <thead>
+            <tr><th>Rozliczenie zaliczek</th><th class="num">Netto</th><th class="num">VAT</th><th class="num">Brutto</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Wartość faktury końcowej</td><td class="num">${formatMoney(summary.invoiceTotalNet)}</td><td class="num">${formatMoney(summary.invoiceTotalVat)}</td><td class="num">${formatMoney(summary.invoiceTotalGross)}</td></tr>
+            ${advances
+              .map(
+                (inv) => `<tr class="advance"><td>Zaliczka ${esc(inv.invoiceNumber)}${inv.issueDate ? `<div class="item-note">z dnia ${esc(formatDate(inv.issueDate))}</div>` : ''}</td><td class="num">${formatMoney(-inv.totalNet)}</td><td class="num">${formatMoney(-inv.totalVat)}</td><td class="num">${formatMoney(-inv.totalGross)}</td></tr>`,
+              )
+              .join('')}
+            ${advances.length !== 1 ? `<tr><td>Rozliczone zaliczki${advances.length ? ' razem' : ''}</td><td class="num">${formatMoney(-summary.settledNet)}</td><td class="num">${formatMoney(-summary.settledVat)}</td><td class="num">${formatMoney(-summary.settledGross)}</td></tr>` : ''}
+            <tr class="total"><td>Pozostało do zapłaty</td><td class="num">${formatMoney(summary.remainingNet)}</td><td class="num">${formatMoney(summary.remainingVat)}</td><td class="num">${formatMoney(summary.remainingGross)}</td></tr>
+          </tbody>
+        </table>`;
+        })()
+      : '';
+
+  // Faktura końcowa bez zapisanego podsumowania: sama lista rozliczanych zaliczek.
+  const finalSettlementHtml =
+    isFinalInvoice && !data.settlementSummary && data.settledInvoices?.length
+      ? `
+      <section class="block keep">
+        <h3>Rozliczane faktury zaliczkowe</h3>
+        <ul class="advance-list">
+          ${data.settledInvoices
+            .map(
+              (inv) => `<li><span>${esc(inv.invoiceNumber)}${inv.issueDate ? ` <span class="muted">z dnia ${esc(formatDate(inv.issueDate))}</span>` : ''}</span><span class="num">${formatMoney(inv.totalGross)} ${esc(currencyCode)} brutto</span></li>`,
+            )
+            .join('')}
+        </ul>
+      </section>`
+      : '';
 
   const partyCorrectionHtml = partyDataBefore ? (() => {
     const afterBuyer = {
@@ -429,13 +639,14 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
         ['name', 'Nazwa'], ['nip', 'NIP'], ['street', 'Ulica i numer'], ['postalCode', 'Kod pocztowy'],
         ['city', 'Miejscowość'], ['countryCode', 'Kraj'], ...(recipient ? [['internalId', 'Numer wewnętrzny KSeF']] : []),
       ];
-      return `<tr><th colspan="3">${esc(label)}</th></tr>` + fields.map(([key, title]) => {
+      return `<tr class="group"><th colspan="3">${esc(label)}</th></tr>` + fields.map(([key, title]) => {
         const value = (party: Record<string, unknown> | null) => party
           ? esc(party[key] || '-') : (key === 'name' ? 'Nie wskazano oddzielnego odbiorcy' : '-');
-        return `<tr><td>${esc(title)}</td><td>${value(before)}</td><td>${value(after)}</td></tr>`;
+        const changed = value(before) !== value(after);
+        return `<tr${changed ? ' class="changed"' : ''}><td class="muted">${esc(title)}</td><td>${value(before)}</td><td>${value(after)}</td></tr>`;
       }).join('');
     };
-    return `<table class="party-correction-table">
+    return `<table class="items party-correction">
       <colgroup><col style="width: 22%"/><col style="width: 39%"/><col style="width: 39%"/></colgroup>
       <thead><tr><th>Pole</th><th>Przed korektą</th><th>Po korekcie</th></tr></thead>
       <tbody>
@@ -443,8 +654,9 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
         ${rowsFor('Odbiorca', partyDataBefore.recipient ? { ...partyDataBefore.recipient } : null, data.recipient ? { ...data.recipient } : null, true)}
       </tbody>
     </table>
-    <div class="settlement-box"><strong>Korekta danych - bez zmiany kwot.</strong>
-      <div>Zmiana netto: 0.00 ${esc(currencyCode)}; VAT: 0.00 ${esc(currencyCode)}; brutto: 0.00 ${esc(currencyCode)}.</div>
+    <div class="notice keep">
+      <strong>Korekta danych — bez zmiany kwot.</strong>
+      <div>Zmiana netto: 0,00 ${esc(currencyCode)}; VAT: 0,00 ${esc(currencyCode)}; brutto: 0,00 ${esc(currencyCode)}.</div>
       <div>Kwoty i rozliczenie płatności faktury pierwotnej pozostają bez zmian. Ta korekta nie tworzy nowej należności ani zwrotu.</div>
     </div>`;
   })() : '';
@@ -452,29 +664,29 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
   const orderItemsHtml =
     data.invoiceType === 'advance' && data.orderItems?.length
       ? `
-        <div class="order-section">
-          <div class="settlement-title">Pełna wartość zamówienia</div>
-          <table>
+        <section class="block">
+          <h3>Pełna wartość zamówienia</h3>
+          <table class="items compact">
             <colgroup>
-              <col style="width: 4%" />
-              <col style="width: 33%" />
               <col style="width: 5%" />
+              <col style="width: 37%" />
+              <col style="width: 7%" />
               <col style="width: 6%" />
+              <col style="width: 12%" />
               <col style="width: 13%" />
-              <col style="width: 14%" />
-              <col style="width: 8%" />
-              <col style="width: 17%" />
+              <col style="width: 7%" />
+              <col style="width: 13%" />
             </colgroup>
             <thead>
               <tr>
-                <th>Lp.</th>
+                <th class="num">Lp.</th>
                 <th>Nazwa towaru lub usługi</th>
-                <th>Jm.</th>
-                <th>Ilość</th>
-                <th>Cena netto</th>
-                <th>Netto</th>
-                <th>VAT</th>
-                <th>Brutto</th>
+                <th class="num">Ilość</th>
+                <th class="center">J.m.</th>
+                <th class="num">Cena netto</th>
+                <th class="num">Wartość netto</th>
+                <th class="center">VAT</th>
+                <th class="num">Wartość brutto</th>
               </tr>
             </thead>
             <tbody>
@@ -482,640 +694,410 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
                 .map(
                   (item) => `
                     <tr>
-                      <td>${item.positionNumber}</td>
-                      <td>
+                      <td class="num muted">${item.positionNumber}</td>
+                      <td class="name">
                         ${esc(item.name)}
                         ${item.vatCode === 'zw' && item.vatExemptionReason ? `<div class="item-note">Podstawa zwolnienia: ${esc(item.vatExemptionReason)}</div>` : ''}
                       </td>
-                      <td class="center">${esc(item.unit)}</td>
-                      <td class="right">${item.quantity}</td>
-                      <td class="right">${formatMoney(item.priceNet)}</td>
-                      <td class="right">${formatMoney(item.valueNet)}</td>
+                      <td class="num">${formatQuantity(item.quantity)}</td>
+                      <td class="center muted">${esc(item.unit)}</td>
+                      <td class="num">${formatMoney(item.priceNet)}</td>
+                      <td class="num">${formatMoney(item.valueNet)}</td>
                       <td class="center">${esc(vatLabel(item.vatRate, item.vatCode))}</td>
-                      <td class="right strong">${formatMoney(item.valueGross)}</td>
+                      <td class="num strong">${formatMoney(item.valueGross)}</td>
                     </tr>`,
                 )
                 .join('')}
-              <tr>
-                <td colspan="5" class="right strong">Wartość zamówienia</td>
-                <td class="right strong">${formatMoney(data.orderItems.reduce((sum, item) => sum + item.valueNet, 0))}</td>
+              <tr class="sum">
+                <td colspan="5" class="num">Wartość zamówienia</td>
+                <td class="num">${formatMoney(data.orderItems.reduce((sum, item) => sum + item.valueNet, 0))}</td>
                 <td></td>
-                <td class="right strong">${formatMoney(data.orderItems.reduce((sum, item) => sum + item.valueGross, 0))} ${esc(currencyCode)}</td>
+                <td class="num">${formatMoney(data.orderItems.reduce((sum, item) => sum + item.valueGross, 0))}</td>
               </tr>
             </tbody>
           </table>
-        </div>`
+        </section>`
       : '';
+
+  const correctionReferenceHtml =
+    isCorrectiveInvoice && data.correctedInvoiceNumber
+      ? `
+    <div class="reference keep">
+      <div><span class="label">Korekta do faktury</span> <strong>${esc(data.correctedInvoiceNumber)}</strong>${data.correctedInvoiceIssueDate ? ` z dnia <strong>${esc(formatDate(data.correctedInvoiceIssueDate))}</strong>` : ''}</div>
+      ${data.correctedInvoiceKsefNumber ? `<div><span class="label">Numer KSeF faktury korygowanej</span> ${esc(data.correctedInvoiceKsefNumber)}</div>` : ''}
+      ${data.correctionReason ? `<div><span class="label">Przyczyna korekty</span> ${esc(data.correctionReason)}</div>` : ''}
+    </div>`
+      : '';
+
+  const metaCells: Array<[string, string]> = [
+    ['Data wystawienia', formatDate(data.issueDate)],
+    ['Data sprzedaży', formatDate(data.saleDate)],
+    ...(!isPartyDataCorrection && !isCash && data.paymentDueDate ? [['Termin płatności', formatDate(data.paymentDueDate)] as [string, string]] : []),
+    ['Miejsce wystawienia', data.issuePlace],
+  ];
+  const visibleMetaCells = metaCells.filter(([, value]) => value);
+
+  const paymentRows: Array<[string, string]> = [
+    ['Sposób płatności', data.paymentMethod ? data.paymentMethod.charAt(0).toUpperCase() + data.paymentMethod.slice(1) : ''],
+    ...(!isCash && data.paymentDueDate ? [['Termin płatności', formatDate(data.paymentDueDate)] as [string, string]] : []),
+    ...(!isCash && data.bankAccount ? [['Numer konta', formatAccount(data.bankAccount)] as [string, string]] : []),
+    ...(!isCash && data.bankName ? [['Bank', data.bankName] as [string, string]] : []),
+    ...(!isCash && data.bankSwift ? [['SWIFT/BIC', data.bankSwift] as [string, string]] : []),
+    ...(!isCash && !isSettled && !isRefund && remainingAmount > 0 ? [['Tytuł przelewu', data.invoiceNumber] as [string, string]] : []),
+  ];
+
+  const statusTone = isSettled
+    ? 'paid'
+    : paymentStatus === 'overdue'
+      ? 'overdue'
+      : paymentStatus === 'partially_paid' || paymentStatus === 'partially_refunded'
+        ? 'partial'
+        : 'due';
+
+  const paymentHtml = `
+    <div class="payment-card">
+      <h3>Płatność</h3>
+      <dl class="payment-list">
+        ${paymentRows.map(([label, value]) => label === 'Numer konta'
+          ? `<div class="stack"><dt>${esc(label)}</dt><dd class="account">${esc(value)}</dd></div>`
+          : `<div><dt>${esc(label)}</dt><dd>${esc(value)}</dd></div>`).join('')}
+        <div><dt>Status</dt><dd><span class="status status-${statusTone}">${esc(paymentStatusText)}</span>${paymentDetailText ? `<div class="status-detail">${esc(paymentDetailText)}</div>` : ''}</dd></div>
+      </dl>
+    </div>`;
+
+  const totalBoxHtml = `
+    <div class="total-box total-${statusTone}">
+      <div class="total-label">${esc(paymentLabel)}</div>
+      <div class="total-amount">${displayedAmountText}<span class="total-currency">${esc(currencyCode)}</span></div>
+      <div class="total-words">Słownie: ${esc(amountInWordsPl(Math.abs(displayedAmount), currencyCode))}</div>
+    </div>`;
+
+  const notesHtml = footerNote || exemptionReasons.length
+    ? `
+    <section class="notes keep">
+      <h3>Uwagi</h3>
+      ${footerNote ? `<div class="notes-text">${esc(footerNote)}</div>` : ''}
+      ${exemptionReasons.length ? `<div class="notes-text">Podstawa zwolnienia z VAT: ${exemptionReasons.map(esc).join('; ')}</div>` : ''}
+    </section>`
+    : '';
+
+  const summaryHtml = isPartyDataCorrection
+    ? ''
+    : `
+  <section class="summary keep">
+    <div class="summary-left">${paymentHtml}</div>
+    <div class="summary-right">
+      ${vatSummaryHtml}
+      ${correctionTotalsHtml}
+      ${settlementTableHtml}
+      ${totalBoxHtml}
+    </div>
+  </section>`;
 
   return `<!DOCTYPE html>
 <html lang="pl">
 <head>
   <meta charset="UTF-8" />
-  <title>${esc(getTypeLabel(data.invoiceType, data.invoiceNumber))} ${esc(data.invoiceNumber)}</title>
+  <title>${esc(typeLabel)} ${esc(data.invoiceNumber)}</title>
   <style>
+    /*invoice-print-fonts*/
+
     @page {
       size: A4;
-      margin: 10mm 10mm 17mm;
+      margin: 12mm 12mm 16mm;
     }
 
-    *,
-    *::before,
-    *::after {
-      box-sizing: border-box;
+    :root {
+      --ink: #111827;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --faint: #9ca3af;
+      --line: #e5e7eb;
+      --line-strong: #d1d5db;
+      --panel: #f6f7f9;
+      --paid: #047857;
+      --paid-bg: #ecfdf5;
+      --due: #92400e;
+      --due-bg: #fffbeb;
+      --overdue: #b91c1c;
+      --overdue-bg: #fef2f2;
     }
 
-    html,
+    *, *::before, *::after { box-sizing: border-box; }
+
+    html, body { margin: 0; padding: 0; width: 100%; min-width: 0; }
+
     body {
-      margin: 0;
-      padding: 0;
-      width: 100%;
-      min-width: 0;
-    }
-
-    body {
-      font-family: Arial, Helvetica, sans-serif;
-      color: #111;
-      font-size: 12px;
+      font-family: 'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+      font-size: 9pt;
       line-height: 1.45;
-      margin: 0;
-      width: 100%;
-      max-width: 100%;
-      /* Keep collapsed table border strokes inside the printable content box. */
-      padding: 1px;
-      box-sizing: border-box;
-      display: block;
-      overflow-wrap: anywhere;
-    }
-
-    .top {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-      align-items: stretch;
-      margin-bottom: 24px;
-      gap: 20px;
-    }
-
-    .top > div {
-      min-width: 0;
-    }
-
-    .preview-banner {
-      margin-bottom: 16px;
-      padding: 6px 10px;
-      background: #f3f4f6;
-      color: #555;
-      text-align: center;
-      font-size: 9px;
-      font-weight: 700;
-      letter-spacing: 0.15em;
-      text-transform: uppercase;
+      color: var(--text);
+      background: #fff;
+      font-variant-numeric: tabular-nums;
+      font-feature-settings: 'tnum' 1;
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
+      overflow-wrap: anywhere;
     }
 
-    .logo-slot {
-      position: relative;
-      min-height: 0;
+    h3 {
+      margin: 0 0 6px;
+      font-size: 7pt;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
     }
 
-    .logo {
-      /* Only the dates define the header height; the logo cannot make it taller. */
-      position: absolute;
-      inset: 0;
-      display: block;
-      width: 100%;
-      height: 100%;
-      object-fit: contain;
-      object-position: left top;
+    .muted { color: var(--muted); }
+    .strong { font-weight: 600; color: var(--ink); }
+    .center { text-align: center; }
+    .num { text-align: right; white-space: nowrap; }
+    .keep { break-inside: avoid; page-break-inside: avoid; }
+
+    .doc-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 24px;
+      padding-bottom: 14px;
+      border-bottom: 2px solid var(--ink);
     }
+    .logo-slot { flex: 0 1 46%; min-height: 14mm; display: flex; align-items: center; }
+    .logo { display: block; max-width: 62mm; max-height: 20mm; object-fit: contain; object-position: left center; }
+    .doc-title { flex: 1 1 54%; text-align: right; }
+    .doc-kind { font-size: 8pt; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+    .doc-number { margin-top: 2px; font-size: 19pt; font-weight: 700; line-height: 1.15; letter-spacing: -0.01em; color: var(--ink); }
+    .doc-badges { margin-top: 6px; display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 6px; }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border: 1px solid var(--line-strong);
+      border-radius: 999px;
+      font-size: 6.8pt;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    .badge-ksef { border-color: #a7f3d0; color: var(--paid); background: var(--paid-bg); }
 
     .meta {
-      text-align: right;
-      font-size: 11px;
-      margin-right: 5px;
+      display: grid;
+      grid-template-columns: repeat(${Math.max(visibleMetaCells.length, 1)}, minmax(0, 1fr));
+      margin-top: 12px;
+      background: var(--panel);
+      border-radius: 6px;
+      overflow: hidden;
     }
-
-    .meta-label {
-      color: #666;
-    }
+    .meta > div { padding: 7px 10px; box-shadow: inset 1px 0 0 #fff; }
+    .meta > div:first-child { box-shadow: none; }
+    .meta-label { font-size: 6.8pt; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+    .meta-value { margin-top: 1px; font-size: 9.5pt; font-weight: 600; color: var(--ink); }
+    .ksef-line { margin-top: 6px; font-size: 7.5pt; color: var(--muted); text-align: right; }
+    .ksef-line strong { color: var(--ink); font-weight: 600; }
 
     .parties {
-      display: table;
-      width: 100%;
-      table-layout: fixed;
-      margin-bottom: 24px;
+      display: grid;
+      grid-template-columns: repeat(${data.recipient ? 3 : 2}, minmax(0, 1fr));
+      gap: 18px;
+      margin: 18px 0 16px;
     }
+    .party { min-width: 0; }
+    .party-name { font-size: 10pt; font-weight: 600; color: var(--ink); margin-bottom: 2px; line-height: 1.3; }
+    .party-id { margin-top: 3px; color: var(--ink); }
+    .party-id span { color: var(--muted); font-size: 7.5pt; font-weight: 600; letter-spacing: 0.04em; margin-right: 2px; }
+    .party-contact { margin-top: 3px; color: var(--muted); font-size: 8pt; }
 
-    .party {
-      display: table-cell;
-      width: 50%;
-      vertical-align: top;
+    .reference {
+      margin: 0 0 14px;
+      padding: 8px 12px;
+      border-left: 3px solid var(--ink);
+      background: var(--panel);
+      border-radius: 0 6px 6px 0;
+      font-size: 8.5pt;
     }
+    .reference .label { color: var(--muted); margin-right: 4px; }
 
-    .party-left {
-      padding-right: 12px;
-    }
+    table { border-collapse: collapse; width: 100%; max-width: 100%; table-layout: fixed; }
+    thead { display: table-header-group; }
+    tr { break-inside: avoid; page-break-inside: avoid; }
 
-    .party-right {
-      padding-left: 12px;
-    }
-
-    .recipient {
-      margin-top: 14px;
-      overflow-wrap: anywhere;
-      break-inside: avoid;
-      page-break-inside: avoid;
-    }
-
-    .section-label {
-      color: #666;
-      font-size: 11px;
-      margin-bottom: 4px;
-    }
-
-    .strong {
-      font-weight: 700;
-    }
-
-    .title {
-      text-align: center;
-      font-size: 18px;
-      font-weight: 700;
-      margin-bottom: 20px;
-    }
-
-    table {
-      border-collapse: collapse;
-      width: 100%;
-      max-width: 100%;
-      table-layout: fixed;
-    }
-
-    thead {
-      display: table-header-group;
-    }
-
-    tr,
-    .summary,
-    .settlement-box,
-    .advance-list,
-    .order-section,
-    .closing-section,
-    .ksef-verification {
-      break-inside: avoid;
-      page-break-inside: avoid;
-    }
-
-    .item-note {
-      margin-top: 2px;
-      color: #555;
-      font-size: 9px;
-    }
-
-    th,
-    td {
-      border: 1px solid #d1d5db;
-      padding: 6px 5px;
-      font-size: 11px;
-      vertical-align: top;
-      color: #111;
-      overflow-wrap: anywhere;
-      word-break: normal;
-    }
-
-    th {
-      background: #e5e7eb;
-      font-size: 11px;
-      font-weight: 700;
+    .items th {
+      padding: 6px;
+      font-size: 7pt;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      line-height: 1.25;
+      text-transform: uppercase;
+      color: var(--muted);
       text-align: left;
-      color: #111;
+      border-bottom: 1.5px solid var(--ink);
+      vertical-align: bottom;
     }
+    .items th.num { text-align: right; white-space: normal; }
+    .items th.center { text-align: center; }
+    .items td {
+      padding: 7px 6px;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+      color: var(--text);
+      overflow-wrap: anywhere;
+    }
+    .items td.name { color: var(--ink); }
+    .items.compact td { padding: 5px 6px; }
+    .items tr.sum td { border-bottom: 0; border-top: 1.5px solid var(--ink); font-weight: 600; color: var(--ink); }
+    .item-note { margin-top: 2px; color: var(--muted); font-size: 7.5pt; }
 
-    .center {
-      text-align: center;
-    }
+    .items.corrective tbody.correction-group { break-inside: avoid; page-break-inside: avoid; }
+    .items.corrective tr.before td { color: var(--muted); border-bottom: 0; padding-bottom: 2px; }
+    .items.corrective tr.after td { border-bottom: 0; padding-top: 2px; padding-bottom: 2px; }
+    .items.corrective tr.difference td { padding-top: 3px; padding-bottom: 5px; background: var(--panel); }
+    .items.corrective td[rowspan] { border-bottom: 1px solid var(--line); background: #fff; }
+    .row-tag { font-size: 6.8pt; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); white-space: nowrap; }
 
-    .right {
-      text-align: right;
-    }
+    .party-correction tr.group th { padding-top: 10px; color: var(--ink); border-bottom: 1px solid var(--line-strong); }
+    .party-correction tr.changed td { background: var(--due-bg); }
 
     .summary {
-      margin-top: 20px;
-      display: table;
-      width: 100%;
-      table-layout: fixed;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
+      gap: 22px;
+      margin-top: 16px;
+      align-items: start;
     }
 
-    .summary-left,
-    .summary-right {
-      display: table-cell;
-      width: 50%;
-      vertical-align: top;
+    .totals-table th {
+      padding: 5px 6px;
+      font-size: 7pt;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--muted);
+      text-align: left;
+      border-bottom: 1px solid var(--line-strong);
     }
+    .totals-table th.num { text-align: right; white-space: normal; }
+    .totals-table td { padding: 5px 6px; border-bottom: 1px solid var(--line); }
+    .totals-table tr.advance td { color: var(--muted); }
+    .totals-table tr.total td { font-weight: 700; color: var(--ink); border-bottom: 0; border-top: 1.5px solid var(--ink); }
+    .totals-table + .totals-table { margin-top: 12px; }
 
-    .summary-left {
-      padding-right: 12px;
-    }
+    .total-box { margin-top: 12px; padding: 12px 14px; border-radius: 8px; background: var(--ink); color: #fff; }
+    .total-box.total-paid { background: var(--paid); }
+    .total-label { font-size: 7.5pt; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; opacity: 0.8; }
+    .total-amount { margin-top: 2px; font-size: 20pt; font-weight: 700; letter-spacing: -0.01em; line-height: 1.15; white-space: nowrap; }
+    .total-currency { margin-left: 6px; font-size: 11pt; font-weight: 600; opacity: 0.85; }
+    .total-words { margin-top: 4px; font-size: 7.8pt; opacity: 0.85; line-height: 1.35; }
 
-    .summary-right {
-      padding-left: 12px;
-    }
+    .payment-card { padding: 12px 14px; background: var(--panel); border-radius: 8px; }
+    .payment-list { margin: 0; display: grid; gap: 6px; }
+    .payment-list > div { display: grid; grid-template-columns: 30mm minmax(0, 1fr); gap: 8px; align-items: baseline; }
+    .payment-list dt { color: var(--muted); font-size: 8pt; }
+    .payment-list dd { margin: 0; color: var(--ink); font-weight: 500; }
+    .payment-list > div.stack { grid-template-columns: minmax(0, 1fr); gap: 1px; padding: 2px 0; }
+    .payment-list dd.account { font-size: 10pt; font-weight: 600; letter-spacing: 0.02em; white-space: nowrap; }
+    .status { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 7.5pt; font-weight: 600; background: var(--due-bg); color: var(--due); }
+    .status-paid { background: var(--paid-bg); color: var(--paid); }
+    .status-overdue { background: var(--overdue-bg); color: var(--overdue); }
+    .status-detail { margin-top: 2px; font-size: 8pt; color: var(--muted); font-weight: 400; }
 
-    .bank-box {
-      font-size: 12px;
-      margin-top: 4px;
-    }
+    .block { margin-top: 18px; }
+    .advance-list { list-style: none; margin: 0 0 10px; padding: 0; border-top: 1px solid var(--line); }
+    .advance-list li { display: flex; justify-content: space-between; gap: 12px; padding: 5px 6px; border-bottom: 1px solid var(--line); }
 
-    .amount {
-      font-size: 16px;
-      font-weight: 700;
-    }
+    .notice { margin-top: 12px; padding: 10px 12px; border-radius: 6px; background: var(--panel); font-size: 8.5pt; }
 
-    .footer-note {
-      margin-top: 30px;
-      font-size: 10px;
-      color: #000;
-    }
+    .notes { margin-top: 16px; padding-top: 10px; border-top: 1px solid var(--line); }
+    .notes-text { white-space: pre-wrap; font-size: 8.5pt; color: var(--text); }
+    .notes-text + .notes-text { margin-top: 4px; }
 
-    .signature {
-      margin: 32px 5% 0;
-      text-align: right;
+    .closing {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      gap: 24px;
+      margin-top: 24px;
       break-inside: avoid;
       page-break-inside: avoid;
     }
+    .closing-left { flex: 1 1 auto; min-width: 0; }
+    .ksef-verification { display: flex; align-items: center; gap: 12px; }
+    .ksef-verification img { display: block; width: 26mm; height: 26mm; }
+    .ksef-verification-title { font-size: 7pt; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+    .ksef-verification-number { margin-top: 2px; font-size: 8.5pt; font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
+    .ksef-verification-hint { margin-top: 2px; font-size: 7.5pt; color: var(--muted); max-width: 70mm; }
 
-    .signature-container {
-      display: inline-block;
-      width: 240px;
-      max-width: 100%;
-    }
-
-    .signature-line {
-      display: inline-block;
-      width: 100%;
-      border-top: 1px solid #d1d5db;
-      padding: 4px 0;
-      text-align: center;
-      overflow-wrap: anywhere;
-    }
-
-    .signature-employee {
-      font-size: 12px;
-      font-weight: 700;
-      color: #000;
-      margin-bottom: 4px;
-      text-align: center;
-    }
-
-    .signature-role {
-      font-size: 9px;
-      color: #666;
-    }
-
-    .settlement-box {
-      margin-top: 16px;
-    }
-
-    .settlement-title {
-      font-size: 12px;
-      font-weight: 700;
-      margin-bottom: 6px;
-    }
-
-    .settlement-table th,
-    .settlement-table td {
-      font-size: 10.5px;
-      padding: 5px 7px;
-    }
-
-    .advance-list {
-      margin-top: 14px;
-      font-size: 11px;
-    }
-
-    .advance-row {
-      border: 1px solid #d1d5db;
-      border-bottom: 0;
-      padding: 5px 7px;
-    }
-
-    .advance-row:last-child {
-      border-bottom: 1px solid #d1d5db;
-    }
-
-    .order-section {
-      margin-top: 18px;
-    }
-
-    .ksef-verification {
-      margin-top: 18px;
-      padding-top: 10px;
-      border-top: 1px solid #d1d5db;
-      text-align: right;
-    }
-
-    .ksef-verification img {
-      display: inline-block;
-      width: 112px;
-      height: 112px;
-    }
-
-    .ksef-label {
-      margin-top: 3px;
-      font-size: 8px;
-      line-height: 1.25;
-      overflow-wrap: anywhere;
-    }
+    .signature { flex: 0 0 62mm; text-align: center; }
+    .signature-name { font-size: 9.5pt; font-weight: 600; color: var(--ink); padding-bottom: 6px; }
+    .signature-line { border-top: 1px solid var(--line-strong); padding-top: 4px; font-size: 7pt; color: var(--muted); }
   </style>
 </head>
 
 <body>
-  <div class="preview-banner">${data.isProforma ? 'Wizualizacja pro formy' : 'Wizualizacja faktury'}</div>
-
-  <div class="top">
+  <header class="doc-header">
     <div class="logo-slot">
-      ${data.companyLogoUrl ? `<img src="${esc(data.companyLogoUrl)}" alt="Logo" class="logo" />` : ''}
+      ${data.companyLogoUrl ? `<img src="${esc(data.companyLogoUrl)}" alt="Logo" class="logo" />` : `<div class="party-name">${esc(data.sellerName)}</div>`}
     </div>
-
-    <div class="meta">
-      <div><span class="meta-label">Miejsce wystawienia:</span> <strong>${esc(data.issuePlace)}</strong></div>
-      <div><span class="meta-label">Data wystawienia:</span> <strong>${esc(formatDate(data.issueDate))}</strong></div>
-      <div><span class="meta-label">Data sprzedaży:</span> <strong>${esc(formatDate(data.saleDate))}</strong></div>
+    <div class="doc-title">
+      <div class="doc-kind">${esc(typeLabel)}</div>
+      <div class="doc-number">${esc(data.invoiceNumber)}</div>
+      <div class="doc-badges">
+        <span class="badge">${esc(visualizationLabel)}</span>
+        ${data.ksefNumber ? '<span class="badge badge-ksef">Przyjęta w KSeF</span>' : ''}
+      </div>
     </div>
-  </div>
+  </header>
 
-  <div class="parties">
-    <div class="party party-left">
-      <div class="section-label">Sprzedawca</div>
-      <div class="strong">${esc(data.sellerName)}</div>
-      <div>NIP: ${esc(data.sellerNip)}</div>
-      <div>${esc(data.sellerStreet)}</div>
-      <div>${esc(data.sellerPostalCode)} ${esc(data.sellerCity)}</div>
+  ${visibleMetaCells.length ? `<div class="meta">${visibleMetaCells.map(([label, value]) => `<div><div class="meta-label">${esc(label)}</div><div class="meta-value">${esc(value)}</div></div>`).join('')}</div>` : ''}
+  ${data.ksefNumber ? `<div class="ksef-line">Numer KSeF: <strong>${esc(data.ksefNumber)}</strong></div>` : ''}
+
+  <section class="parties">
+    <div class="party">
+      <h3>Sprzedawca</h3>
+      ${partyLines({
+        name: data.sellerName, nip: data.sellerNip, street: data.sellerStreet, postalCode: data.sellerPostalCode,
+        city: data.sellerCity, countryCode: data.sellerCountryCode, email: data.sellerEmail, phone: data.sellerPhone,
+      })}
     </div>
-
-    <div class="party party-right">
-      <div class="section-label">Nabywca</div>
-      <div class="strong">${esc(data.buyerName)}</div>
-      ${data.buyerNip ? `<div>NIP: ${esc(data.buyerNip)}</div>` : ''}
-      <div>${esc(data.buyerStreet)}</div>
-      <div>${esc(data.buyerPostalCode)} ${esc(data.buyerCity)}</div>
-      ${data.recipient ? `
-      <div class="recipient">
-        <div class="section-label">Odbiorca</div>
-        <div class="strong">${esc(data.recipient.name)}</div>
-        ${data.recipient.nip ? `<div>NIP: ${esc(data.recipient.nip)}</div>` : ''}
-        <div>${esc(data.recipient.street)}</div>
-        <div>${esc(data.recipient.postalCode)} ${esc(data.recipient.city)}</div>
-        ${data.recipient.countryCode !== 'PL' ? `<div>${esc(data.recipient.countryCode)}</div>` : ''}
-        ${data.recipient.internalId ? `<div>Numer identyfikacji wewnętrznej KSeF: <strong>${esc(data.recipient.internalId)}</strong></div>` : ''}
-      </div>` : ''}
+    <div class="party">
+      <h3>Nabywca</h3>
+      ${partyLines({
+        name: data.buyerName, nip: data.buyerNip, street: data.buyerStreet, postalCode: data.buyerPostalCode,
+        city: data.buyerCity, countryCode: data.buyerCountryCode,
+      })}
     </div>
-  </div>
+    ${data.recipient ? `
+    <div class="party">
+      <h3>Odbiorca</h3>
+      ${partyLines({
+        name: data.recipient.name, nip: data.recipient.nip, street: data.recipient.street, postalCode: data.recipient.postalCode,
+        city: data.recipient.city, countryCode: data.recipient.countryCode,
+        extra: data.recipient.internalId ? `<div class="party-contact">Numer identyfikacji wewnętrznej KSeF: <strong>${esc(data.recipient.internalId)}</strong></div>` : '',
+      })}
+    </div>` : ''}
+  </section>
 
-  <div class="title">
-    ${esc(isPartyDataCorrection ? 'Faktura korygująca dane' : getTypeLabel(data.invoiceType, data.invoiceNumber))} ${esc(data.invoiceNumber)}
-  </div>
+  ${correctionReferenceHtml}
 
-  ${
-    isCorrectiveInvoice && data.correctedInvoiceNumber
-      ? `
-    <div style="margin-bottom: 14px; font-size: 11px; border: 1px solid #d1d5db; padding: 8px 12px; background: #f9fafb;">
-      <span style="color: #666;">Korekta do faktury:</span>
-      <strong>${esc(data.correctedInvoiceNumber)}</strong>
-      ${data.correctedInvoiceIssueDate ? ` z dnia <strong>${esc(formatDate(data.correctedInvoiceIssueDate))}</strong>` : ''}
-      ${data.correctedInvoiceKsefNumber ? `<br/><span style="color: #666;">Numer KSeF faktury korygowanej:</span> ${esc(data.correctedInvoiceKsefNumber)}` : ''}
-      ${data.correctionReason ? `<br/><span style="color: #666;">Przyczyna korekty:</span> ${esc(data.correctionReason)}` : ''}
-    </div>
-  `
-      : ''
-  }
+  ${isPartyDataCorrection ? partyCorrectionHtml : correctiveItems ? correctiveItemsHtml : standardItemsHtml}
 
-  ${
-    isPartyDataCorrection ? partyCorrectionHtml : correctiveItems
-      ? `
-    <table>
-      <colgroup>
-        <col style="width: 4%" />
-        <col style="width: 25%" />
-        <col style="width: 9%" />
-        <col style="width: 5%" />
-        <col style="width: 6%" />
-        <col style="width: 11%" />
-        <col style="width: 11%" />
-        <col style="width: 6%" />
-        <col style="width: 11%" />
-        <col style="width: 12%" />
-      </colgroup>
-      <thead>
-        <tr>
-          <th>Lp.</th>
-          <th>Nazwa towaru lub usługi</th>
-          <th style="font-size: 9px;"></th>
-          <th>Jm.</th>
-          <th>Ilość</th>
-          <th>Cena netto</th>
-          <th>Wartość netto</th>
-          <th>VAT</th>
-          <th>Kwota VAT</th>
-          <th>Brutto</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${correctiveItemsHtml}
-      </tbody>
-    </table>
-
-    ${(() => {
-      const totals = correctiveItems.reduce(
-        (sum, item) => {
-          const c = getCorrectionValues(item);
-
-          return {
-            beforeNet: sum.beforeNet + c.beforeNet,
-            beforeVat: sum.beforeVat + c.beforeVat,
-            beforeGross: sum.beforeGross + c.beforeGross,
-            correctionNet: sum.correctionNet + c.correctionNet,
-            correctionVat: sum.correctionVat + c.correctionVat,
-            correctionGross: sum.correctionGross + c.correctionGross,
-          };
-        },
-        {
-          beforeNet: 0,
-          beforeVat: 0,
-          beforeGross: 0,
-          correctionNet: 0,
-          correctionVat: 0,
-          correctionGross: 0,
-        },
-      );
-
-      return `
-        <table style="margin-left: auto; margin-top: 8px; width: auto; font-size: 11px;">
-          <tbody>
-            <tr>
-              <td class="right strong" style="padding: 4px 10px;">Przed korektą:</td>
-              <td class="right" style="padding: 4px 10px;">${formatMoney(totals.beforeNet)}</td>
-              <td class="right" style="padding: 4px 10px;">${formatMoney(totals.beforeVat)}</td>
-              <td class="right" style="padding: 4px 10px;">${formatMoney(totals.beforeGross)}</td>
-            </tr>
-            <tr>
-              <td class="right strong" style="padding: 4px 10px;">Suma korekt:</td>
-              <td class="right" style="padding: 4px 10px;">${formatSignedMoney(totals.correctionNet)}</td>
-              <td class="right" style="padding: 4px 10px;">${formatSignedMoney(totals.correctionVat)}</td>
-              <td class="right" style="padding: 4px 10px;">${formatSignedMoney(totals.correctionGross)}</td>
-            </tr>
-            <tr style="font-weight: 700;">
-              <td class="right strong" style="padding: 4px 10px;">Po korekcie:</td>
-              <td class="right" style="padding: 4px 10px;">${formatMoney(totals.beforeNet + totals.correctionNet)}</td>
-              <td class="right" style="padding: 4px 10px;">${formatMoney(totals.beforeVat + totals.correctionVat)}</td>
-              <td class="right" style="padding: 4px 10px;">${formatMoney(totals.beforeGross + totals.correctionGross)}</td>
-            </tr>
-          </tbody>
-        </table>
-      `;
-    })()}
-  `
-      : `
-    <table>
-      <colgroup>
-        <col style="width: 4%" />
-        <col style="width: 32%" />
-        <col style="width: 5%" />
-        <col style="width: 6%" />
-        <col style="width: 11%" />
-        <col style="width: 12%" />
-        <col style="width: 6%" />
-        <col style="width: 12%" />
-        <col style="width: 12%" />
-      </colgroup>
-      <thead>
-        <tr>
-          <th>Lp.</th>
-          <th>Nazwa towaru lub usługi</th>
-          <th>Jm.</th>
-          <th>Ilość</th>
-          <th>Cena netto</th>
-          <th>Wartość netto</th>
-          <th>VAT</th>
-          <th>Kwota VAT</th>
-          <th>Brutto</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${rows}
-        <tr>
-          <td colspan="5" class="right strong">Razem</td>
-          <td class="right strong">${formatMoney(data.totalNet)}</td>
-          <td></td>
-          <td class="right strong">${formatMoney(data.totalVat)}</td>
-          <td class="right strong">${formatMoney(data.totalGross)}</td>
-        </tr>
-      </tbody>
-    </table>
-  `
-  }
-
+  ${summaryHtml}
   ${orderItemsHtml}
-  ${settledInvoicesHtml}
   ${finalSettlementHtml}
 
-  <div class="closing-section">
-  ${!isPartyDataCorrection ? `
-  <div class="summary">
-<div class="summary-left">
-  <div>
-    <span class="meta-label">Sposób płatności:</span> ${esc(data.paymentMethod)}
-  </div>
+  ${notesHtml}
 
-<div style="margin-top: 4px;">
-  <span class="meta-label">Status płatności:</span>
-
-  ${
-    paymentStatus === 'paid' || paymentStatus === 'refunded'
-      ? `
-        ${paymentStatus === 'refunded' ? 'Zwrot wykonany' : 'Zapłacono'}
-        ${
-          data.paidAt
-            ? `<div style="margin-top: 2px;">
-                <span class="meta-label">Data opłacenia:</span>
-                ${esc(formatDate(data.paidAt))}
-              </div>`
-            : ''
-        }
-      `
-      : paymentStatus === 'partially_paid'
-        ? `Częściowo opłacono`
-        : paymentStatus === 'partially_refunded'
-          ? 'Częściowo zwrócono'
-          : paymentStatus === 'refund_due'
-            ? 'Do zwrotu'
-            : 'Do zapłaty'
-  }
-</div>
-
-  ${
-    paymentStatus === 'partially_paid' || paymentStatus === 'partially_refunded'
-      ? `
-        <div style="margin-top: 4px;">
-          <span class="meta-label">${paymentStatus === 'partially_refunded' ? 'Zwrócono:' : 'Wpłacono:'}</span>
-          ${formatMoney(paidAmount)} ${esc(currencyCode)}
-        </div>
-      `
-      : ''
-  }
-
-  ${!isCash ? `
-    <div>
-      <span class="meta-label">Termin płatności:</span> ${esc(formatDate(data.paymentDueDate))}
+  <section class="closing">
+    <div class="closing-left">
+      <div id="ksef-verification-placeholder"></div>
     </div>
-
-    <div>
-      <span class="meta-label">Numer konta:</span>
-      <span class="bank-box">${esc(data.bankAccount)}</span>
+    <div class="signature">
+      <div class="signature-name">${esc(data.signatureName?.trim() || 'Brak danych osoby wystawiającej')}</div>
+      <div class="signature-line">Imię i nazwisko osoby upoważnionej do wystawienia</div>
     </div>
-
-    ${data.bankName ? `
-      <div style="margin-top: 4px;">
-        <span class="meta-label">Nazwa banku:</span> ${esc(data.bankName)}
-      </div>
-    ` : ''}
-  ` : ''}
-</div>
-
-    <div class="summary-right">
-      <div>
-        <span class="meta-label">${esc(paymentLabel)}</span>
-        <span class="amount">
-        ${
-          paymentStatus === 'paid' || paymentStatus === 'refunded'
-            ? formatMoney(paidAmount)
-            : isCorrectiveInvoice
-              ? (isRefund ? formatMoney(remainingAmount) : formatSignedMoney(remainingAmount))
-              : formatMoney(remainingAmount)
-        } ${esc(currencyCode)}
-        </span>
-        ${paymentInfoHtml}
-      </div>
-    </div>
-  </div>
-
-  ` : ''}
-
-  <div class="footer-note">
-    ${footerNote ? `<span style="white-space: pre-wrap; font-weight: 700;">Uwagi:</span> ${esc(footerNote)}` : ''}
-  </div>
-
-  <div class="signature">
-    <div class="signature-container">
-      <div class="signature-employee">${esc(data.signatureName?.trim() || 'Brak danych osoby wystawiającej')}</div>
-      <div class="signature-line">
-        <div class="signature-role">Podpis osoby upoważnionej do wystawienia</div>
-      </div>
-    </div>
-  </div>
-
-  <div id="ksef-verification-placeholder"></div>
-  </div>
+  </section>
 </body>
 </html>`;
 };
