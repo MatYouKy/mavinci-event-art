@@ -1,5 +1,6 @@
 import { AgendaTab } from './EventDetailScreen/AgendaTab';
 import RealizationActions from './RealizationActions';
+import EventCardButton from './EventCardButton';
 import { TeamTab } from './EventDetailScreen/TeamTab';
 import { mergeEventTeam } from '../../lib/eventTeam';
 import { useAuth } from '../../contexts/AuthContext';
@@ -152,6 +153,7 @@ export default function RealizationWorkspace({
       </ScrollView>
       {tab === 'overview' && (
         <>
+          <EventCardButton eventId={data.id} />
           {card(
             'scope',
             'Zakres realizacji',

@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ArrowLeft, FileText, Clock, Package, ClipboardList, Truck, UserCheck, Users, Phone, MessageSquare, Mail } from 'lucide-react';
+import { ArrowLeft, FileText, Clock, Package, ClipboardList, Truck, UserCheck, Users, Phone, MessageSquare, Mail, Printer } from 'lucide-react';
 import { systemLabel } from '@/lib/ui/systemLabels';
 import EventNavigation from './EventNavigation';
 import { supabase } from '@/lib/supabase/browser';
@@ -79,6 +79,15 @@ export default function RealizationWorkspace({ initialData: d }: { initialData: 
       <header className="flex items-start gap-4">
         <a href="/crm/events" aria-label="Wróć do wydarzeń" className="mt-1 text-[#e5e4e2]/70 hover:text-[#d3bb73]"><ArrowLeft className="h-6 w-6" /></a>
         <div><h1 className="text-2xl font-light uppercase">{d.name}</h1><p className="mt-1 text-sm text-[#e5e4e2]/60">{date(d.event_date)} – {date(d.event_end_date)}</p></div>
+        <a
+          href={`/bridge/events/${d.id}/card`}
+          target="_blank"
+          rel="noopener noreferrer"
+          title="Karta imprezy do druku: harmonogram, kontakty, auta i trasy, zespół, sprzęt i wytyczne"
+          className="ml-auto inline-flex shrink-0 items-center gap-2 rounded-lg bg-white/5 px-3 py-2 text-sm text-[#d3bb73] transition hover:bg-white/10"
+        >
+          <Printer className="h-4 w-4" />Karta imprezy
+        </a>
       </header>
       <EventNavigation tabs={tabs} activeTab={tab} onChange={setTab} />
       <div className={tab === 'overview' ? 'grid items-start gap-6 lg:grid-cols-3' : ''}>

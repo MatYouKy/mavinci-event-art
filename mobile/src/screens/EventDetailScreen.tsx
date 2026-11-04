@@ -4,6 +4,7 @@ import RealizationActions from '../components/Events/RealizationActions';
 import { useOperationalStages } from '../hooks/useOperationalStages';
 import { OPERATIONAL_LABELS, usesOperationalStages } from '../lib/operationalStages';
 import RealizationWorkspace from '../components/Events/RealizationWorkspace';
+import EventCardButton from '../components/Events/EventCardButton';
 import { respondToAssignment } from '../services/assignmentResponse';
 import WarehouseHandoffPanel from '../components/Events/WarehouseHandoffPanel';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -53,6 +54,8 @@ interface Props {
   eventId: string;
   onBack: () => void;
   initialTab?: TabKey;
+  /** Pulpit realizacji jest dostępny (kierownik realizacji / prowadzenie realizacji) — można wydrukować kartę imprezy. */
+  canPrintCard?: boolean;
 }
 
 interface MyAssignment {
@@ -61,7 +64,7 @@ interface MyAssignment {
   role: string | null;
 }
 
-function StandardEventDetailScreen({ eventId, onBack, initialTab }: Props) {
+function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }: Props) {
   const { employee, session } = useAuth();
   const canManageEvent = isManagerOrAdmin(employee);
   const isWarehouseWorker = employee?.permissions?.includes('equipment_manage') === true;
@@ -1053,6 +1056,7 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab }: Props) {
         }
       >
         {activeTab === 'details' && isEventOrganizer(event.created_by, employee?.id, session?.user?.id) && <TouchableOpacity onPress={() => openInCrmWeb('/crm/events/actions')} style={{ margin: 16, padding: 12, borderRadius: 10, backgroundColor: colors.background.secondary }}><Text style={{ color: colors.primary.gold }}>Moje wydarzenia — następne kroki i przypomnienia →</Text></TouchableOpacity>}
+        {activeTab === 'details' && canPrintCard && <EventCardButton eventId={eventId} />}
         {activeTab === 'details' && <RealizationActions eventId={eventId} onChanged={() => void loadAll(true)} />}
         {activeTab === 'warehouse' && showWarehouseTab && <WarehouseHandoffPanel key={eventId} eventId={eventId} status={event.status} onAccepted={() => { void loadAll(true); }} />}
         {activeTab === 'details' && <DetailsTab event={event} employee={employee as Employee} />}
@@ -1311,5 +1315,5 @@ export default function EventDetailScreen(props: Props) {
  if(!result.ready)return <ActivityIndicator color={colors.primary.gold}/>;
  if(result.error)return <View style={{padding:20}}><Text style={{color:colors.text.primary}}>Nie udało się sprawdzić dostępu do realizacji.</Text><TouchableOpacity onPress={()=>setRetry(value=>value+1)}><Text style={{color:colors.primary.gold,paddingVertical:12}}>Spróbuj ponownie</Text></TouchableOpacity><TouchableOpacity onPress={props.onBack}><Text style={{color:colors.primary.gold}}>Wróć</Text></TouchableOpacity></View>;
  if(result.data?.operational_only)return <RealizationWorkspace initialData={result.data} onBack={props.onBack} initialTab={props.initialTab}/>;
- return <StandardEventDetailScreen {...props}/>;
+ return <StandardEventDetailScreen {...props} canPrintCard={!!result.data}/>;
 }

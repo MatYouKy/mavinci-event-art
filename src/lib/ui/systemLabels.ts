@@ -84,6 +84,7 @@ const labels = {
   skill: { beginner: 'Początkujący', basic: 'Podstawowy', intermediate: 'Średniozaawansowany', advanced: 'Zaawansowany', expert: 'Ekspert' },
   absence: { vacation: 'Urlop wypoczynkowy', sick_leave: 'Zwolnienie lekarskie', unpaid_leave: 'Urlop bezpłatny', training: 'Szkolenie', remote_work: 'Praca zdalna', other: 'Inna nieobecność' },
   vehicleAttribute: { equipment: 'Wyposażenie', capacity: 'Pojemność', license_requirement: 'Wymagania prawne', technical: 'Parametry techniczne' },
+  vehiclePurpose: { transport_equipment: 'Transport sprzętu', transport_people: 'Transport osób', transport_crew: 'Transport zespołu', transport_mixed: 'Transport sprzętu i zespołu' },
   quizType: { single_choice: 'Jednokrotny wybór', multiple_choice: 'Wielokrotny wybór', true_false: 'Prawda lub fałsz', open: 'Pytanie otwarte', text: 'Odpowiedź tekstowa', image: 'Pytanie ze zdjęciem', audio: 'Pytanie dźwiękowe', video: 'Pytanie z filmem', ordering: 'Ustalanie kolejności', matching: 'Dopasowanie', numeric: 'Odpowiedź liczbowa' },
 } satisfies Record<string, Record<string, string>>;
 
@@ -93,7 +94,7 @@ const fallbackLabels: Record<SystemLabelDomain, string> = {
   formCategory: 'Inne zgłoszenie', eventType: 'Inny typ zgłoszenia', source: 'Inne źródło', status: 'Inny status',
   priority: 'Inny priorytet', role: 'Inna rola', access: 'Inny poziom dostępu', vehicle: 'Inny pojazd',
   ownership: 'Inna forma własności', fuel: 'Inne paliwo', transmission: 'Inna skrzynia biegów', phase: 'Inna faza', skill: 'Inny poziom',
-  absence: 'Inna nieobecność', vehicleAttribute: 'Inna właściwość',
+  absence: 'Inna nieobecność', vehicleAttribute: 'Inna właściwość', vehiclePurpose: 'Inne zadanie pojazdu',
   quizType: 'Inny typ pytania',
   inquiryFinding: 'Ustalenie',
   invoiceCorrectionKind: 'Inna korekta',

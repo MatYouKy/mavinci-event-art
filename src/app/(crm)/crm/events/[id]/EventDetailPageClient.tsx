@@ -42,6 +42,7 @@ import {
   Copy,
   HeartHandshake,
   MonitorPlay,
+  Printer,
 } from 'lucide-react';
 import * as Icons from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
@@ -249,12 +250,15 @@ function formatAuditValue(value: any): string {
 }
 
 export default function EventDetailPageClient({
+  canPrintCard = false,
   categories,
   initialData,
   initialLocation,
   initialContact,
   initialOffers,
 }: {
+  /** Dostęp do pulpitu realizacji (kierownik realizacji / prowadzenie realizacji) — Karta imprezy do druku. */
+  canPrintCard?: boolean;
   categories: EventCategoryRow[];
   initialData: IEvent;
   initialLocation: ISimpleLocation;
@@ -780,6 +784,13 @@ export default function EventDetailPageClient({
   const actions = useMemo<Action[]>(() => {
     return [
       {
+        label: 'Karta imprezy',
+        onClick: () => window.open(`/bridge/events/${eventId}/card`, '_blank', 'noopener'),
+        icon: <Printer className="h-4 w-4" />,
+        variant: 'default',
+        show: canPrintCard,
+      },
+      {
         label: 'Edytuj',
         onClick: () => setShowEditEventModal(true),
         icon: <Edit className="h-4 w-4" />,
@@ -801,7 +812,7 @@ export default function EventDetailPageClient({
         show: isAdmin,
       },
     ];
-  }, [setShowEditEventModal, handleDeleteEvent, handleDuplicateEvent, isAdmin, canEventManage]);
+  }, [setShowEditEventModal, handleDeleteEvent, handleDuplicateEvent, isAdmin, canEventManage, canPrintCard, eventId]);
 
   const latestOffer = useMemo(() => {
     if (event?.financial_source === 'calculation') return null;

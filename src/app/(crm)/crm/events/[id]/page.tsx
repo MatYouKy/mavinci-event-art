@@ -12,11 +12,19 @@ import type { UUID } from '../../contacts/types';
 import { fetchEventOffersServer } from '@/lib/CRM/Offers/fetchEventOffers.server';
 import { fetchEventCategoriesServer } from '@/lib/CRM/events/eventsData.server';
 import { EventWorkspaceProvider } from '@/components/crm/events/EventWorkspaceProvider';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 
-export default async function EventPage({ params }: { params: { id: string } }) {
+export default async function EventPage({
+  params,
+  searchParams,
+}: {
+  params: { id: string };
+  searchParams?: Record<string, string | string[] | undefined>;
+}) {
   const client = createSupabaseServerClient(getCookieStore());
   const { data: realization } = await client.rpc('get_realization_workspace', { p_event_id: params.id });
+  // Link z aplikacji mobilnej: /crm/events/<id>?karta=1 otwiera kartę imprezy (PDF) po zalogowaniu w przeglądarce.
+  if (realization && searchParams?.karta === '1') redirect(`/bridge/events/${params.id}/card`);
   if (realization?.operational_only) return <RealizationWorkspace initialData={realization} />;
   const event = await fetchEventByIdServer(params.id);
 
@@ -43,6 +51,7 @@ export default async function EventPage({ params }: { params: { id: string } }) 
   return (
     <EventWorkspaceProvider eventId={params.id}>
       <EventDetailPageClient
+        canPrintCard={Boolean(realization)}
         categories={categories}
         initialData={updateEventsByOffers as unknown as IEvent}
         initialLocation={{
