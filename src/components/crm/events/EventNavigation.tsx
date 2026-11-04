@@ -153,9 +153,12 @@ export default function EventNavigation({
       if (max <= 1) return;
       const rawDelta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
       if (rawDelta === 0) return;
-      event.preventDefault();
       const multiplier = event.deltaMode === 1 ? 18 : event.deltaMode === 2 ? scroller.clientWidth : 1;
-      scroller.scrollLeft = Math.min(max, Math.max(0, scroller.scrollLeft + rawDelta * multiplier));
+      const next = Math.min(max, Math.max(0, scroller.scrollLeft + rawDelta * multiplier));
+      // Na krańcu paska kółko wraca do przewijania strony (nie blokujemy go).
+      if (Math.abs(next - scroller.scrollLeft) < 1) return;
+      event.preventDefault();
+      scroller.scrollLeft = next;
     };
     scroller.addEventListener('wheel', handleWheel, { passive: false });
     return () => scroller.removeEventListener('wheel', handleWheel);
