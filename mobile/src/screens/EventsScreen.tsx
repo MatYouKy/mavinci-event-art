@@ -20,6 +20,12 @@ import { Feather } from '@expo/vector-icons';
 import { colors, spacing } from '../theme';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import {
+  SALES_COLLEAGUE_BADGE_LABEL,
+  fetchSalesColleagueEvents,
+  salesColleagueSoldByLabel,
+  seesSalesColleagueEvents,
+} from '../lib/salesColleagueEvents';
 
 export interface EventListItem {
   id: string;
@@ -36,7 +42,26 @@ export interface EventListItem {
   has_wedding_card: boolean;
   wedding_card_progress: number | null;
   creator_name: string | null;
+  created_by?: string | null;
+  /** Wydarzenie innego sprzedawcy — po otwarciu tylko podgląd sprzedaży (plakietka „Inny sprzedawca”). */
+  is_sales_colleague?: boolean;
 }
+
+const EVENT_LIST_SELECT = `
+            id,
+            name,
+            event_date,
+            event_end_date,
+            status,
+            created_by,
+            billing_arrangement,
+            event_categories(name, color),
+            locations(name),
+            client_organization:organizations!events_organization_id_fkey(name, alias),
+            billing_organization:organizations!events_billing_organization_id_fkey(name, alias),
+            wedding_cards(id, status, progress),
+            creator:employees!created_by(name, surname)
+          `;
 
 interface Props {
   onEventPress: (event: EventListItem) => void;
@@ -122,6 +147,7 @@ export default function EventsScreen({ onEventPress }: Props) {
           employee.access_level === 'admin' ||
           employee.permissions?.includes('events_manage') === true ||
           employee.permissions?.includes('equipment_manage') === true || employee.has_realizations === true;
+        const showColleagues = seesSalesColleagueEvents(employee);
 
         let eventIds: string[] | null = null;
 
@@ -159,44 +185,32 @@ export default function EventsScreen({ onEventPress }: Props) {
 
           eventIds = [...new Set([...assignedIds, ...createdIds, ...driverEventIds])];
 
-          if (eventIds.length === 0) {
+          if (eventIds.length === 0 && !showColleagues) {
             setEvents([]);
             setFiltered([]);
             return;
           }
         }
 
-        let query = supabase
-          .from('events')
-          .select(
-            `
-            id,
-            name,
-            event_date,
-            event_end_date,
-            status,
-            created_by,
-            billing_arrangement,
-            event_categories(name, color),
-            locations(name),
-            client_organization:organizations!events_organization_id_fkey(name, alias),
-            billing_organization:organizations!events_billing_organization_id_fkey(name, alias),
-            wedding_cards(id, status, progress),
-            creator:employees!created_by(name, surname)
-          `,
-          )
-          .order('event_date', { ascending: true })
-          .limit(500);
+        const rows = new Map<string, any>();
+        if (isAdmin || (eventIds && eventIds.length > 0)) {
+          let query = supabase
+            .from('events')
+            .select(EVENT_LIST_SELECT)
+            .order('event_date', { ascending: true })
+            .limit(500);
 
-        if (!isAdmin && eventIds) {
-          query = query.in('id', eventIds);
+          if (!isAdmin && eventIds) {
+            query = query.in('id', eventIds);
+          }
+
+          const { data, error } = await query;
+
+          if (error) throw error;
+          for (const row of data || []) rows.set((row as any).id, row);
         }
 
-        const { data, error } = await query;
-
-        if (error) throw error;
-
-        const mapped: EventListItem[] = (data || []).map((event: any) => {
+        const mapped: EventListItem[] = [...rows.values()].map((event: any) => {
           const creator = event.creator;
           const clientOrganization = Array.isArray(event.client_organization)
             ? event.client_organization[0]
@@ -229,12 +243,38 @@ export default function EventsScreen({ onEventPress }: Props) {
             wedding_card_progress:
               typeof weddingCard?.progress === 'number' ? weddingCard.progress : null,
             creator_name: creatorName,
+            created_by: event.created_by ?? null,
           };
         });
 
-        const mine = await supabase.rpc('get_my_realizations');
+        const [mine, colleagueEvents] = await Promise.all([
+          supabase.rpc('get_my_realizations'),
+          // Sprzedane wydarzenia innych sprzedawców (zajęte terminy) — wyłącznie z RPC, bez odczytu wiersza `events`.
+          showColleagues ? fetchSalesColleagueEvents() : Promise.resolve([]),
+        ]);
         const merged = new Map(mapped.map(e=>[e.id,e]));
         for(const row of mine.data||[]) if(!merged.has(row.id))merged.set(row.id,row);
+        for (const colleague of colleagueEvents) {
+          if (merged.has(colleague.id)) continue;
+          merged.set(colleague.id, {
+            id: colleague.id,
+            name: colleague.name,
+            event_date: colleague.event_date,
+            event_end_date: colleague.event_end_date,
+            status: normalizeStatus(colleague.status),
+            category_name: colleague.category?.name ?? null,
+            category_color: colleague.category?.color ?? null,
+            location_name: colleague.location,
+            organization_name: colleague.client_name,
+            billing_arrangement: 'direct',
+            billing_organization_name: null,
+            has_wedding_card: false,
+            wedding_card_progress: null,
+            creator_name: salesColleagueSoldByLabel(colleague),
+            created_by: null,
+            is_sales_colleague: colleague.sales_colleague,
+          });
+        }
         const nextEvents = [...merged.values()];
         if (isWarehouseWorker && nextEvents.length) {
           const { data: records, error: handoffError } = await supabase.from('event_warehouse_handoffs')
@@ -341,6 +381,12 @@ export default function EventsScreen({ onEventPress }: Props) {
             <Text style={styles.eventOrg} numberOfLines={1}>
               {item.organization_name}
             </Text>
+          )}
+          {item.is_sales_colleague && (
+            <View style={styles.colleagueBadge} accessibilityLabel={`${SALES_COLLEAGUE_BADGE_LABEL} — podgląd sprzedaży`}>
+              <Feather name="eye" size={10} color={colors.text.tertiary} />
+              <Text style={styles.colleagueBadgeText}>{SALES_COLLEAGUE_BADGE_LABEL}</Text>
+            </View>
           )}
         </View>
         <View
@@ -636,6 +682,18 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.text.primary,
   },
+  colleagueBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 4,
+    marginTop: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 6,
+    backgroundColor: colors.background.tertiary,
+  },
+  colleagueBadgeText: { fontSize: 10, color: colors.text.tertiary, fontWeight: '600' },
   eventOrg: {
     fontSize: 12,
     color: colors.text.secondary,

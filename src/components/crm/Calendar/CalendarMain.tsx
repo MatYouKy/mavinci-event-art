@@ -1,5 +1,6 @@
 'use client';
 
+import SalesColleagueBadge from '@/components/crm/events/SalesColleagueBadge';
 import { useOperationalStages } from '@/hooks/useOperationalStages';
 import { OPERATIONAL_LABELS, usesOperationalStages } from '@/lib/CRM/events/operationalStages';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
@@ -1018,6 +1019,9 @@ export default function CalendarMain({
               >
                 {hoveredEvent.operational_label || STATUS_LABELS[hoveredEvent.status as CalendarStatus]}
               </span>
+              {hoveredEvent.sales_colleague && (
+                <SalesColleagueBadge className="ml-2" seller={hoveredEvent.sales_colleague_seller} />
+              )}
             </div>
 
             <div className="pt-2 text-xs text-[#d3bb73] hover:text-[#d3bb73]/80">
@@ -1066,6 +1070,11 @@ export default function CalendarMain({
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex-1">
                         <h4 className="mb-2 text-sm font-medium text-[#e5e4e2]">{event.name}</h4>
+                        {event.sales_colleague && (
+                          <div className="mb-2">
+                            <SalesColleagueBadge seller={event.sales_colleague_seller} />
+                          </div>
+                        )}
                         <div className="space-y-1">
                           <div className="flex items-center gap-2 text-xs text-[#e5e4e2]/70">
                             <Building2 className="h-3 w-3" />

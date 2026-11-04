@@ -175,7 +175,14 @@ export default function EditEventModalNew({
       location_room_ids: formData.location_room_ids,
       stage_room_id: formData.stage_room_id,
 
-      ...(canEditBudget ? { budget: formData.budget !== '' ? parseFloat(formData.budget) : null } : {}),
+      // Wyzwalacz event_financials pomija null (coalesce) — wyczyszczony budżet zapisujemy jako 0.
+      ...(canEditBudget
+        ? formData.budget.trim() !== ''
+          ? { budget: parseFloat(formData.budget) }
+          : event?.budget != null && String(event.budget) !== ''
+            ? { budget: 0 }
+            : {}
+        : {}),
 
       status: formData.status,
       my_company_id: formData.my_company_id || null,

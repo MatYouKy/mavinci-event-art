@@ -47,7 +47,7 @@ import {
 } from '@/components/Events/EventDetailScreen/WeddingCardTab';
 import { mergeEventTeam } from '../lib/eventTeam';
 import { isManagerOrAdmin } from '../lib/permissions';
-import { useEventCommercialsAccess } from '../lib/eventCommercialsAccess';
+import { fetchEventCommercialsAccess } from '../lib/eventCommercialsAccess';
 import {
   type EventAccessResult,
   type EventDetailVisibility,
@@ -56,7 +56,10 @@ import {
   fetchEventAccess,
   fetchEventAmounts,
   fetchEventOnsiteContacts,
+  fetchEventSalesOverview,
 } from '../lib/eventDetailAccess';
+import type { EventSalesOverview } from '../lib/eventAccess';
+import { SalesColleagueEventView } from '@/components/Events/EventDetailScreen/SalesColleagueEventView';
 import { eventStepDetailLink } from '../lib/eventStepLinks';
 import type { EventStep } from '../lib/eventSteps';
 
@@ -83,16 +86,22 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
   const [warehouseAccess, setWarehouseAccess] = useState<{ eventId: string; employeeId: string; allowed: boolean } | null>(null);
   const showWarehouseTab = isWarehouseWorker && warehouseAccess?.eventId === eventId
     && warehouseAccess?.employeeId === employee?.id && warehouseAccess?.allowed === true;
-  // Obszary danych wydarzenia (get_event_access) — te same co w CRM. Przed wdrożeniem migracji (brak RPC)
-  // ekran działa jak dotąd: dane rozliczeniowe i kwoty według can_view_event_commercials.
-  const [accessState, setAccessState] = useState<{ eventId: string; result: EventAccessResult } | null>(null);
+  // Obszary danych wydarzenia (get_event_access) — te same co w CRM. Przed wdrożeniem migracji (brak RPC) i przy
+  // chwilowym błędzie dane rozliczeniowe i kwoty wynikają z can_view_event_commercials — pobieranego razem
+  // z obszarami (nie przez zależności hooków, żeby nie przeładowywać ekranu drugi raz).
+  const [accessState, setAccessState] = useState<{
+    eventId: string;
+    result: EventAccessResult;
+    commercials: boolean;
+  } | null>(null);
   const accessResult = accessState?.eventId === eventId ? accessState.result : null;
-  const canViewBillingContext = useEventCommercialsAccess(
-    accessResult && accessResult.mode !== 'ready' ? eventId : null,
-    employee?.id,
+  const visibility = eventDetailVisibility(
+    accessResult,
+    Boolean(accessState && accessState.eventId === eventId && accessState.commercials),
   );
-  const visibility = eventDetailVisibility(accessResult, canViewBillingContext);
   const [onsiteContacts, setOnsiteContacts] = useState<EventOnsiteContact[] | null>(null);
+  // Wydarzenie innego sprzedawcy: tylko podgląd sprzedaży (get_event_sales_overview), bez pozostałych odczytów.
+  const [salesOverview, setSalesOverview] = useState<{ eventId: string; data: EventSalesOverview | null } | null>(null);
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab && initialTab !== 'warehouse' ? initialTab : 'details');
   useEffect(() => {
     setActiveTab(initialTab === 'warehouse' && !showWarehouseTab ? 'details' : initialTab ?? 'details');
@@ -338,9 +347,11 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
   /** Obszary osoby na wydarzeniu; zapisuje wynik i zwraca sekcje do pokazania. */
   const resolveAccess = useCallback(async (): Promise<EventDetailVisibility> => {
     const result = await fetchEventAccess(eventId);
-    setAccessState({ eventId, result });
-    return eventDetailVisibility(result, canViewBillingContext);
-  }, [canViewBillingContext, eventId]);
+    // Dotychczasowa reguła (can_view_event_commercials) tylko bez obszarów z bazy.
+    const commercials = result.mode === 'ready' ? false : await fetchEventCommercialsAccess(eventId).catch(() => false);
+    setAccessState({ eventId, result, commercials });
+    return eventDetailVisibility(result, commercials);
+  }, [eventId]);
 
   /** „Kontakt na miejscu” — tylko gdy osoba nie widzi pełnych danych klienta. */
   const fetchOnsiteContacts = useCallback(
@@ -352,13 +363,17 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
   const refreshEventState = useCallback(async () => {
     try {
       const access = await resolveAccess();
+      if (access.salesColleague) {
+        setSalesOverview({ eventId, data: await fetchEventSalesOverview(eventId) });
+        return;
+      }
       const [nextEvent, nextOnsite] = await Promise.all([fetchEvent(access), fetchOnsiteContacts(access)]);
       if (nextEvent) setEvent(nextEvent);
       setOnsiteContacts(nextOnsite);
     } catch (error) {
       console.error('Error refreshing event:', error);
     }
-  }, [fetchEvent, fetchOnsiteContacts, resolveAccess]);
+  }, [eventId, fetchEvent, fetchOnsiteContacts, resolveAccess]);
 
   const fetchWeddingCard = useCallback(async (): Promise<WeddingCardData | null> => {
     const { data: card, error: cardError } = await supabase
@@ -642,6 +657,12 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
 
       try {
         const access = await resolveAccess();
+        if (access.salesColleague) {
+          // Inny sprzedawca: zespół, pliki, flota, agenda i kroki nie należą do jego zakresu (baza by ich nie wydała).
+          setSalesOverview({ eventId, data: await fetchEventSalesOverview(eventId) });
+          return;
+        }
+        setSalesOverview(null);
         const [ev, nextWeddingCard, nextOnsite] = await Promise.all([
           fetchEvent(access),
           fetchWeddingCard(),
@@ -697,6 +718,7 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
       employee?.access_level,
       employee?.id,
       employee?.role,
+      eventId,
       resolveAccess,
       fetchOnsiteContacts,
       fetchEvent,
@@ -941,6 +963,18 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
       <View style={styles.centered}>
         <ActivityIndicator size="large" color={colors.primary.gold} />
       </View>
+    );
+  }
+
+  if (visibility.salesColleague) {
+    return (
+      <SalesColleagueEventView
+        overview={salesOverview?.eventId === eventId ? salesOverview.data : null}
+        access={accessResult?.access ?? null}
+        refreshing={refreshing}
+        onRefresh={() => void loadAll(true)}
+        onBack={onBack}
+      />
     );
   }
 

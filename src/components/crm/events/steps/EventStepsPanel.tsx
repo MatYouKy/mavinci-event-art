@@ -21,6 +21,8 @@ import { channelSuffix, telHref } from './stepUi';
 
 /** Brak dostępu (42501) albo funkcja jeszcze niewdrożona — panel się nie pokazuje. */
 const HIDDEN_ERROR_CODES = new Set(['42501', '42883', 'PGRST202']);
+/** Funkcja get_event_steps nie istnieje w bazie (migracja kroków niewdrożona). */
+const MISSING_FUNCTION_CODES = new Set(['42883', 'PGRST202']);
 const WAITING_PREVIEW = 4;
 
 type PanelState = 'loading' | 'ready' | 'hidden' | 'error';
@@ -29,9 +31,15 @@ export default function EventStepsPanel({
   eventId,
   onNavigate,
   canOpenTab,
+  onUnavailable,
   className = '',
 }: {
   eventId: string;
+  /**
+   * Wywoływane, gdy kroków nie ma w bazie (get_event_steps niewdrożone) — strona może pokazać dawne panele
+   * (przekazanie do magazynu, kierownik realizacji).
+   */
+  onUnavailable?: () => void;
   onNavigate?: (tab: string) => void;
   /** Czy zakładka (cel kroku) jest dostępna — link do niedostępnej zakładki się nie pokazuje. */
   canOpenTab?: (tab: string) => boolean;
@@ -48,6 +56,8 @@ export default function EventStepsPanel({
   const [showAllWaiting, setShowAllWaiting] = useState(false);
   const [stageOverrides, setStageOverrides] = useState<Partial<Record<EventStepStage, boolean>>>({});
   const queueRef = useRef<ReturnType<typeof createRefreshQueue> | null>(null);
+  const onUnavailableRef = useRef(onUnavailable);
+  onUnavailableRef.current = onUnavailable;
 
   useEffect(() => {
     setSnapshot(null);
@@ -69,6 +79,7 @@ export default function EventStepsPanel({
         if (HIDDEN_ERROR_CODES.has(error.code ?? '')) {
           setSnapshot(null);
           setState('hidden');
+          if (MISSING_FUNCTION_CODES.has(error.code ?? '')) onUnavailableRef.current?.();
           return;
         }
         setLoadError('Nie udało się odświeżyć kroków realizacji.');

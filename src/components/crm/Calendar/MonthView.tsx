@@ -1,5 +1,6 @@
 'use client';
 
+import SalesColleagueBadge from '@/components/crm/events/SalesColleagueBadge';
 import { CalendarViewProps } from './types';
 import { getDaysInMonth, getEventOccurrencesForDate, isToday } from './utils';
 import { STATUS_COLORS } from './constants';
@@ -175,6 +176,7 @@ export default function MonthView({
                                 />
                               )}
                               <span className="truncate">{event.name}</span>
+                              {event.sales_colleague && <SalesColleagueBadge compact seller={event.sales_colleague_seller} />}
                               {totalDays > 1 && (
                                 <span className="ml-auto flex-shrink-0 text-[10px] opacity-80 font-semibold">
                                   {dayIndex}/{totalDays}

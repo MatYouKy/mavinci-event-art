@@ -1,5 +1,12 @@
 import { supabase } from './supabase';
-import { EVENT_ACCESS_NONE, type EventAccess, parseEventAccess } from './eventAccess';
+import {
+  EVENT_ACCESS_NONE,
+  type EventAccess,
+  type EventSalesOverview,
+  isSalesColleagueView,
+  parseEventAccess,
+  parseEventSalesOverview,
+} from './eventAccess';
 
 /*
  * Obszary danych wydarzenia w aplikacji mobilnej — te same RPC i reguły co CRM (get_event_access,
@@ -42,6 +49,11 @@ export async function fetchEventAccess(eventId: string): Promise<EventAccessResu
 /** Które sekcje ekranu wydarzenia pokazać. */
 export type EventDetailVisibility = {
   mode: EventAccessResult['mode'];
+  /**
+   * Wydarzenie innego sprzedawcy (obszar sales_overview bez realizacji): tylko podgląd sprzedaży
+   * z get_event_sales_overview — bez zakładek, kroków, zespołu, plików i kwot.
+   */
+  salesColleague: boolean;
   /** Organizacja, osoba kontaktowa, e-mail i telefon klienta, połączenia z kartą klienta. */
   client: boolean;
   /** „Kontakt na miejscu” (imię, rola, telefon) — gdy nie ma pełnych danych klienta. */
@@ -63,14 +75,31 @@ export function eventDetailVisibility(
   legacyCommercials: boolean,
 ): EventDetailVisibility {
   if (!result || result.mode === 'error') {
-    return { mode: result?.mode ?? 'error', client: false, onsiteContact: false, values: false, billing: legacyCommercials, commercialDocs: false };
+    return {
+      mode: result?.mode ?? 'error',
+      salesColleague: false,
+      client: false,
+      onsiteContact: false,
+      values: false,
+      billing: legacyCommercials,
+      commercialDocs: false,
+    };
   }
   if (result.mode === 'legacy') {
-    return { mode: 'legacy', client: true, onsiteContact: false, values: legacyCommercials, billing: legacyCommercials, commercialDocs: true };
+    return {
+      mode: 'legacy',
+      salesColleague: false,
+      client: true,
+      onsiteContact: false,
+      values: legacyCommercials,
+      billing: legacyCommercials,
+      commercialDocs: true,
+    };
   }
   const { areas } = result.access;
   return {
     mode: 'ready',
+    salesColleague: isSalesColleagueView(result.access),
     client: areas.client,
     onsiteContact: areas.onsite_contact,
     values: areas.values,
@@ -171,5 +200,23 @@ export async function fetchEventAmounts(eventId: string): Promise<EventAmounts> 
   } catch (error) {
     console.warn('Error loading event amounts:', error);
     return EMPTY_AMOUNTS;
+  }
+}
+
+/**
+ * Podgląd sprzedaży wydarzenia innego sprzedawcy (RPC get_event_sales_overview, migracja 20261105110000):
+ * termin, miejsce, kategoria, status, klient, kto sprzedał i sprzedane usługi — bez kwot. null = błąd albo brak dostępu.
+ */
+export async function fetchEventSalesOverview(eventId: string): Promise<EventSalesOverview | null> {
+  try {
+    const { data, error } = await supabase.rpc('get_event_sales_overview', { p_event_id: eventId });
+    if (error) {
+      console.warn('Error loading event sales overview:', error);
+      return null;
+    }
+    return parseEventSalesOverview(data);
+  } catch (error) {
+    console.warn('Error loading event sales overview:', error);
+    return null;
   }
 }

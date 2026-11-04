@@ -1,5 +1,6 @@
 'use client';
 
+import SalesColleagueBadge from '@/components/crm/events/SalesColleagueBadge';
 import { CalendarViewProps } from './types';
 import { getWeekDays, getEventsForDate, isToday, formatTime, getEventPosition } from './utils';
 import { STATUS_COLORS, DAYS_OF_WEEK_FULL, HOURS } from './constants';
@@ -121,6 +122,7 @@ export default function WeekView({
                           />
                         )}
                         <span className="truncate">{event.name}</span>
+                        {event.sales_colleague && <SalesColleagueBadge compact seller={event.sales_colleague_seller} />}
                       </div>
                       {height > 40 && (
                         <>

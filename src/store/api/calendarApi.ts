@@ -1,5 +1,6 @@
 import { createApi, fakeBaseQuery } from '@reduxjs/toolkit/query/react';
 import { supabase } from '@/lib/supabase/browser';
+import { fetchSalesColleagueEvents, salesColleagueSellerLabel } from '@/lib/CRM/events/salesColleagueEvents';
 
 export interface CalendarEvent {
   id: string;
@@ -20,6 +21,9 @@ export interface CalendarEvent {
   assigned_employees?: { id: string; name: string; surname: string }[];
   event_vehicles?: any[];
   event_equipment?: any[];
+  /** Wydarzenie innego sprzedawcy (get_sales_colleague_events) — tylko do odczytu, bez kwot. */
+  sales_colleague?: boolean;
+  sales_colleague_seller?: string | null;
 }
 
 export interface CalendarFilters {
@@ -118,7 +122,13 @@ export const calendarApi = createApi({
             // Existing recurrence_days records are expanded by the views.
             meetingsQuery = meetingsQuery.or(`recurrence_days.gt.0,and(datetime_start.lt.${params.end_date},or(datetime_end.gte.${params.start_date},and(datetime_end.is.null,datetime_start.gte.${params.start_date})))`);
           }
-          const [eventsResult, meetingsResult, inquiriesResult] = await Promise.all([eventsQuery, meetingsQuery, inquiriesQuery]);
+          const [eventsResult, meetingsResult, inquiriesResult, colleagueRows] = await Promise.all([
+            eventsQuery,
+            meetingsQuery,
+            inquiriesQuery,
+            // Wydarzenia innych sprzedawców: wiersza `events` nie da się odczytać — wybrane pola z RPC.
+            fetchSalesColleagueEvents(supabase, params.start_date ?? null, params.end_date ?? null),
+          ]);
 
           if (eventsResult.error) {
             console.error('Error fetching events:', eventsResult.error);
@@ -239,7 +249,30 @@ export const calendarApi = createApi({
                   } as any;
                 });
 
-          const allEvents = [...events, ...meetings, ...inquiries];
+          const ownEventIds = new Set(events.map((event) => event.id));
+          const colleagueEvents: CalendarEvent[] = colleagueRows
+            .filter((row) => row.event_date && !ownEventIds.has(row.id))
+            .map((row) => ({
+              id: row.id,
+              name: row.name,
+              event_date: row.event_date as string,
+              event_end_date: row.event_end_date,
+              status: row.status || 'offer_accepted',
+              created_by: null,
+              color: row.category?.color || undefined,
+              location: row.location || '',
+              organization: row.client_name ? { name: row.client_name, alias: null } : null,
+              contact_person: null,
+              category: row.category?.name ? { name: row.category.name, color: row.category.color || undefined } : null,
+              is_meeting: false,
+              assigned_employees: [],
+              event_vehicles: [],
+              event_equipment: [],
+              sales_colleague: true,
+              sales_colleague_seller: salesColleagueSellerLabel(row),
+            }));
+
+          const allEvents = [...events, ...colleagueEvents, ...meetings, ...inquiries];
 
           let filteredEvents = allEvents;
 

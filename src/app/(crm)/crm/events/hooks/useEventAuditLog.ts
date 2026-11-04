@@ -239,14 +239,15 @@ function formatValue(value: any): string {
 }
 
 // Hook do obsługi historii zmian wydarzenia
-export function useEventAuditLog(eventId: string) {
+export function useEventAuditLog(eventId: string, options?: { skip?: boolean }) {
   const {
     data: auditLog = [],
     isLoading,
     error,
     refetch,
   } = useGetEventAuditLogQuery(eventId, {
-    skip: !eventId,
+    // Historia zmian należy do obszaru „oferta, umowa i formalności” (RLS event_audit_log) — bez niego nie pobieramy.
+    skip: !eventId || Boolean(options?.skip),
   });
 
   // Przetwarzanie wpisów historii

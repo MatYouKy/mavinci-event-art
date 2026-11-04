@@ -1,21 +1,22 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 'use client';
 
-import EventNavigation, { type EventNavigationGroup } from '@/components/crm/events/EventNavigation';
+import EventNavigation, { type EventNavigationItem } from '@/components/crm/events/EventNavigation';
 import { getOfferPricingTotals, roundMoney } from '@/lib/CRM/Offers/offerTotals';
 import EventStepsPanel from '@/components/crm/events/steps/EventStepsPanel';
 import EventKeyFactsCard from '@/components/crm/events/EventKeyFactsCard';
+import { RealizationPanel } from '@/components/crm/events/RealizationPanel';
+import WarehouseHandoffPanel from '@/components/crm/events/WarehouseHandoffPanel';
 import {
-  EVENT_ACCESS_AREAS,
-  EVENT_ACCESS_NONE,
   EVENT_TAB_LABELS,
   canViewEventArea,
   eventAccessSummary,
   normalizeEventTabId,
-  visibleEventTabGroups,
+  visibleEventTabs,
   type EventAccess,
   type EventTabId,
 } from '@/lib/events/access/eventAccess';
+import { legacyEventAccess } from '@/lib/CRM/events/eventAccessFallback';
 import { eventMoney, fetchEventFinancials, type EventFinancialField, type EventFinancials } from '@/lib/CRM/events/eventFinancials';
 import {
   useState,
@@ -148,12 +149,6 @@ const EVENT_TAB_ICONS: Record<EventTabId, ComponentType<{ className?: string }>>
   history: History,
 };
 
-/** Dostęp zastępczy, gdy serwer nie przekazał obszarów (starsza wersja danych). Ta sama reguła co w eventsIdData.server. */
-function fallbackAccess(isAdmin: boolean, isCreator: boolean): EventAccess {
-  const areas = { ...EVENT_ACCESS_NONE.areas, operations: true };
-  if (isAdmin || isCreator) for (const area of EVENT_ACCESS_AREAS) areas[area] = true;
-  return { event_id: null, areas, roles: { ...(isAdmin ? { admin: true } : {}), ...(isCreator ? { seller: true } : {}) } };
-}
 
 interface Equipment {
   kit_id: unknown;
@@ -301,9 +296,20 @@ export default function EventDetailPageClient({
   } = permissionContext;
 
   // Obszary danych z bazy (get_event_access) — jedno źródło decyzji, które zakładki i sekcje widać.
+  // Serwer zawsze przekazuje obszary; awaryjnie (starsza wersja danych) — dotychczasowe reguły bez rozliczeń.
   const access = useMemo<EventAccess>(
-    () => permissionContext.access ?? fallbackAccess(isAdmin, isCreator),
-    [permissionContext.access, isAdmin, isCreator],
+    () =>
+      permissionContext.access ??
+      legacyEventAccess({
+        eventId: initialData.id ?? null,
+        isAdmin,
+        isCreator,
+        role: currentEmployee?.role ?? null,
+        accessLevel: (currentEmployee as { access_level?: string | null } | undefined)?.access_level ?? null,
+        permissions: (currentEmployee?.permissions as string[] | undefined) ?? [],
+        billing: false,
+      }),
+    [permissionContext.access, initialData.id, isAdmin, isCreator, currentEmployee],
   );
   // Zawężenie zakładek z ustawień pracownika (null = bez zawężenia; administrator i prowadzący bez zawężenia).
   const employeeEventTabs = permissionContext.employeeEventTabs ?? null;
@@ -311,6 +317,11 @@ export default function EventDetailPageClient({
   const canViewOnsiteContact = canViewEventArea(access, 'onsite_contact');
   const canViewValues = canViewEventArea(access, 'values');
   const canViewCommercialDocs = canViewEventArea(access, 'commercial_docs');
+  const canViewBilling = canViewEventArea(access, 'billing');
+  const canViewOperations = canViewEventArea(access, 'operations');
+  // Kroki realizacji niewdrożone w bazie (get_event_steps) → dawne panele magazynu i kierownika realizacji.
+  const [stepsUnavailable, setStepsUnavailable] = useState(false);
+  const handleStepsUnavailable = useCallback(() => setStepsUnavailable(true), []);
   // Oferty: zakładka Oferta (dokumenty handlowe) i planowany przychód w karcie Budżet (kwoty). RLS ofert decyduje ostatecznie.
   const canLoadOffers = canViewCommercialDocs || canViewValues;
 
@@ -485,7 +496,7 @@ export default function EventDetailPageClient({
     isLoading: isLoadingAuditLog,
     getActionIcon,
     refetch: refetchAuditLog,
-  } = useEventAuditLog(eventId as string);
+  } = useEventAuditLog(eventId as string, { skip: !canViewCommercialDocs });
   const [auditViewMode, setAuditViewMode] = useState<'timeline' | 'byDate'>('timeline');
   const [auditActionFilter, setAuditActionFilter] = useState<any>('all');
   const [contact, setContact] = useState<ISimpleContact | null>(initialContact || null);
@@ -539,6 +550,10 @@ export default function EventDetailPageClient({
   >([]);
 
   const loadRequiredMavinciLiveModules = useCallback(async () => {
+    if (!canViewOperations) {
+      setRequiredMavinciLiveModules([]);
+      return;
+    }
     const { data, error } = await supabase.rpc('get_event_required_mavinci_live_modules', {
       p_event_id: eventId,
     });
@@ -552,13 +567,13 @@ export default function EventDetailPageClient({
     }
 
     setRequiredMavinciLiveModules((data || []) as MavinciLiveModuleRequirement[]);
-  }, [eventId]);
+  }, [eventId, canViewOperations]);
 
   useEffect(() => {
     void loadRequiredMavinciLiveModules();
   }, [loadRequiredMavinciLiveModules, offersData]);
 
-  // Zakładki: obszar z bazy + zawężenie z ustawień pracownika + warunki modułów (eventTabAllowed / visibleEventTabGroups).
+  // Zakładki: obszar z bazy + zawężenie z ustawień pracownika + warunki modułów (eventTabAllowed / visibleEventTabs).
   const extraTabAllowed = useCallback(
     (tab: EventTabId) => {
       // Osoba z oczekującym / odrzuconym zaproszeniem widzi tylko Przegląd.
@@ -570,30 +585,28 @@ export default function EventDetailPageClient({
     },
     [hasLimitedAccess, isCreator, isAdmin, canViewFinanceValues, canViewSellerCorrespondence, requiredMavinciLiveModules.length],
   );
-  const tabGroups = useMemo(
-    () => visibleEventTabGroups(access, employeeEventTabs, extraTabAllowed),
+  // Jeden pasek w stałej kolejności (EVENT_TAB_IDS).
+  const visibleTabs = useMemo(
+    () => visibleEventTabs(access, employeeEventTabs, extraTabAllowed),
     [access, employeeEventTabs, extraTabAllowed],
   );
-  const visibleTabIds = useMemo(() => new Set<EventTabId>(tabGroups.flatMap(group => group.tabs)), [tabGroups]);
+  const visibleTabIds = useMemo(() => new Set<EventTabId>(visibleTabs), [visibleTabs]);
   const canOpenTab = useCallback((tab: string) => visibleTabIds.has(tab as EventTabId), [visibleTabIds]);
-  // Niedostępna (albo jeszcze wczytywana, np. Finanse / Mavinci LIVE) zakładka z adresu → Przegląd, bez zmiany adresu.
+  // Niedostępna (albo jeszcze wczytywana, np. Finanse / Mavinci LIVE) zakładka z adresu → Przegląd
+  // (albo pierwsza dostępna), bez zmiany adresu.
   const effectiveTab: EventDetailTab | null = visibleTabIds.has(activeTab)
     ? activeTab
     : visibleTabIds.has('overview')
       ? 'overview'
-      : null;
-  const navigationGroups = useMemo<EventNavigationGroup[]>(
+      : visibleTabs[0] ?? null;
+  const navigationTabs = useMemo<EventNavigationItem[]>(
     () =>
-      tabGroups.map(group => ({
-        id: group.id,
-        label: group.label,
-        tabs: group.tabs.map(tab => ({
-          id: tab,
-          label: tab === 'agenda' && isWeddingEvent ? 'Karta weselna' : EVENT_TAB_LABELS[tab],
-          icon: tab === 'agenda' && isWeddingEvent ? HeartHandshake : EVENT_TAB_ICONS[tab],
-        })),
+      visibleTabs.map(tab => ({
+        id: tab,
+        label: tab === 'agenda' && isWeddingEvent ? 'Karta weselna' : EVENT_TAB_LABELS[tab],
+        icon: tab === 'agenda' && isWeddingEvent ? HeartHandshake : EVENT_TAB_ICONS[tab],
       })),
-    [tabGroups, isWeddingEvent],
+    [visibleTabs, isWeddingEvent],
   );
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -651,9 +664,9 @@ export default function EventDetailPageClient({
         contact_person_id: event.contact_person_id || null,
         my_company_id: event.my_company_id || null,
         client_type: event.client_type || 'business',
-        // Kwoty z event_financials (zapis do events przenosi je wyzwalacz do kopii).
-        expected_revenue: money('expected_revenue') || null,
-        estimated_costs: money('estimated_costs') || null,
+        // Kwoty z event_financials, tylko z obszarem „kwoty” (zapis do events przenosi je wyzwalacz do kopii).
+        expected_revenue: canViewValues ? money('expected_revenue') || null : null,
+        estimated_costs: canViewValues ? money('estimated_costs') || null : null,
       };
 
       const result = await createEvent(duplicatedEvent as Partial<IEvent>).unwrap();
@@ -984,7 +997,7 @@ export default function EventDetailPageClient({
 
       {effectiveTab ? (
         <EventNavigation
-          groups={navigationGroups}
+          tabs={navigationTabs}
           activeTab={effectiveTab}
           onChange={navigateToTab}
           idPrefix="event-detail"
@@ -1095,7 +1108,14 @@ export default function EventDetailPageClient({
                 </div>
               </div>
             )}
-            <EventStepsPanel eventId={eventId} onNavigate={navigateToTab} canOpenTab={canOpenTab} />
+            <EventStepsPanel
+              eventId={eventId}
+              onNavigate={navigateToTab}
+              canOpenTab={canOpenTab}
+              onUnavailable={handleStepsUnavailable}
+            />
+            {/* Przed wdrożeniem kroków realizacji: dotychczasowy panel kierownika realizacji. */}
+            {stepsUnavailable && <RealizationPanel eventId={eventId} />}
 
             {canEventManage && (
               <EventPreflightPanel
@@ -1109,6 +1129,13 @@ export default function EventDetailPageClient({
           </div>
 
           <div className="space-y-6">
+            {stepsUnavailable && (
+              <WarehouseHandoffPanel eventId={eventId} status={event.status} onAccepted={() => {
+                setEvent(current => ({ ...current, status: 'in_preparation' }));
+                void refetchTeam();
+                router.refresh();
+              }} />
+            )}
             <EventKeyFactsCard
               eventId={eventId}
               eventDate={event.event_date}
@@ -1131,7 +1158,7 @@ export default function EventDetailPageClient({
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
             <div className={`space-y-6 ${showDetailsAction || canViewValues ? 'lg:col-span-2' : 'lg:col-span-3'}`}>
               <EventsDetailsTab
-                canViewCommercials={canViewValues}
+                canViewCommercials={canViewBilling || canViewFinanceValues}
                 canViewClient={canViewClient}
                 canViewOnsiteContact={canViewOnsiteContact}
                 initialEvent={event}
@@ -1330,7 +1357,7 @@ export default function EventDetailPageClient({
 
       {effectiveTab === 'finances' && canViewFinanceValues && <EventFinancesTab eventId={eventId} />}
 
-      {effectiveTab === 'contract' && <EventPartnerArrangement key={eventId} eventId={eventId} canManage={!!canEventManage} hideSection={signedContractEventId === eventId}><EventContractTab eventId={eventId} onSignedDocumentChange={present => setSignedContractEventId(present ? eventId : null)} /></EventPartnerArrangement>}
+      {effectiveTab === 'contract' && <EventPartnerArrangement key={eventId} eventId={eventId} canManage={!!canEventManage} hideSection={signedContractEventId === eventId}><EventContractTab eventId={eventId} canViewAmounts={canViewValues} onSignedDocumentChange={present => setSignedContractEventId(present ? eventId : null)} /></EventPartnerArrangement>}
 
       {effectiveTab === 'seller-arrangements' && canViewSellerCorrespondence && (
         <EventSellerCorrespondence key={eventId} eventId={eventId} />

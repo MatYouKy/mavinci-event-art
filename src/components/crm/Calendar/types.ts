@@ -28,6 +28,9 @@ export interface CalendarEvent {
   assigned_employees?: { id: string; name: string; surname: string }[];
   event_vehicles?: any[];
   event_equipment?: any[];
+  /** Wydarzenie innego sprzedawcy (get_sales_colleague_events) — tylko do odczytu, bez kwot. */
+  sales_colleague?: boolean;
+  sales_colleague_seller?: string | null;
 }
 
 

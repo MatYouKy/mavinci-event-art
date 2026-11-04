@@ -1,9 +1,15 @@
 'use client';
 
+import SalesColleagueBadge from '@/components/crm/events/SalesColleagueBadge';
+import { useEffect, useState } from 'react';
+import { supabase } from '@/lib/supabase/browser';
+import { fetchEventFinancialsMap } from '@/lib/CRM/events/eventFinancials';
 import { CalendarViewProps } from './types';
 import { getEventsForDate, formatTime, getEventPosition } from './utils';
 import { STATUS_COLORS, STATUS_LABELS, HOURS } from './constants';
 import { Clock, MapPin, Building2, DollarSign } from 'lucide-react';
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export default function DayView({
   currentDate,
@@ -15,6 +21,33 @@ export default function DayView({
   const dayEvents = getEventsForDate(currentDate, events).sort(
     (a, b) => new Date(a.event_date).getTime() - new Date(b.event_date).getTime(),
   );
+
+  // Budżety z event_financials (RLS: obszar „kwoty”) — bez dostępu kwoty się nie pokazują.
+  const budgetEventIdsKey = dayEvents
+    .filter((event) => !event.is_meeting && !event.is_inquiry && !event.sales_colleague && UUID_PATTERN.test(event.id))
+    .map((event) => event.id)
+    .join(',');
+  const [budgets, setBudgets] = useState<Map<string, number>>(() => new Map());
+  useEffect(() => {
+    let active = true;
+    const ids = budgetEventIdsKey ? budgetEventIdsKey.split(',') : [];
+    if (!ids.length) {
+      setBudgets(new Map());
+      return;
+    }
+    void fetchEventFinancialsMap(supabase, ids).then((rows) => {
+      if (!active) return;
+      const next = new Map<string, number>();
+      rows.forEach((row, id) => {
+        if (row.budget != null) next.set(id, row.budget);
+      });
+      setBudgets(next);
+    });
+    return () => {
+      active = false;
+    };
+  }, [budgetEventIdsKey]);
+  const totalBudget = Array.from(budgets.values()).reduce((sum, value) => sum + value, 0);
 
   return (
     <div className="grid gap-6 lg:grid-cols-3">
@@ -100,6 +133,7 @@ export default function DayView({
                         />
                       )}
                       <span>{event.name}</span>
+                      {event.sales_colleague && <SalesColleagueBadge compact seller={event.sales_colleague_seller} />}
                     </div>
                     <div className="flex items-center gap-2 text-xs opacity-80">
                       <Clock className="h-3 w-3" />
@@ -158,6 +192,7 @@ export default function DayView({
                           />
                         )}
                         <span>{event.name}</span>
+                        {event.sales_colleague && <SalesColleagueBadge seller={event.sales_colleague_seller} />}
                       </h4>
                       {event.is_meeting && (
                         <span
@@ -204,10 +239,10 @@ export default function DayView({
                         </div>
                       )}
 
-                      {event.budget && event.budget > 0 && (
+                      {(budgets.get(event.id) ?? 0) > 0 && (
                         <div className="flex items-center gap-2 text-xs text-[#d3bb73]">
                           <DollarSign className="h-3 w-3" />
-                          <span>{event.budget.toLocaleString('pl-PL')} PLN</span>
+                          <span>{(budgets.get(event.id) ?? 0).toLocaleString('pl-PL')} PLN</span>
                         </div>
                       )}
                     </div>
@@ -233,12 +268,12 @@ export default function DayView({
         <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-4">
           <h3 className="mb-3 text-lg font-light text-[#e5e4e2]">Statystyki</h3>
           <div className="space-y-2">
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-[#e5e4e2]/70">Całkowity budżet:</span>
-              <span className="font-medium text-[#d3bb73]">
-                {dayEvents.reduce((sum, e) => sum + (e.budget || 0), 0).toLocaleString('pl-PL')} PLN
-              </span>
-            </div>
+            {budgets.size > 0 && (
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-[#e5e4e2]/70">Całkowity budżet:</span>
+                <span className="font-medium text-[#d3bb73]">{totalBudget.toLocaleString('pl-PL')} PLN</span>
+              </div>
+            )}
             <div className="flex items-center justify-between text-sm">
               <span className="text-[#e5e4e2]/70">Zasobów sprzętowych:</span>
               <span className="font-medium text-[#e5e4e2]">

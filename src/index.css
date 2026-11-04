@@ -479,6 +479,23 @@ body.brand-theme--crm :is(
   color: var(--brand-gold-hover) !important;
 }
 
+/*
+ * Zakładki z paskiem wskaźnika (styl Material, np. EventNavigation): bez tła, zaokrągleń i cienia
+ * aktywnej zakładki — aktywność pokazuje złoty kolor tekstu i przesuwający się pasek pod zakładką.
+ */
+body.brand-theme--crm [role='tab'][data-crm-tab-variant='underline'] {
+  background: transparent !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+body.brand-theme--crm [role='tab'][data-crm-tab-variant='underline'][aria-selected='true'] {
+  color: #d3bb73 !important;
+}
+body.brand-theme--crm [role='tab'][data-crm-tab-variant='underline']:not(:disabled):hover,
+body.brand-theme--crm [role='tab'][data-crm-tab-variant='underline']:focus-visible {
+  background: rgba(255, 255, 255, 0.04) !important;
+}
+
 .brand-theme :where(h1, h2) {
   text-wrap: balance;
 }

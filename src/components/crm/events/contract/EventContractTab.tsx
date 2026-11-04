@@ -589,7 +589,20 @@ type ContractStatus =
   | 'signed_returned'
   | 'cancelled';
 
-export function EventContractTab({ eventId, onSignedDocumentChange }: { eventId: string; onSignedDocumentChange?: (present: boolean) => void }) {
+/** Bez obszaru „kwoty” kalkulacje i kwoty są niedostępne (RLS) — umowa liczyłaby 0 zł. */
+const CONTRACT_AMOUNTS_REQUIRED =
+  'Kwoty umowy widzi osoba z dostępem do kwot — poproś sprzedawcę lub administratora.';
+
+export function EventContractTab({
+  eventId,
+  onSignedDocumentChange,
+  canViewAmounts = true,
+}: {
+  eventId: string;
+  onSignedDocumentChange?: (present: boolean) => void;
+  /** Obszar „kwoty” (event_financials, kalkulacje): bez niego nie generujemy ani nie przeliczamy umowy. */
+  canViewAmounts?: boolean;
+}) {
   const [signedFilesState, setSignedFilesState] = useState<{ contractId: string; files: Attachment[] } | null>(null);
   const [documentPreviewOpen, setDocumentPreviewOpen] = useState(false);
   const [signedFilesOpen, setSignedFilesOpen] = useState(false);
@@ -599,6 +612,12 @@ export function EventContractTab({ eventId, onSignedDocumentChange }: { eventId:
   const { showConfirm } = useDialog();
   const { isAdmin, employee, canManageModule } = useCurrentEmployee();
   const canEditContractTemplate = Boolean(employee?.is_active && canManageModule('contracts'));
+  // Generowanie i przeliczanie umowy wymaga kwot — bez nich zamiast „0 zł” pokazujemy komunikat.
+  const blockedWithoutAmounts = () => {
+    if (canViewAmounts) return false;
+    showSnackbar(CONTRACT_AMOUNTS_REQUIRED, 'error');
+    return true;
+  };
   const [loading, setLoading] = useState(true);
   const refreshingSourcesRef = useRef(false);
   const [editMode, setEditMode] = useState(false);
@@ -1064,6 +1083,10 @@ export function EventContractTab({ eventId, onSignedDocumentChange }: { eventId:
     replaceExistingContent = false,
     templateIdOverride?: string,
   ) => {
+    if (replaceExistingContent && !canViewAmounts) {
+      // Przeliczenie umowy bez dostępu do kwot dałoby 0 zł — wywołujący pokaże błąd.
+      throw new Error(CONTRACT_AMOUNTS_REQUIRED);
+    }
     try {
       setLoading(true);
 
@@ -2364,6 +2387,7 @@ export function EventContractTab({ eventId, onSignedDocumentChange }: { eventId:
   };
 
   const handleSave = async () => {
+    if (blockedWithoutAmounts()) return;
     const overrides = { ...variableOverrides };
     usedContractVariableKeys.forEach((key) => {
       if ((editedVariables[key] || '') !== (variables[key] || '')) overrides[key] = editedVariables[key] || '';
@@ -2503,6 +2527,7 @@ export function EventContractTab({ eventId, onSignedDocumentChange }: { eventId:
 
   const handleTemplateChange = async (newTemplateId: string) => {
     if (!newTemplateId || newTemplateId === selectedTemplateId || changingTemplateRef.current) return;
+    if (blockedWithoutAmounts()) return;
     setPendingTemplateId(null);
     changingTemplateRef.current = true;
     setChangingTemplate(true);
@@ -2539,6 +2564,7 @@ export function EventContractTab({ eventId, onSignedDocumentChange }: { eventId:
 
   const ensureContractRecord = async (): Promise<string | null> => {
     if (contractId) return contractId;
+    if (blockedWithoutAmounts()) return null;
 
     if (!templateId && !selectedTemplateId) {
       showSnackbar('Wybierz szablon umowy', 'error');
@@ -2580,6 +2606,7 @@ export function EventContractTab({ eventId, onSignedDocumentChange }: { eventId:
   };
 
   const handlePrintDraft = async () => {
+    if (blockedWithoutAmounts()) return;
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
       showSnackbar('Zezwól przeglądarce na otwieranie nowych kart', 'error');
@@ -2645,6 +2672,7 @@ export function EventContractTab({ eventId, onSignedDocumentChange }: { eventId:
   const handleRefreshFromOffer = async () => {
     const currentTemplateId = selectedTemplateId || templateId;
     if (!currentTemplateId || !canEdit || refreshingSourcesRef.current) return;
+    if (blockedWithoutAmounts()) return;
     refreshingSourcesRef.current = true;
     try {
       if (contractId && !(await showConfirm({
@@ -2669,6 +2697,7 @@ export function EventContractTab({ eventId, onSignedDocumentChange }: { eventId:
   };
 
   const handlePrint = async () => {
+    if (blockedWithoutAmounts()) return;
     if (!templateId && !selectedTemplateId) {
       showSnackbar('Wybierz szablon umowy przed wygenerowaniem PDF', 'error');
       return;
@@ -2941,6 +2970,7 @@ export function EventContractTab({ eventId, onSignedDocumentChange }: { eventId:
   };
 
   const handleApplyProductClauseSelections = async () => {
+    if (blockedWithoutAmounts()) return;
     const unresolved = productClauseConflicts.filter(
       (conflict) => !productClauseSelectionDraft[conflict.key],
     );
@@ -2976,6 +3006,7 @@ export function EventContractTab({ eventId, onSignedDocumentChange }: { eventId:
   };
 
   const handleSaveEventContractClauses = async (items: EventContractClauseItem[]) => {
+    if (blockedWithoutAmounts()) return;
     let hasIndividualEdits = modifiedAfterGeneration;
     try {
       const parsedContract = JSON.parse(contractContent);
@@ -3391,6 +3422,12 @@ export function EventContractTab({ eventId, onSignedDocumentChange }: { eventId:
     <>
       <style dangerouslySetInnerHTML={{ __html: getContractDocumentCss() }} />
       <div className="space-y-6">
+        {!canViewAmounts && (
+          <div role="status" className="no-print rounded-xl bg-amber-400/10 p-4 text-sm text-amber-100">
+            {CONTRACT_AMOUNTS_REQUIRED} Podgląd może pokazywać niepełne kwoty — generowanie i przeliczanie umowy jest
+            zablokowane.
+          </div>
+        )}
         <div className="no-print rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-4 md:p-6">
           <div className="mb-5 flex flex-col gap-4 md:mb-6 md:flex-row md:items-start md:justify-between">
             <div className="min-w-0">

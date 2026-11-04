@@ -1,5 +1,6 @@
 'use client';
 
+import SalesColleagueBadge from '@/components/crm/events/SalesColleagueBadge';
 import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, ChevronRight, Clock, MapPin, Building2, Tag } from 'lucide-react';
@@ -232,6 +233,11 @@ export default function MobileCalendarView({
                         <h4 className="mb-1.5 text-sm font-medium text-[#e5e4e2]">
                           {event.name}
                         </h4>
+                        {event.sales_colleague && (
+                          <div className="mb-1.5">
+                            <SalesColleagueBadge seller={event.sales_colleague_seller} />
+                          </div>
+                        )}
 
                         <div className="space-y-1">
                           <div className="flex items-center gap-1.5 text-[11px] text-[#e5e4e2]/70">

@@ -123,7 +123,8 @@ export function EditEventModal({
       event_end_date: localDatetimeStringToUTC(formData.event_end_date),
       location: formData.location,
       location_id: formData.location_id || null,
-      budget: formData.budget ? parseFloat(formData.budget) : null,
+      // Wyzwalacz event_financials pomija null — wyczyszczony budżet zapisujemy jako 0.
+      budget: formData.budget ? parseFloat(formData.budget) : eventMoney(event, event.financials, 'budget') != null ? 0 : null,
       status: formData.status,
     };
     onSave(dataToSave);

@@ -6,13 +6,9 @@ import type { IEmployee } from '@/app/(crm)/crm/employees/type';
 import type { ViewMode } from '@/app/(crm)/crm/settings/page';
 import type { OrganizationRow } from '@/app/(crm)/crm/contacts/types';
 import { ADMIN_EVENT_TABS, CREATOR_EVENT_TABS } from '@/lib/CRM/events/eventTabs';
-import {
-  EVENT_ACCESS_AREAS,
-  EVENT_ACCESS_NONE,
-  parseEventAccess,
-  type EventAccess,
-} from '@/lib/events/access/eventAccess';
-import { fetchEventFinancials, type EventFinancials } from '@/lib/CRM/events/eventFinancials';
+import { parseEventAccess, type EventAccess } from '@/lib/events/access/eventAccess';
+import { EVENT_FINANCIAL_FIELDS, fetchEventFinancials, type EventFinancials } from '@/lib/CRM/events/eventFinancials';
+import { closedEventAccess, isMissingDatabaseFunction, legacyEventAccess } from '@/lib/CRM/events/eventAccessFallback';
 
 export function getCookieStore(): CookieStoreLike {
   const store = cookies();
@@ -66,10 +62,11 @@ export type EventPermissionContext = {
   currentUserId: string | null;
   /**
    * Obszary danych wydarzenia z bazy (get_event_access) — jedno źródło decyzji, które zakładki i sekcje widać.
-   * Gdy funkcji jeszcze nie ma w bazie: administrator i prowadzący widzą wszystko, pozostali tylko dane operacyjne.
+   * `legacy`: funkcji jeszcze nie ma w bazie — obszary z dotychczasowych reguł; `closed`: przejściowy błąd —
+   * tylko dane operacyjne.
    */
   access?: EventAccess;
-  accessSource?: 'database' | 'fallback';
+  accessSource?: 'database' | 'legacy' | 'closed';
   /** Zakładki zawężone w ustawieniach pracownika / poziomu dostępu (null = bez zawężenia). */
   employeeEventTabs?: string[] | null;
 };
@@ -151,21 +148,6 @@ function normalizeTabs(value: unknown, fallback: string[]): string[] {
   return fallback;
 }
 
-/** Dostęp zastępczy, gdy get_event_access jest niedostępne (np. przed wdrożeniem migracji). */
-function fallbackEventAccess(eventId: string, isAdmin: boolean, isCreator: boolean): EventAccess {
-  if (isAdmin || isCreator) {
-    const areas = { ...EVENT_ACCESS_NONE.areas };
-    for (const area of EVENT_ACCESS_AREAS) areas[area] = true;
-    return {
-      event_id: eventId,
-      areas,
-      roles: { ...(isAdmin ? { admin: true } : {}), ...(isCreator ? { seller: true } : {}) },
-    };
-  }
-  // Wiersz wydarzenia przeszedł RLS, więc dane operacyjne są dostępne; reszta zostaje zamknięta.
-  return { event_id: eventId, areas: { ...EVENT_ACCESS_NONE.areas, operations: true }, roles: {} };
-}
-
 function explicitEventTabs(employee: any): string[] | null {
   const own = Array.isArray(employee?.event_tabs) ? employee.event_tabs : [];
   const level = Array.isArray(employee?.access_levels?.event_tabs) ? employee.access_levels.event_tabs : [];
@@ -199,11 +181,12 @@ export async function fetchEventByIdServer(
   const currentUserId = normalizeUuid(auth.user?.id);
   if (!currentUserId) return null;
 
+  // Brak wiersza (RLS) = null — strona sprawdza wtedy, czy to podgląd wydarzenia innego sprzedawcy.
   const { data: event, error: eventError } = await supabase
     .from('events')
     .select('*')
     .eq('id', normalizedEventId)
-    .single();
+    .maybeSingle();
 
   if (eventError) throw eventError;
   if (!event) return null;
@@ -274,6 +257,7 @@ export async function fetchEventByIdServer(
         avatar_url,
         avatar_metadata,
         role,
+        access_level,
         occupation,
         is_active,
         permissions,
@@ -339,14 +323,6 @@ export async function fetchEventByIdServer(
   const canManageEvent = manageEventResult.error
     ? Boolean(isAdmin || canManageEvents || isCreator)
     : manageEventResult.data === true;
-
-  if (accessResult.error) {
-    console.warn('[fetchEventByIdServer] get_event_access unavailable, using fallback:', accessResult.error.message);
-  }
-  const access: EventAccess = accessResult.error
-    ? fallbackEventAccess(normalizedEventId, isAdmin, isCreator)
-    : parseEventAccess(accessResult.data);
-  const employeeEventTabs = isAdmin || isCreator ? null : explicitEventTabs(currentEmployee);
 
   const hasAcceptedOnlyCalendarView =
     !isAdmin &&
@@ -484,6 +460,45 @@ export async function fetchEventByIdServer(
     };
   }
 
+  // Obszary danych: z bazy; przed wdrożeniem migracji — dotychczasowe reguły; przy przejściowym błędzie — tylko realizacja.
+  const accessSource: 'database' | 'legacy' | 'closed' = !accessResult.error
+    ? 'database'
+    : isMissingDatabaseFunction(accessResult.error)
+      ? 'legacy'
+      : 'closed';
+  let access: EventAccess;
+  if (accessSource === 'database') {
+    access = parseEventAccess(accessResult.data);
+  } else if (accessSource === 'legacy') {
+    const billingResult = isAdmin || isCreator
+      ? null
+      : await supabase.rpc('can_view_event_commercials', { p_event_id: normalizedEventId });
+    access = legacyEventAccess({
+      eventId: normalizedEventId,
+      isAdmin,
+      isCreator,
+      role: (currentEmployee as any)?.role ?? null,
+      accessLevel: (currentEmployee as any)?.access_level ?? null,
+      permissions: (currentEmployee as any)?.permissions ?? [],
+      billing: Boolean(isAdmin || isCreator || (billingResult && !billingResult.error && billingResult.data === true)),
+    });
+  } else {
+    console.warn('[fetchEventByIdServer] get_event_access failed, operational data only:', accessResult.error?.message);
+    access = closedEventAccess(normalizedEventId);
+  }
+  // Zawężenie zakładek: przed migracją dotychczasowa lista (allowedEventTabs), potem wyłącznie jawne ustawienia.
+  const employeeEventTabs = isAdmin || isCreator
+    ? null
+    : accessSource === 'legacy'
+      ? permissionContext.allowedEventTabs
+      : explicitEventTabs(currentEmployee);
+
+  // Bez obszaru „kwoty” żadna kwota nie trafia do danych strony (także stare kolumny events przed migracją).
+  const canViewValues = access.areas.values === true;
+  const visibleFinancials = canViewValues ? financials : null;
+  const eventForViewer: Record<string, unknown> = { ...(event as Record<string, unknown>) };
+  if (!canViewValues) for (const field of EVENT_FINANCIAL_FIELDS) eventForViewer[field] = null;
+
   const logoPath = myCompanyBrandLogo?.url || (myCompany as any)?.logo_url || null;
 
 const resolvedCompanyLogoUrl =
@@ -499,19 +514,19 @@ const realizationCompany = myCompany
   : null;
 
   return {
-    ...event,
+    ...eventForViewer,
     my_company: realizationCompany,
     category: eventCategory ?? null,
     creator: (creator as unknown as IEmployee) ?? null,
     organization: (organization as OrganizationRow) ?? null,
     currentEmployee: (currentEmployee as unknown as IEmployee) ?? null,
-    financials,
+    financials: visibleFinancials,
     permissionContext: {
       ...permissionContext,
       sellsEvent,
       canManageEvent,
       access,
-      accessSource: accessResult.error ? 'fallback' : 'database',
+      accessSource,
       employeeEventTabs,
     },
     employees: (eventEmployees as EventEmployeeAssignmentRow[]) ?? [],

@@ -1,5 +1,6 @@
 import { createSupabaseServerClient } from '@/lib/supabase/server.app';
 import { cookies } from 'next/headers';
+import { fetchSalesColleagueEvents, salesColleagueSellerLabel } from '@/lib/CRM/events/salesColleagueEvents';
 
 export async function fetchCalendarEventsServer() {
   const supabase = createSupabaseServerClient(cookies());
@@ -137,5 +138,29 @@ export async function fetchCalendarEventsServer() {
       assigned_employees: (e.assigned_employees || []).map((x: any) => x.employee),
     })) ?? [];
 
-  return [...normalized, ...inquiries];
+  // Wydarzenia innych sprzedawców (tylko do odczytu, bez kwot) — wybrane pola z get_sales_colleague_events.
+  const ownIds = new Set(normalized.map((event: any) => event.id));
+  const colleagues = (await fetchSalesColleagueEvents(supabase as any, start, end))
+    .filter((row) => row.event_date && !ownIds.has(row.id))
+    .map((row) => ({
+      id: row.id,
+      name: row.name,
+      status: row.status || 'offer_accepted',
+      location: row.location || '',
+      event_date: row.event_date,
+      event_end_date: row.event_end_date,
+      created_by: null,
+      color: row.category?.color || undefined,
+      organization: row.client_name ? { name: row.client_name, alias: null } : null,
+      contact_person: null,
+      category: row.category?.name ? { name: row.category.name, color: row.category.color || undefined } : null,
+      is_meeting: false,
+      assigned_employees: [],
+      event_vehicles: [],
+      event_equipment: [],
+      sales_colleague: true,
+      sales_colleague_seller: salesColleagueSellerLabel(row),
+    }));
+
+  return [...normalized, ...colleagues, ...inquiries];
 }

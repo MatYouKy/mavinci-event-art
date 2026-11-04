@@ -61,6 +61,11 @@ import SpecialDayNotice from '../components/SpecialDayNotice';
 import { usePublicHolidays } from '../hooks/usePublicHolidays';
 import { holidayDateLabel, toISODate, workingTimeNorm, workingTimeNormSentence } from '../lib/publicHolidays';
 import { STATUS_COLORS, STATUS_LABELS } from './EventsScreen';
+import {
+  SALES_COLLEAGUE_BADGE_LABEL,
+  fetchSalesColleagueEvents,
+  seesSalesColleagueEvents,
+} from '../lib/salesColleagueEvents';
 import MeetingsScreen from './MeetingsScreen';
 
 interface CalendarEvent {
@@ -80,7 +85,51 @@ interface CalendarEvent {
 
   is_meeting?: boolean;
   is_inquiry?: boolean;
+  /** Sprzedane wydarzenie innego sprzedawcy — po otwarciu tylko podgląd sprzedaży. */
+  is_sales_colleague?: boolean;
 }
+
+const CALENDAR_EVENT_SELECT = `
+            id,
+            name,
+            event_date,
+            event_end_date,
+            status,
+            location,
+            category_id,
+            creator:employees!created_by(
+              name,
+              surname
+            ),
+            category:event_categories!category_id(
+              id,
+              name,
+              color,
+              icon:custom_icons!icon_id(
+                svg_code
+              )
+            )
+          `;
+
+const mapCalendarEvent = (event: any): CalendarEvent => ({
+  id: event.id,
+  name: event.name,
+  event_date: event.event_date,
+  event_end_date: event.event_end_date,
+  status: event.status,
+  location: event.location,
+  creator_name: event.creator
+    ? [event.creator.name, event.creator.surname].filter(Boolean).join(' ')
+    : null,
+
+  category_id: event.category_id,
+  category_name: event.category?.name ?? 'Wydarzenie',
+  category_color: event.category?.color ?? colors.primary.gold,
+  category_icon_svg: event.category?.icon?.svg_code ?? null,
+
+  is_meeting: false,
+  is_inquiry: false,
+});
 
 function CalendarContent({ onEventPress }: { onEventPress: (eventId: CalendarEvent) => void }) {
   const { employee } = useAuth();
@@ -137,29 +186,7 @@ function CalendarContent({ onEventPress }: { onEventPress: (eventId: CalendarEve
       if (uniqueEventIds.length > 0) {
         const { data: eventData, error } = await supabase
           .from('events')
-          .select(
-            `
-            id,
-            name,
-            event_date,
-            event_end_date,
-            status,
-            location,
-            category_id,
-            creator:employees!created_by(
-              name,
-              surname
-            ),
-            category:event_categories!category_id(
-              id,
-              name,
-              color,
-              icon:custom_icons!icon_id(
-                svg_code
-              )
-            )
-          `,
-          )
+          .select(CALENDAR_EVENT_SELECT)
           .in('id', uniqueEventIds);
 
         if (error) {
@@ -167,25 +194,32 @@ function CalendarContent({ onEventPress }: { onEventPress: (eventId: CalendarEve
         }
 
         if (eventData) {
-          allEvents = eventData.map((event: any) => ({
-            id: event.id,
-            name: event.name,
-            event_date: event.event_date,
-            event_end_date: event.event_end_date,
-            status: event.status,
-            location: event.location,
-            creator_name: event.creator
-              ? [event.creator.name, event.creator.surname].filter(Boolean).join(' ')
-              : null,
+          allEvents = eventData.map(mapCalendarEvent);
+        }
+      }
 
-            category_id: event.category_id,
-            category_name: event.category?.name ?? 'Wydarzenie',
-            category_color: event.category?.color ?? colors.primary.gold,
-            category_icon_svg: event.category?.icon?.svg_code ?? null,
-
+      // Sprzedane wydarzenia innych sprzedawców (zajęte terminy) — jak w kalendarzu CRM; wyłącznie z RPC
+      // get_sales_colleague_events (wiersza `events` inny sprzedawca nie czyta), z flagą sales_colleague.
+      if (seesSalesColleagueEvents(employee)) {
+        const known = new Set(allEvents.map((event) => event.id));
+        for (const colleague of await fetchSalesColleagueEvents()) {
+          if (known.has(colleague.id)) continue;
+          allEvents.push({
+            id: colleague.id,
+            name: colleague.name,
+            event_date: colleague.event_date,
+            event_end_date: colleague.event_end_date,
+            status: colleague.status,
+            location: colleague.location ?? undefined,
+            creator_name: colleague.sold_by.length ? colleague.sold_by.join(', ') : null,
+            category_id: colleague.category?.id ?? null,
+            category_name: colleague.category?.name ?? 'Wydarzenie',
+            category_color: colleague.category?.color ?? colors.primary.gold,
+            category_icon_svg: null,
             is_meeting: false,
             is_inquiry: false,
-          }));
+            is_sales_colleague: colleague.sales_colleague,
+          });
         }
       }
 
@@ -304,7 +338,7 @@ function CalendarContent({ onEventPress }: { onEventPress: (eventId: CalendarEve
     } finally {
       setIsLoading(false);
     }
-  }, [employee?.id, employee?.permissions, canViewInquiries]);
+  }, [employee?.id, employee?.permissions, employee?.role, employee?.access_level, canViewInquiries]);
 
   useFocusEffect(useCallback(() => { void fetchEvents(); }, [fetchEvents]));
   useEffect(() => {
@@ -409,6 +443,12 @@ function CalendarContent({ onEventPress }: { onEventPress: (eventId: CalendarEve
           )}
 
           <View style={styles.eventStatusRow}>
+            {item.is_sales_colleague && (
+              <View style={styles.colleagueBadge} accessibilityLabel={`${SALES_COLLEAGUE_BADGE_LABEL} — podgląd sprzedaży`}>
+                <Feather name="eye" size={10} color={colors.text.tertiary} />
+                <Text style={styles.colleagueBadgeText}>{SALES_COLLEAGUE_BADGE_LABEL}</Text>
+              </View>
+            )}
             <View
               style={[
                 styles.statusBadge,
@@ -532,6 +572,16 @@ function CalendarContent({ onEventPress }: { onEventPress: (eventId: CalendarEve
 }
 
 const styles = StyleSheet.create({
+  colleagueBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    backgroundColor: colors.background.tertiary,
+  },
+  colleagueBadgeText: { fontSize: 10, color: colors.text.tertiary, fontWeight: '600' },
   normBox: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm, gap: 2 },
   normText: { fontSize: 12, color: colors.text.secondary },
   normHolidays: { fontSize: 12, color: '#fca5a5' },
@@ -622,6 +672,9 @@ const styles = StyleSheet.create({
   },
   eventStatusRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 6,
   },
   statusBadge: {
     paddingHorizontal: 8,

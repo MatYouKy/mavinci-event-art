@@ -1,6 +1,5 @@
 'use client';
 import {
-  Fragment,
   useCallback,
   useEffect,
   useId,
@@ -10,16 +9,19 @@ import {
   type ComponentType,
   type KeyboardEvent,
   type MutableRefObject,
+  type PointerEvent as ReactPointerEvent,
   type Ref,
 } from 'react';
-import { ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 
-export type EventNavigationItem = { id: string; label: string; icon: ComponentType<{ className?: string }> };
+export type EventNavigationItem = { id: string; label: string; icon?: ComponentType<{ className?: string }> };
+/** Zgodność wsteczna: grupy są spłaszczane do jednego paska (bez etykiet grup). */
 export type EventNavigationGroup = { id: string; label: string; tabs: EventNavigationItem[] };
 
-/** Margines przy przewijaniu aktywnej zakładki — zakładka nie chowa się pod strzałką ani wygaszeniem krawędzi. */
-const EDGE_PADDING = 44;
-const FADE_WIDTH = 36;
+/** Odstęp od krawędzi przy przewijaniu aktywnej zakładki do widoku. */
+const EDGE_PADDING = 24;
+/** Ruch wskaźnika (px), po którym wciśnięcie staje się przeciąganiem paska, a nie kliknięciem. */
+const DRAG_THRESHOLD = 6;
 
 function assignRef<T>(ref: Ref<T> | undefined, value: T | null) {
   if (!ref) return;
@@ -27,10 +29,19 @@ function assignRef<T>(ref: Ref<T> | undefined, value: T | null) {
   else (ref as MutableRefObject<T | null>).current = value;
 }
 
+type DragState = {
+  pointerId: number;
+  startX: number;
+  startScrollLeft: number;
+  dragging: boolean;
+};
+
 /**
- * Pasek zakładek wydarzenia: grupy (np. Wydarzenie | Przygotowanie | Sprzedaż i rozliczenie), aktywna zakładka jako
- * wypełniona „pigułka”, przewijanie w poziomie ze strzałkami i wygaszeniem krawędzi, kółko myszy przewija w poziomie,
- * klawiatura ←/→/Home/End (roving tabindex, Enter/Spacja otwiera). Na wąskich ekranach — lista wyboru.
+ * Pasek zakładek w stylu Material (MUI Tabs, variant="scrollable", scrollButtons="auto"): jeden rząd, tekst
+ * (opcjonalnie mała ikona), złoty pasek wskaźnika pod aktywną zakładką przesuwający się między zakładkami.
+ * Gdy zakładki się nie mieszczą: przyciski przewijania przy krawędziach (tylko w stronę, gdzie jest treść),
+ * przeciąganie myszą („chwyć i przesuń” — przeciągnięcie nie otwiera zakładki), kółko myszy przewija w poziomie,
+ * a na dotyku — natywne przesuwanie. Klawiatura: ←/→/Home/End (roving tabindex), Enter/Spacja otwiera.
  */
 export default function EventNavigation({
   tabs,
@@ -42,9 +53,9 @@ export default function EventNavigation({
   idPrefix,
   panelId,
 }: {
-  /** Płaska lista zakładek (bez grup). */
+  /** Zakładki w kolejności wyświetlania. */
   tabs?: EventNavigationItem[];
-  /** Zakładki w grupach — mają pierwszeństwo przed `tabs`. */
+  /** Starszy wariant wywołania — grupy są spłaszczane. */
   groups?: EventNavigationGroup[];
   activeTab: string;
   onChange: (id: string) => void;
@@ -58,52 +69,81 @@ export default function EventNavigation({
 }) {
   const generatedId = useId();
   const prefix = idPrefix || `event-nav-${generatedId.replace(/:/g, '')}`;
-  const selectId = `${prefix}-select`;
 
-  const resolvedGroups = useMemo<EventNavigationGroup[]>(() => {
-    const source = groups?.length ? groups : [{ id: 'all', label: '', tabs: tabs ?? [] }];
-    return source.filter(group => group.tabs.length > 0);
-  }, [groups, tabs]);
-  const flatTabs = useMemo(() => resolvedGroups.flatMap(group => group.tabs), [resolvedGroups]);
-  const showGroupLabels = resolvedGroups.length > 1;
-  const activeItem = flatTabs.find(tab => tab.id === activeTab) ?? null;
+  const items = useMemo<EventNavigationItem[]>(
+    () => (groups?.length ? groups.flatMap(group => group.tabs) : tabs ?? []),
+    [groups, tabs],
+  );
 
   const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
-  const [edges, setEdges] = useState({ left: false, right: false });
+  const [edges, setEdges] = useState({ overflow: false, left: false, right: false });
+  const [indicator, setIndicator] = useState<{ left: number; width: number } | null>(null);
+  const [indicatorAnimated, setIndicatorAnimated] = useState(false);
   const [focusId, setFocusId] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
   const tabRefs = useRef(new Map<string, HTMLButtonElement>());
+  const contentRef = useRef<HTMLDivElement | null>(null);
   const externalRef = useRef(scrollRef);
   externalRef.current = scrollRef;
   const firstScrollRef = useRef(true);
+  const dragRef = useRef<DragState | null>(null);
+  const suppressClickRef = useRef(false);
 
   const setScrollerNode = useCallback((node: HTMLDivElement | null) => {
     assignRef(externalRef.current, node);
     setScroller(node);
   }, []);
 
-  const updateEdges = useCallback(() => {
-    if (!scroller) return;
-    const max = scroller.scrollWidth - scroller.clientWidth;
-    const left = scroller.scrollLeft > 1;
-    const right = max - scroller.scrollLeft > 1;
-    setEdges(previous => (previous.left === left && previous.right === right ? previous : { left, right }));
-  }, [scroller]);
+  const measure = useCallback(() => {
+    if (scroller) {
+      const max = scroller.scrollWidth - scroller.clientWidth;
+      const overflow = max > 1;
+      const left = overflow && scroller.scrollLeft > 1;
+      const right = overflow && max - scroller.scrollLeft > 1;
+      setEdges(previous =>
+        previous.overflow === overflow && previous.left === left && previous.right === right
+          ? previous
+          : { overflow, left, right },
+      );
+    }
+    const element = tabRefs.current.get(activeTab);
+    if (element) {
+      const next = { left: element.offsetLeft, width: element.offsetWidth };
+      setIndicator(previous =>
+        previous && previous.left === next.left && previous.width === next.width ? previous : next,
+      );
+    } else {
+      setIndicator(null);
+    }
+  }, [scroller, activeTab]);
 
-  // Strzałki i wygaszenie krawędzi tylko tam, gdzie jest jeszcze treść.
+  // Pomiar paska wskaźnika i krawędzi: przy zmianie zakładki, rozmiaru, liczby zakładek i po wczytaniu fontów.
   useEffect(() => {
+    measure();
     if (!scroller) return;
-    updateEdges();
-    scroller.addEventListener('scroll', updateEdges, { passive: true });
-    window.addEventListener('resize', updateEdges);
-    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => updateEdges()) : null;
+    scroller.addEventListener('scroll', measure, { passive: true });
+    window.addEventListener('resize', measure);
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => measure()) : null;
     observer?.observe(scroller);
-    if (scroller.firstElementChild) observer?.observe(scroller.firstElementChild);
+    if (contentRef.current) observer?.observe(contentRef.current);
+    let active = true;
+    void (document as Document & { fonts?: { ready: Promise<unknown> } }).fonts?.ready.then(() => {
+      if (active) measure();
+    });
     return () => {
-      scroller.removeEventListener('scroll', updateEdges);
-      window.removeEventListener('resize', updateEdges);
+      active = false;
+      scroller.removeEventListener('scroll', measure);
+      window.removeEventListener('resize', measure);
       observer?.disconnect();
     };
-  }, [scroller, updateEdges, flatTabs.length]);
+  }, [scroller, measure, items.length]);
+
+  // Animacja paska dopiero po pierwszym pomiarze (bez „wjazdu” od lewej przy wczytaniu strony).
+  useEffect(() => {
+    if (!indicator || indicatorAnimated) return;
+    const frame = requestAnimationFrame(() => setIndicatorAnimated(true));
+    return () => cancelAnimationFrame(frame);
+  }, [indicator, indicatorAnimated]);
 
   // Pionowe kółko myszy przewija pasek w poziomie (tylko gdy zakładki się nie mieszczą).
   useEffect(() => {
@@ -146,20 +186,23 @@ export default function EventNavigation({
     setFocusId(null);
   }, [activeTab]);
 
-  const rovingId = focusId && flatTabs.some(tab => tab.id === focusId)
-    ? focusId
-    : activeItem?.id ?? flatTabs[0]?.id ?? null;
+  const rovingId =
+    focusId && items.some(tab => tab.id === focusId)
+      ? focusId
+      : items.some(tab => tab.id === activeTab)
+        ? activeTab
+        : items[0]?.id ?? null;
 
   const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
-    if (!flatTabs.length) return;
+    if (!items.length) return;
     let next = -1;
-    if (event.key === 'ArrowRight') next = (index + 1) % flatTabs.length;
-    else if (event.key === 'ArrowLeft') next = (index - 1 + flatTabs.length) % flatTabs.length;
+    if (event.key === 'ArrowRight') next = (index + 1) % items.length;
+    else if (event.key === 'ArrowLeft') next = (index - 1 + items.length) % items.length;
     else if (event.key === 'Home') next = 0;
-    else if (event.key === 'End') next = flatTabs.length - 1;
+    else if (event.key === 'End') next = items.length - 1;
     else return;
     event.preventDefault();
-    const id = flatTabs[next].id;
+    const id = items[next].id;
     setFocusId(id);
     const element = tabRefs.current.get(id);
     if (element) {
@@ -173,149 +216,153 @@ export default function EventNavigation({
     scroller.scrollBy({ left: direction * Math.max(160, scroller.clientWidth * 0.7), behavior: 'smooth' });
   };
 
-  const maskImage = edges.left || edges.right
-    ? `linear-gradient(to right, ${edges.left ? 'transparent 0, #000 ' + FADE_WIDTH + 'px' : '#000 0'}, ${
-        edges.right ? '#000 calc(100% - ' + FADE_WIDTH + 'px), transparent 100%' : '#000 100%'
-      })`
-    : undefined;
+  // Przeciąganie myszą/rysikiem. Dotyk zostaje przy natywnym przesuwaniu (touch-action: pan-x).
+  const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    suppressClickRef.current = false;
+    if (!scroller || event.pointerType === 'touch' || event.button !== 0) return;
+    if (scroller.scrollWidth - scroller.clientWidth <= 1) return;
+    dragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startScrollLeft: scroller.scrollLeft,
+      dragging: false,
+    };
+  };
 
-  if (!flatTabs.length) return null;
+  const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    if (!drag || !scroller || drag.pointerId !== event.pointerId) return;
+    const deltaX = event.clientX - drag.startX;
+    if (!drag.dragging) {
+      if (Math.abs(deltaX) < DRAG_THRESHOLD) return;
+      drag.dragging = true;
+      setDragging(true);
+      try {
+        scroller.setPointerCapture(event.pointerId);
+      } catch {
+        /* Wskaźnik mógł już zostać zwolniony. */
+      }
+    }
+    event.preventDefault();
+    scroller.scrollLeft = drag.startScrollLeft - deltaX;
+  };
 
-  const ActiveIcon = activeItem?.icon ?? null;
+  const finishDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    dragRef.current = null;
+    if (!drag.dragging) return;
+    // Kliknięcie, które przeglądarka wyśle po przeciągnięciu, nie może otworzyć zakładki.
+    suppressClickRef.current = true;
+    setDragging(false);
+    try {
+      if (scroller?.hasPointerCapture(event.pointerId)) scroller.releasePointerCapture(event.pointerId);
+    } catch {
+      /* Wskaźnik mógł już zostać zwolniony. */
+    }
+  };
+
+  if (!items.length) return null;
+
+  const scrollButtonClass =
+    'hidden w-10 shrink-0 items-center justify-center text-[#e5e4e2]/70 transition-colors hover:bg-white/[0.04] hover:text-[#d3bb73] disabled:pointer-events-none sm:flex';
 
   return (
-    <nav aria-label={ariaLabel} className="relative">
-      {/* Wąskie ekrany: lista wyboru z grupami. */}
-      <div className="relative sm:hidden">
-        <label htmlFor={selectId} className="sr-only">
-          {ariaLabel}
-        </label>
-        {ActiveIcon && (
-          <ActiveIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#d3bb73]" />
-        )}
-        <select
-          id={selectId}
-          value={activeItem?.id ?? ''}
-          onChange={event => onChange(event.target.value)}
-          className="w-full appearance-none rounded-xl border border-white/[0.06] bg-white/5 py-2.5 pl-10 pr-10 text-sm text-[#e5e4e2] focus:bg-white/[0.08] focus:outline-none"
+    <div className="relative flex items-stretch">
+      {edges.overflow && (
+        <button
+          type="button"
+          tabIndex={-1}
+          aria-label="Przewiń zakładki w lewo"
+          disabled={!edges.left}
+          onClick={() => scrollByPage(-1)}
+          className={`${scrollButtonClass} ${edges.left ? '' : 'invisible'}`}
         >
-          {!activeItem && <option value="">Wybierz zakładkę</option>}
-          {showGroupLabels
-            ? resolvedGroups.map(group => (
-                <optgroup key={group.id} label={group.label} className="bg-[#1c1f33] text-[#e5e4e2]/60">
-                  {group.tabs.map(tab => (
-                    <option key={tab.id} value={tab.id} className="bg-[#1c1f33] text-[#e5e4e2]">
-                      {tab.label}
-                    </option>
-                  ))}
-                </optgroup>
-              ))
-            : flatTabs.map(tab => (
-                <option key={tab.id} value={tab.id} className="bg-[#1c1f33] text-[#e5e4e2]">
-                  {tab.label}
-                </option>
-              ))}
-        </select>
-        <ChevronDown
-          className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#e5e4e2]/50"
-          aria-hidden
-        />
-      </div>
-
-      {/* Od sm: przewijany pasek zakładek. */}
-      <div className="relative hidden rounded-xl bg-white/[0.03] p-1 sm:block">
-        {edges.left && (
-          <button
-            type="button"
-            tabIndex={-1}
-            aria-label="Przewiń zakładki w lewo"
-            onClick={() => scrollByPage(-1)}
-            className="absolute left-1 top-1/2 z-10 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-[#1c1f33]/95 text-[#e5e4e2]/80 shadow-lg shadow-black/30 transition-colors hover:bg-[#1c1f33] hover:text-[#d3bb73]"
-          >
-            <ChevronLeft className="h-4 w-4" aria-hidden />
-          </button>
-        )}
-        {edges.right && (
-          <button
-            type="button"
-            tabIndex={-1}
-            aria-label="Przewiń zakładki w prawo"
-            onClick={() => scrollByPage(1)}
-            className="absolute right-1 top-1/2 z-10 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-[#1c1f33]/95 text-[#e5e4e2]/80 shadow-lg shadow-black/30 transition-colors hover:bg-[#1c1f33] hover:text-[#d3bb73]"
-          >
-            <ChevronRight className="h-4 w-4" aria-hidden />
-          </button>
-        )}
+          <ChevronLeft className="h-5 w-5" aria-hidden />
+        </button>
+      )}
+      <div
+        ref={setScrollerNode}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={finishDrag}
+        onPointerCancel={finishDrag}
+        onClickCapture={event => {
+          if (!suppressClickRef.current) return;
+          suppressClickRef.current = false;
+          event.preventDefault();
+          event.stopPropagation();
+        }}
+        onDragStart={event => event.preventDefault()}
+        className={`min-w-0 flex-1 overflow-x-auto overscroll-x-contain [scrollbar-width:none] [touch-action:pan-x_pan-y] [&::-webkit-scrollbar]:hidden ${
+          edges.overflow ? (dragging ? 'cursor-grabbing select-none [&_button]:cursor-grabbing' : 'cursor-grab') : ''
+        }`}
+      >
         <div
-          ref={setScrollerNode}
-          className="overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-          style={maskImage ? { maskImage, WebkitMaskImage: maskImage } : undefined}
+          ref={contentRef}
+          role="tablist"
+          aria-label={ariaLabel}
+          aria-orientation="horizontal"
+          data-crm-tabs="true"
+          className="relative flex w-max min-w-full"
+          onBlur={event => {
+            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocusId(null);
+          }}
         >
-          <div
-            role="tablist"
-            aria-label={ariaLabel}
-            aria-orientation="horizontal"
-            data-crm-tabs="true"
-            className="flex w-max min-w-full items-center gap-1"
-            onBlur={event => {
-              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocusId(null);
-            }}
-          >
-            {resolvedGroups.map((group, groupIndex) => {
-              const groupLabelId = `${prefix}-group-${group.id}`;
-              return (
-                <Fragment key={group.id}>
-                  {showGroupLabels && groupIndex > 0 && (
-                    <span aria-hidden className="mx-1.5 h-5 w-px shrink-0 bg-white/10" />
-                  )}
-                  {showGroupLabels && (
-                    <span
-                      id={groupLabelId}
-                      aria-hidden
-                      className="shrink-0 select-none pl-1.5 pr-1 text-[10px] font-medium uppercase tracking-[0.14em] text-[#e5e4e2]/35"
-                    >
-                      {group.label}
-                    </span>
-                  )}
-                  {group.tabs.map(tab => {
-                    const index = flatTabs.indexOf(tab);
-                    const selected = tab.id === activeTab;
-                    const Icon = tab.icon;
-                    return (
-                      <button
-                        key={tab.id}
-                        ref={element => {
-                          if (element) tabRefs.current.set(tab.id, element);
-                          else tabRefs.current.delete(tab.id);
-                        }}
-                        id={`${prefix}-tab-${tab.id}`}
-                        type="button"
-                        role="tab"
-                        aria-selected={selected}
-                        aria-controls={panelId}
-                        aria-describedby={showGroupLabels ? groupLabelId : undefined}
-                        tabIndex={tab.id === rovingId ? 0 : -1}
-                        data-crm-tab-active={selected ? 'true' : 'false'}
-                        onClick={() => onChange(tab.id)}
-                        onFocus={() => setFocusId(tab.id)}
-                        onKeyDown={event => handleKeyDown(event, index)}
-                        // Globalny styl zakładek CRM nadaje tło aktywnej; tu tylko kształt „pigułki” bez podkreślenia.
-                        style={{ borderRadius: 9999, boxShadow: 'none' }}
-                        className={`flex shrink-0 items-center gap-2 whitespace-nowrap px-3.5 py-2 text-sm font-medium outline-none transition-colors focus-visible:ring-1 focus-visible:ring-[#d3bb73]/40 ${
-                          selected ? 'bg-[#d3bb73]/15 text-[#d3bb73]' : 'text-[#e5e4e2]/60 hover:bg-white/5 hover:text-[#e5e4e2]'
-                        }`}
-                      >
-                        <Icon className="h-4 w-4 shrink-0" />
-                        {tab.label}
-                      </button>
-                    );
-                  })}
-                </Fragment>
-              );
-            })}
-          </div>
+          {items.map((tab, index) => {
+            const selected = tab.id === activeTab;
+            const Icon = tab.icon;
+            return (
+              <button
+                key={tab.id}
+                ref={element => {
+                  if (element) tabRefs.current.set(tab.id, element);
+                  else tabRefs.current.delete(tab.id);
+                }}
+                id={`${prefix}-tab-${tab.id}`}
+                type="button"
+                role="tab"
+                aria-selected={selected}
+                aria-controls={panelId}
+                tabIndex={tab.id === rovingId ? 0 : -1}
+                data-crm-tab-active={selected ? 'true' : 'false'}
+                data-crm-tab-variant="underline"
+                onClick={() => onChange(tab.id)}
+                onFocus={() => setFocusId(tab.id)}
+                onKeyDown={event => handleKeyDown(event, index)}
+                draggable={false}
+                className={`flex min-h-[48px] shrink-0 select-none items-center justify-center gap-2 whitespace-nowrap px-4 py-3 text-sm font-medium uppercase tracking-[0.02em] outline-none transition-colors duration-150 ${
+                  selected ? 'text-[#d3bb73]' : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
+                }`}
+              >
+                {Icon && <Icon className="h-4 w-4 shrink-0" />}
+                {tab.label}
+              </button>
+            );
+          })}
+          {indicator && (
+            <span
+              aria-hidden
+              className={`pointer-events-none absolute bottom-0 h-0.5 bg-[#d3bb73] ${
+                indicatorAnimated ? 'transition-[left,width] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]' : ''
+              }`}
+              style={{ left: indicator.left, width: indicator.width }}
+            />
+          )}
         </div>
       </div>
-    </nav>
+      {edges.overflow && (
+        <button
+          type="button"
+          tabIndex={-1}
+          aria-label="Przewiń zakładki w prawo"
+          disabled={!edges.right}
+          onClick={() => scrollByPage(1)}
+          className={`${scrollButtonClass} ${edges.right ? '' : 'invisible'}`}
+        >
+          <ChevronRight className="h-5 w-5" aria-hidden />
+        </button>
+      )}
+    </div>
   );
 }

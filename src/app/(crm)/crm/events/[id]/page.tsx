@@ -14,6 +14,42 @@ import { fetchEventCategoriesServer } from '@/lib/CRM/events/eventsData.server';
 import { EventWorkspaceProvider } from '@/components/crm/events/EventWorkspaceProvider';
 import { notFound, redirect } from 'next/navigation';
 import { eventMoney } from '@/lib/CRM/events/eventFinancials';
+import {
+  isSalesColleagueView,
+  parseEventAccess,
+  parseEventSalesOverview,
+  type EventAccess,
+} from '@/lib/events/access/eventAccess';
+import EventSalesColleagueView from '@/components/crm/events/EventSalesColleagueView';
+
+type ServerClient = ReturnType<typeof createSupabaseServerClient>;
+
+/**
+ * Podgląd wydarzenia innego sprzedawcy: wiersza `events` kolegi nie da się odczytać (RLS) — dane tylko
+ * z get_event_sales_overview (termin, miejsce, klient, kto sprzedał, sprzedane usługi; bez kwot i dokumentów).
+ */
+async function renderSalesColleagueView(
+  client: ServerClient,
+  eventId: string,
+  access: EventAccess,
+  locationId?: string | null,
+) {
+  const [overviewResult, colleagueLocation] = await Promise.all([
+    client.rpc('get_event_sales_overview', { p_event_id: eventId }),
+    locationId ? getLocationById(locationId) : Promise.resolve(null),
+  ]);
+  if (overviewResult.error) console.error('[EventPage] get_event_sales_overview:', overviewResult.error.message);
+  const overview = overviewResult.error ? null : parseEventSalesOverview(overviewResult.data);
+  if (!overview?.event) notFound();
+  return (
+    <EventSalesColleagueView
+      eventId={eventId}
+      access={access}
+      overview={overview}
+      locationName={[colleagueLocation?.name, colleagueLocation?.city].filter(Boolean).join(', ') || null}
+    />
+  );
+}
 
 export default async function EventPage({
   params,
@@ -30,23 +66,40 @@ export default async function EventPage({
   const event = await fetchEventByIdServer(params.id);
 
   if (!event) {
+    // Wiersz niewidoczny: wydarzenie innego sprzedawcy (podgląd sprzedaży) albo brak dostępu (404 jak dotąd).
+    const { data: accessData, error: accessError } = await client.rpc('get_event_access', { p_event_id: params.id });
+    const colleagueAccess = accessError ? null : parseEventAccess(accessData);
+    if (colleagueAccess && isSalesColleagueView(colleagueAccess)) {
+      return renderSalesColleagueView(client, params.id, colleagueAccess);
+    }
     notFound();
   }
 
+  // Wydarzenie innego sprzedawcy: tylko podgląd sprzedaży (bez kroków, akcji, plików i ofert).
+  const access = event.permissionContext.access;
+  if (access && isSalesColleagueView(access)) {
+    return renderSalesColleagueView(client, params.id, access, event.location_id);
+  }
+
+  const areas = access?.areas;
   const location = await getLocationById(event.location_id);
   // Dane klienta tylko z obszarem „klient” (RLS i tak nie zwróci rekordu — bez zbędnego zapytania).
-  const canViewClient = event.permissionContext.access?.areas.client === true;
+  const canViewClient = areas?.client === true;
+  const canViewValues = areas?.values === true;
   const contact = canViewClient ? await getContactById(event.contact_person_id as UUID) : null;
   const categories = await fetchEventCategoriesServer();
-  const offers = await fetchEventOffersServer(params.id);
+  // Oferty (z kwotami i kosztami) tylko z obszarem „oferta / umowa” albo „kwoty”, przez klienta użytkownika (RLS).
+  const offers = areas?.commercial_docs || canViewValues ? await fetchEventOffersServer(client, params.id) : [];
 
-  const acceptedOffer = offers.find((offer) => offer.status === 'accepted');
+  const acceptedOffer = offers.find((offer: any) => offer.status === 'accepted');
   // Kwoty wydarzenia są w event_financials (events.expected_revenue jest po migracji zawsze puste).
-  const storedExpectedRevenue = eventMoney(event, event.financials, 'expected_revenue');
+  // Bez obszaru „kwoty” nie przekazujemy żadnej kwoty do danych strony.
+  const storedExpectedRevenue = canViewValues ? eventMoney(event, event.financials, 'expected_revenue') : null;
   const updateEventsByOffers = {
     ...event,
-    expected_revenue:
-      event.financial_source === 'calculation'
+    expected_revenue: !canViewValues
+      ? null
+      : event.financial_source === 'calculation'
         ? storedExpectedRevenue
         : acceptedOffer
           ? getOfferPricingTotals(acceptedOffer).gross

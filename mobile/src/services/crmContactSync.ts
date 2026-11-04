@@ -23,6 +23,21 @@ export type SyncableCrmContact = {
 
 type ContactMap = Record<string, string>;
 
+// Jedna operacja na kontaktach telefonu naraz: synchronizacja przy starcie (efekt w App.tsx uruchamia się przy każdej
+// zmianie obiektu pracownika), ręczna synchronizacja i usuwanie przy wylogowaniu zapisują tę samą mapę — równoległe
+// zapisy gubiłyby powiązania i zostawiały w telefonie kontakty, których aplikacja już nie śledzi.
+let queue: Promise<unknown> = Promise.resolve();
+let syncInFlight: Promise<CrmContactSyncResult | null> | null = null;
+
+function exclusive<T>(task: () => Promise<T>): Promise<T> {
+  const run = queue.then(task, task);
+  queue = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
+
 async function loadMap(): Promise<ContactMap> {
   const raw = await AsyncStorage.getItem(STORAGE_KEY);
   if (!raw) return {};
@@ -77,7 +92,15 @@ export type CrmContactSyncResult = {
   total: number;
 };
 
-export async function syncCrmContactsToDevice(
+/** Zapis kontaktów w telefonie (po kolei z innymi operacjami na kontaktach). */
+export function syncCrmContactsToDevice(
+  contacts: SyncableCrmContact[],
+  options: { keep?: (crmId: string) => boolean } = {},
+): Promise<CrmContactSyncResult> {
+  return exclusive(() => writeContactsToDevice(contacts, options));
+}
+
+async function writeContactsToDevice(
   contacts: SyncableCrmContact[],
   options: { keep?: (crmId: string) => boolean } = {},
 ): Promise<CrmContactSyncResult> {
@@ -115,7 +138,9 @@ export async function syncCrmContactsToDevice(
         next[contact.id] = newDeviceId;
         created += 1;
       } catch {
-        // Jeden nieudany zapis nie przerywa synchronizacji pozostałych kontaktów.
+        // Jeden nieudany zapis nie przerywa synchronizacji pozostałych kontaktów. Kontakt nadal jest w zakresie —
+        // zostawiamy dotychczasowe powiązanie, żeby pętla usuwania nie skasowała ani nie wyczyściła jego kopii.
+        if (deviceId) next[contact.id] = deviceId;
         failed += 1;
       }
     }
@@ -138,7 +163,7 @@ export async function syncCrmContactsToDevice(
   return { created, updated, removed, failed, total: Object.keys(next).length };
 }
 
-export async function syncAvailableCrmContacts() {
+async function readAvailableAndWrite(): Promise<CrmContactSyncResult> {
   const [contactsResult, inquiriesResult] = await Promise.all([
     supabase.from('contacts').select('id, first_name, last_name, phone, mobile, email').eq('status', 'active'),
     supabase.from('tasks').select('id, title, inquiry_stage, inquiry_details').eq('is_inquiry', true),
@@ -161,30 +186,64 @@ export async function syncAvailableCrmContacts() {
     const parts = fullName.split(/\s+/);
     return [{ id: `inquiry:${item.id}`, first_name: parts.shift() || 'Zapytanie', last_name: parts.join(' ') || 'Mavinci CRM', phone, mobile: null, email: typeof details?.client_email === 'string' ? details.client_email : null }];
   });
-  return syncCrmContactsToDevice([...contacts, ...inquiries], {
+  return writeContactsToDevice([...contacts, ...inquiries], {
     // Zapytania nie wczytały się — nie usuwamy ich kontaktów z telefonu z powodu chwilowego błędu.
     keep: inquiriesResult.error ? (crmId) => crmId.startsWith('inquiry:') : undefined,
   });
 }
 
-export async function syncCrmContactsIfEnabled() {
-  if (await AsyncStorage.getItem(ENABLED_KEY) !== 'true') return null;
-  return syncAvailableCrmContacts();
+/** Uruchamia synchronizację w kolejce; równoległe wywołania czekają na trwającą zamiast startować drugą. */
+function startSync(requireEnabled: boolean): Promise<CrmContactSyncResult | null> {
+  const run = exclusive(async () => {
+    // Warunek sprawdzany w kolejce — po wylogowaniu (usunięcie kontaktów) synchronizacja w tle już nie ruszy.
+    if (requireEnabled && (await AsyncStorage.getItem(ENABLED_KEY)) !== 'true') return null;
+    return readAvailableAndWrite();
+  });
+  syncInFlight = run;
+  const clear = () => {
+    if (syncInFlight === run) syncInFlight = null;
+  };
+  run.then(clear, clear);
+  return run;
+}
+
+/** Ręczna synchronizacja („Do telefonu”). */
+export async function syncAvailableCrmContacts(): Promise<CrmContactSyncResult> {
+  const running = syncInFlight;
+  if (running) {
+    const result = await running.catch(() => null);
+    if (result) return result;
+  }
+  const result = await startSync(false);
+  if (!result) throw new Error('Nie udało się zsynchronizować kontaktów.');
+  return result;
+}
+
+/** Synchronizacja w tle, gdy osoba ją włączyła; dołącza do trwającej synchronizacji. */
+export function syncCrmContactsIfEnabled(): Promise<CrmContactSyncResult | null> {
+  return syncInFlight ?? startSync(true);
 }
 
 /**
  * Osoba nie ma już dostępu do kontaktów CRM (zmiana uprawnień) — kontakty zsynchronizowane wcześniej znikają
  * z telefonu. Bez zgody systemu na kontakty nic nie zmieniamy (spróbujemy przy kolejnym uruchomieniu).
  */
-export async function removeSyncedCrmContactsIfEnabled() {
-  if (await AsyncStorage.getItem(ENABLED_KEY) !== 'true') return false;
-  const permission = await Contacts.getPermissionsAsync();
-  if (permission.status !== 'granted') return false;
-  await removeSyncedCrmContactsFromDevice();
-  return true;
+export function removeSyncedCrmContactsIfEnabled(): Promise<boolean> {
+  return exclusive(async () => {
+    if (await AsyncStorage.getItem(ENABLED_KEY) !== 'true') return false;
+    const permission = await Contacts.getPermissionsAsync();
+    if (permission.status !== 'granted') return false;
+    await removeAllSyncedContacts();
+    return true;
+  });
 }
 
-export async function removeSyncedCrmContactsFromDevice() {
+/** Wylogowanie: usuwa zsynchronizowane kontakty (po zakończeniu trwającej synchronizacji). */
+export function removeSyncedCrmContactsFromDevice(): Promise<void> {
+  return exclusive(removeAllSyncedContacts);
+}
+
+async function removeAllSyncedContacts() {
   const saved = await loadMap();
   for (const deviceId of Object.values(saved)) {
     await removeOrSanitizeContact(deviceId);

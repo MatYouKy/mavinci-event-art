@@ -1,16 +1,13 @@
 import 'server-only';
-import { createClient } from '@supabase/supabase-js';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
-// ✅ użyj zmiennych serwerowych (Service Role albo anon + RLS + cookies)
-// Jeśli chcesz czytać w kontekście usera (RLS), lepiej użyć @supabase/auth-helpers-nextjs (niżej dopiszę wariant).
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!, // <- tylko na serwerze!
-  { auth: { persistSession: false } },
-);
-
-export async function fetchEventOffersServer(eventId: string) {
-  const { data, error } = await supabaseAdmin
+/**
+ * Oferty wydarzenia w kontekście zalogowanego użytkownika (klient z cookies → RLS ofert).
+ * Wcześniej odczyt szedł kluczem service role i trafiał do danych strony u każdego, kto widział wydarzenie
+ * (magazyn, ekipa) — razem z kwotami i kosztami. Wywołuj tylko z obszarem „oferta / umowa” albo „kwoty”.
+ */
+export async function fetchEventOffersServer(client: SupabaseClient, eventId: string) {
+  const { data, error } = await client
     .from('offers')
     .select(
       `
@@ -24,8 +21,9 @@ export async function fetchEventOffersServer(eventId: string) {
     .order('created_at', { ascending: false });
 
   if (error) {
-    console.error('[fetchEventOffersServer] supabase error:', error);
-    throw new Error(error.message);
+    // Brak dostępu nie blokuje strony wydarzenia — po prostu bez ofert.
+    console.error('[fetchEventOffersServer] supabase error:', error.message);
+    return [];
   }
 
   return data || [];

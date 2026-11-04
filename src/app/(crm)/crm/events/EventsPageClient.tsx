@@ -4,6 +4,7 @@
 import type { EventStatus } from '@/components/crm/Calendar/types';
 import { refreshEventsPage } from './actions';
 import { eventMoney, fetchEventFinancials } from '@/lib/CRM/events/eventFinancials';
+import SalesColleagueBadge from '@/components/crm/events/SalesColleagueBadge';
 import type { EventsPageSnapshot } from '@/lib/CRM/events/eventsPageSnapshot.server';
 import { OPERATIONAL_LABELS, usesOperationalStages, operationalFallback } from '@/lib/CRM/events/operationalStages';
 
@@ -468,6 +469,8 @@ export default function EventsPageClient({
       e.preventDefault();
       e.stopPropagation();
     }
+    // Wydarzenie innego sprzedawcy jest tylko do odczytu.
+    if (event?.sales_colleague) return;
 
     if (duplicatingEvent) return;
 
@@ -965,7 +968,10 @@ export default function EventsPageClient({
   const operational = usesOperationalStages(currentEmployee);
   const displayStatus = (event: { id: string; status: string }) => operational
     ? operationalStates[event.id] || operationalFallback(event.status) : event.status;
-  const visualState=(event:any)=> operational
+  // Wydarzenie innego sprzedawcy: bez stanu rozliczeń/płatności (to nie nasze dane) — sam termin.
+  const visualState=(event:any)=> event?.sales_colleague
+    ? { state: 'scheduled', label: '', days: 0 }
+    : operational
     ? { state: displayStatus(event)==='settled' ? 'settled' : displayStatus(event)==='in_progress' ? 'live' : displayStatus(event)==='cancelled' ? 'cancelled' : 'scheduled', label: OPERATIONAL_LABELS[displayStatus(event)] || 'Nowe wydarzenie', days: 0 }
     : eventListState(event,listPayments[event.id]||[]);
   const getPastUrgency=(event:any):PastUrgency=>{const state=visualState(event).state;return ['late','overdue'].includes(state)?'red':['completed','settlement','awaiting'].includes(state)?'orange':null;};
@@ -1024,6 +1030,7 @@ export default function EventsPageClient({
 
   const handleDeleteClick = (e: React.MouseEvent | null, event: any) => {
     if (e) e.stopPropagation();
+    if (event?.sales_colleague) return;
     setEventToDelete(event);
     setDeleteModalOpen(true);
   };
@@ -1128,6 +1135,7 @@ export default function EventsPageClient({
 
   const handleStatusClick = (e: React.MouseEvent | null, event: any) => {
     if (e) e.stopPropagation();
+    if (event?.sales_colleague) return;
 
     setEventToChangeStatus(event);
     setDraftStatus(event.status || 'inquiry');
@@ -1268,12 +1276,14 @@ export default function EventsPageClient({
 
       return (
         <>
-          <div className="flex items-center gap-2 font-medium">{urgency==='red'&&<span title={visualState(event).label} className="event-payment-alert shrink-0 text-red-400"><AlertCircle className="h-5 w-5" aria-label={visualState(event).label}/></span>}<span className="truncate">{event.name}</span></div>
+          <div className="flex items-center gap-2 font-medium">{urgency==='red'&&<span title={visualState(event).label} className="event-payment-alert shrink-0 text-red-400"><AlertCircle className="h-5 w-5" aria-label={visualState(event).label}/></span>}<span className="truncate">{event.name}</span>{event.sales_colleague && <SalesColleagueBadge seller={event.sales_colleague_seller} />}</div>
           <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[10px] text-[#e5e4e2]/45">
             <span className="truncate">
-              {event.created_at
-                ? `Utworzono: ${new Date(event.created_at).toLocaleDateString('pl-PL')}`
-                : 'Utworzono: —'}
+              {event.sales_colleague
+                ? 'Podgląd sprzedaży — tylko do odczytu'
+                : event.created_at
+                  ? `Utworzono: ${new Date(event.created_at).toLocaleDateString('pl-PL')}`
+                  : 'Utworzono: —'}
             </span>
             {visualState(event).label && <span className="event-state-label shrink-0 rounded bg-white/5 px-1.5 py-0.5 text-[10px] text-[#e5e4e2]/70">{visualState(event).label}</span>}
 
@@ -1327,7 +1337,7 @@ export default function EventsPageClient({
     ),
 
     actions: (event) =>
-      canAddNewEvent || canViewEventStatus || canDeleteEvents ? (
+      !event.sales_colleague && (canAddNewEvent || canViewEventStatus || canDeleteEvents) ? (
         <div className="flex w-full justify-end pr-1">
           <ResponsiveActionBar
             disabledBackground
@@ -2010,12 +2020,13 @@ export default function EventsPageClient({
                   <div className="mb-3 flex items-start justify-between gap-3">
                     <h3 className="line-clamp-2 flex-1 text-base font-medium text-[#e5e4e2]">
                       {urgency==='red'&&<AlertCircle className="event-payment-alert mr-2 inline-block h-5 w-5 text-red-400" aria-label={visualState(event).label}/>}{event.name}
+                      {event.sales_colleague&&<span className="mt-1 block"><SalesColleagueBadge seller={event.sales_colleague_seller} /></span>}
                       {visualState(event).label&&<span className="event-state-label mt-1 block text-xs font-normal text-[#e5e4e2]/65">{visualState(event).label}</span>}
                     </h3>
 
                     <div className="flex items-center gap-2">
                       <div className="hidden md:block" onClick={stop}>
-                        {(canAddNewEvent || canViewEventStatus || canDeleteEvents) && (
+                        {!event.sales_colleague && (canAddNewEvent || canViewEventStatus || canDeleteEvents) && (
                           <ResponsiveActionBar
                             disabledBackground
                             mobileBreakpoint={2000}
@@ -2058,7 +2069,7 @@ export default function EventsPageClient({
                       </div>
 
                       <div className="md:hidden" onClick={stop}>
-                        {(canAddNewEvent || canViewEventStatus || canDeleteEvents) && (
+                        {!event.sales_colleague && (canAddNewEvent || canViewEventStatus || canDeleteEvents) && (
                           <ResponsiveActionBar
                             actions={[
                               ...(canAddNewEvent
@@ -2193,6 +2204,7 @@ export default function EventsPageClient({
                     <div className="flex items-center gap-2">
                       <h3 className="max-w-[240px] truncate text-base font-medium text-[#e5e4e2] md:text-lg">
                         {urgency==='red'&&<AlertCircle className="event-payment-alert mr-2 inline-block h-5 w-5 text-red-400" aria-label={visualState(event).label}/>}{event.name}
+                        {event.sales_colleague&&<span className="mt-1 block"><SalesColleagueBadge seller={event.sales_colleague_seller} /></span>}
                         {visualState(event).label&&<span className="event-state-label mt-1 block text-xs font-normal text-[#e5e4e2]/65">{visualState(event).label}</span>}
                       </h3>
                       {isPast && (
@@ -2260,7 +2272,7 @@ export default function EventsPageClient({
                     </div>
 
                     <div className="hidden md:block">
-                      {canViewEventBudget && (
+                      {canViewEventBudget && !event.sales_colleague && (
                         <button
                           onClick={(e) => {
                             stop(e);
@@ -2275,7 +2287,7 @@ export default function EventsPageClient({
                     </div>
 
                     <div className="md:hidden" onClick={stop}>
-                      {(canAddNewEvent || canViewEventStatus || canDeleteEvents) && (
+                      {!event.sales_colleague && (canAddNewEvent || canViewEventStatus || canDeleteEvents) && (
                         <ResponsiveActionBar
                           actions={[
                             ...(canAddNewEvent

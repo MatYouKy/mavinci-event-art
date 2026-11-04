@@ -6,6 +6,7 @@ import { getCurrentEmployeeServerCached } from '@/lib/CRM/auth/getCurrentEmploye
 import { hasAnyFinanceCompanyLevel } from '@/lib/financeCompanyAccess';
 import { usesOperationalStages } from './operationalStages';
 import { fetchEventFinancialsMap } from './eventFinancials';
+import { fetchSalesColleagueEvents, salesColleagueSellerLabel } from './salesColleagueEvents';
 
 export async function fetchEventsPageSnapshot() {
   const [initial, employee] = await Promise.all([fetchEventsInitialServer(), getCurrentEmployeeServerCached()]);
@@ -74,6 +75,41 @@ export async function fetchEventsPageSnapshot() {
     ]);
   }
   if (operational) for (const row of mine.data || []) operationalStates[row.id] = row.operational_status;
+  // Wydarzenia innych sprzedawców (podgląd sprzedaży, tylko do odczytu): wybrane pola z RPC, bez kwot i notatek.
+  // Wiersza `events` kolegi nie da się odczytać bezpośrednio — dlatego osobne źródło, dołączane na końcu listy.
+  const colleagueRows = await fetchSalesColleagueEvents(db);
+  for (const row of colleagueRows) {
+    if (merged.has(row.id)) continue;
+    merged.set(row.id, row);
+    events.push({
+      id: row.id,
+      name: row.name,
+      event_date: row.event_date,
+      event_end_date: row.event_end_date,
+      location: row.location,
+      status: row.status,
+      category_id: row.category?.id ?? null,
+      created_by: null,
+      created_at: null,
+      location_id: null,
+      organization_id: null,
+      contact_person_id: null,
+      my_company_id: null,
+      expected_revenue: null,
+      budget: null,
+      final_cost: null,
+      // Nazwa klienta jako etykieta kolumny „Klient” (bez identyfikatora i danych kontaktowych).
+      organizations: row.client_name ? { name: row.client_name, alias: null } : null,
+      contacts: null,
+      event_categories: row.category ? { name: row.category.name, color: row.category.color } : null,
+      locations: null,
+      my_companies: null,
+      budget_visible: false,
+      invoice_budget: [],
+      sales_colleague: true,
+      sales_colleague_seller: salesColleagueSellerLabel(row),
+    });
+  }
   return { ...initial, events, payments, operationalStates };
 }
 export type EventsPageSnapshot = Awaited<ReturnType<typeof fetchEventsPageSnapshot>>;

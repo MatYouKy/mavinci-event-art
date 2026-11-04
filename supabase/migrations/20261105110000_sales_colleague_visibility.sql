@@ -1,5 +1,6 @@
 -- Sprzedawcy widzą sprzedane wydarzenia innych sprzedawców (świadomość zajętych terminów):
--- termin, miejsce, klient (nazwa), sprzedane usługi i kto sprzedał — bez kwot, oferty, umowy, plików i danych kontaktowych.
+-- termin, miejsce, klient (nazwa), sprzedane usługi i kto sprzedał — bez kwot, oferty, umowy, plików, notatek i kontaktów.
+-- Dostęp wyłącznie przez funkcje zwracające wybrane pola (bez polityki SELECT na events).
 -- Administrator widzi wszystko (bez zmian). Nowy obszar: sales_overview (get_event_access, get_event_sales_overview).
 
 CREATE OR REPLACE FUNCTION public.event_visible_to_sales_colleague(p_event_id uuid)
@@ -16,30 +17,9 @@ $$;
 REVOKE ALL ON FUNCTION public.event_visible_to_sales_colleague(uuid) FROM anon;
 GRANT EXECUTE ON FUNCTION public.event_visible_to_sales_colleague(uuid) TO authenticated;
 
--- Odczyt wiersza wydarzenia przez innego sprzedawcę (kwoty są w event_financials, więc tu ich nie ma).
+-- Inny sprzedawca NIE czyta wiersza `events` (opis, notatki, rozliczenie) — tylko wybrane pola przez funkcje:
+-- get_event_sales_overview (jedno wydarzenie), get_sales_colleague_events (lista / kalendarz), get_events_list.
 DROP POLICY IF EXISTS events_sales_colleague_read ON public.events;
-CREATE POLICY events_sales_colleague_read ON public.events FOR SELECT TO authenticated
-  USING (public.event_visible_to_sales_colleague(id));
-
--- Zakres „tylko własne” (events_own_only) dalej obowiązuje dla zapisu; odczyt dopuszcza sprzedane wydarzenia kolegów.
-DROP POLICY IF EXISTS crm_record_visibility_guard ON public.events;
-DROP POLICY IF EXISTS crm_record_visibility_guard_read ON public.events;
-DROP POLICY IF EXISTS crm_record_visibility_guard_insert ON public.events;
-DROP POLICY IF EXISTS crm_record_visibility_guard_update ON public.events;
-DROP POLICY IF EXISTS crm_record_visibility_guard_delete ON public.events;
-CREATE POLICY crm_record_visibility_guard_read ON public.events AS RESTRICTIVE FOR SELECT TO public
-  USING (CASE WHEN (NOT (SELECT public.crm_record_scope_limited('events'::text))) THEN true
-              ELSE public.crm_record_scope_allows('events'::text, to_jsonb(events.*)) END
-         OR public.event_visible_to_sales_colleague(id));
-CREATE POLICY crm_record_visibility_guard_insert ON public.events AS RESTRICTIVE FOR INSERT TO public
-  WITH CHECK (public.crm_record_scope_allows('events'::text, to_jsonb(events.*)));
-CREATE POLICY crm_record_visibility_guard_update ON public.events AS RESTRICTIVE FOR UPDATE TO public
-  USING (CASE WHEN (NOT (SELECT public.crm_record_scope_limited('events'::text))) THEN true
-              ELSE public.crm_record_scope_allows('events'::text, to_jsonb(events.*)) END)
-  WITH CHECK (public.crm_record_scope_allows('events'::text, to_jsonb(events.*)));
-CREATE POLICY crm_record_visibility_guard_delete ON public.events AS RESTRICTIVE FOR DELETE TO public
-  USING (CASE WHEN (NOT (SELECT public.crm_record_scope_limited('events'::text))) THEN true
-              ELSE public.crm_record_scope_allows('events'::text, to_jsonb(events.*)) END);
 
 -- Obszary: sales_overview (podgląd sprzedaży) — każdy z dostępem do realizacji oraz sprzedawcy przy wydarzeniach kolegów.
 CREATE OR REPLACE FUNCTION public.get_event_access(p_event_id uuid)
@@ -320,3 +300,35 @@ AND m.deleted_at IS NULL AND public.is_current_meeting_participant(m.id)
 RETURN result;
 END;
 $function$;
+
+-- Lista / kalendarz: sprzedane wydarzenia innych sprzedawców, których osoba nie widzi w pełnym zakresie.
+CREATE OR REPLACE FUNCTION public.get_sales_colleague_events(p_from timestamptz DEFAULT NULL, p_to timestamptz DEFAULT NULL)
+RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+BEGIN
+  IF public.sales_employee_id() IS NULL OR public.current_session_is_seller_portal() THEN RETURN '[]'::jsonb; END IF;
+  RETURN coalesce((
+    SELECT jsonb_agg(jsonb_build_object(
+             'id', e.id, 'name', e.name, 'event_date', e.event_date, 'event_end_date', e.event_end_date,
+             'location', e.location, 'status', e.status::text,
+             'category', CASE WHEN c.id IS NOT NULL THEN jsonb_build_object('id', c.id, 'name', c.name, 'color', c.color) END,
+             'client_name', coalesce(nullif(btrim(o.alias), ''), nullif(btrim(o.name), ''),
+                              nullif(btrim(p.full_name), ''), nullif(btrim(concat_ws(' ', p.first_name, p.last_name)), '')),
+             'sold_by', (SELECT coalesce(jsonb_agg(DISTINCT coalesce(nullif(concat_ws(' ', emp.name, emp.surname), ''), emp.nickname)), '[]'::jsonb)
+                           FROM public.employees emp
+                          WHERE emp.id IN (SELECT ofr.created_by FROM public.offers ofr WHERE ofr.event_id = e.id AND ofr.status::text = 'accepted')
+                             OR e.created_by IN (emp.id, emp.auth_user_id)),
+             'sales_colleague', true)
+           ORDER BY e.event_date)
+      FROM public.events e
+      LEFT JOIN public.event_categories c ON c.id = e.category_id
+      LEFT JOIN public.organizations o ON o.id = e.organization_id
+      LEFT JOIN public.contacts p ON p.id = e.contact_person_id
+     WHERE e.status::text IN ('offer_accepted','in_preparation','ready_for_live','in_progress','completed','invoiced','settled')
+       AND (p_from IS NULL OR coalesce(e.event_end_date, e.event_date) >= p_from)
+       AND (p_to IS NULL OR e.event_date <= p_to)
+       AND public.event_visible_to_sales_colleague(e.id)
+       AND NOT public.current_employee_can_view_event(e.id)
+       AND NOT public.is_realization_manager(e.id)), '[]'::jsonb);
+END $$;
+REVOKE ALL ON FUNCTION public.get_sales_colleague_events(timestamptz, timestamptz) FROM anon;
+GRANT EXECUTE ON FUNCTION public.get_sales_colleague_events(timestamptz, timestamptz) TO authenticated;
