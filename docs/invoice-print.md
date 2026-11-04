@@ -12,7 +12,7 @@ invoiceRowToPdfData()            src/lib/invoices/print/invoicePrintData.ts
         │
         ▼
 buildInvoicePdfHtml()            src/components/crm/invoices/helpers/buildInvoicePdfHtml.ts
-        │  + logo primary-black z brandbooka (pamięć 15 min), kod QR KSeF, osadzony Inter
+        │  + „Logo do druku” z brandbooka (plik w pamięci 15 min), kod QR KSeF, osadzony Inter
         ▼
 buildInvoicePrintDocument() → renderInvoicePdf()   src/lib/invoices/print/renderInvoicePdf.server.ts
         │  Chromium (Playwright) na serwerze Next, jedna przeglądarka na proces (zamykana po 90 s bezczynności)
@@ -26,9 +26,21 @@ PDF ──► GET  /bridge/invoices/invoice-pdf/preview?invoiceId=…   podgląd
 - **E-mail z fakturą** (`SendInvoiceEmailModal`): zapisany PDF albo `POST /bridge/invoices/invoice-pdf` — ten sam plik.
 - **Dostęp do podglądu**: jak do faktury (RLS na `invoices`). Ciasteczko sesji CRM albo `Authorization: Bearer <token Supabase>` (aplikacje natywne).
 
+## Logo do druku
+
+W brandbooku firmy (`/crm/settings/my-companies/<firma>/brandbook`) przy logo jest pole **„Logo do druku”** — jedno na firmę (`company_brandbook_logos.use_for_print`, RPC `set_company_print_logo`, migracja `20261104180000_brandbook_print_logo.sql`). Używają go faktury i kalkulacje (`src/lib/brandbook/printLogo.ts`). Dopóki nic nie jest zaznaczone — logo o nazwie lub wariancie `primary-black` (migracja zaznacza je automatycznie). Wydruk sprzętu wydarzenia nadal używa poziomego `logo-horizontal-black`.
+
+## To jest wizualizacja, nie faktura
+
+Fakturą jest dokument ustrukturyzowany w KSeF; PDF jest tylko jego wizualizacją. Wydruk mówi to wprost:
+- pasek pod nagłówkiem: „Wizualizacja faktury — to nie jest faktura. Oryginałem jest faktura ustrukturyzowana w KSeF o numerze …” (albo: jeszcze nie przyjęta / czeka na numer KSeF);
+- pro forma: „Pro forma — to nie jest faktura VAT…”;
+- stopka każdej strony: „Wizualizacja: Faktura VAT FV/… · oryginał w KSeF: <numer>”;
+- tytuł pliku PDF zaczyna się od „Wizualizacja —”.
+
 ## Zawartość wydruku
 
-- Nagłówek: logo, rodzaj dokumentu, numer, oznaczenie „Wizualizacja faktury / pro formy”, „Przyjęta w KSeF” i numer KSeF.
+- Nagłówek: logo, rodzaj dokumentu, numer, oznaczenie „Wizualizacja faktury / pro formy”, „Przyjęta w KSeF”.
 - Daty: wystawienia, sprzedaży, termin płatności, miejsce wystawienia.
 - Sprzedawca (z e-mailem i telefonem z faktury), nabywca, odbiorca (migawka z faktury).
 - Pozycje; korekta: przed / po / różnica dla każdej pozycji; korekta danych stron: tabela pól przed i po.
@@ -36,7 +48,7 @@ PDF ──► GET  /bridge/invoices/invoice-pdf/preview?invoiceId=…   podgląd
 - Faktura końcowa: rozliczenie zaliczek (wartość, każda zaliczka, pozostało do zapłaty) w podsumowaniu.
 - Płatność: sposób, termin, numer konta (grupowany), bank, SWIFT, tytuł przelewu, status; kwota do zapłaty / zapłacono / do zwrotu **słownie**.
 - Uwagi (bez wezwania do zapłaty, gdy faktura jest opłacona), podstawa zwolnienia z VAT, podpis wystawiającego, kod QR weryfikacji KSeF.
-- Stopka na każdej stronie: rodzaj i numer dokumentu, sprzedawca, strona WWW, „Strona X z Y”. Nagłówek tabeli powtarza się na kolejnych stronach.
+- Stopka na każdej stronie: wizualizacja, rodzaj i numer dokumentu, numer KSeF, strona WWW, „Strona X z Y”. Nagłówek tabeli powtarza się na kolejnych stronach; podsumowanie, uwagi, kod QR i podpis zawsze trzymają się razem (przechodzą na następną stronę w całości).
 - Liczby po polsku: `12 840,00`, daty `DD.MM.RRRR`; font Inter (statyczne odmiany w `public/fonts/invoice`, osadzane w PDF jako TrueType).
 
 ## Zmiana szablonu

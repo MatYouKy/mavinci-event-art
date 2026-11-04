@@ -5,7 +5,7 @@ import { getInvoicePartyDataCorrection, type InvoicePartyDataBefore } from '@/li
 import { amountInWordsPl } from '@/lib/invoices/print/amountInWords';
 
 /** Zmiana wersji = nowy podgląd wydruku u wszystkich (pamięć podręczna podglądu). */
-export const INVOICE_PRINT_TEMPLATE_VERSION = '2026-11-04.1';
+export const INVOICE_PRINT_TEMPLATE_VERSION = '2026-11-04.2';
 
 export interface SettledInvoicePdfRef {
   id?: string;
@@ -64,6 +64,8 @@ export interface InvoicePdfData {
   isProforma: boolean;
   /** Numer KSeF przyjętej faktury (pokazywany w nagłówku wydruku). */
   ksefNumber?: string;
+  /** Faktura wysłana do KSeF, czeka na numer. */
+  ksefPending?: boolean;
   correctionReason?: string;
   correctionKind?: string | null;
   correctionPartyDataBefore?: InvoicePartyDataBefore | null;
@@ -113,7 +115,7 @@ export interface InvoicePdfData {
   };
 }
 
-function getTypeLabel(type: string, invoiceNumber?: string) {
+export function getInvoicePrintTypeLabel(type: string, invoiceNumber?: string) {
   if (type === 'final' || invoiceNumber?.startsWith('FKO/')) return 'Faktura końcowa';
 
   const labels: Record<string, string> = {
@@ -253,20 +255,18 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
       : paymentStatus === 'partially_refunded'
         ? 'Pozostało do zwrotu'
         : 'Do zwrotu'
-    : isCorrectiveInvoice
+    : isCorrectiveInvoice && money(data.totalGross) === 0
       ? 'Suma korekt'
     : paymentStatus === 'paid'
       ? 'Zapłacono'
       : paymentStatus === 'partially_paid'
-        ? 'Pozostało do zapłaty'
-        : 'Do zapłaty';
+        ? isCorrectiveInvoice ? 'Pozostało do dopłaty' : 'Pozostało do zapłaty'
+        : isCorrectiveInvoice ? 'Do dopłaty' : 'Do zapłaty';
 
   const displayedAmount = isSettled ? paidAmount : remainingAmount;
   const displayedAmountText = isSettled
     ? formatMoney(paidAmount)
-    : isCorrectiveInvoice
-      ? (isRefund ? formatMoney(remainingAmount) : formatSignedMoney(remainingAmount))
-      : formatMoney(remainingAmount);
+    : formatMoney(remainingAmount);
 
   const paymentStatusText = isSettled
     ? paymentStatus === 'refunded'
@@ -390,8 +390,17 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
       .map((item) => String(item.vatExemptionReason)),
   )];
 
-  const typeLabel = isPartyDataCorrection ? 'Faktura korygująca dane' : getTypeLabel(data.invoiceType, data.invoiceNumber);
+  const typeLabel = isPartyDataCorrection ? 'Faktura korygująca dane' : getInvoicePrintTypeLabel(data.invoiceType, data.invoiceNumber);
   const visualizationLabel = data.isProforma ? 'Wizualizacja pro formy' : 'Wizualizacja faktury';
+
+  // Wydruk nie jest fakturą: oryginałem jest faktura ustrukturyzowana w KSeF (pro forma nie jest fakturą VAT).
+  const visualizationNoticeHtml = data.isProforma
+    ? `<div class="doc-notice keep"><strong>Pro forma — to nie jest faktura VAT.</strong> Dokument informacyjny: nie jest wysyłany do KSeF i nie stanowi podstawy do odliczenia podatku VAT.</div>`
+    : data.ksefNumber
+      ? `<div class="doc-notice keep"><strong>Wizualizacja faktury — to nie jest faktura.</strong> Oryginałem jest faktura ustrukturyzowana w Krajowym Systemie e-Faktur (KSeF) o numerze <strong class="nowrap">${esc(data.ksefNumber)}</strong>. Oryginał można sprawdzić w KSeF po numerze lub kodem QR.</div>`
+      : data.ksefPending
+        ? `<div class="doc-notice keep"><strong>Wizualizacja faktury — to nie jest faktura.</strong> Faktura została wysłana do KSeF i czeka na nadanie numeru. Oryginałem będzie faktura ustrukturyzowana w KSeF.</div>`
+        : `<div class="doc-notice keep"><strong>Wizualizacja faktury — to nie jest faktura.</strong> Faktura nie została jeszcze przyjęta w KSeF. Oryginałem będzie faktura ustrukturyzowana w Krajowym Systemie e-Faktur.</div>`;
   const signed = correctiveItems ? formatSignedMoney : formatMoney;
 
   const partyLines = (party: {
@@ -468,8 +477,8 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
     <table class="items corrective">
       <colgroup>
         <col style="width: 4%" />
-        <col style="width: 23%" />
-        <col style="width: 10%" />
+        <col style="width: 21%" />
+        <col style="width: 12%" />
         <col style="width: 6%" />
         <col style="width: 7%" />
         <col style="width: 10%" />
@@ -798,7 +807,7 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
 <html lang="pl">
 <head>
   <meta charset="UTF-8" />
-  <title>${esc(typeLabel)} ${esc(data.invoiceNumber)}</title>
+  <title>${data.isProforma ? '' : 'Wizualizacja — '}${esc(typeLabel)} ${esc(data.invoiceNumber)}</title>
   <style>
     /*invoice-print-fonts*/
 
@@ -895,8 +904,18 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
     .meta > div:first-child { box-shadow: none; }
     .meta-label { font-size: 6.8pt; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
     .meta-value { margin-top: 1px; font-size: 9.5pt; font-weight: 600; color: var(--ink); }
-    .ksef-line { margin-top: 6px; font-size: 7.5pt; color: var(--muted); text-align: right; }
-    .ksef-line strong { color: var(--ink); font-weight: 600; }
+    .doc-notice {
+      margin-top: 8px;
+      padding: 7px 12px;
+      border-left: 3px solid var(--ink);
+      border-radius: 0 6px 6px 0;
+      background: var(--panel);
+      font-size: 7.8pt;
+      line-height: 1.4;
+      color: var(--text);
+    }
+    .doc-notice strong { color: var(--ink); font-weight: 600; }
+    .nowrap { white-space: nowrap; }
 
     .parties {
       display: grid;
@@ -1013,6 +1032,7 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
     .notes-text { white-space: pre-wrap; font-size: 8.5pt; color: var(--text); }
     .notes-text + .notes-text { margin-top: 4px; }
 
+    .tail { break-inside: avoid; page-break-inside: avoid; }
     .closing {
       display: flex;
       justify-content: space-between;
@@ -1051,7 +1071,7 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
   </header>
 
   ${visibleMetaCells.length ? `<div class="meta">${visibleMetaCells.map(([label, value]) => `<div><div class="meta-label">${esc(label)}</div><div class="meta-value">${esc(value)}</div></div>`).join('')}</div>` : ''}
-  ${data.ksefNumber ? `<div class="ksef-line">Numer KSeF: <strong>${esc(data.ksefNumber)}</strong></div>` : ''}
+  ${visualizationNoticeHtml}
 
   <section class="parties">
     <div class="party">
@@ -1083,8 +1103,10 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
 
   ${isPartyDataCorrection ? partyCorrectionHtml : correctiveItems ? correctiveItemsHtml : standardItemsHtml}
 
-  ${summaryHtml}
   ${orderItemsHtml}
+
+  <div class="tail keep">
+  ${summaryHtml}
   ${finalSettlementHtml}
 
   ${notesHtml}
@@ -1098,6 +1120,7 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
       <div class="signature-line">Imię i nazwisko osoby upoważnionej do wystawienia</div>
     </div>
   </section>
+  </div>
 </body>
 </html>`;
 };

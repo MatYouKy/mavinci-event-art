@@ -108,6 +108,7 @@ export function invoiceRowToPdfData(
     companyLogoUrl: options.companyLogoUrl,
     isProforma,
     ksefNumber: ksefAccepted ? text(invoice.ksef_reference_number) : undefined,
+    ksefPending: !ksefAccepted && ['pending', 'sent'].includes(text(invoice.ksef_status).trim().toLowerCase()),
     correctionReason: invoice.correction_reason ?? undefined,
     correctionKind: invoice.correction_kind ?? null,
     correctionPartyDataBefore: getInvoicePartyDataCorrection(invoice),

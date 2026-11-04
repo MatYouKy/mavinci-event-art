@@ -12,10 +12,12 @@ import {
   Trash2,
   Upload,
   Star,
+  Printer,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
+import { pickPrintLogo } from '@/lib/brandbook/printLogo';
 
 const LOGOS_BUCKET = 'company-logos';
 
@@ -34,6 +36,8 @@ interface BrandbookLogo {
   background: string;
   order_index: number;
   is_default: boolean;
+  /** Logo do druku (faktury, kalkulacje) — kolumna z migracji 20261104180000. */
+  use_for_print?: boolean | null;
 }
 
 interface BrandbookColor {
@@ -334,6 +338,35 @@ function LogosPanel({
     showSnackbar('Logo ustawione jako domyślne', 'success');
   };
 
+  const explicitPrintLogoId = logos.find((l) => l.use_for_print)?.id ?? null;
+  // Do czasu zaznaczenia wydruki biorą logo „primary-black” — pokazujemy, które to jest.
+  const automaticPrintLogoId = explicitPrintLogoId ? null : (pickPrintLogo(logos)?.id ?? null);
+
+  const setPrintLogo = async (logo: BrandbookLogo, checked: boolean) => {
+    const targetId = checked ? logo.id : null;
+    const previous = logos;
+    onChange(logos.map((l) => ({ ...l, use_for_print: l.id === targetId })));
+    const { error } = await supabase.rpc('set_company_print_logo', {
+      p_company_id: companyId,
+      p_logo_id: targetId,
+    });
+    if (error) {
+      onChange(previous);
+      const notDeployed = error.code === 'PGRST202' || /set_company_print_logo/i.test(error.message || '');
+      showSnackbar(
+        notDeployed
+          ? 'Logo do druku wymaga migracji 20261104180000_brandbook_print_logo.sql. Uruchom ją i spróbuj ponownie.'
+          : error.message || 'Nie udało się zapisać logo do druku',
+        'error',
+      );
+      return;
+    }
+    showSnackbar(
+      targetId ? 'To logo będzie używane na fakturach i wydrukach' : 'Odznaczono logo do druku',
+      'success',
+    );
+  };
+
   const removeLogo = async (logo: BrandbookLogo) => {
     const ok = await showConfirm({
       title: 'Usuń logo',
@@ -359,9 +392,14 @@ function LogosPanel({
   return (
     <div>
       <div className="mb-4 flex items-center justify-between">
-        <p className="text-sm text-[#e5e4e2]/60">
-          Logotypy dostępne jako placeholder <code className="text-[#d3bb73]">{`{{company_logo}}`}</code>
-        </p>
+        <div className="space-y-1">
+          <p className="text-sm text-[#e5e4e2]/60">
+            Logotypy dostępne jako placeholder <code className="text-[#d3bb73]">{`{{company_logo}}`}</code>
+          </p>
+          <p className="text-xs text-[#e5e4e2]/45">
+            Do druku zaznacz czarny logotyp na przezroczystym tle — dobrze wygląda na białym papierze i w druku czarno-białym.
+          </p>
+        </div>
         <input
           ref={fileInputRef}
           type="file"
@@ -438,6 +476,32 @@ function LogosPanel({
                   ))}
                 </select>
               </div>
+              <label
+                className={`flex cursor-pointer items-start gap-2 rounded-lg px-3 py-2 text-xs transition ${
+                  logo.use_for_print
+                    ? 'bg-[#d3bb73]/15 text-[#d3bb73]'
+                    : 'bg-[#0a0d1a]/60 text-[#e5e4e2]/70 hover:bg-[#0a0d1a]'
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={Boolean(logo.use_for_print)}
+                  onChange={(e) => setPrintLogo(logo, e.target.checked)}
+                  className="mt-0.5 h-4 w-4 shrink-0 accent-[#d3bb73]"
+                />
+                <span className="min-w-0">
+                  <span className="flex items-center gap-1 font-medium">
+                    <Printer className="h-3.5 w-3.5" />
+                    Logo do druku
+                  </span>
+                  <span className="block text-[11px] opacity-70">Faktury, kalkulacje i inne wydruki na papierze</span>
+                  {automaticPrintLogoId === logo.id && (
+                    <span className="block text-[11px] opacity-70">
+                      Teraz używane automatycznie (nazwa primary-black) — zaznacz, aby potwierdzić wybór
+                    </span>
+                  )}
+                </span>
+              </label>
               <div className="flex items-center justify-between gap-2 pt-1">
                 <button
                   onClick={() => setDefault(logo)}

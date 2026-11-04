@@ -4,10 +4,14 @@ import { join } from 'node:path';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { chromium, type Browser } from 'playwright';
 import { PDFDocument } from 'pdf-lib';
-import { buildInvoicePdfHtml, INVOICE_PRINT_TEMPLATE_VERSION } from '@/components/crm/invoices/helpers/buildInvoicePdfHtml';
+import {
+  buildInvoicePdfHtml,
+  getInvoicePrintTypeLabel,
+  INVOICE_PRINT_TEMPLATE_VERSION,
+} from '@/components/crm/invoices/helpers/buildInvoicePdfHtml';
 import { generateKsefInvoiceQrDataUrl } from '@/lib/ksef/qr';
 import { resolveInvoiceIssuerName } from '@/lib/invoices/resolveInvoiceIssuerName';
-import { resolveInvoicePrintLogo } from '@/lib/invoices/resolveInvoicePrintLogo';
+import { downloadInvoicePrintLogo, PrintLogoLookupError, resolveInvoicePrintLogoSource } from '@/lib/invoices/resolveInvoicePrintLogo';
 import { invoiceRowToPdfData, isProformaInvoiceRow, type InvoicePrintRow } from '@/lib/invoices/print/invoicePrintData';
 
 /**
@@ -63,18 +67,29 @@ function loadInterFontCss(): Promise<string> {
   return interFontCss;
 }
 
-// Logo z brandbooka w pamięci serwera Next (15 min): podgląd nie pobiera pliku ze Storage przy każdym otwarciu
-// i działa dalej, gdy Supabase Storage chwilowo nie odpowiada, a logo było już pobrane.
+// Plik logo w pamięci serwera Next (klucz: ścieżka pliku, 15 min). Wybór logo („Logo do druku”) czytamy
+// z bazy przy każdym wydruku, więc zmiana w brandbooku działa od razu; pobranie pliku ze Storage — raz.
+// Gdy Storage chwilowo nie odpowiada, wydruk korzysta z ostatnio pobranego pliku.
 const LOGO_TTL_MS = 15 * 60_000;
 const logoCache = new Map<string, { dataUrl: string; at: number }>();
+const lastLogoSourceByCompany = new Map<string, string>();
 
 async function resolveCachedPrintLogo(admin: SupabaseClient, companyId: string | null | undefined) {
-  const key = companyId || '';
-  const cached = logoCache.get(key);
+  let source: string;
+  try {
+    source = await resolveInvoicePrintLogoSource(admin, companyId);
+    lastLogoSourceByCompany.set(companyId || '', source);
+  } catch (error) {
+    const fallback = lastLogoSourceByCompany.get(companyId || '');
+    const cachedFallback = fallback ? logoCache.get(fallback) : undefined;
+    if (cachedFallback && error instanceof PrintLogoLookupError) return cachedFallback.dataUrl;
+    throw error;
+  }
+  const cached = logoCache.get(source);
   if (cached && Date.now() - cached.at < LOGO_TTL_MS) return cached.dataUrl;
   try {
-    const dataUrl = await resolveInvoicePrintLogo(admin, companyId);
-    logoCache.set(key, { dataUrl, at: Date.now() });
+    const dataUrl = await downloadInvoicePrintLogo(admin, source);
+    logoCache.set(source, { dataUrl, at: Date.now() });
     return dataUrl;
   } catch (error) {
     if (cached) return cached.dataUrl;
@@ -157,14 +172,17 @@ export async function buildInvoicePrintDocument(
   html = html.replace('/*invoice-print-fonts*/', await loadInterFontCss());
 
   const isProforma = isProformaInvoiceRow(invoice);
-  const typeLabel = isProforma ? 'Pro forma' : data.invoiceType === 'corrective' ? 'Korekta' : 'Faktura';
+  const typeLabel = getInvoicePrintTypeLabel(data.invoiceType, data.invoiceNumber);
+  // Stopka na każdej stronie przypomina, że to wizualizacja, a oryginał jest w KSeF.
+  const footerLeft = isProforma
+    ? `${typeLabel} ${data.invoiceNumber} · nie jest fakturą VAT`
+    : data.ksefNumber
+      ? `Wizualizacja: ${typeLabel} ${data.invoiceNumber} · oryginał w KSeF: ${data.ksefNumber}`
+      : `Wizualizacja: ${typeLabel} ${data.invoiceNumber} · to nie jest faktura`;
   return {
     html,
-    fileTitle: `${typeLabel} ${data.invoiceNumber}`,
-    footer: {
-      left: `${typeLabel} ${data.invoiceNumber}${data.sellerName ? ` · ${data.sellerName}` : ''}`,
-      right: data.website || '',
-    },
+    fileTitle: `${isProforma ? '' : 'Wizualizacja — '}${typeLabel} ${data.invoiceNumber}`,
+    footer: { left: footerLeft, right: data.website || '' },
     isProforma,
   };
 }
@@ -229,7 +247,7 @@ export async function renderInvoicePdf(document: InvoicePrintDocument): Promise<
         headerTemplate: '<span></span>',
         footerTemplate: `
           <div style="width:100%;padding:0 12mm;color:#6b7280;font-family:Helvetica,Arial,sans-serif;font-size:7.5px;display:flex;align-items:center;justify-content:space-between;gap:12px;box-sizing:border-box;">
-            <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:60%;">${escapeHtml(document.footer.left)}</span>
+            <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:72%;">${escapeHtml(document.footer.left)}</span>
             <span style="white-space:nowrap;">${escapeHtml(document.footer.right)}${document.footer.right ? ' · ' : ''}Strona <span class="pageNumber"></span> z <span class="totalPages"></span></span>
           </div>`,
         margin: { top: '12mm', right: '12mm', bottom: '16mm', left: '12mm' },
