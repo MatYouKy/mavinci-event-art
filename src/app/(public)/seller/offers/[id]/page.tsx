@@ -12,9 +12,10 @@ export default function SellerOfferPreviewPage() {
   return (
     <div className="min-h-screen p-4 text-[#e5e4e2] md:p-6">
       <div className="mx-auto max-w-6xl space-y-4">
+        <h1 className="sr-only">Szczegóły oferty</h1>
         <header className="flex flex-wrap items-center justify-between gap-3">
-          <Link href={confirmed ? '/seller/realizations' : '/seller/offers'} className="flex items-center gap-2 text-sm text-white/60"><ArrowLeft className="h-4 w-4"/>{confirmed ? 'Moje realizacje' : 'Moje oferty'}</Link>
-          {confirmed === false && <Link href={`/seller/offers/new?offer=${params.id}`} className="flex items-center gap-2 rounded-lg bg-[#d3bb73]/10 px-3 py-2 text-sm text-[#d3bb73]"><Edit3 className="h-4 w-4"/>Edytuj ofertę</Link>}
+          <Link href={confirmed ? '/seller/realizations' : '/seller/offers'} className="flex min-h-10 items-center gap-2 text-sm text-white/60"><ArrowLeft className="h-4 w-4"/>{confirmed ? 'Potwierdzone wydarzenia' : 'Moje oferty'}</Link>
+          {confirmed === false && <Link href={`/seller/offers/new?offer=${params.id}`} className="flex min-h-10 items-center gap-2 rounded-lg bg-[#d3bb73]/10 px-3 py-2 text-sm text-[#d3bb73]"><Edit3 className="h-4 w-4"/>Edytuj ofertę</Link>}
         </header>
         <SellerOfferWorkflow key={params.id} offerId={params.id} onRealizationChange={setConfirmed}>
           <Link href={`/seller/messages?offer=${params.id}`} className="inline-flex items-center gap-2 rounded-lg bg-[#d3bb73]/10 px-4 py-3 text-sm text-[#d3bb73]"><MessageSquare className="h-4 w-4" />{confirmed ? 'Porozmawiaj z opiekunem o realizacji' : 'Porozmawiaj z opiekunem o tej ofercie'}</Link>

@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
 
     const { data: employee } = await admin
       .from('employees')
-      .select('id,role,access_level,permissions')
+      .select('id,role,access_level,permissions,name,surname')
       .or(`id.eq.${authData.user.id},auth_user_id.eq.${authData.user.id}`)
       .eq('is_active', true)
       .maybeSingle();
@@ -177,6 +177,7 @@ export async function POST(request: NextRequest) {
         recipientName: contact.full_name,
         actionUrl,
         isNewAccount: linkType === 'invite',
+        invitedBy: [employee?.name, employee?.surname].filter(Boolean).join(' ') || null,
       });
       emailSent = true;
     }

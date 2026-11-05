@@ -157,9 +157,14 @@ function SellerProfileSettings() {
         : 'Zapisano Twoje ustawienia. Istniejące oferty i zapisane PDF-y pozostają bez zmian.');
     } catch (cause) {
       const error = cause as { code?: string; message?: string };
-      setMessage(error.code === 'PGRST202' ? 'Zapis ustawień wymaga aktualizacji bazy przez opiekuna.' : error.message || 'Nie udało się zapisać ustawień. Spróbuj ponownie.');
+      setMessage(error.code === 'PGRST202' ? 'Nie udało się zapisać ustawień. Spróbuj ponownie później lub napisz do opiekuna MAVINCI.' : error.message || 'Nie udało się zapisać ustawień. Spróbuj ponownie.');
     } finally { setSaving(false); }
   };
+
+  // Commission terms stay hidden until MAVINCI reveals them for this brand.
+  const commissionVisible = selectedBrand?.commission_enabled === true && selectedBrand.commissions_visible === true;
+  // A saved catalog-price model remains selectable silently, without rates.
+  const showCatalogModel = selectedBrand?.commission_enabled === true && (commissionVisible || selectedBrand.branding?.default_commercial_model === 'commission');
 
   if (loading && !context) return <ProfileLoading />;
   if (!context) return <div className="p-10 text-center text-white/40">Brak dostępu do portalu sprzedawcy.</div>;
@@ -227,16 +232,21 @@ function SellerProfileSettings() {
           <section id="general-terms" className="scroll-mt-4 rounded-xl bg-[#1c1f33] p-5">
           <h2 className="text-sm font-medium">Ogólne warunki</h2>
           <p className="mt-1 text-xs text-white/45">Sposób rozliczenia nowych ofert dla marki {selectedBrand?.name}. Zmiana nie przelicza istniejących ofert.</p>
-          <div className={`mt-4 grid gap-3 ${selectedBrand?.commission_enabled === true ? 'md:grid-cols-2' : ''}`}>
+          <div className={`mt-4 grid gap-3 ${showCatalogModel ? 'md:grid-cols-2' : ''}`}>
             <button type="button" aria-pressed={form.default_commercial_model !== 'commission'} onClick={() => setForm({ ...form, default_commercial_model: 'markup' })}
               className={`rounded-lg p-4 text-left transition ${form.default_commercial_model !== 'commission' ? 'bg-[#d3bb73]/15 text-[#d3bb73]' : 'bg-white/[0.03] text-white/70 hover:bg-white/5'}`}>
               <span className="text-sm">Własna cena hotelu</span>
               <span className="mt-1 block text-xs text-white/50">Podajesz cenę klienta. Różnica względem Twojego cennika MAVINCI stanowi marżę hotelu.</span>
             </button>
-            {selectedBrand?.commission_enabled === true && <button type="button" aria-pressed={form.default_commercial_model === 'commission'} onClick={() => setForm({ ...form, default_commercial_model: 'commission' })}
+            {showCatalogModel && <button type="button" aria-pressed={form.default_commercial_model === 'commission'} onClick={() => setForm({ ...form, default_commercial_model: 'commission' })}
               className={`rounded-lg p-4 text-left transition ${form.default_commercial_model === 'commission' ? 'bg-[#d3bb73]/15 text-[#d3bb73]' : 'bg-white/[0.03] text-white/70 hover:bg-white/5'}`}>
-              <span className="text-sm">Prowizja procentowa</span>
-              <span className="mt-1 block text-xs text-white/50">Stawka ustalona w CRM: {Number(selectedBrand.default_commission_rate || 0)}%. Klient otrzymuje ceny z Twojego cennika.</span>
+              {commissionVisible ? <>
+                <span className="text-sm">Prowizja procentowa</span>
+                <span className="mt-1 block text-xs text-white/50">Stawka ustalona z MAVINCI: {Number(selectedBrand?.default_commission_rate || 0)}%. Klient otrzymuje ceny z Twojego cennika.</span>
+              </> : <>
+                <span className="text-sm">Ceny z cennika MAVINCI</span>
+                <span className="mt-1 block text-xs text-white/50">Klient otrzymuje ceny z Twojego cennika MAVINCI. Warunki współpracy ustalasz z opiekunem.</span>
+              </>}
             </button>}
           </div>
           </section>

@@ -13,6 +13,7 @@ import EmailMessageDetailScreen from '../screens/EmailMessageDetailScreen';
 import InboundEventDetailScreen from '../screens/InboundEventDetailScreen';
 import ContactMessageDetailScreen from '../screens/ContactMessageDetailScreen';
 import MyCommissionsScreen from '../screens/MyCommissionsScreen';
+import SellerCockpitScreen from '../screens/SellerCockpitScreen';
 
 export type RootStackParamList = {
   Login: undefined;
@@ -22,6 +23,7 @@ export type RootStackParamList = {
   InboundEventDetail: { eventId: string };
   ContactMessageDetail: { messageId: string };
   MyCommissions: undefined;
+  SellerCockpit: undefined;
   PdfViewer: { url: string };
   EventDetail: {
     eventId: string;
@@ -114,6 +116,16 @@ export default function RootNavigator() {
               options={{
                 headerShown: true,
                 title: 'Moje prowizje'.toLocaleUpperCase('pl-PL'),
+                headerStyle: { backgroundColor: colors.background.secondary },
+                headerTintColor: colors.text.primary,
+              }}
+            />
+            <Stack.Screen
+              name="SellerCockpit"
+              component={SellerCockpitScreen}
+              options={{
+                headerShown: true,
+                title: 'Moi sprzedawcy'.toLocaleUpperCase('pl-PL'),
                 headerStyle: { backgroundColor: colors.background.secondary },
                 headerTintColor: colors.text.primary,
               }}

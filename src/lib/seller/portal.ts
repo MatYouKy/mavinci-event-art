@@ -41,9 +41,20 @@ export type SellerPortalBrand = {
   legal_name: string;
   logo_url?: string | null;
   commission_enabled: boolean;
-  default_commission_rate: number;
+  /** Null when commissions are hidden for this brand (see commissions_visible). */
+  default_commission_rate: number | null;
   default_payment_method: string | null;
+  /** Per seller × brand. When false the portal hides every commission figure for the brand. */
+  commissions_visible?: boolean;
   branding?: SellerBranding | null;
+};
+
+export type SellerPortalManager = {
+  name: string;
+  email?: string | null;
+  phone?: string | null;
+  photo_url?: string | null;
+  position?: string | null;
 };
 
 export type SellerPortalContext = {
@@ -72,32 +83,72 @@ export type SellerPortalContext = {
     };
   };
   brands: SellerPortalBrand[];
+  /** Opiekun sprzedawcy; null until a manager is assigned in CRM. */
+  manager?: SellerPortalManager | null;
 };
 
-export function useSellerPortalContext() {
+type ContextResult = { data: SellerPortalContext | null; error: string | null };
+// The layout, the page and nested panels mount together. Share one request
+// that is in flight instead of calling the RPC several times per navigation.
+let inflightContext: Promise<ContextResult> | null = null;
+const fetchSellerPortalContext = () => {
+  if (!inflightContext) {
+    inflightContext = (async (): Promise<ContextResult> => {
+      try {
+        const { data, error } = await supabase.rpc('get_seller_portal_context');
+        if (error) return { data: null, error: error.message || 'Nie udało się wczytać danych portalu.' };
+        return { data: (data as SellerPortalContext | null) || null, error: null };
+      } catch {
+        return { data: null, error: 'Nie udało się połączyć z portalem. Sprawdź połączenie i spróbuj ponownie.' };
+      }
+    })().finally(() => { window.setTimeout(() => { inflightContext = null; }, 0); });
+  }
+  return inflightContext;
+};
+
+/** @param enabled false in shared components rendered inside the CRM (no seller session). */
+export function useSellerPortalContext(enabled = true) {
   const [context, setContext] = useState<SellerPortalContext | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(enabled);
   const [error, setError] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     setLoading(true);
-    const { data, error: contextError } = await supabase.rpc('get_seller_portal_context');
-    if (contextError) {
-      setContext(null);
-      setError(contextError.message);
-    } else {
-      setContext((data as SellerPortalContext | null) || null);
-      setError(null);
-    }
+    const result = await fetchSellerPortalContext();
+    setContext(result.data);
+    setError(result.error);
     setLoading(false);
   }, []);
 
   useEffect(() => {
+    if (!enabled) return;
     void reload();
-  }, [reload]);
+  }, [enabled, reload]);
 
   return { context, loading, error, reload };
 }
+
+/** Commission figures for a brand are shown only after MAVINCI reveals them. */
+export const sellerCommissionsVisible = (context: SellerPortalContext | null | undefined, brandId: string | null | undefined) =>
+  Boolean(brandId && context?.brands.some((brand) => brand.my_company_id === brandId
+    && brand.commission_enabled === true && brand.commissions_visible === true));
+
+/** Navigation and summaries: true when at least one active brand shows commissions. */
+export const sellerAnyCommissionsVisible = (context: SellerPortalContext | null | undefined) =>
+  Boolean(context?.brands.some((brand) => brand.commissions_visible === true));
+
+export const sellerPhoneHref = (phone: string | null | undefined) => {
+  const digits = (phone || '').replace(/[^+\d]/g, '');
+  return digits.length >= 6 ? `tel:${digits}` : null;
+};
+
+/** wa.me requires the international number without "+" (Polish numbers get 48). */
+export const sellerWhatsAppHref = (phone: string | null | undefined) => {
+  let digits = (phone || '').replace(/\D/g, '');
+  if (digits.startsWith('00')) digits = digits.slice(2);
+  if (digits.length === 9) digits = `48${digits}`;
+  return digits.length >= 10 && digits.length <= 15 ? `https://wa.me/${digits}` : null;
+};
 
 export const sellerMoney = (amount: number | null | undefined) =>
   new Intl.NumberFormat('pl-PL', {

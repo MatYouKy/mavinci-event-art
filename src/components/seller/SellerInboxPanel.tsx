@@ -39,7 +39,7 @@ export default function SellerInboxPanel({ partnerId, scope = 'all', source }: {
   return <section className="rounded-xl bg-[#1c1f33] p-5 text-[#e5e4e2]" id="seller-inbox">
     <div className="flex items-center justify-between gap-3">
       <h2 className="flex items-center gap-2 text-sm font-medium"><Bell className="h-4 w-4 text-[#d3bb73]" />{title} <SellerCountBadge count={counts.total} label={title} /></h2>
-      <button type="button" onClick={() => void refresh()} className="rounded-lg p-2 text-white/50 hover:bg-white/5" aria-label="Odśwież sprawy"><RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} /></button>
+      <button type="button" onClick={() => void refresh()} className="flex h-10 w-10 items-center justify-center rounded-lg text-white/50 hover:bg-white/5" aria-label={seller ? 'Odśwież powiadomienia' : 'Odśwież sprawy'}><RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} /></button>
     </div>
     <p className="mt-2 text-xs text-white/45">{scope === 'realizations' ? 'Akceptacja oferty i potwierdzenie wydarzenia to osobne decyzje. Kliknij powiadomienie, aby zobaczyć aktualny status realizacji.' : `Do decyzji: ${counts.reviews} · Nowe wiadomości: ${counts.messages} · Powiadomienia: ${counts.notices}`}</p>
     {error ? <p role="alert" className="mt-4 text-sm text-amber-200">{error}</p> : <div className="mt-4 space-y-2">

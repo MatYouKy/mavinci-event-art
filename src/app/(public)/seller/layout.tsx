@@ -7,6 +7,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import {
   BadgePercent,
   CalendarDays,
+  CalendarSearch,
   CircleUser,
   FileText,
   LayoutDashboard,
@@ -15,24 +16,35 @@ import {
   LogOut,
   Menu,
   MessageSquare,
+  QrCode,
   Settings,
   Users,
   X,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
-import { useSellerPortalContext } from '@/lib/seller/portal';
+import { sellerAnyCommissionsVisible, useSellerPortalContext } from '@/lib/seller/portal';
 import { sellerInboxCounts, useSellerInbox } from '@/lib/seller/inbox';
 import { SellerCountBadge } from '@/components/seller/SellerInboxPanel';
 
 const navigation = [
-  { name: 'Dashboard', href: '/seller', icon: LayoutDashboard },
+  { name: 'Pulpit', href: '/seller', icon: LayoutDashboard },
   { name: 'Moje oferty', href: '/seller/offers', icon: FileText },
+  { name: 'Zapytania', href: '/seller/inquiries', icon: CalendarSearch },
   { name: 'Kontakty', href: '/seller/contacts', icon: Users },
-  { name: 'Realizacje', href: '/seller/realizations', icon: CalendarDays },
+  { name: 'Potwierdzone wydarzenia', href: '/seller/realizations', icon: CalendarDays },
   { name: 'Rozmowy z opiekunem', href: '/seller/messages', icon: MessageSquare },
+  { name: 'Materiały dla hotelu', href: '/seller/materials', icon: QrCode },
   { name: 'Moje wynagrodzenie', href: '/seller/commissions', icon: BadgePercent },
   { name: 'Ustawienia', href: '/seller/profile', icon: Settings },
 ];
+// Page names for the top bar on nested routes (the page itself owns the h1).
+const sectionTitle = (pathname: string) => {
+  if (pathname === '/seller/offers/new') return 'Kreator oferty';
+  if (pathname.startsWith('/seller/products/')) return 'Katalog MAVINCI';
+  const match = navigation.filter((item) => pathname === item.href || (item.href !== '/seller' && pathname.startsWith(`${item.href}/`)))
+    .sort((left, right) => right.href.length - left.href.length)[0];
+  return match?.name || 'Panel sprzedawcy';
+};
 
 const validatePassword = (password: string) => {
   if (password.length < 8) return 'Hasło musi mieć minimum 8 znaków.';
@@ -86,6 +98,17 @@ export default function SellerLayout({ children }: { children: React.ReactNode }
     setDrawerOpen(false);
   }, [pathname]);
 
+  useEffect(() => {
+    if (!drawerOpen && !sidebarOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      setDrawerOpen(false);
+      setSidebarOpen(false);
+    };
+    document.addEventListener('keydown', closeOnEscape);
+    return () => document.removeEventListener('keydown', closeOnEscape);
+  }, [drawerOpen, sidebarOpen]);
+
   const displayName = useMemo(
     () => user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Sprzedawca',
     [user],
@@ -94,7 +117,8 @@ export default function SellerLayout({ children }: { children: React.ReactNode }
     () => displayName.split(/\s+/).filter(Boolean).slice(0, 2).map((part: string) => part[0]).join('').toUpperCase(),
     [displayName],
   );
-  const hasCommissionHistoryAccess = Boolean(sellerContext);
+  // Hidden until MAVINCI reveals commissions for at least one brand of this seller.
+  const hasCommissionHistoryAccess = sellerAnyCommissionsVisible(sellerContext);
 
   const handleLogout = async () => {
     await supabase.auth.signOut({ scope: 'local' });
@@ -141,7 +165,7 @@ export default function SellerLayout({ children }: { children: React.ReactNode }
               <Link href="/seller" className="flex items-center gap-3">
                 <Image src="/logo.png" alt="Mavinci" priority width={160} height={60} className="h-8 w-auto" />
               </Link>
-              <button type="button" onClick={() => setSidebarOpen(false)} className="text-[#e5e4e2] lg:hidden" aria-label="Zamknij menu">
+              <button type="button" onClick={() => setSidebarOpen(false)} className="flex h-10 w-10 items-center justify-center rounded-lg text-[#e5e4e2] hover:bg-white/5 lg:hidden" aria-label="Zamknij menu">
                 <X className="h-6 w-6" />
               </button>
             </div>
@@ -160,7 +184,9 @@ export default function SellerLayout({ children }: { children: React.ReactNode }
                         <item.icon className="h-5 w-5" />
                         {item.name}
                         {item.href === '/seller/messages' && <span className="ml-auto"><SellerCountBadge count={inboxCounts.messages} label="Nowe wiadomości" /></span>}
-                        {item.href === '/seller/offers' && <span className="ml-auto"><SellerCountBadge count={inboxCounts.notices - inboxCounts.realizations} label="Nowe decyzje opiekuna" /></span>}
+                        {item.href === '/seller/offers' && <span className="ml-auto"><SellerCountBadge count={inboxCounts.offerNotices} label="Nowe decyzje opiekuna" /></span>}
+                        {item.href === '/seller/inquiries' && <span className="ml-auto"><SellerCountBadge count={inboxCounts.inquiries} label="Nowe odpowiedzi na zapytania" /></span>}
+                        {item.href === '/seller/commissions' && <span className="ml-auto"><SellerCountBadge count={inboxCounts.commissions} label="Nowe informacje o wynagrodzeniu" /></span>}
                         {item.href === '/seller/realizations' && <span className="ml-auto"><SellerCountBadge count={inboxCounts.realizations} label="Nowe potwierdzenia realizacji" /></span>}
                       </Link>
                     </li>
@@ -187,14 +213,15 @@ export default function SellerLayout({ children }: { children: React.ReactNode }
         </aside>
 
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          <header className="border-b border-[#d3bb73]/10 bg-[#1c1f33] px-4 py-4 md:px-6">
+          <header className="border-b border-[#d3bb73]/10 bg-[#1c1f33] px-4 py-3 md:px-6 md:py-4">
             <div className="flex items-center gap-3">
-              <button type="button" onClick={() => setSidebarOpen(true)} className="text-[#e5e4e2] lg:hidden" aria-label="Otwórz menu">
+              <button type="button" onClick={() => setSidebarOpen(true)} className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-[#e5e4e2] hover:bg-white/5 lg:hidden"
+                aria-label={inboxCounts.total ? `Otwórz menu — nowe powiadomienia: ${inboxCounts.total}` : 'Otwórz menu'}>
                 <Menu className="h-6 w-6" />
+                {inboxCounts.total > 0 && <span aria-hidden="true" className="absolute -right-0.5 -top-0.5 inline-flex min-w-5 items-center justify-center rounded-full bg-rose-500/90 px-1.5 py-0.5 text-[10px] font-semibold leading-4 text-white">{inboxCounts.total > 99 ? '99+' : inboxCounts.total}</span>}
               </button>
-              <h1 className="text-xl font-light text-[#e5e4e2]">
-                {pathname === '/seller/offers/new' ? 'Nowa oferta' : navigation.find((item) => item.href === pathname)?.name || 'Panel sprzedawcy'}
-              </h1>
+              {/* Section name only; each page renders its own single h1. */}
+              <p className="text-lg font-light text-[#e5e4e2] md:text-xl">{sectionTitle(pathname)}</p>
             </div>
           </header>
           <main className="flex-1 overflow-y-auto">{children}</main>
@@ -205,14 +232,14 @@ export default function SellerLayout({ children }: { children: React.ReactNode }
 
       {drawerOpen && (
         <div className="fixed inset-0 z-50">
-          <button type="button" aria-label="Zamknij menu" onClick={() => setDrawerOpen(false)} className="absolute inset-0 bg-black/65 backdrop-blur-[2px]" />
-          <aside className="absolute inset-y-0 right-0 flex w-full max-w-sm flex-col border-l border-[#d3bb73]/15 bg-[#171a29] text-[#e5e4e2] shadow-2xl">
+          <button type="button" aria-label="Zamknij panel profilu" onClick={() => setDrawerOpen(false)} className="absolute inset-0 bg-black/65 backdrop-blur-[2px]" />
+          <aside role="dialog" aria-modal="true" aria-label="Profil sprzedawcy" className="absolute inset-y-0 right-0 flex w-full max-w-sm flex-col bg-[#171a29] text-[#e5e4e2] shadow-2xl">
             <div className="flex items-center justify-between border-b border-white/5 px-5 py-5">
               <div>
                 <p className="text-xs uppercase tracking-[0.2em] text-[#d3bb73]">Panel sprzedawcy</p>
                 <p className="mt-1 text-sm text-white/40">Profil i najważniejsze działania</p>
               </div>
-              <button type="button" onClick={() => setDrawerOpen(false)} className="rounded-lg p-2 text-white/45 hover:bg-white/5 hover:text-white">
+              <button type="button" onClick={() => setDrawerOpen(false)} aria-label="Zamknij panel profilu" className="flex h-10 w-10 items-center justify-center rounded-lg text-white/45 hover:bg-white/5 hover:text-white">
                 <X className="h-5 w-5" />
               </button>
             </div>

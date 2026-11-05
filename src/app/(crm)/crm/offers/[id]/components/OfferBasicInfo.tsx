@@ -19,6 +19,7 @@ import { getOfferPricingTotals } from '@/lib/CRM/Offers/offerTotals';
 import { getCalculationNumber } from '@/lib/CRM/calculations/calculationNumber';
 import { optimizeOfferImage } from '@/lib/optimizeOfferImage';
 import { localDatetimeStringToUTC, utcToLocalDatetimeString } from '@/lib/utils/dateTimeUtils';
+import CreateClientFromSellerOffer from '@/components/crm/sellers/CreateClientFromSellerOffer';
 
 export interface OfferBasicInfoProps {
   offer: any;
@@ -445,6 +446,7 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
           {isSellerOffer && <div className="mb-5 rounded-lg bg-[#d3bb73]/10 p-3 text-sm text-[#d3bb73]">
             Oferta z portalu sprzedawcy. Poniżej dane klienta zapisane przez sprzedawcę — nie wymagają powiązania z kartoteką CRM.
             <a href="#seller-offer-review" className="mt-2 block underline underline-offset-4">Przejdź do zapytania i akceptacji terminu / zasobów</a>
+            {(!offer.contact_id || (!offer.organization_id && offer.portal_client_company)) && <CreateClientFromSellerOffer offerId={offer.id} linkedContactId={offer.contact_id} onDone={onUpdate} />}
           </div>}
           <div className="space-y-4">
             <div className="flex items-start gap-3">

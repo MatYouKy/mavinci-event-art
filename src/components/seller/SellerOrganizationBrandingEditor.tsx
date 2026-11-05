@@ -23,7 +23,7 @@ type Props = {
 function errorMessage(cause: unknown) {
   const error = cause as { code?: string; message?: string };
   return ['PGRST202', '42883', '42703'].includes(error.code || '')
-    ? 'Edycja wspólnego brandingu wymaga aktualizacji bazy danych przez administratora. Twoje pliki nie zostały zmienione.'
+    ? 'Nie można teraz zapisać wspólnego brandingu. Spróbuj później lub napisz do opiekuna. Twoje pliki nie zostały zmienione.'
     : error.message || 'Nie udało się zapisać lub odczytać brandingu. Spróbuj ponownie.';
 }
 

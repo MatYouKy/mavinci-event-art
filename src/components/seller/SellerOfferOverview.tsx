@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { AlertTriangle, Check, MessageSquare, Pencil, Send } from 'lucide-react';
+import { AlertTriangle, Check, CheckCircle2, MessageSquare, Pencil, Send } from 'lucide-react';
 import { deliveryTimestamp, type SellerDeliveryState, type SellerDocument } from '@/lib/seller/delivery';
 import { sellerMoney } from '@/lib/seller/portal';
 import { SellerEventScheduleSummary } from './SellerEventSchedule';
@@ -41,9 +41,11 @@ export function SellerOfferSummary({ state, id }: { state: SellerDeliveryState; 
   </section>;
 }
 
-export function SellerOfferNextStep({ state, offerId, selected, busy, submitted, onConfirm, onPreparePdf }: {
+export function SellerOfferNextStep({ state, offerId, selected, busy, submitted, onConfirm, onPreparePdf, guestAcceptance }: {
   state: SellerDeliveryState; offerId: string; selected?: SellerDocument;
   busy: boolean; submitted: boolean; onConfirm: (correction?: { note: string; confirmed: boolean }) => void; onPreparePdf: () => void;
+  /** Online acceptance through the guest link; the seller still confirms it explicitly. */
+  guestAcceptance?: { at: string; name: string; email: string };
 }) {
   const [clientConfirmed, setClientConfirmed] = useState(false);
   const [correctionNote, setCorrectionNote] = useState('');
@@ -74,7 +76,7 @@ export function SellerOfferNextStep({ state, offerId, selected, busy, submitted,
     : accepted || review?.status === 'approved' ? 'Czekamy na potwierdzenie wydarzenia'
     : declined ? 'Oferta nie została zaakceptowana'
     : needsChange ? 'Oferta wymaga poprawy'
-    : canSubmitStatus ? (feedback ? 'Przekaż poprawki do weryfikacji' : 'Przedstaw ofertę klientowi') : 'Uzgodnij dalszy krok z opiekunem';
+    : canSubmitStatus ? (feedback ? 'Przekaż poprawki do weryfikacji' : guestAcceptance ? 'Gość zaakceptował ofertę — przekaż ją opiekunowi' : 'Przedstaw ofertę klientowi') : 'Uzgodnij dalszy krok z opiekunem';
 
   return <section id="seller-offer-review" aria-labelledby="seller-next-step-title"
     className={`scroll-mt-6 space-y-4 rounded-xl p-4 sm:p-5 ${pending ? 'bg-sky-300/10' : needsChange ? (declined ? 'bg-rose-300/10' : 'bg-amber-200/10') : 'bg-[#d3bb73]/10'}`}>
@@ -129,6 +131,11 @@ export function SellerOfferNextStep({ state, offerId, selected, busy, submitted,
         {canEdit && <Link href={`/seller/offers/new?offer=${offerId}`} className={button}>Popraw ofertę</Link>}
       </>}
     </div>
+    {canRequest && guestAcceptance && <div role="status" className="flex items-start gap-3 rounded-lg bg-emerald-300/15 p-4 text-sm text-emerald-50">
+      <CheckCircle2 aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-emerald-200"/>
+      <div className="min-w-0"><p className="font-medium">Zaakceptowana online przez {guestAcceptance.name || 'gościa'} · {deliveryTimestamp(guestAcceptance.at)}</p>
+        <p className="mt-1 text-xs leading-5 text-emerald-50/80">{guestAcceptance.email ? `${guestAcceptance.email}. ` : ''}Sprawdź, czy wybrany PDF to wersja pokazana gościowi, zaznacz potwierdzenie poniżej i przekaż ofertę opiekunowi.</p></div>
+    </div>}
     {canRequest && <div id="seller-review-resubmission" className="scroll-mt-6 space-y-3 rounded-lg bg-black/10 p-3">
       {feedback && <>
         <h3 className="text-sm uppercase">Poprawki wykonane — przekaż do weryfikacji</h3>
@@ -154,7 +161,7 @@ export function SellerOfferNextStep({ state, offerId, selected, busy, submitted,
       </button>
       {!selected?.current && <p className="text-xs text-amber-200">W sekcji PDF wybierz aktualną wersję lub wygeneruj nową, a następnie przedstaw ją klientowi.</p>}
       {!state.offer_summary?.event_date && <p className="text-xs text-amber-200">{state.offer_summary ? 'Uzupełnij termin w edycji oferty i wygeneruj aktualny PDF.' : 'Najpierw odśwież dane oferty.'}</p>}
-      {state.realization?.migration_ready !== true && <p className="text-xs text-amber-200">Obsługa akceptacji wymaga aktualizacji przez administratora. PDF i rozmowa pozostają dostępne.</p>}
+      {state.realization?.migration_ready !== true && <p className="text-xs text-amber-200">Przekazanie oferty jest chwilowo niedostępne. PDF i rozmowa pozostają dostępne — napisz do opiekuna.</p>}
       <p className="text-xs leading-5 text-white/55">{feedback ? 'Dopiero przekazanie odpowiedzi zmieni status na oczekiwanie na weryfikację i powiadomi opiekuna. Sam zapis poprawek ani wiadomość na czacie nie wystarczą. Decyzję o akceptacji podejmie opiekun.' : 'Ten przycisk zapisuje deklarację zgody klienta i wysyła ofertę do opiekuna. Nie potwierdza jeszcze realizacji ani rezerwacji sprzętu. Wiadomość na czacie nie zastępuje tej decyzji.'}</p>
     </div>}
   </section>;

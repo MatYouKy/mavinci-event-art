@@ -5,6 +5,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useEditMode } from '../contexts/EditModeContext';
 import { useRouter, usePathname } from 'next/navigation';
+import { isSellerGuestPage } from '@/lib/seller/guestPages';
 import Link from 'next/link';
 import { useMobile } from '@/hooks/useMobile';
 import NotificationCenter from './crm/NotificationCenter';
@@ -197,7 +198,7 @@ export default function Navbar({
 
   // Portal sprzedawcy ma własny, aplikacyjny sidebar. Nie pokazujemy w nim
   // nawigacji publicznej strony WWW.
-  if (pathname.startsWith('/seller')) {
+  if (pathname.startsWith('/seller') || isSellerGuestPage(pathname)) {
     return null;
   }
 

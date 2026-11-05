@@ -18,12 +18,13 @@ import {
   Star,
   Tag,
   UserCheck,
+  BadgePercent,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import PermissionGuard from '@/components/crm/PermissionGuard';
-import SellerContactBadge, { useSellerContactBadges } from '@/components/crm/contacts/SellerContactBadge';
+import SellerContactBadge, { SellerOrganizationBadge, useSellerContactBadges } from '@/components/crm/contacts/SellerContactBadge';
 
 import { useClients } from './hooks/useClient';
 import { ClientEntityType, ContactRow } from './types';
@@ -56,6 +57,10 @@ export default function ContactsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   // const [contacts, setLocalContacts] = useState<UnifiedContact[]>([]);
   const [typeFilter, setTypeFilter] = useState<ContactTypeFilter>('all');
+  const [sellersOnly, setSellersOnly] = useState(false);
+  const isSellerRow = (contact: { id: string; source: string }) => contact.source === 'contacts'
+    ? sellerBadges.ids.has(contact.id)
+    : sellerBadges.organizationIds.has(contact.id);
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
 
   // const fetchAllContacts = async () => {
@@ -194,6 +199,7 @@ export default function ContactsPage() {
   const filteredContacts = contacts
     .filter((contact) => {
       // Filtrowanie według typu (tylko dla taba "Wszystkie kontakty")
+      if (sellersOnly && !isSellerRow(contact)) return false;
       if (activeTab === 'all' && typeFilter !== 'all') {
         return contact.entityType === typeFilter;
       }
@@ -253,7 +259,8 @@ export default function ContactsPage() {
                 </div>
               )}
               <h3 className="mb-1 font-semibold text-white">{contact.name}</h3>
-              {contact.source === 'contacts' && sellerBadges.ids.has(contact.id) && <span className="mb-2"><SellerContactBadge /></span>}
+              {contact.source === 'contacts' && sellerBadges.ids.has(contact.id) && <span className="mb-2"><SellerContactBadge status={sellerBadges.statuses.get(contact.id)} /></span>}
+              {contact.source === 'organizations' && sellerBadges.organizationIds.has(contact.id) && <span className="mb-2"><SellerOrganizationBadge /></span>}
               <span
                 className={`rounded-full px-2 py-1 text-xs ${getContactTypeColor(
                   contact.entityType as ClientEntityType,
@@ -351,7 +358,8 @@ export default function ContactsPage() {
               <div className="grid min-w-0 flex-1 grid-cols-5 items-center gap-4">
                 <div className="col-span-1">
                   <h3 className="truncate font-semibold text-white">{contact.name}</h3>
-                  {contact.source === 'contacts' && sellerBadges.ids.has(contact.id) && <span className="my-1 inline-block"><SellerContactBadge /></span>}
+                  {contact.source === 'contacts' && sellerBadges.ids.has(contact.id) && <span className="my-1 inline-block"><SellerContactBadge status={sellerBadges.statuses.get(contact.id)} /></span>}
+                  {contact.source === 'organizations' && sellerBadges.organizationIds.has(contact.id) && <span className="my-1 inline-block"><SellerOrganizationBadge /></span>}
                   <span
                     className={`inline-block rounded-full px-2 py-0.5 text-xs ${getContactTypeColor(
                       contact.entityType as ClientEntityType,
@@ -526,6 +534,20 @@ export default function ContactsPage() {
                 <UserCircle className="h-4 w-4" />
                 <span>Osoby prywatne</span>
               </button>
+              <button
+                type="button"
+                aria-pressed={sellersOnly}
+                onClick={() => setSellersOnly((value) => !value)}
+                title="Kontakty z profilem sprzedawcy oraz hotele / agencje, w których obecnie pracują"
+                className={`flex items-center space-x-2 rounded-lg px-4 py-2 text-sm transition-colors ${
+                  sellersOnly
+                    ? 'bg-[#d3bb73]/20 text-[#d3bb73]'
+                    : 'bg-[#1a1d2e] text-gray-400 hover:bg-[#252837]'
+                }`}
+              >
+                <BadgePercent className="h-4 w-4" />
+                <span>Tylko sprzedawcy</span>
+              </button>
             </div>
           )}
 
@@ -576,7 +598,7 @@ export default function ContactsPage() {
             <div className="rounded-lg border border-gray-700 bg-[#1a1d2e] p-12 text-center">
               <User className="mx-auto mb-4 h-16 w-16 text-gray-600" />
               <p className="mb-4 text-gray-400">
-                {searchTerm ? 'Nie znaleziono kontaktów' : 'Brak kontaktów'}
+                {sellersOnly ? 'Brak sprzedawców ani organizacji ze sprzedawcami w tym widoku' : searchTerm ? 'Nie znaleziono kontaktów' : 'Brak kontaktów'}
               </p>
               <button
                 onClick={handleNewContact}

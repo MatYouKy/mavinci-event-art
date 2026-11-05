@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { FileText, Plus, Search } from 'lucide-react';
+import { FileText, Plus, RefreshCw, Search } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
-import { sellerMoney, sellerStatusLabel, useSellerPortalContext } from '@/lib/seller/portal';
+import { sellerCommissionsVisible, sellerMoney, useSellerPortalContext } from '@/lib/seller/portal';
+import { loadSellerOfferDeliveries, sellerOfferStage, sellerOfferStageFilters, sellerOfferToneClass, type SellerOfferDelivery } from '@/lib/seller/offerStatus';
 import SellerInboxPanel from '@/components/seller/SellerInboxPanel';
 import { useOfferRefresh } from '@/lib/seller/useOfferRefresh';
 
@@ -22,15 +23,10 @@ type OfferRow = {
   partner_earnings_amount: number;
   partner_approval_status: string;
   created_at: string;
-  delivery?: { offer_id: string; is_realization: boolean; review_status: string | null; client_confirmed: boolean };
+  delivery?: SellerOfferDelivery;
 };
-const offerStage = (offer: OfferRow) => {
-  if (offer.delivery?.review_status === 'pending') return { value: 'awaiting_mavinci', label: 'Oczekuje na MAVINCI', next: offer.delivery.client_confirmed ? 'Klient zaakceptował. Czekamy na decyzję opiekuna.' : 'Zapytanie przekazane opiekunowi. Historyczna zgoda klienta nie została zapisana.' };
-  if (offer.delivery?.review_status === 'changes_requested') return { value: 'changes_requested', label: 'Do uzupełnienia', next: 'Sprawdź odpowiedź opiekuna i rozmowę o ofercie.' };
-  if (offer.delivery?.review_status === 'rejected') return { value: 'review_rejected', label: 'Brak akceptacji MAVINCI', next: 'Szczegóły decyzji i dalsze ustalenia znajdziesz w ofercie.' };
-  if (offer.delivery?.review_status === 'approved') return { value: 'approved', label: 'Zaakceptowana przez opiekuna', next: 'Otwórz ofertę, aby sprawdzić przygotowanie realizacji.' };
-  return { value: offer.status, label: sellerStatusLabel(offer.status), next: ['draft', 'sent', 'viewed'].includes(offer.status) ? 'Po akceptacji klienta przekaż aktualną ofertę do potwierdzenia MAVINCI.' : '' };
-};
+const offerStage = (offer: OfferRow) => sellerOfferStage(offer, offer.delivery);
+const FORECAST_NOTE = 'Szacunek przed kosztami wykonawców zewnętrznych';
 
 export default function SellerOffersPage() {
   const { context, loading: contextLoading } = useSellerPortalContext();
@@ -39,6 +35,7 @@ export default function SellerOffersPage() {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('all');
   const [error, setError] = useState('');
+  const [retry, setRetry] = useState(0);
   const revision = useOfferRefresh(context ? `sales_partner_id=eq.${context.profile.id}` : undefined);
 
   useEffect(() => {
@@ -59,16 +56,8 @@ export default function SellerOffersPage() {
       if (!active) return;
       if (loadError) { setError('Nie udało się odświeżyć listy ofert.'); setLoading(false); return; }
       const rows = (data || []) as OfferRow[];
-      const states: NonNullable<OfferRow['delivery']>[] = [];
-      let progressError = '';
-      for (let offset = 0; offset < rows.length; offset += 200) {
-        const response = await supabase.rpc('get_seller_offer_delivery_states', { p_offers: rows.slice(offset, offset + 200).map((offer) => offer.id) });
-        if (!active) return;
-        if (response.error) { progressError = 'Nie udało się wczytać etapów akceptacji. Otwórz ofertę, aby sprawdzić aktualną decyzję. Nowy widok wymaga migracji 20260917230000.'; break; }
-        states.push(...(response.data || []));
-      }
+      const { deliveries: byOffer, error: progressError } = await loadSellerOfferDeliveries(rows.map((offer) => offer.id));
       if (!active) return;
-      const byOffer = new Map(states.map((state) => [state.offer_id, state]));
       setError(progressError);
       setOffers(rows.map((offer) => ({ ...offer, delivery: byOffer.get(offer.id) })).filter((offer) => !offer.delivery?.is_realization));
       setLoading(false);
@@ -77,7 +66,7 @@ export default function SellerOffersPage() {
       }
     })();
     return () => { active = false; };
-  }, [context, contextLoading, revision]);
+  }, [context, contextLoading, revision, retry]);
 
   const filtered = useMemo(() => {
     const query = search.trim().toLocaleLowerCase('pl');
@@ -98,35 +87,38 @@ export default function SellerOffersPage() {
         <header className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-light uppercase">Moje oferty</h1>
-            <p className="mt-1 text-sm text-[#e5e4e2]/40">Przygotuj ofertę → potwierdź akceptację klienta i przekaż do MAVINCI → po akceptacji opiekuna kontynuuj w <Link href="/seller/realizations" className="text-[#d3bb73] underline underline-offset-4">Realizacjach</Link>. Potwierdzenie wydarzenia jest osobnym krokiem.</p>
+            <p className="mt-1 text-sm text-[#e5e4e2]/50">Przygotuj ofertę → potwierdź akceptację klienta i przekaż do MAVINCI → po akceptacji opiekuna kontynuuj w zakładce <Link href="/seller/realizations" className="text-[#d3bb73] underline underline-offset-4">Potwierdzone wydarzenia</Link>.</p>
           </div>
-          <Link href="/seller/offers/new" className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2.5 text-sm font-medium text-[#111522]"><Plus className="h-4 w-4" /> Nowa oferta</Link>
+          <Link href="/seller/offers/new" className="flex min-h-11 items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2.5 text-sm font-medium text-[#111522]"><Plus className="h-4 w-4" /> Nowa oferta</Link>
         </header>
 
         <SellerInboxPanel partnerId={context.profile.id} scope="offers" />
-        {error && <p role="alert" className="rounded-lg bg-amber-300/10 p-3 text-sm text-amber-200">{error}</p>}
+        {error && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-amber-300/10 p-3 text-sm text-amber-200"><p>{error}</p><button type="button" onClick={() => { setLoading(true); setRetry((value) => value + 1); }} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-[#d3bb73]/10 px-3 py-2 text-[#d3bb73]"><RefreshCw className="h-4 w-4" />Spróbuj ponownie</button></div>}
 
-        <section className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33]">
+        <section className="rounded-xl bg-[#1c1f33]">
           <div className="flex flex-wrap gap-3 border-b border-white/5 p-4">
-            <label className="relative min-w-64 flex-1"><Search className="absolute left-3 top-3 h-4 w-4 text-[#e5e4e2]/30" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Szukaj klienta, tytułu lub numeru..." className="w-full rounded-lg border border-white/10 bg-[#0f1119] py-2.5 pl-9 pr-3 text-sm outline-none focus:border-[#d3bb73]/50" /></label>
-            <select aria-label="Etap oferty" value={status} onChange={(event) => setStatus(event.target.value)} className="rounded-lg border border-white/10 bg-[#0f1119] px-3 py-2 text-sm"><option value="all">Wszystkie etapy</option><option value="draft">Szkice</option><option value="sent">Wysłane</option><option value="viewed">Wyświetlone</option><option value="awaiting_mavinci">Oczekuje na MAVINCI</option><option value="changes_requested">Do uzupełnienia</option><option value="review_rejected">Brak akceptacji MAVINCI</option><option value="approved">Zaakceptowane przez opiekuna</option><option value="rejected">Odrzucone</option></select>
+            <label className="relative min-w-0 flex-1 basis-64"><span className="sr-only">Szukaj oferty</span><Search className="absolute left-3 top-3.5 h-4 w-4 text-[#e5e4e2]/30" /><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Szukaj klienta, tytułu lub numeru..." className="min-h-11 w-full rounded-lg bg-[#0f1119] py-2.5 pl-9 pr-3 text-sm outline-none focus:border-[#d3bb73]/50" /></label>
+            <select aria-label="Etap oferty" value={status} onChange={(event) => setStatus(event.target.value)} className="min-h-11 rounded-lg bg-[#0f1119] px-3 py-2 text-sm">{sellerOfferStageFilters.map((filter) => <option key={filter.value} value={filter.value}>{filter.label}</option>)}</select>
           </div>
 
           <div className="divide-y divide-white/5">
-            {filtered.map((offer) => (
-              <Link key={offer.id} href={`/seller/offers/${offer.id}`} className="grid gap-3 p-5 transition-colors hover:bg-white/[0.02] lg:grid-cols-[minmax(220px,1.5fr)_110px_150px_150px_130px] lg:items-center">
-                <div className="min-w-0">
+            {filtered.map((offer) => {
+              const stage = offerStage(offer);
+              const commission = offer.commercial_model === 'commission';
+              const showEarnings = !commission || sellerCommissionsVisible(context, offer.my_company_id);
+              return <Link key={offer.id} href={`/seller/offers/${offer.id}`} className="grid grid-cols-2 gap-3 p-4 transition-colors hover:bg-white/[0.02] sm:p-5 lg:grid-cols-[minmax(220px,1.5fr)_150px_130px_130px_130px] lg:items-center">
+                <div className="col-span-2 min-w-0 lg:col-span-1">
                   <div className="flex items-center gap-2"><FileText className="h-4 w-4 shrink-0 text-[#d3bb73]" /><p className="truncate text-sm">{offer.title || offer.offer_number || 'Oferta bez tytułu'}</p></div>
-                  <p className="mt-1 truncate pl-6 text-xs text-[#e5e4e2]/35">{offer.portal_client_company || offer.portal_client_name || 'Klient do uzupełnienia'} · {offer.offer_number}</p>
-                  <p className="mt-2 pl-6 text-xs leading-5 text-white/50">{offerStage(offer).next}</p>
+                  <p className="mt-1 truncate pl-6 text-xs text-[#e5e4e2]/45">{offer.portal_client_company || offer.portal_client_name || 'Klient do uzupełnienia'}{offer.offer_number ? ` · ${offer.offer_number}` : ''}</p>
+                  {stage.next && <p className="mt-2 pl-6 text-xs leading-5 text-white/50">{stage.next}</p>}
                 </div>
-                <div><p className="text-xs text-[#d3bb73]">{offerStage(offer).label}</p>{offer.partner_approval_status === 'required' && <p className="mt-1 text-[10px] text-amber-300">Dodatkowa zgoda handlowa wymagana</p>}</div>
-                <div><p className="text-[10px] text-[#e5e4e2]/30">CENA MAVINCI</p><p className="mt-1 text-sm">{sellerMoney(offer.partner_base_net)}</p></div>
-                <div><p className="text-[10px] text-[#e5e4e2]/30">CENA KLIENTA</p><p className="mt-1 text-sm">{sellerMoney(offer.client_total_net)}</p></div>
-                {(offer.commercial_model !== 'commission' || context.brands.some((brand) => brand.my_company_id === offer.my_company_id && brand.commission_enabled === true)) && <div><p className="text-[10px] text-[#e5e4e2]/30">DLA CIEBIE</p><p className="mt-1 text-sm text-[#d3bb73]">{sellerMoney(offer.partner_earnings_amount)}</p></div>}
-              </Link>
-            ))}
-            {filtered.length === 0 && <p className="p-12 text-center text-sm text-[#e5e4e2]/35">Brak ofert spełniających kryteria.</p>}
+                <div className="col-span-2 lg:col-span-1"><span className={`inline-block rounded-md px-2 py-1 text-[11px] ${sellerOfferToneClass[stage.tone]}`}>{stage.label}</span>{offer.partner_approval_status === 'required' && <p className="mt-1 text-[10px] text-amber-300">Cena wymaga zgody opiekuna</p>}</div>
+                <div><p className="text-[10px] uppercase text-[#e5e4e2]/40">Cena MAVINCI</p><p className="mt-1 text-sm">{sellerMoney(offer.partner_base_net)}</p></div>
+                <div><p className="text-[10px] uppercase text-[#e5e4e2]/40">Cena klienta</p><p className="mt-1 text-sm">{sellerMoney(offer.client_total_net)}</p></div>
+                {showEarnings && <div title={commission ? FORECAST_NOTE : undefined}><p className="text-[10px] uppercase text-[#e5e4e2]/40">{commission ? 'Prowizja · szacunek' : 'Marża hotelu'}</p><p className="mt-1 text-sm text-[#d3bb73]">{sellerMoney(offer.partner_earnings_amount)}</p>{commission && <p className="mt-0.5 text-[10px] leading-4 text-white/35">przed kosztami wykonawców zewn.</p>}</div>}
+              </Link>;
+            })}
+            {filtered.length === 0 && !(error && !offers.length) && <p className="p-12 text-center text-sm text-[#e5e4e2]/45">{offers.length ? 'Brak ofert spełniających kryteria.' : 'Nie masz jeszcze ofert w przygotowaniu.'}</p>}
           </div>
         </section>
       </div>

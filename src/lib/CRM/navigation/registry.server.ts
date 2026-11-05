@@ -38,7 +38,9 @@ export type NavigationItemDTO = {
   href: string;
   iconKey: string; // string, bo to leci do klienta przez JSON
   module?: string;
-  permissions?: string[]; // do filtrowania po uprawnieniach
+  permissions?: string[]; // do filtrowania po uprawnieniach (wszystkie wymagane)
+  /** Wystarczy jedno z uprawnień (np. moduł dostępny dla kontaktów LUB sprzedaży). */
+  anyPermissions?: string[];
   /** Pozycja widoczna przy dostępie do finansów co najmniej „Własna sprzedaż” w którejś działalności. */
   financeCompanyAccess?: boolean;
   children?: NavigationItemDTO[]; // submenu
@@ -152,7 +154,9 @@ export const allNavigation: NavigationItemDTO[] = [
     href: '/crm/salespeople',
     iconKey: 'salespeople',
     module: 'clients',
-    permissions: ['contacts_view'],
+    // Opiekun sprzedawców zewnętrznych to pracownik sprzedaży (offers_manage), nie tylko osoba z dostępem do kontaktów.
+    // Zakres danych (tylko moi sprzedawcy) wymusza baza: get_my_seller_cockpit / get_crm_seller_directory.
+    anyPermissions: ['contacts_view', 'offers_manage', 'finances_manage'],
   },
   {
     key: 'offers',

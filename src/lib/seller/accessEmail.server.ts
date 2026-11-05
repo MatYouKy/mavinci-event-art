@@ -10,6 +10,8 @@ type SellerAccessEmailInput = {
   recipientName?: string | null;
   actionUrl: string;
   isNewAccount: boolean;
+  /** Name of the MAVINCI employee who sent the invitation (optional). */
+  invitedBy?: string | null;
 };
 
 type PasswordAccessEmailInput = SellerAccessEmailInput & {
@@ -25,12 +27,19 @@ const escapeHtml = (value: string) => value
   .replaceAll('"', '&quot;')
   .replaceAll("'", '&#039;');
 
+const SELLER_BENEFITS = [
+  ['Oferta dla gościa w kilka minut', 'Gotowy katalog usług MAVINCI, ceny i PDF z brandingiem Twojego hotelu.'],
+  ['Stały opiekun MAVINCI', 'Sprawdza termin, odpowiada na pytania i prowadzi realizację wydarzenia.'],
+  ['Wszystko w jednym miejscu', 'Zapytania gości, oferty, potwierdzone wydarzenia i rozmowy z opiekunem.'],
+] as const;
+
 const buildEmailHtml = ({
   to,
   recipientName,
   actionUrl,
   isNewAccount,
   portal,
+  invitedBy,
 }: PasswordAccessEmailInput) => {
   const trimmedName = recipientName?.trim();
   const greeting = trimmedName ? `Witaj, ${escapeHtml(trimmedName)}` : 'Dzień dobry';
@@ -39,10 +48,28 @@ const buildEmailHtml = ({
   const safeLogoUrl = `cid:${EMAIL_LOGO_CID}`;
   const portalLabel = portal === 'seller' ? 'PORTAL SPRZEDAWCY' : 'MAVINCI CRM';
   const accountLabel = portal === 'seller' ? 'portalu sprzedawcy MAVINCI' : 'systemu MAVINCI CRM';
-  const heading = isNewAccount ? 'DOSTĘP DO PORTALU SPRZEDAWCY' : 'USTAW NOWE HASŁO';
-  const introduction = isNewAccount
-    ? 'Twoje konto w portalu sprzedawcy MAVINCI jest gotowe. Ustaw własne hasło, aby rozpocząć pracę z ofertami.'
-    : `Przygotowaliśmy bezpieczny link, za pomocą którego możesz ustawić nowe hasło do ${accountLabel}.`;
+  // A new seller account is an invitation to cooperate; password resets keep the reset wording.
+  const sellerInvitation = isNewAccount && portal === 'seller';
+  const inviter = invitedBy?.trim() ? escapeHtml(invitedBy.trim()) : '';
+  const heading = sellerInvitation ? 'ZAPROSZENIE DO WSPÓŁPRACY' : isNewAccount ? 'DOSTĘP DO MAVINCI CRM' : 'USTAW NOWE HASŁO';
+  const introduction = sellerInvitation
+    ? `${inviter ? `${inviter} z zespołu MAVINCI zaprasza Cię` : 'Zapraszamy Cię'} do portalu sprzedawcy MAVINCI — miejsca, w którym sprzedasz gościom hotelu wydarzenia z oprawą MAVINCI. Utwórz hasło, a w kilka minut przygotujesz pierwszą ofertę.`
+    : isNewAccount
+      ? `Twoje konto w ${accountLabel} jest gotowe. Ustaw własne hasło, aby rozpocząć pracę.`
+      : `Przygotowaliśmy bezpieczny link, za pomocą którego możesz ustawić nowe hasło do ${accountLabel}.`;
+  const actionLabel = sellerInvitation ? 'UTWÓRZ HASŁO I ZACZNIJ' : 'USTAW NOWE HASŁO';
+  const preheader = sellerInvitation ? 'Zaproszenie do portalu sprzedawcy MAVINCI — utwórz hasło i zacznij.' : `Ustaw nowe hasło do ${accountLabel}.`;
+  const benefits = sellerInvitation ? `
+            <tr>
+              <td class="email-content" bgcolor="#ffffff" style="padding:0 42px 26px;background-color:#ffffff;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:collapse;">
+                  ${SELLER_BENEFITS.map(([title, text], index) => `<tr>
+                    <td valign="top" width="34" style="padding:0 0 14px;width:34px;"><div class="email-accent" style="width:26px;height:26px;line-height:26px;border-radius:13px;background-color:#f3ead2;color:#806522;font-size:13px;font-weight:700;text-align:center;">${index + 1}</div></td>
+                    <td valign="top" style="padding:2px 0 14px;"><p class="email-strong" style="margin:0;color:#312b31;font-size:15px;line-height:22px;font-weight:700;">${title}</p><p class="email-copy" style="margin:2px 0 0;color:#49404a;font-size:14px;line-height:21px;">${text}</p></td>
+                  </tr>`).join('')}
+                </table>
+              </td>
+            </tr>` : '';
 
   return `<!doctype html>
 <html lang="pl">
@@ -83,7 +110,7 @@ const buildEmailHtml = ({
   </head>
   <body class="email-background" style="margin:0;padding:0;background-color:#f3efeb;color:#211a1f;font-family:Arial,Helvetica,sans-serif;">
     <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">
-      Ustaw nowe hasło do ${accountLabel}.
+      ${preheader}
     </div>
     <table class="email-background" role="presentation" width="100%" cellspacing="0" cellpadding="0" bgcolor="#f3efeb" style="width:100%;border-collapse:collapse;background-color:#f3efeb;">
       <tr>
@@ -104,13 +131,13 @@ const buildEmailHtml = ({
                 <p class="email-copy" style="margin:0 0 18px;color:#49404a;font-size:16px;line-height:25px;">${introduction}</p>
                 <p class="email-muted" style="margin:0;color:#665b65;font-size:14px;line-height:22px;">Konto: <strong class="email-strong" style="color:#312b31;">${safeEmail}</strong></p>
               </td>
-            </tr>
+            </tr>${benefits}
             <tr>
               <td class="email-content" align="center" bgcolor="#ffffff" style="padding:8px 42px 34px;background-color:#ffffff;">
                 <table role="presentation" cellspacing="0" cellpadding="0" style="border-collapse:separate;">
                   <tr>
                     <td class="email-action-cell" align="center" bgcolor="#681a38" style="border-radius:10px;background-color:#681a38;">
-                      <a class="email-action" href="${safeActionUrl}" style="display:inline-block;padding:16px 28px;background-color:#681a38;color:#ffffff !important;-webkit-text-fill-color:#ffffff;font-size:15px;line-height:22px;font-weight:700;text-decoration:none;border-radius:10px;"><span style="color:#ffffff !important;-webkit-text-fill-color:#ffffff;">USTAW NOWE HASŁO</span></a>
+                      <a class="email-action" href="${safeActionUrl}" style="display:inline-block;padding:16px 28px;background-color:#681a38;color:#ffffff !important;-webkit-text-fill-color:#ffffff;font-size:15px;line-height:22px;font-weight:700;text-decoration:none;border-radius:10px;"><span style="color:#ffffff !important;-webkit-text-fill-color:#ffffff;">${actionLabel}</span></a>
                     </td>
                   </tr>
                 </table>
@@ -179,7 +206,7 @@ export async function sendPasswordAccessEmail(input: PasswordAccessEmailInput) {
     body: JSON.stringify({
       to: input.to,
       subject: input.isNewAccount
-        ? 'Dostęp do portalu sprzedawcy MAVINCI'
+        ? input.portal === 'seller' ? 'Zaproszenie do współpracy z MAVINCI' : 'Dostęp do MAVINCI CRM'
         : input.portal === 'seller'
           ? 'Ustaw nowe hasło do portalu sprzedawcy MAVINCI'
           : 'Ustaw nowe hasło do MAVINCI CRM',

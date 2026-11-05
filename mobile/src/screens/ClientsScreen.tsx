@@ -42,6 +42,25 @@ function contactInitials(contact: { first_name?: string | null; last_name?: stri
   return `${first}${last}`.toUpperCase() || '?';
 }
 
+/** Te same etykiety co `SellerContactBadge` w CRM (status profilu sprzedawcy zewnętrznego). */
+const SELLER_BADGES: Record<string, { label: string; color: string }> = {
+  active: { label: 'Sprzedawca', color: colors.primary.gold },
+  onboarding: { label: 'Sprzedawca — do uzgodnienia', color: colors.status.warning },
+  inactive: { label: 'Sprzedawca nieaktywny', color: colors.text.tertiary },
+};
+
+/** Status profilu sprzedawcy dla listowanych kontaktów (RLS jak w CRM; bez kartoteki, ofert i prowizji). */
+async function loadSellerStatuses(contactIds: string[]): Promise<Map<string, string>> {
+  const statuses = new Map<string, string>();
+  for (let offset = 0; offset < contactIds.length; offset += 100) {
+    const { data, error } = await supabase.from('sales_partner_profiles')
+      .select('contact_id,status').in('contact_id', contactIds.slice(offset, offset + 100));
+    if (error) return statuses;
+    for (const profile of data || []) if (profile.contact_id) statuses.set(profile.contact_id, profile.status || 'active');
+  }
+  return statuses;
+}
+
 const OUTCOME_LABELS: Record<string, string> = {
   connected: 'Rozmowa odbyta', no_answer: 'Brak odpowiedzi', busy: 'Zajęte',
   voicemail: 'Poczta głosowa', wrong_number: 'Błędny numer',
@@ -58,6 +77,8 @@ export default function ClientsScreen() {
   const [syncing, setSyncing] = useState(false);
   const [search, setSearch] = useState('');
   const [selectedContact, setSelectedContact] = useState<ContactRow | null>(null);
+  const [sellerStatuses, setSellerStatuses] = useState<Map<string, string>>(new Map());
+  const [sellersOnly, setSellersOnly] = useState(false);
   const { startCall, pendingCall, showOutcome, closeOutcome } = useCrmCall();
 
   const fetchContacts = useCallback(async () => {
@@ -72,7 +93,11 @@ export default function ClientsScreen() {
       supabase.from('crm_call_activities').select('id, phone_number, status, outcome, started_at, next_action_at, notes, contact_id, contact:contacts(first_name, last_name)').order('started_at', { ascending: false }).limit(100),
     ]);
     if (contactsResult.error) Alert.alert('Błąd', 'Nie udało się pobrać kontaktów.');
-    else setContacts((contactsResult.data || []) as ContactRow[]);
+    else {
+      const rows = (contactsResult.data || []) as ContactRow[];
+      setContacts(rows);
+      setSellerStatuses(await loadSellerStatuses(rows.filter((row) => row.phone || row.mobile).map((row) => row.id)));
+    }
     if (!callsResult.error) setCalls((callsResult.data || []) as unknown as CallRow[]);
     setLoading(false);
     setRefreshing(false);
@@ -82,11 +107,11 @@ export default function ClientsScreen() {
 
   const filtered = useMemo(() => {
     const phrase = search.trim().toLocaleLowerCase('pl-PL');
-    const withPhone = contacts.filter((contact) => contact.phone || contact.mobile);
+    const withPhone = contacts.filter((contact) => (contact.phone || contact.mobile) && (!sellersOnly || sellerStatuses.has(contact.id)));
     if (!phrase) return withPhone;
     return withPhone.filter((contact) => [contact.first_name, contact.last_name, contact.phone, contact.mobile, contact.email]
       .some((value) => String(value || '').toLocaleLowerCase('pl-PL').includes(phrase)));
-  }, [contacts, search]);
+  }, [contacts, search, sellersOnly, sellerStatuses]);
 
   const syncContacts = async () => {
     if (!hasContactAccess) return;
@@ -114,11 +139,13 @@ export default function ClientsScreen() {
         <TouchableOpacity onPress={() => void syncContacts()} disabled={syncing || loading} style={styles.syncButton}>{syncing ? <ActivityIndicator size="small" color={colors.background.primary} /> : <Feather name="refresh-cw" size={17} color={colors.background.primary} />}<Text style={styles.syncText}>{syncing ? 'Synchronizacja…' : 'Do telefonu'}</Text></TouchableOpacity>
       </View>
       <View style={styles.search}><Feather name="search" size={18} color={colors.text.tertiary} /><TextInput value={search} onChangeText={setSearch} placeholder="Szukaj po nazwie, numerze lub e-mailu…" placeholderTextColor={colors.text.tertiary} style={styles.searchInput} /></View>
-      <View style={styles.switcher}><TouchableOpacity onPress={() => setView('contacts')} style={[styles.switchButton, view === 'contacts' && styles.switchButtonActive]}><Feather name="users" size={15} color={view === 'contacts' ? colors.background.primary : colors.text.secondary} /><Text style={[styles.switchText, view === 'contacts' && styles.switchTextActive]}>Kontakty ({filtered.length})</Text></TouchableOpacity><TouchableOpacity onPress={() => setView('calls')} style={[styles.switchButton, view === 'calls' && styles.switchButtonActive]}><Feather name="phone-call" size={15} color={view === 'calls' ? colors.background.primary : colors.text.secondary} /><Text style={[styles.switchText, view === 'calls' && styles.switchTextActive]}>Historia ({calls.length})</Text></TouchableOpacity></View>
+      <View style={styles.switcher}><TouchableOpacity onPress={() => setView('contacts')} style={[styles.switchButton, view === 'contacts' && styles.switchButtonActive]}><Feather name="users" size={15} color={view === 'contacts' ? colors.background.primary : colors.text.secondary} /><Text style={[styles.switchText, view === 'contacts' && styles.switchTextActive]}>Kontakty ({filtered.length})</Text></TouchableOpacity><TouchableOpacity onPress={() => setView('calls')} style={[styles.switchButton, view === 'calls' && styles.switchButtonActive]}><Feather name="phone-call" size={15} color={view === 'calls' ? colors.background.primary : colors.text.secondary} /><Text style={[styles.switchText, view === 'calls' && styles.switchTextActive]}>Historia ({calls.length})</Text></TouchableOpacity>{view === 'contacts' && (sellerStatuses.size > 0 || sellersOnly) && <TouchableOpacity onPress={() => setSellersOnly((value) => !value)} accessibilityRole="button" accessibilityState={{ selected: sellersOnly }} style={[styles.switchButton, sellersOnly && styles.sellerFilterActive]}><Feather name="percent" size={14} color={sellersOnly ? colors.primary.gold : colors.text.secondary} /><Text style={[styles.switchText, sellersOnly && { color: colors.primary.gold }]}>Tylko sprzedawcy</Text></TouchableOpacity>}</View>
       {loading ? <View style={styles.center}><ActivityIndicator color={colors.primary.gold} /></View> : (
-        view === 'contacts' ? <FlatList data={filtered} keyExtractor={(item) => item.id} contentContainerStyle={styles.list} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void fetchContacts(); }} tintColor={colors.primary.gold} />} ListEmptyComponent={<View style={styles.center}><Feather name="users" color={colors.text.tertiary} size={40} /><Text style={styles.empty}>Brak kontaktów z numerem telefonu w Twoim zakresie</Text></View>} renderItem={({ item }) => {
+        view === 'contacts' ? <FlatList data={filtered} keyExtractor={(item) => item.id} contentContainerStyle={styles.list} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void fetchContacts(); }} tintColor={colors.primary.gold} />} ListEmptyComponent={<View style={styles.center}><Feather name="users" color={colors.text.tertiary} size={40} /><Text style={styles.empty}>{sellersOnly ? 'Brak sprzedawców z numerem telefonu w Twoim zakresie' : 'Brak kontaktów z numerem telefonu w Twoim zakresie'}</Text></View>} renderItem={({ item }) => {
           const phone = item.mobile || item.phone;
-          return <TouchableOpacity onPress={() => setSelectedContact(item)} activeOpacity={0.75} style={styles.card}><View style={styles.avatar}><Text style={styles.initials}>{contactInitials(item)}</Text></View><View style={styles.details}><Text style={styles.name}>{contactName(item) || item.email || 'Kontakt bez nazwy'}</Text>{phone && <Text style={styles.phone}>{phone}</Text>}{item.email && <Text style={styles.email} numberOfLines={1}>{item.email}</Text>}{item.last_contact_date && <Text style={styles.lastContact}>Ostatni kontakt: {new Date(item.last_contact_date).toLocaleDateString('pl-PL')}</Text>}</View>{phone && <TouchableOpacity onPress={() => void startCall({ phoneNumber: phone, displayName: contactName(item) || phone, contactId: item.id })} style={styles.callButton}><Feather name="phone" size={20} color={colors.background.primary} /></TouchableOpacity>}<Feather name="chevron-right" size={18} color={colors.text.tertiary} /></TouchableOpacity>;
+          const sellerStatus = sellerStatuses.get(item.id);
+          const sellerBadge = sellerStatus ? SELLER_BADGES[sellerStatus] || SELLER_BADGES.active : null;
+          return <TouchableOpacity onPress={() => setSelectedContact(item)} activeOpacity={0.75} style={styles.card}><View style={styles.avatar}><Text style={styles.initials}>{contactInitials(item)}</Text></View><View style={styles.details}><Text style={styles.name}>{contactName(item) || item.email || 'Kontakt bez nazwy'}</Text>{sellerBadge && <View style={[styles.sellerBadge, { backgroundColor: sellerBadge.color + '1f' }]}><Feather name="percent" size={11} color={sellerBadge.color} /><Text style={[styles.sellerBadgeText, { color: sellerBadge.color }]}>{sellerBadge.label}</Text></View>}{phone && <Text style={styles.phone}>{phone}</Text>}{item.email && <Text style={styles.email} numberOfLines={1}>{item.email}</Text>}{item.last_contact_date && <Text style={styles.lastContact}>Ostatni kontakt: {new Date(item.last_contact_date).toLocaleDateString('pl-PL')}</Text>}</View>{phone && <TouchableOpacity onPress={() => void startCall({ phoneNumber: phone, displayName: contactName(item) || phone, contactId: item.id })} style={styles.callButton}><Feather name="phone" size={20} color={colors.background.primary} /></TouchableOpacity>}<Feather name="chevron-right" size={18} color={colors.text.tertiary} /></TouchableOpacity>;
         }} /> : <FlatList data={calls} keyExtractor={(item) => item.id} contentContainerStyle={styles.list} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void fetchContacts(); }} tintColor={colors.primary.gold} />} ListEmptyComponent={<View style={styles.center}><Feather name="phone-off" color={colors.text.tertiary} size={40} /><Text style={styles.empty}>Brak zapisanych połączeń</Text></View>} renderItem={({ item }) => {
           // Kontakt spoza zakresu osoby (RLS) przychodzi jako pusty — wtedy pokazujemy sam numer.
           const displayName = contactName(item.contact) || item.phone_number;
@@ -154,6 +181,9 @@ const styles = StyleSheet.create({
   switchButtonActive: { backgroundColor: colors.primary.gold, borderColor: colors.primary.gold },
   switchText: { color: colors.text.secondary, fontSize: typography.fontSizes.sm },
   switchTextActive: { color: colors.background.primary, fontWeight: typography.fontWeights.bold },
+  sellerFilterActive: { backgroundColor: colors.primary.gold + '25', borderColor: 'transparent' },
+  sellerBadge: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999 },
+  sellerBadgeText: { fontSize: typography.fontSizes.xs, fontWeight: typography.fontWeights.semibold },
   list: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl, gap: spacing.sm },
   card: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, padding: spacing.md, borderRadius: borderRadius.lg, borderWidth: 1, borderColor: colors.border.default, backgroundColor: colors.background.secondary },
   avatar: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 22, backgroundColor: colors.primary.gold + '25' },

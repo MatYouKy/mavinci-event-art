@@ -46,7 +46,7 @@ export function refreshSellerInbox(): Promise<void> {
       if (error) throw error;
       publish({ items: data || [], loading: false, error: null });
     } catch {
-      if (current === revision) publish({ ...snapshot, loading: false, error: 'Nie udało się wczytać spraw sprzedawców. Spróbuj odświeżyć.' });
+      if (current === revision) publish({ ...snapshot, loading: false, error: 'Nie udało się wczytać powiadomień. Spróbuj ponownie za chwilę.' });
     }
   })().finally(() => {
     pending = undefined;
@@ -111,7 +111,12 @@ export function sellerInboxCounts(items: SellerInboxItem[], partnerId?: string) 
   const count = (kind: SellerInboxItem['kind']) => rows.filter((item) => item.kind === kind).reduce((sum, item) => sum + Number(item.count), 0);
   const reviews = count('review'), messages = count('message'), notices = count('notification');
   const realizations = rows.filter(isSellerRealizationNotice).reduce((sum, item) => sum + Number(item.count), 0);
-  return { reviews, messages, notices, realizations, total: reviews + messages + notices };
+  const noticesAt = (prefix: string) => rows.filter((item) => item.kind === 'notification' && item.action_url?.startsWith(prefix))
+    .reduce((sum, item) => sum + Number(item.count), 0);
+  // Portal sections with their own badge; the remaining notices belong to offers.
+  const inquiries = noticesAt('/seller/inquiries');
+  const commissions = noticesAt('/seller/commissions');
+  return { reviews, messages, notices, realizations, inquiries, commissions, offerNotices: Math.max(0, notices - realizations - inquiries - commissions), total: reviews + messages + notices };
 }
 
 export function isSellerRealizationNotice(item: SellerInboxItem) {

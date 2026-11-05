@@ -38,6 +38,11 @@ export function ConversationMessages({ conversation, crm, onRead, compact = fals
   const listRef = useRef<HTMLDivElement>(null);
   const onReadRef = useRef(onRead);
   onReadRef.current = onRead;
+  // On phones and tablets Enter inserts a new line; the message is sent with the button.
+  const [touchKeyboard, setTouchKeyboard] = useState(false);
+  useEffect(() => {
+    try { setTouchKeyboard(window.matchMedia('(pointer: coarse)').matches); } catch { /* Older browsers: keep desktop behaviour. */ }
+  }, []);
 
   const reload = useCallback(async () => {
     if (document.visibilityState !== 'visible') return;
@@ -144,9 +149,10 @@ export function ConversationMessages({ conversation, crm, onRead, compact = fals
         readOnly={sending}
         aria-busy={sending}
         onChange={(event) => setText(event.target.value)}
+        enterKeyHint={touchKeyboard ? 'enter' : 'send'}
         onKeyDown={(event) => {
           // Enter used to confirm IME composition must not send the message.
-          if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
+          if (touchKeyboard || event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
           event.preventDefault();
           if (event.repeat || sending || sendLock.current || !text.trim() || !conversation.can_send) return;
           event.currentTarget.form?.requestSubmit();
@@ -156,7 +162,7 @@ export function ConversationMessages({ conversation, crm, onRead, compact = fals
         placeholder={crm ? 'Odpowiedź widoczna dla sprzedawcy…' : 'Pytanie do opiekuna MAVINCI…'}
         className={`w-full resize-y rounded-lg bg-black/20 px-3 py-2.5 text-sm outline-none ring-1 ring-white/5 focus:ring-[#d3bb73]/30 ${compact ? 'max-h-32' : ''}`}
       />
-      <div className="flex items-center justify-between gap-3"><p className="text-[10px] text-white/35"><span id={`seller-message-shortcuts-${conversation.id}`} className="block">Enter — wyślij · Shift+Enter — nowa linia</span>{!compact && 'Wiadomości zachowują autora i datę. Nie można ich edytować ani usuwać.'}</p><button type="submit" disabled={sending || !text.trim()} className="flex shrink-0 items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2.5 text-sm font-medium text-[#210811] disabled:opacity-40">{sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}Wyślij</button></div>
+      <div className="flex items-center justify-between gap-3"><p className="text-[10px] text-white/35"><span id={`seller-message-shortcuts-${conversation.id}`} className="block">{touchKeyboard ? 'Enter — nowa linia · wyślij przyciskiem' : 'Enter — wyślij · Shift+Enter — nowa linia'}</span>{!compact && 'Wiadomości zachowują autora i datę. Nie można ich edytować ani usuwać.'}</p><button type="submit" disabled={sending || !text.trim()} className="flex min-h-10 shrink-0 items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2.5 text-sm font-medium text-[#210811] disabled:opacity-40">{sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}Wyślij</button></div>
     </form> : <p className="p-4 text-xs text-white/45">Masz dostęp do odczytu tej rozmowy.</p>}
   </div>;
 }
@@ -205,6 +211,7 @@ export default function SellerChatPanel({ partnerId, brands, offers = [], crm = 
   const writableBrands = brands.filter((brand) => brand.can_chat !== false);
   const canStart = writableBrands.some((brand) => brand.id === companyId)
     && (layer === 'general' || offers.some((offer) => offer.id === offerId && offer.my_company_id === companyId));
+  const autoStarted = useRef('');
   const start = async () => {
     if (startLock.current || !canStart) return;
     startLock.current = true; setStarting(true); setError('');
@@ -218,16 +225,26 @@ export default function SellerChatPanel({ partnerId, brands, offers = [], crm = 
       if (alive.current) setError(cause instanceof Error ? cause.message : 'Nie udało się otworzyć rozmowy. Spróbuj ponownie.');
     } finally { startLock.current = false; if (alive.current) setStarting(false); }
   };
-  return <section className="space-y-4 rounded-xl bg-[#1c1f33] p-5 text-[#e5e4e2]" id="seller-chat">
+  // Portal: open the general conversation with the manager right away instead
+  // of asking the seller to click "Otwórz rozmowę ogólną" first.
+  const generalThreads = threads.filter((thread) => !thread.offer_id).length;
+  useEffect(() => {
+    if (crm || loading || error || layer !== 'general' || generalThreads > 0 || requested || requestedOffer || !canStart) return;
+    if (autoStarted.current === partnerId) return;
+    autoStarted.current = partnerId;
+    void start();
+  }, [crm, loading, error, layer, generalThreads, requested, requestedOffer, canStart, partnerId]);
+
+  return <section className="space-y-4 rounded-xl bg-[#1c1f33] p-4 text-[#e5e4e2] sm:p-5" id="seller-chat">
     <div><h2 className="flex items-center gap-2 text-base"><MessageSquare className="h-5 w-5 text-[#d3bb73]" />{crm ? 'Rozmowy ze sprzedawcą' : 'Rozmowy z opiekunem MAVINCI'}</h2><p className="mt-2 text-xs leading-5 text-white/45">Oddzielamy bieżący kontakt od ustaleń do konkretnych zleceń. Każda rozmowa pozostaje w obrębie swojej marki.</p></div>
     <div className="flex flex-wrap gap-2" role="group" aria-label="Rodzaj rozmowy">
       {([{ id: 'general', label: 'Rozmowa ogólna' }, { id: 'offer', label: 'Oferty i realizacje' }] as const).map((item) => <button type="button" key={item.id} aria-pressed={layer === item.id} onClick={() => { setSelection({ requestKey, layer: item.id }); setQuery(''); }} className={`flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm ${layer === item.id ? 'bg-[#d3bb73]/15 text-[#d3bb73]' : 'bg-white/[0.03] text-white/55'}`}>{item.label}<SellerCountBadge count={threads.filter((thread) => Boolean(thread.offer_id) === (item.id === 'offer')).reduce((sum, thread) => sum + Number(thread.unread), 0)} label="Nowe wiadomości" /></button>)}
     </div>
     <p className="text-xs leading-5 text-white/45">{layer === 'general' ? 'Jedna rozmowa ogólna dla każdej marki. Do ustaleń dotyczących konkretnego zlecenia użyj zakładki „Oferty i realizacje”.' : 'Osobny wątek każdej oferty. Po powiązaniu oferty z wydarzeniem ten sam wątek pojawi się w jego zakładce „Ustalenia”, bez kopiowania ani utraty historii.'}</p>
     {writableBrands.length > 0 && <div className="space-y-3 rounded-lg bg-white/[0.03] p-3">
-      <div className="flex flex-wrap gap-2">{writableBrands.map((brand) => <button key={brand.id} type="button" onClick={() => { setCompanyId(brand.id); setOfferId(''); }} className={`rounded-lg px-3 py-2 text-xs ${companyId === brand.id ? 'bg-[#d3bb73]/20 text-[#d3bb73]' : 'bg-white/5 text-white/55'}`}>{brand.name}</button>)}</div>
+      <div className="flex flex-wrap gap-2">{writableBrands.map((brand) => <button key={brand.id} type="button" onClick={() => { setCompanyId(brand.id); setOfferId(''); }} className={`min-h-10 rounded-lg px-3 py-2 text-xs ${companyId === brand.id ? 'bg-[#d3bb73]/20 text-[#d3bb73]' : 'bg-white/5 text-white/55'}`}>{brand.name}</button>)}</div>
       <div className="flex flex-wrap items-center gap-3">{layer === 'offer' && <div className="min-w-56 flex-1"><SearchCombobox value={offerId} onChange={setOfferId} options={offers.filter((offer) => offer.my_company_id === companyId).map((offer) => ({ id: offer.id, label: offer.offer_number || offer.title || 'Oferta', description: offer.title }))} placeholder="Wybierz lub wyszukaj ofertę…" allowClear /></div>}
-        <button type="button" onClick={() => void start()} disabled={starting || !canStart} className="flex items-center gap-2 rounded-lg bg-[#d3bb73]/15 px-3 py-2.5 text-sm text-[#d3bb73] disabled:opacity-40">{starting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}{layer === 'general' ? 'Otwórz rozmowę ogólną' : 'Otwórz ustalenia oferty'}</button></div>
+        <button type="button" onClick={() => void start()} disabled={starting || !canStart} className="flex min-h-10 items-center gap-2 rounded-lg bg-[#d3bb73]/15 px-3 py-2.5 text-sm text-[#d3bb73] disabled:opacity-40">{starting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}{layer === 'general' ? 'Otwórz rozmowę ogólną' : 'Otwórz ustalenia oferty'}</button></div>
     </div>}
     {error && <p role="alert" className="text-sm text-amber-200">{error}</p>}
     {loading && <p className="text-sm text-white/45">Wczytywanie rozmów…</p>}

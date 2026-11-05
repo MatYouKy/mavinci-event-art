@@ -102,7 +102,7 @@ export default function SellerRealizationsPage() {
   return <div className="min-h-screen p-4 text-[#e5e4e2] md:p-6">
     <div className="mx-auto max-w-7xl space-y-5">
       <header className="flex flex-wrap items-start justify-between gap-4">
-        <div><h1 className="text-2xl font-light uppercase">Realizacje</h1><p className="mt-2 max-w-3xl text-sm leading-relaxed text-white/50">Nadchodzące i trwające realizacje z Twoich zaakceptowanych ofert. Tutaj wrócisz do ustaleń, kontaktów i całej rozmowy o ofercie.</p></div>
+        <div><h1 className="text-2xl font-light uppercase">Potwierdzone wydarzenia</h1><p className="mt-2 max-w-3xl text-sm leading-relaxed text-white/55">Wydarzenia z Twoich zaakceptowanych ofert — także te, które czekają jeszcze na ostateczne potwierdzenie MAVINCI. Tutaj wrócisz do ustaleń, kontaktów i całej rozmowy o ofercie.</p></div>
         <button type="button" className={button} disabled={busy} onClick={refresh}><RefreshCw className="h-4 w-4"/>Odśwież</button>
       </header>
       <SellerInboxPanel partnerId={context.profile.id} scope="realizations" />

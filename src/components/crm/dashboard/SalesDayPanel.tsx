@@ -6,6 +6,8 @@ import { AlarmClock, FileText, Gavel, Inbox, Loader2, RefreshCw, TrendingUp } fr
 import { supabase } from '@/lib/supabase/browser';
 import { systemLabel } from '@/lib/ui/systemLabels';
 import { sellerInboxCounts, useSellerInbox } from '@/lib/seller/inbox';
+import { parseSalesDaySellers, type SalesDaySellers } from '@/lib/seller/sellerCockpit';
+import SalesDaySellersCard from '@/components/crm/sellers/SalesDaySellersCard';
 
 type Followup = {
   id: string;
@@ -46,6 +48,8 @@ type SalesDay = {
   waiting_offers: WaitingOffer[];
   tenders: DayTender[];
   pipeline: PipelineStage[];
+  /** Sprawy sprzedawców zewnętrznych (migracja 20261105150000); null = brak klucza / brak sprzedawców. */
+  sellers: SalesDaySellers | null;
 };
 
 const panelClass = 'rounded-xl bg-[var(--brand-burgundy-900,#3c1324)] p-5';
@@ -84,7 +88,8 @@ export default function SalesDayPanel() {
           : 'Nie udało się pobrać listy zadań sprzedaży.',
       );
     } else {
-      setDay(data as SalesDay);
+      const raw = data as Omit<SalesDay, 'sellers'> & { sellers?: unknown };
+      setDay({ ...raw, sellers: parseSalesDaySellers(raw.sellers) });
     }
     setLoading(false);
   }, []);
@@ -146,6 +151,7 @@ export default function SalesDayPanel() {
           </div>
 
           <div className="grid gap-4 xl:grid-cols-2">
+            {day.sellers && <SalesDaySellersCard sellers={day.sellers} className={`${panelClass} xl:col-span-2`} />}
             <article className={panelClass}>
               <h3 className="mb-3 flex items-center gap-2 text-base font-medium">
                 <AlarmClock className="h-4 w-4 text-[#d3bb73]" /> Do zrobienia dziś

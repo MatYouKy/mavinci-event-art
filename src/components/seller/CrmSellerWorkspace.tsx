@@ -5,7 +5,7 @@ import { systemLabel } from '@/lib/ui/systemLabels';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { BarChart3, Calendar, FileText, Loader2, MessageSquare, RefreshCw, Search, Settings, WalletCards } from 'lucide-react';
+import { BarChart3, Calendar, FileText, History, Loader2, MessageSquare, RefreshCw, Search, Settings, WalletCards } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { sellerMoney, sellerStatusLabel } from '@/lib/seller/portal';
 import { sellerInboxCounts } from '@/lib/seller/inbox';
@@ -18,13 +18,15 @@ import SellerInboxPanel, { SellerCountBadge } from './SellerInboxPanel';
 import CrmOfferBrandingPanel from './CrmOfferBrandingPanel';
 import CrmSellerProfileSettings from './CrmSellerProfileSettings';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import SellerManagementPanel from '@/components/crm/sellers/SellerManagementPanel';
+import SellerAuditHistory from '@/components/crm/sellers/SellerAuditHistory';
 
 type Offer = ChatOffer & { status: string; client_name: string | null; created_at: string; event_date: string | null; event_id: string | null; client_total_net: number; partner_base_net: number; generated_at: string | null; brand_name: string; review_status: string | null; document_id: string | null };
 type Event = { id: string; name: string; event_date: string; status: string; brand_name: string; my_company_id: string };
 type Workspace = { brands: ChatBrand[]; offers: Offer[]; events: Event[]; can_view_offers: boolean };
 const reviewLabels: Record<string, string> = { pending: 'Do decyzji opiekuna', approved: 'Zasoby zaakceptowane', changes_requested: 'Do poprawy', rejected: 'Zapytanie odrzucone' };
 
-const workspaceSections = ['summary', 'offers', 'events', 'settlements', 'chat', 'settings'] as const;
+const workspaceSections = ['summary', 'offers', 'events', 'settlements', 'chat', 'history', 'settings'] as const;
 type WorkspaceSection = typeof workspaceSections[number];
 const sectionFromParams = (params: { get: (key: string) => string | null }): WorkspaceSection => {
   if (params.get('conversation')) return 'chat';
@@ -39,7 +41,21 @@ export default function CrmSellerWorkspace({ partnerId, contactId }: { partnerId
   const router = useRouter();
   const pathname = usePathname();
   const { canViewModule } = useCurrentEmployee();
-  const canViewSettlements = canViewModule('finances');
+  // Rozliczenia prowizji nie wymagają modułu finansów: decyduje baza (opiekun / zastępca / finanse).
+  // Próba odczytu RPC — 42501 ukrywa zakładkę; inny błąd (np. brak migracji) pokaże panel z komunikatem.
+  const [settlementsProbe, setSettlementsProbe] = useState<'allowed' | 'denied' | 'unknown'>('unknown');
+  useEffect(() => {
+    let active = true;
+    setSettlementsProbe('unknown');
+    void supabase.rpc('get_commission_settlements', {
+      p_mode: 'crm', p_account_type: contactId ? 'contact' : 'partner', p_account_id: contactId || partnerId,
+    }).then(({ error: probeError }) => {
+      if (!active) return;
+      setSettlementsProbe(!probeError ? 'allowed' : probeError.code === '42501' ? 'denied' : 'unknown');
+    });
+    return () => { active = false; };
+  }, [partnerId, contactId]);
+  const canViewSettlements = settlementsProbe === 'allowed' || (settlementsProbe === 'unknown' && canViewModule('finances'));
   const [tab, setTab] = useState<WorkspaceSection>(() => sectionFromParams(params));
   const [settingsVisited, setSettingsVisited] = useState(() => sectionFromParams(params) === 'settings');
   const [brandingOpen, setBrandingOpen] = useState(params.get('section') === 'branding');
@@ -121,9 +137,10 @@ export default function CrmSellerWorkspace({ partnerId, contactId }: { partnerId
       { id: 'events', label: `Realizacje (${data.events.length})`, icon: Calendar, count: 0 },
       { id: 'settlements', label: 'Rozliczenia prowizji', icon: WalletCards, count: 0 },
       { id: 'chat', label: 'Rozmowy', icon: MessageSquare, count: counts.messages },
+      { id: 'history', label: 'Historia zmian', icon: History, count: 0 },
       { id: 'settings', label: 'Ustawienia', icon: Settings, count: 0 },
     ].filter(item => item.id !== 'settlements' || canViewSettlements).map((item) => <button data-crm-tab-active={tab === item.id} key={item.id} type="button" onClick={() => openSection(item.id as WorkspaceSection)} className={`flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm ${tab === item.id ? 'bg-[#d3bb73]/15 text-[#d3bb73]' : 'bg-white/[0.03] text-white/55 hover:bg-white/5'}`}><item.icon className="h-4 w-4" />{item.label}<SellerCountBadge count={item.count} label={item.label} /></button>)}</nav>
-    {tab !== 'chat' && tab !== 'settings' && tab !== 'settlements' && <div className="flex flex-wrap gap-2">{[{ id: '', name: 'Wszystkie marki' }, ...data.brands].map((brand) => <button key={brand.id} type="button" onClick={() => setBrandId(brand.id)} className={`rounded-lg px-3 py-2 text-xs ${brandId === brand.id ? 'bg-[#d3bb73]/15 text-[#d3bb73]' : 'text-white/45 hover:bg-white/5'}`}>{brand.name}</button>)}</div>}
+    {tab !== 'chat' && tab !== 'settings' && tab !== 'settlements' && tab !== 'history' && <div className="flex flex-wrap gap-2">{[{ id: '', name: 'Wszystkie marki' }, ...data.brands].map((brand) => <button key={brand.id} type="button" onClick={() => setBrandId(brand.id)} className={`rounded-lg px-3 py-2 text-xs ${brandId === brand.id ? 'bg-[#d3bb73]/15 text-[#d3bb73]' : 'text-white/45 hover:bg-white/5'}`}>{brand.name}</button>)}</div>}
     {tab === 'summary' && <>
       {!data.can_view_offers && <p className="text-sm text-amber-200">Twój zakres uprawnień nie obejmuje ofert. Dane handlowe nie są dostępne w tym widoku.</p>}
       {data.can_view_offers && <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{[
@@ -178,8 +195,10 @@ export default function CrmSellerWorkspace({ partnerId, contactId }: { partnerId
       ? <CommissionSettlementsPanel key={contactId || partnerId} mode="crm" accountType={contactId ? 'contact' : 'partner'} accountId={contactId || partnerId} />
       : <p className="rounded-xl bg-white/5 p-5 text-sm text-white/55">Nie masz uprawnień do przeglądania rozliczeń prowizji.</p>)}
     {tab === 'chat' && <SellerChatPanel partnerId={partnerId} brands={data.brands} offers={data.offers} crm />}
+    {tab === 'history' && <SellerAuditHistory partnerId={partnerId} />}
     {(settingsVisited || tab === 'settings') && <section id="seller-profile-settings" tabIndex={-1} hidden={tab !== 'settings'} className="scroll-mt-24 space-y-5 focus:outline-none" aria-label="Ustawienia sprzedawcy">
-      <div><h2 className="text-lg font-medium">Ustawienia sprzedawcy</h2><p className="mt-1 text-xs text-white/50">Organizacja nowych ofert, warunki współpracy i dostęp do portalu. Dane osobowe edytujesz w zakładce „Dane kontaktowe”.</p></div>
+      <div><h2 className="text-lg font-medium">Ustawienia sprzedawcy</h2><p className="mt-1 text-xs text-white/50">Opiekun, widoczność wynagrodzenia, organizacja nowych ofert, warunki współpracy i dostęp do portalu. Dane osobowe edytujesz w zakładce „Dane kontaktowe”.</p></div>
+      <SellerManagementPanel key={`manager-${partnerId}`} partnerId={partnerId} />
       {/* Keep the editor mounted while navigating sales sections. Background
           workspace refreshes and section changes must not erase unsaved input. */}
       <CrmSellerProfileSettings key={partnerId} partnerId={partnerId} contactId={contactId} />

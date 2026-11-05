@@ -41,6 +41,7 @@ import {
   Wrench,
   Search,
   BadgePercent,
+  Presentation,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -75,6 +76,8 @@ import CrmSellerWorkspace from '@/components/seller/CrmSellerWorkspace';
 import CrmOfferBrandingPanel from '@/components/seller/CrmOfferBrandingPanel';
 import { SellerCountBadge } from '@/components/seller/SellerInboxPanel';
 import { sellerInboxCounts, useSellerInbox } from '@/lib/seller/inbox';
+import SellerContactBadge from '@/components/crm/contacts/SellerContactBadge';
+import OrganizationSellersPanel from '@/components/crm/sellers/OrganizationSellersPanel';
 
 export interface Organization {
   primary_contact: any;
@@ -260,7 +263,7 @@ export default function OrganizationDetailPage() {
   const [entityType, setEntityType] = useState<'organization' | 'contact' | null>(null);
   const [organization, setOrganization] = useState<Organization | null>(null);
   const [contact, setContact] = useState<Contact | null>(null);
-  const [sellerProfile, setSellerProfile] = useState<{ id: string; contactId: string } | null>(null);
+  const [sellerProfile, setSellerProfile] = useState<{ id: string; contactId: string; status: string } | null>(null);
   const sellerProfileId = sellerProfile?.contactId === organizationId ? sellerProfile.id : null;
   const canViewSellerSettlements = Boolean(sellerProfileId) && canViewModule('finances');
   const [sellerOrganizationId, setSellerOrganizationId] = useState<string | null>(null);
@@ -289,19 +292,19 @@ export default function OrganizationDetailPage() {
     else if (requestedTab === 'customer360') setActiveTab('customer360');
     else if (requestedTab === 'brochures') setActiveTab(canViewBrochures ? 'brochures' : 'customer360');
     else if (requestedTab === 'venue' && organization?.business_type === 'hotel') setActiveTab('venue');
-    else if (requestedTab === 'settlements') setActiveTab(canViewSellerSettlements ? 'seller' : 'customer360');
+    else if (requestedTab === 'settlements') setActiveTab(sellerProfileId ? 'seller' : 'customer360');
     else setActiveTab((current) =>
       current === 'seller' && !sellerProfileId
         ? 'customer360' : current,
     );
   }, [sellerProfileId, canViewSellerSettlements, canViewBrochures, searchParams, organization?.id, organization?.business_type]);
   useEffect(() => {
-    if (searchParams.get('tab') !== 'settlements' || !canViewSellerSettlements) return;
+    if (searchParams.get('tab') !== 'settlements' || !sellerProfileId) return;
     const next = new URLSearchParams(searchParams.toString());
     next.set('tab', 'seller');
     next.set('section', 'settlements');
     router.replace(`/crm/contacts/${organizationId}?${next}`, { scroll: false });
-  }, [canViewSellerSettlements, organizationId, router, searchParams]);
+  }, [sellerProfileId, organizationId, router, searchParams]);
 
   const [contactPersons, setContactPersons] = useState<ContactPerson[]>([]);
   const [organizationNotes, setOrganizationNotes] = useState<OrganizationNote[]>([]);
@@ -554,12 +557,12 @@ export default function OrganizationDetailPage() {
         setEntityType('contact');
         setContact(entityData);
         const { data: sellerProfile } = await supabase.from('sales_partner_profiles')
-          .select('id').eq('contact_id', entityData.id).maybeSingle();
-        setSellerProfile(sellerProfile ? { id: sellerProfile.id, contactId: entityData.id } : null);
+          .select('id,status').eq('contact_id', entityData.id).maybeSingle();
+        setSellerProfile(sellerProfile ? { id: sellerProfile.id, contactId: entityData.id, status: sellerProfile.status || 'active' } : null);
         const requestedTab = searchParams.get('tab');
         setActiveTab(
           requestedTab === 'seller' && sellerProfile ? 'seller'
-            : requestedTab === 'settlements' && sellerProfile && canViewModule('finances') ? 'seller'
+            : requestedTab === 'settlements' && sellerProfile ? 'seller'
             : requestedTab === 'inquiries' || requestedTab === 'offers' ? requestedTab
             : requestedTab === 'details' ? 'details' : 'customer360',
         );
@@ -1236,6 +1239,7 @@ export default function OrganizationDetailPage() {
                   >
                     {contact.contact_type === 'individual' ? 'Osoba prywatna' : 'Kontakt'}
                   </span>
+                  {sellerProfileId && sellerProfile && <button type="button" onClick={() => setActiveTab('seller')} className="rounded-full" title="Otwórz sprzedaż sprzedawcy"><SellerContactBadge status={sellerProfile.status} /></button>}
                 </div>
                 {!isIndividual && contact.position && (
                   <p className="mt-1 text-gray-400">{contact.position}</p>
@@ -1289,6 +1293,12 @@ export default function OrganizationDetailPage() {
                         icon: <BadgePercent className="h-4 w-4" />,
                         onClick: () => sellerProfileId ? setActiveTab('seller') : router.push(`/crm/salespeople?new=1&contactId=${contact.id}`),
                         show: canManageSalespeople,
+                      },
+                      {
+                        label: 'Pokaż portal hotelowi',
+                        icon: <Presentation className="h-4 w-4" />,
+                        onClick: () => router.push(`/crm/salespeople/demo?contact=${contact.id}`),
+                        show: !isIndividual,
                       },
                       {
                         label: 'Organizacja i ustawienia sprzedawcy',
@@ -1768,6 +1778,12 @@ export default function OrganizationDetailPage() {
                   disabled: !organization.email,
                 },
                 {
+                  label: 'Pokaż portal hotelowi',
+                  icon: <Presentation className="h-4 w-4" />,
+                  onClick: () => router.push(`/crm/salespeople/demo?organization=${organization.id}&hotel=${encodeURIComponent(displayName)}`),
+                  show: organization.organization_type === 'client',
+                },
+                {
                   label: 'Edytuj',
                   icon: <Edit className="h-4 w-4" />,
                   onClick: handleEdit,
@@ -1866,6 +1882,8 @@ export default function OrganizationDetailPage() {
         {activeTab === 'customer360' && (
           <div className="space-y-6">
             <Organization360Panel organization={organization} />
+            <OrganizationSellersPanel key={organization.id} organizationId={organization.id} organizationName={displayName}
+              isHotel={organization.business_type === 'hotel'} canManage={canManageSalespeople} />
             {sellerOrganizationId === organization.id && canReadCommissionFinances && (
               <CommissionAccountCard accountType="organization" accountId={organization.id} />
             )}

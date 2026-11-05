@@ -22,8 +22,8 @@ type Props = {
   onRemove: (key: string) => void; onReorder: (items: SellerDraftItem[]) => void;
   onConfigure: (item: SellerDraftItem) => void;
 };
-const field = 'mt-1 h-9 w-full min-w-0 rounded-md border border-white/10 bg-black/15 px-2 text-sm outline-none focus:border-[#d3bb73]/30 disabled:opacity-50';
-const iconButton = 'flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-white/55 hover:bg-white/5 hover:text-[#d3bb73] focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#d3bb73]/30 disabled:cursor-not-allowed disabled:opacity-20';
+const field = 'mt-1 h-10 w-full min-w-0 rounded-md border border-white/10 bg-black/15 px-2 text-sm outline-none focus:border-[#d3bb73]/30 disabled:opacity-50';
+const iconButton = 'flex h-10 w-10 shrink-0 sm:h-8 sm:w-8 items-center justify-center rounded-md text-white/55 hover:bg-white/5 hover:text-[#d3bb73] focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#d3bb73]/30 disabled:cursor-not-allowed disabled:opacity-20';
 
 function ItemCard({ item, index, count, imageUrl, commission, disabled, configurable, brandId, onUpdate, onRemove, onConfigure, onMove, dragHandle }: {
   item: SellerDraftItem; index: number; count: number; imageUrl?: string; commission: boolean; disabled?: boolean;
@@ -33,24 +33,28 @@ function ItemCard({ item, index, count, imageUrl, commission, disabled, configur
   const [failedImage, setFailedImage] = useState('');
   const layout = sellerItemLayout(item.configuration, item.pageLayout);
   const choices = sellerItemLayouts(item.configuration);
-  const price = commission ? item.baseUnitPrice : item.clientUnitPrice;
+  // Custom items keep the entered price in both models; catalog items in the
+  // commission model always use the MAVINCI catalog price.
+  const price = commission && !item.isCustom ? item.baseUnitPrice : item.clientUnitPrice;
+  const priceLocked = commission && !item.isCustom;
   const net = price * item.quantity * item.days;
   const amount = (value: number) => Number.isFinite(value) ? sellerMoney(value) : 'Uzupełnij wartość';
   const margin = (price - item.baseUnitPrice) * item.quantity * item.days;
+  const changePrice = (value: number) => onUpdate(item.key, item.isCustom ? { clientUnitPrice: value, baseUnitPrice: value } : { clientUnitPrice: value });
 
   return <article aria-label={item.name} className="min-w-0 space-y-2.5 rounded-lg bg-black/15 p-3">
-    <div className="flex items-center gap-2">
+    <div className="flex flex-wrap items-center gap-2">
       <button type="button" {...dragHandle} disabled={disabled || !dragHandle} aria-label={'Przeciągnij: ' + item.name} title="Przeciągnij, aby zmienić kolejność" className={iconButton + ' touch-none cursor-grab active:cursor-grabbing'}><GripVertical className="h-4 w-4" /></button>
       <div className="relative hidden h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-md bg-white/5 min-[400px]:flex">
         {imageUrl && imageUrl !== failedImage
           ? <Image src={imageUrl} alt="" fill unoptimized sizes="40px" onError={() => setFailedImage(imageUrl)} className="object-cover" />
           : <Package aria-hidden="true" className="h-4 w-4 text-white/25" />}
       </div>
-      <div className="min-w-0 flex-1">
+      <div className="min-w-[9rem] flex-1">
         <h3 className="line-clamp-2 text-sm font-medium uppercase" title={item.name}><span className="mr-1.5 text-white/35">{index + 1}.</span>{item.name}</h3>
         <p className="mt-0.5 text-xs text-[#d3bb73]">{amount(net)} netto <span className="text-white/35">łącznie</span></p>
       </div>
-      <div className="flex shrink-0 items-center gap-0.5">
+      <div className="ml-auto flex shrink-0 items-center gap-0.5">
         <button type="button" disabled={disabled || index === 0} onClick={() => onMove(index, index - 1)} aria-label={'Przenieś wyżej: ' + item.name} title="Przenieś wyżej" className={iconButton}><ArrowUp className="h-4 w-4" /></button>
         <button type="button" disabled={disabled || index === count - 1} onClick={() => onMove(index, index + 1)} aria-label={'Przenieś niżej: ' + item.name} title="Przenieś niżej" className={iconButton}><ArrowDown className="h-4 w-4" /></button>
         <ResponsiveActionBar alwaysDropdown compact disabledBackground actions={[
@@ -64,13 +68,13 @@ function ItemCard({ item, index, count, imageUrl, commission, disabled, configur
     <div className="grid grid-cols-[3.75rem_3.75rem_minmax(0,1fr)] gap-2">
       <label className="text-[11px] text-white/50">Ilość<input aria-label={'Ilość: ' + item.name} type="number" min="1" step="1" disabled={disabled} value={Number.isFinite(item.quantity) ? item.quantity : ''} onChange={event => onUpdate(item.key, { quantity: event.target.valueAsNumber })} className={field} /></label>
       <label className="text-[11px] text-white/50">Dni<input aria-label={'Liczba dni: ' + item.name} type="number" min="1" max="3650" step="1" disabled={disabled} value={Number.isFinite(item.days) ? item.days : ''} onChange={event => onUpdate(item.key, { days: event.target.valueAsNumber })} className={field} /></label>
-      <label className="min-w-0 text-[11px] text-white/50"><span className="block truncate" title={'Cena dla klienta netto / ' + item.unit + ' / dzień'}>Cena netto / {item.unit} / dzień</span><input aria-label={'Cena klienta netto za ' + item.unit + ' za dzień: ' + item.name} type="number" min="0" step="0.01" disabled={disabled || commission} value={Number.isFinite(price) ? price : ''} onChange={event => onUpdate(item.key, { clientUnitPrice: event.target.valueAsNumber })} className={field} /></label>
+      <label className="min-w-0 text-[11px] text-white/50"><span className="block truncate" title={'Cena dla klienta netto / ' + item.unit + ' / dzień'}>Cena netto / {item.unit} / dzień</span><input aria-label={'Cena klienta netto za ' + item.unit + ' za dzień: ' + item.name} type="number" inputMode="decimal" min="0" step="0.01" disabled={disabled || priceLocked} title={priceLocked ? 'Cena z cennika MAVINCI' : undefined} value={Number.isFinite(price) ? price : ''} onChange={event => changePrice(event.target.valueAsNumber)} className={field} /></label>
     </div>
 
     <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 text-[11px]">
       <div className="flex flex-wrap gap-x-3 gap-y-1">
-        <span className="text-white/40" title={'Twoja cena Mavinci netto / ' + item.unit + ' / dzień'}>Mavinci: {amount(item.baseUnitPrice)}</span>
-        {!commission && <span className={margin < 0 ? 'text-amber-200' : 'text-[#d3bb73]/80'} title="Marża netto za całą pozycję">Marża: {amount(margin)}</span>}
+        {!item.isCustom && <span className="text-white/40" title={'Twoja cena Mavinci netto / ' + item.unit + ' / dzień'}>Mavinci: {amount(item.baseUnitPrice)}</span>}
+        {!commission && !item.isCustom && <span className={margin < 0 ? 'text-amber-200' : 'text-[#d3bb73]/80'} title="Marża netto za całą pozycję">Marża: {amount(margin)}</span>}
       </div>
       <label className="flex items-center gap-1.5 text-white/40">PDF
         <select aria-label={'Układ w PDF: ' + item.name} disabled={disabled || choices.length === 1} value={layout}
@@ -80,8 +84,8 @@ function ItemCard({ item, index, count, imageUrl, commission, disabled, configur
         </select>
       </label>
     </div>
-    {!commission && margin < 0 && <p className="text-[11px] text-amber-200">Cena poniżej Twojej stawki — wymaga akceptacji opiekuna.</p>}
-    {item.isCustom && <p className="text-[11px] text-amber-100">Pozycja własna — do akceptacji. Marża nie uwzględnia Twoich kosztów.</p>}
+    {!commission && !item.isCustom && margin < 0 && <p className="text-[11px] text-amber-200">Cena poniżej Twojej stawki — wymaga akceptacji opiekuna.</p>}
+    {item.isCustom && <p className="text-[11px] text-amber-100">Pozycja własna — cena trafi do oferty bez zmian i wymaga akceptacji opiekuna MAVINCI.</p>}
   </article>;
 }
 
@@ -103,7 +107,7 @@ export default function SellerOfferItems(props: Props) {
     onUpdate={props.onUpdate} onRemove={props.onRemove} onConfigure={props.onConfigure} onMove={move} dragHandle={dragHandle} />;
 
   return <div className="space-y-3">
-    <div><h2 className="text-lg uppercase">Pozycje oferty</h2><p className="mt-1 text-xs text-white/45">Przeciągnij uchwyt lub użyj ↑ ↓. Pełne opisy pozostają w PDF.</p></div>
+    <div><h2 className="text-lg uppercase">Wybrane usługi</h2><p className="mt-1 text-xs text-white/50">Kolejność zmienisz strzałkami ↑ ↓ (na komputerze także przeciągając). Pełne opisy pozostają w PDF.</p></div>
     <p role="status" aria-live="polite" aria-atomic="true" className="sr-only">{reorderMessage}</p>
     {!props.items.length ? <p className="rounded-lg bg-white/[0.025] p-7 text-center text-sm text-white/40">Dodane produkty pojawią się tutaj.</p>
       : !mounted ? <div className="space-y-2">{props.items.map((item, index) => <div key={item.key}>{card(item, index)}</div>)}</div>

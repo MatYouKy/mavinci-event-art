@@ -27,6 +27,11 @@ const hasAll = (perms: string[], required?: string[]) => {
   return required.every((r) => hasPermission(perms, r));
 };
 
+const hasAny = (perms: string[], options?: string[]) => {
+  if (!options?.length) return true;
+  return options.some((r) => hasPermission(perms, r));
+};
+
 export async function getNavigationForUserServer(): Promise<{
   navigation: Omit<NavigationItem, 'icon'>[]; // server-safe
   employeeId: string | null;
@@ -62,7 +67,7 @@ export async function getNavigationForUserServer(): Promise<{
     if (item.financeCompanyAccess) {
       return isAdmin || hasAnyFinanceCompanyLevel(employee.finance_company_access, 'sales') ? item : null;
     }
-    return isAdmin || hasAll(perms, item.permissions) || (hasRealizations && ['/crm/events','/crm/calendar'].includes(item.href || '')) ? item : null;
+    return isAdmin || (hasAll(perms, item.permissions) && hasAny(perms, item.anyPermissions)) || (hasRealizations && ['/crm/events','/crm/calendar'].includes(item.href || '')) ? item : null;
   };
   let allowed = allNavigation.map(filterItem).filter((item): item is NavigationItemDTO => item !== null);
 

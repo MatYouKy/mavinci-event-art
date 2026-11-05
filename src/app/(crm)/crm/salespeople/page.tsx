@@ -9,10 +9,13 @@ import {
   Building2,
   Check,
   Hotel,
+  LayoutDashboard,
+  ListChecks,
   Loader2,
   MailPlus,
   Pencil,
   Plus,
+  Presentation,
   Search,
   Tags,
   UserRound,
@@ -31,6 +34,8 @@ import { CrmCartesianChart } from '@/components/crm/charts/CrmCharts';
 import { sellerInboxCounts } from '@/lib/seller/inbox';
 import SalesCommissionSettingsSection from '@/components/crm/commissions/SalesCommissionSettingsSection';
 import { refreshSellerSidebarBadge, useSellerSidebarBadge } from '@/lib/seller/sidebarBadge';
+import SellerManagerCockpit from '@/components/crm/sellers/SellerManagerCockpit';
+import { PortalAccountPill, SellerCountChip, formatSellerRelative, sellerWriteErrorText } from '@/components/crm/sellers/sellerUi';
 
 type CommissionSummaryRow = {
   sales_partner_id: string | null;
@@ -58,7 +63,7 @@ type PartnerOfferRow = {
 };
 
 const fieldClass =
-  'w-full rounded-lg border border-[#d3bb73]/15 bg-[#0f1119] px-3 py-2.5 text-sm text-[#e5e4e2] outline-none placeholder:text-[#e5e4e2]/25 focus:border-[#d3bb73]/25';
+  'w-full rounded-lg bg-[#0f1119] px-3 py-2.5 text-sm text-[#e5e4e2] outline-none ring-1 ring-white/[0.06] placeholder:text-[#e5e4e2]/25 focus:ring-[#d3bb73]/30';
 
 export default function SalespeoplePage() {
   const { showSnackbar } = useSnackbar();
@@ -86,6 +91,15 @@ export default function SalespeoplePage() {
   const [partnerOffers, setPartnerOffers] = useState<PartnerOfferRow[]>([]);
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<'all' | PartnerType>('all');
+  const [scopeFilter, setScopeFilter] = useState<'all' | 'mine'>('all');
+  const [todayCount, setTodayCount] = useState(0);
+  const view: 'cockpit' | 'directory' = searchParams.get('view') === 'directory' ? 'directory' : 'cockpit';
+  const setView = (next: 'cockpit' | 'directory') => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (next === 'directory') params.set('view', 'directory'); else params.delete('view');
+    const query = params.toString();
+    router.replace(`/crm/salespeople${query ? `?${query}` : ''}`, { scroll: false });
+  };
   const [showForm, setShowForm] = useState(false);
   const [newContactId, setNewContactId] = useState<string | undefined>();
 
@@ -219,17 +233,29 @@ export default function SalespeoplePage() {
     [organizations],
   );
 
+  // „Moi” = jestem opiekunem lub zastępcą. Dla administratora pole is_mine z bazy jest zawsze prawdą,
+  // dlatego najpierw porównujemy identyfikatory opiekuna.
+  const isMineProfile = useCallback((profile: PartnerProfile) => {
+    const employeeId = directory?.employee_id;
+    if (profile.manager_id !== undefined || profile.backup_manager_id !== undefined) {
+      return Boolean(employeeId) && (profile.manager_id === employeeId || profile.backup_manager_id === employeeId);
+    }
+    return profile.is_mine === true;
+  }, [directory?.employee_id]);
+  const hasManagerFields = profiles.some((profile) => profile.manager_id !== undefined || profile.is_mine !== undefined);
+
   const filteredProfiles = useMemo(() => {
     const query = search.trim().toLocaleLowerCase('pl');
     return profiles.filter((profile) => {
       if (typeFilter !== 'all' && profile.partner_type !== typeFilter) return false;
+      if (scopeFilter === 'mine' && !isMineProfile(profile)) return false;
       const person = personMap.get(profile.employee_id || profile.contact_id || '');
       const organization = organizationMap.get(profile.organization_id || '');
       return !query || `${person?.label || ''} ${person?.detail || ''} ${organization?.name || ''}`
         .toLocaleLowerCase('pl')
         .includes(query);
     });
-  }, [organizationMap, personMap, profiles, search, typeFilter]);
+  }, [organizationMap, personMap, profiles, search, typeFilter, scopeFilter, isMineProfile]);
 
   const profileStatusData = useMemo(() => Object.entries(partnerTypeLabels).map(([type, label]) => {
     const selected = filteredProfiles.filter((profile) => profile.partner_type === type);
@@ -303,9 +329,9 @@ export default function SalespeoplePage() {
   }, [showForm, newContactId, canManage]);
 
   const updatePartnerStatus = async (profileId: string, nextStatus: PartnerStatus) => {
-    const { error } = await supabase.from('sales_partner_profiles').update({ status: nextStatus }).eq('id', profileId);
-    if (error) {
-      showSnackbar(error.message || 'Nie udało się zmienić statusu', 'error');
+    const { data: updated, error } = await supabase.from('sales_partner_profiles').update({ status: nextStatus }).eq('id', profileId).select('id');
+    if (error || !updated?.length) {
+      showSnackbar(sellerWriteErrorText(error || { code: 'PGRST116' }, 'Nie udało się zmienić statusu'), 'error');
       return;
     }
     await loadData();
@@ -330,9 +356,8 @@ export default function SalespeoplePage() {
     }
   };
 
-  if (loading) {
-    return <div className="flex min-h-[60vh] items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-[#d3bb73]" /></div>;
-  }
+  const workspaceSellerId = searchParams.get('seller');
+  const workspaceProfile = workspaceSellerId ? profiles.find((profile) => profile.id === workspaceSellerId) : undefined;
 
   return (
     <div className="min-h-screen bg-[#0f1119] p-4 text-[#e5e4e2] md:p-6">
@@ -343,71 +368,30 @@ export default function SalespeoplePage() {
               <span className="rounded-xl bg-[#d3bb73]/10 p-3"><BadgePercent className="h-6 w-6 text-[#d3bb73]" /></span>
               <div>
                 <h1 className="text-2xl font-light">Sprzedawcy</h1>
-                <p className="mt-1 text-sm text-[#e5e4e2]/45">{isAdmin ? 'Wszyscy sprzedawcy CRM oraz zewnętrzni.' : 'Twoi sprzedawcy zewnętrzni — zgodnie z opiekunem w kartotece kontaktu.'}</p>
+                <p className="mt-1 text-sm text-[#e5e4e2]/45">{isAdmin ? 'Wszyscy sprzedawcy CRM oraz zewnętrzni.' : 'Twoi sprzedawcy zewnętrzni — zgodnie z opiekunem przypisanym przez administratora.'}</p>
               </div>
             </div>
           </div>
-          {canManage && !showForm && (
-            <button type="button" onClick={beginAdd} className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2.5 text-sm font-medium text-[#111522]">
-              <Plus className="h-4 w-4" /> Dodaj sprzedawcę
-            </button>
-          )}
+          <div className="flex flex-wrap items-center gap-2">
+            <Link href="/crm/salespeople/demo" className="flex items-center gap-2 rounded-lg bg-white/5 px-4 py-2.5 text-sm text-[#e5e4e2]/80 hover:bg-white/10">
+              <Presentation className="h-4 w-4 text-[#d3bb73]" /> Pokaż portal hotelowi
+            </Link>
+            {canManage && !showForm && (
+              <button type="button" onClick={beginAdd} className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2.5 text-sm font-medium text-[#111522]">
+                <Plus className="h-4 w-4" /> Dodaj sprzedawcę
+              </button>
+            )}
+          </div>
         </header>
 
-        {searchParams.get('seller') && profiles.some((profile) => profile.id === searchParams.get('seller')) && <section className="rounded-xl bg-black/10 p-4"><Link href="/crm/salespeople" className="mb-4 inline-block text-xs text-[#d3bb73]">← Wróć do listy sprzedawców</Link><CrmSellerWorkspace key={searchParams.get('seller')} partnerId={searchParams.get('seller')!} contactId={profiles.find((profile) => profile.id === searchParams.get('seller'))?.contact_id || undefined} /></section>}
+        {workspaceProfile && <section className="rounded-xl bg-black/10 p-4"><Link href="/crm/salespeople" className="mb-4 inline-block text-xs text-[#d3bb73]">← Wróć do sprzedawców</Link><CrmSellerWorkspace key={workspaceProfile.id} partnerId={workspaceProfile.id} contactId={workspaceProfile.contact_id || undefined} /></section>}
 
-        {!loadError && searchParams.get('seller') && !profiles.some((profile) => profile.id === searchParams.get('seller')) && (
+        {!loading && !loadError && workspaceSellerId && !workspaceProfile && (
           <p className="rounded-xl bg-amber-400/10 p-4 text-sm text-amber-100/80">Nie masz dostępu do wskazanego sprzedawcy albo jego profil nie istnieje.</p>
         )}
 
-        {loadError ? (
-          <div role="alert" className="rounded-xl bg-amber-400/10 p-5 text-sm text-amber-100/80">
-            <p>{loadError}</p>
-            <button type="button" onClick={() => void loadData()} className="mt-3 text-[#d3bb73]">Spróbuj ponownie</button>
-          </div>
-        ) : (
-          <>
-            <section className="grid gap-4 md:grid-cols-4">
-              {([
-                [isAdmin ? 'Wszyscy' : 'Moi sprzedawcy', profiles.length, UserRound],
-                ['Pracownicy hoteli', profiles.filter((profile) => profile.partner_type === 'hotel_employee').length, Hotel],
-                ['Aktywni', profiles.filter((profile) => profile.status === 'active').length, Check],
-                ['Dostęp do portalu', profiles.filter((profile) => profile.portal_enabled).length, Building2],
-              ] as const).map(([label, value, Icon]) => (
-                <div key={label} className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-4">
-                  <div className="flex items-center justify-between"><p className="text-xs text-[#e5e4e2]/45">{label}</p><Icon className="h-4 w-4 text-[#d3bb73]/60" /></div>
-                  <p className="mt-2 text-2xl font-light">{value}</p>
-                </div>
-              ))}
-            </section>
-
-            <section className="rounded-xl border border-sky-300/10 bg-[#1c1f33]">
-              <div className="flex items-center gap-3 border-b border-white/5 p-5">
-                <span className="rounded-lg bg-sky-300/10 p-2"><BarChart3 className="h-5 w-5 text-sky-300" /></span>
-                <div><h2 className="font-medium">Oferty z portalu hotelowego</h2><p className="mt-1 text-xs text-[#e5e4e2]/40">Dane o wygenerowanych ofertach, wybranych pozycjach, cenie bazowej i cenie hotelu.</p></div>
-              </div>
-              <div className="grid gap-3 p-5 sm:grid-cols-2 lg:grid-cols-5">
-                {[
-                  ['Utworzone / wygenerowane', `${partnerOfferAnalytics.created} / ${partnerOfferAnalytics.generated}`],
-                  ['Wysłane', partnerOfferAnalytics.sent],
-                  ['Zaakceptowane', partnerOfferAnalytics.accepted],
-                  ['Wartość klienta netto', formatCommissionMoney(partnerOfferAnalytics.pipelineNet)],
-                  ['Wynagrodzenie partnerów', formatCommissionMoney(partnerOfferAnalytics.partnerEarnings)],
-                ].map(([label, value]) => <div key={String(label)} className="rounded-lg bg-[#0f1119] p-3"><p className="text-[10px] uppercase tracking-wide text-white/30">{label}</p><p className="mt-2 text-lg font-light">{value}</p></div>)}
-              </div>
-              <div className="grid gap-5 border-t border-white/5 p-5 lg:grid-cols-[.7fr_1.3fr]">
-                <div><h3 className="text-sm font-medium">Najczęściej wybierane pozycje</h3><div className="mt-3 space-y-2">{partnerOfferAnalytics.topProducts.map(([name, quantity], index) => <div key={name} className="flex items-center justify-between rounded-lg bg-[#0f1119] px-3 py-2 text-xs"><span className="truncate"><span className="mr-2 text-[#d3bb73]">{index + 1}.</span>{name}</span><span className="ml-3 text-white/40">{quantity}×</span></div>)}{partnerOfferAnalytics.topProducts.length === 0 && <p className="py-5 text-xs text-white/30">Brak danych produktowych.</p>}</div></div>
-                <div className="space-y-2">
-                  <p className="text-xs text-white/50">Powiadomienia: {sellerInbox.scope === 'all' ? 'wszyscy sprzedawcy' : 'przypisani do mnie'}. Ten sam zakres i suma w menu bocznym.</p>
-                  <SellerInboxPanel source={{ ...sellerInbox, refresh: refreshSellerSidebarBadge }} />
-                </div>
-              </div>
-            </section>
-
-            {isAdmin && <SalesCommissionSettingsSection />}
-
-            {showForm && canManage && (
-              <section id="seller-create-profile" tabIndex={-1} className="scroll-mt-24 space-y-5 rounded-xl bg-[#1c1f33] p-5 focus:outline-none">
+        {showForm && canManage && (
+          <section id="seller-create-profile" tabIndex={-1} className="scroll-mt-24 space-y-5 rounded-xl bg-[#1c1f33] p-5 focus:outline-none">
                 <h2 className="font-medium">Nowy sprzedawca</h2>
                 <CrmSellerProfileSettings
                   key={newContactId || 'new'}
@@ -424,10 +408,72 @@ export default function SalespeoplePage() {
               </section>
             )}
 
-            <section className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33]">
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#d3bb73]/10 p-5">
-                <div className="relative min-w-64 max-w-md flex-1"><Search className="absolute left-3 top-2.5 h-4 w-4 text-[#e5e4e2]/30" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Szukaj sprzedawcy lub hotelu..." className={`${fieldClass} pl-9`} /></div>
-                <select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value as 'all' | PartnerType)} className="rounded-lg border border-white/10 bg-[#0f1119] px-3 py-2.5 text-sm"><option value="all">Wszystkie rodzaje</option>{Object.entries(partnerTypeLabels).filter(([value]) => isAdmin || value !== 'internal_employee').map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
+
+        {!workspaceProfile && <>
+          <nav className="flex flex-wrap gap-2" aria-label="Widok sprzedawców">
+            {([
+              { id: 'cockpit', label: 'Kokpit opiekuna', icon: LayoutDashboard, count: todayCount },
+              { id: 'directory', label: 'Kartoteka sprzedawców', icon: ListChecks, count: 0 },
+            ] as const).map((item) => (
+              <button key={item.id} type="button" data-crm-tab-active={view === item.id} onClick={() => setView(item.id)} className={`flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm transition-colors ${view === item.id ? 'bg-[#d3bb73]/15 text-[#d3bb73]' : 'bg-white/[0.03] text-white/55 hover:bg-white/5'}`}>
+                <item.icon className="h-4 w-4" />{item.label}<SellerCountChip count={item.count} />
+              </button>
+            ))}
+          </nav>
+
+          {view === 'cockpit' ? <SellerManagerCockpit onTodayCount={setTodayCount} /> : loading ? (
+            <div className="flex min-h-[40vh] items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-[#d3bb73]" /></div>
+          ) : loadError ? (
+            <div role="alert" className="rounded-xl bg-amber-400/10 p-5 text-sm text-amber-100/80">
+              <p>{loadError}</p>
+              <button type="button" onClick={() => void loadData()} className="mt-3 text-[#d3bb73]">Spróbuj ponownie</button>
+            </div>
+          ) : (
+            <>
+            <section className="grid gap-4 md:grid-cols-4">
+              {([
+                [isAdmin ? 'Wszyscy' : 'Moi sprzedawcy', profiles.length, UserRound],
+                ['Pracownicy hoteli', profiles.filter((profile) => profile.partner_type === 'hotel_employee').length, Hotel],
+                ['Aktywni', profiles.filter((profile) => profile.status === 'active').length, Check],
+                ['Dostęp do portalu', profiles.filter((profile) => profile.portal_enabled).length, Building2],
+              ] as const).map(([label, value, Icon]) => (
+                <div key={label} className="rounded-xl bg-[#1c1f33] p-4">
+                  <div className="flex items-center justify-between"><p className="text-xs text-[#e5e4e2]/45">{label}</p><Icon className="h-4 w-4 text-[#d3bb73]/60" /></div>
+                  <p className="mt-2 text-2xl font-light">{value}</p>
+                </div>
+              ))}
+            </section>
+
+            <section className="rounded-xl bg-[#1c1f33]">
+              <div className="flex items-center gap-3 p-5 pb-0">
+                <span className="rounded-lg bg-sky-300/10 p-2"><BarChart3 className="h-5 w-5 text-sky-300" /></span>
+                <div><h2 className="font-medium">Oferty z portalu hotelowego</h2><p className="mt-1 text-xs text-[#e5e4e2]/40">Dane o wygenerowanych ofertach, wybranych pozycjach, cenie bazowej i cenie hotelu.</p></div>
+              </div>
+              <div className="grid gap-3 p-5 sm:grid-cols-2 lg:grid-cols-5">
+                {[
+                  ['Utworzone / wygenerowane', `${partnerOfferAnalytics.created} / ${partnerOfferAnalytics.generated}`],
+                  ['Wysłane', partnerOfferAnalytics.sent],
+                  ['Zaakceptowane', partnerOfferAnalytics.accepted],
+                  ['Wartość klienta netto', formatCommissionMoney(partnerOfferAnalytics.pipelineNet)],
+                  ['Wynagrodzenie partnerów', formatCommissionMoney(partnerOfferAnalytics.partnerEarnings)],
+                ].map(([label, value]) => <div key={String(label)} className="rounded-lg bg-[#0f1119] p-3"><p className="text-[10px] uppercase tracking-wide text-white/30">{label}</p><p className="mt-2 text-lg font-light">{value}</p></div>)}
+              </div>
+              <div className="mx-5 mb-5 grid gap-5 rounded-xl bg-black/10 p-5 lg:grid-cols-[.7fr_1.3fr]">
+                <div><h3 className="text-sm font-medium">Najczęściej wybierane pozycje</h3><div className="mt-3 space-y-2">{partnerOfferAnalytics.topProducts.map(([name, quantity], index) => <div key={name} className="flex items-center justify-between rounded-lg bg-[#0f1119] px-3 py-2 text-xs"><span className="truncate"><span className="mr-2 text-[#d3bb73]">{index + 1}.</span>{name}</span><span className="ml-3 text-white/40">{quantity}×</span></div>)}{partnerOfferAnalytics.topProducts.length === 0 && <p className="py-5 text-xs text-white/30">Brak danych produktowych.</p>}</div></div>
+                <div className="space-y-2">
+                  <p className="text-xs text-white/50">Powiadomienia: {sellerInbox.scope === 'all' ? 'wszyscy sprzedawcy' : 'przypisani do mnie'}. Ten sam zakres i suma w menu bocznym.</p>
+                  <SellerInboxPanel source={{ ...sellerInbox, refresh: refreshSellerSidebarBadge }} />
+                </div>
+              </div>
+            </section>
+
+            {isAdmin && <SalesCommissionSettingsSection />}
+
+            <section className="rounded-xl bg-[#1c1f33]">
+              <div className="flex flex-wrap items-center justify-between gap-3 p-5 pb-1">
+                <div className="relative min-w-64 max-w-md flex-1"><Search className="absolute left-3 top-3 h-4 w-4 text-[#e5e4e2]/30" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Szukaj sprzedawcy lub hotelu..." className={`${fieldClass} pl-9`} /></div>
+                {isAdmin && hasManagerFields && <div className="flex rounded-lg bg-[#0f1119] p-1" role="group" aria-label="Zakres sprzedawców">{([['all', 'Wszyscy'], ['mine', 'Moi']] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={scopeFilter === value} onClick={() => setScopeFilter(value)} className={`rounded-md px-3 py-1.5 text-sm ${scopeFilter === value ? 'bg-[#d3bb73]/15 text-[#d3bb73]' : 'text-white/50 hover:text-white/80'}`}>{label}</button>)}</div>}
+                <select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value as 'all' | PartnerType)} className="rounded-lg bg-[#0f1119] px-3 py-2.5 text-sm ring-1 ring-white/[0.06]"><option value="all">Wszystkie rodzaje</option>{Object.entries(partnerTypeLabels).filter(([value]) => isAdmin || value !== 'internal_employee').map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
               </div>
               <div className="mx-5 my-4 rounded-xl bg-black/10 p-4">
                 <h2 className="text-sm font-medium">Sprzedawcy według rodzaju współpracy i statusu</h2>
@@ -451,10 +497,11 @@ export default function SalespeoplePage() {
                   emptyMessage="Brak sprzedawców spełniających filtry."
                 />
               </div>
-<div className="divide-y divide-white/5">{filteredProfiles.map((profile) => { const person = personMap.get(profile.employee_id || profile.contact_id || ''); const organization = organizationMap.get(profile.organization_id || ''); const profileTerms = terms.filter((term) => term.sales_partner_id === profile.id && term.is_active); const rows = commissionRows.filter((row) => row.sales_partner_id === profile.id && row.status !== 'cancelled'); const payable = rows.filter((row) => row.status !== 'paid').reduce((sum, row) => sum + Number(row.amount || 0), 0); const hasCommission = profileTerms.some((term) => term.commission_enabled); const profileHref = profile.contact_id ? `/crm/contacts/${profile.contact_id}?tab=seller` : `/crm/salespeople?seller=${profile.id}`; const alerts = sellerInboxCounts(sellerInbox.items, profile.id); const chatHref = `${profileHref}&section=chat`; const isSendingAccess = sendingPortalAccessFor === profile.id; return <div key={profile.id} className="grid gap-4 px-5 py-4 lg:grid-cols-[minmax(220px,1.2fr)_minmax(180px,1fr)_minmax(240px,1.4fr)_150px_auto] lg:items-center"><div className="min-w-0"><div className="flex items-center gap-2">{profile.partner_type === 'hotel_employee' ? <Hotel className="h-4 w-4 text-[#d3bb73]" /> : <UserRound className="h-4 w-4 text-[#d3bb73]" />}{profileHref ? <Link href={profileHref} className="truncate text-sm hover:text-[#d3bb73]">{person?.label || 'Nieznana osoba'}</Link> : <span className="truncate text-sm">{person?.label || 'Nieznana osoba'}</span>}</div><p className="mt-1 text-xs text-[#e5e4e2]/35">{partnerTypeLabels[profile.partner_type]}</p><div className="mt-2 flex flex-wrap gap-2">{alerts.reviews > 0 && <Link href={profileHref} className="flex items-center gap-1.5 rounded-md bg-amber-300/10 px-2 py-1 text-[10px] text-amber-200">Do decyzji <SellerCountBadge count={alerts.reviews} label="Oferty do decyzji" /></Link>}{alerts.messages > 0 && <Link href={chatHref} className="flex items-center gap-1.5 rounded-md bg-sky-300/10 px-2 py-1 text-[10px] text-sky-200">Wiadomości <SellerCountBadge count={alerts.messages} label="Nowe wiadomości" /></Link>}{alerts.notices > 0 && <Link href={profileHref} className="flex items-center gap-1.5 rounded-md bg-white/5 px-2 py-1 text-[10px] text-white/65">Powiadomienia <SellerCountBadge count={alerts.notices} label="Powiadomienia" /></Link>}<Link href={chatHref} className="rounded-md bg-white/5 px-2 py-1 text-[10px] text-[#d3bb73]">Otwórz rozmowy</Link></div></div><div><p className="text-sm text-[#e5e4e2]/70">{organization?.alias || organization?.name || 'Bez organizacji'}</p>{profile.portal_enabled && <p className={`mt-1 text-[11px] ${profile.portal_auth_user_id ? 'text-emerald-300/70' : 'text-amber-300/70'}`}>{profile.portal_auth_user_id ? 'dostęp do portalu nadany' : 'oczekuje na zaproszenie'}</p>}</div><div className="flex flex-wrap gap-1.5">{profileTerms.map((term) => { const company = companies.find((item) => item.id === term.my_company_id); return <span key={term.my_company_id} className="rounded bg-[#d3bb73]/10 px-2 py-1 text-[11px] text-[#d3bb73]">{company?.name || 'Marka'} · {term.commission_enabled ? `${term.default_commission_rate}%` : 'bez prowizji'}</span>; })}{profileTerms.length === 0 && <span className="text-xs text-amber-300/60">Brak aktywnej marki</span>}</div><div>{hasCommission ? <><p className="text-[10px] uppercase tracking-wide text-[#e5e4e2]/35">Do wypłaty</p><p className="mt-1 text-sm text-violet-200">{formatCommissionMoney(payable)}</p></> : <p className="text-xs text-[#e5e4e2]/35">Bez rozliczeń prowizyjnych</p>}</div><div className="flex items-center justify-end gap-2">{canInvitePortal && profile.portal_enabled && <button type="button" disabled={Boolean(sendingPortalAccessFor)} onClick={() => inviteToPortal(profile.id)} className="flex items-center gap-1 rounded-md bg-sky-300/10 px-2 py-1.5 text-[11px] text-sky-200 hover:bg-sky-300/15 disabled:cursor-wait disabled:opacity-50">{isSendingAccess ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MailPlus className="h-3.5 w-3.5" />} {profile.portal_auth_user_id ? 'Wyślij logowanie' : 'Zaproś'}</button>}{canManage && <Link href={`/crm/salespeople/${profile.id}/pricing`} title="Indywidualny cennik" className="rounded p-2 text-[#d3bb73] hover:bg-[#d3bb73]/10"><Tags className="h-4 w-4" /></Link>}{canManage ? <select value={profile.status} onChange={(event) => updatePartnerStatus(profile.id, event.target.value as PartnerStatus)} className="rounded border border-white/10 bg-[#0f1119] px-2 py-1.5 text-xs"><option value="onboarding">Do uzgodnienia</option><option value="active">Aktywny</option><option value="inactive">Nieaktywny</option></select> : <span className="text-xs text-[#e5e4e2]/45">{partnerStatusLabels[profile.status]}</span>}{canManage && <Link href={`${profileHref}&section=settings#seller-profile-settings`} aria-label={`Otwórz ustawienia sprzedawcy: ${person?.label || 'wybrana osoba'}`} title="Ustawienia w profilu sprzedawcy" className="rounded p-2 text-[#d3bb73] hover:bg-[#d3bb73]/10"><Pencil className="h-4 w-4" aria-hidden="true" /></Link>}</div></div>; })}{filteredProfiles.length === 0 && <p className="px-5 py-12 text-center text-sm text-[#e5e4e2]/35">Brak sprzedawców spełniających filtry.</p>}</div>
+<div className="divide-y divide-white/5">{filteredProfiles.map((profile) => { const person = personMap.get(profile.employee_id || profile.contact_id || ''); const organization = organizationMap.get(profile.organization_id || ''); const profileTerms = terms.filter((term) => term.sales_partner_id === profile.id && term.is_active); const rows = commissionRows.filter((row) => row.sales_partner_id === profile.id && row.status !== 'cancelled'); const payable = rows.filter((row) => row.status !== 'paid').reduce((sum, row) => sum + Number(row.amount || 0), 0); const hasCommission = profileTerms.some((term) => term.commission_enabled); const profileHref = profile.contact_id ? `/crm/contacts/${profile.contact_id}?tab=seller` : `/crm/salespeople?seller=${profile.id}`; const alerts = sellerInboxCounts(sellerInbox.items, profile.id); const chatHref = `${profileHref}&section=chat`; const isSendingAccess = sendingPortalAccessFor === profile.id; return <div key={profile.id} className="grid gap-4 px-5 py-4 lg:grid-cols-[minmax(220px,1.2fr)_minmax(180px,1fr)_minmax(240px,1.4fr)_150px_auto] lg:items-center"><div className="min-w-0"><div className="flex items-center gap-2">{profile.partner_type === 'hotel_employee' ? <Hotel className="h-4 w-4 text-[#d3bb73]" /> : <UserRound className="h-4 w-4 text-[#d3bb73]" />}{profileHref ? <Link href={profileHref} className="truncate text-sm hover:text-[#d3bb73]">{person?.label || 'Nieznana osoba'}</Link> : <span className="truncate text-sm">{person?.label || 'Nieznana osoba'}</span>}</div><p className="mt-1 text-xs text-[#e5e4e2]/35">{partnerTypeLabels[profile.partner_type]}</p>{profile.manager_name !== undefined && <p className="mt-1 text-[11px] text-white/45">Opiekun: <span className="text-white/70">{profile.manager_name || 'brak'}</span>{isAdmin && isMineProfile(profile) && <span className="ml-2 rounded-full bg-[#d3bb73]/10 px-1.5 py-0.5 text-[10px] text-[#d3bb73]">mój</span>}</p>}<div className="mt-2 flex flex-wrap gap-2">{alerts.reviews > 0 && <Link href={profileHref} className="flex items-center gap-1.5 rounded-md bg-amber-300/10 px-2 py-1 text-[10px] text-amber-200">Do decyzji <SellerCountBadge count={alerts.reviews} label="Oferty do decyzji" /></Link>}{alerts.messages > 0 && <Link href={chatHref} className="flex items-center gap-1.5 rounded-md bg-sky-300/10 px-2 py-1 text-[10px] text-sky-200">Wiadomości <SellerCountBadge count={alerts.messages} label="Nowe wiadomości" /></Link>}{alerts.notices > 0 && <Link href={profileHref} className="flex items-center gap-1.5 rounded-md bg-white/5 px-2 py-1 text-[10px] text-white/65">Powiadomienia <SellerCountBadge count={alerts.notices} label="Powiadomienia" /></Link>}<Link href={chatHref} className="rounded-md bg-white/5 px-2 py-1 text-[10px] text-[#d3bb73]">Otwórz rozmowy</Link></div></div><div><p className="text-sm text-[#e5e4e2]/70">{organization?.alias || organization?.name || 'Bez organizacji'}</p>{profile.portal_account ? <div className="mt-1.5 space-y-1"><PortalAccountPill account={profile.portal_account} enabled={profile.portal_enabled} />{profile.portal_enabled && <p className="text-[11px] text-white/40">Logowanie: {formatSellerRelative(profile.last_sign_in_at)}</p>}</div> : profile.portal_enabled && <p className={`mt-1 text-[11px] ${profile.portal_auth_user_id ? 'text-emerald-300/70' : 'text-amber-300/70'}`}>{profile.portal_auth_user_id ? 'dostęp do portalu nadany' : 'oczekuje na zaproszenie'}</p>}{profile.last_activity_at !== undefined && <p className="mt-1 text-[11px] text-white/40">Aktywność: {formatSellerRelative(profile.last_activity_at, 'brak')}</p>}</div><div className="flex flex-wrap gap-1.5">{profileTerms.map((term) => { const company = companies.find((item) => item.id === term.my_company_id); return <span key={term.my_company_id} className="rounded bg-[#d3bb73]/10 px-2 py-1 text-[11px] text-[#d3bb73]">{company?.name || 'Marka'} · {term.commission_enabled ? `${term.default_commission_rate}%` : 'bez prowizji'}</span>; })}{profileTerms.length === 0 && <span className="text-xs text-amber-300/60">Brak aktywnej marki</span>}</div><div>{hasCommission ? <><p className="text-[10px] uppercase tracking-wide text-[#e5e4e2]/35">Do wypłaty</p><p className="mt-1 text-sm text-violet-200">{formatCommissionMoney(payable)}</p></> : <p className="text-xs text-[#e5e4e2]/35">Bez rozliczeń prowizyjnych</p>}</div><div className="flex items-center justify-end gap-2">{canInvitePortal && profile.portal_enabled && <button type="button" disabled={Boolean(sendingPortalAccessFor)} onClick={() => inviteToPortal(profile.id)} className="flex items-center gap-1 rounded-md bg-sky-300/10 px-2 py-1.5 text-[11px] text-sky-200 hover:bg-sky-300/15 disabled:cursor-wait disabled:opacity-50">{isSendingAccess ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MailPlus className="h-3.5 w-3.5" />} {profile.portal_auth_user_id ? 'Wyślij logowanie' : 'Zaproś'}</button>}{canManage && <Link href={`/crm/salespeople/${profile.id}/pricing`} title="Indywidualny cennik" className="rounded p-2 text-[#d3bb73] hover:bg-[#d3bb73]/10"><Tags className="h-4 w-4" /></Link>}{canManage ? <select value={profile.status} onChange={(event) => updatePartnerStatus(profile.id, event.target.value as PartnerStatus)} className="rounded bg-[#0f1119] px-2 py-1.5 text-xs ring-1 ring-white/[0.06]"><option value="onboarding">Do uzgodnienia</option><option value="active">Aktywny</option><option value="inactive">Nieaktywny</option></select> : <span className="text-xs text-[#e5e4e2]/45">{partnerStatusLabels[profile.status]}</span>}{canManage && <Link href={`${profileHref}&section=settings#seller-profile-settings`} aria-label={`Otwórz ustawienia sprzedawcy: ${person?.label || 'wybrana osoba'}`} title="Ustawienia w profilu sprzedawcy" className="rounded p-2 text-[#d3bb73] hover:bg-[#d3bb73]/10"><Pencil className="h-4 w-4" aria-hidden="true" /></Link>}</div></div>; })}{filteredProfiles.length === 0 && <p className="px-5 py-12 text-center text-sm text-[#e5e4e2]/35">Brak sprzedawców spełniających filtry.</p>}</div>
             </section>
-          </>
-        )}
+            </>
+          )}
+        </>}
       </div>
 
       {sendingPortalAccessFor && (

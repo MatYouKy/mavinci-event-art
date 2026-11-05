@@ -10,6 +10,8 @@ import {
   CommissionPaymentMethod, DEFAULT_DIVIDEND_TAX_RATE, commissionPaymentLabels,
 } from '@/lib/CRM/events/eventCommission';
 import type { SellerInboxItem } from '@/lib/seller/inbox';
+import type { SellerPortalAccount } from '@/lib/seller/sellerCockpit';
+import { sellerWriteErrorText } from '@/components/crm/sellers/sellerUi';
 
 export type PartnerType = 'internal_employee' | 'hotel_employee' | 'agency_employee' | 'independent_referrer';
 export type PartnerStatus = 'onboarding' | 'active' | 'inactive';
@@ -26,6 +28,14 @@ export type PartnerProfile = {
   portal_enabled: boolean;
   portal_auth_user_id: string | null;
   notes: string | null;
+  /** Pola kokpitu opiekuna (migracja 20261105150000) — starsza baza ich nie zwraca. */
+  manager_id?: string | null;
+  backup_manager_id?: string | null;
+  manager_name?: string | null;
+  portal_account?: SellerPortalAccount | null;
+  last_sign_in_at?: string | null;
+  last_activity_at?: string | null;
+  is_mine?: boolean | null;
 };
 
 export type PersonOption = {
@@ -325,7 +335,9 @@ export default function CrmSellerProfileSettings({ partnerId, contactId, onCance
 
     if (profileResult.error || !profileResult.data?.id) {
       setSaving(false);
-      showSnackbar(profileResult.error?.message || 'Nie udało się zapisać profilu sprzedawcy', 'error');
+      const message = sellerWriteErrorText(profileResult.error, 'Nie udało się zapisać profilu sprzedawcy');
+      setSaveNotice(message);
+      showSnackbar(message, 'error');
       return;
     }
 
@@ -350,7 +362,7 @@ export default function CrmSellerProfileSettings({ partnerId, contactId, onCance
 
     if (termsError) {
       setSaving(false);
-      const message = 'Profil zapisano, ale nie udało się zapisać warunków marek. Popraw ustawienia i zapisz ponownie. ' + termsError.message;
+      const message = 'Profil zapisano, ale nie udało się zapisać warunków marek. Popraw ustawienia i zapisz ponownie. ' + sellerWriteErrorText(termsError, 'Baza odrzuciła zmianę warunków.');
       setSaveNotice(message);
       showSnackbar(message, 'error');
       return;

@@ -27,6 +27,8 @@ import CreateSellerEventModal from './CreateSellerEventModal';
 import { useOfferRefresh } from '@/lib/seller/useOfferRefresh';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { sellerReviewIdentity, type DeliveryProgress, type SellerDeliveryState } from '@/lib/seller/delivery';
+import SellerGuestOfferLink, { useSellerOfferShare } from './SellerGuestOfferLink';
+import { sellerCommissionsVisible, useSellerPortalContext } from '@/lib/seller/portal';
 
 type DocumentVersion={id:string;filename:string;created_at:string;source_key:string;current:boolean};
 type Workflow={review_context?:SellerReviewContext;source?:{sales_partner_id:string;seller_contact_id?:string|null;seller_name:string;seller_organization:string;portal_client_company?:string;portal_client_name?:string;portal_client_email?:string;portal_client_phone?:string;event_date?:string;event_location?:string};review_notification_count?:number;can_manage:boolean;can_configure:boolean;source_key:string;recipient:string;title:string;offer_number:string;
@@ -191,7 +193,7 @@ export default function SellerOfferWorkflow({offerId,crm=false,onChanged,onReali
    if(urlRef.current){URL.revokeObjectURL(urlRef.current);urlRef.current='';}
    const result=await api({action:'generate',requestId:crypto.randomUUID()});
    await reload();await showPdf(result.documentId);onChanged?.();
-   notify('PDF został wygenerowany. Administratorzy otrzymali powiadomienie z dostępem do tej wersji.');
+   notify(crm ? 'PDF został wygenerowany. Administratorzy otrzymali powiadomienie z dostępem do tej wersji.' : 'PDF został wygenerowany. Opiekun otrzymał powiadomienie z dostępem do tej wersji.');
  };
  useEffect(()=>{
    if(!state)return;
@@ -244,6 +246,10 @@ export default function SellerOfferWorkflow({offerId,crm=false,onChanged,onReali
  const accepted=realization?.offer_status==='accepted';
  const confirmed=realization?.stage==='confirmed';
  const cancelled=realization?.stage==='cancelled';
+ // Guest link and commission visibility exist only in the external portal.
+ const guestShare=useSellerOfferShare(offerId,!crm && Boolean(state) && !accepted && !confirmed && !cancelled);
+ const {context:portalContext}=useSellerPortalContext(!crm);
+ const commissionVisible=!crm && sellerCommissionsVisible(portalContext,state?.seller_progress?.my_company_id || state?.chat?.my_company_id);
  const equipmentReview=useSellerEquipmentReview(offerId,crm && Boolean(state?.can_manage) && !accepted && !confirmed && !cancelled,state?.review_context?.key);
  useEffect(()=>{
    if(!crm && (accepted || confirmed || cancelled)){
@@ -335,11 +341,12 @@ export default function SellerOfferWorkflow({offerId,crm=false,onChanged,onReali
      <button type="button" className={button} onClick={()=>void run('Odświeżanie',async()=>{await reload();setArrangementsRefresh((value)=>value+1);})}><RefreshCw className="h-4 w-4"/> Odśwież status</button>
    </div>
    {message && <p role="alert" className="rounded-lg bg-[#d3bb73]/10 p-3 text-sm text-[#e5e4e2]">{message}</p>}
-   {!state && <p className="text-sm text-white/50">Wczytywanie danych. Jeśli widzisz błąd brakującej funkcji, potrzebna jest migracja 20260908233000.</p>}
+   {!state && <p className="text-sm text-white/50">Wczytywanie danych oferty… Jeśli to trwa zbyt długo, kliknij „Odśwież status”.</p>}
    {state && <div className="min-w-0 space-y-4">
      {!crm && <>
        <SellerOfferNextStep key={`${offerId}:${reviewRound}`} offerId={offerId} state={state}
          selected={selected} busy={Boolean(busy)} submitted={submittedKey===submissionContextKey}
+         guestAcceptance={guestShare.state?.accepted_at ? {at:guestShare.state.accepted_at,name:guestShare.state.accepted_name || '',email:guestShare.state.accepted_email || ''} : undefined}
          onPreparePdf={()=>void run('Przygotowanie aktualnego PDF',async()=>{
            const current=state.documents.find(document=>document.current);
            if(current)await showPdf(current.id);else await generate();
@@ -361,17 +368,19 @@ export default function SellerOfferWorkflow({offerId,crm=false,onChanged,onReali
            }
            catch{notify('Przekazanie jest zapisane. Odśwież status — nie wysyłaj ponownie.','warning');}
          })} />
-       <SellerJourney state={state} submitted={submittedKey===submissionContextKey} />
+       {!accepted && !confirmed && !cancelled && <SellerGuestOfferLink offerId={offerId} share={guestShare}
+         disabled={!['draft','sent','viewed'].includes(realization?.offer_status || '')} />}
+       <SellerJourney state={state} submitted={submittedKey===submissionContextKey} showCommission={commissionVisible} />
        <SellerOfferSummary state={state} />
      </>}
      {(accepted || confirmed) && <div role="status" className={`space-y-3 rounded-lg p-4 text-sm ${cancelled ? 'bg-rose-300/10 text-rose-200' : confirmed ? 'bg-emerald-300/10 text-emerald-200' : 'bg-amber-300/10 text-amber-100'}`}>
        <p className="font-medium">{cancelled ? 'Powiązane wydarzenie zostało anulowane.' : confirmed ? 'Realizacja potwierdzona przez CRM — wydarzenie jest zapisane.' : 'Oferta zaakceptowana — realizacja oczekuje na osobne potwierdzenie CRM.'}</p>
-       {!confirmed && !cancelled && <p className="text-xs">Oferta jest już w Realizacjach sprzedawcy, ale nie stanowi jeszcze potwierdzenia wydarzenia.{crm ? ' Następny krok: uzupełnij wydarzenie i zatwierdź realizację poniżej.' : ' O ostatecznym potwierdzeniu poinformujemy Cię osobno.'}</p>}
+       {!confirmed && !cancelled && <p className="text-xs">{crm ? 'Oferta jest już w Realizacjach sprzedawcy' : 'Oferta jest już w zakładce „Potwierdzone wydarzenia”'}, ale nie stanowi jeszcze potwierdzenia wydarzenia.{crm ? ' Następny krok: uzupełnij wydarzenie i zatwierdź realizację poniżej.' : ' O ostatecznym potwierdzeniu poinformujemy Cię osobno.'}</p>}
        {crm && realization?.event_id && realization.can_view_event && <Link href={`/crm/events/${realization.event_id}`} className={button}>Przejdź do wydarzenia</Link>}
        {crm && realization?.event_id && realization.can_view_event && <Link href={`/crm/events/${realization.event_id}?tab=seller-arrangements&offer=${offerId}`} className={button}><MessageSquare className="h-4 w-4"/>Kontynuuj rozmowę i ustalenia w realizacji</Link>}
        {crm && !confirmed && !cancelled && <a href="#seller-offer-review" className={button}>Przejdź do potwierdzenia wydarzenia</a>}
        {!crm && <Link href={`/seller/realizations/${offerId}#seller-offer-conversation`} className={button}><MessageSquare className="h-4 w-4"/>Kontynuuj rozmowę w realizacji</Link>}
-       {!crm && <Link href="/seller/realizations" className={button}>Przejdź do moich realizacji</Link>}
+       {!crm && <Link href="/seller/realizations" className={button}>Przejdź do potwierdzonych wydarzeń</Link>}
      </div>}
      {crm && <>
        <SellerOfferReviewBrief state={state} managerName={state.manager?.manager_name}

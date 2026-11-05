@@ -13,6 +13,7 @@ import { sellerOfferRequest } from '@/lib/seller/offerRequest.browser';
 import { onsiteContactMessage, type OnsiteContact } from '@/lib/seller/onsiteContact';
 import SellerOnsiteContactFields from './SellerOnsiteContactFields';
 import { useOfferRefresh } from '@/lib/seller/useOfferRefresh';
+import { sellerCommissionsVisible, useSellerPortalContext } from '@/lib/seller/portal';
 import { SellerOfferSummary } from './SellerOfferOverview';
 import SellerJourney from './SellerJourney';
 import SellerRealizationCommission from './SellerRealizationCommission';
@@ -50,6 +51,7 @@ export default function SellerRealizationWorkspace({ offerId }: { offerId: strin
   const externalRefresh = useOfferRefresh(`id=eq.${offerId}`);
   const inbox = useSellerInbox();
   const { showSnackbar } = useSnackbar();
+  const { context: portalContext } = useSellerPortalContext();
 
   const reload = useCallback(async () => {
     const current = ++sequence.current;
@@ -154,7 +156,7 @@ export default function SellerRealizationWorkspace({ offerId }: { offerId: strin
   };
 
   if (!data) return <div className="mx-auto max-w-7xl space-y-4 p-6 text-[#e5e4e2]">
-    <Link href="/seller/realizations" className={button}><ArrowLeft className="h-4 w-4"/>Moje realizacje</Link>
+    <Link href="/seller/realizations" className={button}><ArrowLeft className="h-4 w-4"/>Potwierdzone wydarzenia</Link>
     {loading ? <p role="status" className="flex items-center gap-2 py-8 text-sm text-white/60"><Loader2 className="h-4 w-4 animate-spin"/>Wczytywanie realizacji…</p>
       : <div role="alert" className={card}><p>{error || 'Realizacja nie jest dostępna.'}</p><button className={`${button} mt-4`} onClick={refresh}>Spróbuj ponownie</button></div>}
   </div>;
@@ -182,18 +184,21 @@ export default function SellerRealizationWorkspace({ offerId }: { offerId: strin
   else next = { title: 'Przygotowanie krok po kroku', detail: 'Uzupełnij kontakt, miejsce i wymagania. Opiekun zatwierdzi dane lub przekaże uwagi. Następnie przygotuje plan realizacji do Twojego potwierdzenia. Każdy krok pokazuje, na czyją akcję czekamy.', owner: 'Sprzedawca i opiekun', href: '#seller-realization-preparation', action: 'Przejdź do przygotowań' };
   if (!readyToRead && stage.index > 0) next = { title: 'Sprawdź dostępność danych', detail: 'Nie wczytaliśmy pełnych ustaleń lub przygotowań. Nie traktuj tego jako braku zadań. Odśwież widok lub skontaktuj się z opiekunem.', owner: 'Dane chwilowo niedostępne', href: '#seller-offer-conversation', action: 'Otwórz rozmowę' };
   const location = arrangements?.event?.location || arrangements?.offer.location;
+  const brandId = progress?.my_company_id || data.chat?.my_company_id;
+  // Commission figures appear only after MAVINCI reveals them for this brand.
+  const commissionVisible = sellerCommissionsVisible(portalContext, brandId);
 
   return <div className="min-h-screen p-4 text-[#e5e4e2] md:p-6">
     <div className="mx-auto max-w-7xl space-y-5">
       <header className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3"><Link href="/seller/realizations" className="inline-flex items-center gap-2 text-sm text-white/60 hover:text-[#d3bb73]"><ArrowLeft className="h-4 w-4"/>Moje realizacje</Link><button type="button" className={button} disabled={loading || submitting} onClick={refresh}><RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`}/>Odśwież</button></div>
+        <div className="flex flex-wrap items-center justify-between gap-3"><Link href="/seller/realizations" className="inline-flex min-h-10 items-center gap-2 text-sm text-white/60 hover:text-[#d3bb73]"><ArrowLeft className="h-4 w-4"/>Potwierdzone wydarzenia</Link><button type="button" className={button} disabled={loading || submitting} onClick={refresh}><RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`}/>Odśwież</button></div>
         <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><p className="text-xs text-white/45">{data.offer_number} · Realizacja</p><h1 className="mt-2 break-words text-xl uppercase sm:text-2xl">{arrangements?.event?.name || data.title}</h1>{location && <p className="mt-2 flex items-center gap-2 text-sm text-white/55"><MapPin className="h-4 w-4 shrink-0"/>{location}</p>}</div><span className={`rounded-full px-3 py-2 text-xs ${stage.cancelled ? 'bg-rose-300/10 text-rose-200' : 'bg-[#d3bb73]/10 text-[#d3bb73]'}`}>{stage.label}</span></div>
       </header>
-      <SellerJourney state={data} />
+      <SellerJourney state={data} showCommission={commissionVisible} />
       {error && <p role="alert" className="rounded-xl bg-amber-200/10 p-4 text-sm text-amber-100">{error} Wyświetlane dane mogą być nieaktualne.</p>}
       {[data.seller_arrangements_error, data.seller_progress_error].filter(Boolean).map((message) => <p role="alert" key={message} className="rounded-xl bg-amber-200/10 p-4 text-sm text-amber-100">{message}</p>)}
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-        <main className="min-w-0 space-y-5">
+        <div className="min-w-0 space-y-5">
           <section id="seller-offer-review" className={`${card} space-y-3`} aria-labelledby="seller-next-action">
             <p className="text-xs uppercase text-[#d3bb73]">Następny krok · {next.owner}</p><h2 id="seller-next-action" className="text-lg uppercase">{next.title}</h2><p className="text-sm leading-6 text-white/60">{next.detail}</p><a href={next.href} className={button}>{next.action}</a>
           </section>
@@ -248,8 +253,8 @@ export default function SellerRealizationWorkspace({ offerId }: { offerId: strin
               <div className="space-y-3 text-xs leading-5 text-white/55"><h3 className="text-sm uppercase">Akceptacja klienta</h3>{progress ? progress.acceptances.length ? <ul className="space-y-2">{progress.acceptances.map((acceptance) => <li key={acceptance.id}>{deliveryTimestamp(acceptance.confirmed_at)} · {acceptance.seller_name} potwierdził(a) akceptację klienta dla {data.documents.find((document) => document.id === acceptance.document_id)?.filename || 'zapisanej wersji PDF'}.{acceptance.source_key !== data.source_key && <span className="block text-amber-200">Potwierdzenie dotyczy wcześniejszej wersji. Nie oznacza zgody na późniejsze zmiany.</span>}</li>)}</ul> : <p>Brak osobno zapisanego potwierdzenia klienta. Historycznej prośby o akceptację nie traktujemy automatycznie jako zgody klienta.</p> : <p>Historia akceptacji jest chwilowo niedostępna.</p>}{data.review?.reviewed_at && <p>Ostatnia decyzja opiekuna: {deliveryTimestamp(data.review.reviewed_at)}.</p>}</div>
             </div>
           </details>
-          {scheduleVisible && <SellerRealizationCommission key={data.realization?.event_id || offerId} eventId={data.realization?.event_id || null} revision={externalRefresh} commissionEnabled={progress?.commission_enabled} />}
-        </main>
+          {scheduleVisible && commissionVisible && <SellerRealizationCommission key={data.realization?.event_id || offerId} eventId={data.realization?.event_id || null} revision={externalRefresh} commissionEnabled={progress?.commission_enabled} />}
+        </div>
         <aside className="min-w-0 lg:sticky lg:top-6 lg:flex lg:max-h-[calc(100dvh-3rem)] lg:flex-col">
           {data.chat ? <SellerOfferConversation offerId={offerId} partnerId={data.chat.sales_partner_id} companyId={data.chat.my_company_id} canStart={data.chat.can_start} crm={false} compact standalone realization/>
             : <section id="seller-offer-conversation" className={card}><h2 className="flex items-center gap-2 text-base uppercase"><MessageSquare className="h-4 w-4 text-[#d3bb73]"/>Rozmowa o realizacji</h2><p className="mt-3 text-sm text-white/55">{data.chat_error || 'Rozmowa jest chwilowo niedostępna.'}</p><button className={`${button} mt-3`} disabled={loading} onClick={refresh}>Odśwież</button></section>}

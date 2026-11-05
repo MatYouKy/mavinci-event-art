@@ -20,6 +20,7 @@ const PAIRS = [
   ['src/lib/events/steps/eventSteps.ts', 'mobile/src/lib/eventSteps.ts'],
   ['src/lib/events/access/eventAccess.ts', 'mobile/src/lib/eventAccess.ts'],
   ['src/lib/events/settlement/eventSettlement.ts', 'mobile/src/lib/eventSettlement.ts'],
+  ['src/lib/seller/sellerCockpit.ts', 'mobile/src/lib/sellerCockpit.ts'],
 ];
 
 let failed = false;

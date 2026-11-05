@@ -14,6 +14,8 @@ import { useAuth } from '../contexts/AuthContext';
 import EmployeeAvatar from '../components/EmployeeAvatar';
 import { type MyCommissions, formatPln } from '../lib/eventSettlement';
 import { fetchMyCommissions } from '../lib/eventSettlementApi';
+import { type SellerCockpit, sellerCockpitTodayCount } from '../lib/sellerCockpit';
+import { canOpenSellerCockpit, fetchSellerCockpit } from '../lib/sellerCockpitApi';
 
 export default function ProfileScreen() {
   const { employee, signOut } = useAuth();
@@ -35,6 +37,21 @@ export default function ProfileScreen() {
     };
   }, [focused, employee?.id]);
   const showCommissions = Boolean(commissions && (commissions.enabled || commissions.commissions.length > 0));
+  // „Moi sprzedawcy” (get_my_seller_cockpit) — odczyt raz na konto. Wejście tylko dla administratora albo opiekuna
+  // co najmniej jednego sprzedawcy; brak RPC (starsza baza), 42501, błąd lub pusta lista u pracownika → bez wejścia.
+  const [sellerCockpit, setSellerCockpit] = useState<SellerCockpit | null>(null);
+  useEffect(() => {
+    setSellerCockpit(null);
+    if (!employee?.id) return;
+    let active = true;
+    void fetchSellerCockpit().then((result) => {
+      if (active) setSellerCockpit(result.status === 'ready' ? result.data : null);
+    });
+    return () => {
+      active = false;
+    };
+  }, [employee?.id]);
+  const showSellerCockpit = canOpenSellerCockpit(sellerCockpit);
 
   const handleSignOut = () => {
     Alert.alert('Wylogowanie', 'Czy na pewno chcesz się wylogować?', [
@@ -97,6 +114,27 @@ export default function ProfileScreen() {
             <Text style={styles.menuTitle}>Moje prowizje</Text>
             <Text style={styles.menuSubtitle}>
               Do wypłaty {formatPln(commissions.totals.to_pay)} · Prognoza {formatPln(commissions.totals.forecast)}
+            </Text>
+          </View>
+          <Feather name="chevron-right" size={18} color={colors.text.tertiary} />
+        </TouchableOpacity>
+      )}
+
+      {/* Moi sprzedawcy (kokpit opiekuna sprzedawców zewnętrznych, tylko odczyt) */}
+      {showSellerCockpit && sellerCockpit && (
+        <TouchableOpacity
+          style={styles.menuRow}
+          accessibilityRole="button"
+          accessibilityLabel="Moi sprzedawcy"
+          onPress={() => navigation.navigate('SellerCockpit')}
+        >
+          <View style={styles.menuIcon}>
+            <Feather name="users" size={18} color={colors.primary.gold} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.menuTitle}>Moi sprzedawcy</Text>
+            <Text style={styles.menuSubtitle}>
+              Sprzedawcy: {sellerCockpit.sellers.length} · Dziś: {sellerCockpitTodayCount(sellerCockpit)}
             </Text>
           </View>
           <Feather name="chevron-right" size={18} color={colors.text.tertiary} />

@@ -2,6 +2,7 @@
 
 import { useEditMode } from '@/contexts/EditModeContext';
 import { usePathname } from 'next/navigation';
+import { isSellerGuestPage } from '@/lib/seller/guestPages';
 import { Mail, Phone, MapPin, Facebook, Instagram, Linkedin, Youtube, Globe, ArrowUp } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -15,7 +16,8 @@ export default function Footer({ profiles = [SITE.facebook] }: { profiles?: stri
   };
 
   // CRM i portal sprzedawcy mają własną aplikacyjną strukturę.
-  if (pathname.startsWith('/crm') || pathname.startsWith('/seller')) {
+  // Strony gościa z linku sprzedawcy (oferta / formularz z kodu QR) mają branding hotelu, bez stopki WWW.
+  if (pathname.startsWith('/crm') || pathname.startsWith('/seller') || isSellerGuestPage(pathname)) {
     return null;
   }
 
