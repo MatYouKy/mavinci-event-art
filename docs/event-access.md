@@ -31,7 +31,7 @@ Sprzedawca (uprawnienia ofert lub zapytań) widzi sprzedane wydarzenia innych sp
 
 ## Zakładki
 
-Grupy: **Wydarzenie** (Przegląd, Szczegóły) · **Przygotowanie** (Sprzęt, Logistyka, Zespół, Harmonogram, Agenda, Podwykonawcy, Pliki, Zadania, Mavinci LIVE) · **Sprzedaż i rozliczenie** (Oferta, Kalkulacje, Umowa, Ustalenia, Finanse, Historia). Zakładka jest widoczna, gdy osoba ma jej obszar; lista zakładek w ustawieniach pracownika dalej może zawęzić widok (Przegląd i Szczegóły zawsze zostają).
+Jeden pasek zakładek (bez grup), w kolejności: Przegląd, Szczegóły · Sprzęt, Logistyka, Zespół, Harmonogram, Agenda, Podwykonawcy, Pliki, Zadania, Mavinci LIVE · Oferta, Kalkulacje, Umowa, Ustalenia, Finanse, Podsumowanie, Historia. Zakładka jest widoczna, gdy osoba ma jej obszar (Podsumowanie — obszar „kwoty”, zob. `docs/event-commissions.md`); lista zakładek w ustawieniach pracownika dalej może zawęzić widok (Przegląd i Szczegóły zawsze zostają).
 
 ## Znane ograniczenie
 

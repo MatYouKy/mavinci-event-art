@@ -39,6 +39,8 @@ Każde wydarzenie od akceptacji oferty do rozliczenia ma listę kroków: **kto, 
 | Przyjmij zwrot i sprawdź sprzęt | Magazyn | koniec + 2 dni | „Zwrot przyjęty — OK” albo problem |
 | Wystaw fakturę za wydarzenie | Administrator | koniec + 7 dni | faktura VAT / końcowa / zaliczkowa (nie szkic, nie proforma) |
 | Potwierdź wpłatę | Administrator | termin płatności albo koniec + 21 dni | wszystkie faktury opłacone albo „Rozliczone” |
+| Wyślij podsumowanie wydarzenia | Sprzedawca | koniec + 5 dni | podsumowanie wysłane do zatwierdzenia (`submit_event_settlement`, zakładka Podsumowanie — `docs/event-commissions.md`) |
+| Zatwierdź podsumowanie wydarzenia | Administrator | koniec + 10 dni | podsumowanie zatwierdzone — prowizje do wypłaty (`approve_event_settlement`) |
 
 Ręczne kroki dodaje magazyn, kierownik realizacji, sprzedawca albo prowadzący (`add_event_step`) — z właścicielem, terminem i opcją „Wymagane przed gotowością magazynu”.
 

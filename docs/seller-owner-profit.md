@@ -1,5 +1,7 @@
 # Prowizja opiekuna od zysku
 
+> **Zastąpione (2026-11-05).** Prowizję opiekuna sprzedawcy z portalu nalicza teraz podsumowanie wydarzenia jako udział sprzedawcy wydarzenia (5% / 10% od zysku netto) — `docs/event-commissions.md`, migracja `20261105130000_event_settlement_commissions.sql`. Funkcja `book_seller_owner_profit_commission` zwraca błąd z tą informacją; dotychczasowe wpisy (0 w bazie) zostają. Poniżej — opis historyczny.
+
 ## Zakres
 
 Dotyczy opiekuna prowadzącego ofertę z portalu sprzedawcy. Opiekun pochodzi z odpowiedzialności za kontakt sprzedawcy; dla profili bez kontaktu pozostaje dotychczasowe przypisanie dla marki. Autorstwo oferty i wydarzenia nie jest nadpisywane. Procent i sposób wypłaty pochodzą z aktywnych warunków profilu pracownika w kartotece sprzedawców dla tej samej marki. Nie tworzymy domyślnej stawki ani dodatkowego profilu automatycznie.

@@ -159,6 +159,8 @@ const PROCESS_STEP_KEYS = new Set([
   'realization_complete',
   'settlement_invoice',
   'settlement_paid',
+  'settlement_summary',
+  'settlement_summary_approval',
   'formal_details',
   'formal_contract',
   'formal_deposit',
@@ -183,6 +185,8 @@ export const EVENT_STEP_TARGET_TAB: Record<string, string> = {
   return_check: 'equipment',
   settlement_invoice: 'finances',
   settlement_paid: 'finances',
+  settlement_summary: 'summary',
+  settlement_summary_approval: 'summary',
 };
 
 const LIVE_STATUSES: EventStepStatus[] = ['open', 'in_progress', 'problem'];
@@ -430,12 +434,16 @@ export const EVENT_STEPS_HELP: EventStepsHelpSection[] = [
         title: 'Dodatkowe ustalenia',
         how: '„Dodaj krok” na wydarzeniu, np. „Potwierdź godzinę wjazdu z obiektem”. Wybierz właściciela i termin — dostanie przypomnienie.',
       },
+      {
+        title: 'Wyślij podsumowanie wydarzenia',
+        how: 'Po wydarzeniu zakładka „Podsumowanie”: przychody i koszty netto uzupełniają się same (faktury, koszty, podwykonawcy, ekipa, prowizje). Potwierdź netto przy kosztach wpisanych ręcznie, dopisz brakujące pozycje, oznacz wykonawców zewnętrznych i kliknij „Wyślij do zatwierdzenia”. Krok zamknie się sam; po zatwierdzeniu przez administratora prowizje są do wypłaty.',
+      },
     ],
     closeScope: [
       'Formalności zamknięte: dane wydarzenia, podpisana umowa, zaliczka (jeśli jest w harmonogramie).',
       'Kroki „Przekaż realizację”, „Potwierdź wymagania usług” i (jako prowadzący) „Wyznacz kierownika”, zespół, agenda i transport są zrobione.',
       'Na wydarzeniu nie ma Twoich kroków „Do zrobienia” ani „Problem” — sprawdzisz to w „Moje kroki”.',
-      'Po wydarzeniu: koszty i ustalenia z klientem przekazane do rozliczenia. Fakturę wystawia administrator.',
+      'Po wydarzeniu: podsumowanie wysłane do zatwierdzenia (zakładka Podsumowanie) — z niego liczą się prowizje. Fakturę wystawia administrator.',
     ],
     notYours:
       'Nie przyjmujesz realizacji za magazyn, nie potwierdzasz załadunku i nie pomijasz kroków innych ról — system na to nie pozwala (rozdział odpowiedzialności).',
@@ -557,6 +565,7 @@ export const EVENT_STEPS_HELP: EventStepsHelpSection[] = [
     summary: 'Pilnujesz terminów całego procesu i rozliczenia wydarzenia.',
     responsibilities: [
       'Faktura i wpłata za wydarzenie — kroki rozliczenia zamykają się same po wystawieniu faktury i zaksięgowaniu wpłaty.',
+      'Zatwierdzenie podsumowania wydarzenia — zamraża prowizje sprzedawców do wypłaty.',
       'Reakcja na eskalacje (krok 2 dni po terminie).',
       'Pominięcie kroku, który nie jest potrzebny — zawsze z powodem.',
       'Konfiguracja usług („Przygotowanie i zamówienia”) i sprzętu („Sprawdzić stan przed wydaniem”).',
@@ -571,11 +580,15 @@ export const EVENT_STEPS_HELP: EventStepsHelpSection[] = [
         how: 'Magazyn → sprzęt → „Sprawdzić stan przed każdym wydaniem” i instrukcja testu. Każde wydarzenie z tym sprzętem dostanie krok dla magazynu.',
       },
       {
+        title: 'Zatwierdź podsumowanie',
+        how: 'Zakładka „Podsumowanie”: sprawdź przychody, koszty netto i prowizje (pracownik 5% / 10% od zysku, sprzedawca zewnętrzny od faktury netto minus wykonawcy zewnętrzni). „Zatwierdź” zamraża kwoty do wypłaty; „Zwróć do poprawy” z uwagą odsyła sprzedawcy. Zmiana po wypłacie tworzy dopłatę albo potrącenie.',
+      },
+      {
         title: 'Eskalacje i pomijanie',
         how: 'Po eskalacji skontaktuj się z właścicielem kroku. Krok zbędny — „Pomiń” z powodem; powód widać w historii kroku.',
       },
     ],
-    closeScope: ['Faktura wystawiona, wpłata zaksięgowana.', 'Żadna eskalacja nie czeka bez reakcji.'],
+    closeScope: ['Faktura wystawiona, wpłata zaksięgowana, podsumowanie zatwierdzone.', 'Żadna eskalacja nie czeka bez reakcji.'],
     notYours: 'Nie zamykasz kroków innych ról „za kogoś” bez powodu — użyj „Pomiń” z wyjaśnieniem albo poproś właściciela.',
   },
 ];
@@ -583,7 +596,7 @@ export const EVENT_STEPS_HELP: EventStepsHelpSection[] = [
 export const EVENT_STEPS_RULES: string[] = [
   'Każdy krok ma właściciela (rolę i osobę) oraz termin. Krok zamyka jego właściciel przyciskiem — system zapisuje kto i kiedy.',
   '„Czekamy na” pokazuje kroki, które można wykonać teraz: kto, co i do kiedy. Kłódka oznacza krok czekający na wcześniejsze kroki.',
-  'Kroki z procesu (dane wydarzenia, umowa, zaliczka, zespół, agenda, transport, przyjęcie przez magazyn, gotowość, kierownik, załadunek, start, zakończenie, faktura, wpłata) zamykają się same, gdy zdarzy się to w systemie.',
+  'Kroki z procesu (dane wydarzenia, umowa, zaliczka, zespół, agenda, transport, przyjęcie przez magazyn, gotowość, kierownik, załadunek, start, zakończenie, faktura, wpłata, podsumowanie) zamykają się same, gdy zdarzy się to w systemie.',
   'Formalności i rozliczenie widzą tylko osoby z dostępem handlowym. Magazyn, kierownik realizacji i ekipa widzą kroki realizacji bez kwot i dokumentów.',
   'Zmiana oferty, sprzętu, etapów lub dat przelicza kroki i terminy automatycznie.',
   'Powiadomienia: nowy krok (najwcześniej tydzień przed terminem), dzień przed terminem, po terminie (także kierownik i prowadzący), 2 dni po terminie — administratorzy.',

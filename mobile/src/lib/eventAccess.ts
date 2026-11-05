@@ -104,6 +104,7 @@ export type EventTabId =
   | 'contract'
   | 'seller-arrangements'
   | 'finances'
+  | 'summary'
   | 'history';
 
 export type EventTabGroupId = 'main' | 'preparation' | 'commercial';
@@ -118,7 +119,7 @@ export const EVENT_TAB_GROUPS: { id: EventTabGroupId; label: string; tabs: Event
   {
     id: 'commercial',
     label: 'Sprzedaż i rozliczenie',
-    tabs: ['offer', 'calculations', 'contract', 'seller-arrangements', 'finances', 'history'],
+    tabs: ['offer', 'calculations', 'contract', 'seller-arrangements', 'finances', 'summary', 'history'],
   },
 ];
 
@@ -139,6 +140,7 @@ export const EVENT_TAB_LABELS: Record<EventTabId, string> = {
   contract: 'Umowa',
   'seller-arrangements': 'Ustalenia',
   finances: 'Finanse',
+  summary: 'Podsumowanie',
   history: 'Historia',
 };
 
@@ -160,6 +162,8 @@ export const EVENT_TAB_AREA: Record<EventTabId, EventAccessArea> = {
   contract: 'commercial_docs',
   'seller-arrangements': 'commercial_docs',
   finances: 'billing',
+  // Podsumowanie wydarzenia (przychody, koszty netto, prowizje) — RPC get_event_settlement, migracja 20261105130000.
+  summary: 'values',
   history: 'commercial_docs',
 };
 
@@ -182,6 +186,7 @@ export function isEventTabId(value: unknown): value is EventTabId {
 export function normalizeEventTabId(value: unknown): EventTabId | null {
   if (value === 'warehouse' || value === 'steps') return 'overview';
   if (value === 'timeline') return 'phases';
+  if (value === 'settlement' || value === 'commissions') return 'summary';
   return isEventTabId(value) ? value : null;
 }
 
