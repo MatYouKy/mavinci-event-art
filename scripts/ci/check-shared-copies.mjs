@@ -21,6 +21,7 @@ const PAIRS = [
   ['src/lib/events/access/eventAccess.ts', 'mobile/src/lib/eventAccess.ts'],
   ['src/lib/events/settlement/eventSettlement.ts', 'mobile/src/lib/eventSettlement.ts'],
   ['src/lib/seller/sellerCockpit.ts', 'mobile/src/lib/sellerCockpit.ts'],
+  ['src/lib/events/equipment/equipmentChecklist.ts', 'mobile/src/lib/equipmentChecklist.ts'],
 ];
 
 let failed = false;

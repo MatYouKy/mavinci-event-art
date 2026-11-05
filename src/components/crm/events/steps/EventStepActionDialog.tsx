@@ -103,11 +103,6 @@ export default function EventStepActionDialog({
             {[quantity && `Ilość: ${quantity}`, step.supplier && `Dostawca: ${step.supplier}`].filter(Boolean).join(' · ')}
           </p>
         )}
-        {step.key === 'dispatch_out' && action === 'done' && (
-          <p className="text-sm text-[#e5e4e2]/65">
-            Wydanie zablokuje listę załadunku. Jeśli nie wszystkie pozycje są odhaczone, opisz rozbieżność.
-          </p>
-        )}
         {action === 'skip' && (
           <p className="text-sm text-[#e5e4e2]/65">Powód pominięcia będzie widoczny w historii kroku.</p>
         )}

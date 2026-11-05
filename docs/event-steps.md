@@ -8,7 +8,7 @@ Każde wydarzenie od akceptacji oferty do rozliczenia ma listę kroków: **kto, 
 - Każda zmiana trafia do historii `event_step_activity` (kto, kiedy, notatka). Zmiany wynikające z procesu mają wpis „System”.
 - Kroki liczy `sync_event_steps(event)` z wyzwalaczy na: wydarzeniu (status, daty, załadunek), przekazaniu do magazynu, realizacji, ofercie i jej pozycjach, sprzęcie wydarzenia, autach, etapach, fakturach, konfiguracji usług i sprzętu. Błąd synchronizacji nigdy nie blokuje operacji (ostrzeżenie w logu); co 15 minut `run_event_steps_maintenance()` (pg_cron `event-steps-maintenance`) synchronizuje ponownie i wysyła przypomnienia.
 - Pominąć krok może administrator albo osoba z `events_manage` — zawsze z powodem. Otworzyć ponownie: ta sama osoba, która zamknęła krok, albo administrator / `events_manage`. Kroków z procesu nie otwiera się z listy — cofa się je tam, gdzie zostały potwierdzone.
-- Rozdział odpowiedzialności: kroki magazynu wykonuje osoba z `equipment_manage`, która nie sprzedała i nie prowadzi wydarzenia (`employee_can_prepare_event`). Sprzedawca nie przyjmuje realizacji za magazyn i nie potwierdza załadunku.
+- Rozdział odpowiedzialności: kroki magazynu wykonuje osoba z `equipment_manage`, która nie sprzedała i nie prowadzi wydarzenia (`employee_can_prepare_event`). Sprzedawca nie przyjmuje realizacji za magazyn i nie potwierdza załadunku — za to daje zgodę na braki w wydaniu i przyjmuje rozbieżności zwrotu (`docs/equipment-checklist.md`). Wydanie, załadunek powrotny i zwrot zamyka checklista sprzętu, nie przycisk w krokach.
 - Anulowanie wydarzenia archiwizuje otwarte kroki; rozliczenie — zamyka kroki rozliczenia i archiwizuje pozostałe otwarte (opis problemu zostaje w notatce).
 
 ## Kroki
@@ -31,12 +31,12 @@ Każde wydarzenie od akceptacji oferty do rozliczenia ma listę kroków: **kto, 
 | Agenda realizacji gotowa | Prowadzący | 5 dni przed | agenda zapisana |
 | Transport zaplanowany | Prowadzący | 2 dni przed załadunkiem | każde auto (poza zewnętrznymi) ma kierowcę |
 | Oznacz przygotowanie jako gotowe | Magazyn | dzień przed załadunkiem | `advance_warehouse_event('ready')` — **tylko gdy wszystkie kroki „wymagane przed gotowością” są zamknięte** |
-| Wydaj sprzęt — załadunek zgodny z listą | Magazyn | załadunek | przycisk: potwierdza i blokuje załadunek; nieodhaczone pozycje wymagają notatki |
+| Wydaj sprzęt — załadunek zgodny z listą | Magazyn | załadunek | checklista sprzętu → Wydanie: ilości spakowane, braki z powodem i zgodą sprzedawcy / administratora, potwierdzenie blokuje listę (`confirm_event_equipment_dispatch`, `docs/equipment-checklist.md`) |
 | Odbierz sprzęt i auto | Kierowca (gdy jest), inaczej kierownik | załadunek | przycisk albo odbiór auta z licznikiem |
 | Przejmij realizację na miejscu | Kierownik realizacji | start wydarzenia | `advance_realization('start')` |
 | Zakończ realizację z raportem | Kierownik realizacji | koniec + 12 h | `advance_realization('complete')`, raport wymagany |
-| Oddaj sprzęt do magazynu | Kierownik realizacji | koniec + 1 dzień | przycisk |
-| Przyjmij zwrot i sprawdź sprzęt | Magazyn | koniec + 2 dni | „Zwrot przyjęty — OK” albo problem |
+| Oddaj sprzęt do magazynu | Kierownik realizacji | koniec + 1 dzień | checklista sprzętu → Załadunek powrotny zatwierdzony przez kierownika (`confirm_event_equipment_loadback`) |
+| Przyjmij zwrot i sprawdź sprzęt | Magazyn | koniec + 2 dni | checklista sprzętu → Zwrot zatwierdzony bez rozbieżności; z rozbieżnościami krok ma status „problem”, dopóki sprzedawca / administrator ich nie przyjmie (`acknowledge_event_equipment_return_issues`) |
 | Wystaw fakturę za wydarzenie | Administrator | koniec + 7 dni | faktura VAT / końcowa / zaliczkowa (nie szkic, nie proforma) |
 | Potwierdź wpłatę | Administrator | termin płatności albo koniec + 21 dni | wszystkie faktury opłacone albo „Rozliczone” |
 | Wyślij podsumowanie wydarzenia | Sprzedawca | koniec + 5 dni | podsumowanie wysłane do zatwierdzenia (`submit_event_settlement`, zakładka Podsumowanie — `docs/event-commissions.md`) |

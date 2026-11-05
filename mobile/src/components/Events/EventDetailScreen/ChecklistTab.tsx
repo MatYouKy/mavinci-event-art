@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -9,13 +9,13 @@ import {
   Modal,
   Pressable,
   Dimensions,
-  TextInput,
 } from 'react-native';
 
 import { WebView } from 'react-native-webview';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing } from '../../../theme';
 import { supabase } from '../../../lib/supabase';
+import EquipmentChecklistPanel from '../EquipmentChecklist/EquipmentChecklistPanel';
 
 export interface ChecklistItem {
   id: string;
@@ -52,127 +52,43 @@ export interface LogisticsItem {
   sort_order: number;
 }
 
+/*
+ * Zakładka „Checklista”: sprzęt w trzech etapach (EquipmentChecklistPanel — wydanie, załadunek powrotny, zwrot; RPC
+ * z docs/equipment-checklist.md), notatki do checklisty, PDF listy, lista załadunku i harmonogram logistyczny.
+ * Potwierdzenie wydania, prośba o odblokowanie i cofnięcie etapu idą wyłącznie przez RPC checklisty — pól wydania
+ * w `events` nie zmienia się bezpośrednim zapisem (strażnik a_guard_event_loading_fields).
+ */
 export function ChecklistTab({
+  eventId,
   checklist,
   equipment,
-  loadedEquipmentIds,
   logistics,
   pdfPath,
   onToggle,
-  onToggleEquipment,
   event,
-  employee,
-  onRefreshEvent,
+  onEquipmentChanged,
+  refreshKey,
 }: {
+  eventId: string;
   checklist: ChecklistItem[];
+  /** Dawna lista sprzętu — tylko do odczytu, gdy baza nie ma jeszcze checklisty w trzech etapach. */
   equipment: EventEquipmentItem[];
-  loadedEquipmentIds: Set<string>;
   logistics: LogisticsItem[];
   pdfPath: string | null;
   onToggle: (item: ChecklistItem) => void;
-  onToggleEquipment: (item: EventEquipmentItem) => void;
   event: any;
-  employee: any;
-  onRefreshEvent: () => void;
+  /** Po potwierdzeniu / cofnięciu etapu checklisty sprzętu (kroki realizacji, dane wydarzenia). */
+  onEquipmentChanged?: () => void;
+  /** Odświeżenie ekranu („pociągnij w dół”) wczytuje ponownie checklistę sprzętu. */
+  refreshKey?: number;
 }) {
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [pdfTitle, setPdfTitle] = useState<string>('Checklist PDF');
-  const [showConfirmModal, setShowConfirmModal] = useState(false);
-  const [loadingNotes, setLoadingNotes] = useState('');
-  const [showUnlockModal, setShowUnlockModal] = useState(false);
-  const [unlockReason, setUnlockReason] = useState('');
 
-  const totalItems = checklist.length + equipment.length + logistics.length;
   const loadedCount = checklist.filter((i) => i.loaded).length;
-  const equipmentLoadedCount = equipment.filter((i) => loadedEquipmentIds.has(i.id)).length;
-  const completedLogistics = logistics.filter((i) => i.status === 'completed').length;
-  const totalCompleted = loadedCount + equipmentLoadedCount + completedLogistics;
-  const allLoaded = totalItems > 0 && totalCompleted === totalItems;
-
+  const equipmentLoadedCount = equipment.filter((i) => i.is_loaded).length;
   const isLoadingConfirmed = Boolean(event?.loading_confirmed);
-  const isLoadingLocked = Boolean(event?.loading_locked);
-  const isAdmin = employee?.permissions?.includes('admin') || employee?.role === 'admin';
-
-  const handleConfirmLoading = async () => {
-    if (!event?.id || !employee?.id) return;
-    if (!allLoaded && !loadingNotes.trim()) {
-      Alert.alert('Uwaga', 'Wpisz uwagi dlaczego sprzęt nie jest kompletny');
-      return;
-    }
-    const { error } = await supabase
-      .from('events')
-      .update({
-        loading_confirmed: true,
-        loading_confirmed_at: new Date().toISOString(),
-        loading_confirmed_by: employee.id,
-        loading_notes: loadingNotes.trim() || null,
-        loading_locked: true,
-      })
-      .eq('id', event.id);
-    if (error) {
-      Alert.alert('Błąd', 'Nie udało się potwierdzić załadunku');
-      return;
-    }
-    setShowConfirmModal(false);
-    setLoadingNotes('');
-    Alert.alert('Sukces', 'Załadunek potwierdzony');
-    onRefreshEvent();
-  };
-
-  const handleRequestUnlock = async () => {
-    if (!event?.id || !employee?.id || !unlockReason.trim()) {
-      Alert.alert('Uwaga', 'Wpisz powód prośby o odblokowanie');
-      return;
-    }
-    const { error } = await supabase
-      .from('events')
-      .update({
-        loading_unlock_requested: true,
-        loading_unlock_requested_at: new Date().toISOString(),
-        loading_unlock_requested_by: employee.id,
-        loading_unlock_reason: unlockReason.trim(),
-      })
-      .eq('id', event.id);
-    if (error) {
-      Alert.alert('Błąd', 'Nie udało się wysłać prośby');
-      return;
-    }
-    setShowUnlockModal(false);
-    setUnlockReason('');
-    Alert.alert('Sukces', 'Prośba o odblokowanie wysłana do administratora');
-    onRefreshEvent();
-  };
-
-  const handleAdminUnlock = () => {
-    Alert.alert('Odblokuj checklistę', 'Czy na pewno chcesz odblokować checklistę załadunku?', [
-      { text: 'Anuluj', style: 'cancel' },
-      {
-        text: 'Odblokuj',
-        style: 'destructive',
-        onPress: async () => {
-          const { error } = await supabase
-            .from('events')
-            .update({
-              loading_confirmed: false,
-              loading_locked: false,
-              loading_unlock_requested: false,
-              loading_unlock_reason: null,
-              loading_unlock_requested_at: null,
-              loading_unlock_requested_by: null,
-              loading_notes: null,
-              loading_confirmed_at: null,
-              loading_confirmed_by: null,
-            })
-            .eq('id', event.id);
-          if (!error) {
-            Alert.alert('Sukces', 'Checklista odblokowana');
-            onRefreshEvent();
-          }
-        },
-      },
-    ]);
-  };
 
   const handleOpenPdf = async () => {
     if (!pdfPath) return;
@@ -196,15 +112,6 @@ export function ChecklistTab({
       );
     }
   };
-
-  if (totalItems === 0) {
-    return (
-      <View style={styles.emptyTab}>
-        <Feather name="check-square" size={40} color={colors.text.tertiary} />
-        <Text style={styles.emptyTabText}>Brak pozycji na checkliście</Text>
-      </View>
-    );
-  }
 
   const groupedEquipment = equipment.reduce(
     (acc, item) => {
@@ -248,245 +155,108 @@ export function ChecklistTab({
           <Text selectable style={{ color: colors.text.primary, lineHeight: 22 }}>{event.equipment_checklist_notes}</Text>
         </View>
       ) : null}
-      {/* PDF button + Confirm loading button */}
-      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
-        {pdfPath && (
-          <TouchableOpacity
-            style={[styles.pdfButton, { flex: 1, marginBottom: 0 }]}
-            onPress={handleOpenPdf}
-            activeOpacity={0.7}
-          >
-            <Feather name="file-text" size={16} color={colors.primary.gold} />
-            <Text style={styles.pdfButtonText}>Pokaż PDF</Text>
-            <Feather name="external-link" size={14} color={colors.primary.gold} />
-          </TouchableOpacity>
-        )}
+      {pdfPath && (
+        <TouchableOpacity style={styles.pdfButton} onPress={handleOpenPdf} activeOpacity={0.7}>
+          <Feather name="file-text" size={16} color={colors.primary.gold} />
+          <Text style={styles.pdfButtonText}>Pokaż PDF</Text>
+          <Feather name="external-link" size={14} color={colors.primary.gold} />
+        </TouchableOpacity>
+      )}
 
-        {!isLoadingConfirmed && totalItems > 0 && (
-          <TouchableOpacity
-            style={{
-              flex: 1,
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 6,
-              paddingVertical: 10,
-              paddingHorizontal: 14,
-              borderRadius: 8,
-              backgroundColor: '#059669',
-            }}
-            onPress={() => setShowConfirmModal(true)}
-            activeOpacity={0.7}
-          >
-            <Feather name="check-circle" size={16} color="#fff" />
-            <Text style={{ color: '#fff', fontSize: 13, fontWeight: '600' }}>Załadowany</Text>
-          </TouchableOpacity>
-        )}
+      {/* Sprzęt: wydanie → załadunek powrotny → zwrot (stan, uprawnienia i blokady liczy baza) */}
+      <View style={styles.checklistSection}>
+        <EquipmentChecklistPanel
+          eventId={eventId}
+          onChanged={onEquipmentChanged}
+          refreshKey={refreshKey}
+          legacy={
+            <>
+              {isLoadingConfirmed && (
+                <View style={styles.legacyConfirmed}>
+                  <Text style={styles.legacyConfirmedTitle}>
+                    Załadunek potwierdzony
+                    {event?.loading_confirmed_at ? ` · ${new Date(event.loading_confirmed_at).toLocaleString('pl-PL')}` : ''}
+                  </Text>
+                  {!!event?.loading_notes && <Text style={styles.legacyConfirmedNotes}>Uwagi: {event.loading_notes}</Text>}
+                </View>
+              )}
+              {equipment.length > 0 && (
+                <View style={styles.checklistSection}>
+                  <Text style={styles.checklistSectionTitle}>
+                    Sprzęt ({equipmentLoadedCount}/{equipment.length} załadowano)
+                  </Text>
+                  {Object.entries(groupedEquipment).map(([category, items]) => (
+                    <View key={category}>
+                      <Text style={styles.equipmentCategoryLabel}>{category}</Text>
+                      {items.map((item) => {
+                        const isLoaded = item.is_loaded;
+                        return (
+                          <View key={item.id} style={styles.equipmentChecklistRow}>
+                            <TouchableOpacity
+                              style={styles.equipmentThumbnailWrap}
+                              onPress={() => item.thumbnail_url && setPreviewImage(item.thumbnail_url)}
+                              activeOpacity={item.thumbnail_url ? 0.7 : 1}
+                            >
+                              {item.thumbnail_url ? (
+                                <Image
+                                  source={{ uri: item.thumbnail_url }}
+                                  style={styles.equipmentThumbnail}
+                                  resizeMode="cover"
+                                />
+                              ) : (
+                                <View style={styles.equipmentThumbnailPlaceholder}>
+                                  <Feather name="package" size={18} color={colors.text.tertiary} />
+                                </View>
+                              )}
+                            </TouchableOpacity>
+                            <View style={styles.equipmentChecklistContent}>
+                              <View style={styles.equipmentChecklistInfo}>
+                                <Text
+                                  style={[
+                                    styles.checklistItemTitle,
+                                    isLoaded && styles.checklistItemTitleDone,
+                                  ]}
+                                  numberOfLines={2}
+                                >
+                                  {item.equipment_name}
+                                </Text>
+                                <View style={styles.checklistItemMeta}>
+                                  {item.quantity > 1 && (
+                                    <Text style={styles.checklistMetaText}>x{item.quantity}</Text>
+                                  )}
+                                  {item.kit_name && (
+                                    <View
+                                      style={[
+                                        styles.priorityBadge,
+                                        { backgroundColor: colors.primary.gold + '20' },
+                                      ]}
+                                    >
+                                      <Text style={[styles.priorityText, { color: colors.primary.gold }]}>
+                                        Kit
+                                      </Text>
+                                    </View>
+                                  )}
+                                  {item.status && (
+                                    <Text style={styles.checklistMetaText}>{item.status}</Text>
+                                  )}
+                                </View>
+                              </View>
+                              <View style={[styles.checkbox, isLoaded && styles.checkboxChecked]}>
+                                {isLoaded && <Feather name="check" size={12} color={colors.white} />}
+                              </View>
+                            </View>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  ))}
+                </View>
+              )}
+            </>
+          }
+        />
       </View>
 
-      {/* Loading confirmed banner */}
-      {isLoadingConfirmed && (
-        <View
-          style={{
-            backgroundColor: 'rgba(5, 150, 105, 0.1)',
-            borderWidth: 1,
-            borderColor: 'rgba(5, 150, 105, 0.3)',
-            borderRadius: 10,
-            padding: 12,
-            marginBottom: 12,
-          }}
-        >
-          <View
-            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
-          >
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <View
-                style={{
-                  width: 28,
-                  height: 28,
-                  borderRadius: 14,
-                  backgroundColor: 'rgba(5, 150, 105, 0.2)',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Feather name="check" size={14} color="#34d399" />
-              </View>
-              <View>
-                <Text style={{ color: '#34d399', fontSize: 13, fontWeight: '600' }}>
-                  Załadunek potwierdzony
-                </Text>
-                {event?.loading_confirmed_at && (
-                  <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11 }}>
-                    {new Date(event.loading_confirmed_at).toLocaleString('pl-PL')}
-                  </Text>
-                )}
-              </View>
-            </View>
-            <Text style={{ color: '#34d399', fontSize: 11, fontWeight: '600' }}>
-              {totalCompleted}/{totalItems}
-            </Text>
-          </View>
-
-          {event?.loading_notes && (
-            <View
-              style={{
-                marginTop: 8,
-                backgroundColor: 'rgba(245, 158, 11, 0.1)',
-                borderRadius: 6,
-                padding: 8,
-              }}
-            >
-              <Text style={{ color: '#fbbf24', fontSize: 11 }}>
-                <Text style={{ fontWeight: '600' }}>Uwagi: </Text>
-                {event.loading_notes}
-              </Text>
-            </View>
-          )}
-
-          {/* Unlock request or admin unlock */}
-          {isAdmin ? (
-            <TouchableOpacity
-              style={{
-                marginTop: 8,
-                alignSelf: 'flex-start',
-                paddingVertical: 6,
-                paddingHorizontal: 12,
-                borderRadius: 6,
-                borderWidth: 1,
-                borderColor: 'rgba(211, 187, 115, 0.3)',
-              }}
-              onPress={handleAdminUnlock}
-              activeOpacity={0.7}
-            >
-              <Text style={{ color: colors.primary.gold, fontSize: 12, fontWeight: '500' }}>
-                Odblokuj
-              </Text>
-            </TouchableOpacity>
-          ) : !event?.loading_unlock_requested ? (
-            <TouchableOpacity
-              style={{
-                marginTop: 8,
-                alignSelf: 'flex-start',
-                paddingVertical: 6,
-                paddingHorizontal: 12,
-                borderRadius: 6,
-                borderWidth: 1,
-                borderColor: 'rgba(255,255,255,0.15)',
-              }}
-              onPress={() => setShowUnlockModal(true)}
-              activeOpacity={0.7}
-            >
-              <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 12 }}>
-                Poproś o odblokowanie
-              </Text>
-            </TouchableOpacity>
-          ) : (
-            <View
-              style={{
-                marginTop: 8,
-                backgroundColor: 'rgba(245, 158, 11, 0.1)',
-                borderRadius: 6,
-                padding: 8,
-              }}
-            >
-              <Text style={{ color: '#fbbf24', fontSize: 11 }}>Prośba o odblokowanie wysłana</Text>
-            </View>
-          )}
-        </View>
-      )}
-
-      {/* Progress */}
-      {totalItems > 0 && (
-        <View style={styles.checklistProgress}>
-          <View style={styles.progressBarBg}>
-            <View
-              style={[styles.progressBarFill, { width: `${(totalCompleted / totalItems) * 100}%` }]}
-            />
-          </View>
-          <Text style={styles.progressText}>
-            {totalCompleted}/{totalItems} ukończonych
-          </Text>
-        </View>
-      )}
-
-      {/* Equipment list */}
-      {equipment.length > 0 && (
-        <View style={styles.checklistSection}>
-          <Text style={styles.checklistSectionTitle}>
-            Sprzęt ({equipmentLoadedCount}/{equipment.length} załadowano)
-          </Text>
-          {Object.entries(groupedEquipment).map(([category, items]) => (
-            <View key={category}>
-              <Text style={styles.equipmentCategoryLabel}>{category}</Text>
-              {items.map((item) => {
-                const isLoaded = loadedEquipmentIds.has(item.id);
-                return (
-                  <View key={item.id} style={styles.equipmentChecklistRow}>
-                    <TouchableOpacity
-                      style={styles.equipmentThumbnailWrap}
-                      onPress={() => item.thumbnail_url && setPreviewImage(item.thumbnail_url)}
-                      activeOpacity={item.thumbnail_url ? 0.7 : 1}
-                    >
-                      {item.thumbnail_url ? (
-                        <Image
-                          source={{ uri: item.thumbnail_url }}
-                          style={styles.equipmentThumbnail}
-                          resizeMode="cover"
-                        />
-                      ) : (
-                        <View style={styles.equipmentThumbnailPlaceholder}>
-                          <Feather name="package" size={18} color={colors.text.tertiary} />
-                        </View>
-                      )}
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.equipmentChecklistContent}
-                      onPress={() => onToggleEquipment(item)}
-                      activeOpacity={0.7}
-                    >
-                      <View style={styles.equipmentChecklistInfo}>
-                        <Text
-                          style={[
-                            styles.checklistItemTitle,
-                            isLoaded && styles.checklistItemTitleDone,
-                          ]}
-                          numberOfLines={2}
-                        >
-                          {item.equipment_name}
-                        </Text>
-                        <View style={styles.checklistItemMeta}>
-                          {item.quantity > 1 && (
-                            <Text style={styles.checklistMetaText}>x{item.quantity}</Text>
-                          )}
-                          {item.kit_name && (
-                            <View
-                              style={[
-                                styles.priorityBadge,
-                                { backgroundColor: colors.primary.gold + '20' },
-                              ]}
-                            >
-                              <Text style={[styles.priorityText, { color: colors.primary.gold }]}>
-                                Kit
-                              </Text>
-                            </View>
-                          )}
-                          {item.status && (
-                            <Text style={styles.checklistMetaText}>{item.status}</Text>
-                          )}
-                        </View>
-                      </View>
-                      <View style={[styles.checkbox, isLoaded && styles.checkboxChecked]}>
-                        {isLoaded && <Feather name="check" size={12} color={colors.white} />}
-                      </View>
-                    </TouchableOpacity>
-                  </View>
-                );
-              })}
-            </View>
-          ))}
-        </View>
-      )}
       {/* PDF Preview */}
       <Modal visible={!!pdfUrl} animationType="slide" onRequestClose={() => setPdfUrl(null)}>
         <View style={styles.pdfModal}>
@@ -540,7 +310,9 @@ export function ChecklistTab({
       {/* Loading checklist */}
       {checklist.length > 0 && (
         <View style={styles.checklistSection}>
-          <Text style={styles.checklistSectionTitle}>Załadunek / Rozładunek</Text>
+          <Text style={styles.checklistSectionTitle}>
+            Załadunek / Rozładunek ({loadedCount}/{checklist.length})
+          </Text>
           {checklist.map((item) => (
             <TouchableOpacity
               key={item.id}
@@ -648,235 +420,20 @@ export function ChecklistTab({
         </View>
       )}
 
-      {/* Confirm Loading Modal */}
-      <Modal
-        visible={showConfirmModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowConfirmModal(false)}
-      >
-        <Pressable
-          style={{
-            flex: 1,
-            backgroundColor: 'rgba(0,0,0,0.7)',
-            justifyContent: 'center',
-            alignItems: 'center',
-          }}
-          onPress={() => setShowConfirmModal(false)}
-        >
-          <Pressable
-            style={{
-              width: '90%',
-              maxWidth: 360,
-              backgroundColor: colors.background.elevated,
-              borderRadius: 14,
-              padding: 20,
-              borderWidth: 1,
-              borderColor: 'rgba(211,187,115,0.2)',
-            }}
-            onPress={() => {}}
-          >
-            <Text style={{ color: '#e5e4e2', fontSize: 17, fontWeight: '700', marginBottom: 12 }}>
-              Potwierdź załadunek
-            </Text>
-
-            <View
-              style={{
-                backgroundColor: 'rgba(33,8,17,0.82)',
-                borderRadius: 8,
-                padding: 10,
-                marginBottom: 12,
-                borderWidth: 1,
-                borderColor: 'rgba(211,187,115,0.1)',
-              }}
-            >
-              <Text
-                style={{
-                  color: allLoaded ? '#34d399' : '#fbbf24',
-                  fontSize: 14,
-                  fontWeight: '600',
-                }}
-              >
-                {totalCompleted}/{totalItems} {allLoaded ? '- wszystko załadowane' : 'załadowano'}
-              </Text>
-            </View>
-
-            {!allLoaded && (
-              <View style={{ marginBottom: 12 }}>
-                <Text
-                  style={{
-                    color: 'rgba(229,228,226,0.8)',
-                    fontSize: 13,
-                    fontWeight: '500',
-                    marginBottom: 4,
-                  }}
-                >
-                  Uwagi <Text style={{ color: '#f87171' }}>*</Text>
-                </Text>
-                <Text style={{ color: 'rgba(229,228,226,0.5)', fontSize: 11, marginBottom: 6 }}>
-                  Opisz dlaczego nie wszystkie pozycje zostały załadowane
-                </Text>
-                <TextInput
-                  value={loadingNotes}
-                  onChangeText={setLoadingNotes}
-                  placeholder="np. Mixer w naprawie, kabel pożyczony"
-                  placeholderTextColor="rgba(229,228,226,0.3)"
-                  multiline
-                  numberOfLines={3}
-                  style={{
-                    backgroundColor: 'rgba(33,8,17,0.82)',
-                    borderRadius: 8,
-                    borderWidth: 1,
-                    borderColor: 'rgba(211,187,115,0.2)',
-                    padding: 10,
-                    color: '#e5e4e2',
-                    fontSize: 13,
-                    minHeight: 70,
-                    textAlignVertical: 'top',
-                  }}
-                />
-              </View>
-            )}
-
-            <Text style={{ color: 'rgba(229,228,226,0.4)', fontSize: 11, marginBottom: 14 }}>
-              Po potwierdzeniu checklista zostanie zablokowana. Cofnięcie wymaga zgody
-              administratora.
-            </Text>
-
-            <View style={{ flexDirection: 'row', gap: 10, justifyContent: 'flex-end' }}>
-              <TouchableOpacity
-                style={{
-                  paddingVertical: 10,
-                  paddingHorizontal: 16,
-                  borderRadius: 8,
-                  borderWidth: 1,
-                  borderColor: 'rgba(211,187,115,0.2)',
-                }}
-                onPress={() => {
-                  setShowConfirmModal(false);
-                  setLoadingNotes('');
-                }}
-              >
-                <Text style={{ color: 'rgba(229,228,226,0.6)', fontSize: 13 }}>Anuluj</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={{
-                  paddingVertical: 10,
-                  paddingHorizontal: 16,
-                  borderRadius: 8,
-                  backgroundColor: '#059669',
-                }}
-                onPress={handleConfirmLoading}
-              >
-                <Text style={{ color: '#fff', fontSize: 13, fontWeight: '600' }}>Potwierdź</Text>
-              </TouchableOpacity>
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
-
-      {/* Unlock Request Modal */}
-      <Modal
-        visible={showUnlockModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowUnlockModal(false)}
-      >
-        <Pressable
-          style={{
-            flex: 1,
-            backgroundColor: 'rgba(0,0,0,0.7)',
-            justifyContent: 'center',
-            alignItems: 'center',
-          }}
-          onPress={() => setShowUnlockModal(false)}
-        >
-          <Pressable
-            style={{
-              width: '90%',
-              maxWidth: 360,
-              backgroundColor: colors.background.elevated,
-              borderRadius: 14,
-              padding: 20,
-              borderWidth: 1,
-              borderColor: 'rgba(211,187,115,0.2)',
-            }}
-            onPress={() => {}}
-          >
-            <Text style={{ color: '#e5e4e2', fontSize: 17, fontWeight: '700', marginBottom: 12 }}>
-              Poproś o odblokowanie
-            </Text>
-
-            <View style={{ marginBottom: 12 }}>
-              <Text
-                style={{
-                  color: 'rgba(229,228,226,0.8)',
-                  fontSize: 13,
-                  fontWeight: '500',
-                  marginBottom: 4,
-                }}
-              >
-                Powód <Text style={{ color: '#f87171' }}>*</Text>
-              </Text>
-              <TextInput
-                value={unlockReason}
-                onChangeText={setUnlockReason}
-                placeholder="np. Pomyłkowo zaznaczono sprzęt"
-                placeholderTextColor="rgba(229,228,226,0.3)"
-                multiline
-                numberOfLines={3}
-                style={{
-                  backgroundColor: 'rgba(33,8,17,0.82)',
-                  borderRadius: 8,
-                  borderWidth: 1,
-                  borderColor: 'rgba(211,187,115,0.2)',
-                  padding: 10,
-                  color: '#e5e4e2',
-                  fontSize: 13,
-                  minHeight: 70,
-                  textAlignVertical: 'top',
-                }}
-              />
-            </View>
-
-            <View style={{ flexDirection: 'row', gap: 10, justifyContent: 'flex-end' }}>
-              <TouchableOpacity
-                style={{
-                  paddingVertical: 10,
-                  paddingHorizontal: 16,
-                  borderRadius: 8,
-                  borderWidth: 1,
-                  borderColor: 'rgba(211,187,115,0.2)',
-                }}
-                onPress={() => {
-                  setShowUnlockModal(false);
-                  setUnlockReason('');
-                }}
-              >
-                <Text style={{ color: 'rgba(229,228,226,0.6)', fontSize: 13 }}>Anuluj</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={{
-                  paddingVertical: 10,
-                  paddingHorizontal: 16,
-                  borderRadius: 8,
-                  backgroundColor: colors.primary.gold,
-                }}
-                onPress={handleRequestUnlock}
-              >
-                <Text style={{ color: colors.background.primary, fontSize: 13, fontWeight: '600' }}>
-                  Wyślij prośbę
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  legacyConfirmed: {
+    backgroundColor: 'rgba(5, 150, 105, 0.12)',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 12,
+    gap: 4,
+  },
+  legacyConfirmedTitle: { color: '#34d399', fontSize: 13, fontWeight: '600' },
+  legacyConfirmedNotes: { color: '#fbbf24', fontSize: 12 },
   emptyTab: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -943,9 +500,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: colors.primary.gold + '15',
-    borderWidth: 1,
-    borderColor: colors.primary.gold + '40',
+    backgroundColor: colors.primary.gold + '1f',
     borderRadius: 10,
     paddingVertical: 12,
     paddingHorizontal: 14,

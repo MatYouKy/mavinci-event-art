@@ -14,6 +14,7 @@ import { colors } from '../../theme';
 import { OPERATIONAL_LABELS } from '../../lib/operationalStages';
 import { eventStepRealizationLink } from '../../lib/eventStepLinks';
 import { openInCrmWeb } from '../../navigation/navigationRef';
+import EquipmentChecklistPanel from './EquipmentChecklist/EquipmentChecklistPanel';
 const date = (s: any) => (s ? new Date(s).toLocaleString('pl-PL') : 'Termin nieustalony');
 export default function RealizationWorkspace({
   initialData,
@@ -26,14 +27,17 @@ export default function RealizationWorkspace({
 }) {
   const { employee } = useAuth();
   const focused = useIsFocused();
+  // Powiadomienia checklisty sprzętu (metadata.initial_tab='checklist') i magazynu otwierają zakładkę „Sprzęt”.
   const initialSection =
-    initialTab === 'fleet'
-      ? 'logistics'
-      : initialTab === 'team'
-        ? 'team'
-        : initialTab === 'files'
-          ? 'files'
-          : 'overview';
+    initialTab === 'checklist' || initialTab === 'warehouse'
+      ? 'equipment'
+      : initialTab === 'fleet'
+        ? 'logistics'
+        : initialTab === 'team'
+          ? 'team'
+          : initialTab === 'files'
+            ? 'files'
+            : 'overview';
   const [data, setData] = useState(initialData),
     [error, setError] = useState(''),
     [tab, setTab] = useState(initialSection);
@@ -109,6 +113,8 @@ export default function RealizationWorkspace({
     <ScrollView
       style={{ flex: 1, backgroundColor: colors.background.primary }}
       contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
+      keyboardShouldPersistTaps="handled"
+      automaticallyAdjustKeyboardInsets
     >
       <TouchableOpacity onPress={onBack}>
         <Text style={{ color: colors.primary.gold }}>← Wydarzenia</Text>
@@ -224,20 +230,33 @@ export default function RealizationWorkspace({
         (data.phases || []).map((p: any) =>
           card(p.id, p.name, `${date(p.start)} – ${date(p.end)}\n${p.description || ''}`),
         )}
-      {['phases', 'equipment', 'logistics', 'subcontractors', 'files'].includes(tab) &&
+      {['phases', 'logistics', 'subcontractors', 'files'].includes(tab) &&
         !(data[tab === 'logistics' ? 'vehicles' : tab] || []).length && (
           <Text style={{ color: colors.text.secondary, padding: 16 }}>
             Nie dodano jeszcze danych w tej sekcji.
           </Text>
         )}
-      {tab === 'equipment' &&
-        (data.equipment || []).map((item: any) =>
-          card(
-            item.id,
-            item.name,
-            `Ilość: ${item.quantity}\n${item.loaded ? 'Załadowane' : 'Do załadunku'}\n${item.notes || ''}`,
-          ),
-        )}
+      {/* Checklista sprzętu: kierownik realizacji sprawdza załadunek powrotny (RPC, docs/equipment-checklist.md);
+          bez migracji — dawna lista z pulpitu tylko do odczytu. */}
+      {tab === 'equipment' && (
+        <EquipmentChecklistPanel
+          eventId={data.id}
+          onChanged={() => void refresh()}
+          legacy={
+            (data.equipment || []).length ? (
+              (data.equipment || []).map((item: any) =>
+                card(
+                  item.id,
+                  item.name,
+                  `Ilość: ${item.quantity}\n${item.loaded ? 'Załadowane' : 'Do załadunku'}\n${item.notes || ''}`,
+                ),
+              )
+            ) : (
+              <Text style={{ color: colors.text.secondary, padding: 16 }}>Nie dodano jeszcze danych w tej sekcji.</Text>
+            )
+          }
+        />
+      )}
       {tab === 'agenda' && (
         <AgendaTab
           agenda={{

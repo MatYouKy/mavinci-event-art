@@ -16,11 +16,11 @@ Etap 1 wdrożony jako **kroki realizacji** (`docs/event-steps.md`, migracja `202
 | 4 | Magazyn przyjmuje przygotowanie | `handoffs.accepted_*` → `events.status='in_preparation'` | `accept_warehouse_event` | `guard_warehouse_event_status` — tylko magazyn ustawia stany magazynowe |
 | 5 | Kierownik realizacji | `event_realizations.manager_id` | `appoint_realization_manager` (admin, autor, `events_manage`) | powiadomienie kierownika |
 | 6 | Magazyn: gotowe | `handoffs.ready_*` | `advance_warehouse_event('ready')` | nie sprawdza braków, załadunku ani wynajmów |
-| 7 | Załadunek pozycji | `event_equipment.is_loaded/loaded_by` | `set_event_equipment_loaded` | po zablokowaniu nie da się odznaczyć |
-| 8 | Potwierdzenie / blokada załadunku | `events.loading_confirmed*`, `loading_locked`, `loading_unlock_*` | **bezpośredni UPDATE** — autor, `events_manage`, członek zespołu | zasady tylko w interfejsie (notatka przy brakach, odblokowanie „admina”) |
+| 7 | Załadunek pozycji | `event_equipment_checks.packed_qty` (+ `event_equipment.is_loaded` = pełna ilość) | `set_event_equipment_packed` (magazyn), dawne `set_event_equipment_loaded` | braki z powodem i zgodą sprzedawcy / administratora; po wydaniu lista zablokowana (`docs/equipment-checklist.md`) |
+| 8 | Potwierdzenie / blokada załadunku | `events.loading_confirmed*`, `loading_locked`, `loading_unlock_*` | `confirm_event_equipment_dispatch` (magazyn), `request_event_equipment_unlock`, `reopen_event_equipment_stage` (administrator / `events_manage`) | bezpośredni zapis blokuje `a_guard_event_loading_fields` (od `20261105170000`) |
 | 9 | Wydanie auta kierowcy / zwrot | `event_vehicles.pickup_*`, `return_*`, `vehicle_handovers` | kierowca (`record_assigned_vehicle_handover`) | licznik wymagany; brak powiązania z „gotowe” i załadunkiem |
 | 10 | Start / koniec realizacji | `event_realizations.started_at/completed_at` | kierownik realizacji (`advance_realization`) | start wymaga „gotowe”; koniec — notatki |
-| 11 | Rozładunek, zwroty, szkody | `event_closeouts` (pola tak/nie) | `can_manage_event_workflows` | samodzielna deklaracja, brak listy zwrotu |
+| 11 | Rozładunek, zwroty, szkody | `event_equipment_checks` (załadunek powrotny, zwrot: sprawne / uszkodzone / brak, zdjęcia), `event_closeouts` (pola tak/nie) | kierownik: `confirm_event_equipment_loadback`; magazyn: `confirm_event_equipment_return`; sprzedawca / administrator: `acknowledge_event_equipment_return_issues` | lista zwrotu na pozycję z historią; rozbieżności przyjmuje sprzedawca / administrator (od `20261105170000`) |
 | 12 | Rozliczenie, „następny krok” | `event_workflow_*` | właścicielem wszystkich kroków jest **autor** | kroki `manual` może zamknąć `can_manage_event_workflows` |
 | 13 | Ręczna zmiana statusu | `events.status` | autor, `events_manage`, członek zespołu | blokowane tylko stany magazynowe |
 

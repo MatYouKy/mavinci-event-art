@@ -149,12 +149,17 @@ export function eventStepTone(step: Pick<EventStep, 'status' | 'overdue' | 'bloc
 /** Etapy widoczne tylko dla obszaru handlowego (baza filtruje je także w RLS). */
 export const EVENT_STEP_COMMERCIAL_STAGES: EventStepStage[] = ['formalities', 'settlement'];
 
-/** Kroki wynikające z procesu: zamykają się same i nie da się ich „otworzyć ponownie” z listy kroków. */
+/**
+ * Kroki wynikające z procesu: zamykają się same i nie da się ich „otworzyć ponownie” z listy kroków.
+ * Wydanie, oddanie i przyjęcie zwrotu zamyka checklista sprzętu (cofnięcie: reopen_event_equipment_stage).
+ */
 const PROCESS_STEP_KEYS = new Set([
   'warehouse_accept',
   'warehouse_ready',
   'manager_appointed',
   'dispatch_out',
+  'return_handover',
+  'return_check',
   'realization_start',
   'realization_complete',
   'settlement_invoice',
@@ -182,6 +187,7 @@ export const EVENT_STEP_TARGET_TAB: Record<string, string> = {
   manager_appointed: 'team',
   dispatch_out: 'equipment',
   warehouse_ready: 'equipment',
+  return_handover: 'equipment',
   return_check: 'equipment',
   settlement_invoice: 'finances',
   settlement_paid: 'finances',
@@ -283,9 +289,6 @@ export function eventStepNoteRule(step: Pick<EventStep, 'key' | 'kind'>, action:
   if (action === 'done' && step.key === 'realization_complete') {
     return { required: true, minLength: 5, label: 'Raport z realizacji', placeholder: 'Przebieg, dodatkowe godziny, uwagi klienta, szkody' };
   }
-  if (action === 'done' && step.key === 'dispatch_out') {
-    return { required: false, minLength: 5, label: 'Rozbieżności załadunku', placeholder: 'Wymagane, gdy nie wszystkie pozycje są odhaczone' };
-  }
   if (action === 'start' && step.kind === 'order') {
     return { required: false, minLength: 0, label: 'Notatka do zamówienia', placeholder: 'Numer zamówienia, ustalenia' };
   }
@@ -303,7 +306,7 @@ export function eventStepNeedsOrderFields(step: Pick<EventStep, 'kind'>, action:
 /** Czy czynność wymaga okna (notatka wymagana albo pola zamówienia); pozostałe można wykonać jednym dotknięciem. */
 export function eventStepActionNeedsForm(step: Pick<EventStep, 'key' | 'kind'>, action: EventStepAction): boolean {
   const rule = eventStepNoteRule(step, action);
-  return Boolean(rule?.required) || eventStepNeedsOrderFields(step, action) || (action === 'done' && step.key === 'dispatch_out');
+  return Boolean(rule?.required) || eventStepNeedsOrderFields(step, action);
 }
 
 const pad = (value: number) => String(value).padStart(2, '0');
@@ -408,6 +411,7 @@ export const EVENT_STEPS_HELP: EventStepsHelpSection[] = [
       'Dane wydarzenia: miejsce, godziny, osoba kontaktowa na miejscu, uwagi dla ekipy.',
       'Wymagania usług wobec klienta i obiektu (np. zgoda na dym ciężki, wyłączenie czujek, zasilanie) — potwierdzone przed wydarzeniem.',
       'Kontakt z klientem do końca realizacji. Zmianę zakresu wprowadzasz w ofercie — kroki przeliczą się same.',
+      'Checklista sprzętu (zakładka Sprzęt): zgoda albo odmowa na braki przy wydaniu i decyzja przy rozbieżnościach w zwrocie (np. obciążenie klienta, naprawa).',
     ],
     steps: [
       {
@@ -444,9 +448,10 @@ export const EVENT_STEPS_HELP: EventStepsHelpSection[] = [
       'Kroki „Przekaż realizację”, „Potwierdź wymagania usług” i (jako prowadzący) „Wyznacz kierownika”, zespół, agenda i transport są zrobione.',
       'Na wydarzeniu nie ma Twoich kroków „Do zrobienia” ani „Problem” — sprawdzisz to w „Moje kroki”.',
       'Po wydarzeniu: podsumowanie wysłane do zatwierdzenia (zakładka Podsumowanie) — z niego liczą się prowizje. Fakturę wystawia administrator.',
+      'Braki w wydaniu i rozbieżności w zwrocie na checkliście sprzętu nie czekają na Twoją decyzję.',
     ],
     notYours:
-      'Nie przyjmujesz realizacji za magazyn, nie potwierdzasz załadunku i nie pomijasz kroków innych ról — system na to nie pozwala (rozdział odpowiedzialności).',
+      'Nie przyjmujesz realizacji za magazyn, nie potwierdzasz wydania sprzętu i nie pomijasz kroków innych ról — system na to nie pozwala (rozdział odpowiedzialności).',
   },
   {
     role: 'warehouse',
@@ -458,7 +463,7 @@ export const EVENT_STEPS_HELP: EventStepsHelpSection[] = [
       'Zamówienia z wyprzedzeniem z konfiguracji usług (np. suchy lód min. 4 dni przed wydarzeniem): zamówione, potem dostarczone.',
       'Sprawdzenie stanu sprzętu oznaczonego „Sprawdzić stan przed wydaniem” (np. wytwornica dymu, termobox).',
       'Braki z rezerwacji i wynajmy zewnętrzne — zapewnione przed „Gotowe do wydania”.',
-      'Wydanie zgodne z listą załadunku; przyjęcie zwrotu i zgłoszenie braków lub uszkodzeń.',
+      'Wydanie i zwrot na checkliście sprzętu (zakładka Sprzęt): spakowane ilości, braki z powodem, po wydarzeniu sprawne / uszkodzone / brak ze zdjęciami.',
     ],
     steps: [
       {
@@ -483,16 +488,16 @@ export const EVENT_STEPS_HELP: EventStepsHelpSection[] = [
       },
       {
         title: 'Wydanie sprzętu',
-        how: 'Odhacz pozycje na liście załadunku (zakładka Sprzęt), potem „Wydane — załadunek zgodny”. Nieodhaczone pozycje wymagają notatki. Wydanie blokuje listę załadunku.',
+        how: 'Checklista sprzętu → Wydanie: przy każdej pozycji ilość spakowana („Pełna ilość” albo mniej z powodem braku). Braki wymagają zgody sprzedawcy lub administratora („Poproś o zgodę na braki”). Potem „Potwierdź wydanie” — krok zamknie się sam, a lista zostanie zablokowana (zmiana: „Poproś o odblokowanie wydania”).',
       },
       {
         title: 'Przyjęcie zwrotu',
-        how: 'Po realizacji sprawdź sprzęt z listą: „Zwrot przyjęty — OK” albo „Zgłoś problem” (brak, uszkodzenie) z opisem.',
+        how: 'Checklista sprzętu → Zwrot: przy każdej wydanej pozycji ile wróciło sprawne i uszkodzone (brak liczy się sam), opis i zdjęcia przy uszkodzeniu lub braku, potem „Zatwierdź zwrot”. Bez rozbieżności krok zamknie się sam; rozbieżności przyjmuje sprzedawca lub administrator.',
       },
     ],
     closeScope: [
       'Wszystkie kroki magazynu na wydarzeniu są „Zrobione” (albo „Pominięte” z powodem przez administratora).',
-      'Zwrot przyjęty, braki i uszkodzenia opisane w kroku.',
+      'Wydanie potwierdzone i zwrot zatwierdzony na checkliście sprzętu, braki i uszkodzenia opisane (ze zdjęciami).',
       'W „Moje kroki” nie masz kroków po terminie.',
     ],
     notYours:
@@ -507,7 +512,7 @@ export const EVENT_STEPS_HELP: EventStepsHelpSection[] = [
       'Odbiór sprzętu zgodnego z listą (gdy na wydarzenie nie jedzie kierowca).',
       'Start realizacji na miejscu i kontakt z klientem w trakcie.',
       'Raport końcowy: przebieg, dodatkowe godziny, uwagi klienta, szkody.',
-      'Oddanie sprzętu do magazynu z opisem braków i uszkodzeń.',
+      'Załadunek powrotny na checkliście sprzętu: co wraca z wydanego sprzętu, braki z opisem.',
     ],
     steps: [
       {
@@ -528,11 +533,11 @@ export const EVENT_STEPS_HELP: EventStepsHelpSection[] = [
       },
       {
         title: 'Oddaj sprzęt',
-        how: '„Oddane do magazynu”. Braki i uszkodzenia wpisz w notatce albo zgłoś jako problem.',
+        how: 'Checklista sprzętu → Załadunek powrotny: przy załadunku po wydarzeniu odhacz, ile wraca z każdej pozycji („Wraca komplet” albo mniej z opisem, np. zostało na obiekcie), potem „Zatwierdź załadunek powrotny”. Krok zamknie się sam.',
       },
     ],
     closeScope: [
-      'Start, zakończenie z raportem i oddanie sprzętu są zrobione.',
+      'Start, zakończenie z raportem i załadunek powrotny na checkliście sprzętu są zrobione.',
       'Każdy problem z miejsca jest zgłoszony w kroku (nie tylko telefonicznie).',
     ],
     notYours: 'Nie oznaczasz gotowości magazynu i nie przyjmujesz zwrotu za magazyn.',
@@ -568,6 +573,7 @@ export const EVENT_STEPS_HELP: EventStepsHelpSection[] = [
       'Zatwierdzenie podsumowania wydarzenia — zamraża prowizje sprzedawców do wypłaty.',
       'Reakcja na eskalacje (krok 2 dni po terminie).',
       'Pominięcie kroku, który nie jest potrzebny — zawsze z powodem.',
+      'Checklista sprzętu: zgoda na braki i przyjęcie rozbieżności (jak sprzedawca), odblokowanie wydania i cofnięcie etapu („Cofnij etap”, z powodem).',
       'Konfiguracja usług („Przygotowanie i zamówienia”) i sprzętu („Sprawdzić stan przed wydaniem”).',
     ],
     steps: [
@@ -596,7 +602,7 @@ export const EVENT_STEPS_HELP: EventStepsHelpSection[] = [
 export const EVENT_STEPS_RULES: string[] = [
   'Każdy krok ma właściciela (rolę i osobę) oraz termin. Krok zamyka jego właściciel przyciskiem — system zapisuje kto i kiedy.',
   '„Czekamy na” pokazuje kroki, które można wykonać teraz: kto, co i do kiedy. Kłódka oznacza krok czekający na wcześniejsze kroki.',
-  'Kroki z procesu (dane wydarzenia, umowa, zaliczka, zespół, agenda, transport, przyjęcie przez magazyn, gotowość, kierownik, załadunek, start, zakończenie, faktura, wpłata, podsumowanie) zamykają się same, gdy zdarzy się to w systemie.',
+  'Kroki z procesu (dane wydarzenia, umowa, zaliczka, zespół, agenda, transport, przyjęcie przez magazyn, gotowość, kierownik, start, zakończenie, faktura, wpłata, podsumowanie) zamykają się same, gdy zdarzy się to w systemie. Wydanie, oddanie i przyjęcie zwrotu sprzętu zamyka checklista sprzętu.',
   'Formalności i rozliczenie widzą tylko osoby z dostępem handlowym. Magazyn, kierownik realizacji i ekipa widzą kroki realizacji bez kwot i dokumentów.',
   'Zmiana oferty, sprzętu, etapów lub dat przelicza kroki i terminy automatycznie.',
   'Powiadomienia: nowy krok (najwcześniej tydzień przed terminem), dzień przed terminem, po terminie (także kierownik i prowadzący), 2 dni po terminie — administratorzy.',

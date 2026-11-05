@@ -50,6 +50,14 @@ export type EventStepLink<Tab extends string> =
   | { kind: 'tab'; tab: Tab; label: string }
   | { kind: 'crm'; path: string; label: string };
 
+/**
+ * Kroki zamykane checklistą sprzętu (`system_managed`, private.event_step_auto_keys): wydanie, oddanie sprzętu
+ * do magazynu i przyjęcie zwrotu. „Przejdź” otwiera checklistę — w aplikacji zakładkę „Checklista” (pulpit
+ * realizacji: „Sprzęt”), także dla magazynu (zakładka „Magazyn” to przyjęcie i przygotowanie, nie wydanie).
+ * `return_handover` nie ma jeszcze wpisu w EVENT_STEP_TARGET_TAB (wspólna kopia eventSteps.ts) — obsługujemy go tutaj.
+ */
+export const EQUIPMENT_CHECKLIST_STEP_KEYS: ReadonlySet<string> = new Set(['dispatch_out', 'return_handover', 'return_check']);
+
 /** Zakładka CRM, w której zamyka się krok (albo null — krok bez linku). */
 export function eventStepCrmTab(stepKey: string | null | undefined): string | null {
   if (!stepKey) return null;
@@ -93,13 +101,14 @@ export function eventStepDetailLink(
   stepKey: string | null | undefined,
   context: EventDetailLinkContext,
 ): EventStepLink<EventDetailTab> | null {
-  const crmTab = eventStepCrmTab(stepKey);
-  if (!crmTab) return null;
   const tab = (value: EventDetailTab): EventStepLink<EventDetailTab> => ({
     kind: 'tab',
     tab: value,
     label: EVENT_DETAIL_TAB_LABELS[value],
   });
+  if (stepKey && EQUIPMENT_CHECKLIST_STEP_KEYS.has(stepKey)) return tab('checklist');
+  const crmTab = eventStepCrmTab(stepKey);
+  if (!crmTab) return null;
   switch (crmTab) {
     case 'details':
     case 'overview':
@@ -127,13 +136,14 @@ export function eventStepRealizationLink(
   stepKey: string | null | undefined,
   access?: EventAccess | null,
 ): EventStepLink<RealizationTab> | null {
-  const crmTab = eventStepCrmTab(stepKey);
-  if (!crmTab) return null;
   const tab = (value: RealizationTab): EventStepLink<RealizationTab> => ({
     kind: 'tab',
     tab: value,
     label: REALIZATION_TAB_LABELS[value],
   });
+  if (stepKey && EQUIPMENT_CHECKLIST_STEP_KEYS.has(stepKey)) return tab('equipment');
+  const crmTab = eventStepCrmTab(stepKey);
+  if (!crmTab) return null;
   switch (crmTab) {
     case 'details':
     case 'overview':

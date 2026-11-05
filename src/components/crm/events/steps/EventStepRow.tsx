@@ -52,7 +52,9 @@ const TAB_ICONS: Record<string, LucideIcon> = {
 
 /** Etykiety bardziej konkretne niż nazwa zakładki. */
 const CONTEXT_LABELS: Record<string, string> = {
-  dispatch_out: 'Lista załadunku',
+  dispatch_out: 'Checklista: wydanie',
+  return_handover: 'Checklista: załadunek powrotny',
+  return_check: 'Checklista: zwrot',
   wedding_card: 'Karta weselna',
 };
 

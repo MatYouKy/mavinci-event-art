@@ -748,13 +748,6 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
         setChecklist(ch.checklist);
         setLogistics(ch.logistics);
         setEventEquipment(ch.equipment);
-        setLoadedEquipmentIds(
-          new Set(
-            ch.equipment
-              .filter((e: EventEquipmentItem) => e.is_loaded)
-              .map((e: EventEquipmentItem) => e.id),
-          ),
-        );
         setFiles(fi);
         setFleetAssignments(fleet);
         setMyAssignment(assignment);
@@ -982,45 +975,13 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
     await supabase.from('event_loading_checklist').update({ loaded: newVal }).eq('id', item.id);
   };
 
-  const [loadedEquipmentIds, setLoadedEquipmentIds] = useState<Set<string>>(new Set());
-
-  const loadingEquipmentWrites = useRef(new Set<string>());
   const contentScrollRef = useRef<ScrollView>(null);
 
-  const toggleEquipmentLoaded = async (item: EventEquipmentItem) => {
-    // If loading is locked, prevent unchecking
-    if ((event as any)?.loading_locked && loadedEquipmentIds.has(item.id)) {
-      return;
-    }
-
-    if (loadingEquipmentWrites.current.has(item.id)) return;
-    loadingEquipmentWrites.current.add(item.id);
-    const newLoaded = !loadedEquipmentIds.has(item.id);
-    setLoadedEquipmentIds((prev) => {
-      const next = new Set(prev);
-      if (newLoaded) {
-        next.add(item.id);
-      } else {
-        next.delete(item.id);
-      }
-      return next;
-    });
-    try {
-      const { error } = await supabase.rpc('set_event_equipment_loaded', {
-        p_equipment_id: item.id,
-        p_loaded: newLoaded,
-      });
-      if (error) throw error;
-    } catch (error: any) {
-      setLoadedEquipmentIds((previous) => {
-        const next = new Set(previous);
-        if (newLoaded) next.delete(item.id); else next.add(item.id);
-        return next;
-      });
-      Alert.alert('Nie zapisano załadunku', error?.message || 'Spróbuj ponownie. Zaznaczenie zostało cofnięte.');
-    } finally {
-      loadingEquipmentWrites.current.delete(item.id);
-    }
+  // Sprzęt (wydanie, załadunek powrotny, zwrot) zapisuje EquipmentChecklistPanel przez RPC checklisty
+  // (docs/equipment-checklist.md); dawne set_event_equipment_loaded zostaje tylko dla starszych wersji aplikacji.
+  const refreshAfterEquipmentChange = () => {
+    setStepsRefreshKey((key) => key + 1);
+    void refreshEventState();
   };
 
   if (isLoading) {
@@ -1242,6 +1203,8 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
       <ScrollView
         ref={contentScrollRef}
         style={styles.scrollView}
+        keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -1279,16 +1242,15 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
         {activeTab === 'wedding' && isWeddingEvent && <WeddingCardTab card={weddingCard} />}
         {activeTab === 'checklist' && (
           <ChecklistTab
+            eventId={eventId}
             checklist={checklist}
             equipment={eventEquipment}
-            loadedEquipmentIds={loadedEquipmentIds}
             logistics={logistics}
             pdfPath={checklistPdfPath}
             onToggle={toggleLoadedItem}
-            onToggleEquipment={toggleEquipmentLoaded}
             event={event}
-            employee={employee}
-            onRefreshEvent={refreshEventState}
+            onEquipmentChanged={refreshAfterEquipmentChange}
+            refreshKey={stepsRefreshKey}
           />
         )}
         {activeTab === 'team' && (
