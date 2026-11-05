@@ -31,6 +31,8 @@ import {
   equipmentDefaultStage,
   equipmentLineTone,
   equipmentStageLines,
+  equipmentReopenableStage,
+  equipmentShortageDecisionLines,
 } from '../../../lib/equipmentChecklist';
 import {
   EQUIPMENT_DATABASE_UPDATE_MESSAGE,
@@ -38,12 +40,12 @@ import {
   discardEquipmentReturnPhotos,
   equipmentChecklistApi,
   equipmentErrorMessage,
-  equipmentShortageDecisionLines,
   fetchEquipmentChecklist,
   uploadEquipmentReturnPhoto,
 } from '../../../lib/equipmentChecklistApi';
 import { EquipmentLineRow, type EquipmentLineDraft } from './EquipmentLineRow';
 import { EquipmentNoteModal, type EquipmentNoteRequest } from './EquipmentNoteModal';
+import { EquipmentPersonStamp } from './EquipmentPersonBadge';
 
 /*
  * Checklista sprzętu wydarzenia w trzech etapach (wydanie → załadunek powrotny → zwrot) — zakładka „Checklista”
@@ -69,11 +71,15 @@ const RED_TEXT = '#fca5a5';
 const AMBER_TEXT = '#fcd34d';
 const GREEN_TEXT = '#86efac';
 
-const STAGE_TAB_LABEL: Record<EquipmentStageKey, string> = {
-  dispatch: 'Wydanie',
-  loadback: 'Załadunek powrotny',
-  return: 'Zwrot',
-};
+/** Nazwy etapów jak w CRM (wspólne EQUIPMENT_STAGE_TABS: Wydanie / Po wydarzeniu / Zwrot). */
+const STAGE_TAB_LABEL = Object.fromEntries(EQUIPMENT_STAGE_TABS.map((tab) => [tab.key, tab.label])) as Record<
+  EquipmentStageKey,
+  string
+>;
+const STAGE_DONE_LABEL = Object.fromEntries(EQUIPMENT_STAGE_TABS.map((tab) => [tab.key, tab.done])) as Record<
+  EquipmentStageKey,
+  string
+>;
 
 const CHECK_TONES = new Set(['unchecked', 'pending', 'missing', 'shortage', 'damaged']);
 
@@ -708,13 +714,7 @@ export default function EquipmentChecklistPanel({ eventId, onChanged, legacy, re
   const editable = selected === 'dispatch' ? can.pack : selected === 'loadback' ? can.loadback : can.return;
   const allLines = equipmentStageLines(c, selected);
   const todoCount = allLines.filter((line) => CHECK_TONES.has(equipmentLineTone(line, selected))).length;
-  const reopenStage: EquipmentStageKey | null = c.return.confirmed_at
-    ? 'return'
-    : c.loadback.confirmed_at
-      ? 'loadback'
-      : c.dispatch.confirmed_at
-        ? 'dispatch'
-        : null;
+  const reopenStage = equipmentReopenableStage(c);
   const stageLocked = selected !== 'dispatch' && !c.dispatch.confirmed_at;
   const decisionShortages = c.lines.filter((line) => line.shortage_status === 'pending' || line.shortage_status === 'rejected');
   const issueLines = returnIssueLines(c);
@@ -757,11 +757,17 @@ export default function EquipmentChecklistPanel({ eventId, onChanged, legacy, re
     );
   };
 
-  const stageInfo: { text: string; color?: string; italic?: boolean }[] = [];
+  // Podpis zatwierdzenia: awatar osoby (people[...]) + imię + data; tekst, gdy nie ma osoby (np. zamknięte przez system).
+  type StageInfo = { text: string; color?: string; italic?: boolean; stamp?: { id: string | null; name: string | null; at: string | null } };
+  const stageInfo: StageInfo[] = [];
   const by = (name: string | null, at: string | null) => [name, formatEventStepDate(at)].filter(Boolean).join(', ');
   if (selected === 'dispatch') {
     if (c.dispatch.confirmed_at) {
-      stageInfo.push({ text: `Wydanie potwierdził(a): ${by(c.dispatch.confirmed_by_name, c.dispatch.confirmed_at)}`, color: GREEN_TEXT });
+      stageInfo.push({
+        text: 'Wydanie potwierdził(a)',
+        color: GREEN_TEXT,
+        stamp: { id: c.dispatch.confirmed_by, name: c.dispatch.confirmed_by_name, at: c.dispatch.confirmed_at },
+      });
       if (c.dispatch.note) stageInfo.push({ text: c.dispatch.note, italic: true });
       if (c.dispatch.locked) stageInfo.push({ text: 'Lista zablokowana — zmiana wymaga cofnięcia wydania przez administratora.' });
     }
@@ -780,7 +786,11 @@ export default function EquipmentChecklistPanel({ eventId, onChanged, legacy, re
   } else if (selected === 'loadback') {
     if (stageLocked) stageInfo.push({ text: 'Załadunek powrotny otworzy się po potwierdzeniu wydania z magazynu.' });
     else if (c.loadback.confirmed_at) {
-      stageInfo.push({ text: `Zatwierdził(a): ${by(c.loadback.confirmed_by_name, c.loadback.confirmed_at)}`, color: GREEN_TEXT });
+      stageInfo.push({
+        text: 'Zatwierdził(a)',
+        color: GREEN_TEXT,
+        stamp: { id: c.loadback.confirmed_by, name: c.loadback.confirmed_by_name, at: c.loadback.confirmed_at },
+      });
       if (c.loadback.note) stageInfo.push({ text: c.loadback.note, italic: true });
     } else if (c.return.confirmed_at) {
       stageInfo.push({ text: 'Zwrot przyjęto bez zatwierdzonego załadunku powrotnego.' });
@@ -788,15 +798,21 @@ export default function EquipmentChecklistPanel({ eventId, onChanged, legacy, re
   } else {
     if (stageLocked) stageInfo.push({ text: 'Zwrot otworzy się po potwierdzeniu wydania z magazynu.' });
     else if (c.return.confirmed_at) {
-      stageInfo.push({ text: `Zwrot zatwierdził(a): ${by(c.return.confirmed_by_name, c.return.confirmed_at)}`, color: GREEN_TEXT });
+      stageInfo.push({
+        text: 'Zwrot zatwierdził(a)',
+        color: GREEN_TEXT,
+        stamp: { id: c.return.confirmed_by, name: c.return.confirmed_by_name, at: c.return.confirmed_at },
+      });
       if (c.return.note) stageInfo.push({ text: c.return.note, italic: true });
       if (c.return.issue_count > 0) {
         stageInfo.push({ text: `Rozbieżności: ${c.return.issue_count}`, color: RED_TEXT });
         if (c.return.issues_ack_at) {
           stageInfo.push({
-            text: `Przyjął(a): ${by(c.return.issues_ack_name, c.return.issues_ack_at)}${c.return.issues_ack_note ? ` — ${c.return.issues_ack_note}` : ''}`,
+            text: 'Rozbieżności przyjął(a)',
             color: GREEN_TEXT,
+            stamp: { id: c.return.issues_ack_by, name: c.return.issues_ack_name, at: c.return.issues_ack_at },
           });
+          if (c.return.issues_ack_note) stageInfo.push({ text: c.return.issues_ack_note, italic: true });
         }
       }
     } else if (!c.loadback.confirmed_at) {
@@ -949,11 +965,24 @@ export default function EquipmentChecklistPanel({ eventId, onChanged, legacy, re
           {/* Stan wybranego etapu i czynności */}
           <View style={styles.stageCard}>
             {!!owner && <Text style={styles.owner}>Odpowiada: {owner}</Text>}
-            {stageInfo.map((info, index) => (
-              <Text key={index} style={[styles.stageInfo, info.color ? { color: info.color } : null, info.italic && styles.italic]}>
-                {info.text}
-              </Text>
-            ))}
+            {stageInfo.map((info, index) =>
+              info.stamp ? (
+                <EquipmentPersonStamp
+                  key={index}
+                  label={info.text}
+                  color={info.color}
+                  actor={{
+                    name: info.stamp.name,
+                    at: info.stamp.at,
+                    person: info.stamp.id ? c.people[info.stamp.id] ?? null : null,
+                  }}
+                />
+              ) : (
+                <Text key={index} style={[styles.stageInfo, info.color ? { color: info.color } : null, info.italic && styles.italic]}>
+                  {info.text}
+                </Text>
+              ),
+            )}
             {selected === 'dispatch' && (
               <View style={styles.chips}>
                 <Text style={[styles.chip, styles.chipOk]}>W całości: {c.summary.packed_full}</Text>
@@ -1071,6 +1100,8 @@ export default function EquipmentChecklistPanel({ eventId, onChanged, legacy, re
                     onAddPhotos={() => addPhotos(line)}
                     onRemovePhoto={(path) => removePhoto(line, path)}
                     onPreview={setPreview}
+                    people={c.people}
+                    doneLabel={STAGE_DONE_LABEL[selected]}
                   />
                 </React.Fragment>
               );

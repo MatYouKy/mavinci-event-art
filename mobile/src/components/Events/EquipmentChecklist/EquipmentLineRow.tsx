@@ -7,6 +7,7 @@ import {
   EQUIPMENT_RETURN_PHOTO_LIMIT,
   EQUIPMENT_SHORTAGE_LABELS,
   type EquipmentChecklistLine,
+  type EquipmentChecklistPerson,
   type EquipmentLineTone,
   type EquipmentStageKey,
   equipmentLineTone,
@@ -14,22 +15,29 @@ import {
   equipmentPackedError,
   equipmentReturnError,
   equipmentReturnMissing,
+  equipmentLineActor,
+  equipmentLineDone,
 } from '../../../lib/equipmentChecklist';
 import { equipmentReturnPhotoUrl } from '../../../lib/equipmentChecklistApi';
 import { formatEventStepDate } from '../../../lib/eventSteps';
+import { EquipmentDoneBadge, showEquipmentActor } from './EquipmentPersonBadge';
 
 /*
  * Pozycja checklisty sprzętu na telefonie. Dotknięcie wiersza = pełna ilość (spakowane / wraca / wróciło sprawne),
  * ponowne dotknięcie pełnej pozycji = odznacz; przycisk „±” (albo dotknięcie pozycji z brakiem) otwiera edycję ilości
  * z powodem / opisem. Kolor tła z `equipmentLineTone` (wspólny z CRM): czerwony brak / uszkodzenie, żółty czeka,
  * zielony zgodne. Walidacja jak w bazie (wspólne `equipment*Error`), ostatecznie decyduje baza.
+ * Pozycja wykonana w całości (`equipmentLineDone`) jest przekreślona i przygaszona, z badge'em etapu
+ * („Załadowane” / „Załadowane po wydarzeniu” / „Zwrócone”) i awatarem osoby (`equipmentLineActor`) — jak w CRM;
+ * dotknięcie badge'a albo przytrzymanie wiersza pokazuje osobę z datą i godziną.
  */
 
 export type EquipmentLineDraft = { qty: number | null; ok: number; damaged: number; note: string };
 
 export const TONE_BACKGROUND: Record<EquipmentLineTone, string> = {
   unchecked: colors.background.tertiary,
-  ok: colors.status.success + '24',
+  // Wykonane w całości: delikatna zieleń, treść przekreślona i przygaszona (jak w CRM).
+  ok: colors.status.success + '17',
   shortage: colors.status.error + '26',
   missing: colors.status.error + '30',
   damaged: colors.status.error + '30',
@@ -204,6 +212,8 @@ export function EquipmentLineRow({
   onAddPhotos,
   onRemovePhoto,
   onPreview,
+  people,
+  doneLabel,
 }: {
   line: EquipmentChecklistLine;
   stage: EquipmentStageKey;
@@ -219,8 +229,16 @@ export function EquipmentLineRow({
   onAddPhotos: () => void;
   onRemovePhoto: (path: string) => void;
   onPreview: (url: string) => void;
+  /** Osoby z checklisty (awatar w badge'u). */
+  people: Record<string, EquipmentChecklistPerson>;
+  /** Etykieta wykonanej pozycji na etapie (`EQUIPMENT_STAGE_TABS[].done`). */
+  doneLabel: string;
 }) {
   const tone = equipmentLineTone(line, stage);
+  const done = equipmentLineDone(line, stage);
+  const lineActor = equipmentLineActor(line, stage);
+  const actor = { name: lineActor.name, at: lineActor.at, person: lineActor.id ? people[lineActor.id] ?? null : null };
+  const hasActor = Boolean(actor.name || actor.person || actor.at);
   const icon = TONE_ICON[tone];
   const [draft, setDraft] = useState<EquipmentLineDraft>(() => initialDraft(line, stage));
   const [error, setError] = useState<string | null>(null);
@@ -293,12 +311,19 @@ export function EquipmentLineRow({
       <View style={styles.rowMain}>
         <TouchableOpacity
           style={styles.rowPress}
-          onPress={onQuick}
-          disabled={!editable || busy}
-          activeOpacity={0.7}
+          onPress={editable ? onQuick : undefined}
+          onLongPress={hasActor ? () => showEquipmentActor(done ? doneLabel : 'Ostatnia zmiana', actor) : undefined}
+          disabled={busy || (!editable && !hasActor)}
+          activeOpacity={editable ? 0.7 : 0.9}
           accessibilityRole={editable ? 'button' : undefined}
-          accessibilityLabel={`${line.name}. ${statusLines(line, stage, tone)[0]?.text ?? ''}`}
-          accessibilityHint={editable ? 'Dotknij, aby zaznaczyć pełną ilość albo odznaczyć' : undefined}
+          accessibilityLabel={`${line.name}. ${done ? doneLabel : statusLines(line, stage, tone)[0]?.text ?? ''}`}
+          accessibilityHint={
+            editable
+              ? 'Dotknij, aby zaznaczyć pełną ilość albo odznaczyć. Przytrzymaj, aby zobaczyć, kto i kiedy.'
+              : hasActor
+                ? 'Przytrzymaj, aby zobaczyć, kto i kiedy.'
+                : undefined
+          }
         >
           <View style={styles.statusIcon}>
             {busy ? (
@@ -313,16 +338,17 @@ export function EquipmentLineRow({
             </TouchableOpacity>
           ) : null}
           <View style={styles.rowText}>
-            <Text style={styles.name} numberOfLines={3}>
+            <Text style={[styles.name, done && styles.nameDone]} numberOfLines={3}>
               {line.name}
             </Text>
-            <Text style={styles.meta}>{meta.join(' · ')}</Text>
+            <Text style={[styles.meta, done && styles.dimmed]}>{meta.join(' · ')}</Text>
             {!!line.notes && (
-              <Text style={styles.lineNotes} numberOfLines={3}>
+              <Text style={[styles.lineNotes, done && styles.dimmed]} numberOfLines={3}>
                 {line.notes}
               </Text>
             )}
-            {statusLines(line, stage, tone).map((status, index) => (
+            {done && !expanded && <EquipmentDoneBadge label={doneLabel} actor={actor} />}
+            {!(done && !expanded) && statusLines(line, stage, tone).map((status, index) => (
               <Text
                 key={index}
                 style={[styles.status, status.color ? { color: status.color } : null, status.italic && styles.italic]}
@@ -505,6 +531,8 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.text.primary,
   },
+  nameDone: { textDecorationLine: 'line-through', color: colors.text.tertiary },
+  dimmed: { opacity: 0.6 },
   meta: { fontSize: 12, color: colors.text.tertiary },
   lineNotes: { fontSize: 12, color: colors.text.secondary, lineHeight: 17 },
   status: { fontSize: 13, color: colors.text.secondary, lineHeight: 18 },

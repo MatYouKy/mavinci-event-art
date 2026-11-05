@@ -1,8 +1,18 @@
 'use client';
 import { EquipmentChecklistNotes } from '@/components/crm/EquipmentChecklistNotes';
-import EventEquipmentChecklistPanel from '@/components/crm/events/equipment/EventEquipmentChecklistPanel';
+import EquipmentChecklistBar from '@/components/crm/events/equipment/EquipmentChecklistBar';
+import { useEquipmentChecklist } from '@/components/crm/events/equipment/useEquipmentChecklist';
+import {
+  EquipmentRowBadges,
+  EquipmentRowNote,
+  EquipmentRowQtyChip,
+  EquipmentRowTick,
+  isEquipmentRowDone,
+} from '@/components/crm/events/equipment/EquipmentRowChecklist';
+import { equipmentRowTint, type EquipmentRowChecklist } from '@/components/crm/events/equipment/equipmentChecklistUi';
+import { equipmentDefaultStage, type EquipmentStageKey } from '@/lib/events/equipment/equipmentChecklist';
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Package,
   Plus,
@@ -394,6 +404,45 @@ export const EventEquipmentTab: React.FC<{
   const { employee, isAdmin } = useCurrentEmployee();
   const { showConfirm } = useDialog();
   const router = useRouter();
+
+  // Checklista sprzętu: ta sama lista pozycji, filtrowana etapem (Wydanie · Po wydarzeniu · Zwrot).
+  const checklistState = useEquipmentChecklist(eventId);
+  const { checklist, status: checklistStatus, busyKeys: checklistBusy, run: runChecklist } = checklistState;
+  const [checklistPick, setChecklistPick] = useState<EquipmentStageKey | null>(null);
+  const checklistStageRef = useRef<string | null>(null);
+  useEffect(() => {
+    setChecklistPick(null);
+    checklistStageRef.current = null;
+  }, [eventId]);
+  // Etap wydarzenia się zmienił (zatwierdzenie tu albo na innym urządzeniu) → pokaż bieżący etap.
+  useEffect(() => {
+    const current = checklist?.stage ?? null;
+    if (checklistStageRef.current && current && current !== checklistStageRef.current) setChecklistPick(null);
+    checklistStageRef.current = current;
+  }, [checklist?.stage]);
+  const checklistStage: EquipmentStageKey | null =
+    checklist && checklist.stage !== 'empty' ? checklistPick ?? equipmentDefaultStage(checklist) : null;
+  const checklistLines = useMemo(() => new Map((checklist?.lines ?? []).map((line) => [line.id, line])), [checklist]);
+  // Po potwierdzeniu wydania lista jest zablokowana (baza odrzuca zmiany ilości i usuwanie wydanych pozycji).
+  const checklistLocked = Boolean(checklist?.dispatch.confirmed_at);
+  const showLegacyLoaded = !checklist && (checklistStatus === 'missing' || checklistStatus === 'error');
+  const shippedOnly = checklistStage === 'loadback' || checklistStage === 'return';
+
+  const checklistRowFor = (row: any): EquipmentRowChecklist | undefined => {
+    if (!checklist || !checklistStage || !row?.id) return undefined;
+    const line = checklistLines.get(row.id);
+    if (!line || (checklistStage !== 'dispatch' && line.shipped_qty <= 0)) return undefined;
+    const can = checklist.can;
+    return {
+      line,
+      stage: checklistStage,
+      editable: checklistStage === 'dispatch' ? can.pack : checklistStage === 'loadback' ? can.loadback : can.return,
+      busy: checklistBusy.has(`line:${line.id}`),
+      people: checklist.people,
+      eventId,
+      save: (fn, params) => runChecklist(`line:${line.id}`, fn, params),
+    };
+  };
 
   const fetchComponentReviewQueue = useCallback(async () => {
     if (!eventId) return;
@@ -966,8 +1015,8 @@ export const EventEquipmentTab: React.FC<{
     showSnackbar('Konflikt oznaczony jako rozwiązany', 'info');
   };
 
-  // Wydanie, załadunek powrotny i zwrot: EventEquipmentChecklistPanel (RPC checklisty — pól events.loading_* nie zapisuje się
-  // bezpośrednio, strażnik a_guard_event_loading_fields). is_loaded = pozycja spakowana w całości (PDF, wiersze listy).
+  // Wydanie, po wydarzeniu i zwrot: EquipmentChecklistBar + stan w wierszach (RPC checklisty — pól events.loading_* nie zapisuje się
+  // bezpośrednio, strażnik a_guard_event_loading_fields). is_loaded = pozycja spakowana w całości (PDF, dawna lista).
   const loadedCount = equipment.filter((r: any) => r.is_loaded && !r.removed_from_offer).length;
   const totalCount = equipment.filter((r: any) => !r.removed_from_offer).length;
 
@@ -1298,11 +1347,18 @@ export const EventEquipmentTab: React.FC<{
     }
   };
 
+  // Po wydarzeniu i Zwrot: tylko pozycje wydane z magazynu.
+  const stageEquipment = useMemo(
+    () => (shippedOnly ? (equipment || []).filter((row: any) => (checklistLines.get(row.id)?.shipped_qty ?? 0) > 0) : equipment || []),
+    [equipment, shippedOnly, checklistLines],
+  );
+  const notShippedCount = shippedOnly ? (checklist?.lines ?? []).filter((line) => line.shipped_qty <= 0).length : 0;
+
   const visibleEquipment = useMemo(() => {
     const normalize = (value: string) => value.toLocaleLowerCase('pl-PL').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/ł/g, 'l');
     const terms = normalize(equipmentSearch).trim().split(/\s+/).filter(Boolean);
-    if (!terms.length) return equipment || [];
-    return (equipment || []).filter((row: any) => {
+    if (!terms.length) return stageEquipment;
+    return stageEquipment.filter((row: any) => {
       const asset = row.equipment || row.equipment_items || row.cable || row.cables || row;
       const kit = row.kit || row.equipment_kits;
       const text = normalize([
@@ -1311,7 +1367,7 @@ export const EventEquipmentTab: React.FC<{
       ].filter(value => typeof value === 'string').join(' '));
       return terms.every(term => text.includes(term));
     });
-  }, [equipment, equipmentSearch]);
+  }, [stageEquipment, equipmentSearch]);
 
   const manualKitRows = useMemo(
     () => visibleEquipment.filter((r: any) => !r.auto_added && isKitRow(r)),
@@ -1360,6 +1416,9 @@ export const EventEquipmentTab: React.FC<{
     const badge = getStatusBadge(row?.status, hasConflict);
 
     const expandInPrint = !!row?.expand_kit_in_checklist;
+    const kitChecklist = checklistRowFor(row);
+    const kitDone = isEquipmentRowDone(kitChecklist);
+    const kitTint = kitChecklist ? equipmentRowTint(kitChecklist.line, kitChecklist.stage) : '';
 
     const kitItemsRaw =
       row?.kit?.items ||
@@ -1377,7 +1436,8 @@ export const EventEquipmentTab: React.FC<{
     return (
       <div key={row.id}>
         {/* GŁÓWNY WIERSZ – 1:1 jak ProductEquipmentRow */}
-        <div className="flex items-center gap-3 rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2.5 transition-colors hover:border-[#d3bb73]/20">
+        <div className={`flex items-center gap-3 rounded-lg border border-[#d3bb73]/10 ${kitTint || 'bg-[#0f1119]'} px-4 py-2.5 transition-colors hover:border-[#d3bb73]/20`}>
+          {kitChecklist && <EquipmentRowTick {...kitChecklist} />}
           {/* chevron */}
           <button
             onClick={toggleExpand}
@@ -1429,17 +1489,22 @@ export const EventEquipmentTab: React.FC<{
 
             {/* NAZWA + status */}
             <div className="flex min-w-0 flex-col">
-              <div className="flex min-w-0 items-center gap-2">
-                <span className="truncate font-medium text-[#e5e4e2]">{kitName}</span>
+              <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                <span
+                  className={`truncate font-medium ${kitDone ? 'text-[#e5e4e2]/50 line-through decoration-[#e5e4e2]/40' : 'text-[#e5e4e2]'}`}
+                >
+                  {kitName}
+                </span>
 
                 <span
                   className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] ${badge.cls}`}
                 >
                   {badge.label}
                 </span>
+                {kitChecklist && <EquipmentRowBadges {...kitChecklist} />}
               </div>
 
-              <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-[#e5e4e2]/50">
+              {editable && <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-[#e5e4e2]/50">
                 <span>
                   możesz dodać jeszcze <span className="text-[#d3bb73]">{limits.maxAdd}</span>
                 </span>
@@ -1447,13 +1512,15 @@ export const EventEquipmentTab: React.FC<{
                 <span>
                   max ustawienia <span className="text-[#d3bb73]">{limits.maxSet}</span>
                 </span>
-              </div>
+              </div>}
+              {kitChecklist && <EquipmentRowNote {...kitChecklist} />}
             </div>
           </div>
 
-          {/* ilość + checkbox print */}
+          {/* ilość (+ ilość z checklisty etapu) */}
           <div className="flex items-center gap-4 text-sm text-[#e5e4e2]/40">
-            {editingQuantityId === row.id ? (
+            {kitChecklist && <EquipmentRowQtyChip {...kitChecklist} />}
+            {editable && editingQuantityId === row.id ? (
               <span className="inline-flex items-center gap-2">
                 <button
                   className="rounded bg-[#d3bb73] px-2 py-0.5 text-black hover:bg-[#e5c97a]"
@@ -1498,40 +1565,23 @@ export const EventEquipmentTab: React.FC<{
                 {qty} <span className="text-[#e5e4e2]/60">szt.</span>
               </span>
             )}
-
-            {/* ilość + print toggle */}
-            <div className="flex items-center gap-3 text-sm text-[#e5e4e2]/40">
-              {/* ilość (zostaje jak masz) */}
-              {editingQuantityId === row.id ? (
-                /* ... Twoja edycja qty bez zmian ... */
-                <span className="inline-flex items-center gap-2">{/* ... */}</span>
-              ) : (
-                <span
-                  className={`text-[#e5e4e2] ${editable ? 'cursor-pointer hover:text-[#d3bb73]' : ''}`}
-                  onClick={() => {
-                    if (!editable) return;
-                    setEditingQuantityId(row.id);
-                    setDraftQuantity(qty);
-                  }}
-                >
-                  {qty} <span className="text-[#e5e4e2]/60">szt.</span>
-                </span>
-              )}
-            </div>
           </div>
 
-          {/* trash */}
-          {editable && (
-            <div className="flex items-center gap-2 rounded-lg p-2 pt-2 text-red-400/60 transition-colors hover:bg-red-400/10 hover:text-red-400">
+          {/* trash (po wydaniu lista jest zablokowana — zostaje tylko wydruk zawartości) */}
+          <div className="flex items-center gap-2 rounded-lg p-2 pt-2 text-red-400/60 transition-colors hover:bg-red-400/10 hover:text-red-400">
               <ResponsiveActionBar
                 disabledBackground
                 actions={[
-                  {
-                    label: 'Usuń zestaw',
-                    onClick: () => handleRemoveEquipment(row),
-                    icon: <Trash2 className="h-4 w-4" />,
-                    variant: 'danger',
-                  },
+                  ...(editable
+                    ? [
+                        {
+                          label: 'Usuń zestaw',
+                          onClick: () => handleRemoveEquipment(row),
+                          icon: <Trash2 className="h-4 w-4" />,
+                          variant: 'danger' as const,
+                        },
+                      ]
+                    : []),
                   {
                     label: expandInPrint ? 'ukryj zawartość' : 'drukuj zawartość',
                     onClick: () => handleToggleExpandInChecklist(row.id, !expandInPrint),
@@ -1544,8 +1594,7 @@ export const EventEquipmentTab: React.FC<{
                   },
                 ]}
               />
-            </div>
-          )}
+          </div>
         </div>
 
         {/* ROZWINIĘTA ZAWARTOŚĆ – “pod-wiersze” */}
@@ -1928,21 +1977,26 @@ export const EventEquipmentTab: React.FC<{
           await fetchAvailableEquipment();
           await refetchEvent();
         }}
+        checklist={checklistRowFor(row)}
+        legacyLoadedBadge={showLegacyLoaded}
       />
     );
   };
 
   const actions = useMemo<Action[]>(() => {
-    const result: Action[] = [
-      {
-        label: 'Dodaj sprzęt',
-        onClick: () => setShowAddEquipmentModal(true),
-        icon: <Plus className="h-4 w-4" />,
-        variant: 'primary',
-      },
-    ];
+    // Po zatwierdzeniu wydania lista jest zablokowana (zmiany tylko po cofnięciu etapu).
+    const result: Action[] = checklistLocked
+      ? []
+      : [
+          {
+            label: 'Dodaj sprzęt',
+            onClick: () => setShowAddEquipmentModal(true),
+            icon: <Plus className="h-4 w-4" />,
+            variant: 'primary',
+          },
+        ];
 
-    if (acceptedCalcId) {
+    if (acceptedCalcId && !checklistLocked) {
       result.push({
         label: importingFromCalc ? 'Importowanie...' : 'Importuj z kalkulacji',
         onClick: handleImportFromCalculation,
@@ -1993,6 +2047,7 @@ export const EventEquipmentTab: React.FC<{
 
     return result;
   }, [
+    checklistLocked,
     setShowAddEquipmentModal,
     acceptedCalcId,
     importingFromCalc,
@@ -2315,15 +2370,17 @@ export const EventEquipmentTab: React.FC<{
         </div>
       )}
 
-      {/* === CHECKLISTA SPRZĘTU: wydanie → załadunek powrotny → zwrot === */}
-      <EventEquipmentChecklistPanel
+      {/* === CHECKLISTA SPRZĘTU: etapy filtrują listę poniżej (wydanie → po wydarzeniu → zwrot) === */}
+      <EquipmentChecklistBar
         eventId={eventId}
+        state={checklistState}
+        stage={checklistStage}
+        onStageChange={setChecklistPick}
         legacy={{
           loaded: loadedCount,
           total: totalCount,
           confirmed: Boolean(event?.loading_confirmed),
           confirmedAt: event?.loading_confirmed_at ?? null,
-          notes: event?.loading_notes ?? null,
         }}
       />
 
@@ -2331,9 +2388,14 @@ export const EventEquipmentTab: React.FC<{
         <p className="text-[#e5e4e2]/60">Brak przypisanego sprzętu</p>
       ) : (
         <div className="space-y-5">
+          {shippedOnly && (
+            <p role="status" className="text-xs text-[#e5e4e2]/55">
+              Pokazano {stageEquipment.length} wydanych pozycji · {notShippedCount} nie wydano
+            </p>
+          )}
           {equipmentSearch.trim() && (
             <p role="status" className="text-sm text-[#e5e4e2]/60">
-              {visibleEquipment.length ? `Znaleziono pozycji: ${visibleEquipment.length} z ${equipment?.length || 0}` : 'Brak sprzętu pasującego do wyszukiwania.'}
+              {visibleEquipment.length ? `Znaleziono pozycji: ${visibleEquipment.length} z ${stageEquipment.length}` : 'Brak sprzętu pasującego do wyszukiwania.'}
             </p>
           )}
           {manualItemRows.length + autoItemRows.length > 0 && (
@@ -2355,7 +2417,7 @@ export const EventEquipmentTab: React.FC<{
                   <div className="text-[11px] uppercase tracking-wider text-[#e5e4e2]/35">
                     Dodane bezpośrednio
                   </div>
-                  {manualItemRows.map((row: any) => renderRow(row, true))}
+                  {manualItemRows.map((row: any) => renderRow(row, !checklistLocked))}
                 </div>
               )}
               {autoItemRows.length > 0 && (
@@ -2363,7 +2425,7 @@ export const EventEquipmentTab: React.FC<{
                   <div className="text-[11px] uppercase tracking-wider text-[#d3bb73]/55">
                     Z oferty / importu
                   </div>
-                  {autoItemRows.map((row: any) => renderRow(row, true))}
+                  {autoItemRows.map((row: any) => renderRow(row, !checklistLocked))}
                 </div>
               )}
             </section>
@@ -2388,7 +2450,7 @@ export const EventEquipmentTab: React.FC<{
                   <div className="text-[11px] uppercase tracking-wider text-[#e5e4e2]/35">
                     Dodane bezpośrednio
                   </div>
-                  {manualKitRows.map((row: any) => renderKitRow(row, true))}
+                  {manualKitRows.map((row: any) => renderKitRow(row, !checklistLocked))}
                 </div>
               )}
               {autoKitRows.length > 0 && (
@@ -2396,7 +2458,7 @@ export const EventEquipmentTab: React.FC<{
                   <div className="text-[11px] uppercase tracking-wider text-sky-300/50">
                     Z oferty / importu
                   </div>
-                  {autoKitRows.map((row: any) => renderKitRow(row, true))}
+                  {autoKitRows.map((row: any) => renderKitRow(row, !checklistLocked))}
                 </div>
               )}
             </section>
@@ -2421,7 +2483,7 @@ export const EventEquipmentTab: React.FC<{
                   <div className="text-[11px] uppercase tracking-wider text-[#e5e4e2]/35">
                     Dodane bezpośrednio
                   </div>
-                  {manualCableRows.map((row: any) => renderRow(row, true))}
+                  {manualCableRows.map((row: any) => renderRow(row, !checklistLocked))}
                 </div>
               )}
               {autoCableRows.length > 0 && (
@@ -2429,7 +2491,7 @@ export const EventEquipmentTab: React.FC<{
                   <div className="text-[11px] uppercase tracking-wider text-violet-300/50">
                     Z oferty / importu
                   </div>
-                  {autoCableRows.map((row: any) => renderRow(row, true))}
+                  {autoCableRows.map((row: any) => renderRow(row, !checklistLocked))}
                 </div>
               )}
             </section>

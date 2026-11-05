@@ -26,10 +26,12 @@ export type EquipmentChecklistLine = {
   removed: boolean;
   packed_qty: number | null;
   packed_at: string | null;
+  packed_by: string | null;
   packed_by_name: string | null;
   shortage_qty: number;
   shortage_reason: string | null;
   shortage_status: EquipmentShortageStatus;
+  shortage_decided_by: string | null;
   shortage_decided_name: string | null;
   shortage_decided_at: string | null;
   shortage_decision_note: string | null;
@@ -38,6 +40,7 @@ export type EquipmentChecklistLine = {
   loadback_qty: number | null;
   loadback_note: string | null;
   loadback_at: string | null;
+  loadback_by: string | null;
   loadback_by_name: string | null;
   return_ok_qty: number | null;
   return_damaged_qty: number | null;
@@ -45,8 +48,12 @@ export type EquipmentChecklistLine = {
   return_note: string | null;
   return_photos: string[];
   returned_at: string | null;
+  returned_by: string | null;
   returned_by_name: string | null;
 };
+
+/** Osoba z checklisty (awatar przy pozycji / etapie): `EmployeeAvatar` w CRM, inicjały w aplikacji. */
+export type EquipmentChecklistPerson = { id: string; name: string; avatar_url: string | null; avatar_metadata: Record<string, unknown> | null };
 
 export type EquipmentChecklistCan = {
   pack: boolean;
@@ -96,6 +103,7 @@ export type EquipmentChecklist = {
   stage: EquipmentChecklistStage;
   dispatch: {
     confirmed_at: string | null;
+    confirmed_by: string | null;
     confirmed_by_name: string | null;
     note: string | null;
     locked: boolean;
@@ -106,19 +114,23 @@ export type EquipmentChecklist = {
     shortage_requested_name: string | null;
     shortage_request_note: string | null;
   };
-  loadback: { confirmed_at: string | null; confirmed_by_name: string | null; note: string | null };
+  loadback: { confirmed_at: string | null; confirmed_by: string | null; confirmed_by_name: string | null; note: string | null };
   return: {
     confirmed_at: string | null;
+    confirmed_by: string | null;
     confirmed_by_name: string | null;
     note: string | null;
     issue_count: number;
     issues_ack_at: string | null;
+    issues_ack_by: string | null;
     issues_ack_name: string | null;
     issues_ack_note: string | null;
   };
   can: EquipmentChecklistCan;
   /** Co blokuje zatwierdzenie bieżącego etapu (gotowe zdania z bazy). */
   blockers: string[];
+  /** Osoby występujące w checkliście (id pracownika → dane do awatara). */
+  people: Record<string, EquipmentChecklistPerson>;
   summary: EquipmentChecklistSummary;
   lines: EquipmentChecklistLine[];
   log: EquipmentChecklistLogEntry[];
@@ -146,7 +158,8 @@ export const EQUIPMENT_RETURN_PHOTO_BUCKET = 'event-files';
 export const EQUIPMENT_RETURN_PHOTO_LIMIT = 10;
 export function equipmentReturnPhotoPath(eventId: string, lineId: string, fileName: string): string {
   const safe = fileName.normalize('NFKD').replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/-+/g, '-').slice(-80) || 'zdjecie.jpg';
-  return `${eventId}/equipment-return/${lineId}/${Date.now()}-${safe}`;
+  const unique = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  return `${eventId}/equipment-return/${lineId}/${unique}-${safe}`;
 }
 
 export const EQUIPMENT_STAGE_LABELS: Record<EquipmentChecklistStage, string> = {
@@ -158,10 +171,10 @@ export const EQUIPMENT_STAGE_LABELS: Record<EquipmentChecklistStage, string> = {
   done: 'Zakończone',
 };
 
-export const EQUIPMENT_STAGE_TABS: { key: EquipmentStageKey; label: string; owner: string }[] = [
-  { key: 'dispatch', label: 'Wydanie', owner: 'Magazyn' },
-  { key: 'loadback', label: 'Załadunek powrotny', owner: 'Kierownik realizacji' },
-  { key: 'return', label: 'Zwrot', owner: 'Magazyn' },
+export const EQUIPMENT_STAGE_TABS: { key: EquipmentStageKey; label: string; owner: string; done: string }[] = [
+  { key: 'dispatch', label: 'Wydanie', owner: 'Magazyn', done: 'Załadowane' },
+  { key: 'loadback', label: 'Po wydarzeniu', owner: 'Kierownik realizacji', done: 'Załadowane po wydarzeniu' },
+  { key: 'return', label: 'Zwrot', owner: 'Magazyn', done: 'Zwrócone' },
 ];
 
 /** Krótka podpowiedź „co teraz” dla etapu wydarzenia. */
@@ -221,6 +234,33 @@ export function equipmentLineTone(line: EquipmentChecklistLine, stage: Equipment
   if (line.return_ok_qty == null) return 'unchecked';
   if ((line.return_damaged_qty || 0) > 0) return 'damaged';
   return (line.return_missing_qty || 0) > 0 ? 'missing' : 'ok';
+}
+
+/** Kto i kiedy wykonał pozycję na etapie (badge „Załadowane” z awatarem). */
+export function equipmentLineActor(line: EquipmentChecklistLine, stage: EquipmentStageKey): { id: string | null; name: string | null; at: string | null } {
+  if (stage === 'dispatch') return { id: line.packed_by, name: line.packed_by_name, at: line.packed_at };
+  if (stage === 'loadback') return { id: line.loadback_by, name: line.loadback_by_name, at: line.loadback_at };
+  return { id: line.returned_by, name: line.returned_by_name, at: line.returned_at };
+}
+
+/** Pozycja „odhaczona w całości” na etapie (przekreślona z badge'em), a nie z brakiem / uszkodzeniem. */
+export function equipmentLineDone(line: EquipmentChecklistLine, stage: EquipmentStageKey): boolean {
+  return equipmentLineTone(line, stage) === 'ok';
+}
+
+/** Braki do decyzji sprzedawcy / administratora — parametr `p_lines` dla decide_event_equipment_shortages. */
+export function equipmentShortageDecisionLines(checklist: EquipmentChecklist): { id: string; shortage_qty: number }[] {
+  return checklist.lines
+    .filter((line) => line.shortage_status === 'pending' || line.shortage_status === 'rejected')
+    .map((line) => ({ id: line.id, shortage_qty: line.shortage_qty }));
+}
+
+/** Etap do cofnięcia przez administratora: ostatni zatwierdzony (zwrot → załadunek powrotny → wydanie). */
+export function equipmentReopenableStage(checklist: EquipmentChecklist): EquipmentStageKey | null {
+  if (checklist.return.confirmed_at && checklist.return.confirmed_by_name !== 'Nic nie wydano z magazynu') return 'return';
+  if (checklist.loadback.confirmed_at && checklist.loadback.confirmed_by_name !== 'Nic nie wydano z magazynu') return 'loadback';
+  if (checklist.dispatch.confirmed_at) return 'dispatch';
+  return null;
 }
 
 /** Pozycje widoczne na etapie: wydanie — wszystkie; załadunek i zwrot — tylko wydane. */
@@ -302,10 +342,12 @@ function parseLine(raw: unknown): EquipmentChecklistLine | null {
     removed: bool(line.removed),
     packed_qty: nullable('packed_qty'),
     packed_at: str(line.packed_at),
+    packed_by: str(line.packed_by),
     packed_by_name: str(line.packed_by_name),
     shortage_qty: num(line.shortage_qty),
     shortage_reason: str(line.shortage_reason),
     shortage_status: shortage && SHORTAGES.includes(shortage) ? shortage : 'none',
+    shortage_decided_by: str(line.shortage_decided_by),
     shortage_decided_name: str(line.shortage_decided_name),
     shortage_decided_at: str(line.shortage_decided_at),
     shortage_decision_note: str(line.shortage_decision_note),
@@ -313,6 +355,7 @@ function parseLine(raw: unknown): EquipmentChecklistLine | null {
     loadback_qty: nullable('loadback_qty'),
     loadback_note: str(line.loadback_note),
     loadback_at: str(line.loadback_at),
+    loadback_by: str(line.loadback_by),
     loadback_by_name: str(line.loadback_by_name),
     return_ok_qty: nullable('return_ok_qty'),
     return_damaged_qty: nullable('return_damaged_qty'),
@@ -320,6 +363,7 @@ function parseLine(raw: unknown): EquipmentChecklistLine | null {
     return_note: str(line.return_note),
     return_photos: list(line.return_photos).filter((path): path is string => typeof path === 'string' && path.length > 0),
     returned_at: str(line.returned_at),
+    returned_by: str(line.returned_by),
     returned_by_name: str(line.returned_by_name),
   };
 }
@@ -340,6 +384,7 @@ export function parseEquipmentChecklist(raw: unknown): EquipmentChecklist | null
     stage: stage && STAGES.includes(stage) ? stage : 'dispatch',
     dispatch: {
       confirmed_at: str(dispatch.confirmed_at),
+      confirmed_by: str(dispatch.confirmed_by),
       confirmed_by_name: str(dispatch.confirmed_by_name),
       note: str(dispatch.note),
       locked: bool(dispatch.locked),
@@ -350,13 +395,15 @@ export function parseEquipmentChecklist(raw: unknown): EquipmentChecklist | null
       shortage_requested_name: str(dispatch.shortage_requested_name),
       shortage_request_note: str(dispatch.shortage_request_note),
     },
-    loadback: { confirmed_at: str(loadback.confirmed_at), confirmed_by_name: str(loadback.confirmed_by_name), note: str(loadback.note) },
+    loadback: { confirmed_at: str(loadback.confirmed_at), confirmed_by: str(loadback.confirmed_by), confirmed_by_name: str(loadback.confirmed_by_name), note: str(loadback.note) },
     return: {
       confirmed_at: str(ret.confirmed_at),
+      confirmed_by: str(ret.confirmed_by),
       confirmed_by_name: str(ret.confirmed_by_name),
       note: str(ret.note),
       issue_count: num(ret.issue_count),
       issues_ack_at: str(ret.issues_ack_at),
+      issues_ack_by: str(ret.issues_ack_by),
       issues_ack_name: str(ret.issues_ack_name),
       issues_ack_note: str(ret.issues_ack_note),
     },
@@ -374,6 +421,12 @@ export function parseEquipmentChecklist(raw: unknown): EquipmentChecklist | null
       reopen: bool(can.reopen),
     },
     blockers: list(data.blockers).filter((item): item is string => typeof item === 'string'),
+    people: Object.fromEntries(Object.entries(obj(data.people)).map(([id, raw]) => {
+      const person = obj(raw);
+      const metadata = obj(person.avatar_metadata);
+      return [id, { id, name: str(person.name) || 'Pracownik', avatar_url: str(person.avatar_url),
+        avatar_metadata: Object.keys(metadata).length ? metadata : null }];
+    })),
     summary: {
       lines: num(summary.lines),
       required: num(summary.required),

@@ -7,6 +7,14 @@ import ResponsiveActionBar, { type Action } from '@/components/crm/ResponsiveAct
 import { RequiredComponentsWarning } from '@/components/crm/RequiredComponentsWarning';
 import { EmployeeAvatar } from '@/components/EmployeeAvatar';
 import NextImage from 'next/image';
+import {
+  EquipmentRowBadges,
+  EquipmentRowNote,
+  EquipmentRowQtyChip,
+  EquipmentRowTick,
+  isEquipmentRowDone,
+} from '@/components/crm/events/equipment/EquipmentRowChecklist';
+import { equipmentRowTint, type EquipmentRowChecklist } from '@/components/crm/events/equipment/equipmentChecklistUi';
 
 type StatusBadge = { label: string; cls: string };
 
@@ -48,6 +56,11 @@ type Props = {
   offerId?: string;
   canVerifyInventory?: boolean;
   onComponentsAdded?: () => void | Promise<void>;
+
+  /** Stan checklisty sprzętu dla wybranego etapu (lista sprzętu = checklista). */
+  checklist?: EquipmentRowChecklist;
+  /** Dawny badge „ZAŁADOWANY” — tylko gdy baza nie ma checklisty. */
+  legacyLoadedBadge?: boolean;
 };
 
 export function EventEquipmentRow({
@@ -80,6 +93,8 @@ export function EventEquipmentRow({
   offerId,
   canVerifyInventory,
   onComponentsAdded,
+  checklist,
+  legacyLoadedBadge = true,
 }: Props) {
   const isKit = !!row?.kit;
   const cable = row?.cable || row?.cables || null;
@@ -104,12 +119,17 @@ export function EventEquipmentRow({
   const isShortage = !!row?.is_optional;
   const isRental = row?.status === 'rental' || !!row?.use_external_rental;
   const isLoaded = !!row?.is_loaded;
+  const checklistDone = isEquipmentRowDone(checklist);
+  const checklistTint = checklist ? equipmentRowTint(checklist.line, checklist.stage) : '';
+  const nameState = checklistDone ? 'text-[#e5e4e2]/50 line-through decoration-[#e5e4e2]/40' : 'text-[#e5e4e2]';
 
   return (
     <div>
       <div
         className={`flex items-center gap-3 rounded-lg border ${
-          isLoaded
+          checklistTint
+            ? `border-[#d3bb73]/10 ${checklistTint}`
+            : legacyLoadedBadge && isLoaded
             ? 'border-emerald-500/60 bg-emerald-500/5'
             : isConflict || isShortage
               ? 'border-red-500/20 bg-red-500/5'
@@ -118,6 +138,8 @@ export function EventEquipmentRow({
           isRemovedFromOffer ? 'opacity-50' : ''
         }`}
       >
+        {checklist && <EquipmentRowTick {...checklist} />}
+
         {isKit && (
           <button
             onClick={() => onToggleExpand?.(row.id)}
@@ -161,7 +183,7 @@ export function EventEquipmentRow({
           )}
 
           <div className="flex min-w-0 flex-col">
-            <div className="flex min-w-0 items-center gap-2">
+            <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
               {detailHref ? (
                 <a
                   href={detailHref}
@@ -169,12 +191,12 @@ export function EventEquipmentRow({
                   rel="noopener noreferrer"
                   onClick={(event) => event.stopPropagation()}
                   title="Otwórz szczegóły sprzętu w nowej karcie"
-                  className="truncate font-medium text-[#e5e4e2] transition-colors hover:text-[#d3bb73] hover:underline focus-visible:text-[#d3bb73] focus-visible:underline"
+                  className={`truncate font-medium ${nameState} transition-colors hover:text-[#d3bb73] hover:underline focus-visible:text-[#d3bb73] focus-visible:underline`}
                 >
                   {displayName}
                 </a>
               ) : (
-                <span className="truncate font-medium text-[#e5e4e2]">{displayName}</span>
+                <span className={`truncate font-medium ${nameState}`}>{displayName}</span>
               )}
 
               <span
@@ -193,7 +215,9 @@ export function EventEquipmentRow({
                 </span>
               )}
 
-              {isLoaded && (
+              {checklist ? (
+                <EquipmentRowBadges {...checklist} />
+              ) : legacyLoadedBadge && isLoaded && (
                 <span className="flex shrink-0 items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium uppercase text-emerald-400">
                   {row?.loaded_by_employee && (
                     <EmployeeAvatar
@@ -226,6 +250,7 @@ export function EventEquipmentRow({
                 {cable.length_meters && <span>• {cable.length_meters} m</span>}
               </div>
             )}
+            {checklist && <EquipmentRowNote {...checklist} />}
           </div>
         </div>
 
@@ -240,7 +265,7 @@ export function EventEquipmentRow({
             <span className="hidden md:inline">{row.equipment.category.name}</span>
           )}
 
-          {aKey && (
+          {aKey && editable && (
             <div className="hidden flex-col items-end text-xs lg:flex">
               <span className="text-[#d3bb73]">{maxAdd} dostępne do dodania</span>
               <span className="text-[#e5e4e2]/45">
@@ -248,6 +273,8 @@ export function EventEquipmentRow({
               </span>
             </div>
           )}
+
+          {checklist && <EquipmentRowQtyChip {...checklist} />}
 
           {/* ilość */}
           {editable && !isKit ? (
@@ -351,7 +378,7 @@ export function EventEquipmentRow({
                 : []),
             ]}
           />
-        ) : !isRemovedFromOffer ? (
+        ) : !editable ? null : !isRemovedFromOffer ? (
           <button
             onClick={() => onRemove(row)}
             className="text-red-400/60 transition-colors hover:text-red-400"

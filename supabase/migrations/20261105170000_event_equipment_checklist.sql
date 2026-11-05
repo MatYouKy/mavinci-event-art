@@ -470,8 +470,8 @@ BEGIN
   WITH l AS (
     SELECT l.*, x.notes, x.equipment_id, x.kit_id, x.cable_id,
            private.equipment_shortage_status(l.required, l.quantity, l.packed_qty, l.shortage_decision, l.shortage_decided_qty) AS shortage_status,
-           c.packed_at, c.packed_by_name, c.shortage_decided_name, c.shortage_decided_at, c.shortage_decision_note,
-           c.loadback_at, c.loadback_by_name, c.returned_at, c.returned_by_name, c.return_photos,
+           c.packed_at, c.packed_by, c.packed_by_name, c.shortage_decided_by, c.shortage_decided_name, c.shortage_decided_at, c.shortage_decision_note,
+           c.loadback_at, c.loadback_by, c.loadback_by_name, c.returned_at, c.returned_by, c.returned_by_name, c.return_photos,
            coalesce(i.name, k.name, cb.name, 'Sprzęt') AS name,
            CASE WHEN x.kit_id IS NOT NULL THEN 'kit' WHEN x.cable_id IS NOT NULL THEN 'cable' ELSE 'equipment' END AS kind,
            coalesce(i.thumbnail_url, k.thumbnail_url, cb.thumbnail_url) AS thumbnail_url,
@@ -487,17 +487,19 @@ BEGIN
   SELECT coalesce(jsonb_agg(jsonb_build_object(
            'id', l.line_id, 'name', l.name, 'kind', l.kind, 'category', l.category, 'thumbnail_url', l.thumbnail_url, 'notes', nullif(l.notes, ''),
            'quantity', l.quantity, 'required', l.required, 'optional', l.optional, 'external_rental', l.external_rental, 'removed', l.removed,
-           'packed_qty', l.packed_qty, 'packed_at', l.packed_at, 'packed_by_name', l.packed_by_name,
+           'packed_qty', l.packed_qty, 'packed_at', l.packed_at, 'packed_by', l.packed_by, 'packed_by_name', l.packed_by_name,
            'shortage_qty', CASE WHEN l.packed_qty IS NULL THEN 0 ELSE greatest(l.quantity - l.packed_qty, 0) END,
            'shortage_reason', l.shortage_reason, 'shortage_status', l.shortage_status,
-           'shortage_decided_name', l.shortage_decided_name, 'shortage_decided_at', l.shortage_decided_at, 'shortage_decision_note', l.shortage_decision_note,
+           'shortage_decided_by', l.shortage_decided_by, 'shortage_decided_name', l.shortage_decided_name, 'shortage_decided_at', l.shortage_decided_at,
+           'shortage_decision_note', l.shortage_decision_note,
            'shipped_qty', coalesce(l.packed_qty, 0),
-           'loadback_qty', l.loadback_qty, 'loadback_note', l.loadback_note, 'loadback_at', l.loadback_at, 'loadback_by_name', l.loadback_by_name,
+           'loadback_qty', l.loadback_qty, 'loadback_note', l.loadback_note, 'loadback_at', l.loadback_at, 'loadback_by', l.loadback_by,
+           'loadback_by_name', l.loadback_by_name,
            'return_ok_qty', l.returned_ok_qty, 'return_damaged_qty', l.returned_damaged_qty,
            'return_missing_qty', CASE WHEN l.returned_ok_qty IS NULL THEN NULL
                                       ELSE greatest(coalesce(l.packed_qty, 0) - l.returned_ok_qty - coalesce(l.returned_damaged_qty, 0), 0) END,
            'return_note', l.return_note, 'return_photos', to_jsonb(coalesce(l.return_photos, '{}'::text[])),
-           'returned_at', l.returned_at, 'returned_by_name', l.returned_by_name)
+           'returned_at', l.returned_at, 'returned_by', l.returned_by, 'returned_by_name', l.returned_by_name)
          ORDER BY l.category NULLS LAST, l.name, l.line_id), '[]'::jsonb)
     INTO v_lines FROM l;
 
@@ -535,14 +537,18 @@ BEGIN
 
   RETURN jsonb_build_object(
     'event_id', p_event, 'stage', v_stage,
-    'dispatch', jsonb_build_object('confirmed_at', st.dispatch_confirmed_at, 'confirmed_by_name', st.dispatch_confirmed_name, 'note', st.dispatch_note,
+    'dispatch', jsonb_build_object('confirmed_at', st.dispatch_confirmed_at, 'confirmed_by', st.dispatch_confirmed_by,
+      'confirmed_by_name', st.dispatch_confirmed_name, 'note', st.dispatch_note,
       'locked', coalesce(ev.loading_locked, false), 'unlock_requested', coalesce(ev.loading_unlock_requested, false),
       'unlock_requested_at', ev.loading_unlock_requested_at, 'unlock_reason', ev.loading_unlock_reason,
       'shortage_requested_at', st.shortage_requested_at, 'shortage_requested_name', st.shortage_requested_name,
       'shortage_request_note', st.shortage_request_note),
-    'loadback', jsonb_build_object('confirmed_at', st.loadback_confirmed_at, 'confirmed_by_name', st.loadback_confirmed_name, 'note', st.loadback_note),
-    'return', jsonb_build_object('confirmed_at', st.return_confirmed_at, 'confirmed_by_name', st.return_confirmed_name, 'note', st.return_note,
-      'issue_count', coalesce(st.return_issue_count, 0), 'issues_ack_at', st.issues_ack_at, 'issues_ack_name', st.issues_ack_name,
+    'loadback', jsonb_build_object('confirmed_at', st.loadback_confirmed_at, 'confirmed_by', st.loadback_confirmed_by,
+      'confirmed_by_name', st.loadback_confirmed_name, 'note', st.loadback_note),
+    'return', jsonb_build_object('confirmed_at', st.return_confirmed_at, 'confirmed_by', st.return_confirmed_by,
+      'confirmed_by_name', st.return_confirmed_name, 'note', st.return_note,
+      'issue_count', coalesce(st.return_issue_count, 0), 'issues_ack_at', st.issues_ack_at, 'issues_ack_by', st.issues_ack_by,
+      'issues_ack_name', st.issues_ack_name,
       'issues_ack_note', st.issues_ack_note),
     'can', jsonb_build_object(
       'pack', can_wh AND v_stage = 'dispatch',
@@ -558,6 +564,14 @@ BEGIN
       'ack_issues', can_sales AND v_stage = 'issues',
       'reopen', can_ovr AND st.dispatch_confirmed_at IS NOT NULL),
     'blockers', v_blockers,
+    -- Osoby z checklisty (awatary przy pozycjach i etapach): id → imię i nazwisko, zdjęcie.
+    'people', (SELECT coalesce(jsonb_object_agg(e.id::text, jsonb_build_object('name', coalesce(nullif(btrim(concat_ws(' ', e.name, e.surname)), ''), e.nickname),
+                 'avatar_url', e.avatar_url, 'avatar_metadata', e.avatar_metadata)), '{}'::jsonb)
+                 FROM public.employees e
+                WHERE e.id IN (SELECT unnest(ARRAY[c.packed_by, c.loadback_by, c.returned_by, c.shortage_decided_by])
+                                 FROM public.event_equipment_checks c WHERE c.event_id = p_event
+                               UNION SELECT unnest(ARRAY[st.dispatch_confirmed_by, st.loadback_confirmed_by, st.return_confirmed_by,
+                                                         st.issues_ack_by, st.shortage_requested_by]))),
     'summary', to_jsonb(v_sum),
     'lines', v_lines,
     'log', (SELECT coalesce(jsonb_agg(jsonb_build_object('id', g.id, 'stage', g.stage, 'action', g.action, 'line_id', g.event_equipment_id,

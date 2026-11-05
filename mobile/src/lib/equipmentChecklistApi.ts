@@ -7,6 +7,7 @@ import {
   type EquipmentChecklist,
   type EquipmentStageKey,
   equipmentReturnPhotoPath,
+  equipmentShortageDecisionLines,
   isEquipmentChecklistMissing,
   parseEquipmentChecklist,
 } from './equipmentChecklist';
@@ -78,15 +79,8 @@ async function mutate(fn: string, args: Record<string, unknown>): Promise<Equipm
   return checklist;
 }
 
-/** Brak przy wydaniu, o którym decyduje sprzedawca / administrator (p_lines w decide_event_equipment_shortages). */
-export type EquipmentShortageDecisionLine = { id: string; shortage_qty: number };
-
-/** Braki do decyzji: pozycje czekające na zgodę albo z odmową (odmowę można zmienić). */
-export function equipmentShortageDecisionLines(checklist: EquipmentChecklist): EquipmentShortageDecisionLine[] {
-  return checklist.lines
-    .filter((line) => line.shortage_status === 'pending' || line.shortage_status === 'rejected')
-    .map((line) => ({ id: line.id, shortage_qty: line.shortage_qty }));
-}
+/** Braki, o których decyduje sprzedawca / administrator (p_lines) — wynik wspólnego `equipmentShortageDecisionLines`. */
+export type EquipmentShortageDecisionLine = ReturnType<typeof equipmentShortageDecisionLines>[number];
 
 const text = (value: string | null | undefined): string | null => {
   const trimmed = (value ?? '').trim();
@@ -155,8 +149,8 @@ export async function uploadEquipmentReturnPhoto(eventId: string, lineId: string
   const extension =
     asset.fileName?.split('.').pop()?.toLowerCase() ||
     (mimeType === 'image/png' ? 'png' : mimeType === 'image/webp' ? 'webp' : mimeType === 'image/heic' ? 'heic' : 'jpg');
-  const unique = Math.random().toString(36).slice(2, 8);
-  const path = equipmentReturnPhotoPath(eventId, lineId, `${unique}-zwrot.${extension}`);
+  // Wspólna ścieżka dodaje czas i losową część — kilka zdjęć wybranych naraz nie nadpisuje się.
+  const path = equipmentReturnPhotoPath(eventId, lineId, `zwrot.${extension}`);
   const base64 = await FileSystem.readAsStringAsync(asset.uri, { encoding: FileSystem.EncodingType.Base64 });
   const { error } = await supabase.storage
     .from(EQUIPMENT_RETURN_PHOTO_BUCKET)

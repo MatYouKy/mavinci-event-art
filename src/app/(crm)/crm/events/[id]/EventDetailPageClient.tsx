@@ -126,6 +126,7 @@ import { deleteEventSafely } from '@/lib/CRM/events/deleteEventSafely';
 import EventPreflightPanel from '@/components/crm/events/EventPreflightPanel';
 import { useEventWorkspace } from '@/components/crm/events/EventWorkspaceProvider';
 import { EVENT_STATUS_BADGE_CLASSES } from '@/components/crm/events/eventStatusPalette';
+import EventEquipmentStatusBadge from '@/components/crm/events/equipment/EventEquipmentStatusBadge';
 import EventSellerCorrespondence from '@/components/seller/EventSellerCorrespondence';
 
 type EventDetailTab = EventTabId;
@@ -933,10 +934,16 @@ export default function EventDetailPageClient({
             <ArrowLeft className="h-5 w-5" />
           </button>
           <div>
-            <div className="mb-2 flex items-center gap-3">
+            <div className="mb-2 flex flex-wrap items-center gap-3">
               <h1 className="text-lg font-light text-[#e5e4e2] sm:text-xl md:text-2xl">
                 {event.name}
               </h1>
+              {/* Stan checklisty sprzętu (wydanie → po wydarzeniu → zwrot), odświeżany na żywo. */}
+              <EventEquipmentStatusBadge
+                eventId={eventId}
+                eventStatus={eventData?.status ?? event.status}
+                onOpen={canOpenTab('equipment') ? () => navigateToTab('equipment') : undefined}
+              />
             </div>
 
             <div className="flex flex-col items-start gap-1 text-sm text-[#e5e4e2]/60 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">

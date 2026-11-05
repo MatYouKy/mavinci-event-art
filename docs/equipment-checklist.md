@@ -7,7 +7,7 @@ Migracja: `supabase/migrations/20261105170000_event_equipment_checklist.sql` (mo
 | Etap | Kto | Co | Zamyka krok realizacji |
 |---|---|---|---|
 | 1. Wydanie z magazynu | magazyn (`equipment_manage`, nie autor oferty), administrator | Przy każdej pozycji ilość spakowana (pełna = zielona). Mniej niż na liście = **brak na czerwono z powodem**. Braki wymagają **zgody sprzedawcy wydarzenia albo administratora** — do tego czasu wydania nie da się potwierdzić. Pozycje opcjonalne i wynajem zewnętrzny nie są wymagane. Potwierdzenie blokuje listę. | „Wydaj sprzęt — załadunek zgodny z listą” |
-| 2. Załadunek powrotny | kierownik realizacji (albo osoba kierująca realizacją bez wyznaczonego kierownika), administrator | Po wydarzeniu, przy załadunku na powrót: lista tego, co **faktycznie wydano**. Kierownik odhacza, ile wraca; mniej = opis (zostało na obiekcie, zaginęło, uszkodzone). Zatwierdza listę. Rozbieżności → powiadomienie magazynu, sprzedawcy i administratorów. | „Oddaj sprzęt do magazynu” |
+| 2. Po wydarzeniu (załadunek powrotny) | kierownik realizacji (albo osoba kierująca realizacją bez wyznaczonego kierownika), administrator | Po wydarzeniu, przy załadunku na powrót: lista tego, co **faktycznie wydano**. Kierownik odhacza, ile wraca; mniej = opis (zostało na obiekcie, zaginęło, uszkodzone). Zatwierdza listę. Rozbieżności → powiadomienie magazynu, sprzedawcy i administratorów. | „Oddaj sprzęt do magazynu” |
 | 3. Zwrot na magazyn | magazyn, administrator | Przy każdej wydanej pozycji: sprawne / uszkodzone / brak (brak = wydane − sprawne − uszkodzone), opis przy uszkodzeniu lub braku, zdjęcia (do 10). Zatwierdzenie bez rozbieżności zamyka krok. Rozbieżności → krok „problem”, powiadomienie sprzedawcy, administratorów i kierownika; **sprzedawca lub administrator przyjmuje je z decyzją** (np. obciążenie klienta, naprawa) — wtedy krok się zamyka. | „Przyjmij zwrot i sprawdź sprzęt” |
 
 - „Wszystko zgodne” (`fill_event_equipment_stage`) uzupełnia niesprawdzone pozycje pełną ilością na danym etapie (bez zmiany już wpisanych; przy wydaniu tylko pozycje wymagane).
@@ -24,6 +24,11 @@ Migracja: `supabase/migrations/20261105170000_event_equipment_checklist.sql` (mo
 - Dawne `set_event_equipment_loaded` (starsze wersje aplikacji, klient macOS) = pełna ilość spakowana / odznaczenie, tylko magazyn; `event_equipment.is_loaded` = pozycja spakowana w całości (PDF listy, licznik).
 - Start: wydarzenia wydane dotychczasowym potwierdzeniem załadunku dostały stan checklisty (odhaczone = wydana pełna ilość, nieodhaczone = 0 z brakiem przyjętym „przed wdrożeniem”); gdy kroki zwrotu były już zamknięte albo wydarzenie rozliczone / anulowane — etapy zakończone.
 - Kroki „Wydaj sprzęt”, „Oddaj sprzęt do magazynu”, „Przyjmij zwrot” są zamykane danymi (`private.event_step_auto_keys`) — w krokach przycisk prowadzi do checklisty (CRM zakładka „Sprzęt”, aplikacja zakładka „Checklista”). Wcześniejsze wydarzenia z ręcznie zamkniętymi krokami zostają bez zmian.
+
+## Interfejs
+
+- **CRM** (zakładka „Sprzęt”): jedna lista sprzętu wydarzenia (pojedynczy sprzęt, zestawy, przewody) jest checklistą. Nad listą pasek etapów **Wydanie · Po wydarzeniu · Zwrot** — działa jak filtr listy (na „Po wydarzeniu” i „Zwrot” tylko pozycje wydane), pokazuje postęp, kto i kiedy zatwierdził etap (awatar) i przyciski etapu. W wierszu: odhaczenie = pełna ilość; pozycja odhaczona jest przekreślona z badge'em „Załadowane” / „Załadowane po wydarzeniu” / „Zwrócone” i awatarem osoby (data w podpowiedzi); brak / uszkodzenie — czerwony wiersz z ilością, powodem i zdjęciami. Po zatwierdzeniu wydania edycja listy jest zablokowana. W nagłówku wydarzenia — status sprzętu (do wydania / wydany / czeka na zwrot / rozbieżności / zwrócony). Administrator widzi wszystkie etapy.
+- **Aplikacja** (zakładka „Checklista”, u kierownika realizacji także „Sprzęt” w widoku realizacji): ta sama lista etapów, odhaczanie dotknięciem, ilości częściowe z powodem, zdjęcia zwrotu z aparatu, ten sam badge z awatarem.
 
 ## Powiadomienia (`metadata.workflow = 'equipment_checklist'`, adres `/crm/events/<id>?tab=equipment`, aplikacja: zakładka „Checklista”)
 
@@ -47,4 +52,5 @@ Migracja: `supabase/migrations/20261105170000_event_equipment_checklist.sql` (mo
 - `confirm_event_equipment_dispatch(p_event, p_note)`; `request_event_equipment_unlock(p_event, p_reason)`; `reopen_event_equipment_stage(p_event, p_stage, p_reason)`.
 - `set_event_equipment_loadback(p_line, p_qty, p_note)` (mniej niż wydano → notatka); `confirm_event_equipment_loadback(p_event, p_note)`.
 - `set_event_equipment_return(p_line, p_ok, p_damaged, p_note, p_photos)` — zdjęcia w buckecie `event-files`, ścieżka `<event_id>/equipment-return/<line_id>/…` (`equipmentReturnPhotoPath`), `p_photos` NULL = bez zmiany zdjęć; `confirm_event_equipment_return(p_event, p_note)`; `acknowledge_event_equipment_return_issues(p_event, p_note)` (notatka 5–1000 znaków).
+- Wynik zawiera też identyfikatory osób przy pozycjach (`packed_by`, `loadback_by`, `returned_by`, `shortage_decided_by`) i etapach (`confirmed_by`, `issues_ack_by`) oraz `people` (id → imię i nazwisko, `avatar_url`, `avatar_metadata`) do awatarów.
 - Tabele (odczyt pod RLS obszaru „Realizacja”, na żywo przez Realtime): `event_equipment_checks` (pozycje), `event_equipment_checklists` (etapy), `event_equipment_check_log` (historia).
