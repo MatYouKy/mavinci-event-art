@@ -5,7 +5,7 @@ import { getInvoicePartyDataCorrection, type InvoicePartyDataBefore } from '@/li
 import { amountInWordsPl } from '@/lib/invoices/print/amountInWords';
 
 /** Zmiana wersji = nowy podgląd wydruku u wszystkich (pamięć podręczna podglądu). */
-export const INVOICE_PRINT_TEMPLATE_VERSION = '2026-11-04.2';
+export const INVOICE_PRINT_TEMPLATE_VERSION = '2026-11-05.1';
 
 export interface SettledInvoicePdfRef {
   id?: string;
@@ -391,16 +391,15 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
   )];
 
   const typeLabel = isPartyDataCorrection ? 'Faktura korygująca dane' : getInvoicePrintTypeLabel(data.invoiceType, data.invoiceNumber);
-  const visualizationLabel = data.isProforma ? 'Wizualizacja pro formy' : 'Wizualizacja faktury';
-
-  // Wydruk nie jest fakturą: oryginałem jest faktura ustrukturyzowana w KSeF (pro forma nie jest fakturą VAT).
+  // Faktura przyjęta w KSeF: wystarczy numer KSeF i kod QR (blok przy podpisie, stopka) — bez dodatkowego opisu.
+  // Przed przyjęciem: krótki wpis, że to wizualizacja i faktura wymaga wysłania do KSeF. Pro forma nie jest fakturą VAT.
   const visualizationNoticeHtml = data.isProforma
     ? `<div class="doc-notice keep"><strong>Pro forma — to nie jest faktura VAT.</strong> Dokument informacyjny: nie jest wysyłany do KSeF i nie stanowi podstawy do odliczenia podatku VAT.</div>`
     : data.ksefNumber
-      ? `<div class="doc-notice keep"><strong>Wizualizacja faktury — to nie jest faktura.</strong> Oryginałem jest faktura ustrukturyzowana w Krajowym Systemie e-Faktur (KSeF) o numerze <strong class="nowrap">${esc(data.ksefNumber)}</strong>. Oryginał można sprawdzić w KSeF po numerze lub kodem QR.</div>`
+      ? ''
       : data.ksefPending
-        ? `<div class="doc-notice keep"><strong>Wizualizacja faktury — to nie jest faktura.</strong> Faktura została wysłana do KSeF i czeka na nadanie numeru. Oryginałem będzie faktura ustrukturyzowana w KSeF.</div>`
-        : `<div class="doc-notice keep"><strong>Wizualizacja faktury — to nie jest faktura.</strong> Faktura nie została jeszcze przyjęta w KSeF. Oryginałem będzie faktura ustrukturyzowana w Krajowym Systemie e-Faktur.</div>`;
+        ? `<div class="doc-notice keep"><strong>Wizualizacja faktury</strong> — wysłana do KSeF, czeka na nadanie numeru KSeF.</div>`
+        : `<div class="doc-notice keep"><strong>Wizualizacja faktury</strong> — wymaga wysłania do KSeF.</div>`;
   const signed = correctiveItems ? formatSignedMoney : formatMoney;
 
   const partyLines = (party: {
@@ -1043,11 +1042,11 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
       page-break-inside: avoid;
     }
     .closing-left { flex: 1 1 auto; min-width: 0; }
-    .ksef-verification { display: flex; align-items: center; gap: 12px; }
+    /* Kod QR KSeF, pod nim numer KSeF faktury. */
+    .ksef-verification { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 3px; }
     .ksef-verification img { display: block; width: 26mm; height: 26mm; }
     .ksef-verification-title { font-size: 7pt; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
-    .ksef-verification-number { margin-top: 2px; font-size: 8.5pt; font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
-    .ksef-verification-hint { margin-top: 2px; font-size: 7.5pt; color: var(--muted); max-width: 70mm; }
+    .ksef-verification-number { font-size: 7.5pt; font-weight: 600; color: var(--ink); white-space: nowrap; }
 
     .signature { flex: 0 0 62mm; text-align: center; }
     .signature-name { font-size: 9.5pt; font-weight: 600; color: var(--ink); padding-bottom: 6px; }
@@ -1063,10 +1062,7 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
     <div class="doc-title">
       <div class="doc-kind">${esc(typeLabel)}</div>
       <div class="doc-number">${esc(data.invoiceNumber)}</div>
-      <div class="doc-badges">
-        <span class="badge">${esc(visualizationLabel)}</span>
-        ${data.ksefNumber ? '<span class="badge badge-ksef">Przyjęta w KSeF</span>' : ''}
-      </div>
+      ${data.isProforma ? '<div class="doc-badges"><span class="badge">Wizualizacja pro formy</span></div>' : ''}
     </div>
   </header>
 

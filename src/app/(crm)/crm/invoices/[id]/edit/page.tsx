@@ -1447,8 +1447,7 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
                 </div>
 
                 <div className="mt-1 text-xs text-[#e5e4e2]/60">
-                  Ukrywa oznaczenie „Wizualizacja” i dostosowuje dokument dla klienta
-                  indywidualnego.
+                  Użyj, gdy nabywca jest osobą indywidualną bez NIP.
                 </div>
               </div>
             </label>

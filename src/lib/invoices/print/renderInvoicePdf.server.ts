@@ -91,30 +91,34 @@ export async function buildInvoicePrintDocument(
       html = html.replace(
         qrPlaceholder,
         `<div class="ksef-verification">
-          <a href="${escapeHtml(qr.verificationUrl)}"><img src="${qr.dataUrl}" alt="Kod weryfikacyjny KSeF" /></a>
-          <div class="ksef-verification-text">
-            <div class="ksef-verification-title">Weryfikacja w KSeF</div>
-            <div class="ksef-verification-number">${escapeHtml(ksefInvoice.ksef_reference_number)}</div>
-            <div class="ksef-verification-hint">Zeskanuj kod, aby sprawdzić fakturę w Krajowym Systemie e-Faktur.</div>
-          </div>
+          <a href="${escapeHtml(qr.verificationUrl)}"><img src="${qr.dataUrl}" alt="Kod QR KSeF" /></a>
+          <div class="ksef-verification-number">${escapeHtml(ksefInvoice.ksef_reference_number)}</div>
         </div>`,
       );
     }
   }
-  html = html.replace(qrPlaceholder, '');
+  // Bez zapisanego XML (brak kodu QR) zostaje sam numer KSeF.
+  html = html.replace(
+    qrPlaceholder,
+    data.ksefNumber
+      ? `<div class="ksef-verification"><div class="ksef-verification-title">Numer KSeF</div><div class="ksef-verification-number">${escapeHtml(data.ksefNumber)}</div></div>`
+      : '',
+  );
   html = html.replace('/*invoice-print-fonts*/', await loadPrintFontCss());
 
   const isProforma = isProformaInvoiceRow(invoice);
   const typeLabel = getInvoicePrintTypeLabel(data.invoiceType, data.invoiceNumber);
-  // Stopka na każdej stronie przypomina, że to wizualizacja, a oryginał jest w KSeF.
+  // Stopka na każdej stronie: przyjęta w KSeF — numer KSeF; wcześniej — wizualizacja do wysłania do KSeF.
   const footerLeft = isProforma
     ? `${typeLabel} ${data.invoiceNumber} · nie jest fakturą VAT`
     : data.ksefNumber
-      ? `Wizualizacja: ${typeLabel} ${data.invoiceNumber} · oryginał w KSeF: ${data.ksefNumber}`
-      : `Wizualizacja: ${typeLabel} ${data.invoiceNumber} · to nie jest faktura`;
+      ? `${typeLabel} ${data.invoiceNumber} · numer KSeF: ${data.ksefNumber}`
+      : data.ksefPending
+        ? `Wizualizacja: ${typeLabel} ${data.invoiceNumber} · czeka na numer KSeF`
+        : `Wizualizacja: ${typeLabel} ${data.invoiceNumber} · wymaga wysłania do KSeF`;
   return {
     html,
-    fileTitle: `${isProforma ? '' : 'Wizualizacja — '}${typeLabel} ${data.invoiceNumber}`,
+    fileTitle: `${isProforma || data.ksefNumber ? '' : 'Wizualizacja — '}${typeLabel} ${data.invoiceNumber}`,
     footer: { left: footerLeft, right: data.website || '' },
     isProforma,
   };

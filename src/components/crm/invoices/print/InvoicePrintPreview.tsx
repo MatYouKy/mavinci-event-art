@@ -262,6 +262,5 @@ export function invoicePrintCaption(invoice: {
   }
   if (ksef === 'pending' || ksef === 'sent') return { caption: 'Wysłano do KSeF — czeka na numer KSeF', tone: 'info' };
   if (ksef === 'rejected' || ksef === 'error') return { caption: 'KSeF nie przyjął faktury — wizualizacja robocza', tone: 'warn' };
-  if (invoice.buyer_is_private_person) return { caption: 'Wizualizacja faktury dla osoby prywatnej', tone: 'info' };
-  return { caption: 'Wizualizacja — faktura nie jest jeszcze w KSeF', tone: 'warn' };
+  return { caption: 'Wizualizacja — wymaga wysłania do KSeF', tone: 'warn' };
 }

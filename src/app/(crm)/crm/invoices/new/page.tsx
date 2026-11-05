@@ -1670,8 +1670,7 @@ export default function NewInvoicePage() {
                   </div>
 
                   <div className="mt-1 text-xs text-[#e5e4e2]/60">
-                    Użyj, gdy nabywca jest osobą indywidualną bez NIP. Dokument nie będzie oznaczony
-                    jako „Wizualizacja”.
+                    Użyj, gdy nabywca jest osobą indywidualną bez NIP.
                   </div>
                 </div>
               </label>
