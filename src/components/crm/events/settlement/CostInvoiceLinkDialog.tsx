@@ -75,6 +75,7 @@ export default function CostInvoiceLinkDialog({
   busy,
   mutate,
   onClose,
+  onForbidden,
 }: {
   open: boolean;
   eventId: string;

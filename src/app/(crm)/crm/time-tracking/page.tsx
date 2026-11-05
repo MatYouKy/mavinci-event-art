@@ -521,7 +521,7 @@ export default function TimeTrackingPage() {
 
             {/* Statystyki */}
             <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-              <div className={`rounded-lg border bg-[#1c1f33] p-4 ${discussions.threads.some(t => t.time_entry_id === entry.id && !t.resolved) ? 'border-orange-400/80' : 'border-[#d3bb73]/10'}`}>
+              <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-4">
                 <div className="mb-2 flex items-center gap-3">
                   <Clock className="h-5 w-5 text-blue-400" />
                   <span className="text-sm text-[#e5e4e2]/60">Łącznie</span>
