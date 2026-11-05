@@ -45,6 +45,9 @@ export type SettlementLine = {
   included: boolean;
   needs_confirmation: boolean;
   confirmed: boolean;
+  /** Kwota źródła zmieniła się po korekcie — korekta przestała obowiązywać, trzeba potwierdzić ponownie. */
+  source_changed: boolean;
+  previous_source_net: number | null;
   auto: boolean;
   auto_note: string | null;
   note: string | null;
@@ -76,6 +79,8 @@ export type SettlementExternalCommission = {
   skip_reason: string | null;
   rate: number | null;
   rate_reason: string | null;
+  /** Prowizja już zatwierdzona — przy ponownym rozliczeniu zostaje jej stawka (zmiana warunków nie działa wstecz). */
+  retained: boolean;
   base: number;
   amount: number;
   company_cost: number;
@@ -96,10 +101,12 @@ export type SettlementInternalCommission = {
   blocked_reason: string | null;
   rate: number;
   rate_reason: string | null;
+  retained: boolean;
   base: number;
   amount: number;
   company_cost: number;
   payment_method: CommissionPaymentMethod;
+  employer_social_rate: number | null;
   commission_id: string | null;
 };
 
@@ -133,7 +140,12 @@ export type SettlementCommissionRow = {
   base_description: string | null;
   rate_reason: string | null;
   settlement_revision: number | null;
+  /** Wypłacono przelewem / wypłatą. */
   paid_amount: number;
+  /** Rozliczono potrąceniem (bez przelewu). */
+  offset_amount: number;
+  /** Powód ręcznego anulowania prowizji z podsumowania (finanse / administrator). */
+  cancel_reason: string | null;
   manual: boolean;
 };
 
@@ -150,6 +162,10 @@ export type EventSettlement = {
   warnings: string[];
   finished: boolean;
   forecast: boolean;
+  /** Wydarzenie anulowane po zatwierdzeniu — ponowne zatwierdzenie zeruje prowizje. */
+  clawback: boolean;
+  /** Otwarte ponownie z przeliczeniem stawek — przy zatwierdzeniu stawki według aktualnych warunków. */
+  refresh_rates: boolean;
   source_key: string;
   stale: boolean;
   submitted_stale: boolean;
@@ -228,6 +244,8 @@ export function parseEventSettlement(data: unknown): EventSettlement | null {
       included: bool(line.included),
       needs_confirmation: bool(line.needs_confirmation),
       confirmed: bool(line.confirmed),
+      source_changed: bool(line.source_changed),
+      previous_source_net: numOrNull(line.previous_source_net),
       auto: bool(line.auto),
       auto_note: text(line.auto_note),
       note: text(line.note),
@@ -244,6 +262,7 @@ export function parseEventSettlement(data: unknown): EventSettlement | null {
       skip_reason: text(item.skip_reason),
       rate: numOrNull(item.rate),
       rate_reason: text(item.rate_reason),
+      retained: bool(item.retained),
       base: num(item.base),
       amount: num(item.amount),
       company_cost: num(item.company_cost),
@@ -263,10 +282,12 @@ export function parseEventSettlement(data: unknown): EventSettlement | null {
       blocked_reason: text(item.blocked_reason),
       rate: num(item.rate),
       rate_reason: text(item.rate_reason),
+      retained: bool(item.retained),
       base: num(item.base),
       amount: num(item.amount),
       company_cost: num(item.company_cost),
       payment_method: String(item.payment_method ?? 'payroll') as CommissionPaymentMethod,
+      employer_social_rate: numOrNull(item.employer_social_rate),
       commission_id: text(item.commission_id),
     })),
     shares_sum: num(raw.shares_sum),
@@ -274,6 +295,8 @@ export function parseEventSettlement(data: unknown): EventSettlement | null {
     warnings: arr<string>(raw.warnings).filter(item => typeof item === 'string'),
     finished: bool(raw.finished),
     forecast: bool(raw.forecast),
+    clawback: bool(raw.clawback),
+    refresh_rates: bool(raw.refresh_rates),
     source_key: String(raw.source_key ?? ''),
     stale: bool(raw.stale),
     submitted_stale: bool(raw.submitted_stale),
@@ -342,6 +365,8 @@ export function parseEventSettlement(data: unknown): EventSettlement | null {
       rate_reason: text(row.rate_reason),
       settlement_revision: numOrNull(row.settlement_revision),
       paid_amount: num(row.paid_amount),
+      offset_amount: num(row.offset_amount),
+      cancel_reason: text(row.cancel_reason),
       manual: bool(row.manual),
     })),
   };
@@ -369,13 +394,17 @@ export type MyCommissionRow = {
   base_description: string | null;
   payment_method: CommissionPaymentMethod;
   automatic: boolean;
+  /** Wypłacono przelewem / wypłatą (bez potrąceń). */
   paid_amount: number;
+  /** Rozliczono potrąceniem. */
+  offset_amount: number;
+  /** Przy naliczeniu i dopłacie — do wypłaty; przy potrąceniu — jeszcze do potrącenia. */
   remaining_amount: number;
   settlement_status: SettlementStatus;
   settlement_revision: number | null;
   created_at: string | null;
   updated_at: string | null;
-  payments: { amount: number; payment_date: string | null; reference: string | null }[];
+  payments: { amount: number; payment_date: string | null; reference: string | null; is_offset: boolean }[];
 };
 
 export type MyCommissions = {
@@ -423,6 +452,7 @@ export function parseMyCommissions(data: unknown): MyCommissions | null {
       payment_method: String(row.payment_method ?? 'payroll') as CommissionPaymentMethod,
       automatic: bool(row.automatic),
       paid_amount: num(row.paid_amount),
+      offset_amount: num(row.offset_amount),
       remaining_amount: num(row.remaining_amount),
       settlement_status: (row.settlement_status === 'submitted' || row.settlement_status === 'approved'
         ? row.settlement_status
@@ -434,6 +464,7 @@ export function parseMyCommissions(data: unknown): MyCommissions | null {
         amount: num(payment.amount),
         payment_date: text(payment.payment_date),
         reference: text(payment.reference),
+        is_offset: bool(payment.is_offset),
       })),
     })),
   };
@@ -558,6 +589,26 @@ export function settlementLinesBySection(lines: SettlementLine[]): { id: Settlem
     ...section,
     lines: lines.filter(line => (section.id === 'revenue' ? line.kind === 'revenue' : line.kind === 'cost' && line.category === section.id)),
   }));
+}
+
+/**
+ * Wiersze wyniku podsumowania — ta sama kolejność i nazwy w CRM i w aplikacji (docs/event-commissions.md).
+ * Kilka pól w `keys` = suma pól zwróconych przez bazę (prowizje zewnętrzne: pozycje + naliczone).
+ */
+export const SETTLEMENT_TOTAL_ROWS: { label: string; keys: (keyof SettlementTotals)[]; strong?: boolean }[] = [
+  { label: 'Przychód netto', keys: ['revenue_net'] },
+  { label: 'Wykonawcy zewnętrzni', keys: ['subcontractor_net'] },
+  { label: 'Koszty bezpośrednie', keys: ['direct_cost_net'] },
+  { label: 'Ekipa', keys: ['team_net'] },
+  { label: 'Prowizje i narzuty zewnętrzne', keys: ['external_commission_lines', 'external_commission_auto'] },
+  { label: 'Zysk netto', keys: ['profit_net'], strong: true },
+  { label: 'Podstawa prowizji sprzedawców zewnętrznych', keys: ['partner_base'] },
+  { label: 'Prowizje pracowników (koszt firmy)', keys: ['internal_commissions_cost'] },
+  { label: 'Zysk po prowizjach', keys: ['profit_after_commissions'], strong: true },
+];
+
+export function settlementTotalValue(totals: SettlementTotals, keys: (keyof SettlementTotals)[]): number {
+  return Math.round(keys.reduce((sum, key) => sum + (totals[key] ?? 0), 0) * 100) / 100;
 }
 
 /** Opis prowizji pracownika: „10% od 9 648,15 zł (klient własny: Firma X)”. */

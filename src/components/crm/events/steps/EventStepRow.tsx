@@ -3,6 +3,7 @@ import { useId, useState } from 'react';
 import Link from 'next/link';
 import {
   ChevronDown,
+  ClipboardCheck,
   ClipboardList,
   FileText,
   Info,
@@ -42,6 +43,7 @@ const TAB_ICONS: Record<string, LucideIcon> = {
   details: Info,
   contract: FileText,
   finances: Wallet,
+  summary: ClipboardCheck,
   agenda: ClipboardList,
   team: Users,
   logistics: Truck,

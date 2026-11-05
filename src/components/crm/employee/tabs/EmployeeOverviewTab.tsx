@@ -10,6 +10,8 @@ import EmployeeWebsiteVisibilityCardComponent from '../components/EmployeeWebsit
 import EmployeeCompensationCard from '@/components/crm/personnel/EmployeeCompensationCard';
 import { supabase } from '@/lib/supabase/browser';
 import CommissionAccountCard from '@/components/crm/commissions/CommissionAccountCard';
+import EmployeeSalesCommissionTermsCard from '@/components/crm/commissions/EmployeeSalesCommissionTermsCard';
+import MyCommissionsPanel from '@/components/crm/commissions/MyCommissionsPanel';
 
 interface EmployeeOverviewTabProps {
   employee: any;
@@ -19,6 +21,8 @@ interface EmployeeOverviewTabProps {
   isAdmin: boolean;
   accessLevels: any[];
   emailAccounts: any[];
+  /** Profil zalogowanego pracownika — „Moje prowizje” i własne warunki (tylko do odczytu). */
+  isOwnProfile?: boolean;
 }
 
 export const EmployeeOverviewTab: React.FC<EmployeeOverviewTabProps> = ({
@@ -29,6 +33,7 @@ export const EmployeeOverviewTab: React.FC<EmployeeOverviewTabProps> = ({
   isAdmin,
   accessLevels,
   emailAccounts,
+  isOwnProfile = false,
 }) => {
   const [sellerEmployeeId, setSellerEmployeeId] = useState<string | null>(null);
   useEffect(() => {
@@ -93,6 +98,15 @@ export const EmployeeOverviewTab: React.FC<EmployeeOverviewTabProps> = ({
         <CommissionAccountCard accountType="employee" accountId={employee.id} />
       ) : (
         <EmployeeCompensationCard key={employee.id} employeeId={employee.id} />
+      )}
+
+      <EmployeeSalesCommissionTermsCard key={`sales-terms:${employee.id}`} employeeId={employee.id} isAdmin={isAdmin} isOwnProfile={isOwnProfile} />
+
+      {isOwnProfile && <MyCommissionsPanel className="lg:col-span-2" />}
+
+      {/* Administrator: rejestr prowizji pracownika (udział w sprzedaży), także bez profilu sprzedawcy. */}
+      {isAdmin && !isOwnProfile && sellerEmployeeId !== employee.id && (
+        <CommissionAccountCard className="lg:col-span-2" accountType="employee" accountId={employee.id} />
       )}
     </div>
   );

@@ -12,7 +12,9 @@ export type CommissionSettlementPayment = {
   reference: string | null;
   /** Internal CRM note; always null in the seller response. */
   note: string | null;
-  source: 'ledger' | 'legacy';
+  source: 'ledger' | 'legacy' | 'offset';
+  /** Potrącenie nadpłaty (rozliczenie bez przelewu). */
+  is_offset?: boolean;
 };
 
 export type CommissionSettlement = {
@@ -36,7 +38,42 @@ export type CommissionSettlement = {
   paid_amount: number;
   remaining_amount: number;
   payments: CommissionSettlementPayment[];
+  /** Pola podsumowania wydarzenia (migracja 20261105130000) — w starszej bazie ich nie ma. */
+  base_amount?: number | null;
+  rate?: number | null;
+  base_description?: string | null;
+  rate_reason?: string | null;
+  /** accrual = naliczenie, correction = dopłata, deduction = do potrącenia. */
+  entry_kind?: 'accrual' | 'correction' | 'deduction' | null;
+  corrects_commission_id?: string | null;
+  automatic_source?: string | null;
+  share_percent?: number | null;
+  client_owned?: boolean | null;
+  settlement_revision?: number | null;
+  /** Potrącenie: ile jeszcze do potrącenia (remaining_amount potrącenia = 0). */
+  to_offset?: number | null;
+  /** Kwota ze znakiem (ujemna dla potrącenia). */
+  signed_amount?: number | null;
+  /** Ile rozliczono potrąceniem (paid_amount = przelewy i potrącenia razem). */
+  offset_amount?: number | null;
 };
+
+/** Źródła prowizji liczonych z podsumowania wydarzenia (to samo co private.commission_auto_sources w bazie). */
+export const AUTOMATIC_COMMISSION_SOURCES: readonly string[] = [
+  'sales_share',
+  'billing_contact',
+  'event_referral',
+  'partner_arrangement',
+  'seller_portal',
+  'manual_partner',
+];
+
+/** Wpis z podsumowania (także dopłata i potrącenie): nie zatwierdza się go ręcznie, kwotę ustala podsumowanie. */
+export function isAutomaticCommission(row: { automatic_source?: string | null; entry_kind?: string | null }): boolean {
+  return (row.entry_kind != null && row.entry_kind !== 'accrual') || AUTOMATIC_COMMISSION_SOURCES.includes(row.automatic_source ?? '');
+}
+
+export const AUTOMATIC_COMMISSION_HINT = 'Do wypłaty po zatwierdzeniu podsumowania wydarzenia';
 
 export type CommissionSettlementsResponse = {
   mode: CommissionSettlementMode;

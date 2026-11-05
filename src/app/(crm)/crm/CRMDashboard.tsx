@@ -37,6 +37,7 @@ import { IEmployee } from './employees/type';
 import { useRouter } from 'next/navigation';
 import SellerFinancialDashboard from '@/components/crm/SellerFinancialDashboard';
 import SalesDayPanel from '@/components/crm/dashboard/SalesDayPanel';
+import MyCommissionsPanel from '@/components/crm/commissions/MyCommissionsPanel';
 
 interface DashboardStats {
   totalEvents: number;
@@ -78,6 +79,7 @@ export default function CRMDashboard({
   if (analytics.scope === 'sales') return (
     <div className="space-y-8">
       <SalesDayPanel />
+      <MyCommissionsPanel compact />
       <SellerFinancialDashboard initialReport={analytics.sellerReport} />
     </div>
   );
@@ -339,6 +341,8 @@ export default function CRMDashboard({
           )}
         </div>
       </div>
+
+      <MyCommissionsPanel compact />
 
       {(widgetEnabled('sales-trends') || widgetEnabled('sales-funnel')) && (
         <div className="grid gap-6 lg:grid-cols-3">

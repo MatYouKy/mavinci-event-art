@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -8,12 +8,33 @@ import {
   Alert,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import { useIsFocused, useNavigation } from '@react-navigation/native';
 import { colors, spacing } from '../theme';
 import { useAuth } from '../contexts/AuthContext';
 import EmployeeAvatar from '../components/EmployeeAvatar';
+import { type MyCommissions, formatPln } from '../lib/eventSettlement';
+import { fetchMyCommissions } from '../lib/eventSettlementApi';
 
 export default function ProfileScreen() {
   const { employee, signOut } = useAuth();
+  const navigation = useNavigation<any>();
+  const focused = useIsFocused();
+  // „Moje prowizje” (get_my_commissions). Wejście widać, gdy baza zwraca konto prowizji z włączoną prowizją albo
+  // z wpisami; przed wdrożeniem migracji (brak RPC) i bez konta pracownika (42501) — bez wejścia i bez komunikatu.
+  const [commissions, setCommissions] = useState<MyCommissions | null>(null);
+  useEffect(() => {
+    if (!focused || !employee?.id) return;
+    let active = true;
+    void fetchMyCommissions().then((result) => {
+      if (!active) return;
+      if (result.status === 'ready') setCommissions(result.data);
+      else if (result.status !== 'error') setCommissions(null);
+    });
+    return () => {
+      active = false;
+    };
+  }, [focused, employee?.id]);
+  const showCommissions = Boolean(commissions && (commissions.enabled || commissions.commissions.length > 0));
 
   const handleSignOut = () => {
     Alert.alert('Wylogowanie', 'Czy na pewno chcesz się wylogować?', [
@@ -60,6 +81,27 @@ export default function ProfileScreen() {
           </View>
         )}
       </View>
+
+      {/* Moje prowizje */}
+      {showCommissions && commissions && (
+        <TouchableOpacity
+          style={styles.menuRow}
+          accessibilityRole="button"
+          accessibilityLabel="Moje prowizje"
+          onPress={() => navigation.navigate('MyCommissions')}
+        >
+          <View style={styles.menuIcon}>
+            <Feather name="percent" size={18} color={colors.primary.gold} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.menuTitle}>Moje prowizje</Text>
+            <Text style={styles.menuSubtitle}>
+              Do wypłaty {formatPln(commissions.totals.to_pay)} · Prognoza {formatPln(commissions.totals.forecast)}
+            </Text>
+          </View>
+          <Feather name="chevron-right" size={18} color={colors.text.tertiary} />
+        </TouchableOpacity>
+      )}
 
       {/* Logout */}
       <TouchableOpacity style={styles.logoutBtn} onPress={handleSignOut}>
@@ -116,6 +158,35 @@ const styles = StyleSheet.create({
   infoText: {
     fontSize: 14,
     color: colors.text.primary,
+  },
+  menuRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: colors.background.secondary,
+    borderRadius: 12,
+    padding: 14,
+    marginTop: 16,
+    borderWidth: 1,
+    borderColor: colors.border.default,
+  },
+  menuIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.background.tertiary,
+  },
+  menuTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text.primary,
+  },
+  menuSubtitle: {
+    fontSize: 12,
+    color: colors.text.secondary,
+    marginTop: 2,
   },
   logoutBtn: {
     flexDirection: 'row',

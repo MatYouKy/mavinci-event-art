@@ -21,6 +21,9 @@ export type CommissionSettlementStats = {
   approvedCount: number;
   partialCount: number;
   cancelledCount: number;
+  /** Otwarte potrącenia (to_offset z bazy) — odjęte od salda do wypłaty. */
+  toOffsetCents: number;
+  deductionCount: number;
   months: CommissionSettlementMonth[];
 };
 
@@ -54,13 +57,15 @@ export function buildCommissionSettlementStats(rows: readonly CommissionSettleme
     undatedEarnedCents: 0, undatedPaidCents: 0, cancelledPaidCents: 0,
     overpaidCents: 0, paymentDetailsMismatchCents: 0,
     waitingCount: 0, plannedCount: 0, approvedCount: 0, partialCount: 0, cancelledCount: 0,
+    toOffsetCents: 0, deductionCount: 0,
     months: [],
   };
   const months = new Map<string, CommissionSettlementMonth>();
   const seenCommissions = new Set<string>();
   const seenPayments = new Set<string>();
+  // Ujemne kwoty (potrącenia) pomniejszają miesiąc wydarzenia, w którym powstały.
   const addMonth = (month: string, field: 'earnedCents' | 'paidCents', cents: number) => {
-    if (cents <= 0) return;
+    if (!cents) return;
     const entry = months.get(month) || { month, earnedCents: 0, paidCents: 0 };
     entry[field] += cents;
     months.set(month, entry);
@@ -69,34 +74,53 @@ export function buildCommissionSettlementStats(rows: readonly CommissionSettleme
   for (const row of rows) {
     if (seenCommissions.has(row.id)) continue;
     seenCommissions.add(row.id);
+    const deduction = row.entry_kind === 'deduction';
     const amountCents = commissionAmountToCents(row.amount);
     let paymentRowsCents = 0;
+    let offsetRowsCents = 0;
     for (const payment of row.payments || []) {
       const paymentKey = `${row.id}:${payment.id}`;
       if (seenPayments.has(paymentKey)) continue;
       seenPayments.add(paymentKey);
       const cents = commissionAmountToCents(payment.amount);
       paymentRowsCents += cents;
+      // Potrącenie rozlicza nadpłatę bez przelewu — nie jest wypłatą gotówki (ani po stronie celu, ani potrącenia).
+      if (deduction || payment.is_offset || payment.source === 'offset') {
+        offsetRowsCents += cents;
+        continue;
+      }
       const paidMonth = dateMonth(payment.payment_date);
       if (paidMonth) addMonth(paidMonth, 'paidCents', cents);
       else stats.undatedPaidCents += cents;
     }
+    // paid_amount z bazy = przelewy i potrącenia razem; payments zawiera też wpis „legacy”. Nie dodajemy ich drugi raz.
     const reportedPaidCents = commissionAmountToCents(row.paid_amount);
-    // payments already includes any legacy entry. Do not add paid_amount again.
-    // If details are incomplete, retain the known cash total without inventing a
-    // month from created_at/recorded_at or the event date.
-    const paidCents = Math.max(reportedPaidCents, paymentRowsCents);
-    stats.paidCents += paidCents;
+    const settledCents = Math.max(reportedPaidCents, paymentRowsCents);
+    const cashCents = Math.max(settledCents - offsetRowsCents, 0);
+    stats.paidCents += cashCents;
     stats.undatedPaidCents += Math.max(reportedPaidCents - paymentRowsCents, 0);
     stats.paymentDetailsMismatchCents += Math.abs(reportedPaidCents - paymentRowsCents);
 
     if (row.status === 'cancelled') {
       stats.cancelledCount += 1;
-      stats.cancelledPaidCents += paidCents;
+      stats.cancelledPaidCents += cashCents;
       continue;
     }
     if (row.automatic_waiting_for_offer) {
       stats.waitingCount += 1;
+      continue;
+    }
+    if (deduction) {
+      // Do potrącenia: pomniejsza zarobki; otwarta część (to_offset z bazy) pomniejsza saldo do wypłaty.
+      if (row.status !== 'approved' && row.status !== 'paid') continue;
+      stats.deductionCount += 1;
+      stats.earnedCents -= amountCents;
+      stats.toOffsetCents += row.to_offset != null
+        ? commissionAmountToCents(row.to_offset)
+        : row.status === 'approved' ? Math.max(amountCents - settledCents, 0) : 0;
+      const deductionMonth = dateMonth(row.event_date);
+      if (deductionMonth) addMonth(deductionMonth, 'earnedCents', -amountCents);
+      else stats.undatedEarnedCents -= amountCents;
       continue;
     }
     if (row.status === 'planned') {
@@ -107,14 +131,15 @@ export function buildCommissionSettlementStats(rows: readonly CommissionSettleme
     if (row.status !== 'approved' && row.status !== 'paid') continue;
     stats.approvedCount += 1;
     stats.earnedCents += amountCents;
-    stats.outstandingCents += Math.max(amountCents - paidCents, 0);
-    stats.overpaidCents += Math.max(paidCents - amountCents, 0);
-    if (paidCents > 0 && paidCents < amountCents) stats.partialCount += 1;
+    stats.outstandingCents += Math.max(amountCents - settledCents, 0);
+    stats.overpaidCents += Math.max(settledCents - amountCents, 0);
+    if (settledCents > 0 && settledCents < amountCents) stats.partialCount += 1;
     const earnedMonth = dateMonth(row.event_date);
     if (earnedMonth) addMonth(earnedMonth, 'earnedCents', amountCents);
     else stats.undatedEarnedCents += amountCents;
   }
 
+  stats.outstandingCents = Math.max(stats.outstandingCents - stats.toOffsetCents, 0);
   stats.months = [...months.values()].sort((a, b) => a.month.localeCompare(b.month));
   return stats;
 }

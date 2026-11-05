@@ -9,6 +9,7 @@ import FinalInvoiceWizardModal from '@/components/crm/FinalInvoiceWizardModal';
 import EventFinancialControls from '@/components/crm/events/EventFinancialControls';
 import { timeEntryCompanyRate, type CompensationSnapshot } from '@/lib/personnel/compensation';
 import { getOfferTotals } from '@/lib/CRM/Offers/offerTotals';
+import { AUTOMATIC_COMMISSION_HINT, isAutomaticCommission } from '@/lib/CRM/events/commissionSettlements';
 
 interface FinancialSummary {
   expected_revenue: number;
@@ -122,6 +123,7 @@ interface EventSalesperson {
 }
 
 interface EventCommission {
+  automatic_source?: string | null;
   id: string;
   beneficiary_type: 'salesperson' | 'hotel' | 'partner' | 'employee' | 'other';
   beneficiary_name: string;
@@ -304,7 +306,7 @@ export default function EventFinancesTab({ eventId }: Props) {
           .not('end_time', 'is', null),
         supabase
           .from('event_commissions')
-          .select('id, beneficiary_type, beneficiary_name, calculation_type, rate, base_amount, amount, payment_method, dividend_tax_rate, company_cost_amount, status')
+          .select('id, beneficiary_type, beneficiary_name, calculation_type, rate, base_amount, amount, payment_method, dividend_tax_rate, company_cost_amount, status,automatic_source')
           .eq('event_id', eventId)
           .neq('status', 'cancelled')
           .order('created_at', { ascending: false }),
@@ -544,9 +546,14 @@ export default function EventFinancesTab({ eventId }: Props) {
   };
 
   const handleDeleteCommission = async (commissionId: string) => {
+    const target = eventCommissions.find((commission) => commission.id === commissionId);
+    if (target && isAutomaticCommission(target)) {
+      showSnackbar('Prowizji z podsumowania wydarzenia nie usuwa się — możesz ją anulować.', 'warning');
+      return;
+    }
     const { error } = await supabase.from('event_commissions').delete().eq('id', commissionId);
     if (error) {
-      showSnackbar('Nie udało się usunąć prowizji', 'error');
+      showSnackbar(error.message || 'Nie udało się usunąć prowizji', 'error');
       return;
     }
     setEventCommissions((current) => current.filter((commission) => commission.id !== commissionId));
@@ -554,9 +561,37 @@ export default function EventFinancesTab({ eventId }: Props) {
   };
 
   const handleUpdateCommissionStatus = async (commissionId: string, status: EventCommission['status']) => {
-    const { error } = await supabase.from('event_commissions').update({ status }).eq('id', commissionId);
+    const target = eventCommissions.find((commission) => commission.id === commissionId);
+    // Prowizja z podsumowania: anulowanie / przywrócenie przez set_event_commission_cancelled (undefined = wpis ręczny).
+    let automaticReason: string | null | undefined;
+    if (target && isAutomaticCommission(target)) {
+      // Wpis z podsumowania: tylko anulowanie (trwałe) i przywrócenie anulowanego; resztę ustala podsumowanie i rejestr wypłat.
+      const restoring = status === 'planned' && target.status === 'cancelled';
+      if (status !== 'cancelled' && !restoring) {
+        showSnackbar(AUTOMATIC_COMMISSION_HINT, 'info');
+        return;
+      }
+      // Anulowanie (zawsze z powodem) i przywrócenie: finanse / administrator, przez funkcję w bazie.
+      automaticReason = null;
+      if (status === 'cancelled') {
+        const reason = window.prompt('Powód anulowania prowizji z podsumowania. Anulowanie jest trwałe — zatwierdzenie podsumowania jej nie przywróci (możesz ją przywrócić ręcznie).');
+        if (reason === null) return;
+        if (!reason.trim()) {
+          showSnackbar('Podaj powód anulowania prowizji.', 'warning');
+          return;
+        }
+        automaticReason = reason.trim();
+      }
+    }
+    const { error } = automaticReason !== undefined
+      ? await supabase.rpc('set_event_commission_cancelled', {
+          p_commission_id: commissionId,
+          p_cancel: status === 'cancelled',
+          p_reason: automaticReason,
+        })
+      : await supabase.from('event_commissions').update({ status }).eq('id', commissionId);
     if (error) {
-      showSnackbar('Nie udało się zmienić statusu prowizji', 'error');
+      showSnackbar(error.message || 'Nie udało się zmienić statusu prowizji', 'error');
       return;
     }
     setEventCommissions((current) => current.map((commission) => (
@@ -1009,6 +1044,24 @@ export default function EventFinancesTab({ eventId }: Props) {
               )}
               {eventCommissions.map((commission) => (
                 <div key={commission.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-white/5 bg-[#0a0d1a] px-4 py-3 text-xs">
+                  {isAutomaticCommission(commission) && (
+                    <div className="order-last flex w-full flex-wrap items-center justify-between gap-2 text-[11px] text-[#e5e4e2]/45">
+                      <span>
+                        Z podsumowania wydarzenia · {AUTOMATIC_COMMISSION_HINT.toLowerCase()} ·{' '}
+                        <a href={`/crm/events/${eventId}?tab=summary`} className="text-[#d3bb73] hover:underline">Wyliczenie: zakładka Podsumowanie</a>
+                      </span>
+                      {(isAdmin || financeAccess.canApproveCommissions) && (commission.status === 'planned' || commission.status === 'approved') && (
+                        <button type="button" onClick={() => handleUpdateCommissionStatus(commission.id, 'cancelled')} className="rounded px-2 py-1 text-red-300 hover:bg-red-500/10">
+                          Anuluj
+                        </button>
+                      )}
+                      {(isAdmin || financeAccess.canApproveCommissions) && commission.status === 'cancelled' && (
+                        <button type="button" onClick={() => handleUpdateCommissionStatus(commission.id, 'planned')} className="rounded px-2 py-1 text-[#d3bb73] hover:bg-[#d3bb73]/10">
+                          Przywróć
+                        </button>
+                      )}
+                    </div>
+                  )}
                   <div>
                     <span className="text-[#e5e4e2]">{commission.beneficiary_name}</span>
                     <span className="ml-2 text-[#e5e4e2]/35">{BENEFICIARY_LABELS[commission.beneficiary_type] || 'Inny'} · {COMMISSION_STATUS_LABELS[commission.status] || 'Nie określono'}</span>
@@ -1023,7 +1076,7 @@ export default function EventFinancesTab({ eventId }: Props) {
                     </span>
                     {isAdmin && (
                       <>
-                        <select
+                        <select hidden={isAutomaticCommission(commission)}
                           value={commission.status}
                           onChange={(event) => handleUpdateCommissionStatus(commission.id, event.target.value as EventCommission['status'])}
                           className="rounded border border-white/10 bg-[#111522] px-2 py-1 text-[11px] text-[#e5e4e2]/70"
@@ -1032,13 +1085,13 @@ export default function EventFinancesTab({ eventId }: Props) {
                           <option value="approved">Zatwierdzona</option>
                           <option value="paid">Wypłacona</option>
                         </select>
-                        <button type="button" onClick={() => handleDeleteCommission(commission.id)} className="rounded p-1 text-red-300 hover:bg-red-500/10">
+                        <button hidden={isAutomaticCommission(commission)} type="button" onClick={() => handleDeleteCommission(commission.id)} className="rounded p-1 text-red-300 hover:bg-red-500/10">
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
                       </>
                     )}
                     {!isAdmin && financeAccess.canPlanCommissions && commission.status === 'planned' && (
-                      <button type="button" onClick={() => handleDeleteCommission(commission.id)} title="Usuń planowaną prowizję" className="rounded p-1 text-red-300 hover:bg-red-500/10">
+                      <button hidden={isAutomaticCommission(commission)} type="button" onClick={() => handleDeleteCommission(commission.id)} title="Usuń planowaną prowizję" className="rounded p-1 text-red-300 hover:bg-red-500/10">
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
                     )}

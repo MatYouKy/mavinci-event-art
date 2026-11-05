@@ -62,8 +62,10 @@ import type { EventSalesOverview } from '../lib/eventAccess';
 import { SalesColleagueEventView } from '@/components/Events/EventDetailScreen/SalesColleagueEventView';
 import { eventStepDetailLink } from '../lib/eventStepLinks';
 import type { EventStep } from '../lib/eventSteps';
+import { type EventSummaryState, SummaryTab } from '@/components/Events/EventDetailScreen/SummaryTab';
+import { fetchEventSettlement } from '../lib/eventSettlementApi';
 
-type TabKey = 'warehouse' | 'details' | 'agenda' | 'wedding' | 'checklist' | 'team' | 'fleet' | 'files';
+type TabKey = 'warehouse' | 'details' | 'agenda' | 'wedding' | 'checklist' | 'team' | 'fleet' | 'files' | 'summary';
 
 interface Props {
   eventId: string;
@@ -135,6 +137,17 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
   const [canViewPrivateFiles, setCanViewPrivateFiles] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [stepsRefreshKey, setStepsRefreshKey] = useState(0);
+  // Podsumowanie wydarzenia (get_event_settlement) — tylko z obszarem „kwoty” (wspólna mapa zakładek: summary → values).
+  // Odczyt w tle po wczytaniu ekranu; brak RPC (przed migracją) albo brak dostępu (42501) ukrywa zakładkę bez komunikatu.
+  // „Wymaga aktualizacji bazy” widać tylko, gdy osoba otworzyła podsumowanie wprost (powiadomienie, krok, „Moje prowizje”).
+  const [summary, setSummary] = useState<(EventSummaryState & { eventId: string; loadedAt: number }) | null>(null);
+  const summaryVersion = useRef(0);
+  const summaryState = summary?.eventId === eventId ? summary : null;
+  const showSummaryTab =
+    visibility.values &&
+    summaryState !== null &&
+    summaryState.status !== 'denied' &&
+    (summaryState.status !== 'missing' || initialTab === 'summary');
   const isWeddingEvent =
     Boolean(weddingCard) ||
     event?.category_name?.trim().toLocaleLowerCase('pl-PL').startsWith('wesel') === true;
@@ -352,6 +365,44 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
     setAccessState({ eventId, result, commercials });
     return eventDetailVisibility(result, commercials);
   }, [eventId]);
+
+  /** Podsumowanie wydarzenia; `allowed` — obszar „kwoty” (bez niego zakładki nie ma i nic nie pobieramy). */
+  const loadSummary = useCallback(
+    async (allowed: boolean) => {
+      const version = ++summaryVersion.current;
+      if (!allowed) {
+        setSummary(null);
+        return;
+      }
+      setSummary((current) =>
+        current?.eventId === eventId
+          ? { ...current, loading: true }
+          : { eventId, data: null, status: 'idle', message: null, loading: true, loadedAt: 0 },
+      );
+      const result = await fetchEventSettlement(eventId);
+      if (version !== summaryVersion.current) return;
+      setSummary((current) => {
+        const loadedAt = Date.now();
+        if (result.status === 'ready') {
+          return { eventId, data: result.data, status: 'ready', message: null, loading: false, loadedAt };
+        }
+        if (result.status === 'error') {
+          // Ostatnie poprawne podsumowanie zostaje widoczne z komunikatem o błędzie odświeżenia.
+          const previous = current?.eventId === eventId ? current.data : null;
+          return { eventId, data: previous, status: 'error', message: result.message, loading: false, loadedAt };
+        }
+        return {
+          eventId,
+          data: null,
+          status: result.status,
+          message: result.status === 'denied' ? result.message : null,
+          loading: false,
+          loadedAt,
+        };
+      });
+    },
+    [eventId],
+  );
 
   /** „Kontakt na miejscu” — tylko gdy osoba nie widzi pełnych danych klienta. */
   const fetchOnsiteContacts = useCallback(
@@ -663,6 +714,7 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
           return;
         }
         setSalesOverview(null);
+        void loadSummary(access.values);
         const [ev, nextWeddingCard, nextOnsite] = await Promise.all([
           fetchEvent(access),
           fetchWeddingCard(),
@@ -720,6 +772,7 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
       employee?.role,
       eventId,
       resolveAccess,
+      loadSummary,
       fetchOnsiteContacts,
       fetchEvent,
       fetchWeddingCard,
@@ -897,15 +950,27 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
     if (!isLoading && activeTab === 'files' && !showWarehouseTab && !canViewPrivateFiles && files.length === 0) {
       setActiveTab('details');
     }
+    if (!isLoading && activeTab === 'summary' && !showSummaryTab) {
+      setActiveTab('details');
+    }
   }, [
     activeTab,
     showWarehouseTab,
+    showSummaryTab,
     canViewPrivateFiles,
     files.length,
     fleetAssignments.length,
     isLoading,
     isWeddingEvent,
   ]);
+
+  // Otwarcie zakładki „Podsumowanie” odświeża dane, gdy odczyt ma ponad 30 s (kwoty zmieniają faktury, koszty, ekipa).
+  useEffect(() => {
+    if (activeTab !== 'summary' || isLoading || !summaryState || summaryState.loading) return;
+    if (Date.now() - summaryState.loadedAt < 30_000) return;
+    void loadSummary(visibility.values);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, isLoading]);
 
   const toggleLoadedItem = async (item: ChecklistItem) => {
     // If loading is locked, prevent unchecking
@@ -1031,6 +1096,7 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
     ...(showWarehouseTab || canViewPrivateFiles || files.length > 0
       ? ([{ key: 'files', label: 'Pliki', icon: 'file', count: files.length }] as const)
       : []),
+    ...(showSummaryTab ? ([{ key: 'summary', label: 'Podsumowanie', icon: 'bar-chart-2' }] as const) : []),
   ];
 
   // „Przejdź” przy kroku realizacji: zakładka, w której krok się zamyka (EVENT_STEP_TARGET_TAB, wspólne z CRM).
@@ -1044,6 +1110,7 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
       isWedding: isWeddingEvent,
       hasWarehouse: showWarehouseTab,
       hasFleet: tabs.some((tab) => tab.key === 'fleet'),
+      hasSummary: showSummaryTab,
       access: accessResult ? accessResult.access : null,
     });
     if (!target) return null;
@@ -1235,6 +1302,18 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
           />
         )}
         {activeTab === 'files' && <FilesTab files={files} />}
+        {activeTab === 'summary' && showSummaryTab && summaryState && (
+          <SummaryTab
+            eventId={eventId}
+            state={summaryState}
+            onReload={() => void loadSummary(visibility.values)}
+            onUpdated={(next) => {
+              // Wynik zapisu jest najnowszym stanem — unieważnia trwające odczyty.
+              summaryVersion.current++;
+              setSummary({ eventId, data: next, status: 'ready', message: null, loading: false, loadedAt: Date.now() });
+            }}
+          />
+        )}
         <View style={{ height: 40 }} />
       </ScrollView>
     </View>

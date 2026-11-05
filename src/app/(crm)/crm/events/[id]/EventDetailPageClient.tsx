@@ -64,6 +64,7 @@ import {
   ScrollText,
   Wallet,
   ShieldAlert,
+  ClipboardCheck,
 } from 'lucide-react';
 import * as Icons from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
@@ -83,6 +84,7 @@ import EventMavinciLiveTab, {
   type MavinciLiveModuleRequirement,
 } from '@/app/(crm)/crm/events/[id]/components/tabs/EventMavinciLiveTab';
 import EventCalculationsTab from '@/components/crm/events/calculations/EventCalculationsTab';
+import EventSettlementTab from '@/components/crm/events/settlement/EventSettlementTab';
 import { EventPhasesTimeline } from '@/app/(crm)/crm/events/[id]/components/tabs/EventPhasesTimeline';
 
 import { useDialog } from '@/contexts/DialogContext';
@@ -146,6 +148,7 @@ const EVENT_TAB_ICONS: Record<EventTabId, ComponentType<{ className?: string }>>
   contract: ScrollText,
   'seller-arrangements': Icons.MessageSquare,
   finances: Wallet,
+  summary: ClipboardCheck,
   history: History,
 };
 
@@ -1356,6 +1359,8 @@ export default function EventDetailPageClient({
       )}
 
       {effectiveTab === 'finances' && canViewFinanceValues && <EventFinancesTab eventId={eventId} />}
+
+      {effectiveTab === 'summary' && <EventSettlementTab key={eventId} eventId={eventId} />}
 
       {effectiveTab === 'contract' && <EventPartnerArrangement key={eventId} eventId={eventId} canManage={!!canEventManage} hideSection={signedContractEventId === eventId}><EventContractTab eventId={eventId} canViewAmounts={canViewValues} onSignedDocumentChange={present => setSignedContractEventId(present ? eventId : null)} /></EventPartnerArrangement>}
 

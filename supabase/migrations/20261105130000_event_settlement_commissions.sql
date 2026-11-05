@@ -82,7 +82,14 @@ ALTER TABLE public.event_commissions
   ADD COLUMN IF NOT EXISTS share_percent numeric,
   ADD COLUMN IF NOT EXISTS client_owned boolean,
   ADD COLUMN IF NOT EXISTS rate_reason text,
-  ADD COLUMN IF NOT EXISTS auto_cancelled boolean NOT NULL DEFAULT false;
+  ADD COLUMN IF NOT EXISTS auto_cancelled boolean NOT NULL DEFAULT false,
+  -- Składki pracodawcy zapisane przy naliczeniu (koszt firmy nie zmienia się, gdy później zmienią się ustawienia).
+  ADD COLUMN IF NOT EXISTS employer_social_rate numeric,
+  -- Powód ręcznego anulowania prowizji z podsumowania (finanse / administrator).
+  ADD COLUMN IF NOT EXISTS cancel_reason text;
+
+-- Potrącenie nadpłaty zapisuje się w rejestrze wypłat jako rozliczenie bez przelewu.
+ALTER TABLE public.event_commission_payouts ADD COLUMN IF NOT EXISTS is_offset boolean NOT NULL DEFAULT false;
 
 DO $$ BEGIN
   ALTER TABLE public.event_commissions ADD CONSTRAINT event_commissions_entry_kind_check
@@ -178,6 +185,7 @@ CREATE TABLE IF NOT EXISTS public.event_settlements (
   returned_by uuid REFERENCES public.employees(id) ON DELETE SET NULL,
   returned_at timestamptz,
   returned_note text,
+  no_sales_share boolean NOT NULL DEFAULT false,
   updated_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT event_settlements_status_check CHECK (status IN ('draft', 'submitted', 'approved'))
 );
@@ -191,6 +199,7 @@ CREATE TABLE IF NOT EXISTS public.event_settlement_lines (
   category text,
   name text,
   net_amount numeric(14,2),
+  source_net numeric(14,2),
   included boolean,
   confirmed boolean NOT NULL DEFAULT false,
   note text,
@@ -209,6 +218,13 @@ CREATE TABLE IF NOT EXISTS public.event_settlement_lines (
   CONSTRAINT event_settlement_lines_name_check CHECK (name IS NULL OR length(btrim(name)) BETWEEN 1 AND 300),
   CONSTRAINT event_settlement_lines_note_check CHECK (note IS NULL OR length(note) <= 2000)
 );
+ALTER TABLE public.event_settlements ADD COLUMN IF NOT EXISTS no_sales_share boolean NOT NULL DEFAULT false;
+-- Ponowne otwarcie z przeliczeniem stawek: przy następnym zatwierdzeniu stawki i sposób wypłaty bierzemy z aktualnych
+-- warunków (np. korekta błędnie ustawionej stawki), zamiast zachowywać je z poprzedniego zatwierdzenia.
+ALTER TABLE public.event_settlements ADD COLUMN IF NOT EXISTS refresh_rates boolean NOT NULL DEFAULT false;
+-- Kwota źródła w chwili korekty: gdy źródło się zmieni, korekta przestaje obowiązywać i trzeba ją potwierdzić ponownie.
+ALTER TABLE public.event_settlement_lines ADD COLUMN IF NOT EXISTS source_net numeric(14,2);
+
 CREATE UNIQUE INDEX IF NOT EXISTS event_settlement_lines_source_unique
   ON public.event_settlement_lines(event_id, source_type, source_id) WHERE source_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_event_settlement_lines_event ON public.event_settlement_lines(event_id);
@@ -298,7 +314,6 @@ END $$;
 -- Koszt firmy: wypłata gotówką z zysku (brutto-up podatku), wynagrodzenie pracownicze (+ składki pracodawcy).
 CREATE OR REPLACE FUNCTION public.calculate_event_commission_cost()
 RETURNS trigger LANGUAGE plpgsql SET search_path TO 'public' AS $function$
-DECLARE v_employer numeric;
 BEGIN
   IF NEW.calculation_type = 'percent' THEN
     NEW.amount := ROUND(COALESCE(NEW.base_amount, 0) * COALESCE(NEW.rate, 0) / 100, 2);
@@ -307,10 +322,10 @@ BEGIN
   END IF;
 
   IF NEW.payment_method = 'cash_dividend' THEN
-    NEW.company_cost_amount := ROUND(NEW.amount / (1 - COALESCE(NEW.dividend_tax_rate, 19) / 100), 2);
-  ELSIF NEW.payment_method = 'payroll' AND NEW.beneficiary_type = 'employee' AND NEW.owner_profit_review_id IS NULL THEN
-    SELECT s.employer_social_rate INTO v_employer FROM public.compensation_settings s WHERE s.id = 1;
-    NEW.company_cost_amount := ROUND(NEW.amount * (1 + COALESCE(v_employer, 0) / 100), 2);
+    NEW.company_cost_amount := ROUND(NEW.amount / (1 - LEAST(99.99, GREATEST(0, COALESCE(NEW.dividend_tax_rate, 19))) / 100), 2);
+  ELSIF NEW.payment_method = 'payroll' AND NEW.employer_social_rate IS NOT NULL THEN
+    -- Stawka składek zapisana przy naliczeniu (nie z bieżących ustawień): koszt firmy jest stały także przy wypłacie.
+    NEW.company_cost_amount := ROUND(NEW.amount * (1 + GREATEST(0, NEW.employer_social_rate) / 100), 2);
   ELSE
     NEW.company_cost_amount := NEW.amount;
   END IF;
@@ -329,21 +344,35 @@ $function$;
 -- Wpisy liczone z podsumowania zmienia tylko silnik. Ręcznie: anulowanie, notatka, termin; wypłaty — rejestr wypłat.
 CREATE OR REPLACE FUNCTION private.guard_automatic_commission()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
-DECLARE v_auto boolean;
+DECLARE v_auto boolean; v_event uuid; v_status text; v_paid numeric; v_finance boolean;
 BEGIN
   IF private.commission_engine_active() THEN
     RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
   END IF;
-  IF TG_OP = 'INSERT' THEN
-    IF NEW.entry_kind <> 'accrual' OR NEW.corrects_commission_id IS NOT NULL
-       OR NEW.automatic_source = ANY (private.commission_auto_sources()) THEN
-      RAISE EXCEPTION 'Prowizje z podsumowania wydarzenia, dopłaty i potrącenia tworzy wyłącznie podsumowanie wydarzenia.';
-    END IF;
-    RETURN NEW;
-  END IF;
-  v_auto := OLD.entry_kind <> 'accrual' OR OLD.automatic_source = ANY (private.commission_auto_sources());
+  v_event := CASE WHEN TG_OP = 'DELETE' THEN OLD.event_id ELSE NEW.event_id END;
+  v_auto := CASE WHEN TG_OP = 'INSERT'
+    THEN NEW.entry_kind <> 'accrual' OR NEW.corrects_commission_id IS NOT NULL
+         OR coalesce(NEW.automatic_source = ANY (private.commission_auto_sources()), false)
+    ELSE OLD.entry_kind <> 'accrual' OR coalesce(OLD.automatic_source = ANY (private.commission_auto_sources()), false) END;
+
+  v_finance := auth.uid() IS NULL OR coalesce(public.commission_settlement_can_access(v_event, true), false);
+
   IF NOT v_auto THEN
+    -- Ręczne wpisy: po wysłaniu podsumowania zmienia je tylko finanse / administrator (podsumowanie byłoby nieaktualne).
+    SELECT s.status INTO v_status FROM public.event_settlements s WHERE s.event_id = v_event;
+    IF coalesce(v_status, 'draft') <> 'draft' AND NOT v_finance THEN
+      RAISE EXCEPTION 'Podsumowanie wydarzenia jest wysłane lub zatwierdzone — prowizje tego wydarzenia zmienia finanse lub administrator.';
+    END IF;
+    -- Cudzy wpis ręczny (np. dodany przez administratora — ma pierwszeństwo przed prowizją z podsumowania) zmienia
+    -- jego autor, finanse albo administrator.
+    IF TG_OP <> 'INSERT' AND NOT v_finance AND OLD.created_by IS DISTINCT FROM public.current_invoice_employee_id() THEN
+      RAISE EXCEPTION 'Ten wpis prowizji dodała inna osoba — zmienia go autor, finanse lub administrator.';
+    END IF;
     RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+  END IF;
+
+  IF TG_OP = 'INSERT' THEN
+    RAISE EXCEPTION 'Prowizje z podsumowania wydarzenia, dopłaty i potrącenia tworzy wyłącznie podsumowanie wydarzenia.';
   END IF;
   IF TG_OP = 'DELETE' THEN
     RAISE EXCEPTION 'Prowizji z podsumowania wydarzenia nie usuwa się — możesz ją anulować.';
@@ -352,25 +381,49 @@ BEGIN
          NEW.organization_id, NEW.contact_id, NEW.sales_partner_id, NEW.calculation_type, NEW.rate,
          NEW.base_amount, NEW.amount, NEW.payment_method, NEW.dividend_tax_rate, NEW.automatic_source,
          NEW.entry_kind, NEW.corrects_commission_id, NEW.settlement_revision, NEW.share_percent,
-         NEW.client_owned, NEW.rate_reason, NEW.base_description)
+         NEW.client_owned, NEW.rate_reason, NEW.base_description, NEW.employer_social_rate)
      IS DISTINCT FROM
      ROW(OLD.event_id, OLD.beneficiary_type, OLD.beneficiary_name, OLD.salesperson_id, OLD.employee_id,
          OLD.organization_id, OLD.contact_id, OLD.sales_partner_id, OLD.calculation_type, OLD.rate,
          OLD.base_amount, OLD.amount, OLD.payment_method, OLD.dividend_tax_rate, OLD.automatic_source,
          OLD.entry_kind, OLD.corrects_commission_id, OLD.settlement_revision, OLD.share_percent,
-         OLD.client_owned, OLD.rate_reason, OLD.base_description) THEN
+         OLD.client_owned, OLD.rate_reason, OLD.base_description, OLD.employer_social_rate) THEN
     RAISE EXCEPTION 'Kwotę, podstawę i odbiorcę tej prowizji ustala podsumowanie wydarzenia. Zmień dane w zakładce Podsumowanie.';
   END IF;
   IF NEW.status IS DISTINCT FROM OLD.status THEN
+    SELECT coalesce(sum(p.amount), 0) INTO v_paid FROM public.event_commission_payouts p WHERE p.commission_id = OLD.id;
     IF NEW.status = 'cancelled' THEN
-      IF EXISTS (SELECT 1 FROM public.event_commission_payouts p WHERE p.commission_id = OLD.id) THEN
+      -- Anulowana prowizja nie pomniejsza zysku (podnosi prowizję sprzedawcy) — decyduje finanse / administrator, z powodem.
+      IF NOT v_finance THEN
+        RAISE EXCEPTION 'Prowizję z podsumowania anuluje finanse lub administrator.';
+      END IF;
+      IF nullif(btrim(NEW.cancel_reason), '') IS NULL OR length(NEW.cancel_reason) > 1000 THEN
+        RAISE EXCEPTION 'Podaj powód anulowania prowizji (do 1000 znaków).';
+      END IF;
+      IF v_paid > 0 THEN
         RAISE EXCEPTION 'Prowizja ma wypłaty — zmiana wymaga ponownego zatwierdzenia podsumowania (dopłata lub potrącenie).';
       END IF;
+      IF OLD.entry_kind <> 'accrual' THEN
+        RAISE EXCEPTION 'Dopłatę i potrącenie zmienia ponowne zatwierdzenie podsumowania.';
+      END IF;
       NEW.auto_cancelled := false;
-    ELSIF OLD.status = 'planned' OR NEW.status = 'planned' OR OLD.status = 'cancelled' THEN
-      RAISE EXCEPTION 'Prowizja z podsumowania staje się do wypłaty po zatwierdzeniu podsumowania wydarzenia.';
+      NEW.cancel_reason := btrim(NEW.cancel_reason);
+    ELSIF OLD.status = 'cancelled' AND NEW.status = 'planned' AND v_paid = 0 AND OLD.entry_kind = 'accrual' THEN
+      -- Przywrócenie ręcznie anulowanej prowizji — kwotę ustali podsumowanie.
+      IF NOT v_finance THEN
+        RAISE EXCEPTION 'Prowizję z podsumowania przywraca finanse lub administrator.';
+      END IF;
+      NEW.auto_cancelled := false;
+      NEW.cancel_reason := NULL;
+    ELSIF NEW.status = 'paid' AND OLD.status = 'approved' AND v_paid = NEW.amount THEN
+      NULL; -- pełna wypłata zapisana w rejestrze wypłat
+    ELSIF NEW.status = 'approved' AND OLD.status = 'paid' AND v_paid < NEW.amount THEN
+      NULL; -- rejestr wypłat (pilnuje protect_commission_settlement_history)
+    ELSE
+      RAISE EXCEPTION 'Status tej prowizji wynika z podsumowania wydarzenia i rejestru wypłat.';
     END IF;
-    -- approved ↔ paid wynika z rejestru wypłat (pilnuje protect_commission_settlement_history).
+  ELSE
+    NEW.cancel_reason := OLD.cancel_reason;
   END IF;
   RETURN NEW;
 END $$;
@@ -378,6 +431,37 @@ END $$;
 DROP TRIGGER IF EXISTS aa_guard_automatic_commission ON public.event_commissions;
 CREATE TRIGGER aa_guard_automatic_commission BEFORE INSERT OR UPDATE OR DELETE ON public.event_commissions
   FOR EACH ROW EXECUTE FUNCTION private.guard_automatic_commission();
+
+-- Autor wpisu zawsze z sesji (od niego zależy pierwszeństwo wpisu ręcznego), nie z danych wysłanych przez aplikację.
+-- Wynagrodzenie pracownika: stawka składek pracodawcy z ustawień w chwili naliczenia (koszt firmy = brutto + składki);
+-- potem stała. Inni odbiorcy (sprzedawca, firma) — bez składek. Wpisy silnika ustawia silnik.
+CREATE OR REPLACE FUNCTION private.stamp_event_commission()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+BEGIN
+  IF private.commission_engine_active() THEN RETURN NEW; END IF;
+  IF auth.uid() IS NOT NULL THEN
+    IF TG_OP = 'INSERT' THEN
+      NEW.created_by := public.current_invoice_employee_id();
+    ELSE
+      NEW.created_by := OLD.created_by;
+    END IF;
+  END IF;
+  IF NEW.payment_method = 'payroll' AND NEW.beneficiary_type = 'employee'
+     AND (TG_OP = 'INSERT' OR OLD.payment_method IS DISTINCT FROM 'payroll') THEN
+    NEW.employer_social_rate := (SELECT s.employer_social_rate FROM public.compensation_settings s WHERE s.id = 1);
+  ELSIF TG_OP = 'INSERT' THEN
+    NEW.employer_social_rate := NULL;
+  ELSIF NEW.payment_method IS DISTINCT FROM 'payroll' OR NEW.beneficiary_type IS DISTINCT FROM 'employee' THEN
+    NEW.employer_social_rate := NULL;
+  ELSE
+    NEW.employer_social_rate := OLD.employer_social_rate;
+  END IF;
+  RETURN NEW;
+END $$;
+
+DROP TRIGGER IF EXISTS a0_stamp_event_commission ON public.event_commissions;
+CREATE TRIGGER a0_stamp_event_commission BEFORE INSERT OR UPDATE ON public.event_commissions
+  FOR EACH ROW EXECUTE FUNCTION private.stamp_event_commission();
 
 -- Historia każdej zmiany prowizji (także ręcznych).
 CREATE OR REPLACE FUNCTION private.log_event_commission_change()
@@ -392,14 +476,14 @@ BEGIN
       'rate', OLD.rate, 'company_cost_amount', OLD.company_cost_amount, 'payment_method', OLD.payment_method,
       'beneficiary_name', OLD.beneficiary_name, 'base_description', OLD.base_description,
       'settlement_revision', OLD.settlement_revision, 'share_percent', OLD.share_percent,
-      'client_owned', OLD.client_owned, 'rate_reason', OLD.rate_reason);
+      'client_owned', OLD.client_owned, 'rate_reason', OLD.rate_reason, 'cancel_reason', OLD.cancel_reason);
   END IF;
   IF TG_OP <> 'DELETE' THEN
     v_after := jsonb_build_object('status', NEW.status, 'amount', NEW.amount, 'base_amount', NEW.base_amount,
       'rate', NEW.rate, 'company_cost_amount', NEW.company_cost_amount, 'payment_method', NEW.payment_method,
       'beneficiary_name', NEW.beneficiary_name, 'base_description', NEW.base_description,
       'settlement_revision', NEW.settlement_revision, 'share_percent', NEW.share_percent,
-      'client_owned', NEW.client_owned, 'rate_reason', NEW.rate_reason);
+      'client_owned', NEW.client_owned, 'rate_reason', NEW.rate_reason, 'cancel_reason', NEW.cancel_reason);
   END IF;
   IF TG_OP = 'UPDATE' AND v_before = v_after THEN RETURN NULL; END IF;
   -- Prognoza zmienia się z każdą fakturą i kosztem — w historii zapisujemy powstanie wpisu, zmiany statusu
@@ -506,15 +590,17 @@ $$;
 
 -- Sprzedawca wydarzenia: autor zaakceptowanej oferty (portal sprzedawcy → opiekun sprzedawcy), dalej prowadzący
 -- zapytanie i twórca wydarzenia. Tworzony raz — potem zmienia go tylko administrator.
-CREATE OR REPLACE FUNCTION private.ensure_event_sales_shares(p_event_id uuid, p_basis text DEFAULT 'offer_acceptance')
+CREATE OR REPLACE FUNCTION private.ensure_event_sales_shares(p_event_id uuid, p_basis text DEFAULT 'backfill')
 RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
 DECLARE
   o public.offers%ROWTYPE; e public.events%ROWTYPE;
   v_employee uuid; v_source text; v_owner uuid; v_label text;
 BEGIN
   IF EXISTS (SELECT 1 FROM public.event_sales_shares s WHERE s.event_id = p_event_id) THEN RETURN; END IF;
+  -- Administrator świadomie zostawił wydarzenie bez sprzedawcy.
+  IF EXISTS (SELECT 1 FROM public.event_settlements s WHERE s.event_id = p_event_id AND s.no_sales_share) THEN RETURN; END IF;
   SELECT * INTO e FROM public.events WHERE id = p_event_id;
-  IF NOT FOUND OR e.status::text = 'cancelled' THEN RETURN; END IF;
+  IF NOT FOUND OR e.status::text IN ('cancelled', 'settled') THEN RETURN; END IF;
   SELECT * INTO o FROM public.offers x WHERE x.event_id = p_event_id AND x.status::text = 'accepted'
    ORDER BY x.accepted_at NULLS LAST, x.created_at, x.id LIMIT 1;
   IF NOT FOUND THEN RETURN; END IF;
@@ -543,20 +629,59 @@ BEGIN
   INSERT INTO public.event_sales_shares (event_id, employee_id, share_percent, source, client_owned, client_label,
     client_checked_at, client_check_basis, created_by)
   VALUES (p_event_id, v_employee, 100, v_source, coalesce(v_owner = v_employee, false), v_label, now(),
-    CASE WHEN p_basis = 'backfill' THEN 'backfill' ELSE 'offer_acceptance' END, public.current_invoice_employee_id())
+    CASE WHEN p_basis = 'offer_acceptance' THEN 'offer_acceptance' ELSE 'backfill' END, public.current_invoice_employee_id())
   ON CONFLICT (event_id, employee_id) DO NOTHING;
   INSERT INTO public.event_sales_share_audit (event_id, before_values, after_values, reason, actor_id)
   SELECT p_event_id, NULL, jsonb_agg(to_jsonb(s)), 'Automatycznie: ' || v_source, public.current_invoice_employee_id()
     FROM public.event_sales_shares s WHERE s.event_id = p_event_id;
 END $$;
 
+-- Ręczny wpis prowizji ma pierwszeństwo przed wyliczeniem z podsumowania tylko wtedy, gdy zatwierdziły go finanse
+-- (status zatwierdzona / wypłacona) albo wpisał go administrator. Inaczej czeka — liczy się prowizja z podsumowania.
+CREATE OR REPLACE FUNCTION private.commission_manual_precedes(c public.event_commissions)
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+  SELECT c.status IN ('approved', 'paid')
+      OR EXISTS (SELECT 1 FROM public.employees e WHERE e.id = c.created_by
+                   AND (e.role::text = 'admin' OR e.access_level::text = 'admin' OR 'admin' = ANY (coalesce(e.permissions, '{}'::text[]))));
+$$;
+
+-- Warunki sprzedawcy dla marki sprawdzamy przy nowym naliczeniu; dopłata i potrącenie dotyczą już zatwierdzonej prowizji.
+CREATE OR REPLACE FUNCTION public.enforce_sales_partner_event_commission()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public' AS $function$
+DECLARE
+  v_company_id uuid;
+BEGIN
+  IF NEW.sales_partner_id IS NULL OR NEW.entry_kind <> 'accrual' THEN RETURN NEW; END IF;
+  IF TG_OP = 'UPDATE' AND NEW.sales_partner_id IS NOT DISTINCT FROM OLD.sales_partner_id AND NEW.event_id IS NOT DISTINCT FROM OLD.event_id THEN
+    RETURN NEW;
+  END IF;
+  SELECT event.my_company_id INTO v_company_id
+  FROM public.events event
+  WHERE event.id = NEW.event_id;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM public.sales_partner_brand_terms term
+    WHERE term.sales_partner_id = NEW.sales_partner_id
+      AND term.my_company_id = v_company_id
+      AND term.is_active = true
+      AND term.commission_enabled = true
+  ) THEN
+    RAISE EXCEPTION 'Ten sprzedawca nie ma włączonego rozliczenia prowizyjnego dla marki wydarzenia';
+  END IF;
+  RETURN NEW;
+END;
+$function$;
+
 -- ---------------------------------------------------------------------------------------------------------------
 -- 6. Pozycje automatyczne podsumowania (bez zapisu — liczone z danych źródłowych przy każdym odczycie)
 -- ---------------------------------------------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION private.event_settlement_auto_lines(p_event_id uuid)
+DROP FUNCTION IF EXISTS private.event_settlement_auto_lines(uuid);
+CREATE FUNCTION private.event_settlement_auto_lines(p_event_id uuid)
 RETURNS TABLE(source_type text, source_id uuid, kind text, category text, name text, detail text, line_date date,
               suggested_net numeric, gross_amount numeric, auto_included boolean, needs_confirmation boolean,
-              auto_note text, sort_order integer)
+              auto_note text, sort_order integer, group_id uuid, ref_partner uuid, ref_contact uuid, ref_employee uuid,
+              precedes boolean)
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public AS $$
   WITH ev AS (SELECT * FROM public.events WHERE id = p_event_id),
   inv AS (
@@ -569,7 +694,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public AS $$
      WHERE (i.event_id = p_event_id OR EXISTS (SELECT 1 FROM public.invoice_event_allocations x
                                                 WHERE x.invoice_id = i.id AND x.event_id = p_event_id))
        AND NOT coalesce(i.is_proforma, false) AND coalesce(i.invoice_type, 'vat') <> 'proforma'
-       AND coalesce(i.status, '') NOT IN ('draft', 'cancelled')
+       AND coalesce(i.status, '') NOT IN ('draft', 'cancelled', 'proforma')
   ),
   full_invoice AS (SELECT EXISTS (SELECT 1 FROM inv WHERE inv.invoice_type IN ('vat', 'final') AND inv.share > 0)
                        OR EXISTS (SELECT 1 FROM public.event_financials f WHERE f.event_id = p_event_id AND coalesce(f.actual_cash_revenue, 0) > 0)
@@ -597,18 +722,19 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public AS $$
            CASE WHEN fin.number IS NOT NULL THEN 'Rozliczona w fakturze końcowej ' || fin.number || ' — nie liczymy jej drugi raz.'
                 WHEN i.invoice_type = 'advance' AND NOT (SELECT present FROM full_invoice) AND EXISTS (SELECT 1 FROM off)
                   THEN 'Zaliczka — do czasu faktury końcowej przychód prognozujemy z oferty.' END AS auto_note,
-           10 AS sort_order
+           10 AS sort_order, NULL::uuid AS group_id, NULL::uuid AS ref_partner, NULL::uuid AS ref_contact,
+           NULL::uuid AS ref_employee, NULL::boolean AS precedes
       FROM inv i
       LEFT JOIN LATERAL (
         SELECT coalesce(nullif(btrim(f.invoice_number), ''), 'bez numeru') AS number
           FROM public.invoices f
           CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(f.settled_invoices) = 'array' THEN f.settled_invoices ELSE '[]'::jsonb END) s
-         WHERE i.invoice_type = 'advance' AND f.invoice_type = 'final' AND coalesce(f.status, '') NOT IN ('draft', 'cancelled')
+         WHERE i.invoice_type = 'advance' AND f.invoice_type = 'final' AND coalesce(f.status, '') NOT IN ('draft', 'cancelled', 'proforma')
            AND s->>'id' = i.id::text
          LIMIT 1) fin ON true
      WHERE i.share > 0
     UNION ALL
-    -- Prognoza z zaakceptowanej oferty (do czasu faktury VAT / końcowej).
+    -- Prognoza z zaakceptowanej oferty (do czasu faktury VAT / końcowej albo gotówki).
     SELECT 'offer', o.id, 'revenue', 'revenue',
            'Oferta ' || coalesce(nullif(btrim(o.offer_number), ''), 'bez numeru'),
            CASE WHEN o.commercial_model = 'markup' THEN 'Prognoza z zaakceptowanej oferty (z narzutem sprzedawcy)'
@@ -617,13 +743,14 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public AS $$
            NOT (SELECT present FROM full_invoice), false,
            CASE WHEN (SELECT present FROM full_invoice) THEN 'Zastąpiona fakturami sprzedaży lub przychodem gotówkowym.'
                 ELSE 'Prognoza — do rozliczenia potrzebna jest faktura sprzedaży.' END,
-           20
+           20, NULL::uuid, NULL::uuid, NULL::uuid, NULL::uuid, NULL::boolean
       FROM off o
     UNION ALL
     -- Przychód gotówkowy z rozliczenia wydarzenia.
     SELECT 'cash', f.event_id, 'revenue', 'revenue', 'Przychód gotówkowy', 'Z rozliczenia gotówki wydarzenia',
            NULL::date, f.actual_cash_revenue, f.actual_cash_revenue,
-           true, true, 'Potwierdź kwotę netto przychodu gotówkowego.', 30
+           true, true, 'Potwierdź kwotę netto przychodu gotówkowego.', 30,
+           NULL::uuid, NULL::uuid, NULL::uuid, NULL::uuid, NULL::boolean
       FROM public.event_financials f
      WHERE f.event_id = p_event_id AND coalesce(f.actual_cash_revenue, 0) > 0
     UNION ALL
@@ -631,7 +758,8 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public AS $$
     SELECT 'forecast', f.event_id, 'revenue', 'revenue', 'Przychód planowany', 'Prognoza z kalkulacji lub budżetu wydarzenia',
            NULL::date, f.expected_revenue, NULL::numeric,
            NOT (SELECT present FROM full_invoice), false,
-           'Prognoza — do rozliczenia potrzebna jest faktura sprzedaży.', 40
+           'Prognoza — do rozliczenia potrzebna jest faktura sprzedaży.', 40,
+           NULL::uuid, NULL::uuid, NULL::uuid, NULL::uuid, NULL::boolean
       FROM public.event_financials f
      WHERE f.event_id = p_event_id AND coalesce(f.expected_revenue, 0) > 0 AND NOT EXISTS (SELECT 1 FROM off)
     UNION ALL
@@ -653,7 +781,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public AS $$
              OR (x.id IS NOT NULL AND coalesce(x.amount_gross, 0) <> 0 AND x.amount_net IS NOT NULL)),
            CASE WHEN k.id IS NULL AND x.id IS NULL THEN 'Koszt wpisany ręcznie — potwierdź, ile wynosi netto.'
                 ELSE 'Netto z faktury kosztowej.' END,
-           50
+           50, ec.subcontractor_id, NULL::uuid, NULL::uuid, NULL::uuid, NULL::boolean
       FROM public.event_costs ec
       LEFT JOIN public.event_cost_categories cat ON cat.id = ec.category_id
       LEFT JOIN public.ksef_invoices k ON k.id = ec.ksef_invoice_id
@@ -661,7 +789,8 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public AS $$
       LEFT JOIN public.subcontractors s ON s.id = ec.subcontractor_id
      WHERE ec.event_id = p_event_id AND coalesce(ec.status, '') <> 'rejected'
     UNION ALL
-    -- Zlecenia podwykonawców (bez dublowania z kosztem / fakturą tego samego podwykonawcy).
+    -- Zlecenia podwykonawców. Kwota uzgodniona pomniejszona o koszty tego podwykonawcy już wpisane (np. jego faktura)
+    -- — różnicę liczy event_settlement_compute po korektach pozycji.
     SELECT 'subcontractor_task', t.id, 'cost', 'subcontractor',
            coalesce(nullif(btrim(t.task_name), ''), 'Zlecenie podwykonawcy'),
            concat_ws(' · ', s.company_name, 'kwota uzgodniona'),
@@ -669,15 +798,10 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public AS $$
            round(coalesce(nullif(t.agreed_cost, 0), nullif(t.total_cost, 0), nullif(t.fixed_price, 0),
                           t.hourly_rate * coalesce(t.actual_hours, t.estimated_hours)), 2),
            NULL::numeric,
-           NOT dup.present, false,
-           CASE WHEN dup.present THEN 'Koszt tego podwykonawcy jest już w kosztach wydarzenia — nie liczymy go drugi raz.'
-                ELSE 'Kwota uzgodniona z podwykonawcą (netto).' END,
-           60
+           true, false, 'Kwota uzgodniona z podwykonawcą (netto).', 60,
+           t.subcontractor_id, NULL::uuid, NULL::uuid, NULL::uuid, NULL::boolean
       FROM public.subcontractor_tasks t
       LEFT JOIN public.subcontractors s ON s.id = t.subcontractor_id
-      CROSS JOIN LATERAL (SELECT EXISTS (SELECT 1 FROM public.event_costs ec
-         WHERE ec.event_id = p_event_id AND t.subcontractor_id IS NOT NULL AND ec.subcontractor_id = t.subcontractor_id
-           AND coalesce(ec.status, '') <> 'rejected') AS present) dup
      WHERE t.event_id = p_event_id AND coalesce(t.status::text, '') NOT IN ('cancelled', 'declined', 'rejected')
        AND coalesce(nullif(t.agreed_cost, 0), nullif(t.total_cost, 0), nullif(t.fixed_price, 0),
                     t.hourly_rate * coalesce(t.actual_hours, t.estimated_hours), 0) > 0
@@ -688,7 +812,8 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public AS $$
            replace(round(sum(te.duration_minutes) / 60.0, 2)::text, '.', ',') || ' h z ewidencji czasu',
            max(te.start_time)::date,
            round(sum(te.duration_minutes / 60.0 * te.hourly_rate), 2), NULL::numeric,
-           true, false, NULL::text, 70
+           true, false, NULL::text, 70,
+           NULL::uuid, NULL::uuid, NULL::uuid, NULL::uuid, NULL::boolean
       FROM public.time_entries te
       LEFT JOIN public.employees emp ON emp.id = te.employee_id
      WHERE te.event_id = p_event_id AND te.employee_id IS NOT NULL
@@ -703,18 +828,18 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public AS $$
            CASE WHEN coalesce(ev.billing_arrangement, 'direct') <> 'direct'
                 THEN 'Rozliczenie przez hotel / agencję — narzut jest poza naszą fakturą.'
                 ELSE 'Narzut jest w naszej fakturze, ale należy się sprzedawcy.' END,
-           80
+           80, NULL::uuid, o.sales_partner_id, NULL::uuid, NULL::uuid, NULL::boolean
       FROM off o CROSS JOIN ev
      WHERE o.commercial_model = 'markup' AND o.partner_base_net IS NOT NULL AND o.net > o.partner_base_net
     UNION ALL
     -- Prowizje wpisane ręcznie (koszt firmy). Prowizje liczone przez podsumowanie dochodzą osobno.
     SELECT 'commission', c.id, 'cost', 'external_commission',
            'Prowizja: ' || coalesce(nullif(btrim(c.beneficiary_name), ''), 'odbiorca'),
-           'Wpis ręczny' || CASE WHEN c.status = 'paid' THEN ' · wypłacona' WHEN c.status = 'approved' THEN ' · zatwierdzona' ELSE '' END,
+           'Wpis ręczny' || CASE WHEN c.status = 'paid' THEN ' · wypłacona' WHEN c.status = 'approved' THEN ' · zatwierdzona' ELSE ' · czeka na zatwierdzenie' END,
            c.created_at::date, coalesce(c.company_cost_amount, c.amount), c.amount,
            NOT own.present, false,
-           CASE WHEN own.present THEN 'Ręczna prowizja sprzedawcy wydarzenia — jego prowizję liczy podsumowanie, więc tej nie odejmujemy.' END,
-           90
+           CASE WHEN own.present THEN 'Ręczna prowizja sprzedawcy wydarzenia — prowizje pracowników nie pomniejszają zysku.' END,
+           90, NULL::uuid, c.sales_partner_id, c.contact_id, c.employee_id, private.commission_manual_precedes(c)
       FROM public.event_commissions c
       CROSS JOIN LATERAL (SELECT c.employee_id IS NOT NULL AND EXISTS (SELECT 1 FROM public.event_sales_shares sh
          WHERE sh.event_id = p_event_id AND sh.employee_id = c.employee_id) AS present) own
@@ -733,76 +858,127 @@ RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_cata
 DECLARE
   e public.events%ROWTYPE;
   settings public.compensation_settings%ROWTYPE;
-  v_lines jsonb;
+  v_raw jsonb; v_lines jsonb;
   v_revenue numeric := 0; v_sub numeric := 0; v_direct numeric := 0; v_team numeric := 0; v_ext_lines numeric := 0;
   v_partner_base numeric := 0; v_external jsonb := '[]'; v_ext_auto numeric := 0; v_profit numeric := 0;
   v_internal jsonb := '[]'; v_internal_total numeric := 0; v_internal_cost numeric := 0;
   v_issues jsonb := '[]'; v_warnings jsonb := '[]';
   v_unconfirmed integer := 0; v_forecast_lines integer := 0; v_share_sum numeric; v_share_count integer;
-  v_finished boolean; v_cancelled boolean; v_key_input jsonb;
+  v_finished boolean; v_cancelled boolean; v_key_input jsonb; v_revision integer; v_clawback boolean;
+  v_refresh_rates boolean;
 BEGIN
   SELECT * INTO e FROM public.events WHERE id = p_event_id;
   IF NOT FOUND THEN RETURN NULL; END IF;
   SELECT * INTO settings FROM public.compensation_settings WHERE id = 1;
+  SELECT s.revision, s.refresh_rates INTO v_revision, v_refresh_rates FROM public.event_settlements s WHERE s.event_id = p_event_id;
+  v_revision := coalesce(v_revision, 0);
+  -- Administrator otworzył podsumowanie z przeliczeniem stawek: nie zachowujemy stawek z poprzedniego zatwierdzenia.
+  v_refresh_rates := coalesce(v_refresh_rates, false);
   v_cancelled := e.status::text = 'cancelled';
+  -- Anulowanie po zatwierdzeniu: ponowne zatwierdzenie zeruje prowizje (dopłaty / potrącenia).
+  v_clawback := v_cancelled AND v_revision > 0;
   v_finished := e.status::text IN ('completed', 'invoiced', 'settled')
     OR coalesce(e.event_end_date, e.event_date) < now();
 
+  -- 1. Pozycje: automatyczne + korekty + ręczne. Korekta kwoty / potwierdzenie obowiązuje, dopóki kwota źródła
+  --    się nie zmieni (source_net); po zmianie źródła pozycja wymaga ponownego potwierdzenia.
   WITH auto AS (SELECT * FROM private.event_settlement_auto_lines(p_event_id)),
   ov AS (SELECT * FROM public.event_settlement_lines l WHERE l.event_id = p_event_id AND l.source_type <> 'manual'),
+  joined AS (
+    SELECT a.*, ov.id AS ov_id, ov.category AS ov_category, ov.net_amount AS ov_net, ov.source_net AS ov_source_net,
+           ov.included AS ov_included, ov.confirmed AS ov_confirmed, ov.note AS ov_note, ov.updated_at AS ov_updated_at,
+           ov.updated_by AS ov_updated_by,
+           (ov.id IS NOT NULL AND (ov.net_amount IS NOT NULL OR ov.confirmed)) AS ov_has_value,
+           (ov.source_net IS NOT DISTINCT FROM a.suggested_net) AS ov_valid
+      FROM auto a LEFT JOIN ov ON ov.source_type = a.source_type AND ov.source_id = a.source_id
+  ),
   merged AS (
-    SELECT a.source_type, a.source_id, NULL::uuid AS manual_id, a.kind,
-           CASE WHEN a.source_type IN ('event_cost', 'subcontractor_task') AND ov.category IN ('subcontractor', 'direct_cost')
-                THEN ov.category ELSE a.category END AS category,
-           a.name, a.detail, a.line_date, a.suggested_net,
-           CASE WHEN a.source_type IN ('event_cost', 'subcontractor_task', 'team', 'cash', 'forecast') AND ov.net_amount IS NOT NULL
-                THEN ov.net_amount ELSE a.suggested_net END AS net_amount,
-           a.gross_amount, a.auto_included,
-           coalesce(ov.included, a.auto_included) AS included,
-           a.needs_confirmation AND NOT coalesce(ov.confirmed, false) AS needs_confirmation,
-           CASE WHEN a.needs_confirmation THEN coalesce(ov.confirmed, false) ELSE true END AS confirmed,
-           a.auto_note, ov.note, ov.id AS line_id, ov.updated_at, ov.updated_by, true AS auto, a.sort_order,
-           CASE a.source_type
-             WHEN 'event_cost' THEN '["included","category","net","confirm","note"]'::jsonb
-             WHEN 'subcontractor_task' THEN '["included","category","net","confirm","note"]'::jsonb
-             WHEN 'team' THEN '["included","net","note"]'::jsonb
-             WHEN 'cash' THEN '["included","net","confirm","note"]'::jsonb
-             WHEN 'forecast' THEN '["included","net","note"]'::jsonb
-             ELSE '["included","note"]'::jsonb END AS editable
-      FROM auto a
-      LEFT JOIN ov ON ov.source_type = a.source_type AND ov.source_id = a.source_id
+    SELECT jsonb_build_object(
+             'key', j.source_type || ':' || j.source_id, 'line_id', j.ov_id, 'source_type', j.source_type,
+             'source_id', j.source_id, 'kind', j.kind,
+             'category', CASE WHEN j.source_type IN ('event_cost', 'subcontractor_task') AND j.ov_category IN ('subcontractor', 'direct_cost')
+                              THEN j.ov_category ELSE j.category END,
+             'name', j.name, 'detail', nullif(j.detail, ''), 'date', j.line_date, 'suggested_net', j.suggested_net,
+             'net_amount', coalesce(CASE WHEN j.source_type IN ('event_cost', 'subcontractor_task', 'team', 'cash', 'forecast')
+                                              AND j.ov_net IS NOT NULL AND j.ov_valid
+                                         THEN j.ov_net ELSE j.suggested_net END, 0),
+             'gross_amount', j.gross_amount, 'auto_included', j.auto_included,
+             'included', coalesce(j.ov_included, j.auto_included),
+             'needs_confirmation', (j.needs_confirmation AND NOT (coalesce(j.ov_confirmed, false) AND j.ov_valid))
+                                   OR (j.ov_has_value AND NOT j.ov_valid),
+             'confirmed', CASE WHEN j.needs_confirmation THEN coalesce(j.ov_confirmed, false) AND j.ov_valid ELSE true END,
+             'source_changed', j.ov_has_value AND NOT j.ov_valid,
+             'previous_source_net', CASE WHEN j.ov_has_value AND NOT j.ov_valid THEN j.ov_source_net END,
+             'auto', true, 'auto_note', j.auto_note, 'note', j.ov_note, 'updated_at', j.ov_updated_at,
+             'updated_by', j.ov_updated_by,
+             'editable', CASE j.source_type
+                WHEN 'event_cost' THEN '["included","category","net","confirm","note"]'::jsonb
+                WHEN 'subcontractor_task' THEN '["included","category","net","note"]'::jsonb
+                WHEN 'team' THEN '["included","net","note"]'::jsonb
+                WHEN 'cash' THEN '["included","net","confirm","note"]'::jsonb
+                WHEN 'forecast' THEN '["included","net","note"]'::jsonb
+                ELSE '["included","note"]'::jsonb END,
+             'sort_order', j.sort_order, 'group_id', j.group_id, 'ref_partner', j.ref_partner, 'ref_contact', j.ref_contact,
+             'ref_employee', j.ref_employee, 'precedes', j.precedes) AS l
+      FROM joined j
     UNION ALL
-    SELECT 'manual', NULL, l.id, l.kind, l.category, l.name, NULL, l.created_at::date, l.net_amount, l.net_amount,
-           NULL, true, coalesce(l.included, true), false, true, NULL, l.note, l.id, l.updated_at, l.updated_by, false,
-           CASE WHEN l.kind = 'revenue' THEN 15 ELSE 95 END,
-           '["included","category","net","name","note","delete"]'::jsonb
+    SELECT jsonb_build_object(
+             'key', 'manual:' || l.id, 'line_id', l.id, 'source_type', 'manual', 'source_id', NULL, 'kind', l.kind,
+             'category', l.category, 'name', l.name, 'detail', NULL, 'date', l.created_at::date, 'suggested_net', l.net_amount,
+             'net_amount', coalesce(l.net_amount, 0), 'gross_amount', NULL, 'auto_included', true,
+             'included', coalesce(l.included, true), 'needs_confirmation', false, 'confirmed', true, 'source_changed', false,
+             'previous_source_net', NULL, 'auto', false, 'auto_note', NULL, 'note', l.note, 'updated_at', l.updated_at,
+             'updated_by', l.updated_by, 'editable', '["included","category","net","name","note","delete"]'::jsonb,
+             'sort_order', CASE WHEN l.kind = 'revenue' THEN 15 ELSE 95 END)
       FROM public.event_settlement_lines l
      WHERE l.event_id = p_event_id AND l.source_type = 'manual'
   )
-  SELECT coalesce(jsonb_agg(jsonb_build_object(
-           'key', CASE WHEN m.source_type = 'manual' THEN 'manual:' || m.manual_id ELSE m.source_type || ':' || m.source_id END,
-           'line_id', m.line_id, 'source_type', m.source_type, 'source_id', m.source_id, 'kind', m.kind,
-           'category', m.category, 'name', m.name, 'detail', nullif(m.detail, ''), 'date', m.line_date,
-           'suggested_net', m.suggested_net, 'net_amount', coalesce(m.net_amount, 0), 'gross_amount', m.gross_amount,
-           'auto_included', m.auto_included, 'included', m.included, 'needs_confirmation', m.needs_confirmation AND m.included,
-           'confirmed', m.confirmed, 'auto', m.auto, 'auto_note', m.auto_note, 'note', m.note,
-           'updated_at', m.updated_at, 'updated_by_name', nullif(btrim(concat_ws(' ', u.name, u.surname)), ''),
-           'editable', m.editable)
-         ORDER BY m.sort_order, m.line_date NULLS LAST, m.name), '[]'::jsonb),
-         coalesce(sum(m.net_amount) FILTER (WHERE m.included AND m.kind = 'revenue'), 0),
-         coalesce(sum(m.net_amount) FILTER (WHERE m.included AND m.kind = 'cost' AND m.category = 'subcontractor'), 0),
-         coalesce(sum(m.net_amount) FILTER (WHERE m.included AND m.kind = 'cost' AND m.category = 'direct_cost'), 0),
-         coalesce(sum(m.net_amount) FILTER (WHERE m.included AND m.kind = 'cost' AND m.category = 'team'), 0),
-         coalesce(sum(m.net_amount) FILTER (WHERE m.included AND m.kind = 'cost' AND m.category = 'external_commission'), 0),
-         count(*) FILTER (WHERE m.included AND m.needs_confirmation),
-         count(*) FILTER (WHERE m.included AND m.source_type IN ('offer', 'forecast'))
-    INTO v_lines, v_revenue, v_sub, v_direct, v_team, v_ext_lines, v_unconfirmed, v_forecast_lines
-    FROM merged m
-    LEFT JOIN public.employees u ON u.id = m.updated_by;
+  SELECT coalesce(jsonb_agg(m.l ORDER BY (m.l->>'sort_order')::int, m.l->>'date' NULLS LAST, m.l->>'name'), '[]'::jsonb)
+    INTO v_raw FROM merged m;
+
+  -- 2. Zlecenia podwykonawcy: liczy się tylko część niepokryta kosztami tego podwykonawcy już wpisanymi (np. jego
+  --    fakturą). Pokrycie liczymy raz na podwykonawcę: Σ zleceń − Σ jego kosztów, rozdzielone po kolei na zlecenia
+  --    (faktura za jedno zlecenie nie zeruje pozostałych).
+  WITH el AS (
+    SELECT t.l, t.ord FROM jsonb_array_elements(v_raw) WITH ORDINALITY AS t(l, ord)
+  ),
+  cov AS (
+    SELECT el.l->>'group_id' AS g, sum((el.l->>'net_amount')::numeric) AS covered
+      FROM el
+     WHERE el.l->>'source_type' = 'event_cost' AND (el.l->>'included')::boolean AND el.l->>'group_id' IS NOT NULL
+     GROUP BY 1
+  ),
+  tasks AS (
+    SELECT el.ord, cov.covered,
+           greatest(0, cov.covered - coalesce(sum((el.l->>'net_amount')::numeric) OVER (
+             PARTITION BY el.l->>'group_id' ORDER BY el.ord ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING), 0)) AS available
+      FROM el JOIN cov ON cov.g = el.l->>'group_id'
+     WHERE el.l->>'source_type' = 'subcontractor_task' AND (el.l->>'included')::boolean AND cov.covered > 0
+  )
+  SELECT coalesce(jsonb_agg(
+           CASE WHEN tk.ord IS NOT NULL AND tk.available > 0
+                THEN el.l || jsonb_build_object(
+                       'net_amount', greatest(0, round((el.l->>'net_amount')::numeric - least((el.l->>'net_amount')::numeric, tk.available), 2)),
+                       'auto_note', format('Kwota uzgodniona %s zł − pokryte kosztami tego podwykonawcy już wpisanymi %s zł (razem jego koszty: %s zł).',
+                                           private.pl_money((el.l->>'net_amount')::numeric),
+                                           private.pl_money(least((el.l->>'net_amount')::numeric, tk.available)),
+                                           private.pl_money(tk.covered)))
+                ELSE el.l END ORDER BY el.ord), '[]'::jsonb)
+    INTO v_raw
+    FROM el LEFT JOIN tasks tk ON tk.ord = el.ord;
+
+  SELECT coalesce(sum((l->>'net_amount')::numeric) FILTER (WHERE (l->>'included')::boolean AND l->>'kind' = 'revenue'), 0),
+         coalesce(sum((l->>'net_amount')::numeric) FILTER (WHERE (l->>'included')::boolean AND l->>'kind' = 'cost' AND l->>'category' = 'subcontractor'), 0),
+         coalesce(sum((l->>'net_amount')::numeric) FILTER (WHERE (l->>'included')::boolean AND l->>'kind' = 'cost' AND l->>'category' = 'direct_cost'), 0),
+         coalesce(sum((l->>'net_amount')::numeric) FILTER (WHERE (l->>'included')::boolean AND l->>'kind' = 'cost' AND l->>'category' = 'team'), 0),
+         count(*) FILTER (WHERE (l->>'included')::boolean AND (l->>'needs_confirmation')::boolean),
+         count(*) FILTER (WHERE (l->>'included')::boolean AND l->>'source_type' IN ('offer', 'forecast'))
+    INTO v_revenue, v_sub, v_direct, v_team, v_unconfirmed, v_forecast_lines
+    FROM jsonb_array_elements(v_raw) l;
 
   v_partner_base := greatest(0, round(v_revenue - v_sub, 2));
 
-  -- Sprzedawcy zewnętrzni: portal (prowizja), polecenie, kontakt rozliczeniowy, pośrednik (Ustalenia), dodany ręcznie.
+  -- 3. Sprzedawcy zewnętrzni: portal (prowizja), polecenie, kontakt rozliczeniowy, pośrednik (Ustalenia), dodany ręcznie.
   IF NOT v_cancelled THEN
     WITH src AS (
       SELECT o.sales_partner_id AS pid, 'seller_portal'::text AS src, 1 AS prio, o.partner_commission_rate AS offer_rate,
@@ -834,51 +1010,76 @@ BEGIN
       SELECT DISTINCT ON (s.pid) s.* FROM src s ORDER BY s.pid, s.prio
     ),
     rows AS (
-      SELECT pk.pid, pk.src, pk.prio, pk.offer_rate, pk.commercial_model, p.contact_id, p.employee_id, p.partner_type, p.status AS profile_status,
+      SELECT pk.pid, pk.src, pk.prio, pk.offer_rate, pk.commercial_model, p.contact_id, p.employee_id, p.partner_type,
+             p.status AS profile_status,
              coalesce(pk.org_id, p.organization_id, e.billing_organization_id) AS org_id,
              coalesce(nullif(btrim(c.full_name), ''), nullif(btrim(concat_ws(' ', c.first_name, c.last_name)), ''),
                       nullif(btrim(concat_ws(' ', emp.name, emp.surname)), '')) AS person,
-             t.is_active, t.commission_enabled, t.default_payment_method, t.dividend_tax_rate,
-             CASE WHEN pk.src = 'seller_portal' AND pk.commercial_model = 'commission'
-                  THEN coalesce(pk.offer_rate, t.default_commission_rate) ELSE t.default_commission_rate END AS rate,
-             CASE WHEN pk.src = 'seller_portal' AND pk.commercial_model = 'commission' AND pk.offer_rate IS NOT NULL
-                  THEN 'Stawka uzgodniona w ofercie sprzedawcy' ELSE 'Stawka z kartoteki sprzedawców (marka wydarzenia)' END AS rate_reason
+             t.is_active, t.commission_enabled, t.default_payment_method, t.dividend_tax_rate, t.default_commission_rate,
+             cur.id AS cur_id, cur.status AS cur_status, cur.auto_cancelled AS cur_auto_cancelled, cur.cancel_reason AS cur_cancel_reason,
+             -- Prowizja już zatwierdzona: przy ponownym rozliczeniu zostaje jej stawka i sposób wypłaty
+             -- (późniejsza zmiana warunków w kartotece nie działa wstecz).
+             (cur.id IS NOT NULL AND cur.settlement_revision IS NOT NULL AND cur.status IN ('approved', 'paid')) AS retained,
+             coalesce(lc.rate, cur.rate) AS cur_rate, cur.payment_method AS cur_payment, cur.dividend_tax_rate AS cur_dividend
         FROM picked pk
         JOIN public.sales_partner_profiles p ON p.id = pk.pid
         LEFT JOIN public.contacts c ON c.id = p.contact_id
         LEFT JOIN public.employees emp ON emp.id = p.employee_id
         LEFT JOIN public.sales_partner_brand_terms t ON t.sales_partner_id = p.id AND t.my_company_id = e.my_company_id
+        LEFT JOIN public.event_commissions cur
+          ON cur.id = private.commission_uuid('mavinci:event-commission:' || p_event_id::text || ':' || pk.pid::text)
+        -- Stawka z ostatniego zatwierdzenia (dopłata / potrącenie zapisują stawkę swojej wersji).
+        LEFT JOIN LATERAL (
+          SELECT x.rate FROM public.event_commissions x
+           WHERE (x.id = cur.id OR x.corrects_commission_id = cur.id) AND x.status <> 'cancelled'
+           ORDER BY x.settlement_revision DESC NULLS LAST, x.created_at DESC LIMIT 1) lc ON true
     ),
     judged AS (
       SELECT r.*,
-             CASE WHEN EXISTS (SELECT 1 FROM public.event_commissions mc
+             CASE WHEN r.retained AND NOT v_refresh_rates THEN r.cur_rate
+                  WHEN r.src = 'seller_portal' AND r.commercial_model = 'commission' THEN coalesce(r.offer_rate, r.default_commission_rate)
+                  ELSE r.default_commission_rate END AS rate,
+             CASE WHEN r.retained AND NOT v_refresh_rates THEN 'Stawka z zatwierdzonego rozliczenia'
+                  WHEN r.src = 'seller_portal' AND r.commercial_model = 'commission' AND r.offer_rate IS NOT NULL
+                    THEN 'Stawka uzgodniona w ofercie sprzedawcy'
+                  ELSE 'Stawka z kartoteki sprzedawców (marka wydarzenia)' END AS rate_reason,
+             CASE WHEN r.retained THEN r.cur_payment ELSE coalesce(r.default_payment_method, 'cash_dividend') END AS payment_method,
+             CASE WHEN r.retained THEN r.cur_dividend ELSE coalesce(r.dividend_tax_rate, 19) END AS dividend,
+             CASE WHEN r.cur_id IS NOT NULL AND r.cur_status = 'cancelled' AND NOT r.cur_auto_cancelled
+                    THEN 'Prowizja anulowana ręcznie' || coalesce(': ' || r.cur_cancel_reason, ' w ewidencji prowizji') || '.'
+                  WHEN EXISTS (SELECT 1 FROM public.event_commissions mc
                                 WHERE mc.event_id = p_event_id AND mc.status <> 'cancelled' AND mc.entry_kind = 'accrual'
                                   AND (mc.automatic_source IS NULL OR NOT (mc.automatic_source = ANY (private.commission_auto_sources())))
-                                  AND (mc.sales_partner_id = r.pid OR (r.contact_id IS NOT NULL AND mc.contact_id = r.contact_id)))
-                    THEN 'Ma ręcznie wpisaną prowizję w tym wydarzeniu — liczymy wpis ręczny.'
+                                  AND (mc.sales_partner_id = r.pid OR (r.contact_id IS NOT NULL AND mc.contact_id = r.contact_id))
+                                  AND private.commission_manual_precedes(mc))
+                    THEN 'Ma zatwierdzony ręczny wpis prowizji w tym wydarzeniu — liczymy wpis ręczny.'
                   WHEN r.src = 'seller_portal' AND r.commercial_model = 'markup' THEN 'Rozliczany narzutem w swojej ofercie — bez dodatkowej prowizji.'
                   WHEN r.partner_type = 'internal_employee' THEN 'Pracownik — jego prowizję liczy udział sprzedawcy wydarzenia.'
+                  WHEN r.retained THEN NULL
                   WHEN r.profile_status <> 'active' THEN 'Profil sprzedawcy jest nieaktywny.'
                   WHEN e.my_company_id IS NULL THEN 'Wydarzenie nie ma marki — brak warunków prowizji.'
                   WHEN NOT coalesce(r.is_active AND r.commission_enabled, false) THEN 'Brak aktywnej prowizji dla marki wydarzenia w kartotece sprzedawców.'
-                  WHEN coalesce(r.rate, 0) <= 0 THEN 'Stawka prowizji wynosi 0%.'
                   WHEN r.person IS NULL THEN 'Uzupełnij dane osoby w kartotece sprzedawców.'
              END AS skip_reason
         FROM rows r
     ),
     calc AS (
-      SELECT j.*, round(v_partner_base * coalesce(j.rate, 0) / 100, 2) AS amount FROM judged j
+      SELECT j.*,
+             coalesce(j.skip_reason, CASE WHEN coalesce(j.rate, 0) <= 0 THEN 'Stawka prowizji wynosi 0%.' END) AS reason,
+             round(v_partner_base * coalesce(j.rate, 0) / 100, 2) AS amount
+        FROM judged j
     )
     SELECT coalesce(jsonb_agg(jsonb_build_object(
              'partner_id', c.pid, 'contact_id', c.contact_id, 'employee_id', c.employee_id, 'organization_id', c.org_id,
-             'name', coalesce(c.person, 'Sprzedawca'), 'source', c.src, 'eligible', c.skip_reason IS NULL,
-             'skip_reason', c.skip_reason, 'rate', c.rate, 'rate_reason', c.rate_reason, 'base', v_partner_base,
-             'amount', CASE WHEN c.skip_reason IS NULL THEN c.amount ELSE 0 END,
-             'payment_method', coalesce(c.default_payment_method, 'cash_dividend'),
-             'dividend_tax_rate', coalesce(c.dividend_tax_rate, 19),
-             'company_cost', CASE WHEN c.skip_reason IS NOT NULL THEN 0
-                                  WHEN coalesce(c.default_payment_method, 'cash_dividend') = 'cash_dividend'
-                                    THEN round(c.amount / (1 - least(99.99, greatest(0, coalesce(c.dividend_tax_rate, 19))) / 100), 2)
+             'name', coalesce(c.person, 'Sprzedawca'), 'source', c.src, 'eligible', c.reason IS NULL,
+             'skip_reason', c.reason, 'rate', c.rate, 'rate_reason', c.rate_reason, 'retained', c.retained, 'base', v_partner_base,
+             'previous_rate', CASE WHEN c.retained AND v_refresh_rates AND c.cur_rate IS DISTINCT FROM c.rate THEN c.cur_rate END,
+             'amount', CASE WHEN c.reason IS NULL THEN c.amount ELSE 0 END,
+             'payment_method', c.payment_method,
+             'dividend_tax_rate', c.dividend,
+             'company_cost', CASE WHEN c.reason IS NOT NULL THEN 0
+                                  WHEN c.payment_method = 'cash_dividend'
+                                    THEN round(c.amount / (1 - least(99.99, greatest(0, coalesce(c.dividend, 19))) / 100), 2)
                                   ELSE c.amount END,
              'commission_id', private.commission_uuid('mavinci:event-commission:' || p_event_id::text || ':' || c.pid::text))
              ORDER BY c.prio, c.person), '[]'::jsonb)
@@ -889,9 +1090,25 @@ BEGIN
   SELECT coalesce(sum((x->>'company_cost')::numeric) FILTER (WHERE (x->>'eligible')::boolean), 0)
     INTO v_ext_auto FROM jsonb_array_elements(v_external) x;
 
+  -- 4. Ręczny wpis prowizji osoby, którą liczy podsumowanie, a który nie ma pierwszeństwa (czeka na zatwierdzenie
+  --    przez finanse): nie odejmujemy go podwójnie.
+  SELECT coalesce(jsonb_agg(
+           CASE WHEN l->>'source_type' = 'commission' AND NOT coalesce((l->>'precedes')::boolean, false)
+                     AND EXISTS (SELECT 1 FROM jsonb_array_elements(v_external) x
+                                  WHERE (x->>'eligible')::boolean
+                                    AND (x->>'partner_id' = l->>'ref_partner' OR (l->>'ref_contact' IS NOT NULL AND x->>'contact_id' = l->>'ref_contact')))
+                THEN l || jsonb_build_object('included', false,
+                       'auto_note', 'Ręczny wpis czeka na zatwierdzenie przez finanse — do tego czasu liczy się prowizja z podsumowania.')
+                ELSE l END ORDER BY ord), '[]'::jsonb)
+    INTO v_raw
+    FROM jsonb_array_elements(v_raw) WITH ORDINALITY AS t(l, ord);
+
+  SELECT coalesce(sum((l->>'net_amount')::numeric) FILTER (WHERE (l->>'included')::boolean AND l->>'kind' = 'cost' AND l->>'category' = 'external_commission'), 0)
+    INTO v_ext_lines FROM jsonb_array_elements(v_raw) l;
+
   v_profit := round(v_revenue - v_sub - v_direct - v_team - v_ext_lines - v_ext_auto, 2);
 
-  -- Pracownicy: udział sprzedawcy × stawka (5% / 10% przy kliencie własnym) × zysk netto.
+  -- 5. Pracownicy: udział sprzedawcy × stawka (5% / 10% przy kliencie własnym) × zysk netto.
   SELECT count(*), coalesce(sum(sh.share_percent), 0) INTO v_share_count, v_share_sum
     FROM public.event_sales_shares sh WHERE sh.event_id = p_event_id;
 
@@ -900,64 +1117,121 @@ BEGIN
              'employee_id', z.employee_id, 'name', z.person, 'share_percent', z.share_percent, 'source', z.source,
              'client_owned', z.client_owned, 'client_label', z.client_label, 'client_checked_at', z.client_checked_at,
              'client_check_basis', z.client_check_basis,
-             'enabled', z.enabled, 'rate', z.rate,
-             'blocked_reason', CASE WHEN z.blocked THEN 'Ma ręcznie wpisaną prowizję w tym wydarzeniu — liczymy wpis ręczny.' END,
-             'rate_reason', CASE WHEN z.client_owned THEN 'Klient własny' || coalesce(' (' || z.client_label || ')', '')
-                                   || ' — opiekun w dniu akceptacji oferty' ELSE 'Stawka podstawowa' END,
-             'base', z.base, 'amount', CASE WHEN z.enabled AND NOT z.blocked THEN z.amount ELSE 0 END,
+             'enabled', z.enabled, 'rate', z.rate, 'retained', z.retained,
+             'previous_rate', CASE WHEN z.retained AND v_refresh_rates AND z.retained_rate IS DISTINCT FROM z.rate THEN z.retained_rate END,
+             'blocked_reason', z.blocked_reason,
+             'rate_reason', CASE WHEN z.retained AND z.keep_rate THEN 'Stawka z zatwierdzonego rozliczenia'
+                                 WHEN z.client_owned THEN 'Klient własny' || coalesce(' (' || z.client_label || ')', '')
+                                   || CASE WHEN z.client_check_basis = 'offer_acceptance' THEN ' — opiekun w dniu akceptacji oferty'
+                                           WHEN z.client_check_basis = 'manual' THEN ' — potwierdzone przez administratora'
+                                           ELSE ' — opiekun w dniu przypisania sprzedawcy' END
+                                 ELSE 'Stawka podstawowa' END,
+             'base', z.base, 'amount', CASE WHEN z.enabled AND z.blocked_reason IS NULL THEN z.amount ELSE 0 END,
              'payment_method', z.payment_method, 'dividend_tax_rate', z.dividend_rate,
-             'company_cost', CASE WHEN NOT z.enabled OR z.blocked THEN 0
-                                  WHEN z.payment_method = 'payroll' THEN round(z.amount * (1 + coalesce(settings.employer_social_rate, 0) / 100), 2)
+             'employer_social_rate', z.employer_rate,
+             'company_cost', CASE WHEN NOT z.enabled OR z.blocked_reason IS NOT NULL THEN 0
+                                  WHEN z.payment_method = 'payroll' THEN round(z.amount * (1 + coalesce(z.employer_rate, 0) / 100), 2)
                                   WHEN z.payment_method = 'cash_dividend' THEN round(z.amount / (1 - least(99.99, z.dividend_rate) / 100), 2)
                                   ELSE z.amount END,
-             'commission_id', private.commission_uuid('mavinci:sales-share:' || p_event_id::text || ':' || z.employee_id::text))
+             'commission_id', z.commission_id)
              ORDER BY z.share_percent DESC, z.person), '[]'::jsonb)
       INTO v_internal
       FROM (
-        SELECT sh.*, coalesce(nullif(btrim(concat_ws(' ', emp.name, emp.surname)), ''), 'Pracownik') AS person,
-               coalesce(t.enabled, false) AS enabled,
-               EXISTS (SELECT 1 FROM public.event_commissions mc
-                        WHERE mc.event_id = p_event_id AND mc.employee_id = sh.employee_id AND mc.status <> 'cancelled'
-                          AND mc.entry_kind = 'accrual'
-                          AND (mc.automatic_source IS NULL OR NOT (mc.automatic_source = ANY (private.commission_auto_sources())))) AS blocked,
-               CASE WHEN sh.client_owned THEN coalesce(t.own_client_rate, settings.sales_commission_own_client_rate, 10)
-                    ELSE coalesce(t.standard_rate, settings.sales_commission_standard_rate, 5) END AS rate,
-               round(greatest(0, v_profit) * sh.share_percent / 100, 2) AS base,
-               round(round(greatest(0, v_profit) * sh.share_percent / 100, 2)
-                     * CASE WHEN sh.client_owned THEN coalesce(t.own_client_rate, settings.sales_commission_own_client_rate, 10)
-                            ELSE coalesce(t.standard_rate, settings.sales_commission_standard_rate, 5) END / 100, 2) AS amount,
-               coalesce(t.payment_method, 'payroll') AS payment_method,
-               coalesce(settings.dividend_rate, 19) AS dividend_rate
-          FROM public.event_sales_shares sh
-          JOIN public.employees emp ON emp.id = sh.employee_id
-          LEFT JOIN public.employee_sales_commission_terms t ON t.employee_id = sh.employee_id
-         WHERE sh.event_id = p_event_id
+        SELECT y.*,
+               round(greatest(0, v_profit) * y.share_percent / 100, 2) AS base,
+               round(round(greatest(0, v_profit) * y.share_percent / 100, 2) * y.rate / 100, 2) AS amount
+          FROM (
+            SELECT sh.*, n.person, n.commission_id, x.retained, x.keep_rate, x.blocked_reason, x.cur_rate AS retained_rate,
+                   n.enabled_now OR x.retained AS enabled,
+                   CASE WHEN x.retained AND x.keep_rate THEN x.cur_rate ELSE n.rate_now END AS rate,
+                   CASE WHEN x.retained THEN x.cur_payment ELSE n.payment_now END AS payment_method,
+                   CASE WHEN x.retained THEN coalesce(x.cur_employer, settings.employer_social_rate) ELSE settings.employer_social_rate END AS employer_rate,
+                   coalesce(settings.dividend_rate, 19) AS dividend_rate
+              FROM public.event_sales_shares sh
+              JOIN public.employees emp ON emp.id = sh.employee_id
+              LEFT JOIN public.employee_sales_commission_terms t ON t.employee_id = sh.employee_id
+              CROSS JOIN LATERAL (
+                SELECT coalesce(nullif(btrim(concat_ws(' ', emp.name, emp.surname)), ''), 'Pracownik') AS person,
+                       private.commission_uuid('mavinci:sales-share:' || p_event_id::text || ':' || sh.employee_id::text) AS commission_id,
+                       coalesce(t.enabled, false) AS enabled_now,
+                       CASE WHEN sh.client_owned THEN coalesce(t.own_client_rate, settings.sales_commission_own_client_rate, 10)
+                            ELSE coalesce(t.standard_rate, settings.sales_commission_standard_rate, 5) END AS rate_now,
+                       coalesce(t.payment_method, 'payroll') AS payment_now
+              ) n
+              LEFT JOIN public.event_commissions cur ON cur.id = n.commission_id
+              LEFT JOIN LATERAL (
+                SELECT x.rate, x.client_owned FROM public.event_commissions x
+                 WHERE (x.id = cur.id OR x.corrects_commission_id = cur.id) AND x.status <> 'cancelled'
+                 ORDER BY x.settlement_revision DESC NULLS LAST, x.created_at DESC LIMIT 1) lc ON true
+              CROSS JOIN LATERAL (
+                SELECT (cur.id IS NOT NULL AND cur.settlement_revision IS NOT NULL AND cur.status IN ('approved', 'paid')) AS retained,
+                       -- Stawkę z zatwierdzenia zachowujemy, chyba że administrator zmienił „klient własny” albo otworzył
+                       -- podsumowanie z przeliczeniem stawek.
+                       (coalesce(lc.client_owned, cur.client_owned) IS NOT DISTINCT FROM sh.client_owned AND NOT v_refresh_rates) AS keep_rate,
+                       coalesce(lc.rate, cur.rate) AS cur_rate, cur.payment_method AS cur_payment, cur.employer_social_rate AS cur_employer,
+                       CASE WHEN cur.id IS NOT NULL AND cur.status = 'cancelled' AND NOT cur.auto_cancelled
+                              THEN 'Prowizja anulowana ręcznie' || coalesce(': ' || cur.cancel_reason, ' w ewidencji prowizji') || '.'
+                            WHEN EXISTS (SELECT 1 FROM public.event_commissions mc
+                                          WHERE mc.event_id = p_event_id AND mc.employee_id = sh.employee_id AND mc.status <> 'cancelled'
+                                            AND mc.entry_kind = 'accrual'
+                                            AND (mc.automatic_source IS NULL OR NOT (mc.automatic_source = ANY (private.commission_auto_sources())))
+                                            AND private.commission_manual_precedes(mc))
+                              THEN 'Ma zatwierdzony ręczny wpis prowizji w tym wydarzeniu — liczymy wpis ręczny.' END AS blocked_reason
+              ) x
+             WHERE sh.event_id = p_event_id
+          ) y
       ) z;
   END IF;
 
   SELECT coalesce(sum((x->>'amount')::numeric), 0), coalesce(sum((x->>'company_cost')::numeric), 0)
     INTO v_internal_total, v_internal_cost FROM jsonb_array_elements(v_internal) x;
 
-  -- Braki blokujące wysłanie i zatwierdzenie.
-  IF v_cancelled THEN v_issues := v_issues || jsonb_build_array('Wydarzenie jest anulowane — nie ma czego rozliczać.'); END IF;
-  IF NOT v_finished THEN v_issues := v_issues || jsonb_build_array('Podsumowanie wyślesz po zakończeniu wydarzenia.'); END IF;
-  IF v_revenue <= 0 THEN v_issues := v_issues || jsonb_build_array('Brak przychodu netto — potrzebna jest faktura sprzedaży, potwierdzony przychód gotówkowy albo pozycja ręczna.'); END IF;
-  IF v_forecast_lines > 0 THEN
-    v_issues := v_issues || jsonb_build_array('Przychód pochodzi z prognozy (oferta lub kalkulacja). Do rozliczenia potrzebna jest faktura sprzedaży, potwierdzony przychód gotówkowy albo pozycja ręczna.');
-  END IF;
-  IF v_unconfirmed > 0 THEN
-    v_issues := v_issues || jsonb_build_array(format('Potwierdź kwotę netto w pozycjach: %s.', v_unconfirmed));
-  END IF;
-  IF v_share_count > 0 AND round(v_share_sum, 2) <> 100 THEN
-    v_issues := v_issues || jsonb_build_array('Udziały sprzedawców muszą dawać razem 100%.');
+  -- Pozycje do wyświetlenia: bez pól technicznych, z nazwiskiem ostatniej osoby, która zmieniła pozycję.
+  SELECT coalesce(jsonb_agg(
+           (l - 'sort_order' - 'group_id' - 'ref_partner' - 'ref_contact' - 'ref_employee' - 'precedes' - 'updated_by')
+           || jsonb_build_object('updated_by_name', nullif(btrim(concat_ws(' ', u.name, u.surname)), ''),
+                                 'needs_confirmation', (l->>'needs_confirmation')::boolean AND (l->>'included')::boolean)
+           ORDER BY ord), '[]'::jsonb)
+    INTO v_lines
+    FROM jsonb_array_elements(v_raw) WITH ORDINALITY AS t(l, ord)
+    LEFT JOIN public.employees u ON u.id::text = l->>'updated_by';
+
+  -- 6. Braki blokujące wysłanie i zatwierdzenie.
+  IF v_cancelled AND NOT v_clawback THEN v_issues := v_issues || jsonb_build_array('Wydarzenie jest anulowane — nie ma czego rozliczać.'); END IF;
+  IF NOT v_clawback THEN
+    IF NOT v_finished THEN v_issues := v_issues || jsonb_build_array('Podsumowanie wyślesz po zakończeniu wydarzenia.'); END IF;
+    IF v_revenue <= 0 THEN v_issues := v_issues || jsonb_build_array('Brak przychodu netto — potrzebna jest faktura sprzedaży, potwierdzony przychód gotówkowy albo pozycja ręczna.'); END IF;
+    IF v_forecast_lines > 0 THEN
+      v_issues := v_issues || jsonb_build_array('Przychód pochodzi z prognozy (oferta lub kalkulacja). Do rozliczenia potrzebna jest faktura sprzedaży, potwierdzony przychód gotówkowy albo pozycja ręczna.');
+    END IF;
+    IF v_unconfirmed > 0 THEN
+      v_issues := v_issues || jsonb_build_array(format('Potwierdź kwotę netto w pozycjach: %s.', v_unconfirmed));
+    END IF;
+    IF v_share_count > 0 AND round(v_share_sum, 2) <> 100 THEN
+      v_issues := v_issues || jsonb_build_array('Udziały sprzedawców muszą dawać razem 100%.');
+    END IF;
   END IF;
 
   -- Ostrzeżenia (nie blokują).
+  IF v_clawback THEN
+    v_warnings := v_warnings || jsonb_build_array('Wydarzenie anulowane po zatwierdzeniu — ponowne zatwierdzenie wyzeruje prowizje (niewypłacone anuluje, wypłacone zamieni w potrącenia).');
+  END IF;
+  IF v_refresh_rates THEN
+    v_warnings := v_warnings || jsonb_build_array('Podsumowanie otwarto z przeliczeniem stawek — przy zatwierdzeniu stawki będą według aktualnych warunków (różnica: dopłata albo potrącenie).');
+  END IF;
   IF v_share_count = 0 AND NOT v_cancelled THEN
     v_warnings := v_warnings || jsonb_build_array('Wydarzenie nie ma przypisanego sprzedawcy — prowizja pracownika nie zostanie naliczona.');
   END IF;
+  -- Przeliczenie stawek: kto i jak się zmieni (różnica — dopłata albo potrącenie przy zatwierdzeniu).
+  SELECT v_warnings || coalesce(jsonb_agg(format('%s: stawka %s%% → %s%% (przeliczenie stawek).', x->>'name',
+           private.pl_number((x->>'previous_rate')::numeric), private.pl_number((x->>'rate')::numeric))), '[]'::jsonb)
+    INTO v_warnings
+    FROM (SELECT * FROM jsonb_array_elements(v_internal) UNION ALL SELECT * FROM jsonb_array_elements(v_external)) AS t(x)
+   WHERE x->>'previous_rate' IS NOT NULL;
   SELECT v_warnings || coalesce(jsonb_agg(format('%s nie ma włączonej prowizji od sprzedaży.', x->>'name')), '[]'::jsonb)
     INTO v_warnings FROM jsonb_array_elements(v_internal) x WHERE NOT (x->>'enabled')::boolean;
+  SELECT v_warnings || coalesce(jsonb_agg(format('%s: %s', x->>'name', x->>'blocked_reason')), '[]'::jsonb)
+    INTO v_warnings FROM jsonb_array_elements(v_internal) x WHERE x->>'blocked_reason' IS NOT NULL;
   SELECT v_warnings || coalesce(jsonb_agg(format('%s: %s', x->>'name', x->>'skip_reason')), '[]'::jsonb)
     INTO v_warnings FROM jsonb_array_elements(v_external) x WHERE NOT (x->>'eligible')::boolean;
   IF v_profit < 0 THEN
@@ -966,19 +1240,24 @@ BEGIN
   IF (SELECT count(*) FROM public.offers o WHERE o.event_id = p_event_id AND o.status::text = 'accepted') > 1 THEN
     v_warnings := v_warnings || jsonb_build_array('Wydarzenie ma kilka zaakceptowanych ofert — sprawdź, czy przychód nie jest liczony podwójnie.');
   END IF;
-  IF EXISTS (SELECT 1 FROM public.event_commissions c
-              WHERE c.event_id = p_event_id AND c.status <> 'cancelled' AND c.entry_kind = 'accrual'
-                AND (c.automatic_source IS NULL OR NOT (c.automatic_source = ANY (private.commission_auto_sources())))
-                AND c.employee_id IN (SELECT sh.employee_id FROM public.event_sales_shares sh WHERE sh.event_id = p_event_id)) THEN
-    v_warnings := v_warnings || jsonb_build_array('Sprzedawca wydarzenia ma ręcznie wpisaną prowizję — podsumowanie nie naliczy mu drugiej. Anuluj ręczny wpis, jeśli ma liczyć podsumowanie.');
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(v_raw) l WHERE (l->>'source_changed')::boolean) THEN
+    v_warnings := v_warnings || jsonb_build_array('Kwota źródłowa części pozycji zmieniła się po korekcie — potwierdź je ponownie.');
+  END IF;
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(v_raw) l
+              WHERE l->>'source_type' = 'commission' AND NOT coalesce((l->>'precedes')::boolean, false)) THEN
+    v_warnings := v_warnings || jsonb_build_array('Ręczne wpisy prowizji czekają na zatwierdzenie przez finanse.');
   END IF;
 
+  -- Liczby w kluczu w jednej skali (stawka z ustawień „15” i zapisana w ewidencji „15.000” to ta sama wartość).
   v_key_input := jsonb_build_object(
-    'lines', (SELECT coalesce(jsonb_agg(jsonb_build_array(l->>'key', l->'included', l->>'category', l->'net_amount', l->'confirmed', l->>'kind')
+    'lines', (SELECT coalesce(jsonb_agg(jsonb_build_array(l->>'key', l->'included', l->>'category',
+                round((l->>'net_amount')::numeric, 2), l->'confirmed', l->>'kind', round((l->>'suggested_net')::numeric, 2))
                 ORDER BY l->>'key'), '[]'::jsonb) FROM jsonb_array_elements(v_lines) l),
-    'external', (SELECT coalesce(jsonb_agg(jsonb_build_array(x->>'partner_id', x->'eligible', x->'rate', x->>'payment_method', x->'dividend_tax_rate')
+    'external', (SELECT coalesce(jsonb_agg(jsonb_build_array(x->>'partner_id', x->'eligible', round((x->>'rate')::numeric, 3),
+                x->>'payment_method', round((x->>'dividend_tax_rate')::numeric, 2))
                 ORDER BY x->>'partner_id'), '[]'::jsonb) FROM jsonb_array_elements(v_external) x),
-    'internal', (SELECT coalesce(jsonb_agg(jsonb_build_array(x->>'employee_id', x->'share_percent', x->'client_owned', x->'enabled', x->'rate', x->>'payment_method', x->>'blocked_reason')
+    'internal', (SELECT coalesce(jsonb_agg(jsonb_build_array(x->>'employee_id', round((x->>'share_percent')::numeric, 2), x->'client_owned',
+                x->'enabled', round((x->>'rate')::numeric, 3), x->>'payment_method', x->>'blocked_reason')
                 ORDER BY x->>'employee_id'), '[]'::jsonb) FROM jsonb_array_elements(v_internal) x),
     'cancelled', v_cancelled);
 
@@ -999,10 +1278,11 @@ BEGIN
     'issues', v_issues,
     'warnings', v_warnings,
     'finished', v_finished,
+    'clawback', v_clawback,
+    'refresh_rates', v_refresh_rates,
     'forecast', v_forecast_lines > 0 OR v_revenue <= 0,
     'source_key', md5(v_key_input::text));
 END $$;
-
 
 -- Kwoty po polsku w opisach (niezależnie od ustawień regionalnych bazy): 12 345,60
 CREATE OR REPLACE FUNCTION private.pl_money(p numeric)
@@ -1022,11 +1302,12 @@ $$;
 -- ---------------------------------------------------------------------------------------------------------------
 -- 8. Silnik: prognoza (planowane wpisy) i zatwierdzenie (zamrożenie, dopłaty, potrącenia)
 -- ---------------------------------------------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION private.commission_target_rows(p_event_id uuid, ctx jsonb)
+DROP FUNCTION IF EXISTS private.commission_target_rows(uuid, jsonb);
+CREATE FUNCTION private.commission_target_rows(p_event_id uuid, ctx jsonb)
 RETURNS TABLE(commission_id uuid, beneficiary_type text, beneficiary_name text, sales_partner_id uuid, employee_id uuid,
               contact_id uuid, organization_id uuid, rate numeric, base_amount numeric, payment_method text,
               dividend_tax_rate numeric, automatic_source text, base_description text, rate_reason text,
-              share_percent numeric, client_owned boolean, amount numeric)
+              share_percent numeric, client_owned boolean, amount numeric, employer_social_rate numeric)
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public AS $$
   SELECT (x->>'commission_id')::uuid, 'salesperson', x->>'name', (x->>'partner_id')::uuid, (x->>'employee_id')::uuid,
          (x->>'contact_id')::uuid, (x->>'organization_id')::uuid, (x->>'rate')::numeric, (x->>'base')::numeric,
@@ -1035,7 +1316,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public AS $$
            private.pl_money((ctx#>>'{totals,revenue_net}')::numeric),
            private.pl_money((ctx#>>'{totals,subcontractor_net}')::numeric),
            private.pl_money((x->>'base')::numeric)),
-         x->>'rate_reason', NULL::numeric, NULL::boolean, (x->>'amount')::numeric
+         x->>'rate_reason', NULL::numeric, NULL::boolean, (x->>'amount')::numeric, NULL::numeric
     FROM jsonb_array_elements(ctx->'external') x WHERE (x->>'eligible')::boolean
   UNION ALL
   SELECT (x->>'commission_id')::uuid, 'employee', x->>'name', NULL::uuid, (x->>'employee_id')::uuid,
@@ -1046,19 +1327,33 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public AS $$
            private.pl_money((ctx#>>'{totals,revenue_net}')::numeric),
            private.pl_money((ctx#>>'{totals,costs_net}')::numeric),
            private.pl_number((x->>'share_percent')::numeric)),
-         x->>'rate_reason', (x->>'share_percent')::numeric, (x->>'client_owned')::boolean, (x->>'amount')::numeric
+         x->>'rate_reason', (x->>'share_percent')::numeric, (x->>'client_owned')::boolean, (x->>'amount')::numeric,
+         CASE WHEN x->>'payment_method' = 'payroll' THEN (x->>'employer_social_rate')::numeric END
     FROM jsonb_array_elements(ctx->'internal') x
    WHERE (x->>'enabled')::boolean AND x->>'blocked_reason' IS NULL;
 $$;
 
-CREATE OR REPLACE FUNCTION private.refresh_event_commissions(p_event_id uuid)
+-- Czy wydarzenie jest objęte nowym rozliczeniem. Wydarzenia rozliczone przed wdrożeniem (bez podsumowania i bez
+-- wpisów automatycznych) zostają bez zmian, nawet gdy później dojdzie do nich koszt lub faktura.
+CREATE OR REPLACE FUNCTION private.event_settlement_tracked(p_event_id uuid)
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+  SELECT coalesce((SELECT e.status::text <> 'settled' FROM public.events e WHERE e.id = p_event_id), false)
+      OR EXISTS (SELECT 1 FROM public.event_settlements s WHERE s.event_id = p_event_id)
+      OR EXISTS (SELECT 1 FROM public.event_commissions c WHERE c.event_id = p_event_id
+                   AND (c.entry_kind <> 'accrual' OR c.automatic_source = ANY (private.commission_auto_sources())));
+$$;
+
+DROP FUNCTION IF EXISTS private.refresh_event_commissions(uuid);
+CREATE OR REPLACE FUNCTION private.refresh_event_commissions(p_event_id uuid, p_basis text DEFAULT 'backfill')
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
 DECLARE
   v_prev text := coalesce(current_setting('mavinci.commission_engine', true), '');
   ctx jsonb; e public.events%ROWTYPE; t record; cur public.event_commissions%ROWTYPE;
   v_keep uuid[] := '{}'; v_created integer := 0; v_updated integer := 0; v_cancelled integer := 0; v_actor uuid;
 BEGIN
-  IF p_event_id IS NULL THEN RETURN jsonb_build_object('matched', 0, 'eligible', 0, 'created', 0, 'completed', 0, 'waiting', 0); END IF;
+  IF p_event_id IS NULL OR NOT private.event_settlement_tracked(p_event_id) THEN
+    RETURN jsonb_build_object('matched', 0, 'eligible', 0, 'created', 0, 'completed', 0, 'waiting', 0);
+  END IF;
   PERFORM set_config('mavinci.commission_engine', 'on', true);
   PERFORM pg_advisory_xact_lock(hashtextextended('billing-commission:' || p_event_id::text, 0));
   SELECT * INTO e FROM public.events WHERE id = p_event_id;
@@ -1066,7 +1361,7 @@ BEGIN
     PERFORM set_config('mavinci.commission_engine', v_prev, true);
     RETURN jsonb_build_object('matched', 0, 'eligible', 0, 'created', 0, 'completed', 0, 'waiting', 0);
   END IF;
-  PERFORM private.ensure_event_sales_shares(p_event_id);
+  PERFORM private.ensure_event_sales_shares(p_event_id, p_basis);
   ctx := private.event_settlement_compute(p_event_id);
   v_actor := public.current_invoice_employee_id();
 
@@ -1079,16 +1374,19 @@ BEGIN
       INSERT INTO public.event_commissions (id, event_id, beneficiary_type, beneficiary_name, sales_partner_id, employee_id,
         contact_id, organization_id, calculation_type, rate, base_amount, amount, base_description, payment_method,
         dividend_tax_rate, status, created_by, automatic_source, automatic_company_id, automatic_waiting_for_offer,
-        share_percent, client_owned, rate_reason, entry_kind)
+        share_percent, client_owned, rate_reason, entry_kind, employer_social_rate)
       VALUES (t.commission_id, p_event_id, t.beneficiary_type, t.beneficiary_name, t.sales_partner_id, t.employee_id,
         t.contact_id, t.organization_id, 'percent', t.rate, t.base_amount, 0, t.base_description, t.payment_method,
         t.dividend_tax_rate, 'planned', v_actor, t.automatic_source, e.my_company_id, false,
-        t.share_percent, t.client_owned, t.rate_reason, 'accrual');
+        t.share_percent, t.client_owned, t.rate_reason, 'accrual', t.employer_social_rate);
       v_created := v_created + 1;
       v_keep := v_keep || t.commission_id;
     ELSIF cur.automatic_source IS NULL OR NOT (cur.automatic_source = ANY (private.commission_auto_sources())) THEN
       -- Wpis z tym samym identyfikatorem utworzony dawniej ręcznie / starym automatem — zostaje bez zmian.
       CONTINUE;
+    ELSIF cur.status = 'cancelled' AND NOT cur.auto_cancelled THEN
+      -- Anulowana ręcznie — decyzja osoby, nie przywracamy jej automatycznie.
+      v_keep := v_keep || cur.id;
     ELSIF coalesce(t.amount, 0) <= 0 THEN
       -- Prognoza spadła do zera: planowany wpis zostanie anulowany automatycznie (wróci, gdy kwota się pojawi).
       CONTINUE;
@@ -1098,15 +1396,16 @@ BEGIN
          AND NOT EXISTS (SELECT 1 FROM public.event_commission_payouts p WHERE p.commission_id = cur.id)
          AND (cur.status <> 'planned' OR ROW(cur.rate, cur.base_amount, cur.payment_method, cur.dividend_tax_rate, cur.base_description,
                   cur.beneficiary_name, cur.share_percent, cur.client_owned, cur.rate_reason, cur.automatic_source,
-                  cur.automatic_waiting_for_offer, cur.organization_id)
+                  cur.automatic_waiting_for_offer, cur.organization_id, cur.employer_social_rate)
               IS DISTINCT FROM ROW(t.rate, t.base_amount, t.payment_method, t.dividend_tax_rate, t.base_description,
-                  t.beneficiary_name, t.share_percent, t.client_owned, t.rate_reason, t.automatic_source, false, coalesce(t.organization_id, cur.organization_id))) THEN
+                  t.beneficiary_name, t.share_percent, t.client_owned, t.rate_reason, t.automatic_source, false,
+                  coalesce(t.organization_id, cur.organization_id), t.employer_social_rate)) THEN
         UPDATE public.event_commissions SET
           rate = t.rate, base_amount = t.base_amount, calculation_type = 'percent', payment_method = t.payment_method,
           dividend_tax_rate = t.dividend_tax_rate, base_description = t.base_description, beneficiary_name = t.beneficiary_name,
           share_percent = t.share_percent, client_owned = t.client_owned, rate_reason = t.rate_reason,
           automatic_source = t.automatic_source, automatic_waiting_for_offer = false, automatic_company_id = e.my_company_id,
-          organization_id = coalesce(t.organization_id, organization_id),
+          organization_id = coalesce(t.organization_id, organization_id), employer_social_rate = t.employer_social_rate,
           status = 'planned', auto_cancelled = false
         WHERE id = cur.id;
         v_updated := v_updated + 1;
@@ -1114,7 +1413,7 @@ BEGIN
     END IF;
   END LOOP;
 
-  -- Osoby, których już nie ma w podsumowaniu: planowany wpis automatyczny → anulowany (wróci, gdy osoba wróci).
+  -- Osoby, których już nie ma w podsumowaniu (albo z kwotą 0): planowany wpis → anulowany automatycznie.
   WITH gone AS (
     UPDATE public.event_commissions c SET status = 'cancelled', auto_cancelled = true
      WHERE c.event_id = p_event_id AND c.entry_kind = 'accrual' AND c.status = 'planned'
@@ -1134,15 +1433,78 @@ EXCEPTION WHEN OTHERS THEN
 END $$;
 
 -- Wywołanie z wyzwalaczy: błąd prognozy nigdy nie blokuje zapisu faktury, kosztu czy oferty.
-CREATE OR REPLACE FUNCTION private.refresh_event_commissions_safe(p_event_id uuid)
+DROP FUNCTION IF EXISTS private.refresh_event_commissions_safe(uuid);
+CREATE OR REPLACE FUNCTION private.refresh_event_commissions_safe(p_event_id uuid, p_basis text DEFAULT 'backfill')
 RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
 BEGIN
   IF p_event_id IS NULL OR private.commission_engine_active() THEN RETURN; END IF;
   BEGIN
-    PERFORM private.refresh_event_commissions(p_event_id);
+    PERFORM private.refresh_event_commissions(p_event_id, p_basis);
   EXCEPTION WHEN OTHERS THEN
     RAISE WARNING 'Prognoza prowizji wydarzenia % nie została odświeżona: %', p_event_id, SQLERRM;
   END;
+END $$;
+
+-- Kwota prowizji z podsumowania po wszystkich wersjach: naliczenie + dopłaty − potrącenia (bez anulowanych).
+CREATE OR REPLACE FUNCTION private.commission_chain_net(p_commission_id uuid)
+RETURNS numeric LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+  SELECT coalesce((SELECT c.amount FROM public.event_commissions c WHERE c.id = p_commission_id AND c.status <> 'cancelled'), 0)
+       + coalesce((SELECT sum(x.amount) FROM public.event_commissions x
+                    WHERE x.corrects_commission_id = p_commission_id AND x.entry_kind = 'correction' AND x.status <> 'cancelled'), 0)
+       - coalesce((SELECT sum(x.amount) FROM public.event_commissions x
+                    WHERE x.corrects_commission_id = p_commission_id AND x.entry_kind = 'deduction' AND x.status <> 'cancelled'), 0);
+$$;
+
+-- Ta sama osoba: wpis z podsumowania (a) i inny wpis (b) — sprzedawca z kartoteki, osoba kontaktowa albo pracownik
+-- (udział sprzedawcy wydarzenia).
+CREATE OR REPLACE FUNCTION private.commission_same_person(a public.event_commissions, b public.event_commissions)
+RETURNS boolean LANGUAGE sql IMMUTABLE AS $$
+  SELECT coalesce((a.sales_partner_id IS NOT NULL AND a.sales_partner_id = b.sales_partner_id)
+      OR (a.contact_id IS NOT NULL AND a.contact_id = b.contact_id)
+      OR (a.automatic_source = 'sales_share' AND a.employee_id IS NOT NULL AND a.employee_id = b.employee_id), false);
+$$;
+
+-- Rozliczenie potrącenia z inną prowizją do wypłaty tej samej osoby (bez przelewu): zapis w rejestrze wypłat obu wpisów.
+CREATE OR REPLACE FUNCTION private.offset_commission_deduction(p_deduction_id uuid, p_target_id uuid, p_amount numeric, p_key uuid)
+RETURNS numeric LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+DECLARE
+  d public.event_commissions%ROWTYPE; t public.event_commissions%ROWTYPE;
+  v_prev text := coalesce(current_setting('mavinci.commission_engine', true), '');
+  v_d_paid numeric; v_t_paid numeric; v_amount numeric; v_today date := (current_timestamp AT TIME ZONE 'Europe/Warsaw')::date;
+  v_t_company uuid; v_d_company uuid;
+BEGIN
+  SELECT * INTO d FROM public.event_commissions WHERE id = p_deduction_id FOR UPDATE;
+  SELECT * INTO t FROM public.event_commissions WHERE id = p_target_id FOR UPDATE;
+  SELECT coalesce(sum(p.amount), 0) INTO v_d_paid FROM public.event_commission_payouts p WHERE p.commission_id = d.id;
+  SELECT coalesce(sum(p.amount), 0) INTO v_t_paid FROM public.event_commission_payouts p WHERE p.commission_id = t.id;
+  v_amount := round(least(coalesce(p_amount, d.amount - v_d_paid), d.amount - v_d_paid, t.amount - v_t_paid), 2);
+  IF v_amount <= 0 THEN RETURN 0; END IF;
+  SELECT my_company_id INTO v_t_company FROM public.events WHERE id = t.event_id;
+  SELECT my_company_id INTO v_d_company FROM public.events WHERE id = d.event_id;
+  PERFORM set_config('mavinci.commission_engine', 'on', true);
+  INSERT INTO public.event_commission_payouts (id, commission_id, event_id, my_company_id, amount, payment_date, payment_method,
+    reference, note, recorded_by, is_offset)
+  VALUES (p_key, t.id, t.event_id, v_t_company, v_amount, v_today, t.payment_method, 'Potrącenie',
+          format('Potrącenie nadpłaty (wpis %s, wydarzenie %s) — bez przelewu', d.id, d.event_id), auth.uid(), true);
+  INSERT INTO public.event_commission_payouts (id, commission_id, event_id, my_company_id, amount, payment_date, payment_method,
+    reference, note, recorded_by, is_offset)
+  VALUES (private.commission_uuid('mavinci:deduction:' || p_key::text), d.id, d.event_id, v_d_company, v_amount, v_today,
+          d.payment_method, 'Potrącono', format('Potrącono z prowizji %s (wydarzenie %s)', t.id, t.event_id), auth.uid(), true);
+  UPDATE public.event_commissions SET
+    status = CASE WHEN v_t_paid + v_amount = t.amount THEN 'paid' ELSE 'approved' END,
+    paid_at = CASE WHEN v_t_paid + v_amount = t.amount
+                   THEN (SELECT max(p.payment_date) FROM public.event_commission_payouts p WHERE p.commission_id = t.id)::timestamp AT TIME ZONE 'Europe/Warsaw' END
+   WHERE id = t.id;
+  UPDATE public.event_commissions SET
+    status = CASE WHEN v_d_paid + v_amount = d.amount THEN 'paid' ELSE 'approved' END,
+    paid_at = CASE WHEN v_d_paid + v_amount = d.amount
+                   THEN (SELECT max(p.payment_date) FROM public.event_commission_payouts p WHERE p.commission_id = d.id)::timestamp AT TIME ZONE 'Europe/Warsaw' END
+   WHERE id = d.id;
+  PERFORM set_config('mavinci.commission_engine', v_prev, true);
+  RETURN v_amount;
+EXCEPTION WHEN OTHERS THEN
+  PERFORM set_config('mavinci.commission_engine', v_prev, true);
+  RAISE;
 END $$;
 
 -- Zatwierdzenie podsumowania: wpisy do wypłaty z zamrożoną podstawą; po wypłatach — dopłata albo potrącenie.
@@ -1150,9 +1512,10 @@ CREATE OR REPLACE FUNCTION private.apply_settlement_commissions(p_event_id uuid,
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
 DECLARE
   v_prev text := coalesce(current_setting('mavinci.commission_engine', true), '');
-  e public.events%ROWTYPE; t record; cur public.event_commissions%ROWTYPE; stale record;
-  v_keep uuid[] := '{}'; v_actor uuid := public.current_invoice_employee_id();
-  v_has_history boolean; v_current numeric; v_delta numeric; v_result jsonb := '[]';
+  e public.events%ROWTYPE; t record; cur public.event_commissions%ROWTYPE; r record; rd record; v_ded uuid; v_cor uuid;
+  v_actor uuid := public.current_invoice_employee_id();
+  v_has_history boolean; v_current numeric; v_delta numeric; v_result jsonb := '[]'; v_left numeric; v_done numeric;
+  v_netted numeric; dd public.event_commissions%ROWTYPE;
 BEGIN
   PERFORM set_config('mavinci.commission_engine', 'on', true);
   SELECT * INTO e FROM public.events WHERE id = p_event_id;
@@ -1163,7 +1526,8 @@ BEGIN
     -- Wpisy automatyczne do wypłaty, których osoby nie ma już w podsumowaniu (cel: 0 zł).
     SELECT c.id, c.beneficiary_type, c.beneficiary_name, c.sales_partner_id, c.employee_id, c.contact_id, c.organization_id,
            c.rate, 0::numeric, c.payment_method, c.dividend_tax_rate, c.automatic_source,
-           'Osoba nie występuje już w zatwierdzonym podsumowaniu', c.rate_reason, c.share_percent, c.client_owned, 0::numeric, true
+           'Osoba nie występuje już w zatwierdzonym podsumowaniu', c.rate_reason, c.share_percent, c.client_owned, 0::numeric,
+           c.employer_social_rate, true
       FROM public.event_commissions c
      WHERE c.event_id = p_event_id AND c.entry_kind = 'accrual' AND c.status IN ('approved', 'paid')
        AND c.automatic_source = ANY (private.commission_auto_sources())
@@ -1175,15 +1539,17 @@ BEGIN
       INSERT INTO public.event_commissions (id, event_id, beneficiary_type, beneficiary_name, sales_partner_id, employee_id,
         contact_id, organization_id, calculation_type, rate, base_amount, amount, base_description, payment_method,
         dividend_tax_rate, status, created_by, automatic_source, automatic_company_id, automatic_waiting_for_offer,
-        share_percent, client_owned, rate_reason, entry_kind, settlement_revision)
+        share_percent, client_owned, rate_reason, entry_kind, settlement_revision, employer_social_rate)
       VALUES (t.commission_id, p_event_id, t.beneficiary_type, t.beneficiary_name, t.sales_partner_id, t.employee_id,
         t.contact_id, t.organization_id, 'percent', t.rate, t.base_amount, 0, t.base_description, t.payment_method,
-        t.dividend_tax_rate, CASE WHEN t.amount > 0 THEN 'approved' ELSE 'cancelled' END, v_actor, t.automatic_source,
-        e.my_company_id, false, t.share_percent, t.client_owned, t.rate_reason, 'accrual', p_revision);
+        t.dividend_tax_rate, 'approved', v_actor, t.automatic_source,
+        e.my_company_id, false, t.share_percent, t.client_owned, t.rate_reason, 'accrual', p_revision, t.employer_social_rate);
       v_result := v_result || jsonb_build_object('commission_id', t.commission_id, 'action', 'approved', 'amount', t.amount);
       CONTINUE;
     END IF;
     IF cur.automatic_source IS NULL OR NOT (cur.automatic_source = ANY (private.commission_auto_sources())) THEN CONTINUE; END IF;
+    -- Anulowana ręcznie — decyzja osoby; zatwierdzenie jej nie przywraca.
+    IF cur.status = 'cancelled' AND NOT cur.auto_cancelled THEN CONTINUE; END IF;
 
     v_has_history := cur.status = 'paid' OR EXISTS (SELECT 1 FROM public.event_commission_payouts p WHERE p.commission_id = cur.id)
       OR EXISTS (SELECT 1 FROM public.event_commissions x WHERE x.corrects_commission_id = cur.id AND x.status <> 'cancelled'
@@ -1197,14 +1563,14 @@ BEGIN
         rate = t.rate, base_amount = t.base_amount, calculation_type = 'percent', payment_method = t.payment_method,
         dividend_tax_rate = t.dividend_tax_rate, base_description = t.base_description, beneficiary_name = t.beneficiary_name,
         share_percent = t.share_percent, client_owned = t.client_owned, rate_reason = t.rate_reason,
-        automatic_source = t.automatic_source, automatic_waiting_for_offer = false,
+        automatic_source = t.automatic_source, automatic_waiting_for_offer = false, employer_social_rate = t.employer_social_rate,
         status = CASE WHEN round(t.base_amount * t.rate / 100, 2) > 0 THEN 'approved' ELSE 'cancelled' END,
         auto_cancelled = round(t.base_amount * t.rate / 100, 2) <= 0,
         settlement_revision = p_revision
       WHERE id = cur.id;
       v_result := v_result || jsonb_build_object('commission_id', cur.id, 'action', 'approved', 'amount', round(t.base_amount * t.rate / 100, 2));
     ELSE
-      -- Są wypłaty: nie zmieniamy wypłaconego wpisu. Otwarte dopłaty/potrącenia zastępuje jedna nowa różnica.
+      -- Są wypłaty: nie zmieniamy wypłaconego wpisu. Otwarte dopłaty/potrącenia bez wypłat zastępuje jedna nowa różnica.
       UPDATE public.event_commissions x SET status = 'cancelled', auto_cancelled = true
        WHERE x.corrects_commission_id = cur.id AND x.status IN ('planned', 'approved')
          AND NOT EXISTS (SELECT 1 FROM public.event_commission_payouts p WHERE p.commission_id = x.id);
@@ -1215,32 +1581,85 @@ BEGIN
         FROM public.event_commissions x WHERE x.corrects_commission_id = cur.id AND x.status <> 'cancelled';
       v_current := coalesce(v_current, cur.amount);
       v_delta := round(t.amount - v_current, 2);
+      v_ded := NULL; v_cor := NULL;
       IF v_delta > 0 THEN
-        INSERT INTO public.event_commissions (event_id, beneficiary_type, beneficiary_name, sales_partner_id, employee_id,
+        v_cor := gen_random_uuid();
+        INSERT INTO public.event_commissions (id, event_id, beneficiary_type, beneficiary_name, sales_partner_id, employee_id,
           contact_id, organization_id, calculation_type, rate, base_amount, amount, base_description, payment_method,
           dividend_tax_rate, status, created_by, automatic_source, automatic_company_id, automatic_waiting_for_offer,
-          share_percent, client_owned, rate_reason, entry_kind, corrects_commission_id, settlement_revision)
-        VALUES (p_event_id, cur.beneficiary_type, cur.beneficiary_name, cur.sales_partner_id, cur.employee_id, cur.contact_id,
+          share_percent, client_owned, rate_reason, entry_kind, corrects_commission_id, settlement_revision, employer_social_rate)
+        VALUES (v_cor, p_event_id, cur.beneficiary_type, cur.beneficiary_name, cur.sales_partner_id, cur.employee_id, cur.contact_id,
           cur.organization_id, 'fixed', t.rate, t.base_amount, v_delta,
           format('Dopłata po ponownym rozliczeniu (wersja %s): było %s zł, jest %s zł', p_revision,
             private.pl_money(v_current), private.pl_money(t.amount)),
           cur.payment_method, cur.dividend_tax_rate, 'approved', v_actor, cur.automatic_source, e.my_company_id, false,
-          t.share_percent, t.client_owned, t.rate_reason, 'correction', cur.id, p_revision);
-        v_result := v_result || jsonb_build_object('commission_id', cur.id, 'action', 'correction', 'amount', v_delta);
+          t.share_percent, t.client_owned, t.rate_reason, 'correction', cur.id, p_revision, cur.employer_social_rate);
       ELSIF v_delta < 0 THEN
-        INSERT INTO public.event_commissions (event_id, beneficiary_type, beneficiary_name, sales_partner_id, employee_id,
+        v_ded := gen_random_uuid();
+        INSERT INTO public.event_commissions (id, event_id, beneficiary_type, beneficiary_name, sales_partner_id, employee_id,
           contact_id, organization_id, calculation_type, rate, base_amount, amount, base_description, payment_method,
           dividend_tax_rate, status, created_by, automatic_source, automatic_company_id, automatic_waiting_for_offer,
-          share_percent, client_owned, rate_reason, entry_kind, corrects_commission_id, settlement_revision)
-        VALUES (p_event_id, cur.beneficiary_type, cur.beneficiary_name, cur.sales_partner_id, cur.employee_id, cur.contact_id,
+          share_percent, client_owned, rate_reason, entry_kind, corrects_commission_id, settlement_revision, employer_social_rate)
+        VALUES (v_ded, p_event_id, cur.beneficiary_type, cur.beneficiary_name, cur.sales_partner_id, cur.employee_id, cur.contact_id,
           cur.organization_id, 'fixed', t.rate, t.base_amount, -v_delta,
-          format('Potrącenie po ponownym rozliczeniu (wersja %s): było %s zł, jest %s zł — do potrącenia z kolejnej wypłaty', p_revision,
+          format('Potrącenie po ponownym rozliczeniu (wersja %s): było %s zł, jest %s zł', p_revision,
             private.pl_money(v_current), private.pl_money(t.amount)),
           cur.payment_method, cur.dividend_tax_rate, 'approved', v_actor, cur.automatic_source, e.my_company_id, false,
-          t.share_percent, t.client_owned, t.rate_reason, 'deduction', cur.id, p_revision);
-        v_result := v_result || jsonb_build_object('commission_id', cur.id, 'action', 'deduction', 'amount', -v_delta);
+          t.share_percent, t.client_owned, t.rate_reason, 'deduction', cur.id, p_revision, cur.employer_social_rate);
+      END IF;
+      -- Otwarte potrącenia tej prowizji rozliczamy od razu z jej niewypłaconą resztą (naliczenie i dopłaty), bez przelewu:
+      -- nowe potrącenie zmniejsza resztę do wypłaty, a nowa dopłata najpierw spłaca wcześniejszą nadpłatę. „Do potrącenia”
+      -- z innych prowizji zostaje tylko faktyczna nadpłata, a gotówką wypłaca się tylko to, co faktycznie się należy.
+      v_netted := 0;
+      FOR rd IN
+        SELECT x.id FROM public.event_commissions x
+         WHERE x.corrects_commission_id = cur.id AND x.entry_kind = 'deduction' AND x.status = 'approved'
+         ORDER BY x.created_at, x.id
+      LOOP
+        FOR r IN
+          SELECT x.id FROM public.event_commissions x
+           WHERE (x.id = cur.id OR (x.corrects_commission_id = cur.id AND x.entry_kind = 'correction'))
+             AND x.status = 'approved'
+             AND x.amount > coalesce((SELECT sum(p.amount) FROM public.event_commission_payouts p WHERE p.commission_id = x.id), 0)
+           ORDER BY x.created_at, x.id
+        LOOP
+          v_done := private.offset_commission_deduction(rd.id, r.id, NULL, gen_random_uuid());
+          v_netted := round(v_netted + v_done, 2);
+        END LOOP;
+      END LOOP;
+      IF v_cor IS NOT NULL THEN
+        v_result := v_result || jsonb_build_object('commission_id', cur.id, 'action', 'correction', 'amount', v_delta,
+                                                   'offset_now', v_netted,
+                                                   'to_pay', round(v_delta - coalesce((SELECT sum(p.amount) FROM public.event_commission_payouts p WHERE p.commission_id = v_cor), 0), 2));
+      ELSIF v_ded IS NOT NULL THEN
+        v_left := round(-v_delta - coalesce((SELECT sum(p.amount) FROM public.event_commission_payouts p WHERE p.commission_id = v_ded), 0), 2);
+        v_result := v_result || jsonb_build_object('commission_id', cur.id, 'action', 'deduction', 'amount', -v_delta,
+                                                   'offset_now', round(-v_delta - v_left, 2), 'to_offset', v_left);
       END IF;
     END IF;
+  END LOOP;
+
+  -- Nadpłata z prowizji z podsumowania (np. po zatwierdzeniu ręcznego wpisu, który ma pierwszeństwo) zmniejsza
+  -- niewypłacone ręczne wpisy tej samej osoby w tym wydarzeniu — bez przelewu, żeby nie wypłacić obu.
+  FOR dd IN
+    SELECT d.* FROM public.event_commissions d
+     WHERE d.event_id = p_event_id AND d.entry_kind = 'deduction' AND d.status = 'approved'
+     ORDER BY d.created_at, d.id
+  LOOP
+    FOR r IN
+      SELECT m.id FROM public.event_commissions m
+       WHERE m.event_id = p_event_id AND m.entry_kind = 'accrual' AND m.status = 'approved' AND m.owner_profit_review_id IS NULL
+         AND (m.automatic_source IS NULL OR NOT (m.automatic_source = ANY (private.commission_auto_sources())))
+         AND private.commission_same_person(dd, m)
+         AND m.amount > coalesce((SELECT sum(p.amount) FROM public.event_commission_payouts p WHERE p.commission_id = m.id), 0)
+       ORDER BY m.created_at, m.id
+    LOOP
+      v_done := private.offset_commission_deduction(dd.id, r.id, NULL, gen_random_uuid());
+      IF v_done > 0 THEN
+        v_result := v_result || jsonb_build_object('commission_id', dd.corrects_commission_id, 'action', 'offset_manual',
+                                                   'manual_commission_id', r.id, 'amount', v_done);
+      END IF;
+    END LOOP;
   END LOOP;
 
   -- Planowane wpisy osób spoza zatwierdzonego podsumowania.
@@ -1257,14 +1676,19 @@ EXCEPTION WHEN OTHERS THEN
   RAISE;
 END $$;
 
--- Dotychczasowa funkcja automatu (wyzwalacze, API) — teraz pełna prognoza z podsumowania.
+-- Dotychczasowa funkcja automatu (wyzwalacze kontaktu rozliczeniowego i wydarzenia) — teraz bezpieczna prognoza.
 CREATE OR REPLACE FUNCTION public.sync_event_billing_seller_commissions(p_event_id uuid)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'pg_catalog', 'public' AS $function$
 BEGIN
   IF private.commission_engine_active() THEN
     RETURN jsonb_build_object('matched', 0, 'eligible', 0, 'created', 0, 'completed', 0, 'waiting', 0);
   END IF;
-  RETURN private.refresh_event_commissions(p_event_id);
+  BEGIN
+    RETURN private.refresh_event_commissions(p_event_id);
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'Prognoza prowizji wydarzenia % nie została odświeżona: %', p_event_id, SQLERRM;
+    RETURN jsonb_build_object('matched', 0, 'eligible', 0, 'created', 0, 'completed', 0, 'waiting', 0, 'error', SQLERRM);
+  END;
 END;
 $function$;
 
@@ -1275,7 +1699,10 @@ BEGIN
     PERFORM private.refresh_event_commissions_safe(OLD.event_id);
   END IF;
   IF NEW.event_id IS NOT NULL AND (NEW.status = 'accepted' OR (TG_OP = 'UPDATE' AND OLD.status = 'accepted')) THEN
-    PERFORM private.refresh_event_commissions_safe(NEW.event_id);
+    -- Sprzedawcę wydarzenia zapisujemy w chwili akceptacji oferty (z oceną „klient własny” na ten dzień).
+    PERFORM private.refresh_event_commissions_safe(NEW.event_id,
+      CASE WHEN NEW.status = 'accepted' AND (TG_OP = 'INSERT' OR OLD.status IS DISTINCT FROM 'accepted')
+           THEN 'offer_acceptance' ELSE 'backfill' END);
   END IF;
   RETURN NEW;
 END;
@@ -1327,7 +1754,7 @@ BEGIN
     RAISE EXCEPTION 'To potrącenie — rozlicz je przyciskiem „Potrąć z prowizji”, nie wypłatą.';
   END IF;
   IF p_action = 'approve' THEN
-    IF commission.automatic_source = ANY (private.commission_auto_sources()) OR commission.entry_kind <> 'accrual' THEN
+    IF coalesce(commission.automatic_source = ANY (private.commission_auto_sources()), false) OR commission.entry_kind <> 'accrual' THEN
       IF commission.status = 'approved' THEN
         RETURN jsonb_build_object('ok', true, 'commissionId', commission.id, 'duplicate', true);
       END IF;
@@ -1340,6 +1767,15 @@ BEGIN
     END IF;
     IF commission.status = 'approved' THEN
       RETURN jsonb_build_object('ok', true, 'commissionId', commission.id, 'duplicate', true);
+    END IF;
+    -- Ta sama osoba ma już zatwierdzoną prowizję z zatwierdzonego podsumowania: zatwierdzenie wpisu ręcznego dałoby
+    -- podwójną wypłatę. Najpierw otwórz podsumowanie — po zatwierdzeniu wpisu ponowne zatwierdzenie rozliczy różnicę.
+    IF private.event_settlement_status(commission.event_id) = 'approved' AND EXISTS (
+         SELECT 1 FROM public.event_commissions a
+          WHERE a.event_id = commission.event_id AND a.id <> commission.id AND a.entry_kind = 'accrual'
+            AND a.automatic_source = ANY (private.commission_auto_sources()) AND a.status IN ('approved', 'paid')
+            AND private.commission_same_person(a, commission) AND private.commission_chain_net(a.id) > 0) THEN
+      RAISE EXCEPTION 'Ta osoba ma już zatwierdzoną prowizję z podsumowania wydarzenia. Otwórz ponownie podsumowanie (zakładka Podsumowanie), zatwierdź ten wpis, a potem zatwierdź podsumowanie — rozliczy różnicę bez podwójnej wypłaty.';
     END IF;
     UPDATE public.event_commissions SET status = 'approved' WHERE id = commission.id RETURNING amount INTO final_amount;
     IF final_amount IS DISTINCT FROM p_expected_amount THEN
@@ -1358,6 +1794,34 @@ BEGIN
   END IF;
   IF commission.status <> 'approved' OR commission.automatic_waiting_for_offer OR commission.amount <= 0 THEN
     RAISE EXCEPTION 'Wypłatę można zapisać tylko dla zatwierdzonej prowizji z ustaloną dodatnią kwotą.';
+  END IF;
+  -- Prowizja z podsumowania, a ta sama osoba ma zatwierdzony ręczny wpis (ma pierwszeństwo): bez ponownego zatwierdzenia
+  -- podsumowania wypłacilibyśmy obie.
+  IF coalesce(commission.automatic_source = ANY (private.commission_auto_sources()), false) AND EXISTS (
+       SELECT 1 FROM public.event_commissions m
+        WHERE m.event_id = commission.event_id AND m.entry_kind = 'accrual' AND m.status IN ('approved', 'paid')
+          AND m.owner_profit_review_id IS NULL
+          AND (m.automatic_source IS NULL OR NOT (m.automatic_source = ANY (private.commission_auto_sources())))
+          AND ((commission.sales_partner_id IS NOT NULL AND m.sales_partner_id = commission.sales_partner_id)
+            OR (commission.contact_id IS NOT NULL AND m.contact_id = commission.contact_id)
+            OR (commission.automatic_source = 'sales_share' AND m.employee_id = commission.employee_id))) THEN
+    RAISE EXCEPTION 'Ta osoba ma zatwierdzony ręczny wpis prowizji w tym wydarzeniu. Najpierw zatwierdź ponownie podsumowanie wydarzenia — rozliczy różnicę.';
+  END IF;
+  -- Wpis ręczny, a ta sama osoba ma w tym wydarzeniu prowizję z podsumowania: najpierw ponowne zatwierdzenie podsumowania
+  -- (prowizja z podsumowania spadnie do zera), a nadpłatę z niej potrąca się z wpisu ręcznego, nie wypłaca obu.
+  IF NOT coalesce(commission.automatic_source = ANY (private.commission_auto_sources()), false)
+     AND commission.entry_kind = 'accrual' AND commission.owner_profit_review_id IS NULL THEN
+    IF EXISTS (SELECT 1 FROM public.event_commissions a
+                WHERE a.event_id = commission.event_id AND a.entry_kind = 'accrual'
+                  AND a.automatic_source = ANY (private.commission_auto_sources()) AND a.status IN ('approved', 'paid')
+                  AND private.commission_same_person(a, commission) AND private.commission_chain_net(a.id) > 0) THEN
+      RAISE EXCEPTION 'Ta osoba ma w tym wydarzeniu prowizję z podsumowania. Najpierw zatwierdź ponownie podsumowanie wydarzenia — rozliczy różnicę.';
+    END IF;
+    IF EXISTS (SELECT 1 FROM public.event_commissions d
+                WHERE d.event_id = commission.event_id AND d.entry_kind = 'deduction' AND d.status = 'approved'
+                  AND private.commission_same_person(d, commission)) THEN
+      RAISE EXCEPTION 'Ta osoba ma otwarte potrącenie z tego wydarzenia — najpierw potrąć je z tej prowizji („Potrąć z prowizji”).';
+    END IF;
   END IF;
   SELECT coalesce(sum(p.amount), 0) INTO paid FROM public.event_commission_payouts p WHERE p.commission_id = commission.id;
   IF p_amount > commission.amount - paid THEN
@@ -1378,22 +1842,25 @@ BEGIN
 END;
 $function$;
 
--- Potrącenie: kwota nadpłaty zmniejsza inną zatwierdzoną prowizję tej samej osoby (zapis w rejestrze obu wpisów).
+-- Potrącenie: nadpłata zmniejsza inną zatwierdzoną prowizję tej samej osoby — w tej samej marce i tym samym sposobie
+-- wypłaty. Może być częściowe (reszta zostaje „do potrącenia”). Zapis w rejestrze wypłat obu wpisów, bez przelewu.
 CREATE OR REPLACE FUNCTION public.settle_commission_deduction(p_deduction_id uuid, p_target_id uuid, p_idempotency_key uuid)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
 DECLARE
-  d public.event_commissions%ROWTYPE; t public.event_commissions%ROWTYPE;
-  v_prev text := coalesce(current_setting('mavinci.commission_engine', true), '');
-  v_paid numeric; v_today date := (current_timestamp AT TIME ZONE 'Europe/Warsaw')::date;
-  v_d_company uuid; v_t_company uuid; v_last date; v_key2 uuid;
+  d public.event_commissions%ROWTYPE; t public.event_commissions%ROWTYPE; prev public.event_commission_payouts%ROWTYPE;
+  v_d_company uuid; v_t_company uuid; v_done numeric;
 BEGIN
   IF auth.uid() IS NULL OR NOT public.commission_settlement_can_access(NULL, true) THEN
     RAISE EXCEPTION 'Brak uprawnień do rozliczania prowizji.' USING ERRCODE = '42501';
   END IF;
   IF p_idempotency_key IS NULL THEN RAISE EXCEPTION 'Brak identyfikatora operacji.'; END IF;
   PERFORM pg_advisory_xact_lock(hashtextextended('commission-payout:' || p_idempotency_key::text, 0));
-  IF EXISTS (SELECT 1 FROM public.event_commission_payouts p WHERE p.id = p_idempotency_key) THEN
-    RETURN jsonb_build_object('ok', true, 'duplicate', true);
+  SELECT * INTO prev FROM public.event_commission_payouts p WHERE p.id = p_idempotency_key;
+  IF FOUND THEN
+    IF prev.commission_id IS DISTINCT FROM p_target_id OR NOT prev.is_offset OR position(p_deduction_id::text IN coalesce(prev.note, '')) = 0 THEN
+      RAISE EXCEPTION 'Identyfikator operacji został już wykorzystany z innymi danymi.';
+    END IF;
+    RETURN jsonb_build_object('ok', true, 'duplicate', true, 'amount', prev.amount);
   END IF;
   SELECT * INTO d FROM public.event_commissions WHERE id = p_deduction_id FOR UPDATE;
   SELECT * INTO t FROM public.event_commissions WHERE id = p_target_id FOR UPDATE;
@@ -1407,35 +1874,20 @@ BEGIN
     RAISE EXCEPTION 'Brak dostępu do rozliczenia tych wydarzeń.' USING ERRCODE = '42501';
   END IF;
   IF NOT ((d.sales_partner_id IS NOT NULL AND d.sales_partner_id = t.sales_partner_id)
+       OR (d.contact_id IS NOT NULL AND d.contact_id = t.contact_id)
        OR (d.sales_partner_id IS NULL AND t.sales_partner_id IS NULL AND d.employee_id IS NOT NULL AND d.employee_id = t.employee_id)) THEN
     RAISE EXCEPTION 'Potrącenie i prowizja muszą dotyczyć tej samej osoby.';
   END IF;
-  SELECT coalesce(sum(p.amount), 0) INTO v_paid FROM public.event_commission_payouts p WHERE p.commission_id = t.id;
-  IF t.amount - v_paid < d.amount THEN
-    RAISE EXCEPTION 'Do wypłaty z tej prowizji zostało %, a potrącenie wynosi % zł. Wybierz większą prowizję.',
-      private.pl_money(t.amount - v_paid) || ' zł', private.pl_money(d.amount);
-  END IF;
   SELECT my_company_id INTO v_t_company FROM public.events WHERE id = t.event_id;
   SELECT my_company_id INTO v_d_company FROM public.events WHERE id = d.event_id;
-  v_key2 := private.commission_uuid('mavinci:deduction:' || p_idempotency_key::text);
-  PERFORM set_config('mavinci.commission_engine', 'on', true);
-  INSERT INTO public.event_commission_payouts (id, commission_id, event_id, my_company_id, amount, payment_date, payment_method, reference, note, recorded_by)
-  VALUES (p_idempotency_key, t.id, t.event_id, v_t_company, d.amount, v_today, t.payment_method, 'Potrącenie',
-          format('Potrącenie nadpłaty (wpis %s) z wydarzenia %s', d.id, d.event_id), auth.uid());
-  INSERT INTO public.event_commission_payouts (id, commission_id, event_id, my_company_id, amount, payment_date, payment_method, reference, note, recorded_by)
-  VALUES (v_key2, d.id, d.event_id, v_d_company, d.amount, v_today, d.payment_method, 'Potrącono',
-          format('Potrącono z prowizji %s (wydarzenie %s)', t.id, t.event_id), auth.uid());
-  SELECT max(p.payment_date) INTO v_last FROM public.event_commission_payouts p WHERE p.commission_id = t.id;
-  UPDATE public.event_commissions SET
-    status = CASE WHEN v_paid + d.amount = t.amount THEN 'paid' ELSE 'approved' END,
-    paid_at = CASE WHEN v_paid + d.amount = t.amount THEN v_last::timestamp AT TIME ZONE 'Europe/Warsaw' ELSE NULL END
-   WHERE id = t.id;
-  UPDATE public.event_commissions SET status = 'paid', paid_at = v_today::timestamp AT TIME ZONE 'Europe/Warsaw' WHERE id = d.id;
-  PERFORM set_config('mavinci.commission_engine', v_prev, true);
-  RETURN jsonb_build_object('ok', true, 'duplicate', false, 'targetId', t.id, 'deductionId', d.id, 'amount', d.amount);
-EXCEPTION WHEN OTHERS THEN
-  PERFORM set_config('mavinci.commission_engine', v_prev, true);
-  RAISE;
+  -- W tym samym wydarzeniu nadpłatę można potrącić także z wpisu z innym sposobem wypłaty.
+  IF v_t_company IS DISTINCT FROM v_d_company
+     OR (t.payment_method IS DISTINCT FROM d.payment_method AND t.event_id IS DISTINCT FROM d.event_id) THEN
+    RAISE EXCEPTION 'Potrącić można tylko z prowizji tej samej marki i tego samego sposobu wypłaty.';
+  END IF;
+  v_done := private.offset_commission_deduction(d.id, t.id, NULL, p_idempotency_key);
+  IF v_done <= 0 THEN RAISE EXCEPTION 'Ta prowizja nie ma już kwoty do wypłaty.'; END IF;
+  RETURN jsonb_build_object('ok', true, 'duplicate', false, 'targetId', t.id, 'deductionId', d.id, 'amount', v_done);
 END $$;
 
 -- ---------------------------------------------------------------------------------------------------------------
@@ -1985,6 +2437,15 @@ RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalo
 $$;
 
 -- Zatwierdza, zwraca i otwiera ponownie: administrator.
+-- Blokada stanu podsumowania przed sprawdzeniem uprawnień do zmiany (zapis pozycji nie wyprzedzi wysłania).
+CREATE OR REPLACE FUNCTION private.lock_event_settlement(p_event_id uuid)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM public.events WHERE id = p_event_id) THEN RAISE EXCEPTION 'Nie znaleziono wydarzenia.'; END IF;
+  INSERT INTO public.event_settlements (event_id) VALUES (p_event_id) ON CONFLICT (event_id) DO NOTHING;
+  PERFORM 1 FROM public.event_settlements WHERE event_id = p_event_id FOR UPDATE;
+END $$;
+
 CREATE OR REPLACE FUNCTION private.event_settlement_can_approve(p_event_id uuid)
 RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public AS $$
   SELECT auth.uid() IS NOT NULL AND public.current_employee_is_crm_admin() AND public.can_view_event_area(p_event_id, 'values');
@@ -2055,7 +2516,9 @@ BEGIN
            'status', c.status, 'amount', c.amount, 'base_amount', c.base_amount, 'rate', c.rate,
            'company_cost_amount', c.company_cost_amount, 'payment_method', c.payment_method,
            'base_description', c.base_description, 'rate_reason', c.rate_reason, 'settlement_revision', c.settlement_revision,
-           'paid_amount', coalesce((SELECT sum(p.amount) FROM public.event_commission_payouts p WHERE p.commission_id = c.id), 0),
+           'cancel_reason', c.cancel_reason,
+           'paid_amount', coalesce((SELECT sum(p.amount) FROM public.event_commission_payouts p WHERE p.commission_id = c.id AND NOT p.is_offset), 0),
+           'offset_amount', coalesce((SELECT sum(p.amount) FROM public.event_commission_payouts p WHERE p.commission_id = c.id AND p.is_offset), 0),
            'manual', c.automatic_source IS NULL OR NOT (c.automatic_source = ANY (private.commission_auto_sources())))
            ORDER BY c.entry_kind, c.created_at), '[]'::jsonb)
     INTO v_commissions
@@ -2094,16 +2557,22 @@ DECLARE
   v_kind text; v_category text; v_name text; v_net numeric; v_note text; v_included boolean; v_confirmed boolean;
   v_actor uuid := public.current_invoice_employee_id();
 BEGIN
-  IF NOT private.event_settlement_can_edit(p_event_id) THEN
-    RAISE EXCEPTION 'Podsumowanie można zmieniać w wersji roboczej — osoba sprzedająca wydarzenie, finanse lub administrator.' USING ERRCODE = '42501';
+  IF NOT private.event_settlement_can_fill(p_event_id) THEN
+    RAISE EXCEPTION 'Podsumowanie zmienia osoba sprzedająca wydarzenie, finanse lub administrator.' USING ERRCODE = '42501';
   END IF;
-  PERFORM pg_advisory_xact_lock(hashtextextended('event-settlement:' || p_event_id::text, 0));
+  PERFORM private.lock_event_settlement(p_event_id);
+  IF NOT private.event_settlement_can_edit(p_event_id) THEN
+    RAISE EXCEPTION 'Podsumowanie można zmieniać w wersji roboczej — zostało już wysłane albo zatwierdzone.' USING ERRCODE = '42501';
+  END IF;
   v_note := nullif(btrim(p_line->>'note'), '');
   IF length(v_note) > 2000 THEN RAISE EXCEPTION 'Notatka może mieć najwyżej 2000 znaków.'; END IF;
   IF p_line ? 'net_amount' AND p_line->>'net_amount' IS NOT NULL THEN
     BEGIN v_net := (p_line->>'net_amount')::numeric; EXCEPTION WHEN OTHERS THEN RAISE EXCEPTION 'Nieprawidłowa kwota netto.'; END;
     IF v_net::text IN ('NaN', 'Infinity', '-Infinity') OR abs(v_net) >= 1000000000 OR v_net <> round(v_net, 2) THEN
       RAISE EXCEPTION 'Podaj kwotę netto z dokładnością do grosza.';
+    END IF;
+    IF v_net < 0 THEN
+      RAISE EXCEPTION 'Kwota netto nie może być ujemna. Korektę przychodu wystawia się fakturą korygującą.';
     END IF;
   END IF;
 
@@ -2150,7 +2619,9 @@ BEGIN
       v_net := CASE WHEN v_net IS NULL OR v_net = a.suggested_net THEN NULL ELSE v_net END;
       IF p_line->>'net_amount' IS NOT NULL THEN v_confirmed := true; END IF;
     ELSE
-      v_net := ov.net_amount;
+      -- Korekta kwoty z innym stanem źródła już nie obowiązuje (trzeba ją wpisać ponownie).
+      v_net := CASE WHEN ov.source_net IS NOT DISTINCT FROM a.suggested_net THEN ov.net_amount END;
+      IF ov.source_net IS DISTINCT FROM a.suggested_net AND NOT (p_line ? 'confirmed') THEN v_confirmed := false; END IF;
     END IF;
     IF p_line ? 'confirmed' THEN
       IF NOT a.needs_confirmation THEN v_confirmed := false;
@@ -2158,8 +2629,28 @@ BEGIN
     END IF;
     IF NOT (p_line ? 'note') THEN v_note := ov.note; END IF;
     IF v_included IS NOT NULL AND v_included = a.auto_included THEN v_included := NULL; END IF;
-    IF v_included IS NOT NULL AND v_included = false AND v_type IN ('invoice', 'commission', 'markup') AND v_note IS NULL THEN
+    -- Zaliczka rozliczona w fakturze końcowej jest już w jej pełnej wartości — liczenie jej drugi raz zawyżyłoby przychód.
+    IF v_included AND v_type = 'invoice' AND NOT a.auto_included AND a.auto_note LIKE 'Rozliczona w fakturze końcowej%' THEN
+      RAISE EXCEPTION 'Ta zaliczka jest rozliczona w fakturze końcowej (pełna wartość) — nie można jej liczyć drugi raz.';
+    END IF;
+    -- Wyłączenie pozycji wliczanej automatycznie, włączenie pozycji wyłączonej automatycznie i zmiana rodzaju kosztu
+    -- zmieniają prowizje — zawsze z powodem.
+    IF v_included IS NOT NULL AND v_included = false AND a.auto_included AND v_note IS NULL THEN
       RAISE EXCEPTION 'Podaj powód wyłączenia tej pozycji z podsumowania.';
+    END IF;
+    IF v_included AND NOT a.auto_included AND v_note IS NULL THEN
+      RAISE EXCEPTION 'Podaj powód włączenia tej pozycji (system ją pominął: %).', coalesce(rtrim(a.auto_note, '.'), 'pozycja wyłączona automatycznie');
+    END IF;
+    -- Kwota niższa niż w źródle przy koszcie (albo wyższa przy przychodzie) podnosi zysk i prowizję — z powodem.
+    -- Przy pozycji do potwierdzenia netto (kwota wpisana brutto) dopuszczamy przeliczenie do netto (VAT do 23%).
+    IF v_net IS NOT NULL AND v_note IS NULL AND a.suggested_net IS NOT NULL AND (
+         (a.kind = 'cost' AND v_net < CASE WHEN a.needs_confirmation THEN trunc(a.suggested_net / 1.23, 2) - 0.05 ELSE a.suggested_net END)
+      OR (a.kind = 'revenue' AND v_net > a.suggested_net)) THEN
+      RAISE EXCEPTION 'Podaj powód zmiany kwoty: % zł zamiast % zł z danych źródłowych (zmienia podstawę prowizji).',
+        private.pl_money(v_net), private.pl_money(a.suggested_net);
+    END IF;
+    IF v_category IS DISTINCT FROM ov.category AND v_category IS NOT NULL AND v_note IS NULL THEN
+      RAISE EXCEPTION 'Podaj powód zmiany rodzaju kosztu (zmienia podstawę prowizji).';
     END IF;
     IF NOT a.needs_confirmation THEN v_confirmed := false; END IF;
 
@@ -2167,12 +2658,14 @@ BEGIN
       DELETE FROM public.event_settlement_lines WHERE id = ov.id;
     ELSIF ov.id IS NOT NULL THEN
       UPDATE public.event_settlement_lines SET included = v_included, category = v_category, net_amount = v_net,
-             confirmed = v_confirmed, note = v_note, kind = a.kind, updated_by = v_actor, updated_at = now()
+             confirmed = v_confirmed, note = v_note, kind = a.kind, source_net = a.suggested_net,
+             updated_by = v_actor, updated_at = now()
        WHERE id = ov.id;
     ELSE
-      INSERT INTO public.event_settlement_lines (event_id, source_type, source_id, kind, category, net_amount, included,
-        confirmed, note, created_by, updated_by)
-      VALUES (p_event_id, v_type, v_source, a.kind, v_category, v_net, v_included, v_confirmed, v_note, v_actor, v_actor);
+      INSERT INTO public.event_settlement_lines (event_id, source_type, source_id, kind, category, net_amount, source_net,
+        included, confirmed, note, created_by, updated_by)
+      VALUES (p_event_id, v_type, v_source, a.kind, v_category, v_net, a.suggested_net, v_included, v_confirmed, v_note,
+        v_actor, v_actor);
     END IF;
   END IF;
 
@@ -2186,6 +2679,10 @@ DECLARE l public.event_settlement_lines%ROWTYPE;
 BEGIN
   SELECT * INTO l FROM public.event_settlement_lines WHERE id = p_line_id;
   IF NOT FOUND THEN RAISE EXCEPTION 'Nie znaleziono pozycji.'; END IF;
+  IF NOT private.event_settlement_can_fill(l.event_id) THEN
+    RAISE EXCEPTION 'Brak dostępu do podsumowania tego wydarzenia.' USING ERRCODE = '42501';
+  END IF;
+  PERFORM private.lock_event_settlement(l.event_id);
   IF NOT private.event_settlement_can_edit(l.event_id) THEN
     RAISE EXCEPTION 'Podsumowanie można zmieniać w wersji roboczej.' USING ERRCODE = '42501';
   END IF;
@@ -2199,8 +2696,9 @@ CREATE OR REPLACE FUNCTION public.list_event_cost_invoice_candidates(p_event_id 
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, public AS $$
 DECLARE e public.events%ROWTYPE; v_q text := nullif(btrim(p_search), ''); v_rows jsonb;
 BEGIN
-  IF NOT private.event_settlement_can_fill(p_event_id) THEN
-    RAISE EXCEPTION 'Brak dostępu do podsumowania tego wydarzenia.' USING ERRCODE = '42501';
+  -- Rejestr faktur kosztowych marki widzi tylko osoba z dostępem do finansów (sprzedawca nie przegląda zakupów firmy).
+  IF NOT private.event_settlement_can_fill(p_event_id) OR NOT public.event_finance_can_access(p_event_id, false) THEN
+    RAISE EXCEPTION 'Faktury kosztowe przypisuje osoba z dostępem do finansów tego wydarzenia.' USING ERRCODE = '42501';
   END IF;
   SELECT * INTO e FROM public.events WHERE id = p_event_id;
   WITH cand AS (
@@ -2243,6 +2741,10 @@ DECLARE
   e public.events%ROWTYPE; v_gross numeric; v_allocated numeric; v_amount numeric; v_name text; v_date date;
   v_cost uuid; v_actor uuid := public.current_invoice_employee_id(); k public.ksef_invoices%ROWTYPE; x public.external_invoices%ROWTYPE;
 BEGIN
+  IF NOT private.event_settlement_can_fill(p_event_id) OR NOT public.event_finance_can_access(p_event_id, false) THEN
+    RAISE EXCEPTION 'Faktury kosztowe przypisuje osoba z dostępem do finansów tego wydarzenia.' USING ERRCODE = '42501';
+  END IF;
+  PERFORM private.lock_event_settlement(p_event_id);
   IF NOT private.event_settlement_can_edit(p_event_id) THEN
     RAISE EXCEPTION 'Podsumowanie można zmieniać w wersji roboczej.' USING ERRCODE = '42501';
   END IF;
@@ -2298,12 +2800,11 @@ CREATE OR REPLACE FUNCTION public.submit_event_settlement(p_event_id uuid, p_not
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
 DECLARE ctx jsonb; st public.event_settlements%ROWTYPE; v_actor uuid := public.current_invoice_employee_id(); v_admins uuid[];
 BEGIN
-  IF NOT private.event_settlement_can_edit(p_event_id) THEN
-    RAISE EXCEPTION 'Podsumowanie wysyła osoba sprzedająca wydarzenie, finanse lub administrator — w wersji roboczej.' USING ERRCODE = '42501';
+  IF NOT private.event_settlement_can_fill(p_event_id) THEN
+    RAISE EXCEPTION 'Podsumowanie wysyła osoba sprzedająca wydarzenie, finanse lub administrator.' USING ERRCODE = '42501';
   END IF;
   IF length(p_note) > 2000 THEN RAISE EXCEPTION 'Notatka może mieć najwyżej 2000 znaków.'; END IF;
-  PERFORM pg_advisory_xact_lock(hashtextextended('event-settlement:' || p_event_id::text, 0));
-  INSERT INTO public.event_settlements (event_id) VALUES (p_event_id) ON CONFLICT (event_id) DO NOTHING;
+  PERFORM private.lock_event_settlement(p_event_id);
   SELECT * INTO st FROM public.event_settlements WHERE event_id = p_event_id FOR UPDATE;
   IF st.status <> 'draft' THEN RAISE EXCEPTION 'Podsumowanie zostało już wysłane.'; END IF;
   PERFORM private.refresh_event_commissions(p_event_id);
@@ -2335,6 +2836,8 @@ BEGIN
     RAISE EXCEPTION 'Podsumowanie zwraca administrator.' USING ERRCODE = '42501';
   END IF;
   IF nullif(btrim(p_note), '') IS NULL OR length(p_note) > 2000 THEN RAISE EXCEPTION 'Napisz, co trzeba poprawić.'; END IF;
+  -- Kolejność blokad jak przy zapisie pozycji: najpierw stan podsumowania, potem blokady silnika.
+  PERFORM private.lock_event_settlement(p_event_id);
   PERFORM pg_advisory_xact_lock(hashtextextended('event-settlement:' || p_event_id::text, 0));
   SELECT * INTO st FROM public.event_settlements WHERE event_id = p_event_id FOR UPDATE;
   IF NOT FOUND OR st.status <> 'submitted' THEN RAISE EXCEPTION 'Podsumowanie nie czeka na zatwierdzenie.'; END IF;
@@ -2356,6 +2859,7 @@ BEGIN
   IF NOT private.event_settlement_can_approve(p_event_id) THEN
     RAISE EXCEPTION 'Podsumowanie zatwierdza administrator.' USING ERRCODE = '42501';
   END IF;
+  PERFORM private.lock_event_settlement(p_event_id);
   PERFORM pg_advisory_xact_lock(hashtextextended('event-settlement:' || p_event_id::text, 0));
   PERFORM pg_advisory_xact_lock(hashtextextended('billing-commission:' || p_event_id::text, 0));
   SELECT * INTO st FROM public.event_settlements WHERE event_id = p_event_id FOR UPDATE;
@@ -2373,7 +2877,7 @@ BEGIN
   INSERT INTO public.event_settlement_versions (event_id, revision, action, snapshot, source_key, note, actor_id)
   VALUES (p_event_id, v_rev, 'approved', ctx || jsonb_build_object('applied', v_applied), ctx->>'source_key', NULL, v_actor);
   UPDATE public.event_settlements SET status = 'approved', revision = v_rev, approved_by = v_actor, approved_at = now(),
-         approved_source_key = ctx->>'source_key', updated_at = now()
+         approved_source_key = ctx->>'source_key', refresh_rates = false, updated_at = now()
    WHERE event_id = p_event_id;
   SELECT array_agg(DISTINCT r) INTO v_recipients FROM (
     SELECT st.submitted_by AS r UNION ALL SELECT sh.employee_id FROM public.event_sales_shares sh WHERE sh.event_id = p_event_id) x;
@@ -2383,7 +2887,10 @@ BEGIN
   RETURN public.get_event_settlement(p_event_id);
 END $$;
 
-CREATE OR REPLACE FUNCTION public.reopen_event_settlement(p_event_id uuid, p_reason text)
+DROP FUNCTION IF EXISTS public.reopen_event_settlement(uuid, text);
+-- p_refresh_rates: przy ponownym zatwierdzeniu stawki i sposób wypłaty z aktualnych warunków (np. korekta błędnej stawki),
+-- zamiast zachowania ich z poprzedniego zatwierdzenia.
+CREATE OR REPLACE FUNCTION public.reopen_event_settlement(p_event_id uuid, p_reason text, p_refresh_rates boolean DEFAULT false)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
 DECLARE st public.event_settlements%ROWTYPE; v_actor uuid := public.current_invoice_employee_id();
 BEGIN
@@ -2391,12 +2898,18 @@ BEGIN
     RAISE EXCEPTION 'Zatwierdzone podsumowanie otwiera ponownie administrator.' USING ERRCODE = '42501';
   END IF;
   IF nullif(btrim(p_reason), '') IS NULL OR length(p_reason) > 2000 THEN RAISE EXCEPTION 'Podaj powód ponownego otwarcia.'; END IF;
+  PERFORM private.lock_event_settlement(p_event_id);
   PERFORM pg_advisory_xact_lock(hashtextextended('event-settlement:' || p_event_id::text, 0));
   SELECT * INTO st FROM public.event_settlements WHERE event_id = p_event_id FOR UPDATE;
   IF NOT FOUND OR st.status <> 'approved' THEN RAISE EXCEPTION 'Podsumowanie nie jest zatwierdzone.'; END IF;
   INSERT INTO public.event_settlement_versions (event_id, revision, action, snapshot, source_key, note, actor_id)
-  VALUES (p_event_id, st.revision, 'reopened', private.event_settlement_compute(p_event_id), st.approved_source_key, btrim(p_reason), v_actor);
-  UPDATE public.event_settlements SET status = 'draft', submitted_source_key = NULL, updated_at = now() WHERE event_id = p_event_id;
+  VALUES (p_event_id, st.revision, 'reopened', private.event_settlement_compute(p_event_id), st.approved_source_key,
+          btrim(p_reason) || CASE WHEN coalesce(p_refresh_rates, false) THEN ' (przeliczenie stawek według aktualnych warunków)' ELSE '' END,
+          v_actor);
+  UPDATE public.event_settlements SET status = 'draft', submitted_source_key = NULL,
+         refresh_rates = coalesce(p_refresh_rates, false), updated_at = now()
+   WHERE event_id = p_event_id;
+  PERFORM private.refresh_event_commissions(p_event_id);
   PERFORM private.settlement_sync_steps(p_event_id);
   RETURN public.get_event_settlement(p_event_id);
 END $$;
@@ -2416,8 +2929,9 @@ BEGIN
     RAISE EXCEPTION 'Podsumowanie jest zatwierdzone. Otwórz je ponownie, aby zmienić sprzedawcę.';
   END IF;
   IF jsonb_typeof(p_shares) <> 'array' THEN RAISE EXCEPTION 'Nieprawidłowa lista sprzedawców.'; END IF;
+  PERFORM private.lock_event_settlement(p_event_id);
   PERFORM pg_advisory_xact_lock(hashtextextended('event-settlement:' || p_event_id::text, 0));
-  SELECT count(*), coalesce(sum((x->>'share_percent')::numeric), 0) INTO v_count, v_sum FROM jsonb_array_elements(p_shares) x;
+  SELECT count(*), coalesce(sum(round((x->>'share_percent')::numeric, 2)), 0) INTO v_count, v_sum FROM jsonb_array_elements(p_shares) x;
   IF v_count > 0 AND round(v_sum, 2) <> 100 THEN RAISE EXCEPTION 'Udziały muszą dawać razem 100%%.'; END IF;
   IF EXISTS (SELECT 1 FROM jsonb_array_elements(p_shares) x
               WHERE NOT EXISTS (SELECT 1 FROM public.employees e WHERE e.id = (x->>'employee_id')::uuid)
@@ -2445,6 +2959,8 @@ BEGIN
   SELECT coalesce(jsonb_agg(to_jsonb(s) ORDER BY s.employee_id), '[]'::jsonb) INTO v_after FROM public.event_sales_shares s WHERE s.event_id = p_event_id;
   INSERT INTO public.event_sales_share_audit (event_id, before_values, after_values, reason, actor_id)
   VALUES (p_event_id, v_before, v_after, nullif(btrim(p_reason), ''), v_actor);
+  -- Pusta lista = świadomie bez sprzedawcy (nie przywracamy go automatycznie).
+  UPDATE public.event_settlements SET no_sales_share = (v_count = 0), updated_at = now() WHERE event_id = p_event_id;
   PERFORM private.refresh_event_commissions(p_event_id);
   RETURN public.get_event_settlement(p_event_id);
 END $$;
@@ -2566,6 +3082,28 @@ EXCEPTION WHEN OTHERS THEN
   RAISE;
 END $$;
 
+-- Ręczne anulowanie (z powodem) i przywrócenie prowizji z podsumowania: finanse lub administrator. Anulowana prowizja nie
+-- pomniejsza zysku i nie wraca przy zatwierdzeniu; przywróconej kwotę ustala podsumowanie.
+CREATE OR REPLACE FUNCTION public.set_event_commission_cancelled(p_commission_id uuid, p_cancel boolean, p_reason text DEFAULT NULL)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+DECLARE c public.event_commissions%ROWTYPE;
+BEGIN
+  SELECT * INTO c FROM public.event_commissions WHERE id = p_commission_id FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Nie znaleziono prowizji.'; END IF;
+  IF auth.uid() IS NULL OR NOT public.commission_settlement_can_access(c.event_id, true) THEN
+    RAISE EXCEPTION 'Prowizję z podsumowania anuluje i przywraca finanse lub administrator.' USING ERRCODE = '42501';
+  END IF;
+  IF coalesce(p_cancel, false) THEN
+    IF c.status = 'cancelled' THEN RETURN jsonb_build_object('ok', true, 'status', 'cancelled', 'duplicate', true); END IF;
+    UPDATE public.event_commissions SET status = 'cancelled', cancel_reason = p_reason WHERE id = c.id;
+  ELSE
+    IF c.status <> 'cancelled' THEN RETURN jsonb_build_object('ok', true, 'status', c.status, 'duplicate', true); END IF;
+    IF c.auto_cancelled THEN RAISE EXCEPTION 'Tę prowizję anulowało podsumowanie — wróci sama, gdy pojawi się kwota.'; END IF;
+    UPDATE public.event_commissions SET status = 'planned' WHERE id = c.id;
+  END IF;
+  RETURN jsonb_build_object('ok', true, 'status', CASE WHEN coalesce(p_cancel, false) THEN 'cancelled' ELSE 'planned' END, 'duplicate', false);
+END $$;
+
 CREATE OR REPLACE FUNCTION public.refresh_event_commissions(p_event_id uuid)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
 BEGIN
@@ -2594,8 +3132,11 @@ BEGIN
            'amount', c.amount, 'base_amount', c.base_amount, 'rate', c.rate, 'rate_reason', c.rate_reason,
            'share_percent', c.share_percent, 'client_owned', c.client_owned, 'base_description', c.base_description,
            'payment_method', c.payment_method, 'automatic', c.automatic_source = 'sales_share',
-           'paid_amount', coalesce(pay.total, 0),
-           'remaining_amount', CASE WHEN c.status IN ('cancelled', 'paid', 'planned') THEN 0 ELSE greatest(0, c.amount - coalesce(pay.total, 0)) END,
+           -- Wypłacono = przelewy / wypłaty; potrącenia (bez przelewu) osobno.
+           'paid_amount', CASE WHEN c.entry_kind = 'deduction' THEN 0 ELSE coalesce(pay.cash, 0) END,
+           'offset_amount', coalesce(pay.offset_total, 0),
+           'remaining_amount', CASE WHEN c.status IN ('cancelled', 'paid', 'planned') THEN 0
+                                    ELSE greatest(0, c.amount - coalesce(pay.total, 0)) END,
            'settlement_status', coalesce(st.status, 'draft'), 'settlement_revision', c.settlement_revision,
            'created_at', c.created_at, 'updated_at', c.updated_at,
            'payments', coalesce(pay.entries, '[]'::jsonb))
@@ -2605,8 +3146,10 @@ BEGIN
     JOIN public.events e ON e.id = c.event_id
     LEFT JOIN public.event_settlements st ON st.event_id = c.event_id
     LEFT JOIN LATERAL (SELECT sum(p.amount) AS total,
-                              jsonb_agg(jsonb_build_object('amount', p.amount, 'payment_date', p.payment_date, 'reference', p.reference)
-                                        ORDER BY p.payment_date) AS entries
+                              sum(p.amount) FILTER (WHERE NOT p.is_offset) AS cash,
+                              sum(p.amount) FILTER (WHERE p.is_offset) AS offset_total,
+                              jsonb_agg(jsonb_build_object('amount', p.amount, 'payment_date', p.payment_date, 'reference', p.reference,
+                                                           'is_offset', p.is_offset) ORDER BY p.payment_date) AS entries
                          FROM public.event_commission_payouts p WHERE p.commission_id = c.id) pay ON true
    WHERE c.employee_id = v_emp AND c.beneficiary_type = 'employee' AND c.status <> 'cancelled';
   RETURN jsonb_build_object(
@@ -2616,13 +3159,12 @@ BEGIN
     'own_client_rate', coalesce(t.own_client_rate, s.sales_commission_own_client_rate, 10),
     'payment_method', coalesce(t.payment_method, 'payroll'),
     'totals', jsonb_build_object(
-      'forecast', (SELECT coalesce(sum((r->>'amount')::numeric), 0) FROM jsonb_array_elements(v_rows) r WHERE r->>'status' = 'planned'),
+      'forecast', (SELECT coalesce(sum((r->>'amount')::numeric), 0) FROM jsonb_array_elements(v_rows) r
+                    WHERE r->>'status' = 'planned' AND r->>'entry_kind' <> 'deduction'),
       'to_pay', (SELECT coalesce(sum((r->>'remaining_amount')::numeric), 0) FROM jsonb_array_elements(v_rows) r
-                  WHERE r->>'status' = 'approved' AND r->>'entry_kind' <> 'deduction')
-              - (SELECT coalesce(sum((r->>'amount')::numeric), 0) FROM jsonb_array_elements(v_rows) r
-                  WHERE r->>'status' = 'approved' AND r->>'entry_kind' = 'deduction'),
+                  WHERE r->>'status' = 'approved' AND r->>'entry_kind' <> 'deduction'),
       'paid', (SELECT coalesce(sum((r->>'paid_amount')::numeric), 0) FROM jsonb_array_elements(v_rows) r WHERE r->>'entry_kind' <> 'deduction'),
-      'to_offset', (SELECT coalesce(sum((r->>'amount')::numeric), 0) FROM jsonb_array_elements(v_rows) r
+      'to_offset', (SELECT coalesce(sum((r->>'remaining_amount')::numeric), 0) FROM jsonb_array_elements(v_rows) r
                      WHERE r->>'status' = 'approved' AND r->>'entry_kind' = 'deduction')),
     'commissions', v_rows);
 END $$;
@@ -2677,7 +3219,11 @@ BEGIN
     'status', c.status, 'automatic_waiting_for_offer', c.automatic_waiting_for_offer,
     'created_at', c.created_at, 'due_date', c.due_date, 'payment_method', c.payment_method,
     'paid_amount', CASE WHEN payments.count = 0 AND c.status = 'paid' THEN c.amount ELSE payments.total END,
-    'remaining_amount', CASE WHEN c.status IN ('cancelled','paid') THEN 0 ELSE greatest(0,c.amount-payments.total) END,
+    'remaining_amount', CASE WHEN c.status IN ('cancelled','paid') OR c.entry_kind = 'deduction' THEN 0 ELSE greatest(0,c.amount-payments.total) END,
+    -- Potrącenie: kwota do potrącenia z kolejnych prowizji (nie do wypłaty); kwota ze znakiem do sum salda.
+    'to_offset', CASE WHEN c.entry_kind = 'deduction' AND c.status = 'approved' THEN greatest(0, c.amount - payments.total) ELSE 0 END,
+    'signed_amount', CASE WHEN c.entry_kind = 'deduction' THEN -c.amount ELSE c.amount END,
+    'offset_amount', payments.offset_total,
     'payments', CASE WHEN payments.count = 0 AND c.status = 'paid' THEN jsonb_build_array(jsonb_build_object(
       'id', 'legacy:' || c.id::text, 'commission_id', c.id, 'amount', c.amount,
       'payment_date', (c.paid_at AT TIME ZONE 'Europe/Warsaw')::date,
@@ -2689,9 +3235,10 @@ BEGIN
   LEFT JOIN public.sales_partner_profiles profile ON profile.id = c.sales_partner_id
   CROSS JOIN LATERAL (
     SELECT count(*) AS count, coalesce(sum(p.amount),0) AS total,
+      coalesce(sum(p.amount) FILTER (WHERE p.is_offset),0) AS offset_total,
       coalesce(jsonb_agg(jsonb_build_object('id', p.id, 'commission_id', p.commission_id, 'amount', p.amount,
         'payment_date', p.payment_date, 'recorded_at', p.recorded_at, 'reference', p.reference,
-        'note', CASE WHEN p_mode = 'crm' AND NOT sales_scope THEN p.note ELSE NULL END, 'source', 'ledger'
+        'note', CASE WHEN p_mode = 'crm' AND NOT sales_scope THEN p.note ELSE NULL END, 'source', CASE WHEN p.is_offset THEN 'offset' ELSE 'ledger' END, 'is_offset', p.is_offset
       ) ORDER BY p.payment_date DESC,p.recorded_at DESC,p.id), '[]'::jsonb) AS entries
     FROM public.event_commission_payouts p WHERE p.commission_id = c.id
   ) payments
@@ -2711,84 +3258,141 @@ BEGIN
     'currency','PLN','commissions',rows);
 END; $function$;
 
+-- Portal sprzedawcy: potrącenie widać jako kwotę ujemną (nie jako należność).
+CREATE OR REPLACE FUNCTION public.get_seller_portal_commissions()
+ RETURNS TABLE(id uuid, event_id uuid, event_name text, event_date timestamp with time zone, amount numeric, status text, due_date date, paid_at timestamp with time zone)
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  SELECT commission.id, commission.event_id, event.name, event.event_date::timestamptz,
+         CASE WHEN commission.entry_kind = 'deduction' THEN -commission.amount ELSE commission.amount END,
+         commission.status, commission.due_date, commission.paid_at
+  FROM public.event_commissions commission
+  JOIN public.events event ON event.id = commission.event_id
+  WHERE commission.sales_partner_id = public.current_sales_partner_id()
+    AND commission.status <> 'cancelled'
+    AND EXISTS (
+      SELECT 1
+      FROM public.sales_partner_brand_terms term
+      WHERE term.sales_partner_id = commission.sales_partner_id
+        AND term.my_company_id = event.my_company_id
+        AND term.is_active = true
+        AND term.commission_enabled = true
+    )
+  ORDER BY event.event_date DESC NULLS LAST, commission.created_at DESC;
+$function$;
+
 -- ---------------------------------------------------------------------------------------------------------------
--- 15. Prognoza odświeża się sama po zmianie danych źródłowych (błąd prognozy nigdy nie blokuje zapisu)
+-- 15. Prognoza odświeża się sama po zmianie danych źródłowych — raz na polecenie (nie na każdy wiersz) i nigdy
+--     nie blokuje zapisu źródła.
 -- ---------------------------------------------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION private.settlement_source_changed()
+-- Usunięcie wyzwalaczy wierszowych z wcześniejszej wersji tej migracji (gdyby była uruchomiona).
+DROP TRIGGER IF EXISTS zz_settlement_refresh_invoices ON public.invoices;
+DROP TRIGGER IF EXISTS zz_settlement_refresh_allocations ON public.invoice_event_allocations;
+DROP TRIGGER IF EXISTS zz_settlement_refresh_costs ON public.event_costs;
+DROP TRIGGER IF EXISTS zz_settlement_refresh_subcontractor_tasks ON public.subcontractor_tasks;
+DROP TRIGGER IF EXISTS zz_settlement_refresh_time_entries ON public.time_entries;
+DROP TRIGGER IF EXISTS zz_settlement_refresh_partner_arrangements ON public.event_partner_arrangements;
+DROP TRIGGER IF EXISTS zz_settlement_refresh_financials ON public.event_financials;
+DROP TRIGGER IF EXISTS zzz_settlement_refresh_manual_commissions ON public.event_commissions;
+DROP TRIGGER IF EXISTS zz_settlement_refresh_events ON public.events;
+DROP FUNCTION IF EXISTS private.settlement_source_changed();
+
+CREATE OR REPLACE FUNCTION private.refresh_events_safe(p_events uuid[])
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+DECLARE v_id uuid;
+BEGIN
+  FOR v_id IN SELECT DISTINCT x FROM unnest(coalesce(p_events, '{}'::uuid[])) x WHERE x IS NOT NULL LOOP
+    PERFORM private.refresh_event_commissions_safe(v_id);
+  END LOOP;
+END $$;
+
+-- Wspólna funkcja wyzwalaczy poleceniowych (tabele przejściowe new_rows / old_rows).
+CREATE OR REPLACE FUNCTION private.settlement_rows_changed()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
-DECLARE v_new uuid; v_old uuid;
+DECLARE v_ids uuid[] := '{}'; v_more uuid[];
 BEGIN
   IF private.commission_engine_active() THEN RETURN NULL; END IF;
   IF TG_TABLE_NAME = 'events' THEN
-    v_new := NEW.id;
-  ELSIF TG_TABLE_NAME = 'invoice_event_allocations' THEN
-    IF TG_OP <> 'DELETE' THEN v_new := NEW.event_id; END IF;
-    IF TG_OP <> 'INSERT' THEN v_old := OLD.event_id; END IF;
-    -- Udział innych wydarzeń w tej samej fakturze też się zmienia.
-    PERFORM private.refresh_event_commissions_safe(x.event_id)
-       FROM public.invoice_event_allocations x
-      WHERE x.invoice_id = CASE WHEN TG_OP = 'DELETE' THEN OLD.invoice_id ELSE NEW.invoice_id END
-        AND x.event_id IS DISTINCT FROM v_new AND x.event_id IS DISTINCT FROM v_old;
+    SELECT array_agg(n.id) INTO v_ids FROM new_rows n JOIN old_rows o ON o.id = n.id
+     WHERE ROW(o.status, o.referring_sales_partner_id, o.my_company_id, o.organization_id, o.contact_person_id,
+               o.event_date, o.event_end_date, o.billing_arrangement, o.billing_organization_id)
+           IS DISTINCT FROM
+           ROW(n.status, n.referring_sales_partner_id, n.my_company_id, n.organization_id, n.contact_person_id,
+               n.event_date, n.event_end_date, n.billing_arrangement, n.billing_organization_id);
   ELSIF TG_TABLE_NAME = 'event_commissions' THEN
     -- Tylko ręczne wpisy wpływają na koszty podsumowania (wpisy automatyczne zmienia sam silnik).
-    IF TG_OP <> 'DELETE' AND (NEW.automatic_source = ANY (private.commission_auto_sources()) OR NEW.entry_kind <> 'accrual') THEN RETURN NULL; END IF;
-    IF TG_OP = 'DELETE' AND (OLD.automatic_source = ANY (private.commission_auto_sources()) OR OLD.entry_kind <> 'accrual') THEN RETURN NULL; END IF;
-    IF TG_OP <> 'DELETE' THEN v_new := NEW.event_id; END IF;
-    IF TG_OP <> 'INSERT' THEN v_old := OLD.event_id; END IF;
+    IF TG_OP IN ('INSERT', 'UPDATE') THEN
+      SELECT v_ids || coalesce(array_agg(n.event_id), '{}') INTO v_ids FROM new_rows n
+       WHERE n.entry_kind = 'accrual' AND NOT coalesce(n.automatic_source = ANY (private.commission_auto_sources()), false);
+    END IF;
+    IF TG_OP IN ('DELETE', 'UPDATE') THEN
+      SELECT v_ids || coalesce(array_agg(o.event_id), '{}') INTO v_ids FROM old_rows o
+       WHERE o.entry_kind = 'accrual' AND NOT coalesce(o.automatic_source = ANY (private.commission_auto_sources()), false);
+    END IF;
+  ELSIF TG_TABLE_NAME = 'offers' THEN
+    SELECT array_agg(o.event_id) INTO v_ids FROM old_rows o WHERE o.status::text = 'accepted';
   ELSE
-    IF TG_OP <> 'DELETE' THEN v_new := NEW.event_id; END IF;
-    IF TG_OP <> 'INSERT' THEN v_old := OLD.event_id; END IF;
+    IF TG_OP IN ('INSERT', 'UPDATE') THEN
+      SELECT v_ids || coalesce(array_agg(n.event_id), '{}') INTO v_ids FROM new_rows n;
+    END IF;
+    IF TG_OP IN ('DELETE', 'UPDATE') THEN
+      SELECT v_ids || coalesce(array_agg(o.event_id), '{}') INTO v_ids FROM old_rows o;
+    END IF;
+    -- Faktura na kilka wydarzeń (udziały): odśwież też pozostałe wydarzenia tej faktury.
+    IF TG_TABLE_NAME = 'invoices' THEN
+      IF TG_OP IN ('INSERT', 'UPDATE') THEN
+        SELECT coalesce(array_agg(a.event_id), '{}') INTO v_more FROM public.invoice_event_allocations a
+         WHERE a.invoice_id IN (SELECT n.id FROM new_rows n);
+        v_ids := v_ids || v_more;
+      END IF;
+    ELSIF TG_TABLE_NAME = 'invoice_event_allocations' THEN
+      IF TG_OP IN ('INSERT', 'UPDATE') THEN
+        SELECT coalesce(array_agg(a.event_id), '{}') INTO v_more FROM public.invoice_event_allocations a
+         WHERE a.invoice_id IN (SELECT n.invoice_id FROM new_rows n);
+        v_ids := v_ids || v_more;
+        SELECT coalesce(array_agg(i.event_id), '{}') INTO v_more FROM public.invoices i WHERE i.id IN (SELECT n.invoice_id FROM new_rows n);
+        v_ids := v_ids || v_more;
+      END IF;
+      IF TG_OP IN ('DELETE', 'UPDATE') THEN
+        SELECT coalesce(array_agg(a.event_id), '{}') INTO v_more FROM public.invoice_event_allocations a
+         WHERE a.invoice_id IN (SELECT o.invoice_id FROM old_rows o);
+        v_ids := v_ids || v_more;
+      END IF;
+    END IF;
   END IF;
-  PERFORM private.refresh_event_commissions_safe(v_new);
-  IF v_old IS DISTINCT FROM v_new THEN PERFORM private.refresh_event_commissions_safe(v_old); END IF;
+  PERFORM private.refresh_events_safe(v_ids);
   RETURN NULL;
 END $$;
 
-DROP TRIGGER IF EXISTS zz_settlement_refresh_invoices ON public.invoices;
-CREATE TRIGGER zz_settlement_refresh_invoices
-  AFTER INSERT OR DELETE OR UPDATE OF event_id, status, total_net, total_gross, invoice_type, is_proforma, settled_invoices ON public.invoices
-  FOR EACH ROW EXECUTE FUNCTION private.settlement_source_changed();
-DROP TRIGGER IF EXISTS zz_settlement_refresh_allocations ON public.invoice_event_allocations;
-CREATE TRIGGER zz_settlement_refresh_allocations
-  AFTER INSERT OR DELETE OR UPDATE OF event_id, invoice_id, allocation_weight ON public.invoice_event_allocations
-  FOR EACH ROW EXECUTE FUNCTION private.settlement_source_changed();
-DROP TRIGGER IF EXISTS zz_settlement_refresh_costs ON public.event_costs;
-CREATE TRIGGER zz_settlement_refresh_costs
-  AFTER INSERT OR DELETE OR UPDATE OF event_id, amount, status, subcontractor_id, ksef_invoice_id, external_invoice_id ON public.event_costs
-  FOR EACH ROW EXECUTE FUNCTION private.settlement_source_changed();
-DROP TRIGGER IF EXISTS zz_settlement_refresh_subcontractor_tasks ON public.subcontractor_tasks;
-CREATE TRIGGER zz_settlement_refresh_subcontractor_tasks
-  AFTER INSERT OR DELETE OR UPDATE OF event_id, status, agreed_cost, total_cost, fixed_price, hourly_rate, actual_hours, estimated_hours, subcontractor_id
-  ON public.subcontractor_tasks FOR EACH ROW EXECUTE FUNCTION private.settlement_source_changed();
-DROP TRIGGER IF EXISTS zz_settlement_refresh_time_entries ON public.time_entries;
-CREATE TRIGGER zz_settlement_refresh_time_entries
-  AFTER INSERT OR DELETE OR UPDATE OF event_id, duration_minutes, hourly_rate, employee_id ON public.time_entries
-  FOR EACH ROW EXECUTE FUNCTION private.settlement_source_changed();
-DROP TRIGGER IF EXISTS zz_settlement_refresh_partner_arrangements ON public.event_partner_arrangements;
-CREATE TRIGGER zz_settlement_refresh_partner_arrangements
-  AFTER INSERT OR DELETE OR UPDATE OF enabled, contact_id, organization_id ON public.event_partner_arrangements
-  FOR EACH ROW EXECUTE FUNCTION private.settlement_source_changed();
-DROP TRIGGER IF EXISTS zz_settlement_refresh_financials ON public.event_financials;
-CREATE TRIGGER zz_settlement_refresh_financials
-  AFTER UPDATE OF actual_cash_revenue, expected_revenue ON public.event_financials
-  FOR EACH ROW EXECUTE FUNCTION private.settlement_source_changed();
-DROP TRIGGER IF EXISTS zzz_settlement_refresh_manual_commissions ON public.event_commissions;
-CREATE TRIGGER zzz_settlement_refresh_manual_commissions
-  AFTER INSERT OR DELETE OR UPDATE OF amount, status, company_cost_amount, employee_id, sales_partner_id, contact_id ON public.event_commissions
-  FOR EACH ROW EXECUTE FUNCTION private.settlement_source_changed();
-DROP TRIGGER IF EXISTS zz_settlement_refresh_events ON public.events;
-CREATE TRIGGER zz_settlement_refresh_events
-  AFTER UPDATE OF status, referring_sales_partner_id, organization_id, contact_person_id, my_company_id, event_end_date, event_date
-  ON public.events FOR EACH ROW
-  WHEN (OLD.status IS DISTINCT FROM NEW.status OR OLD.referring_sales_partner_id IS DISTINCT FROM NEW.referring_sales_partner_id
-     OR OLD.my_company_id IS DISTINCT FROM NEW.my_company_id OR OLD.organization_id IS DISTINCT FROM NEW.organization_id
-     OR OLD.contact_person_id IS DISTINCT FROM NEW.contact_person_id)
-  EXECUTE FUNCTION private.settlement_source_changed();
+-- Tabele przejściowe wymagają osobnego wyzwalacza dla każdej operacji.
+DO $$
+DECLARE t text; op text;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['invoices', 'invoice_event_allocations', 'event_costs', 'subcontractor_tasks', 'time_entries',
+                           'event_partner_arrangements', 'event_financials', 'event_commissions', 'events'] LOOP
+    FOREACH op IN ARRAY ARRAY['insert', 'update', 'delete'] LOOP
+      EXECUTE format('DROP TRIGGER IF EXISTS zz_settlement_%s_%s ON public.%I', t, op, t);
+      IF t = 'events' AND op <> 'update' THEN CONTINUE; END IF;
+      EXECUTE format('CREATE TRIGGER zz_settlement_%s_%s AFTER %s ON public.%I REFERENCING %s FOR EACH STATEMENT EXECUTE FUNCTION private.settlement_rows_changed()',
+        t, op, upper(op), t,
+        CASE op WHEN 'insert' THEN 'NEW TABLE AS new_rows' WHEN 'delete' THEN 'OLD TABLE AS old_rows'
+                ELSE 'OLD TABLE AS old_rows NEW TABLE AS new_rows' END);
+    END LOOP;
+  END LOOP;
+END $$;
+-- Usunięcie zaakceptowanej oferty zmienia prognozę.
+DROP TRIGGER IF EXISTS zz_settlement_offers_delete ON public.offers;
+CREATE TRIGGER zz_settlement_offers_delete AFTER DELETE ON public.offers
+  REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION private.settlement_rows_changed();
 
--- Warunki sprzedawcy zewnętrznego dla marki: odśwież otwarte wydarzenia, w których występuje.
+-- Warunki sprzedawcy dla marki albo status jego profilu: odśwież otwarte wydarzenia, w których występuje.
 CREATE OR REPLACE FUNCTION private.settlement_partner_terms_changed()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
-DECLARE r record; v_partner uuid := CASE WHEN TG_OP = 'DELETE' THEN OLD.sales_partner_id ELSE NEW.sales_partner_id END;
+DECLARE r record;
+  v_partner uuid := CASE WHEN TG_TABLE_NAME = 'sales_partner_profiles' THEN (CASE WHEN TG_OP = 'DELETE' THEN OLD.id ELSE NEW.id END)
+                         ELSE (CASE WHEN TG_OP = 'DELETE' THEN OLD.sales_partner_id ELSE NEW.sales_partner_id END) END;
 BEGIN
   IF private.commission_engine_active() THEN RETURN NULL; END IF;
   FOR r IN
@@ -2810,6 +3414,10 @@ DROP TRIGGER IF EXISTS zz_settlement_refresh_partner_terms ON public.sales_partn
 CREATE TRIGGER zz_settlement_refresh_partner_terms
   AFTER INSERT OR DELETE OR UPDATE OF is_active, commission_enabled, default_commission_rate, default_payment_method, dividend_tax_rate
   ON public.sales_partner_brand_terms FOR EACH ROW EXECUTE FUNCTION private.settlement_partner_terms_changed();
+DROP TRIGGER IF EXISTS zz_settlement_refresh_partner_profile ON public.sales_partner_profiles;
+CREATE TRIGGER zz_settlement_refresh_partner_profile
+  AFTER UPDATE OF status, partner_type, contact_id ON public.sales_partner_profiles
+  FOR EACH ROW EXECUTE FUNCTION private.settlement_partner_terms_changed();
 
 -- ---------------------------------------------------------------------------------------------------------------
 -- 16. Uprawnienia do funkcji
@@ -2822,7 +3430,7 @@ REVOKE ALL ON FUNCTION public.link_event_cost_invoice(uuid, text, uuid, numeric,
 REVOKE ALL ON FUNCTION public.submit_event_settlement(uuid, text, text) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.return_event_settlement(uuid, text) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.approve_event_settlement(uuid, text) FROM PUBLIC, anon;
-REVOKE ALL ON FUNCTION public.reopen_event_settlement(uuid, text) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.reopen_event_settlement(uuid, text, boolean) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.set_event_sales_shares(uuid, jsonb, text) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.get_sales_commission_settings() FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.set_sales_commission_defaults(numeric, numeric) FROM PUBLIC, anon;
@@ -2831,6 +3439,7 @@ REVOKE ALL ON FUNCTION public.add_event_partner_commission(uuid, uuid) FROM PUBL
 REVOKE ALL ON FUNCTION public.refresh_event_commissions(uuid) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.get_my_commissions() FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.settle_commission_deduction(uuid, uuid, uuid) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.set_event_commission_cancelled(uuid, boolean, text) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.sync_event_billing_seller_commissions(uuid) FROM PUBLIC, anon, authenticated;
 
 GRANT EXECUTE ON FUNCTION public.get_event_settlement(uuid) TO authenticated;
@@ -2841,7 +3450,7 @@ GRANT EXECUTE ON FUNCTION public.link_event_cost_invoice(uuid, text, uuid, numer
 GRANT EXECUTE ON FUNCTION public.submit_event_settlement(uuid, text, text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.return_event_settlement(uuid, text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.approve_event_settlement(uuid, text) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.reopen_event_settlement(uuid, text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.reopen_event_settlement(uuid, text, boolean) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.set_event_sales_shares(uuid, jsonb, text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_sales_commission_settings() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.set_sales_commission_defaults(numeric, numeric) TO authenticated;
@@ -2850,7 +3459,27 @@ GRANT EXECUTE ON FUNCTION public.add_event_partner_commission(uuid, uuid) TO aut
 GRANT EXECUTE ON FUNCTION public.refresh_event_commissions(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_my_commissions() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.settle_commission_deduction(uuid, uuid, uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.set_event_commission_cancelled(uuid, boolean, text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.sync_event_billing_seller_commissions(uuid) TO service_role;
+
+-- Funkcje wewnętrzne (schemat private) nie są dostępne bezpośrednio dla ról aplikacji.
+DO $$
+DECLARE f record;
+BEGIN
+  FOR f IN SELECT p.oid::regprocedure AS sig FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+            WHERE n.nspname = 'private' AND p.proname IN (
+              'commission_auto_sources', 'commission_engine_active', 'offer_net_amount', 'guard_automatic_commission', 'stamp_event_commission',
+              'log_event_commission_change', 'commission_uuid', 'event_client_owner', 'ensure_event_sales_shares',
+              'commission_manual_precedes', 'event_settlement_auto_lines', 'event_settlement_compute', 'pl_money', 'pl_number',
+              'commission_target_rows', 'event_settlement_tracked', 'refresh_event_commissions', 'refresh_event_commissions_safe',
+              'offset_commission_deduction', 'apply_settlement_commissions', 'commission_chain_net', 'commission_same_person', 'event_settlement_status', 'event_settlement_can_fill',
+              'event_settlement_can_edit', 'event_settlement_can_approve', 'lock_event_settlement', 'notify_settlement',
+              'settlement_sync_steps', 'refresh_open_events_for_employee', 'refresh_events_safe', 'settlement_rows_changed',
+              'settlement_partner_terms_changed', 'prevent_ledger_mutation')
+  LOOP
+    EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC, anon, authenticated', f.sig);
+  END LOOP;
+END $$;
 
 -- ---------------------------------------------------------------------------------------------------------------
 -- 17. Start: sprzedawca i prognoza dla trwających wydarzeń (rozliczone wydarzenia zostają bez zmian)

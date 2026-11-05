@@ -788,6 +788,7 @@ export default function EmployeeDetailPage() {
           isAdmin={isAdmin}
           accessLevels={accessLevels}
           emailAccounts={emailAccounts}
+          isOwnProfile={isOwnProfile}
         />
       )}
 

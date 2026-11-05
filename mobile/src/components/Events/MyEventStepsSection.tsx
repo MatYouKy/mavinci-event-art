@@ -44,9 +44,10 @@ export default function MyEventStepsSection({ refreshKey }: { refreshKey: number
     if (!eventId) return null;
     const target = eventStepDetailLink(eventId, step.key, {
       isWedding: step.key === 'wedding_card',
-      // Ekran wydarzenia sam wraca do „Szczegółów”, gdy zakładki Floty lub Magazynu nie ma.
+      // Ekran wydarzenia sam wraca do „Szczegółów”, gdy zakładki Floty, Magazynu lub Podsumowania nie ma.
       hasFleet: true,
       hasWarehouse: isWarehouseWorker,
+      hasSummary: true,
     });
     if (!target) return null;
     if (target.kind === 'crm') return { label: target.label, external: true, onPress: () => openInCrmWeb(target.path) };

@@ -4,11 +4,21 @@ import { EVENT_STEP_TARGET_TAB } from './eventSteps';
 /*
  * Link „Przejdź” przy kroku realizacji: zakładka, w której krok się zamyka (EVENT_STEP_TARGET_TAB we wspólnej
  * kopii eventSteps.ts — ta sama co w CRM). Zakładki, które aplikacja ma, otwieramy w aplikacji; zakładki
- * handlowe (umowa, finanse, oferta…) — w CRM w przeglądarce (`openInCrmWeb`).
+ * handlowe (umowa, finanse, oferta…) — w CRM w przeglądarce (`openInCrmWeb`). „Podsumowanie” (kroki „Wyślij /
+ * Zatwierdź podsumowanie wydarzenia”) otwieramy w aplikacji (podgląd i wysłanie); edycja i zatwierdzanie — w CRM.
  */
 
 /** Zakładki ekranu wydarzenia w aplikacji (EventDetailScreen). */
-export type EventDetailTab = 'details' | 'agenda' | 'wedding' | 'checklist' | 'warehouse' | 'team' | 'fleet' | 'files';
+export type EventDetailTab =
+  | 'details'
+  | 'agenda'
+  | 'wedding'
+  | 'checklist'
+  | 'warehouse'
+  | 'team'
+  | 'fleet'
+  | 'files'
+  | 'summary';
 
 /** Zakładki pulpitu realizacji (RealizationWorkspace). */
 export type RealizationTab = 'overview' | 'phases' | 'equipment' | 'agenda' | 'team' | 'logistics' | 'subcontractors' | 'files';
@@ -22,6 +32,7 @@ export const EVENT_DETAIL_TAB_LABELS: Record<EventDetailTab, string> = {
   team: 'Zespół',
   fleet: 'Flota',
   files: 'Pliki',
+  summary: 'Podsumowanie',
 };
 
 export const REALIZATION_TAB_LABELS: Record<RealizationTab, string> = {
@@ -67,6 +78,11 @@ export type EventDetailLinkContext = {
   hasWarehouse: boolean;
   /** Widoczna zakładka „Flota”. */
   hasFleet: boolean;
+  /**
+   * Widoczna zakładka „Podsumowanie” (obszar „kwoty”, RPC get_event_settlement wdrożone). Bez niej krok podsumowania
+   * otwiera CRM (o ile osoba ma tę zakładkę w swoim zakresie).
+   */
+  hasSummary?: boolean;
   /** Obszary osoby z get_event_access (null — nieznane, np. przed wdrożeniem migracji). */
   access?: EventAccess | null;
 };
@@ -98,6 +114,8 @@ export function eventStepDetailLink(
       return tab(context.hasWarehouse ? 'warehouse' : 'checklist');
     case 'files':
       return tab('files');
+    case 'summary':
+      return context.hasSummary ? tab('summary') : crmLink(eventId, crmTab, context.access);
     default:
       return crmLink(eventId, crmTab, context.access);
   }

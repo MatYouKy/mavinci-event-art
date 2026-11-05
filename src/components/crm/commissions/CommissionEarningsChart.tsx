@@ -35,9 +35,12 @@ export default function CommissionEarningsChart({
   })), [months]);
   const cards = [
     { label: 'Zarobione / zatwierdzone', value: summary.earnedCents, detail: 'Nominalne prowizje za wydarzenia', color: 'text-[#d3bb73]' },
-    { label: 'Wypłacone', value: summary.paidCents, detail: 'W tym wszystkie wypłaty częściowe', color: 'text-emerald-300' },
-    { label: 'Pozostało do wypłaty', value: summary.outstandingCents, detail: 'Tylko zatwierdzone, po odjęciu wypłat', color: 'text-violet-200' },
+    { label: 'Wypłacone', value: summary.paidCents, detail: 'Przelewy i wypłaty, także częściowe (bez potrąceń)', color: 'text-emerald-300' },
+    { label: 'Pozostało do wypłaty', value: summary.outstandingCents, detail: 'Tylko zatwierdzone, po odjęciu wypłat i potrąceń', color: 'text-violet-200' },
     { label: 'Planowane', value: summary.plannedCents, detail: 'Jeszcze niezatwierdzone — poza saldem', color: 'text-[#e5e4e2]/70' },
+    ...(summary.toOffsetCents > 0
+      ? [{ label: 'Do potrącenia', value: summary.toOffsetCents, detail: 'Nadpłaty do odjęcia z kolejnych prowizji tej osoby', color: 'text-rose-200' }]
+      : []),
   ];
 
   return (

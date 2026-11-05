@@ -30,6 +30,8 @@ import {
 } from '@/lib/CRM/events/eventCommission';
 import { supabase } from '@/lib/supabase/browser';
 import SearchCombobox from '@/components/crm/SearchCombobox';
+import { isAutomaticCommission } from '@/lib/CRM/events/commissionSettlements';
+import { COMMISSION_ENTRY_KIND_LABELS, COMMISSION_SOURCE_LABELS, type CommissionEntryKind } from '@/lib/events/settlement/eventSettlement';
 
 type BeneficiarySource = 'partner' | 'contact' | 'employee' | 'manual';
 
@@ -57,6 +59,13 @@ type Commission = {
   created_by: string | null;
   automatic_source: string | null;
   automatic_waiting_for_offer: boolean;
+  /** Pola podsumowania wydarzenia (migracja 20261105130000); w starszej bazie ich nie ma. */
+  entry_kind?: CommissionEntryKind | null;
+  rate_reason?: string | null;
+  /** Anulowana przez podsumowanie (nie ręcznie). */
+  auto_cancelled?: boolean | null;
+  /** Powód ręcznego anulowania prowizji z podsumowania. */
+  cancel_reason?: string | null;
 };
 
 type EmployeeOption = {
@@ -139,6 +148,19 @@ const emptyForm = (baseAmount = 0): CommissionForm => ({
   notes: '',
 });
 
+const COMMISSION_COLUMNS =
+  'id,beneficiary_type,beneficiary_name,salesperson_id,sales_partner_id,employee_id,contact_id,organization_id,calculation_type,rate,base_amount,base_description,amount,payment_method,dividend_tax_rate,company_cost_amount,status,due_date,paid_at,notes,created_by,automatic_source,automatic_waiting_for_offer';
+
+async function loadEventCommissions(eventId: string) {
+  const extended = await supabase
+    .from('event_commissions')
+    .select(`${COMMISSION_COLUMNS},entry_kind,rate_reason,auto_cancelled,cancel_reason`)
+    .eq('event_id', eventId)
+    .order('created_at', { ascending: false });
+  if (!extended.error || !['42703', 'PGRST204'].includes(extended.error.code || '')) return extended;
+  return supabase.from('event_commissions').select(COMMISSION_COLUMNS).eq('event_id', eventId).order('created_at', { ascending: false });
+}
+
 const inputClass =
   'w-full rounded-lg border border-white/10 bg-[#111522] px-3 py-2.5 text-sm text-[#e5e4e2] outline-none placeholder:text-[#e5e4e2]/25 focus:bg-white/[0.06] focus:border-white/20';
 
@@ -170,6 +192,8 @@ export default function EventCommissionsPanel({ eventId }: { eventId: string }) 
   const [form, setForm] = useState<CommissionForm>(() => emptyForm());
 
   formOpen.current = showForm;
+  const editingCommission = editingId ? commissions.find((item) => item.id === editingId) ?? null : null;
+  const editingAutomatic = Boolean(editingCommission && isAutomaticCommission(editingCommission));
   const showDetails = Boolean(editingId) || customizeTerms || form.beneficiarySource !== 'partner';
 
   const loadData = useCallback(async () => {
@@ -202,13 +226,7 @@ export default function EventCommissionsPanel({ eventId }: { eventId: string }) 
         eventResult,
       ] =
         await Promise.all([
-          supabase
-            .from('event_commissions')
-            .select(
-              'id,beneficiary_type,beneficiary_name,salesperson_id,sales_partner_id,employee_id,contact_id,organization_id,calculation_type,rate,base_amount,base_description,amount,payment_method,dividend_tax_rate,company_cost_amount,status,due_date,paid_at,notes,created_by,automatic_source,automatic_waiting_for_offer',
-            )
-            .eq('event_id', eventId)
-            .order('created_at', { ascending: false }),
+          loadEventCommissions(eventId),
           supabase
             .from('offers')
             .select('sales_partner_id,commercial_model,partner_commission_rate,subtotal,discount_amount,discount_percent,tax_amount,tax_percent,total_amount')
@@ -471,6 +489,26 @@ export default function EventCommissionsPanel({ eventId }: { eventId: string }) 
 
   const handleSave = async () => {
     if (!canManage || saving) return;
+    if (editingAutomatic && editingId) {
+      // Kwotę, podstawę i odbiorcę wpisu z podsumowania ustala baza — zapisujemy tylko termin i notatkę.
+      setSaving(true);
+      const { data, error } = await supabase
+        .from('event_commissions')
+        .update({ due_date: form.dueDate || null, notes: form.notes.trim() || null })
+        .eq('id', editingId)
+        .eq('event_id', eventId)
+        .select('id')
+        .maybeSingle();
+      setSaving(false);
+      if (error || !data) {
+        showSnackbar(error?.message || 'Nie udało się zapisać zmian. Odśwież dane.', 'error');
+        return;
+      }
+      showSnackbar('Termin i notatka zapisane', 'success');
+      resetForm();
+      await loadData();
+      return;
+    }
     if (!showDetails && form.beneficiarySource === 'partner') {
       if (!form.beneficiaryId) {
         showSnackbar('Wybierz sprzedawcę z kartoteki', 'warning');
@@ -488,7 +526,7 @@ export default function EventCommissionsPanel({ eventId }: { eventId: string }) 
           showSnackbar(result.message || 'Uzupełnij dane potrzebne do naliczenia.', 'warning');
           return;
         }
-        showSnackbar(result.created ? 'Prowizja została uzupełniona z kartoteki' : 'Prowizja dla tej osoby jest już zapisana', 'success');
+        showSnackbar(result.created ? 'Sprzedawca dodany — kwotę prowizji liczy podsumowanie wydarzenia' : 'Prowizja dla tej osoby jest już zapisana', 'success');
         resetForm();
         await loadData();
       } catch (error) {
@@ -610,7 +648,41 @@ export default function EventCommissionsPanel({ eventId }: { eventId: string }) 
     await loadData();
   };
 
+  const handleRestoreCommission = async (commission: Commission) => {
+    // Ręczne anulowanie prowizji z podsumowania jest trwałe — przywrócenie (finanse / administrator): kwotę ustali podsumowanie.
+    const { error } = await supabase.rpc('set_event_commission_cancelled', { p_commission_id: commission.id, p_cancel: false });
+    if (error) {
+      showSnackbar(error.message || 'Nie udało się przywrócić prowizji. Odśwież dane.', 'error');
+      return;
+    }
+    await loadData();
+    showSnackbar('Prowizja przywrócona — kwotę ustali podsumowanie wydarzenia', 'success');
+  };
+
   const handleCancelCommission = async (commission: Commission) => {
+    if (isAutomaticCommission(commission)) {
+      // Prowizja z podsumowania: anuluje finanse / administrator, zawsze z powodem (widać go w podsumowaniu i historii).
+      const reason = window.prompt(
+        `Powód anulowania prowizji dla ${commission.beneficiary_name}. Anulowanie jest trwałe — zatwierdzenie podsumowania jej nie przywróci (możesz ją przywrócić ręcznie).`,
+      );
+      if (reason === null) return;
+      if (!reason.trim()) {
+        showSnackbar('Podaj powód anulowania prowizji.', 'warning');
+        return;
+      }
+      const { error } = await supabase.rpc('set_event_commission_cancelled', {
+        p_commission_id: commission.id,
+        p_cancel: true,
+        p_reason: reason.trim(),
+      });
+      if (error) {
+        showSnackbar(error.message || 'Nie udało się anulować prowizji.', 'error');
+        return;
+      }
+      await loadData();
+      showSnackbar('Prowizja anulowana', 'success');
+      return;
+    }
     if (!confirm(`Anulować prowizję dla ${commission.beneficiary_name}?`)) return;
     // Zachowanie wpisu blokuje ponowne automatyczne naliczenie.
     const { data, error } = await supabase.from('event_commissions').update({ status: 'cancelled' }).eq('id', commission.id).eq('event_id', eventId).neq('status', 'paid').select('id').maybeSingle();
@@ -655,8 +727,11 @@ export default function EventCommissionsPanel({ eventId }: { eventId: string }) 
           <div>
             <h3 className="text-sm font-medium text-[#e5e4e2]">Sprzedawcy i prowizje</h3>
             <p className="mt-1 text-xs leading-5 text-[#e5e4e2]/45">
-              Sprzedawca polecający wydarzenie jest niezależny od płatnika. On, sprzedawcy z kontaktów firmy rozliczającej, sprzedawca z oferty i osoba kontaktowa z kartoteki uzupełniają się automatycznie według warunków marki wydarzenia. Zmiana lub usunięcie przypisania nie anuluje zapisanej prowizji — decyzję podejmujesz tutaj.
+              Prowizje automatyczne (sprzedawca wydarzenia, polecenie, kontakt rozliczeniowy, pośrednik, sprzedawca z portalu) liczy podsumowanie wydarzenia — kwota, podstawa i stawka zmieniają się tam. Tutaj dodasz sprzedawcę z kartoteki albo wpis ręczny w innych przypadkach.
             </p>
+            <Link href={`/crm/events/${eventId}?tab=summary`} className="mt-1 inline-block text-xs text-[#d3bb73] hover:underline">
+              Wyliczenie: zakładka Podsumowanie
+            </Link>
           </div>
         </div>
         {canManage && !showForm && (
@@ -712,7 +787,35 @@ export default function EventCommissionsPanel({ eventId }: { eventId: string }) 
             </button>
           </div>
 
-          {showDetails && (
+          {editingAutomatic && (
+            <div className="space-y-3">
+              <p className="rounded-lg bg-white/[0.03] p-3 text-xs leading-5 text-[#e5e4e2]/60">
+                Kwotę, podstawę i odbiorcę tej prowizji ustala podsumowanie wydarzenia. Tutaj zmienisz tylko termin wypłaty i notatkę.
+              </p>
+              <div className="grid gap-3 md:grid-cols-2">
+                <label className="text-xs text-[#e5e4e2]/55">
+                  Termin wypłaty <span className="text-[#e5e4e2]/30">(opcjonalnie)</span>
+                  <input
+                    type="date"
+                    value={form.dueDate}
+                    onChange={(event) => setForm({ ...form, dueDate: event.target.value })}
+                    className={`${inputClass} mt-1.5`}
+                  />
+                </label>
+                <label className="text-xs text-[#e5e4e2]/55">
+                  Notatka <span className="text-[#e5e4e2]/30">(opcjonalnie)</span>
+                  <textarea
+                    value={form.notes}
+                    onChange={(event) => setForm({ ...form, notes: event.target.value })}
+                    rows={2}
+                    className={`${inputClass} mt-1.5 resize-y`}
+                  />
+                </label>
+              </div>
+            </div>
+          )}
+
+          {!editingAutomatic && showDetails && (
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             <label className="text-xs text-[#e5e4e2]/55">
               Rodzaj beneficjenta
@@ -759,7 +862,7 @@ export default function EventCommissionsPanel({ eventId }: { eventId: string }) 
 
           )}
 
-          {form.beneficiarySource === 'manual' ? (
+          {editingAutomatic ? null : form.beneficiarySource === 'manual' ? (
             <label className="block text-xs text-[#e5e4e2]/55">
               Imię i nazwisko / nazwa
               <input
@@ -800,17 +903,25 @@ export default function EventCommissionsPanel({ eventId }: { eventId: string }) 
                   <Pencil className="h-3.5 w-3.5" /> Edytuj
                 </button>
               </div>
-              <p className="mt-3">{form.rate}% od {formatCommissionMoney(form.baseAmount)} netto · {commissionPaymentLabels[form.paymentMethod]}</p>
+              <p className="mt-3">{form.rate}% · {commissionPaymentLabels[form.paymentMethod]}</p>
+              <p className="mt-1 text-[#e5e4e2]/45">Kwotę policzy podsumowanie wydarzenia: przychód netto z faktur minus wykonawcy zewnętrzni.</p>
               {form.organizationId && <p className="mt-1">{organizations.find((item) => item.id === form.organizationId)?.name}</p>}
               {offerCommission?.partnerId === selectedPartner.id && <p className="mt-2 text-[#e5e4e2]/40">Procent zgodny z zaakceptowaną ofertą sprzedawcy.</p>}
             </div>
           )}
-          {!showDetails && (
+          {!showDetails && !editingAutomatic && (
             <button type="button" onClick={() => setCustomizeTerms(true)} className="text-xs text-[#e5e4e2]/45 hover:text-[#e5e4e2]">
               Inna osoba lub własne warunki
             </button>
           )}
-          {showDetails && <>
+          {showDetails && !editingAutomatic && <>
+          {form.beneficiarySource !== 'employee' && (
+            <p className="rounded-lg bg-white/[0.03] p-3 text-xs leading-5 text-[#e5e4e2]/55">
+              Ręczny wpis dla sprzedawcy zewnętrznego zastępuje wyliczenie z podsumowania dopiero, gdy jest zatwierdzony przez finanse
+              (albo dodał go administrator). Do tego czasu czeka i nie pomniejsza zysku. Po wysłaniu podsumowania wpisy ręczne zmienia
+              tylko finanse lub administrator.
+            </p>
+          )}
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <label className="text-xs text-[#e5e4e2]/55">
               Sposób naliczenia
@@ -924,7 +1035,7 @@ export default function EventCommissionsPanel({ eventId }: { eventId: string }) 
 
           </>}
 
-          <div className="grid gap-3 rounded-lg border border-white/10 bg-amber-300/5 p-4 sm:grid-cols-3">
+          {showDetails && !editingAutomatic && <div className="grid gap-3 rounded-lg border border-white/10 bg-amber-300/5 p-4 sm:grid-cols-3">
             <div>
               <p className="text-[10px] uppercase tracking-wide text-[#e5e4e2]/35">Osoba otrzyma</p>
               <p className="mt-1 text-lg text-violet-200">{formatCommissionMoney(preview.nominalAmount)}</p>
@@ -937,7 +1048,7 @@ export default function EventCommissionsPanel({ eventId }: { eventId: string }) 
               <p className="text-[10px] uppercase tracking-wide text-[#e5e4e2]/35">Narzut podatkowy</p>
               <p className="mt-1 text-lg text-[#e5e4e2]">{formatCommissionMoney(preview.taxBurdenAmount)}</p>
             </div>
-          </div>
+          </div>}
 
           <div className="flex justify-end gap-2">
             <button type="button" onClick={resetForm} className="rounded-lg border border-white/10 px-4 py-2 text-xs text-[#e5e4e2]/60">
@@ -958,10 +1069,12 @@ export default function EventCommissionsPanel({ eventId }: { eventId: string }) 
 
       <p className="mt-4 text-xs leading-5 text-[#e5e4e2]/45">Wypłaty częściowe oraz daty i numery przelewów zapiszesz w Rozliczeniach prowizji. Poniżej są kwoty naliczeń, nie saldo pozostałe po wypłatach.</p>
       <div className="mt-4 space-y-2">
-        {commissions.map((commission) => {
+        {commissions.filter((commission) => !(commission.status === 'cancelled' && commission.auto_cancelled)).map((commission) => {
           const companyCost = Number(commission.company_cost_amount ?? commission.amount ?? 0);
           const canEdit = canManage && commission.status !== 'paid';
           const isOwnerProfit = commission.automatic_source === 'seller_owner_profit';
+          const automatic = isAutomaticCommission(commission);
+          const entryKind = commission.entry_kind && commission.entry_kind !== 'accrual' ? commission.entry_kind : null;
           const settlementsHref = commissionSettlementsHref(commission);
           return (
             <div key={commission.id} className="rounded-lg border border-white/5 bg-[#0a0d1a] p-4">
@@ -974,11 +1087,23 @@ export default function EventCommissionsPanel({ eventId }: { eventId: string }) 
                   {commission.base_description && (
                     <p className="mt-1 text-xs text-[#e5e4e2]/35">{commission.base_description}</p>
                   )}
-                  {commission.automatic_source === 'billing_contact' && (
-                    <p className="mt-1 text-xs text-[#d3bb73]/70">Dodano z kontaktów firmy rozliczającej</p>
+                  {automatic && (
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px]">
+                      <span className="rounded bg-[#d3bb73]/10 px-1.5 py-0.5 text-[#d3bb73]">Z podsumowania</span>
+                      {commission.automatic_source && COMMISSION_SOURCE_LABELS[commission.automatic_source] && (
+                        <span className="rounded bg-white/5 px-1.5 py-0.5 text-[#e5e4e2]/55">{COMMISSION_SOURCE_LABELS[commission.automatic_source]}</span>
+                      )}
+                      {entryKind && (
+                        <span className={`rounded px-1.5 py-0.5 ${entryKind === 'deduction' ? 'bg-rose-400/15 text-rose-200' : 'bg-emerald-300/15 text-emerald-200'}`}>
+                          {COMMISSION_ENTRY_KIND_LABELS[entryKind]}
+                        </span>
+                      )}
+                      <Link href={`/crm/events/${eventId}?tab=summary`} className="text-[#d3bb73] hover:underline">Wyliczenie: zakładka Podsumowanie</Link>
+                    </div>
                   )}
-                  {commission.automatic_source === 'event_referral' && (
-                    <p className="mt-1 text-xs text-[#d3bb73]/70">Dodano z polecenia wydarzenia — niezależnie od płatnika</p>
+                  {commission.rate_reason && <p className="mt-1 text-xs text-[#e5e4e2]/35">{commission.rate_reason}</p>}
+                  {commission.status === 'cancelled' && commission.cancel_reason && (
+                    <p className="mt-1 text-xs text-[#e5e4e2]/45">Powód anulowania: {commission.cancel_reason}</p>
                   )}
                   {isOwnerProfit && <div className="mt-2 text-xs text-[#d3bb73]/80">
                     <p>Opiekun · prowizja od zysku po kosztach i wynagrodzeniu sprzedawcy, nie od przychodu.</p>
@@ -1003,7 +1128,26 @@ export default function EventCommissionsPanel({ eventId }: { eventId: string }) 
                   )}
                   {commission.due_date && <span>termin {new Date(commission.due_date).toLocaleDateString('pl-PL')}</span>}
                 </div>
-                {canManage && (
+                {canManage && automatic && (
+                  <div className="flex items-center gap-2">
+                    {canEdit && commission.status !== 'cancelled' && (
+                      <button data-crm-action="secondary" type="button" onClick={() => editCommission(commission)} className="flex items-center gap-1.5 rounded px-2 py-1.5 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/10">
+                        <Pencil className="h-3.5 w-3.5" /> Termin i notatka
+                      </button>
+                    )}
+                    {canEdit && !entryKind && (commission.status === 'planned' || commission.status === 'approved') && (
+                      <button type="button" onClick={() => handleCancelCommission(commission)} aria-label={`Anuluj prowizję dla ${commission.beneficiary_name}`} title="Anuluj prowizję" className="rounded p-1.5 text-red-300 hover:bg-red-400/10">
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                    {!entryKind && commission.status === 'cancelled' && !commission.auto_cancelled && (
+                      <button type="button" onClick={() => handleRestoreCommission(commission)} className="rounded px-2 py-1.5 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/10">
+                        Przywróć
+                      </button>
+                    )}
+                  </div>
+                )}
+                {canManage && !automatic && (
                   <div className="flex items-center gap-2">
                     <select
                       value={commission.status}

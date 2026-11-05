@@ -12,6 +12,7 @@ import NotificationsScreen from '../screens/NotificationsScreen';
 import EmailMessageDetailScreen from '../screens/EmailMessageDetailScreen';
 import InboundEventDetailScreen from '../screens/InboundEventDetailScreen';
 import ContactMessageDetailScreen from '../screens/ContactMessageDetailScreen';
+import MyCommissionsScreen from '../screens/MyCommissionsScreen';
 
 export type RootStackParamList = {
   Login: undefined;
@@ -20,6 +21,7 @@ export type RootStackParamList = {
   EmailMessageDetail: { messageId: string };
   InboundEventDetail: { eventId: string };
   ContactMessageDetail: { messageId: string };
+  MyCommissions: undefined;
   PdfViewer: { url: string };
   EventDetail: {
     eventId: string;
@@ -102,6 +104,16 @@ export default function RootNavigator() {
               options={{
                 headerShown: true,
                 title: 'Wiadomość kontaktowa'.toLocaleUpperCase('pl-PL'),
+                headerStyle: { backgroundColor: colors.background.secondary },
+                headerTintColor: colors.text.primary,
+              }}
+            />
+            <Stack.Screen
+              name="MyCommissions"
+              component={MyCommissionsScreen}
+              options={{
+                headerShown: true,
+                title: 'Moje prowizje'.toLocaleUpperCase('pl-PL'),
                 headerStyle: { backgroundColor: colors.background.secondary },
                 headerTintColor: colors.text.primary,
               }}

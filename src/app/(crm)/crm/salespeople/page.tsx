@@ -29,6 +29,7 @@ import SellerInboxPanel, { SellerCountBadge } from '@/components/seller/SellerIn
 import CrmSellerWorkspace from '@/components/seller/CrmSellerWorkspace';
 import { CrmCartesianChart } from '@/components/crm/charts/CrmCharts';
 import { sellerInboxCounts } from '@/lib/seller/inbox';
+import SalesCommissionSettingsSection from '@/components/crm/commissions/SalesCommissionSettingsSection';
 import { refreshSellerSidebarBadge, useSellerSidebarBadge } from '@/lib/seller/sidebarBadge';
 
 type CommissionSummaryRow = {
@@ -402,6 +403,8 @@ export default function SalespeoplePage() {
                 </div>
               </div>
             </section>
+
+            {isAdmin && <SalesCommissionSettingsSection />}
 
             {showForm && canManage && (
               <section id="seller-create-profile" tabIndex={-1} className="scroll-mt-24 space-y-5 rounded-xl bg-[#1c1f33] p-5 focus:outline-none">

@@ -21,7 +21,7 @@ export default function SellerCommissionsPage() {
 
   return (
     <div className="min-h-screen p-4 text-[#e5e4e2] md:p-6"><div className="mx-auto max-w-6xl space-y-5">
-      <header><div className="flex items-center gap-3"><span className="rounded-xl bg-[#d3bb73]/10 p-3"><WalletCards className="h-5 w-5 text-[#d3bb73]" /></span><div><h1 className="text-2xl font-light">Moje wynagrodzenie</h1><p className="mt-1 text-sm text-white/40">Twoje naliczenia, historia wypłat i pozostałe rozliczenia. Widok jest tylko do odczytu; zmiana bieżących warunków nie usuwa historii.</p></div></div></header>
+      <header><div className="flex items-center gap-3"><span className="rounded-xl bg-[#d3bb73]/10 p-3"><WalletCards className="h-5 w-5 text-[#d3bb73]" /></span><div><h1 className="text-2xl font-light">Moje wynagrodzenie</h1><p className="mt-1 text-sm text-white/40">Twoje naliczenia, historia wypłat i pozostałe rozliczenia. Przy każdej prowizji widzisz podstawę (przychód netto − wykonawcy zewnętrzni) i stawkę. Widok jest tylko do odczytu; zmiana bieżących warunków nie usuwa historii.</p></div></div></header>
       <CommissionSettlementsPanel mode="seller" />
       {commissionBrands.length > 0 ? <section className="rounded-xl border border-white/5 bg-[#1c1f33]">
         <div className="border-b border-white/5 p-5"><h2 className="font-medium">Indywidualne warunki wynagrodzenia</h2><p className="mt-1 text-xs text-white/40">Stawki są ustalane indywidualnie z MAVINCI i automatycznie stosowane w ofertach prowizyjnych.</p></div>

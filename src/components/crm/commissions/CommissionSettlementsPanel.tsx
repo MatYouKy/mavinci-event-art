@@ -2,11 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Banknote, Check, Loader2, RefreshCw, Search, X } from 'lucide-react';
+import { Banknote, Check, Loader2, RefreshCw, Scissors, Search, X } from 'lucide-react';
 import SellerDatePicker from '@/app/(public)/seller/_components/SellerDatePicker';
 import CommissionEarningsChart from './CommissionEarningsChart';
 import { buildCommissionSettlementStats } from '@/lib/CRM/events/commissionSettlementStats';
-import type { CommissionSettlement, CommissionSettlementsResponse, CommissionSettlementAccountType } from '@/lib/CRM/events/commissionSettlements';
+import { AUTOMATIC_COMMISSION_HINT, isAutomaticCommission, type CommissionSettlement, type CommissionSettlementsResponse, type CommissionSettlementAccountType } from '@/lib/CRM/events/commissionSettlements';
+import { COMMISSION_ENTRY_KIND_LABELS, COMMISSION_SOURCE_LABELS, formatPercent } from '@/lib/events/settlement/eventSettlement';
+import { supabase } from '@/lib/supabase/browser';
 import { commissionPaymentLabels, commissionStatusLabels, formatCommissionMoney } from '@/lib/CRM/events/eventCommission';
 
 type Props = { mode: 'crm' | 'seller'; accountType?: CommissionSettlementAccountType; accountId?: string };
@@ -49,6 +51,11 @@ function SettlementsWorkspace({ mode, accountType, accountId }: Props) {
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState('');
   const [uncertain, setUncertain] = useState(false);
+  // Potrącenie nadpłaty z innej prowizji tej samej osoby (settle_commission_deduction). Klucz operacji jest stały do zamknięcia formularza.
+  const [deductionId, setDeductionId] = useState('');
+  const [deductionTarget, setDeductionTarget] = useState('');
+  const [deductionKey, setDeductionKey] = useState('');
+  const [deductionError, setDeductionError] = useState('');
   const pendingPayment = useRef<PaymentDraft | null>(null);
   const sequence = useRef(0);
 
@@ -120,7 +127,7 @@ function SettlementsWorkspace({ mode, accountType, accountId }: Props) {
   const stats = useMemo(() => buildCommissionSettlementStats(brandRows), [brandRows]);
   const normalizedQuery = query.trim().toLocaleLowerCase('pl-PL');
   const matches = (row: CommissionSettlement) => !normalizedQuery || [row.event_name, row.beneficiary_name, row.company_name, row.event_date].join(' ').toLocaleLowerCase('pl-PL').includes(normalizedQuery);
-  const filteredRows = brandRows.filter(row => matches(row) && (view !== 'open' || (row.status !== 'cancelled' && row.status !== 'paid' && (row.automatic_waiting_for_offer || Number(row.remaining_amount) > 0))));
+  const filteredRows = brandRows.filter(row => matches(row) && (view !== 'open' || (row.status !== 'cancelled' && row.status !== 'paid' && (row.automatic_waiting_for_offer || Number(row.remaining_amount) > 0 || Number(row.to_offset ?? 0) > 0))));
   const payments = brandRows.flatMap(row => row.payments.map(payment => ({ row, payment })))
     .filter(({ row, payment }) => matches(row) || [payment.reference, payment.note].join(' ').toLocaleLowerCase('pl-PL').includes(normalizedQuery))
     .sort((a, b) => (b.payment.payment_date || '').localeCompare(a.payment.payment_date || '') || (b.payment.recorded_at || '').localeCompare(a.payment.recorded_at || '') || a.payment.id.localeCompare(b.payment.id));
@@ -128,9 +135,15 @@ function SettlementsWorkspace({ mode, accountType, accountId }: Props) {
   const pages = Math.max(1, Math.ceil(count / 15));
   const currentPage = Math.min(page, pages);
   const selected = rows.find(row => row.id === selectedId);
+  const deduction = rows.find(row => row.id === deductionId) || null;
+  // Cel: zatwierdzona prowizja tej samej marki i sposobu wypłaty z kwotą do wypłaty. Baza potrąci mniejszą z kwot (może częściowo).
+  const deductionTargets = deduction ? rows.filter(row => row.id !== deduction.id && row.can_manage && row.entry_kind !== 'deduction'
+    && row.status === 'approved' && row.my_company_id === deduction.my_company_id && row.payment_method === deduction.payment_method
+    && cents(Number(row.remaining_amount)) > 0) : [];
 
   const openPayment = (row: CommissionSettlement) => {
-    if (busy || uncertain || !row.can_manage || row.status !== 'approved') return;
+    if (busy || uncertain || !row.can_manage || row.status !== 'approved' || row.entry_kind === 'deduction') return;
+    setDeductionId('');
     pendingPayment.current = null;
     setSelectedId(row.id);
     setAmount(Number(row.remaining_amount).toFixed(2).replace('.', ','));
@@ -147,8 +160,44 @@ function SettlementsWorkspace({ mode, accountType, accountId }: Props) {
     setSelectedId('');
     pendingPayment.current = null;
   };
+  const openDeduction = (row: CommissionSettlement) => {
+    if (busy || uncertain || mode !== 'crm' || !row.can_manage || row.entry_kind !== 'deduction' || row.status !== 'approved' || Number(row.to_offset ?? 0) <= 0) return;
+    setSelectedId('');
+    pendingPayment.current = null;
+    setDeductionId(row.id);
+    setDeductionTarget('');
+    setDeductionKey(crypto.randomUUID());
+    setDeductionError('');
+    setNotice('');
+  };
+  const settleDeduction = async () => {
+    if (busy || !deduction || !deductionKey) return;
+    if (!deductionTarget) { setDeductionError('Wybierz prowizję, z której potrącisz kwotę.'); return; }
+    setBusy(true);
+    setDeductionError('');
+    try {
+      const { data: result, error: rpcError } = await supabase.rpc('settle_commission_deduction', {
+        p_deduction_id: deduction.id, p_target_id: deductionTarget, p_idempotency_key: deductionKey,
+      });
+      if (rpcError) {
+        throw new Error(['PGRST202', '42883'].includes(rpcError.code || '')
+          ? 'Potrącenia wymagają aktualizacji bazy danych.'
+          : rpcError.message || 'Nie udało się zapisać potrącenia.');
+      }
+      setDeductionId('');
+      setNotice(result?.duplicate
+        ? 'To potrącenie było już zapisane — nie dodano duplikatu.'
+        : `Potrącono ${money(Number(result?.amount ?? 0))} — zapis w rejestrze obu prowizji, bez przelewu.`);
+      window.dispatchEvent(new Event('commission-settlements-changed'));
+      await load();
+    } catch (failure) {
+      // Ponowienie użyje tego samego klucza operacji — baza nie zapisze potrącenia drugi raz.
+      setDeductionError(failure instanceof Error ? failure.message : 'Nie udało się zapisać potrącenia.');
+    } finally { setBusy(false); }
+  };
   const approve = async (row: CommissionSettlement) => {
-    if (busy || uncertain || mode !== 'crm' || !row.can_manage || row.status !== 'planned' || row.automatic_waiting_for_offer) return;
+    // Wpisy z podsumowania stają się „do wypłaty” dopiero po zatwierdzeniu podsumowania wydarzenia.
+    if (busy || uncertain || mode !== 'crm' || !row.can_manage || row.status !== 'planned' || row.automatic_waiting_for_offer || isAutomaticCommission(row)) return;
     setBusy(true);
     setNotice('');
     try {
@@ -169,7 +218,7 @@ function SettlementsWorkspace({ mode, accountType, accountId }: Props) {
     let payload = pendingPayment.current;
     if (!payload) {
       const value = amountFromText(amount);
-      if (!selected?.can_manage || selected.status !== 'approved' || selected.automatic_waiting_for_offer) { setFormError('Ta prowizja nie jest gotowa do rozliczenia. Odśwież dane.'); return; }
+      if (!selected?.can_manage || selected.status !== 'approved' || selected.automatic_waiting_for_offer || selected.entry_kind === 'deduction') { setFormError('Ta prowizja nie jest gotowa do rozliczenia. Odśwież dane.'); return; }
       if (value === null || cents(value) > cents(Number(selected.remaining_amount))) { setFormError('Podaj dodatnią kwotę nie większą niż pozostałe saldo, z maksymalnie dwoma miejscami po przecinku.'); return; }
       if (!dateValid || !paymentDate || paymentDate > today()) { setFormError('Wpisz prawidłową datę wykonanej wypłaty, nie późniejszą niż dzisiaj.'); return; }
       if (!confirmed) { setFormError('Potwierdź, że ta wypłata została już wykonana.'); return; }
@@ -237,26 +286,70 @@ function SettlementsWorkspace({ mode, accountType, accountId }: Props) {
         {formError && <p role="alert" className="mt-3 text-sm text-rose-200">{formError}</p>}
         <div className="mt-4 flex flex-wrap justify-end gap-2"><button type="button" disabled={busy || uncertain} onClick={closePayment} className={buttonClass}>Anuluj</button><button type="submit" disabled={busy || uncertain || !confirmed} className="inline-flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2.5 text-sm font-medium text-[#211017] disabled:opacity-40">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}Zapisz wykonaną wypłatę</button></div>
       </form>}
+      {deduction && mode === 'crm' && <div className="rounded-xl bg-white/[0.045] p-5">
+        <div className="mb-4 flex items-start justify-between gap-3"><div><h3 className="text-sm font-semibold">Potrącenie z prowizji</h3><p className="mt-1 text-sm text-[#d3bb73]">{deduction.event_name || 'Wydarzenie'} · {deduction.beneficiary_name}</p><p className="mt-1 text-xs text-white/50">Do potrącenia: {money(Number(deduction.to_offset ?? deduction.amount))}. Wybierz zatwierdzoną prowizję tej samej osoby, marki i sposobu wypłaty. Baza potrąci mniejszą z kwot — pozostałe potrącenie albo kwotę do wypłaty z wybranej prowizji. Zapis trafi do historii obu wpisów.</p></div><button type="button" aria-label="Zamknij formularz potrącenia" disabled={busy} onClick={() => setDeductionId('')} className={buttonClass}><X className="h-4 w-4" /></button></div>
+        {deductionTargets.length === 0 ? <p className="text-sm text-white/55">Brak zatwierdzonej prowizji tej osoby (ta sama marka i sposób wypłaty) z kwotą do wypłaty. Potrącenie poczeka na kolejną prowizję.</p> : <fieldset disabled={busy} className="space-y-2"><legend className="sr-only">Prowizja do pomniejszenia</legend>{deductionTargets.map(row => <label key={row.id} className={`flex cursor-pointer items-start justify-between gap-3 rounded-lg px-3 py-2 text-xs ${deductionTarget === row.id ? 'bg-[#d3bb73]/10' : 'bg-white/[0.03] hover:bg-white/[0.06]'}`}><span className="flex items-start gap-2"><input type="radio" name="deduction-target" value={row.id} checked={deductionTarget === row.id} onChange={() => { setDeductionTarget(row.id); setDeductionError(''); }} className="mt-0.5 accent-[#d3bb73]" /><span><span className="block text-[#e5e4e2]">{row.event_name || 'Wydarzenie'}</span><span className="block text-white/45">{row.beneficiary_name}{row.event_date ? ` · ${dateLabel(row.event_date)}` : ''}</span></span></span><span className="whitespace-nowrap text-right text-[#d3bb73]">zostało {money(Number(row.remaining_amount))}</span></label>)}</fieldset>}
+        {deductionError && <p role="alert" className="mt-3 text-sm text-rose-200">{deductionError}</p>}
+        <div className="mt-4 flex flex-wrap justify-end gap-2"><button type="button" disabled={busy} onClick={() => setDeductionId('')} className={buttonClass}>Anuluj</button><button type="button" disabled={busy || !deductionTarget} onClick={() => void settleDeduction()} className="inline-flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2.5 text-sm font-medium text-[#211017] disabled:opacity-40">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Scissors className="h-4 w-4" />}Potrąć z wybranej prowizji</button></div>
+      </div>}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <nav aria-label="Widok rozliczeń" className="flex flex-wrap gap-2">{([{ id: 'open', label: 'Do rozliczenia' }, { id: 'all', label: 'Wszystkie naliczenia' }, { id: 'history', label: 'Historia wypłat' }] as const).map(item => <button type="button" key={item.id} onClick={() => setView(item.id)} aria-pressed={view === item.id} className={`${buttonClass} ${view === item.id ? 'bg-[#d3bb73]/15 text-[#d3bb73]' : 'text-white/55'}`}>{item.label}</button>)}</nav>
         <div className="relative w-full sm:max-w-xs"><Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-white/35" /><input aria-label="Szukaj w rozliczeniach" value={query} onChange={event => setQuery(event.target.value)} placeholder={view === 'history' ? 'Wydarzenie, opis lub numer wypłaty…' : 'Wydarzenie lub beneficjent…'} className={`${fieldClass} pl-9`} /></div>
       </div>
       {view === 'history' ? <div className="space-y-2">{payments.slice((currentPage - 1) * 15, currentPage * 15).map(({ row, payment }) => <article key={`${row.id}:${payment.id}`} className="rounded-xl bg-white/[0.035] p-4">
-        <div className="flex flex-wrap justify-between gap-3"><div><p className="text-sm font-medium">{dateLabel(payment.payment_date)} · {row.event_name || 'Wydarzenie'}</p><p className="mt-1 text-xs text-white/45">{row.beneficiary_name}{row.company_name ? ` · ${row.company_name}` : ''}</p></div><p className="whitespace-nowrap text-sm font-semibold text-emerald-300">{money(Number(payment.amount))}</p></div>
+        <div className="flex flex-wrap justify-between gap-3"><div><p className="text-sm font-medium">{dateLabel(payment.payment_date)} · {row.event_name || 'Wydarzenie'}</p><p className="mt-1 text-xs text-white/45">{row.beneficiary_name}{row.company_name ? ` · ${row.company_name}` : ''}</p></div><p className={`whitespace-nowrap text-right text-sm font-semibold ${payment.is_offset || payment.source === 'offset' ? 'text-white/60' : 'text-emerald-300'}`}>{money(Number(payment.amount))}{(payment.is_offset || payment.source === 'offset') && <span className="block text-[10px] font-normal text-white/45">potrącenie, bez przelewu</span>}</p></div>
         {payment.reference && <p className="mt-2 break-words text-xs text-white/60">Numer przelewu / dokumentu: {payment.reference}</p>}
         {mode === 'crm' && payment.note && <p className="mt-2 whitespace-pre-wrap break-words text-xs leading-5 text-white/55">{payment.note}</p>}
         {payment.source === 'legacy' && <p className="mt-2 text-xs text-amber-200/75">Historyczne oznaczenie „wypłacona”.{payment.payment_date ? ' Data pochodzi z wcześniejszego zapisu statusu, nie z potwierdzenia bankowego.' : ' Nie uzupełniamy brakującej daty domyślnie.'} Brak osobnego zapisu przelewu.</p>}
       </article>)}</div> : <div className="overflow-x-auto rounded-xl bg-white/[0.025]">
         <table className="w-full text-left text-xs"><thead className="bg-white/[0.035] text-[10px] uppercase tracking-wide text-white/40"><tr><th className="px-4 py-3 font-medium">Za co / kiedy</th><th className="px-3 py-3 font-medium">Status</th><th className="px-3 py-3 text-right font-medium">Naliczone</th><th className="px-3 py-3 text-right font-medium">Wypłacone</th><th className="px-3 py-3 text-right font-medium">Pozostało</th>{mode === 'crm' && <th className="px-4 py-3 text-right font-medium">Rozliczenie</th>}</tr></thead>
           <tbody className="divide-y divide-white/5">{filteredRows.slice((currentPage - 1) * 15, currentPage * 15).map(row => <tr key={row.id}>
-            <td className="min-w-[190px] max-w-sm px-4 py-3"><p className="font-medium text-[#e5e4e2]">{mode === 'crm' ? <Link href={`/crm/events/${row.event_id}?tab=overview`} className="hover:text-[#d3bb73] hover:underline">{row.event_name || 'Wydarzenie'}</Link> : row.event_name || 'Wydarzenie'}</p><p className="mt-1 text-white/40">{row.event_date ? dateLabel(row.event_date) : 'Bez daty wydarzenia'}{row.company_name ? ` · ${row.company_name}` : ''}</p><p className="mt-1 text-white/40">{row.beneficiary_name}</p>{row.due_date && <p className="mt-1 text-white/40">Termin rozliczenia: {dateLabel(row.due_date)}</p>}</td>
-            <td className="px-3 py-3"><span className={`rounded-md px-2 py-1 ${row.status === 'paid' ? 'bg-emerald-300/10 text-emerald-300' : row.status === 'approved' ? 'bg-[#d3bb73]/10 text-[#d3bb73]' : 'bg-white/5 text-white/50'}`}>{row.automatic_waiting_for_offer ? 'Oczekuje na podstawę' : Number(row.paid_amount) > 0 && row.status === 'approved' ? 'Częściowo wypłacona' : commissionStatusLabels[row.status]}</span><p className="mt-2 text-[10px] text-white/35">{commissionPaymentLabels[row.payment_method]}</p></td>
-            <td className="whitespace-nowrap px-3 py-3 text-right">{row.automatic_waiting_for_offer ? 'Nieustalone' : money(Number(row.amount))}</td><td className="whitespace-nowrap px-3 py-3 text-right text-emerald-300">{money(Number(row.paid_amount))}</td><td className="whitespace-nowrap px-3 py-3 text-right text-[#d3bb73]">{row.automatic_waiting_for_offer ? '—' : money(Number(row.remaining_amount))}</td>
-            {mode === 'crm' && <td className="px-4 py-3 text-right">{row.can_manage && !row.automatic_waiting_for_offer && Number(row.amount) > 0 && row.status === 'planned' ? <button type="button" disabled={busy || uncertain || Boolean(selectedId)} className={buttonClass} onClick={() => void approve(row)}>Zatwierdź do wypłaty</button> : row.can_manage && row.status === 'approved' && Number(row.remaining_amount) > 0 ? <button type="button" disabled={busy || uncertain || Boolean(selectedId)} className={buttonClass} onClick={() => openPayment(row)}>Zapisz wypłatę</button> : <span className="text-white/30">{row.automatic_waiting_for_offer ? 'Ustal podstawę w wydarzeniu' : row.status === 'paid' ? 'Rozliczona' : '—'}</span>}</td>}
+            <td className="min-w-[190px] max-w-sm px-4 py-3"><p className="font-medium text-[#e5e4e2]">{mode === 'crm' ? <Link href={`/crm/events/${row.event_id}?tab=overview`} className="hover:text-[#d3bb73] hover:underline">{row.event_name || 'Wydarzenie'}</Link> : row.event_name || 'Wydarzenie'}</p><p className="mt-1 text-white/40">{row.event_date ? dateLabel(row.event_date) : 'Bez daty wydarzenia'}{row.company_name ? ` · ${row.company_name}` : ''}</p><p className="mt-1 text-white/40">{row.beneficiary_name}</p><CommissionRowDetails row={row} mode={mode} />{row.due_date && <p className="mt-1 text-white/40">Termin rozliczenia: {dateLabel(row.due_date)}</p>}</td>
+            <td className="px-3 py-3"><span className={`rounded-md px-2 py-1 ${row.entry_kind === 'deduction' && row.status === 'approved' ? 'bg-rose-400/10 text-rose-200' : row.status === 'paid' ? 'bg-emerald-300/10 text-emerald-300' : row.status === 'approved' ? 'bg-[#d3bb73]/10 text-[#d3bb73]' : 'bg-white/5 text-white/50'}`}>{row.entry_kind === 'deduction' ? (row.status === 'approved' ? 'Do potrącenia' : row.status === 'paid' ? 'Potrącone' : commissionStatusLabels[row.status]) : row.automatic_waiting_for_offer ? 'Oczekuje na podstawę' : Number(row.paid_amount) > 0 && row.status === 'approved' ? 'Częściowo wypłacona' : commissionStatusLabels[row.status]}</span><p className="mt-2 text-[10px] text-white/35">{commissionPaymentLabels[row.payment_method]}</p></td>
+            <td className="whitespace-nowrap px-3 py-3 text-right">{row.automatic_waiting_for_offer ? 'Nieustalone' : `${row.entry_kind === 'deduction' ? '−' : ''}${money(Number(row.amount))}`}</td><td className="whitespace-nowrap px-3 py-3 text-right text-emerald-300">{row.entry_kind === 'deduction' ? <span className="text-white/55">potrącono {money(Number(row.offset_amount ?? row.paid_amount))}</span> : <>{money(Number(row.paid_amount))}{Number(row.offset_amount ?? 0) > 0 && <span className="block text-[10px] text-white/45">w tym potrącono {money(Number(row.offset_amount))}</span>}</>}</td><td className="whitespace-nowrap px-3 py-3 text-right text-[#d3bb73]">{row.automatic_waiting_for_offer ? '—' : row.entry_kind === 'deduction' ? (Number(row.to_offset ?? 0) > 0 ? <span className="text-rose-200">do potrącenia {money(Number(row.to_offset))}</span> : '—') : money(Number(row.remaining_amount))}</td>
+            {mode === 'crm' && <td className="px-4 py-3 text-right"><CommissionRowAction row={row} disabled={busy || uncertain || Boolean(selectedId) || Boolean(deductionId)} onApprove={() => void approve(row)} onPayout={() => openPayment(row)} onDeduct={() => openDeduction(row)} /></td>}
           </tr>)}</tbody></table>
       </div>}
       {count === 0 && <p className="rounded-lg bg-white/[0.02] px-4 py-8 text-center text-sm text-white/40">{normalizedQuery ? 'Brak wyników dla tego wyszukiwania.' : view === 'history' ? 'Brak zapisanych wypłat.' : view === 'open' ? 'Brak nierozliczonych prowizji w tym zakresie.' : 'Brak naliczeń w tym zakresie.'}</p>}
       {pages > 1 && <div className="flex items-center justify-center gap-4 text-xs text-white/50"><button type="button" disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)} className={buttonClass}>Poprzednie</button><span>{currentPage} / {pages} · {count} pozycji</span><button type="button" disabled={currentPage === pages} onClick={() => setPage(currentPage + 1)} className={buttonClass}>Następne</button></div>}
     </>}
   </section>;
+}
+
+/** Rodzaj wpisu, źródło, podstawa i stawka (pola z podsumowania wydarzenia; w portalu — tylko własne wiersze sprzedawcy). */
+function CommissionRowDetails({ row, mode }: { row: CommissionSettlement; mode: 'crm' | 'seller' }) {
+  const kind = row.entry_kind && row.entry_kind !== 'accrual' ? row.entry_kind : null;
+  const source = row.automatic_source ? COMMISSION_SOURCE_LABELS[row.automatic_source] || null : null;
+  const hasRate = !kind && row.rate != null && Number(row.rate) > 0 && row.base_amount != null;
+  const automatic = isAutomaticCommission(row);
+  if (!kind && !source && !row.base_description && !hasRate && !row.rate_reason && !(mode === 'crm' && automatic)) return null;
+  return <div className="mt-1.5 space-y-0.5">
+    {(kind || source) && <p className="flex flex-wrap gap-1.5">{kind && <span className={`rounded-md px-1.5 py-0.5 text-[10px] ${kind === 'deduction' ? 'bg-rose-400/15 text-rose-200' : 'bg-emerald-300/15 text-emerald-200'}`}>{COMMISSION_ENTRY_KIND_LABELS[kind]}</span>}{source && <span className="rounded-md bg-white/5 px-1.5 py-0.5 text-[10px] text-white/55">{source}</span>}</p>}
+    {row.base_description && <p className="text-white/55">{row.base_description}</p>}
+    {hasRate && <p className="text-white/45">{formatPercent(Number(row.rate))} od {money(Number(row.base_amount))}{row.share_percent != null && Number(row.share_percent) !== 100 ? ` · udział ${formatPercent(Number(row.share_percent))}` : ''}</p>}
+    {row.rate_reason && <p className="text-white/40">{row.rate_reason}</p>}
+    {mode === 'crm' && automatic && <Link href={`/crm/events/${row.event_id}?tab=summary`} className="inline-block text-[#d3bb73] hover:underline">Wyliczenie: zakładka Podsumowanie</Link>}
+  </div>;
+}
+
+/** Akcja wiersza: zatwierdzenie (tylko wpisy ręczne), wypłata (nigdy dla potrącenia), potrącenie z innej prowizji. */
+function CommissionRowAction({ row, disabled, onApprove, onPayout, onDeduct }: {
+  row: CommissionSettlement; disabled: boolean; onApprove: () => void; onPayout: () => void; onDeduct: () => void;
+}) {
+  if (row.entry_kind === 'deduction') {
+    if (row.can_manage && row.status === 'approved' && Number(row.to_offset ?? 0) > 0) {
+      return <button type="button" disabled={disabled} className={buttonClass} onClick={onDeduct}><Scissors className="h-3.5 w-3.5" />Potrąć z prowizji</button>;
+    }
+    return <span className="text-white/30">{row.status === 'paid' ? 'Potrącone' : '—'}</span>;
+  }
+  if (row.status === 'planned' && isAutomaticCommission(row)) {
+    return <span className="ml-auto block max-w-[13rem] text-right text-[11px] leading-4 text-white/40">{AUTOMATIC_COMMISSION_HINT}</span>;
+  }
+  if (row.can_manage && !row.automatic_waiting_for_offer && Number(row.amount) > 0 && row.status === 'planned') {
+    return <button type="button" disabled={disabled} className={buttonClass} onClick={onApprove}>Zatwierdź do wypłaty</button>;
+  }
+  if (row.can_manage && row.status === 'approved' && Number(row.remaining_amount) > 0) {
+    return <button type="button" disabled={disabled} className={buttonClass} onClick={onPayout}>Zapisz wypłatę</button>;
+  }
+  return <span className="text-white/30">{row.automatic_waiting_for_offer ? 'Ustal podstawę w wydarzeniu' : row.status === 'paid' ? 'Rozliczona' : '—'}</span>;
 }

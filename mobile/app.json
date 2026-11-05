@@ -2,7 +2,7 @@
   "expo": {
     "name": "Mavinci CRM",
     "slug": "mavinci-mobile",
-    "version": "1.3.11",
+    "version": "1.3.12",
     "scheme": "mavinci-crm",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
