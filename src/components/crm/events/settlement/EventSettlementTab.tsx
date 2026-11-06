@@ -94,7 +94,7 @@ export default function EventSettlementTab({ eventId }: { eventId: string }) {
       </div>
 
       <div className={`grid gap-6 ${settlement.can_edit_shares ? 'lg:grid-cols-[minmax(0,1fr)_minmax(320px,420px)]' : ''}`}>
-        <SettlementCommissionsCard settlement={settlement} />
+        <SettlementCommissionsCard eventId={eventId} settlement={settlement} busy={busy} mutate={mutate} askConfirm={askConfirm} />
         {settlement.can_edit_shares && (
           <div className="lg:self-start">
             <SalesSharesEditor eventId={eventId} internal={settlement.internal} busy={busy} mutate={mutate} />

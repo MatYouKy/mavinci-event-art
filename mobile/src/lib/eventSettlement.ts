@@ -5,7 +5,10 @@
  *   get_event_settlement, save_event_settlement_line, delete_event_settlement_line, link_event_cost_invoice,
  *   list_event_cost_invoice_candidates, submit/return/approve/reopen_event_settlement, set_event_sales_shares,
  *   get_my_commissions, get_sales_commission_settings, set_sales_commission_defaults,
- *   set_employee_sales_commission_terms, settle_commission_deduction, add_event_partner_commission.
+ *   set_employee_sales_commission_terms, settle_commission_deduction, add_event_partner_commission;
+ *   sprzedawca zewnętrzny w podsumowaniu (20261106140000_external_seller_profit_commission.sql):
+ *   list_event_seller_candidates, add_event_settlement_seller, set_event_settlement_seller_rate,
+ *   remove_event_settlement_seller.
  * Ten plik niczego nie liczy — tylko odczytuje wynik bazy i opisuje go po polsku. Bez importów.
  */
 
@@ -64,6 +67,9 @@ export type SettlementTotals = {
   external_commission_lines: number;
   external_commission_auto: number;
   costs_net: number;
+  /** Zysk przed prowizjami sprzedawców zewnętrznych (przychód − wykonawcy − koszty bezpośrednie − ekipa − narzuty). */
+  profit_before_external: number;
+  /** Podstawa prowizji sprzedawców zewnętrznych = zysk netto po koszcie ich prowizji. */
   partner_base: number;
   profit_net: number;
   internal_commissions: number;
@@ -86,6 +92,10 @@ export type SettlementExternalCommission = {
   company_cost: number;
   payment_method: CommissionPaymentMethod;
   commission_id: string | null;
+  /** Stawka z karty sprzedawcy dla marki wydarzenia. */
+  card_rate: number | null;
+  /** Stawka ustalona dla tego wydarzenia (powód w rate_reason). */
+  rate_override: boolean;
 };
 
 export type SettlementInternalCommission = {
@@ -203,6 +213,7 @@ const TOTAL_KEYS: (keyof SettlementTotals)[] = [
   'external_commission_lines',
   'external_commission_auto',
   'costs_net',
+  'profit_before_external',
   'partner_base',
   'profit_net',
   'internal_commissions',
@@ -268,6 +279,8 @@ export function parseEventSettlement(data: unknown): EventSettlement | null {
       company_cost: num(item.company_cost),
       payment_method: String(item.payment_method ?? 'other') as CommissionPaymentMethod,
       commission_id: text(item.commission_id),
+      card_rate: numOrNull(item.card_rate),
+      rate_override: bool(item.rate_override),
     })),
     internal: arr<Record<string, unknown>>(raw.internal).map(item => ({
       employee_id: String(item.employee_id ?? ''),
@@ -543,7 +556,7 @@ export const COMMISSION_SOURCE_LABELS: Record<string, string> = {
   event_referral: 'Polecenie',
   billing_contact: 'Kontakt rozliczeniowy (hotel / agencja)',
   partner_arrangement: 'Pośrednik (Ustalenia ze sprzedawcą)',
-  manual_partner: 'Dodany do wydarzenia',
+  manual_partner: 'Wskazany w podsumowaniu',
 };
 
 export const SALES_SHARE_SOURCE_LABELS: Record<string, string> = {
@@ -600,15 +613,21 @@ export const SETTLEMENT_TOTAL_ROWS: { label: string; keys: (keyof SettlementTota
   { label: 'Wykonawcy zewnętrzni', keys: ['subcontractor_net'] },
   { label: 'Koszty bezpośrednie', keys: ['direct_cost_net'] },
   { label: 'Ekipa', keys: ['team_net'] },
-  { label: 'Prowizje i narzuty zewnętrzne', keys: ['external_commission_lines', 'external_commission_auto'] },
+  { label: 'Narzuty i ręczne wpisy prowizji', keys: ['external_commission_lines'] },
+  { label: 'Zysk przed prowizjami sprzedawców', keys: ['profit_before_external'] },
+  { label: 'Prowizje sprzedawców zewnętrznych (koszt firmy)', keys: ['external_commission_auto'] },
   { label: 'Zysk netto', keys: ['profit_net'], strong: true },
-  { label: 'Podstawa prowizji sprzedawców zewnętrznych', keys: ['partner_base'] },
   { label: 'Prowizje pracowników (koszt firmy)', keys: ['internal_commissions_cost'] },
   { label: 'Zysk po prowizjach', keys: ['profit_after_commissions'], strong: true },
 ];
 
 export function settlementTotalValue(totals: SettlementTotals, keys: (keyof SettlementTotals)[]): number {
   return Math.round(keys.reduce((sum, key) => sum + (totals[key] ?? 0), 0) * 100) / 100;
+}
+
+/** Opis prowizji sprzedawcy zewnętrznego: „10% od 3 026,37 zł zysku netto”. */
+export function externalCommissionLabel(item: SettlementExternalCommission): string {
+  return `${formatPercent(item.rate ?? 0)} od ${formatPln(item.base)} zysku netto`;
 }
 
 /** Opis prowizji pracownika: „10% od 9 648,15 zł (klient własny: Firma X)”. */

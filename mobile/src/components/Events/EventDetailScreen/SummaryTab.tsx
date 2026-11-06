@@ -14,6 +14,7 @@ import {
   SETTLEMENT_SOURCE_LABELS,
   SETTLEMENT_STATUS_LABELS,
   SETTLEMENT_TOTAL_ROWS,
+  externalCommissionLabel,
   SETTLEMENT_VERSION_ACTION_LABELS,
   type SettlementLine,
   type SettlementStatus,
@@ -63,10 +64,8 @@ export const COMMISSION_STATUS_COLORS: Record<CommissionStatus, string> = {
  * i kwota prowizji pracowników obok kosztu firmy; same wartości z bazy, bez przeliczeń.
  */
 function totalHint(keys: (keyof SettlementTotals)[], totals: SettlementTotals): string | null {
-  if (keys.includes('external_commission_lines') && keys.includes('external_commission_auto')) {
-    return totals.external_commission_lines !== 0 && totals.external_commission_auto !== 0
-      ? `pozycje ${formatPln(totals.external_commission_lines)} · naliczone ${formatPln(totals.external_commission_auto)}`
-      : null;
+  if (keys.includes('external_commission_auto')) {
+    return totals.external_commission_auto > 0 ? 'stawka sprzedawcy × zysk netto (gotówka z podatkiem)' : null;
   }
   if (keys.includes('internal_commissions_cost')) {
     return totals.internal_commissions !== totals.internal_commissions_cost
@@ -399,9 +398,7 @@ export function SummaryTab({
               {!!COMMISSION_SOURCE_LABELS[item.source] && <Text style={styles.meta}>{COMMISSION_SOURCE_LABELS[item.source]}</Text>}
               {item.eligible ? (
                 <>
-                  <Text style={styles.meta}>
-                    {formatPercent(item.rate)} od {formatPln(item.base)}
-                  </Text>
+                  <Text style={styles.meta}>{externalCommissionLabel(item)}</Text>
                   {!!item.rate_reason && <Text style={styles.meta}>{item.rate_reason}</Text>}
                   <Text style={styles.meta}>
                     {joinMeta(

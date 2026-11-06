@@ -8,10 +8,11 @@ import {
 
 /** Objaśnienia wierszy (wartości i nazwy — wspólne z aplikacją: SETTLEMENT_TOTAL_ROWS). */
 function rowHint(keys: (keyof SettlementTotals)[], totals: SettlementTotals): string | null {
-  if (keys.includes('external_commission_lines') && keys.includes('external_commission_auto')) {
-    return `Pozycje: ${formatPln(totals.external_commission_lines)} · naliczone przez podsumowanie: ${formatPln(totals.external_commission_auto)}`;
+  if (keys.includes('profit_before_external')) return 'Przychód netto − wykonawcy − koszty bezpośrednie − ekipa − narzuty.';
+  if (keys.includes('external_commission_auto')) {
+    return totals.external_commission_auto > 0 ? 'Stawka sprzedawcy × zysk netto; wypłata gotówką z zysku razem z podatkiem.' : null;
   }
-  if (keys.includes('partner_base')) return 'Przychód netto − wykonawcy zewnętrzni.';
+  if (keys.includes('profit_net')) return 'Od tej kwoty liczą się prowizje sprzedawców zewnętrznych i pracowników.';
   if (keys.includes('internal_commissions_cost')) return `Kwota dla pracowników: ${formatPln(totals.internal_commissions)}`;
   return null;
 }

@@ -52,7 +52,7 @@ const wizardSteps = [
   { id: 'services', label: 'Usługi', hint: 'Katalog MAVINCI i wybrane pozycje' },
   { id: 'summary', label: 'Podsumowanie', hint: 'Ceny, opis i zapis oferty' },
 ] as const;
-const FORECAST_NOTE = 'szacunek przed kosztami wykonawców zewnętrznych';
+const FORECAST_NOTE = 'szacunek od wartości oferty — prowizja liczy się od zysku po kosztach wydarzenia';
 const LEAVE_MESSAGE = 'Masz niezapisane zmiany w ofercie. Opuścić kreator bez zapisu?';
 
 export default function NewSellerOfferPage() {

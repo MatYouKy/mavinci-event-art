@@ -587,7 +587,7 @@ export const EVENT_STEPS_HELP: EventStepsHelpSection[] = [
       },
       {
         title: 'Zatwierdź podsumowanie',
-        how: 'Zakładka „Podsumowanie”: sprawdź przychody, koszty netto i prowizje (pracownik 5% / 10% od zysku, sprzedawca zewnętrzny od faktury netto minus wykonawcy zewnętrzni). „Zatwierdź” zamraża kwoty do wypłaty; „Zwróć do poprawy” z uwagą odsyła sprzedawcy. Zmiana po wypłacie tworzy dopłatę albo potrącenie.',
+        how: 'Zakładka „Podsumowanie”: sprawdź przychody, koszty netto i prowizje (pracownik 5% / 10% od zysku, sprzedawca zewnętrzny % od zysku netto po koszcie swojej prowizji). „Zatwierdź” zamraża kwoty do wypłaty; „Zwróć do poprawy” z uwagą odsyła sprzedawcy. Zmiana po wypłacie tworzy dopłatę albo potrącenie.',
       },
       {
         title: 'Eskalacje i pomijanie',

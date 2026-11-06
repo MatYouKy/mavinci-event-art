@@ -904,7 +904,7 @@ export default function EventCommissionsPanel({ eventId }: { eventId: string }) 
                 </button>
               </div>
               <p className="mt-3">{form.rate}% · {commissionPaymentLabels[form.paymentMethod]}</p>
-              <p className="mt-1 text-[#e5e4e2]/45">Kwotę policzy podsumowanie wydarzenia: przychód netto z faktur minus wykonawcy zewnętrzni.</p>
+              <p className="mt-1 text-[#e5e4e2]/45">Kwotę policzy podsumowanie wydarzenia: % od zysku netto (po kosztach i koszcie samej prowizji).</p>
               {form.organizationId && <p className="mt-1">{organizations.find((item) => item.id === form.organizationId)?.name}</p>}
               {offerCommission?.partnerId === selectedPartner.id && <p className="mt-2 text-[#e5e4e2]/40">Procent zgodny z zaakceptowaną ofertą sprzedawcy.</p>}
             </div>

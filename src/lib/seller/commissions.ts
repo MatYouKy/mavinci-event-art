@@ -48,4 +48,4 @@ export const sellerCommissionPaymentLabels: Record<string, string> = {
 export const sellerCommissionDate = (value: string | null | undefined) =>
   value ? value.slice(0, 10).split('-').reverse().join('.') : 'Data do ustalenia';
 
-export const SELLER_FORECAST_NOTE = 'szacunek przed kosztami wykonawców zewnętrznych';
+export const SELLER_FORECAST_NOTE = 'szacunek — ostateczna prowizja to % od zysku netto po rozliczeniu kosztów wydarzenia';

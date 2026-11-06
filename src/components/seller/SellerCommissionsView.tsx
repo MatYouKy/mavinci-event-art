@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CalendarDays, Loader2, RefreshCw } from 'lucide-react';
+import SellerEventSummary from '@/components/seller/SellerEventSummary';
 import type { CommissionSettlement, CommissionSettlementsResponse } from '@/lib/CRM/events/commissionSettlements';
 import { sellerMoney } from '@/lib/seller/portal';
 import { readSellerNotice, useSellerInbox } from '@/lib/seller/inbox';
@@ -26,6 +27,16 @@ export default function SellerCommissionsView() {
   const [error, setError] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
   const [brand, setBrand] = useState('');
+  // ?event=<id> (powiadomienie „Nowe wydarzenie w Twoich rozliczeniach”) otwiera podsumowanie tego wydarzenia.
+  const [focusEvent, setFocusEvent] = useState<string | null>(null);
+  const [openSummaries, setOpenSummaries] = useState<Set<string>>(() => new Set());
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get('event');
+    if (!id) return;
+    setFocusEvent(id);
+    setOpenSummaries(current => new Set(current).add(id));
+  }, []);
+  const [revision, setRevision] = useState(0);
 
   const load = useCallback(async () => {
     setLoading(true); setError('');
@@ -39,6 +50,16 @@ export default function SellerCommissionsView() {
     } finally { setLoading(false); }
   }, []);
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    if (!rows || !focusEvent) return;
+    document.getElementById(`seller-event-summary-${focusEvent}`)?.scrollIntoView({ block: 'start' });
+  }, [rows, focusEvent]);
+  const toggleSummary = (eventId: string, open: boolean) =>
+    setOpenSummaries(current => {
+      const next = new Set(current);
+      if (open) next.add(eventId); else next.delete(eventId);
+      return next;
+    });
   const inbox = useSellerInbox();
   useEffect(() => {
     if (!rows || document.visibilityState !== 'visible') return;
@@ -68,7 +89,7 @@ export default function SellerCommissionsView() {
   return <section aria-labelledby="seller-commissions-list" className="space-y-4 text-[#e5e4e2]">
     <div className="flex flex-wrap items-center justify-between gap-3">
       <h2 id="seller-commissions-list" className="text-base uppercase">Twoje rozliczenia</h2>
-      <button type="button" onClick={() => void load()} disabled={loading} className={button}><RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />Odśwież</button>
+      <button type="button" onClick={() => { void load(); setRevision(value => value + 1); }} disabled={loading} className={button}><RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />Odśwież</button>
     </div>
     {error && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-rose-300/10 p-4 text-sm text-rose-100"><p>{error} Kwoty nie są pokazywane jako zero.</p><button type="button" onClick={() => void load()} className={button}>Spróbuj ponownie</button></div>}
     {loading && !rows && <p role="status" className="flex items-center gap-2 py-8 text-sm text-white/55"><Loader2 className="h-4 w-4 animate-spin" />Wczytywanie rozliczeń…</p>}
@@ -83,8 +104,10 @@ export default function SellerCommissionsView() {
         {brands.length > 1 && <label className="ml-auto text-xs text-white/55"><span className="sr-only">Marka</span><select value={brand} onChange={(event) => setBrand(event.target.value)} className="min-h-10 rounded-lg bg-[#0f1119] px-3 text-sm"><option value="">Wszystkie marki</option>{brands.map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select></label>}
       </div>
       {!visible.length && <p className="rounded-xl bg-white/[0.03] px-5 py-10 text-center text-sm text-white/50">{rows.length ? 'Brak rozliczeń w tym widoku.' : 'Nie masz jeszcze naliczeń. Pojawią się po zaakceptowaniu wydarzeń z Twoich ofert.'}</p>}
-      <ul className="space-y-3">{visible.map((row) => {
+      <ul className="space-y-3">{visible.map((row, index) => {
         const status = sellerCommissionStatus(row);
+        // Podsumowanie raz na wydarzenie (przy pierwszym wpisie tego wydarzenia na liście).
+        const summaryEvent = row.event_id && visible.findIndex((other) => other.event_id === row.event_id) === index ? row.event_id : null;
         const basis = sellerCommissionBasis(row);
         const deduction = row.entry_kind === 'deduction';
         return <li key={row.id} className="rounded-xl bg-[#1c1f33] p-4 sm:p-5">
@@ -109,6 +132,10 @@ export default function SellerCommissionsView() {
               <span>{payment.payment_date ? sellerCommissionDate(payment.payment_date) : 'Data niepodana'}{payment.reference ? ` · ${payment.reference}` : ''}{payment.is_offset || payment.source === 'offset' ? ' · potrącenie' : ''}</span>
               <span className="text-emerald-200">{sellerMoney(Number(payment.amount))}</span>
             </li>)}</ul>
+          </details>}
+          {summaryEvent && <details id={`seller-event-summary-${summaryEvent}`} open={openSummaries.has(summaryEvent)} onToggle={(event) => toggleSummary(summaryEvent, (event.currentTarget as HTMLDetailsElement).open)} className="mt-3 scroll-mt-6 rounded-lg bg-white/[0.03] p-3">
+            <summary className="cursor-pointer text-sm text-[#d3bb73]">Podsumowanie wydarzenia — skąd ta kwota</summary>
+            {openSummaries.has(summaryEvent) && <div className="mt-3"><SellerEventSummary eventId={summaryEvent} revision={revision} /></div>}
           </details>}
         </li>;
       })}</ul>

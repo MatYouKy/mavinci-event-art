@@ -26,7 +26,7 @@ type OfferRow = {
   delivery?: SellerOfferDelivery;
 };
 const offerStage = (offer: OfferRow) => sellerOfferStage(offer, offer.delivery);
-const FORECAST_NOTE = 'Szacunek przed kosztami wykonawców zewnętrznych';
+const FORECAST_NOTE = 'Szacunek od wartości oferty — prowizja liczy się od zysku po kosztach wydarzenia';
 
 export default function SellerOffersPage() {
   const { context, loading: contextLoading } = useSellerPortalContext();
@@ -115,7 +115,7 @@ export default function SellerOffersPage() {
                 <div className="col-span-2 lg:col-span-1"><span className={`inline-block rounded-md px-2 py-1 text-[11px] ${sellerOfferToneClass[stage.tone]}`}>{stage.label}</span>{offer.partner_approval_status === 'required' && <p className="mt-1 text-[10px] text-amber-300">Cena wymaga zgody opiekuna</p>}</div>
                 <div><p className="text-[10px] uppercase text-[#e5e4e2]/40">Cena MAVINCI</p><p className="mt-1 text-sm">{sellerMoney(offer.partner_base_net)}</p></div>
                 <div><p className="text-[10px] uppercase text-[#e5e4e2]/40">Cena klienta</p><p className="mt-1 text-sm">{sellerMoney(offer.client_total_net)}</p></div>
-                {showEarnings && <div title={commission ? FORECAST_NOTE : undefined}><p className="text-[10px] uppercase text-[#e5e4e2]/40">{commission ? 'Prowizja · szacunek' : 'Marża hotelu'}</p><p className="mt-1 text-sm text-[#d3bb73]">{sellerMoney(offer.partner_earnings_amount)}</p>{commission && <p className="mt-0.5 text-[10px] leading-4 text-white/35">przed kosztami wykonawców zewn.</p>}</div>}
+                {showEarnings && <div title={commission ? FORECAST_NOTE : undefined}><p className="text-[10px] uppercase text-[#e5e4e2]/40">{commission ? 'Prowizja · szacunek' : 'Marża hotelu'}</p><p className="mt-1 text-sm text-[#d3bb73]">{sellerMoney(offer.partner_earnings_amount)}</p>{commission && <p className="mt-0.5 text-[10px] leading-4 text-white/35">przed kosztami wydarzenia</p>}</div>}
               </Link>;
             })}
             {filtered.length === 0 && !(error && !offers.length) && <p className="p-12 text-center text-sm text-[#e5e4e2]/45">{offers.length ? 'Brak ofert spełniających kryteria.' : 'Nie masz jeszcze ofert w przygotowaniu.'}</p>}

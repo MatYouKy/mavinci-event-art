@@ -1,4 +1,6 @@
 'use client';
+import { useState } from 'react';
+import { Pencil, Plus, Trash2 } from 'lucide-react';
 import {
   COMMISSION_ENTRY_KIND_LABELS,
   COMMISSION_PAYMENT_LABELS,
@@ -7,11 +9,17 @@ import {
   SALES_SHARE_SOURCE_LABELS,
   formatPercent,
   formatPln,
+  externalCommissionLabel,
   internalCommissionLabel,
   type EventSettlement,
   type SettlementCommissionRow,
+  type SettlementExternalCommission,
 } from '@/lib/events/settlement/eventSettlement';
-import { formatSettlementDate } from './settlementUi';
+import AddSettlementSellerDialog from './AddSettlementSellerDialog';
+import SellerRateDialog from './SellerRateDialog';
+import type { SettlementConfirmRequest } from './SettlementConfirmDialog';
+import type { SettlementMutate } from './useEventSettlement';
+import { accentButtonClass, formatSettlementDate, smallButtonClass } from './settlementUi';
 
 const STATUS_CHIP: Record<SettlementCommissionRow['status'], string> = {
   planned: 'bg-white/10 text-[#e5e4e2]/75',
@@ -29,17 +37,56 @@ function Amounts({ amount, companyCost }: { amount: number; companyCost: number 
   );
 }
 
-/** Prowizje z podsumowania: pracownicy (udział w sprzedaży), sprzedawcy zewnętrzni i zapisane wpisy prowizji. */
-export default function SettlementCommissionsCard({ settlement }: { settlement: EventSettlement }) {
+/**
+ * Prowizje z podsumowania: pracownicy (udział w sprzedaży), sprzedawcy zewnętrzni (dodanie, stawka dla wydarzenia,
+ * usunięcie dodanego ręcznie) i zapisane wpisy prowizji.
+ */
+export default function SettlementCommissionsCard({
+  eventId,
+  settlement,
+  busy,
+  mutate,
+  askConfirm,
+}: {
+  eventId: string;
+  settlement: EventSettlement;
+  busy: string | null;
+  mutate: SettlementMutate;
+  askConfirm: (request: SettlementConfirmRequest, run: (note: string, option: boolean) => Promise<boolean>) => void;
+}) {
   const { internal, external, commissions } = settlement;
+  const [adding, setAdding] = useState(false);
+  const [rateFor, setRateFor] = useState<SettlementExternalCommission | null>(null);
+  const canEdit = settlement.can_edit;
+
+  const askRemove = (item: SettlementExternalCommission) =>
+    askConfirm(
+      {
+        key: `seller-remove:${item.partner_id}`,
+        title: `Usunąć ${item.name} z podsumowania?`,
+        description: 'Prowizja tego sprzedawcy w wydarzeniu zostanie anulowana z powodem (historia zostaje). Możesz go dodać ponownie.',
+        confirmLabel: 'Usuń z podsumowania',
+        tone: 'danger',
+        note: { label: 'Powód', required: true, placeholder: 'np. sprzedawca nie brał udziału w sprzedaży' },
+      },
+      note =>
+        mutate(
+          'seller-remove',
+          'remove_event_settlement_seller',
+          { p_event_id: eventId, p_sales_partner_id: item.partner_id, p_reason: note },
+          'Sprzedawca usunięty z podsumowania.',
+        ),
+    );
+
   return (
     <section aria-labelledby="settlement-commissions-heading" className="rounded-xl bg-white/5 p-4 sm:p-5">
       <h3 id="settlement-commissions-heading" className="font-medium text-[#e5e4e2]">
         Prowizje
       </h3>
       <p className="mt-0.5 text-xs text-[#e5e4e2]/55">
-        Pracownik: 5% zysku netto, 10% gdy w dniu akceptacji oferty był opiekunem klienta. Sprzedawca zewnętrzny: stawka z kartoteki od
-        przychodu netto minus wykonawcy zewnętrzni.
+        Wszystkie prowizje liczymy od zysku netto — po kosztach i po koszcie prowizji sprzedawców zewnętrznych (gotówka z zysku razem
+        z podatkiem). Pracownik: 5%, 10% gdy w dniu akceptacji oferty był opiekunem klienta. Sprzedawca zewnętrzny: % od zysku z
+        jego karty albo ustalony dla tego wydarzenia.
       </p>
 
       <h4 className="mt-4 text-xs font-semibold uppercase tracking-wider text-[#d3bb73]">Sprzedawcy wydarzenia (pracownicy)</h4>
@@ -93,9 +140,20 @@ export default function SettlementCommissionsCard({ settlement }: { settlement: 
         </ul>
       )}
 
-      <h4 className="mt-5 text-xs font-semibold uppercase tracking-wider text-[#d3bb73]">Sprzedawcy zewnętrzni</h4>
+      <div className="mt-5 flex flex-wrap items-center justify-between gap-2">
+        <h4 className="text-xs font-semibold uppercase tracking-wider text-[#d3bb73]">Sprzedawcy zewnętrzni</h4>
+        {canEdit && (
+          <button type="button" disabled={Boolean(busy)} onClick={() => setAdding(true)} className={accentButtonClass}>
+            <Plus className="h-4 w-4" aria-hidden />
+            Dodaj sprzedawcę
+          </button>
+        )}
+      </div>
       {external.length === 0 ? (
-        <p className="mt-2 text-sm text-[#e5e4e2]/50">Brak sprzedawców zewnętrznych w tym wydarzeniu.</p>
+        <p className="mt-2 text-sm text-[#e5e4e2]/50">
+          Brak sprzedawców zewnętrznych w tym wydarzeniu.
+          {canEdit ? ' Hotel lub agencja, która sprzedała wydarzenie? Dodaj jej sprzedawcę — prowizja będzie kosztem w podsumowaniu.' : ''}
+        </p>
       ) : (
         <ul className="mt-2 space-y-2">
           {external.map(item => (
@@ -106,10 +164,11 @@ export default function SettlementCommissionsCard({ settlement }: { settlement: 
                   <p className="mt-0.5 text-xs text-[#e5e4e2]/55">{COMMISSION_SOURCE_LABELS[item.source] ?? item.source}</p>
                   {item.eligible ? (
                     <>
-                      <p className="mt-1 text-xs text-[#e5e4e2]/60">
-                        {formatPercent(item.rate)} od {formatPln(item.base)}
-                      </p>
+                      <p className="mt-1 text-xs text-[#e5e4e2]/60">{externalCommissionLabel(item)}</p>
                       {item.rate_reason && <p className="text-xs text-[#e5e4e2]/45">{item.rate_reason}</p>}
+                      {item.rate_override && item.card_rate != null && (
+                        <p className="text-[11px] text-[#e5e4e2]/40">Karta sprzedawcy: {formatPercent(item.card_rate)}</p>
+                      )}
                       {item.retained && <p className="text-[11px] text-[#e5e4e2]/45">Zmiana warunków w kartotece nie działa wstecz.</p>}
                       <p className="text-[11px] text-[#e5e4e2]/40">{COMMISSION_PAYMENT_LABELS[item.payment_method] ?? item.payment_method}</p>
                     </>
@@ -119,6 +178,20 @@ export default function SettlementCommissionsCard({ settlement }: { settlement: 
                 </div>
                 {item.eligible && <Amounts amount={item.amount} companyCost={item.company_cost} />}
               </div>
+              {canEdit && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  <button type="button" disabled={Boolean(busy)} onClick={() => setRateFor(item)} className={smallButtonClass}>
+                    <Pencil className="h-3.5 w-3.5" aria-hidden />
+                    {item.rate_override ? 'Zmień stawkę dla wydarzenia' : 'Inna stawka dla wydarzenia'}
+                  </button>
+                  {item.source === 'manual_partner' && (
+                    <button type="button" disabled={Boolean(busy)} onClick={() => askRemove(item)} className={smallButtonClass}>
+                      <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                      Usuń z podsumowania
+                    </button>
+                  )}
+                </div>
+              )}
             </li>
           ))}
         </ul>
@@ -183,6 +256,10 @@ export default function SettlementCommissionsCard({ settlement }: { settlement: 
           ))}
         </ul>
       )}
+      {canEdit && (
+        <AddSettlementSellerDialog open={adding} eventId={eventId} busy={busy} mutate={mutate} onClose={() => setAdding(false)} />
+      )}
+      <SellerRateDialog eventId={eventId} seller={canEdit ? rateFor : null} busy={busy} mutate={mutate} onClose={() => setRateFor(null)} />
     </section>
   );
 }

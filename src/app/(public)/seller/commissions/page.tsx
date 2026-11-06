@@ -25,15 +25,15 @@ export default function SellerCommissionsPage() {
     <div className="min-h-screen p-4 text-[#e5e4e2] md:p-6"><div className="mx-auto max-w-4xl space-y-5">
       <header className="flex items-start gap-3"><span className="rounded-xl bg-[#d3bb73]/10 p-3"><WalletCards className="h-5 w-5 text-[#d3bb73]" /></span>
         <div><h1 className="text-2xl font-light">Moje wynagrodzenie</h1>
-          <p className="mt-1 text-sm leading-6 text-white/50">Prowizje za wydarzenia z Twoich ofert: prognozy, kwoty do wypłaty i historia wypłat. Prognoza to {SELLER_FORECAST_NOTE}; ostateczną kwotę zobaczysz po rozliczeniu wydarzenia.</p></div>
+          <p className="mt-1 text-sm leading-6 text-white/50">Prowizje za wydarzenia z Twoich ofert i wydarzenia, przy których MAVINCI wskazało Cię jako sprzedawcę. Prowizja to Twój % od zysku netto wydarzenia — przy każdym wydarzeniu zobaczysz jego podsumowanie: przychody, koszty i wyliczenie. Prognoza to {SELLER_FORECAST_NOTE}.</p></div>
       </header>
       <SellerCommissionsView />
       {commissionBrands.length > 0 && <section className="rounded-xl bg-[#1c1f33] p-5">
         <h2 className="text-base font-medium">Twoje warunki</h2>
-        <p className="mt-1 text-xs text-white/45">Stawki ustalone indywidualnie z MAVINCI. Zmiana warunków nie zmienia wcześniejszych rozliczeń.</p>
+        <p className="mt-1 text-xs text-white/45">Stawki ustalone indywidualnie z MAVINCI — % od zysku netto wydarzenia. Zmiana warunków nie zmienia wcześniejszych rozliczeń.</p>
         <div className="mt-4 grid gap-3 sm:grid-cols-2">{commissionBrands.map((brand) => <div key={brand.my_company_id} className="flex items-start justify-between gap-4 rounded-xl bg-[#0f1119] p-4">
           <div><p className="text-sm">{brand.name}</p><p className="mt-1 text-xs text-white/45">{(brand.default_payment_method && sellerCommissionPaymentLabels[brand.default_payment_method]) || 'Sposób wypłaty do ustalenia'}</p></div>
-          <div className="text-right"><p className="text-[10px] uppercase tracking-wide text-white/40">Prowizja</p><p className="mt-1 text-xl text-[#d3bb73]">{Number(brand.default_commission_rate || 0)}%</p></div>
+          <div className="text-right"><p className="text-[10px] uppercase tracking-wide text-white/40">Prowizja</p><p className="mt-1 text-xl text-[#d3bb73]">{Number(brand.default_commission_rate || 0)}%</p><p className="text-[10px] text-white/40">od zysku</p></div>
         </div>)}</div>
       </section>}
     </div></div>

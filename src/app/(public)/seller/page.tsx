@@ -26,7 +26,7 @@ type PartnerOffer = {
 };
 
 const retryButton = 'inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-[#d3bb73]/10 px-4 py-2 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/20 disabled:opacity-40';
-const FORECAST_NOTE = 'szacunek przed kosztami wykonawców zewnętrznych';
+const FORECAST_NOTE = 'szacunek od wartości oferty — prowizja liczy się od zysku po kosztach wydarzenia';
 
 export default function SellerDashboard() {
   const { context, loading: contextLoading, error: contextError, reload: reloadContext } = useSellerPortalContext();
