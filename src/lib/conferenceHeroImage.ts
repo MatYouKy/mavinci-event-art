@@ -1,4 +1,6 @@
-const ORIGINAL_HERO = 'https://fuuljhhuhfojtmmfmskq.supabase.co/storage/v1/object/public/site-images/hero/1763637265757-ut62t.jpg';
+import { publicStorageUrl } from './supabase/projectUrl';
+
+const ORIGINAL_HERO = publicStorageUrl('site-images', 'hero/1763637265757-ut62t.jpg');
 
 /** Pre-sized versions of the current conference photo; new CMS uploads keep their own URL. */
 export function conferenceHeroImage(src: string) {

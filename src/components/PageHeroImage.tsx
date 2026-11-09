@@ -8,6 +8,7 @@ import { Save, X } from 'lucide-react';
 import { ThreeDotMenu } from './UI/ThreeDotMenu/ThreeDotMenu';
 import { useHeroImage } from './PageImage/hooks/useHeroImage';
 import { conferenceHeroImage } from '@/lib/conferenceHeroImage';
+import { publicStorageUrl } from '@/lib/supabase/projectUrl';
 
 export interface PageHeroImageProps {
   section: string;
@@ -21,7 +22,7 @@ export interface PageHeroImageProps {
 export function PageHeroImage({
   section,
   pageSlug,
-  defaultImage = 'https://fuuljhhuhfojtmmfmskq.supabase.co/storage/v1/object/public/site-images/hero/1760341625716-d0b65e.jpg',
+  defaultImage = publicStorageUrl('site-images', 'hero/1760341625716-d0b65e.jpg'),
   defaultOpacity = 0.2,
   className = '',
   children,

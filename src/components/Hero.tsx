@@ -11,6 +11,7 @@ import { IImage, IScreenMetadata, IUploadImage } from '../types/image';
 import { uploadImage } from '../lib/storage';
 import { supabase } from '../lib/supabase';
 import { useSnackbar } from '../contexts/SnackbarContext';
+import { publicStorageUrl } from '../lib/supabase/projectUrl';
 
 export default function Hero({ initialHeroImage = null }: { initialHeroImage?: SiteImage | null }) {
   const [heroImage, setHeroImage] = useState<SiteImage | null>(initialHeroImage);
@@ -134,7 +135,7 @@ export default function Hero({ initialHeroImage = null }: { initialHeroImage?: S
           <picture>
             {heroImage?.mobile_url && <source media="(max-width: 767px)" srcSet={heroImage.mobile_url} />}
             <img
-              src={heroImage?.desktop_url || 'https://fuuljhhuhfojtmmfmskq.supabase.co/storage/v1/object/public/site-images/hero/1760341625716-d0b65e.jpg'}
+              src={heroImage?.desktop_url || publicStorageUrl('site-images', 'hero/1760341625716-d0b65e.jpg')}
               alt={heroImage?.alt_text || 'Realizacja eventu MAVINCI Event & ART'}
               className="absolute inset-0 h-full w-full object-cover object-center"
               loading="eager" fetchPriority="high" width={1920} height={1080}

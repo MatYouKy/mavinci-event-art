@@ -6,6 +6,7 @@ import { getSiteImage } from '@/lib/siteImages';
 import type { SiteImage } from '@/lib/siteImages';
 import { uploadImage } from '@/lib/storage';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import { publicStorageUrl } from '@/lib/supabase/projectUrl';
 
 export interface HeroPosition {
   posX: number;
@@ -50,7 +51,7 @@ interface UseHeroImageReturn {
 export function useHeroImage(
   section: string,
   {
-    defaultImage = 'https://fuuljhhuhfojtmmfmskq.supabase.co/storage/v1/object/public/site-images/hero/1760341625716-d0b65e.jpg',
+    defaultImage = publicStorageUrl('site-images', 'hero/1760341625716-d0b65e.jpg'),
     defaultOpacity = 0.2,
     pageSlug,
   }: UseHeroImageOptions = {},

@@ -1,5 +1,6 @@
 import { pageDefaults, parseComposer, type BrochureDecorativePage, type BrochureLayout, type BrochurePageDesign } from './decorativePages';
 import type { BrochureIcon } from './brochureIcons';
+import { publicStorageUrl } from '../supabase/projectUrl';
 
 // Product IDs are stable; uploaded image filenames change when an image is replaced.
 export const HOTEL_TEMPLATE_PRODUCT_IDS = {
@@ -14,39 +15,39 @@ export const HOTEL_TEMPLATE_PRODUCT_IDS = {
 
 const publicImages = {
   "cover": {
-    "imagePath": "https://fuuljhhuhfojtmmfmskq.supabase.co/storage/v1/object/public/site-images/hero/1783012675339-nqz2s.jpg",
+    "imagePath": publicStorageUrl('site-images', 'hero/1783012675339-nqz2s.jpg'),
     "imageBucket": "offer-product-pages"
   },
   "conference": {
-    "imagePath": "https://fuuljhhuhfojtmmfmskq.supabase.co/storage/v1/object/public/site-images/portfolio/1760445471262-s56khr.jpg",
+    "imagePath": publicStorageUrl('site-images', 'portfolio/1760445471262-s56khr.jpg'),
     "imageBucket": "offer-product-pages"
   },
   "streaming": {
-    "imagePath": "https://fuuljhhuhfojtmmfmskq.supabase.co/storage/v1/object/public/site-images/hero/1763729448600-s1wnyp.jpg",
+    "imagePath": publicStorageUrl('site-images', 'hero/1763729448600-s1wnyp.jpg'),
     "imageBucket": "offer-product-pages"
   },
   "gala": {
-    "imagePath": "https://fuuljhhuhfojtmmfmskq.supabase.co/storage/v1/object/public/site-images/portfolio/1760444737392-8anr9.jpg",
+    "imagePath": publicStorageUrl('site-images', 'portfolio/1760444737392-8anr9.jpg'),
     "imageBucket": "offer-product-pages"
   },
   "dj": {
-    "imagePath": "https://fuuljhhuhfojtmmfmskq.supabase.co/storage/v1/object/public/site-images/hero/1767628847854-qs8kik.jpg",
+    "imagePath": publicStorageUrl('site-images', 'hero/1767628847854-qs8kik.jpg'),
     "imageBucket": "offer-product-pages"
   },
   "theme": {
-    "imagePath": "https://fuuljhhuhfojtmmfmskq.supabase.co/storage/v1/object/public/site-images/hero/1783086890397-t21x1.jpg",
+    "imagePath": publicStorageUrl('site-images', 'hero/1783086890397-t21x1.jpg'),
     "imageBucket": "offer-product-pages"
   },
   "casino": {
-    "imagePath": "https://fuuljhhuhfojtmmfmskq.supabase.co/storage/v1/object/public/site-images/hero/1763644219657-cqp939.jpg",
+    "imagePath": publicStorageUrl('site-images', 'hero/1763644219657-cqp939.jpg'),
     "imageBucket": "offer-product-pages"
   },
   "integration": {
-    "imagePath": "https://fuuljhhuhfojtmmfmskq.supabase.co/storage/v1/object/public/site-images/hero/1764184701335-zi74w9.jpg",
+    "imagePath": publicStorageUrl('site-images', 'hero/1764184701335-zi74w9.jpg'),
     "imageBucket": "offer-product-pages"
   },
   "quiz": {
-    "imagePath": "https://fuuljhhuhfojtmmfmskq.supabase.co/storage/v1/object/public/site-images/hero/1763727772725-aqg8pu.jpg",
+    "imagePath": publicStorageUrl('site-images', 'hero/1763727772725-aqg8pu.jpg'),
     "imageBucket": "offer-product-pages"
   },
 } as const;

@@ -1,5 +1,6 @@
 import { cookies } from 'next/headers';
 import { supabaseServer } from './supabaseServer';
+import { SUPABASE_PROJECT_REF } from './supabase/projectUrl';
 
 export async function getUserPermissions() {
   try {
@@ -7,8 +8,8 @@ export async function getUserPermissions() {
 
     // Szukaj różnych wariantów cookie Supabase
     const possibleCookieNames = [
-      'sb-fuuljhhuhfojtmmfmskq-auth-token',
-      'sb-fuuljhhuhfojtmmfmskq-auth-token-code-verifier',
+      `sb-${SUPABASE_PROJECT_REF}-auth-token`,
+      `sb-${SUPABASE_PROJECT_REF}-auth-token-code-verifier`,
       'supabase-auth-token'
     ];
 

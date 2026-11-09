@@ -19,8 +19,9 @@ const corsHeaders = {
 };
 
 const DEFAULT_COMPANY_ID = 'd4474f90-5e61-4ba4-928e-c25c0f0659b5';
+// Adres projektu z SUPABASE_URL (ustawia Supabase) — bez wpisanego na stałe identyfikatora projektu.
 const DEFAULT_EMAIL_LOGO_URL =
-  'https://fuuljhhuhfojtmmfmskq.supabase.co/storage/v1/object/public/company-logos/brandbook/d4474f90-5e61-4ba4-928e-c25c0f0659b5/1779367661905.png';
+  `${(Deno.env.get('SUPABASE_URL') ?? '').replace(/\/+$/, '')}/storage/v1/object/public/company-logos/brandbook/d4474f90-5e61-4ba4-928e-c25c0f0659b5/1779367661905.png`;
 
 const toPublicCompanyLogoUrl = (value: string, supabaseUrl: string): string => {
   if (/^https?:\/\//i.test(value) || value.startsWith('data:')) return value;
