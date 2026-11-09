@@ -9,6 +9,8 @@ import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { AddAbsenceModal } from '../modal/AddAbsenceModal';
 import { AbsenceRequestModal } from '../modal/AbsenceRequestModal';
+import EmployeeScheduleCalendar from '../EmployeeScheduleCalendar';
+import { parseDateParam } from '@/lib/employees/employeeSchedule';
 
 interface Absence {
   id: string;
@@ -27,9 +29,11 @@ interface Absence {
 interface EmployeeTimelineTabProps {
   employeeId: string;
   canEdit: boolean;
+  /** ?date=RRRR-MM-DD — dzień otwarty z osi czasu zespołu. */
+  initialDate?: string | null;
 }
 
-const EmployeeTimelineTab: React.FC<EmployeeTimelineTabProps> = ({ employeeId, canEdit }) => {
+const EmployeeTimelineTab: React.FC<EmployeeTimelineTabProps> = ({ employeeId, canEdit, initialDate }) => {
   const [absences, setAbsences] = useState<Absence[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -158,19 +162,16 @@ const EmployeeTimelineTab: React.FC<EmployeeTimelineTabProps> = ({ employeeId, c
     return days;
   };
 
-  if (loading) {
-    return (
-      <div className="flex h-64 items-center justify-center">
-        <div className="text-center">
-          <div className="mb-4 h-12 w-12 animate-spin rounded-full border-4 border-[#d3bb73] border-t-transparent" />
-          <p className="text-[#e5e4e2]/60">Ładowanie...</p>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
+      {/* Plan jak w Teams: własny profil — domyślnie tydzień, profil innej osoby — dzień (wybór zapamiętany osobno). */}
+      <EmployeeScheduleCalendar
+        employeeId={employeeId}
+        defaultView={isOwnProfile ? 'week' : 'day'}
+        initialDate={parseDateParam(initialDate)}
+        storageKey={isOwnProfile ? 'crm.employee-schedule.view.own' : 'crm.employee-schedule.view.other'}
+      />
+
       <div className="flex items-center justify-between rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
         <div>
           <h3 className="text-lg font-light text-[#e5e4e2]">Nieobecności</h3>
@@ -189,7 +190,11 @@ const EmployeeTimelineTab: React.FC<EmployeeTimelineTabProps> = ({ employeeId, c
         )}
       </div>
 
-      {absences.length === 0 ? (
+      {loading ? (
+        <div className="flex h-32 items-center justify-center">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#d3bb73] border-t-transparent" aria-label="Ładowanie nieobecności" />
+        </div>
+      ) : absences.length === 0 ? (
         <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-12 text-center">
           <Calendar className="mx-auto mb-4 h-12 w-12 text-[#e5e4e2]/20" />
           <p className="text-[#e5e4e2]/60">Brak zaplanowanych nieobecności</p>

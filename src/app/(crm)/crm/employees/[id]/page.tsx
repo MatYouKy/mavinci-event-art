@@ -95,7 +95,10 @@ export default function EmployeeDetailPage() {
   const [emailAccounts, setEmailAccounts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const profileSearchParams = useSearchParams();
-  const [activeTab, setActiveTab] = useState(profileSearchParams.get('tab') === 'permissions' ? 'permissions' : 'overview');
+  const [activeTab, setActiveTab] = useState<string>(() => {
+    const tab = profileSearchParams.get('tab');
+    return tab === 'permissions' || tab === 'timeline' ? tab : 'overview';
+  });
   const [isEditing, setIsEditing] = useState(false);
   const [editedData, setEditedData] = useState<Partial<IEmployee>>({});
   const [showAddDocumentModal, setShowAddDocumentModal] = useState(false);
@@ -816,7 +819,7 @@ export default function EmployeeDetailPage() {
       )}
 
       {activeTab === 'timeline' && canViewOwnProfile && (
-        <EmployeeTimelineTab employeeId={employeeId} canEdit={canEdit} />
+        <EmployeeTimelineTab employeeId={employeeId} canEdit={canEdit} initialDate={profileSearchParams.get('date')} />
       )}
 
       {showAddDocumentModal && (

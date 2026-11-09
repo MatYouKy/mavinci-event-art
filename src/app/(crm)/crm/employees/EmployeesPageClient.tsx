@@ -149,7 +149,8 @@ export default function EmployeesPageClient({
   };
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6" aria-busy={!!deletingEmployeeId}>
+    // Oś czasu zajmuje całą szerokość obok menu bocznego; pozostałe widoki — wyśrodkowane.
+    <div className={`${localViewMode === 'timeline' && isAdmin ? 'w-full' : 'mx-auto max-w-7xl'} space-y-6`} aria-busy={!!deletingEmployeeId}>
       <FullScreenLoader
         show={!!deletingEmployeeId}
         title="Usuwanie pracownika"
