@@ -90,7 +90,14 @@ log(`${DRY ? '[próba] ' : ''}Kontenery: ${srcBuckets.length}${ONLY ? ` (tylko $
 
 for (const bucket of srcBuckets) {
   if (ONLY && bucket.id !== ONLY) continue;
-  await ensureBucket(bucket, existing);
+  try {
+    await ensureBucket(bucket, existing);
+  } catch (error) {
+    // np. limit pliku w kontenerze wyższy niż „Upload file size limit” projektu (Settings → Storage)
+    log(`${bucket.id}: BŁĄD ${error.message} — kontener pominięty`);
+    totals.failed += 1;
+    continue;
+  }
   const files = await listAll(src, bucket.id);
   const present = existing.has(bucket.id) ? await listAll(dst, bucket.id) : [];
   const presentSize = new Map(present.map((file) => [file.path, file.size]));

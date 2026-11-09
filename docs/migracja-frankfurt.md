@@ -48,8 +48,8 @@ Stary projekt: Settings → Compute and Disk → **Small** (2 GB, ~$15/mies., ki
 
 ## Etap 2 — próba generalna (projekt tymczasowy)
 
-1. **Ty:** nowy projekt w organizacji Mavinci — nazwa „Mavinci CRM – próba”, region **Central EU (Frankfurt)**, rozmiar Medium. Hasło bazy zapisz w menedżerze haseł. Podaj Claude identyfikator projektu (20 znaków z adresu).
-2. **Claude:** włącza rozszerzenia jak w starym projekcie (`pg_cron`, `pg_net`, `btree_gist`) i sprawdza klucze API (patrz „Klucze API” niżej).
+1. **Ty:** nowy projekt w organizacji Mavinci — nazwa „Mavinci CRM – próba”, region **Central EU (Frankfurt)**, rozmiar Medium (Security: Data API i „expose new tables” zaznaczone, „automatic RLS” odznaczone). Hasło bazy zapisz w menedżerze haseł. Od razu: Settings → Compute and Disk → **dysk 32 GB** (przy 8 GB wgrywanie zapełnia dysk dziennikiem WAL i baza staje) i Settings → Storage → limit pliku **2 GB**. Podaj Claude identyfikator projektu (20 znaków z adresu).
+2. **Claude:** tylko `create extension` (pg_cron, pg_net, btree_gist) — bez dodatkowych `grant` na schemat `cron` (blokują skrypt instalacyjny Supabase przy wgrywaniu).
 3. **Ty**, w katalogu repo:
    ```bash
    cd scripts/migration/frankfurt
@@ -71,7 +71,7 @@ Stary projekt: Settings → Compute and Disk → **Small** (2 GB, ~$15/mies., ki
 
 - [ ] Projekt docelowy: „Mavinci - CRM (EU)”, Frankfurt, Medium. Identyfikator → Claude (rozszerzenia, klucze API).
 - [ ] Ustawienia logowania przepisane ze starego projektu (Authentication): Site URL i Redirect URLs, SMTP, szablony e-maili, ustawienia logowania e-mailem, limity, czas sesji (JWT 3600 s).
-- [ ] Settings → Storage: limit rozmiaru przesyłanego pliku jak w starym projekcie.
+- [ ] Settings → Storage → Upload file size limit: **2 GB** (kontener `mavinci-view` ma limit 2 GB na plik; domyślne 50 MB blokuje jego założenie).
 - [ ] `./06-functions.sh` na projekcie docelowym (sekrety + 40 funkcji).
 - [ ] Pliki wstępnie: `./05-storage.sh` (dzień wcześniej; w dniu przełączenia dosyła tylko zmiany).
 - [ ] Zespół wie o przerwie (19 osób; wieczór / weekend, ~1–2 h).
