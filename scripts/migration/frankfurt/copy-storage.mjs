@@ -66,12 +66,16 @@ async function pool(items, size, worker) {
   }));
 }
 
+const bucketSettings = (bucket) => ({
+  public: bucket.public,
+  fileSizeLimit: bucket.file_size_limit ?? null,
+  allowedMimeTypes: bucket.allowed_mime_types ?? null,
+});
+
+// Na czas kopiowania bez limitu pliku i typów: w starym projekcie są pliki sprzed ustawienia limitów
+// (np. broszury > limitu kontenera). Po skopiowaniu kontenera przywracamy ustawienia ze starego projektu.
 async function ensureBucket(bucket, existing) {
-  const settings = {
-    public: bucket.public,
-    fileSizeLimit: bucket.file_size_limit ?? null,
-    allowedMimeTypes: bucket.allowed_mime_types ?? null,
-  };
+  const settings = { public: bucket.public, fileSizeLimit: null, allowedMimeTypes: null };
   if (DRY) return;
   const { error } = existing.has(bucket.id)
     ? await dst.storage.updateBucket(bucket.id, settings)
@@ -140,6 +144,14 @@ for (const bucket of srcBuckets) {
       if (error) log(`  BŁĄD usuwania w ${bucket.id}: ${error.message}`);
     }
     stats.removed = extra.length;
+  }
+
+  if (!DRY) {
+    const { error } = await dst.storage.updateBucket(bucket.id, bucketSettings(bucket));
+    if (error) {
+      stats.failed += 1;
+      log(`  BŁĄD przywrócenia ustawień kontenera ${bucket.id}: ${error.message}`);
+    }
   }
 
   log(`${bucket.id}${bucket.public ? ' (publiczny)' : ''}: plików ${files.length}, ${DRY ? 'do skopiowania' : 'skopiowano'} ${stats.copied}, bez zmian ${stats.skipped}, błędy ${stats.failed}${PRUNE ? `, ${DRY ? 'do usunięcia' : 'usunięto'} ${stats.removed}` : ''}`);
