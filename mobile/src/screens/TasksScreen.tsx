@@ -880,7 +880,7 @@ export default function TasksScreen() {
       >
         <KeyboardAvoidingView
           style={styles.createModalContainer}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
           <View style={styles.createModalHeader}>
             <TouchableOpacity

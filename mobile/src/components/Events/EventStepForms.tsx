@@ -210,7 +210,7 @@ function ModalShell({
         if (!busy) onCancel();
       }}
     >
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.backdrop}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.backdrop}>
         <ScrollView
           keyboardShouldPersistTaps="handled"
           style={styles.sheet}

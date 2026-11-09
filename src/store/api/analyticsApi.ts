@@ -153,6 +153,38 @@ const getLocalDateKey = (value: string) => {
 const getCityFromNotes = (notes: string | null) =>
   notes?.match(/(?:^|\|\s*)City:\s*([^|]+)/i)?.[1]?.trim() || null;
 
+type ContactFormCountRow = { source_page: string | null; category?: string | null; created_at?: string | null };
+type ContactFormCityRow = { source_page: string | null; city_interest: string | null };
+
+/**
+ * Zgłoszenia z formularza do statystyk strony: liczby według strony, kategorii i miasta — bez danych osobowych
+ * (get_contact_form_analytics, migracja 20261109120000). Treść wiadomości widzi tylko osoba z dostępem do
+ * formularza kontaktowego. Przed migracją — dotychczasowy odczyt tabel.
+ */
+async function fetchContactFormCounts(startDate: Date, endDate: Date): Promise<{ messages: ContactFormCountRow[]; structured: ContactFormCityRow[] }> {
+  const { data, error } = await supabase.rpc('get_contact_form_analytics', {
+    p_from: startDate.toISOString(),
+    p_to: endDate.toISOString(),
+  });
+  if (!error && data && typeof data === 'object') {
+    const result = data as { messages?: ContactFormCountRow[]; structured?: ContactFormCityRow[] };
+    return { messages: Array.isArray(result.messages) ? result.messages : [], structured: Array.isArray(result.structured) ? result.structured : [] };
+  }
+  if (error && error.code !== 'PGRST202' && error.code !== '42883') {
+    if (error.code === '42501') return { messages: [], structured: [] };
+    throw error;
+  }
+  const [messagesResult, structuredResult] = await Promise.all([
+    supabase.from('contact_messages').select('source_page, category, created_at')
+      .gte('created_at', startDate.toISOString()).lte('created_at', endDate.toISOString()),
+    supabase.from('contact_form_submissions').select('source_page, city_interest')
+      .gte('created_at', startDate.toISOString()).lte('created_at', endDate.toISOString()),
+  ]);
+  if (messagesResult.error) throw messagesResult.error;
+  if (structuredResult.error) console.warn('Nie udało się pobrać danych miast formularzy:', structuredResult.error);
+  return { messages: (messagesResult.data || []) as ContactFormCountRow[], structured: (structuredResult.data || []) as ContactFormCityRow[] };
+}
+
 const mapContactMessage = (message: ContactMessageAnalyticsRow): ContactFormSubmission => ({
   id: message.id,
   name: message.name,
@@ -219,32 +251,15 @@ export const analyticsApi = createApi({
 
           if (analyticsError) throw analyticsError;
 
-          const { data: contactMessages, error: messagesError } = await supabase
-            .from('contact_messages')
-            .select('id, name, email, phone, message, source_page, category, status, notes, created_at')
-            .gte('created_at', startDate.toISOString())
-            .lte('created_at', endDate.toISOString());
-
-          if (messagesError) throw messagesError;
-
-          const forms = ((contactMessages || []) as ContactMessageAnalyticsRow[]).filter(
-            (message) => !normalizedPageUrl || isMessageFromPage(message.source_page, normalizedPageUrl),
+          // Liczby zgłoszeń bez danych osobowych. Tabela pomocnicza (structured) przechowuje miasto części
+          // formularzy — nie używamy jej do licznika, bo te same rekordy są kopiowane do contact_messages.
+          const formCounts = await fetchContactFormCounts(startDate, endDate);
+          const forms = formCounts.messages.filter(
+            (message) => !normalizedPageUrl || isMessageFromPage(message.source_page || '', normalizedPageUrl),
           );
 
-          // Tabela pomocnicza nadal przechowuje ustrukturyzowane miasto dla części formularzy.
-          // Nie używamy jej do licznika, bo te same rekordy są kopiowane do contact_messages.
-          const { data: structuredForms, error: structuredFormsError } = await supabase
-            .from('contact_form_submissions')
-            .select('source_page, city_interest')
-            .gte('created_at', startDate.toISOString())
-            .lte('created_at', endDate.toISOString());
-
-          if (structuredFormsError) {
-            console.warn('Nie udało się pobrać danych miast formularzy:', structuredFormsError);
-          }
-
-          const relevantStructuredForms = (structuredForms || []).filter(
-            (form) => !normalizedPageUrl || isMessageFromPage(form.source_page, normalizedPageUrl),
+          const relevantStructuredForms = formCounts.structured.filter(
+            (form) => !normalizedPageUrl || isMessageFromPage(form.source_page || '', normalizedPageUrl),
           );
 
           const uniqueVisitors = new Set(analytics?.map((a) => a.session_id)).size;
@@ -368,17 +383,23 @@ export const analyticsApi = createApi({
 
           if (analyticsError) throw analyticsError;
 
-          const { data: contactMessages, error: formsError } = await supabase
-            .from('contact_messages')
-            .select('id, name, email, phone, message, source_page, category, status, notes, created_at')
-            .gte('created_at', startDate.toISOString())
-            .lte('created_at', endDate.toISOString());
+          // Lista zgłoszeń (z danymi osobowymi) — tylko gdy pracownik ma dostęp do formularza (RLS); konwersja
+          // liczona z liczby zgłoszeń bez danych osobowych, żeby statystyka była ta sama dla każdego.
+          const [{ data: contactMessages, error: formsError }, formCounts] = await Promise.all([
+            supabase
+              .from('contact_messages')
+              .select('id, name, email, phone, message, source_page, category, status, notes, created_at')
+              .gte('created_at', startDate.toISOString())
+              .lte('created_at', endDate.toISOString()),
+            fetchContactFormCounts(startDate, endDate),
+          ]);
 
           if (formsError) throw formsError;
 
           const forms = ((contactMessages || []) as ContactMessageAnalyticsRow[])
             .filter((message) => isMessageFromPage(message.source_page, normalizedPageUrl))
             .map(mapContactMessage);
+          const formCount = formCounts.messages.filter((message) => isMessageFromPage(message.source_page || '', normalizedPageUrl)).length;
 
           const visits = analytics?.length || 0;
           const uniqueVisitors = new Set(analytics?.map((a) => a.session_id)).size;
@@ -391,7 +412,7 @@ export const analyticsApi = createApi({
             ? ((analytics || []).filter((a) => a.time_on_page < 10).length / visits) * 100
             : 0;
 
-          const conversionRate = uniqueVisitors > 0 ? (forms.length / uniqueVisitors) * 100 : 0;
+          const conversionRate = uniqueVisitors > 0 ? (formCount / uniqueVisitors) * 100 : 0;
 
           const referrerStats = (analytics || []).reduce((acc: any, curr) => {
             const ref = curr.referrer || 'Direct';

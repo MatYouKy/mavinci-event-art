@@ -67,7 +67,7 @@ export function EquipmentNoteModal({ request, onClose }: { request: EquipmentNot
 
   return (
     <Modal visible={!!request} transparent animationType="fade" onRequestClose={() => !busy && onClose()}>
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <Pressable style={styles.overlay} onPress={() => !busy && onClose()}>
           <Pressable style={styles.sheet} onPress={() => {}}>
             <Text style={styles.title}>{request?.title}</Text>

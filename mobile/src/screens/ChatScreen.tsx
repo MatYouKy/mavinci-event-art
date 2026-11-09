@@ -11,6 +11,7 @@ import {
   Platform,
   ActivityIndicator,
   Keyboard,
+  KeyboardAvoidingView,
   Image,
   Alert,
   Modal,
@@ -166,6 +167,10 @@ export default function ChatScreen({ conversation, onBack }: Props) {
     const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
     const showSub = Keyboard.addListener(showEvent, (e) => {
       setKeyboardHeight(e.endCoordinates?.height ?? 0);
+      // Pisząc, widzisz ostatnie wiadomości (chyba że przewinięto wyżej, do starszych).
+      if (!userHasScrolledRef.current) {
+        setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 60);
+      }
     });
     const hideSub = Keyboard.addListener(hideEvent, () => setKeyboardHeight(0));
     return () => {
@@ -1297,8 +1302,14 @@ export default function ChatScreen({ conversation, onBack }: Props) {
     );
   };
 
+  // Android (edge-to-edge, Expo 54): okno nie zmniejsza się pod klawiaturą (adjustResize nie działa), więc pole
+  // wpisywania i lista podnoszą się przez KeyboardAvoidingView. iOS — własne odsunięcie pola (niżej).
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'android' ? 'padding' : undefined}
+      enabled={Platform.OS === 'android'}
+    >
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={onBack} style={styles.backButton}>
@@ -1576,7 +1587,7 @@ export default function ChatScreen({ conversation, onBack }: Props) {
           )}
         </View>
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 

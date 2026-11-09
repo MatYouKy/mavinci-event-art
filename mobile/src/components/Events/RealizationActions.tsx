@@ -145,7 +145,7 @@ export default function RealizationActions({
         }}
       >
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={{
             flex: 1,
             backgroundColor: 'rgba(0,0,0,0.7)',
