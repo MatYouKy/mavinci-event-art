@@ -174,3 +174,7 @@ CRM i mobile korzystają z tych samych RPC (`docs/equipment-checklist.md`, migra
 ### Plan pracownika i oś czasu zespołu (2026-11-09)
 
 CRM: oś czasu zespołu na `/crm/employees` (cała szerokość, przeciąganie, Miesiąc / Tydzień / Dzień z podziałką dopasowaną do szerokości, spotkania i lejek obok wydarzeń i nieobecności) i plan dnia / tygodnia jak w Teams w profilu pracownika (zakładka „Oś czasu”; własny profil — tydzień, cudzy — dzień). Dane: RPC `get_employee_schedule` (migracja `20261109140000_employee_schedule.sql`, `docs/employee-schedule.md`). Mobile: nie dotyczy — ekran „Pracownicy” w aplikacji to katalog kontaktów bez osi czasu, a własne wydarzenia, spotkania i zadania pracownik ma w „Kalendarzu”; plan z tego samego RPC można dodać później. Kod zapisany; zgodnie z .build-policy.md bez builda, typechecka i lintowania.
+
+### Aktualizacje bez sklepu (2026-11-09, mobile 1.3.16)
+
+Aplikacja ma `expo-updates` (EAS Update, kanał `production` dla iOS i APK Androida, `runtimeVersion` 1.0.0) i pokazuje „Nowa wersja aplikacji” → „Uruchom ponownie” po pobraniu aktualizacji (`src/services/appUpdates.ts`). Zmiany samego kodu JS wydajemy `cd mobile && yarn deploy:ota`, zmiany natywne — nowym buildem z podniesionym `runtimeVersion` (`docs/mobile-ota.md`). Potrzebne m.in. do przełączenia aplikacji na nowy projekt Supabase bez czekania na sklep (`docs/migracja-frankfurt.md`). CRM: nie dotyczy — zmiana tylko w aplikacji. Kod zapisany; zgodnie z .build-policy.md bez builda, typechecka i lintowania. Build i publikacja po stronie użytkownika.

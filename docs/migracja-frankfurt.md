@@ -43,7 +43,8 @@ Stary projekt: Settings → Compute and Disk → **Small** (2 GB, ~$15/mies., ki
 ## Etap 1 — przygotowanie kodu
 
 - [x] Adres projektu z konfiguracji: nazwa ciasteczka sesji (`serverAuth.ts`), obrazy domyślne strony WWW, szablon broszury hotelowej, logo w e-mailach funkcji Edge.
-- [ ] **Aplikacja mobilna z OTA** (`expo-updates`): przygotowuje Claude; Ty budujesz (`cd mobile && yarn deploy`) i wydajesz w sklepach. Przełączenie robimy dopiero, gdy większość telefonów ma tę wersję.
+- [x] **Aplikacja mobilna z OTA** (`expo-updates`, wersja 1.3.16, `docs/mobile-ota.md`) — kod gotowy.
+- [ ] Build i wydanie 1.3.16 (`cd mobile && yarn deploy` — iOS, `yarn deploy:android` — APK) i test aktualizacji OTA. Przełączenie robimy dopiero, gdy telefony zespołu mają tę wersję.
 - [ ] Aplikacja na Maca: w dniu przełączenia nowy adres i klucz w `Configuration.json` + nowa kompilacja.
 
 ## Etap 2 — próba generalna (projekt tymczasowy)
@@ -97,7 +98,7 @@ Stary projekt: Settings → Compute and Disk → **Small** (2 GB, ~$15/mies., ki
 | 6 | Ty | `./08-cron-new.sh` — crony w nowym projekcie |
 | 7 | Ty | Serwer CRM: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` → `yarn deploy` (zmienne `NEXT_PUBLIC_` wchodzą w kompilację) |
 | 8 | Ty | `./10-switch-static-refs.sh`, nowy klucz w `desktop/mac/Resources/Configuration.json`, kompilacja aplikacji na Maca |
-| 9 | Ty | `mobile/.env` (adres i klucz) → publikacja aktualizacji OTA |
+| 9 | Ty | EAS → środowisko „production”: `EXPO_PUBLIC_SUPABASE_URL` i `EXPO_PUBLIC_SUPABASE_ANON_KEY` nowego projektu (oraz `mobile/.env` do pracy lokalnej) → `cd mobile && yarn deploy:ota --message "Nowy serwer (Frankfurt)"` (`docs/mobile-ota.md`) |
 | 10 | Ty | Przekaźnik SMTP: `SUPABASE_URL` i klucz → restart; integracje wysyłające do `receive-webhook` → nowy adres |
 | 11 | razem | Logowanie, wydarzenie, oferta, czat, powiadomienie push, e-mail z CRM, strona WWW; logi w nowym projekcie |
 

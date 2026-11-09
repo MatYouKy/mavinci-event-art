@@ -22,6 +22,7 @@ import { useRealtimePushNotifications } from './src/services/realtimeNotificatio
 import { useChatNotifications, setupChatNotificationFilter } from './src/services/chatNotifications';
 import { NotificationTargetData } from './src/navigation/navigationRef';
 import { removeSyncedCrmContactsIfEnabled, syncCrmContactsIfEnabled } from './src/services/crmContactSync';
+import { useOtaUpdates } from './src/services/appUpdates';
 import { canView } from './src/lib/permissions';
 import { colors } from './src/theme';
 
@@ -47,6 +48,7 @@ function AppContent() {
   const { employee } = useAuth();
   const employeeId = employee?.id;
 
+  useOtaUpdates();
   useRealtimePushNotifications(employeeId);
   useMeetingReminderCleanup(employeeId);
   useChatNotifications(employeeId);
