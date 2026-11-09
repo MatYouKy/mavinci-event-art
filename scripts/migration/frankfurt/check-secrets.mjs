@@ -33,5 +33,5 @@ for (const [name, value] of Object.entries(local)) {
   if (value && digest) state = digest === sha(value) ? 'TA SAMA ✓' : 'INNA';
   console.log(`${name.padEnd(34)}${mine.padEnd(16)}${state}`);
 }
-const missing = [...oldDigest.keys()].filter((name) => !(name in local) && !name.startsWith('SUPABASE_'));
+const missing = [...oldDigest.keys()].filter((name) => !(name in local) && !name.startsWith('SUPABASE_') && !name.startsWith('NEXT_PUBLIC_'));
 if (missing.length) console.log(`W starym projekcie są też: ${missing.join(', ')} — dopisz je do functions.env, jeśli są potrzebne.`);

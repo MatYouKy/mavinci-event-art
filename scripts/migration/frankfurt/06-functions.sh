@@ -4,7 +4,6 @@
 source "$(dirname "$0")/lib.sh"
 need_cmd supabase "brew install supabase/tap/supabase"
 need_cmd node "Node.js 18+"
-need_cmd openssl "openssl"
 ask NEW_REF "Identyfikator NOWEGO projektu"
 cd "$REPO"
 
@@ -20,24 +19,16 @@ log "Porównanie z sekretami starego projektu (po skrótach — wartości nie s�
 supabase secrets list --project-ref "$OLD_REF" -o json > "$W/secrets-old.json" 2>/dev/null || echo "[]" > "$W/secrets-old.json"
 node "$HERE/check-secrets.mjs" "$ENV_FILE" "$W/secrets-old.json"
 
-# Wysyłamy tylko wpisane wartości (puste = wartość domyślna w kodzie funkcji). Wewnętrzne sekrety funkcji,
-# jeśli puste — nowe, losowe (używają ich tylko funkcje między sobą).
+# Wysyłamy tylko wpisane wartości (puste = jak w starym projekcie: nieustawione, funkcje używają wartości domyślnych).
+# Wewnętrznych sekretów (INTERNAL_FUNCTION_SECRET itd.) w starym projekcie nie ma — m.in. send-crm-notification-push
+# przepuszcza wywołania wyzwalacza tylko dopóki INTERNAL_FUNCTION_SECRET jest pusty, więc ich nie generujemy.
 SET_FILE="$W/functions.set.env"
 : > "$SET_FILE"
 chmod 600 "$SET_FILE"
 while IFS= read -r line || [ -n "$line" ]; do
   case "$line" in ''|'#'*) continue;; esac
-  name="${line%%=*}"
-  value="${line#*=}"
-  if [ -z "$value" ]; then
-    case "$name" in
-      INTERNAL_FUNCTION_SECRET|SUBCONTRACTOR_REMINDER_SECRET|MARKETING_WORKER_SECRET)
-        value="$(openssl rand -hex 32)"
-        echo "$name: wygenerowany nowy";;
-      *) continue;;
-    esac
-  fi
-  printf '%s=%s\n' "$name" "$value" >> "$SET_FILE"
+  [ -n "${line#*=}" ] || continue
+  printf '%s\n' "$line" >> "$SET_FILE"
 done < "$ENV_FILE"
 
 log "Sekrety funkcji ($(wc -l < "$SET_FILE" | xargs))"
