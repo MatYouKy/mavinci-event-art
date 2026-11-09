@@ -32,7 +32,7 @@ while IFS= read -r line || [ -n "$line" ]; do
 done < "$ENV_FILE"
 
 log "Sekrety funkcji ($(wc -l < "$SET_FILE" | xargs))"
-supabase secrets set --env-file "$SET_FILE" --project-ref "$NEW_REF"
+supabase secrets set --env-file "$SET_FILE" --project-ref "$NEW_REF" --yes
 
 # Bez weryfikacji JWT (funkcje sprawdzają klucz / token / sekret same) — jak w produkcji 09.11.2026 i supabase/config.toml.
 # respond-subcontractor-assignment i process-subcontractor-reminders: config.toml ma verify_jwt = false (token z linku,
@@ -49,10 +49,10 @@ sync-ksef-daily translate-product translate-offer"
 FAILED=""
 for fn in $NO_VERIFY; do
   log "$fn (bez JWT)"
-  supabase functions deploy "$fn" --project-ref "$NEW_REF" --no-verify-jwt || FAILED="$FAILED $fn"
+  supabase functions deploy "$fn" --project-ref "$NEW_REF" --no-verify-jwt --yes || FAILED="$FAILED $fn"
 done
 for fn in $VERIFY; do
   log "$fn"
-  supabase functions deploy "$fn" --project-ref "$NEW_REF" || FAILED="$FAILED $fn"
+  supabase functions deploy "$fn" --project-ref "$NEW_REF" --yes || FAILED="$FAILED $fn"
 done
 if [ -z "$FAILED" ]; then echo "Wdrożono wszystkie funkcje."; else echo "Nie wdrożono:$FAILED"; exit 1; fi
