@@ -67,9 +67,17 @@ Stary projekt: Settings → Compute and Disk → **Small** (2 GB, ~$15/mies., ki
 5. **Ty:** CRM lokalnie (`.env.local` z adresem i kluczami projektu próbnego, `yarn dev`): logowanie, wydarzenie, oferta (PDF), plik w czacie, strona WWW (zdjęcia). Bez cronów — e-maile i przypomnienia nie wychodzą.
 6. Błędy w odtworzeniu → poprawka w skryptach i ponowna próba na nowym projekcie tymczasowym. Na koniec projekt próbny **usuwasz** (Settings → General → Delete project).
 
+### Wynik próby (09.11.2026, projekt `gsrxokzcgfagwvvbquaw`)
+
+- Czasy: zrzut 10 min, przygotowanie ~1 min, odtworzenie ~20 min, Vault + porównanie ~5 min, pliki ~25 min (3033 pliki, 4 GB — w dniu przełączenia tylko zmiany), funkcje ~5 min.
+- Zgodność: 490 tabel z tą samą liczbą wierszy, 1647 funkcji, 1589 reguł danych, 102 reguły plików, 64 tabele Realtime, 19 kont, 889 migracji, 31 kontenerów / 3033 pliki / 4031 MB.
+- Czas odpowiedzi z Polski (mediana): API danych 40 ms (Ohio 127 ms), logowanie 31 ms (Ohio 129 ms).
+- Poprawki z próby (już w skryptach): reguły NOT VALID dodawane po danych; dysk 32 GB i limit plików 2 GB przed wgraniem; limity kontenerów zdjęte na czas kopiowania; sekrety funkcji jak w starym projekcie (tylko `OPENAI_API_KEY` — nowy klucz, `SMTP_RELAY_URL` = `NEXT_SMTP_RELAY_URL` z `.env`, `SMTP_RELAY_SECRET` = `RELAY_SECRET` z `smtp-relay-worker/.env`, `FRONTEND_URL`); wewnętrznych sekretów nie ustawiamy (powiadomienia push z wyzwalacza działają tylko bez `INTERNAL_FUNCTION_SECRET`).
+- Test lokalny: `./11-local-env.sh` (tworzy `.env.local`), `yarn dev`, po teście `./11-local-env.sh --remove`.
+
 ## Etap 3 — przed dniem przełączenia
 
-- [ ] Projekt docelowy: „Mavinci - CRM (EU)”, Frankfurt, Medium. Identyfikator → Claude (rozszerzenia, klucze API).
+- [ ] Projekt docelowy: „Mavinci - CRM (EU)”, Frankfurt, Medium, od razu dysk 32 GB i limit plików 2 GB (jak w próbie). Identyfikator → Claude (rozszerzenia, klucze API).
 - [ ] Ustawienia logowania przepisane ze starego projektu (Authentication): Site URL i Redirect URLs, SMTP, szablony e-maili, ustawienia logowania e-mailem, limity, czas sesji (JWT 3600 s).
 - [ ] Settings → Storage → Upload file size limit: **2 GB** (kontener `mavinci-view` ma limit 2 GB na plik; domyślne 50 MB blokuje jego założenie).
 - [ ] `./06-functions.sh` na projekcie docelowym (sekrety + 40 funkcji).
