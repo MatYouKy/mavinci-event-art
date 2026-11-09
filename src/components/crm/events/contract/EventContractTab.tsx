@@ -27,6 +27,7 @@ import {
   ChevronDown,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
+import { pickPrintLogo, type BrandbookLogoRow } from '@/lib/brandbook/printLogo';
 import { eventMoney, fetchEventFinancials } from '@/lib/CRM/events/eventFinancials';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
@@ -526,6 +527,10 @@ type EventCompanyBranding = {
   company: any;
   logoUrl: string | null;
   logoUrls: string[];
+  /** „Logo do druku” z brandbooka (do czasu zaznaczenia — primary-black), jak na fakturach i kalkulacjach. */
+  printLogoUrl: string | null;
+  /** W brandbooku zaznaczono „Logo do druku” — ma pierwszeństwo przed logo wybranym w szablonie. */
+  printLogoExplicit: boolean;
 };
 
 const resolveCompanyLogoUrl = (value?: string | null) => {
@@ -539,19 +544,25 @@ const applyEventCompanyBranding = (
   branding: EventCompanyBranding | null,
 ) => {
   if (!branding) return settings;
-  const { company, logoUrl, logoUrls } = branding;
+  const { company, logoUrl, logoUrls, printLogoUrl, printLogoExplicit } = branding;
   const normalizedCompanyLogos = new Set(logoUrls.filter(Boolean));
   const savedHeaderLogo = resolveCompanyLogoUrl(settings.selectedLogo);
   const savedFooterLogo = resolveCompanyLogoUrl(settings.footerContent?.logoUrl);
-  const fallbackLogo = logoUrl || resolveCompanyLogoUrl(company.logo_url) || settings.selectedLogo;
+  // Umowa to wydruk: „Logo do druku” zaznaczone w brandbooku firmy wydarzenia ma pierwszeństwo przed logo
+  // wybranym w szablonie (szablon bywa wspólny dla kilku marek). Bez zaznaczenia: logo z szablonu, jeśli należy
+  // do firmy wydarzenia, potem primary-black, logo domyślne, logo firmy.
+  const forcedPrintLogo = printLogoExplicit && printLogoUrl ? printLogoUrl : null;
+  const fallbackLogo = printLogoUrl || logoUrl || resolveCompanyLogoUrl(company.logo_url) || settings.selectedLogo;
   const selectedLogo =
-    savedHeaderLogo && normalizedCompanyLogos.has(savedHeaderLogo)
+    forcedPrintLogo ||
+    (savedHeaderLogo && normalizedCompanyLogos.has(savedHeaderLogo)
       ? savedHeaderLogo
-      : fallbackLogo;
+      : fallbackLogo);
   const selectedFooterLogo =
-    savedFooterLogo && normalizedCompanyLogos.has(savedFooterLogo)
+    forcedPrintLogo ||
+    (savedFooterLogo && normalizedCompanyLogos.has(savedFooterLogo)
       ? savedFooterLogo
-      : selectedLogo;
+      : selectedLogo);
   const hasExplicitFooterTemplate = Boolean(settings.selectedFooterTemplateId);
 
   return {
@@ -560,7 +571,7 @@ const applyEventCompanyBranding = (
     footerContent: hasExplicitFooterTemplate
       ? {
           ...settings.footerContent,
-          logoUrl: settings.footerContent?.logoUrl || selectedLogo,
+          logoUrl: forcedPrintLogo || settings.footerContent?.logoUrl || selectedLogo,
         }
       : {
           companyName: company.legal_name || company.name || '',
@@ -1204,9 +1215,10 @@ export function EventContractTab({
           .maybeSingle();
 
         if (company) {
+          // „*”: kolumna use_for_print (logo do druku) — także przed migracją 20261104180000.
           const { data: companyLogos } = await supabase
             .from('company_brandbook_logos')
-            .select('url, is_default, order_index')
+            .select('*')
             .eq('company_id', company.id)
             .order('is_default', { ascending: false })
             .order('order_index', { ascending: true });
@@ -1225,10 +1237,13 @@ export function EventContractTab({
                 .filter(Boolean) as string[],
             ),
           );
+          const printLogo = pickPrintLogo((companyLogos || []) as BrandbookLogoRow[]);
           resolvedCompanyBranding = {
             company,
             logoUrl: resolveCompanyLogoUrl(logoPath),
             logoUrls: companyLogoUrls,
+            printLogoUrl: resolveCompanyLogoUrl(printLogo?.url ?? null),
+            printLogoExplicit: printLogo?.use_for_print === true,
           };
         }
       }
@@ -2329,12 +2344,25 @@ export function EventContractTab({
               parsedContract.flowContent || parsedContract.pages.join(''),
               varsMap,
             );
+            // Szkic (niewystawiony) dostaje aktualne logo do druku firmy wydarzenia także przy indywidualnych
+            // zmianach treści — logo to oprawa, nie treść. Umowa wystawiona / zablokowana zachowuje zapisane logo.
+            const draftBranding = existingContract.status === 'draft' && !existingContract.locked_at && parsedContract.settings
+              ? {
+                  ...parsedContract.settings,
+                  selectedLogo: templateSettings.selectedLogo,
+                  footerContent: parsedContract.settings.footerContent
+                    ? { ...parsedContract.settings.footerContent, logoUrl: templateSettings.footerContent?.logoUrl }
+                    : parsedContract.settings.footerContent,
+                }
+              : null;
+            const savedSettings = draftBranding || parsedContract.settings || templateSettings;
             const renderedContract = await renderContractDocument(
               savedFlow,
-              parsedContract.settings || templateSettings,
+              savedSettings,
             );
             contentToSet = JSON.stringify({
               ...parsedContract,
+              ...(draftBranding ? { settings: draftBranding } : {}),
               ...renderedContract,
             });
             setContractSourceOutdated(

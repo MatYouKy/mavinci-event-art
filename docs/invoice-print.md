@@ -28,7 +28,7 @@ PDF ──► GET  /bridge/invoices/invoice-pdf/preview?invoiceId=…   podgląd
 
 ## Logo do druku
 
-W brandbooku firmy (`/crm/settings/my-companies/<firma>/brandbook`) przy logo jest pole **„Logo do druku”** — jedno na firmę (`company_brandbook_logos.use_for_print`, RPC `set_company_print_logo`, migracja `20261104180000_brandbook_print_logo.sql`). Używają go faktury i kalkulacje (`src/lib/brandbook/printLogo.ts`). Dopóki nic nie jest zaznaczone — logo o nazwie lub wariancie `primary-black` (migracja zaznacza je automatycznie). Wydruk sprzętu wydarzenia nadal używa poziomego `logo-horizontal-black`.
+W brandbooku firmy (`/crm/settings/my-companies/<firma>/brandbook`) przy logo jest pole **„Logo do druku”** — jedno na firmę (`company_brandbook_logos.use_for_print`, RPC `set_company_print_logo`, migracja `20261104180000_brandbook_print_logo.sql`). Używają go faktury, kalkulacje i umowy wydarzeń (`src/lib/brandbook/printLogo.ts`). W umowie wydarzenia zaznaczone „Logo do druku” firmy wydarzenia ma pierwszeństwo przed logo wybranym w szablonie umowy (nagłówek i stopka); bez zaznaczenia — logo z szablonu, jeśli należy do tej firmy, potem primary-black. Umowy wystawione zachowują zapisane logo. Dopóki nic nie jest zaznaczone — logo o nazwie lub wariancie `primary-black` (migracja zaznacza je automatycznie). Wydruk sprzętu wydarzenia nadal używa poziomego `logo-horizontal-black`.
 
 ## Wizualizacja a faktura w KSeF
 

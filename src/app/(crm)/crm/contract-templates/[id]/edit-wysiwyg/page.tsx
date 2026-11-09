@@ -709,7 +709,7 @@ export default function EditTemplateWYSIWYGPage() {
 
       const { data: logos } = await supabase
         .from('company_brandbook_logos')
-        .select('url, label, variant, company_id')
+        .select('*')
         .order('order_index');
 
       const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -727,7 +727,7 @@ export default function EditTemplateWYSIWYGPage() {
           companyLogos.forEach((logo: any) => {
             result.push({
               url: toPublicUrl(logo.url),
-              label: logo.label || logo.variant || 'Logo',
+              label: `${logo.label || logo.variant || 'Logo'}${logo.use_for_print ? ' · do druku' : ''}`,
               companyName: company.name,
             });
           });
@@ -2109,6 +2109,7 @@ export default function EditTemplateWYSIWYGPage() {
               <select
                 value={selectedLogo}
                 onChange={(e) => setSelectedLogo(e.target.value)}
+                title="W umowie wydarzenia obowiązuje „Logo do druku” z brandbooka firmy wydarzenia. To logo działa, gdy firma nie ma zaznaczonego logo do druku."
                 className="max-w-[220px] rounded border border-[#d3bb73]/20 bg-[#0f1119] px-2 py-1 text-sm text-[#e5e4e2]"
               >
                 {brandLogos.length > 0 ? (
