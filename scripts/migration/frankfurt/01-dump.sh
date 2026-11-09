@@ -5,7 +5,7 @@ source "$(dirname "$0")/lib.sh"
 need_cmd supabase "brew install supabase/tap/supabase"
 need_cmd docker "Docker Desktop (Supabase CLI uruchamia pg_dump w kontenerze)"
 need_cmd psql "brew install postgresql@17"
-ask OLD_DB_URL "Adres bazy STAREGO projektu (Session pooler, z hasłem)" secret
+ask_db_url OLD_DB_URL STAREGO
 
 D="$W/dump-$(date +%Y%m%d-%H%M)"
 mkdir -p "$D"

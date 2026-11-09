@@ -4,7 +4,7 @@
 source "$(dirname "$0")/lib.sh"
 need_cmd psql "brew install postgresql@17"
 need_cmd openssl "openssl"
-ask NEW_DB_URL "Adres bazy NOWEGO projektu (Session pooler, z hasłem)" secret
+ask_db_url NEW_DB_URL NOWEGO
 ask NEW_REF "Identyfikator NOWEGO projektu"
 ask NEW_ANON_KEY "Klucz anon / publishable NOWEGO projektu" secret
 ask NEW_SERVICE_ROLE_KEY "Klucz service_role / secret NOWEGO projektu" secret

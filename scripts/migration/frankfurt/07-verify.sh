@@ -3,7 +3,7 @@
 source "$(dirname "$0")/lib.sh"
 need_cmd psql "brew install postgresql@17"
 D="$(latest_dump)"
-ask NEW_DB_URL "Adres bazy NOWEGO projektu (Session pooler, z hasłem)" secret
+ask_db_url NEW_DB_URL NOWEGO
 
 psql "$NEW_DB_URL" -X -q -At -F $'\t' -v ON_ERROR_STOP=1 -f "$HERE/sql/counts.sql" > "$D/counts-new.tsv"
 log "Tabele z inną liczbą wierszy (pusto = wszystko zgodne)"

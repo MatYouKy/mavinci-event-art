@@ -3,7 +3,7 @@
 # Data API włączasz ręcznie w panelu.
 source "$(dirname "$0")/lib.sh"
 need_cmd psql "brew install postgresql@17"
-ask OLD_DB_URL "Adres bazy STAREGO projektu (Session pooler, z hasłem)" secret
+ask_db_url OLD_DB_URL STAREGO
 [ -s "$W/cron-frozen-names.txt" ] || { echo "Brak listy $W/cron-frozen-names.txt"; exit 1; }
 NAMES="{$(paste -sd, "$W/cron-frozen-names.txt")}"
 export NAMES

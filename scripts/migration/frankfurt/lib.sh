@@ -28,6 +28,29 @@ ask() {
   fi
 }
 
+# ask_db_url ZMIENNA STAREGO|NOWEGO — adres bazy z panelu (Connect → Direct → Session pooler) i osobno hasło.
+# Hasło wstawia skrypt (zakodowane, więc znaki specjalne nie psują adresu); nigdzie go nie zapisuje.
+ask_db_url() {
+  local var="$1" which="$2" url="" pass=""
+  [ -z "${!var:-}" ] || return 0
+  echo "Adres bazy $which projektu: panel Supabase → projekt → Connect → Direct → Method: Session pooler."
+  read -r -p "Wklej adres (zaczyna się od postgresql://, może zawierać [YOUR-PASSWORD]): " url
+  case "$url" in
+    postgresql://*|postgres://*) ;;
+    *) echo "To nie jest adres bazy — powinien zaczynać się od postgresql://. Uruchom skrypt ponownie."; exit 1;;
+  esac
+  case "$url" in
+    *"[YOUR-PASSWORD]"*)
+      read -r -s -p "Hasło do bazy $which projektu (nie będzie widoczne): " pass
+      echo
+      [ -n "$pass" ] || { echo "Brak hasła."; exit 1; }
+      pass="$(PASS="$pass" perl -e 'print join "", map { /[A-Za-z0-9._~-]/ ? $_ : sprintf("%%%02X", ord) } split //, $ENV{PASS}')"
+      url="${url/\[YOUR-PASSWORD\]/$pass}"
+      ;;
+  esac
+  export "$var=$url"
+}
+
 need_cmd() {
   command -v "$1" >/dev/null 2>&1 || { echo "Brak programu „$1” — zainstaluj: $2"; exit 1; }
 }

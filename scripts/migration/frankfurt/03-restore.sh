@@ -4,7 +4,7 @@ source "$(dirname "$0")/lib.sh"
 need_cmd psql "brew install postgresql@17"
 D="$(latest_dump)"
 [ -f "$D/schema.prepared.sql" ] || { echo "Najpierw 02-prepare.sh"; exit 1; }
-ask NEW_DB_URL "Adres bazy NOWEGO projektu (Session pooler, z hasłem)" secret
+ask_db_url NEW_DB_URL NOWEGO
 
 log "Role, schemat i dane ($(du -sh "$D/data.prepared.sql" | cut -f1) danych)"
 time psql --single-transaction --variable ON_ERROR_STOP=1 \

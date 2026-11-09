@@ -34,7 +34,7 @@ supabase login                                      # wdrażanie funkcji i sekre
 ```
 Docker Desktop musi być uruchomiony (`supabase db dump` używa pg_dump w kontenerze). Node.js jest w repo (kopiowanie plików).
 
-Adresy baz bierzesz z panelu: projekt → **Connect** → **Session pooler** (działa bez IPv6), z hasłem bazy. Nie znasz hasła starego projektu → Settings → Database → Reset database password (CRM, aplikacje i funkcje używają kluczy API, nie hasła; jeśli coś łączy się hasłem — np. `supabase link` — trzeba je tam zmienić).
+Adresy baz bierzesz z panelu: projekt → **Connect** → **Direct** → Method: **Session pooler** (działa bez IPv6). Skrypt pyta osobno o adres (z `[YOUR-PASSWORD]`) i o hasło — wstawia je sam, z kodowaniem znaków specjalnych. Nie znasz hasła starego projektu → Settings → Database → Reset database password (CRM, aplikacje i funkcje używają kluczy API, nie hasła; jeśli coś łączy się hasłem — np. `supabase link` — trzeba je tam zmienić).
 
 ## Etap 0 — ulga od razu (opcjonalnie)
 

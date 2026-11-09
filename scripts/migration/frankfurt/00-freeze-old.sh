@@ -3,7 +3,7 @@
 # Data API wyłączasz ręcznie w panelu (docs/migracja-frankfurt.md). Cofnięcie: 99-unfreeze-old.sh.
 source "$(dirname "$0")/lib.sh"
 need_cmd psql "brew install postgresql@17"
-ask OLD_DB_URL "Adres bazy STAREGO projektu (Session pooler, z hasłem)" secret
+ask_db_url OLD_DB_URL STAREGO
 
 log "Zapisuję działające crony do $W/cron-frozen.sql"
 psql "$OLD_DB_URL" -X -q -At -v ON_ERROR_STOP=1 -f "$HERE/sql/extract-cron.sql" > "$W/cron-frozen.sql"
