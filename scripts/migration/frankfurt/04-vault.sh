@@ -8,6 +8,8 @@ ask_db_url NEW_DB_URL NOWEGO
 ask NEW_REF "Identyfikator NOWEGO projektu"
 ask NEW_ANON_KEY "Klucz anon / publishable NOWEGO projektu" secret
 ask NEW_SERVICE_ROLE_KEY "Klucz service_role / secret NOWEGO projektu" secret
+check_key NEW_ANON_KEY
+check_key NEW_SERVICE_ROLE_KEY
 export NEW_PROJECT_URL="https://${NEW_REF}.supabase.co"
 WORKER_SECRET="$(openssl rand -hex 32)"
 export WORKER_SECRET

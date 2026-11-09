@@ -10,6 +10,8 @@ need_cmd node "Node.js 18+"
 ask OLD_SERVICE_ROLE_KEY "Klucz service_role STAREGO projektu" secret
 ask NEW_REF "Identyfikator NOWEGO projektu"
 ask NEW_SERVICE_ROLE_KEY "Klucz service_role / secret NOWEGO projektu" secret
+check_key OLD_SERVICE_ROLE_KEY
+check_key NEW_SERVICE_ROLE_KEY
 cd "$REPO"
 OLD_URL="https://${OLD_REF}.supabase.co" NEW_URL="https://${NEW_REF}.supabase.co" LOG_DIR="$W" \
   node "$HERE/copy-storage.mjs" "$@"

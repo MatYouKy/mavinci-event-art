@@ -13,6 +13,18 @@ chmod 700 "$W"
 
 log() { printf '\n== %s\n' "$*"; }
 
+# Usuwa z wpisanego tekstu sekwencje klawiszy (strzałki w ukrytym polu zapisują się jako ESC[D itp.) i znaki CR.
+clean_input() { printf '%s' "$1" | LC_ALL=C sed $'s/\x1b\\[[0-9;]*[A-Za-z]//g' | LC_ALL=C tr -d '\r'; }
+
+# Klucz API Supabase: JWT (eyJ…) albo sb_publishable_… / sb_secret_…
+check_key() {
+  local var="$1"
+  if ! printf '%s' "${!var}" | grep -Eq '^(eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+|sb_(publishable|secret)_[A-Za-z0-9_-]+)$'; then
+    echo "$var nie wygląda na klucz Supabase (powinien zaczynać się od eyJ albo sb_). Skopiuj go ponownie przyciskiem kopiowania i uruchom skrypt jeszcze raz."
+    exit 1
+  fi
+}
+
 # ask ZMIENNA "opis" [secret] — pyta, jeśli zmienna nie jest ustawiona.
 ask() {
   local var="$1" prompt="$2" secret="${3:-}" val=""
@@ -23,6 +35,7 @@ ask() {
     else
       read -r -p "$prompt: " val
     fi
+    val="$(clean_input "$val" | LC_ALL=C tr -d '[:space:]')"
     [ -n "$val" ] || { echo "Brak wartości: $var"; exit 1; }
     export "$var=$val"
   fi
@@ -35,6 +48,7 @@ ask_db_url() {
   [ -z "${!var:-}" ] || return 0
   echo "Adres bazy $which projektu: panel Supabase → projekt → Connect → Direct → Method: Session pooler."
   read -r -p "Wklej adres (zaczyna się od postgresql://, może zawierać [YOUR-PASSWORD]): " url
+  url="$(clean_input "$url" | LC_ALL=C tr -d '[:space:]')"
   case "$url" in
     postgresql://*|postgres://*) ;;
     *) echo "To nie jest adres bazy — powinien zaczynać się od postgresql://. Uruchom skrypt ponownie."; exit 1;;
@@ -43,6 +57,7 @@ ask_db_url() {
     *"[YOUR-PASSWORD]"*)
       read -r -s -p "Hasło do bazy $which projektu (nie będzie widoczne): " pass
       echo
+      pass="$(clean_input "$pass")"
       [ -n "$pass" ] || { echo "Brak hasła."; exit 1; }
       pass="$(PASS="$pass" perl -e 'print join "", map { /[A-Za-z0-9._~-]/ ? $_ : sprintf("%%%02X", ord) } split //, $ENV{PASS}')"
       url="${url/\[YOUR-PASSWORD\]/$pass}"
