@@ -636,6 +636,8 @@ export function EventContractTab({
   const [savingDeposit, setSavingDeposit] = useState(false);
   const [depositDirty, setDepositDirty] = useState(false);
   const [editingDeposit, setEditingDeposit] = useState(false);
+  // Ołówek przy nazwie szablonu: wybór innego szablonu (potwierdzenie w oknie „Zmień szablon umowy”).
+  const [editingTemplate, setEditingTemplate] = useState(false);
   const readDepositNumber = (value: string) => Number(value.replace(/\s/g, '').replace(',', '.').replace(/zł|%/g, ''));
   useEffect(() => {
     setDepositPercentInput(String(readDepositNumber(variables.deposit_percent || '0')));
@@ -3444,18 +3446,68 @@ export function EventContractTab({
               {selectedTemplateName && (
                 <p className="mt-2 text-xs text-[#e5e4e2]/55">
                   Szablon umowy:{' '}
-                  {canEditContractTemplate && selectedTemplateId ? (
-                    <Link
-                      href={`/crm/contract-templates/${selectedTemplateId}/edit-wysiwyg`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      title="Edytuj szablon umowy w edytorze WYSIWYG (nowa karta)"
-                      className="rounded-sm font-medium text-[#d3bb73] underline decoration-[#d3bb73]/30 underline-offset-4 transition-colors hover:decoration-[#d3bb73] focus-visible:bg-[#d3bb73]/10 focus-visible:outline-none"
-                    >
-                      {selectedTemplateName}
-                    </Link>
+                  {editingTemplate && canChangeTemplate && contractStatus !== 'cancelled' && availableTemplates.length > 0 ? (
+                    <span className="inline-flex flex-wrap items-center gap-1 align-middle">
+                      <select
+                        autoFocus
+                        aria-label="Wybierz szablon umowy"
+                        value={selectedTemplateId || ''}
+                        disabled={changingTemplate || isGeneratingPdf || editMode}
+                        onChange={(e) => {
+                          if (e.target.value && e.target.value !== selectedTemplateId) setPendingTemplateId(e.target.value);
+                          setEditingTemplate(false);
+                        }}
+                        onKeyDown={(e) => { if (e.key === 'Escape') setEditingTemplate(false); }}
+                        className="max-w-[min(22rem,70vw)] cursor-pointer rounded bg-black/20 px-2 py-1 text-xs text-[#e5e4e2] focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#d3bb73]/50"
+                      >
+                        {availableTemplates.map((template) => (
+                          <option key={template.id} value={template.id} className="bg-[#351020] text-[#e5e4e2]">
+                            {template.name}
+                          </option>
+                        ))}
+                      </select>
+                      <button type="button" title="Anuluj zmianę szablonu" aria-label="Anuluj zmianę szablonu" onClick={() => setEditingTemplate(false)} className="rounded p-1 hover:bg-white/5"><X className="h-4 w-4" /></button>
+                    </span>
                   ) : (
-                    <span className="font-medium text-[#d3bb73]">{selectedTemplateName}</span>
+                    <>
+                      {canEditContractTemplate && selectedTemplateId ? (
+                        <Link
+                          href={`/crm/contract-templates/${selectedTemplateId}/edit-wysiwyg`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title="Edytuj szablon umowy w edytorze WYSIWYG (nowa karta)"
+                          className="rounded-sm font-medium text-[#d3bb73] underline decoration-[#d3bb73]/30 underline-offset-4 transition-colors hover:decoration-[#d3bb73] focus-visible:bg-[#d3bb73]/10 focus-visible:outline-none"
+                        >
+                          {selectedTemplateName}
+                        </Link>
+                      ) : (
+                        <span className="font-medium text-[#d3bb73]">{selectedTemplateName}</span>
+                      )}
+                      {canChangeTemplate && contractStatus !== 'cancelled' && availableTemplates.length > 1 && (
+                        <button
+                          type="button"
+                          title="Zmień szablon umowy"
+                          aria-label="Zmień szablon umowy"
+                          disabled={changingTemplate || isGeneratingPdf || editMode}
+                          onClick={() => setEditingTemplate(true)}
+                          className="ml-1 rounded p-1 align-middle text-[#d3bb73] hover:bg-white/5 disabled:opacity-50"
+                        >
+                          {changingTemplate ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <Pencil className="h-3.5 w-3.5" />}
+                        </button>
+                      )}
+                      {canEditContractTemplate && selectedTemplateId && (
+                        <Link
+                          href={`/crm/contract-templates/${selectedTemplateId}/edit-wysiwyg`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title="Edytuj treść szablonu (nowa karta)"
+                          aria-label="Edytuj treść szablonu (nowa karta)"
+                          className="inline-flex rounded p-1 align-middle text-[#d3bb73]/70 hover:bg-white/5 hover:text-[#d3bb73]"
+                        >
+                          <ExternalLink className="h-3.5 w-3.5" />
+                        </Link>
+                      )}
+                    </>
                   )}
                   {variables.deposit_percent && (
                     <span className="ml-3 inline-flex flex-wrap items-center gap-2 align-middle text-[#e5e4e2]/70">
