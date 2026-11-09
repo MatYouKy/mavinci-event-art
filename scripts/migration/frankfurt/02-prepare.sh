@@ -15,6 +15,17 @@ perl -pe 's/^(GRANT "?postgres"? TO "?cli_login_postgres"?.*)$/-- $1/' "$D/roles
 # Publikację supabase_realtime ma już nowy projekt — tabele dodaje platform.sql (bez konfliktu).
 perl -pi -e 's/^(ALTER .* OWNER TO "?supabase_admin"?;)$/-- $1/; s/^((CREATE|ALTER) PUBLICATION "?supabase_realtime"?.*)$/-- $1/' "$D/schema.prepared.sql"
 
+# Reguły dodane w starej bazie z NOT VALID (nie sprawdzają starych wierszy): przy wgrywaniu baza sprawdziłaby je
+# dla każdego wiersza. Przenosimy je za dane — post_data.prepared.sql dodaje je znów jako NOT VALID.
+POST="$D/post_data.prepared.sql" perl -0777 -i -pe '
+  my @moved;
+  s/^(ALTER TABLE (?:ONLY )?[^\n]+\n[ \t]+ADD CONSTRAINT [^\n]+ NOT VALID;\n)/push @moved, $1; ""/gme;
+  open(my $fh, ">", $ENV{POST}) or die "post_data: $!";
+  print $fh "-- Reguły NOT VALID ze starej bazy — po danych, bez sprawdzania istniejących wierszy (jak w starej bazie)\n", @moved;
+  close $fh;
+' "$D/schema.prepared.sql"
+echo "Reguły NOT VALID przeniesione za dane: $(grep -c 'NOT VALID;' "$D/post_data.prepared.sql" || true) (stan 09.11.2026: 7)"
+
 log "Kontrola: stary adres w przygotowanych plikach (powinno być 0)"
 for f in "$D"/*.prepared.sql; do printf '%6s  %s\n' "$(grep -c "$OLD_REF" "$f" || true)" "$(basename "$f")"; done
 echo "$NEW_REF" > "$D/new-ref.txt"
