@@ -1,0 +1,251 @@
+/*
+ * Motywy CRM (Ustawienia → Ogólne → Wygląd): burgund (domyślny), granat, ciemny (szary jak w macOS)
+ * i jasny (jak jasny tryb macOS). Wybór pracownika: employees.crm_theme → <html data-crm-theme>.
+ *
+ * Komponenty mają kolory wpisane w klasach (granatowe i burgundowe wartości). index.css mapuje je na
+ * zmienne --brand-burgundy-* i --crm-*; motyw zmienia tylko te zmienne. Jasny motyw odwraca ciemną
+ * paletę filtrem (invert + hue-rotate) — zdjęcia, filmy, mapy, podglądy PDF i dokumenty A4 (białe
+ * tło) są odwracane z powrotem, więc wyglądają jak w oryginale.
+ */
+
+/* ---------------------------------------------------------------- granat */
+html[data-crm-theme='navy'],
+html[data-crm-theme='navy'] body.brand-theme--crm {
+  background-color: #0f1119;
+}
+html[data-crm-theme='navy'] body.brand-theme--crm {
+  --brand-burgundy-950: #0f1119;
+  --brand-burgundy-900: #13162a;
+  --brand-burgundy-850: #171a2c;
+  --brand-burgundy-800: #1c1f33;
+  --brand-burgundy-750: #252842;
+  --brand-burgundy-700: #2c3766;
+  --brand-burgundy-600: #36447d;
+  --brand-burgundy-500: #44579c;
+  --crm-body-background:
+    radial-gradient(circle at 80% -18%, rgba(68, 87, 156, 0.18), transparent 38rem),
+    linear-gradient(145deg, #11142a 0%, #0f1119 58%, #13162a 100%);
+  --crm-hover-950: #1d2136;
+  --crm-hover-800: #262a45;
+  --crm-hover-750: #30355a;
+  --crm-modal-backdrop: rgba(5, 6, 12, 0.78);
+  --crm-modal-surface: linear-gradient(155deg, rgba(31, 35, 59, 0.98), rgba(20, 23, 40, 0.99));
+  --crm-modal-shadow: rgba(0, 0, 0, 0.6);
+  --crm-modal-bar: rgba(19, 22, 42, 0.94);
+  --crm-modal-card: #232744;
+  --crm-modal-field: #262a47;
+  --crm-tab-active-bg: linear-gradient(180deg, rgba(68, 87, 156, 0.55), rgba(37, 40, 66, 0.66));
+  --crm-tab-hover-bg: rgba(68, 87, 156, 0.3);
+  --crm-scroll-track: rgba(28, 31, 51, 0.6);
+  --crm-event-surface: #232744;
+  --crm-event-settled: #1a1d2e;
+  --crm-event-cancelled: #24252c;
+}
+
+/* ---------------------------------------------------------------- ciemny (macOS) */
+html[data-crm-theme='dark'],
+html[data-crm-theme='dark'] body.brand-theme--crm {
+  background-color: #1e1e1e;
+}
+html[data-crm-theme='dark'] body.brand-theme--crm {
+  --brand-burgundy-950: #1e1e1e;
+  --brand-burgundy-900: #232323;
+  --brand-burgundy-850: #282828;
+  --brand-burgundy-800: #2c2c2e;
+  --brand-burgundy-750: #3a3a3c;
+  --brand-burgundy-700: #48484a;
+  --brand-burgundy-600: #545458;
+  --brand-burgundy-500: #636366;
+  --crm-body-background: linear-gradient(145deg, #202020 0%, #1e1e1e 60%, #1b1b1b 100%);
+  --crm-hover-950: #2f2f31;
+  --crm-hover-800: #3a3a3c;
+  --crm-hover-750: #48484a;
+  --crm-modal-backdrop: rgba(0, 0, 0, 0.6);
+  --crm-modal-surface: linear-gradient(155deg, rgba(50, 50, 52, 0.98), rgba(40, 40, 42, 0.99));
+  --crm-modal-shadow: rgba(0, 0, 0, 0.55);
+  --crm-modal-bar: rgba(36, 36, 38, 0.94);
+  --crm-modal-card: #3a3a3c;
+  --crm-modal-field: #3a3a3c;
+  --crm-tab-active-bg: linear-gradient(180deg, rgba(99, 99, 102, 0.55), rgba(58, 58, 60, 0.66));
+  --crm-tab-hover-bg: rgba(99, 99, 102, 0.3);
+  --crm-scroll-track: rgba(255, 255, 255, 0.06);
+  --crm-event-surface: #333335;
+  --crm-event-settled: #262628;
+  --crm-event-cancelled: #2a2a2c;
+}
+
+/* ---------------------------------------------------------------- jasny (macOS)
+ * Wartości poniżej to odwrotności docelowych kolorów (po filtrze): tło okna #f2f2f4, karty białe,
+ * pola i wnętrza kart #ececee–#f2f2f4, zaznaczenie jasnoniebieskie. Tekst platynowy staje się grafitowy,
+ * złoto — ciemnym brązowozłotym. */
+html[data-crm-theme='light'],
+html[data-crm-theme='light'] body.brand-theme--crm {
+  background-color: #0d0d0b;
+}
+html[data-crm-theme='light'] body.brand-theme--crm {
+  --brand-burgundy-950: #0d0d0b;
+  --brand-burgundy-900: #131311;
+  --brand-burgundy-850: #0a0a08;
+  --brand-burgundy-800: #000000;
+  --brand-burgundy-750: #141412;
+  --brand-burgundy-700: #0b2a4d;
+  --brand-burgundy-600: #0e325a;
+  --brand-burgundy-500: #12407a;
+  --crm-body-background: #0d0d0b;
+  --crm-hover-950: #1a1a18;
+  --crm-hover-800: #0f0f0d;
+  --crm-hover-750: #1f1f1d;
+  --crm-modal-backdrop: rgba(255, 255, 255, 0.28);
+  --crm-modal-surface: linear-gradient(155deg, rgba(0, 0, 0, 0.99), rgba(6, 6, 6, 0.99));
+  --crm-modal-shadow: rgba(255, 255, 255, 0.16);
+  --crm-modal-bar: rgba(9, 9, 7, 0.95);
+  --crm-modal-card: #0b0b09;
+  --crm-modal-field: #000000;
+  --crm-tab-active-bg: linear-gradient(180deg, #1c1c1a, #161614);
+  --crm-tab-hover-bg: #131311;
+  --crm-scroll-track: rgba(255, 255, 255, 0.06);
+  --crm-event-surface: #121214;
+  --crm-event-settled: #0f0f11;
+  --crm-event-cancelled: #18181a;
+}
+
+@media screen {
+  html[data-crm-theme='light'] {
+    filter: invert(1) hue-rotate(180deg);
+  }
+
+  /* Zdjęcia, filmy, mapy, podglądy PDF i białe dokumenty (A4, przyciski na białym tle) — z powrotem. */
+  html[data-crm-theme='light'] body :is(
+    img, video, canvas, iframe, object, embed, picture,
+    [style*='url('], [class~='bg-white'],
+    .contract-a4-container, .contract-container, [data-theme-preserve]
+  ) {
+    filter: invert(1) hue-rotate(180deg);
+  }
+
+  /* Element już odwrócony z powrotem — jego zawartość nie jest odwracana drugi raz. */
+  html[data-crm-theme='light'] body :is(
+    picture, [class~='bg-white'], .contract-a4-container, .contract-container, [data-theme-preserve]
+  ) :is(
+    img, video, canvas, iframe, object, embed, picture,
+    [style*='url('], [class~='bg-white'],
+    .contract-a4-container, .contract-container, [data-theme-preserve]
+  ) {
+    filter: none;
+  }
+}
+
+/* ---------------------------------------------------------------- burgund wpisany w klasach
+ * Klasy z burgundem dodane po przejściu na motyw burgundowy. W pozostałych motywach dostają
+ * odpowiedni poziom tła z bieżącej palety. */
+html:is([data-crm-theme='navy'], [data-crm-theme='dark'], [data-crm-theme='light']) body.brand-theme--crm :is(
+  [class~='bg-[#210811]'], [class^='bg-[#210811]/'], [class*=' bg-[#210811]/'],
+  [class~='bg-[#210914]'], [class^='bg-[#210914]/'], [class*=' bg-[#210914]/'],
+  [class~='bg-[#250914]'], [class^='bg-[#250914]/'], [class*=' bg-[#250914]/'],
+  [class~='bg-[#260b17]'], [class^='bg-[#260b17]/'], [class*=' bg-[#260b17]/'],
+  [class~='bg-[#25101b]'], [class^='bg-[#25101b]/'], [class*=' bg-[#25101b]/']
+) {
+  background-color: var(--brand-burgundy-950) !important;
+}
+
+html:is([data-crm-theme='navy'], [data-crm-theme='dark'], [data-crm-theme='light']) body.brand-theme--crm :is(
+  [class~='bg-[#2c0b18]'], [class^='bg-[#2c0b18]/'], [class*=' bg-[#2c0b18]/'],
+  [class~='bg-[#30101f]'], [class^='bg-[#30101f]/'], [class*=' bg-[#30101f]/']
+) {
+  background-color: var(--brand-burgundy-900) !important;
+}
+
+html:is([data-crm-theme='navy'], [data-crm-theme='dark'], [data-crm-theme='light']) body.brand-theme--crm :is(
+  [class~='bg-[#351020]'], [class^='bg-[#351020]/'], [class*=' bg-[#351020]/'],
+  [class~='bg-[#381020]'], [class^='bg-[#381020]/'], [class*=' bg-[#381020]/'],
+  [class~='bg-[#3a0c20]'], [class^='bg-[#3a0c20]/'], [class*=' bg-[#3a0c20]/']
+) {
+  background-color: var(--brand-burgundy-850) !important;
+}
+
+html:is([data-crm-theme='navy'], [data-crm-theme='dark'], [data-crm-theme='light']) body.brand-theme--crm :is(
+  [class~='bg-[#3b1426]'], [class^='bg-[#3b1426]/'], [class*=' bg-[#3b1426]/'],
+  [class~='bg-[#3e1426]'], [class^='bg-[#3e1426]/'], [class*=' bg-[#3e1426]/'],
+  [class~='bg-[#401426]'], [class^='bg-[#401426]/'], [class*=' bg-[#401426]/'],
+  [class~='bg-[#411326]'], [class^='bg-[#411326]/'], [class*=' bg-[#411326]/'],
+  [class~='bg-[#46172b]'], [class^='bg-[#46172b]/'], [class*=' bg-[#46172b]/']
+) {
+  background-color: var(--brand-burgundy-800) !important;
+}
+
+html:is([data-crm-theme='navy'], [data-crm-theme='dark'], [data-crm-theme='light']) body.brand-theme--crm :is(
+  [class~='bg-[#4b172f]'], [class^='bg-[#4b172f]/'], [class*=' bg-[#4b172f]/'],
+  [class~='bg-[#521a31]'], [class^='bg-[#521a31]/'], [class*=' bg-[#521a31]/'],
+  [class~='bg-[#5a1d37]'], [class^='bg-[#5a1d37]/'], [class*=' bg-[#5a1d37]/'],
+  [class~='bg-[#5e3344]'], [class^='bg-[#5e3344]/'], [class*=' bg-[#5e3344]/']
+) {
+  background-color: var(--brand-burgundy-750) !important;
+}
+
+html:is([data-crm-theme='navy'], [data-crm-theme='dark'], [data-crm-theme='light']) body.brand-theme--crm :is(
+  [class~='bg-[#6a2340]'], [class^='bg-[#6a2340]/'], [class*=' bg-[#6a2340]/'],
+  [class~='bg-[#6b213f]'], [class^='bg-[#6b213f]/'], [class*=' bg-[#6b213f]/'],
+  [class~='bg-[#6b0024]'], [class^='bg-[#6b0024]/'], [class*=' bg-[#6b0024]/'],
+  [class~='bg-[#7a2a49]'], [class^='bg-[#7a2a49]/'], [class*=' bg-[#7a2a49]/'],
+  [class~='bg-[#7f1734]'], [class^='bg-[#7f1734]/'], [class*=' bg-[#7f1734]/'],
+  [class~='bg-[#800020]'], [class^='bg-[#800020]/'], [class*=' bg-[#800020]/'],
+  [class~='bg-[#941d3e]'], [class^='bg-[#941d3e]/'], [class*=' bg-[#941d3e]/'],
+  [class~='bg-[#8f4f31]'], [class^='bg-[#8f4f31]/'], [class*=' bg-[#8f4f31]/']
+) {
+  background-color: var(--brand-burgundy-600) !important;
+}
+
+html:is([data-crm-theme='navy'], [data-crm-theme='dark'], [data-crm-theme='light']) body.brand-theme--crm :is(
+  [class~='hover:bg-[#351020]'],
+  [class~='hover:bg-[#411326]'],
+  [class~='hover:bg-[#46172b]']
+):hover {
+  background-color: var(--crm-hover-800) !important;
+}
+
+html:is([data-crm-theme='navy'], [data-crm-theme='dark'], [data-crm-theme='light']) body.brand-theme--crm :is(
+  [class~='hover:bg-[#4b1b30]'],
+  [class~='hover:bg-[#521a31]'],
+  [class~='hover:bg-[#5a1d37]'],
+  [class~='hover:bg-[#7a2a49]']
+):hover {
+  background-color: var(--crm-hover-750) !important;
+}
+
+html:is([data-crm-theme='navy'], [data-crm-theme='dark'], [data-crm-theme='light']) body.brand-theme--crm :is(
+  [class~='hover:bg-[#7f1734]'],
+  [class~='hover:bg-[#800020]']
+):hover {
+  background-color: var(--brand-burgundy-500) !important;
+}
+
+html:is([data-crm-theme='navy'], [data-crm-theme='dark'], [data-crm-theme='light']) body.brand-theme--crm :is(
+  [class~='text-[#250914]'], [class^='text-[#250914]/'], [class*=' text-[#250914]/'],
+  [class~='text-[#210811]'], [class^='text-[#210811]/'], [class*=' text-[#210811]/'],
+  [class~='text-[#210914]'], [class^='text-[#210914]/'], [class*=' text-[#210914]/'],
+  [class~='text-[#211018]'], [class^='text-[#211018]/'], [class*=' text-[#211018]/'],
+  [class~='text-[#211017]'], [class^='text-[#211017]/'], [class*=' text-[#211017]/'],
+  [class~='text-[#24101a]'], [class^='text-[#24101a]/'], [class*=' text-[#24101a]/'],
+  [class~='text-[#211116]'], [class^='text-[#211116]/'], [class*=' text-[#211116]/']
+) {
+  color: var(--brand-burgundy-950) !important;
+}
+
+html:is([data-crm-theme='navy'], [data-crm-theme='dark'], [data-crm-theme='light']) body.brand-theme--crm :is(
+  [class~='text-[#6b213f]'], [class^='text-[#6b213f]/'], [class*=' text-[#6b213f]/']
+) {
+  color: var(--brand-burgundy-600) !important;
+}
+
+html:is([data-crm-theme='navy'], [data-crm-theme='dark'], [data-crm-theme='light']) body.brand-theme--crm [class~='border-[#7f1734]'] {
+  border-color: var(--brand-burgundy-600) !important;
+}
+
+html:is([data-crm-theme='navy'], [data-crm-theme='dark'], [data-crm-theme='light']) body.brand-theme--crm [class~='from-[#4b172f]'] {
+  --tw-gradient-from: var(--brand-burgundy-750) var(--tw-gradient-from-position) !important;
+  --tw-gradient-to: transparent var(--tw-gradient-to-position) !important;
+}
+
+html:is([data-crm-theme='navy'], [data-crm-theme='dark'], [data-crm-theme='light']) body.brand-theme--crm [class~='to-[#2c0b18]'] {
+  --tw-gradient-to: var(--brand-burgundy-900) var(--tw-gradient-to-position) !important;
+}

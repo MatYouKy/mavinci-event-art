@@ -2,6 +2,7 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import '@/index.css';
+import '@/styles/crm-themes.css';
 
 import CRMClientLayout from './CRMClientLayout';
 import PreferencesClientProvider from './PreferencesClientProvider';
@@ -14,6 +15,7 @@ import { getNavigationForUserServer } from '@/lib/CRM/navigation/getNavigationFo
 import { cookies } from 'next/headers';
 import { GlobalLoaderProvider, RouteLoaderReset } from '@/contexts/GlobalLoaderContext';
 import BrandThemeProvider from '@/components/BrandThemeProvider';
+import { resolveCrmTheme } from '@/lib/CRM/theme/crmTheme';
 
 export const metadata: Metadata = {
   title: 'Mavinci CRM',
@@ -42,7 +44,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const { navigation } = await getNavigationForUserServer();
 
   return (
-    <html lang="pl" className="crm-document">
+    <html lang="pl" className="crm-document" data-crm-theme={resolveCrmTheme((employee as unknown as { crm_theme?: unknown }).crm_theme)}>
       <body className="crm-body brand-theme brand-theme--crm" data-brand-theme="mavinci">
         <BrandThemeProvider />
         <GlobalLoaderProvider>

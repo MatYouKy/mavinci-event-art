@@ -30,8 +30,9 @@ export function TrendChart({
   series: Series[];
   formatValue?: (value: number) => string;
 }) {
+  // Karta wypełnia wysokość wiersza siatki (obok lejka) — wykres rośnie zamiast zostawiać puste miejsce.
   return (
-    <section className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-5 sm:p-6">
+    <section className="flex h-full flex-col rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-5 sm:p-6">
       <div className="mb-5 flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
         <div>
           <h3 className="text-lg font-light text-[#e5e4e2]">{title}</h3>
@@ -44,6 +45,7 @@ export function TrendChart({
         categoryKey="label"
         kind="line"
         height={280}
+        fill
         valueFormatter={formatValue}
         axisFormatter={formatValue}
         ariaLabel={`${title}. ${description}`}

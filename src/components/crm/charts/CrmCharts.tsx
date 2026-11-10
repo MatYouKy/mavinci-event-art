@@ -46,7 +46,7 @@ function ChartDataTable({ data, series, categoryKey, valueFormatter, ariaLabel }
 export function CrmCartesianChart({
   data, series, categoryKey, kind = 'bar', horizontal = false, stacked = false,
   height = 280, valueFormatter = value => number.format(value), axisFormatter,
-  ariaLabel, showLegend = true, emptyMessage = 'Brak danych w wybranym zakresie.',
+  ariaLabel, showLegend = true, emptyMessage = 'Brak danych w wybranym zakresie.', fill = false,
 }: {
   data: CrmChartDatum[];
   series: CrmChartSeries[];
@@ -60,6 +60,8 @@ export function CrmCartesianChart({
   ariaLabel: string;
   showLegend?: boolean;
   emptyMessage?: string;
+  /** Wykres wypełnia wysokość karty (np. obok wyższego panelu); `height` jest wtedy minimum. */
+  fill?: boolean;
 }) {
   const descriptionId = useId();
   const [mounted, setMounted] = useState(false);
@@ -77,9 +79,9 @@ export function CrmCartesianChart({
   };
   const numericDomain: [(minimum: number) => number, (maximum: number) => number] = [minimum => Math.min(0, minimum), maximum => Math.max(1, maximum)];
 
-  return <div className="min-w-0 max-w-full">
+  return <div className={`min-w-0 max-w-full ${fill ? 'flex min-h-0 flex-1 flex-col' : ''}`}>
     <p id={descriptionId} className="sr-only">{ariaLabel}. Wykres obsługuje klawiaturę. Dokładne wartości są dostępne także w tabeli pod wykresem. Brak danych nie jest zastępowany zerem.</p>
-    {!hasData ? <p className="flex min-h-40 items-center justify-center rounded-lg bg-white/[0.025] p-6 text-center text-sm text-[#e5e4e2]/40">{emptyMessage}</p> : <div className="min-w-0 w-full [&_.recharts-wrapper]:outline-none [&_.recharts-surface:focus-visible]:outline [&_.recharts-surface:focus-visible]:outline-1 [&_.recharts-surface:focus-visible]:outline-white/20" style={{ height }} role="group" aria-label={ariaLabel} aria-describedby={descriptionId}>
+    {!hasData ? <p className="flex min-h-40 items-center justify-center rounded-lg bg-white/[0.025] p-6 text-center text-sm text-[#e5e4e2]/40">{emptyMessage}</p> : <div className="min-w-0 w-full [&_.recharts-wrapper]:outline-none [&_.recharts-surface:focus-visible]:outline [&_.recharts-surface:focus-visible]:outline-1 [&_.recharts-surface:focus-visible]:outline-white/20 ${fill ? 'flex-1' : ''}" style={fill ? { minHeight: height } : { height }} role="group" aria-label={ariaLabel} aria-describedby={descriptionId}>
       {mounted && <ResponsiveContainer width="100%" height="100%" minWidth={0} debounce={80}>
         <ComposedChart data={rows} layout={horizontal ? 'vertical' : 'horizontal'} accessibilityLayer margin={{ top: 12, right: 16, left: 0, bottom: 8 }} barGap={4} barCategoryGap="24%">
           <CartesianGrid stroke="rgba(229,228,226,0.075)" strokeDasharray="3 5" vertical={horizontal} horizontal={!horizontal} />
