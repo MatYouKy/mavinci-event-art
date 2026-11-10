@@ -175,7 +175,7 @@ export default function EmailPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#1a1d2e] to-[#16213e] p-6">
-      <div className="mx-auto max-w-7xl">
+      <div className="w-full">
         <div className="mb-6">
           <h1 className="mb-2 text-3xl font-bold text-white">Poczta Email</h1>
           <p className="text-gray-400">Zarządzaj swoją pocztą email</p>

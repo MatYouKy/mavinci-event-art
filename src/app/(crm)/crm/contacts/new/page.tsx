@@ -807,7 +807,7 @@ export default function NewContactPage() {
 
   return (
     <div className="min-h-screen bg-[#0f1119] p-6">
-      <div className="mx-auto max-w-5xl">
+      <div className="w-full">
         <div className="mb-6 flex items-center space-x-4">
           <button
             onClick={() => router.back()}

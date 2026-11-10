@@ -37,6 +37,7 @@ import { IEmployee } from './employees/type';
 import { useRouter } from 'next/navigation';
 import SellerFinancialDashboard from '@/components/crm/SellerFinancialDashboard';
 import SalesDayPanel from '@/components/crm/dashboard/SalesDayPanel';
+import MyDayTimeline from '@/components/crm/dashboard/MyDayTimeline';
 import MyCommissionsPanel from '@/components/crm/commissions/MyCommissionsPanel';
 
 interface DashboardStats {
@@ -78,6 +79,7 @@ export default function CRMDashboard({
   // Sprzedawca zaczyna dzień od listy działań; wyniki finansowe są poniżej.
   if (analytics.scope === 'sales') return (
     <div className="space-y-8">
+      <MyDayTimeline />
       <SalesDayPanel />
       <MyCommissionsPanel compact />
       <SellerFinancialDashboard initialReport={analytics.sellerReport} />
@@ -315,7 +317,7 @@ export default function CRMDashboard({
   }
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
+    <div className="w-full space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-2xl font-light text-[#e5e4e2]">Witaj w systemie CRM</h2>
@@ -341,6 +343,8 @@ export default function CRMDashboard({
           )}
         </div>
       </div>
+
+      <MyDayTimeline />
 
       <MyCommissionsPanel compact />
 

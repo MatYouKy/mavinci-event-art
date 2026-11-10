@@ -152,7 +152,7 @@ export default function SignatureCreatorPage() {
 
   return (
     <div className="min-h-screen bg-[#0f1119] p-6">
-      <div className="mx-auto max-w-6xl">
+      <div className="w-full">
         <div className="mb-6">
           <button
             onClick={() => router.back()}

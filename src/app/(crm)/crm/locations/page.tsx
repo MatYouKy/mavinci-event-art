@@ -123,7 +123,7 @@ export default function LocationsPage() {
 
   return (
     <div className="min-h-screen bg-[#0f1117] p-6">
-      <div className="mx-auto max-w-7xl">
+      <div className="w-full">
         {/* Header */}
         <div className="mb-6 flex items-center justify-between">
           <div>

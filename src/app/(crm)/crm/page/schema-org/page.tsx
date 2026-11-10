@@ -260,7 +260,7 @@ export default function SchemaOrgManagementPage() {
 
   return (
     <div className="min-h-screen bg-[#0f1119] p-6 text-[#e5e4e2]">
-      <div className="mx-auto max-w-7xl">
+      <div className="w-full">
         <div className="mb-8">
           <h1 className="mb-2 text-3xl font-light">Dane strukturalne Schema.org</h1>
           <p className="text-[#e5e4e2]/60">

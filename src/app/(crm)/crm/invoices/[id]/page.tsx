@@ -1222,7 +1222,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
   return (
     <PermissionGuard module={financeAccess.scope === 'sales' ? undefined : 'invoices'}>
       <div className="min-h-screen bg-[#0a0d1a] p-6">
-        <div className="mx-auto max-w-5xl">
+        <div className="w-full">
           <button
             onClick={() => router.push('/crm/invoices')}
             className="mb-4 flex items-center gap-2 text-sm text-[#e5e4e2]/60 hover:text-[#d3bb73] print:hidden"

@@ -586,7 +586,7 @@ export default function EmployeeDetailPage() {
   };
 
   return (
-    <div className="mx-auto max-w-[1400px] space-y-6">
+    <div className="w-full space-y-6">
       {isDeleting && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm">
           <div className="flex flex-col items-center gap-4 rounded-xl border border-red-500/30 bg-[#1c1f33] p-6 shadow-2xl">

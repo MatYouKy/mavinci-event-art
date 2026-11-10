@@ -46,7 +46,7 @@ export default function PersonnelPeople({ personId }: { personId?: string }) {
   };
   if(access.loading) return <p className="p-6">Ładowanie…</p>;
   if(!access.view) return <p className="p-6">{access.error || 'Brak dostępu do kartoteki współpracowników.'}</p>;
-  return <main className="mx-auto max-w-7xl space-y-6 p-4 text-[var(--brand-platinum)] sm:p-6">
+  return <main className="w-full space-y-6 p-4 text-[var(--brand-platinum)] sm:p-6">
     <header className="flex flex-wrap items-start justify-between gap-3"><div>{personId && <Link className="text-sm text-[#d3bb73]" href="/crm/employees/collaborators">← Współpracownicy</Link>}<h1 className="mt-2 text-2xl">{person ? personName(person) : 'Współpracownicy'}</h1><p className="mt-2 text-sm opacity-60">Kartoteka osób, umowy i historia rozliczeń.</p></div>{access.manage && <button className={button} onClick={()=>setEditing(true)}>{personId?'Edytuj dane':'Dodaj współpracownika'}</button>}{person && actions(person)}</header>
     {error && <p role="alert" className="rounded-lg bg-red-400/5 p-3 text-red-300">{error}</p>}
     {editing && <PersonnelPersonForm person={person} onCancel={()=>setEditing(false)} onSaved={()=>{setEditing(false);void load();}} />}

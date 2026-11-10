@@ -620,7 +620,7 @@ export default function BrochureEditorClient({ brochureId }: { brochureId: strin
 
   return (
     <main className={`${styles.editor} min-h-screen bg-[#0f1119] p-4 text-[#e5e4e2] lg:p-6`}>
-      <div className="mx-auto max-w-[1750px] space-y-5">
+      <div className="w-full space-y-5">
         <header className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-start gap-3">
             <button type="button" onClick={() => { if (!dirty || window.confirm('Masz niezapisane zmiany. Opuścić kreator?')) router.push('/crm/brochures'); }} className="mt-1 rounded-lg border border-[#d3bb73]/15 p-2 text-[#e5e4e2]/55 hover:text-[#d3bb73]"><ArrowLeft className="h-4 w-4" /></button>

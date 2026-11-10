@@ -85,7 +85,7 @@ export default function LocationDetailsPage() {
 
   return (
     <div className="min-h-screen bg-[#250914] p-6 text-[#e5e4e2]">
-      <div className="mx-auto max-w-6xl">
+      <div className="w-full">
         {/* Header */}
         <div className="mb-6 flex items-center gap-4">
           <button

@@ -159,7 +159,7 @@ export default function EditTemplatePage() {
 
   return (
     <div className="min-h-screen bg-[#0a0d1a] p-6">
-      <div className="mx-auto max-w-7xl">
+      <div className="w-full">
         <div className="mb-8 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <button

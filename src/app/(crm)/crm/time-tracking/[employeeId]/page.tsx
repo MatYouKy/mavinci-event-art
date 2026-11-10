@@ -497,7 +497,7 @@ export default function EmployeeTimeTrackingPage() {
 
   return (
     <div className="min-h-screen bg-[#0f1119] p-6">
-      <div className="mx-auto max-w-7xl space-y-6">
+      <div className="w-full space-y-6">
         <EmployeeTimeSettlements key={employeeId} employeeId={employeeId} dateTo={dateTo} refreshKey={entries.length} />
         <PersonnelEarnings employeeId={employeeId} refreshKey={entries.length}/>
         <button

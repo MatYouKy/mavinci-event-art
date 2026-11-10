@@ -133,7 +133,7 @@ export default function BrochuresPage() {
 
   return (
     <div className="min-h-screen bg-[#0f1119] px-5 py-6 text-[#e5e4e2] lg:px-8">
-      <div className="mx-auto max-w-[1500px]">
+      <div className="w-full">
         <header className="mb-7 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <div className="mb-2 flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-[#d3bb73]">

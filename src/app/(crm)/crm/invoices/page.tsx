@@ -702,7 +702,7 @@ export default function InvoicesPage() {
   return (
     <PermissionGuard>
       <div className="min-h-screen min-w-0 overflow-x-hidden bg-[#0a0d1a] p-3 sm:p-6">
-        <div className="mx-auto min-w-0 max-w-[1800px]">
+        <div className="w-full min-w-0">
           {/* Header */}
           <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
             <div>

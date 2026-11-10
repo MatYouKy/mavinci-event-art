@@ -185,7 +185,7 @@ export default function CompanyBrandbookPage() {
 
   return (
     <div className="min-h-screen bg-[#0a0d1a] p-6">
-      <div className="mx-auto max-w-6xl">
+      <div className="w-full">
         <button
           onClick={() => router.push('/crm/settings/my-companies')}
           className="mb-4 flex items-center gap-2 text-sm text-[#e5e4e2]/60 hover:text-[#d3bb73]"

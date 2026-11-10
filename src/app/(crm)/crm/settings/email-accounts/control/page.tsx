@@ -224,7 +224,7 @@ function MailboxControl() {
 
   return (
     <div className="min-h-screen bg-[#0f1119] p-4 sm:p-6">
-      <div className="mx-auto max-w-[1600px]">
+      <div className="w-full">
         <button type="button" onClick={() => router.push('/crm/settings/email-accounts')}
           className="mb-4 flex items-center gap-2 text-sm text-[#e5e4e2]/60 hover:text-[#e5e4e2]">
           <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Konta email

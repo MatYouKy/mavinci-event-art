@@ -444,7 +444,7 @@ export default function EmailTemplateSettingsPage() {
 
   return (
     <div className="min-h-screen bg-[#0f1119] p-6">
-      <div className="mx-auto max-w-7xl">
+      <div className="w-full">
         <div className="mb-6 flex items-center justify-between">
           <button
             onClick={() => router.push('/crm/settings')}

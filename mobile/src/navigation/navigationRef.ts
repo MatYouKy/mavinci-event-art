@@ -54,6 +54,13 @@ export function navigateToTask(taskId: string) {
   }
 }
 
+/** Spotkanie z planu dnia — zakładka „Spotkania” otwiera je po identyfikatorze. */
+export function navigateToMeeting(meetingId: string) {
+  if (navigationRef.isReady()) {
+    navigationRef.navigate('Main', { screen: 'Meetings', params: { meetingId, requestId: Date.now() } });
+  }
+}
+
 export function navigateToInquiry(taskId: string) {
   if (navigationRef.isReady()) {
     navigationRef.navigate('Main', {

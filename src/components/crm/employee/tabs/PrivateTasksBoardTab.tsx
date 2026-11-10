@@ -870,7 +870,7 @@ export default function PrivateTasksBoardTab({
       <TaskSearchInput value={searchQuery} onChange={setSearchQuery} resultCount={filteredTasks.length} totalCount={tasks.length} />
       <div
         ref={scrollContainerRef}
-        className="flex-1 overflow-x-auto pb-4 max-w-[1400px] mx-auto"
+        className="w-full flex-1 overflow-x-auto pb-4"
         onTouchStart={isMobile ? handleTouchStart : undefined}
         onTouchMove={isMobile ? handleTouchMove : undefined}
         onTouchEnd={isMobile ? handleTouchEnd : undefined}

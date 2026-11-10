@@ -38,3 +38,7 @@ Brak RPC → interfejs czyta dawne `get_employee_timeline_data` (wydarzenia, faz
 ## Aplikacja mobilna
 
 Bez zmian: ekran „Pracownicy” to katalog kontaktów (bez osi czasu), własne wydarzenia, spotkania i zadania pracownik ma w „Kalendarzu”. Plan z `get_employee_schedule` można dodać do aplikacji później tym samym RPC.
+
+## Pulpit — „Mój plan”
+
+Na pulpicie CRM (`components/crm/dashboard/MyDayTimeline`, także pulpit magazynu) i w aplikacji (`mobile/src/components/MyScheduleSection`) pracownik widzi na górze swój plan z tego samego RPC: dziś albo dziś i dwa kolejne dni (wybór zapamiętany w przeglądarce). CRM — pozioma oś czasu z zakresem 8:00–18:00 poszerzanym o wcześniejsze i późniejsze pozycje, wiersz na dzień, pozycje całodniowe nad osią, czerwona linia „teraz”; krótkie pozycje rysowane jak godzinne, żeby tytuł był czytelny. Telefon — lista godzin.

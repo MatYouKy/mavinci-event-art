@@ -100,7 +100,7 @@ export default function RentalEquipmentListPage() {
 
   return (
     <div className="min-h-screen bg-[#0a0d1a] p-6">
-      <div className="mx-auto max-w-7xl">
+      <div className="w-full">
         <div className="mb-6 flex items-center gap-3">
           <PackageOpen className="h-8 w-8 text-[#d3bb73]" />
           <div>

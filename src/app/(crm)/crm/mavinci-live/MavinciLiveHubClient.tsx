@@ -483,7 +483,7 @@ export default function MavinciLiveHubClient() {
   if (!canViewHub) return <div className="mx-auto mt-12 max-w-2xl rounded-2xl border border-red-400/20 bg-red-400/10 p-8 text-center text-red-100"><h1 className="text-2xl font-semibold">Brak dostępu do Mavinci LIVE</h1><p className="mt-2 text-sm text-red-100/70">Administrator musi nadać temu pracownikowi główne uprawnienie Mavinci LIVE.</p></div>;
 
   return (
-    <div className="mx-auto w-full max-w-[1700px] space-y-5 text-[#e5e4e2]">
+    <div className="w-full space-y-5 text-[#e5e4e2]">
       <header className="overflow-hidden rounded-2xl border border-[#d3bb73]/20 bg-gradient-to-br from-[#20243a] via-[#171b2b] to-[#111522] p-6 shadow-2xl shadow-black/20">
         <div className="flex flex-wrap items-center justify-between gap-5">
           <div className="flex items-center gap-4">

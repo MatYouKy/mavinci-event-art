@@ -52,7 +52,7 @@ export default function CompensationSettingsPage() {
   if (loading) return <p>Ładowanie…</p>;
   if (!isAdmin) return <p>Dostęp tylko dla administratora.</p>;
   return (
-    <main className="mx-auto max-w-4xl p-4 text-[#e5e4e2] sm:p-6">
+    <main className="w-full p-4 text-[#e5e4e2] sm:p-6">
       <Link href="/crm/settings?tab=admin" className="text-[#d3bb73]">
         ← Administracja
       </Link>

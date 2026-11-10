@@ -236,7 +236,7 @@ export default function EventCategoriesPage() {
   return (
     <PermissionGuard permission="event_categories_manage">
       <div className="min-h-screen bg-[var(--brand-burgundy-950)] text-[var(--brand-platinum)] p-6">
-        <div className="mx-auto max-w-6xl">
+        <div className="w-full">
           <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
             <div>
               <h1 className="mb-2 text-3xl font-bold text-white">Kategorie wydarzeń</h1>

@@ -4,7 +4,7 @@ import SubcontractorProfileForm from '@/components/crm/subcontractors/Subcontrac
 export default function NewSubcontractor() {
   const router = useRouter();
   return (
-    <main className="mx-auto max-w-4xl p-4">
+    <main className="w-full p-4">
       <SubcontractorProfileForm
         onCancel={() => router.push('/crm/subcontractors')}
         onSaved={(s) =>

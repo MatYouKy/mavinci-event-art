@@ -104,7 +104,7 @@ export default function CablesListPage({ initialViewMode }: { initialViewMode?: 
 
   return (
     <div className="min-h-screen bg-[#0f1117] text-[#e5e4e2] p-6">
-      <div className="max-w-7xl mx-auto">
+      <div className="w-full">
         {/* Header */}
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-4">

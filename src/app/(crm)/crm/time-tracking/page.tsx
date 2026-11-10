@@ -402,7 +402,7 @@ export default function TimeTrackingPage() {
 
   return (
     <div className="min-h-screen bg-[#0f1119] p-6">
-      <div className="mx-auto max-w-7xl space-y-6">
+      <div className="w-full space-y-6">
         {/* Nagłówek */}
         <div className="flex items-center justify-between">
           <div>

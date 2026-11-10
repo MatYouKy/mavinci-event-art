@@ -201,7 +201,7 @@ export default function PageManagementPage() {
   if (section === 'marketing') {
     return (
       <div className="min-h-screen bg-[#210811] p-6">
-        <div className="mx-auto max-w-7xl space-y-6">
+        <div className="w-full space-y-6">
           <div className="flex items-center justify-between gap-4">
             <div>
               <h1 className="text-3xl font-light text-[#e5e4e2]">Strona, marketing i ruch</h1>
@@ -232,7 +232,7 @@ export default function PageManagementPage() {
 
   return (
     <div className="min-h-screen bg-[#210811] p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
+      <div className="w-full space-y-6">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-light text-[#e5e4e2]">Zarządzanie stroną</h1>

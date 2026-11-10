@@ -442,7 +442,7 @@ export default function ContactsPage() {
   return (
     <PermissionGuard module="contacts">
       <div className="min-h-screen bg-[#0f1119] p-6">
-        <div className="mx-auto max-w-7xl">
+        <div className="w-full">
           <div className="mb-6 flex items-center justify-between">
             <div>
               <h1 className="mb-2 text-3xl font-bold text-white">Kontakty</h1>

@@ -19,6 +19,7 @@ import { supabase } from '../lib/supabase';
 import { sortTasksByUrgency } from '../lib/taskSort';
 import { colors, spacing, typography, borderRadius } from '../theme';
 import SalesDaySection from '../components/SalesDaySection';
+import MyScheduleSection from '../components/MyScheduleSection';
 import MyEventStepsSection from '../components/Events/MyEventStepsSection';
 
 const TABLET_BREAKPOINT = 768;
@@ -384,6 +385,7 @@ export default function DashboardScreen() {
           {loadError || stageError}
         </Text>
       )}
+      <MyScheduleSection refreshKey={salesRefreshKey} />
       <MyEventStepsSection refreshKey={salesRefreshKey} />
       {isWarehouse && (
         <View style={{ paddingHorizontal: 16, gap: 12 }}>

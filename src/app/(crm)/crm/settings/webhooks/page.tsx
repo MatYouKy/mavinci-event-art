@@ -180,7 +180,7 @@ export default function WebhooksSettingsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-8">
+    <div className="w-full px-4 py-8">
       <div className="mb-6 flex items-center gap-3">
         <button
           onClick={() => router.push('/crm/settings')}

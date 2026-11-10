@@ -1219,7 +1219,7 @@ export default function OrganizationDetailPage() {
     const isIndividual = contact.contact_type === 'individual';
     return (
       <div className="min-h-screen bg-[#0f1119] p-6">
-        <div className="mx-auto max-w-7xl">
+        <div className="w-full">
           <div className="mb-6 flex items-center justify-between">
             <div className="flex items-center space-x-4">
               <button
@@ -1722,7 +1722,7 @@ export default function OrganizationDetailPage() {
 
   return (
     <div className="min-h-screen bg-[#0f1119] p-6">
-      <div className="mx-auto max-w-7xl">
+      <div className="w-full">
         <div className="mb-6 flex items-center justify-between">
           <div className="flex items-center space-x-4">
             <button

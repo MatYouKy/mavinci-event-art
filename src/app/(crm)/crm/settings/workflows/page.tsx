@@ -341,7 +341,7 @@ export default function WorkflowSettingsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-[1500px] p-4 sm:p-6">
+    <div className="w-full p-4 sm:p-6">
       <div className="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div className="flex items-center gap-3">
           <button onClick={() => router.push('/crm/settings?tab=admin')} className="rounded-lg p-2 text-[#e5e4e2]/60 hover:bg-[#1c1f33] hover:text-[#e5e4e2]"><ArrowLeft className="h-5 w-5" /></button>

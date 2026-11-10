@@ -8,7 +8,7 @@ export default async function MyTasksPage() {
 
   // The shortcut uses the same private board as the employee profile.
   return (
-    <div className="mx-auto h-full min-h-0 w-full max-w-[1400px]">
+    <div className="h-full min-h-0 w-full">
       <PrivateTasksBoardTab
         employeeId={employee.id}
         isOwnProfile

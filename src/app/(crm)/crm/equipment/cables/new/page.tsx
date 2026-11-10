@@ -158,7 +158,7 @@ export default function NewCablePage() {
 
   return (
     <div className="min-h-screen bg-[#0f1117] p-6 text-[#e5e4e2]">
-      <div className="mx-auto max-w-4xl">
+      <div className="w-full">
         {/* Header */}
         <div className="mb-6 flex items-center gap-4">
           <button onClick={() => router.back()} className="rounded-lg p-2 hover:bg-[#1c1f33]">

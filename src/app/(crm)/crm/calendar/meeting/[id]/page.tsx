@@ -373,7 +373,7 @@ export default function MeetingDetailPage() {
 
   return (
     <div className="min-h-screen bg-[#13161f] p-4 text-[#e5e4e2] md:p-8">
-      <div className="mx-auto max-w-5xl">
+      <div className="w-full">
         <div className="space-y-6 rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
           <div className="flex items-center justify-between">
             <div className="flex cursor-pointer items-center gap-4 rounded-lg p-2 transition-colors hover:bg-[#1c1f33]">

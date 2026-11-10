@@ -124,7 +124,7 @@ export default function ContractDetailsPage() {
 
   return (
     <div className="min-h-screen bg-[#0a0d1a] p-6">
-      <div className="mx-auto max-w-7xl space-y-6">
+      <div className="w-full space-y-6">
         <div className="no-print flex items-center justify-between">
           <div className="flex items-center gap-4">
             <button

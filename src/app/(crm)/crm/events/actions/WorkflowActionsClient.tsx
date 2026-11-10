@@ -8,7 +8,7 @@ import MyEventStepsSection from '@/components/crm/events/steps/MyEventStepsSecti
  */
 export default function WorkflowActionsClient() {
   return (
-    <main className="mx-auto max-w-5xl space-y-8 p-4">
+    <main className="w-full space-y-8 p-4">
       <header>
         <h1 className="text-xl text-[#e5e4e2]">Moje kroki</h1>
         <p className="mt-1 text-sm text-[#e5e4e2]/60">

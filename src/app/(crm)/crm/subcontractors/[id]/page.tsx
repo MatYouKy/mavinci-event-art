@@ -230,7 +230,7 @@ export default function SubcontractorDetailPage() {
 
   if (editMode)
     return (
-      <main className="mx-auto max-w-4xl p-4">
+      <main className="w-full p-4">
         <SubcontractorProfileForm
           initial={subcontractor}
           onCancel={handleCancelEdit}
@@ -251,7 +251,7 @@ export default function SubcontractorDetailPage() {
 
   return (
     <div className="min-h-screen bg-[#0a0b0f] p-6">
-      <div className="mx-auto max-w-7xl">
+      <div className="w-full">
         <button
           onClick={() => router.push('/crm/subcontractors')}
           className="mb-6 flex items-center gap-2 text-[#d3bb73] transition-colors hover:text-[#d3bb73]/80"

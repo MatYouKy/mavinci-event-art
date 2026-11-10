@@ -143,7 +143,7 @@ export default function MyCompaniesPage() {
 
   return (
     <div className="min-h-screen bg-[#0a0d1a] p-6">
-      <div className="mx-auto max-w-6xl">
+      <div className="w-full">
         {/* Header */}
         <div className="mb-8 flex items-center justify-between">
           <div>

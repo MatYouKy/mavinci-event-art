@@ -441,7 +441,7 @@ export default function CampaignsPageClient() {
 
   return (
     <main className="min-h-screen bg-[#0f1119] p-4 text-[#e5e4e2] md:p-6">
-      <div className="mx-auto max-w-[1600px] space-y-5">
+      <div className="w-full space-y-5">
         <header className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <div className="mb-2 flex items-center gap-2 text-sm text-[#d3bb73]"><Megaphone className="h-4 w-4" />Sprzedaż i relacje</div>

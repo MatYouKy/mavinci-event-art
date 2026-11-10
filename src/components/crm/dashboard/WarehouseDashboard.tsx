@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 import { createSupabaseServerClient } from '@/lib/supabase/server.app';
 import { OPERATIONAL_LABELS } from '@/lib/CRM/events/operationalStages';
 import { Package, Calendar, CheckSquare, AlertTriangle } from 'lucide-react';
+import MyDayTimeline from '@/components/crm/dashboard/MyDayTimeline';
 
 export default async function WarehouseDashboard({ employeeId }: { employeeId: string }) {
   const db = createSupabaseServerClient(cookies());
@@ -22,11 +23,12 @@ export default async function WarehouseDashboard({ employeeId }: { employeeId: s
   const rowStyle = 'block rounded-lg bg-black/15 p-3 transition-colors hover:bg-white/5';
   const date = (value: string | null) => value ? new Date(value).toLocaleDateString('pl-PL', { timeZone: 'Europe/Warsaw' }) : 'Bez terminu';
   return (
-    <main className="mx-auto max-w-7xl space-y-5 p-3 sm:p-6">
+    <main className="w-full space-y-5 p-3 sm:p-6">
       <header>
         <h1 className="text-xl uppercase text-[#e5e4e2]">Magazyn i logistyka</h1>
         <p className="mt-1 text-sm text-[#e5e4e2]/60">Przygotowanie wydarzeń, stan sprzętu i Twoje zadania.</p>
       </header>
+      <MyDayTimeline employeeId={employeeId} />
       <nav aria-label="Szybki dostęp" className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         {[{ href: '/crm/equipment', label: 'Sprzęt', Icon: Package }, { href: '/crm/events', label: 'Wydarzenia', Icon: Calendar }, { href: '/crm/tasks/mine', label: 'Moje zadania', Icon: CheckSquare }].map(({ href, label, Icon }) => (
           <Link key={href} href={href} className={`${card} flex items-center gap-3 text-[#d3bb73] hover:bg-[#4b1b30]`}><Icon size={22} /><span>{label}</span></Link>

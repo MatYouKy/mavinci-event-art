@@ -274,7 +274,7 @@ export default function DatabasesPage() {
 
   return (
     <div className="h-full overflow-y-auto bg-[#0f1119] p-6">
-      <div className="mx-auto max-w-7xl">
+      <div className="w-full">
         <div className="mb-6 flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold text-[#e5e4e2]">Bazy Danych</h1>

@@ -91,7 +91,7 @@ export default function StorageBrowserClient() {
 
   return (
     <div className="min-h-full bg-[#0f1119] p-4 text-[#e5e4e2] sm:p-6">
-      <div className="mx-auto max-w-7xl">
+      <div className="w-full">
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <div>
             <button onClick={() => bucket ? (setBucket(null), setPath('')) : router.push('/crm/settings')} className="mb-2 flex items-center gap-2 text-sm text-[#e5e4e2]/60 hover:text-white">

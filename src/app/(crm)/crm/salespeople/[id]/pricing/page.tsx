@@ -200,7 +200,7 @@ export default function SellerPricingPage() {
 
   return (
     <div className="min-h-screen p-4 text-[#e5e4e2] md:p-6">
-      <div className="mx-auto max-w-7xl space-y-5">
+      <div className="w-full space-y-5">
         <header className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <Link href={contactId ? `/crm/contacts/${contactId}?tab=seller&section=settings#seller-profile-settings` : `/crm/salespeople?seller=${sellerId}&section=settings#seller-profile-settings`} className="inline-flex items-center gap-2 text-xs text-[#e5e4e2]/45 hover:text-[#d3bb73]"><ArrowLeft className="h-4 w-4" /> Ustawienia sprzedawcy</Link>

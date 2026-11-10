@@ -361,7 +361,7 @@ export default function SalespeoplePage() {
 
   return (
     <div className="min-h-screen bg-[#0f1119] p-4 text-[#e5e4e2] md:p-6">
-      <div className="mx-auto max-w-7xl space-y-6">
+      <div className="w-full space-y-6">
         <header className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <div className="flex items-center gap-3">

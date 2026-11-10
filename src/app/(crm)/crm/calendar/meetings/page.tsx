@@ -174,7 +174,7 @@ export default function MeetingsListPage() {
 
   return (
     <div className="min-h-screen bg-[#13161f] p-4 text-[#e5e4e2] md:p-8">
-      <div className="mx-auto max-w-7xl">
+      <div className="w-full">
         <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
             <h1 className="text-2xl font-bold text-[#e5e4e2] md:text-3xl">Wszystkie spotkania</h1>
