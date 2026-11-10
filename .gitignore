@@ -59,3 +59,6 @@ macos-sync-app/**/*.xcuserdata/
 mobile/ios/
 # TypeScript incremental build cache
 *.tsbuildinfo
+
+# Kopie plików sprzed przełączenia na Frankfurt (scripts/migration/frankfurt/12-switch-config.sh) — zawierają sekrety
+*.przed-frankfurtem
