@@ -15,6 +15,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { colors, spacing, typography, borderRadius } from '../theme';
 import { getVisibleMenuItems } from '../lib/permissions';
 import EmployeeAvatar from './EmployeeAvatar';
+import { APP_VERSION } from '../lib/appVersion';
 
 const { width } = Dimensions.get('window');
 const DRAWER_WIDTH = 280;
@@ -146,7 +147,7 @@ export default function CustomDrawer({ visible, onClose, navigation, currentScre
               <Feather name="log-out" color={colors.status.error} size={18} />
               <Text style={styles.logoutText}>Wyloguj</Text>
             </TouchableOpacity>
-            <Text style={styles.version}>v1.0.0</Text>
+            <Text style={styles.version}>v{APP_VERSION}</Text>
           </View>
         </Animated.View>
 

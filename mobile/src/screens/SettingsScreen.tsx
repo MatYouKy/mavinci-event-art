@@ -10,7 +10,7 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
 import { colors, spacing, typography, borderRadius } from '../theme';
-import Constants from 'expo-constants';
+import { APP_VERSION } from '../lib/appVersion';
 import MailboxPreferencesSection from '../components/MailboxPreferencesSection';
 import { roleLabel } from '../lib/roleLabels';
 
@@ -104,7 +104,7 @@ export default function SettingsScreen() {
 
       {/* Version */}
       <View style={styles.footer}>
-        <Text style={styles.version}>Mavinci CRM Mobile v{Constants.expoConfig?.version ?? '—'}</Text>
+        <Text style={styles.version}>Mavinci CRM Mobile v{APP_VERSION}</Text>
       </View>
     </ScrollView>
   );
