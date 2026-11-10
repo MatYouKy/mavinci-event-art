@@ -23,7 +23,8 @@ Skrypty: `scripts/migration/frankfurt/` (uruchamiasz u siebie w terminalu; hasł
 | Funkcje Edge | 40 (wszystkie w repo) + sekrety | `06-functions.sh` + `~/mavinci-migracja/functions.env` |
 | Kod | adres z `NEXT_PUBLIC_SUPABASE_URL` (`src/lib/supabase/projectUrl.ts`); funkcje Edge — z `SUPABASE_URL` | zrobione |
 | Pliki bez zmiennych | `desktop/mac/Resources/Configuration.json`, `public/invitation-empoliye.html`, `src/components/crm/events/email/email-template.html` | `10-switch-static-refs.sh` |
-| Poza repo | `.env` serwera CRM (`ecosystem.frontend.config.js`), `mobile/.env`, przekaźnik SMTP (`SUPABASE_URL`), integracje wysyłające do `receive-webhook` | ręcznie w dniu przełączenia |
+| Poza repo | `.env` do kompilacji CRM, `mobile/.env`, na serwerze pliki `.env*` / `ecosystem*` w `/var/www/mavinci` (CRM, przekaźnik SMTP, `imap-sync-worker`), zmienne zapamiętane przez PM2 | `12-switch-config.sh`, `13-restart-server.sh`, `14-scan-server.sh` |
+| Integracje | Event Rulers i Nastrojowo wysyłają do `receive-webhook` (adres w ich konfiguracji, nie w bazie) | ręcznie |
 
 ## Narzędzia na Macu (raz)
 
@@ -91,16 +92,22 @@ Stary projekt: Settings → Compute and Disk → **Small** (2 GB, ~$15/mies., ki
 | # | Kto | Krok |
 |---|---|---|
 | 1 | Ty | `./00-freeze-old.sh` — zatrzymuje crony starego projektu (zapamiętuje które) |
-| 2 | Ty | Stary projekt: Settings → Data API → wyłącz (zapis i odczyt przez API stoją; nie ma tej opcji → tylko komunikat do zespołu) |
+| 2 | Ty | Stary projekt: Settings → Data API → wyłącz (zapis i odczyt przez API stoją; nie ma tej opcji → tylko komunikat do zespołu). **Claude potwierdza w logach** (zapytania `/rest/v1` → 503), dopiero potem zrzut |
 | 3 | Ty | `./01-dump.sh` → `./02-prepare.sh` (identyfikator docelowy) → `./03-restore.sh` → `./04-vault.sh` → `./07-verify.sh` |
 | 4 | Claude | sprawdza projekt docelowy (dane, reguły, funkcje w bazie, Vault) |
 | 5 | Ty | `./05-storage.sh --prune` — dosłanie plików zmienionych od wstępnej kopii |
 | 6 | Ty | `./08-cron-new.sh` — crony w nowym projekcie |
-| 7 | Ty | Serwer CRM: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` → `yarn deploy` (zmienne `NEXT_PUBLIC_` wchodzą w kompilację) |
-| 8 | Ty | `./10-switch-static-refs.sh`, nowy klucz w `desktop/mac/Resources/Configuration.json`, kompilacja aplikacji na Maca |
+| 7 | Ty | `./12-switch-config.sh` (adres i klucze anon / service_role: `.env` do kompilacji, `mobile/.env`, aplikacja na Maca, statyczne HTML, pliki na serwerze; kopie `*.przed-frankfurtem`, poza git) → `yarn deploy` → **`./13-restart-server.sh`** (PM2 pamięta stare zmienne — m.in. `SUPABASE_SERVICE_ROLE_KEY`, z którego deploy odtwarza `.env.imap-attachments`) → `./14-scan-server.sh --dry-run`, potem `./14-scan-server.sh` (pozostałe pliki usług na serwerze, restart `mavinci-imap-sync`) |
+| 8 | Ty | Kompilacja aplikacji na Maca (`Configuration.json` zmienia `12-switch-config.sh`) |
 | 9 | Ty | EAS → środowisko „production”: `EXPO_PUBLIC_SUPABASE_URL` i `EXPO_PUBLIC_SUPABASE_ANON_KEY` nowego projektu (oraz `mobile/.env` do pracy lokalnej) → `cd mobile && yarn deploy:ota --message "Nowy serwer (Frankfurt)"` (`docs/mobile-ota.md`) |
 | 10 | Ty | Przekaźnik SMTP: `SUPABASE_URL` i klucz → restart; integracje wysyłające do `receive-webhook` → nowy adres |
 | 11 | razem | Logowanie, wydarzenie, oferta, czat, powiadomienie push, e-mail z CRM, strona WWW; logi w nowym projekcie |
+
+### Przebieg przełączenia (10.11.2026)
+
+- Przerwa 14:24–17:12 (CRM od 17:01, poczta od 17:12, aplikacja mobilna — OTA `ee042711-05b3-48c5-8930-efbb0b99fdaa`).
+- Zgodność po odtworzeniu: 512 tabel (public, auth, historia migracji), dane CRM identyczne co do wiersza (różnica tylko w logowaniach do starego projektu po zrzucie), 1694 reguły danych, 1649 funkcji, 646 wyzwalaczy, 64 tabele Realtime, 102 reguły plików, 889 migracji, 3060 plików (ta sama lista co w starym), 4 sekrety Vault, 21 cronów.
+- Lekcje (poprawione w skryptach): Data API trzeba potwierdzić w logach — pierwszy zrzut powstał, gdy stary projekt jeszcze przyjmował zapisy; adresy wklejone z czatu miały niewidoczne znaki (`lib.sh` je usuwa); pomyłka starego / nowego adresu (`ask_db_url` sprawdza identyfikator projektu przed pytaniem o hasło); po `yarn deploy` CRM dostał stary klucz service_role z pamięci PM2 → `13-restart-server.sh`; `imap-sync-worker` (poza repo) czyta konfigurację tylko przy starcie → restart w `14-scan-server.sh`.
 
 ## Etap 5 — po przełączeniu
 
