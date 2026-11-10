@@ -1090,7 +1090,9 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
       ${partyLines({
         name: data.recipient.name, nip: data.recipient.nip, street: data.recipient.street, postalCode: data.recipient.postalCode,
         city: data.recipient.city, countryCode: data.recipient.countryCode,
-        extra: data.recipient.internalId ? `<div class="party-contact">Numer identyfikacji wewnętrznej KSeF: <strong>${esc(data.recipient.internalId)}</strong></div>` : '',
+        extra: data.recipient.role === 8
+          ? '<div class="party-contact">Jednostka podrzędna JST</div>'
+          : data.recipient.internalId ? `<div class="party-contact">Numer identyfikacji wewnętrznej KSeF: <strong>${esc(data.recipient.internalId)}</strong></div>` : '',
       })}
     </div>` : ''}
   </section>

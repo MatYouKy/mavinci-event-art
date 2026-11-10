@@ -199,7 +199,7 @@ function parseXmlCorrection(xml: string, fa: string, items: any[], grossRaw: str
   const buyersBefore = getXmlBlocks(fa, 'Podmiot2K');
   const buyerBefore = buyersBefore.length === 1 ? readXmlParty(buyersBefore[0]) : null;
   const buyerAfter = readXmlParty(getXmlBlock(xml, 'Podmiot2') || '');
-  const recipientBlock = getXmlBlocks(xml, 'Podmiot3').find((block) => getXmlTag(block, 'Rola') === '2');
+  const recipientBlock = getXmlBlocks(xml, 'Podmiot3').find((block) => ['2', '8'].includes(getXmlTag(block, 'Rola') || ''));
   const recipientBeforeText = readCorrectionDescription(fa, 'Odbiorca przed korektą');
   const recipientAfterText = readCorrectionDescription(fa, 'Odbiorca po korekcie');
   const scope = readCorrectionDescription(fa, 'Zakres korekty');

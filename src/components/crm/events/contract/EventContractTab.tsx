@@ -1995,20 +1995,32 @@ export function EventContractTab({
       setClientPartySigners(organization ? legalSigners : []);
 
       let invoiceBuyer = organization;
-      if (event.billing_arrangement && event.billing_arrangement !== 'direct' && event.billing_organization_id) {
+      // Klient rozliczany na inną organizację z karty klienta (np. szkoła → gmina): nabywcą jest ta organizacja.
+      const clientInvoiceBuyerId = (organization as { invoice_buyer_organization_id?: string | null } | null)
+        ?.invoice_buyer_organization_id || null;
+      const clientRecipientRole = (organization as { invoice_recipient_role?: number | null } | null)
+        ?.invoice_recipient_role === 2 ? 2 : 8;
+      const payerId = event.billing_arrangement && event.billing_arrangement !== 'direct'
+        ? event.billing_organization_id
+        : clientInvoiceBuyerId;
+      if (payerId) {
         const { data: payer, error: payerError } = await supabase.from('organizations')
-          .select('*').eq('id', event.billing_organization_id).single();
+          .select('*').eq('id', payerId).single();
         if (payerError) throw payerError;
         invoiceBuyer = payer as OrganizationWithRelations;
       }
+      const clientIsJstUnit = Boolean(organization && clientInvoiceBuyerId && invoiceBuyer?.id === clientInvoiceBuyerId
+        && clientRecipientRole === 8);
       const invoicePartyDetails = (party: OrganizationWithRelations) => [
         contractValueHtml(party.name),
         escapeContractText(joinRawContractParts([party.address, joinRawContractParts([party.postal_code, party.city], ' ')])),
         party.nip ? `NIP: ${contractValueHtml(party.nip)}` : '',
       ].filter(Boolean).join(', ');
-      const recipientInternalId = organization?.ksef_internal_id?.trim();
+      const recipientInternalId = clientIsJstUnit ? '' : organization?.ksef_internal_id?.trim();
       const invoiceRecipient = organization && (invoiceBuyer?.id !== organization.id || recipientInternalId)
-        ? `<span style="display:block;font:inherit;">Odbiorca (Podmiot inny w KSeF): ${invoicePartyDetails(organization)}${recipientInternalId ? `, numer identyfikacji wewnętrznej: ${contractValueHtml(recipientInternalId)}` : ''}.</span>`
+        ? clientIsJstUnit
+          ? `<span style="display:block;font:inherit;">Odbiorca (jednostka podrzędna JST): ${invoicePartyDetails(organization)}.</span>`
+          : `<span style="display:block;font:inherit;">Odbiorca (Podmiot inny w KSeF): ${invoicePartyDetails(organization)}${recipientInternalId ? `, numer identyfikacji wewnętrznej: ${contractValueHtml(recipientInternalId)}` : ''}.</span>`
         : '';
       const clientInvoiceDetailsBlock = invoiceBuyer
         ? `<span style="font:inherit;"><span style="display:block;font:inherit;">Nabywca: ${invoicePartyDetails(invoiceBuyer)}.</span>${invoiceRecipient}</span>`

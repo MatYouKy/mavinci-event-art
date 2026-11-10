@@ -44,6 +44,9 @@ export interface EventDetail {
   billing_organization_name: string | null;
   billing_organization_id: string | null;
   billing_contacts: EventBillingContact[];
+  /** Nabywca z karty klienta (np. gmina dla szkoły), gdy rozliczenie jest bezpośrednie. */
+  client_invoice_buyer_name?: string | null;
+  client_invoice_recipient_role?: 2 | 8 | null;
   contact_name: string | null;
   contact_id: string | null;
   contact_phone: string | null;
@@ -249,9 +252,23 @@ export function DetailsTab({
               icon="briefcase"
               label={event.billing_arrangement === 'direct' ? 'Nabywca' : 'Nabywca / płatnik'}
               value={
-                event.billing_organization_name || event.organization_name || 'Nie wskazano'
+                event.billing_organization_name ||
+                (event.client_invoice_buyer_name
+                  ? `${event.client_invoice_buyer_name}${event.client_invoice_recipient_role === 8 ? ' (JST)' : ''}`
+                  : null) ||
+                event.organization_name ||
+                'Nie wskazano'
               }
             />
+            {event.billing_arrangement === 'direct' && Boolean(event.client_invoice_buyer_name) && (
+              <InfoRow
+                icon="home"
+                label="Odbiorca na fakturze"
+                value={`${event.organization_name || 'Klient wydarzenia'}${
+                  event.client_invoice_recipient_role === 8 ? ' — jednostka podrzędna JST' : ''
+                }`}
+              />
+            )}
             {event.billing_contacts.map((contact) => (
               <View key={contact.id} style={styles.billingContact}>
                 <InfoRow

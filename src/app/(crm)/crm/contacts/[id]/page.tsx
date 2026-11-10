@@ -8,6 +8,7 @@ import OrganizationDetailsSection from '@/components/crm/contacts/organization/O
 import OrganizationHotelSpaces from '@/components/crm/contacts/organization/OrganizationHotelSpaces';
 import {
   validateOrganizationForm,
+  organizationFormPayload,
   type OrganizationFormErrors,
 } from '@/components/crm/contacts/organization/organizationValidation';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
@@ -92,6 +93,8 @@ export interface Organization {
   krs: string | null;
   regon: string | null;
   ksef_internal_id?: string | null;
+  invoice_buyer_organization_id?: string | null;
+  invoice_recipient_role?: 2 | 8 | null;
   address: string | null;
   city: string | null;
   postal_code: string | null;
@@ -801,11 +804,10 @@ export default function OrganizationDetailPage() {
         .from('organizations')
         .update({
           ...validatedData,
-          krs: requiresKrsForLegalForm(validatedData.legal_form)
-            ? validatedData.krs
-            : null,
+          // Te same kolumny i normalizacja co przy dodawaniu organizacji (NIP, kod, strona, nabywca faktur).
+          ...organizationFormPayload(validatedData),
           updated_at: new Date().toISOString(),
-        })
+        } as any)
         .eq('id', organization.id);
 
       if (error) throw error;

@@ -17,6 +17,7 @@ import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import EventCommissionsPanel from './EventCommissionsPanel';
 import SearchCombobox from '@/components/crm/SearchCombobox';
+import { fetchInvoiceBuyerLink, type InvoiceBuyerLink } from '@/lib/organizations/invoiceBuyer';
 
 type BillingArrangement = 'direct' | 'hotel' | 'agency' | 'other';
 
@@ -135,6 +136,19 @@ export default function EventBillingContextCard({
 
   const effectiveOrganizationId =
     arrangement === 'direct' ? clientOrganizationId || '' : billingOrganizationId;
+
+  // Klient rozliczany na inną organizację z karty klienta (np. szkoła → gmina, JST).
+  const [clientInvoiceBuyer, setClientInvoiceBuyer] = useState<InvoiceBuyerLink | null>(null);
+  useEffect(() => {
+    let active = true;
+    fetchInvoiceBuyerLink(clientOrganizationId)
+      .then((link) => { if (active) setClientInvoiceBuyer(link); })
+      .catch(() => { if (active) setClientInvoiceBuyer(null); });
+    return () => { active = false; };
+  }, [clientOrganizationId]);
+  const clientInvoiceBuyerNote = clientInvoiceBuyer
+    ? `Faktura: ${clientInvoiceBuyer.buyer.alias || clientInvoiceBuyer.buyer.name}${clientInvoiceBuyer.role === 8 ? ' (JST)' : ''} — klient jako odbiorca`
+    : null;
 
   useEffect(() => {
     setArrangement(initialArrangement || 'direct');
@@ -698,8 +712,15 @@ export default function EventBillingContextCard({
                   <div>
                     <p className="text-xs uppercase tracking-wide text-emerald-200/60">Nabywca faktury</p>
                     <p className="mt-1 text-sm text-[#e5e4e2]">
-                      {clientOrganizationName || 'Klient przypisany do wydarzenia'}
+                      {clientInvoiceBuyer
+                        ? clientInvoiceBuyer.buyer.alias || clientInvoiceBuyer.buyer.name
+                        : clientOrganizationName || 'Klient przypisany do wydarzenia'}
                     </p>
+                    {clientInvoiceBuyerNote && (
+                      <p className="mt-1 text-xs text-[#e5e4e2]/50">
+                        Z karty klienta (Dane do faktury): {clientOrganizationName || 'klient'} jako odbiorca{clientInvoiceBuyer?.role === 8 ? ' — jednostka podrzędna JST' : ''}.
+                      </p>
+                    )}
                   </div>
                 </div>
               ) : (
@@ -835,6 +856,9 @@ export default function EventBillingContextCard({
                     : selectedOrganization?.alias || selectedOrganization?.name || 'Nie wybrano organizacji'}
                 </p>
                 <p className="mt-1 text-xs text-[#e5e4e2]/40">{arrangementLabels[arrangement]}</p>
+                {arrangement === 'direct' && clientInvoiceBuyerNote && (
+                  <p className="mt-1 truncate text-xs text-sky-200/80">{clientInvoiceBuyerNote}</p>
+                )}
                 {arrangement !== 'direct' && selectedContactIds.length > 0 && (
                   <p className="mt-1 truncate text-xs text-[#e5e4e2]/50">
                     Kontakt: {contacts

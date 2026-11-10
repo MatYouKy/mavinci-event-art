@@ -2,15 +2,14 @@
 
 import SystemBadge from '@/components/UI/SystemBadge';
 
-import { Mail, Phone, Globe, Search, Loader2 } from 'lucide-react';
 import OrganizationLocationPicker from '@/components/crm/contacts/organization/OrganizationLocationPicker';
 import OrganizationRepresentatives from '@/components/crm/contacts/organization/OrganizationRepresentatives';
-import type { OrganizationFormErrors } from './organizationValidation';
-import { getOrganizationInputClassName } from './organizationForm.helpers';
+import type { OrganizationFormErrors, OrganizationFormValues } from './organizationValidation';
 import { legalFormLabels } from '@/utils/labels/legalFormLabels';
 import { requiresKrsForLegalForm } from '@/lib/organizations/organizationLegalForm';
-import OrganizationRegistryLookupCard from './OrganizationRegistryLookupCard';
 import type { GUSCompanyData } from '@/lib/gus';
+import OrganizationFormFields, { organizationBusinessTypeLabels } from './OrganizationFormFields';
+import OrganizationInvoiceBuyerSection from './OrganizationInvoiceBuyerSection';
 
 type BusinessType = 'company' | 'hotel' | 'restaurant' | 'venue' | 'freelancer' | 'other';
 type OrganizationType = 'client' | 'subcontractor';
@@ -47,6 +46,8 @@ interface Organization {
   krs: string | null;
   regon: string | null;
   ksef_internal_id?: string | null;
+  invoice_buyer_organization_id?: string | null;
+  invoice_recipient_role?: 2 | 8 | null;
   address: string | null;
   city: string | null;
   postal_code: string | null;
@@ -103,14 +104,6 @@ interface OrganizationDetailsSectionProps {
   onRepresentativesUpdate: () => void;
 }
 
-const businessTypeLabels: Record<BusinessType, string> = {
-  company: 'Firma',
-  hotel: 'Hotel',
-  restaurant: 'Restauracja',
-  venue: 'Obiekt / sala eventowa',
-  freelancer: 'Freelancer',
-  other: 'Inny profil działalności',
-};
 
 export default function OrganizationDetailsSection({
   organization,
@@ -135,11 +128,6 @@ export default function OrganizationDetailsSection({
   const currentLegalForm = editedData.legal_form ?? organization.legal_form ?? '';
   const isHotel = (editMode ? editedData.business_type ?? organization.business_type : organization.business_type) === 'hotel';
   const legalFormRequiresKrs = requiresKrsForLegalForm(currentLegalForm);
-  const renderFieldError = (field: keyof OrganizationFormErrors) => {
-    if (!formErrors[field]) return null;
-    return <p className="mt-1 text-sm text-red-400">{formErrors[field]}</p>;
-  };
-
   const updateField = <K extends keyof Organization>(field: K, value: Organization[K]) => {
     setEditedData((prev) => ({
       ...prev,
@@ -154,360 +142,70 @@ export default function OrganizationDetailsSection({
     }
   };
 
+  const formValues = { ...organization, ...editedData } as OrganizationFormValues;
+  const viewRow = (label: string, value: React.ReactNode, wide = false) => (
+    <div className={wide ? 'md:col-span-2' : ''}>
+      <p className="mb-1 text-sm font-medium text-gray-400">{label}</p>
+      <div className="break-words text-white">{value || '—'}</div>
+    </div>
+  );
+
   return (
     <div className="space-y-6">
-      <div className="rounded-lg border border-gray-700 bg-[#1a1d2e] p-6">
-        <h2 className="mb-4 text-xl font-semibold text-white">Informacje podstawowe</h2>
+      <div className="rounded-lg bg-[#1a1d2e] p-6">
+        <h2 className="mb-4 text-lg uppercase text-white">Informacje podstawowe</h2>
 
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-400">Nazwa pełna *</label>
-            {editMode ? (
-              <>
-                <input
-                  type="text"
-                  value={editedData.name || ''}
-                  onChange={(e) => updateField('name', e.target.value)}
-                  className={getOrganizationInputClassName(formErrors, 'name')}
-                />
-                {renderFieldError('name')}
-              </>
-            ) : (
-              <p className="text-white">{organization.name}</p>
-            )}
-          </div>
-
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-400">
-              Alias (krótka nazwa)
-            </label>
-            {editMode ? (
-              <input
-                type="text"
-                value={editedData.alias || ''}
-                onChange={(e) => updateField('alias', e.target.value)}
-                className={getOrganizationInputClassName(formErrors)}
-                placeholder="np. OMEGA HOTEL"
-              />
-            ) : (
-              <p className="text-white">{organization.alias || '-'}</p>
-            )}
-          </div>
-
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-400">NIP *</label>
-            {editMode ? (
-              <>
-                <div className="flex space-x-2">
-                  <input
-                    type="text"
-                    value={editedData.nip || ''}
-                    onChange={(e) => updateField('nip', e.target.value)}
-                    className={getOrganizationInputClassName(formErrors, 'nip')}
-                  />
-                  <button
-                    type="button"
-                    onClick={handleFetchFromGUS}
-                    disabled={loadingGUS}
-                    className="flex h-11 shrink-0 self-center items-center space-x-2 whitespace-nowrap rounded-lg bg-[#d3bb73] px-5 text-[#0f1119] transition-colors hover:bg-[#c4a859] disabled:opacity-50"
-                  >
-                    {loadingGUS ? (
-                      <Loader2 className="h-5 w-5 animate-spin" />
-                    ) : (
-                      <Search className="h-5 w-5" />
-                    )}
-                    <span>GUS / rejestry</span>
-                  </button>
-                </div>
-                {renderFieldError('nip')}
-              </>
-            ) : (
-              <p className="text-white">{organization.nip || '-'}</p>
-            )}
-          </div>
-
-          <OrganizationRegistryLookupCard data={registryLookup} />
-
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-400">
-              Profil działalności *
-            </label>
-            {editMode ? (
-              <>
-                <select
-                  value={editedData.business_type || organization.business_type}
-                  onChange={(e) => updateField('business_type', e.target.value as BusinessType)}
-                  className={getOrganizationInputClassName(formErrors, 'business_type')}
-                >
-                  {Object.entries(businessTypeLabels).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-                {renderFieldError('business_type')}
-              </>
-            ) : (
-              <p className="text-white">{businessTypeLabels[organization.business_type]}</p>
-            )}
-          </div>
-
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-400">
-              Forma prawna / typ podmiotu *
-            </label>
-            {editMode ? (
-              <>
-                <select
-                  value={currentLegalForm}
-                  onChange={(e) => {
-                    const legalForm = e.target.value;
-                    updateField('legal_form', legalForm);
-                    if (!requiresKrsForLegalForm(legalForm)) updateField('krs', null);
-                  }}
-                  className={getOrganizationInputClassName(formErrors, 'legal_form')}
-                >
-                  <option value="">-- Wybierz formę prawną lub typ podmiotu --</option>
-                  {Object.entries(legalFormLabels).map(([key, label]) => (
-                    <option key={key} value={key}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-                {renderFieldError('legal_form')}
-              </>
-            ) : (
-              <p className="text-white">
-                {organization.legal_form
-                  ? legalFormLabels[organization.legal_form as keyof typeof legalFormLabels] ||
-                    organization.legal_form
-                  : '-'}
-              </p>
-            )}
-          </div>
-
-          {legalFormRequiresKrs && (
-            <div>
-              <label className="mb-1 block text-sm font-medium text-gray-400">KRS *</label>
-              {editMode ? (
-                <>
-                  <input
-                    type="text"
-                    value={editedData.krs || ''}
-                    onChange={(e) => updateField('krs', e.target.value)}
-                    className={getOrganizationInputClassName(formErrors, 'krs')}
-                  />
-                  {renderFieldError('krs')}
-                </>
-              ) : (
-                <p className="text-white">{organization.krs || '-'}</p>
-              )}
-            </div>
-          )}
-
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-400">REGON</label>
-            {editMode ? (
-              <>
-                <input
-                  type="text"
-                  value={editedData.regon || ''}
-                  onChange={(e) => updateField('regon', e.target.value)}
-                  className={getOrganizationInputClassName(formErrors, 'regon')}
-                />
-                {renderFieldError('regon')}
-              </>
-            ) : (
-              <p className="text-white">{organization.regon || '-'}</p>
-            )}
-          </div>
-
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-400">Numer identyfikacji wewnętrznej KSeF</label>
-            {editMode ? (
-              <input type="text" value={editedData.ksef_internal_id || ''}
-                onChange={e => updateField('ksef_internal_id', e.target.value)}
-                placeholder="np. 5252228219-00145"
-                className={getOrganizationInputClassName(formErrors, 'ksef_internal_id')} />
-            ) : <p className="text-white">{organization.ksef_internal_id || '—'}</p>}
-          </div>
-
-          <div className="md:col-span-2">
-            <label className="mb-1 block text-sm font-medium text-gray-400">Adres (ulica) *</label>
-            {editMode ? (
-              <>
-                <input
-                  type="text"
-                  value={editedData.address || ''}
-                  onChange={(e) => updateField('address', e.target.value)}
-                  className={getOrganizationInputClassName(formErrors, 'address')}
-                  placeholder="np. ul. Chmielna 85/87"
-                />
-                {renderFieldError('address')}
-              </>
-            ) : (
-              <p className="text-white">{organization.address || '-'}</p>
-            )}
-          </div>
-
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-400">Kod pocztowy *</label>
-            {editMode ? (
-              <>
-                <input
-                  type="text"
-                  value={editedData.postal_code || ''}
-                  onChange={(e) => updateField('postal_code', e.target.value)}
-                  className={getOrganizationInputClassName(formErrors, 'postal_code')}
-                  placeholder="00-000"
-                />
-                {renderFieldError('postal_code')}
-              </>
-            ) : (
-              <p className="text-white">{organization.postal_code || '-'}</p>
-            )}
-          </div>
-
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-400">Miasto *</label>
-            {editMode ? (
-              <>
-                <input
-                  type="text"
-                  value={editedData.city || ''}
-                  onChange={(e) => updateField('city', e.target.value)}
-                  className={getOrganizationInputClassName(formErrors, 'city')}
-                  placeholder="np. Warszawa"
-                />
-                {renderFieldError('city')}
-              </>
-            ) : (
-              <p className="text-white">{organization.city || '-'}</p>
-            )}
-          </div>
-
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-400">Kraj</label>
-            {editMode ? (
-              <input
-                type="text"
-                value={editedData.country || ''}
-                onChange={(e) => updateField('country', e.target.value)}
-                className={getOrganizationInputClassName(formErrors)}
-              />
-            ) : (
-              <p className="text-white">{organization.country || '-'}</p>
-            )}
-          </div>
-
-          <div>
-            <label className="mb-1 flex items-center space-x-1 text-sm font-medium text-gray-400">
-              <Mail className="h-4 w-4" />
-              <span>Email</span>
-            </label>
-            {editMode ? (
-              <>
-                <input
-                  type="email"
-                  value={editedData.email || ''}
-                  onChange={(e) => updateField('email', e.target.value)}
-                  className={getOrganizationInputClassName(formErrors, 'email')}
-                />
-                {renderFieldError('email')}
-              </>
-            ) : (
-              <p className="text-white">{organization.email || '-'}</p>
-            )}
-          </div>
-
-          <div>
-            <label className="mb-1 flex items-center space-x-1 text-sm font-medium text-gray-400">
-              <Phone className="h-4 w-4" />
-              <span>Telefon</span>
-            </label>
-            {editMode ? (
-              <>
-                <input
-                  type="tel"
-                  value={editedData.phone || ''}
-                  onChange={(e) => updateField('phone', e.target.value)}
-                  className={getOrganizationInputClassName(formErrors, 'phone')}
-                />
-                {renderFieldError('phone')}
-              </>
-            ) : (
-              <p className="text-white">{organization.phone || '-'}</p>
-            )}
-          </div>
-
-          <div>
-            <label className="mb-1 flex items-center space-x-1 text-sm font-medium text-gray-400">
-              <Globe className="h-4 w-4" />
-              <span>Strona www</span>
-            </label>
-            {editMode ? (
-              <>
-                <input
-                  type="url"
-                  value={editedData.website || ''}
-                  onChange={(e) => updateField('website', e.target.value)}
-                  className={getOrganizationInputClassName(formErrors, 'website')}
-                />
-                {renderFieldError('website')}
-              </>
-            ) : organization.website ? (
-              <a
-                href={organization.website}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-[#d3bb73] hover:underline"
-              >
+        {editMode ? (
+          <OrganizationFormFields
+            values={formValues}
+            errors={formErrors}
+            onChange={(field, value) => updateField(field as keyof Organization, value as never)}
+            onFetchRegistry={handleFetchFromGUS}
+            loadingRegistry={loadingGUS}
+            registryLookup={registryLookup}
+          />
+        ) : (
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            {viewRow('Nazwa pełna', organization.name, true)}
+            {viewRow('Alias (krótka nazwa)', organization.alias)}
+            {viewRow('NIP', organization.nip)}
+            {viewRow('Profil działalności', organizationBusinessTypeLabels[organization.business_type] || organization.business_type)}
+            {viewRow('Forma prawna / typ podmiotu', organization.legal_form
+              ? legalFormLabels[organization.legal_form as keyof typeof legalFormLabels] || organization.legal_form
+              : null)}
+            {legalFormRequiresKrs && viewRow('KRS', organization.krs)}
+            {viewRow('REGON', organization.regon)}
+            {viewRow('Numer identyfikacji wewnętrznej KSeF', organization.ksef_internal_id)}
+            {viewRow('Adres', [organization.address, [organization.postal_code, organization.city].filter(Boolean).join(' '), organization.country]
+              .filter(Boolean).join(', '), true)}
+            {viewRow('E-mail', organization.email)}
+            {viewRow('Telefon', organization.phone)}
+            {viewRow('Strona www', organization.website ? (
+              <a href={organization.website} target="_blank" rel="noopener noreferrer" className="text-[#d3bb73] hover:underline">
                 {organization.website}
               </a>
-            ) : (
-              <p className="text-white">-</p>
-            )}
+            ) : null)}
+            {viewRow('Ocena', renderRating(organization.rating))}
+            {viewRow('Status', <SystemBadge value={organization.status} />)}
           </div>
-
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-400">Ocena</label>
-            {editMode ? (
-              <select
-                value={editedData.rating ?? 0}
-                onChange={(e) => updateField('rating', Number(e.target.value) || null)}
-                className={getOrganizationInputClassName(formErrors)}
-              >
-                <option value="0">Brak oceny</option>
-                {[1, 2, 3, 4, 5].map((r) => (
-                  <option key={r} value={r}>
-                    {r} ⭐
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <div>{renderRating(organization.rating)}</div>
-            )}
-          </div>
-
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-400">Status</label>
-            {editMode ? (
-              <select
-                value={editedData.status || 'active'}
-                onChange={(e) => updateField('status', e.target.value)}
-                className={getOrganizationInputClassName(formErrors)}
-              >
-                <option value="active">Aktywny</option>
-                <option value="inactive">Nieaktywny</option>
-                <option value="potential">Potencjalny</option>
-                <option value="archived">Zarchiwizowany</option>
-              </select>
-            ) : (
-              <SystemBadge value={organization.status} />
-            )}
-          </div>
-        </div>
+        )}
       </div>
+
+      <OrganizationInvoiceBuyerSection
+        organizationId={organization.id}
+        editMode={editMode}
+        errors={formErrors}
+        invoice_buyer_organization_id={(editMode
+          ? editedData.invoice_buyer_organization_id
+          : organization.invoice_buyer_organization_id) ?? null}
+        invoice_recipient_role={(editMode
+          ? editedData.invoice_recipient_role
+          : organization.invoice_recipient_role) ?? null}
+        onChange={(value) => {
+          updateField('invoice_buyer_organization_id', value.invoice_buyer_organization_id);
+          updateField('invoice_recipient_role', value.invoice_recipient_role);
+        }}
+      />
 
       <div className="rounded-lg bg-[#1a1d2e] p-6">
         <h2 className="mb-3 text-lg uppercase">{isHotel ? 'Lokalizacja hotelu i przestrzenie' : 'Powiązana lokalizacja'}</h2>
@@ -529,8 +227,8 @@ export default function OrganizationDetailsSection({
         </div>}
       </div>
 
-      <div className="rounded-lg border border-gray-700 bg-[#1a1d2e] p-6">
-        <h2 className="mb-4 text-xl font-semibold text-white">Reprezentanci i osoby decyzyjne</h2>
+      <div className="rounded-lg bg-[#1a1d2e] p-6">
+        <h2 className="mb-4 text-lg uppercase text-white">Reprezentanci i osoby decyzyjne</h2>
 
         <OrganizationRepresentatives
           organizationId={organization.id}

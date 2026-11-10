@@ -7,6 +7,7 @@ import {
   type InvoiceRecipientDraft,
   type InvoiceRecipientFields,
 } from '@/lib/invoices/ksefRecipient';
+import type { FA3RecipientRole } from '@/lib/ksef/generateFA3XML';
 
 type OrganizationOption = { id: string; name: string; nip: string | null; city: string | null };
 
@@ -56,15 +57,18 @@ export default function InvoiceRecipientEditor({ value, onChange, disabled = fal
     setError(null);
     try {
       const { data, error: readError } = await (supabase.from as any)('organizations')
-        .select('id,name,nip,address,postal_code,city,country,ksef_internal_id')
+        .select('id,name,nip,address,postal_code,city,country,ksef_internal_id,invoice_recipient_role')
         .eq('id', organizationId).maybeSingle();
       if (request !== requestRef.current || valueRef.current.mode !== 'organization'
         || valueRef.current.organizationId !== organizationId) return;
       if (readError || !data) throw new Error('Nie udało się odczytać danych odbiorcy. Wybierz organizację ponownie albo wpisz dane ręcznie.');
+      // Jednostka podrzędna JST (np. szkoła rozliczana na gminę) ma w karcie rolę 8: własny NIP, bez IDWew.
+      const role: FA3RecipientRole = data.invoice_recipient_role === 8 ? 8 : 2;
       callbackRef.current({ mode: 'organization', organizationId, data: {
-        name: data.name || '', nip: data.nip || '', internalId: data.ksef_internal_id || '',
+        name: data.name || '', nip: role === 8 ? String(data.nip || '').replace(/\D/g, '') : data.nip || '',
+        internalId: role === 8 ? '' : data.ksef_internal_id || '',
         street: data.address || '', postalCode: data.postal_code || '', city: data.city || '',
-        countryCode: countryCode(data.country), role: 2,
+        countryCode: countryCode(data.country), role,
       } });
     } catch (readError) {
       if (request === requestRef.current) setError(readError instanceof Error ? readError.message : 'Nie udało się odczytać odbiorcy.');
@@ -92,10 +96,14 @@ export default function InvoiceRecipientEditor({ value, onChange, disabled = fal
   const updateField = (field: Exclude<keyof InvoiceRecipientFields, 'role'>, text: string) => {
     change({ ...value, data: { ...value.data, [field]: text } });
   };
+  const isJstUnit = value.data.role === 8;
+  const changeRole = (role: FA3RecipientRole) => {
+    change({ ...value, data: { ...value.data, role, internalId: role === 8 ? '' : value.data.internalId } });
+  };
   const fields: Array<{ key: Exclude<keyof InvoiceRecipientFields, 'role'>; label: string; wide?: boolean; maxLength?: number }> = [
     { key: 'name', label: 'Nazwa odbiorcy *', wide: true, maxLength: 512 },
-    { key: 'nip', label: 'NIP odbiorcy — opcjonalnie', maxLength: 16 },
-    { key: 'internalId', label: 'IDWew KSeF — opcjonalnie', maxLength: 16 },
+    { key: 'nip', label: isJstUnit ? 'NIP jednostki *' : 'NIP odbiorcy — opcjonalnie', maxLength: 16 },
+    ...(isJstUnit ? [] : [{ key: 'internalId' as const, label: 'IDWew KSeF — opcjonalnie', maxLength: 16 }]),
     { key: 'street', label: 'Ulica i numer *', wide: true, maxLength: 512 },
     { key: 'postalCode', label: 'Kod pocztowy *', maxLength: 20 },
     { key: 'city', label: 'Miejscowość *', maxLength: 256 },
@@ -145,6 +153,16 @@ export default function InvoiceRecipientEditor({ value, onChange, disabled = fal
             </label>
           </div>
         )}
+        <label className="mt-3 block text-xs text-[#e5e4e2]/65">Rodzaj odbiorcy w KSeF
+          <select value={value.data.role} disabled={disabled || loading} className={inputClass}
+            onChange={(event) => changeRole(event.target.value === '8' ? 8 : 2)}>
+            <option value={2}>Odbiorca — oddział lub jednostka wewnętrzna nabywcy</option>
+            <option value={8}>Jednostka podrzędna JST — np. szkoła, przedszkole (nabywcą jest gmina)</option>
+          </select>
+        </label>
+        {isJstUnit && <p className="mt-2 text-xs leading-5 text-[#e5e4e2]/60">
+          Nabywcą na fakturze jest JST (np. gmina) — w KSeF dostanie oznaczenie JST, a ta jednostka trafi jako odbiorca (rola 8) i zobaczy fakturę po swoim NIP-ie.
+        </p>}
         {loading && <p role="status" className="mt-3 text-xs text-[#e5e4e2]/60">Wczytywanie danych odbiorcy…</p>}
         {error && <p role="alert" className="mt-3 text-xs text-[#d3bb73]">{error}</p>}
         {value.mode === 'organization' && value.organizationId && !disabled && !loading && (

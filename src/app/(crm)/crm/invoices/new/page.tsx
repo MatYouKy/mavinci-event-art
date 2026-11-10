@@ -23,6 +23,7 @@ import { loadInvoiceItemSourceChoices, type InvoiceItemSourceChoice } from '@/li
 import { getNextAdvanceContext, type NextAdvanceContext } from '@/lib/invoices/nextAdvancePrefill';
 import { DEFAULT_INVOICE_PAYMENT_TERM_DAYS, getInvoicePaymentDueDate } from '@/lib/invoices/paymentTerm';
 import { getCurrentInvoiceIssuer } from '@/lib/invoices/currentInvoiceIssuer';
+import { fetchInvoiceBuyerLink, type InvoiceBuyerLink } from '@/lib/organizations/invoiceBuyer';
 
 interface EventOption {
   id: string;
@@ -206,6 +207,10 @@ export default function NewInvoicePage() {
   const [serviceRecipientContactId, setServiceRecipientContactId] = useState<string>('');
   const [recipientDraft, setRecipientDraft] = useState<InvoiceRecipientDraft>(createEmptyInvoiceRecipientDraft);
   const [recipientPrefillError, setRecipientPrefillError] = useState<string | null>(null);
+  // Klient wydarzenia rozliczany na inną organizację (np. szkoła → gmina) — z karty organizacji.
+  const [eventBuyerLink, setEventBuyerLink] = useState<{ eventId: string; link: InvoiceBuyerLink | null } | null>(null);
+  // Ta sama informacja dla nabywcy wybranego ręcznie: podpowiedź „wystaw na gminę”.
+  const [selectedBuyerLink, setSelectedBuyerLink] = useState<InvoiceBuyerLink | null>(null);
   const [buyerOverrideConfirmed, setBuyerOverrideConfirmed] = useState(false);
   const [originalInvoice, setOriginalInvoice] = useState<Record<string, any> | null>(null);
   const [originalInvoiceLoading, setOriginalInvoiceLoading] = useState(false);
@@ -242,8 +247,9 @@ export default function NewInvoicePage() {
     country: sourceBuyer.buyer_country || 'PL', email: sourceBuyer.buyer_email || '', phone: sourceBuyer.buyer_phone || '',
     bank_name: '', bank_account: '',
   } : organizations.find((organization) => organization.id === selectedOrgId);
+  const eventJstLink = eventBuyerLink && linkedEvent && eventBuyerLink.eventId === linkedEvent.id ? eventBuyerLink.link : null;
   const expectedEventBuyerId = linkedEvent?.billing_arrangement && linkedEvent.billing_arrangement !== 'direct'
-    ? linkedEvent.billing_organization_id : linkedEvent?.organization_id;
+    ? linkedEvent.billing_organization_id : eventJstLink?.buyer.id || linkedEvent?.organization_id;
   const buyerDiffersFromEvent = Boolean(invoiceType !== 'corrective' && !sourceBuyer && expectedEventBuyerId
     && (buyerIsPrivatePerson || (selectedOrgId && selectedOrgId !== expectedEventBuyerId)));
   const buyerPreviewName = buyerIsPrivatePerson ? `${privateBuyer.firstName} ${privateBuyer.lastName}`.trim() : selectedBuyerOrganization?.name || '';
@@ -276,6 +282,18 @@ export default function NewInvoicePage() {
       if (originalRecipientDraft) setRecipientDraft(originalRecipientDraft);
     }
   };
+
+  useEffect(() => {
+    if (!selectedOrgId || buyerIsPrivatePerson || invoiceType === 'corrective' || sourceBuyer) {
+      setSelectedBuyerLink(null);
+      return;
+    }
+    let active = true;
+    fetchInvoiceBuyerLink(selectedOrgId)
+      .then((link) => { if (active) setSelectedBuyerLink(link); })
+      .catch(() => { if (active) setSelectedBuyerLink(null); });
+    return () => { active = false; };
+  }, [selectedOrgId, buyerIsPrivatePerson, invoiceType, Boolean(sourceBuyer)]);
 
   useEffect(() => {
     if (employeeLoading || financeAccessLoading || !financeAccess?.canIssueInvoices) return;
@@ -456,8 +474,16 @@ export default function NewInvoicePage() {
     }
 
     const event = (data as EventOption | null) || null;
+    let buyerLink: InvoiceBuyerLink | null = null;
+    if (event?.organization_id && (event.billing_arrangement || 'direct') === 'direct') {
+      buyerLink = await fetchInvoiceBuyerLink(event.organization_id).catch((linkError) => {
+        console.error('Error fetching invoice buyer of event client:', linkError);
+        return null;
+      });
+    }
     if (syncRecipients && partyRevision !== partyEditRevision.current) return event;
     setLinkedEvent(event);
+    setEventBuyerLink(event ? { eventId: event.id, link: buyerLink } : null);
     if (syncRecipients && event && partyRevision === partyEditRevision.current
       && partiesPrefilledForEvent.current !== event.id) {
       partiesPrefilledForEvent.current = event.id;
@@ -466,13 +492,16 @@ export default function NewInvoicePage() {
       const eventBillingArrangement = event?.billing_arrangement || 'direct';
       setBillingArrangement(eventBillingArrangement);
       const buyerId = eventBillingArrangement !== 'direct'
-        ? event.billing_organization_id || '' : event.organization_id || '';
+        ? event.billing_organization_id || '' : buyerLink?.buyer.id || event.organization_id || '';
       setSelectedOrgId(buyerId);
       setBuyerOverrideConfirmed(false);
       setRecipientPrefillError(null);
+      // Szkoła rozliczana na gminę: nabywca = gmina, odbiorca = szkoła (rola z karty, zwykle 8 — JST).
+      const emptyRecipient = createEmptyInvoiceRecipientDraft();
       setRecipientDraft(event.organization_id && event.organization_id !== buyerId
-        ? { ...createEmptyInvoiceRecipientDraft(), mode: 'organization', organizationId: event.organization_id }
-        : createEmptyInvoiceRecipientDraft());
+        ? { ...emptyRecipient, mode: 'organization', organizationId: event.organization_id,
+            data: { ...emptyRecipient.data, role: buyerLink && buyerLink.buyer.id === buyerId ? buyerLink.role : 2 } }
+        : emptyRecipient);
     }
     return event;
   };
@@ -546,11 +575,21 @@ export default function NewInvoicePage() {
     setBuyerOverrideConfirmed(false);
 
     if (!selectedEventId || !serviceRecipientOrganizationId) return;
-    if (organizationId === serviceRecipientOrganizationId) {
+    if (organizationId === serviceRecipientOrganizationId || organizationId === eventJstLink?.buyer.id) {
       setBillingArrangement('direct');
     } else if (billingArrangement === 'direct') {
       setBillingArrangement('other');
     }
+  };
+
+  /** Podpowiedź z karty organizacji: wystaw na nabywcę (np. gminę), a wybraną jednostkę wpisz jako odbiorcę. */
+  const applySelectedBuyerLink = () => {
+    if (!selectedBuyerLink) return;
+    const unitId = selectedBuyerLink.unitOrganizationId;
+    const empty = createEmptyInvoiceRecipientDraft();
+    handleBuyerSelect(selectedBuyerLink.buyer.id);
+    handleRecipientChange({ ...empty, mode: 'organization', organizationId: unitId,
+      data: { ...empty.data, role: selectedBuyerLink.role } });
   };
 
   const handleBillingArrangementChange = (arrangement: BillingArrangement) => {
@@ -561,7 +600,7 @@ export default function NewInvoicePage() {
     setBuyerIsPrivatePerson(false);
 
     if (arrangement === 'direct' && serviceRecipientOrganizationId) {
-      setSelectedOrgId(serviceRecipientOrganizationId);
+      setSelectedOrgId(eventJstLink?.buyer.id || serviceRecipientOrganizationId);
     } else if (
       arrangement !== 'direct' &&
       selectedOrgId === serviceRecipientOrganizationId
@@ -1896,6 +1935,7 @@ export default function NewInvoicePage() {
                       organization.id === serviceRecipientOrganizationId)?.name || null
                   }
                   arrangement={billingArrangement}
+                  jstBuyerName={eventJstLink && billingArrangement === 'direct' ? eventJstLink.buyer.name : null}
                   payerName={
                     organizations.find((organization) => organization.id === selectedOrgId)?.name ||
                     null
@@ -2081,6 +2121,19 @@ export default function NewInvoicePage() {
                   onAddNew={() => setShowAddBuyerModal(true)}
                 />
               )}
+              {selectedBuyerLink && selectedBuyerLink.unitOrganizationId === selectedOrgId && !buyerIsPrivatePerson && (
+                <div className="rounded-xl bg-sky-400/10 p-4 text-sm text-[#e5e4e2]">
+                  <p>
+                    Faktury za <strong>{selectedBuyerOrganization?.name || 'tę organizację'}</strong> wystawiamy na{' '}
+                    <strong>{selectedBuyerLink.buyer.name}</strong>
+                    {selectedBuyerLink.role === 8 ? ' (JST) — ta jednostka będzie odbiorcą.' : ' — ta organizacja będzie odbiorcą.'}
+                  </p>
+                  <button type="button" onClick={applySelectedBuyerLink}
+                    className="mt-3 rounded-lg bg-sky-400/15 px-3 py-2 text-xs text-sky-100 hover:bg-sky-400/25">
+                    Ustaw {selectedBuyerLink.buyer.alias || selectedBuyerLink.buyer.name} jako nabywcę
+                  </button>
+                </div>
+              )}
               <InvoiceRecipientEditor value={recipientDraft} onChange={handleRecipientChange}
                 autoLoadOrganization={!advanceFrom && invoiceType !== 'corrective'}
                 disabled={loading || (invoiceType === 'corrective' && !isPartyDataCorrection && Boolean(relatedInvoiceId))} />
@@ -2091,6 +2144,7 @@ export default function NewInvoicePage() {
                   <p className="font-medium text-[#e5e4e2]">{buyerPreviewName}</p>
                   <p className="mt-1 text-[#e5e4e2]/65">{buyerPreviewAddress || 'Brak adresu'}</p>
                   {!buyerIsPrivatePerson && <p className="mt-1 text-[#e5e4e2]/65">NIP: {selectedBuyerOrganization?.nip || 'nie podano'}</p>}
+                  {recipientDraft.mode !== 'same_as_buyer' && recipientDraft.data.role === 8 && <p className="mt-1 text-[#d3bb73]">JST — w KSeF z oznaczeniem jednostki samorządu</p>}
                 </section>
                 <section className="rounded-xl bg-black/15 p-4 text-sm">
                   <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-[#d3bb73]">Odbiorca na fakturze i w KSeF</h3>
@@ -2099,6 +2153,7 @@ export default function NewInvoicePage() {
                     : [recipientDraft.data.street, [recipientDraft.data.postalCode, recipientDraft.data.city].filter(Boolean).join(' ')].filter(Boolean).join(', ') || 'Brak adresu'}</p>
                   {recipientDraft.mode === 'same_as_buyer' ? <p className="mt-2 text-xs text-[#e5e4e2]/55">Ten sam podmiot — bez osobnego odbiorcy w XML.</p> : <>
                     {recipientDraft.data.nip && <p className="mt-1 text-[#e5e4e2]/65">NIP: {recipientDraft.data.nip}</p>}
+                    {recipientDraft.data.role === 8 && <p className="mt-1 text-[#d3bb73]">Jednostka podrzędna JST (rola 8)</p>}
                     {recipientDraft.data.internalId && <p className="mt-1 text-[#d3bb73]">IDWew KSeF: {recipientDraft.data.internalId}</p>}
                   </>}
                 </section>

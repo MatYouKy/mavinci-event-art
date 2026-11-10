@@ -10,6 +10,8 @@ interface InvoiceBillingContextProps {
   serviceRecipientName?: string | null;
   arrangement: BillingArrangement;
   payerName?: string | null;
+  /** Klient rozliczany na inną organizację z karty klienta (np. szkoła → gmina). */
+  jstBuyerName?: string | null;
   onArrangementChange: (arrangement: BillingArrangement) => void;
 }
 
@@ -29,6 +31,7 @@ export default function InvoiceBillingContext({
   serviceRecipientName,
   arrangement,
   payerName,
+  jstBuyerName,
   onArrangementChange,
 }: InvoiceBillingContextProps) {
   const indirect = arrangement !== 'direct';
@@ -51,6 +54,12 @@ export default function InvoiceBillingContext({
           </div>
         </div>
 
+        {!indirect && jstBuyerName && (
+          <div className="flex items-center gap-2 rounded-lg bg-sky-400/10 px-3 py-2 text-xs text-sky-200">
+            <Building2 className="h-4 w-4" />
+            Nabywca: {jstBuyerName}
+          </div>
+        )}
         {indirect && payerName && (
           <div className="flex items-center gap-2 rounded-lg border border-sky-400/20 bg-sky-400/10 px-3 py-2 text-xs text-sky-200">
             <Building2 className="h-4 w-4" />
@@ -74,7 +83,9 @@ export default function InvoiceBillingContext({
       </label>
 
       <p className="mt-2 text-xs leading-5 text-[#e5e4e2]/55">
-        {ARRANGEMENT_DESCRIPTION[arrangement]}
+        {!indirect && jstBuyerName
+          ? `Klient wydarzenia jest rozliczany na ${jstBuyerName} (karta klienta → Dane do faktury): nabywcą będzie ${jstBuyerName}, a klient odbiorcą faktury.`
+          : ARRANGEMENT_DESCRIPTION[arrangement]}
       </p>
 
       {indirect && (

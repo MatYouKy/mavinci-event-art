@@ -47,7 +47,13 @@ export type FA3SettlementSummary = {
   remainingGross: number;
 };
 
-/** Odbiorca będący jednostką wewnętrzną nabywcy, zapisany wraz z fakturą. */
+/**
+ * Rola odbiorcy w Podmiot3: 2 = jednostka wewnętrzna nabywcy (IDWew z NIP-em nabywcy),
+ * 8 = jednostka podrzędna JST – odbiorca (własny NIP; nabywca w Podmiot2 ma JST = 1).
+ */
+export type FA3RecipientRole = 2 | 8;
+
+/** Odbiorca zapisany wraz z fakturą (Podmiot3). */
 export type FA3Recipient = {
   name: string;
   nip?: string;
@@ -56,7 +62,7 @@ export type FA3Recipient = {
   postalCode: string;
   city: string;
   countryCode: string;
-  role: 2;
+  role: FA3RecipientRole;
 };
 
 export type FA3PreparedInvoice = {
@@ -838,7 +844,8 @@ export function prepareFA3Invoice(
       // CRM nie przechowuje osobnego klucza powiązania danych nabywcy w korektach.
       // IDNabywcy jest fakultatywne: nie zastępujemy go nazwą, aliasem, KRS ani REGON.
       internalId: undefined,
-      isJst: invoice?.buyer_is_jst === true,
+      // Nabywca jest JST, gdy fakturę otrzymuje jej jednostka podrzędna (Podmiot3, rola 8).
+      isJst: invoice?.buyer_is_jst === true || recipient?.role === 8,
       isGv: invoice?.buyer_is_gv === true,
     },
     invoice: {
@@ -948,7 +955,8 @@ export function validatePreparedFA3Invoice(
   if (!['VAT', 'ZAL', 'ROZ', 'KOR', 'KOR_ZAL', 'KOR_ROZ'].includes(data.invoice.type)) errors.push('Nieobsługiwany rodzaj faktury FA(3)');
   if (data.invoice.marginProcedure) errors.push('Procedura marży wymaga dodatkowych danych, których ten generator jeszcze nie obsługuje. Wysyłka została zatrzymana.');
   if (data.invoice.newTransport) errors.push('Nowy środek transportu wymaga dodatkowych danych, których ten generator jeszcze nie obsługuje. Wysyłka została zatrzymana.');
-  if (data.buyer.isJst || data.buyer.isGv) errors.push('Jednostka podrzędna JST lub członek grupy VAT wymaga odrębnej roli odbiorcy (8 lub 10). Nie można wysłać faktury z samym oznaczeniem JST/GV.');
+  if (data.buyer.isGv) errors.push('Członek grupy VAT wymaga odrębnej roli odbiorcy (10), której ten generator jeszcze nie obsługuje. Nie można wysłać faktury z samym oznaczeniem GV.');
+  if (data.buyer.isJst && data.recipient?.role !== 8) errors.push('Faktura dla JST wymaga wskazania jej jednostki podrzędnej jako odbiorcy (rola 8). Uzupełnij odbiorcę faktury.');
 
   ([['Sprzedawca', data.seller], ['Nabywca', data.buyer], ...(data.recipient ? [['Odbiorca', data.recipient]] : [])] as Array<[string, FA3PreparedInvoice['seller'] | FA3PreparedInvoice['buyer'] | FA3Recipient]>).forEach(([label, party]) => {
     validateFA3Text(errors, `${label} — nazwa`, party.name, 512, true);
@@ -970,10 +978,15 @@ export function validatePreparedFA3Invoice(
 
   if (data.recipient) {
     const recipient = data.recipient;
-    if (recipient.role !== 2) errors.push('Nieobsługiwana rola odbiorcy KSeF; wymagany odbiorca będący jednostką wewnętrzną nabywcy');
+    if (recipient.role !== 2 && recipient.role !== 8) errors.push('Nieobsługiwana rola odbiorcy KSeF; dozwolona jednostka wewnętrzna nabywcy (2) albo jednostka podrzędna JST (8)');
     if (!recipient.postalCode || !recipient.city) errors.push('Odbiorca: uzupełnij kod pocztowy i miejscowość');
     if (recipient.nip && !isValidPolishNip(recipient.nip)) errors.push('Odbiorca: nieprawidłowy NIP');
-    if (recipient.internalId) {
+    if (recipient.role === 8) {
+      if (!recipient.nip) errors.push('Odbiorca: jednostka podrzędna JST musi mieć własny NIP');
+      if (recipient.internalId) errors.push('Odbiorca: jednostka podrzędna JST nie ma numeru IDWew — usuń go i podaj NIP jednostki');
+      if (!data.buyer.nip) errors.push('Nabywca: faktura dla jednostki podrzędnej JST wymaga NIP nabywcy (np. gminy)');
+      else if (recipient.nip && recipient.nip === data.buyer.nip) errors.push('Odbiorca: jednostka podrzędna JST musi mieć inny NIP niż nabywca');
+    } else if (recipient.internalId) {
       if (!INTERNAL_ID_PATTERN.test(recipient.internalId) || !isValidPolishNip(recipient.internalId.slice(0, 10))) {
         errors.push('Odbiorca: IDWew musi mieć postać prawidłowy NIP–5 cyfr, np. 5252228219-00145');
       } else if (recipient.internalId.slice(0, 10) !== data.buyer.nip) {
@@ -1192,7 +1205,7 @@ export function validatePreparedFA3Invoice(
       if (before.recipient) {
         validateFA3Text(errors, 'Odbiorca przed korektą — NIP', before.recipient.nip, 32);
         validateFA3Text(errors, 'Odbiorca przed korektą — IDWew', before.recipient.internalId, 32);
-        if (before.recipient.role !== 2) errors.push('Nieobsługiwana rola odbiorcy przed korektą');
+        if (before.recipient.role !== 2 && before.recipient.role !== 8) errors.push('Nieobsługiwana rola odbiorcy przed korektą');
       }
       if (!buyerPartyDataChanged(data) && !recipientPartyDataChanged(data)) {
         errors.push('Korekta danych: dane nabywcy i odbiorcy przed i po korekcie są identyczne');
@@ -1484,7 +1497,7 @@ function buildDodatkowyOpisXml(data: FA3PreparedInvoice): string {
     chunks.push(...buildAdditionalDescriptionChunks('Zakres korekty', 'Wyłącznie dane nabywcy lub odbiorcy. Kwoty, pozycje i rozliczenie płatności faktury korygowanej pozostają bez zmian.'));
     if (recipientPartyDataChanged(data)) {
       const describeRecipient = (recipient?: FA3Recipient | null) => recipient
-        ? `${recipient.name}; ${recipient.street}; ${recipient.postalCode} ${recipient.city}; ${recipient.countryCode}${recipient.nip ? `; NIP: ${recipient.nip}` : ''}${recipient.internalId ? `; IDWew: ${recipient.internalId}` : ''}; rola: odbiorca`
+        ? `${recipient.name}; ${recipient.street}; ${recipient.postalCode} ${recipient.city}; ${recipient.countryCode}${recipient.nip ? `; NIP: ${recipient.nip}` : ''}${recipient.internalId ? `; IDWew: ${recipient.internalId}` : ''}; rola: ${recipient.role === 8 ? 'jednostka podrzędna JST – odbiorca' : 'odbiorca'}`
         : 'Jak nabywca — bez odrębnego odbiorcy.';
       // FA(3) nie zawiera Podmiot3K dla odbiorcy (rola 2). Nowe dane są
       // w Podmiot3, a pełny stan przed/po zachowujemy bez obcinania w opisie.

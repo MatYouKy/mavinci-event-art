@@ -312,6 +312,31 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
       }
     }
 
+    // Klient rozliczany na inną organizację z karty klienta (np. szkoła → gmina, JST).
+    // Osobne zapytanie: brak kolumny w starszej bazie nie może zablokować widoku wydarzenia.
+    let clientInvoiceBuyer: { name: string; role: 2 | 8 } | null = null;
+    if (billingContext && org?.id && ((data as any).billing_arrangement || 'direct') === 'direct') {
+      const { data: unit, error: unitError } = await supabase
+        .from('organizations')
+        .select('invoice_buyer_organization_id, invoice_recipient_role')
+        .eq('id', org.id)
+        .maybeSingle();
+      const buyerId = !unitError ? (unit as any)?.invoice_buyer_organization_id : null;
+      if (buyerId) {
+        const { data: buyer } = await supabase
+          .from('organizations')
+          .select('name, alias')
+          .eq('id', buyerId)
+          .maybeSingle();
+        if (buyer) {
+          clientInvoiceBuyer = {
+            name: (buyer as any).alias || (buyer as any).name,
+            role: (unit as any)?.invoice_recipient_role === 2 ? 2 : 8,
+          };
+        }
+      }
+    }
+
     return {
       id: data.id,
       name: data.name,
@@ -335,6 +360,8 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
       billing_organization_name: billingOrg?.alias || billingOrg?.name || null,
       billing_organization_id: (data as any).billing_organization_id ?? null,
       billing_contacts: billingContacts,
+      client_invoice_buyer_name: clientInvoiceBuyer?.name ?? null,
+      client_invoice_recipient_role: clientInvoiceBuyer?.role ?? null,
       contact_name: contact
         ? `${contact.first_name || ''} ${contact.last_name || ''}`.trim() || null
         : null,

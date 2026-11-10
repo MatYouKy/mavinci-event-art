@@ -1,4 +1,4 @@
-import type { FA3Recipient } from '@/lib/ksef/generateFA3XML';
+import type { FA3Recipient, FA3RecipientRole } from '@/lib/ksef/generateFA3XML';
 
 export interface InvoiceKsefRecipientSnapshot {
   version: 1;
@@ -22,7 +22,7 @@ export function readInvoiceKsefRecipientSnapshot(value: unknown): InvoiceKsefRec
     throw invalidSnapshot();
   }
   const recipient = snapshot.recipient as Record<string, unknown>;
-  if (recipient.role !== 2 || (recipient.organizationId !== null &&
+  if ((recipient.role !== 2 && recipient.role !== 8) || (recipient.organizationId !== null &&
       (typeof recipient.organizationId !== 'string' ||
        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(recipient.organizationId)))) {
     throw invalidSnapshot();
@@ -44,7 +44,7 @@ export function readInvoiceKsefRecipientSnapshot(value: unknown): InvoiceKsefRec
       countryCode: recipient.countryCode as string,
       nip: typeof recipient.nip === 'string' ? recipient.nip : undefined,
       internalId: typeof recipient.internalId === 'string' ? recipient.internalId : undefined,
-      role: 2,
+      role: recipient.role as FA3RecipientRole,
     },
   };
 }
@@ -62,7 +62,8 @@ export type InvoiceRecipientFields = {
   postalCode: string;
   city: string;
   countryCode: string;
-  role: 2;
+  /** 2 = jednostka wewnętrzna nabywcy (IDWew), 8 = jednostka podrzędna JST (własny NIP, nabywca z JST = 1). */
+  role: FA3RecipientRole;
 };
 export type InvoiceRecipientDraft = {
   mode: InvoiceRecipientMode;
@@ -82,11 +83,15 @@ function recipientFields(value: unknown): InvoiceRecipientFields {
     ? value as Record<string, unknown> : {};
   const text = (key: string) => typeof data[key] === 'string' ? (data[key] as string).trim() : '';
   const country = text('countryCode').toUpperCase();
+  const role: FA3RecipientRole = data.role === 8 || data.role === '8' ? 8 : 2;
   return {
-    name: text('name'), nip: text('nip'), internalId: text('internalId'), street: text('street'),
+    name: text('name'),
+    // Jednostka JST jest identyfikowana własnym NIP-em (same cyfry) i nie ma numeru wewnętrznego nabywcy.
+    nip: role === 8 ? text('nip').replace(/^PL/i, '').replace(/\D/g, '') : text('nip'),
+    internalId: role === 8 ? '' : text('internalId'), street: text('street'),
     postalCode: text('postalCode'), city: text('city'),
     countryCode: ['POLSKA', 'POLAND'].includes(country) ? 'PL' : country,
-    role: 2,
+    role,
   };
 }
 
@@ -146,6 +151,11 @@ export function validateInvoiceRecipientDraft(draft: InvoiceRecipientDraft): str
   const nip = data.nip.replace(/^PL/i, '').replace(/[\s-]/g, '');
   const validNip = (value: string) => /^[0-9]{10}$/.test(value) &&
     [6, 5, 7, 2, 3, 4, 5, 6, 7].reduce((sum, weight, index) => sum + Number(value[index]) * weight, 0) % 11 === Number(value[9]);
+  if (data.role === 8) {
+    if (!validNip(nip)) errors.push('Jednostka podrzędna JST musi mieć poprawny własny NIP — bez niego KSeF nie przypisze jej faktury.');
+    if (data.countryCode !== 'PL') errors.push('Jednostka podrzędna JST musi mieć kod kraju PL.');
+    return errors;
+  }
   if (nip && !validNip(nip)) errors.push('Sprawdź NIP odbiorcy — wymagany jest poprawny polski NIP albo puste pole.');
   if (data.internalId) {
     if (!/^\d{10}-\d{5}$/.test(data.internalId) || !validNip(data.internalId.split('-')[0])) {

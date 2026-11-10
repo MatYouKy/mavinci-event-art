@@ -13,9 +13,6 @@ import {
   User,
   ArrowLeft,
   Save,
-  Hotel,
-  UtensilsCrossed,
-  Briefcase,
   Search,
   Loader2,
   Plus,
@@ -35,14 +32,16 @@ import SearchCombobox from '@/components/crm/SearchCombobox';
 import OrganizationLocationPicker from '@/components/crm/contacts/organization/OrganizationLocationPicker';
 import AddLocationModal from '@/components/crm/AddLocationModal';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
-import OrganizationRegistryLookupCard from '@/components/crm/contacts/organization/OrganizationRegistryLookupCard';
 import {
   OrganizationFormValues,
   validateOrganizationForm,
   organizationValidationSchema,
+  organizationFormPayload,
+  type OrganizationFormErrors,
+  type OrganizationInvoiceRecipientRole,
 } from '@/components/crm/contacts/organization/organizationValidation';
-import { formatNip } from '@/components/crm/contacts/organization/organizationForm.helpers';
-import { legalFormLabels } from '@/utils/labels/legalFormLabels';
+import OrganizationFormFields, { clientBusinessTypes } from '@/components/crm/contacts/organization/OrganizationFormFields';
+import OrganizationInvoiceBuyerSection from '@/components/crm/contacts/organization/OrganizationInvoiceBuyerSection';
 import { requiresKrsForLegalForm } from '@/lib/organizations/organizationLegalForm';
 
 const cleanNip = (value: string) => value.replace(/\D/g, '');
@@ -165,6 +164,11 @@ export default function NewContactPage() {
     representationVerifiedAt: string;
     legalRepresentativeId: string;
     legalRepresentativeTitle: string;
+    ksefInternalId: string;
+    rating: number | null;
+    status: string;
+    invoiceBuyerOrganizationId: string;
+    invoiceRecipientRole: OrganizationInvoiceRecipientRole | null;
   }
 
   const [formData, setFormData] = useState<OrganizationCreateForm>({
@@ -196,6 +200,11 @@ export default function NewContactPage() {
     representationVerifiedAt: '',
     legalRepresentativeId: '',
     legalRepresentativeTitle: '',
+    ksefInternalId: '',
+    rating: null,
+    status: 'active',
+    invoiceBuyerOrganizationId: '',
+    invoiceRecipientRole: null,
   });
 
   const [specializationInput, setSpecializationInput] = useState('');
@@ -222,7 +231,26 @@ export default function NewContactPage() {
     representation_verified_at: formData.representationVerifiedAt,
     legal_representative_id: formData.legalRepresentativeId || null,
     legal_representative_title: formData.legalRepresentativeTitle,
+    ksef_internal_id: formData.ksefInternalId,
+    rating: formData.rating,
+    status: formData.status,
+    invoice_buyer_organization_id: formData.invoiceBuyerOrganizationId || null,
+    invoice_recipient_role: formData.invoiceRecipientRole,
   });
+
+  /** Wspólny formularz organizacji pracuje na nazwach kolumn; tu mapujemy je na stan strony. */
+  const organizationFieldMap: Partial<Record<keyof OrganizationFormValues, keyof OrganizationCreateForm>> = {
+    name: 'name', alias: 'alias', business_type: 'businessType', nip: 'nip', legal_form: 'legalForm',
+    krs: 'krs', regon: 'regon', ksef_internal_id: 'ksefInternalId', address: 'address', city: 'city',
+    postal_code: 'postalCode', country: 'country', email: 'email', phone: 'phone', website: 'website',
+    rating: 'rating', status: 'status', location_id: 'location_id',
+    invoice_buyer_organization_id: 'invoiceBuyerOrganizationId', invoice_recipient_role: 'invoiceRecipientRole',
+  };
+  const updateOrganizationField = <K extends keyof OrganizationFormValues>(field: K, value: OrganizationFormValues[K]) => {
+    const key = organizationFieldMap[field];
+    if (!key) return;
+    setFormData((prev) => ({ ...prev, [key]: value ?? (key === 'rating' || key === 'invoiceRecipientRole' ? null : '') }));
+  };
 
   const getPersonErrors = (inline = false) =>
     collectValidationErrors(
@@ -675,21 +703,8 @@ export default function NewContactPage() {
       const organizationData = validatedOrganizationData!;
       const orgData: any = {
         organization_type: contactType === 'subcontractor' ? 'subcontractor' : 'client',
-        business_type: organizationData.business_type,
-        name: organizationData.name,
-        alias: organizationData.alias,
-        nip: organizationData.nip,
-        regon: organizationData.regon,
-        krs: requiresKrsForLegalForm(organizationData.legal_form) ? organizationData.krs : null,
-        legal_form: organizationData.legal_form,
-        address: organizationData.address,
-        city: organizationData.city,
-        postal_code: organizationData.postal_code,
-        country: organizationData.country,
-        email: organizationData.email,
-        phone: organizationData.phone,
-        website: organizationData.website,
-        location_id: organizationData.location_id || null,
+        // Te same kolumny i normalizacja co przy edycji organizacji.
+        ...organizationFormPayload(organizationData),
         representation_type: organizationData.representation_type,
         representation_rule: organizationData.representation_rule,
         representation_basis: organizationData.representation_basis,
@@ -701,7 +716,6 @@ export default function NewContactPage() {
         longitude: formData.longitude ? parseFloat(formData.longitude) : null,
         location_notes: formData.locationNotes.trim() || null,
         notes: formData.notes.trim() || null,
-        status: 'active' as const,
         specialization: contactType === 'subcontractor' ? formData.specialization : null,
         hourly_rate:
           contactType === 'subcontractor' && formData.hourlyRate
@@ -784,20 +798,6 @@ export default function NewContactPage() {
     });
   };
 
-  const getBusinessTypeIcon = (type: BusinessType) => {
-    switch (type) {
-      case 'hotel':
-        return <Hotel className="h-5 w-5" />;
-      case 'restaurant':
-        return <UtensilsCrossed className="h-5 w-5" />;
-      case 'venue':
-        return <Building2 className="h-5 w-5" />;
-      case 'freelancer':
-        return <User className="h-5 w-5" />;
-      default:
-        return <Briefcase className="h-5 w-5" />;
-    }
-  };
 
   const filteredContacts = availableContacts.filter(
     (contact) =>
@@ -902,191 +902,15 @@ export default function NewContactPage() {
             <div className="space-y-6">
               {(contactType === 'organization' || contactType === 'subcontractor') && (
                 <>
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-gray-300">
-                      Nazwa pełna <span className="text-red-400">*</span>
-                    </label>
-                    <ContactValidationField field={'name'} error={formErrors['name']}>
-                      <input
-                        type="text"
-                        required
-                        value={formData.name}
-                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                        className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                        placeholder="np. OMEGA HOTEL SPÓŁKA Z OGRANICZONĄ ODPOWIEDZIALNOŚCIĄ"
-                      />
-                    </ContactValidationField>
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-gray-300">
-                      Alias (krótka nazwa)
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.alias}
-                      onChange={(e) => setFormData({ ...formData, alias: e.target.value })}
-                      className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                      placeholder="np. OMEGA HOTEL"
-                    />
-                    <p className="mt-1 text-xs text-gray-500">
-                      Krótka nazwa wyświetlana zamiast pełnej nazwy
-                    </p>
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <div>
-                      <label className="mb-2 block text-sm font-medium text-gray-300">NIP</label>
-                      <div className="flex space-x-2">
-                        <div className="min-w-0 flex-1">
-                          <ContactValidationField field="nip" error={formErrors.nip}>
-                            <input
-                              type="text"
-                              value={formatNip(formData.nip)}
-                              onChange={(e) => {
-                                const clean = e.target.value.replace(/\D/g, '');
-                                setFormData({ ...formData, nip: clean });
-                              }}
-                              className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                              placeholder="0000000000"
-                            />
-                          </ContactValidationField>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={handleFetchFromGUS}
-                          disabled={loadingGUS}
-                          className="flex h-11 shrink-0 self-center items-center space-x-2 whitespace-nowrap rounded-lg bg-[#d3bb73] px-5 text-[#0f1119] transition-colors hover:bg-[#c4a859] disabled:opacity-50"
-                        >
-                          {loadingGUS ? (
-                            <Loader2 className="h-5 w-5 animate-spin" />
-                          ) : (
-                            <Search className="h-5 w-5" />
-                          )}
-                          <span>GUS / rejestry</span>
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  <OrganizationRegistryLookupCard data={registryLookup} />
-
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-gray-300">
-                      Forma prawna / typ podmiotu <span className="text-red-400">*</span>
-                    </label>
-                    <ContactValidationField field={'legal_form'} error={formErrors['legal_form']}>
-                      <select
-                        required
-                        value={formData.legalForm}
-                        onChange={(event) => {
-                          const legalForm = event.target.value;
-                          setFormData((prev) => ({
-                            ...prev,
-                            legalForm,
-                            krs: requiresKrsForLegalForm(legalForm) ? prev.krs : '',
-                          }));
-                          setFormErrors((prev) => ({ ...prev, legal_form: '', krs: '' }));
-                        }}
-                        className={`w-full rounded-lg border bg-[#0f1119] px-4 py-2 text-white focus:outline-none ${
-                          formErrors.legal_form
-                            ? 'border-red-500 focus:border-red-500'
-                            : 'border-gray-700 focus:border-[#d3bb73]'
-                        }`}
-                      >
-                        <option value="">-- Wybierz formę prawną lub typ podmiotu --</option>
-                        {Object.entries(legalFormLabels).map(([value, label]) => (
-                          <option key={value} value={value}>
-                            {label}
-                          </option>
-                        ))}
-                      </select>
-                    </ContactValidationField>
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <div>
-                      <label className="mb-2 block text-sm font-medium text-gray-300">REGON</label>
-                      <ContactValidationField field={'regon'} error={formErrors['regon']}>
-                        <input
-                          type="text"
-                          value={formData.regon}
-                          onChange={(e) => setFormData({ ...formData, regon: e.target.value })}
-                          className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                        />
-                      </ContactValidationField>
-                    </div>
-
-                    {requiresKrsForLegalForm(formData.legalForm) && (
-                      <div>
-                        <label className="mb-2 block text-sm font-medium text-gray-300">
-                          KRS <span className="text-red-400">*</span>
-                        </label>
-                        <ContactValidationField field={'krs'} error={formErrors['krs']}>
-                          <input
-                            type="text"
-                            value={formData.krs}
-                            onChange={(e) => setFormData({ ...formData, krs: e.target.value })}
-                            className={`w-full rounded-lg border bg-[#0f1119] px-4 py-2 text-white focus:outline-none ${
-                              formErrors.krs
-                                ? 'border-red-500 focus:border-red-500'
-                                : 'border-gray-700 focus:border-[#d3bb73]'
-                            }`}
-                            placeholder="0000000000"
-                          />
-                        </ContactValidationField>
-                      </div>
-                    )}
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-gray-300">
-                      Typ działalności
-                    </label>
-                    <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
-                      {contactType === 'organization'
-                        ? ['company', 'hotel', 'restaurant', 'venue', 'other'].map((type) => (
-                            <button
-                              key={type}
-                              type="button"
-                              onClick={() =>
-                                setFormData({ ...formData, businessType: type as BusinessType })
-                              }
-                              className={`flex items-center space-x-2 rounded-lg border-2 px-4 py-2 transition-all ${
-                                formData.businessType === type
-                                  ? 'border-[#d3bb73] bg-[#d3bb73]/10 text-[#d3bb73]'
-                                  : 'border-gray-700 text-gray-400 hover:border-gray-600'
-                              }`}
-                            >
-                              {getBusinessTypeIcon(type as BusinessType)}
-                              <span className="capitalize">
-                                {type === 'company' && 'Firma'}
-                                {type === 'hotel' && 'Hotel'}
-                                {type === 'restaurant' && 'Restauracja'}
-                                {type === 'venue' && 'Sala eventowa'}
-                                {type === 'other' && 'Inna'}
-                              </span>
-                            </button>
-                          ))
-                        : ['company', 'freelancer'].map((type) => (
-                            <button
-                              key={type}
-                              type="button"
-                              onClick={() =>
-                                setFormData({ ...formData, businessType: type as BusinessType })
-                              }
-                              className={`flex items-center space-x-2 rounded-lg border-2 px-4 py-2 transition-all ${
-                                formData.businessType === type
-                                  ? 'border-[#d3bb73] bg-[#d3bb73]/10 text-[#d3bb73]'
-                                  : 'border-gray-700 text-gray-400 hover:border-gray-600'
-                              }`}
-                            >
-                              {getBusinessTypeIcon(type as BusinessType)}
-                              <span>{type === 'company' ? 'Firma' : 'Freelancer'}</span>
-                            </button>
-                          ))}
-                    </div>
-                  </div>
+                  <OrganizationFormFields
+                    values={getOrganizationValues()}
+                    errors={formErrors as OrganizationFormErrors}
+                    onChange={updateOrganizationField}
+                    onFetchRegistry={handleFetchFromGUS}
+                    loadingRegistry={loadingGUS}
+                    registryLookup={registryLookup}
+                    businessTypeOptions={contactType === 'subcontractor' ? ['company', 'freelancer'] : clientBusinessTypes}
+                  />
 
                   <div className="rounded-lg border border-gray-700 bg-[#0f1119]/60 p-4">
                     <h3 className="mb-3 font-medium text-white">Reprezentacja podmiotu</h3>
@@ -1233,101 +1057,17 @@ export default function NewContactPage() {
                     )}
                   </div>
 
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                    <div className="md:col-span-2">
-                      <label className="mb-2 block text-sm font-medium text-gray-300">
-                        Adres (ulica)
-                      </label>
-                      <ContactValidationField field={'address'} error={formErrors['address']}>
-                        <input
-                          type="text"
-                          value={formData.address}
-                          onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                          className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                          placeholder="np. ul. Chmielna 85/87"
-                        />
-                      </ContactValidationField>
-                    </div>
-                    <div>
-                      <label className="mb-2 block text-sm font-medium text-gray-300">
-                        Kod pocztowy
-                      </label>
-                      <ContactValidationField field="postal_code" error={formErrors.postal_code}>
-                        <input
-                          type="text"
-                          value={formData.postalCode}
-                          onChange={(e) => setFormData({ ...formData, postalCode: e.target.value })}
-                          className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                          placeholder="00-000"
-                        />
-                      </ContactValidationField>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                    <div>
-                      <label className="mb-2 block text-sm font-medium text-gray-300">Miasto</label>
-                      <ContactValidationField field={'city'} error={formErrors['city']}>
-                        <input
-                          type="text"
-                          value={formData.city}
-                          onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                          className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                          placeholder="np. Warszawa"
-                        />
-                      </ContactValidationField>
-                    </div>
-                    <div>
-                      <label className="mb-2 block text-sm font-medium text-gray-300">Kraj</label>
-                      <input
-                        type="text"
-                        value={formData.country}
-                        onChange={(e) => setFormData({ ...formData, country: e.target.value })}
-                        className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="mb-2 block text-sm font-medium text-gray-300">Email</label>
-                      <ContactValidationField field={'email'} error={formErrors['email']}>
-                        <input
-                          type="email"
-                          value={formData.email}
-                          onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                          className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                        />
-                      </ContactValidationField>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <div>
-                      <label className="mb-2 block text-sm font-medium text-gray-300">
-                        Telefon
-                      </label>
-                      <ContactValidationField field={'phone'} error={formErrors['phone']}>
-                        <input
-                          type="tel"
-                          value={formData.phone}
-                          onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                          className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                        />
-                      </ContactValidationField>
-                    </div>
-                    <div>
-                      <label className="mb-2 block text-sm font-medium text-gray-300">
-                        Strona WWW
-                      </label>
-                      <ContactValidationField field={'website'} error={formErrors['website']}>
-                        <input
-                          type="url"
-                          value={formData.website}
-                          onChange={(e) => setFormData({ ...formData, website: e.target.value })}
-                          className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                          placeholder="https://"
-                        />
-                      </ContactValidationField>
-                    </div>
-                  </div>
+                  <OrganizationInvoiceBuyerSection
+                    editMode
+                    errors={formErrors as OrganizationFormErrors}
+                    invoice_buyer_organization_id={formData.invoiceBuyerOrganizationId || null}
+                    invoice_recipient_role={formData.invoiceRecipientRole}
+                    onChange={(value) => setFormData((prev) => ({
+                      ...prev,
+                      invoiceBuyerOrganizationId: value.invoice_buyer_organization_id || '',
+                      invoiceRecipientRole: value.invoice_recipient_role,
+                    }))}
+                  />
                 </>
               )}
 
