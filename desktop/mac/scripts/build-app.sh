@@ -27,9 +27,14 @@ fi
 STAGING_ROOT="$(mktemp -d "$(pwd)/build/.mavinci-package.XXXXXX")"
 APP="$STAGING_ROOT/$(basename "$TARGET_APP")"
 PREVIOUS="$STAGING_ROOT/previous.app"
+# Kod wyjścia skryptu zostaje zachowany (bash 3.2 z macOS oddaje inaczej wynik ostatniego polecenia pułapki) — błąd
+# pakowania przerywa `yarn build:mac && yarn open mac`, zamiast po cichu otwierać poprzednią wersję aplikacji.
 cleanup() {
+  local status=$?
   if [ ! -d "$TARGET_APP" ] && [ -d "$PREVIOUS" ]; then mv "$PREVIOUS" "$TARGET_APP"; fi
   rm -rf "$STAGING_ROOT"
+  if [ "$status" -ne 0 ]; then echo "Błąd budowania aplikacji (kod $status) — aplikacja nie została podmieniona." >&2; fi
+  exit "$status"
 }
 trap cleanup EXIT
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
@@ -57,7 +62,7 @@ if [ "$IDENTITY" = "-" ] || [ "$IDENTITY" = "$LOCAL_IDENTITY" ]; then
   codesign --force --options runtime --timestamp=none --sign "$IDENTITY" "$APP"
   if [ "$IDENTITY" = "-" ]; then
     echo "Podpis ad hoc: po tym budowaniu macOS raz zapyta o dostęp do pęku kluczy (kliknij „Zawsze pozwalaj”)."
-    echo "Aby nie pytał po każdym budowaniu, utwórz certyfikat „$LOCAL_IDENTITY” (desktop/mac/README.md, „Podpis i pęk kluczy”)."
+    echo "Aby nie pytał po każdym budowaniu, utwórz certyfikat „${LOCAL_IDENTITY}” (desktop/mac/README.md, „Podpis i pęk kluczy”)."
   fi
 else
   codesign --force --options runtime --timestamp --sign "$IDENTITY" "$APP"
