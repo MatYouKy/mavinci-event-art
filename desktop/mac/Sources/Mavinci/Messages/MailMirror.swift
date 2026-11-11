@@ -34,6 +34,8 @@ struct MailMirror: @unchecked Sendable {
         let account = "cache-key-\(namespace)"
         if let data = try Vault.read(account) { key = SymmetricKey(data: data) }
         else {
+            // Bez klucza zapisane pliki (np. z dawnym kluczem) są nieczytelne — kopia buduje się od nowa.
+            try? FileManager.default.removeItem(at: folder)
             let created = SymmetricKey(size: .bits256)
             try Vault.write(account, created.withUnsafeBytes { Data($0) })
             key = created

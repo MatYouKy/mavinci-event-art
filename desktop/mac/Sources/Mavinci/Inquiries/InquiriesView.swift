@@ -566,6 +566,10 @@ struct FlowBadges: View {
                 if let event = inquiry.eventId, state.employee?.canView(.events) == true {
                     Button("Otwórz wydarzenie", systemImage: "sparkles") { state.showEvent(event) }
                 }
+                if state.employee?.canView(.contacts) == true {
+                    if let organization = inquiry.organizationId { Button("Otwórz organizację", systemImage: "building.2") { state.showContact(organization) } }
+                    if let contact = inquiry.contactId { Button("Otwórz kontakt", systemImage: "person") { state.showContact(contact) } }
+                }
                 Button("Pełne szczegóły w CRM", systemImage: "safari") { actions.browser(inquiry) }
             }.buttonStyle(.link)
             if canManage {

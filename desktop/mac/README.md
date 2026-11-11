@@ -247,3 +247,103 @@ Pulpit, „Mój plan” i powiadomienia otwierają zadanie na jego tablicy (najp
 Awatary przypisanych osób to zdjęcia z CRM z tym samym kadrem (`avatar_metadata`: przesunięcie, skala), pobierane raz do `~/Library/Caches/Mavinci/avatars` (usuwane przy wylogowaniu); bez zdjęcia — pierwsza litera imienia. Pasek boczny: grupa (np. „Zadania”, „Oferty”) ma własny znacznik wyboru, więc świeci tylko wybrana pozycja; kliknięcie grupy rozwija ją i otwiera pierwszą pozycję, a grupa z wybraną pozycją rozwija się sama.
 
 Serwer: `GET/POST /bridge/native/v1/tasks` (`op=state|timer|detail|employees`, `items|save|move|delete|timer|comment|deleteComment`, załączniki `?op=attach` multipart; `src/lib/native/tasks.ts`) — te same zapytania i zapisy co CRM, tokenem pracownika.
+
+## Aktualizacja 0.9 — Kontakty 1:1 z CRM
+
+„Kontakty” (`/crm/contacts`) to natywny ekran zamiast dawnej listy z kopii kart:
+
+1. **Lista jak w CRM** — organizacje (bez podwykonawców), kontakty firmowe i osoby prywatne w tej samej kolejności (organizacje, potem kontakty, od najnowszych). Zwarty nagłówek: typ z licznikami (Wszystkie / Organizacje / Kontakty / Osoby prywatne), „Tylko sprzedawcy”, przełącznik Kafelki / Lista. Wyszukiwanie po nazwie, e-mailu i telefonie (pasek narzędzi), pod listą „Wyświetlono N kontaktów”.
+2. **Kafelek** jak na stronie: zdjęcie albo ikona typu, nazwa, oznaczenie sprzedawcy (status profilu; organizacja — „Sprzedawcy”), typ, e-mail, telefon, miasto, ocena, tagi, data dodania i liczba powiązanych osób / organizacji. **Lista** — natywna tabela z tymi samymi kolumnami. Prawy przycisk — szczegóły, karta w CRM, Zadzwoń, Napisz e-mail, Nowe spotkanie, Edytuj, Usuń.
+3. **Szczegóły** w panelu bocznym: dane kontaktowe (telefony opisane jak na karcie kontaktu, strona WWW, adres z mapą), dane firmy (NIP, REGON, KRS, forma prawna, profil, status) albo stanowisko / uroczystość, osoby kontaktowe lub organizacje (kliknięcie pokazuje powiązaną kartę; „Główny”, „Decydent”), zapytania klienta (otwierają lejek), tagi, notatki, „Pełna karta w CRM” (Klient 360°, oferty, faktury, historia — w przeglądarce).
+4. **Czynności**: Zadzwoń (telefon główny osoby prywatnej, komórkowy pozostałych), Napisz e-mail (okno nowej wiadomości ze skrzynką firmową, tematem „Wiadomość od Mavinci dla …” i powitaniem, jak w CRM), Nowe spotkanie (kontakt — a dla organizacji osoba główna — od razu jako uczestnik).
+5. **Edycja** (`contacts_manage`): kontakt — imię, nazwisko, e-mail, telefony, stanowisko, NIP, adres, uroczystość, notatki (reguły osoby prywatnej jak w CRM); organizacja — nazwa, alias, profil, forma prawna, NIP, KRS, REGON, kontakt, adres, ocena, status, sprawdzane na serwerze tą samą walidacją co formularz w przeglądarce (błędy przy polach). **Usuwanie** z potwierdzeniem; baza nie pozwoli usunąć klienta z powiązanymi dokumentami. Nowy kontakt i podwykonawcy — formularz CRM (wyszukiwanie w GUS i CEIDG).
+6. **Kopia na dysku** (`contacts-…`, AES-GCM): lista otwiera się od razu, synchronizacja co 60 s i po każdej zmianie pobiera tylko zmienione koszyki. PESEL i numer dowodu nie trafiają do kopii.
+
+Zapytania (organizacja / kontakt w szczegółach), Spotkania (uczestnik-kontakt) i odnośniki do kontaktów otwierają kartę na ekranie Kontaktów.
+
+Serwer: `GET/POST /bridge/native/v1/contacts` (`op=state`, `items|update|delete`; `src/lib/native/contacts.ts`) — te same zapytania co `clientsApi.getClientsList` i karta kontaktu, tokenem pracownika (RLS).
+
+## Aktualizacja 0.10 — Zespół: pracownicy i karta pracownika (etap 1)
+
+„Pracownicy CRM” (`/crm/employees`) to natywny ekran 1:1 z CRM:
+
+1. **Lista** z wyszukiwaniem (imię, nazwisko, pseudonim, e-mail, stanowisko) i czterema widokami jak w przeglądarce: **Kafelki** (zdjęcie z kropką aktywności, pseudonim / imię, stanowisko lub rola, „Aktywny”, poziom dostępu, e-mail, telefon), **Lista**, **Szczegółowy** (natywna tabela: region, poziom dostępu, kolejność) i — dla administratora — **Oś czasu** zespołu (wiersze pracowników, dzień / tydzień / miesiąc, filtry: wydarzenia i fazy, spotkania, lejek i zadania, nieobecności; kliknięcie pozycji otwiera ją, kliknięcie osoby — jej plan). Menu „…” i prawy przycisk: Szczegóły, Resetuj hasło, Usuń (administrator). „Dodaj pracownika” (dane, hasło z „Generuj”, rola firmowa, dostęp do marek; po utworzeniu dane logowania do skopiowania) i „Poziomy dostępu” (CRM).
+2. **Karta pracownika**: tło i zdjęcie z kadrem z CRM, odznaki (aktywny, poziom dostępu, rola), e-mail, telefon, region; zakładki według uprawnień jak w CRM.
+   - **Przegląd** — Informacje podstawowe, Adres, Umiejętności, Widoczność na stronie (administrator), Notatki, Konta Email; **Edytuj / Zapisz / Anuluj** (własny profil albo `employees_manage`; e-mail prywatny, powiadomienia, rola firmowa i strona — administrator), **Usuń** trwale (administrator, nie własne konto).
+   - **Wydarzenia** — przypisania z rolą, datą, godzinami i statusem (otwierają stronę wydarzenia).
+   - **Oś czasu** — plan jak w Teams (Dzień / Tydzień, pasek „cały dzień”, linia „teraz”, filtry grup; własny profil — tydzień, cudzy — dzień) i **Nieobecności**: dodawanie wniosku, rozpatrywanie (zatwierdź / odrzuć z notatką), usuwanie.
+   - **Zadania** (własny profil) — tablica „Moje zadania”; **Dokumenty** — jak w CRM (funkcja jeszcze niedostępna).
+   - **Umowy i rozliczenia, Kwalifikacje, Konta Email, Uprawnienia** oraz wynagrodzenie i prowizje — kolejny etap (do tego czasu przycisk otwiera kartę w CRM).
+3. **Kopia na dysku** (`team-…`, AES-GCM): lista otwiera się od razu, synchronizacja co 60 s pobiera tylko zmienione koszyki; dane karty (wydarzenia, konta e-mail bez haseł, nieobecności, plan) pobierane przy otwarciu.
+
+Powiadomienia z pracownikiem i skróty pulpitu („Pracownicy”, „+ Nowy pracownik”) otwierają ekran Zespołu zamiast przeglądarki.
+
+Serwer: `GET/POST /bridge/native/v1/employees` (`op=state|detail|schedule|createOptions`, `items|update|delete|resetPassword|create|absence|absenceDecision|absenceDelete`; `src/lib/native/team.ts`) — tokenem pracownika (RLS); zmiana hasła wspólna z CRM (`src/lib/employees/resetEmployeePassword.server.ts`), nowy pracownik przez tę samą funkcję `create-employee` co formularz w przeglądarce.
+
+## Aktualizacja 0.11 — Zespół: Kwalifikacje, Konta Email, Uprawnienia (etap 2)
+
+Zakładki administratora na karcie pracownika są natywne (1:1 z CRM):
+
+1. **Kwalifikacje** — certyfikaty i uprawnienia (Aktywny / Wkrótce wygaśnie — 3 miesiące / Wygasło), umiejętności z poziomem, kategorią i latami doświadczenia, **prawa jazdy** (jedyne źródło kategorii dla floty; „Wygasa wkrótce” — 30 dni) z historią dawnych wpisów z certyfikatów i przeniesieniem brakującej kategorii. Dodawanie, edycja i usuwanie (`employees_manage`).
+2. **Konta Email** — email osobisty i preferencja powiadomień, miniatura do stopki (wybór pliku lub przeciągnięcie; zdjęcie zmniejszane do JPEG), konto osobiste z IMAP/SMTP (zapisanych haseł aplikacja nie pobiera — puste pole = bez zmiany), „Zarządzaj dostępem” do kont wspólnych i systemowych, formularz kontaktowy, „Jak to działa?”.
+3. **Uprawnienia** — pakiet roli firmowej (przywracanie), Zaznacz / Odznacz wszystko, marki i spółki, finanse według działalności, subskrypcje powiadomień i źródła webhooków, sekcje CRM (poziom dostępu, zakres danych „tylko własne”, zakładki wydarzeń / kontaktów / organizacji, zespół sprzedaży i menedżer, dodatkowe uprawnienia, sekcje Mavinci LIVE). Zapis po potwierdzeniu, z kontrolą zmiany w innym oknie; zmiana własnych uprawnień odświeża aplikację.
+
+Serwer: `GET/POST /bridge/native/v1/employees/profile` (`op=qualifications|emails|permissions`, zapisy `certification|skill|license(+Delete)`, `emailAssignment|contactForms|personalEmail|personalAccount|signatureRemove`, `permissions`, miniatura `?op=signature` multipart; `src/lib/native/teamProfile.ts`). Katalog uprawnień i zakładek wspólny z CRM (`src/lib/accessSections.ts`, `src/lib/employees/permissionTabs.ts`).
+
+Następny etap: **Umowy i rozliczenia** oraz wynagrodzenie i prowizje w „Przeglądzie”.
+
+## Aktualizacja 0.11.1 — jedno pytanie o pęk kluczy zamiast kilkunastu
+
+Aplikacja trzyma sekrety (połączenie, sesję, klucze szyfrujące kopie na dysku, powiązanie z Kalendarzem Apple) w **jednej** pozycji pęku kluczy `pl.mavinci.desktop` / `vault-v2`, odczytywanej raz na uruchomienie i trzymanej w pamięci. Wcześniej każda kopia (pulpit, plan, spotkania, zapytania, zadania, kontakty, zespół, wiadomości…) miała własną pozycję, więc po nowym budowaniu macOS pytał o hasło kilkanaście razy. Przy pierwszym uruchomieniu nowej wersji przenoszone są tylko połączenie, sesja i Kalendarz Apple (najwyżej kilka pytań, jednorazowo); kopie danych zaszyfrowane dawnymi kluczami są usuwane i pobierają się od nowa.
+
+### Podpis i pęk kluczy
+
+macOS pamięta zgodę „Zawsze pozwalaj” dla podpisu aplikacji. Podpis ad hoc (domyślny) jest inny po każdym budowaniu, więc po każdym `yarn build:mac` pojawi się jedno pytanie. Aby nie pojawiało się wcale, utwórz raz stały certyfikat do podpisu (skrypt użyje go automatycznie):
+
+1. Otwórz **Dostęp do pęku kluczy** (Keychain Access) → menu **Dostęp do pęku kluczy → Asystent certyfikatów → Utwórz certyfikat…**
+2. Nazwa: `Mavinci Development`, Typ tożsamości: **Samopodpisany główny**, Typ certyfikatu: **Podpisywanie kodu** → **Utwórz**.
+3. W pęku „Logowanie” kliknij dwukrotnie certyfikat `Mavinci Development` → **Zaufanie** → „Podpisywanie kodu”: **Zawsze ufaj** → zamknij okno (macOS poprosi o hasło użytkownika).
+4. `yarn build:mac` — w wyniku zobaczysz podpis certyfikatem. Przy pierwszym podpisie `codesign` może zapytać o dostęp do klucza — **Zawsze pozwalaj**. Przy pierwszym uruchomieniu aplikacji kliknij **Zawsze pozwalaj** w pytaniu o pęk kluczy; kolejne budowania już nie pytają.
+
+Inny certyfikat (np. Developer ID do dystrybucji) wskazuje zmienna `SIGN_IDENTITY`.
+
+## Aktualizacja 0.12 — Magazyn: Sprzęt (etap 1)
+
+„Magazyn → Sprzęt” (`/crm/equipment`) to natywny ekran 1:1 z CRM:
+
+1. **Lista** sprzętu i zestawów razem (od najnowszych), filtr Wszystko / Tylko sprzęt / Tylko zestawy, wyszukiwanie po nazwie, marce i modelu, widoki **Kafelki / Lista / Tabela**: miniatura, nazwa, ZESTAW / NIEAKTYWNY, ścieżka kategorii, stan „dostępne/wszystkie” (kolor jak w CRM), marka. Menu: Otwórz, Duplikuj, Usuń (`equipment_manage`). Pasek: Kategorie, Zestawy, Lokalizacje, Przewody, **Dodaj** (nowy sprzęt z kategorią, lokalizacją, miniaturą i pierwszymi jednostkami).
+2. **Karta sprzętu**: nazwa ze stanem, marka i model, ścieżka kategorii; zakładki **Podstawowe** (z „Sprawdzeniem przed wydaniem”), **Parametry techniczne** (waga, wymiary, numer seryjny, kod kreskowy, instrukcja; dla przewodów długość i wtyki; specyfikacja prądowa z wtykami zasilania), **Informacje zakupowe** (z amortyzacją i wartością bieżącą), **Jednostki** (statystyki, sztuki z numerem, statusem, lokalizacją, datami, notatkami i zdjęciem; dodawanie kilku naraz, edycja, duplikowanie i usuwanie — także zaznaczonych; **historia zdarzeń**: notatka, inspekcja, serwis, naprawa, uszkodzenie, sprzedaż — ze zdjęciem i skutkami jak w CRM; dla przewodów i kategorii „ilościowych” — ilość na stanie), **Historia** zmian. **Edytuj / Zapisz / Usuń** z zapisem historii zmian jak w CRM.
+3. **Kopia na dysku** (`warehouse-…`, AES-GCM): katalog i słowniki (kategorie, lokalizacje, wtyki) od razu, synchronizacja co 60 s tylko zmienionych koszyków; karta pobierana przy otwarciu.
+
+Kolejne etapy: zakładki „Skład zestawu”, „Galeria”, „Pliki”, ekrany Zestawy, Przewody, Rental, Wtyki i Kategorie (do tego czasu — CRM w przeglądarce).
+
+Serwer: `GET/POST /bridge/native/v1/warehouse` (`op=state|detail|unitEvents`, `items|create|update|delete|duplicate|unitSave|unitDelete|unitDuplicate|unitEvent|cableQuantity`, zdjęcia `?op=image` multipart; `src/lib/native/warehouse.ts`).
+
+## Aktualizacja 0.13 — Magazyn: wszystkie sekcje (etapy 2 i 3), cały magazyn na dysku
+
+Cały Magazyn działa natywnie i **z kopii na dysku** (`warehouse-v2-…`, AES-GCM): katalog, pełne karty sprzętu (dane, jednostki, skład, galeria, pliki, historia), zestawy, przewody z historią stanu, sprzęt wynajmu i słowniki. Ekrany otwierają się od razu (także bez sieci), a synchronizacja co 60 s (i przy wejściu na ekran) porównuje skróty zbiorów i pobiera tylko zmienione koszyki (`warehouse-catalog`, `warehouse-details`, `warehouse-kits`, `warehouse-cables`, `warehouse-rental`).
+
+1. **Karta sprzętu → Skład zestawu** (`ComponentsTab`): komponenty wliczone i opcjonalne (z magazynu albo własna nazwa — „Integralny”, ze zdjęciem i parametrami technicznymi), podgląd komponentu; **Elementy wymagane i powiązane** — sprzęt, zestawy i przewody wymagane / zalecane / opcjonalne, ilość „na sztukę” albo „łącznie”, grupy alternatyw („Wybierz JEDEN”), dostępność; dodawanie z wyszukiwarką (Wszystko / Sprzęt / Zestawy / Przewody), edycja („Edytuj element zestawu”) i usuwanie w trybie edycji karty. Kliknięcie otwiera powiązany sprzęt, zestaw lub przewód.
+2. **Galeria**: siatka zdjęć ze zdjęciem głównym, podgląd z przechodzeniem strzałkami, „Ustaw jako główne”, usuwanie, dodawanie wielu zdjęć naraz i **przeciąganiem z Findera** (`equipment-images`; zdjęcia ponad 10 MB zmniejszane).
+3. **Pliki**: lista z rozmiarem i datą, otwieranie, **Pobierz** (do „Pobrane”, pokazuje w Finderze), zmiana nazwy (rozszerzenie zostaje), usuwanie, dodawanie i przeciąganie (`equipment-files`, do 50 MB).
+4. **Zestawy** (`/crm/equipment/kits`): Kafelki / Lista / Tabela z wyszukiwaniem; podgląd zestawu (pozycje z dostępnością, przejście do sprzętu / przewodu), **Drukuj checklistę** (jak w CRM — z datą i osobą drukującą); tworzenie i edycja: miniatura (kliknięcie lub przeciągnięcie), nazwa, opis, kategoria główna, liczba kompletów z **kontrolą stanów** („Maksymalnie N kompletów…”, braki na czerwono — jak `checkKitInventory`), pozycje: sprzęt i przewody z ilością i notatką. Zapis przez `save_equipment_kit_checked` (blokada jak w CRM).
+5. **Przewody** (`/crm/equipment/cables`): Lista / Kafelki / Tabela, wyszukiwanie (nazwa, wtyki, przeznaczenie), filtr przeznaczenia, „Niski stan”; **karta przewodu** (przeznaczenie techniczne, sposób ewidencji, wtyki IN/OUT ze zdjęciami, stan, jednostka, minimalny zapas, kierunkowy, lokalizacja, zakup, notatki) z edycją — zmiana stanu przez `adjust_cable_stock`, więc trafia do **Historii stanu**; **Dodaj przewód**; usuwanie; **Kategorie przewodów** (grupy i podkategorie, kolor, kolejność, aktywność — te same reguły co w CRM).
+6. **Rental** (`/crm/equipment/rental`): sprzęt wynajmu od podwykonawców — wyszukiwanie, filtr kategorii, kafelki; karta (`/crm/subcontractors/rental/[id]`): podstawowe informacje, cennik netto/brutto z VAT, podwykonawca (e-mail, telefon), wymagane umiejętności, notatki, galeria (`rental-equipment-images`) — edycja i usuwanie.
+7. **Wtyki** (`/crm/equipment/connectors`): Siatka / Lista / Kompaktowy, wyszukiwanie, dodawanie i edycja ze zdjęciem (`connector-thumbnails`), usuwanie.
+8. **Kategorie** (`/crm/equipment/categories`): kategorie główne i podkategorie z właściwościami specjalnymi (np. `simple_quantity`, `requires_serial`), dodawanie, edycja, usuwanie.
+
+Pozycje Zestawy, Przewody, Rental, Wtyki i Kategorie w pasku bocznym otwierają ekrany natywne; „Lokalizacje” nadal w CRM w przeglądarce.
+
+Serwer: `GET /bridge/native/v1/warehouse?op=state` zwraca też stany zbiorów (`h_details`, `h_kits`, `h_cables`, `h_rental`) i słownik przeznaczeń przewodów; `POST op=items` z `set`; nowe operacje `componentAdd|componentUpdate|componentDelete|compatibleAdd|compatibleUpdate|compatibleDelete|imagePrimary|imageDelete|fileRename|fileDelete|kitSave|cableCreate|cableUpdate|cableDelete|cableCategorySave|connectorSave|connectorDelete|categorySave|categoryDelete|rentalUpdate|rentalDelete`, pliki multipart `?op=gallery|file|connectorThumb|rentalImage` (`src/lib/native/warehouse.ts`, `src/lib/native/warehouseOps.ts`).
+
+## Aktualizacja 0.14 — Wydarzenia: lista 1:1 z CRM (etap 1)
+
+„Wydarzenia” to natywna lista 1:1 z `/crm/events`, **z kopii na dysku** (`events-…`, AES-GCM; zbiór `events-list` synchronizowany przyrostowo co 60 s):
+
+1. Te same wydarzenia co w CRM: widoczne przez RLS, **moje realizacje**, budżety z faktur (z korektami) albo planowany budżet, stan rozliczeń i płatności („Płatność po terminie · N dni”, „Oczekuje na przelew”, „Do rozliczenia”…) z wyróżnieniem pilnych, etapy operacyjne dla osób bez wglądu w sprzedaż, **podgląd sprzedaży kolegów** (tylko do odczytu).
+2. Wyszukiwanie po nazwie, opisie, miejscu i kliencie (bez polskich znaków), filtry **statusu** i **kategorii**, **Pokaż / Ukryj rozliczone** (z liczbą ukrytych), sortowanie (data, nazwa, budżet, utworzenie; rosnąco / malejąco), widoki **Lista / Kafelki / Tabela**.
+3. Menu wydarzenia: Otwórz (karta wydarzenia), **Zmień status**, Pokaż na mapie, Otwórz w CRM, **Usuń** (bezpieczne usuwanie jak w CRM — `delete-event-safe`). „Nowy event” otwiera kreator w CRM (`/crm/events?new=1`), „Kategorie” — słownik w CRM.
+
+Karta wydarzenia na razie jak dotąd (zakładki z danymi, zapis do pracy bez internetu); natywna karta 1:1 z CRM — kolejne etapy.
+
+Serwer: `GET/POST /bridge/native/v1/events` (`op=state`, `items|status|delete`; `src/lib/native/events.ts`).

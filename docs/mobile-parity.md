@@ -202,3 +202,31 @@ CRM: nagłówek `/crm/inquiries` zajmuje trzy niskie wiersze zamiast kafelków �
 ### Zadania w aplikacji na Maca (2026-11-11)
 
 Aplikacja na Maca dostała natywne tablice „Zadania firmowe” i „Moje zadania” 1:1 z CRM oraz API `/bridge/native/v1/tasks` (`src/lib/native/tasks.ts`) — te same zapytania i zapisy co `tasksApi.ts`, `TasksPageClient` i `PrivateTasksBoardTab`, tokenem pracownika. CRM w przeglądarce bez zmian. Mobile: nie dotyczy — zmiana dotyczy aplikacji na Maca i jej API; aplikacja w telefonie ma własne ekrany zadań (`TasksScreen`, `TaskDetailScreen`) korzystające z tych samych tabel i reguł RLS. Kod zapisany; zgodnie z .build-policy.md bez builda, typechecka i lintowania.
+
+### Kontakty w aplikacji na Maca (2026-11-11)
+
+Aplikacja na Maca dostała natywny ekran „Kontakty” 1:1 z `/crm/contacts` (kafelki i lista, typy, „Tylko sprzedawcy”, szczegóły, edycja kontaktu i organizacji, usuwanie, e-mail i spotkanie z karty) oraz API `/bridge/native/v1/contacts` (`src/lib/native/contacts.ts`) — te same zapytania co `clientsApi.getClientsList`, zapis organizacji przez wspólne `validateOrganizationForm` / `organizationFormPayload`, tokenem pracownika. CRM w przeglądarce bez zmian. Mobile: nie dotyczy — zmiana dotyczy aplikacji na Maca i jej API; aplikacja w telefonie ma własny ekran klientów (`ClientsScreen`) korzystający z tych samych tabel i reguł RLS. Kod zapisany; zgodnie z .build-policy.md bez builda, typechecka i lintowania.
+
+### Zespół w aplikacji na Maca — etap 1 (2026-11-11)
+
+Aplikacja na Maca dostała natywny ekran „Pracownicy CRM” (kafelki, lista, widok szczegółowy, oś czasu zespołu) i kartę pracownika (Przegląd z edycją, Wydarzenia, Oś czasu z planem i nieobecnościami, Zadania, Dokumenty) oraz API `/bridge/native/v1/employees` (`src/lib/native/team.ts`). Zmiana hasła pracownika korzysta teraz ze wspólnej funkcji `src/lib/employees/resetEmployeePassword.server.ts` (trasa CRM `/bridge/reset-employee-password` działa jak dotąd). Mobile: nie dotyczy — zmiana dotyczy aplikacji na Maca i jej API; zachowanie CRM i telefonu bez zmian. Kod zapisany; zgodnie z .build-policy.md bez builda, typechecka i lintowania.
+
+### Zespół w aplikacji na Maca — etap 2: Kwalifikacje, Konta Email, Uprawnienia (2026-11-11)
+
+Aplikacja na Maca ma natywne zakładki Kwalifikacje, Konta Email i Uprawnienia na karcie pracownika oraz API `/bridge/native/v1/employees/profile` (`src/lib/native/teamProfile.ts`). Stałe zakładek i uprawnień z `EmployeePermissionsTab` przeniesione do wspólnego `src/lib/employees/permissionTabs.ts` (CRM działa bez zmian). Mobile: nie dotyczy — zakładki administratora pracowników są tylko w CRM i aplikacji na Maca; telefon nie ma karty pracownika z uprawnieniami. Kod zapisany; zgodnie z .build-policy.md bez builda, typechecka i lintowania.
+
+### Aplikacja na Maca: jedna pozycja w pęku kluczy (2026-11-11)
+
+Sekrety aplikacji na Maca w jednej pozycji pęku kluczy (`vault-v2`) zamiast osobnej na każdą kopię danych — macOS pyta o dostęp raz, a ze stałym certyfikatem „Mavinci Development” (`desktop/mac/scripts/build-app.sh`) wcale po kolejnych budowaniach. Mobile: nie dotyczy — zmiana dotyczy wyłącznie przechowywania sekretów w aplikacji na Maca; telefon ma własny magazyn sesji (`mobile/src/lib/supabase.ts`). Kod zapisany; zgodnie z .build-policy.md bez builda, typechecka i lintowania.
+
+### Magazyn w aplikacji na Maca — etap 1: Sprzęt (2026-11-11)
+
+Aplikacja na Maca ma natywny ekran „Magazyn → Sprzęt” (lista sprzętu i zestawów, karta sprzętu z zakładkami Podstawowe, Parametry techniczne, Informacje zakupowe, Jednostki ze zdarzeniami i Historia) oraz API `/bridge/native/v1/warehouse` (`src/lib/native/warehouse.ts`) — te same tabele, zapisy i historia zmian co `/crm/equipment`. CRM w przeglądarce bez zmian. Mobile: nie dotyczy — zmiana dotyczy aplikacji na Maca i jej API; aplikacja w telefonie ma własne ekrany magazynu korzystające z tych samych tabel i reguł RLS. Kod zapisany; zgodnie z .build-policy.md bez builda, typechecka i lintowania.
+
+### Magazyn w aplikacji na Maca — etapy 2 i 3: wszystkie sekcje, kopia na dysku (2026-11-11)
+
+Aplikacja na Maca ma natywnie wszystkie sekcje Magazynu: na karcie sprzętu Skład zestawu (komponenty i elementy wymagane/powiązane z grupami alternatyw), Galerię i Pliki, oraz ekrany Zestawy (z kontrolą stanów i checklistą), Przewody (karta, historia stanu, nowy przewód, kategorie przewodów), Rental (lista i karta sprzętu wynajmu), Wtyki i Kategorie. Cały magazyn jest synchronizowany przyrostowo na dysk Maca (zbiory `warehouse-details`, `warehouse-kits`, `warehouse-cables`, `warehouse-rental` obok `warehouse-catalog`). API `/bridge/native/v1/warehouse` rozszerzone (`src/lib/native/warehouse.ts`, nowy `src/lib/native/warehouseOps.ts`) — te same tabele, magazyny plików, RPC (`save_equipment_kit_checked`, `adjust_cable_stock`) i reguły co strony `/crm/equipment/*`. CRM w przeglądarce bez zmian. Mobile: nie dotyczy — zmiana dotyczy aplikacji na Maca i jej API; aplikacja w telefonie ma własne ekrany magazynu na tych samych tabelach i regułach RLS. Kod zapisany; zgodnie z .build-policy.md bez builda, typechecka i lintowania.
+
+### Wydarzenia w aplikacji na Maca — lista (2026-11-11)
+
+Aplikacja na Maca ma natywną listę „Wydarzenia” 1:1 z `/crm/events` (wyszukiwanie, filtry statusu i kategorii, rozliczone, sortowanie, widoki Lista / Kafelki / Tabela, stan płatności, budżet z faktur, podgląd sprzedaży kolegów, zmiana statusu, usuwanie) z kopią na dysku i API `/bridge/native/v1/events` (`src/lib/native/events.ts`, te same zapytania co `fetchEventsPageSnapshot`). CRM: `/crm/events?new=1` otwiera od razu kreator nowego wydarzenia (`EventsPageClient`) — używane przez przycisk „Nowy event” na Macu; poza tym bez zmian. Mobile: nie dotyczy — telefon ma własną listę wydarzeń i tworzenie wydarzeń w aplikacji; parametr adresu dotyczy tylko strony CRM. Kod zapisany; zgodnie z .build-policy.md bez builda, typechecka i lintowania.

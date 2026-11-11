@@ -17,6 +17,10 @@ struct MeetingEditorRequest: Identifiable {
     var meeting: Meeting?
     var start: Date?
     var end: Date?
+    /// Nowe spotkanie z karty kontaktu: kontakt od razu na liście uczestników i podpowiedziany tytuł.
+    var contactId: String?
+    var contactName: String?
+    var title: String?
 }
 
 /// Licznik zaproszeń czekających na odpowiedź (pasek boczny).
@@ -794,6 +798,9 @@ struct MeetingHatch: Shape {
                             }
                             .padding(.horizontal, 10).padding(.vertical, 5)
                             .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 7))
+                            .contentShape(Rectangle())
+                            .onTapGesture { if let contact = p.contactId { store.workspace?.showContact(contact) } }
+                            .help(p.contactId == nil ? "" : "Pokaż kartę kontaktu")
                         }
                     }
                 }

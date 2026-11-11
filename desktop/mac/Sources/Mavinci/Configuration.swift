@@ -43,31 +43,96 @@ struct Connection: Codable, Equatable {
 }
 func digest(_ value: String) -> String { SHA256.hash(data: Data(value.utf8)).map { String(format: "%02x", $0) }.joined() }
 
+/// Sekrety aplikacji w pęku kluczy macOS — **jedna** pozycja („vault-v2”) ze wszystkimi wartościami (połączenie, sesja, klucze
+/// szyfrujące kopie na dysku, powiązanie z Kalendarzem Apple), czytana raz na uruchomienie i trzymana w pamięci.
+/// Wcześniej każda kopia miała własną pozycję, więc po każdym nowym budowaniu macOS pytał o hasło kilkanaście razy.
+/// Przy pierwszym uruchomieniu przenosimy z dawnych pozycji tylko połączenie, sesję i Kalendarz Apple (kopie danych
+/// pobiorą się od nowa). Lista dawnych pozycji (same nazwy, bez treści) nie wymaga zgody użytkownika.
 enum Vault {
     static let service = "pl.mavinci.desktop"
+    private static let account = "vault-v2"
+    private static let lock = NSLock()
+    private static var cache: [String: Data]?
+    /// Użytkownik odmówił dostępu — do końca sesji nie pytamy ponownie.
+    private static var denied = false
+
     static func read(_ key: String) throws -> Data? {
-        let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
-            kSecAttrAccount as String: key, kSecReturnData as String: true, kSecMatchLimit as String: kSecMatchLimitOne]
-        var result: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-        if status == errSecItemNotFound { return nil }
-        guard status == errSecSuccess else { throw AppError.server }
-        return result as? Data
+        lock.lock(); defer { lock.unlock() }
+        return try values()[key]
     }
     static func write(_ key: String, _ data: Data) throws {
-        let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service, kSecAttrAccount as String: key]
-        let status = SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary)
+        lock.lock(); defer { lock.unlock() }
+        var all = try values()
+        guard all[key] != data else { return }
+        all[key] = data
+        try persist(all)
+        cache = all
+    }
+    static func delete(_ key: String) throws {
+        lock.lock(); defer { lock.unlock() }
+        var all = try values()
+        guard all[key] != nil else { return }
+        all.removeValue(forKey: key)
+        try persist(all)
+        cache = all
+    }
+
+    // MARK: Pozycja w pęku kluczy (wywoływane pod blokadą)
+    private static func base(_ name: String) -> [String: Any] {
+        [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: name]
+    }
+    private static func values() throws -> [String: Data] {
+        if let cache { return cache }
+        if denied { throw AppError.forbidden }
+        var query = base(account)
+        query[kSecReturnData as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        switch status {
+        case errSecSuccess:
+            let decoded = (result as? Data).flatMap { try? PropertyListDecoder().decode([String: Data].self, from: $0) } ?? [:]
+            cache = decoded
+            return decoded
+        case errSecItemNotFound:
+            let migrated = legacy()
+            if !migrated.isEmpty { try? persist(migrated) }
+            cache = migrated
+            return migrated
+        case errSecUserCanceled, errSecAuthFailed, errSecInteractionNotAllowed:
+            denied = true
+            throw AppError.forbidden
+        default:
+            throw AppError.server
+        }
+    }
+    private static func persist(_ all: [String: Data]) throws {
+        let data = try PropertyListEncoder().encode(all)
+        let status = SecItemUpdate(base(account) as CFDictionary, [kSecValueData as String: data] as CFDictionary)
         if status == errSecItemNotFound {
-            var item = query
+            var item = base(account)
             item[kSecValueData as String] = data
             item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
             guard SecItemAdd(item as CFDictionary, nil) == errSecSuccess else { throw AppError.server }
         } else if status != errSecSuccess { throw AppError.server }
     }
-    static func delete(_ key: String) throws {
-        let status = SecItemDelete([kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: key] as CFDictionary)
-        guard status == errSecSuccess || status == errSecItemNotFound else { throw AppError.server }
+    /// Dawne pozycje (jedna na wartość): przenosimy tylko to, czego nie da się odtworzyć bez użytkownika.
+    private static func legacy() -> [String: Data] {
+        var query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
+                                    kSecReturnAttributes as String: true, kSecMatchLimit as String: kSecMatchLimitAll]
+        var result: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess, let items = result as? [[String: Any]] else { return [:] }
+        let names = items.compactMap { $0[kSecAttrAccount as String] as? String }
+            .filter { $0 == "connection" || $0.hasPrefix("session-") || $0.hasPrefix("apple-calendar-") }
+        var migrated: [String: Data] = [:]
+        for name in names {
+            query = base(name)
+            query[kSecReturnData as String] = true
+            query[kSecMatchLimit as String] = kSecMatchLimitOne
+            var value: CFTypeRef?
+            if SecItemCopyMatching(query as CFDictionary, &value) == errSecSuccess, let data = value as? Data { migrated[name] = data }
+        }
+        return migrated
     }
 }
 
@@ -87,7 +152,11 @@ struct LocalCache {
     func load() throws -> Snapshot? {
         guard FileManager.default.fileExists(atPath: file.path) else { return nil }
         let data = try Data(contentsOf: file)
-        let clear = try AES.GCM.open(AES.GCM.SealedBox(combined: data), using: key())
+        // Kopia z innym (dawnym) kluczem jest nieczytelna — usuwamy ją, dane pobiorą się z serwera.
+        let secret = try key()
+        guard let box = try? AES.GCM.SealedBox(combined: data), let clear = try? AES.GCM.open(box, using: secret) else {
+            try? FileManager.default.removeItem(at: file); return nil
+        }
         return try JSONDecoder().decode(Snapshot.self, from: clear)
     }
     func save(_ snapshot: Snapshot) throws {

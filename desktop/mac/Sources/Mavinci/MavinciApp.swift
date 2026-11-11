@@ -15,7 +15,7 @@ import AppKit
         .commands {
             CommandGroup(replacing: .newItem) { }
             CommandMenu("Mavinci") {
-                Button("Odśwież dane") { Task { await workspace.refresh(); if workspace.screen == .messages { await workspace.messages.refresh() }; if workspace.screen == .meetings { await workspace.meetings.sync(force: true) }; if workspace.selection == .inquiries { await workspace.inquiries.sync(force: true) }; if workspace.selection == .tasks || workspace.screen == .myTasks { await workspace.myTasks.sync(force: true) }; if workspace.screen == .companyTasks { await workspace.companyTasks.sync(force: true) } } }.keyboardShortcut("r").disabled(workspace.syncing || workspace.editing)
+                Button("Odśwież dane") { Task { await workspace.refresh(); if workspace.screen == .messages { await workspace.messages.refresh() }; if workspace.screen == .meetings { await workspace.meetings.sync(force: true) }; if workspace.selection == .inquiries { await workspace.inquiries.sync(force: true) }; if workspace.selection == .tasks || workspace.screen == .myTasks { await workspace.myTasks.sync(force: true) }; if workspace.screen == .companyTasks { await workspace.companyTasks.sync(force: true) }; if workspace.selection == .contacts { await workspace.contacts.sync(force: true) }; if workspace.selection == .events { await workspace.events.sync(force: true) }; if workspace.screen == .team { await workspace.team.sync(force: true); if let id = workspace.team.openedID { await workspace.team.loadDetail(id) } }; if workspace.screen?.isWarehouse == true { await workspace.warehouse.sync(force: true); if workspace.screen == .warehouse, let id = workspace.warehouse.openedID { await workspace.warehouse.loadDetail(id) } } } }.keyboardShortcut("r").disabled(workspace.syncing || workspace.editing)
                 Divider()
                 Button("Dashboard") { workspace.switchSection(.day) }.keyboardShortcut("1")
                 Button("Zapytania") { if workspace.employee?.canView(.inquiries) == true { workspace.switchSection(.inquiries) } }.keyboardShortcut("2")
@@ -101,12 +101,21 @@ struct RootView: View {
                         else if state.selection == .tasks { TasksBoardView(store: state.myTasks).id("tasks-mine") }
                         else if state.selection == .tenders { TendersView() }
                         else if state.selection == .inquiries, state.employee?.canView(.inquiries) == true { InquiriesFunnelView(store: state.inquiries) }
+                        else if state.selection == .contacts, state.employee?.canView(.contacts) == true { ContactsView(store: state.contacts) }
+                        else if state.selection == .events, state.employee?.canView(.events) == true { EventsListView(store: state.events) }
                         else if state.selection == .day { DashboardView() }
                         else if let module = state.selection, state.employee?.canView(module) == true { RecordsView(module: module).id(module) }
                         else if state.screen == .messages { MessagesView() }
                         else if state.screen == .meetings { MeetingsView(store: state.meetings) }
                         else if state.screen == .companyTasks { TasksBoardView(store: state.companyTasks).id("tasks-company") }
                         else if state.screen == .myTasks { TasksBoardView(store: state.myTasks).id("tasks-mine") }
+                        else if state.screen == .team { TeamView(store: state.team) }
+                        else if state.screen == .warehouse { WarehouseView(store: state.warehouse) }
+                        else if state.screen == .kits { KitsView(store: state.warehouse) }
+                        else if state.screen == .cables { CablesView(store: state.warehouse) }
+                        else if state.screen == .rental { RentalView(store: state.warehouse) }
+                        else if state.screen == .connectors { ConnectorsView(store: state.warehouse) }
+                        else if state.screen == .warehouseCategories { WarehouseCategoriesView(store: state.warehouse) }
                         else { ContentUnavailableView("Wybierz sekcję", systemImage: "sidebar.left") }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -142,7 +151,7 @@ struct RootView: View {
                             }.help("Powiadomienia: \(state.unread) nieprzeczytanych").accessibilityLabel("Powiadomienia")
                         }
                         ToolbarItem(placement: .primaryAction) {
-                            Button { Task { await state.refresh(); if state.screen == .messages { await state.messages.refresh() }; if state.screen == .meetings { await state.meetings.sync(force: true) }; if state.selection == .inquiries { await state.inquiries.sync(force: true) }; if state.selection == .tasks || state.screen == .myTasks { await state.myTasks.sync(force: true) }; if state.screen == .companyTasks { await state.companyTasks.sync(force: true) } } } label: { Label("Odśwież", systemImage: "arrow.clockwise") }
+                            Button { Task { await state.refresh(); if state.screen == .messages { await state.messages.refresh() }; if state.screen == .meetings { await state.meetings.sync(force: true) }; if state.selection == .inquiries { await state.inquiries.sync(force: true) }; if state.selection == .tasks || state.screen == .myTasks { await state.myTasks.sync(force: true) }; if state.screen == .companyTasks { await state.companyTasks.sync(force: true) }; if state.selection == .contacts { await state.contacts.sync(force: true) }; if state.selection == .events { await state.events.sync(force: true) }; if state.screen == .team { await state.team.sync(force: true); if let id = state.team.openedID { await state.team.loadDetail(id) } }; if state.screen?.isWarehouse == true { await state.warehouse.sync(force: true); if state.screen == .warehouse, let id = state.warehouse.openedID { await state.warehouse.loadDetail(id) } } } } label: { Label("Odśwież", systemImage: "arrow.clockwise") }
                                 .disabled(state.syncing || state.acting || state.editing)
                         }
                         ToolbarItem(placement: .primaryAction) { if state.syncing { ProgressView().controlSize(.small) } }

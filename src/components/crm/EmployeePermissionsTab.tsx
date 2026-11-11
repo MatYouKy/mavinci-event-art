@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react';
 import { Shield, Save, RefreshCw, ChevronDown, ChevronRight, Bell, Webhook, Car, Building2, RotateCcw } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { ACCESS_SECTIONS } from '@/lib/accessSections';
+import { CONTACT_TABS, EVENT_TABS, LEGACY_FINANCE_PERMISSIONS, MAVINCI_LIVE_SECTION_SCOPES, ORGANIZATION_TABS } from '@/lib/employees/permissionTabs';
 import { getAllScopes } from '@/lib/permissions';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
@@ -54,45 +55,10 @@ interface PermissionCategory {
   extraPermissions?: ExtraPermission[];
 }
 
-const mavinciLiveSectionScopes = [
-  'mavinci_live_light_magic',
-  'mavinci_live_quiz_show',
-  'mavinci_live_familiada',
-  'mavinci_live_wedding_show',
-  'mavinci_live_streaming',
-] as const;
-
-const availableEventTabs = [
-  { value: 'overview', label: 'Przegląd', description: 'Podstawowe informacje o wydarzeniu' },
-  { value: 'details', label: 'Szczegóły', description: 'Podstawowe informacje o wydarzeniu' },
-  { value: 'phases', label: 'Timeline', description: 'Zarządzanie fazami wydarzenia' },
-  { value: 'offer', label: 'Oferta', description: 'Tworzenie i zarządzanie ofertami' },
-  { value: 'finances', label: 'Finanse', description: 'Budżet i koszty wydarzenia' },
-  { value: 'contract', label: 'Umowa', description: 'Zarządzanie umowami' },
-  { value: 'equipment', label: 'Sprzęt', description: 'Lista sprzętu przypisanego do wydarzenia' },
-  { value: 'team', label: 'Zespół', description: 'Pracownicy przypisani do wydarzenia' },
-  { value: 'agenda', label: 'Agenda', description: 'Zarządzanie agenda wydarzenia' },
-  { value: 'logistics', label: 'Logistyka', description: 'Pojazdy i transport' },
-  { value: 'subcontractors', label: 'Podwykonawcy', description: 'Zewnętrzni wykonawcy' },
-  { value: 'files', label: 'Pliki', description: 'Dokumenty i załączniki' },
-  { value: 'tasks', label: 'Zadania', description: 'Zarządzanie zadaniami' },
-  { value: 'history', label: 'Historia', description: 'Dziennik zmian wydarzenia' },
-];
-
-const availableContactTabs = [
-  { value: 'details', label: 'Szczegóły', description: 'Podstawowe informacje o kontakcie' },
-  { value: 'notes', label: 'Notatki', description: 'Notatki i uwagi dotyczące kontaktu' },
-  { value: 'history', label: 'Historia', description: 'Historia kontaktów i zmian' },
-];
-
-const availableOrganizationTabs = [
-  { value: 'details', label: 'Szczegóły', description: 'Podstawowe informacje o organizacji' },
-  { value: 'contacts', label: 'Kontakty', description: 'Osoby kontaktowe w organizacji' },
-  { value: 'invoices', label: 'Faktury', description: 'Faktury powiązane z organizacją' },
-  { value: 'events', label: 'Realizacje', description: 'Wydarzenia powiązane z organizacją' },
-  { value: 'notes', label: 'Notatki', description: 'Notatki dotyczące organizacji' },
-  { value: 'history', label: 'Historia', description: 'Historia zmian i kontaktów' },
-];
+const mavinciLiveSectionScopes = MAVINCI_LIVE_SECTION_SCOPES;
+const availableEventTabs = EVENT_TABS;
+const availableContactTabs = CONTACT_TABS;
+const availableOrganizationTabs = ORGANIZATION_TABS;
 
 // Sekcja „Faktury” (invoices_view / invoices_manage) zastąpiona kartą „Finanse według działalności”.
 const permissionCategories: PermissionCategory[] = ACCESS_SECTIONS.filter(section => section.key !== 'invoices').map(section => ({
@@ -101,8 +67,6 @@ const permissionCategories: PermissionCategory[] = ACCESS_SECTIONS.filter(sectio
   extraPermissions: section.scopes.filter(scope => !scope.key.endsWith('_own_only') && scope.key !== `${section.key}_view` && scope.key !== `${section.key}_manage`),
 }));
 
-// Stare uprawnienia finansowe — od migracji 20261101165000 niczego nie nadają w bazie; przy zapisie są usuwane.
-const LEGACY_FINANCE_PERMISSIONS = ['invoices_view', 'invoices_manage', 'ksef_manage', 'bank_statements_view', 'bank_statements_manage'];
 
 export default function EmployeePermissionsTab({
   employeeId,

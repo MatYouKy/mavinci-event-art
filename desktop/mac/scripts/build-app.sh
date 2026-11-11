@@ -1,11 +1,19 @@
 #!/bin/bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
-VERSION="${VERSION:-0.8.0}"
+VERSION="${VERSION:-0.14.0}"
 CONFIGURATION="${CONFIGURATION:-release}"
 case "$CONFIGURATION" in debug|release) ;; *) echo "Nieznany wariant kompilacji"; exit 1;; esac
 BUILD="${BUILD:-$(date +%Y%m%d%H%M)}"
 IDENTITY="${SIGN_IDENTITY:--}"
+# Stały certyfikat „Mavinci Development” (Pęk kluczy → Asystent certyfikatów, typ „Podpisywanie kodu”) — z nim macOS
+# pamięta zgodę na pęk kluczy także po kolejnych budowaniach. Bez niego podpis jest jednorazowy (ad hoc) i po każdym
+# budowaniu macOS raz pyta o hasło do pęku kluczy.
+LOCAL_IDENTITY="Mavinci Development"
+IDENTITIES="$(security find-identity -p codesigning 2>/dev/null || true)"
+if [ -z "${SIGN_IDENTITY:-}" ] && [[ "$IDENTITIES" == *"\"$LOCAL_IDENTITY\""* ]]; then
+  IDENTITY="$LOCAL_IDENTITY"
+fi
 swift build -c "$CONFIGURATION"
 BIN="$(swift build -c "$CONFIGURATION" --show-bin-path)/Mavinci"
 mkdir -p build
@@ -39,8 +47,12 @@ if swiftc -O -o build/icon/make-icon scripts/make-icon/main.swift Sources/Mavinc
   echo "Uwaga: nie udało się odświeżyć ikony z brandbooka — używam poprzedniej, jeśli jest."
 fi
 if [ -f build/icon/AppIcon.icns ]; then cp build/icon/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"; fi
-if [ "$IDENTITY" = "-" ]; then
+if [ "$IDENTITY" = "-" ] || [ "$IDENTITY" = "$LOCAL_IDENTITY" ]; then
   codesign --force --options runtime --timestamp=none --sign "$IDENTITY" "$APP"
+  if [ "$IDENTITY" = "-" ]; then
+    echo "Podpis ad hoc: po tym budowaniu macOS raz zapyta o dostęp do pęku kluczy (kliknij „Zawsze pozwalaj”)."
+    echo "Aby nie pytał po każdym budowaniu, utwórz certyfikat „$LOCAL_IDENTITY” (desktop/mac/README.md, „Podpis i pęk kluczy”)."
+  fi
 else
   codesign --force --options runtime --timestamp --sign "$IDENTITY" "$APP"
 fi

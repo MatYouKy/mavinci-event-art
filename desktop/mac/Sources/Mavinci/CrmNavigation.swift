@@ -65,6 +65,13 @@ struct NavItem: Codable, Identifiable, Hashable {
         case "/crm/meetings": return .meetings
         case "/crm/tasks": return .companyTasks
         case "/crm/tasks/mine": return .myTasks
+        case "/crm/employees": return .team
+        case "/crm/equipment": return .warehouse
+        case "/crm/equipment/kits": return .kits
+        case "/crm/equipment/cables": return .cables
+        case "/crm/equipment/rental": return .rental
+        case "/crm/equipment/connectors": return .connectors
+        case "/crm/equipment/categories": return .warehouseCategories
         default: return nil
         }
     }
@@ -72,7 +79,11 @@ struct NavItem: Codable, Identifiable, Hashable {
 }
 
 /// Ekrany natywne, które nie są zbiorami danych obszaru roboczego (`Module`).
-enum CrmScreen: String { case messages, meetings, companyTasks, myTasks }
+enum CrmScreen: String {
+    case messages, meetings, companyTasks, myTasks, team, warehouse, kits, cables, rental, connectors, warehouseCategories
+    /// Ekrany Magazynu (wspólna kopia danych `WarehouseStore`).
+    var isWarehouse: Bool { [.warehouse, .kits, .cables, .rental, .connectors, .warehouseCategories].contains(self) }
+}
 
 /// Strona CRM, której ekranu natywnego jeszcze nie ma — tymczasowo otwiera ją w przeglądarce.
 struct CrmWebPlaceholder: View {

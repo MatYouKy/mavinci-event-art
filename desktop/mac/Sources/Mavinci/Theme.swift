@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 /// Motywy jak w CRM (`employees.crm_theme`, `src/lib/CRM/theme/crmTheme.ts`): wybór pracownika obowiązuje w przeglądarce i w aplikacji.
 /// Paleta — jak podgląd w CRM (`CrmThemePicker.tsx`). Do pierwszego połączenia aplikacja używa ostatnio zapisanego motywu z tego Maca.
@@ -26,6 +27,19 @@ enum CrmTheme: String, CaseIterable, Identifiable {
     var text: Color { Self.rgb(textRGB) }
     var accent: Color { Self.rgb(accentRGB) }
     static func rgb(_ hex: Int) -> Color { Color(.sRGB, red: Double((hex >> 16) & 255) / 255, green: Double((hex >> 8) & 255) / 255, blue: Double(hex & 255) / 255) }
+    /// Kolor z zapisu „#rrggbb” (kategorie z CRM); `nil` dla pustego lub błędnego.
+    static func hex(_ value: String?) -> Color? {
+        guard var raw = value?.trimmingCharacters(in: .whitespaces), !raw.isEmpty else { return nil }
+        if raw.hasPrefix("#") { raw.removeFirst() }
+        guard raw.count == 6, let number = Int(raw, radix: 16) else { return nil }
+        return rgb(number)
+    }
+    /// Zapis „#rrggbb” koloru (do zapisu w CRM).
+    static func hexString(_ color: Color) -> String {
+        guard let rgb = NSColor(color).usingColorSpace(.sRGB) else { return "#d3bb73" }
+        let r = Int((rgb.redComponent * 255).rounded()), g = Int((rgb.greenComponent * 255).rounded()), b = Int((rgb.blueComponent * 255).rounded())
+        return String(format: "#%02x%02x%02x", max(0, min(255, r)), max(0, min(255, g)), max(0, min(255, b)))
+    }
 
     private static let savedKey = "crmTheme"
     static var saved: CrmTheme { CrmTheme(rawValue: UserDefaults.standard.string(forKey: savedKey) ?? "") ?? .burgundy }

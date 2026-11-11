@@ -78,7 +78,7 @@ import SwiftUI
             }
         }
         if ["task","tasks"].contains(type),let inquiry=metadata["inquiry_id"]?.text,UUID(uuidString:inquiry) != nil,id==inquiry{type="inquiry";id=inquiry}
-        if UUID(uuidString:id)==nil || !["event","events","task","tasks","inquiry","inquiries","contact","contacts","client","offer","offers","tender","tenders","meeting","meetings"].contains(type){
+        if UUID(uuidString:id)==nil || !["event","events","task","tasks","inquiry","inquiries","contact","contacts","client","offer","offers","tender","tenders","meeting","meetings","employee","employees"].contains(type){
             for (key,target) in [("meeting_id","meeting"),("inquiry_id","inquiry"),("event_id","event"),("offer_id","offer"),("tender_id","tender"),("task_id","task")] {
                 if let candidate=metadata[key]?.text,UUID(uuidString:candidate) != nil{type=target;id=candidate;break}
             }
@@ -95,6 +95,7 @@ import SwiftUI
         case "offer","offers":return await navigate(.offers,id:id)
         case "tender","tenders":return await navigate(.tenders,id:id)
         case "meeting","meetings":showMeeting(id);return true
+        case "employee","employees":showEmployee(id);return true
         default:notice="Powiązana sprawa nie ma jeszcze dostępnej sekcji natywnej.";return false
         }
     }

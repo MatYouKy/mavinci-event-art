@@ -259,7 +259,10 @@ struct DashboardView: View {
     private func openHref(_ href: String) {
         let path = String(href.split(separator: "?").first ?? "")
         let map: [String: Module] = ["/crm/inquiries": .inquiries, "/crm/offers": .offers, "/crm/events": .events, "/crm/contacts": .contacts, "/crm/clients": .contacts, "/crm/tasks": .tasks, "/crm/calendar": .calendar, "/crm/tenders": .tenders]
-        if let module = map[path], state.employee?.canView(module) == true { state.switchSection(module) } else { state.openCRM(href) }
+        if let module = map[path], state.employee?.canView(module) == true { state.switchSection(module); return }
+        // Ekrany natywne z menu (np. Zespół, Spotkania) — bez przeglądarki.
+        if let item = state.navigation.flatMap(\.flattened).first(where: { $0.path == path && ($0.screen != nil || $0.module != nil) }) { state.openHref(item.href); return }
+        state.openCRM(href)
     }
 
     private func openActivity(_ item: DashboardActivity) {

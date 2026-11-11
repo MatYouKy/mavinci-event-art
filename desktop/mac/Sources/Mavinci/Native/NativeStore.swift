@@ -68,7 +68,11 @@ struct SealedFile<Value: Codable> {
     }
     func load() throws -> Value? {
         guard FileManager.default.fileExists(atPath: file.path) else { return nil }
-        let clear = try AES.GCM.open(AES.GCM.SealedBox(combined: Data(contentsOf: file)), using: key())
+        // Kopia z innym (dawnym) kluczem jest nieczytelna — usuwamy ją, dane pobiorą się z serwera.
+        let secret = try key()
+        guard let box = try? AES.GCM.SealedBox(combined: Data(contentsOf: file)), let clear = try? AES.GCM.open(box, using: secret) else {
+            try? FileManager.default.removeItem(at: file); return nil
+        }
         return try JSONDecoder().decode(Value.self, from: clear)
     }
     func save(_ value: Value) throws {

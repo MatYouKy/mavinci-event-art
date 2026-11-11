@@ -38,6 +38,14 @@ import Network
     let inquiries = InquiriesStore()
     /// Zadania: „Zadania firmowe” (`/crm/tasks`) i „Moje zadania” (`/crm/tasks/mine`) — kopie na dysku i tablice.
     let companyTasks = TasksStore(board: .company)
+    /// Kontakty (`/crm/contacts`) — kopia na dysku, kafelki i lista, edycja kontaktów i organizacji.
+    let contacts = ContactsStore()
+    /// Zespół (`/crm/employees`) — kopia listy na dysku, karta pracownika z zakładkami.
+    let team = TeamStore()
+    /// Magazyn (`/crm/equipment`) — kopia katalogu na dysku, karta sprzętu z jednostkami.
+    let warehouse = WarehouseStore()
+    /// Wydarzenia (`/crm/events`) — kopia listy na dysku, synchronizacja przyrostowa.
+    let events = EventsStore()
     let myTasks = TasksStore(board: .mine)
     /// Ekran natywny spoza `Module` (np. Wiadomości) wybrany z paska bocznego CRM.
     @Published var screen: CrmScreen?
@@ -75,6 +83,10 @@ import Network
         meetings.workspace = self
         inquiries.workspace = self
         companyTasks.workspace = self
+        contacts.workspace = self
+        team.workspace = self
+        warehouse.workspace = self
+        events.workspace = self
         myTasks.workspace = self
         monitor.pathUpdateHandler = { [weak self] path in
             Task { @MainActor in
@@ -103,6 +115,10 @@ import Network
             meetings.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             inquiries.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             companyTasks.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
+            contacts.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
+            team.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
+            warehouse.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
+            events.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             myTasks.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             openLocalViews(namespace: digest("\(connection.identity)|\(session.user.id)"))
             Task { await BrandStore.refresh(nativeAPI()) }
@@ -133,6 +149,10 @@ import Network
             meetings.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             inquiries.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             companyTasks.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
+            contacts.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
+            team.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
+            warehouse.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
+            events.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             myTasks.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             openLocalViews(namespace: digest("\(connection.identity)|\(session.user.id)"))
             Task { await BrandStore.refresh(nativeAPI()) }
@@ -219,6 +239,10 @@ import Network
             if current.canView(.inquiries) { Task { await inquiries.backgroundSync() } }
             Task { await myTasks.backgroundSync() }
             if current.canView(.tasks) { Task { await companyTasks.backgroundSync() } }
+            if current.canView(.contacts) { Task { await contacts.backgroundSync() } }
+            if current.has("employees_view") || current.has("employees_manage") || current.isAdmin { Task { await team.backgroundSync() } }
+            if current.has("equipment_view") || current.has("equipment_manage") { Task { await warehouse.backgroundSync() } }
+            if current.canView(.events) { Task { await events.backgroundSync() } }
             // Do not extend the offline permission lease on a partial/failed synchronization.
             if moduleErrors.isEmpty { snapshot?.savedAt = Date() }
             if !editing { refreshEventToken = UUID() }
@@ -288,7 +312,7 @@ import Network
         snapshot = nil; selection = .day; focusedID = nil; eventRoute = nil; notificationsVisible = false
         verifiedConnection = false; offline = false; syncing = false; acting = false; editing = false
         moduleErrors = [:]; compatibilityMode = false; notice = nil; snack = nil; pending = nil
-        nativeSet = nil; nativeFocus = nil; native.clear(); messages.reset(); meetings.reset(); inquiries.reset(); companyTasks.reset(); myTasks.reset(); screen = nil
+        nativeSet = nil; nativeFocus = nil; native.clear(); messages.reset(); meetings.reset(); inquiries.reset(); companyTasks.reset(); myTasks.reset(); contacts.reset(); team.reset(); warehouse.reset(); events.reset(); screen = nil
         navigation = []; sidebarHref = "/crm"; webItem = nil; dashboard = nil; dashboardLoadedAt = nil; dashboardError = nil
         scheduleRows = nil; scheduleFailed = false
         if let cacheNamespace { for name in ["dashboard", "schedule"] { try? SealedFile<Data>(namespace: "\(name)-\(cacheNamespace)").clear() } }
@@ -334,6 +358,7 @@ import Network
         if module == .tasks, owner != nil, myTasks.task(id) != nil {showTask(id);return true}
         guard let owner,owner.canView(module),UUID(uuidString:id) != nil else {notice="Nie masz dostępu do tej sekcji.";return false}
         if module == .events {showEvent(id);return true}
+        if module == .contacts {showContact(id);return true}
         if module == .tasks, myTasks.task(id) != nil || companyTasks.task(id) != nil {showTask(id);return true}
         var record=rows(module).first{$0.id==id || (module == .calendar && $0["source_id"]==id)}
         if record == nil,let backend,!offline {
@@ -496,6 +521,17 @@ extension Workspace {
         guard let item = items.first(where: { $0.href == href && ($0.children ?? []).isEmpty }) ?? items.first(where: { $0.href == href }) else { return }
         if let module = item.module, employee?.canView(module) == true { switchSection(module); sidebarHref = href; return }
         if let screen = item.screen {
+            // Wejście do Zespołu z innej sekcji pokazuje listę (karta pracownika otwiera się przez `showEmployee`).
+            if screen == .team && self.screen != .team { team.openedID = nil; team.openedTab = nil; team.openedDate = nil }
+            if screen != self.screen {
+                switch screen {
+                case .warehouse: warehouse.openedID = nil
+                case .kits: warehouse.openedKitID = nil
+                case .cables: warehouse.openedCableID = nil; warehouse.cableCategoriesShown = false
+                case .rental: warehouse.openedRentalID = nil
+                default: break
+                }
+            }
             eventRoute = nil; focusedID = nil; notificationsVisible = false; nativeSet = nil; webItem = nil; selection = nil
             self.screen = screen; sidebarHref = href; return
         }

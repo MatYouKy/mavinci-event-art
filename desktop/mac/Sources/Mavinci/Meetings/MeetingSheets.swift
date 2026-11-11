@@ -242,6 +242,8 @@ import AppKit
             let base = request.start ?? defaultStart()
             start = base
             end = request.end.flatMap { $0 > base ? $0 : nil } ?? base.addingTimeInterval(3600)
+            if let title = request.title { self.title = title }
+            if let contact = request.contactId { guests.append(Guest(employeeId: nil, contactId: contact, name: request.contactName ?? "")) }
         }
     }
     /// Domyślny termin nowego spotkania: najbliższa pełna godzina.

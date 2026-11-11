@@ -1236,6 +1236,11 @@ export default function EventsPageClient({
     }
   };
 
+  // `?new=1` (np. z aplikacji na Maca) otwiera od razu kreator nowego wydarzenia.
+  useEffect(() => {
+    if (searchParams.get('new') === '1') setIsModalOpen(true);
+  }, [searchParams]);
+
   useEffect(() => {
     const error = searchParams.get('error');
     const info = searchParams.get('info');
