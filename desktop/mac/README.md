@@ -362,6 +362,8 @@ Wszystkie zakładki karty (poza Mavinci LIVE) działają na Macu natywnie — te
 - **Umowa** — status z datami, podpis firmy, PDF bieżący i archiwalne, podpisane dokumenty (dodawanie PDF / JPG / PNG). Edytor treści umowy (dane, klauzule, szablon, depozyt, audyt AI, wystawienie, PDF, wysyłka, anulowanie) zostaje w CRM — treść składa edytor przeglądarki z bieżących danych.
 - **Szczegóły** — zmiana klienta (indywidualny / firma, osoby kontaktowe) i nowa lokalizacja (wyszukiwanie Google, punkt na mapie).
 
+**Lista wydarzeń** — natywna tabela narzędziowa jak w Wodawo: piktogram kategorii zamiast kolorowych odznak, Lp., sortowanie w nagłówkach kolumn (nazwa, termin, klient, miejsce, kategoria, status, rozliczenie, budżet), status jako kropka z opisem, zaległe płatności — czerwona etykieta z wykrzyknikiem, wyszukiwanie i „Pokaż” (Aktywne / Wszystkie / status) nad tabelą, karta zaznaczonego wydarzenia z boku (⌥⌘I); dwuklik albo ↩ otwiera kartę wydarzenia. Zespół realizacji widzi etapy operacyjne bez kwot.
+
 W CRM pozostają: kreator i wysyłka oferty, wysyłka kalkulacji e-mailem, edytor umowy, faktury z wydarzenia, sposób rozliczenia i panel prowizji w Szczegółach, folder Mac / iCloud, Mavinci LIVE.
 
 ## Aktualizacja 0.17 — Karta wydarzenia (etap 3): przegląd przepływu, przestrzeń realizacji, Zespół
