@@ -191,6 +191,8 @@ struct SettlementConfirm: Identifiable {
 @MainActor struct EventSettlementTab: View {
     @ObservedObject var store: EventCardStore
     let eventID: String
+    /// Sekcja zakładki „Rozliczenie” (nil — pełny widok podsumowania).
+    var part: RozliczeniePart? = nil
     @EnvironmentObject private var state: Workspace
     @Environment(\.crmTheme) private var theme
     @State private var busy: String?
@@ -208,12 +210,17 @@ struct SettlementConfirm: Identifiable {
     var body: some View {
         Group {
             if let data {
-                if let settlement = data.settlement, data.state == "ready" { content(settlement) }
-                else { notice(data) }
+                if let settlement = data.settlement, data.state == "ready" {
+                    if let part { partContent(settlement, part) } else { content(settlement) }
+                } else if part == nil || part == .closing || part == .result {
+                    notice(data)
+                }
             } else if let error = store.tabErrors["\(eventID)|summary"] {
                 ContentUnavailableView {
                     Label("Nie udało się wczytać podsumowania wydarzenia.", systemImage: "sum")
                 } description: { Text(error) } actions: { Button("Spróbuj ponownie") { Task { await store.loadTab(eventID, "summary") } } }
+            } else if part != nil {
+                ProgressView("Wczytuję podsumowanie wydarzenia…").controlSize(.small).frame(maxWidth: .infinity).padding(20)
             } else {
                 VStack(spacing: 8) {
                     ProgressView()
@@ -440,11 +447,35 @@ struct SettlementConfirm: Identifiable {
 
     // MARK: Pozycje
 
-    private func lines(_ s: Settlement) -> some View {
+    /// Pozycje podsumowania w zakładce „Rozliczenie”: przychody, koszty, prowizje (obieg, wynik i historia w swoich sekcjach).
+    @ViewBuilder private func partContent(_ s: Settlement, _ part: RozliczeniePart) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            switch part {
+            case .revenue:
+                lines(s, only: ["revenue"], title: "Przychody netto w podsumowaniu")
+            case .costs:
+                lines(s, only: ["subcontractor", "direct_cost", "team"], title: "Koszty netto w podsumowaniu")
+            case .result:
+                totals(s)
+            case .commissions:
+                commissions(s)
+                if s.can_edit_shares {
+                    SettlementSharesEditor(store: store, eventID: eventID, people: s.internal, busy: busy != nil, mutate: mutate)
+                }
+                lines(s, only: ["external_commission"], title: "Narzuty i prowizje sprzedawców zewnętrznych")
+            case .closing:
+                header(s)
+                actionBar(s)
+                history(s)
+            }
+        }
+    }
+
+    private func lines(_ s: Settlement, only: Set<String>? = nil, title: String = "Przychody i koszty netto") -> some View {
         card {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Przychody i koszty netto").font(.headline)
+                    Text(title).font(.headline)
                     Text("Pozycje z faktur, kosztów, zleceń, ewidencji czasu i prowizji. Wyłączone pozycje zostają widoczne, ale nie liczą się do sum.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
@@ -459,7 +490,7 @@ struct SettlementConfirm: Identifiable {
             if s.can_edit && manualEditor == "new" {
                 SettlementManualForm(line: nil, busy: busy, save: saveManual) { manualEditor = nil }
             }
-            ForEach(SettlementText.sections, id: \.0) { section in
+            ForEach(SettlementText.sections.filter { only?.contains($0.0) ?? true }, id: \.0) { section in
                 let items = s.lines.filter { section.0 == "revenue" ? $0.kind == "revenue" : ($0.kind == "cost" && $0.category == section.0) }
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {

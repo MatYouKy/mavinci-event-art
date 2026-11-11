@@ -58,9 +58,11 @@ import AppKit
     static func groupLabel(_ ids: [String], _ fallback: String) -> String {
         if ids == ["offer", "calculations"] { return "Oferta i kalkulacje" }
         if ids == ["team", "subcontractors"] { return "Zespół i podwykonawcy" }
-        if ids == ["finances", "summary"] { return "Finanse i rozliczenie" }
+        if ids == ["finances", "summary"] { return "Rozliczenie" }
         return fallback
     }
+    static func isSettlement(_ group: TabGroup) -> Bool { group.members.contains { $0.id == "finances" || $0.id == "summary" } }
+
     static func groups(_ tabs: [EventCardTabInfo]) -> [TabGroup] {
         let visible = tabs.filter { $0.id != "overview" }
         let known = visible.filter { tabOrder.contains($0.id) }.sorted { (tabOrder.firstIndex(of: $0.id) ?? 99) < (tabOrder.firstIndex(of: $1.id) ?? 99) }
@@ -182,14 +184,20 @@ import AppKit
                     }
                     .padding(.horizontal, 14).padding(.vertical, 6)
                 }
-                if let current, current.members.count > 1 {
+                if let current, current.members.count > 1, !Self.isSettlement(current) {
                     Picker("", selection: $tab) {
                         ForEach(current.members) { member in Text(member.label).tag(member.id) }
                     }
                     .pickerStyle(.segmented).labelsHidden().fixedSize()
                     .padding(.horizontal, 18).padding(.bottom, 4)
                 }
-                tabContent(selected, page, event).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                if let current, Self.isSettlement(current) {
+                    // Finanse i podsumowanie jako jedna zakładka „Rozliczenie” (sekcje w kolejności przepływu pieniędzy).
+                    EventSettlementWorkspace(store: store, eventID: eventID, members: Set(current.members.map(\.id)))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                } else {
+                    tabContent(selected, page, event).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                }
             } else {
                 // Bez żadnej zakładki (zakres nie obejmuje danych wydarzenia) — jak komunikat w CRM.
                 HStack(alignment: .top, spacing: 12) {

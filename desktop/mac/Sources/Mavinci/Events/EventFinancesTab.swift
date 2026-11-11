@@ -97,6 +97,8 @@ enum FinanceText {
     let eventID: String
     /// Przejście do innej zakładki tej samej karty (np. „Wyliczenie: zakładka Podsumowanie”).
     var navigate: ((String) -> Void)? = nil
+    /// Sekcja zakładki „Rozliczenie” (nil — pełny widok finansów).
+    var part: RozliczeniePart? = nil
     @EnvironmentObject private var state: Workspace
     @Environment(\.crmTheme) private var theme
     @State private var showAddCost = false
@@ -109,11 +111,14 @@ enum FinanceText {
 
     var body: some View {
         Group {
-            if let data { content(data) }
-            else if let error = store.tabErrors["\(eventID)|finances"] {
+            if let data {
+                if let part { partContent(data, part) } else { content(data) }
+            } else if let error = store.tabErrors["\(eventID)|finances"] {
                 ContentUnavailableView {
                     Label("Błąd podczas ładowania danych finansowych", systemImage: "banknote")
                 } description: { Text(error) } actions: { Button("Spróbuj ponownie") { Task { await store.loadTab(eventID, "finances") } } }
+            } else if part != nil {
+                ProgressView("Ładowanie danych finansowych...").controlSize(.small).frame(maxWidth: .infinity).padding(20)
             } else {
                 VStack(spacing: 8) {
                     ProgressView()
@@ -180,14 +185,41 @@ enum FinanceText {
                 if d.client?.canInvoice == true { invoices(d) }
                 costs(d)
                 if d.access.isAdmin && d.client?.type == "individual" { cash(d) }
-                if let summary = d.summary, summary.actualProfit < 0 {
-                    Label("Uwaga: Event generuje stratę. Koszty przekraczają przychody o " + FinanceText.money(abs(summary.actualProfit)) + ". Rozważ optymalizację kosztów lub zwiększenie ceny usługi.",
-                          systemImage: "exclamationmark.circle")
-                        .font(.callout).foregroundStyle(CrmTheme.rgb(0xfca5a5)).padding(12).frame(maxWidth: .infinity, alignment: .leading)
-                        .background(CrmTheme.rgb(0xef4444).opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
-                }
+                lossWarning(d)
             }
             .padding(18)
+        }
+    }
+
+    @ViewBuilder private func lossWarning(_ d: FinancesTabData) -> some View {
+        if let summary = d.summary, summary.actualProfit < 0 {
+            Label("Uwaga: Event generuje stratę. Koszty przekraczają przychody o " + FinanceText.money(abs(summary.actualProfit)) + ". Rozważ optymalizację kosztów lub zwiększenie ceny usługi.",
+                  systemImage: "exclamationmark.circle")
+                .font(.callout).foregroundStyle(CrmTheme.rgb(0xfca5a5)).padding(12).frame(maxWidth: .infinity, alignment: .leading)
+                .background(CrmTheme.rgb(0xef4444).opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
+        }
+    }
+
+    /// Części finansów w zakładce „Rozliczenie” — w kolejności przepływu pieniędzy, bez powtórzeń z podsumowaniem.
+    @ViewBuilder private func partContent(_ d: FinancesTabData, _ part: RozliczeniePart) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            switch part {
+            case .revenue:
+                if let client = d.client { clientBanner(client) }
+                if d.controls.available { FinancePaymentsCard(store: store, eventID: eventID, data: d, act: act) }
+                if d.client?.canInvoice == true { invoices(d) }
+            case .costs:
+                costs(d)
+                if d.access.isAdmin && d.client?.type == "individual" { cash(d) }
+            case .result:
+                lossWarning(d)
+                if let summary = d.summary { summaryCards(d, summary) }
+                profitability(d, commissions: false)
+            case .commissions:
+                card { commissionsSection(d) }
+            case .closing:
+                if d.controls.available && (d.controls.eventFinished || d.controls.closeout != nil) { FinanceCloseoutCard(data: d, act: act) }
+            }
         }
     }
 
@@ -257,7 +289,7 @@ enum FinanceText {
 
     // MARK: Rentowność
 
-    private func profitability(_ d: FinancesTabData) -> some View {
+    private func profitability(_ d: FinancesTabData, commissions: Bool = true) -> some View {
         let maximum = max(d.rows.map { Swift.max($0.planned, $0.actual) }.max() ?? 1, 1)
         let status: String = d.issues.isEmpty ? "Dane kompletne" : "\(d.issues.count) elementów do uzupełnienia"
         return card {
@@ -300,7 +332,7 @@ enum FinanceText {
                 }
                 .padding(12).frame(width: 320, alignment: .topLeading).background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
             }
-            commissionsSection(d)
+            if commissions { commissionsSection(d) }
         }
     }
 

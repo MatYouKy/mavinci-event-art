@@ -263,3 +263,11 @@ Aplikacja na Maca: okno „Zarządzaj sprzętem” (katalog z dysku z kategoriam
 ### Mac: „Kto rezerwuje sprzęt w terminie” w oknie zarządzania sprzętem (2026-11-11)
 
 API: `/bridge/native/v1/events/card` — `op=tabQuery&tab=equipment&query=reservations&kind=item|kit&id=<id>`: rezerwacje pozycji w innych, nieanulowanych wydarzeniach nakładających się z terminem (sprzęt — `equipment_bookings`, zestawy — `event_equipment`), zsumowane per wydarzenie, z autorem wydarzenia (`events.created_by`) i kontaktem; wydarzenia niewidoczne dla użytkownika (RLS) tylko jako suma ilości. Tylko odczyt, z uprawnieniami użytkownika. Mac: szersze okno „Zarządzaj sprzętem”, dodane pozycje na górze, szczegóły i rezerwacje pod tabelą; Harmonogram bez pustej przestrzeni nad osią. Mobile: nie dotyczy — telefon nie ma okna zarządzania sprzętem; nowe zapytanie jest dostępne w API, gdyby telefon miał je pokazać. Kod zapisany; zgodnie z .build-policy.md bez builda, typechecka i lintowania.
+
+### Mac: Agenda jako scenariusz z przeciąganiem (2026-11-11)
+
+Aplikacja na Maca: Agenda edytowana w miejscu jako scenariusz (godzina, czas trwania, koniec), przeciąganie i przenoszenie punktów z przeliczeniem godzin, zapis od razu. Serwer i baza bez zmian — ta sama czynność `save` zakładki Agenda (punkty w kolejności, `start` / `end` programu). Czasy trwania faz Harmonogramu w godzinach. Mobile: nie dotyczy — telefon nie ma edycji agendy; zapisane dane są takie same jak z CRM. Kod zapisany; zgodnie z .build-policy.md bez builda, typechecka i lintowania.
+
+### Mac: zakładka „Rozliczenie” zamiast „Finanse” i „Podsumowanie” (2026-11-11)
+
+Aplikacja na Maca: jedna zakładka „Rozliczenie” z paskiem wyników (plan i wykonanie) i sekcjami Przychody / Koszty / Marża i wynik / Prowizje / Zamknięcie, złożona z dotychczasowych widoków finansów i podsumowania (te same dane `tab=finances` i `tab=summary`, te same czynności). Serwer bez zmian. Mobile: nie dotyczy — telefon nie ma finansów ani podsumowania wydarzenia. Kod zapisany; zgodnie z .build-policy.md bez builda, typechecka i lintowania.
