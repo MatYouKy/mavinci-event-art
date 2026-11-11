@@ -59,8 +59,13 @@ struct NavItem: Codable, Identifiable, Hashable {
         default: return nil
         }
     }
+    /// Ekran natywny spoza `Module` (Wiadomości).
+    var screen: CrmScreen? { path == "/crm/messages" ? .messages : nil }
     var flattened: [NavItem] { [self] + (children ?? []).flatMap(\.flattened) }
 }
+
+/// Ekrany natywne, które nie są zbiorami danych obszaru roboczego (`Module`).
+enum CrmScreen: String { case messages }
 
 /// Strona CRM, której ekranu natywnego jeszcze nie ma — tymczasowo otwiera ją w przeglądarce.
 struct CrmWebPlaceholder: View {
@@ -98,7 +103,8 @@ struct CrmSidebar: View {
         HStack {
             Label(item.name, systemImage: item.symbol)
             Spacer()
-            if item.module == nil && (item.children ?? []).isEmpty { Image(systemName: "arrow.up.forward.square").font(.caption).foregroundStyle(.tertiary).help("Otwiera się w przeglądarce") }
+            if item.module == nil && item.screen == nil && (item.children ?? []).isEmpty { Image(systemName: "arrow.up.forward.square").font(.caption).foregroundStyle(.tertiary).help("Otwiera się w przeglądarce") }
+            if item.screen == .messages { MessagesUnreadBadge(store: state.messages) }
             if item.module == .inquiries, state.openInquiries > 0 { Text("\(state.openInquiries)").foregroundStyle(.secondary).monospacedDigit() }
         }
     }

@@ -1158,9 +1158,9 @@ export default function MessagesPageClient({
                           }}
                           className={`cursor-default px-2.5 py-2 outline-none transition-colors hover:bg-[#d3bb73]/10 focus-visible:bg-[#d3bb73]/10 ${
                             isSelected
-                              ? 'bg-[#d3bb73]/10 shadow-[inset_3px_0_0_#d3bb73]'
+                              ? 'bg-[#d3bb73]/15 shadow-[inset_3px_0_0_#d3bb73]'
                               : !message.isRead
-                                ? 'bg-[#d3bb73]/5 font-semibold'
+                                ? 'bg-[#d3bb73]/[0.07] shadow-[inset_3px_0_0_rgba(211,187,115,0.45)]'
                                 : ''
                           }`}
                         >
@@ -1168,16 +1168,20 @@ export default function MessagesPageClient({
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-1.5">
                                 <span
-                                  className="truncate text-[13px] leading-4 text-white"
+                                  className={`truncate text-[13px] leading-4 ${message.isRead ? 'font-normal text-[#e5e4e2]/75' : 'font-semibold text-white'}`}
                                   title={message.type === 'sent' ? `Do: ${message.to?.trim() || 'Nie podano odbiorcy'}` : message.from}
                                 >
                                   {message.type === 'sent' ? `Do: ${message.to?.trim() || 'Nie podano odbiorcy'}` : message.from}
                                 </span>
                                 {!message.isRead && (
-                                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#d3bb73]" />
+                                  <span
+                                    className="h-2 w-2 shrink-0 rounded-full bg-[#d3bb73] shadow-[0_0_0_3px_rgba(211,187,115,0.2)]"
+                                    title="Nieprzeczytana"
+                                    aria-label="Nieprzeczytana"
+                                  />
                                 )}
                               </div>
-                              <p className="truncate text-[11px] leading-4 text-[#e5e4e2]/70">
+                              <p className={`truncate text-[11px] leading-4 ${message.isRead ? 'text-[#e5e4e2]/55' : 'font-medium text-[#d3bb73]'}`}>
                                 {translateSubject(message.subject)}
                               </p>
                             </div>
@@ -1186,7 +1190,7 @@ export default function MessagesPageClient({
                               onClick={(event) => event.stopPropagation()}
                               onDoubleClick={(event) => event.stopPropagation()}
                             >
-                              <span className="whitespace-nowrap text-[9px] leading-4 text-[#e5e4e2]/45"
+                              <span className={`whitespace-nowrap text-[9px] leading-4 ${message.isRead ? 'text-[#e5e4e2]/45' : 'font-semibold text-[#d3bb73]'}`}
                                 title={new Date(message.date).toLocaleString('pl-PL', { timeZone: 'Europe/Warsaw' })}>
                                 {formatDate(message.date)}
                               </span>

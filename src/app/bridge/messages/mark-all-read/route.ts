@@ -2,6 +2,7 @@ import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseServerClient } from '@/lib/supabase/server.app';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin.server';
+import { bridgeUserClient } from '@/lib/supabase/bridgeUserClient.server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -14,8 +15,9 @@ const json = (body: unknown, status = 200) => NextResponse.json(body, {
 
 export async function POST(request: NextRequest) {
   try {
-    const origin = request.headers.get('origin');
-    if (!origin || new URL(origin).host !== request.headers.get('host')) {
+    // Aplikacja na Maca: token pracownika (Bearer); przeglądarka: ciasteczka z tego samego źródła.
+    const caller = bridgeUserClient(request);
+    if (!caller) {
       return json({ error: 'Nieprawidłowe źródło żądania.' }, 403);
     }
     const input = await request.json().catch(() => null);
@@ -28,8 +30,8 @@ export async function POST(request: NextRequest) {
     if (typeof cutoff !== 'string' || !Number.isFinite(Date.parse(cutoff)) || Date.parse(cutoff) > Date.now() + 5000) {
       return json({ error: 'Nieprawidłowy zakres wiadomości.' }, 400);
     }
-    const client = createSupabaseServerClient(cookies());
-    const { data: { user }, error: authError } = await client.auth.getUser();
+    const client = caller.client;
+    const { data: { user }, error: authError } = await client.auth.getUser(caller.token);
     if (authError || !user) return json({ error: 'Zaloguj się ponownie.' }, 401);
     const access = await client.from('employee_email_accounts').select('id')
       .eq('id', input.accountId).eq('is_active', true).maybeSingle();

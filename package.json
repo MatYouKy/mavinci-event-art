@@ -6,6 +6,10 @@
   "scripts": {
     "dev": "node scripts/dev-with-mail.cjs",
     "build": "next build",
+    "build:mac": "bash desktop/mac/scripts/build-app.sh",
+    "dmg:mac": "bash desktop/mac/scripts/make-dmg.sh",
+    "open": "bash desktop/open.sh",
+    "open:mac": "bash desktop/open.sh mac",
     "start": "next start",
     "lint": "next lint",
     "scanner:bridge": "node scripts/scanner-bridge.mjs",

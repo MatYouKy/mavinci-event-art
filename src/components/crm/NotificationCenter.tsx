@@ -1,5 +1,6 @@
 'use client';
 import { readNotificationFeed, readRecentUnreadNotifications } from '@/lib/CRM/notifications/notificationFeed';
+import { shareNotificationEvent, subscribeNotificationTabs, wasAnnouncedInBrowser } from '@/lib/CRM/notifications/notificationTabSync';
 
 import { systemNotificationText } from '@/lib/ui/systemLabels';
 
@@ -158,6 +159,7 @@ function getNotificationActionUrl(notification: {
 
 interface NotificationBanner {
   id: string;
+  recipientId: string;
   title: string;
   message: string;
   actionUrl: string | null;
@@ -243,6 +245,7 @@ export default function NotificationCenter({
 
     const banner: NotificationBanner = {
       id: notification.id,
+      recipientId: notification.recipient_id,
       title: notification.title,
       message: notification.message,
       actionUrl,
@@ -268,13 +271,20 @@ export default function NotificationCenter({
     bannerTimeoutsRef.current[banner.id] = timeout;
   }, []);
 
-  const dismissBanner = useCallback((bannerId: string) => {
+  // Chowa baner tylko w tej karcie (np. gdy powiadomienie przeczytano gdzie indziej).
+  const hideBanner = useCallback((bannerId: string) => {
     setBanners((prev) => prev.filter((b) => b.id !== bannerId));
     if (bannerTimeoutsRef.current[bannerId]) {
       clearTimeout(bannerTimeoutsRef.current[bannerId]);
       delete bannerTimeoutsRef.current[bannerId];
     }
   }, []);
+
+  // Zamknięcie banera — także w pozostałych kartach tej przeglądarki; nie pokażą go ponownie.
+  const dismissBanner = useCallback((bannerId: string) => {
+    hideBanner(bannerId);
+    if (sessionUserId) shareNotificationEvent('dismissed', sessionUserId, [bannerId]);
+  }, [hideBanner, sessionUserId]);
 
   useEffect(() => {
     setBanners([]);
@@ -407,6 +417,12 @@ export default function NotificationCenter({
           filter: `user_id=eq.${sessionUserId}`,
         },
         (payload) => {
+          // Przeczytane w innym miejscu (inna karta, aplikacja na Maca, telefon) — baner znika od razu.
+          const updated = payload.new as { notification_id?: string; is_read?: boolean } | null;
+          if (updated?.is_read && updated.notification_id) {
+            announcedNotificationIdsRef.current.add(updated.notification_id);
+            hideBanner(updated.notification_id);
+          }
           scheduleRefresh();
         },
       )
@@ -459,6 +475,22 @@ export default function NotificationCenter({
       )
       .subscribe();
 
+    // Pozostałe karty: pokazane, zamknięte lub przeczytane powiadomienie nie pojawia się tu ponownie.
+    const unsubscribeTabs = subscribeNotificationTabs(sessionUserId, (message) => {
+      for (const id of message.ids) {
+        announcedNotificationIdsRef.current.add(id);
+        if (message.type !== 'announced') hideBanner(id);
+      }
+      if (message.type === 'read') {
+        const read = new Set(message.ids);
+        setNotifications((current) => current.map((notification) =>
+          read.has(notification.id) && !notification.is_read
+            ? { ...notification, is_read: true, read_at: new Date().toISOString() }
+            : notification));
+        scheduleRefresh();
+      }
+    });
+
     // Realtime can miss events on reconnect or while the browser sleeps.
     // A visible tab catches up without requiring a page reload.
     const catchUp = () => { if (document.visibilityState === 'visible') scheduleRefresh(); };
@@ -469,6 +501,7 @@ export default function NotificationCenter({
 
     return () => {
       controller.abort();
+      unsubscribeTabs();
       if (refreshTimer !== null) clearTimeout(refreshTimer);
       window.clearInterval(catchUpTimer);
       window.removeEventListener('focus', catchUp);
@@ -481,7 +514,7 @@ export default function NotificationCenter({
       void supabase.removeChannel(recipientsChannel).catch(() => {});
       void supabase.removeChannel(notificationsChannel).catch(() => {});
     };
-  }, [sessionUserId, showBanner]);
+  }, [sessionUserId, showBanner, hideBanner]);
 
   useEffect(() => {
     soundEnabledRef.current = soundEnabled;
@@ -567,6 +600,9 @@ export default function NotificationCenter({
     // Both Realtime and catch-up reads pass here. A notice produces one banner,
     // not another banner or sound on every periodic refresh.
     announcedNotificationIdsRef.current.add(notification.id);
+    // Inna karta tej przeglądarki już je pokazała (albo zostało zamknięte) — bez drugiego banera i dźwięku.
+    if (sessionUserId && wasAnnouncedInBrowser(sessionUserId, notification.id)) return;
+    if (sessionUserId) shareNotificationEvent('announced', sessionUserId, [notification.id]);
     if (preferencesLoadedRef.current && soundEnabledRef.current && claimNotificationSound(notification.id)) {
       playNotificationSound();
     }
@@ -608,6 +644,7 @@ export default function NotificationCenter({
         }));
         notificationsRef.current = formattedNotifications;
         setNotifications(formattedNotifications);
+        formattedNotifications.filter((notification: Notification) => notification.is_read).forEach((notification: Notification) => hideBanner(notification.id));
 
         // Announce notices received since this session started, including ones
         // recovered after a dropped WebSocket message. Old history stays quiet.
@@ -637,7 +674,8 @@ export default function NotificationCenter({
     feedRevision.current += 1;
   };
 
-  const markAsRead = async (recipientId: string) => {
+  const markAsRead = async (recipientId: string, notificationId?: string) => {
+    const readId = notificationId || notificationsRef.current.find((n) => n.recipient_id === recipientId)?.id;
     try {
       const { error } = await supabase
         .from('notification_recipients')
@@ -657,6 +695,10 @@ export default function NotificationCenter({
         ),
       );
       setUnreadCount((prev) => Math.max(0, prev - 1));
+      if (readId) {
+        hideBanner(readId);
+        if (sessionUserId) shareNotificationEvent('read', sessionUserId, [readId]);
+      }
       void refreshSellerSidebarBadge();
       void fetchNotifications();
     } catch (error) {
@@ -684,10 +726,13 @@ export default function NotificationCenter({
 
       if (error) throw error;
 
+      const readIds = notificationsRef.current.filter((n) => !n.is_read).map((n) => n.id);
       setNotifications((prev) =>
         prev.map((n) => ({ ...n, is_read: true, read_at: new Date().toISOString() })),
       );
       setUnreadCount(0);
+      setBanners([]);
+      if (sessionUserId) shareNotificationEvent('read', sessionUserId, [...readIds, ...banners.map((banner) => banner.id)]);
       void refreshSellerSidebarBadge();
       void fetchNotifications();
     } catch (error) {
@@ -897,6 +942,8 @@ export default function NotificationCenter({
             key={banner.id}
             className="animate-slide-in-right flex w-80 cursor-pointer items-start gap-3 rounded-lg border border-[#d3bb73]/30 bg-[#1c1f33] p-4 shadow-2xl transition-all hover:border-[#d3bb73]/50"
             onClick={() => {
+              // Otwarcie banera = przeczytanie (we wszystkich kartach, w aplikacji na Maca i na telefonie).
+              void markAsRead(banner.recipientId, banner.id);
               if (banner.actionUrl) {
                 navigateToNotification(banner.actionUrl);
               }

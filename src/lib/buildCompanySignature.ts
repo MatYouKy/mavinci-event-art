@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase/browser';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   DEFAULT_SIGNATURE_TEMPLATE,
   normalizeSignatureHtml,
@@ -13,6 +13,8 @@ import {
 } from '@/lib/emailBodyTemplate';
 
 interface BuildOptions {
+  /** Klient z uprawnieniami pracownika — na serwerze (aplikacja na Maca); w przeglądarce domyślnie klient zalogowanej sesji. */
+  client?: SupabaseClient;
   companyId?: string | null;
   employeeId?: string | null;
   emailAccountId?: string | null;
@@ -195,7 +197,11 @@ interface CompanyContext {
   signatureThumbDataUri: string;
 }
 
+const clientFor = async (opts: BuildOptions): Promise<SupabaseClient> =>
+  opts.client ?? ((await import('@/lib/supabase/browser')).supabase as unknown as SupabaseClient);
+
 const loadCompanyContext = async (opts: BuildOptions): Promise<CompanyContext | null> => {
+  const supabase = await clientFor(opts);
   let employeeId = opts.employeeId ?? null;
   if (!employeeId) {
     const {
@@ -389,6 +395,7 @@ export async function buildCompanySignatureHtml(opts: BuildOptions = {}): Promis
 }
 
 export async function buildCompanyEmailBody(opts: BuildBodyOptions): Promise<BuildBodyResult> {
+  const supabase = await clientFor(opts);
   const ctx = await loadCompanyContext(opts);
   const rawContentHtml = opts.contentIsHtml ? opts.content : opts.content.replace(/\n/g, '<br>');
   const contentHtml = `<div data-crm-email-content="true" style="margin:0; padding:0; color:#1c1f33 !important; background-color:#ffffff !important; font-family:Arial, sans-serif; font-size:14px; line-height:1.6;">${rawContentHtml}</div>`;

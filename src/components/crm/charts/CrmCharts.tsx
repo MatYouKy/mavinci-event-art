@@ -81,8 +81,8 @@ export function CrmCartesianChart({
 
   return <div className={`min-w-0 max-w-full ${fill ? 'flex min-h-0 flex-1 flex-col' : ''}`}>
     <p id={descriptionId} className="sr-only">{ariaLabel}. Wykres obsługuje klawiaturę. Dokładne wartości są dostępne także w tabeli pod wykresem. Brak danych nie jest zastępowany zerem.</p>
-    {!hasData ? <p className="flex min-h-40 items-center justify-center rounded-lg bg-white/[0.025] p-6 text-center text-sm text-[#e5e4e2]/40">{emptyMessage}</p> : <div className="min-w-0 w-full [&_.recharts-wrapper]:outline-none [&_.recharts-surface:focus-visible]:outline [&_.recharts-surface:focus-visible]:outline-1 [&_.recharts-surface:focus-visible]:outline-white/20 ${fill ? 'flex-1' : ''}" style={fill ? { minHeight: height } : { height }} role="group" aria-label={ariaLabel} aria-describedby={descriptionId}>
-      {mounted && <ResponsiveContainer width="100%" height="100%" minWidth={0} debounce={80}>
+    {!hasData ? <p className="flex min-h-40 items-center justify-center rounded-lg bg-white/[0.025] p-6 text-center text-sm text-[#e5e4e2]/40">{emptyMessage}</p> : <div className={`min-w-0 w-full [&_.recharts-wrapper]:outline-none [&_.recharts-surface:focus-visible]:outline [&_.recharts-surface:focus-visible]:outline-1 [&_.recharts-surface:focus-visible]:outline-white/20 ${fill ? 'flex-1' : ''}`} style={fill ? { minHeight: height } : { height }} role="group" aria-label={ariaLabel} aria-describedby={descriptionId}>
+      {mounted && <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={fill ? height : undefined} debounce={80}>
         <ComposedChart data={rows} layout={horizontal ? 'vertical' : 'horizontal'} accessibilityLayer margin={{ top: 12, right: 16, left: 0, bottom: 8 }} barGap={4} barCategoryGap="24%">
           <CartesianGrid stroke="rgba(229,228,226,0.075)" strokeDasharray="3 5" vertical={horizontal} horizontal={!horizontal} />
           {horizontal ? <>

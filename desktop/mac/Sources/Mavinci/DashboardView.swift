@@ -20,7 +20,21 @@ struct DashboardCard: Decodable, Identifiable {
     let name: String; let value: Double; let total: Double?; let displayValue: String?; let helper: String?; let icon: String; let color: String; let href: String; let trendKey: String?
     var id: String { name }
 }
-struct DashboardActivity: Decodable, Identifiable { let id: String; let type: String; let title: String; let time: String; let href: String }
+struct DashboardActivity: Decodable, Identifiable {
+    let id: String; let type: String; let title: String; let time: String; let href: String; let createdAt: String?
+    /// „przed chwilą”, „5 minut temu”, „wczoraj”… — jak `getTimeAgo` w CRMDashboard.
+    var ago: String {
+        let parse = ISO8601DateFormatter(); parse.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        guard let raw = createdAt, let date = parse.date(from: raw) ?? ISO8601DateFormatter().date(from: raw) else { return time }
+        let seconds = Int(Date().timeIntervalSince(date))
+        if seconds < 60 { return "przed chwilą" }
+        if seconds < 3600 { return "\(seconds / 60) minut temu" }
+        if seconds < 86_400 { return "\(seconds / 3600) godzin temu" }
+        if seconds < 172_800 { return "wczoraj" }
+        if seconds < 604_800 { return "\(seconds / 86_400) dni temu" }
+        return Labels.date(raw)
+    }
+}
 struct DashboardLink: Decodable, Identifiable { let href: String; let label: String; var id: String { href + label } }
 struct DashboardSummary: Decodable, Identifiable { let label: String; let value: Double; var id: String { label } }
 struct DashboardData: Decodable {
@@ -148,15 +162,17 @@ struct DashboardView: View {
                 if trends {
                     TrendChartView(title: "Trend sprzedażowy", description: "Nowe rekordy · zakres \(months.count >= 12 ? "12 miesięcy" : "6 miesięcy")", months: months,
                                    series: [ChartSeries(key: "inquiries", label: "Zapytania", color: Color(red: 0.96, green: 0.62, blue: 0.04)), ChartSeries(key: "offers", label: "Oferty", color: Color(red: 0.38, green: 0.65, blue: 0.98)), ChartSeries(key: "events", label: "Wydarzenia", color: CrmTheme.rgb(0xd3bb73))], money: false)
-                        .frame(maxWidth: .infinity)
-                        .layoutPriority(2)
+                        .frame(minWidth: 360, maxWidth: .infinity)
                 }
-                if funnel, let f = data.funnel { SalesFunnelView(funnel: f).frame(maxWidth: trends ? CGFloat(420) : CGFloat.infinity) }
-            }.fixedSize(horizontal: false, vertical: true)
+                if funnel, let f = data.funnel {
+                    if trends { SalesFunnelView(funnel: f).frame(width: 380) } else { SalesFunnelView(funnel: f).frame(maxWidth: .infinity) }
+                }
+            }.frame(height: 480)
         }
         if data.showFinancialTrends == true && data.enabled("financial-trends") {
             TrendChartView(title: "Wpływy, wydatki i wynik kasowy", description: "Rzeczywiste przepływy według daty płatności · zakres \(months.count >= 12 ? "12 miesięcy" : "6 miesięcy")", months: months,
                            series: [ChartSeries(key: "revenue", label: "Wpływy", color: Color(red: 0.20, green: 0.83, blue: 0.60)), ChartSeries(key: "costs", label: "Wydatki", color: Color(red: 0.97, green: 0.44, blue: 0.44)), ChartSeries(key: "margin", label: "Wynik kasowy", color: CrmTheme.rgb(0xd3bb73))], money: true)
+                .frame(height: 400)
         }
     }
 
@@ -172,12 +188,12 @@ struct DashboardView: View {
                             Button { openActivity(item) } label: {
                                 HStack(alignment: .top, spacing: 12) {
                                     Image(systemName: item.type == "event" ? "calendar" : item.type == "client" ? "person.2" : item.type == "offer" ? "doc.text" : "clock").foregroundStyle(theme.accent)
-                                    VStack(alignment: .leading, spacing: 3) { Text(item.title).lineLimit(2); Text(item.time).font(.caption).foregroundStyle(.secondary) }
+                                    VStack(alignment: .leading, spacing: 3) { Text(item.title).lineLimit(2); Text(item.ago).font(.caption).foregroundStyle(.secondary) }
                                     Spacer()
                                 }.padding(12).background(theme.page.opacity(0.6), in: RoundedRectangle(cornerRadius: 8)).contentShape(Rectangle())
                             }.buttonStyle(.plain)
                         }
-                    }.frame(maxWidth: .infinity).layoutPriority(2)
+                    }.frame(minWidth: 360, maxWidth: .infinity)
                 }
                 VStack(spacing: 20) {
                     if attention, let a = data.attention { AttentionView(attention: a) }
@@ -195,8 +211,10 @@ struct DashboardView: View {
                             }
                         }
                     }
-                }.frame(maxWidth: activity ? CGFloat(420) : CGFloat.infinity)
-            }.fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(width: activity ? 380 : nil)
+                .frame(maxWidth: activity ? nil : CGFloat.infinity)
+            }
         }
     }
 
@@ -278,7 +296,7 @@ struct TrendChartView: View {
                 .chartForegroundStyleScale(domain: series.map(\.label), range: series.map(\.color))
                 .chartYAxis { AxisMarks { value in AxisGridLine(); AxisValueLabel { if let v = value.as(Double.self) { Text(money ? DashboardColors.pln(v) : "\(Int(v))") } } } }
                 .chartLegend(position: .top, alignment: .leading)
-                .frame(minHeight: 260)
+                .frame(minHeight: 220, maxHeight: .infinity)
             }
         }
     }

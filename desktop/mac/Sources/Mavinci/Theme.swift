@@ -17,11 +17,14 @@ enum CrmTheme: String, CaseIterable, Identifiable {
         }
     }
     var scheme: ColorScheme { self == .light ? .light : .dark }
-    var page: Color { Self.rgb(self == .burgundy ? 0x210811 : self == .navy ? 0x0f1119 : self == .dark ? 0x1e1e1e : 0xf2f2f4) }
+    var pageRGB: Int { self == .burgundy ? 0x210811 : self == .navy ? 0x0f1119 : self == .dark ? 0x1e1e1e : 0xf2f2f4 }
+    var textRGB: Int { self == .light ? 0x1d1d1f : 0xe5e4e2 }
+    var accentRGB: Int { self == .light ? 0x7a5c12 : 0xd3bb73 }
+    var page: Color { Self.rgb(pageRGB) }
     var sidebar: Color { Self.rgb(self == .burgundy ? 0x1a060d : self == .navy ? 0x0c0e15 : self == .dark ? 0x252526 : 0xe8e8ed) }
     var card: Color { Self.rgb(self == .burgundy ? 0x411326 : self == .navy ? 0x1c1f33 : self == .dark ? 0x2c2c2e : 0xffffff) }
-    var text: Color { self == .light ? Self.rgb(0x1d1d1f) : Self.rgb(0xe5e4e2) }
-    var accent: Color { self == .light ? Self.rgb(0x7a5c12) : Self.rgb(0xd3bb73) }
+    var text: Color { Self.rgb(textRGB) }
+    var accent: Color { Self.rgb(accentRGB) }
     static func rgb(_ hex: Int) -> Color { Color(.sRGB, red: Double((hex >> 16) & 255) / 255, green: Double((hex >> 8) & 255) / 255, blue: Double(hex & 255) / 255) }
 
     private static let savedKey = "crmTheme"

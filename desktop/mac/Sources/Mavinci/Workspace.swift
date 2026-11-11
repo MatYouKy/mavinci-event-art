@@ -17,14 +17,23 @@ import Network
     @Published var acting = false
     @Published var editing = false
     @Published var offline = false
-    @Published var error: String?
+    /// Błąd — pokazywany jako czerwony snackbar.
+    @Published var error: String? { didSet { if let error { snack = Snack(kind: .error, text: error) } } }
     @Published var moduleErrors: [String: String] = [:]
     @Published var compatibilityMode = false
-    @Published var notice: String?
+    /// Informacja — pokazywana jako snackbar; potwierdzenia udanych czynności przez `succeed(_:)`.
+    @Published var notice: String? { didSet { if let notice { snack = Snack(kind: .info, text: notice) } } }
+    @Published var snack: Snack?
+    /// Trwająca czynność (modalny wskaźnik postępu z opisem).
+    @Published var pending: String?
     /// Sekcje CRM opisywane przez serwer (`/bridge/native/v1`): wybrany zbiór i rekord do pokazania po przejściu.
     @Published var nativeSet: String?
     @Published var nativeFocus: String?
     let native = NativeStore()
+    /// Wiadomości (`/crm/messages`) — stan zachowany przy przełączaniu sekcji.
+    let messages = MessagesStore()
+    /// Ekran natywny spoza `Module` (np. Wiadomości) wybrany z paska bocznego CRM.
+    @Published var screen: CrmScreen?
     /// Motyw okna (`employees.crm_theme`); do pierwszego odczytu profilu — ostatni motyw zapisany na tym Macu.
     @Published var theme = CrmTheme.saved
     /// Menu jak w CRM (z serwera; ostatnie zapisane na tym Macu do pierwszego odczytu) i wybrana pozycja paska bocznego.
@@ -49,6 +58,7 @@ import Network
     var canConfigure: Bool { employee?.isAdmin == true || (!connection.valid && employee == nil) }
     var unread: Int { rows(.notifications).filter { $0.fields["is_read"]?.flag != true }.count }
     init() {
+        messages.workspace = self
         monitor.pathUpdateHandler = { [weak self] path in
             Task { @MainActor in
                 self?.pathAvailable = path.status == .satisfied
@@ -72,6 +82,8 @@ import Network
             await api.restore(session)
             cache = LocalCache(namespace: digest("\(connection.identity)|\(session.user.id)"))
             native.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
+            messages.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
+            Task { await BrandStore.refresh(nativeAPI()) }
             // Cached permissions are valid only for reading, for at most 24 hours without server verification.
             let saved = try cache?.load()
             if let saved, Date().timeIntervalSince(saved.savedAt) <= 86_400 { snapshot = saved; offline = true }
@@ -94,9 +106,11 @@ import Network
             backend = api
             cache = LocalCache(namespace: digest("\(connection.identity)|\(session.user.id)"))
             native.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
+            messages.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
+            Task { await BrandStore.refresh(nativeAPI()) }
             snapshot = Snapshot(employee: employee)
             if let saved = try? cache?.load(), saved.employee == employee { snapshot = saved }
-            verifiedConnection = true; offline = false
+            verifiedConnection = true; offline = false; snack = nil
             await refresh(force: true)
         } catch {
             await api.logout()
@@ -219,7 +233,7 @@ import Network
             try await backend.command(name, row: row, payload: payload)
             guard ticket == generation else { return false }
             succeeded = true
-            notice = "Zapisano zmiany."
+            succeed("Zapisano zmiany.")
         } catch {
             guard ticket == generation else { return false }
             self.error = error is URLError ? "Nie otrzymano potwierdzenia zapisu. Odśwież dane przed ponowną próbą, aby nie powtórzyć operacji." : friendlyError(error)
@@ -237,8 +251,8 @@ import Network
         backend = nil
         snapshot = nil; selection = .day; focusedID = nil; eventRoute = nil; notificationsVisible = false
         verifiedConnection = false; offline = false; syncing = false; acting = false; editing = false
-        moduleErrors = [:]; compatibilityMode = false; notice = nil
-        nativeSet = nil; nativeFocus = nil; native.clear()
+        moduleErrors = [:]; compatibilityMode = false; notice = nil; snack = nil; pending = nil
+        nativeSet = nil; nativeFocus = nil; native.clear(); messages.reset(); screen = nil
         navigation = []; sidebarHref = "/crm"; webItem = nil; dashboard = nil; dashboardLoadedAt = nil; dashboardError = nil
         do { try Vault.delete("session-\(connection.identity)") }
         catch { self.error = "Nie udało się usunąć danych logowania z pęku kluczy. Zamknij aplikację i sprawdź dostęp do pęku kluczy." }
@@ -257,7 +271,7 @@ import Network
     }
     func switchSection(_ module:Module) {
         guard employee?.canView(module)==true else{return}
-        eventRoute=nil;focusedID=nil;notificationsVisible=false;nativeSet=nil;webItem=nil;selection=module
+        eventRoute=nil;focusedID=nil;notificationsVisible=false;nativeSet=nil;webItem=nil;screen=nil;selection=module
         sidebarHref = navigation.flatMap(\.flattened).first { $0.module == module }?.href ?? sidebarHref
     }
     func eventAPI() -> HTTPBackend? { backend }
@@ -406,8 +420,12 @@ extension Workspace {
     func openHref(_ href: String) {
         guard let item = navigation.flatMap(\.flattened).first(where: { $0.href == href }) else { return }
         if let module = item.module, employee?.canView(module) == true { switchSection(module); sidebarHref = href; return }
+        if let screen = item.screen {
+            eventRoute = nil; focusedID = nil; notificationsVisible = false; nativeSet = nil; webItem = nil; selection = nil
+            self.screen = screen; sidebarHref = href; return
+        }
         if let children = item.children, let first = children.first { openHref(first.href); return }
-        eventRoute = nil; focusedID = nil; notificationsVisible = false; nativeSet = nil; selection = nil
+        eventRoute = nil; focusedID = nil; notificationsVisible = false; nativeSet = nil; selection = nil; screen = nil
         webItem = item; sidebarHref = href
     }
 }

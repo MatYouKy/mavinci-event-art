@@ -259,17 +259,18 @@ function MessagesContent() {
         activeOpacity={0.7}
         onPress={() => navigation.navigate('EmailMessageDetail', { messageId: item.id })}
       >
+        {!item.is_read && <View style={styles.unreadBar} />}
         <View style={styles.messageAvatar}>
           <Feather name="mail" size={17} color={item.is_read ? colors.text.tertiary : colors.primary.gold} />
         </View>
         <View style={styles.messageContent}>
           <View style={styles.messageHeader}>
-            <Text style={[styles.messageSender, !item.is_read && styles.messageTextBold]} numberOfLines={1}>
+            <Text style={[styles.messageSender, item.is_read ? styles.messageTextRead : styles.messageTextBold]} numberOfLines={1}>
               {item.from_address || 'Nieznany nadawca'}
             </Text>
-            <Text style={styles.messageDate}>{formatDate(item.received_date)}</Text>
+            <Text style={[styles.messageDate, !item.is_read && styles.messageAccentUnread]}>{formatDate(item.received_date)}</Text>
           </View>
-          <Text style={[styles.messageSubject, !item.is_read && styles.messageTextBold]} numberOfLines={1}>
+          <Text style={[styles.messageSubject, item.is_read ? styles.messageTextRead : styles.messageAccentUnread]} numberOfLines={1}>
             {item.subject || '(brak tematu)'}
           </Text>
           {showMailbox && !!mailboxName(item.email_account_id) && (
@@ -299,6 +300,7 @@ function MessagesContent() {
           isContact ? { messageId: item.id } : { eventId: item.id },
         )}
       >
+        {isUnread && <View style={styles.unreadBar} />}
         <View style={styles.messageAvatar}>
           <Feather name={isContact ? 'message-square' : 'file-text'} size={17} color={colors.primary.gold} />
         </View>
@@ -307,9 +309,9 @@ function MessagesContent() {
             <Text style={styles.sourceName} numberOfLines={1}>
               {isContact ? 'mavinci.pl' : source?.name || source?.slug || 'Formularz WWW'}
             </Text>
-            <Text style={styles.messageDate}>{formatDate(eventDate)}</Text>
+            <Text style={[styles.messageDate, isUnread && styles.messageAccentUnread]}>{formatDate(eventDate)}</Text>
           </View>
-          <Text style={[styles.messageSubject, isUnread && styles.messageTextBold]} numberOfLines={2}>
+          <Text style={[styles.messageSubject, isUnread && styles.messageAccentUnread]} numberOfLines={2}>
             {isContact
               ? item.subject
                 ? humanizeMessageEnums(item.subject)
@@ -443,7 +445,9 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border.default,
     gap: 12,
   },
-  messageUnread: { backgroundColor: colors.primary.gold + '08' },
+  // Nieprzeczytane jak w CRM: złote tło i pasek z lewej, złoty temat i data; przeczytane — przygaszone.
+  messageUnread: { backgroundColor: colors.primary.gold + '12' },
+  unreadBar: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, backgroundColor: colors.primary.gold + '73' },
   messageAvatar: {
     width: 38,
     height: 38,
@@ -460,7 +464,9 @@ const styles = StyleSheet.create({
   messageSubject: { fontSize: typography.fontSizes.sm, color: colors.text.primary },
   messageSnippet: { fontSize: typography.fontSizes.xs, color: colors.text.tertiary, marginTop: 3, lineHeight: 17 },
   messageTextBold: { fontWeight: typography.fontWeights.bold },
-  unreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.primary.gold },
+  messageTextRead: { color: colors.text.secondary },
+  messageAccentUnread: { color: colors.primary.gold, fontWeight: typography.fontWeights.semibold },
+  unreadDot: { width: 9, height: 9, borderRadius: 5, backgroundColor: colors.primary.gold },
   mailboxLabel: { fontSize: typography.fontSizes.xs, color: colors.primary.gold, marginTop: 2 },
   mailboxBar: { flexGrow: 0, backgroundColor: colors.background.secondary },
   mailboxBarContent: { paddingHorizontal: spacing.md, paddingBottom: spacing.sm, gap: spacing.sm },

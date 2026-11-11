@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createHash } from 'node:crypto';
 import { createSupabaseServerClient } from '@/lib/supabase/server.app';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin.server';
+import { bridgeUserClient } from '@/lib/supabase/bridgeUserClient.server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -130,12 +131,13 @@ async function synchronize(admin: Admin, email: Email, existing: Attachment[]) {
 
 export async function POST(request: NextRequest) {
   try {
-    const origin = request.headers.get('origin');
-    if (!origin || new URL(origin).host !== request.headers.get('host')) return json({ error: 'Nieprawidłowe źródło żądania.' }, 403);
+    // Aplikacja na Maca: token pracownika (Bearer); przeglądarka: ciasteczka z tego samego źródła.
+    const caller = bridgeUserClient(request);
+    if (!caller) return json({ error: 'Nieprawidłowe źródło żądania.' }, 403);
     const input = await request.json().catch(() => null);
     if (typeof input?.messageId !== 'string' || !/^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i.test(input.messageId)) return json({ error: 'Nieprawidłowa wiadomość.' }, 400);
-    const userClient = createSupabaseServerClient(cookies());
-    const { data: { user }, error: authError } = await userClient.auth.getUser();
+    const userClient = caller.client;
+    const { data: { user }, error: authError } = await userClient.auth.getUser(caller.token);
     if (authError || !user) return json({ error: 'Zaloguj się ponownie, aby pobrać załączniki.' }, 401);
     // Authorize with the user's RLS before reading credentials or using the admin client.
     const authorized = await userClient.from('received_emails').select('*').eq('id', input.messageId).maybeSingle();

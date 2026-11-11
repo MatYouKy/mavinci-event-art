@@ -15,7 +15,7 @@ import AppKit
         .commands {
             CommandGroup(replacing: .newItem) { }
             CommandMenu("Mavinci") {
-                Button("Odśwież dane") { Task { await workspace.refresh() } }.keyboardShortcut("r").disabled(workspace.syncing || workspace.editing)
+                Button("Odśwież dane") { Task { await workspace.refresh(); if workspace.screen == .messages { await workspace.messages.refresh() } } }.keyboardShortcut("r").disabled(workspace.syncing || workspace.editing)
                 Divider()
                 Button("Dashboard") { workspace.switchSection(.day) }.keyboardShortcut("1")
                 Button("Zapytania") { if workspace.employee?.canView(.inquiries) == true { workspace.switchSection(.inquiries) } }.keyboardShortcut("2")
@@ -30,6 +30,10 @@ import AppKit
                 Button("Wyloguj") { Task { await workspace.logout() } }.disabled(workspace.loading || workspace.acting)
             }
         }
+        WindowGroup("Wiadomość", id: "message", for: String.self) { $key in
+            MessageWindow(key: key ?? "").environmentObject(workspace).crmThemed(workspace.theme)
+        }
+        .defaultSize(width: 900, height: 780)
         Settings {
             TabView {
                 AppearanceSettings().tabItem { Label("Wygląd", systemImage: "paintpalette") }
@@ -41,6 +45,8 @@ import AppKit
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular); NSApp.activate(ignoringOtherApps: true)
+        // Ikona z brandbooka zapamiętana przy poprzednim uruchomieniu — od razu w Docku, bez czekania na sieć.
+        Task { @MainActor in BrandStore.applyCached() }
     }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 }
@@ -89,8 +95,6 @@ struct RootView: View {
                     }
                 } detail: {
                     VStack(spacing: 0) {
-                        if let error = state.error { MessageBar(text: error, warning: true) { state.error = nil } }
-                        if let notice = state.notice { MessageBar(text: notice, warning: false) { state.notice = nil } }
                         if let route = state.eventRoute { EventPageView(eventID: route.id,initialTab:route.tab).id(route.id) }
                         else if let item = state.webItem { CrmWebPlaceholder(item: item).id(item.href) }
                         else if state.selection == .calendar { NativeCalendarView() }
@@ -98,6 +102,7 @@ struct RootView: View {
                         else if state.selection == .tenders { TendersView() }
                         else if state.selection == .day { DashboardView() }
                         else if let module = state.selection, state.employee?.canView(module) == true { RecordsView(module: module).id(module) }
+                        else if state.screen == .messages { MessagesView() }
                         else { ContentUnavailableView("Wybierz sekcję", systemImage: "sidebar.left") }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -113,6 +118,10 @@ struct RootView: View {
                             }
                         }
                     }
+                    .overlay {
+                        if let text = state.pending ?? (state.acting ? "Zapisywanie…" : nil) { PendingOverlay(text: text) }
+                    }
+                    .overlay { SnackbarHost() }
                     .toolbar {
                         ToolbarItemGroup(placement: .primaryAction) {
                             Button {
@@ -129,7 +138,7 @@ struct RootView: View {
                             }.help("Powiadomienia: \(state.unread) nieprzeczytanych").accessibilityLabel("Powiadomienia")
                         }
                         ToolbarItem(placement: .primaryAction) {
-                            Button { Task { await state.refresh() } } label: { Label("Odśwież", systemImage: "arrow.clockwise") }
+                            Button { Task { await state.refresh(); if state.screen == .messages { await state.messages.refresh() } } } label: { Label("Odśwież", systemImage: "arrow.clockwise") }
                                 .disabled(state.syncing || state.acting || state.editing)
                         }
                         ToolbarItem(placement: .primaryAction) { if state.syncing { ProgressView().controlSize(.small) } }
@@ -139,7 +148,7 @@ struct RootView: View {
         }
         .sheet(isPresented: $help) { HelpView() }
         .onChange(of: state.selection) { _, next in
-            if next != nil { state.nativeSet = nil; state.webItem = nil }
+            if next != nil { state.nativeSet = nil; state.webItem = nil; state.screen = nil }
             if let route = state.eventRoute, next != route.origin { state.eventRoute = nil }
         }
         .onOpenURL { url in
@@ -178,7 +187,7 @@ struct LoginView: View {
     @State private var password = ""
     var body: some View {
         VStack(spacing: 22) {
-            Image(systemName: "building.2.crop.circle").font(.system(size: 54)).foregroundStyle(.tint)
+            Image(nsImage: NSApp.applicationIconImage).resizable().interpolation(.high).frame(width: 96, height: 96).accessibilityHidden(true)
             Text("Mavinci").font(.largeTitle.bold())
             Text("Twoje miejsce pracy").foregroundStyle(.secondary)
             if !state.connection.valid { ConnectionView() }

@@ -96,7 +96,25 @@ export async function nativeSyncState(ctx: NativeContext, client: Record<string,
 export async function nativeSyncItems(ctx: NativeContext, name: string, requested: unknown[]) {
   const def = allSets(ctx).find((s) => s.name === name);
   if (!def) return null;
-  const snap = await snapshot(ctx, def.name, def.load);
+  return collectionItems(ctx, def.name, def.load, requested);
+}
+
+type Loader = (ctx: NativeContext) => Promise<Item[]>;
+
+/**
+ * Ten sam mechanizm dla zbiorów spoza rejestru kart (np. kopia Wiadomości): skrót zbioru, a gdy u klienta jest inny — skróty koszyków.
+ * Koszyk pozycji = pierwsze 1–2 znaki `sha1(id)` (szerokość w odpowiedzi), więc klient może sam przypisać pozycję do koszyka.
+ */
+export async function collectionState(ctx: NativeContext, name: string, load: Loader, localHash?: string) {
+  const snap = await snapshot(ctx, name, load);
+  return {
+    hash: snap.hash, count: snap.count, width: snap.width,
+    ...(localHash === snap.hash ? {} : { buckets: Object.fromEntries([...snap.buckets].map(([k, v]) => [k, v.hash])) }),
+  };
+}
+
+export async function collectionItems(ctx: NativeContext, name: string, load: Loader, requested: unknown[]) {
+  const snap = await snapshot(ctx, name, load);
   const buckets: Record<string, { hash: string; items: unknown[] }> = {};
   const more: string[] = [];
   let size = 0;

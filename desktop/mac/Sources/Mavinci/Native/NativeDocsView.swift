@@ -204,7 +204,7 @@ struct DocCardView: View {
     private func needsConnection(_ action: DocAction) -> Bool { action.url == nil && action.open == nil && action.copy == nil && action.file == nil }
 
     private func run(_ action: DocAction) {
-        if let text = action.copy { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(text, forType: .string); workspace.notice = "Skopiowano."; return }
+        if let text = action.copy { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(text, forType: .string); workspace.succeed("Skopiowano."); return }
         if let url = action.url { workspace.openCRM(url); return }
         if let open = action.open { workspace.openCRM(open); return }
         if action.file != nil { workspace.openCRM(record.panelHref); return }
