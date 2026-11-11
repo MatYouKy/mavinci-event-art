@@ -162,7 +162,7 @@ struct AttachmentFile: Identifiable, Equatable {
     }
 
     // MARK: Kopia na dysku
-    /// Otwiera kopię zalogowanego pracownika i pokazuje ją od razu; potem synchronizuje zmiany.
+    /// Otwiera kopię zalogowanego pracownika i pokazuje ją od razu (zmiany dociąga `backgroundSync` po dashboardzie i zbiorach).
     func open(namespace next: String) {
         guard namespace != next else { return }
         reset(clearDisk: false)
@@ -182,7 +182,7 @@ struct AttachmentFile: Identifiable, Equatable {
                 rebuild()
                 status.lastSync = saved.syncedAt
             }
-            await sync()
+            // Synchronizację uruchamia odświeżanie obszaru roboczego — po dashboardzie i zbiorach.
         }
     }
     /// Wylogowanie lub zmiana konta: czyści pamięć, a przy `clearDisk` — także kopię na dysku i jej klucz.
@@ -323,6 +323,8 @@ struct AttachmentFile: Identifiable, Equatable {
     }
     /// Synchronizacja w tle (pasek boczny co 30 s, powrót do aplikacji).
     func backgroundSync() async {
+        // Kopia otwiera się w tle — chwilę zaczekaj, zanim pierwsza synchronizacja zostanie pominięta.
+        for _ in 0..<20 where mirror == nil && namespace != nil { try? await Task.sleep(for: .milliseconds(100)) }
         guard mirror != nil else { return }
         await sync()
     }

@@ -17,6 +17,18 @@ import {
   KeyboardAvoidingView,
 } from 'react-native';
 import { MEETING_RECURRENCE_OPTIONS, meetingRecurrenceLabel } from '../lib/meetingRecurrence';
+import {
+  MEETING_RESPONSES,
+  MEETING_STATUSES,
+  meetingNeedsMyResponse,
+  meetingResponseOption,
+  meetingResponseSummaryText,
+  meetingStatus,
+  meetingStatusOption,
+  myMeetingResponse,
+  type MeetingResponse,
+  type MeetingStatus,
+} from '../lib/meetingStatus';
 import { cancelObsoleteMeetingAlerts } from '../services/meetingReminders';
 import SwipeableRow from '../components/SwipeableRow';
 
@@ -60,11 +72,15 @@ interface Meeting {
   alert_1_minutes: number | null;
   alert_2_minutes: number | null;
   alert_critical_minutes: number | null;
-  participants?: { employee_id: string }[];
+  is_private?: boolean | null;
+  status?: string | null;
+  participants?: { employee_id: string; response?: string | null }[];
 }
 
 interface NewMeetingForm {
   recurrence_days: number;
+  is_private: boolean;
+  status: MeetingStatus;
   title: string;
   color: string;
   location_text: string;
@@ -228,6 +244,8 @@ export default function MeetingsScreen({ initialMeetingId: initialId, route, onB
 
     return {
       recurrence_days: 0,
+      is_private: false,
+      status: 'confirmed',
       title: '',
       color: DEFAULT_MEETING_COLOR,
       location_text: '',
@@ -316,7 +334,7 @@ export default function MeetingsScreen({ initialMeetingId: initialId, route, onB
           .select(
             `
           *,
-          meeting_participants(employee_id)
+          meeting_participants(employee_id, response)
         `,
           )
           .is('deleted_at', null)
@@ -398,6 +416,8 @@ export default function MeetingsScreen({ initialMeetingId: initialId, route, onB
 
     setForm({
       recurrence_days: meeting.recurrence_days ?? 0,
+      is_private: !!meeting.is_private,
+      status: meetingStatus(meeting.status),
       title: meeting.title || '',
       color: meeting.color || DEFAULT_MEETING_COLOR,
       location_text: matchedLocation?.name || meeting.location_text || '',
@@ -465,6 +485,8 @@ export default function MeetingsScreen({ initialMeetingId: initialId, route, onB
       alert_1_minutes: form.alert_1_enabled ? form.alert_1_minutes : null,
       alert_2_minutes: form.alert_2_enabled ? form.alert_2_minutes : null,
       alert_critical_minutes: form.alert_critical_enabled ? form.alert_critical_minutes : null,
+      is_private: form.is_private,
+      status: form.status,
     };
 
     try {
@@ -517,6 +539,26 @@ export default function MeetingsScreen({ initialMeetingId: initialId, route, onB
     ]);
   };
 
+  const [respondingTo, setRespondingTo] = useState<MeetingResponse | null>(null);
+  const respondToMeeting = async (meeting: Meeting, response: MeetingResponse) => {
+    if (!employee || respondingTo) return;
+    setRespondingTo(response);
+    try {
+      const { error } = await supabase.rpc('respond_to_meeting', { p_meeting_id: meeting.id, p_response: response });
+      if (error) throw error;
+      const update = (m: Meeting): Meeting =>
+        m.id === meeting.id
+          ? { ...m, participants: (m.participants || []).map((p) => (p.employee_id === employee.id ? { ...p, response } : p)) }
+          : m;
+      setMeetings((current) => current.map(update));
+      setSelectedMeeting((current) => (current ? update(current) : current));
+    } catch (error: any) {
+      Alert.alert('Błąd', error?.message || 'Nie udało się zapisać odpowiedzi');
+    } finally {
+      setRespondingTo(null);
+    }
+  };
+
   const formatDate = (dateStr: string) => {
     const d = new Date(dateStr);
     return d.toLocaleDateString('pl-PL', { weekday: 'short', day: 'numeric', month: 'short' });
@@ -540,11 +582,14 @@ export default function MeetingsScreen({ initialMeetingId: initialId, route, onB
 const renderMeetingCard = ({ item }: { item: Meeting }) => {
   const upcoming = isUpcoming(item.datetime_start || '');
   const hasAlerts = [item.alert_1_minutes, item.alert_2_minutes, item.alert_critical_minutes].some((minutes) => minutes != null);
+  const status = meetingStatusOption(item.status);
+  const mine = myMeetingResponse(item, employee?.id);
+  const dimmed = status.value === 'cancelled' || mine === 'declined';
 
   return (
     <SwipeableRow onDelete={() => handleDeleteMeeting(item.id)}>
       <TouchableOpacity
-        style={[styles.meetingCard, !upcoming && styles.meetingCardPast]}
+        style={[styles.meetingCard, (!upcoming || dimmed) && styles.meetingCardPast]}
         activeOpacity={0.7}
         onPress={() => setSelectedMeeting(item)}
       >
@@ -557,12 +602,23 @@ const renderMeetingCard = ({ item }: { item: Meeting }) => {
 
         <View style={styles.meetingContent}>
           <View style={styles.meetingHeader}>
+            {!!item.is_private && <Feather name="lock" size={13} color={colors.text.tertiary} accessibilityLabel="Spotkanie prywatne" />}
             <Text
-              style={[styles.meetingTitle, !upcoming && styles.textPast]}
+              style={[styles.meetingTitle, !upcoming && styles.textPast, dimmed && styles.textCancelled]}
               numberOfLines={1}
             >
               {item.title}
             </Text>
+            {meetingNeedsMyResponse(item, employee?.id) && upcoming && (
+              <View style={[styles.statusBadge, { backgroundColor: `${colors.primary.gold}26` }]}>
+                <Text style={[styles.statusBadgeText, { color: colors.primary.gold }]}>Odpowiedz</Text>
+              </View>
+            )}
+            {status.value !== 'confirmed' && (
+              <View style={[styles.statusBadge, { backgroundColor: `${status.color}26` }]}>
+                <Text style={[styles.statusBadgeText, { color: status.color }]}>{status.label}</Text>
+              </View>
+            )}
 
             {!!item.series_id && <Feather name="repeat" size={14} color={colors.primary.gold} accessibilityLabel="Spotkanie cykliczne" />}
             {hasAlerts && upcoming && (
@@ -834,6 +890,46 @@ const renderMeetingCard = ({ item }: { item: Meeting }) => {
               placeholderTextColor={colors.text.tertiary}
               onFocus={handleFormInputFocus}
             />
+
+            <Text style={styles.fieldLabel}>Rodzaj spotkania</Text>
+            <View style={styles.participantChips}>
+              {[
+                { value: false, label: 'Firmowe', icon: 'briefcase' as const },
+                { value: true, label: 'Prywatne', icon: 'lock' as const },
+              ].map((option) => (
+                <TouchableOpacity
+                  key={option.label}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: form.is_private === option.value }}
+                  onPress={() => setForm((current) => ({ ...current, is_private: option.value }))}
+                  style={[styles.alertOption, styles.kindOption, form.is_private === option.value && styles.alertOptionSelected]}
+                >
+                  <Feather name={option.icon} size={12} color={form.is_private === option.value ? colors.primary.gold : colors.text.tertiary} />
+                  <Text style={[styles.alertOptionText, form.is_private === option.value && styles.alertOptionTextSelected]}>{option.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Text style={styles.alertsSectionDescription}>
+              {form.is_private
+                ? 'Widzisz je tylko Ty i zaproszeni uczestnicy — także administrator go nie zobaczy.'
+                : 'Widoczne w planie firmy dla osób z dostępem do kalendarza.'}
+            </Text>
+
+            <Text style={styles.fieldLabel}>Status</Text>
+            <View style={styles.participantChips}>
+              {MEETING_STATUSES.filter((option) => editingMeeting || option.value !== 'cancelled').map((option) => (
+                <TouchableOpacity
+                  key={option.value}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: form.status === option.value }}
+                  onPress={() => setForm((current) => ({ ...current, status: option.value }))}
+                  style={[styles.alertOption, styles.kindOption, form.status === option.value && styles.alertOptionSelected]}
+                >
+                  <View style={[styles.statusDot, { backgroundColor: option.color }]} />
+                  <Text style={[styles.alertOptionText, form.status === option.value && styles.alertOptionTextSelected]}>{option.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
 
             <Text style={styles.fieldLabel}>Termin *</Text>
 
@@ -1300,7 +1396,50 @@ const renderMeetingCard = ({ item }: { item: Meeting }) => {
               keyboardShouldPersistTaps="handled"
               onScrollBeginDrag={() => setOpenedDropdown(null)}
             >
-              <Text style={styles.detailTitle}>{selectedMeeting.title}</Text>
+              <Text style={[styles.detailTitle, meetingStatus(selectedMeeting.status) === 'cancelled' && styles.textCancelled]}>{selectedMeeting.title}</Text>
+              <View style={styles.detailBadges}>
+                <View style={[styles.statusBadge, { backgroundColor: `${meetingStatusOption(selectedMeeting.status).color}26` }]}>
+                  <Text style={[styles.statusBadgeText, { color: meetingStatusOption(selectedMeeting.status).color }]}>
+                    {meetingStatusOption(selectedMeeting.status).label}
+                  </Text>
+                </View>
+                <View style={[styles.statusBadge, { backgroundColor: `${colors.text.tertiary}26` }]}>
+                  <Feather name={selectedMeeting.is_private ? 'lock' : 'briefcase'} size={11} color={colors.text.secondary} />
+                  <Text style={[styles.statusBadgeText, { color: colors.text.secondary }]}>{selectedMeeting.is_private ? 'Prywatne' : 'Firmowe'}</Text>
+                </View>
+              </View>
+              {(() => {
+                const mine = myMeetingResponse(selectedMeeting, employee?.id);
+                if (!mine || selectedMeeting.created_by === employee?.id || meetingStatus(selectedMeeting.status) === 'cancelled') return null;
+                return (
+                  <View style={styles.rsvpBox}>
+                    <Text style={styles.rsvpTitle}>
+                      {mine === 'pending' ? 'Czy będziesz na spotkaniu?' : `Twoja odpowiedź: ${meetingResponseOption(mine).label}`}
+                    </Text>
+                    <View style={styles.rsvpRow}>
+                      {MEETING_RESPONSES.filter((option) => option.value !== 'pending').map((option) => {
+                        const selected = mine === option.value;
+                        return (
+                          <TouchableOpacity
+                            key={option.value}
+                            accessibilityRole="button"
+                            accessibilityState={{ selected, disabled: !!respondingTo }}
+                            disabled={!!respondingTo}
+                            onPress={() => { void respondToMeeting(selectedMeeting, option.value); }}
+                            style={[styles.rsvpButton, selected && { backgroundColor: option.color }]}
+                          >
+                            {respondingTo === option.value ? (
+                              <ActivityIndicator size="small" color={selected ? colors.background.primary : colors.primary.gold} />
+                            ) : (
+                              <Text style={[styles.rsvpButtonText, selected && { color: colors.background.primary }]}>{option.action}</Text>
+                            )}
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </View>
+                );
+              })()}
               {!!selectedMeeting.series_id && <View style={styles.detailRow}>
                 <Feather name="repeat" size={16} color={colors.primary.gold} />
                 <Text style={styles.detailText}>{meetingRecurrenceLabel(selectedMeeting.recurrence_days, selectedMeeting.datetime_start)} (czas polski)</Text>
@@ -1332,13 +1471,20 @@ const renderMeetingCard = ({ item }: { item: Meeting }) => {
 
               {selectedMeeting.participants && selectedMeeting.participants.length > 0 && (
                 <View style={styles.detailNotesSection}>
-                  <Text style={styles.detailSectionLabel}>Uczestnicy</Text>
+                  <Text style={styles.detailSectionLabel}>
+                    Uczestnicy{meetingResponseSummaryText(selectedMeeting) ? ` · ${meetingResponseSummaryText(selectedMeeting)}` : ''}
+                  </Text>
                   <View style={styles.participantChips}>
                     {selectedMeeting.participants.map((p) => {
                       const emp = employees.find((e) => e.id === p.employee_id);
                       return (
                         <View key={p.employee_id} style={styles.participantChip}>
-                          <Feather name="user" size={12} color={colors.primary.gold} />
+                          <View
+                            style={[
+                              styles.statusDot,
+                              { backgroundColor: meetingResponseOption(p.employee_id === selectedMeeting.created_by ? 'accepted' : p.response).color },
+                            ]}
+                          />
                           <Text style={styles.participantChipText} numberOfLines={1}>
                             {emp ? `${emp.name || ''} ${emp.surname || ''}`.trim() : 'Pracownik'}
                           </Text>
@@ -2030,5 +2176,75 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 17,
+  },
+  textCancelled: {
+    textDecorationLine: 'line-through',
+  },
+
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderRadius: 10,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+
+  statusBadgeText: {
+    fontSize: 10,
+    fontWeight: typography.fontWeights.semibold as any,
+  },
+
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+
+  kindOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+
+  detailBadges: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: -spacing.sm,
+    marginBottom: spacing.md,
+  },
+
+  rsvpBox: {
+    backgroundColor: `${colors.primary.gold}14`,
+    borderRadius: 12,
+    padding: spacing.md,
+    marginBottom: spacing.lg,
+    gap: spacing.sm,
+  },
+
+  rsvpTitle: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.text.primary,
+  },
+
+  rsvpRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+
+  rsvpButton: {
+    flex: 1,
+    minHeight: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 10,
+    backgroundColor: colors.background.secondary,
+  },
+
+  rsvpButtonText: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.text.primary,
+    fontWeight: typography.fontWeights.semibold as any,
   },
 });

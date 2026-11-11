@@ -70,11 +70,16 @@ import SwiftUI
                     let candidate=UUID(uuidString:next) != nil ? next:mapping.1.compactMap{q[$0]}.first{UUID(uuidString:$0) != nil} ?? ""
                     if !candidate.isEmpty{type=mapping.0;id=candidate;tab=q["tab"] ?? tab}
                 }
+                // Spotkania: /crm/calendar/meeting/<id> i /crm/calendar?meeting=<id>.
+                if section=="calendar"{
+                    let candidate=next=="meeting" && parts.count>crm+3 ? parts[crm+3]:(q["meeting"] ?? q["meetingId"] ?? "")
+                    if UUID(uuidString:candidate) != nil{type="meeting";id=candidate}
+                }
             }
         }
         if ["task","tasks"].contains(type),let inquiry=metadata["inquiry_id"]?.text,UUID(uuidString:inquiry) != nil,id==inquiry{type="inquiry";id=inquiry}
         if UUID(uuidString:id)==nil || !["event","events","task","tasks","inquiry","inquiries","contact","contacts","client","offer","offers","tender","tenders","meeting","meetings"].contains(type){
-            for (key,target) in [("inquiry_id","inquiry"),("event_id","event"),("offer_id","offer"),("tender_id","tender"),("task_id","task")] {
+            for (key,target) in [("meeting_id","meeting"),("inquiry_id","inquiry"),("event_id","event"),("offer_id","offer"),("tender_id","tender"),("task_id","task")] {
                 if let candidate=metadata[key]?.text,UUID(uuidString:candidate) != nil{type=target;id=candidate;break}
             }
         }
@@ -89,7 +94,7 @@ import SwiftUI
         case "contact","contacts","client":return await navigate(.contacts,id:id)
         case "offer","offers":return await navigate(.offers,id:id)
         case "tender","tenders":return await navigate(.tenders,id:id)
-        case "meeting","meetings":return await navigate(.calendar,id:id)
+        case "meeting","meetings":showMeeting(id);return true
         default:notice="Powiązana sprawa nie ma jeszcze dostępnej sekcji natywnej.";return false
         }
     }

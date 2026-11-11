@@ -19,6 +19,8 @@ type MeetingRow = {
   created_by: string | null;
   is_all_day: boolean | null;
   deleted_at: string | null;
+  is_private?: boolean | null;
+  status?: string | null;
 };
 
 type EventRow = {
@@ -96,57 +98,44 @@ async function getEmployeeOrThrow(employeeId: string) {
   return data as EmployeeRow;
 }
 
+// Spotkania w kalendarzu iCal: własne i te, w których pracownik uczestniczy (bez odrzuconych), a administrator — także
+// pozostałe spotkania firmowe. Prywatne spotkania innych osób nigdy tu nie trafiają; odwołane nie są eksportowane.
 async function getVisibleMeetings(employeeId: string, isAdmin: boolean) {
-  if (isAdmin) {
-    const { data, error } = await supabaseServer
-      .from('meetings')
-      .select(
-        'id,title,datetime_start,datetime_end,notes,location_text,created_by,is_all_day,deleted_at',
-      )
-      .is('deleted_at', null)
-      .order('datetime_start', { ascending: true });
-
-    if (error) throw error;
-    return (data ?? []) as MeetingRow[];
-  }
-
+  const fields = 'id,title,datetime_start,datetime_end,notes,location_text,created_by,is_all_day,deleted_at,is_private,status';
   const { data: ownMeetings, error: ownErr } = await supabaseServer
     .from('meetings')
-    .select(
-      'id,title,datetime_start,datetime_end,notes,location_text,created_by,is_all_day,deleted_at',
-    )
+    .select(fields)
     .is('deleted_at', null)
     .eq('created_by', employeeId);
-
   if (ownErr) throw ownErr;
 
   const { data: participantRows, error: partErr } = await supabaseServer
     .from('meeting_participants')
-    .select('meeting_id')
+    .select('meeting_id, response')
     .eq('employee_id', employeeId);
-
   if (partErr) throw partErr;
-
-  const ids = (participantRows ?? [])
-    .map((r: any) => r.meeting_id)
-    .filter(Boolean) as string[];
+  const declined = new Set((participantRows ?? []).filter((r: any) => r.response === 'declined').map((r: any) => r.meeting_id as string));
+  const ids = (participantRows ?? []).map((r: any) => r.meeting_id).filter(Boolean) as string[];
 
   let participantMeetings: MeetingRow[] = [];
   if (ids.length) {
-    const { data, error } = await supabaseServer
-      .from('meetings')
-      .select(
-        'id,title,datetime_start,datetime_end,notes,location_text,created_by,is_all_day,deleted_at',
-      )
-      .is('deleted_at', null)
-      .in('id', ids);
-
+    const { data, error } = await supabaseServer.from('meetings').select(fields).is('deleted_at', null).in('id', ids);
     if (error) throw error;
     participantMeetings = (data ?? []) as MeetingRow[];
   }
 
+  let companyMeetings: MeetingRow[] = [];
+  if (isAdmin) {
+    const { data, error } = await supabaseServer.from('meetings').select(fields).is('deleted_at', null).eq('is_private', false);
+    if (error) throw error;
+    companyMeetings = (data ?? []) as MeetingRow[];
+  }
+
   const map = new Map<string, MeetingRow>();
-  for (const m of [...(ownMeetings ?? []), ...participantMeetings]) map.set(m.id, m);
+  for (const m of [...companyMeetings, ...(ownMeetings ?? []), ...participantMeetings]) {
+    if (m.status === 'cancelled' || (declined.has(m.id) && m.created_by !== employeeId)) continue;
+    map.set(m.id, m);
+  }
 
   return Array.from(map.values()).sort(
     (a, b) => new Date(a.datetime_start).getTime() - new Date(b.datetime_start).getTime(),

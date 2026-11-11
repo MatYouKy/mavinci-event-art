@@ -22,10 +22,10 @@ import {
   ChevronRight,
   CircleDollarSign,
   Inbox,
+  Info,
   LayoutGrid,
   List,
   Mail,
-  MoveHorizontal,
   Pencil,
   Percent,
   Phone,
@@ -470,8 +470,9 @@ export default function InquiriesPageClient({ initialInquiries, employees }: { i
   const [scope, setScope] = useState<ScopeFilter>('pool');
   const [claimingId, setClaimingId] = useState<string | null>(null);
   const [actionPendingId, setActionPendingId] = useState<string | null>(null);
-  const [showSlaSettings, setShowSlaSettings] = useState(false);
-  const [showNewInquiry, setShowNewInquiry] = useState(false);
+  // `?new=1` i `?sla=1` — otwarcie formularza z aplikacji na Maca („Dodaj zapytanie”, „SLA”).
+  const [showSlaSettings, setShowSlaSettings] = useState(() => searchParams.get('sla') === '1');
+  const [showNewInquiry, setShowNewInquiry] = useState(() => searchParams.get('new') === '1');
   const [handoffInquiry, setHandoffInquiry] = useState<InquiryListItem | null>(null);
   const [attentionFilter, setAttentionFilter] = useState<AttentionFilter>('all');
   const pipelineScrollRef = useRef<HTMLDivElement>(null);
@@ -784,38 +785,58 @@ export default function InquiriesPageClient({ initialInquiries, employees }: { i
   };
 
   return (
-    <div className="w-full space-y-6">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div><div className="mb-2 flex items-center gap-2 text-sm text-[#d3bb73]"><Inbox className="h-4 w-4" />Centrum sprzedaży</div><h1 className="text-2xl font-light text-[#e5e4e2] md:text-3xl">Lejek zapytań</h1><p className="mt-1 text-sm text-[#e5e4e2]/55">Formularze, webhooki i zapytania ręczne w jednym procesie sprzedażowym.</p></div>
-        <div className="flex flex-wrap gap-2">{canCreateInquiry && <button type="button" onClick={() => setShowNewInquiry(true)} className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#e2cd8d]"><Plus className="h-4 w-4" /> Dodaj zapytanie</button>}<div className="flex rounded-lg border border-[#d3bb73]/15 bg-[#1c1f33] p-1"><button type="button" onClick={() => changeView('pipeline')} className={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm ${viewMode === 'pipeline' ? 'bg-[#d3bb73] text-[#1c1f33]' : 'text-[#e5e4e2]/55'}`}><LayoutGrid className="h-4 w-4" /> Lejek</button><button type="button" onClick={() => changeView('list')} className={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm ${viewMode === 'list' ? 'bg-[#d3bb73] text-[#1c1f33]' : 'text-[#e5e4e2]/55'}`}><List className="h-4 w-4" /> Lista</button></div>{isAdmin && <button type="button" onClick={() => setShowSlaSettings(true)} className="inline-flex items-center justify-center gap-2 rounded-lg border border-[#d3bb73]/25 bg-[#1c1f33] px-4 py-2 text-sm text-[#e5e4e2] hover:border-[#d3bb73]/50"><Settings className="h-4 w-4" /> SLA</button>}<button type="button" onClick={() => void reload()} disabled={refreshing} className="inline-flex items-center justify-center gap-2 rounded-lg border border-[#d3bb73]/25 bg-[#1c1f33] px-4 py-2 text-sm text-[#e5e4e2] hover:border-[#d3bb73]/50 disabled:opacity-50"><RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} /> Odśwież</button></div>
-      </div>
-
-      {(slaMetrics.unassigned > 0 || slaMetrics.firstContactBreached > 0 || slaMetrics.overdueActions > 0 || slaMetrics.missingNextAction > 0) && (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <button type="button" onClick={() => setAttentionFilter(attentionFilter === 'unassigned' ? 'all' : 'unassigned')} className={`rounded-xl border p-3 text-left ${attentionFilter === 'unassigned' ? 'border-amber-300 bg-amber-400/15' : 'border-amber-400/20 bg-amber-400/5'}`}><div className="text-xs text-amber-200/65">Bez opiekuna</div><div className="mt-1 text-xl text-amber-200">{slaMetrics.unassigned}</div></button>
-          <button type="button" onClick={() => setAttentionFilter(attentionFilter === 'first_contact' ? 'all' : 'first_contact')} className={`rounded-xl border p-3 text-left ${attentionFilter === 'first_contact' ? 'border-red-300 bg-red-400/15' : 'border-red-400/20 bg-red-400/5'}`}><div className="text-xs text-red-200/65">SLA pierwszego kontaktu</div><div className="mt-1 text-xl text-red-200">{slaMetrics.firstContactBreached}</div></button>
-          <button type="button" onClick={() => setAttentionFilter(attentionFilter === 'overdue' ? 'all' : 'overdue')} className={`rounded-xl border p-3 text-left ${attentionFilter === 'overdue' ? 'border-orange-300 bg-orange-400/15' : 'border-orange-400/20 bg-orange-400/5'}`}><div className="text-xs text-orange-200/65">Zaległe działania</div><div className="mt-1 text-xl text-orange-200">{slaMetrics.overdueActions}</div></button>
-          <button type="button" onClick={() => setAttentionFilter(attentionFilter === 'missing_next' ? 'all' : 'missing_next')} className={`rounded-xl border p-3 text-left ${attentionFilter === 'missing_next' ? 'border-violet-300 bg-violet-400/15' : 'border-violet-400/20 bg-violet-400/5'}`}><div className="text-xs text-violet-200/65">Brak następnego działania</div><div className="mt-1 text-xl text-violet-200">{slaMetrics.missingNextAction}</div></button>
+    <div className="w-full space-y-3">
+      {/* Nagłówek: tytuł i czynności w jednym niskim wierszu */}
+      <div className="flex flex-wrap items-center gap-2">
+        <h1 className="flex items-center gap-2 text-xl font-light text-[#e5e4e2]"><Inbox className="h-5 w-5 text-[#d3bb73]" />Lejek zapytań</h1>
+        <span className="text-[#e5e4e2]/30" title="Formularze WWW i webhooki trafiają do etapu „Nowe” w kolejce „Nieprzypisane”. Przejmij zapytanie, aby prowadzić je w „Moich”. Zadania to dalsze działania powiązane z zapytaniem, nie drugi lejek."><Info className="h-4 w-4" /></span>
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          {canCreateInquiry && <button type="button" onClick={() => setShowNewInquiry(true)} className="inline-flex items-center gap-1.5 rounded-lg bg-[#d3bb73] px-3 py-1.5 text-sm font-medium text-[#1c1f33] hover:bg-[#e2cd8d]"><Plus className="h-4 w-4" />Dodaj zapytanie</button>}
+          <div className="flex rounded-lg bg-[#1c1f33] p-0.5">
+            <button type="button" onClick={() => changeView('pipeline')} className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-sm ${viewMode === 'pipeline' ? 'bg-[#d3bb73] text-[#1c1f33]' : 'text-[#e5e4e2]/55 hover:text-[#e5e4e2]'}`}><LayoutGrid className="h-3.5 w-3.5" />Lejek</button>
+            <button type="button" onClick={() => changeView('list')} className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-sm ${viewMode === 'list' ? 'bg-[#d3bb73] text-[#1c1f33]' : 'text-[#e5e4e2]/55 hover:text-[#e5e4e2]'}`}><List className="h-3.5 w-3.5" />Lista</button>
+          </div>
+          {isAdmin && <button type="button" onClick={() => setShowSlaSettings(true)} title="Ustawienia SLA" aria-label="Ustawienia SLA" className="inline-flex items-center gap-1.5 rounded-lg bg-[#1c1f33] px-2.5 py-1.5 text-sm text-[#e5e4e2]/75 hover:text-[#e5e4e2]"><Settings className="h-4 w-4" />SLA</button>}
+          <button type="button" onClick={() => void reload()} disabled={refreshing} title="Odśwież" aria-label="Odśwież" className="inline-flex items-center rounded-lg bg-[#1c1f33] p-2 text-[#e5e4e2]/75 hover:text-[#e5e4e2] disabled:opacity-50"><RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} /></button>
         </div>
-      )}
-
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {([['open', 'Aktywne', counts.open], ['completed', 'Zamknięte', counts.completed], ['all', 'Wszystkie', counts.all]] as const).map(([key, label, value]) => <button key={key} type="button" onClick={() => setFilter(key)} className={`rounded-xl border p-4 text-left ${filter === key ? 'border-[#d3bb73]/60 bg-[#d3bb73]/10' : 'border-[#d3bb73]/10 bg-[#1c1f33] hover:border-[#d3bb73]/30'}`}><div className="text-xs uppercase tracking-wide text-[#e5e4e2]/45">{label}</div><div className="mt-1 text-2xl font-light text-[#e5e4e2]">{value}</div></button>)}
-        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-4"><div className="text-xs uppercase tracking-wide text-[#e5e4e2]/45">Ważona wartość lejka</div><div className="mt-1 text-2xl font-light text-[#d3bb73]">{formatMoney(pipelineValue)}</div></div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-2">
-        <span className="px-2 text-xs font-medium uppercase tracking-wide text-[#e5e4e2]/35">Zakres</span>
-        <button type="button" onClick={() => changeScope('mine')} className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${scope === 'mine' ? 'bg-[#d3bb73] text-[#1c1f33]' : 'text-[#e5e4e2]/60 hover:bg-[#0f1119]'}`}><UserRound className="h-4 w-4" />Moje <span className="opacity-60">{scopeCounts.mine}</span></button>
-        <button type="button" onClick={() => changeScope('collaborating')} className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${scope === 'collaborating' ? 'bg-[#d3bb73] text-[#1c1f33]' : 'text-[#e5e4e2]/60 hover:bg-[#0f1119]'}`}><UsersRound className="h-4 w-4" />Współpracuję <span className="opacity-60">{scopeCounts.collaborating}</span></button>
-        {scope === 'collaborating' && membershipError && <p role="alert" className="w-full text-sm text-amber-200">{membershipError}</p>}
-        {canViewPool && <button type="button" onClick={() => changeScope('pool')} className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${scope === 'pool' ? 'bg-[#d3bb73] text-[#1c1f33]' : 'text-[#e5e4e2]/60 hover:bg-[#0f1119]'}`}><Inbox className="h-4 w-4" />Nieprzypisane <span className="opacity-60">{scopeCounts.pool}</span></button>}
-        {canViewTeam && <button type="button" onClick={() => changeScope('team')} className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${scope === 'team' ? 'bg-[#d3bb73] text-[#1c1f33]' : 'text-[#e5e4e2]/60 hover:bg-[#0f1119]'}`}><UsersRound className="h-4 w-4" />Zespół <span className="opacity-60">{scopeCounts.team}</span></button>}
-        {canViewAll && <button type="button" onClick={() => changeScope('all')} className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${scope === 'all' ? 'bg-[#d3bb73] text-[#1c1f33]' : 'text-[#e5e4e2]/60 hover:bg-[#0f1119]'}`}><LayoutGrid className="h-4 w-4" />Wszystkie <span className="opacity-60">{scopeCounts.all}</span></button>}
+      {/* Stan lejka: status, wartość i sprawy wymagające uwagi */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex rounded-lg bg-[#1c1f33] p-0.5">
+          {([['open', 'Aktywne', counts.open], ['completed', 'Zamknięte', counts.completed], ['all', 'Wszystkie', counts.all]] as const).map(([key, label, value]) => <button key={key} type="button" onClick={() => setFilter(key)} className={`rounded-md px-2.5 py-1 text-xs ${filter === key ? 'bg-[#d3bb73] font-medium text-[#1c1f33]' : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'}`}>{label} <span className="opacity-60">{value}</span></button>)}
+        </div>
+        <span className="px-1 text-xs text-[#e5e4e2]/45">Ważona wartość <span className="text-sm font-medium text-[#d3bb73]">{formatMoney(pipelineValue)}</span></span>
+        <div className="ml-auto flex flex-wrap items-center gap-1.5">
+          {([
+            ['unassigned', 'Bez opiekuna', slaMetrics.unassigned, 'bg-amber-400', 'bg-amber-400/15 text-amber-200'],
+            ['first_contact', 'SLA pierwszego kontaktu', slaMetrics.firstContactBreached, 'bg-red-400', 'bg-red-400/15 text-red-200'],
+            ['overdue', 'Zaległe działania', slaMetrics.overdueActions, 'bg-orange-400', 'bg-orange-400/15 text-orange-200'],
+            ['missing_next', 'Brak następnego działania', slaMetrics.missingNextAction, 'bg-violet-400', 'bg-violet-400/15 text-violet-200'],
+          ] as const).filter(([key, , value]) => value > 0 || attentionFilter === key).map(([key, label, value, dot, active]) => (
+            <button key={key} type="button" onClick={() => setAttentionFilter(attentionFilter === key ? 'all' : key)} title={attentionFilter === key ? 'Pokaż wszystkie' : `Pokaż tylko: ${label}`} className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs ${attentionFilter === key ? active : 'bg-[#1c1f33] text-[#e5e4e2]/65 hover:text-[#e5e4e2]'}`}>
+              <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />{label} <span className="font-medium">{value}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
-      <div className="relative"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#e5e4e2]/35" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Szukaj po kliencie, firmie, e-mailu, telefonie, źródle lub opiekunie…" className="w-full rounded-lg border border-[#d3bb73]/15 bg-[#1c1f33] py-3 pl-10 pr-4 text-sm text-[#e5e4e2] outline-none placeholder:text-[#e5e4e2]/30 focus:border-[#d3bb73]/50" /></div>
-      <p className="text-xs leading-5 text-[#e5e4e2]/45">Formularze WWW i webhooki trafiają do etapu „Nowe” w kolejce „Nieprzypisane”. Przejmij zapytanie, aby prowadzić je w „Moich”. Zadania to dalsze działania powiązane z zapytaniem, nie drugi lejek.</p>
+      {/* Zakres i wyszukiwanie */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap rounded-lg bg-[#1c1f33] p-0.5">
+          {([
+            ['mine', 'Moje', scopeCounts.mine, UserRound, true],
+            ['collaborating', 'Współpracuję', scopeCounts.collaborating, UsersRound, true],
+            ['pool', 'Nieprzypisane', scopeCounts.pool, Inbox, canViewPool],
+            ['team', 'Zespół', scopeCounts.team, UsersRound, canViewTeam],
+            ['all', 'Wszystkie', scopeCounts.all, LayoutGrid, canViewAll],
+          ] as const).filter(([, , , , visible]) => visible).map(([key, label, value, Icon]) => (
+            <button key={key} type="button" onClick={() => changeScope(key)} className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs ${scope === key ? 'bg-[#d3bb73] font-medium text-[#1c1f33]' : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'}`}><Icon className="h-3.5 w-3.5" />{label} <span className="opacity-60">{value}</span></button>
+          ))}
+        </div>
+        <div className="relative min-w-[220px] flex-1"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#e5e4e2]/35" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Szukaj po kliencie, firmie, e-mailu, telefonie, źródle lub opiekunie…" className="w-full rounded-lg bg-[#1c1f33] py-1.5 pl-9 pr-3 text-sm text-[#e5e4e2] outline-none placeholder:text-[#e5e4e2]/30 focus:bg-[#22263d]" /></div>
+      </div>
+      {scope === 'collaborating' && membershipError && <p role="alert" className="text-sm text-amber-200">{membershipError}</p>}
 
       {visibleInquiries.length === 0 ? (
         <div className="rounded-xl border border-dashed border-[#d3bb73]/20 bg-[#1c1f33]/50 px-6 py-16 text-center"><Inbox className="mx-auto h-10 w-10 text-[#e5e4e2]/25" /><div className="mt-4 text-[#e5e4e2]">Brak zapytań w tym widoku</div><div className="mt-1 text-sm text-[#e5e4e2]/45">Zmień filtr lub wyszukiwaną frazę.</div></div>
@@ -831,11 +852,9 @@ export default function InquiriesPageClient({ initialInquiries, employees }: { i
             pipelinePanRef.current = null;
             setIsPipelinePanning(false);
           }}
+          title="Chwyć puste miejsce i przeciągnij, aby przewinąć lejek"
           className={`overflow-x-auto pb-4 touch-pan-y ${isPipelinePanning ? 'cursor-grabbing select-none' : 'cursor-grab'}`}
         >
-          <div className="pointer-events-none sticky left-0 z-10 mb-2 flex w-fit items-center gap-2 rounded-full border border-[#d3bb73]/15 bg-[#141827]/95 px-3 py-1.5 text-[11px] text-[#e5e4e2]/50 shadow-lg backdrop-blur">
-            <MoveHorizontal className="h-3.5 w-3.5 text-[#d3bb73]" /> Chwyć puste miejsce i przeciągnij lejek
-          </div>
           <div className="flex min-w-max items-start gap-4">{STAGES.map((stage) => {
           const items = visibleInquiries.filter((inquiry) => inquiry.inquiry_stage === stage.id);
           const value = items.reduce((sum, inquiry) => sum + Number(inquiry.estimated_value ?? 0), 0);
@@ -858,7 +877,7 @@ export default function InquiriesPageClient({ initialInquiries, employees }: { i
           showSnackbar('Zapytanie zostało dodane do wspólnej kolejki', 'success');
         }}
       />
-      {showSlaSettings && <InquirySlaSettingsModal onClose={() => setShowSlaSettings(false)} />}
+      {showSlaSettings && isAdmin && <InquirySlaSettingsModal onClose={() => setShowSlaSettings(false)} />}
     </div>
   );
 }

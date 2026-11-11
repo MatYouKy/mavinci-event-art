@@ -15,7 +15,7 @@ import AppKit
         .commands {
             CommandGroup(replacing: .newItem) { }
             CommandMenu("Mavinci") {
-                Button("Odśwież dane") { Task { await workspace.refresh(); if workspace.screen == .messages { await workspace.messages.refresh() } } }.keyboardShortcut("r").disabled(workspace.syncing || workspace.editing)
+                Button("Odśwież dane") { Task { await workspace.refresh(); if workspace.screen == .messages { await workspace.messages.refresh() }; if workspace.screen == .meetings { await workspace.meetings.sync(force: true) }; if workspace.selection == .inquiries { await workspace.inquiries.sync(force: true) }; if workspace.selection == .tasks || workspace.screen == .myTasks { await workspace.myTasks.sync(force: true) }; if workspace.screen == .companyTasks { await workspace.companyTasks.sync(force: true) } } }.keyboardShortcut("r").disabled(workspace.syncing || workspace.editing)
                 Divider()
                 Button("Dashboard") { workspace.switchSection(.day) }.keyboardShortcut("1")
                 Button("Zapytania") { if workspace.employee?.canView(.inquiries) == true { workspace.switchSection(.inquiries) } }.keyboardShortcut("2")
@@ -98,11 +98,15 @@ struct RootView: View {
                         if let route = state.eventRoute { EventPageView(eventID: route.id,initialTab:route.tab).id(route.id) }
                         else if let item = state.webItem { CrmWebPlaceholder(item: item).id(item.href) }
                         else if state.selection == .calendar { NativeCalendarView() }
-                        else if state.selection == .tasks { TaskBoardView() }
+                        else if state.selection == .tasks { TasksBoardView(store: state.myTasks).id("tasks-mine") }
                         else if state.selection == .tenders { TendersView() }
+                        else if state.selection == .inquiries, state.employee?.canView(.inquiries) == true { InquiriesFunnelView(store: state.inquiries) }
                         else if state.selection == .day { DashboardView() }
                         else if let module = state.selection, state.employee?.canView(module) == true { RecordsView(module: module).id(module) }
                         else if state.screen == .messages { MessagesView() }
+                        else if state.screen == .meetings { MeetingsView(store: state.meetings) }
+                        else if state.screen == .companyTasks { TasksBoardView(store: state.companyTasks).id("tasks-company") }
+                        else if state.screen == .myTasks { TasksBoardView(store: state.myTasks).id("tasks-mine") }
                         else { ContentUnavailableView("Wybierz sekcję", systemImage: "sidebar.left") }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -138,7 +142,7 @@ struct RootView: View {
                             }.help("Powiadomienia: \(state.unread) nieprzeczytanych").accessibilityLabel("Powiadomienia")
                         }
                         ToolbarItem(placement: .primaryAction) {
-                            Button { Task { await state.refresh(); if state.screen == .messages { await state.messages.refresh() } } } label: { Label("Odśwież", systemImage: "arrow.clockwise") }
+                            Button { Task { await state.refresh(); if state.screen == .messages { await state.messages.refresh() }; if state.screen == .meetings { await state.meetings.sync(force: true) }; if state.selection == .inquiries { await state.inquiries.sync(force: true) }; if state.selection == .tasks || state.screen == .myTasks { await state.myTasks.sync(force: true) }; if state.screen == .companyTasks { await state.companyTasks.sync(force: true) } } } label: { Label("Odśwież", systemImage: "arrow.clockwise") }
                                 .disabled(state.syncing || state.acting || state.editing)
                         }
                         ToolbarItem(placement: .primaryAction) { if state.syncing { ProgressView().controlSize(.small) } }
@@ -154,7 +158,7 @@ struct RootView: View {
         .onOpenURL { url in
             guard url.scheme == "mavinci",let id=url.pathComponents.last,UUID(uuidString:id) != nil else {return}
             if url.host == "event" {state.showEvent(id)}
-            else if url.host == "meeting",state.employee?.canView(.calendar) == true {state.eventRoute=nil;state.selection = .calendar;state.focusedID="meeting:\(id)"}
+            else if url.host == "meeting" {state.showMeeting(id)}
         }
         .onChange(of: phase) { _, next in
             if next == .active { Task { await state.refresh() } }

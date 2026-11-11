@@ -15,6 +15,8 @@ import {
   Pencil,
   ChevronDown,
   Plus,
+  Lock,
+  Building2,
 } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { utcToLocalDatetimeString, localDatetimeStringToUTC } from '@/lib/utils/dateTimeUtils';
@@ -23,6 +25,20 @@ import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
 import Link from 'next/link';
 import MeetingRecurrenceFields from '@/components/crm/MeetingRecurrenceFields';
 import { meetingRecurrenceLabel } from '@/lib/meetings/recurrence';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import {
+  MEETING_RESPONSES,
+  MEETING_STATUSES,
+  isMeetingOrganizer,
+  meetingKindLabel,
+  meetingResponseOption,
+  meetingResponseSummaryText,
+  meetingStatus,
+  meetingStatusOption,
+  myMeetingResponse,
+  type MeetingResponse,
+  type MeetingStatus,
+} from '@/lib/CRM/meetings/meetingStatus';
 
 interface Meeting {
   event_id: any;
@@ -40,6 +56,8 @@ interface Meeting {
   created_by: string | null;
   color: string;
   is_all_day: boolean;
+  is_private?: boolean | null;
+  status?: string | null;
 
   alert_1_minutes: number | null;
   alert_2_minutes: number | null;
@@ -60,6 +78,8 @@ interface Meeting {
     id: string;
     employee_id: string | null;
     contact_id: string | null;
+    response?: string | null;
+    responded_at?: string | null;
     employee?: {
       id: string;
       name: string;
@@ -104,6 +124,13 @@ export default function MeetingDetailPage() {
   const router = useRouter();
   const { showSnackbar } = useSnackbar();
   const meetingId = params.id as string;
+  const { employee: currentEmployee } = useCurrentEmployee();
+  const [backHref, setBackHref] = useState('/crm/calendar');
+  const [responding, setResponding] = useState<MeetingResponse | null>(null);
+
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('from') === 'meetings') setBackHref('/crm/meetings');
+  }, []);
 
   const [meeting, setMeeting] = useState<Meeting | null>(null);
   const [loading, setLoading] = useState(true);
@@ -121,6 +148,8 @@ export default function MeetingDetailPage() {
     notes: '',
     color: '#d3bb73',
     is_all_day: false,
+    is_private: false,
+    status: 'confirmed' as MeetingStatus,
 
     alert_1_minutes: null as number | null,
     alert_2_minutes: null as number | null,
@@ -172,6 +201,8 @@ export default function MeetingDetailPage() {
             id,
             employee_id,
             contact_id,
+            response,
+            responded_at,
             employee:employees(id, name, surname, avatar_url),
             contact:contacts(id, first_name, last_name)
           )
@@ -194,6 +225,8 @@ export default function MeetingDetailPage() {
         notes: data.notes || '',
         color: data.color || '#d3bb73',
         is_all_day: data.is_all_day,
+        is_private: !!data.is_private,
+        status: meetingStatus(data.status),
 
         alert_1_minutes: data.alert_1_minutes ?? null,
         alert_2_minutes: data.alert_2_minutes ?? null,
@@ -261,6 +294,8 @@ export default function MeetingDetailPage() {
           notes: formData.notes.trim() || null,
           color: formData.color,
           is_all_day: formData.is_all_day,
+          is_private: formData.is_private,
+          status: formData.status,
 
           alert_1_minutes: formData.alert_1_minutes,
           alert_2_minutes: formData.alert_2_minutes,
@@ -320,7 +355,7 @@ export default function MeetingDetailPage() {
       if (error) throw error;
   
       showSnackbar('Spotkanie zostało usunięte', 'success');
-      router.replace('/crm/calendar');
+      router.replace(backHref);
       router.refresh();
     } catch (error: any) {
       console.error('Error deleting meeting:', error);
@@ -328,6 +363,21 @@ export default function MeetingDetailPage() {
         error?.message || 'Błąd podczas usuwania spotkania',
         'error',
       );
+    }
+  };
+
+  const respond = async (response: MeetingResponse) => {
+    try {
+      setResponding(response);
+      const { error } = await supabase.rpc('respond_to_meeting', { p_meeting_id: meetingId, p_response: response });
+      if (error) throw error;
+      showSnackbar(`Twoja odpowiedź: ${meetingResponseOption(response).action}`, 'success');
+      await fetchMeeting();
+    } catch (error: any) {
+      console.error('Error responding to meeting:', error);
+      showSnackbar(error?.message || 'Nie udało się zapisać odpowiedzi', 'error');
+    } finally {
+      setResponding(null);
     }
   };
 
@@ -377,7 +427,7 @@ export default function MeetingDetailPage() {
         <div className="space-y-6 rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
           <div className="flex items-center justify-between">
             <div className="flex cursor-pointer items-center gap-4 rounded-lg p-2 transition-colors hover:bg-[#1c1f33]">
-              <Link href="/crm/calendar" className="flex items-center gap-2">
+              <Link href={backHref} className="flex items-center gap-2">
                 <ArrowLeft className="h-5 w-5 text-[#e5e4e2]" />
                 <span className="hidden sm:inline">Powrót</span>
               </Link>
@@ -410,6 +460,8 @@ export default function MeetingDetailPage() {
                             notes: meeting.notes || '',
                             color: meeting.color,
                             is_all_day: meeting.is_all_day,
+                            is_private: !!meeting.is_private,
+                            status: meetingStatus(meeting.status),
                             alert_1_minutes: meeting.alert_1_minutes ?? null,
                             alert_2_minutes: meeting.alert_2_minutes ?? null,
                             alert_critical_minutes: meeting.alert_critical_minutes ?? null,
@@ -454,6 +506,104 @@ export default function MeetingDetailPage() {
               <h1 className="text-2xl font-semibold text-[#e5e4e2]">{meeting.title}</h1>
             )}
           </div>
+
+          {isEditing ? (
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <label className="mb-2 block text-sm font-medium text-[#d3bb73]">Rodzaj spotkania</label>
+                <div className="grid grid-cols-2 gap-1 rounded-lg bg-[#13161f] p-1">
+                  {[
+                    { value: false, label: 'Firmowe', icon: Building2 },
+                    { value: true, label: 'Prywatne', icon: Lock },
+                  ].map((option) => (
+                    <button
+                      key={option.label}
+                      type="button"
+                      onClick={() => setFormData({ ...formData, is_private: option.value })}
+                      className={`flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${
+                        formData.is_private === option.value
+                          ? 'bg-[#d3bb73] font-medium text-[#13161f]'
+                          : 'text-[#e5e4e2]/70 hover:bg-white/5'
+                      }`}
+                    >
+                      <option.icon className="h-4 w-4" />
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-1.5 text-xs text-[#e5e4e2]/45">
+                  {formData.is_private
+                    ? 'Widzą je tylko autor i uczestnicy — także administrator go nie zobaczy.'
+                    : 'Widoczne w planie firmy dla osób z dostępem do kalendarza.'}
+                </p>
+              </div>
+              <div>
+                <label className="mb-2 block text-sm font-medium text-[#d3bb73]">Status</label>
+                <div className="grid grid-cols-3 gap-1 rounded-lg bg-[#13161f] p-1">
+                  {MEETING_STATUSES.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setFormData({ ...formData, status: option.value })}
+                      className={`flex items-center justify-center gap-2 rounded-md px-2 py-2 text-sm transition-colors ${
+                        formData.status === option.value
+                          ? 'bg-[#d3bb73] font-medium text-[#13161f]'
+                          : 'text-[#e5e4e2]/70 hover:bg-white/5'
+                      }`}
+                    >
+                      <span className="h-2 w-2 rounded-full" style={{ backgroundColor: option.color }} />
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center gap-2">
+              <span
+                className="flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium"
+                style={{ backgroundColor: `${meetingStatusOption(meeting.status).color}1f`, color: meetingStatusOption(meeting.status).color }}
+              >
+                <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: meetingStatusOption(meeting.status).color }} />
+                {meetingStatusOption(meeting.status).label}
+              </span>
+              <span className="flex items-center gap-1.5 rounded-full bg-white/[0.06] px-3 py-1 text-xs text-[#e5e4e2]/80">
+                {meeting.is_private ? <Lock className="h-3.5 w-3.5" /> : <Building2 className="h-3.5 w-3.5" />}
+                {meetingKindLabel(meeting)}
+              </span>
+              {meetingResponseSummaryText(meeting) && (
+                <span className="text-xs text-[#e5e4e2]/50">{meetingResponseSummaryText(meeting)}</span>
+              )}
+            </div>
+          )}
+
+          {!isEditing && (() => {
+            const mine = myMeetingResponse(meeting, currentEmployee?.id);
+            if (!mine || isMeetingOrganizer(meeting, currentEmployee?.id) || meetingStatus(meeting.status) === 'cancelled') return null;
+            return (
+              <div className="flex flex-wrap items-center gap-3 rounded-lg bg-[#d3bb73]/[0.07] p-3">
+                <span className="text-sm text-[#e5e4e2]/80">
+                  {mine === 'pending' ? 'Czy będziesz na spotkaniu?' : `Twoja odpowiedź: ${meetingResponseOption(mine).label}`}
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  {MEETING_RESPONSES.filter((option) => option.value !== 'pending').map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      disabled={responding !== null}
+                      onClick={() => { void respond(option.value); }}
+                      className={`rounded-md px-3 py-1.5 text-sm transition-colors disabled:opacity-50 ${
+                        mine === option.value ? 'font-medium text-[#13161f]' : 'bg-white/[0.06] text-[#e5e4e2] hover:bg-white/10'
+                      }`}
+                      style={mine === option.value ? { backgroundColor: option.color } : undefined}
+                    >
+                      {responding === option.value ? 'Zapisywanie…' : option.action}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
 
           <div className="grid gap-6 md:grid-cols-2">
             <div>
@@ -800,13 +950,25 @@ export default function MeetingDetailPage() {
                   meeting.participants.map((participant) => (
                     <div
                       key={participant.id}
-                      className="rounded-full border border-[#d3bb73]/15 bg-[#d3bb73]/10 px-3 py-1.5 text-sm text-[#e5e4e2]"
+                      className="flex items-center gap-2 rounded-full bg-[#d3bb73]/10 px-3 py-1.5 text-sm text-[#e5e4e2]"
+                      title={participant.employee_id ? meetingResponseOption(participant.response).label : undefined}
                     >
+                      {participant.employee_id && (
+                        <span
+                          className="h-2 w-2 shrink-0 rounded-full"
+                          style={{ backgroundColor: meetingResponseOption(participant.employee_id === meeting.created_by ? 'accepted' : participant.response).color }}
+                        />
+                      )}
                       {participant.employee
                         ? `${participant.employee.name} ${participant.employee.surname}`
                         : participant.contact
                           ? `${participant.contact.first_name} ${participant.contact.last_name}`
                           : 'Nieznany uczestnik'}
+                      {participant.employee_id && participant.employee_id === meeting.created_by ? (
+                        <span className="text-xs text-[#d3bb73]">organizator</span>
+                      ) : participant.employee_id ? (
+                        <span className="text-xs text-[#e5e4e2]/50">{meetingResponseOption(participant.response).label.toLowerCase()}</span>
+                      ) : null}
                     </div>
                   ))
                 ) : (

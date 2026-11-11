@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Bell, BellRing, Clock, X } from 'lucide-react';
+import { Bell, BellRing, Building2, Clock, Lock, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import MeetingRecurrenceFields from './MeetingRecurrenceFields';
 import LocationAutocomplete from './LocationAutocomplete';
@@ -9,12 +9,15 @@ import RelatedEventsSelector from './RelatedEventsSelector';
 import { useCreateMeetingMutation } from '@/store/api/calendarApi';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { localDatetimeStringToUTC } from '@/lib/utils/dateTimeUtils';
+import { MEETING_STATUSES, type MeetingStatus } from '@/lib/CRM/meetings/meetingStatus';
 
 interface NewMeetingModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess?: () => void;
   initialDate?: Date;
+  /** Koniec zaznaczenia na osi czasu (godzina zakończenia). */
+  initialEndDate?: Date;
   initialContactId?: string;
 }
 
@@ -72,6 +75,7 @@ export default function NewMeetingModal({
   onClose,
   onSuccess,
   initialDate,
+  initialEndDate,
   initialContactId,
 }: NewMeetingModalProps) {
   const [title, setTitle] = useState('');
@@ -88,6 +92,8 @@ export default function NewMeetingModal({
   const [notes, setNotes] = useState('');
   const [relatedEventIds, setRelatedEventIds] = useState<string[]>([]);
   const [color, setColor] = useState('#d3bb73');
+  const [isPrivate, setIsPrivate] = useState(false);
+  const [status, setStatus] = useState<MeetingStatus>('confirmed');
   const [participants, setParticipants] = useState<MeetingParticipant[]>([]);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -119,13 +125,26 @@ export default function NewMeetingModal({
     const month = String(selectedDate.getMonth() + 1).padStart(2, '0');
     const day = String(selectedDate.getDate()).padStart(2, '0');
     const formattedDate = `${year}-${month}-${day}`;
+    const clock = (date: Date) =>
+      `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+    const hasTime = !!initialDate && (initialDate.getHours() !== 0 || initialDate.getMinutes() !== 0);
 
     setDateStart(formattedDate);
     setDateEnd(formattedDate);
+    if (hasTime && initialDate) {
+      const end = initialEndDate && initialEndDate > initialDate
+        ? initialEndDate
+        : new Date(initialDate.getTime() + 60 * 60 * 1000);
+      setTimeStart(clock(initialDate));
+      setTimeEnd(clock(end));
+      setDateEnd(
+        `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, '0')}-${String(end.getDate()).padStart(2, '0')}`,
+      );
+    }
 
     void fetchEmployees();
     void fetchContacts();
-  }, [isOpen, initialDate]);
+  }, [isOpen, initialDate, initialEndDate]);
 
   const fetchEmployees = async () => {
     const { data, error } = await supabase
@@ -227,6 +246,8 @@ export default function NewMeetingModal({
     setNotes('');
     setRelatedEventIds([]);
     setColor('#d3bb73');
+    setIsPrivate(false);
+    setStatus('confirmed');
     setParticipants([]);
     setParticipantSearch('');
     setShowEmployeeList(false);
@@ -292,6 +313,8 @@ export default function NewMeetingModal({
         notes: notes.trim() || null,
         related_event_ids: relatedEventIds.length > 0 ? relatedEventIds : null,
         color,
+        is_private: isPrivate,
+        status,
         participants: participantsData.length > 0 ? participantsData : undefined,
 
         alert_1_minutes: alert1Enabled ? alert1Minutes : null,
@@ -471,6 +494,63 @@ export default function NewMeetingModal({
               }}
               placeholder="Wybierz lub wpisz lokalizację"
             />
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div>
+              <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Rodzaj spotkania</label>
+              <div className="grid grid-cols-2 gap-1 rounded-lg bg-[#1c1f33] p-1">
+                {[
+                  { value: false, label: 'Firmowe', icon: Building2 },
+                  { value: true, label: 'Prywatne', icon: Lock },
+                ].map((option) => (
+                  <button
+                    key={option.label}
+                    type="button"
+                    onClick={() => setIsPrivate(option.value)}
+                    className={`flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${
+                      isPrivate === option.value
+                        ? 'bg-[#d3bb73] font-medium text-[#0f1119]'
+                        : 'text-[#e5e4e2]/70 hover:bg-white/5'
+                    }`}
+                  >
+                    <option.icon className="h-4 w-4" />
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1.5 text-xs text-[#e5e4e2]/45">
+                {isPrivate
+                  ? 'Widzisz je tylko Ty i zaproszeni uczestnicy — także administrator go nie zobaczy.'
+                  : 'Widoczne w planie firmy dla osób z dostępem do kalendarza.'}
+              </p>
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Status</label>
+              <div className="grid grid-cols-2 gap-1 rounded-lg bg-[#1c1f33] p-1">
+                {MEETING_STATUSES.filter((option) => option.value !== 'cancelled').map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setStatus(option.value)}
+                    className={`flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${
+                      status === option.value
+                        ? 'bg-[#d3bb73] font-medium text-[#0f1119]'
+                        : 'text-[#e5e4e2]/70 hover:bg-white/5'
+                    }`}
+                  >
+                    <span className="h-2 w-2 rounded-full" style={{ backgroundColor: option.color }} />
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1.5 text-xs text-[#e5e4e2]/45">
+                {status === 'tentative'
+                  ? 'Termin do potwierdzenia — uczestnicy widzą go jako wstępny.'
+                  : 'Termin ustalony. Uczestnicy dostaną zaproszenie do odpowiedzi.'}
+              </p>
+            </div>
           </div>
 
           <label className="flex cursor-pointer items-center gap-3">

@@ -41,7 +41,7 @@ Tabele ze zmianą zaznaczenia, sortowaniem nagłówkami, wyszukiwaniem, menu kon
 - Backend pozostaje źródłem prawdy. Używany jest publiczny klucz z tokenem zalogowanego użytkownika. RLS i istniejące funkcje wyznaczają dostęp, firmy i odpowiedzialność. Nie używamy `service_role` w aplikacji.
 - Menu i czynności są dodatkowo filtrowane po uprawnieniach. Przed zapisem aplikacja potwierdza profil na serwerze. Nie implementuje własnych reguł finansowych.
 - Sesje, token odświeżania, ustawienia połączenia i klucz szyfrowania są w Keychain. Kopia danych jest szyfrowana AES-GCM w Application Support/Mavinci/Desktop/v1 i oddzielona według źródła danych i konta.
-- Bez połączenia dane są wyłącznie do odczytu. Kopia jest dostępna maksymalnie 24 godziny od kompletnego udanego odświeżenia. Zmiana efektywnego profilu usuwa stare dane; wylogowanie usuwa klucz kopii, plik i lokalną sesję. Cofnięcia uprawnień nie da się wykryć bez połączenia — to ograniczenie każdej kopii offline.
+- Start bez czekania: po uruchomieniu aplikacja od razu pokazuje kopię z dysku (zbiory, dashboard, plan dnia, menu, Wiadomości — kopia do 30 dni), a w tle dociąga tylko zmiany w kolejności ekranu: dashboard i menu → plan dnia → zbiory (skróty koszyków) → Wiadomości. Zapis jest możliwy dopiero po potwierdzeniu profilu na serwerze. Bez połączenia dane są wyłącznie do odczytu, a kopia starsza niż 24 godziny od kompletnego udanego odświeżenia jest ukrywana. Zmiana efektywnego profilu usuwa stare dane; wylogowanie usuwa klucz kopii, plik i lokalną sesję. Cofnięcia uprawnień nie da się wykryć bez połączenia — to ograniczenie każdej kopii offline.
 - Odświeżanie co 60 s, tylko gdy aplikacja jest aktywna, oraz przy powrocie i ⌘R. Edycja formularza wstrzymuje automatyczne odświeżanie. Błąd jednego modułu nie przerywa pozostałych. Błędy dostępu / schematu usuwają dane tego modułu; awaria transportu zachowuje ostatnią poprawną kopię.
 - Wynik zapisu musi być potwierdzony. Nie ma automatycznych ponowień operacji tworzenia. Po przerwaniu połączenia należy odświeżyć dane przed ponowną próbą.
 
@@ -202,3 +202,48 @@ Serwer: `GET/POST /bridge/native/v1/messages` (kopia: `op=mirror` / `mirrorItems
 - **Postęp czynności**: podczas zapisu (kosz z synchronizacją serwera pocztowego, oznaczanie wszystkich, pobieranie poczty, wysyłka, przypisanie, zapytanie, zadanie, zapisy kart) okno pokazuje modalny wskaźnik z opisem i blokuje ponowne kliknięcia do odpowiedzi serwera.
 - **Szerokości paneli** (lista skrzynek, lista wiadomości, podgląd) ustawia się przeciągając granice; zapisują się ok. 1 s po zmianie (od razu przy wyjściu z sekcji lub zamknięciu aplikacji) i wracają po ponownym otwarciu — `PersistentSplitView` (natywny `NSSplitView`), ustawienie tego Maca.
 
+## Aktualizacja 0.6 — Spotkania (oś czasu jak w Teams)
+
+Pozycja „Spotkania” w pasku bocznym otwiera ekran natywny odpowiadający `/crm/meetings` (licznik zaproszeń czekających na odpowiedź przy pozycji):
+
+1. **Oś czasu** — widoki Dzień / Tydzień roboczy / Tydzień (siatka 24 h, godziny pracy 8–18 jaśniejsze, linia „teraz”, dziś wyróżnione, dni ustawowo wolne w nagłówku) oraz Lista (Nadchodzące / Zakończone). „Dziś” (⌘T), poprzedni/następny zakres (⌘← / ⌘→), wybór dnia. Nachodzące się spotkania dzielą szerokość kolumny.
+2. **Edycja na osi** — przeciągnięcie spotkania zmienia termin (co 15 min, także na inny dzień), dolna krawędź — długość; zaznaczenie wolnego czasu (albo kliknięcie) otwiera nowe spotkanie z tym terminem. W cyklu zmiana dotyczy tylko tego terminu. Zmiana terminu prosi uczestników o ponowną odpowiedź.
+3. **Firmowe i prywatne** — spotkanie prywatne (kłódka) widzą wyłącznie autor i uczestnicy, także administrator go nie widzi (RLS w bazie, plan dnia, kalendarz iCal). Filtry: Moje / Wszystkie, Firmowe / Prywatne, status, „Odrzucone przeze mnie”, „Czeka na moją odpowiedź”, wyszukiwanie.
+4. **Statusy i odpowiedzi** — spotkanie: Wstępne (paski), Potwierdzone, Odwołane (przekreślone, bez przypomnień); uczestnik: Czeka na odpowiedź (znak zapytania) / Przyjmuję / Może / Odrzucam. Odpowiedź uczestnika trafia do organizatora jako powiadomienie.
+5. **Szczegóły** w panelu bocznym (inspektor): termin, cykl, miejsce, organizator, uczestnicy z odpowiedziami, przypomnienia, notatki, odpowiedź na zaproszenie, status, Edytuj / Usuń (systemowe potwierdzenie, w cyklu „tylko ten” albo „ten i kolejne”). Prawy przycisk na spotkaniu — te same czynności.
+6. **Formularz** nowego spotkania i edycji — jak w CRM: tytuł, rodzaj, status, cały dzień, początek i koniec, powtarzanie (zakres zmian w cyklu), lokalizacja z bazy lub tekst, kolor, uczestnicy (pracownicy i kontakty), trzy przypomnienia, notatki.
+7. **Kopia na dysku** — wszystkie widoczne spotkania w `Application Support/Mavinci/Desktop/v1/meetings-….sealed` (AES-GCM, klucz w pęku kluczy). Ekran czyta z kopii od razu; synchronizacja przy starcie i co minutę pobiera tylko zmienione koszyki (`src/lib/native/sync.ts`) — także odpowiedzi uczestników i zmiany z przeglądarki. Zmiany z Maca widać od razu, a serwer je potwierdza.
+
+Serwer: `GET/POST /bridge/native/v1/meetings` (`op=state|employees|contacts|locations|holidays`, `items|save|respond|delete`, `src/lib/native/meetings.ts`) — `save_meeting` z pełną listą uczestników, `respond_to_meeting`, `delete_meeting_occurrences`, tokenem pracownika (RLS). Baza: migracja `20261111120000_meeting_privacy_status.sql` (prywatność, status, odpowiedzi; uruchomić przed wdrożeniem). Powiadomienia i „Mój plan” otwierają spotkanie na tym ekranie (`mavinci://meeting/<id>` też).
+
+## Aktualizacja 0.7 — Zapytania: lejek sprzedaży
+
+Pozycja „Zapytania” otwiera natywny lejek 1:1 ze stroną `/crm/inquiries` (zamiast tabeli):
+
+1. **Zwarty nagłówek** (dwa niskie wiersze, jak w CRM): zakres Moje / Współpracuję / Nieprzypisane / Zespół / Wszystkie z licznikami, widok Lejek / Lista, status Aktywne / Zamknięte / Wszystkie, ważona wartość lejka i — tylko gdy są — sprawy wymagające uwagi jako przełączniki-filtry (Bez opiekuna, SLA pierwszego kontaktu, Zaległe działania, Brak następnego działania). Opis kolejki w podpowiedzi ikony „i”. Wyszukiwanie w pasku narzędzi.
+2. **Lejek** — kolumny etapów (Nowe → Przegrane) z liczbą i wartością; karta: tytuł, źródło, rodzaj, etap, szansa, telefon, e-mail, opiekun, wartość, następny kontakt (zaległy na czerwono), braki. Przeciągnięcie karty do innej kolumny zmienia etap (do „Przegrane” — przez formularz z powodem utraty). Na karcie: Przejmij, Odłóż 1h, Kontakt wykonany; prawy przycisk — pełne menu (także „Przenieś do etapu”).
+3. **Lista** — tabela z etapem, opiekunem, wartością, szansą, następnym kontaktem i brakami.
+4. **Szczegóły** w panelu bocznym: klient (Zadzwoń / Napisz), sprzedaż, wydarzenie, oferta i wydarzenie powiązane, „Pełne szczegóły w CRM”. **Obsługa zapytania** (arkusz): tytuł, etap, opiekun (z uprawnieniem do przydzielania), następne działanie, ostatni kontakt, wartość, prawdopodobieństwo, kategoria i powód utraty. Usuwanie: baza sprawdza powiązania — trwałe usunięcie z potwierdzeniem albo archiwizacja z powodem.
+5. **Kopia na dysku** (`inquiries-….sealed`, AES-GCM) — lejek otwiera się od razu; synchronizacja co 30 s i po każdej czynności pobiera tylko zmienione koszyki.
+
+W przeglądarce zostają (przyciski otwierają je w CRM): „Dodaj zapytanie” (`/crm/inquiries?new=1`), ustawienia SLA (`?sla=1`), przekazanie zapytania i pełna strona zapytania.
+
+Serwer: `GET/POST /bridge/native/v1/inquiries` (`op=state|employees`, `items|move|update|claim|contact|snooze|remove`, `src/lib/native/inquiries.ts`) — te same zapytania i funkcje bazy co strona, tokenem pracownika.
+
+## Aktualizacja 0.8 — Zadania: tablice jak w CRM
+
+„Zadania firmowe” (`/crm/tasks`) i „Moje zadania” (`/crm/tasks/mine`) to natywne tablice 1:1 z CRM (zamiast dawnej tablicy z kopii kart):
+
+1. **Kolumny** Do zrobienia / W trakcie / Sprawdzenie (na tablicy prywatnej: Do sprawdzenia) / Zakończone (Ukończone), licznik i „+” (nowe zadanie w tej kolumnie). Karty w kolejności z CRM: priorytet, termin, kolejność.
+2. **Karta** jak `TaskCard`: tytuł, opis, priorytet, kto teraz pracuje (zielony), termin, komentarze, załączniki, przypisani (inicjały, Ty pierwszy), przycisk „Rozpocznij” / „Aktywny” (licznik czasu). Po najechaniu — Edytuj i Usuń; prawy przycisk — pełne menu („Przenieś do”, licznik, CRM).
+3. **Przeciąganie** jak w CRM: do „W trakcie” — zadanie przypisuje Ciebie jako pracującego i uruchamia licznik (gdy działa licznik innego zadania — komunikat); z „W trakcie” do sprawdzenia lub zakończenia — pytanie „Zatrzymać czas pracy?”. Administrator może wyłączyć automatyczny licznik w ustawieniach CRM. Gdy licznik działa, nad tablicą widać zadanie i czas startu z przyciskiem „Zatrzymaj”; „Rozpocznij” przy działającym liczniku pyta o zatrzymanie poprzedniego.
+4. **Wyszukiwanie** po tytule (pasek narzędzi) z liczbą wyników we wszystkich kolumnach.
+5. **Formularz** nowego zadania i edycji: tytuł, opis, priorytet, kolumna, termin wykonania; na tablicy firmowej także załączniki (kilka plików, przesyłane po zapisie z ponowieniem bez duplikatów) i przypisani pracownicy (powiadomienie push jak w CRM). Na tablicy prywatnej nowe zadanie jest prywatne, a ponowienie zapisu nie tworzy drugiego.
+6. **Szczegóły** w panelu bocznym: opis, termin, kto pracuje, autor, przypisani, powiązane zapytanie lub wydarzenie, załączniki (otwieranie), komentarze (dodawanie ⌘↩, usuwanie własnych), licznik, przeniesienie, Edytuj / Usuń, „Pełne szczegóły w CRM”.
+7. **Kopie na dysku** (`tasks-company-…`, `tasks-mine-…`, AES-GCM): tablice otwierają się od razu, synchronizacja co 30 s i po każdej czynności pobiera tylko zmienione koszyki; zmiana na jednej tablicy odświeża drugą. „Moje zadania” działają także bez uprawnienia do modułu zadań (jak w CRM).
+
+Pulpit, „Mój plan” i powiadomienia otwierają zadanie na jego tablicy (najpierw „Moje zadania”, potem „Zadania firmowe”).
+
+Awatary przypisanych osób to zdjęcia z CRM z tym samym kadrem (`avatar_metadata`: przesunięcie, skala), pobierane raz do `~/Library/Caches/Mavinci/avatars` (usuwane przy wylogowaniu); bez zdjęcia — pierwsza litera imienia. Pasek boczny: grupa (np. „Zadania”, „Oferty”) ma własny znacznik wyboru, więc świeci tylko wybrana pozycja; kliknięcie grupy rozwija ją i otwiera pierwszą pozycję, a grupa z wybraną pozycją rozwija się sama.
+
+Serwer: `GET/POST /bridge/native/v1/tasks` (`op=state|timer|detail|employees`, `items|save|move|delete|timer|comment|deleteComment`, załączniki `?op=attach` multipart; `src/lib/native/tasks.ts`) — te same zapytania i zapisy co CRM, tokenem pracownika.

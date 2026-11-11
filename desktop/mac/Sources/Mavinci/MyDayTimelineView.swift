@@ -27,9 +27,6 @@ struct MyDayTimelineView: View {
     @EnvironmentObject private var state: Workspace
     @Environment(\.crmTheme) private var theme
     @AppStorage("timelineDays") private var days = 1
-    @State private var items: [ScheduleItem] = []
-    @State private var loaded = false
-    @State private var failed = false
     @State private var hover: String?
 
     private var calendar: Calendar { var c = Calendar(identifier: .gregorian); c.locale = Locale(identifier: "pl_PL"); c.timeZone = TimeZone(identifier: "Europe/Warsaw")!; return c }
@@ -38,6 +35,7 @@ struct MyDayTimelineView: View {
         TimelineView(.periodic(from: .now, by: 60)) { context in
             let now = context.date
             let today = calendar.startOfDay(for: now)
+            let items = scheduleItems
             VStack(alignment: .leading, spacing: 14) {
                 HStack(alignment: .firstTextBaseline) {
                     VStack(alignment: .leading, spacing: 3) {
@@ -48,16 +46,17 @@ struct MyDayTimelineView: View {
                     Spacer()
                     Picker("Zakres", selection: $days) { Text("Dziś").tag(1); Text("3 dni").tag(3) }.pickerStyle(.segmented).labelsHidden().frame(width: 150)
                 }
-                if failed && items.isEmpty { Text("Nie udało się pobrać planu. Odśwież (⌘R).").font(.callout).foregroundStyle(.secondary) }
+                if state.scheduleFailed && items.isEmpty { Text("Nie udało się pobrać planu. Odśwież (⌘R).").font(.callout).foregroundStyle(.secondary) }
                 ForEach(0..<days, id: \.self) { offset in
                     let day = calendar.date(byAdding: .day, value: offset, to: today)!
-                    dayRow(day: day, now: now, offset: offset)
+                    dayRow(day: day, now: now, offset: offset, items: items)
                 }
             }
             .padding(20).frame(maxWidth: .infinity, alignment: .leading)
             .background(theme.card.opacity(theme == .light ? 1 : 0.85), in: RoundedRectangle(cornerRadius: 12))
         }
-        .task(id: "\(state.employee?.id ?? "")-\(state.refreshEventToken)") { await load() }
+        // Plan z dysku od razu; odświeża go synchronizacja obszaru roboczego (po dashboardzie).
+        .task(id: state.employee?.id) { if state.scheduleRows == nil { await state.loadSchedule() } }
     }
 
     private func dayTitle(_ day: Date, offset: Int) -> String {
@@ -67,7 +66,7 @@ struct MyDayTimelineView: View {
         f.dateFormat = "EEEE · d MMM"; return f.string(from: day).capitalized
     }
 
-    @ViewBuilder private func dayRow(day: Date, now: Date, offset: Int) -> some View {
+    @ViewBuilder private func dayRow(day: Date, now: Date, offset: Int, items: [ScheduleItem]) -> some View {
         let next = calendar.date(byAdding: .day, value: 1, to: day)!
         let dayItems = items.filter { $0.start < next && $0.end > day }
         let allDay = dayItems.filter(\.allDay)
@@ -164,7 +163,7 @@ struct MyDayTimelineView: View {
     private func open(_ item: ScheduleItem) {
         switch item.kind {
         case "meeting":
-            if state.employee?.canView(.calendar) == true { state.switchSection(.calendar); state.focusedID = "meeting:\(item.itemID)" }
+            state.showMeeting(item.itemID)
         case "task": state.open(.tasks, id: item.itemID)
         case "inquiry": state.open(.inquiries, id: item.itemID)
         case "event", "phase":
@@ -179,29 +178,17 @@ struct MyDayTimelineView: View {
         }
     }
 
-    private func load() async {
-        guard let employeeID = state.employee?.id, let api = state.eventAPI() else { return }
-        let from = calendar.startOfDay(for: Date())
-        let to = calendar.date(byAdding: .day, value: 3, to: from)!
-        let iso = ISO8601DateFormatter()
-        do {
-            let data = try await api.request("/rest/v1/rpc/get_employee_schedule", body: [
-                "p_employee_ids": .array([.string(employeeID)]), "p_from": .string(iso.string(from: from)), "p_to": .string(iso.string(from: to)),
-            ])
-            let rows = try JSONDecoder().decode([Row].self, from: data)
-            let parse = ISO8601DateFormatter(); parse.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            let plain = ISO8601DateFormatter()
-            func date(_ raw: String) -> Date? { parse.date(from: raw) ?? plain.date(from: raw) }
-            items = rows.compactMap { row in
-                guard row["employee_id"] == employeeID, ScheduleItem.kinds[row["kind"]] != nil, let start = date(row["starts_at"]), let end = date(row["ends_at"]) else { return nil }
-                return ScheduleItem(kind: row["kind"], itemID: row["item_id"], title: row["title"].isEmpty ? (ScheduleItem.kinds[row["kind"]]?.label ?? "") : row["title"],
-                                    subtitle: row["subtitle"], start: start, end: max(end, start.addingTimeInterval(900)), allDay: row.fields["all_day"]?.flag == true,
-                                    status: row["status"], color: WorkspacePresentation.color(row["color"]) ?? CrmTheme.rgb(0xd3bb73), url: row["url"])
-            }
-            failed = false
-        } catch {
-            failed = true
+    /// Pozycje planu z `get_employee_schedule` (kopia na dysku, odświeżana w tle przez obszar roboczy).
+    private var scheduleItems: [ScheduleItem] {
+        guard let rows = state.scheduleRows, let employeeID = state.employee?.id else { return [] }
+        let parse = ISO8601DateFormatter(); parse.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let plain = ISO8601DateFormatter()
+        func date(_ raw: String) -> Date? { parse.date(from: raw) ?? plain.date(from: raw) }
+        return rows.compactMap { row in
+            guard row["employee_id"] == employeeID, ScheduleItem.kinds[row["kind"]] != nil, let start = date(row["starts_at"]), let end = date(row["ends_at"]) else { return nil }
+            return ScheduleItem(kind: row["kind"], itemID: row["item_id"], title: row["title"].isEmpty ? (ScheduleItem.kinds[row["kind"]]?.label ?? "") : row["title"],
+                                subtitle: row["subtitle"], start: start, end: max(end, start.addingTimeInterval(900)), allDay: row.fields["all_day"]?.flag == true,
+                                status: row["status"], color: WorkspacePresentation.color(row["color"]) ?? CrmTheme.rgb(0xd3bb73), url: row["url"])
         }
-        loaded = true
     }
 }

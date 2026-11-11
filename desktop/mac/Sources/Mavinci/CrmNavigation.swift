@@ -52,7 +52,6 @@ struct NavItem: Codable, Identifiable, Hashable {
         case "/crm/calendar": return .calendar
         case "/crm/events": return .events
         case "/crm/inquiries": return .inquiries
-        case "/crm/tasks/mine": return .tasks
         case "/crm/contacts": return .contacts
         case "/crm/offers": return href.contains("tab=") && !href.contains("tab=offers") ? nil : .offers
         case "/crm/tenders": return .tenders
@@ -60,12 +59,20 @@ struct NavItem: Codable, Identifiable, Hashable {
         }
     }
     /// Ekran natywny spoza `Module` (Wiadomości).
-    var screen: CrmScreen? { path == "/crm/messages" ? .messages : nil }
+    var screen: CrmScreen? {
+        switch path {
+        case "/crm/messages": return .messages
+        case "/crm/meetings": return .meetings
+        case "/crm/tasks": return .companyTasks
+        case "/crm/tasks/mine": return .myTasks
+        default: return nil
+        }
+    }
     var flattened: [NavItem] { [self] + (children ?? []).flatMap(\.flattened) }
 }
 
 /// Ekrany natywne, które nie są zbiorami danych obszaru roboczego (`Module`).
-enum CrmScreen: String { case messages }
+enum CrmScreen: String { case messages, meetings, companyTasks, myTasks }
 
 /// Strona CRM, której ekranu natywnego jeszcze nie ma — tymczasowo otwiera ją w przeglądarce.
 struct CrmWebPlaceholder: View {
@@ -86,18 +93,40 @@ struct CrmWebPlaceholder: View {
 
 struct CrmSidebar: View {
     @EnvironmentObject private var state: Workspace
+    @State private var expanded: Set<String> = []
     var body: some View {
-        List(selection: Binding(get: { state.sidebarHref }, set: { href in if let href { state.openHref(href) } })) {
+        List(selection: Binding(get: { state.sidebarHref }, set: { tag in
+            guard let tag else { return }
+            // Grupa (np. „Zadania”) ma własny znacznik — wcześniej dziedziczyła adres pierwszej pozycji i świeciła razem z nią.
+            if tag.hasPrefix("group:") {
+                let key = String(tag.dropFirst("group:".count))
+                guard let group = state.navigation.first(where: { $0.key == key }) else { return }
+                expanded.insert(key)
+                if let first = group.children?.first { state.openHref(first.href) }
+            } else {
+                state.openHref(tag)
+            }
+        })) {
             ForEach(state.navigation) { item in
                 if let children = item.children, !children.isEmpty {
-                    DisclosureGroup {
+                    DisclosureGroup(isExpanded: Binding(get: { expanded.contains(item.key) }, set: { open in
+                        if open { expanded.insert(item.key) } else { expanded.remove(item.key) }
+                    })) {
                         ForEach(children) { child in row(child).tag(child.href) }
                     } label: { row(item) }
+                    .tag("group:\(item.key)")
                 } else {
                     row(item).tag(item.href)
                 }
             }
         }
+        .onAppear { expandSelected() }
+        .onChange(of: state.sidebarHref) { _, _ in expandSelected() }
+    }
+    /// Grupa z wybraną pozycją jest rozwinięta (także po otwarciu sekcji z pulpitu lub powiadomienia).
+    private func expandSelected() {
+        guard let href = state.sidebarHref else { return }
+        for item in state.navigation where item.children?.contains(where: { $0.href == href }) == true { expanded.insert(item.key) }
     }
     private func row(_ item: NavItem) -> some View {
         HStack {
@@ -105,6 +134,7 @@ struct CrmSidebar: View {
             Spacer()
             if item.module == nil && item.screen == nil && (item.children ?? []).isEmpty { Image(systemName: "arrow.up.forward.square").font(.caption).foregroundStyle(.tertiary).help("Otwiera się w przeglądarce") }
             if item.screen == .messages { MessagesUnreadBadge(store: state.messages) }
+            if item.screen == .meetings { MeetingsPendingBadge(store: state.meetings) }
             if item.module == .inquiries, state.openInquiries > 0 { Text("\(state.openInquiries)").foregroundStyle(.secondary).monospacedDigit() }
         }
     }

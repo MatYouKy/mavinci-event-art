@@ -352,6 +352,8 @@ export const calendarApi = createApi({
       location_id?: string | null;
       location_text?: string | null;
       related_event_ids?: string[] | null;
+      is_private?: boolean;
+      status?: 'tentative' | 'confirmed' | 'cancelled';
       participants?: Array<{
         employee_id?: string;
         contact_id?: string;

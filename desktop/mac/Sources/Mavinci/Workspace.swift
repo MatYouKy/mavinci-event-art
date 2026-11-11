@@ -32,6 +32,13 @@ import Network
     let native = NativeStore()
     /// Wiadomości (`/crm/messages`) — stan zachowany przy przełączaniu sekcji.
     let messages = MessagesStore()
+    /// Spotkania (`/crm/meetings`) — kopia na dysku i oś czasu.
+    let meetings = MeetingsStore()
+    /// Lejek zapytań (`/crm/inquiries`) — kopia na dysku, kolumny etapów i obsługa zapytań.
+    let inquiries = InquiriesStore()
+    /// Zadania: „Zadania firmowe” (`/crm/tasks`) i „Moje zadania” (`/crm/tasks/mine`) — kopie na dysku i tablice.
+    let companyTasks = TasksStore(board: .company)
+    let myTasks = TasksStore(board: .mine)
     /// Ekran natywny spoza `Module` (np. Wiadomości) wybrany z paska bocznego CRM.
     @Published var screen: CrmScreen?
     /// Motyw okna (`employees.crm_theme`); do pierwszego odczytu profilu — ostatni motyw zapisany na tym Macu.
@@ -48,6 +55,12 @@ import Network
     private var dashboardLoadedAt: Date?
     private var backend: HTTPBackend?
     private var cache: LocalCache?
+    /// Przestrzeń kopii lokalnej zalogowanego pracownika (dashboard, plan dnia — obok kopii zbiorów i Wiadomości).
+    private var cacheNamespace: String?
+    /// Plan dnia (`get_employee_schedule`) — z dysku od razu, odświeżany w tle.
+    @Published var scheduleRows: [Row]?
+    @Published var scheduleFailed = false
+    private var scheduleLoading = false
     private var generation = UUID()
     private let monitor = NWPathMonitor()
     private var pathAvailable = true
@@ -59,6 +72,10 @@ import Network
     var unread: Int { rows(.notifications).filter { $0.fields["is_read"]?.flag != true }.count }
     init() {
         messages.workspace = self
+        meetings.workspace = self
+        inquiries.workspace = self
+        companyTasks.workspace = self
+        myTasks.workspace = self
         monitor.pathUpdateHandler = { [weak self] path in
             Task { @MainActor in
                 self?.pathAvailable = path.status == .satisfied
@@ -83,10 +100,16 @@ import Network
             cache = LocalCache(namespace: digest("\(connection.identity)|\(session.user.id)"))
             native.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             messages.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
+            meetings.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
+            inquiries.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
+            companyTasks.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
+            myTasks.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
+            openLocalViews(namespace: digest("\(connection.identity)|\(session.user.id)"))
             Task { await BrandStore.refresh(nativeAPI()) }
-            // Cached permissions are valid only for reading, for at most 24 hours without server verification.
+            // Kopia z dysku od razu (bez czekania na sieć); zapis dopiero po potwierdzeniu profilu na serwerze.
+            // Bez połączenia kopia starsza niż 24 h jest ukrywana (`refresh` — ochrona przed odebranymi uprawnieniami).
             let saved = try cache?.load()
-            if let saved, Date().timeIntervalSince(saved.savedAt) <= 86_400 { snapshot = saved; offline = true }
+            if let saved, Date().timeIntervalSince(saved.savedAt) <= 30 * 86_400 { snapshot = saved; restoreNavigation() }
             await refresh(force: true)
         } catch {
             self.error = friendlyError(error)
@@ -107,9 +130,15 @@ import Network
             cache = LocalCache(namespace: digest("\(connection.identity)|\(session.user.id)"))
             native.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             messages.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
+            meetings.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
+            inquiries.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
+            companyTasks.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
+            myTasks.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
+            openLocalViews(namespace: digest("\(connection.identity)|\(session.user.id)"))
             Task { await BrandStore.refresh(nativeAPI()) }
             snapshot = Snapshot(employee: employee)
             if let saved = try? cache?.load(), saved.employee == employee { snapshot = saved }
+            restoreNavigation()
             verifiedConnection = true; offline = false; snack = nil
             await refresh(force: true)
         } catch {
@@ -138,6 +167,13 @@ import Network
             if snapshot == nil { snapshot = Snapshot(employee: current) }
             verifiedConnection = true; offline = false; error = nil
             compatibilityMode = false
+            // Kolejność jak na ekranie: dashboard i menu, plan dnia, potem zbiory (tylko zmiany), na końcu Wiadomości.
+            if nativeAPI() != nil {
+                await loadDashboard(force: force)
+                await loadNavigation()
+            }
+            guard ticket == generation else { return }
+            await loadSchedule()
             for module in modules where module != .day && module != .events {
                 guard ticket == generation else { return }
                 do {
@@ -178,12 +214,11 @@ import Network
                 }
             }
             guard ticket == generation else { return }
-            // Menu i dashboard z serwera CRM: błąd nie przerywa pracy na pozostałych danych.
-            if nativeAPI() != nil {
-                await loadNavigation()
-                await loadDashboard(force: force)
-            }
-            guard ticket == generation else { return }
+            Task { await messages.backgroundSync() }
+            if current.canView(.calendar) { Task { await meetings.backgroundSync() } }
+            if current.canView(.inquiries) { Task { await inquiries.backgroundSync() } }
+            Task { await myTasks.backgroundSync() }
+            if current.canView(.tasks) { Task { await companyTasks.backgroundSync() } }
             // Do not extend the offline permission lease on a partial/failed synchronization.
             if moduleErrors.isEmpty { snapshot?.savedAt = Date() }
             if !editing { refreshEventToken = UUID() }
@@ -195,7 +230,7 @@ import Network
             guard ticket == generation else { return }
             if error is URLError {
                 offline = true; verifiedConnection = false
-                if let snapshot, Date().timeIntervalSince(snapshot.savedAt) > 86_400 { self.snapshot = nil }
+                if let snapshot, Date().timeIntervalSince(snapshot.savedAt) > 86_400 { self.snapshot = nil; dashboard = nil; scheduleRows = nil }
                 self.error = friendlyError(error)
             } else if let issue = error as? AppError, issue == .unauthorized || issue == .noEmployee || issue == .forbidden {
                 await logout()
@@ -247,13 +282,17 @@ import Network
     func logout() async {
         let old = backend
         generation = UUID()
+        AvatarCache.shared.clear()
         // Local sign-out is immediate; server revocation cannot keep data visible.
         backend = nil
         snapshot = nil; selection = .day; focusedID = nil; eventRoute = nil; notificationsVisible = false
         verifiedConnection = false; offline = false; syncing = false; acting = false; editing = false
         moduleErrors = [:]; compatibilityMode = false; notice = nil; snack = nil; pending = nil
-        nativeSet = nil; nativeFocus = nil; native.clear(); messages.reset(); screen = nil
+        nativeSet = nil; nativeFocus = nil; native.clear(); messages.reset(); meetings.reset(); inquiries.reset(); companyTasks.reset(); myTasks.reset(); screen = nil
         navigation = []; sidebarHref = "/crm"; webItem = nil; dashboard = nil; dashboardLoadedAt = nil; dashboardError = nil
+        scheduleRows = nil; scheduleFailed = false
+        if let cacheNamespace { for name in ["dashboard", "schedule"] { try? SealedFile<Data>(namespace: "\(name)-\(cacheNamespace)").clear() } }
+        cacheNamespace = nil
         do { try Vault.delete("session-\(connection.identity)") }
         catch { self.error = "Nie udało się usunąć danych logowania z pęku kluczy. Zamknij aplikację i sprawdź dostęp do pęku kluczy." }
         do { try cache?.clear() }
@@ -291,8 +330,11 @@ import Network
     }
     @discardableResult func navigate(_ module:Module,id:String) async -> Bool {
         let owner=employee
+        // Zadanie z tablicy „Moje zadania” (dostępnej dla każdego) — także bez uprawnienia do modułu zadań.
+        if module == .tasks, owner != nil, myTasks.task(id) != nil {showTask(id);return true}
         guard let owner,owner.canView(module),UUID(uuidString:id) != nil else {notice="Nie masz dostępu do tej sekcji.";return false}
         if module == .events {showEvent(id);return true}
+        if module == .tasks, myTasks.task(id) != nil || companyTasks.task(id) != nil {showTask(id);return true}
         var record=rows(module).first{$0.id==id || (module == .calendar && $0["source_id"]==id)}
         if record == nil,let backend,!offline {
             do {record=try await backend.record(module,id:id)}
@@ -401,6 +443,36 @@ extension Workspace {
         if reply.navigation != navigation { navigation = reply.navigation }
         if let encoded = try? JSONEncoder().encode(reply.navigation) { UserDefaults.standard.set(encoded, forKey: navigationKey) }
     }
+    /// Dashboard i plan dnia z dysku (zaszyfrowane jak pozostałe dane) — widoczne od razu po uruchomieniu.
+    func openLocalViews(namespace: String) {
+        cacheNamespace = namespace
+        if let data = try? SealedFile<Data>(namespace: "dashboard-\(namespace)").load(), let saved = try? JSONDecoder().decode(DashboardData.self, from: data) {
+            dashboard = saved
+        }
+        if let data = try? SealedFile<Data>(namespace: "schedule-\(namespace)").load(), let rows = try? JSONDecoder().decode([Row].self, from: data) {
+            scheduleRows = rows
+        }
+    }
+    /// Plan dnia (dziś + 3 dni) — `get_employee_schedule`, zapis na dysku po każdym odświeżeniu.
+    func loadSchedule() async {
+        guard let employeeID = employee?.id, let backend, !scheduleLoading else { return }
+        scheduleLoading = true
+        defer { scheduleLoading = false }
+        var calendar = Calendar(identifier: .gregorian); calendar.timeZone = TimeZone(identifier: "Europe/Warsaw") ?? .current
+        let from = calendar.startOfDay(for: Date())
+        let to = calendar.date(byAdding: .day, value: 3, to: from) ?? from
+        let iso = ISO8601DateFormatter()
+        do {
+            let data = try await backend.request("/rest/v1/rpc/get_employee_schedule", body: [
+                "p_employee_ids": .array([.string(employeeID)]), "p_from": .string(iso.string(from: from)), "p_to": .string(iso.string(from: to)),
+            ])
+            scheduleRows = try JSONDecoder().decode([Row].self, from: data)
+            scheduleFailed = false
+            if let cacheNamespace { try? SealedFile<Data>(namespace: "schedule-\(cacheNamespace)").save(data) }
+        } catch {
+            scheduleFailed = true
+        }
+    }
     func loadDashboard(force: Bool = false) async {
         guard let api = nativeAPI(), !dashboardLoading else { return }
         if !force, let at = dashboardLoadedAt, Date().timeIntervalSince(at) < 300 { return }
@@ -410,6 +482,7 @@ extension Workspace {
             let data = try await api.get("/dashboard")
             dashboard = try JSONDecoder().decode(DashboardData.self, from: data)
             dashboardLoadedAt = Date(); dashboardError = nil
+            if let cacheNamespace { try? SealedFile<Data>(namespace: "dashboard-\(cacheNamespace)").save(data) }
         } catch is URLError {
             dashboardError = "Brak połączenia z serwerem CRM — pokazuję ostatnio pobrany dashboard."
         } catch {
@@ -418,7 +491,9 @@ extension Workspace {
     }
     /// Pozycja paska bocznego: ekran natywny albo (na razie) strona CRM w przeglądarce.
     func openHref(_ href: String) {
-        guard let item = navigation.flatMap(\.flattened).first(where: { $0.href == href }) else { return }
+        // Pozycja końcowa ma pierwszeństwo przed grupą o tym samym adresie (np. „Zadania” i „Zadania firmowe” → /crm/tasks).
+        let items = navigation.flatMap(\.flattened)
+        guard let item = items.first(where: { $0.href == href && ($0.children ?? []).isEmpty }) ?? items.first(where: { $0.href == href }) else { return }
         if let module = item.module, employee?.canView(module) == true { switchSection(module); sidebarHref = href; return }
         if let screen = item.screen {
             eventRoute = nil; focusedID = nil; notificationsVisible = false; nativeSet = nil; webItem = nil; selection = nil

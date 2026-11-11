@@ -175,7 +175,10 @@ struct MessageActions {
         .navigationSubtitle(store.info?.canManage == true ? "Zarządzaj komunikacją z klientami" : "Przeglądaj wiadomości email")
         .searchable(text: $store.searchText, placement: .toolbar, prompt: "Szukaj...")
         .onSubmit(of: .search) { Task { await store.search() } }
-        .task(id: state.employee?.id) { if store.info == nil { await store.loadInfo() } }
+        .task(id: state.employee?.id) {
+            if store.info == nil { await store.loadInfo() }
+            if store.items.isEmpty { await store.backgroundSync() }
+        }
     }
 
     /// Panel w natywnym widoku podziału — z motywem i obszarem roboczym jak reszta okna.
