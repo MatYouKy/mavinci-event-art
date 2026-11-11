@@ -23,7 +23,7 @@ struct EventPageView: View {
                             }.buttonStyle(.plain).accessibilityAddTraits(store.selectedTab == tab ? .isSelected : [])
                         }
                     }.padding(10)
-                }.background(.bar)
+                }.crmBar()
                 if store.selectedTab == .overview { overview(page) }
                 else { EventDataView(store:store,form:$form).id(store.selectedTab) }
             } else if store.loading {
@@ -154,7 +154,7 @@ struct EventDataView: View {
                 TextField("Szukaj w zakładce",text:$filter).textFieldStyle(.roundedBorder).frame(maxWidth:300)
                 Spacer()
                 if let page=store.page { createButtons(page) }
-            }.padding(12).background(.bar)
+            }.padding(12).crmBar()
             ForEach(store.sections.filter { $0.error != nil }) { s in
                 Text("\(s.title): \(s.error ?? "")").font(.callout).foregroundStyle(.orange).frame(maxWidth:.infinity,alignment:.leading).padding(.horizontal,14).padding(.vertical,6)
             }
@@ -200,7 +200,7 @@ struct EventDataView: View {
               }.frame(width:available.size.width,height:available.size.height)
             }.frame(maxWidth:.infinity,maxHeight:.infinity)
             if let gap=remainingActions {
-                Text(gap).font(.caption).foregroundStyle(.secondary).frame(maxWidth:.infinity,alignment:.leading).padding(10).background(.bar)
+                Text(gap).font(.caption).foregroundStyle(.secondary).frame(maxWidth:.infinity,alignment:.leading).padding(10).crmBar()
             }
         }.sheet(item:$preview) { NativeDocumentPreview(preview:$0) }
         .fileImporter(isPresented:$importing,allowedContentTypes:[.item]) { result in

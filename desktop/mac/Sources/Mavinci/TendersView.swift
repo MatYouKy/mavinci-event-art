@@ -34,7 +34,7 @@ import AppKit
                     Picker("Status",selection:$status){Text("Wszystkie statusy").tag("");ForEach(TenderDetails.statuses,id:\.self){Text(Labels.text($0)).tag($0)}}.frame(maxWidth:195)
                     Toggle("Także przeszłe i ukryte",isOn:$includeHidden).toggleStyle(.checkbox)
                     Spacer();Text("\(rows.count) pozycji").foregroundStyle(.secondary)
-                }.padding(.horizontal,14).frame(height:46).background(.bar)
+                }.padding(.horizontal,14).frame(height:46).crmBar()
                 GeometryReader{available in
                     let side=wide && selectedID != nil
                     HStack(alignment:.top,spacing:0){

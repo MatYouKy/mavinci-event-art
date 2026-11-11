@@ -17,6 +17,8 @@ actor HTTPBackend: WorkspaceBackend {
     private var session: Session?
     private var invalidated = false
     private var refreshJob: Task<Session, Error>?
+    /// Motyw CRM z ostatniego odczytu profilu (`employees.crm_theme`) — osobno od `Employee`, żeby zmiana motywu nie unieważniała kopii danych.
+    private(set) var crmTheme: String?
     private let http: URLSession
     init(_ connection: Connection) {
         self.connection = connection
@@ -96,10 +98,12 @@ actor HTTPBackend: WorkspaceBackend {
     func profile() async throws -> Employee {
         if native { return try JSONDecoder().decode(Employee.self, from: await request("/api/native/v1/me")) }
         guard let session else { throw AppError.unauthorized }
-        let select = "id,auth_user_id,name,surname,role,access_level,permissions,finance_access_scope,company_access_mode,my_company_ids,invoice_company_permissions,finance_company_access,sales_team_id,is_active,event_tabs,access_levels(event_tabs)"
+        let select = "id,auth_user_id,name,surname,role,access_level,permissions,finance_access_scope,company_access_mode,my_company_ids,invoice_company_permissions,finance_company_access,sales_team_id,is_active,event_tabs,crm_theme,access_levels(event_tabs)"
         let data = try await request("/rest/v1/employees", query: [.init(name: "select", value: select), .init(name: "auth_user_id", value: "eq.\(session.user.id)"), .init(name: "is_active", value: "eq.true")])
         let rows = try JSONDecoder().decode([Employee].self, from: data)
         guard rows.count == 1 else { throw AppError.noEmployee }
+        struct ThemeRow: Decodable { let crm_theme: String? }
+        crmTheme = (try? JSONDecoder().decode([ThemeRow].self, from: data))?.first?.crm_theme
         return rows[0]
     }
     func sync(_ module: Module, hashes: [String: String]) async throws -> SyncReply {

@@ -1,6 +1,6 @@
 # Mavinci na macOS
 
-Aktualna wersja: **0.3.0**. Bieżący zakres wydarzeń i kalendarza oraz dokładna macierz brakujących operacji znajdują się w sekcji „Aktualizacja 0.2” poniżej. Opis pierwszego etapu pozostawiono jako historię zakresu.
+Aktualna wersja: **0.4.0** (zakres — sekcja „Aktualizacja 0.4” na końcu). Bieżący zakres wydarzeń i kalendarza oraz dokładna macierz brakujących operacji znajdują się w sekcji „Aktualizacja 0.2” poniżej. Opis pierwszego etapu pozostawiono jako historię zakresu.
 
 Natywna aplikacja SwiftUI, macOS 14 lub nowszy, Swift 5.9+. Katalog `desktop/mac` jest równorzędny z `mobile`. Bez osadzonego panelu WWW i zewnętrznych bibliotek Swift.
 
@@ -168,3 +168,14 @@ Przy zmianie sekcji powiadomienie o błędzie nie zwęża list. Skróty: ⌘1 M�
 
 
 Powiadomienia procesu wydarzeń: dzienny digest trafia wyłącznie do autora wydarzenia. Drawer udostępnia bezpośrednie przyciski do wydarzeń ujętych w podsumowaniu. Odroczenie przypomnienia i pełna kolejka kolejnych kroków są obecnie dostępne w CRM.
+
+
+## Aktualizacja 0.4 — CRM 1:1: menu, dashboard i motywy
+
+Kierunek: aplikacja jest **odpowiednikiem 1:1 CRM w przeglądarce** (te same sekcje, ekrany, zakładki i kolejność), zbudowanym z natywnych elementów macOS: tabele natywne zamiast tabel HTML, arkusze zamiast modali, menu natywne zamiast „⋯”, systemowe potwierdzenia, wykresy Swift Charts, oś czasu i tablice kanban.
+
+1. **Pasek boczny jak w CRM** — `GET /bridge/native/v1/navigation` zwraca menu pracownika liczone tą samą funkcją co pasek w przeglądarce (`navigationForUser` w `src/lib/CRM/navigation/getNavigationForUser.server.ts`: uprawnienia, realizacje, `navigation_order`). Pozycje z ekranem natywnym otwierają go w aplikacji; pozostałe (oznaczone ↗) tymczasowo otwierają stronę CRM w przeglądarce. Ostatnie menu jest zapamiętane na Macu do pierwszego odczytu.
+2. **Dashboard jak `/crm`** — `GET /bridge/native/v1/dashboard` liczy dane funkcjami `dashboardData.ts` (te same co strona), tokenem pracownika. Kafelki, szybkie akcje, podsumowanie i aktywność są filtrowane na serwerze (`canView` / `canCreate`). Widok: „Mój plan” (oś czasu dziś / 3 dni z `get_employee_schedule`), trend sprzedażowy i lejek (Swift Charts), wpływy / wydatki / wynik kasowy, „Wymaga działania”, ostatnia aktywność, szybkie akcje i „Pozostałe wskaźniki”. Sprzedawca: oś czasu i „Mój dzień” jak w CRM. Dashboard odświeża się co 5 minut i na ⌘R.
+3. **Motywy** — burgund, granat, ciemny i jasny jak w CRM (`employees.crm_theme`); Ustawienia → Wygląd. Zmiana zapisuje się w profilu i obowiązuje także w przeglądarce.
+
+Serwer: `src/app/bridge/native/v1/*` (Bearer — token Supabase z aplikacji, `src/lib/native/auth.ts`); bez klucza serwisowego. `dashboardData.ts` przyjmuje klienta z tokenem przez `withNativeDashboardClient` (AsyncLocalStorage, tylko na czas żądania). Mobile: nie dotyczy — zmiany dotyczą aplikacji na Maca i jej API.

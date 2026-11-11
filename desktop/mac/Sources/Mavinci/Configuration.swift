@@ -7,6 +7,14 @@ struct Connection: Codable, Equatable {
     var provider: Provider = .supabase
     var url = ""
     var publicKey = ""
+    /// Adres serwera CRM (natywne API `/bridge/native/v1` i strony CRM w przeglądarce). Brak w starszej konfiguracji → mavinci.pl.
+    var crmURL: String?
+    var crm: String? {
+        let raw = (crmURL?.isEmpty == false ? crmURL! : "https://mavinci.pl").trimmingCharacters(in: CharacterSet(charactersIn: "/ "))
+        guard let u = URLComponents(string: raw), let host = u.host, !host.isEmpty,
+              u.scheme == "https" || (u.scheme == "http" && ["localhost", "127.0.0.1", "::1"].contains(host)) else { return nil }
+        return raw
+    }
     var valid: Bool {
         guard let u = URLComponents(string: url), let host = u.host, !host.isEmpty,
               u.user == nil, u.password == nil, u.query == nil, u.fragment == nil,

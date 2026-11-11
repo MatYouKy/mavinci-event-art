@@ -49,7 +49,7 @@ import AppKit
                         Label("Kontakty CRM",systemImage:"building.2").font(.caption).foregroundStyle(.secondary)
                         Button("Edytuj",systemImage:"square.and.pencil"){editingContact=true}.keyboardShortcut("e").disabled(selected==nil || !state.canWrite || !state.allowed("contact_update"))
                     }
-                }.padding(.horizontal,14).frame(height:46).background(.bar)
+                }.padding(.horizontal,14).frame(height:46).crmBar()
                 GeometryReader { available in
                     let side=wide && selected != nil && module != .events
                     let sideWidth:CGFloat=350
@@ -63,7 +63,7 @@ import AppKit
                     }.frame(width:available.size.width,height:available.size.height,alignment:.topLeading)
                 }
                 if module == .contacts {
-                    Text("Wyłącznie kartoteka CRM. Aplikacja nie odczytuje ani nie łączy prywatnych kontaktów z telefonu lub Maca.").font(.caption).foregroundStyle(.secondary).frame(maxWidth:.infinity,alignment:.leading).padding(10).background(.bar)
+                    Text("Wyłącznie kartoteka CRM. Aplikacja nie odczytuje ani nie łączy prywatnych kontaktów z telefonu lub Maca.").font(.caption).foregroundStyle(.secondary).frame(maxWidth:.infinity,alignment:.leading).padding(10).crmBar()
                 }
             }.frame(width:outer.size.width,height:outer.size.height,alignment:.topLeading)
             .onChange(of:selection){_,id in

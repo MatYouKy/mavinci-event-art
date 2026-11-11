@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import AppKit
 import Network
 
 @MainActor final class Workspace: ObservableObject {
@@ -20,6 +21,22 @@ import Network
     @Published var moduleErrors: [String: String] = [:]
     @Published var compatibilityMode = false
     @Published var notice: String?
+    /// Sekcje CRM opisywane przez serwer (`/bridge/native/v1`): wybrany zbiór i rekord do pokazania po przejściu.
+    @Published var nativeSet: String?
+    @Published var nativeFocus: String?
+    let native = NativeStore()
+    /// Motyw okna (`employees.crm_theme`); do pierwszego odczytu profilu — ostatni motyw zapisany na tym Macu.
+    @Published var theme = CrmTheme.saved
+    /// Menu jak w CRM (z serwera; ostatnie zapisane na tym Macu do pierwszego odczytu) i wybrana pozycja paska bocznego.
+    @Published var navigation: [NavItem] = []
+    @Published var sidebarHref: String? = "/crm"
+    /// Strona CRM bez ekranu natywnego (tymczasowo otwierana w przeglądarce).
+    @Published var webItem: NavItem?
+    /// Dashboard jak strona `/crm` (z serwera, te same reguły widoczności); odświeżany co 5 minut i na ⌘R.
+    @Published var dashboard: DashboardData?
+    @Published var dashboardError: String?
+    @Published var dashboardLoading = false
+    private var dashboardLoadedAt: Date?
     private var backend: HTTPBackend?
     private var cache: LocalCache?
     private var generation = UUID()
@@ -54,6 +71,7 @@ import Network
             let api = HTTPBackend(connection); backend = api
             await api.restore(session)
             cache = LocalCache(namespace: digest("\(connection.identity)|\(session.user.id)"))
+            native.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             // Cached permissions are valid only for reading, for at most 24 hours without server verification.
             let saved = try cache?.load()
             if let saved, Date().timeIntervalSince(saved.savedAt) <= 86_400 { snapshot = saved; offline = true }
@@ -75,6 +93,7 @@ import Network
             guard ticket == generation else { return }
             backend = api
             cache = LocalCache(namespace: digest("\(connection.identity)|\(session.user.id)"))
+            native.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             snapshot = Snapshot(employee: employee)
             if let saved = try? cache?.load(), saved.employee == employee { snapshot = saved }
             verifiedConnection = true; offline = false
@@ -94,6 +113,7 @@ import Network
             let current = try await backend.profile()
             guard ticket == generation else { return }
             guard current.is_active else { throw AppError.noEmployee }
+            if let raw = await backend.crmTheme, let next = CrmTheme(rawValue: raw), next != theme { theme = next; next.remember() }
             if snapshot?.employee != current {
                 try cache?.clear()
                 snapshot = Snapshot(employee: current)
@@ -142,6 +162,12 @@ import Network
                     if !(error is URLError) { snapshot?.salesDay = .null }
                     moduleErrors["day"] = friendlyError(error)
                 }
+            }
+            guard ticket == generation else { return }
+            // Menu i dashboard z serwera CRM: błąd nie przerywa pracy na pozostałych danych.
+            if nativeAPI() != nil {
+                await loadNavigation()
+                await loadDashboard(force: force)
             }
             guard ticket == generation else { return }
             // Do not extend the offline permission lease on a partial/failed synchronization.
@@ -212,6 +238,8 @@ import Network
         snapshot = nil; selection = .day; focusedID = nil; eventRoute = nil; notificationsVisible = false
         verifiedConnection = false; offline = false; syncing = false; acting = false; editing = false
         moduleErrors = [:]; compatibilityMode = false; notice = nil
+        nativeSet = nil; nativeFocus = nil; native.clear()
+        navigation = []; sidebarHref = "/crm"; webItem = nil; dashboard = nil; dashboardLoadedAt = nil; dashboardError = nil
         do { try Vault.delete("session-\(connection.identity)") }
         catch { self.error = "Nie udało się usunąć danych logowania z pęku kluczy. Zamknij aplikację i sprawdź dostęp do pęku kluczy." }
         do { try cache?.clear() }
@@ -229,7 +257,8 @@ import Network
     }
     func switchSection(_ module:Module) {
         guard employee?.canView(module)==true else{return}
-        eventRoute=nil;focusedID=nil;notificationsVisible=false;selection=module
+        eventRoute=nil;focusedID=nil;notificationsVisible=false;nativeSet=nil;webItem=nil;selection=module
+        sidebarHref = navigation.flatMap(\.flattened).first { $0.module == module }?.href ?? sidebarHref
     }
     func eventAPI() -> HTTPBackend? { backend }
     func persistSnapshot() {if let snapshot {try? cache?.save(snapshot)}}
@@ -262,5 +291,123 @@ import Network
         if !rows(target).contains(where:{$0.id==record.id}) {snapshot?.collections[target.rawValue]?.buckets["linked"]=Array((snapshot?.collections[target.rawValue]?.buckets["linked"] ?? []).filter{$0.id != record.id})+[record]}
         eventRoute=nil;focusedID=record.id;selection=target;focusToken=UUID()
         return true
+    }
+
+    // MARK: Sekcje CRM z serwera (natywne karty)
+    func nativeAPI() -> NativeAPI? {
+        guard let backend, let base = connection.crm else { return nil }
+        return NativeAPI(base: base, backend: backend)
+    }
+    func showNative(_ set: String, focus: String? = nil) {
+        guard native.meta(set) != nil || native.records[set] != nil else { notice = "Ta sekcja nie jest dostępna w Twoim zakresie danych."; return }
+        eventRoute = nil; focusedID = nil; notificationsVisible = false; selection = nil; nativeSet = set
+        nativeFocus = focus; focusToken = UUID()
+    }
+    /// Adres CRM w przeglądarce systemowej (ścieżka `/crm/…` albo pełny adres); `mavinci://event/<id>` otwiera natywną stronę wydarzenia.
+    func openCRM(_ target: String) {
+        if target.hasPrefix("mavinci://event/") { let id = String(target.dropFirst("mavinci://event/".count)); if UUID(uuidString: id) != nil { showEvent(id) }; return }
+        let absolute = target.hasPrefix("http://") || target.hasPrefix("https://") ? target : (connection.crm ?? "https://mavinci.pl") + (target.hasPrefix("/") ? target : "/" + target)
+        guard let url = URL(string: absolute), url.scheme == "https" || url.scheme == "http" else { return }
+        NSWorkspace.shared.open(url)
+    }
+    func openNativeLink(_ link: DocLink) {
+        switch link.type {
+        case "tel", "mail", "map", "url":
+            if let href = link.href, let url = URL(string: href) { NSWorkspace.shared.open(url) }
+        case "record":
+            guard let tab = link.tab else { return }
+            if tab == "event", let id = link.id, UUID(uuidString: id) != nil { showEvent(id, tab: link.kind.flatMap(EventTab.init(rawValue:))); return }
+            if native.meta(tab) != nil || native.records[tab] != nil { showNative(tab, focus: link.id) }
+            else if let href = link.href { openCRM(href) }
+            else { notice = "Ta sekcja nie jest jeszcze dostępna w aplikacji." }
+        default:
+            if let href = link.href { openCRM(href) }
+        }
+    }
+    /// Czynność z karty: zapis na serwerze CRM, potem synchronizacja kart (i danych obszaru roboczego); `record` z odpowiedzi otwiera wskazaną kartę.
+    func runNative(_ action: DocAction, record: DocRecord?, set: String, data: [String: JSONValue], key: String) async -> Result<Void, NativeFailure> {
+        guard canWrite, let api = nativeAPI() else { return .failure(NativeFailure(status: 0, message: "Zapis wymaga połączenia z serwerem.", fieldErrors: [:])) }
+        acting = true; error = nil; notice = nil
+        defer { acting = false }
+        do {
+            let reply = try await api.action(action, record: record, data: data, key: key)
+            notice = reply["message"]?.text.isEmpty == false ? reply["message"]!.text : "Zapisano zmiany."
+            await native.sync(api)
+            refreshEventToken = UUID()
+            let target = reply["record"]?.object ?? [:]
+            if let tab = target["tab"]?.text, !tab.isEmpty { openNativeLink(DocLinkBuilder.record(tab: tab, id: target["id"]?.text)) }
+            else if let id = reply["id"]?.text, !id.isEmpty { showNative(set, focus: id) }
+            return .success(())
+        } catch let failure as NativeFailure {
+            return .failure(failure)
+        } catch AppError.unauthorized {
+            return .failure(NativeFailure(status: 401, message: AppError.unauthorized.localizedDescription, fieldErrors: [:]))
+        } catch {
+            return .failure(NativeFailure(status: 0, message: "Nie otrzymano potwierdzenia zapisu. Odśwież dane przed ponowną próbą.", fieldErrors: [:]))
+        }
+    }
+}
+
+/// Odnośnik do karty zbudowany w aplikacji (np. z odpowiedzi czynności `record:{tab,id}`).
+enum DocLinkBuilder {
+    static func record(tab: String, id: String?) -> DocLink {
+        let json: [String: JSONValue] = ["type": .string("record"), "tab": .string(tab), "id": id.map(JSONValue.string) ?? .null]
+        let data = (try? JSONEncoder().encode(json)) ?? Data("{}".utf8)
+        return (try? JSONDecoder().decode(DocLink.self, from: data)) ?? (try! JSONDecoder().decode(DocLink.self, from: Data(#"{"type":"record"}"#.utf8)))
+    }
+}
+
+extension Workspace {
+    /// Zmiana motywu: od razu w oknie, potem zapis w profilu pracownika (jak `CrmThemePicker` w CRM). Bez połączenia — tylko na tym Macu.
+    func setTheme(_ next: CrmTheme) async {
+        let previous = theme
+        theme = next; next.remember()
+        guard let id = employee?.id, let backend = eventAPI(), !offline else { return }
+        do {
+            _ = try await backend.request("/rest/v1/employees", method: "PATCH", query: [.init(name: "id", value: "eq.\(id)")], body: ["crm_theme": .string(next.rawValue)])
+        } catch {
+            theme = previous; previous.remember()
+            self.error = "Nie udało się zapisać motywu w profilu. Spróbuj ponownie."
+        }
+    }
+}
+
+extension Workspace {
+    var openInquiries: Int { rows(.inquiries).count }
+    private var navigationKey: String { "navigation-\(employee?.id ?? "")" }
+    func restoreNavigation() {
+        guard let data = UserDefaults.standard.data(forKey: navigationKey), let items = try? JSONDecoder().decode([NavItem].self, from: data) else { return }
+        navigation = items
+    }
+    func loadNavigation() async {
+        guard let api = nativeAPI() else { return }
+        if navigation.isEmpty { restoreNavigation() }
+        struct Reply: Decodable { let navigation: [NavItem] }
+        guard let data = try? await api.get("/navigation"), let reply = try? JSONDecoder().decode(Reply.self, from: data) else { return }
+        if reply.navigation != navigation { navigation = reply.navigation }
+        if let encoded = try? JSONEncoder().encode(reply.navigation) { UserDefaults.standard.set(encoded, forKey: navigationKey) }
+    }
+    func loadDashboard(force: Bool = false) async {
+        guard let api = nativeAPI(), !dashboardLoading else { return }
+        if !force, let at = dashboardLoadedAt, Date().timeIntervalSince(at) < 300 { return }
+        dashboardLoading = true
+        defer { dashboardLoading = false }
+        do {
+            let data = try await api.get("/dashboard")
+            dashboard = try JSONDecoder().decode(DashboardData.self, from: data)
+            dashboardLoadedAt = Date(); dashboardError = nil
+        } catch is URLError {
+            dashboardError = "Brak połączenia z serwerem CRM — pokazuję ostatnio pobrany dashboard."
+        } catch {
+            dashboardError = "Nie udało się pobrać dashboardu z serwera CRM."
+        }
+    }
+    /// Pozycja paska bocznego: ekran natywny albo (na razie) strona CRM w przeglądarce.
+    func openHref(_ href: String) {
+        guard let item = navigation.flatMap(\.flattened).first(where: { $0.href == href }) else { return }
+        if let module = item.module, employee?.canView(module) == true { switchSection(module); sidebarHref = href; return }
+        if let children = item.children, let first = children.first { openHref(first.href); return }
+        eventRoute = nil; focusedID = nil; notificationsVisible = false; nativeSet = nil; selection = nil
+        webItem = item; sidebarHref = href
     }
 }

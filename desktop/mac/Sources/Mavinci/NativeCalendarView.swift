@@ -145,7 +145,7 @@ struct CalendarLink:Codable {
                 Text(CalendarDates.title(month,format:"LLLL yyyy").capitalized).font(.title2.bold()).padding(.leading,12)
                 Spacer()
                 Button("Połącz z Kalendarzem Apple…",systemImage:"calendar.badge.clock") {calendarSheet=true}
-            }.padding(16).background(.bar)
+            }.padding(16).crmBar()
             GeometryReader { available in
               let detailWidth=min(340,max(245,available.size.width*0.33))
               HStack(alignment:.top,spacing:0) {

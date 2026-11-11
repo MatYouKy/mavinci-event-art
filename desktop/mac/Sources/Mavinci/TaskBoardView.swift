@@ -34,7 +34,7 @@ import SwiftUI
                     Toggle("Pokaż zakończone",isOn:$showCompleted).toggleStyle(.checkbox)
                     Spacer()
                     Button("Nowe zadanie",systemImage:"plus"){editor=nil;editingTask=true}.keyboardShortcut("n").disabled(!state.canWrite || !state.allowed("task_create"))
-                }.padding(.horizontal,16).frame(height:46).background(.bar)
+                }.padding(.horizontal,16).frame(height:46).crmBar()
                 if let error=state.moduleErrors["tasks"]{Text(error).font(.callout).foregroundStyle(.orange).padding(10)}
                 GeometryReader { content in
                     HStack(alignment:.top,spacing:0) {

@@ -1,6 +1,8 @@
 import 'server-only';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { cookies } from 'next/headers';
 import { cache } from 'react';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { CookieStoreLike, createSupabaseServerClient } from '@/lib/supabase/server.app';
 import { loadInvoiceFinanceAccess } from '@/lib/invoices/financeAccess';
 import { canView } from '@/lib/permissions';
@@ -76,13 +78,33 @@ function getCookieStore(): CookieStoreLike {
   };
 }
 
+/*
+ * Aplikacja na Maca (`/bridge/native/v1/dashboard`) liczy ten sam dashboard tokenem pracownika (Bearer) zamiast ciasteczek.
+ * Kontekst żądania (klient Supabase + pamięć wyników) trzymamy w AsyncLocalStorage — tylko na czas jednego żądania,
+ * więc dane pracownika nigdy nie trafiają do innego żądania. Bez kontekstu działa jak dotąd (React cache żądania strony).
+ */
+type NativeDashboardContext = { client: SupabaseClient; memo: Map<unknown, unknown> };
+const nativeDashboard = new AsyncLocalStorage<NativeDashboardContext>();
+export function withNativeDashboardClient<T>(client: SupabaseClient, run: () => Promise<T>): Promise<T> {
+  return nativeDashboard.run({ client, memo: new Map() }, run);
+}
+function requestCached<T>(fn: () => T): () => T {
+  const pageCached = cache(fn);
+  return () => {
+    const context = nativeDashboard.getStore();
+    if (!context) return pageCached();
+    if (!context.memo.has(fn)) context.memo.set(fn, fn());
+    return context.memo.get(fn) as T;
+  };
+}
+
 // Reuse one request-scoped client and read queue for all dashboard sections.
 // React cache is per server request; employee data is never globally cached.
-const getDashboardClient = cache(() => createSupabaseServerClient(getCookieStore(), {
+const getDashboardClient = requestCached((): SupabaseClient => nativeDashboard.getStore()?.client ?? createSupabaseServerClient(getCookieStore(), {
   fetch: createDashboardReadFetch(),
 }));
 
-const fetchDashboardAccess = cache(async () => {
+const fetchDashboardAccess = requestCached(async () => {
   try {
     const supabase = getDashboardClient();
     return { access: await loadInvoiceFinanceAccess(supabase), error: null };
@@ -109,7 +131,7 @@ function emptyAnalytics(): DashboardAnalytics {
 
 // Operational staff keep their own tasks and assigned events, but never receive
 // finance/employee/client aggregates merely because they can open /crm.
-const fetchOperationalDashboard = cache(async () => {
+const fetchOperationalDashboard = requestCached(async () => {
   const result = { stats: emptyStats(), analytics: emptyAnalytics(), recentActivity: [] as RecentActivityDTO[] };
   const { access } = await fetchDashboardAccess();
   if (!access?.employeeId || access.scope !== 'none') return result;

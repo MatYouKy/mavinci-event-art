@@ -6,7 +6,8 @@ import AppKit
     @StateObject private var workspace = Workspace()
     var body: some Scene {
         WindowGroup("Mavinci") {
-            RootView().environmentObject(workspace).frame(minWidth: 1080, minHeight: 680)
+            RootView().environmentObject(workspace).environmentObject(workspace.native).frame(minWidth: 1080, minHeight: 680)
+                .crmThemed(workspace.theme)
                 .task { await workspace.restore() }
         }
         .defaultSize(width: 1280, height: 800)
@@ -16,7 +17,7 @@ import AppKit
             CommandMenu("Mavinci") {
                 Button("Odśwież dane") { Task { await workspace.refresh() } }.keyboardShortcut("r").disabled(workspace.syncing || workspace.editing)
                 Divider()
-                Button("Mój dzień") { workspace.switchSection(.day) }.keyboardShortcut("1")
+                Button("Dashboard") { workspace.switchSection(.day) }.keyboardShortcut("1")
                 Button("Zapytania") { if workspace.employee?.canView(.inquiries) == true { workspace.switchSection(.inquiries) } }.keyboardShortcut("2")
                 Button("Moje zadania") { if workspace.employee?.canView(.tasks) == true { workspace.switchSection(.tasks) } }.keyboardShortcut("3")
                 Button("Wydarzenia") { if workspace.employee?.canView(.events) == true { workspace.switchSection(.events) } }.keyboardShortcut("4")
@@ -29,7 +30,12 @@ import AppKit
                 Button("Wyloguj") { Task { await workspace.logout() } }.disabled(workspace.loading || workspace.acting)
             }
         }
-        Settings { ConnectionView().environmentObject(workspace).frame(width: 560) }
+        Settings {
+            TabView {
+                AppearanceSettings().tabItem { Label("Wygląd", systemImage: "paintpalette") }
+                ConnectionView().tabItem { Label("Połączenie", systemImage: "network") }
+            }.environmentObject(workspace).frame(width: 600, height: 460).crmThemed(workspace.theme)
+        }
     }
 }
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -41,12 +47,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 struct RootView: View {
     @EnvironmentObject var state: Workspace
+    @EnvironmentObject var native: NativeStore
     @Environment(\.scenePhase) private var phase
     @State private var help = false
     var body: some View {
         Group {
             if state.employee != nil {
                 NavigationSplitView {
+                    Group {
+                    if !state.navigation.isEmpty { CrmSidebar() }
+                    else {
                     List(selection: $state.selection) {
                         Section("Miejsce pracy") {
                             ForEach(state.modules.filter { $0 != .notifications }) { module in
@@ -58,7 +68,10 @@ struct RootView: View {
                             }
                         }
                     }
+                    }
+                    }
                     .navigationTitle("Mavinci")
+                    .background(state.theme.sidebar)
                     .navigationSplitViewColumnWidth(min: 210, ideal: 235, max: 300)
                     .safeAreaInset(edge: .bottom) {
                         VStack(alignment: .leading, spacing: 8) {
@@ -72,21 +85,23 @@ struct RootView: View {
                                 Spacer()
                                 Button("Wyloguj") { Task { await state.logout() } }.disabled(state.acting)
                             }.buttonStyle(.borderless)
-                        }.padding().background(.bar)
+                        }.padding().crmBar()
                     }
                 } detail: {
                     VStack(spacing: 0) {
                         if let error = state.error { MessageBar(text: error, warning: true) { state.error = nil } }
                         if let notice = state.notice { MessageBar(text: notice, warning: false) { state.notice = nil } }
                         if let route = state.eventRoute { EventPageView(eventID: route.id,initialTab:route.tab).id(route.id) }
+                        else if let item = state.webItem { CrmWebPlaceholder(item: item).id(item.href) }
                         else if state.selection == .calendar { NativeCalendarView() }
                         else if state.selection == .tasks { TaskBoardView() }
                         else if state.selection == .tenders { TendersView() }
-                        else if state.selection == .day { SalesDayView() }
+                        else if state.selection == .day { DashboardView() }
                         else if let module = state.selection, state.employee?.canView(module) == true { RecordsView(module: module).id(module) }
                         else { ContentUnavailableView("Wybierz sekcję", systemImage: "sidebar.left") }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    .background(state.theme.page)
                     .overlay {
                         if state.notificationsVisible {
                             GeometryReader { available in
@@ -124,6 +139,7 @@ struct RootView: View {
         }
         .sheet(isPresented: $help) { HelpView() }
         .onChange(of: state.selection) { _, next in
+            if next != nil { state.nativeSet = nil; state.webItem = nil }
             if let route = state.eventRoute, next != route.origin { state.eventRoute = nil }
         }
         .onOpenURL { url in

@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
-VERSION="${VERSION:-0.3.0}"
+VERSION="${VERSION:-0.4.0}"
 CONFIGURATION="${CONFIGURATION:-release}"
 case "$CONFIGURATION" in debug|release) ;; *) echo "Nieznany wariant kompilacji"; exit 1;; esac
 BUILD="${BUILD:-$(date +%Y%m%d%H%M)}"

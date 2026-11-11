@@ -1,6 +1,7 @@
 import 'server-only';
 import { cookies } from 'next/headers';
 import { createSupabaseServerClient } from '@/lib/supabase/server.app';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { allNavigation, type NavKey, type NavigationItemDTO } from './registry.server';
 import { hasAnyFinanceCompanyLevel } from '@/lib/financeCompanyAccess';
 import type { NavigationItem } from '@/app/(crm)/crm/mock/navigation';
@@ -40,11 +41,18 @@ export async function getNavigationForUserServer(): Promise<{
 
   const { data: { user }, error: userErr } = await supabase.auth.getUser();
   if (userErr || !user) return { navigation: [], employeeId: null };
+  return navigationForUser(supabase, user.id);
+}
 
+/** Menu CRM pracownika — te same reguły dla przeglądarki i aplikacji na Maca (`/bridge/native/v1/navigation`, klient z tokenem pracownika). */
+export async function navigationForUser(supabase: SupabaseClient, userId: string): Promise<{
+  navigation: Omit<NavigationItem, 'icon'>[];
+  employeeId: string | null;
+}> {
   const { data: employee, error } = await supabase
     .from('employees')
     .select('id, permissions, role, access_level, navigation_order, auth_user_id, finance_company_access')
-    .eq('auth_user_id', user.id)
+    .eq('auth_user_id', userId)
     .maybeSingle();
 
   if (error && error.code !== 'PGRST116') throw error;
