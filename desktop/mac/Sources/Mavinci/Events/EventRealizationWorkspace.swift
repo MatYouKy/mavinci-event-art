@@ -55,7 +55,7 @@ import AppKit
                     content
                     if let fileError { Text(fileError).foregroundStyle(CrmTheme.rgb(0xfca5a5)) }
                 }
-                .padding(18).frame(maxWidth: 1240, alignment: .leading)
+                .padding(18).frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .task(id: eventID) {

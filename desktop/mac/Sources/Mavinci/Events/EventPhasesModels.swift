@@ -124,13 +124,19 @@ enum TimelineText {
             return MeetingDates.calendar.component(.minute, from: date) == 0 ? MeetingDates.format(date, "HH:mm") : ":" + MeetingDates.format(date, "mm")
         }
     }
-    /// „2d 4h”, „3h 15m”, „45m” (`getPhaseDuration`).
+    /// Czas w godzinach: „2 h (120 min)”, „1 h 30 min (90 min)”, „45 min”; `minutesInParentheses: false` — bez nawiasu.
+    static func hours(_ minutes: Int, minutesInParentheses: Bool = true) -> String {
+        let total = max(0, minutes)
+        if total < 60 { return "\(total) min" }
+        let hours = total / 60, rest = total % 60
+        let main: String = rest == 0 ? "\(hours) h" : "\(hours) h \(rest) min"
+        return minutesInParentheses ? main + " (\(total) min)" : main
+    }
+    /// „2 d 4 h”, „4 h”, „3 h 15 min”, „45 min” (`getPhaseDuration`, w godzinach).
     static func duration(_ start: Date, _ end: Date) -> String {
-        let seconds = max(0, end.timeIntervalSince(start))
-        let hours = Int(seconds / 3600), minutes = Int(seconds.truncatingRemainder(dividingBy: 3600) / 60)
-        if hours > 24 { return "\(hours / 24)d \(hours % 24)h" }
-        if hours > 0 { return "\(hours)h \(minutes)m" }
-        return "\(minutes)m"
+        let minutes = Int((max(0, end.timeIntervalSince(start)) / 60).rounded())
+        if minutes > 24 * 60 { return "\(minutes / 1440) d \((minutes % 1440) / 60) h" }
+        return hours(minutes, minutesInParentheses: false)
     }
     /// „14.11, 18:00” (`toLocaleString('pl-PL', {day, month, hour, minute})`).
     static func short(_ value: String?) -> String {
@@ -145,8 +151,7 @@ enum TimelineText {
     /// „3h 15m” (`calculateDuration` w panelu zasobów).
     static func hoursMinutes(_ start: String?, _ end: String?) -> String {
         guard let from = start.flatMap(MeetingDates.parse), let to = end.flatMap(MeetingDates.parse) else { return "0h 0m" }
-        let seconds = to.timeIntervalSince(from)
-        return "\(Int(seconds / 3600))h \(Int(seconds.truncatingRemainder(dividingBy: 3600) / 60))m"
+        return hours(Int((to.timeIntervalSince(from) / 60).rounded()), minutesInParentheses: false)
     }
 }
 

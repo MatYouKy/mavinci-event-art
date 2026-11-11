@@ -3,9 +3,13 @@ import SwiftUI
 /// Komunikat po czynności (snackbar): sukces, informacja albo błąd — wyraźny kolor, ikona i treść na dole okna.
 struct Snack: Equatable, Identifiable {
     enum Kind { case success, info, error }
+    /// Czynność w komunikacie (np. „Cofnij”) — przycisk obok treści; komunikat z czynnością znika po 8 s.
+    struct Action { let title: String; let run: @MainActor () -> Void }
     let id = UUID()
     let kind: Kind
     let text: String
+    var action: Action? = nil
+    static func == (lhs: Snack, rhs: Snack) -> Bool { lhs.id == rhs.id }
 }
 
 extension Workspace {
@@ -29,7 +33,8 @@ struct SnackbarHost: View {
                     .id(snack.id)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                     .task(id: snack.id) {
-                        try? await Task.sleep(for: .seconds(snack.kind == .error ? 9 : snack.kind == .info ? 5 : 4))
+                        let seconds: Double = snack.action != nil ? 8 : snack.kind == .error ? 9 : snack.kind == .info ? 5 : 4
+                        try? await Task.sleep(for: .seconds(seconds))
                         if state.snack?.id == snack.id { withAnimation(.easeInOut(duration: 0.2)) { dismiss(snack) } }
                     }
             }
@@ -55,6 +60,16 @@ struct SnackbarView: View {
             Image(systemName: symbol).font(.title2).foregroundStyle(iconColor)
             Text(snack.text).font(.body.weight(.medium)).foregroundStyle(.white).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
             Spacer(minLength: 8)
+            if let action = snack.action {
+                Button {
+                    action.run()
+                    close()
+                } label: {
+                    Text(action.title).font(.body.weight(.semibold)).foregroundStyle(.white)
+                        .padding(.horizontal, 12).padding(.vertical, 5).background(Color.white.opacity(0.2), in: Capsule())
+                }
+                .buttonStyle(.plain)
+            }
             Button(action: close) { Image(systemName: "xmark").font(.callout.weight(.semibold)).foregroundStyle(.white.opacity(0.85)) }
                 .buttonStyle(.plain).help("Zamknij komunikat").accessibilityLabel("Zamknij komunikat")
         }

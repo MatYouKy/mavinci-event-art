@@ -492,3 +492,27 @@ struct EventSettlementCell: View {
         .onAppear { status = item.status }
     }
 }
+
+/// Wspólne elementy natywnych list karty wydarzenia: polska odmiana liczebników i kolumna „Lp.”.
+enum NativeList {
+    /// „1 oferta”, „2 oferty”, „5 ofert”.
+    static func count(_ value: Int, _ one: String, _ few: String, _ many: String) -> String {
+        let digit = value % 10
+        let tens = value % 100
+        let word: String = value == 1 ? one : ((2...4).contains(digit) && !(12...14).contains(tens) ? few : many)
+        return "\(value) \(word)"
+    }
+
+    /// Numer porządkowy wiersza (do kolumny „Lp.”).
+    static func numbers<T: Identifiable>(_ rows: [T]) -> [T.ID: Int] {
+        Dictionary(rows.enumerated().map { ($0.element.id, $0.offset + 1) }, uniquingKeysWith: { first, _ in first })
+    }
+}
+
+/// Komórka „Lp.” — wyrównana do prawej, cyfry o stałej szerokości.
+struct NativeRowNumber: View {
+    let value: Int?
+    var body: some View {
+        Text(value.map { String($0) } ?? "").monospacedDigit().foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .trailing)
+    }
+}

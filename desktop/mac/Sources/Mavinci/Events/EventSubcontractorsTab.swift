@@ -82,6 +82,9 @@ enum SubcontractorLabels {
     @State private var editor: SubcontractorEditRequest?
     @State private var sending: String?
     @State private var preview: URL?
+    @State private var selectedOrder: String?
+    @State private var selectedContract: String?
+    @AppStorage("eventSubcontractors.mode") private var mode = "orders"
 
     private var data: SubcontractorsTabData? { store.tab(eventID, "subcontractors", as: SubcontractorsTabData.self) }
 
@@ -105,40 +108,247 @@ enum SubcontractorLabels {
         .quickLookPreview($preview)
     }
 
-    private func content(_ data: SubcontractorsTabData) -> some View {
-        let ids = orderedSubcontractors(data)
-        let rentals = data.tasks.filter { $0.taskType == "equipment_rental" && $0.subcontractorId == nil }
+    // MARK: Lista (natywne tabele: zlecenia ze szczegółami pod spodem, umowy)
+
+    private static func plural(_ count: Int, _ one: String, _ few: String, _ many: String) -> String {
+        if count == 1 { return one }
+        let digit = count % 10
+        let tens = count % 100
+        return (2...4).contains(digit) && !(12...14).contains(tens) ? few : many
+    }
+
+    /// Zlecenia bez podwykonawcy (np. wynajem do obsadzenia) na początku, potem pogrupowane według podwykonawców.
+    private func orderRows(_ data: SubcontractorsTabData) -> [SubcontractorsTabData.Order] {
+        let loose = data.tasks.filter { $0.subcontractorId == nil }
+        return loose + orderedSubcontractors(data).flatMap { id in data.tasks.filter { $0.subcontractorId == id } }
+    }
+
+    private func contractRows(_ data: SubcontractorsTabData) -> [SubcontractorsTabData.Contract] {
+        let loose = data.contracts.filter { $0.subcontractorId == nil }
+        return orderedSubcontractors(data).flatMap { id in data.contracts.filter { $0.subcontractorId == id } } + loose
+    }
+
+    @ViewBuilder private func content(_ data: SubcontractorsTabData) -> some View {
+        let people = orderedSubcontractors(data).count
+        let orders = orderRows(data)
+        let contracts = contractRows(data)
+        let rentals = data.tasks.filter { $0.taskType == "equipment_rental" && $0.subcontractorId == nil }.count
         let total = data.tasks.reduce(0.0) { $0 + $1.cost }
-        return ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Podwykonawcy wydarzenia").font(.title2.weight(.light))
-                        Text("Jedno miejsce dla zakresu prac, godzin, rozliczeń, umów i potwierdzeń").font(.callout).foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Button { editor = SubcontractorEditRequest(order: nil) } label: { Label("Dodaj zlecenie", systemImage: "plus") }.buttonStyle(.borderedProminent)
+        let summary: String = "\(people) " + Self.plural(people, "podwykonawca", "podwykonawców", "podwykonawców")
+            + " · koszt zleceń " + SubcontractorLabels.amount(total) + " zł"
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Text("Podwykonawcy").font(.title2.weight(.semibold))
+                Text(summary).foregroundStyle(.secondary).lineLimit(1)
+                Spacer()
+                Picker("Widok", selection: $mode) {
+                    Text("Zlecenia (\(orders.count))").tag("orders")
+                    Text("Umowy (\(contracts.count))").tag("contracts")
                 }
-                HStack(spacing: 12) {
-                    stat("Podwykonawcy", "person.badge.shield.checkmark", "\(ids.count)")
-                    stat("Zadania", "clock", "\(data.tasks.count)")
-                    stat("Koszt zadań", "dollarsign.circle", SubcontractorLabels.amount(total) + " zł")
-                    stat("Umowy", "doc.text", "\(data.contracts.count)")
-                }
-                if !rentals.isEmpty { rentalsSection(rentals) }
-                if ids.isEmpty {
-                    VStack(spacing: 10) {
-                        Image(systemName: "person.badge.shield.checkmark").font(.system(size: 40)).foregroundStyle(.tertiary)
-                        Text("Brak przypisanych podwykonawców do tego wydarzenia").foregroundStyle(.secondary)
-                        Button("Dodaj pierwsze zadanie") { editor = SubcontractorEditRequest(order: nil) }
-                    }
-                    .frame(maxWidth: .infinity).padding(40)
-                    .background(theme.card.opacity(theme == .light ? 1 : 0.9), in: RoundedRectangle(cornerRadius: 12))
+                .pickerStyle(.segmented).labelsHidden().fixedSize()
+                Button { editor = SubcontractorEditRequest(order: nil) } label: { Label("Dodaj zlecenie", systemImage: "plus") }.buttonStyle(.borderedProminent)
+            }
+            .padding(.horizontal, 18).padding(.top, 12)
+            if rentals > 0 {
+                Label("\(rentals) " + Self.plural(rentals, "pozycja", "pozycje", "pozycji")
+                      + " sprzętu do wynajęcia bez podwykonawcy — wybierz podwykonawcę w zleceniu, aby dodać szczegóły wynajmu",
+                      systemImage: "exclamationmark.circle.fill")
+                    .font(.callout).foregroundStyle(CrmTheme.rgb(0xfb923c)).padding(.horizontal, 18)
+            }
+            if mode == "contracts" {
+                if contracts.isEmpty {
+                    ContentUnavailableView("Brak umów", systemImage: "doc.text", description: Text("Do tego wydarzenia nie dodano umów od podwykonawców."))
                 } else {
-                    ForEach(ids, id: \.self) { id in group(id, data) }
+                    contractsTable(contracts)
+                }
+            } else if orders.isEmpty {
+                ContentUnavailableView {
+                    Label("Brak zleceń", systemImage: "person.badge.shield.checkmark")
+                } description: { Text("Brak przypisanych podwykonawców do tego wydarzenia") } actions: {
+                    Button("Dodaj pierwsze zadanie") { editor = SubcontractorEditRequest(order: nil) }
+                }
+            } else {
+                VSplitView {
+                    ordersTable(orders).frame(minHeight: 150, idealHeight: 340)
+                    orderDetail(orders).frame(minHeight: 120, idealHeight: 260, maxHeight: .infinity)
                 }
             }
-            .padding(18)
+        }
+    }
+
+    private func ordersTable(_ orders: [SubcontractorsTabData.Order]) -> some View {
+        let lp = Dictionary(orders.enumerated().map { ($0.element.id, $0.offset + 1) }, uniquingKeysWith: { first, _ in first })
+        return Table(orders, selection: $selectedOrder) {
+            TableColumn("") { (task: SubcontractorsTabData.Order) in orderThumb(task, size: 26) }.width(34)
+            TableColumn("Lp.") { (task: SubcontractorsTabData.Order) in
+                Text("\(lp[task.id] ?? 0)").monospacedDigit().foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .trailing)
+            }.width(36)
+            TableColumn("Podwykonawca") { (task: SubcontractorsTabData.Order) in
+                if let person = task.subcontractor {
+                    Text(person.name).fontWeight(.medium).lineLimit(1).help(person.contactPerson ?? person.name)
+                } else {
+                    Label("Bez podwykonawcy", systemImage: "exclamationmark.circle.fill").foregroundStyle(CrmTheme.rgb(0xfb923c)).lineLimit(1)
+                }
+            }.width(min: 130, ideal: 200)
+            TableColumn("Zlecenie") { (task: SubcontractorsTabData.Order) in
+                HStack(spacing: 6) {
+                    Text(task.taskName).lineLimit(1)
+                    if task.taskType == "equipment_rental" { Text("Wynajem").font(.caption).foregroundStyle(CrmTheme.rgb(0xfb923c)) }
+                }
+                .help(task.taskName)
+            }.width(min: 140, ideal: 260)
+            TableColumn("Termin") { (task: SubcontractorsTabData.Order) in
+                Text(SubcontractorLabels.when(task.scheduledStart ?? task.startDate, time: task.scheduledStart != nil) ?? "—")
+                    .monospacedDigit().foregroundStyle(.secondary).lineLimit(1)
+            }.width(min: 80, ideal: 130)
+            TableColumn("Koszt") { (task: SubcontractorsTabData.Order) in
+                Text(SubcontractorLabels.amount(task.cost) + " " + task.currency).monospacedDigit().frame(maxWidth: .infinity, alignment: .trailing)
+            }.width(min: 80, ideal: 110)
+            TableColumn("Status") { (task: SubcontractorsTabData.Order) in
+                EventDotLabel(label: SubcontractorLabels.status(task.status), color: SubcontractorLabels.color(task.status))
+            }.width(min: 90, ideal: 120)
+            TableColumn("Wytyczne") { (task: SubcontractorsTabData.Order) in
+                EventDotLabel(label: SubcontractorLabels.status(task.guidelinesStatus), color: SubcontractorLabels.color(task.guidelinesStatus))
+            }.width(min: 90, ideal: 170)
+            TableColumn("Płatność") { (task: SubcontractorsTabData.Order) in
+                EventDotLabel(label: SubcontractorLabels.status(task.paymentStatus), color: SubcontractorLabels.color(task.paymentStatus))
+            }.width(min: 80, ideal: 110)
+            TableColumn("") { (task: SubcontractorsTabData.Order) in
+                Menu { orderMenu(task) } label: { Image(systemName: "ellipsis") }
+                    .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().help("Czynności")
+            }.width(30)
+        }
+        .contextMenu(forSelectionType: String.self) { ids in
+            if let id = ids.first, let task = orders.first(where: { $0.id == id }) { orderMenu(task) }
+        } primaryAction: { ids in
+            if let id = ids.first, let task = orders.first(where: { $0.id == id }) { editor = SubcontractorEditRequest(order: task) }
+        }
+    }
+
+    @ViewBuilder private func orderThumb(_ task: SubcontractorsTabData.Order, size: CGFloat) -> some View {
+        if let thumb = task.equipment?.thumbnail {
+            WarehouseThumb(url: thumb, size: size)
+        } else if task.taskType == "equipment_rental" {
+            WarehouseThumb(url: nil, size: size)
+        } else if let person = task.subcontractor {
+            EmployeeAvatarView(name: person.name, url: nil, crop: nil, size: size)
+        } else {
+            Image(systemName: "person.crop.circle.badge.questionmark").font(.system(size: size * 0.7)).foregroundStyle(.secondary).frame(width: size, height: size)
+        }
+    }
+
+    @ViewBuilder private func orderMenu(_ task: SubcontractorsTabData.Order) -> some View {
+        let sendTitle: String = task.guidelinesStatus == "sent" ? "Wyślij wytyczne ponownie" : "Wyślij wytyczne"
+        Button("Edytuj zlecenie", systemImage: "pencil") { editor = SubcontractorEditRequest(order: task) }
+        Button(sendTitle, systemImage: "paperplane") { Task { await send(task) } }.disabled(sending == task.id)
+        if let id = task.subcontractorId {
+            Divider()
+            Button("Karta podwykonawcy w CRM", systemImage: "arrow.up.right.square") { state.openCRM("/crm/subcontractors/\(id)") }
+        }
+        if let email = task.contactEmail?.nonEmpty ?? task.subcontractor?.email?.nonEmpty, let url = URL(string: "mailto:" + email) {
+            Button("Napisz e-mail", systemImage: "envelope") { NSWorkspace.shared.open(url) }
+        }
+        if let phone = task.subcontractor?.phone?.nonEmpty {
+            Button("Kopiuj numer telefonu", systemImage: "phone") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(phone, forType: .string)
+            }
+        }
+    }
+
+    /// Szczegóły zaznaczonego zlecenia pod tabelą (podział regulowany jak w Finderze/Mail).
+    @ViewBuilder private func orderDetail(_ orders: [SubcontractorsTabData.Order]) -> some View {
+        if let task = orders.first(where: { $0.id == selectedOrder }) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(alignment: .top, spacing: 12) {
+                        orderThumb(task, size: 44)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(task.taskName).font(.title3.weight(.semibold)).textSelection(.enabled)
+                            personLine(task)
+                        }
+                        Spacer()
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text("Koszt").font(.caption).foregroundStyle(.secondary)
+                            Text(SubcontractorLabels.amount(task.cost) + " " + task.currency).font(.title3.weight(.light)).monospacedDigit().foregroundStyle(theme.accent)
+                        }
+                    }
+                    if task.subcontractorId == nil && task.taskType == "equipment_rental" {
+                        Text("Wybierz podwykonawcę dla tego zadania, aby móc dodać szczegóły wynajmu").font(.callout).foregroundStyle(CrmTheme.rgb(0xfb923c))
+                    }
+                    details(task)
+                }
+                .padding(16).frame(maxWidth: .infinity, alignment: .leading)
+            }
+        } else {
+            Text("Zaznacz zlecenie, aby zobaczyć szczegóły i wytyczne. Dwuklik otwiera edycję.")
+                .foregroundStyle(.secondary).frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    @ViewBuilder private func personLine(_ task: SubcontractorsTabData.Order) -> some View {
+        if let person = task.subcontractor {
+            HStack(spacing: 14) {
+                if let id = task.subcontractorId {
+                    Button { state.openCRM("/crm/subcontractors/\(id)") } label: {
+                        Label(person.name, systemImage: "arrow.up.right.square").labelStyle(TrailingIconLabel())
+                    }
+                    .buttonStyle(.plain).help("Otwórz kartę podwykonawcy w CRM")
+                } else {
+                    Text(person.name)
+                }
+                if let contact = person.contactPerson?.nonEmpty { Label(contact, systemImage: "person") }
+                if let email = person.email?.nonEmpty, let url = URL(string: "mailto:" + email) { Link(destination: url) { Label(email, systemImage: "envelope") } }
+                if let phone = person.phone?.nonEmpty { Label(phone, systemImage: "phone").textSelection(.enabled) }
+                if let rating = person.rating, rating > 0 {
+                    Label(SubcontractorLabels.amount(rating) + "/5", systemImage: "star.fill").foregroundStyle(CrmTheme.rgb(0xfacc15))
+                }
+            }
+            .font(.callout).foregroundStyle(.secondary)
+        }
+    }
+
+    private func contractsTable(_ contracts: [SubcontractorsTabData.Contract]) -> some View {
+        let lp = Dictionary(contracts.enumerated().map { ($0.element.id, $0.offset + 1) }, uniquingKeysWith: { first, _ in first })
+        return Table(contracts, selection: $selectedContract) {
+            TableColumn("") { (contract: SubcontractorsTabData.Contract) in
+                Image(systemName: contract.hasFile ? "doc.text.fill" : "doc.text")
+                    .foregroundStyle(contract.hasFile ? theme.accent : Color.secondary).frame(width: 26, height: 26)
+            }.width(34)
+            TableColumn("Lp.") { (contract: SubcontractorsTabData.Contract) in
+                Text("\(lp[contract.id] ?? 0)").monospacedDigit().foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .trailing)
+            }.width(36)
+            TableColumn("Podwykonawca") { (contract: SubcontractorsTabData.Contract) in
+                Text(contract.subcontractor?.name ?? "—").fontWeight(.medium).lineLimit(1)
+            }.width(min: 130, ideal: 200)
+            TableColumn("Tytuł") { (contract: SubcontractorsTabData.Contract) in
+                Text(contract.title).lineLimit(1).help(contract.title)
+            }.width(min: 140, ideal: 300)
+            TableColumn("Numer") { (contract: SubcontractorsTabData.Contract) in
+                Text(contract.number).monospacedDigit().foregroundStyle(.secondary).lineLimit(1)
+            }.width(min: 80, ideal: 140)
+            TableColumn("Status") { (contract: SubcontractorsTabData.Contract) in
+                EventDotLabel(label: SubcontractorLabels.status(contract.status), color: SubcontractorLabels.color(contract.status))
+            }.width(min: 90, ideal: 120)
+            TableColumn("Wartość") { (contract: SubcontractorsTabData.Contract) in
+                Text(SubcontractorLabels.amount(contract.totalValue) + " zł").monospacedDigit().frame(maxWidth: .infinity, alignment: .trailing)
+            }.width(min: 80, ideal: 120)
+            TableColumn("") { (contract: SubcontractorsTabData.Contract) in
+                Menu { contractMenu(contract) } label: { Image(systemName: "ellipsis") }
+                    .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().help("Czynności")
+            }.width(30)
+        }
+        .contextMenu(forSelectionType: String.self) { ids in
+            if let id = ids.first, let contract = contracts.first(where: { $0.id == id }) { contractMenu(contract) }
+        } primaryAction: { ids in
+            if let id = ids.first, let contract = contracts.first(where: { $0.id == id }), contract.hasFile { Task { await openContract(contract) } }
+        }
+    }
+
+    @ViewBuilder private func contractMenu(_ contract: SubcontractorsTabData.Contract) -> some View {
+        Button("Podgląd umowy", systemImage: "doc.text.magnifyingglass") { Task { await openContract(contract) } }.disabled(!contract.hasFile)
+        if let id = contract.subcontractorId {
+            Button("Karta podwykonawcy w CRM", systemImage: "arrow.up.right.square") { state.openCRM("/crm/subcontractors/\(id)") }
         }
     }
 
@@ -151,111 +361,6 @@ enum SubcontractorLabels {
             result.append(id)
         }
         return result
-    }
-
-    private func stat(_ title: String, _ symbol: String, _ value: String) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Label(title, systemImage: symbol).font(.caption).foregroundStyle(.secondary)
-            Text(value).font(.title2.weight(.light)).monospacedDigit()
-        }
-        .frame(maxWidth: .infinity, alignment: .leading).padding(14)
-        .background(theme.card.opacity(theme == .light ? 1 : 0.9), in: RoundedRectangle(cornerRadius: 12))
-    }
-
-    private func rentalsSection(_ rentals: [SubcontractorsTabData.Order]) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Label("Sprzęt do wynajęcia (bez podwykonawcy)", systemImage: "exclamationmark.circle").font(.headline).foregroundStyle(CrmTheme.rgb(0xfb923c))
-            ForEach(rentals) { task in
-                HStack(alignment: .top, spacing: 12) {
-                    if let thumb = task.equipment?.thumbnail { WarehouseThumb(url: thumb, size: 48) }
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack {
-                            Text(task.taskName).font(.callout.weight(.medium))
-                            badge("WYNAJEM", CrmTheme.rgb(0xfb923c))
-                        }
-                        if let equipment = task.equipment {
-                            Text((equipment.name ?? "Sprzęt") + " - " + SubcontractorLabels.amount(equipment.quantity) + " szt.").font(.caption).foregroundStyle(.secondary)
-                        }
-                        if let description = task.description?.nonEmpty { Text(description).font(.caption).foregroundStyle(.secondary) }
-                    }
-                    Spacer()
-                    VStack(alignment: .trailing, spacing: 3) {
-                        Text("Status").font(.caption2).foregroundStyle(.secondary)
-                        badge(SubcontractorLabels.status(task.status), SubcontractorLabels.color(task.status))
-                    }
-                }
-                .padding(10).background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
-            }
-            Text("Wybierz podwykonawcę dla tych zadań aby móc dodać szczegóły wynajmu").font(.caption).foregroundStyle(.secondary)
-        }
-        .padding(14)
-        .background(CrmTheme.rgb(0xfb923c).opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
-    }
-
-    private func badge(_ text: String, _ color: Color) -> some View {
-        Text(text).font(.caption2.weight(.semibold)).padding(.horizontal, 7).padding(.vertical, 3)
-            .foregroundStyle(color).background(color.opacity(0.18), in: RoundedRectangle(cornerRadius: 5))
-    }
-
-    @ViewBuilder private func group(_ id: String, _ data: SubcontractorsTabData) -> some View {
-        let tasks = data.tasks.filter { $0.subcontractorId == id }
-        let contracts = data.contracts.filter { $0.subcontractorId == id }
-        if let person = tasks.first?.subcontractor ?? contracts.first?.subcontractor {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack(alignment: .top) {
-                    Image(systemName: "person.badge.shield.checkmark").font(.title2).foregroundStyle(theme.accent)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Button { state.openCRM("/crm/subcontractors/\(id)") } label: {
-                            Label(person.name, systemImage: "arrow.up.right.square").labelStyle(TrailingIconLabel())
-                        }
-                        .buttonStyle(.plain).font(.headline).help("Otwórz kartę podwykonawcy w CRM")
-                        if let contact = person.contactPerson?.nonEmpty { Text(contact).font(.callout).foregroundStyle(.secondary) }
-                        HStack(spacing: 14) {
-                            if let email = person.email?.nonEmpty, let url = URL(string: "mailto:" + email) { Link(destination: url) { Label(email, systemImage: "envelope") } }
-                            if let phone = person.phone?.nonEmpty { Label(phone, systemImage: "phone").textSelection(.enabled) }
-                            if let rating = person.rating, rating > 0 { Label(SubcontractorLabels.amount(rating) + "/5", systemImage: "star.fill").foregroundStyle(CrmTheme.rgb(0xfacc15)) }
-                        }
-                        .font(.caption)
-                    }
-                    Spacer()
-                    VStack(alignment: .trailing, spacing: 3) {
-                        Text("Całkowity koszt").font(.caption).foregroundStyle(.secondary)
-                        Text(SubcontractorLabels.amount(tasks.reduce(0.0) { $0 + $1.cost }) + " zł").font(.title3.weight(.light)).foregroundStyle(theme.accent)
-                        Text("\(tasks.count) zadań | \(contracts.count) umów").font(.caption).foregroundStyle(.secondary)
-                    }
-                }
-                if !tasks.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Label("Zlecenia (\(tasks.count))", systemImage: "clock").font(.callout.weight(.semibold))
-                        ForEach(tasks) { task in orderRow(task) }
-                    }
-                }
-                if !contracts.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Label("Umowy (\(contracts.count))", systemImage: "doc.text").font(.callout.weight(.semibold))
-                        ForEach(contracts) { contract in contractRow(contract) }
-                    }
-                }
-            }
-            .padding(16)
-            .background(theme.card.opacity(theme == .light ? 1 : 0.9), in: RoundedRectangle(cornerRadius: 12))
-        }
-    }
-
-    private func orderRow(_ task: SubcontractorsTabData.Order) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text(task.taskName).font(.callout.weight(.medium))
-                if task.taskType == "equipment_rental" { badge("WYNAJEM SPRZĘTU", CrmTheme.rgb(0xfb923c)) }
-                Spacer()
-                badge(SubcontractorLabels.status(task.guidelinesStatus), SubcontractorLabels.color(task.guidelinesStatus))
-                badge(SubcontractorLabels.status(task.status), SubcontractorLabels.color(task.status))
-                badge(SubcontractorLabels.status(task.paymentStatus), SubcontractorLabels.color(task.paymentStatus))
-            }
-            DisclosureGroup("Szczegóły i wytyczne") { details(task).padding(.top, 6) }
-                .font(.callout)
-        }
-        .padding(12).background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
     }
 
     private func details(_ task: SubcontractorsTabData.Order) -> some View {
@@ -318,22 +423,6 @@ enum SubcontractorLabels {
             Text(title).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
             Text(text).font(.callout).textSelection(.enabled)
         }
-    }
-
-    private func contractRow(_ contract: SubcontractorsTabData.Contract) -> some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(contract.title).font(.callout.weight(.medium))
-                Text(contract.number).font(.caption).foregroundStyle(.secondary)
-            }
-            Spacer()
-            badge(SubcontractorLabels.status(contract.status), SubcontractorLabels.color(contract.status))
-            Text(SubcontractorLabels.amount(contract.totalValue) + " zł").font(.callout).monospacedDigit()
-            if contract.hasFile {
-                Button { Task { await openContract(contract) } } label: { Label("Podgląd umowy", systemImage: "doc.text.magnifyingglass") }
-            }
-        }
-        .padding(10).background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
     }
 
     private func send(_ task: SubcontractorsTabData.Order) async {

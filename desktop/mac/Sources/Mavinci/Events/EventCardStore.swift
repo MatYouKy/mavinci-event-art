@@ -55,8 +55,101 @@ import SwiftUI
             if let saved { cards = saved }
         }
     }
+    // MARK: Katalog „Dodaj sprzęt” — kopia na dysku przy karcie, synchronizacja tylko zmienionych koszyków
+
+    private var catalogMemo: [String: SyncedSet<EquipmentCatalogEntry>] = [:]
+
+    private func catalogSet(_ id: String) -> SyncedSet<EquipmentCatalogEntry>? {
+        if let memo = catalogMemo[id] { return memo }
+        guard let cached = cards[id]?.tabs?["equipment-catalog"],
+              let set = try? JSONDecoder().decode(SyncedSet<EquipmentCatalogEntry>.self, from: cached.data) else { return nil }
+        catalogMemo[id] = set
+        return set
+    }
+
+    /// Katalog z dysku (natychmiast, bez sieci); `nil` — wydarzenie nie ma jeszcze kopii katalogu.
+    func equipmentCatalog(_ id: String) -> EquipmentCatalog? {
+        guard let set = catalogSet(id) else { return nil }
+        let byName: (String, String) -> Bool = { $0.localizedStandardCompare($1) == .orderedAscending }
+        let items: [EquipmentCatalog.Item] = set.items.filter { $0.kind == "item" }.map { entry in
+            EquipmentCatalog.Item(id: entry.id, name: entry.name, brand: entry.brand ?? "", model: entry.model ?? "", category: entry.category ?? "",
+                                  thumbnail: entry.thumbnail, total: entry.total, reserved: entry.reserved, used: entry.used,
+                                  availableInTerm: entry.availableInTerm, maxAdd: entry.maxAdd, maxSet: entry.maxSet)
+        }
+        let kits: [EquipmentCatalog.Kit] = set.items.filter { $0.kind == "kit" }.map { entry in
+            EquipmentCatalog.Kit(id: entry.id, name: entry.name, description: entry.description ?? "", thumbnail: entry.thumbnail, total: entry.total,
+                                 reserved: entry.reserved, used: entry.used, availableInTerm: entry.availableInTerm, maxAdd: entry.maxAdd,
+                                 maxSet: entry.maxSet, contents: entry.contents ?? [])
+        }
+        return EquipmentCatalog(items: items.sorted { byName($0.name, $1.name) }, kits: kits.sorted { byName($0.name, $1.name) },
+                                loaded: set.items.first?.loaded ?? false)
+    }
+
+    /// Pozycje katalogu z dysku (sprzęt i zestawy) w kolejności nazw — dla okna „Zarządzaj sprzętem”.
+    func equipmentCatalogEntries(_ id: String) -> [EquipmentCatalogEntry] {
+        guard let set = catalogSet(id) else { return [] }
+        return set.items.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    /// Zapis zmian ilości sprzętu (jeden na wydarzenie, wspólny dla listy i okna „Zarządzaj sprzętem”).
+    private var equipmentEditors: [String: EquipmentEditor] = [:]
+    func equipmentEditor(_ eventID: String) -> EquipmentEditor {
+        if let existing = equipmentEditors[eventID] { return existing }
+        let created = EquipmentEditor(store: self, eventID: eventID)
+        equipmentEditors[eventID] = created
+        return created
+    }
+
+    var catalogSyncing: Set<String> { Set(tabLoading.filter { $0.hasSuffix("|equipment-catalog") }.map { String($0.dropLast("|equipment-catalog".count)) }) }
+
+    /// Synchronizacja katalogu: skrót zbioru, a przy różnicy — wyłącznie zmienione koszyki (dostępność, nowe pozycje, zestawy).
+    func syncEquipmentCatalog(_ id: String) async {
+        let key = "\(id)|equipment-catalog"
+        guard let api, cards[id] != nil, !tabLoading.contains(key) else { return }
+        tabLoading.insert(key)
+        defer { tabLoading.remove(key) }
+        do {
+            let current = catalogSet(id) ?? SyncedSet<EquipmentCatalogEntry>()
+            let state = try JSONDecoder().decode(SyncedSetState.self, from: try await api.get("/events/card", query: ["op": "equipmentCatalog", "id": id, "hash": current.hash]))
+            guard let next = try await current.merged(with: state, fetch: { try await self.fetchCatalogBuckets(id, $0) }) else {
+                tabErrors[key] = nil
+                return
+            }
+            catalogMemo[id] = next
+            guard var card = cards[id] else { return }
+            var tabs = card.tabs ?? [:]
+            tabs["equipment-catalog"] = CachedEventTab(hash: next.hash, data: try JSONEncoder().encode(next), savedAt: Date())
+            card.tabs = tabs
+            cards[id] = card
+            tabErrors[key] = nil
+            scheduleSave()
+        } catch {
+            tabErrors[key] = failureText(error, "Nie udało się odświeżyć dostępności sprzętu.")
+        }
+    }
+
+    private func fetchCatalogBuckets(_ id: String, _ buckets: [String]) async throws -> [EquipmentCatalogEntry] {
+        guard let api else { throw AppError.configuration }
+        struct Reply: Decodable {
+            struct Bucket: Decodable { var items: [EquipmentCatalogEntry] }
+            var buckets: [String: Bucket]
+            var more: [String]
+        }
+        var fetched: [EquipmentCatalogEntry] = []
+        var pending = buckets
+        while !pending.isEmpty {
+            let data = try await api.post("/events/card", ["op": .string("equipmentCatalogItems"), "id": .string(id), "buckets": .array(pending.map { .string($0) })])
+            let reply = try JSONDecoder().decode(Reply.self, from: data)
+            for bucket in reply.buckets.values { fetched += bucket.items }
+            pending = reply.more
+        }
+        return fetched
+    }
+
     func reset(clearDisk: Bool = true) {
         saveTask?.cancel(); saveTask = nil
+        catalogMemo = [:]
+        equipmentEditors = [:]
         for tasks in taskStores.values { tasks.reset(clearDisk: clearDisk) }
         taskStores = [:]
         if clearDisk, let file { try? file.clear() }
@@ -446,7 +539,7 @@ import SwiftUI
 
     /// Czynność zakładki z paskiem postępu — po sukcesie odświeża wskazane zakładki, kroki i listę wydarzeń.
     @discardableResult func tabAction(_ id: String, _ tab: String, _ action: String, _ body: [String: JSONValue] = [:], reload: [String],
-                                      success: String?, pending: String = "Zapisywanie…") async throws -> Data {
+                                      success: String?, pending: String? = "Zapisywanie…") async throws -> Data {
         guard let api else { throw AppError.configuration }
         var payload = body
         payload["op"] = .string("tabAction")
@@ -455,7 +548,7 @@ import SwiftUI
         payload["action"] = .string(action)
         let request = payload
         let data: Data
-        if let workspace {
+        if let workspace, let pending {
             data = try await workspace.withPending(pending) { try await api.post("/events/card", request) }
         } else {
             data = try await api.post("/events/card", request)

@@ -106,7 +106,7 @@ private struct UploadReply: Decodable { var added: Int; var failed: [String] }
         .frame(width: side, height: side)
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .task(id: file.id) {
-            image = await EventFilesCache.shared.cachedThumbnail(file)
+            image = EventFilesCache.shared.cachedThumbnail(file)
             if image == nil { image = await EventFilesCache.shared.thumbnail(store, eventID, file) }
         }
     }

@@ -21,6 +21,7 @@ struct OfferTabData: Decodable {
     @Environment(\.crmTheme) private var theme
     @State private var deleting: OfferTabData.Offer?
     @State private var busy: String?
+    @State private var selected: String?
 
     private var data: OfferTabData? { store.tab(eventID, "offer", as: OfferTabData.self) }
 
@@ -43,36 +44,86 @@ struct OfferTabData: Decodable {
         } message: { Text("Tej operacji nie można cofnąć.") }
     }
 
-    private func content(_ data: OfferTabData) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Oferty").font(.title2.weight(.light))
-                        Text("Zarządzaj ofertami dla tego eventu").font(.callout).foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    if !data.offers.isEmpty && data.eventStatus == "offer_to_send" {
-                        Button { state.openCRM("/crm/events/\(eventID)?tab=offer") } label: { Label("Wyślij ofertę", systemImage: "paperplane") }
-                            .help("Wysyłka oferty e-mailem otworzy się w CRM.")
-                    }
-                    Button { state.openCRM("/crm/events/\(eventID)?tab=offer") } label: { Label("Nowa oferta", systemImage: "plus") }
-                        .buttonStyle(.borderedProminent).help("Kreator oferty otworzy się w CRM.")
+    @ViewBuilder private func content(_ data: OfferTabData) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Text("Oferty").font(.title2.weight(.semibold))
+                Text(NativeList.count(data.offers.count, "oferta", "oferty", "ofert")).foregroundStyle(.secondary)
+                Spacer()
+                if !data.offers.isEmpty && data.eventStatus == "offer_to_send" {
+                    Button { state.openCRM("/crm/events/\(eventID)?tab=offer") } label: { Label("Wyślij ofertę", systemImage: "paperplane") }
+                        .help("Wysyłka oferty e-mailem otworzy się w CRM.")
                 }
-                if data.offers.isEmpty {
-                    VStack(spacing: 10) {
-                        Image(systemName: "dollarsign.circle").font(.system(size: 40)).foregroundStyle(.tertiary)
-                        Text("Brak ofert dla tego eventu").foregroundStyle(.secondary)
-                        Button("Utwórz pierwszą ofertę") { state.openCRM("/crm/events/\(eventID)?tab=offer") }
-                    }
-                    .frame(maxWidth: .infinity).padding(40)
-                    .background(theme.card.opacity(theme == .light ? 1 : 0.9), in: RoundedRectangle(cornerRadius: 12))
-                } else {
-                    ForEach(data.offers) { offer in row(offer, data) }
-                }
+                Button { state.openCRM("/crm/events/\(eventID)?tab=offer") } label: { Label("Nowa oferta", systemImage: "plus") }
+                    .buttonStyle(.borderedProminent).help("Kreator oferty otworzy się w CRM.")
             }
-            .padding(18)
+            .padding(.horizontal, 18).padding(.top, 12)
+            if data.offers.isEmpty {
+                ContentUnavailableView {
+                    Label("Brak ofert dla tego eventu", systemImage: "dollarsign.circle")
+                } description: { Text("Kreator oferty otwiera się w CRM.") } actions: {
+                    Button("Utwórz pierwszą ofertę") { state.openCRM("/crm/events/\(eventID)?tab=offer") }
+                }
+            } else {
+                table(data)
+            }
         }
+    }
+
+    /// Natywna tabela ofert: dwuklik / ↩ otwiera ofertę, czynności w menu „…” i pod prawym przyciskiem.
+    private func table(_ data: OfferTabData) -> some View {
+        let lp = NativeList.numbers(data.offers)
+        return Table(data.offers, selection: $selected) {
+            TableColumn("") { (offer: OfferTabData.Offer) in
+                Image(systemName: offer.status == "accepted" ? "doc.text.fill" : "doc.text")
+                    .foregroundStyle(Self.statusColor(offer.status)).frame(width: 24, height: 24)
+            }.width(32)
+            TableColumn("Lp.") { (offer: OfferTabData.Offer) in NativeRowNumber(value: lp[offer.id]) }.width(36)
+            TableColumn("Numer") { (offer: OfferTabData.Offer) in
+                Text(offer.number ?? "Brak numeru").fontWeight(.medium).lineLimit(1).help(offer.notes ?? "")
+            }.width(min: 120, ideal: 170)
+            TableColumn("Klient") { (offer: OfferTabData.Offer) in Text(offer.client).lineLimit(1).help(offer.client) }.width(min: 120, ideal: 220)
+            TableColumn("Status") { (offer: OfferTabData.Offer) in
+                EventDotLabel(label: Self.statusLabel(offer.status), color: Self.statusColor(offer.status))
+            }.width(min: 100, ideal: 130)
+            TableColumn("Brutto") { (offer: OfferTabData.Offer) in
+                Text(Self.money(offer.gross)).monospacedDigit().fontWeight(.medium).frame(maxWidth: .infinity, alignment: .trailing)
+            }.width(min: 100, ideal: 130)
+            TableColumn("Netto") { (offer: OfferTabData.Offer) in
+                Text(Self.money(offer.net)).monospacedDigit().foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .trailing)
+            }.width(min: 100, ideal: 130)
+            TableColumn("Ważna do") { (offer: OfferTabData.Offer) in
+                Text(Self.day(offer.validUntil) ?? "—").monospacedDigit().foregroundStyle(.secondary)
+            }.width(min: 80, ideal: 100)
+            TableColumn("Zmieniona") { (offer: OfferTabData.Offer) in
+                Text(Self.day(offer.updatedAt ?? offer.createdAt) ?? "—").monospacedDigit().foregroundStyle(.secondary)
+                    .help("Utworzona: " + (Self.day(offer.createdAt) ?? "—"))
+            }.width(min: 80, ideal: 100)
+            TableColumn("") { (offer: OfferTabData.Offer) in
+                Menu { menu(offer, data) } label: { Image(systemName: "ellipsis") }
+                    .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().help("Czynności")
+            }.width(30)
+        }
+        .contextMenu(forSelectionType: String.self) { ids in
+            if let id = ids.first, let offer = data.offers.first(where: { $0.id == id }) { menu(offer, data) }
+        } primaryAction: { ids in
+            if let id = ids.first, let offer = data.offers.first(where: { $0.id == id }) { open(offer) }
+        }
+        .opacity(busy == nil ? 1 : 0.6)
+    }
+
+    @ViewBuilder private func menu(_ offer: OfferTabData.Offer, _ data: OfferTabData) -> some View {
+        let canDelete = offer.status == "draft" || offer.status == "sent" || data.isAdmin
+        let deleteTitle: String = canDelete ? "Usuń ofertę" : (offer.status == "accepted" ? "Nie można usunąć zaakceptowanej oferty" : "Nie można usunąć odrzuconej oferty")
+        Button("Otwórz ofertę", systemImage: "doc.text.magnifyingglass") { open(offer) }
+        if offer.status == "draft" || offer.status == "sent" {
+            Button("Zarezerwuj sprzęt (w CRM)", systemImage: "lock") { state.openCRM("/crm/events/\(eventID)?tab=offer") }
+        }
+        if data.eventStatus == "offer_to_send" {
+            Button("Wyślij ofertę (w CRM)", systemImage: "paperplane") { state.openCRM("/crm/events/\(eventID)?tab=offer") }
+        }
+        Divider()
+        Button(deleteTitle, systemImage: "trash", role: .destructive) { deleting = offer }.disabled(!canDelete || busy == offer.id)
     }
 
     private static func statusLabel(_ status: String) -> String {
@@ -107,54 +158,6 @@ struct OfferTabData: Decodable {
         formatter.minimumFractionDigits = 2
         formatter.maximumFractionDigits = 2
         return (formatter.string(from: NSNumber(value: value)) ?? String(value)) + " zł"
-    }
-
-    private func row(_ offer: OfferTabData.Offer, _ data: OfferTabData) -> some View {
-        let canDelete = offer.status == "draft" || offer.status == "sent" || data.isAdmin
-        let lockedReason: String = offer.status == "accepted" ? "Nie można usunąć zaakceptowanej oferty" : "Nie można usunąć odrzuconej oferty"
-        let color = Self.statusColor(offer.status)
-        let updated = offer.updatedAt != nil && offer.updatedAt != offer.createdAt ? Self.day(offer.updatedAt) : nil
-        return VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 8) {
-                        Text(offer.number ?? "Brak numeru").font(.headline)
-                        Text(Self.statusLabel(offer.status)).font(.caption.weight(.semibold)).foregroundStyle(color)
-                            .padding(.horizontal, 7).padding(.vertical, 3).background(color.opacity(0.18), in: RoundedRectangle(cornerRadius: 5))
-                    }
-                    Text("Klient: " + offer.client).font(.callout).foregroundStyle(.secondary)
-                }
-                Spacer()
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text(Self.money(offer.gross)).font(.title3.weight(.light)).foregroundStyle(theme.accent)
-                    Text("netto: " + Self.money(offer.net)).font(.caption).foregroundStyle(.secondary)
-                }
-            }
-            HStack(spacing: 10) {
-                if let valid = Self.day(offer.validUntil) { Text("Ważna do: " + valid) }
-                if let created = Self.day(offer.createdAt) { Text("Utworzona: " + created) }
-                if let updated { Text("•"); Text("Zaktualizowana: " + updated) }
-                Spacer()
-                if offer.status == "draft" || offer.status == "sent" {
-                    Button { state.openCRM("/crm/events/\(eventID)?tab=offer") } label: { Image(systemName: "lock") }
-                        .buttonStyle(.borderless).help("Zarezerwuj sprzęt (w CRM)")
-                }
-                if canDelete {
-                    Button { deleting = offer } label: { Image(systemName: "trash") }.buttonStyle(.borderless).foregroundStyle(.red)
-                        .help("Usuń ofertę").disabled(busy == offer.id)
-                } else {
-                    Image(systemName: "trash").foregroundStyle(.tertiary).help(lockedReason)
-                }
-            }
-            .font(.caption).foregroundStyle(.secondary)
-            if let notes = offer.notes?.nonEmpty { Text(notes).font(.callout).foregroundStyle(.secondary).padding(.top, 2) }
-        }
-        .padding(16)
-        .background(theme.card.opacity(theme == .light ? 1 : 0.9), in: RoundedRectangle(cornerRadius: 12))
-        .opacity(busy == offer.id ? 0.5 : 1)
-        .contentShape(Rectangle())
-        .onTapGesture { open(offer) }
-        .help("Otwórz ofertę")
     }
 
     /// Oferta na karcie natywnej (sekcja Oferty), a gdy niedostępna — w CRM.

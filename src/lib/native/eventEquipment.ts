@@ -93,7 +93,7 @@ const dayAfter = (iso: string) => {
  * `fetchAvailableEquipment` z `useEventEquipment`: dostępność w terminie (RPC magazynu), kable, sprawdzenie pojedynczych pozycji
  * bez stanu w RPC i limity zestawów (`kitEventLimits`). `catalog` — także pełne listy sprzętu i zestawów do okna „Dodaj sprzęt”.
  */
-async function availability(ctx: NativeContext, event: EventDates, catalog: boolean) {
+async function availability(ctx: NativeContext, event: EventDates, catalog: boolean | 'all') {
   const s = ctx.supabase;
   const { data: allRows, error: rowsError } = await s.from('event_equipment')
     .select('id, equipment_id, cable_id, kit_id, quantity, removed_from_offer, kit:equipment_kits(id, equipment_kit_items(equipment_id, cable_id, quantity))')
@@ -166,7 +166,7 @@ async function availability(ctx: NativeContext, event: EventDates, catalog: bool
           thumbnail: it.thumbnail_url || null, total: a?.total_quantity ?? 0, reserved: a?.reserved_quantity ?? 0, used: a?.used_by_this_event ?? 0,
           availableInTerm: a?.available_in_term ?? 0, maxAdd: a?.max_add ?? 0, maxSet: a?.max_set ?? 0,
         };
-      }).filter((item) => item.maxAdd > 0);
+      }).filter((item) => catalog === 'all' || item.maxAdd > 0);
     }
   }
 
@@ -1025,6 +1025,19 @@ registerEventActions('equipment', {
 // Odczyty pomocnicze: katalog do dodania, alternatywy, wynajem, zajętość komponentu, PDF checklisty
 // ---------------------------------------------------------------------------------------------------------------
 
+/**
+ * Katalog „Dodaj sprzęt” jako zbiór synchronizowany koszykami (`collectionState` / `collectionItems`): Mac trzyma go na dysku
+ * przy karcie wydarzenia i pobiera tylko koszyki, które się zmieniły (dostępność w terminie, nowe pozycje, zestawy).
+ */
+export async function equipmentCatalogEntries(ctx: NativeContext, eventId: string) {
+  const event = await eventDates(ctx, eventId);
+  const avail = await availability(ctx, event, 'all');
+  return [
+    ...avail.items.map((item: any) => ({ id: `item:${item.id}`, item: { ...item, kind: 'item', loaded: avail.loaded } })),
+    ...avail.kits.map((kit: any) => ({ id: `kit:${kit.id}`, item: { ...kit, kind: 'kit', loaded: avail.loaded } })),
+  ];
+}
+
 async function catalogQuery(ctx: NativeContext, eventId: string) {
   const event = await eventDates(ctx, eventId);
   const avail = await availability(ctx, event, true);
@@ -1115,6 +1128,79 @@ async function rentalsQuery(ctx: NativeContext, _eventId: string, params: URLSea
   };
 }
 
+/**
+ * „Kto zarezerwował?” — rezerwacje pozycji w innych wydarzeniach nakładających się z terminem (te same źródła co
+ * `check_equipment_inventory_for_event`: sprzęt z `equipment_bookings`, zestawy z `event_equipment`), zsumowane per wydarzenie,
+ * z autorem wydarzenia i kontaktem — żeby można było zapytać, czy coś odstąpią. Wydarzenia, których użytkownik nie widzi
+ * (zakres widoczności CRM), są liczone bez nazwy i osoby.
+ */
+async function reservationsQuery(ctx: NativeContext, eventId: string, params: URLSearchParams) {
+  const s = ctx.supabase;
+  const kind = params.get('kind') === 'kit' ? 'kit' : 'item';
+  const id = params.get('id') || '';
+  if (!uuid.test(id)) fail('Nieprawidłowa pozycja.');
+  const event = await eventDates(ctx, eventId);
+  if (!event.event_date) return { reservations: [], hiddenQuantity: 0 };
+  const start = event.event_date;
+  const end = event.event_end_date || dayAfter(event.event_date);
+  const demand = new Map<string, { quantity: number; start: string | null; end: string | null }>();
+  const add = (eventKey: string, quantity: number, from: string | null, to: string | null) => {
+    const previous = demand.get(eventKey);
+    demand.set(eventKey, previous ? { ...previous, quantity: previous.quantity + quantity } : { quantity, start: from, end: to });
+  };
+  if (kind === 'item') {
+    const { data, error } = await s.from('equipment_bookings').select('event_id, quantity, start_date, end_date')
+      .eq('equipment_id', id).neq('event_id', eventId).lt('start_date', end).gt('end_date', start);
+    if (error) throw error;
+    for (const row of (data || []) as any[]) if (row.event_id) add(row.event_id, num(row.quantity), row.start_date, row.end_date);
+  } else {
+    const { data, error } = await s.from('event_equipment').select('event_id, quantity, status, removed_from_offer, use_external_rental')
+      .eq('kit_id', id).neq('event_id', eventId);
+    if (error) throw error;
+    for (const row of (data || []) as any[]) {
+      if (!['reserved', 'in_use'].includes(String(row.status || 'reserved')) || row.removed_from_offer || row.use_external_rental) continue;
+      add(row.event_id, num(row.quantity), null, null);
+    }
+  }
+  const ids = Array.from(demand.keys());
+  if (!ids.length) return { reservations: [], hiddenQuantity: 0 };
+  const { data: events, error: eventsError } = await s.from('events').select('id, name, event_date, event_end_date, status, created_by').in('id', ids);
+  if (eventsError) throw eventsError;
+  const visible = new Map(((events || []) as any[]).map((row) => [row.id, row] as [string, any]));
+  const authorIds = Array.from(new Set(((events || []) as any[]).map((row) => row.created_by).filter(Boolean)));
+  const { data: people } = authorIds.length
+    ? await s.from('employees').select('id, name, surname, avatar_url, avatar_metadata, email, phone_number').in('id', authorIds)
+    : { data: [] as any[] };
+  const byId = new Map(((people || []) as any[]).map((row) => [row.id, row] as [string, any]));
+  let hiddenQuantity = 0;
+  const reservations: any[] = [];
+  for (const [key, value] of demand) {
+    const row = visible.get(key);
+    if (!row) {
+      hiddenQuantity += value.quantity;
+      continue;
+    }
+    if (String(row.status || '') === 'cancelled') continue;
+    if (kind === 'kit') {
+      const rowStart = row.event_date as string | null;
+      const rowEnd = (row.event_end_date as string | null) || (rowStart ? dayAfter(rowStart) : null);
+      if (!rowStart || !rowEnd || !(Date.parse(rowStart) < Date.parse(end) && Date.parse(rowEnd) > Date.parse(start))) continue;
+    }
+    const person = row.created_by ? byId.get(row.created_by) : null;
+    reservations.push({
+      eventId: row.id, name: row.name || 'Wydarzenie', status: row.status || null, quantity: value.quantity,
+      start: value.start || row.event_date || null, end: value.end || row.event_end_date || null,
+      eventStart: row.event_date || null, eventEnd: row.event_end_date || null,
+      author: person ? {
+        id: person.id, name: [person.name, person.surname].filter(Boolean).join(' ') || 'Pracownik', avatarUrl: person.avatar_url || null,
+        avatar: imageCrop(person.avatar_metadata as any), email: person.email || null, phone: person.phone_number || null,
+      } : null,
+    });
+  }
+  reservations.sort((a, b) => String(a.start || '').localeCompare(String(b.start || '')));
+  return { reservations, hiddenQuantity };
+}
+
 async function conflictsQuery(ctx: NativeContext, eventId: string, params: URLSearchParams) {
   return componentConflicts(ctx, eventId, params.get('key') || '', Math.max(0, num(params.get('existing'))));
 }
@@ -1138,5 +1224,6 @@ registerEventQueries('equipment', {
   alternatives: alternativesQuery,
   rentals: rentalsQuery,
   conflicts: conflictsQuery,
+  reservations: reservationsQuery,
   checklistPdf: (ctx, eventId) => checklistPdfQuery(ctx, eventId),
 });

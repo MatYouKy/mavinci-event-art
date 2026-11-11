@@ -162,6 +162,8 @@ import AppKit
                                           onDelete: { bar, kind in Task { await removeBar(bar, kind) } })
                         }
                         .padding(16)
+                        // Przewijanie w dwóch osiach centruje mniejszą treść — oś czasu zawsze od lewego górnego rogu, bez pustego pasa nad fazami.
+                        .frame(minWidth: geometry.size.width, minHeight: geometry.size.height, alignment: .topLeading)
                     }
                 }
             }

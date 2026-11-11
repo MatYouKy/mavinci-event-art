@@ -165,7 +165,7 @@ struct EquipmentCatalog: Decodable {
         var maxAdd: Double
         var maxSet: Double
     }
-    struct KitContent: Decodable, Hashable { var id: String; var name: String; var brand: String; var model: String; var lengthMeters: Double?; var quantity: Double }
+    struct KitContent: Codable, Hashable { var id: String; var name: String; var brand: String; var model: String; var lengthMeters: Double?; var quantity: Double }
     struct Kit: Decodable, Identifiable, Hashable {
         var id: String
         var name: String
@@ -553,4 +553,25 @@ enum EquipmentRules {
             return ""
         }
     }
+}
+
+/// Pozycja katalogu „Dodaj sprzęt” z kopii na dysku (zbiór synchronizowany koszykami, `op=equipmentCatalog`).
+struct EquipmentCatalogEntry: Codable, Hashable, SyncKeyed {
+    var kind: String
+    var id: String
+    var name: String
+    var brand: String?
+    var model: String?
+    var category: String?
+    var description: String?
+    var thumbnail: String?
+    var total: Double
+    var reserved: Double
+    var used: Double
+    var availableInTerm: Double
+    var maxAdd: Double
+    var maxSet: Double
+    var contents: [EquipmentCatalog.KitContent]?
+    var loaded: Bool
+    var syncKey: String { "\(kind):\(id)" }
 }

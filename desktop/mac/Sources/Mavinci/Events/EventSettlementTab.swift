@@ -685,7 +685,7 @@ struct SettlementConfirm: Identifiable {
         } + version.external.map { $0.name + ": " + SettlementText.pln($0.amount) + " (" + SettlementText.percent($0.rate) + ")" }
         return VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
-                chip(SettlementText.versionActions[version.action] ?? version.action, color)
+                EventDotLabel(label: SettlementText.versionActions[version.action] ?? version.action, color: color).font(.caption.weight(.semibold))
                 Text("wersja \(version.revision)").font(.caption).foregroundStyle(.secondary)
                 Text("· " + SettlementText.date(version.created_at, time: true)).font(.caption).foregroundStyle(.secondary)
                 if let actor = version.actor_name { Text("· " + actor).font(.caption).foregroundStyle(.secondary) }

@@ -212,8 +212,8 @@ private func phaseRoleLabel(_ role: String) -> String { phaseRoleLabels[role] ??
     private var isTravel: Bool { [2.0, 6.0].contains(type?.rank ?? 0) }
     private var flexible: Bool { isTravel && automaticTravel && type?.durationHours == nil }
     private func typeLabel(_ type: PhasesTabData.PhaseType) -> String {
-        let detail = [2.0, 6.0].contains(type.rank) ? "z logistyki" : type.durationHours.map { "\(Int(($0 * 60).rounded())) min" } ?? "oblicz trasę w logistyce"
-        return "\(type.name) (\(detail))"
+        let detail = [2.0, 6.0].contains(type.rank) ? "z logistyki" : type.durationHours.map { TimelineText.hours(Int(($0 * 60).rounded())) } ?? "oblicz trasę w logistyce"
+        return "\(type.name) — \(detail)"
     }
 
     var body: some View {
@@ -250,7 +250,7 @@ private func phaseRoleLabel(_ role: String) -> String { phaseRoleLabels[role] ??
                             .font(.callout).foregroundStyle(Color.accentColor)
                     }
                     if isTravel, let hours = type?.durationHours, (type?.rank == 2 ? data.travel.outbound : data.travel.inbound) != nil {
-                        Text("Planowany czas przejazdu: \(Int((hours * 60).rounded())) min, z zapasem i przerwami. Przy kilku pojazdach uwzględniamy najdłuższy przejazd.")
+                        Text("Planowany czas przejazdu: \(TimelineText.hours(Int((hours * 60).rounded()))), z zapasem i przerwami. Przy kilku pojazdach uwzględniamy najdłuższy przejazd.")
                             .font(.caption).foregroundStyle(Color.accentColor)
                     }
                     if timesSet {
@@ -259,7 +259,7 @@ private func phaseRoleLabel(_ role: String) -> String { phaseRoleLabels[role] ??
                             DatePicker("Zakończenie", selection: Binding(get: { end }, set: { end = $0; endManual = true }))
                                 .disabled(automaticTravel && isTravel)
                             if let hours = type?.durationHours {
-                                Button("Ustaw +\(Int((hours * 60).rounded())) min") { endManual = false; recalculateEnd() }.buttonStyle(.link)
+                                Button("Ustaw +" + TimelineText.hours(Int((hours * 60).rounded()), minutesInParentheses: false)) { endManual = false; recalculateEnd() }.buttonStyle(.link)
                             }
                         }
                         Label("Czas trwania: \(durationText)", systemImage: "clock").foregroundStyle(CrmTheme.rgb(0x60a5fa))
@@ -278,11 +278,7 @@ private func phaseRoleLabel(_ role: String) -> String { phaseRoleLabels[role] ??
     }
 
     private var durationText: String {
-        let minutes = Int((end.timeIntervalSince(start) / 60).rounded())
-        if minutes <= 0 { return "0 min" }
-        let hours = minutes / 60, rest = minutes % 60
-        if hours == 0 { return "\(rest) min" }
-        return rest == 0 ? "\(hours) h" : "\(hours) h \(rest) min"
+        TimelineText.hours(Int((end.timeIntervalSince(start) / 60).rounded()))
     }
     private func selectType(_ id: String, previous: String) {
         automaticTravel = true

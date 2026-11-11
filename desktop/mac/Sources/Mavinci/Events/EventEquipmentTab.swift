@@ -39,9 +39,11 @@ private struct ComponentsRequest: Identifiable {
     @Environment(\.crmTheme) private var theme
     @State private var search = ""
     @State private var expanded: Set<String> = []
-    @State private var editingQty: String?
-    @State private var draftQty = 1
+    @State private var selection: Set<String> = []
+    @State private var anchor: String?
+    @FocusState private var listFocused: Bool
     @State private var addOpen = false
+    @State private var managerFocus: String?
     @State private var replacingExternal: Int?
     @State private var resolvedExternal: Set<Int> = []
     @State private var importConflicts: [EquipmentImportResult.Conflict] = []
@@ -54,11 +56,11 @@ private struct ComponentsRequest: Identifiable {
     @State private var alternatives: AlternativesRequest?
     @State private var rental: RentalRequest?
     @State private var components: ComponentsRequest?
-    @State private var removing: EquipmentTabData.Row?
     @State private var preview: NativePreview?
     @State private var autoOpened: Set<String> = []
 
     private var data: EquipmentTabData? { store.tab(eventID, "equipment", as: EquipmentTabData.self) }
+    private var editor: EquipmentEditor { store.equipmentEditor(eventID) }
     private var checklistTab: EquipmentChecklistTab? { store.tab(eventID, "equipment-checklist", as: EquipmentChecklistTab.self) }
     private var checklist: EquipmentChecklist? { checklistTab?.checklist }
 
@@ -74,13 +76,15 @@ private struct ComponentsRequest: Identifiable {
             }
         }
         .task(id: eventID) { await reload() }
+        // Katalog „Dodaj sprzęt” odświeżany w tle (tylko zmienione koszyki), żeby okno dodawania otwierało się od razu z dysku.
+        .task(id: eventID) { await store.syncEquipmentCatalog(eventID) }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in Task { await reload() } }
         .onChange(of: checklist?.stage) { old, new in
             if old != nil, new != nil, old != new { stagePick = nil }
         }
         .task(id: reviewSignature) { await finishEmptyReview() }
-        .sheet(isPresented: $addOpen, onDismiss: { replacingExternal = nil }) {
-            EquipmentAddSheet(store: store, eventID: eventID) { added in
+        .sheet(isPresented: $addOpen, onDismiss: { replacingExternal = nil; managerFocus = nil }) {
+            EquipmentManagerSheet(store: store, editor: editor, eventID: eventID, focus: managerFocus) { added in
                 if added, let index = replacingExternal { resolvedExternal.insert(index) }
                 replacingExternal = nil
             }
@@ -106,10 +110,6 @@ private struct ComponentsRequest: Identifiable {
                 .warehouseSheetStyle(state)
         }
         .sheet(item: $preview) { NativeDocumentPreview(preview: $0) }
-        .confirmationDialog(removing?.isKit == true ? "Usuń zestaw" : "Usuń pozycję", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }), titleVisibility: .visible) {
-            Button("Usuń", role: .destructive) { if let row = removing { Task { await remove(row) } } }
-            Button("Anuluj", role: .cancel) { removing = nil }
-        } message: { Text("Usunąć tę pozycję z eventu (pochodzi z oferty)?") }
     }
 
     private func reload() async {
@@ -142,6 +142,7 @@ private struct ComponentsRequest: Identifiable {
         let stageRows = shippedOnly ? data.rows.filter { (lines[$0.id]?.shipped_qty ?? 0) > 0 } : data.rows
         let visible = filtered(stageRows)
         let notShipped = shippedOnly ? (checklist?.lines ?? []).filter { $0.shipped_qty <= 0 }.count : 0
+        let ordered = displayOrder(visible).map(\.id)
         return ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 header(data)
@@ -161,12 +162,25 @@ private struct ComponentsRequest: Identifiable {
                         Text(visible.isEmpty ? "Brak sprzętu pasującego do wyszukiwania." : "Znaleziono pozycji: \(visible.count) z \(stageRows.count)")
                             .font(.callout).foregroundStyle(.secondary)
                     }
-                    sections(data, visible, lines)
+                    sections(data, visible, lines, ordered)
                 }
                 EquipmentChecklistNotesView(store: store, eventID: eventID, notes: data.notes, dirty: $notesDirty) { localModified = true }
             }
             .padding(18)
         }
+        // Zaznaczanie jak w Finderze: klik, ⌘-klik, ⇧-klik; ⌫ usuwa zaznaczone (z „Cofnij”), Esc czyści zaznaczenie, ⌘A — wszystko.
+        .focusable()
+        .focused($listFocused)
+        .focusEffectDisabled()
+        .onDeleteCommand { deleteSelected() }
+        .onExitCommand { selection = [] }
+        .onCommand(#selector(NSResponder.selectAll(_:))) { selection = Set(ordered) }
+    }
+
+    /// Kolejność wierszy na ekranie (sekcje i grupy jak w `sections`) — dla zaznaczania zakresu ⇧-klikiem.
+    private func displayOrder(_ rows: [EquipmentTabData.Row]) -> [EquipmentTabData.Row] {
+        let groups = [rows.filter { !$0.isKit && !$0.isCable }, rows.filter(\.isKit), rows.filter(\.isCable)]
+        return groups.flatMap { group in group.filter { !$0.autoAdded } + group.filter(\.autoAdded) }
     }
 
     /// Wyszukiwanie po nazwie, marce, modelu i zawartości zestawu (każde słowo musi wystąpić).
@@ -191,7 +205,9 @@ private struct ComponentsRequest: Identifiable {
                 .textFieldStyle(.roundedBorder).frame(maxWidth: 340)
             Spacer(minLength: 8)
             if !checklistLocked {
-                Button { addOpen = true } label: { Label("Dodaj sprzęt", systemImage: "plus") }.buttonStyle(.borderedProminent)
+                Button { addOpen = true } label: { Label("Zarządzaj sprzętem", systemImage: "plus.forwardslash.minus") }
+                    .buttonStyle(.borderedProminent)
+                    .help("Dodawanie, zmiana ilości i usuwanie sprzętu w jednym oknie (z dostępnością w terminie)")
             }
             if data.calculationId != nil && !checklistLocked {
                 Button { Task { await importCalculation() } } label: { Label(importing ? "Importowanie..." : "Importuj z kalkulacji", systemImage: "function") }
@@ -378,23 +394,23 @@ private struct ComponentsRequest: Identifiable {
 
     // MARK: Sekcje listy
 
-    @ViewBuilder private func sections(_ data: EquipmentTabData, _ rows: [EquipmentTabData.Row], _ lines: [String: EquipmentChecklist.Line]) -> some View {
+    @ViewBuilder private func sections(_ data: EquipmentTabData, _ rows: [EquipmentTabData.Row], _ lines: [String: EquipmentChecklist.Line], _ ordered: [String]) -> some View {
         let items = rows.filter { !$0.isKit && !$0.isCable }
         let kits = rows.filter(\.isKit)
         let cables = rows.filter(\.isCable)
         if !items.isEmpty {
-            section("Pojedynczy sprzęt", "Samodzielne urządzenia rezerwowane na wydarzenie", items, data, lines)
+            section("Pojedynczy sprzęt", "Samodzielne urządzenia rezerwowane na wydarzenie", items, data, lines, ordered)
         }
         if !kits.isEmpty {
-            section("Zestawy sprzętowe", "Gotowe komplety z możliwością rozwinięcia zawartości", kits, data, lines)
+            section("Zestawy sprzętowe", "Gotowe komplety z możliwością rozwinięcia zawartości", kits, data, lines, ordered)
         }
         if !cables.isEmpty {
-            section("Przewody i okablowanie", "Pozycje magazynowe rozliczane w sztukach lub metrach", cables, data, lines)
+            section("Przewody i okablowanie", "Pozycje magazynowe rozliczane w sztukach lub metrach", cables, data, lines, ordered)
         }
     }
 
     private func section(_ title: String, _ subtitle: String, _ rows: [EquipmentTabData.Row], _ data: EquipmentTabData,
-                         _ lines: [String: EquipmentChecklist.Line]) -> some View {
+                         _ lines: [String: EquipmentChecklist.Line], _ ordered: [String]) -> some View {
         let manual = rows.filter { !$0.autoAdded }
         let auto = rows.filter(\.autoAdded)
         return VStack(alignment: .leading, spacing: 10) {
@@ -407,32 +423,39 @@ private struct ComponentsRequest: Identifiable {
                 Text("\(rows.count)").font(.callout.monospacedDigit()).padding(.horizontal, 8).padding(.vertical, 2)
                     .background(theme.accent.opacity(0.15), in: Capsule())
             }
-            if !manual.isEmpty { group("Dodane bezpośrednio", manual, data, lines) }
-            if !auto.isEmpty { group("Z oferty / importu", auto, data, lines) }
+            if !manual.isEmpty { group("Dodane bezpośrednio", manual, data, lines, ordered) }
+            if !auto.isEmpty { group("Z oferty / importu", auto, data, lines, ordered) }
         }
-        .padding(14)
-        .background(theme.card.opacity(theme == .light ? 1 : 0.9), in: RoundedRectangle(cornerRadius: 12))
     }
 
-    private func group(_ title: String, _ rows: [EquipmentTabData.Row], _ data: EquipmentTabData, _ lines: [String: EquipmentChecklist.Line]) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title.uppercased()).font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
+    private func group(_ title: String, _ rows: [EquipmentTabData.Row], _ data: EquipmentTabData, _ lines: [String: EquipmentChecklist.Line],
+                       _ ordered: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title.uppercased()).font(.caption2.weight(.semibold)).foregroundStyle(.secondary).padding(.bottom, 2)
             ForEach(rows) { row in
                 EquipmentRowView(store: store, eventID: eventID, row: row, data: data, editable: !checklistLocked,
                                  checklist: rowChecklist(row, lines), legacyLoaded: showLegacyLoaded,
-                                 expanded: expanded.contains(row.id), editing: editingQty == row.id, draft: $draftQty,
-                                 actions: actions(for: row))
+                                 expanded: expanded.contains(row.id), editor: editor, selected: selection.contains(row.id),
+                                 selectionCount: selection.contains(row.id) ? selection.count : 0, actions: actions(for: row, ordered))
             }
         }
     }
 
-    private func actions(for row: EquipmentTabData.Row) -> EquipmentRowActions {
+    private func actions(for row: EquipmentTabData.Row, _ ordered: [String]) -> EquipmentRowActions {
         EquipmentRowActions(
             toggleExpand: { if expanded.contains(row.id) { expanded.remove(row.id) } else { expanded.insert(row.id) } },
-            startEdit: { editingQty = row.id; draftQty = row.qty },
-            cancelEdit: { draftQty = row.qty; editingQty = nil },
-            saveQuantity: { qty, maxSet in Task { await updateQuantity(row, qty, maxSet) } },
-            remove: { removing = row },
+            select: { select(row, ordered) },
+            setQuantity: { qty in setQuantity(row, qty) },
+            removeSelection: { deleteSelected() },
+            remove: { delete([row]) },
+            reservations: {
+                let kind: String? = row.isKit ? "kit" : (row.isCable ? nil : "item")
+                let id: String? = row.isKit ? row.kitId : row.equipmentId
+                if let kind, let id {
+                    managerFocus = kind + ":" + id
+                    addOpen = true
+                }
+            },
             restore: { Task { await restore(row) } },
             rental: { rental = RentalRequest(rowID: row.id, name: row.name, categoryID: row.warehouseCategoryId, quantity: row.qty, conflictIndex: nil) },
             alternative: { suggestAlternative(row) },
@@ -462,13 +485,64 @@ private struct ComponentsRequest: Identifiable {
             state.error = "Maksymalnie możesz ustawić: \(maxSet) szt."
             return
         }
-        if await run("quantity", ["rowId": .string(row.id), "quantity": .number(Double(qty))], success: "Zaktualizowano") != nil {
-            editingQty = nil
+        _ = await run("quantity", ["rowId": .string(row.id), "quantity": .number(Double(qty))], success: "Zaktualizowano")
+    }
+
+    // MARK: Zaznaczanie, ilość i usuwanie z „Cofnij” (wspólny zapis z oknem „Zarządzaj sprzętem”)
+
+    private func select(_ row: EquipmentTabData.Row, _ ordered: [String]) {
+        let flags = NSEvent.modifierFlags
+        if flags.contains(.command) {
+            if selection.contains(row.id) { selection.remove(row.id) } else { selection.insert(row.id) }
+            anchor = row.id
+        } else if flags.contains(.shift), let anchor, let from = ordered.firstIndex(of: anchor), let to = ordered.firstIndex(of: row.id) {
+            selection = Set(ordered[min(from, to)...max(from, to)])
+        } else {
+            selection = [row.id]
+            anchor = row.id
+        }
+        listFocused = true
+    }
+
+    private func target(for row: EquipmentTabData.Row) -> EquipmentEditor.Target? {
+        let kind = row.isKit ? "kit" : row.isCable ? "cable" : "item"
+        guard let id = row.isKit ? row.kitId : row.isCable ? row.cableId : row.equipmentId else { return nil }
+        let target = EquipmentEditor.Target(kind: kind, id: id, name: row.name)
+        return row.key == target.key ? target : nil
+    }
+
+    /// Ilość z − / + albo wpisana: zapis po krótkiej przerwie; pozycja występująca na liście kilka razy — zapis tej jednej pozycji.
+    private func setQuantity(_ row: EquipmentTabData.Row, _ qty: Int) {
+        guard let data else { return }
+        let duplicates = data.rows.filter { $0.key != nil && $0.key == row.key && !$0.removed }.count > 1
+        if !duplicates, let target = target(for: row) {
+            editor.set(target, to: qty)
+        } else {
+            Task { await updateQuantity(row, qty, data.limits(row).maxSet) }
         }
     }
 
+    private func deleteSelected() {
+        guard !checklistLocked, let data else { return }
+        delete(data.rows.filter { selection.contains($0.id) && !$0.removed })
+    }
+
+    /// Usunięcie od razu, bez pytania — komunikat na dole ma „Cofnij” (pozycja z oferty wraca przez przywrócenie, ręczna — dodaniem).
+    private func delete(_ rows: [EquipmentTabData.Row]) {
+        guard !rows.isEmpty else { return }
+        var targets: [EquipmentEditor.Target] = []
+        for row in rows {
+            if let target = target(for: row) {
+                if !targets.contains(target) { targets.append(target) }
+            } else {
+                Task { await remove(row) }
+            }
+        }
+        if !targets.isEmpty { editor.remove(targets) }
+        selection.subtract(rows.map(\.id))
+    }
+
     private func remove(_ row: EquipmentTabData.Row) async {
-        removing = nil
         guard let reply = await run("remove", ["rowId": .string(row.id)], success: nil, pending: "Usuwanie…") else { return }
         struct Reply: Decodable { var message: String? }
         state.succeed((try? JSONDecoder().decode(Reply.self, from: reply))?.message ?? "Usunięto")
@@ -582,10 +656,11 @@ enum EquipmentQty {
 
 struct EquipmentRowActions {
     var toggleExpand: () -> Void
-    var startEdit: () -> Void
-    var cancelEdit: () -> Void
-    var saveQuantity: (Int, Int) -> Void
+    var select: () -> Void
+    var setQuantity: (Int) -> Void
+    var removeSelection: () -> Void
     var remove: () -> Void
+    var reservations: () -> Void
     var restore: () -> Void
     var rental: () -> Void
     var alternative: () -> Void
@@ -603,10 +678,12 @@ struct EquipmentRowActions {
     let checklist: EquipmentRowChecklist?
     let legacyLoaded: Bool
     let expanded: Bool
-    let editing: Bool
-    @Binding var draft: Int
+    @ObservedObject var editor: EquipmentEditor
+    let selected: Bool
+    let selectionCount: Int
     let actions: EquipmentRowActions
     @Environment(\.crmTheme) private var theme
+    @State private var previewShown = false
 
     private var limits: EquipmentLimits { data.limits(row) }
     private var conflict: Bool { (row.key.flatMap { data.availability[$0] }?.maxAdd ?? 0) < 0 }
@@ -614,6 +691,7 @@ struct EquipmentRowActions {
     private var done: Bool { checklist?.done == true }
 
     private var tint: Color {
+        if selected { return theme.accent.opacity(0.2) }
         if let checklist { return checklist.tint ?? Color.primary.opacity(0.04) }
         if legacyLoaded && row.loaded { return Color.green.opacity(0.08) }
         if conflict || row.optional { return Color.red.opacity(0.07) }
@@ -637,9 +715,12 @@ struct EquipmentRowActions {
                 trailing
                 rowActions
             }
-            .padding(.horizontal, 12).padding(.vertical, 8)
-            .background(tint, in: RoundedRectangle(cornerRadius: 9))
+            .padding(.horizontal, 10).padding(.vertical, 5)
+            .background(tint, in: RoundedRectangle(cornerRadius: 7))
             .opacity(row.removed ? 0.55 : 1)
+            .contentShape(Rectangle())
+            .onTapGesture { actions.select() }
+            .contextMenu { menuItems }
             if !row.isKit, let id = row.equipmentId, let entry = data.components[id], !entry.groups.isEmpty {
                 componentsWarning(entry)
             }
@@ -647,22 +728,39 @@ struct EquipmentRowActions {
         }
     }
 
+    /// Miniatura — kliknięcie otwiera podgląd (powiększone zdjęcie i szczegóły pozycji) w natywnym okienku.
     private var thumbnail: some View {
-        ZStack(alignment: .topTrailing) {
-            WarehouseThumb(url: row.thumbnail, size: 40, symbol: row.isKit ? "shippingbox.fill" : row.isCable ? "cable.connector" : "shippingbox")
-            if row.isKit {
-                Image(systemName: "shippingbox.fill").font(.system(size: 8)).foregroundStyle(.black)
-                    .frame(width: 16, height: 16).background(theme.accent, in: Circle()).offset(x: 5, y: -5)
+        Button { previewShown.toggle() } label: {
+            ZStack(alignment: .topTrailing) {
+                WarehouseThumb(url: row.thumbnail, size: 32, symbol: row.isKit ? "shippingbox.fill" : row.isCable ? "cable.connector" : "shippingbox")
+                if row.isKit {
+                    Image(systemName: "shippingbox.fill").font(.system(size: 7)).foregroundStyle(.black)
+                        .frame(width: 13, height: 13).background(theme.accent, in: Circle()).offset(x: 4, y: -4)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Podgląd: zdjęcie i szczegóły")
+        .popover(isPresented: $previewShown, arrowEdge: .trailing) { previewCard }
+    }
+
+    private var previewCard: some View {
+        var open: (() -> Void)? = nil
+        if !row.isKit && (row.equipmentId != nil || row.cableId != nil) {
+            open = {
+                previewShown = false
+                actions.openDetail()
             }
         }
+        return EquipmentPreviewCard(row: row, limits: limits, status: badge, editable: editable, openDetail: open)
     }
 
     private var info: some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 6) {
                 nameView
-                Text(badge.label).font(.caption2.weight(.semibold)).foregroundStyle(badge.color)
-                    .padding(.horizontal, 6).padding(.vertical, 2).background(badge.color.opacity(0.14), in: Capsule())
+                EventDotLabel(label: badge.label, color: badge.color, size: 6).font(.caption).foregroundStyle(.secondary)
                 if !row.isKit {
                     Text(row.fromOffer ? "Z oferty / importu" : "Dodane ręcznie").font(.caption2).foregroundStyle(.secondary)
                 }
@@ -727,48 +825,61 @@ struct EquipmentRowActions {
 
     @ViewBuilder private var quantity: some View {
         let unit = row.isKit ? "szt." : row.unit
-        if editable && editing {
-            HStack(spacing: 4) {
-                Button { actions.saveQuantity(draft, limits.maxSet) } label: { Image(systemName: "checkmark") }.buttonStyle(.borderedProminent).help("Zapisz")
-                Button { actions.cancelEdit() } label: { Image(systemName: "xmark") }.help("Anuluj")
-                TextField("", value: $draft, format: .number).frame(width: 56).textFieldStyle(.roundedBorder)
-                    .onSubmit { actions.saveQuantity(draft, limits.maxSet) }
-                Text(unit).font(.caption).foregroundStyle(.secondary)
-                Text("max \(limits.maxSet)").font(.caption2).foregroundStyle(.secondary)
-            }
-            .controlSize(.small)
-        } else if editable {
-            Button { actions.startEdit() } label: {
-                (Text("\(row.qty) ").font(.callout.weight(.semibold).monospacedDigit()) + Text(unit).font(.caption).foregroundColor(.secondary))
-                    .padding(.horizontal, 8).padding(.vertical, 3).background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
-            }
-            .buttonStyle(.plain).help("Zmień ilość")
+        if editable && !row.removed && row.key != nil {
+            EquipmentStepper(value: row.key.flatMap { editor.drafts[$0] } ?? row.qty, lower: 1, upper: max(1, limits.maxSet), unit: unit,
+                             saving: row.key.map { editor.saving.contains($0) } ?? false) { actions.setQuantity($0) }
         } else {
             (Text("\(row.qty) ").font(.callout.weight(.semibold).monospacedDigit()) + Text(unit).font(.caption).foregroundColor(.secondary))
         }
     }
 
+    /// Pozycje wymagające decyzji (brak, konflikt, wynajem) mają przyciski na wierzchu; pozostałe czynności — w menu „…” i pod prawym przyciskiem.
     @ViewBuilder private var rowActions: some View {
-        if row.isKit {
-            Menu {
-                if editable { Button("Usuń zestaw", systemImage: "trash", role: .destructive) { actions.remove() } }
-                Button(row.expandInChecklist ? "ukryj zawartość" : "drukuj zawartość", systemImage: "printer") { actions.toggleExpandInChecklist(!row.expandInChecklist) }
-            } label: { Image(systemName: "ellipsis.circle") }
-                .menuStyle(.borderlessButton).fixedSize().help(row.expandInChecklist ? "Zawartość zestawu na checkliście" : "Zestaw na checkliście bez zawartości")
-        } else if (conflict || row.optional || row.rental) && editable {
-            HStack(spacing: 4) {
+        HStack(spacing: 4) {
+            if (conflict || row.optional || row.rental) && editable && !row.removed {
                 Button("Usuń", role: .destructive) { actions.remove() }
                 if !row.rental { Button("Rental") { actions.rental() } }
-                Button("Zamień") { actions.alternative() }.buttonStyle(.borderedProminent)
+                if !row.isKit { Button("Zamień") { actions.alternative() }.buttonStyle(.borderedProminent) }
+                if !row.isCable { Button("Kto ma?") { actions.reservations() }.help("Kto rezerwuje ten sprzęt w terminie — można zapytać, czy odstąpi") }
+            } else if row.removed && editable {
+                Button("Przywróć") { actions.restore() }.help("Przywróć z oferty")
             }
-            .controlSize(.small)
-        } else if !editable {
-            EmptyView()
-        } else if !row.removed {
-            Button { actions.remove() } label: { Image(systemName: "trash") }.buttonStyle(.borderless).foregroundStyle(.red)
-                .help(row.autoAdded ? "Usuń z eventu (z oferty)" : "Usuń z eventu")
-        } else {
-            Button("Przywróć") { actions.restore() }.controlSize(.small).help("Przywróć z oferty")
+            Menu { menuItems } label: { Image(systemName: "ellipsis") }
+                .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().help("Czynności")
+        }
+        .controlSize(.small)
+    }
+
+    @ViewBuilder private var menuItems: some View {
+        if selectionCount > 1 && editable {
+            Button("Usuń zaznaczone (\(selectionCount))", systemImage: "trash", role: .destructive) { actions.removeSelection() }
+            Divider()
+        }
+        Button("Podgląd", systemImage: "eye") { previewShown = true }
+        if !row.isKit && (row.equipmentId != nil || row.cableId != nil) {
+            Button("Karta sprzętu", systemImage: "arrow.up.right.square") { actions.openDetail() }
+        }
+        if row.isKit {
+            Button(expanded ? "Zwiń zawartość" : "Pokaż zawartość", systemImage: "list.bullet.indent") { actions.toggleExpand() }
+            Button(row.expandInChecklist ? "Ukryj zawartość na checkliście" : "Drukuj zawartość na checkliście", systemImage: "printer") {
+                actions.toggleExpandInChecklist(!row.expandInChecklist)
+            }
+        }
+        if !row.isCable, (row.key.flatMap { data.availability[$0] }?.reserved ?? 0) > 0 {
+            Button("Kto rezerwuje w tym terminie?", systemImage: "person.2") { actions.reservations() }
+        }
+        if editable && !row.removed {
+            Divider()
+            if !row.isKit && !row.isCable { Button("Zamień na inny sprzęt…", systemImage: "arrow.left.arrow.right") { actions.alternative() } }
+            if !row.isKit && !row.rental { Button("Wynajem od podwykonawcy…", systemImage: "person.badge.shield.checkmark") { actions.rental() } }
+            if !row.isKit, let id = row.equipmentId, data.components[id] != nil {
+                Button("Komponenty…", systemImage: "puzzlepiece.extension") { actions.components() }
+            }
+            Divider()
+            Button(row.autoAdded ? "Usuń z wydarzenia (z oferty)" : "Usuń z wydarzenia", systemImage: "trash", role: .destructive) { actions.remove() }
+        }
+        if editable && row.removed {
+            Button("Przywróć z oferty", systemImage: "arrow.uturn.backward") { actions.restore() }
         }
     }
 
@@ -817,5 +928,80 @@ struct EquipmentRowActions {
         }
         .padding(.horizontal, 10).padding(.vertical, 4)
         .background(Color.primary.opacity(0.03), in: RoundedRectangle(cornerRadius: 6))
+    }
+}
+
+
+// MARK: Podgląd pozycji sprzętu (okienko przy miniaturze)
+
+@MainActor struct EquipmentPreviewCard: View {
+    let row: EquipmentTabData.Row
+    let limits: EquipmentLimits
+    let status: (label: String, color: Color)
+    let editable: Bool
+    let openDetail: (() -> Void)?
+
+    private var unit: String { row.isKit ? "szt." : row.unit }
+    private var meta: String { [row.brand, row.model].filter { !$0.isEmpty }.joined(separator: " • ") }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            WarehouseThumb(url: row.thumbnail, size: 260, symbol: row.isKit ? "shippingbox.fill" : row.isCable ? "cable.connector" : "shippingbox")
+            VStack(alignment: .leading, spacing: 3) {
+                Text(row.name).font(.headline).textSelection(.enabled)
+                if !meta.isEmpty { Text(meta).font(.callout).foregroundStyle(.secondary) }
+                if !row.category.isEmpty { Text(row.category).font(.caption).foregroundStyle(.secondary) }
+            }
+            Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 12, verticalSpacing: 5) {
+                GridRow {
+                    Text("Status").foregroundStyle(.secondary)
+                    EventDotLabel(label: status.label, color: status.color)
+                }
+                GridRow {
+                    Text("W wydarzeniu").foregroundStyle(.secondary)
+                    Text("\(row.qty) \(unit)").monospacedDigit()
+                }
+                if row.key != nil {
+                    GridRow {
+                        Text("Magazyn").foregroundStyle(.secondary)
+                        Text("\(limits.total) · zarezerw. \(limits.reserved)").monospacedDigit()
+                    }
+                    if editable {
+                        GridRow {
+                            Text("Można dodać").foregroundStyle(.secondary)
+                            Text("\(limits.maxAdd) · max \(limits.maxSet)").monospacedDigit()
+                        }
+                    }
+                }
+                if row.isCable, let length = row.cableLength {
+                    GridRow {
+                        Text("Długość").foregroundStyle(.secondary)
+                        Text(EquipmentQty.text(length) + " m").monospacedDigit()
+                    }
+                }
+            }
+            .font(.callout)
+            if row.isKit && !row.kitItems.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Zawartość zestawu").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                    ForEach(Array(row.kitItems.prefix(8).enumerated()), id: \.offset) { entry in
+                        HStack(spacing: 6) {
+                            WarehouseThumb(url: entry.element.thumbnail, size: 20)
+                            Text(entry.element.name).lineLimit(1)
+                            Spacer(minLength: 8)
+                            Text("\(Int(entry.element.quantity))×").monospacedDigit().foregroundStyle(.secondary)
+                        }
+                        .font(.caption)
+                    }
+                    if row.kitItems.count > 8 { Text("… i \(row.kitItems.count - 8) więcej").font(.caption).foregroundStyle(.secondary) }
+                }
+            }
+            if let openDetail {
+                Button("Otwórz kartę sprzętu", systemImage: "arrow.up.forward.app") { openDetail() }
+                    .controlSize(.small)
+            }
+        }
+        .padding(14)
+        .frame(width: 288)
     }
 }

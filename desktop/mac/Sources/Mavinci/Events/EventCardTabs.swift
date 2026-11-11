@@ -10,6 +10,8 @@ import AppKit
     let eventID: String
     let page: EventCardPage
     var navigate: (String) -> Void
+    /// Panel z boku karty (obok każdej zakładki): najważniejsze, kroki i kontrola jedna pod drugą.
+    var sidebar = false
     @EnvironmentObject private var state: Workspace
     @Environment(\.crmTheme) private var theme
 
@@ -19,17 +21,26 @@ import AppKit
 
     var body: some View {
         ScrollView {
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .top, spacing: 18) {
-                    left.frame(minWidth: 520, maxWidth: .infinity, alignment: .topLeading)
-                    right.frame(width: 360, alignment: .topLeading)
-                }
-                VStack(alignment: .leading, spacing: 16) {
-                    left
+            if sidebar {
+                VStack(alignment: .leading, spacing: 14) {
+                    Text("Przegląd").font(.headline)
                     right
+                    left
                 }
+                .padding(14).frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .top, spacing: 18) {
+                        left.frame(minWidth: 520, maxWidth: .infinity, alignment: .topLeading)
+                        right.frame(width: 360, alignment: .topLeading)
+                    }
+                    VStack(alignment: .leading, spacing: 16) {
+                        left
+                        right
+                    }
+                }
+                .padding(18).frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(18).frame(maxWidth: 1240, alignment: .leading)
         }
         .task(id: eventID) { await store.loadOverview(eventID) }
         .onChange(of: state.refreshEventToken) { Task { await store.loadOverview(eventID) } }

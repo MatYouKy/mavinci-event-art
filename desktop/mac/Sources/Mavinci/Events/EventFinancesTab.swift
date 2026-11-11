@@ -434,45 +434,46 @@ enum FinanceText {
             if d.invoices.isEmpty {
                 Text("Brak faktur dla tego eventu").foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(20)
             } else {
-                Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 8) {
-                    GridRow {
-                        Text("Numer")
-                        Text("Typ")
-                        Text("Nabywca")
-                        Text("Data")
-                        Text("Kwota")
-                        Text("Status")
-                        Text("")
-                    }
-                    .font(.caption).foregroundStyle(.secondary)
-                    ForEach(d.invoices) { invoice in invoiceRow(invoice) }
+                VStack(spacing: 0) {
+                    FinanceListHeader(columns: [("Lp.", 28, .trailing), ("Numer", nil, .leading), ("Typ", 90, .leading), ("Nabywca", 170, .leading),
+                                                ("Data", 84, .leading), ("Status", 120, .leading), ("Kwota brutto", 120, .trailing), ("", 28, .center)])
+                    ForEach(Array(d.invoices.enumerated()), id: \.element.id) { item in invoiceRow(item.element, item.offset) }
                 }
             }
         }
     }
 
-    private func invoiceRow(_ invoice: FinancesTabData.Invoice) -> some View {
+    /// Wiersz faktury jak w natywnej tabeli: Lp., numer, typ, nabywca, data, status (kropka), kwota; dwuklik otwiera fakturę.
+    private func invoiceRow(_ invoice: FinancesTabData.Invoice, _ index: Int) -> some View {
         let status = FinanceText.costStatus[invoice.status] ?? FinanceText.costStatus["pending"]!
         let payer: String? = invoice.arrangement == nil || invoice.arrangement == "direct" ? nil
             : (invoice.arrangement == "hotel" ? "Płatność przez hotel" : (invoice.arrangement == "agency" ? "Płatność przez agencję" : "Płatność przez inną organizację"))
-        return GridRow {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(invoice.number).font(.callout)
-                if invoice.shared > 1 { Text("Wspólna · \(Int(invoice.shared)) wydarzenia").font(.caption2).foregroundStyle(theme.accent) }
+        let shared: String? = invoice.shared > 1 ? "Wspólna · \(Int(invoice.shared)) wydarzenia · udział wydarzenia: " + FinanceText.money(invoice.allocated) : nil
+        return HStack(spacing: 10) {
+            Text("\(index + 1)").monospacedDigit().foregroundStyle(.secondary).frame(width: 28, alignment: .trailing)
+            HStack(spacing: 6) {
+                Image(systemName: "doc.text").foregroundStyle(.secondary)
+                Text(invoice.number).fontWeight(.medium).lineLimit(1)
+                if shared != nil { Image(systemName: "square.on.square").font(.caption).foregroundStyle(theme.accent) }
             }
-            Text(invoice.type).font(.caption)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(invoice.buyer).font(.callout)
-                if let payer { Text(payer).font(.caption2).foregroundStyle(.secondary) }
-            }
-            Text(FinanceText.day(invoice.issueDate)).font(.callout)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(FinanceText.money(invoice.gross)).font(.callout.monospacedDigit())
-                if invoice.shared > 1 { Text("Udział wydarzenia: " + FinanceText.money(invoice.allocated)).font(.caption2).foregroundStyle(.secondary) }
-            }
-            chip(status.0, status.1)
-            Button { openInvoice(invoice.id) } label: { Image(systemName: "eye") }.buttonStyle(.borderless).help("Otwórz fakturę")
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .help(shared ?? invoice.number)
+            Text(invoice.type).foregroundStyle(.secondary).lineLimit(1).frame(width: 90, alignment: .leading)
+            Text(invoice.buyer).lineLimit(1).frame(width: 170, alignment: .leading).help(payer.map { invoice.buyer + " · " + $0 } ?? invoice.buyer)
+            Text(FinanceText.day(invoice.issueDate)).monospacedDigit().foregroundStyle(.secondary).frame(width: 84, alignment: .leading)
+            EventDotLabel(label: status.0, color: status.1).frame(width: 120, alignment: .leading)
+            Text(FinanceText.money(invoice.gross)).monospacedDigit().fontWeight(.medium).frame(width: 120, alignment: .trailing)
+            Menu {
+                Button("Otwórz fakturę", systemImage: "doc.text.magnifyingglass") { openInvoice(invoice.id) }
+            } label: { Image(systemName: "ellipsis") }
+                .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().frame(width: 28)
         }
+        .font(.callout)
+        .padding(.horizontal, 8).padding(.vertical, 6)
+        .background(index % 2 == 0 ? Color.primary.opacity(0.035) : Color.clear, in: RoundedRectangle(cornerRadius: 6))
+        .contentShape(Rectangle())
+        .onTapGesture(count: 2) { openInvoice(invoice.id) }
+        .contextMenu { Button("Otwórz fakturę", systemImage: "doc.text.magnifyingglass") { openInvoice(invoice.id) } }
     }
 
     private func openInvoice(_ id: String) {
@@ -498,41 +499,63 @@ enum FinanceText {
                 Text(d.access.canViewCosts ? "Brak kosztów dla tego eventu" : "Koszty tego wydarzenia widzi księgowość i opiekun sprzedaży. Marża poniżej może nie uwzględniać wszystkich kosztów.")
                     .font(.callout).foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(20)
             }
-            ForEach(d.costs) { cost in costRow(cost, d) }
+            if !d.costs.isEmpty {
+                VStack(spacing: 0) {
+                    FinanceListHeader(columns: [("Lp.", 28, .trailing), ("Koszt", nil, .leading), ("Kategoria", 140, .leading), ("Data", 84, .leading),
+                                                ("Status", 120, .leading), ("Kwota", 110, .trailing), ("", 28, .center)])
+                    ForEach(Array(d.costs.enumerated()), id: \.element.id) { item in costRow(item.element, d, item.offset) }
+                }
+            }
         }
     }
 
-    private func costRow(_ cost: FinancesTabData.Cost, _ d: FinancesTabData) -> some View {
+    /// Wiersz kosztu jak w natywnej tabeli: kolor kategorii, nazwa, kategoria, data, status (kropka), kwota; czynności w „…” i pod prawym przyciskiem.
+    private func costRow(_ cost: FinancesTabData.Cost, _ d: FinancesTabData, _ index: Int) -> some View {
         let status = FinanceText.costStatus[cost.status] ?? FinanceText.costStatus["pending"]!
         let color = CrmTheme.rgb(Int((cost.color ?? "#d3bb73").replacingOccurrences(of: "#", with: ""), radix: 16) ?? 0xd3bb73)
-        let canDelete = d.access.canApproveCosts || (d.access.canManageCosts && cost.status == "pending")
-        return HStack(alignment: .top, spacing: 10) {
-            Circle().fill(color).frame(width: 10, height: 10).padding(.top, 5)
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 6) {
-                    Text(cost.name).font(.callout.weight(.medium))
-                    if let category = cost.category { Text(category).font(.caption).foregroundStyle(.secondary) }
-                    chip(status.0, status.1)
-                }
-                if let description = cost.description?.nonEmpty { Text(description).font(.caption).foregroundStyle(.secondary) }
-                HStack(spacing: 10) {
-                    Text("Data: " + FinanceText.day(cost.date))
-                    if let subcontractor = cost.subcontractor { Text("Podwykonawca: " + subcontractor) }
-                    Text("Dodane przez: " + cost.createdBy)
-                }
-                .font(.caption2).foregroundStyle(.secondary)
+        var details: [String] = [cost.name]
+        if let description = cost.description?.nonEmpty { details.append(description) }
+        if let subcontractor = cost.subcontractor { details.append("Podwykonawca: " + subcontractor) }
+        details.append("Dodane przez: " + cost.createdBy)
+        let tooltip = details.joined(separator: "\n")
+        return HStack(spacing: 10) {
+            Text("\(index + 1)").monospacedDigit().foregroundStyle(.secondary).frame(width: 28, alignment: .trailing)
+            HStack(spacing: 7) {
+                Circle().fill(color).frame(width: 8, height: 8)
+                Text(cost.name).fontWeight(.medium).lineLimit(1)
+                if let subcontractor = cost.subcontractor { Text(subcontractor).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
             }
-            Spacer()
-            Text(FinanceText.money(cost.amount)).font(.callout.weight(.semibold).monospacedDigit())
-            if d.access.canApproveCosts && cost.status != "paid" {
-                Button {
-                    Task { await act("costStatus", ["id": .string(cost.id), "status": .string(cost.status == "pending" ? "approved" : "paid")], "Status kosztu został zaktualizowany", "Błąd podczas aktualizacji statusu") }
-                } label: { Image(systemName: "checkmark") }
-                    .buttonStyle(.borderless).help(cost.status == "pending" ? "Zatwierdź" : "Oznacz jako zapłacony")
-            }
-            if canDelete { Button { deletingCost = cost } label: { Image(systemName: "trash") }.buttonStyle(.borderless).foregroundStyle(.red).help("Usuń koszt") }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .help(tooltip)
+            Text(cost.category ?? "—").foregroundStyle(.secondary).lineLimit(1).frame(width: 140, alignment: .leading)
+            Text(FinanceText.day(cost.date)).monospacedDigit().foregroundStyle(.secondary).frame(width: 84, alignment: .leading)
+            EventDotLabel(label: status.0, color: status.1).frame(width: 120, alignment: .leading)
+            Text(FinanceText.money(cost.amount)).monospacedDigit().fontWeight(.semibold).frame(width: 110, alignment: .trailing)
+            Menu { costMenu(cost, d) } label: { Image(systemName: "ellipsis") }
+                .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().frame(width: 28)
         }
-        .padding(10).background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
+        .font(.callout)
+        .padding(.horizontal, 8).padding(.vertical, 6)
+        .background(index % 2 == 0 ? Color.primary.opacity(0.035) : Color.clear, in: RoundedRectangle(cornerRadius: 6))
+        .contentShape(Rectangle())
+        .contextMenu { costMenu(cost, d) }
+    }
+
+    @ViewBuilder private func costMenu(_ cost: FinancesTabData.Cost, _ d: FinancesTabData) -> some View {
+        let canDelete = d.access.canApproveCosts || (d.access.canManageCosts && cost.status == "pending")
+        let next: String = cost.status == "pending" ? "approved" : "paid"
+        let nextTitle: String = cost.status == "pending" ? "Zatwierdź koszt" : "Oznacz jako zapłacony"
+        if d.access.canApproveCosts && cost.status != "paid" {
+            Button(nextTitle, systemImage: "checkmark") {
+                Task { await act("costStatus", ["id": .string(cost.id), "status": .string(next)], "Status kosztu został zaktualizowany", "Błąd podczas aktualizacji statusu") }
+            }
+        }
+        if canDelete {
+            Button("Usuń koszt", systemImage: "trash", role: .destructive) { deletingCost = cost }
+        }
+        if !canDelete && !(d.access.canApproveCosts && cost.status != "paid") {
+            Text("Brak dostępnych czynności")
+        }
     }
 
     // MARK: Budżet gotówkowy
@@ -959,5 +982,23 @@ enum FinanceText {
         }
         .padding(16).frame(maxWidth: .infinity, alignment: .leading)
         .background(theme.card.opacity(theme == .light ? 1 : 0.9), in: RoundedRectangle(cornerRadius: 12))
+    }
+}
+
+/// Nagłówek listy w stylu natywnej tabeli (szerokości kolumn jak w wierszach; `nil` — kolumna elastyczna).
+struct FinanceListHeader: View {
+    let columns: [(String, CGFloat?, Alignment)]
+    var body: some View {
+        HStack(spacing: 10) {
+            ForEach(Array(columns.enumerated()), id: \.offset) { item in
+                if let width = item.element.1 {
+                    Text(item.element.0).frame(width: width, alignment: item.element.2)
+                } else {
+                    Text(item.element.0).frame(maxWidth: .infinity, alignment: item.element.2)
+                }
+            }
+        }
+        .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+        .padding(.horizontal, 8).padding(.vertical, 4)
     }
 }

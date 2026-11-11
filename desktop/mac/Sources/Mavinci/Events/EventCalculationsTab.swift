@@ -187,6 +187,7 @@ enum CalculationPdf {
     @EnvironmentObject private var state: Workspace
     @Environment(\.crmTheme) private var theme
     @State private var openID: String?
+    @State private var selectedCalculation: String?
     @State private var deleting: CalculationsTabData.Calculation?
     @State private var accepting: CalculationsTabData.Calculation?
     @State private var preview: NativePreview?
@@ -237,72 +238,72 @@ enum CalculationPdf {
         return "Oznaczyć \"\(calculation.name)\" jako zaakceptowaną? Stanie się źródłem danych finansowych dla tego wydarzenia."
     }
 
-    private func list(_ data: CalculationsTabData) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Label("Kalkulacje wydarzenia", systemImage: "function").font(.title2.weight(.light))
-                        Text("Podsumowanie zasobów: sprzęt, ludzie, transport i inne.").font(.callout).foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Button { Task { await create() } } label: { Label("Stwórz kalkulację", systemImage: "plus") }
-                        .buttonStyle(.borderedProminent)
-                }
-                if data.calculations.isEmpty {
-                    VStack(spacing: 10) {
-                        Image(systemName: "function").font(.system(size: 36)).foregroundStyle(theme.accent.opacity(0.5))
-                        Text("Brak kalkulacji dla tego wydarzenia").foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: .infinity).padding(40)
-                    .background(theme.card.opacity(theme == .light ? 1 : 0.9), in: RoundedRectangle(cornerRadius: 12))
-                } else {
-                    VStack(spacing: 0) {
-                        HStack(spacing: 10) {
-                            Text("Nazwa").frame(maxWidth: .infinity, alignment: .leading)
-                            Text("Pozycje").frame(width: 70, alignment: .leading)
-                            Text("Suma netto").frame(width: 140, alignment: .leading)
-                            Text("Zmodyfikowano").frame(width: 160, alignment: .leading)
-                            Text("Akcje").frame(width: 50, alignment: .trailing)
-                        }
-                        .font(.caption.weight(.semibold)).foregroundStyle(.secondary).textCase(.uppercase)
-                        .padding(.horizontal, 14).padding(.vertical, 8)
-                        ForEach(data.calculations) { calculation in row(calculation) }
-                    }
-                    .background(theme.card.opacity(theme == .light ? 1 : 0.9), in: RoundedRectangle(cornerRadius: 12))
-                }
+    @ViewBuilder private func list(_ data: CalculationsTabData) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Text("Kalkulacje").font(.title2.weight(.semibold))
+                Text(NativeList.count(data.calculations.count, "kalkulacja", "kalkulacje", "kalkulacji") + " · sprzęt, ludzie, transport i inne")
+                    .foregroundStyle(.secondary).lineLimit(1)
+                Spacer()
+                Button { Task { await create() } } label: { Label("Stwórz kalkulację", systemImage: "plus") }
+                    .buttonStyle(.borderedProminent)
             }
-            .padding(18)
+            .padding(.horizontal, 18).padding(.top, 12)
+            if data.calculations.isEmpty {
+                ContentUnavailableView {
+                    Label("Brak kalkulacji dla tego wydarzenia", systemImage: "function")
+                } description: { Text("Kalkulacja zbiera sprzęt, ludzi, transport i pozostałe koszty.") } actions: {
+                    Button("Stwórz kalkulację") { Task { await create() } }
+                }
+            } else {
+                table(data)
+            }
         }
     }
 
-    private func row(_ calculation: CalculationsTabData.Calculation) -> some View {
-        HStack(spacing: 10) {
-            HStack(spacing: 8) {
-                Text(calculation.name).font(.callout.weight(.medium)).lineLimit(1)
-                if calculation.accepted {
-                    Label("Zaakceptowana", systemImage: "checkmark.circle").font(.caption.weight(.medium)).foregroundStyle(.green)
-                        .padding(.horizontal, 7).padding(.vertical, 2).background(Color.green.opacity(0.15), in: Capsule())
-                        .help("Zaakceptowana — źródło danych finansowych")
-                }
+    /// Natywna tabela kalkulacji: dwuklik / ↩ otwiera edytor, czynności w menu „…” i pod prawym przyciskiem.
+    private func table(_ data: CalculationsTabData) -> some View {
+        let lp = NativeList.numbers(data.calculations)
+        return Table(data.calculations, selection: $selectedCalculation) {
+            TableColumn("") { (calculation: CalculationsTabData.Calculation) in
+                Image(systemName: calculation.accepted ? "checkmark.seal.fill" : "function")
+                    .foregroundStyle(calculation.accepted ? Color.green : theme.accent).frame(width: 24, height: 24)
+            }.width(32)
+            TableColumn("Lp.") { (calculation: CalculationsTabData.Calculation) in NativeRowNumber(value: lp[calculation.id]) }.width(36)
+            TableColumn("Nazwa") { (calculation: CalculationsTabData.Calculation) in
+                Text(calculation.name).fontWeight(.medium).lineLimit(1).help(calculation.notes ?? calculation.name)
+            }.width(min: 160, ideal: 320)
+            TableColumn("Status") { (calculation: CalculationsTabData.Calculation) in
+                EventDotLabel(label: calculation.accepted ? "Zaakceptowana" : "Robocza",
+                              color: calculation.accepted ? CrmTheme.rgb(0x4ade80) : CrmTheme.rgb(0x9ca3af))
+                    .help(calculation.accepted ? "Zaakceptowana — źródło danych finansowych" : "Nie jest źródłem danych finansowych")
+            }.width(min: 100, ideal: 130)
+            TableColumn("PDF") { (calculation: CalculationsTabData.Calculation) in
                 if calculation.pdf != nil {
-                    Label("PDF", systemImage: "doc.badge.checkmark").font(.caption).foregroundStyle(.green)
-                        .padding(.horizontal, 7).padding(.vertical, 2).background(Color.green.opacity(0.1), in: Capsule())
-                        .help("PDF wygenerowany")
+                    Image(systemName: "doc.badge.checkmark").foregroundStyle(.green).help("PDF wygenerowany")
+                } else {
+                    Text("—").foregroundStyle(.tertiary)
                 }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            Text("\(calculation.itemsCount)").frame(width: 70, alignment: .leading).foregroundStyle(.secondary)
-            Text(CalculationMath.money(calculation.total) + " PLN").frame(width: 140, alignment: .leading).foregroundStyle(theme.accent)
-            Text(CalculationMath.dateTime(calculation.updatedAt)).frame(width: 160, alignment: .leading).foregroundStyle(.secondary)
-            Menu { actions(calculation) } label: { Image(systemName: "ellipsis") }
-                .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().frame(width: 50, alignment: .trailing)
+            }.width(40)
+            TableColumn("Pozycje") { (calculation: CalculationsTabData.Calculation) in
+                Text("\(calculation.itemsCount)").monospacedDigit().foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .trailing)
+            }.width(min: 56, ideal: 70)
+            TableColumn("Suma netto") { (calculation: CalculationsTabData.Calculation) in
+                Text(CalculationMath.money(calculation.total) + " PLN").monospacedDigit().fontWeight(.medium).frame(maxWidth: .infinity, alignment: .trailing)
+            }.width(min: 110, ideal: 150)
+            TableColumn("Zmodyfikowano") { (calculation: CalculationsTabData.Calculation) in
+                Text(CalculationMath.dateTime(calculation.updatedAt)).monospacedDigit().foregroundStyle(.secondary).lineLimit(1)
+            }.width(min: 110, ideal: 150)
+            TableColumn("") { (calculation: CalculationsTabData.Calculation) in
+                Menu { actions(calculation) } label: { Image(systemName: "ellipsis") }
+                    .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().help("Czynności")
+            }.width(30)
         }
-        .font(.callout)
-        .padding(.horizontal, 14).padding(.vertical, 10)
-        .contentShape(Rectangle())
-        .onTapGesture { openID = calculation.id }
-        .contextMenu { actions(calculation) }
+        .contextMenu(forSelectionType: String.self) { ids in
+            if let id = ids.first, let calculation = data.calculations.first(where: { $0.id == id }) { actions(calculation) }
+        } primaryAction: { ids in
+            if let id = ids.first { openID = id }
+        }
     }
 
     @ViewBuilder private func actions(_ calculation: CalculationsTabData.Calculation) -> some View {

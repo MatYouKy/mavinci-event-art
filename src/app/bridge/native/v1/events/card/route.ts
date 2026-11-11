@@ -8,7 +8,8 @@ import {
 import { EVENT_STEPS_HELP, EVENT_STEPS_RULES } from '@/lib/events/steps/eventSteps';
 import { applyTravelTimes, eventMutate, eventTabAction, eventTabQuery, eventTabWithHash, isEventTab, phaseOptions, vehicleConflicts } from '@/lib/native/eventTabs';
 // Moduły zakładek rejestrują swoje dane, zapisy i odczyty w `eventTabs.ts` przy imporcie.
-import { uploadReturnPhoto } from '@/lib/native/eventEquipment';
+import { equipmentCatalogEntries, uploadReturnPhoto } from '@/lib/native/eventEquipment';
+import { collectionItems, collectionState, invalidateNativeSyncPrefix } from '@/lib/native/sync';
 import '@/lib/native/eventLogistics';
 import '@/lib/native/eventAgenda';
 import '@/lib/native/eventWedding';
@@ -43,6 +44,10 @@ export async function GET(request: Request) {
   if (!uuid.test(id)) return nativeJson({ error: 'Nieprawidłowe wydarzenie.' }, 400);
   try {
     if (url.searchParams.get('op') === 'stepsHelp') return nativeJson({ help: EVENT_STEPS_HELP, rules: EVENT_STEPS_RULES });
+    // Katalog „Dodaj sprzęt” — skrót zbioru i skróty koszyków (Mac pobiera tylko zmienione koszyki).
+    if (url.searchParams.get('op') === 'equipmentCatalog') {
+      return nativeJson(await collectionState(ctx, `equipment-catalog-${id}`, (c) => equipmentCatalogEntries(c, id), url.searchParams.get('hash') || undefined));
+    }
     if (url.searchParams.get('op') === 'overview') {
       const result = await eventCardOverviewWithHash(ctx, id, url.searchParams.get('hash'), {
         canManage: url.searchParams.get('manage') === '1', canSeeOnsite: url.searchParams.get('onsite') === '1',
@@ -248,10 +253,18 @@ export async function POST(request: Request) {
       }
     }
     // Czynności zakładek (`registerEventActions` w modułach zakładek: Sprzęt, Logistyka, …).
+    if (body.op === 'equipmentCatalogItems') {
+      try {
+        return nativeJson(await collectionItems(ctx, `equipment-catalog-${id}`, (c) => equipmentCatalogEntries(c, id), Array.isArray(body.buckets) ? body.buckets : []));
+      } catch (error) {
+        return nativeJson({ error: (error as Error).message || 'Nie udało się pobrać katalogu sprzętu.' }, 400);
+      }
+    }
     if (body.op === 'tabAction') {
       try {
         const result = await eventTabAction(ctx, id, body);
         invalidateEvents();
+        if (body.tab === 'equipment') invalidateNativeSyncPrefix('equipment-catalog-');
         return nativeJson(result ?? { ok: true });
       } catch (error) {
         const fieldErrors = (error as { fieldErrors?: Record<string, string> })?.fieldErrors;

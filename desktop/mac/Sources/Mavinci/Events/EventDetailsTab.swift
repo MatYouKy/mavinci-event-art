@@ -34,19 +34,20 @@ import AppKit
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
+                // Informacje podstawowe, opis i notatki po lewej; akcje i budżet w środkowej kolumnie (obok panelu Przeglądu).
                 ViewThatFits(in: .horizontal) {
                     HStack(alignment: .top, spacing: 18) {
-                        left.frame(minWidth: 520, maxWidth: .infinity, alignment: .topLeading)
-                        if hasRight { right.frame(width: 360, alignment: .topLeading) }
+                        left.frame(minWidth: 440, maxWidth: .infinity, alignment: .topLeading)
+                        if hasRight { right.frame(minWidth: 320, idealWidth: 400, maxWidth: 460, alignment: .topLeading) }
                     }
                     VStack(alignment: .leading, spacing: 16) {
-                        left
                         if hasRight { right }
+                        left
                     }
                 }
                 if let summary = flags?.accessSummary?.nonEmpty { Text(summary).font(.caption).foregroundStyle(.tertiary) }
             }
-            .padding(18).frame(maxWidth: 1240, alignment: .leading)
+            .padding(18).frame(maxWidth: .infinity, alignment: .leading)
         }
         .task(id: eventID) { await store.loadDetails(eventID) }
         .onChange(of: store.card(eventID)?.hash) { Task { await store.loadDetails(eventID) } }

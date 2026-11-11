@@ -10,7 +10,7 @@ import AppKit
     var initialTab: String?
     @EnvironmentObject private var state: Workspace
     @Environment(\.crmTheme) private var theme
-    @State private var tab = "overview"
+    @State private var tab = "details"
     @State private var preview: NativePreview?
     @State private var removing = false
     @State private var duplicating = false
@@ -38,8 +38,44 @@ import AppKit
     @EnvironmentObject private var state: Workspace
     @Environment(\.crmTheme) private var theme
 
+    @AppStorage("eventCard.overview") private var overviewShown = true
+
     private var cached: CachedEventCard? { store.card(eventID) }
     private var flags: EventCardFlags? { cached?.page.flags }
+
+    /// Zakładki w kolejności pracy sprzedawcy; pokrewne połączone w jedną z przełącznikiem (Oferta + Kalkulacje, Zespół +
+    /// Podwykonawcy, Finanse + Podsumowanie). Przegląd jest panelem z boku karty, nie zakładką.
+    struct TabGroup: Identifiable {
+        var members: [EventCardTabInfo]
+        var label: String
+        var id: String { members.first?.id ?? "" }
+        var symbol: String { members.first?.symbol ?? "circle" }
+        func contains(_ tab: String) -> Bool { members.contains { $0.id == tab } }
+    }
+    static let tabOrder: [String] = ["details", "offer", "calculations", "contract", "equipment", "team", "subcontractors", "phases", "logistics",
+                                     "agenda", "seller-arrangements", "finances", "summary", "tasks", "files", "history", "mavinci-live"]
+    static let merged: [[String]] = [["offer", "calculations"], ["team", "subcontractors"], ["finances", "summary"]]
+    static func groupLabel(_ ids: [String], _ fallback: String) -> String {
+        if ids == ["offer", "calculations"] { return "Oferta i kalkulacje" }
+        if ids == ["team", "subcontractors"] { return "Zespół i podwykonawcy" }
+        if ids == ["finances", "summary"] { return "Finanse i rozliczenie" }
+        return fallback
+    }
+    static func groups(_ tabs: [EventCardTabInfo]) -> [TabGroup] {
+        let visible = tabs.filter { $0.id != "overview" }
+        let known = visible.filter { tabOrder.contains($0.id) }.sorted { (tabOrder.firstIndex(of: $0.id) ?? 99) < (tabOrder.firstIndex(of: $1.id) ?? 99) }
+        let ordered = known + visible.filter { !tabOrder.contains($0.id) }
+        var result: [TabGroup] = []
+        var used: Set<String> = []
+        for tab in ordered where !used.contains(tab.id) {
+            let family = merged.first { $0.contains(tab.id) } ?? [tab.id]
+            let members = family.compactMap { id in ordered.first { $0.id == id } }
+            members.forEach { used.insert($0.id) }
+            let label: String = members.count > 1 ? groupLabel(members.map(\.id), tab.label) : tab.label
+            result.append(TabGroup(members: members, label: label))
+        }
+        return result
+    }
 
     var body: some View {
         Group {
@@ -78,6 +114,13 @@ import AppKit
 
     // MARK: Pasek narzędzi (akcje nagłówka CRM: Karta imprezy, Edytuj, Duplikuj, Usuń)
     @ToolbarContentBuilder private var toolbar: some ToolbarContent {
+        if cached?.page.kind == "full" && flags?.tabs.contains(where: { $0.id == "overview" }) == true {
+            ToolbarItem(placement: .primaryAction) {
+                Button { overviewShown.toggle() } label: { Label("Przegląd", systemImage: "sidebar.trailing") }
+                    .help("Pokaż lub ukryj Przegląd: kroki realizacji, kontrolę przed wydarzeniem i najważniejsze informacje (⌥⌘I)")
+                    .keyboardShortcut("i", modifiers: [.command, .option])
+            }
+        }
         ToolbarItem(placement: .navigation) {
             Button { state.eventRoute = nil } label: { Label("Wróć", systemImage: "chevron.left") }.help("Wróć do poprzedniego widoku")
         }
@@ -113,7 +156,10 @@ import AppKit
     private func full(_ page: EventCardPage) -> some View {
         let event = EventFields(raw: page.event ?? [:])
         let tabs = page.flags?.tabs ?? []
-        let selected = tabs.contains(where: { $0.id == tab }) ? tab : (tabs.first(where: { $0.id == "overview" })?.id ?? tabs.first?.id)
+        let groups = Self.groups(tabs)
+        let selected: String? = groups.contains(where: { $0.contains(tab) }) ? tab : (groups.first?.members.first?.id)
+        let current = groups.first { group in selected.map { group.contains($0) } ?? false }
+        let hasOverview = tabs.contains { $0.id == "overview" }
         return VStack(alignment: .leading, spacing: 0) {
             header(page, event)
             if event["seller_confirmation_required"] == "true" && page.flags?.canViewSellerCorrespondence == true && event.status != "cancelled" {
@@ -122,18 +168,26 @@ import AppKit
             if let selected {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 2) {
-                        ForEach(tabs) { item in
-                            Button { tab = item.id } label: {
-                                Label(item.label, systemImage: item.id == "agenda" && page.flags?.isWeddingEvent == true ? "heart" : item.symbol)
+                        ForEach(groups) { group in
+                            let active = group.contains(selected)
+                            Button { if !active { tab = group.members.first?.id ?? tab } } label: {
+                                Label(group.label, systemImage: group.id == "agenda" && page.flags?.isWeddingEvent == true ? "heart" : group.symbol)
                                     .padding(.horizontal, 11).padding(.vertical, 7)
-                                    .foregroundStyle(selected == item.id ? theme.accent : Color.secondary)
-                                    .background(selected == item.id ? theme.accent.opacity(0.14) : .clear, in: RoundedRectangle(cornerRadius: 7))
+                                    .foregroundStyle(active ? theme.accent : Color.secondary)
+                                    .background(active ? theme.accent.opacity(0.14) : .clear, in: RoundedRectangle(cornerRadius: 7))
                                     .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
                         }
                     }
                     .padding(.horizontal, 14).padding(.vertical, 6)
+                }
+                if let current, current.members.count > 1 {
+                    Picker("", selection: $tab) {
+                        ForEach(current.members) { member in Text(member.label).tag(member.id) }
+                    }
+                    .pickerStyle(.segmented).labelsHidden().fixedSize()
+                    .padding(.horizontal, 18).padding(.bottom, 4)
                 }
                 tabContent(selected, page, event).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             } else {
@@ -151,6 +205,10 @@ import AppKit
                 .padding(18)
                 Spacer()
             }
+        }
+        .inspector(isPresented: Binding(get: { hasOverview && overviewShown }, set: { if hasOverview { overviewShown = $0 } })) {
+            EventOverviewTab(store: store, eventID: eventID, page: page, navigate: { tab = $0 }, sidebar: true)
+                .inspectorColumnWidth(min: 300, ideal: 380, max: 560)
         }
     }
 
@@ -235,7 +293,7 @@ import AppKit
 
     @ViewBuilder private func tabContent(_ id: String, _ page: EventCardPage, _ event: EventFields) -> some View {
         switch id {
-        case "overview": EventOverviewTab(store: store, eventID: eventID, page: page, navigate: { tab = $0 })
+        case "overview": EventDetailsTab(store: store, eventID: eventID, page: page)
         case "details": EventDetailsTab(store: store, eventID: eventID, page: page)
         case "team": EventTeamTab(store: store, eventID: eventID, page: page)
         case "phases": EventPhasesTab(store: store, eventID: eventID)

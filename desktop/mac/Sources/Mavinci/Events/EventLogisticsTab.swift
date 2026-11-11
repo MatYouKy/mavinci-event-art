@@ -194,7 +194,11 @@ enum LogisticsLabels {
                     }
                     .frame(maxWidth: .infinity).padding(.vertical, 20)
                 } else {
-                    ForEach(data.vehicles) { vehicleRow($0, data) }
+                    VStack(spacing: 0) {
+                        FinanceListHeader(columns: [("", 36, .center), ("Pojazd", nil, .leading), ("Kierowca", 150, .leading), ("Wyjazd", 110, .leading),
+                                                    ("Dystans", 64, .trailing), ("Koszt szac.", 96, .trailing), ("Status", 120, .leading), ("", 28, .center)])
+                        ForEach(Array(data.vehicles.enumerated()), id: \.element.id) { item in vehicleRow(item.element, data, item.offset) }
+                    }
                 }
             }
         }
@@ -202,55 +206,80 @@ enum LogisticsLabels {
         .background(theme.card.opacity(theme == .light ? 1 : 0.9), in: RoundedRectangle(cornerRadius: 12))
     }
 
-    private func vehicleRow(_ vehicle: LogisticsTabData.Vehicle, _ data: LogisticsTabData) -> some View {
+    /// Wiersz pojazdu jak w natywnej tabeli: miniatura, pojazd (rola, przyczepka, oznaczenia w drugiej linii), kierowca, wyjazd, dystans,
+    /// koszt i status (kropka); konflikt — czerwona etykieta. Edycja i usuwanie w „…” i pod prawym przyciskiem.
+    private func vehicleRow(_ vehicle: LogisticsTabData.Vehicle, _ data: LogisticsTabData, _ index: Int) -> some View {
         let status = LogisticsLabels.status(vehicle.status)
         let total = vehicle.fuelCost + vehicle.tollCost + vehicle.rentalCost + vehicle.trailerRentalCost
-        return VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .top, spacing: 12) {
-                WarehouseThumb(url: vehicle.thumbnail, size: 64, symbol: "truck.box")
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 6) {
-                        if !vehicle.isExternal, let id = vehicle.vehicleId {
-                            Button(vehicle.title) { state.openCRM("/crm/fleet/\(id)") }.buttonStyle(.link).font(.headline)
-                        } else {
-                            Text(vehicle.title).font(.headline)
-                        }
-                        if !vehicle.isExternal, let registration = vehicle.registration?.nonEmpty {
-                            Text(registration).font(.caption.monospaced()).padding(.horizontal, 6).padding(.vertical, 2)
-                                .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 4))
-                        }
-                        if vehicle.isExternal { pill("Zewnętrzny", .purple) }
-                        if vehicle.addedFromPhase { pill("Dodano z fazy", .blue) }
-                        if vehicle.inUse { pill("W użytkowaniu", .green) }
-                        pill(status.0, status.1)
-                        if vehicle.conflicts > 0 { pill("Konflikt", .red) }
-                    }
-                    Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 4) {
-                        GridRow {
-                            detail("Rola:") { Text(LogisticsLabels.role(vehicle.role)) }
-                            detail("Kierowca:") { driver(vehicle) }
-                            detail("Wyjazd:") { Text(LogisticsLabels.time(vehicle.departure) ?? "Nie ustalono") }
-                            detail("Dystans:") { Text(String(format: "%.0f km", vehicle.distance)) }
-                            detail("Koszt szac.:") { Text(LogisticsLabels.money(total)) }
-                        }
-                    }
-                }
-                Spacer(minLength: 0)
-                HStack(spacing: 6) {
-                    if vehicle.driverId == data.employeeId {
-                        Button { handover = vehicle } label: { Label(vehicle.inUse ? "Zdaj pojazd" : "Odbierz pojazd", systemImage: "gauge") }
-                            .tint(vehicle.inUse ? .blue : .green).buttonStyle(.borderedProminent)
-                    }
-                    if data.canManage {
-                        Button { vehicleSheet = VehicleSheetRequest(editingID: vehicle.id) } label: { Image(systemName: "pencil") }.help("Edytuj pojazd")
-                        Button { deleting = vehicle } label: { Image(systemName: "trash") }.foregroundStyle(.red).help("Usuń pojazd")
-                    }
-                }
-                .controlSize(.small)
-            }
-            if vehicle.hasTrailer { trailer(vehicle) }
+        var tags: [String] = [LogisticsLabels.role(vehicle.role)]
+        if vehicle.isExternal { tags.append("zewnętrzny") }
+        if vehicle.addedFromPhase { tags.append("z fazy") }
+        if vehicle.inUse { tags.append("w użytkowaniu") }
+        if vehicle.hasTrailer {
+            let trailerName: String = vehicle.trailerExternal ? (vehicle.externalTrailerName?.nonEmpty ?? "zewnętrzna") : (vehicle.trailerName?.nonEmpty ?? "-")
+            tags.append("przyczepka: " + trailerName)
         }
-        .padding(12).background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
+        let subtitle = tags.joined(separator: " · ")
+        return HStack(spacing: 10) {
+            WarehouseThumb(url: vehicle.thumbnail, size: 30, symbol: "truck.box").frame(width: 36)
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 6) {
+                    Text(vehicle.title).fontWeight(.medium).lineLimit(1)
+                    if !vehicle.isExternal, let registration = vehicle.registration?.nonEmpty {
+                        Text(registration).font(.caption.monospaced()).foregroundStyle(.secondary)
+                    }
+                }
+                Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .help(vehicle.hasTrailer ? trailerHelp(vehicle) : subtitle)
+            driver(vehicle).lineLimit(1).frame(width: 150, alignment: .leading)
+            Text(LogisticsLabels.time(vehicle.departure) ?? "—").monospacedDigit().foregroundStyle(.secondary).lineLimit(1).frame(width: 110, alignment: .leading)
+            Text(String(format: "%.0f km", vehicle.distance)).monospacedDigit().foregroundStyle(.secondary).frame(width: 64, alignment: .trailing)
+            Text(LogisticsLabels.money(total)).monospacedDigit().frame(width: 96, alignment: .trailing)
+            Group {
+                if vehicle.conflicts > 0 {
+                    Label("Konflikt", systemImage: "exclamationmark.circle.fill").font(.caption.weight(.semibold)).foregroundStyle(.white)
+                        .padding(.horizontal, 7).padding(.vertical, 2).background(Color.red, in: Capsule())
+                } else {
+                    EventDotLabel(label: status.0, color: status.1)
+                }
+            }
+            .frame(width: 120, alignment: .leading)
+            Menu { vehicleMenu(vehicle, data) } label: { Image(systemName: "ellipsis") }
+                .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().frame(width: 28)
+        }
+        .font(.callout)
+        .padding(.horizontal, 8).padding(.vertical, 5)
+        .background(index % 2 == 0 ? Color.primary.opacity(0.035) : Color.clear, in: RoundedRectangle(cornerRadius: 6))
+        .contentShape(Rectangle())
+        .onTapGesture(count: 2) { if data.canManage { vehicleSheet = VehicleSheetRequest(editingID: vehicle.id) } }
+        .contextMenu { vehicleMenu(vehicle, data) }
+    }
+
+    @ViewBuilder private func vehicleMenu(_ vehicle: LogisticsTabData.Vehicle, _ data: LogisticsTabData) -> some View {
+        if vehicle.driverId == data.employeeId {
+            Button(vehicle.inUse ? "Zdaj pojazd" : "Odbierz pojazd", systemImage: "gauge") { handover = vehicle }
+            Divider()
+        }
+        if !vehicle.isExternal, let id = vehicle.vehicleId {
+            Button("Karta pojazdu (w CRM)", systemImage: "arrow.up.right.square") { state.openCRM("/crm/fleet/\(id)") }
+        }
+        if data.canManage {
+            Button("Edytuj pojazd", systemImage: "pencil") { vehicleSheet = VehicleSheetRequest(editingID: vehicle.id) }
+            Divider()
+            Button("Usuń pojazd", systemImage: "trash", role: .destructive) { deleting = vehicle }
+        }
+    }
+
+    private func trailerHelp(_ vehicle: LogisticsTabData.Vehicle) -> String {
+        if vehicle.trailerExternal {
+            return ["Przyczepka zewnętrzna: " + (vehicle.externalTrailerName?.nonEmpty ?? "-"),
+                    "Firma: " + (vehicle.externalTrailerCompany?.nonEmpty ?? "-"),
+                    "Koszt wynajmu: " + LogisticsLabels.money(vehicle.trailerRentalCost),
+                    "Miejsce zwrotu: " + (vehicle.externalTrailerReturnLocation?.nonEmpty ?? "-")].joined(separator: "\n")
+        }
+        return "Przyczepka: " + (vehicle.trailerName?.nonEmpty ?? "-") + " · " + (vehicle.trailerRegistration?.nonEmpty ?? "-")
     }
 
     private func detail<Value: View>(_ title: String, @ViewBuilder _ value: () -> Value) -> some View {
@@ -308,7 +337,11 @@ enum LogisticsLabels {
                     }
                     .frame(maxWidth: .infinity).padding(.vertical, 20)
                 } else {
-                    ForEach(data.timeline) { activityRow($0) }
+                    VStack(spacing: 0) {
+                        FinanceListHeader(columns: [("Start", 110, .leading), ("Zadanie", nil, .leading), ("Rodzaj", 120, .leading), ("Czas", 64, .trailing),
+                                                    ("Odpowiedzialny", 150, .leading), ("Ekipa", 50, .trailing), ("Status", 120, .leading)])
+                        ForEach(Array(data.timeline.enumerated()), id: \.element.id) { item in activityRow(item.element, item.offset) }
+                    }
                 }
             }
         }
@@ -316,25 +349,24 @@ enum LogisticsLabels {
         .background(theme.card.opacity(theme == .light ? 1 : 0.9), in: RoundedRectangle(cornerRadius: 12))
     }
 
-    private func activityRow(_ activity: LogisticsTabData.Activity) -> some View {
+    /// Wiersz harmonogramu logistycznego jak w natywnej tabeli; opis w podpowiedzi.
+    private func activityRow(_ activity: LogisticsTabData.Activity, _ index: Int) -> some View {
         let type = LogisticsLabels.activity(activity.type)
         let status = LogisticsLabels.status(activity.status)
-        return VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                pill(type.0, type.1)
-                Text(activity.title).font(.callout.weight(.medium))
-                pill(status.0, status.1)
-            }
-            if let description = activity.description?.nonEmpty { Text(description).font(.callout).foregroundStyle(.secondary) }
-            HStack(spacing: 18) {
-                if let start = LogisticsLabels.time(activity.start) { detail("Start:") { Text(start) } }
-                if let duration = activity.duration, duration > 0 { detail("Czas:") { Text("\(Int(duration)) min") } }
-                if let responsible = activity.responsible?.nonEmpty { detail("Odpowiedzialny:") { Text(responsible) } }
-                detail("Ekipa:") { Text("\(Int(activity.crew)) os.") }
-            }
+        let duration: String = activity.duration.map { $0 > 0 ? "\(Int($0)) min" : "—" } ?? "—"
+        return HStack(spacing: 10) {
+            Text(LogisticsLabels.time(activity.start) ?? "—").monospacedDigit().foregroundStyle(.secondary).lineLimit(1).frame(width: 110, alignment: .leading)
+            Text(activity.title).fontWeight(.medium).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+                .help(activity.description?.nonEmpty ?? activity.title)
+            EventDotLabel(label: type.0, color: type.1).frame(width: 120, alignment: .leading)
+            Text(duration).monospacedDigit().foregroundStyle(.secondary).frame(width: 64, alignment: .trailing)
+            Text(activity.responsible?.nonEmpty ?? "—").lineLimit(1).foregroundStyle(.secondary).frame(width: 150, alignment: .leading)
+            Text("\(Int(activity.crew))").monospacedDigit().foregroundStyle(.secondary).frame(width: 50, alignment: .trailing)
+            EventDotLabel(label: status.0, color: status.1).frame(width: 120, alignment: .leading)
         }
-        .padding(12).frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
+        .font(.callout)
+        .padding(.horizontal, 8).padding(.vertical, 6)
+        .background(index % 2 == 0 ? Color.primary.opacity(0.035) : Color.clear, in: RoundedRectangle(cornerRadius: 6))
     }
 
     private func delete(_ vehicle: LogisticsTabData.Vehicle) async {
