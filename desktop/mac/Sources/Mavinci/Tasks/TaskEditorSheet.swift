@@ -29,7 +29,8 @@ import UniformTypeIdentifiers
     @State private var prepared = false
 
     private var editing: BoardTask? { request.task }
-    private var company: Bool { store.board == .company }
+    /// Tablica firmowa i tablica wydarzenia: przypisania i załączniki (tablica prywatna — tylko własne zadania).
+    private var company: Bool { store.board != .mine }
     private var valid: Bool { !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     private var matches: [MeetingPerson] {
         let q = personQuery.trimmingCharacters(in: .whitespaces).lowercased()
@@ -146,7 +147,7 @@ import UniformTypeIdentifiers
                 assignees = task.assignees.map(\.id)
             } else {
                 column = request.column
-                if company, let me = store.access?.employeeId ?? state.employee?.id { assignees = [me] }
+                if store.board == .company, let me = store.access?.employeeId ?? state.employee?.id { assignees = [me] }
             }
             if company { await store.loadEmployees() }
         }

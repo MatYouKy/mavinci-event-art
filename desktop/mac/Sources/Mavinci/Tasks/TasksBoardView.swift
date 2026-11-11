@@ -13,6 +13,8 @@ struct TaskEditRequest: Identifiable {
 
 @MainActor struct TasksBoardView: View {
     @ObservedObject var store: TasksStore
+    /// Tablica osadzona w karcie wydarzenia: własny pasek (bez paska okna) i panel szczegółów obok kolumn.
+    var embedded = false
     @EnvironmentObject private var state: Workspace
     @Environment(\.crmTheme) private var theme
     @State private var search = ""
@@ -32,6 +34,41 @@ struct TaskEditRequest: Identifiable {
     private var visible: [BoardTask] { query.isEmpty ? store.tasks : store.tasks.filter { $0.title.lowercased().contains(query) || $0.titleLabel.lowercased().contains(query) } }
 
     var body: some View {
+        if embedded { shared(embeddedLayout) } else { shared(windowLayout) }
+    }
+
+    private var inspectorPanel: some View {
+        TaskInspector(task: store.task(selectedID), store: store, canManage: canManage, canMove: canMove,
+                      edit: { editor = TaskEditRequest(task: $0, column: $0.column) }, remove: { deleting = $0 }, start: startTimer)
+    }
+
+    /// Karta wydarzenia: tytuł „Zadania wydarzenia”, wyszukiwanie, dodawanie i szczegóły zadania w panelu po prawej.
+    private var embeddedLayout: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 10) {
+                Text(board.title).font(.title3.weight(.light))
+                Text(store.syncing && store.tasks.isEmpty ? "Wczytywanie zadań…" : "\(store.tasks.count) zadań").font(.callout).foregroundStyle(.secondary)
+                Spacer()
+                TextField("Szukaj zadania po tytule…", text: $search).textFieldStyle(.roundedBorder).frame(width: 240)
+                if canCreate {
+                    Button { editor = TaskEditRequest() } label: { Label("Dodaj zadanie", systemImage: "plus") }.buttonStyle(.borderedProminent)
+                }
+                Button { inspectorShown.toggle() } label: { Image(systemName: "sidebar.trailing") }.help("Pokaż lub ukryj szczegóły zadania")
+                Button { Task { await store.sync(force: true) } } label: { Image(systemName: "arrow.clockwise") }.help("Odśwież zadania").disabled(store.syncing)
+            }
+            .padding(.horizontal, 14).padding(.vertical, 10)
+            statusBar
+            HStack(spacing: 0) {
+                content.frame(maxWidth: .infinity, maxHeight: .infinity)
+                if inspectorShown {
+                    Divider()
+                    inspectorPanel.frame(width: 360).background(theme.page)
+                }
+            }
+        }
+    }
+
+    private var windowLayout: some View {
         VStack(spacing: 0) {
             statusBar
             content.frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -50,11 +87,15 @@ struct TaskEditRequest: Identifiable {
             }
         }
         .inspector(isPresented: $inspectorShown) {
-            TaskInspector(task: store.task(selectedID), store: store, canManage: canManage, canMove: canMove,
-                          edit: { editor = TaskEditRequest(task: $0, column: $0.column) }, remove: { deleting = $0 }, start: startTimer)
+            inspectorPanel
                 .inspectorColumnWidth(min: 300, ideal: 370, max: 520)
                 .background(theme.page)
         }
+    }
+
+    /// Arkusze, potwierdzenia i odświeżanie — wspólne dla tablicy w oknie i w karcie wydarzenia.
+    private func shared<V: View>(_ base: V) -> some View {
+        base
         .sheet(item: $editor) { request in
             TaskEditorSheet(store: store, request: request) { id in selectedID = id }
                 .environmentObject(state).environment(\.crmTheme, state.theme).tint(state.theme.accent)

@@ -347,3 +347,57 @@ Serwer: `GET /bridge/native/v1/warehouse?op=state` zwraca też stany zbiorów (`
 Karta wydarzenia na razie jak dotąd (zakładki z danymi, zapis do pracy bez internetu); natywna karta 1:1 z CRM — kolejne etapy.
 
 Serwer: `GET/POST /bridge/native/v1/events` (`op=state`, `items|status|delete`; `src/lib/native/events.ts`).
+
+## Aktualizacja 0.18 — Karta wydarzenia (etap 4): wszystkie zakładki natywnie
+
+Wszystkie zakładki karty (poza Mavinci LIVE) działają na Macu natywnie — te same zapytania, funkcje bazy i reguły co CRM, kopia na dysku ze skrótem, zapisy z paskiem postępu i komunikatem.
+
+- **Sprzęt, Logistyka, Harmonogram** — jak w poprzednich etapach (lista z dostępnością, checklista, pojazdy z trasą i kosztem paliwa, przekazania, oś faz z obsadą).
+- **Agenda / Karta weselna** — edycja, PDF **na Macu** (Chrome), zapis w Plikach; karta weselna: sekcje, odpowiedzi, osoby i harmonogram.
+- **Podwykonawcy** — zadania z walidacją, umowy (plik prosto do magazynu), wytyczne (generowanie i wysyłka).
+- **Pliki** — drzewo folderów, lista / siatka / miniatury, przeciąganie z Findera, kopiuj / wytnij / wklej, zmiana nazwy, usuwanie, Quick Look, pobieranie.
+- **Zadania** — tablica zadań wydarzenia (kolumny, przypisania z dopisaniem do zespołu, timer).
+- **Oferta** (lista, usuwanie), **Historia** (oś czasu i widok po dacie), **Podsumowanie** (rozliczenie wydarzenia), **Finanse** (koszty, prowizje, plan płatności i raty, zamknięcie, faktury, gotówka), **Ustalenia** (rozmowa ze sprzedawcą).
+- **Kalkulacje** — lista (suma, PDF, akceptacja), edytor z sekcjami, sumami, mocą i wagą, kolejnością (przeciąganie), pozycje z magazynu (stan), usługi personelu, pojazdy z kalkulatorem trasy i stawki paliwa, import z oferty; **PDF na Macu** do Plików → Kalkulacje, podgląd / pobierz / drukuj.
+- **Umowa** — status z datami, podpis firmy, PDF bieżący i archiwalne, podpisane dokumenty (dodawanie PDF / JPG / PNG). Edytor treści umowy (dane, klauzule, szablon, depozyt, audyt AI, wystawienie, PDF, wysyłka, anulowanie) zostaje w CRM — treść składa edytor przeglądarki z bieżących danych.
+- **Szczegóły** — zmiana klienta (indywidualny / firma, osoby kontaktowe) i nowa lokalizacja (wyszukiwanie Google, punkt na mapie).
+
+W CRM pozostają: kreator i wysyłka oferty, wysyłka kalkulacji e-mailem, edytor umowy, faktury z wydarzenia, sposób rozliczenia i panel prowizji w Szczegółach, folder Mac / iCloud, Mavinci LIVE.
+
+## Aktualizacja 0.17 — Karta wydarzenia (etap 3): przegląd przepływu, przestrzeń realizacji, Zespół
+
+**Poprawki przepływu karty** (sprawdzone z kodem CRM):
+1. Nagłówek jak w CRM: klient według typu (firma / „Klient:” dla osoby prywatnej), „Kontakt:”, „Autor:”, **stan sprzętu** (do wydania / wydany / czeka na zwrot / rozbieżności / zwrócony — kliknięcie otwiera Sprzęt).
+2. Baner **„Oferta sprzedawcy przyjęta — wydarzenie do przygotowania”** z przejściem do Ustaleń; bez żadnej zakładki — komunikat „Brak dostępu do danych tego wydarzenia”.
+3. Akcje jak w CRM: **Edytuj** i **Duplikuj** tylko z zarządzaniem wydarzeniem, **Usuń** tylko dla administratora; „Zmień status” prowadzi do Szczegółów → Akcje (z regułami statusów magazynu, zamiast uproszczonego okna).
+4. Powiadomienia i linki otwierają właściwą zakładkę (np. Szczegóły, Podsumowanie — wcześniej trafiały na Przegląd).
+5. Podgląd sprzedaży kolegi: poprawne pola (kategoria, klient), sprzedane usługi, zakres dostępu.
+
+**Przestrzeń realizacji** (ekipa i kierownik realizacji bez danych handlowych) — natywnie zamiast przejścia do CRM: kroki, zakres, lokalizacja z wymiarami, prądem i przyłączami, rzutami i zdjęciami, wybrane sale ze sceną / DJ, kontakt; **kierownik realizacji** (Przejmij realizację / Zrealizowane z notatką); Timeline, Agenda, Sprzęt, Zespół (Zadzwoń / SMS / E-mail), Logistyka, Podwykonawcy, Pliki (podgląd w aplikacji).
+
+**Zespół**: osoby z przypisań i z odpowiedzialności (autor, sprzedawca, magazyn, kierowca…), status zaproszenia, **kierownik realizacji** (mianuj / odbierz), **Wyślij zaproszenie**, **Wyślij aktualny timeline**, rola i obowiązki, **uprawnienia w wydarzeniu**, usuwanie; **Dodaj osobę** (fazy osoby, poziom dostępu, uprawnienia, zaproszenie z timeline). Zespół na dysku.
+
+## Aktualizacja 0.16 — Karta wydarzenia (etap 2): Przegląd i Szczegóły natywnie
+
+**Przegląd** 1:1 z CRM, z kopii na dysku (osobny skrót przeglądu — odświeżanie po powrocie do aplikacji, po zmianie karty i przyciskiem):
+1. **Kroki realizacji**: postęp, „Czekamy na” (z telefonem do osoby), etapy zwijane, wiersz kroku (status, termin, ilość, dostawca, zamówienie, dostawa, notatka, blokady, historia), czynności (Biorę to, Rozpoczynam / Zamówione, Gotowe, Zgłoś problem, Pomiń, Otwórz ponownie) z oknem notatki i pól zamówienia tam, gdzie CRM go wymaga, **Dodaj krok**, **Pomoc** (ta sama treść co w CRM), link do zakładki, w której krok się zamyka.
+2. **Kontrola przed wydarzeniem** (gdy możesz zarządzać wydarzeniem; bez pozycji umowy i płatności bez obszaru dokumentów), zaakceptowane nakładanie pracy.
+3. **Najważniejsze**: Twoja rola, kolejność według roli (kierownik / kierowca / magazyn), termin, załadunek, miejsce z mapą, kierownik realizacji, magazyn (**Poproś o przyjęcie**, **Napisz do magazynu**), sprzęt, transport, kontakt na miejscu z telefonem.
+4. Bez kroków w bazie — dotychczasowe panele realizacji i magazynu (jak w CRM).
+
+**Szczegóły**: firma realizująca (logo z brandbooka, **zmiana firmy**), termin, **zmiana lokalizacji** z listy, **sale i scena / DJ**, klient (przejście do kontaktu) albo kontakt na miejscu, opis, notatki; kolumna **Akcje**: kategoria, liczba ofert, **status eventu** (statusy magazynu ustawia magazyn; „Rozliczony” oznacza faktury jako zapłacone), **potwierdzenie e-mail dla klienta** (podgląd odbiorcy, historia wysyłki), **checklista sprzętu** (podgląd PDF); **Budżet** liczony jak w CRM (oferta: rabat, netto, VAT, brutto, logistyka, koszty i wynik; przychód faktyczny, realizacja). Pod spodem — zakres Twojego dostępu. Sposób rozliczenia i prowizje — na razie w CRM.
+
+Serwer: `GET /bridge/native/v1/events/card?op=overview|details|companies|locations|confirmationPreview|checklist|stepsHelp`, `POST` `op=rpc` (lista dozwolonych funkcji karty), `detailsStatus`, `category`, `company`, `rooms`, `sendConfirmation` (`src/lib/native/eventCard.ts`).
+
+## Aktualizacja 0.15 — Karta wydarzenia (etap 1) i lokalny silnik PDF
+
+**Lokalny silnik PDF.** Wydruki CRM składane z HTML przez Chromium powstają na Macu: serwer zwraca zadanie wydruku (`?render=local` — dokładnie ten HTML i te ustawienia, które dostaje Playwright), a aplikacja drukuje je w Chrome zainstalowanym na komputerze (bez okna, przez DevTools Protocol, `Page.printToPDF` z parametrami przeliczonymi jak w Playwright; fonty Inter z paczki aplikacji — te same pliki i ten sam CSS co na serwerze). Przeglądarka zostaje w tle 10 minut, więc kolejne wydruki są natychmiastowe; zamyka się razem z aplikacją. Bez Chrome (ani Chromium / Edge / Brave) — PDF z serwera jak dotąd. Pierwszy wydruk: **Karta imprezy**. Kolejne (agenda, kalkulacje, karta wesela, umowy, checklista sprzętu) dochodzą razem z ich zakładkami — dokumenty zapisywane w CRM Mac odsyła do serwera (`?finalize=1`), który robi resztę tym samym kodem.
+
+**Karta wydarzenia** (`/crm/events/[id]`) — nowa, natywna, **z kopii na dysku** (`event-cards-…`; ostatnio otwierane i wydarzenia z najbliższych 2 tygodni pobierane w tle, odświeżanie tylko po zmianie skrótu):
+1. Dane i uprawnienia dokładnie jak strona CRM (ten sam kod serwera `fetchEventByIdWith`; zakładki według obszarów dostępu, zawężeń pracownika, Finansów i Ustaleń).
+2. Nagłówek: nazwa, status, kategoria, termin, miejsce, klient; **Karta imprezy** (PDF lokalnie, podgląd z zapisem), **Zmień status**, **Usuń wydarzenie**, Odśwież, Otwórz w CRM.
+3. **Przegląd**: zaproszenie do zespołu (Akceptuj / Odrzuć), najważniejsze informacje, realizacja i przygotowanie magazynowe (kierownik, przejęcie, gotowość).
+4. **Szczegóły**: firma realizująca, **termin z edycją**, lokalizacja z mapą, informacje o kliencie (e-mail, telefon), budżet, **opis i notatki z edycją**.
+5. Podgląd sprzedaży kolegi (tylko odczyt). Pozostałe zakładki — na razie widok danych wydarzenia i przycisk „Otwórz w CRM”; przenoszone kolejno według listy kontrolnej `docs/mac-event-card-parity.md`.
+
+Serwer: `GET/POST /bridge/native/v1/events/card` (`src/lib/native/eventCard.ts`); wydruki: `src/lib/print/printJob.server.ts`, `?render=local` w `/bridge/events/[id]/card`.

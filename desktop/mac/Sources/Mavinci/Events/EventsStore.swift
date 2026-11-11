@@ -108,6 +108,12 @@ struct EventsIndex: Codable {
             publish()
             index.syncedAt = Date(); lastSync = index.syncedAt; loadError = nil
             scheduleSave()
+            // Karty najbliższych wydarzeń (od wczoraj do dwóch tygodni naprzód) na dysk — otwierają się od razu, także bez sieci.
+            let from = Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date()
+            let to = Calendar.current.date(byAdding: .day, value: 14, to: Date()) ?? Date()
+            let upcoming = events.filter { !$0.salesColleague && ($0.start.map { $0 >= from && $0 <= to } ?? false) }
+                .sorted { ($0.start ?? .distantFuture) < ($1.start ?? .distantFuture) }.map(\.id)
+            if !upcoming.isEmpty { Task { await workspace?.eventCards.prefetch(upcoming) } }
         } catch {
             if index.list.items.isEmpty { loadError = failureText(error, "Nie udało się pobrać wydarzeń.") }
         }

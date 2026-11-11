@@ -1,18 +1,19 @@
 import 'server-only';
 import type { NativeContext } from './auth';
-import { collectionItems, collectionState, invalidateNativeSync } from './sync';
+import { collectionItems, collectionState, invalidateNativeSync, invalidateNativeSyncPrefix } from './sync';
 import { formatSystemSubject } from '@/lib/ui/systemLabels';
 
 /*
  * Zadania na Macu — te same tablice co w CRM:
  *  - „Zadania firmowe” (`/crm/tasks`, `TasksPageClient` + `tasksApi.getTasksList`): zadania niebędące prywatnymi, zapytaniami
  *    ani zadaniami wydarzeń,
- *  - „Moje zadania” (`/crm/tasks/mine`, `PrivateTasksBoardTab`): prywatne zadania pracownika i zadania, do których jest przypisany.
+ *  - „Moje zadania” (`/crm/tasks/mine`, `PrivateTasksBoardTab`): prywatne zadania pracownika i zadania, do których jest przypisany,
+ *  - „Zadania wydarzenia” (karta wydarzenia, `EventTasksBoard`): wszystkie zadania z `event_id` wydarzenia.
  * Tokenem pracownika (RLS). Przypisania, osoba pracująca, liczba komentarzy i załączników — zbiorczo, zmiany wykrywa skrót koszyków.
  */
 
-export type TaskBoard = 'company' | 'mine';
-export const taskSet = (board: TaskBoard) => `tasks-${board}`;
+export type TaskBoard = 'company' | 'mine' | 'event';
+export const taskSet = (board: TaskBoard, eventId?: string | null) => (board === 'event' ? `tasks-event-${eventId}` : `tasks-${board}`);
 const PAGE = 1000;
 const CHUNK = 150;
 
@@ -51,11 +52,13 @@ const avatar = (e: Row | null | undefined) => {
   };
 };
 
-async function loadBoard(ctx: NativeContext, board: TaskBoard): Promise<Item[]> {
+async function loadBoard(ctx: NativeContext, board: TaskBoard, eventId?: string | null): Promise<Item[]> {
   const s = ctx.supabase;
   let tasks: Row[];
   if (board === 'company') {
     tasks = await pages(() => s.from('tasks').select(FIELDS).eq('is_private', false).eq('is_inquiry', false).is('event_id', null));
+  } else if (board === 'event') {
+    tasks = await pages(() => s.from('tasks').select(FIELDS).eq('event_id', eventId));
   } else {
     const [own, assigned] = await Promise.all([
       pages(() => s.from('tasks').select(FIELDS).eq('is_private', true).eq('owner_id', ctx.employee.id)),
@@ -130,13 +133,35 @@ async function loadBoard(ctx: NativeContext, board: TaskBoard): Promise<Item[]> 
 }
 
 /** Uprawnienia tablicy jak w CRM i ustawienie automatycznego licznika czasu (`shouldAutomateTaskTimer`). */
-export async function taskAccess(ctx: NativeContext, board: TaskBoard) {
+/**
+ * Zarządzanie zadaniami wydarzenia jak `canManageTeam` w karcie CRM: administrator, uprawnienie `events_manage`, autor
+ * lub opiekun sprzedaży wydarzenia, albo członek zespołu z zaakceptowanym przypisaniem i prawem zapraszania.
+ */
+export async function canManageEventTasks(ctx: NativeContext, eventId: string) {
+  const e = ctx.employee;
+  if (e.isAdmin || e.permissions.includes('events_manage')) return true;
+  const [event, sells, assignment] = await Promise.all([
+    ctx.supabase.from('events').select('created_by').eq('id', eventId).maybeSingle(),
+    ctx.supabase.rpc('current_employee_sells_event', { p_event_id: eventId }),
+    ctx.supabase.from('employee_assignments').select('status,can_invite_members').eq('event_id', eventId).eq('employee_id', e.id).maybeSingle(),
+  ]);
+  const creator = event.data?.created_by ? String(event.data.created_by) : '';
+  if (creator && (creator === e.id || creator === e.authUserId)) return true;
+  if (!sells.error && sells.data === true) return true;
+  return assignment.data?.status === 'accepted' && assignment.data?.can_invite_members === true;
+}
+
+export async function taskAccess(ctx: NativeContext, board: TaskBoard, eventId?: string | null) {
   const e = ctx.employee;
   const has = (scope: string) => e.isAdmin || e.permissions.includes(scope);
   let autoTimer = true;
   if (e.isAdmin) {
     const { data } = await ctx.supabase.from('employees').select('preferences').eq('id', e.id).maybeSingle();
     autoTimer = (data?.preferences as Row | null)?.notifications?.autoStartTaskTimer !== false;
+  }
+  if (board === 'event') {
+    const manage = eventId ? await canManageEventTasks(ctx, eventId) : false;
+    return { employeeId: e.id, isAdmin: e.isAdmin, canCreate: manage, canManage: manage, canMove: manage, autoTimer };
   }
   return {
     employeeId: e.id,
@@ -163,9 +188,12 @@ export async function activeTimer(ctx: NativeContext) {
   };
 }
 
-export const tasksState = (ctx: NativeContext, board: TaskBoard, hash?: string) =>
-  collectionState(ctx, taskSet(board), (c) => loadBoard(c, board), hash);
-export const tasksItems = (ctx: NativeContext, board: TaskBoard, buckets: unknown[]) =>
-  collectionItems(ctx, taskSet(board), (c) => loadBoard(c, board), buckets);
-/** Po zmianie zadania obie tablice (i karty aplikacji) widzą ją od razu — u wszystkich pracowników. */
-export const invalidateTasks = () => invalidateNativeSync([taskSet('company'), taskSet('mine'), 'tasks']);
+export const tasksState = (ctx: NativeContext, board: TaskBoard, hash?: string, eventId?: string | null) =>
+  collectionState(ctx, taskSet(board, eventId), (c) => loadBoard(c, board, eventId), hash);
+export const tasksItems = (ctx: NativeContext, board: TaskBoard, buckets: unknown[], eventId?: string | null) =>
+  collectionItems(ctx, taskSet(board, eventId), (c) => loadBoard(c, board, eventId), buckets);
+/** Po zmianie zadania wszystkie tablice (firmowa, moja, wydarzeń i karty aplikacji) widzą ją od razu — u wszystkich pracowników. */
+export const invalidateTasks = () => {
+  invalidateNativeSync([taskSet('company'), taskSet('mine'), 'tasks']);
+  invalidateNativeSyncPrefix('tasks-event-');
+};

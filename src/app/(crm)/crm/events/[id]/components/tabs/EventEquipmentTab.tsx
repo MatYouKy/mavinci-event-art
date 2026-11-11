@@ -255,7 +255,8 @@ function getEventEquipmentDisplay(row: any): {
 
   const equipment_items = row?.equipment_items;
   const equipment_kits = row?.equipment_kits;
-  const cables = row?.cables;
+  // Wiersze `getEventEquipment` mają kabel pod `cable` — bez tego checklista PDF pokazywała przewody jako „Nieznany”.
+  const cables = row?.cables || row?.cable;
 
   const isKit = !!row?.kit_id || !!kit || !!equipment_kits;
 
@@ -282,7 +283,7 @@ function getEventEquipmentDisplay(row: any): {
     kit?.category?.name ||
     '';
 
-  const cableLength = cables?.length ?? null;
+  const cableLength = cables?.length ?? cables?.length_meters ?? null;
 
   const kitItems: Array<{ name: string; brand: string; model: string; quantity: number }> = [];
 

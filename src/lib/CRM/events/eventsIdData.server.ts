@@ -2,6 +2,7 @@ import 'server-only';
 import { cookies } from 'next/headers';
 import { createSupabaseServerClient } from '@/lib/supabase/server.app';
 import type { CookieStoreLike } from '@/lib/supabase/server.app';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import type { IEmployee } from '@/app/(crm)/crm/employees/type';
 import type { ViewMode } from '@/app/(crm)/crm/settings/page';
 import type { OrganizationRow } from '@/app/(crm)/crm/contacts/types';
@@ -181,6 +182,18 @@ export async function fetchEventByIdServer(
   const currentUserId = normalizeUuid(auth.user?.id);
   if (!currentUserId) return null;
 
+  return fetchEventByIdWith(supabase, normalizedEventId, currentUserId);
+}
+
+/**
+ * Dane karty wydarzenia dla podanego klienta Supabase (RLS zalogowanej osoby) — wspólne dla strony CRM
+ * (`fetchEventByIdServer`, sesja z ciasteczek) i aplikacji na Maca (token pracownika).
+ */
+export async function fetchEventByIdWith(
+  supabase: SupabaseClient<any, any, any>,
+  normalizedEventId: string,
+  currentUserId: string,
+): Promise<EventByIdServerResult | null> {
   // Brak wiersza (RLS) = null — strona sprawdza wtedy, czy to podgląd wydarzenia innego sprzedawcy.
   const { data: event, error: eventError } = await supabase
     .from('events')

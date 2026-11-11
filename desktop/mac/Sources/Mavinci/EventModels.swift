@@ -1,6 +1,27 @@
 import Foundation
 
-struct EventRoute { let id: String; let origin: Module?; var tab: EventTab? = nil }
+struct EventRoute { let id: String; let origin: Module?; var tab: String? = nil }
+
+/// Zakładki karty wydarzenia jak `EVENT_TAB_LABELS` / `normalizeEventTabId` w CRM (adresy `?tab=…` z powiadomień, linków i starszych ustawień).
+enum EventCardTabID {
+    static let all = ["overview", "details", "equipment", "logistics", "team", "phases", "agenda", "subcontractors", "files", "tasks",
+                      "mavinci-live", "offer", "calculations", "contract", "seller-arrangements", "finances", "summary", "history"]
+    static func normalize(_ value: String?) -> String? {
+        guard let value = value?.trimmingCharacters(in: .whitespaces).lowercased(), !value.isEmpty else { return nil }
+        switch value {
+        case "warehouse", "steps": return "overview"
+        case "timeline": return "phases"
+        case "settlement", "commissions": return "summary"
+        // Starsze nazwy z aplikacji na Maca i powiadomień.
+        case "wedding": return "agenda"
+        case "seller": return "seller-arrangements"
+        case "live": return "mavinci-live"
+        case "checklist": return "equipment"
+        case "fleet": return "logistics"
+        default: return all.contains(value) ? value : nil
+        }
+    }
+}
 enum EventTab: String, CaseIterable, Identifiable, Codable {
     case overview, phases, offer, agenda, wedding, finances, calculations, contract, equipment, team, logistics, subcontractors, files, tasks, history, seller = "seller-arrangements", live = "mavinci-live"
     var id: String { rawValue }
@@ -44,6 +65,17 @@ enum EventTab: String, CaseIterable, Identifiable, Codable {
         case .tasks: return "checklist"
         case .history: return "clock.arrow.circlepath"
         case .live: return "play.rectangle"
+        }
+    }
+}
+extension EventTab {
+    /// Zakładka natywnej karty (`EVENT_TAB_IDS` w CRM).
+    var cardTabID: String {
+        switch self {
+        case .wedding: return "agenda"
+        case .seller: return "seller-arrangements"
+        case .live: return "mavinci-live"
+        default: return rawValue
         }
     }
 }

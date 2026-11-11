@@ -87,8 +87,7 @@ import SwiftUI
         switch type {
         case "event","events":
             guard employee?.canView(.events)==true else{notice="Nie masz dostępu do wydarzeń.";return false}
-            let aliases:[String:EventTab]=["details":.overview,"warehouse":.equipment,"checklist":.equipment,"fleet":.logistics]
-            showEvent(id,tab:EventTab(rawValue:tab) ?? aliases[tab]);return true
+            showEvent(id,cardTab:tab);return true
         case "task","tasks":return await navigate(.tasks,id:id)
         case "inquiry","inquiries":return await navigate(.inquiries,id:id)
         case "contact","contacts","client":return await navigate(.contacts,id:id)

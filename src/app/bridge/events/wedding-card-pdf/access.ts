@@ -50,8 +50,15 @@ export async function authorizeWeddingDocument(request: Request, eventId: string
       .select('id,event_categories!inner(name)').eq('id', eventId).ilike('event_categories.name', 'wesele').maybeSingle();
     if (eventError || !event) throw new WeddingDocumentError('Nie znaleziono wydarzenia weselnego.', 404);
   } else {
-    const client = createSupabaseServerClient(await cookies());
-    const { data: auth } = await client.auth.getUser();
+    // Aplikacja na Maca: token pracownika w `Authorization: Bearer` (bez nagłówka integracji); przeglądarka — ciasteczka CRM.
+    const bearer = /^Bearer\s+(\S+)$/i.exec(request.headers.get('Authorization') || '')?.[1] || null;
+    const client = bearer
+      ? createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
+          global: { headers: { Authorization: `Bearer ${bearer}` } },
+          auth: { persistSession: false, autoRefreshToken: false },
+        })
+      : createSupabaseServerClient(await cookies());
+    const { data: auth } = bearer ? await client.auth.getUser(bearer) : await client.auth.getUser();
     if (!auth.user) throw new WeddingDocumentError('Wymagane logowanie.', 401);
     const { data: allowed, error } = await client.rpc('can_manage_event_workflows', { p_event_id: eventId });
     if (error || !allowed) throw new WeddingDocumentError('Nie masz uprawnień do Karty Weselnej.', 403);

@@ -46,6 +46,8 @@ import Network
     let warehouse = WarehouseStore()
     /// Wydarzenia (`/crm/events`) — kopia listy na dysku, synchronizacja przyrostowa.
     let events = EventsStore()
+    /// Karty wydarzeń (`/crm/events/[id]`) — ostatnio otwierane i najbliższe na dysku, odświeżane po zmianie skrótu.
+    let eventCards = EventCardStore()
     let myTasks = TasksStore(board: .mine)
     /// Ekran natywny spoza `Module` (np. Wiadomości) wybrany z paska bocznego CRM.
     @Published var screen: CrmScreen?
@@ -87,6 +89,7 @@ import Network
         team.workspace = self
         warehouse.workspace = self
         events.workspace = self
+        eventCards.workspace = self
         myTasks.workspace = self
         monitor.pathUpdateHandler = { [weak self] path in
             Task { @MainActor in
@@ -119,6 +122,7 @@ import Network
             team.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             warehouse.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             events.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
+            eventCards.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             myTasks.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             openLocalViews(namespace: digest("\(connection.identity)|\(session.user.id)"))
             Task { await BrandStore.refresh(nativeAPI()) }
@@ -153,6 +157,7 @@ import Network
             team.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             warehouse.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             events.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
+            eventCards.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             myTasks.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             openLocalViews(namespace: digest("\(connection.identity)|\(session.user.id)"))
             Task { await BrandStore.refresh(nativeAPI()) }
@@ -312,7 +317,7 @@ import Network
         snapshot = nil; selection = .day; focusedID = nil; eventRoute = nil; notificationsVisible = false
         verifiedConnection = false; offline = false; syncing = false; acting = false; editing = false
         moduleErrors = [:]; compatibilityMode = false; notice = nil; snack = nil; pending = nil
-        nativeSet = nil; nativeFocus = nil; native.clear(); messages.reset(); meetings.reset(); inquiries.reset(); companyTasks.reset(); myTasks.reset(); contacts.reset(); team.reset(); warehouse.reset(); events.reset(); screen = nil
+        nativeSet = nil; nativeFocus = nil; native.clear(); messages.reset(); meetings.reset(); inquiries.reset(); companyTasks.reset(); myTasks.reset(); contacts.reset(); team.reset(); warehouse.reset(); events.reset(); eventCards.reset(); screen = nil
         navigation = []; sidebarHref = "/crm"; webItem = nil; dashboard = nil; dashboardLoadedAt = nil; dashboardError = nil
         scheduleRows = nil; scheduleFailed = false
         if let cacheNamespace { for name in ["dashboard", "schedule"] { try? SealedFile<Data>(namespace: "\(name)-\(cacheNamespace)").clear() } }
@@ -346,8 +351,12 @@ import Network
         if let snapshot { try? cache?.save(snapshot) }
     }
     func showEvent(_ id: String,tab:EventTab? = nil) {
+        showEvent(id, cardTab: tab?.cardTabID)
+    }
+    /// Karta wydarzenia na zakładce `cardTab` (identyfikator z CRM, np. `details`, `summary`; nieznany → Przegląd).
+    func showEvent(_ id: String, cardTab: String?) {
         guard UUID(uuidString: id) != nil else { return }
-        eventRoute = EventRoute(id: id, origin: selection, tab:tab)
+        eventRoute = EventRoute(id: id, origin: selection, tab: EventCardTabID.normalize(cardTab))
     }
     func open(_ module: Module, id: String) {
         Task {await navigate(module,id:id)}
@@ -397,7 +406,7 @@ import Network
             if let href = link.href, let url = URL(string: href) { NSWorkspace.shared.open(url) }
         case "record":
             guard let tab = link.tab else { return }
-            if tab == "event", let id = link.id, UUID(uuidString: id) != nil { showEvent(id, tab: link.kind.flatMap(EventTab.init(rawValue:))); return }
+            if tab == "event", let id = link.id, UUID(uuidString: id) != nil { showEvent(id, cardTab: link.kind); return }
             if native.meta(tab) != nil || native.records[tab] != nil { showNative(tab, focus: link.id) }
             else if let href = link.href { openCRM(href) }
             else { notice = "Ta sekcja nie jest jeszcze dostępna w aplikacji." }

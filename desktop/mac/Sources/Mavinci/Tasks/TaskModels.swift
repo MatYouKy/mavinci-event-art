@@ -3,8 +3,14 @@ import SwiftUI
 // MARK: Zadania — model tablic jak w CRM (`TasksPageClient`, `PrivateTasksBoardTab`, `TaskCard`, `/bridge/native/v1/tasks`).
 
 enum TaskBoardKind: String {
-    case company, mine
-    var title: String { self == .company ? "Zadania firmowe" : "Moja tablica zadań" }
+    case company, mine, event
+    var title: String {
+        switch self {
+        case .company: return "Zadania firmowe"
+        case .mine: return "Moja tablica zadań"
+        case .event: return "Zadania wydarzenia"
+        }
+    }
     var href: String { self == .company ? "/crm/tasks" : "/crm/tasks/mine" }
 }
 
@@ -12,13 +18,13 @@ enum BoardColumnKind: String, CaseIterable, Identifiable {
     case todo, in_progress, review, completed
     var id: String { rawValue }
     init(raw: String) { self = BoardColumnKind(rawValue: raw) ?? .todo }
-    /// Nazwy jak na tablicach w CRM (tablica prywatna ma własne: „Do sprawdzenia”, „Ukończone”).
+    /// Nazwy jak na tablicach w CRM (tablica prywatna i tablica wydarzenia mają własne: „Do sprawdzenia”, „Ukończone”).
     func label(_ board: TaskBoardKind) -> String {
         switch self {
         case .todo: return "Do zrobienia"
         case .in_progress: return "W trakcie"
-        case .review: return board == .mine ? "Do sprawdzenia" : "Sprawdzenie"
-        case .completed: return board == .mine ? "Ukończone" : "Zakończone"
+        case .review: return board == .company ? "Sprawdzenie" : "Do sprawdzenia"
+        case .completed: return board == .company ? "Zakończone" : "Ukończone"
         }
     }
     var color: Color {

@@ -336,7 +336,7 @@ export function ImportFromOfferModal({
       .select(
         `id, role, estimated_distance_km, fuel_cost_estimate, toll_cost_estimate,
          vehicle:vehicles(id, brand, model, registration_number),
-         driver:employees!event_vehicles_driver_id_fkey(id, first_name, last_name)`,
+         driver:employees!event_vehicles_driver_id_fkey(id, name, surname)`,
       )
       .eq('event_id', eventId)
       .neq('status', 'cancelled');
@@ -347,7 +347,7 @@ export function ImportFromOfferModal({
         ? `${v.vehicle.brand || ''} ${v.vehicle.model || ''} (${v.vehicle.registration_number || ''})`.trim()
         : 'Pojazd',
       role: v.role || 'transport_equipment',
-      driverName: v.driver ? `${v.driver.first_name} ${v.driver.last_name}` : null,
+      driverName: v.driver ? `${v.driver.name ?? ''} ${v.driver.surname ?? ''}`.trim() || null : null,
       estimatedDistance: v.estimated_distance_km ? Number(v.estimated_distance_km) : null,
       fuelCost: v.fuel_cost_estimate ? Number(v.fuel_cost_estimate) : null,
       tollCost: v.toll_cost_estimate ? Number(v.toll_cost_estimate) : null,

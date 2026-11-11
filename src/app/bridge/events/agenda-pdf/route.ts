@@ -4,6 +4,9 @@ import { chromium } from 'playwright';
 import { buildAgendaHtml } from '@/app/(crm)/crm/events/[id]/helpers/buildAgendaPdf';
 import { canManageEvent, isUuid, requireSessionEmployee } from '@/lib/auth/requireEmployee.server';
 import { restrictPageNetwork } from '@/lib/pdf/restrictPageNetwork.server';
+import {
+  finalizeRequested, localRenderRequested, printJobResponse, readFinalizedPdf, trustedPrintHosts, type PrintPdfOptions,
+} from '@/lib/print/printJob.server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -92,7 +95,16 @@ export async function POST(req: Request) {
     const access = await requireSessionEmployee(req);
     if (!access.ok) return access.response;
 
-    const body = (await req.json()) as Body;
+    // Mac: `?render=local` — zadanie wydruku (PDF powstaje na komputerze), `?finalize=1` — gotowy PDF do zapisania tym samym kodem.
+    let finalizedPdf: Buffer | null = null;
+    let body: Body;
+    if (finalizeRequested(req)) {
+      const finalized = await readFinalizedPdf(req);
+      finalizedPdf = finalized.pdf;
+      body = finalized.payload as Body;
+    } else {
+      body = (await req.json()) as Body;
+    }
     const { eventId, agendaId, htmlPayload, eventName } = body;
 
     if (!isUuid(eventId) || !isUuid(agendaId) || !htmlPayload) {
@@ -150,7 +162,22 @@ export async function POST(req: Request) {
     }
 
     const html = buildAgendaHtml(enrichedPayload);
+    const pdfOptions: PrintPdfOptions = {
+      format: 'A4',
+      printBackground: true,
+      margin: { top: '10mm', right: '10mm', bottom: '20mm', left: '10mm' },
+    };
+    if (localRenderRequested(req)) {
+      return printJobResponse({
+        version: 1, html, fontsMarker: null, javascript: true, network: 'trusted', allowedHosts: trustedPrintHosts(),
+        waitUntil: 'networkidle', waitForAssets: true, emulatePrintMedia: false, pdf: pdfOptions, fileName: 'agenda.pdf', finalize: true,
+      });
+    }
 
+    let pdfBuffer: Buffer;
+    if (finalizedPdf) {
+      pdfBuffer = finalizedPdf;
+    } else {
     browser = await chromium.launch({
       args: ['--no-sandbox', '--disable-setuid-sandbox', '--font-render-hinting=medium'],
     });
@@ -180,11 +207,8 @@ export async function POST(req: Request) {
       );
     });
 
-    const pdfBuffer = await page.pdf({
-      format: 'A4',
-      printBackground: true,
-      margin: { top: '10mm', right: '10mm', bottom: '20mm', left: '10mm' },
-    });
+    pdfBuffer = Buffer.from(await page.pdf(pdfOptions));
+    }
 
     if (previousPdfPath) {
       await supabase.storage.from('event-files').remove([previousPdfPath]);

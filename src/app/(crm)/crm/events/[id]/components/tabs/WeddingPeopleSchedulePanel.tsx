@@ -38,6 +38,14 @@ const ROLE_LABELS: Record<Person['role'], string> = {
 };
 
 const newId = () => crypto.randomUUID();
+/** Wartość `datetime-local` w czasie lokalnym — baza zwraca znacznik w UTC, a zapis używa `toISOString()`. */
+const toDateTimeInput = (value: string) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const pad = (part: number) => String(part).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+};
+
 const blankPerson = (side: Person['side'], role: Person['role']): Person => {
   const id = newId();
   return {
@@ -88,7 +96,7 @@ export default function WeddingPeopleSchedulePanel({ cardId, canManage, view = '
       ...loadedPeople.filter((person) => person.side === 'shared'),
     ]);
     setSchedule((scheduleResult.data || []).map((item) => ({
-      ...item, local_id: item.id, scheduled_at: item.scheduled_at ? item.scheduled_at.slice(0, 16) : '', location: item.location || '', responsible_person: item.responsible_person || '', notes: item.notes || '',
+      ...item, local_id: item.id, scheduled_at: item.scheduled_at ? toDateTimeInput(item.scheduled_at) : '', location: item.location || '', responsible_person: item.responsible_person || '', notes: item.notes || '',
     })) as ScheduleItem[]);
   }, [cardId]);
 

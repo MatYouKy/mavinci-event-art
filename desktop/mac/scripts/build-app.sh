@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
-VERSION="${VERSION:-0.14.0}"
+VERSION="${VERSION:-0.18.0}"
 CONFIGURATION="${CONFIGURATION:-release}"
 case "$CONFIGURATION" in debug|release) ;; *) echo "Nieznany wariant kompilacji"; exit 1;; esac
 BUILD="${BUILD:-$(date +%Y%m%d%H%M)}"
@@ -36,6 +36,12 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/Mavinci"
 sed -e "s/__VERSION__/$VERSION/" -e "s/__BUILD__/$BUILD/" Resources/Info.plist > "$APP/Contents/Info.plist"
 if [ -f Resources/Configuration.json ]; then cp Resources/Configuration.json "$APP/Contents/Resources/Configuration.json"; fi
+# Fonty wydruków (Inter) — te same pliki co na serwerze (`public/fonts/invoice`): lokalny silnik PDF wstawia je do HTML
+# identycznie jak `loadPrintFontCss`, więc dokument z Maca jest taki sam jak z serwera.
+mkdir -p "$APP/Contents/Resources/PrintFonts"
+for font in Inter-Regular Inter-Medium Inter-SemiBold Inter-Bold; do
+  if [ -f "../../public/fonts/invoice/$font.ttf" ]; then cp "../../public/fonts/invoice/$font.ttf" "$APP/Contents/Resources/PrintFonts/$font.ttf"; fi
+done
 # Ikona z brandbooka (jedyne źródło prawdy): marka zapisana przez aplikację po zalogowaniu, a do pierwszego logowania —
 # Resources/Brand/brand.json. Bez sieci i bez sygnetu zostaje ikona z poprzedniego budowania (build/icon/AppIcon.icns).
 BRAND_JSON="$HOME/Library/Application Support/Mavinci/Desktop/v1/brand/brand.json"

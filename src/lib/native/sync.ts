@@ -54,6 +54,11 @@ export function invalidateNativeSync(names?: string[]) {
   for (const key of [...cache.keys()]) if (!names || names.some((n) => key.endsWith(`:${n}`))) cache.delete(key);
 }
 
+/** Zbiory nazwane prefiksem (np. tablice zadań wydarzeń `tasks-event-…`) — klucz to `pracownik:klient:nazwa`. */
+export function invalidateNativeSyncPrefix(prefix: string) {
+  for (const key of [...cache.keys()]) if (key.split(':').slice(2).join(':').startsWith(prefix)) cache.delete(key);
+}
+
 function allSets(ctx: NativeContext) {
   const sets = nativeSets.filter((s) => s.allowed(ctx.employee));
   const sections = {

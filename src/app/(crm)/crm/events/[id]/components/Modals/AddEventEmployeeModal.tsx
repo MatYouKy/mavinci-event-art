@@ -27,6 +27,8 @@ export function AddEventEmployeeModal({
   const [canEditEquipment, setCanEditEquipment] = useState(false);
   const [canInviteMembers, setCanInviteMembers] = useState(false);
   const [canViewBudget, setCanViewBudget] = useState(false);
+  // Sekcja uprawnień otwiera się zaznaczeniem pola (wcześniej pole dało się tylko odznaczyć).
+  const [permissionsOpen, setPermissionsOpen] = useState(false);
   const [employeesInPhases, setEmployeesInPhases] = useState<any[]>([]);
   const [sendInvitationNow, setSendInvitationNow] = useState(true);
   const [includePhasesInInvitation, setIncludePhasesInInvitation] = useState(false);
@@ -190,6 +192,7 @@ export function AddEventEmployeeModal({
       setCanEditEquipment(false);
       setCanInviteMembers(false);
       setCanViewBudget(false);
+      setPermissionsOpen(false);
       setSendInvitationNow(true);
       setIncludePhasesInInvitation(false);
       onClose();
@@ -339,9 +342,10 @@ export function AddEventEmployeeModal({
             <label className="mb-3 flex items-center gap-2 text-sm text-[#e5e4e2]/80">
               <input
                 type="checkbox"
-                checked={hasAnyPermission}
+                checked={permissionsOpen || hasAnyPermission}
                 onChange={(e) => {
                   const checked = e.target.checked;
+                  setPermissionsOpen(checked);
                   if (!checked) {
                     setCanEditEvent(false);
                     setCanEditPhases(false);
@@ -358,7 +362,7 @@ export function AddEventEmployeeModal({
               <span className="font-medium">Nadaj uprawnienia współpracownika</span>
             </label>
 
-            {hasAnyPermission && (
+            {(permissionsOpen || hasAnyPermission) && (
               <div className="ml-6 space-y-2 rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33]/50 p-3">
                 <p className="mb-3 text-xs text-[#e5e4e2]/60">
                   Zaznacz uprawnienia które chcesz nadać:

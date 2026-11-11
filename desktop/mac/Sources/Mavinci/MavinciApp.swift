@@ -95,7 +95,7 @@ struct RootView: View {
                     }
                 } detail: {
                     VStack(spacing: 0) {
-                        if let route = state.eventRoute { EventPageView(eventID: route.id,initialTab:route.tab).id(route.id) }
+                        if let route = state.eventRoute { EventCardView(eventID: route.id, initialTab: route.tab).id(route.id) }
                         else if let item = state.webItem { CrmWebPlaceholder(item: item).id(item.href) }
                         else if state.selection == .calendar { NativeCalendarView() }
                         else if state.selection == .tasks { TasksBoardView(store: state.myTasks).id("tasks-mine") }

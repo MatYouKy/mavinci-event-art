@@ -4,6 +4,9 @@ import { randomUUID } from 'node:crypto';
 import { chromium } from 'playwright';
 import { authorizeWeddingDocument, getWeddingAdmin, WeddingDocumentError } from './access';
 import {
+  finalizeRequested, localRenderRequested, printJobResponse, readFinalizedPdf, trustedPrintHosts, type PrintPdfOptions,
+} from '@/lib/print/printJob.server';
+import {
   buildWeddingCardPdfHtml,
   type WeddingCardPdfAnswer,
   type WeddingCardPdfAttraction,
@@ -63,15 +66,28 @@ export async function POST(request: Request) {
   let renderSlot = false;
 
   try {
-    const { eventId } = (await request.json().catch(() => ({}))) as Body;
+    // Mac: `?render=local` — zadanie wydruku, `?finalize=1` — gotowy PDF z Maca zapisany tym samym kodem.
+    const local = localRenderRequested(request);
+    let finalizedPdf: Buffer | null = null;
+    let body: Body;
+    if (finalizeRequested(request)) {
+      const finalized = await readFinalizedPdf(request);
+      finalizedPdf = finalized.pdf;
+      body = finalized.payload as Body;
+    } else {
+      body = (await request.json().catch(() => ({}))) as Body;
+    }
+    const { eventId } = body;
     if (!eventId) {
       return NextResponse.json({ error: 'Brak identyfikatora wydarzenia.' }, { status: 400 });
     }
 
     const { admin, employeeId } = await authorizeWeddingDocument(request, eventId);
-    if (activeRenders >= 1) throw new WeddingDocumentError('Generator przygotowuje inny dokument. Spróbuj ponownie za chwilę.', 503);
-    activeRenders += 1;
-    renderSlot = true;
+    if (!local && !finalizedPdf) {
+      if (activeRenders >= 1) throw new WeddingDocumentError('Generator przygotowuje inny dokument. Spróbuj ponownie za chwilę.', 503);
+      activeRenders += 1;
+      renderSlot = true;
+    }
     const [eventResult, cardResult] = await Promise.all([
       admin
         .from('events')
@@ -240,19 +256,28 @@ export async function POST(request: Request) {
       ),
     });
 
-    const localChromePath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
-    browser = await chromium.launch({
-      ...(existsSync(localChromePath) ? { executablePath: localChromePath } : {}),
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--font-render-hinting=medium'],
-    });
-    const page = await browser.newPage();
-    page.setDefaultTimeout(45_000);
-    await page.setContent(html, { waitUntil: 'networkidle' });
-    const pdfBuffer = await page.pdf({
-      format: 'A4',
-      printBackground: true,
-      preferCSSPageSize: true,
-    });
+    const pdfOptions: PrintPdfOptions = { format: 'A4', printBackground: true, preferCSSPageSize: true };
+    if (local) {
+      return printJobResponse({
+        version: 1, html, fontsMarker: null, javascript: true, network: 'open', allowedHosts: trustedPrintHosts(),
+        waitUntil: 'networkidle', waitForAssets: false, emulatePrintMedia: false, pdf: pdfOptions,
+        fileName: `karta-weselna-${safeFilePart(event.name) || event.id}.pdf`, finalize: true,
+      });
+    }
+    let pdfBuffer: Buffer;
+    if (finalizedPdf) {
+      pdfBuffer = finalizedPdf;
+    } else {
+      const localChromePath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+      browser = await chromium.launch({
+        ...(existsSync(localChromePath) ? { executablePath: localChromePath } : {}),
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--font-render-hinting=medium'],
+      });
+      const page = await browser.newPage();
+      page.setDefaultTimeout(45_000);
+      await page.setContent(html, { waitUntil: 'networkidle' });
+      pdfBuffer = Buffer.from(await page.pdf(pdfOptions));
+    }
 
     const fileName = `karta-weselna-${safeFilePart(event.name) || event.id}.pdf`;
     // Each rendering is immutable: a queued attachment cannot change underneath the sender.

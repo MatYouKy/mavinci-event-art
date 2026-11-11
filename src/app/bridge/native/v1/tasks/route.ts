@@ -19,7 +19,7 @@ const priorities = ['low', 'medium', 'high', 'urgent'];
 const failure = (message: string, status = 400) => nativeJson({ error: message }, status);
 const errorText = (error: unknown, fallback: string) =>
   (error as { message?: string })?.message || (typeof error === 'string' ? error : fallback);
-const boardOf = (value: unknown): TaskBoard => (value === 'company' ? 'company' : 'mine');
+const boardOf = (value: unknown): TaskBoard => (value === 'company' ? 'company' : value === 'event' ? 'event' : 'mine');
 const dateOrNull = (value: unknown) => {
   if (value === null || value === undefined || value === '') return null;
   const text = String(value);
@@ -31,9 +31,9 @@ async function stopTimer(ctx: NativeContext) {
     .eq('employee_id', ctx.employee.id).is('end_time', null);
   if (error) throw error;
 }
-async function startTimer(ctx: NativeContext, taskId: string) {
+async function startTimer(ctx: NativeContext, taskId: string, eventId: string | null = null) {
   const { error } = await ctx.supabase.from('time_entries').insert({
-    employee_id: ctx.employee.id, task_id: taskId, event_id: null, title: null, description: null,
+    employee_id: ctx.employee.id, task_id: taskId, event_id: eventId, title: null, description: null,
     start_time: new Date().toISOString(), end_time: null, is_billable: false, tags: [],
   });
   if (error) throw error;
@@ -53,9 +53,11 @@ export async function GET(request: Request) {
     switch (q('op')) {
       case 'state': {
         const board = boardOf(q('board'));
-        const access = await taskAccess(ctx, board);
+        const eventId = board === 'event' ? q('eventId') : null;
+        if (board === 'event' && !uuid.test(eventId || '')) return failure('Nieprawidłowe wydarzenie.');
+        const access = await taskAccess(ctx, board, eventId);
         if (board === 'company' && !access.canMove) return failure('Nie masz dostępu do zadań firmowych.', 403);
-        const [state, timer] = await Promise.all([tasksState(ctx, board, q('hash') || undefined), activeTimer(ctx)]);
+        const [state, timer] = await Promise.all([tasksState(ctx, board, q('hash') || undefined, eventId), activeTimer(ctx)]);
         return nativeJson({ ...state, access, timer });
       }
       case 'timer':
@@ -140,13 +142,16 @@ export async function POST(request: Request) {
   }
   const op = String(body.op || '');
   const board = boardOf(body.board);
+  // Tablica zadań wydarzenia (karta wydarzenia na Macu) — zawsze z identyfikatorem wydarzenia.
+  const eventId = board === 'event' ? String(body.eventId || '') : null;
+  if (board === 'event' && !uuid.test(eventId || '')) return failure('Nieprawidłowe wydarzenie.');
   const id = body.id ? String(body.id) : '';
   const done = (payload: Record<string, unknown> = {}) => { invalidateTasks(); return nativeJson({ ok: true, ...payload }); };
   try {
-    const access = await taskAccess(ctx, board);
+    const access = await taskAccess(ctx, board, eventId);
     switch (op) {
       case 'items':
-        return nativeJson(await tasksItems(ctx, board, Array.isArray(body.buckets) ? body.buckets : []));
+        return nativeJson(await tasksItems(ctx, board, Array.isArray(body.buckets) ? body.buckets : [], eventId));
 
       case 'save': {
         const data = body.data && typeof body.data === 'object' ? body.data : {};
@@ -163,6 +168,54 @@ export async function POST(request: Request) {
           : null;
 
         if (id && !uuid.test(id)) return failure('Nieprawidłowe zadanie.');
+        if (board === 'event') {
+          // Jak `EventTasksBoard.handleSubmit`: status równy kolumnie, kolejność na końcu kolumny, autor — pracownik.
+          if (!access.canManage) return failure('Nie masz uprawnień do zarządzania zadaniami wydarzenia.', 403);
+          const eventFields = { ...fields, status: column };
+          let taskId = id;
+          if (id) {
+            const { data: saved, error } = await ctx.supabase.from('tasks').update(eventFields).eq('id', id).eq('event_id', eventId).select('id');
+            if (error) return failure(errorText(error, 'Błąd podczas zapisywania zadania'));
+            if (!saved?.length) return failure('Nie masz uprawnień do zmiany tego zadania.', 403);
+          } else {
+            const { data: last } = await ctx.supabase.from('tasks').select('order_index').eq('event_id', eventId).eq('board_column', column)
+              .order('order_index', { ascending: false }).limit(1).maybeSingle();
+            const { data: created, error } = await ctx.supabase.from('tasks').insert({
+              ...eventFields, event_id: eventId, is_private: false, owner_id: null, created_by: ctx.employee.id,
+              order_index: last ? Number(last.order_index || 0) + 1 : 0,
+            }).select('id').single();
+            if (error) return failure(errorText(error, 'Błąd podczas zapisywania zadania'));
+            taskId = String(created.id);
+          }
+          if (assignees) {
+            const { data: current, error: currentError } = await ctx.supabase.from('task_assignees').select('employee_id').eq('task_id', taskId);
+            if (currentError) throw currentError;
+            const before = new Set((current || []).map((row) => String(row.employee_id)));
+            const remove = [...before].filter((value) => !assignees.includes(value));
+            const add = assignees.filter((value) => !before.has(value));
+            if (remove.length) {
+              const { error: removeError } = await ctx.supabase.from('task_assignees').delete().eq('task_id', taskId).in('employee_id', remove);
+              if (removeError) throw removeError;
+            }
+            if (add.length) {
+              const { data: inserted, error: addError } = await ctx.supabase.from('task_assignees')
+                .upsert(add.map((employee_id) => ({ task_id: taskId, employee_id, assigned_by: ctx.employee.id })), { onConflict: 'task_id,employee_id', ignoreDuplicates: true })
+                .select('id');
+              if (addError) return failure('Zadanie jest zapisane, ale nie udało się przypisać pracowników. Edytuj zadanie i zapisz ponownie.');
+              await pushAssignments(ctx, (inserted || []).map((row) => String(row.id)));
+              // Jak `handleToggleAssignee`: przypisana osoba trafia do zespołu wydarzenia (rola „Członek zespołu”).
+              const { data: team } = await ctx.supabase.from('employee_assignments').select('employee_id').eq('event_id', eventId).in('employee_id', add);
+              const inTeam = new Set((team || []).map((row) => String(row.employee_id)));
+              const missing = add.filter((value) => !inTeam.has(value));
+              if (missing.length) {
+                const { error: teamError } = await ctx.supabase.from('employee_assignments')
+                  .insert(missing.map((employee_id) => ({ event_id: eventId, employee_id, role: 'Członek zespołu' })));
+                if (teamError) console.error('[native-tasks] team', teamError);
+              }
+            }
+          }
+          return done({ id: taskId });
+        }
         if (board === 'mine') {
           // Prywatne zadanie: nowe — idempotentny zapis z id z aplikacji (ponowienie nie tworzy duplikatu).
           if (body.existing) {
@@ -232,12 +285,13 @@ export async function POST(request: Request) {
         if (!uuid.test(id) || !columns.includes(column)) return failure('Nieprawidłowe dane.');
         if (!access.canMove) return failure('Nie masz uprawnień do przenoszenia zadań.', 403);
         const update: Record<string, unknown> = { board_column: column };
+        if (board === 'event') update.status = column;
         if (column !== 'in_progress') update.currently_working_by = null;
         else if (body.working) update.currently_working_by = ctx.employee.id;
         const { data: saved, error } = await ctx.supabase.from('tasks').update(update).eq('id', id).select('id');
         if (error) return failure(errorText(error, 'Błąd podczas przenoszenia zadania'));
         if (!saved?.length) return failure('Nie masz uprawnień do zmiany tego zadania.', 403);
-        if (body.startTimer) await startTimer(ctx, id);
+        if (body.startTimer) await startTimer(ctx, id, eventId);
         return done({ timer: await activeTimer(ctx) });
       }
 
@@ -258,7 +312,7 @@ export async function POST(request: Request) {
           if (!uuid.test(id)) return failure('Nieprawidłowe zadanie.');
           if (action === 'switch') await stopTimer(ctx);
           else if (await activeTimer(ctx)) return failure('Masz włączony timer dla innego zadania.', 409);
-          await startTimer(ctx, id);
+          await startTimer(ctx, id, eventId);
         } else return failure('Nieznana czynność licznika.');
         return done({ timer: await activeTimer(ctx) });
       }

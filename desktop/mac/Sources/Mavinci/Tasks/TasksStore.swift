@@ -35,7 +35,10 @@ struct TaskBoardIndex: Codable {
     private var syncTask: Task<Void, Never>?
     private var saveTask: Task<Void, Never>?
 
-    init(board: TaskBoardKind) { self.board = board }
+    /// Tablica zadań wydarzenia (`board == .event`) — zadania z `event_id` tego wydarzenia.
+    let eventID: String?
+
+    init(board: TaskBoardKind, eventID: String? = nil) { self.board = board; self.eventID = eventID }
 
     var api: NativeAPI? { workspace?.nativeAPI() }
     var loaded: Bool { file != nil && (index.syncedAt != nil || !index.items.isEmpty) }
@@ -46,7 +49,8 @@ struct TaskBoardIndex: Codable {
         guard namespace != next else { return }
         reset(clearDisk: false)
         namespace = next
-        let sealed = SealedFile<TaskBoardIndex>(namespace: "tasks-\(board.rawValue)-\(next)")
+        let scope = eventID.map { "event-" + $0 } ?? board.rawValue
+        let sealed = SealedFile<TaskBoardIndex>(namespace: "tasks-\(scope)-\(next)")
         Task {
             let saved = await Task.detached(priority: .userInitiated) { try? sealed.load() }.value
             guard namespace == next else { return }
@@ -81,8 +85,10 @@ struct TaskBoardIndex: Codable {
     }
     private func setTimer(_ next: ActiveTaskTimer?) {
         timer = next; index.timer = next; scheduleSave()
-        // Licznik jest jeden dla pracownika — druga tablica widzi go od razu.
-        if let other = workspace.map({ board == .company ? $0.myTasks : $0.companyTasks }), other.timer != next { other.timer = next }
+        // Licznik jest jeden dla pracownika — pozostałe tablice widzą go od razu.
+        if let workspace {
+            for other in [workspace.myTasks, workspace.companyTasks] where other !== self && other.timer != next { other.timer = next }
+        }
     }
 
     // MARK: Synchronizacja
@@ -106,7 +112,9 @@ struct TaskBoardIndex: Codable {
         struct Bucket: Decodable { let hash: String; let items: [BoardTask] }
         struct Items: Decodable { let buckets: [String: Bucket]; let more: [String] }
         do {
-            let state = try JSONDecoder().decode(State.self, from: try await api.get("/tasks", query: ["op": "state", "board": board.rawValue, "hash": index.hash]))
+            var query = ["op": "state", "board": board.rawValue, "hash": index.hash]
+            if let eventID { query["eventId"] = eventID }
+            let state = try JSONDecoder().decode(State.self, from: try await api.get("/tasks", query: query))
             if let next = state.access { index.access = next; access = next }
             setTimer(state.timer)
             if state.hash != index.hash, let server = state.buckets {
@@ -116,7 +124,9 @@ struct TaskBoardIndex: Codable {
                 var fetched: [BoardTask] = []
                 var pending = changed.sorted()
                 while !pending.isEmpty {
-                    let data = try await api.post("/tasks", ["op": .string("items"), "board": .string(board.rawValue), "buckets": .array(pending.map { .string($0) })])
+                    var request: [String: JSONValue] = ["op": .string("items"), "board": .string(board.rawValue), "buckets": .array(pending.map { .string($0) })]
+                    if let eventID { request["eventId"] = .string(eventID) }
+                    let data = try await api.post("/tasks", request)
                     let reply = try JSONDecoder().decode(Items.self, from: data)
                     for bucket in reply.buckets.values { fetched += bucket.items }
                     pending = reply.more
@@ -154,7 +164,9 @@ struct TaskBoardIndex: Codable {
     /// Po zmianie na jednej tablicy druga też się odświeża (to samo zadanie bywa na obu).
     private func refreshBoth() {
         Task { await sync(force: true) }
-        if let other = workspace.map({ board == .company ? $0.myTasks : $0.companyTasks }) { Task { await other.sync(force: true) } }
+        guard let workspace else { return }
+        let other = board == .mine ? workspace.companyTasks : workspace.myTasks
+        if other !== self { Task { await other.sync(force: true) } }
     }
 
     // MARK: Czynności
@@ -168,6 +180,7 @@ struct TaskBoardIndex: Codable {
         guard let api else { throw AppError.configuration }
         var payload = body
         payload["board"] = .string(board.rawValue)
+        if let eventID { payload["eventId"] = .string(eventID) }
         let data = try await api.post("/tasks", payload)
         return (try? JSONDecoder().decode([String: JSONValue].self, from: data)) ?? [:]
     }

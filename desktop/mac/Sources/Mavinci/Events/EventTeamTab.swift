@@ -1,0 +1,455 @@
+import SwiftUI
+import AppKit
+
+// MARK: Zespół (1:1 z zakładką „Zespół” w CRM: `TeamMembersList`, `AddEventEmployeeModal`, usuwanie z karty): osoby z przypisań
+// i z odpowiedzialności, status zaproszenia, kierownik realizacji (mianowanie / odebranie), zaproszenie i aktualny timeline
+// e-mailem, rola i obowiązki, uprawnienia w wydarzeniu, usuwanie; dodawanie osoby. Zespół na dysku (osobny skrót).
+
+private let teamPermissions: [(key: String, title: String, detail: String)] = [
+    ("can_edit_event", "Edycja wydarzenia", "Może edytować podstawowe informacje o wydarzeniu"),
+    ("can_edit_agenda", "Edycja agendy", "Może edytować fazy wydarzenia"),
+    ("can_edit_phases", "Edycja harmonogramu", "Może edytować harmonogram wydarzenia"),
+    ("can_edit_tasks", "Zarządzanie zadaniami", "Może tworzyć, edytować i usuwać zadania"),
+    ("can_edit_files", "Zarządzanie plikami", "Może dodawać i usuwać pliki"),
+    ("can_edit_equipment", "Zarządzanie sprzętem", "Może dodawać i usuwać sprzęt"),
+    ("can_invite_members", "Zapraszanie członków", "Może zapraszać innych pracowników do zespołu"),
+    ("can_view_budget", "Widok budżetu", "Może przeglądać informacje finansowe"),
+]
+
+@MainActor struct EventTeamTab: View {
+    @ObservedObject var store: EventCardStore
+    let eventID: String
+    let page: EventCardPage
+    @EnvironmentObject private var state: Workspace
+    @Environment(\.crmTheme) private var theme
+    @State private var editingID: String?
+    @State private var editRole = ""
+    @State private var editResponsibilities = ""
+    @State private var permissionsFor: EventTeamMember?
+    @State private var removing: EventTeamMember?
+    @State private var addOpen = false
+    @State private var leaderBusy = false
+
+    private var canManageTeam: Bool { page.flags?.canManageTeam == true }
+    private var team: EventTeam? { store.team(eventID) }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    Text("Zespół").font(.title3.weight(.light))
+                    Spacer()
+                    if store.teamLoading.contains(eventID) { ProgressView().controlSize(.small) }
+                    if canManageTeam {
+                        Button { addOpen = true } label: { Label("Dodaj osobę", systemImage: "plus") }.buttonStyle(.borderedProminent)
+                    }
+                }
+                if let team {
+                    if team.leadershipError {
+                        HStack(spacing: 4) {
+                            Text("Nie udało się odczytać kierownika realizacji. Spróbuj ponownie.")
+                            Button("Ponów odczyt") { Task { await store.loadTeam(eventID) } }.buttonStyle(.link)
+                        }
+                        .font(.callout).foregroundStyle(CrmTheme.rgb(0xfca5a5))
+                    }
+                    if leaderBusy { Text("Zapisywanie roli kierownika…").font(.callout).foregroundStyle(theme.accent) }
+                    let members = team.members.filter(\.hasEmployee)
+                    if team.members.isEmpty {
+                        VStack(spacing: 10) {
+                            Image(systemName: "person.2").font(.system(size: 40)).foregroundStyle(.tertiary)
+                            Text("Brak przypisanych pracowników").foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity).padding(.vertical, 40)
+                    }
+                    ForEach(members) { member in row(member, team) }
+                } else {
+                    ProgressView("Wczytywanie zespołu…").frame(maxWidth: .infinity, minHeight: 120)
+                }
+            }
+            .padding(18).frame(maxWidth: 1000, alignment: .leading)
+        }
+        .task(id: eventID) { await store.loadTeam(eventID) }
+        .onChange(of: store.card(eventID)?.hash) { Task { await store.loadTeam(eventID) } }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in Task { await store.loadTeam(eventID) } }
+        .sheet(item: $permissionsFor) { member in
+            EventTeamPermissionsSheet(store: store, eventID: eventID, member: member).warehouseSheetStyle(state)
+        }
+        .sheet(isPresented: $addOpen) {
+            EventTeamAddSheet(store: store, eventID: eventID, assigned: Set(team?.members.map(\.employeeId) ?? [])).warehouseSheetStyle(state)
+        }
+        .confirmationDialog("Czy na pewno chcesz usunąć tego pracownika z eventu?", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }), titleVisibility: .visible) {
+            Button("Usuń", role: .destructive) { if let member = removing { Task { await remove(member) } } }
+            Button("Anuluj", role: .cancel) { removing = nil }
+        } message: { Text(removing?.name ?? "") }
+    }
+
+    // MARK: Wiersz osoby
+    private func row(_ member: EventTeamMember, _ team: EventTeam) -> some View {
+        let editing = editingID == member.id
+        let isLeader = team.managerID == member.employeeId && !member.employeeId.isEmpty
+        let roles = Self.uniqueRoles(member.responsibilityRoles)
+        let roleLabel = member.role?.nonEmpty.map { EventRoleLabels.label($0) } ?? ""
+        let roleShown = roles.contains { Self.normalize($0) == Self.normalize(roleLabel) }
+        let actions = actionList(member, team, isLeader: isLeader)
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .center, spacing: 12) {
+                EmployeeAvatarView(name: member.name, url: member.avatarUrl, crop: member.avatar, size: 50)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(member.name).font(.callout.weight(.medium))
+                    if !roles.isEmpty { Text(roles.joined(separator: " · ")).font(.callout).foregroundStyle(theme.accent) }
+                    if !roleLabel.isEmpty && !roleShown && !editing { Text(roleLabel).font(.callout).foregroundStyle(theme.accent) }
+                    HStack(spacing: 6) {
+                        statusBadge(member.status)
+                        if isLeader {
+                            Text("Kierownik realizacji").font(.caption).padding(.horizontal, 8).padding(.vertical, 3)
+                                .background(theme.accent.opacity(0.15), in: Capsule()).foregroundStyle(theme.accent)
+                        }
+                    }
+                }
+                Spacer()
+                if !editing && !member.automatic && (canManageTeam || team.canManageLeader) && !actions.isEmpty {
+                    Menu {
+                        ForEach(actions, id: \.title) { action in
+                            Button(action.title, systemImage: action.symbol, role: action.destructive ? .destructive : nil, action: action.run)
+                                .disabled(action.disabled)
+                        }
+                    } label: { Image(systemName: "ellipsis.circle") }
+                    .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                    .help("Akcje")
+                }
+            }
+            .padding(14)
+            if editing {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Rola").font(.caption).foregroundStyle(.secondary)
+                    TextField("np. Lead Audio, Technician...", text: $editRole).textFieldStyle(.roundedBorder)
+                    Text("Zakres odpowiedzialności").font(.caption).foregroundStyle(.secondary)
+                    TextEditor(text: $editResponsibilities).frame(minHeight: 70).scrollContentBackground(.hidden).padding(4)
+                        .background(Color.black.opacity(0.2), in: RoundedRectangle(cornerRadius: 7))
+                        .overlay(alignment: .topLeading) {
+                            if editResponsibilities.isEmpty { Text("Opisz zakres obowiązków...").foregroundStyle(.tertiary).padding(8).allowsHitTesting(false) }
+                        }
+                    HStack {
+                        Button("Zapisz") { Task { await saveEdit(member) } }.buttonStyle(.borderedProminent)
+                        Button("Anuluj") { editingID = nil }
+                    }
+                }
+                .padding(14)
+                .background(Color.primary.opacity(0.03))
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(member.status == "rejected" ? CrmTheme.rgb(0xef4444).opacity(0.08) : Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    private struct MemberAction { let title: String; let symbol: String; var destructive = false; var disabled = false; let run: () -> Void }
+
+    private func actionList(_ member: EventTeamMember, _ team: EventTeam, isLeader: Bool) -> [MemberAction] {
+        var list: [MemberAction] = []
+        if team.canManageLeader && (isLeader || member.status == "accepted") {
+            list.append(MemberAction(title: isLeader ? "Odbierz uprawnienia kierownika" : "Mianuj kierownikiem realizacji",
+                                     symbol: isLeader ? "person.badge.minus" : "person.badge.shield.checkmark", destructive: isLeader,
+                                     disabled: leaderBusy || !team.canChangeLeader, run: { Task { await changeLeader(member, revoke: isLeader) } }))
+        }
+        if canManageTeam && member.status == "pending" && !member.invitationEmailSent {
+            list.append(MemberAction(title: "Wyślij zaproszenie", symbol: "paperplane", run: { Task { await invite(member, timeline: false) } }))
+        }
+        if canManageTeam && member.status != "rejected" {
+            list.append(MemberAction(title: "Wyślij aktualny timeline", symbol: "envelope", run: { Task { await invite(member, timeline: true) } }))
+        }
+        if canManageTeam {
+            list.append(MemberAction(title: "Edytuj rolę i obowiązki", symbol: "pencil", run: {
+                editRole = member.role ?? ""
+                editResponsibilities = member.responsibilities ?? ""
+                editingID = member.id
+            }))
+            list.append(MemberAction(title: "Uprawnienia w wydarzeniu", symbol: "person", run: { permissionsFor = member }))
+            list.append(MemberAction(title: "Usuń z zespołu", symbol: "trash", destructive: true, run: { removing = member }))
+        }
+        return list
+    }
+
+    private func statusBadge(_ status: String) -> some View {
+        let (text, color): (String, Color) = status == "accepted" ? ("Zaakceptowano", CrmTheme.rgb(0x4ade80))
+            : status == "rejected" ? ("Odrzucono", CrmTheme.rgb(0xf87171)) : ("Oczekuje", CrmTheme.rgb(0xfacc15))
+        return Text(text).font(.caption).padding(.horizontal, 8).padding(.vertical, 3)
+            .background(color.opacity(0.2), in: Capsule()).foregroundStyle(color)
+    }
+
+    static func normalize(_ label: String) -> String {
+        label.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression).lowercased()
+    }
+    static func uniqueRoles(_ roles: [String]) -> [String] {
+        var seen = Set<String>()
+        return roles.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty && seen.insert(normalize($0)).inserted }
+    }
+
+    // MARK: Czynności
+    private func changeLeader(_ member: EventTeamMember, revoke: Bool) async {
+        guard !leaderBusy else { return }
+        leaderBusy = true
+        defer { leaderBusy = false }
+        do {
+            _ = try await state.withPending("Zapisywanie…") {
+                try await store.rpc(revoke ? "revoke_realization_manager" : "appoint_realization_manager",
+                                    ["p_event_id": .string(eventID), "p_employee_id": .string(member.employeeId)])
+            }
+            state.succeed(revoke ? "Odebrano rolę kierownika realizacji." : "Wyznaczono kierownika realizacji.")
+            await store.loadTeam(eventID)
+            Task { await store.loadOverview(eventID) }
+        } catch {
+            state.error = (error as? NativeFailure)?.message.nonEmpty ?? "Nie udało się zmienić kierownika realizacji."
+        }
+    }
+    private func invite(_ member: EventTeamMember, timeline: Bool) async {
+        do {
+            let data = try await store.teamRun(eventID, "teamInvite", [
+                "assignmentId": .string(member.id), "includePhases": .bool(timeline), "mode": .string(timeline ? "timeline_update" : "invitation"),
+            ], success: nil, pending: "Wysyłanie…")
+            struct Reply: Decodable { let skipped: Bool? }
+            if (try? JSONDecoder().decode(Reply.self, from: data))?.skipped == true {
+                state.notice = "Zaproszenie nie jest potrzebne — nie wysłano wiadomości."
+            } else {
+                state.succeed(timeline ? "Uzupełniony harmonogram został wysłany" : "Zaproszenie zostało wysłane")
+            }
+        } catch {
+            state.error = store.failureText(error, "Błąd podczas wysyłania zaproszenia")
+        }
+    }
+    private func saveEdit(_ member: EventTeamMember) async {
+        do {
+            try await store.teamRun(eventID, "teamUpdate", ["assignmentId": .string(member.id), "role": .string(editRole), "responsibilities": .string(editResponsibilities)],
+                                    success: "Zapisano rolę i obowiązki")
+            editingID = nil
+        } catch {
+            state.error = store.failureText(error, "Błąd podczas aktualizacji")
+        }
+    }
+    private func remove(_ member: EventTeamMember) async {
+        removing = nil
+        do {
+            try await store.teamRun(eventID, "teamRemove", ["assignmentId": .string(member.id)], success: "Pracownik został usunięty z eventu", pending: "Usuwanie…")
+        } catch {
+            state.error = store.failureText(error, "Błąd podczas usuwania pracownika")
+        }
+    }
+}
+
+/// „Zarządzaj uprawnieniami” osoby w wydarzeniu.
+@MainActor struct EventTeamPermissionsSheet: View {
+    @ObservedObject var store: EventCardStore
+    let eventID: String
+    let member: EventTeamMember
+    @EnvironmentObject private var state: Workspace
+    @Environment(\.dismiss) private var dismiss
+    @State private var form: [String: Bool] = [:]
+    @State private var saving = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Zarządzaj uprawnieniami").font(.title3.weight(.light))
+                Text(member.name).font(.callout).foregroundStyle(.secondary)
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(teamPermissions, id: \.key) { item in
+                    Toggle(isOn: Binding(get: { form[item.key] == true }, set: { form[item.key] = $0 })) {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(item.title).font(.callout.weight(.medium))
+                            Text(item.detail).font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                    .toggleStyle(.checkbox)
+                    .padding(10).frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
+                }
+            }
+            HStack {
+                Spacer()
+                Button("Anuluj") { dismiss() }.keyboardShortcut(.cancelAction).disabled(saving)
+                Button(saving ? "Zapisywanie…" : "Zapisz") { Task { await save() } }.keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent).disabled(saving)
+            }
+        }
+        .padding(20).frame(width: 440)
+        .onAppear { form = member.permissions }
+    }
+
+    private func save() async {
+        saving = true
+        defer { saving = false }
+        do {
+            try await store.teamRun(eventID, "teamPermissions", [
+                "assignmentId": .string(member.id),
+                "permissions": .object(Dictionary(uniqueKeysWithValues: teamPermissions.map { ($0.key, JSONValue.bool(form[$0.key] == true)) })),
+            ], success: "Uprawnienia zostały zapisane")
+            dismiss()
+        } catch {
+            state.error = store.failureText(error, "Błąd podczas aktualizacji uprawnień")
+        }
+    }
+}
+
+/// „Dodaj osobę do zespołu” (`AddEventEmployeeModal`).
+@MainActor struct EventTeamAddSheet: View {
+    @ObservedObject var store: EventCardStore
+    let eventID: String
+    let assigned: Set<String>
+    @EnvironmentObject private var state: Workspace
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.crmTheme) private var theme
+    @State private var candidates: EventTeamCandidates?
+    @State private var loading = true
+    @State private var employeeID = ""
+    @State private var role = ""
+    @State private var responsibilities = ""
+    @State private var accessLevelID = ""
+    @State private var permissionsOpen = false
+    @State private var permissions: [String: Bool] = [:]
+    @State private var sendInvitation = true
+    @State private var includePhases = false
+    @State private var submitting = false
+
+    private var available: [EventTeamCandidates.Employee] { (candidates?.employees ?? []).filter { !assigned.contains($0.id) } }
+    private var phases: [EventTeamCandidates.Phase] { employeeID.isEmpty ? [] : candidates?.phases[employeeID] ?? [] }
+    private var anyPermission: Bool { permissions.values.contains(true) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Dodaj osobę do zespołu").font(.title3.weight(.light))
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    field("Pracownik") {
+                        Picker("Pracownik", selection: $employeeID) {
+                            Text(loading ? "Ładowanie..." : available.isEmpty ? "Wszyscy aktywni pracownicy są już w zespole" : "Wybierz pracownika...").tag("")
+                            ForEach(available) { employee in
+                                Text("\(employee.name) \(employee.surname)" + (employee.occupation?.nonEmpty.map { " - \($0)" } ?? "")).tag(employee.id)
+                            }
+                        }
+                        .labelsHidden().disabled(loading)
+                        Text("Dodanie do zespołu od razu nadaje dostęp do wydarzenia. Timeline możesz uzupełnić później.").font(.caption).foregroundStyle(.tertiary)
+                    }
+                    if !phases.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Przypisane fazy").font(.callout.weight(.medium))
+                            ForEach(phases, id: \.phaseId) { phase in
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(phase.name).font(.callout.weight(.medium)).foregroundStyle(theme.accent)
+                                    Text("Praca: \(Self.short(phase.workStart)) - \(Self.short(phase.workEnd))").font(.caption).foregroundStyle(.secondary)
+                                }
+                                .padding(8).frame(maxWidth: .infinity, alignment: .leading)
+                                .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 7))
+                            }
+                        }
+                        .padding(10).background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 9))
+                    }
+                    field("Rola w evencie") { TextField("np. Lead Audio, Technician...", text: $role).textFieldStyle(.roundedBorder) }
+                    field("Zakres odpowiedzialności") {
+                        TextEditor(text: $responsibilities).frame(minHeight: 70).scrollContentBackground(.hidden).padding(4)
+                            .background(Color.black.opacity(0.2), in: RoundedRectangle(cornerRadius: 7))
+                            .overlay(alignment: .topLeading) {
+                                if responsibilities.isEmpty { Text("Opisz zakres obowiązków...").foregroundStyle(.tertiary).padding(8).allowsHitTesting(false) }
+                            }
+                    }
+                    field("Poziom dostępu") {
+                        Picker("Poziom dostępu", selection: $accessLevelID) {
+                            ForEach(candidates?.accessLevels ?? []) { level in Text("\(level.name) - \(level.description)").tag(level.id) }
+                        }
+                        .labelsHidden()
+                        Text("Określa domyślny zakres widoczności dla tej osoby").font(.caption).foregroundStyle(.tertiary)
+                    }
+                    Divider()
+                    Toggle("Nadaj uprawnienia współpracownika", isOn: Binding(get: { permissionsOpen || anyPermission }, set: { on in
+                        permissionsOpen = on
+                        if !on { permissions = [:] }
+                    }))
+                    .toggleStyle(.checkbox).fontWeight(.medium)
+                    if permissionsOpen || anyPermission {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Zaznacz uprawnienia które chcesz nadać:").font(.caption).foregroundStyle(.secondary)
+                            ForEach(Self.addLabels, id: \.0) { item in
+                                Toggle(item.1, isOn: Binding(get: { permissions[item.0] == true }, set: { permissions[item.0] = $0 })).toggleStyle(.checkbox)
+                            }
+                        }
+                        .padding(10).padding(.leading, 14)
+                        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
+                    }
+                    VStack(alignment: .leading, spacing: 8) {
+                        Toggle(isOn: $sendInvitation) {
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text("Wyślij teraz zaproszenie e-mailem").font(.callout.weight(.medium))
+                                Text("Pracownik może zostać dodany do zespołu również bez wysyłania wiadomości.").font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                        .toggleStyle(.checkbox)
+                        if sendInvitation {
+                            Toggle(isOn: $includePhases) {
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text("Dołącz aktualnie przypisane fazy timeline").font(.callout.weight(.medium))
+                                    Text(phases.isEmpty ? "Brak przypisanych faz — zaproszenie zostanie wysłane bez harmonogramu. Możesz dosłać go później z listy zespołu."
+                                         : "W wiadomości pojawi się \(phases.count) przypisanych faz.").font(.caption).foregroundStyle(.secondary)
+                                }
+                            }
+                            .toggleStyle(.checkbox).padding(.leading, 18)
+                        }
+                    }
+                    .padding(12).background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 9))
+                }
+            }
+            .frame(maxHeight: 520)
+            HStack {
+                Button(submitting ? "Dodawanie..." : "Dodaj do wydarzenia") { Task { await submit() } }
+                    .keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent).disabled(submitting)
+                Button("Anuluj") { dismiss() }.keyboardShortcut(.cancelAction).disabled(submitting)
+                Spacer()
+            }
+        }
+        .padding(20).frame(width: 520)
+        .task {
+            do {
+                let result = try await store.teamCandidates(eventID)
+                candidates = result
+                accessLevelID = result.accessLevels.first { $0.slug == "employee" }?.id ?? ""
+                if result.phasesError == true { state.error = "Błąd podczas pobierania pracowników z faz" }
+            } catch {
+                state.error = store.failureText(error, "Nie udało się pobrać listy pracowników.")
+            }
+            loading = false
+        }
+    }
+
+    private static let addLabels: [(String, String)] = [
+        ("can_edit_event", "Edycja wydarzenia (nazwa, data, lokalizacja)"), ("can_edit_phases", "Edycja faz i timeline"),
+        ("can_edit_agenda", "Edycja agendy"), ("can_edit_tasks", "Zarządzanie zadaniami"), ("can_edit_files", "Zarządzanie plikami"),
+        ("can_edit_equipment", "Zarządzanie sprzętem"), ("can_invite_members", "Zapraszanie członków zespołu"), ("can_view_budget", "Widok budżetu"),
+    ]
+
+    /// „14.11, 18:00” (`toLocaleString('pl-PL', { day, month, hour, minute: '2-digit' })`).
+    static func short(_ value: String?) -> String {
+        guard let date = value.flatMap(MeetingDates.parse) else { return "—" }
+        return MeetingDates.format(date, "dd.MM, HH:mm")
+    }
+
+    private func field<Content: View>(_ label: String, @ViewBuilder _ content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label).font(.callout).foregroundStyle(.secondary)
+            content()
+        }
+    }
+
+    private func submit() async {
+        guard !employeeID.isEmpty else { state.notice = "Wybierz pracownika"; return }
+        submitting = true
+        defer { submitting = false }
+        do {
+            try await store.teamRun(eventID, "teamAdd", [
+                "employeeId": .string(employeeID), "role": .string(role), "responsibilities": .string(responsibilities),
+                "accessLevelId": accessLevelID.isEmpty ? .null : .string(accessLevelID),
+                "permissions": .object(Dictionary(uniqueKeysWithValues: Self.addLabels.map { ($0.0, JSONValue.bool(permissions[$0.0] == true)) })),
+                "sendInvitation": .bool(sendInvitation), "includePhases": .bool(includePhases),
+            ], success: "Pracownik dodany do zespołu", pending: "Dodawanie…")
+            dismiss()
+        } catch {
+            state.error = store.failureText(error, "Błąd podczas dodawania pracownika")
+        }
+    }
+}
