@@ -211,4 +211,25 @@ async function urls(ctx: NativeContext, eventId: string, params: URLSearchParams
   return { urls: Object.fromEntries(list.filter((f) => byPath.has(f.file_path)).map((f) => [f.id, byPath.get(f.file_path)])) };
 }
 
-registerEventQueries('files', { urls });
+/**
+ * Wydruki z karty wydarzenia na Macu (przycisk drukarki): dokumenty wygenerowane w wydarzeniu — oferty, kalkulacje, umowy,
+ * agendy, checklisty sprzętu, faktury — najnowsze najpierw. Widoczność jak w zakładce Pliki (RLS: zakres wydarzeń, foldery
+ * formalne, dokumenty wrażliwe, faktury dla handlowców).
+ */
+async function documents(ctx: NativeContext, eventId: string) {
+  const { data, error } = await ctx.supabase.from('event_files')
+    .select('id,name,original_name,document_type,mime_type,file_size,created_at,updated_at')
+    .eq('event_id', eventId)
+    .in('document_type', ['offer', 'calculation', 'contract', 'agenda', 'equipment_checklist', 'invoice'])
+    .order('created_at', { ascending: false })
+    .limit(200);
+  if (error) fail('Nie udało się pobrać dokumentów wydarzenia.');
+  return {
+    documents: ((data || []) as any[]).map((f) => ({
+      id: f.id, name: f.name || f.original_name || 'dokument.pdf', type: f.document_type, mime: f.mime_type || '',
+      size: Number(f.file_size || 0), createdAt: f.created_at ?? null, updatedAt: f.updated_at ?? f.created_at ?? null,
+    })),
+  };
+}
+
+registerEventQueries('files', { urls, documents });

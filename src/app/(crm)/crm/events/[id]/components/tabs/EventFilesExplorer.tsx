@@ -28,7 +28,6 @@ import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 import ResponsiveActionBar, { Action } from '@/components/crm/ResponsiveActionBar';
 import StorageFileThumbnail from '@/components/crm/StorageFileThumbnail';
-import MacFolderSyncPanel from '@/components/crm/events/MacFolderSyncPanel';
 
 interface FileItem {
   id: string;
@@ -83,7 +82,6 @@ export default function EventFilesExplorer({
 }) {
   return (
     <div className="space-y-4">
-      <MacFolderSyncPanel key={eventId} eventId={eventId} />
       <EventFilesExplorerContent key={eventId} eventId={eventId} canViewCommercialDocs={canViewCommercialDocs} />
     </div>
   );

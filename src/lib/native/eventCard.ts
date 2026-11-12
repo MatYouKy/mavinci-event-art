@@ -1,6 +1,7 @@
 import 'server-only';
 import { createHash } from 'node:crypto';
 import type { NativeContext } from './auth';
+import { mapTeamTransportVehicles, summarizeTeamTransport, TEAM_TRANSPORT_VEHICLE_SELECT } from '@/lib/CRM/events/teamTransport';
 import { imageCrop } from './team';
 import { fetchEventByIdWith } from '@/lib/CRM/events/eventsIdData.server';
 import { fetchEventOffersServer } from '@/lib/CRM/Offers/fetchEventOffers.server';
@@ -547,12 +548,14 @@ export const EVENT_TEAM_PERMISSIONS = [
 /** Zespół: przypisania (`getEventEmployees`) z rolami odpowiedzialności, osoby z odpowiedzialności bez przypisania, kierownik realizacji. */
 export async function eventTeam(ctx: NativeContext, eventId: string) {
   const s = ctx.supabase;
-  const [assignments, responsibility, leadership] = await Promise.all([
+  const [assignments, responsibility, leadership, vehicles] = await Promise.all([
     s.from('employee_assignments')
       .select('*, employee:employees!employee_assignments_employee_id_fkey(id, name, surname, avatar_url, avatar_metadata)')
       .eq('event_id', eventId).order('created_at', { ascending: true }),
     s.rpc('get_event_responsibility_team', { p_event_id: eventId }),
     s.rpc('get_event_realization_assignment', { p_event_id: eventId }),
+    // Auta wydarzenia do przydziału transportu (bez dostępu do logistyki — bez sekcji transportu).
+    s.from('event_vehicles').select(TEAM_TRANSPORT_VEHICLE_SELECT).eq('event_id', eventId).order('created_at', { ascending: true }),
   ]);
   const extra = responsibility.error || !Array.isArray(responsibility.data) ? [] : (responsibility.data as any[]);
   const rows = ((assignments.data ?? []) as any[]).map((row) => ({
@@ -576,10 +579,23 @@ export async function eventTeam(ctx: NativeContext, eventId: string) {
       automatic: row.automatic_member === true,
       responsibilityRoles: Array.isArray(row.responsibility_roles) ? row.responsibility_roles.map(String) : [],
       permissions: Object.fromEntries(EVENT_TEAM_PERMISSIONS.map((key) => [key, row[key] === true])),
+      transportVehicleId: row.transport_event_vehicle_id ? String(row.transport_event_vehicle_id) : null,
     };
   });
+  const fleet = vehicles.error ? null : mapTeamTransportVehicles((vehicles.data ?? []) as any[]);
+  const summary = fleet ? summarizeTeamTransport(fleet, members.filter((member) => member.hasEmployee).map((member) => ({
+    employeeId: member.employeeId, transportVehicleId: member.transportVehicleId, rejected: member.status === 'rejected',
+  }))) : null;
   return {
     members,
+    transport: fleet && summary ? {
+      vehicles: summary.loads.map((load) => ({ ...load.vehicle, people: load.people, overCapacity: load.overCapacity })),
+      withoutVehicle: summary.withoutVehicle,
+      teamSize: summary.teamSize,
+      knownSeats: summary.knownSeats,
+      shortage: summary.shortage,
+      warnings: summary.warnings,
+    } : null,
     error: Boolean(assignments.error),
     leadership: leadership.error ? null : leadership.data ?? null,
     leadershipError: Boolean(leadership.error),
@@ -637,7 +653,8 @@ export async function addTeamMember(ctx: NativeContext, eventId: string, input: 
     employee_id: String(input.employeeId || ''),
     role: typeof input.role === 'string' ? input.role : '',
     responsibilities: typeof input.responsibilities === 'string' && input.responsibilities ? input.responsibilities : null,
-    access_level_id: typeof input.accessLevelId === 'string' && input.accessLevelId ? input.accessLevelId : null,
+    // Zakres widoczności z roli pracownika — baza ustawia go przy dodaniu (migracja 20261112212000).
+    access_level_id: null,
     ...Object.fromEntries(EVENT_TEAM_PERMISSIONS.map((key) => [key, permissions[key] === true])),
   };
   let { data, error } = await ctx.supabase.from('employee_assignments').insert(payload).select().single();

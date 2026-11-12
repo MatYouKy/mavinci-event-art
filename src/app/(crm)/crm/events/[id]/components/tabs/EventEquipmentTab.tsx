@@ -29,6 +29,7 @@ import {
 import { AddEquipmentModal } from '../Modals/AddEquipmentModal';
 import { ChevronDown, Package as PackageIcon, Trash2 } from 'lucide-react';
 import { useEventEquipment } from '../../../hooks';
+import { compareEquipmentOrder, equipmentRowOrderKey } from '@/lib/events/equipment/equipmentChecklist';
 import { useEvent } from '../../../hooks/useEvent';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
@@ -1060,8 +1061,7 @@ export const EventEquipmentTab: React.FC<{
           const kitItems = expand ? extractKitItemsFromRow(row) : [];
 
           return {
-            sortIsKit: !!d.isKit,
-            sortName: String(d.name || '').toLocaleLowerCase('pl-PL'),
+            order: equipmentRowOrderKey(row),
             data: {
               is_loaded: loadedById.get(row.id) === true,
               name: d.name,
@@ -1076,13 +1076,7 @@ export const EventEquipmentTab: React.FC<{
             },
           };
         })
-        .sort((a, b) => {
-          if (a.sortIsKit !== b.sortIsKit) {
-            return a.sortIsKit ? -1 : 1; // zestawy najpierw
-          }
-
-          return a.sortName.localeCompare(b.sortName, 'pl');
-        })
+        .sort((a, b) => compareEquipmentOrder(a.order, b.order))
         .map((item) => item.data);
 
       const eventDateFormatted = new Date(eventDate).toLocaleDateString('pl-PL');
@@ -1349,8 +1343,10 @@ export const EventEquipmentTab: React.FC<{
   };
 
   // Po wydarzeniu i Zwrot: tylko pozycje wydane z magazynu.
+  // Jedna kolejność wszędzie (CRM, Mac, telefon, PDF): zestawy, sprzęt, przewody; kategoria, nazwa.
   const stageEquipment = useMemo(
-    () => (shippedOnly ? (equipment || []).filter((row: any) => (checklistLines.get(row.id)?.shipped_qty ?? 0) > 0) : equipment || []),
+    () => [...(shippedOnly ? (equipment || []).filter((row: any) => (checklistLines.get(row.id)?.shipped_qty ?? 0) > 0) : equipment || [])]
+      .sort((a: any, b: any) => compareEquipmentOrder(equipmentRowOrderKey(a), equipmentRowOrderKey(b))),
     [equipment, shippedOnly, checklistLines],
   );
   const notShippedCount = shippedOnly ? (checklist?.lines ?? []).filter((line) => line.shipped_qty <= 0).length : 0;

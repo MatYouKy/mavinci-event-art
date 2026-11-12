@@ -5,7 +5,7 @@ import AppKit
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @StateObject private var workspace = Workspace()
     var body: some Scene {
-        WindowGroup("Mavinci") {
+        WindowGroup("Mavinci", id: "main") {
             RootView().environmentObject(workspace).environmentObject(workspace.native).frame(minWidth: 1080, minHeight: 680)
                 .crmThemed(workspace.theme)
                 .task { await workspace.restore() }
@@ -34,6 +34,15 @@ import AppKit
             MessageWindow(key: key ?? "").environmentObject(workspace).crmThemed(workspace.theme)
         }
         .defaultSize(width: 900, height: 780)
+        // Sygnet na pasku menu (jak dawne „Mavinci Reminders”): stan, wersja, pliki w Finderze, synchronizacja.
+        MenuBarExtra {
+            MenuBarStatusMenu(workspace: workspace)
+        } label: {
+            Image(nsImage: MenuBarSignet.image)
+                .renderingMode(.template)
+                .accessibilityLabel("Mavinci")
+        }
+        .menuBarExtraStyle(.menu)
         Settings {
             TabView {
                 AppearanceSettings().tabItem { Label("Wygląd", systemImage: "paintpalette") }
@@ -48,7 +57,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Ikona z brandbooka zapamiętana przy poprzednim uruchomieniu — od razu w Docku, bez czekania na sieć.
         Task { @MainActor in BrandStore.applyCached() }
     }
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+    /// Zamknięcie okna nie kończy aplikacji — działa dalej na pasku menu (pliki w Finderze, synchronizacja); „Zakończ Mavinci” w menu.
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 }
 
 struct RootView: View {

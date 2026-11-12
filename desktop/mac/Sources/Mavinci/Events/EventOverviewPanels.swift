@@ -235,7 +235,7 @@ import AppKit
                         if let role = primary.role?.nonEmpty { Text(role).font(.caption).foregroundStyle(.secondary) }
                         if let phone = primary.phone?.nonEmpty, let url = EventStepRules.telURL(phone) {
                             Button { NSWorkspace.shared.open(url) } label: { Label(phone, systemImage: "phone").font(.caption) }
-                                .buttonStyle(.link)
+                                .buttonStyle(.link).linkCursor()
                         }
                         if contacts.count > 1 { Text("Pozostałe kontakty: \(contacts.count - 1) (Szczegóły)").font(.caption).foregroundStyle(.tertiary) }
                     } else {
@@ -282,7 +282,7 @@ import AppKit
         return VStack(alignment: .leading, spacing: 1) {
             if let name {
                 if let maps {
-                    Button(name) { NSWorkspace.shared.open(maps) }.buttonStyle(.link).help("Otwórz w Mapach Google")
+                    Button(name) { NSWorkspace.shared.open(maps) }.buttonStyle(.link).linkCursor().help("Otwórz w Mapach Google")
                 } else {
                     Text(name)
                 }
@@ -346,7 +346,7 @@ private struct WarehouseMessageMode: Identifiable { let request: Bool; var id: B
                 if onsite.error == true {
                     HStack(spacing: 6) {
                         Text("Nie udało się wczytać kontaktu na miejscu.").foregroundStyle(.red)
-                        Button("Spróbuj ponownie") { Task { await store.loadOverview(eventID) } }.buttonStyle(.link)
+                        Button("Spróbuj ponownie") { Task { await store.loadOverview(eventID) } }.buttonStyle(.link).linkCursor()
                     }
                     .font(.callout)
                 } else if onsite.contacts.isEmpty {

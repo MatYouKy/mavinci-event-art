@@ -10,6 +10,13 @@ import {
   normalizeContractParagraphPlaceholders,
   resolveContractParagraphPlaceholders,
 } from './contractParagraphs';
+import {
+  applyContractDocumentStyles,
+  contractClauseTypographyFromStyles,
+  isContractDocumentStylesTemplate,
+  resolveContractDocumentStyles,
+  type ContractDocumentStyles,
+} from './contractDocumentStyles';
 
 export type ContractClauseTypographyRole =
   | 'paragraphHeading'
@@ -117,11 +124,20 @@ export interface ContractPageSettings {
   };
   footerLogoScale?: number;
   clauseTypography?: Partial<ContractClauseTypography>;
+  /**
+   * Szablon w nowym formacie: style dokumentu jak w Wordzie (`contractDocumentStyles.ts`). Gdy są zapisane, wyznaczają
+   * wygląd treści, czcionkę i interlinię strony oraz typografię klauzul produktów (`selectedFont`, `lineHeight`
+   * i `clauseTypography` są wtedy wyliczane z nich).
+   */
+  documentStyles?: Partial<ContractDocumentStyles> | null;
 }
 
 export const resolveContractClauseTypography = (
   settings: ContractPageSettings,
 ): ContractClauseTypography => {
+  if (isContractDocumentStylesTemplate(settings)) {
+    return contractClauseTypographyFromStyles(resolveContractDocumentStyles(settings.documentStyles));
+  }
   const defaults = createDefaultContractClauseTypography(
     settings.selectedFont || 'Georgia, serif',
     settings.lineHeight ?? CONTRACT_DEFAULT_LINE_HEIGHT,
@@ -152,8 +168,18 @@ export async function renderContractDocument<T extends ContractPageSettings>(
   settings: T,
   options: RenderContractDocumentOptions = {},
 ) {
+  const documentStyles = isContractDocumentStylesTemplate(settings)
+    ? resolveContractDocumentStyles(settings.documentStyles)
+    : null;
   const normalizedSettings = {
     ...settings,
+    ...(documentStyles
+      ? {
+          documentStyles,
+          selectedFont: documentStyles.styles.body.fontFamily,
+          lineHeight: documentStyles.styles.body.lineHeight,
+        }
+      : {}),
     clauseTypography: resolveContractClauseTypography(settings),
   } as T & { clauseTypography: ContractClauseTypography };
   const normalizedFlow = normalizeContractParagraphPlaceholders(flowContent || '');
@@ -284,7 +310,7 @@ const cloneTextRangePreservingMarkup = (
  * awaryjny na bloku, aby tekst nie powiększał się po podziale strony ani po
  * uproszczeniu zagnieżdżonych znaczników przez przeglądarkę.
  */
-const syncBlockFallbackFontSize = (block: HTMLElement) => {
+export const syncBlockFallbackFontSize = (block: HTMLElement) => {
   const showText = block.ownerDocument.defaultView?.NodeFilter.SHOW_TEXT ?? 4;
   const walker = block.ownerDocument.createTreeWalker(block, showText);
   const explicitSizes = new Set<string>();
@@ -758,9 +784,14 @@ export async function paginateContractHtml(
     .querySelectorAll('style, script, link[rel="stylesheet"], meta')
     .forEach((element) => element.remove());
 
-  parser
-    .querySelectorAll<HTMLElement>('p, pre, li')
-    .forEach(syncBlockFallbackFontSize);
+  if (isContractDocumentStylesTemplate(settings)) {
+    // Nowy format: wygląd ze stylów dokumentu, nałożony na elementy przed pomiarem stron.
+    applyContractDocumentStyles(parser, resolveContractDocumentStyles(settings.documentStyles));
+  } else {
+    parser
+      .querySelectorAll<HTMLElement>('p, pre, li')
+      .forEach(syncBlockFallbackFontSize);
+  }
 
   // Klauzule pochodzą z osobnego edytora. Jego dekoracje nie mogą wpływać na
   // umowę: usuwamy je i nakładamy wyłącznie profil typografii zapisany w szablonie.

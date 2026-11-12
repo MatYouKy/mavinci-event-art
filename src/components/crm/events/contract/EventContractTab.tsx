@@ -63,6 +63,14 @@ import {
 import { assembleContractClauses, contractClauseSourceFingerprint, getSharedClauseConflicts } from '@/lib/CRM/contracts/contractClauseAssembly';
 import { CONTRACT_STRUCTURE_VERSION, getSharedContractClauseForText } from '@/lib/CRM/contracts/sharedContractClauses';
 import { placeContractClauses } from '@/lib/CRM/contracts/contractClauseSlots';
+import {
+  applyContractConditions,
+  CONTRACT_CLIENT_VARIABLE,
+  contractConditionVariableNames,
+  contractConditionVariables,
+  contractOptionVariable,
+  resolveContractOptions,
+} from '@/lib/CRM/contracts/contractConditions';
 import { createContractDraftPdf } from '@/app/(crm)/crm/contract-templates/printDraft';
 import { getOfferTotals } from '@/lib/CRM/Offers/offerTotals';
 import { getCalculationNumber } from '@/lib/CRM/calculations/calculationNumber';
@@ -521,6 +529,10 @@ const getTemplateSettings = (pageSettings: any) => ({
   },
   footerLogoScale: pageSettings?.footerLogoScale ?? 80,
   clauseTypography: pageSettings?.clauseTypography,
+  // Szablon w nowym formacie (style dokumentu jak w Wordzie) — wygląd treści i klauzul wyznaczają jego style.
+  ...(pageSettings?.documentStyles ? { documentStyles: pageSettings.documentStyles } : {}),
+  // Opcje umowy szablonu (np. nocleg) — przełączane w ustawieniach tej umowy.
+  ...(Array.isArray(pageSettings?.contractOptions) ? { contractOptions: pageSettings.contractOptions } : {}),
 });
 
 type EventCompanyBranding = {
@@ -800,6 +812,24 @@ export function EventContractTab({
     collectVariableKeys(placement.flowContent);
     return usedKeys;
   }, [eventContractClauseItems, originalTemplate, productClauseSelections, variables]);
+
+  /** Warunki szablonu ustawiane w tej umowie: rodzaj klienta i opcje (np. nocleg). */
+  const contractConditionSettings = useMemo(() => {
+    const { flowContent } = getContractDocumentParts(originalTemplate);
+    const names = contractConditionVariableNames(flowContent);
+    let options: ReturnType<typeof resolveContractOptions> = [];
+    try {
+      options = resolveContractOptions(JSON.parse(originalTemplate)?.settings);
+    } catch {
+      options = [];
+    }
+    const client = names.has(CONTRACT_CLIENT_VARIABLE);
+    return {
+      client,
+      options,
+      keys: [...(client ? [CONTRACT_CLIENT_VARIABLE] : []), ...options.map((option) => contractOptionVariable(option.key))],
+    };
+  }, [originalTemplate]);
 
   const editableContractVariables = useMemo(() => {
     const normalizedSearch = normalizeVariableSearch(variableSearch);
@@ -1516,7 +1546,7 @@ export function EventContractTab({
 
       if (template.page_settings?.pages) {
         const baseFlow = template.page_settings.flowContent || template.page_settings.pages.join('');
-        const { flowContent } = placeContractClauses(baseFlow, variables);
+        const { flowContent } = placeContractClauses(baseFlow, variables, [], { keepConditions: true });
         templateToStore = JSON.stringify({
           pages: template.page_settings.pages,
           flowContent,
@@ -2271,12 +2301,20 @@ export function EventContractTab({
         offer_items: offerItemsHtml,
         OFFER_ITEMS_TABLE: offerItemsTable,
       };
+      // Warunki szablonu: rodzaj klienta, kategoria wydarzenia i domyślne opcje umowy (`contractConditions.ts`).
+      const eventCategory = Array.isArray(event.event_categories) ? event.event_categories[0] : event.event_categories;
+      Object.assign(varsMap, contractConditionVariables({
+        isCompany: Boolean(organization),
+        categoryName: (eventCategory as { name?: string } | null)?.name || '',
+        options: resolveContractOptions(template.page_settings),
+      }));
 
       Object.entries(assembledClauses.sections).forEach(([key, value]) => {
         varsMap[key] = replaceVariables(value, varsMap);
       });
       const templateFlow = includeContractFonts(assembledClauses.flowContent, varsMap);
-      const clausePlacement = placeContractClauses(templateFlow, varsMap);
+      // Sekcje warunkowe zostają w źródle umowy — zmiana opcji przelicza treść bez ponownego generowania.
+      const clausePlacement = placeContractClauses(templateFlow, varsMap, [], { keepConditions: true });
       const flowWithAutomaticClauses = clausePlacement.flowContent;
       Object.assign(varsMap, clausePlacement.variables);
       setUnplacedClauseCategories(clausePlacement.unplacedClauseCategories);
@@ -2332,7 +2370,7 @@ export function EventContractTab({
       let contentToSet = '';
 
       const currentSourceDocument = await renderContractDocument(
-        replaceVariables(flowWithAutomaticClauses, varsMap),
+        replaceVariables(applyContractConditions(flowWithAutomaticClauses, { ...varsMap, ...savedOverrides }), varsMap),
         templateSettings,
       );
       const currentSourceContent = JSON.stringify({
@@ -2431,7 +2469,7 @@ export function EventContractTab({
   const handleSave = async () => {
     if (blockedWithoutAmounts()) return;
     const overrides = { ...variableOverrides };
-    usedContractVariableKeys.forEach((key) => {
+    new Set([...usedContractVariableKeys, ...contractConditionSettings.keys]).forEach((key) => {
       if ((editedVariables[key] || '') !== (variables[key] || '')) overrides[key] = editedVariables[key] || '';
     });
     const updatedVariables = { ...editedVariables };
@@ -4041,6 +4079,44 @@ export function EventContractTab({
                 />
               </label>
             </div>
+
+            {(contractConditionSettings.client || contractConditionSettings.options.length > 0) && (
+              <section className="mb-4 rounded-lg border border-[#a083dc]/25 bg-[#a083dc]/5 p-4">
+                <h4 className="text-sm font-medium text-[#e5e4e2]">Warunki umowy</h4>
+                <p className="mt-1 text-xs text-[#e5e4e2]/50">
+                  Decydują, które akapity szablonu trafią do tej umowy. Zastosuj przyciskiem „Zapisz” u góry.
+                </p>
+                <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-[#e5e4e2]/85">
+                  {contractConditionSettings.client && (
+                    <label className="flex items-center gap-2">
+                      Klient:
+                      <select
+                        value={editedVariables[CONTRACT_CLIENT_VARIABLE] === 'firma' ? 'firma' : 'osoba'}
+                        onChange={(event) => setEditedVariables((current) => ({ ...current, [CONTRACT_CLIENT_VARIABLE]: event.target.value }))}
+                        className="rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-2 py-1 text-sm text-[#e5e4e2]"
+                      >
+                        <option value="firma">firma</option>
+                        <option value="osoba">osoba prywatna</option>
+                      </select>
+                    </label>
+                  )}
+                  {contractConditionSettings.options.map((option) => {
+                    const key = contractOptionVariable(option.key);
+                    return (
+                      <label key={option.key} className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          className="accent-[#d3bb73]"
+                          checked={Boolean(editedVariables[key])}
+                          onChange={(event) => setEditedVariables((current) => ({ ...current, [key]: event.target.checked ? 'tak' : '' }))}
+                        />
+                        {option.label}
+                      </label>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
 
             {editableContractVariables.length > 0 ? (
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">

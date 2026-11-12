@@ -231,7 +231,7 @@ struct DocSectionBox: View {
                         GridRow {
                             Text(row.label).foregroundStyle(.secondary).gridColumnAlignment(.leading)
                             if let link = row.link {
-                                Button(row.value) { workspace.openNativeLink(link) }.buttonStyle(.link).multilineTextAlignment(.leading)
+                                Button(row.value) { workspace.openNativeLink(link) }.buttonStyle(.link).linkCursor().multilineTextAlignment(.leading)
                             } else {
                                 Text(row.value).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
                             }
@@ -248,7 +248,7 @@ struct DocSectionBox: View {
                             GridRow {
                                 ForEach(Array(cells.enumerated()), id: \.offset) { column, cell in
                                     if column == 1 || (table.columns.count == 1), index < table.links.count, let link = table.links[index] {
-                                        Button(cell) { workspace.openNativeLink(link) }.buttonStyle(.link)
+                                        Button(cell) { workspace.openNativeLink(link) }.buttonStyle(.link).linkCursor()
                                     } else { Text(cell).textSelection(.enabled) }
                                 }
                             }

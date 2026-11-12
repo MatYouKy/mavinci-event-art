@@ -56,6 +56,7 @@ export default function NewVehiclePage() {
     power_kw: '',
     fuel_type: 'diesel',
     average_fuel_consumption: '',
+    energy_price_per_kwh: '',
     transmission: 'manualna',
     drive_type: '',
     number_of_seats: '',
@@ -128,16 +129,27 @@ export default function NewVehiclePage() {
     }
   
     const consumptionText = formData.average_fuel_consumption.trim().replace(',', '.');
-    const averageConsumption = formData.vehicle_type === 'car' && formData.fuel_type !== 'elektryczny' && consumptionText
+    const isElectric = formData.fuel_type === 'elektryczny';
+    const averageConsumption = formData.vehicle_type === 'car' && consumptionText
       ? Number(consumptionText) : null;
     if (averageConsumption !== null && (!Number.isFinite(averageConsumption) || averageConsumption < 0.01 || averageConsumption > 999.99)) {
-      showSnackbar('Podaj średnie spalanie od 0,01 do 999,99 l/100 km albo pozostaw pole puste.', 'error');
+      showSnackbar(isElectric
+        ? 'Podaj zużycie energii od 0,01 do 999,99 kWh/100 km albo pozostaw pole puste.'
+        : 'Podaj średnie spalanie od 0,01 do 999,99 l/100 km albo pozostaw pole puste.', 'error');
+      return;
+    }
+    // Pojazd elektryczny: cena prądu do kosztów logistyki (zł/kWh).
+    const energyPriceText = String(formData.energy_price_per_kwh ?? '').trim().replace(',', '.');
+    const energyPrice = formData.vehicle_type === 'car' && isElectric && energyPriceText ? Number(energyPriceText) : null;
+    if (energyPrice !== null && (!Number.isFinite(energyPrice) || energyPrice <= 0 || energyPrice >= 100)) {
+      showSnackbar('Podaj cenę prądu w zł/kWh (np. 1,10) albo pozostaw pole puste.', 'error');
       return;
     }
     setLoading(true);
   
     const safeVehicleData = {
       average_fuel_consumption: averageConsumption,
+      ...(energyPrice !== null ? { energy_price_per_kwh: energyPrice } : {}),
       vehicle_type: formData.vehicle_type,
       name: formData.name.trim(),
       brand: formData.brand.trim(),
@@ -588,12 +600,27 @@ export default function NewVehiclePage() {
                 </select>
               </div>
 
-              {formData.fuel_type !== 'elektryczny' && <div>
-                <label htmlFor="average_fuel_consumption" className="mb-2 block text-sm font-medium text-[#e5e4e2]">Średnie spalanie (l/100 km)</label>
+              <div>
+                <label htmlFor="average_fuel_consumption" className="mb-2 block text-sm font-medium text-[#e5e4e2]">
+                  {formData.fuel_type === 'elektryczny' ? 'Średnie zużycie energii (kWh/100 km)' : 'Średnie spalanie (l/100 km)'}
+                </label>
                 <input id="average_fuel_consumption" name="average_fuel_consumption" type="text" inputMode="decimal"
-                  value={formData.average_fuel_consumption} onChange={handleChange} placeholder="np. 9,5"
+                  value={formData.average_fuel_consumption} onChange={handleChange}
+                  placeholder={formData.fuel_type === 'elektryczny' ? 'np. 27' : 'np. 9,5'}
                   className="w-full rounded-lg border border-white/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]" />
-                <p className="mt-2 text-xs text-[#e5e4e2]/50">Domyślne spalanie do kosztów logistyki. Puste pole pozwala korzystać z historii tankowań.</p>
+                <p className="mt-2 text-xs text-[#e5e4e2]/50">
+                  {formData.fuel_type === 'elektryczny'
+                    ? 'Domyślne zużycie energii do kosztów logistyki.'
+                    : 'Domyślne spalanie do kosztów logistyki. Puste pole pozwala korzystać z historii tankowań.'}
+                </p>
+              </div>
+
+              {formData.fuel_type === 'elektryczny' && <div>
+                <label htmlFor="energy_price_per_kwh" className="mb-2 block text-sm font-medium text-[#e5e4e2]">Cena prądu (zł/kWh)</label>
+                <input id="energy_price_per_kwh" name="energy_price_per_kwh" type="text" inputMode="decimal"
+                  value={formData.energy_price_per_kwh} onChange={handleChange} placeholder="np. 1,10"
+                  className="w-full rounded-lg border border-white/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]" />
+                <p className="mt-2 text-xs text-[#e5e4e2]/50">Cena brutto za kWh przy ładowaniu (np. z rachunku). Kalkulator trasy liczy z niej koszt przejazdu.</p>
               </div>}
 
               <div>

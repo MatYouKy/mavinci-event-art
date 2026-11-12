@@ -130,7 +130,7 @@ struct DashboardView: View {
             // Sprzedawca zaczyna dzień od listy działań; wyniki finansowe są poniżej.
             MyDayTimelineView()
             SalesDayView().frame(minHeight: 420)
-            Button("Moje prowizje i wyniki sprzedaży — otwórz w CRM") { state.openCRM("/crm") }.buttonStyle(.link)
+            Button("Moje prowizje i wyniki sprzedaży — otwórz w CRM") { state.openCRM("/crm") }.buttonStyle(.link).linkCursor()
         } else if data.noPermissions == true {
             ContentUnavailableView("Brak uprawnień", systemImage: "lock", description: Text("Nie masz przypisanych żadnych uprawnień do systemu CRM. Skontaktuj się z administratorem w celu nadania dostępu."))
         } else {

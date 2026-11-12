@@ -17,7 +17,7 @@ Kolejność wdrożenia:
    (po wcześniejszych migracjach broszur).
 2. Zaktualizuj worker na VPS: `server.js` **oraz** `brochure-attachments.js`.
    W jego istniejącym środowisku dodaj publiczny adres projektu:
-   `SUPABASE_URL=https://fuuljhhuhfojtmmfmskq.supabase.co`.
+   `SUPABASE_URL=https://wjxnyvcxhhxjytfwpwvu.supabase.co`.
    Nie zmieniaj `RELAY_SECRET`. Uruchom ponownie istniejący proces workera.
 3. Wdróż funkcję Supabase `send-email` z `supabase/functions/send-email/index.ts`.
 4. Wdróż aplikację Next.js.

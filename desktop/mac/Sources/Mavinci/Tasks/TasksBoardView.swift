@@ -479,7 +479,7 @@ struct TaskEditRequest: Identifiable {
                     if let event = task.eventId, state.employee?.canView(.events) == true {
                         Button("Otwórz wydarzenie", systemImage: "sparkles") { state.showEvent(event) }
                     }
-                }.buttonStyle(.link)
+                }.buttonStyle(.link).linkCursor()
             }
             section(detail.map { "Załączniki (\($0.attachments.count))" } ?? "Załączniki") {
                 if let detail {
@@ -534,7 +534,7 @@ struct TaskEditRequest: Identifiable {
                 } else { ProgressView().controlSize(.small) }
             }
             HStack {
-                Button("Pełne szczegóły w CRM", systemImage: "safari") { state.openCRM("/crm/tasks/\(task.id)") }.buttonStyle(.link)
+                Button("Pełne szczegóły w CRM", systemImage: "safari") { state.openCRM("/crm/tasks/\(task.id)") }.buttonStyle(.link).linkCursor()
                 Spacer()
             }
             if canManage {

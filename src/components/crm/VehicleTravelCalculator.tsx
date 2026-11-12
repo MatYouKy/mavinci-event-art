@@ -32,7 +32,7 @@ export type RouteEstimate = {
 
 export type FuelEstimateSnapshot = {
   fuel_type: string; price: number | null; consumption: number | null;
-  price_source: 'manual' | 'autocentrum'; quote: PriceQuote | null;
+  price_source: 'manual' | 'autocentrum' | 'vehicle'; quote: PriceQuote | null;
 };
 export type TravelCalculatorResult = {
   distanceKm?: number; travelMinutes?: number; travelPlan?: TravelPlan | null;
@@ -74,12 +74,16 @@ export default function VehicleTravelCalculator({
   const fuelType =
     fuelOverride?.vehicleId === vehicleId ? fuelOverride.value : vehicleFuelType || initialFuel?.fuel_type || 'diesel';
   const isLiquidFuel = FUEL_TYPES.some((fuel) => fuel.value === fuelType);
+  // Pojazd elektryczny: zużycie w kWh/100 km i cena prądu z karty auta (zł/kWh).
+  const isElectric = fuelType === 'elektryczny';
+  const canEstimate = isLiquidFuel || isElectric;
   const [manualPrices, setManualPrices] = useState<Record<string, string>>(() => initialFuel?.price != null && initialFuel.price_source !== 'autocentrum' ? { [initialFuel.fuel_type]: String(initialFuel.price) } : {});
   const [manualConsumption, setManualConsumption] = useState<Record<string, string>>(() => initialFuel?.consumption != null ? { [vehicleId]: String(initialFuel.consumption) } : {});
   const [history, setHistory] = useState<{
     vehicleId: string;
     value: number | null;
     source?: 'vehicle' | 'history';
+    energyPrice?: number | null;
     error?: string;
   } | null>(null);
   const [quote, setQuote] = useState<PriceQuote | null>(initialFuel?.quote || null);
@@ -91,18 +95,19 @@ export default function VehicleTravelCalculator({
   const [route, setRoute] = useState<RouteEstimate | null>(null);
   const mounted = useRef(true);
   const routeController = useRef<AbortController | null>(null);
-  const price = manualPrices[fuelType] ?? quote?.prices[fuelType as FuelType]?.toString() ?? '';
+  const vehicleEnergyPrice = history?.vehicleId === vehicleId && history.energyPrice ? String(history.energyPrice) : '';
+  const price = manualPrices[fuelType] ?? (isElectric ? vehicleEnergyPrice : quote?.prices[fuelType as FuelType]?.toString() ?? '');
   const consumption =
     manualConsumption[vehicleId] ??
     (history?.vehicleId === vehicleId ? history.value?.toString() : '') ??
     '';
   const cost =
-    isLiquidFuel && distance.trim()
+    canEstimate && distance.trim()
       ? calculateFuelCost(Number(distance), Number(consumption), Number(price))
       : null;
 
   const endpoint = calculationId ? '/bridge/calculations/travel-estimate' : offerId ? '/bridge/offers/travel-estimate' : '/bridge/events/travel-estimate';
-  const fuelSnapshot = (): FuelEstimateSnapshot => ({ fuel_type: fuelType, price: Number(price) > 0 ? Number(price) : null, consumption: Number(consumption) > 0 ? Number(consumption) : null, price_source: manualPrices[fuelType] !== undefined ? 'manual' : 'autocentrum', quote: manualPrices[fuelType] !== undefined ? null : quote });
+  const fuelSnapshot = (): FuelEstimateSnapshot => ({ fuel_type: fuelType, price: Number(price) > 0 ? Number(price) : null, consumption: Number(consumption) > 0 ? Number(consumption) : null, price_source: manualPrices[fuelType] !== undefined ? 'manual' : isElectric ? 'vehicle' : 'autocentrum', quote: manualPrices[fuelType] !== undefined || isElectric ? null : quote });
 
   useEffect(() => {
     mounted.current = true;
@@ -119,7 +124,8 @@ export default function VehicleTravelCalculator({
     from.setDate(from.getDate() - 90);
     void (async () => {
       const [vehicleResult, historyResult] = await Promise.all([
-        supabase.from('vehicles').select('average_fuel_consumption').eq('id', vehicleId).maybeSingle(),
+        // `*` — działa także przed migracją ceny prądu (`energy_price_per_kwh`).
+        supabase.from('vehicles').select('*').eq('id', vehicleId).maybeSingle(),
         supabase.from('fuel_entries').select('avg_consumption,distance_since_last')
           .eq('vehicle_id', vehicleId)
           .gte('date', from.toISOString().slice(0, 10))
@@ -128,8 +134,10 @@ export default function VehicleTravelCalculator({
       ]);
       const configured = Number(vehicleResult.data?.average_fuel_consumption);
       const hasConfigured = !vehicleResult.error && Number.isFinite(configured) && configured > 0;
+      const energyPrice = Number((vehicleResult.data as any)?.energy_price_per_kwh);
       if (active) setHistory({
         vehicleId,
+        energyPrice: Number.isFinite(energyPrice) && energyPrice > 0 ? energyPrice : null,
         value: hasConfigured ? configured : historyResult.error ? null : averageFuelConsumption(historyResult.data || []),
         source: hasConfigured ? 'vehicle' : 'history',
         error: !hasConfigured && (vehicleResult.error || historyResult.error)
@@ -195,7 +203,7 @@ export default function VehicleTravelCalculator({
       if (!response.ok) throw new Error(data.error || 'Nie udało się wyznaczyć trasy.');
       if (!mounted.current || controller.signal.aborted) return;
       const calculated = data as RouteEstimate;
-      const fuelCost = isLiquidFuel
+      const fuelCost = canEstimate
         ? calculateFuelCost(calculated.distanceKm, Number(consumption), Number(price))
         : null;
       const plan: TravelPlan = {
@@ -225,7 +233,7 @@ export default function VehicleTravelCalculator({
 
   return (
     <section className="space-y-4 rounded-xl border border-white/10 bg-[var(--brand-burgundy-800)] p-4">
-      <h3 className="text-base text-[var(--brand-platinum)]">Trasa i koszt paliwa</h3>
+      <h3 className="text-base text-[var(--brand-platinum)]">{isElectric ? 'Trasa i koszt energii' : 'Trasa i koszt paliwa'}</h3>
       {travelPlan && !offerId && !calculationId && (
         <div className="space-y-3 rounded-lg bg-white/5 p-3 text-sm">
           <p>
@@ -332,30 +340,30 @@ export default function VehicleTravelCalculator({
           </select>
         </label>
         <label className="text-[var(--brand-platinum)]/80 text-sm">
-          Średnie spalanie (l/100 km)
+          {isElectric ? 'Zużycie energii (kWh/100 km)' : 'Średnie spalanie (l/100 km)'}
           <input
             type="number"
             min="0.01"
             step="0.01"
             className={`${field} mt-2`}
             value={consumption}
-            disabled={!isLiquidFuel || routeLoading}
-            placeholder="Uzupełnij spalanie"
+            disabled={!canEstimate || routeLoading}
+            placeholder={isElectric ? 'np. 27' : 'Uzupełnij spalanie'}
             onChange={(event) =>
               { setManualConsumption((previous) => ({ ...previous, [vehicleId]: event.target.value })); onSettingsChange?.(); }
             }
           />
         </label>
         <label className="text-[var(--brand-platinum)]/80 text-sm">
-          Cena paliwa (zł/l)
+          {isElectric ? 'Cena prądu (zł/kWh)' : 'Cena paliwa (zł/l)'}
           <input
             type="number"
             min="0.01"
             step="0.01"
             className={`${field} mt-2`}
-            value={isLiquidFuel ? price : ''}
-            disabled={!isLiquidFuel || routeLoading}
-            placeholder={priceLoading ? 'Pobieranie…' : 'Uzupełnij cenę'}
+            value={canEstimate ? price : ''}
+            disabled={!canEstimate || routeLoading}
+            placeholder={isElectric ? 'np. 1,10' : priceLoading ? 'Pobieranie…' : 'Uzupełnij cenę'}
             onChange={(event) =>
               { setManualPrices((previous) => ({ ...previous, [fuelType]: event.target.value })); onSettingsChange?.(); }
             }
@@ -422,6 +430,19 @@ export default function VehicleTravelCalculator({
             </p>
           )}
         </>
+      ) : isElectric ? (
+        <p className="text-[var(--brand-platinum)]/60 text-xs">
+          {manualConsumption[vehicleId] !== undefined
+            ? 'Zużycie energii wpisane dla tego przejazdu.'
+            : history?.vehicleId === vehicleId && history.source === 'vehicle'
+              ? 'Zużycie energii z karty auta. Możesz je skorygować dla tego przejazdu (np. obciążenie, teren, temperatura).'
+              : 'Uzupełnij zużycie energii (kWh/100 km) na karcie auta lub wpisz je dla tego przejazdu.'}{' '}
+          {manualPrices[fuelType] !== undefined
+            ? 'Cena prądu wpisana ręcznie.'
+            : vehicleEnergyPrice
+              ? 'Cena prądu z karty auta.'
+              : 'Uzupełnij cenę prądu (zł/kWh) na karcie auta lub wpisz ją dla tego przejazdu.'}
+        </p>
       ) : (
         <p className="text-[var(--brand-platinum)]/60 text-xs">
           Dla tego napędu uzupełnij koszt energii lub paliwa ręcznie w polu kosztu poniżej.
@@ -475,8 +496,9 @@ export default function VehicleTravelCalculator({
         </div>
       )}
       <p className="text-[var(--brand-platinum)]/50 text-xs">
-        Koszt = łączny dystans × spalanie / 100 × cena litra. Po korekcie spalania lub ceny kliknij
-        „Zastosuj koszt”. {calculationId ? 'Dystans i stawkę zapiszesz razem z pozycją kalkulacji. Przeliczenie brutto na netto pokazano poniżej.' : offerId ? 'Dystans i koszt zapiszesz przyciskiem „Zapisz logistykę”. Cena AutoCentrum jest ceną brutto; do szacunku przyjmujemy pełny wydatek na paliwo.' : 'Dystans i koszt zapiszesz razem z pojazdem.'}
+        {isElectric
+          ? 'Koszt = łączny dystans × zużycie kWh / 100 × cena kWh. Po korekcie zużycia lub ceny kliknij „Zastosuj koszt”.'
+          : 'Koszt = łączny dystans × spalanie / 100 × cena litra. Po korekcie spalania lub ceny kliknij „Zastosuj koszt”.'} {calculationId ? 'Dystans i stawkę zapiszesz razem z pozycją kalkulacji. Przeliczenie brutto na netto pokazano poniżej.' : offerId ? 'Dystans i koszt zapiszesz przyciskiem „Zapisz logistykę”. Cena AutoCentrum jest ceną brutto; do szacunku przyjmujemy pełny wydatek na paliwo.' : 'Dystans i koszt zapiszesz razem z pojazdem.'}
       </p>
     </section>
   );

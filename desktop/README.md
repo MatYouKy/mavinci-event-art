@@ -4,4 +4,4 @@
 - `mobile/` w katalogu głównym pozostaje istniejącą aplikacją mobilną.
 - Wspólne źródło prawdy: obecnie Supabase (Auth, RLS, istniejące RPC). Kontrakt przyszłego własnego serwera: `docs/desktop-native-api.md`.
 
-Katalog desktop nie zastępuje `macos-sync-app/` — dotychczasowa synchronizacja Przypomnień Apple pozostaje osobnym narzędziem.
+Aplikacja na Maca zastąpiła `macos-sync-app/` (usunięte): pliki wydarzeń są w Finderze („Mavinci” w pasku bocznym), a sygnet ze stanem jest na pasku menu. Synchronizacji Przypomnień Apple jeszcze nie przeniesiono — serwer `/bridge/tasks/sync` zostaje dla zainstalowanych kopii „Mavinci Reminders”.

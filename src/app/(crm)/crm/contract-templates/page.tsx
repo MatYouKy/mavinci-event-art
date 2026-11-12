@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import Dialog from '@mui/material/Dialog';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/browser';
+import { createDefaultContractDocumentStyles } from '@/lib/CRM/contracts/contractDocumentStyles';
 import {
   FileText,
   Plus,
@@ -527,6 +528,9 @@ function CreateTemplateModal({
             name: formData.name,
             description: formData.description || null,
             content: '',
+            // Nowe szablony od razu w formacie stylów dokumentu (edytor jak Word).
+            content_html: '<h1 data-style="title">UMOWA</h1><p data-style="body"><br></p>',
+            page_settings: { documentStyles: createDefaultContractDocumentStyles() },
             is_active: true,
           },
         ])

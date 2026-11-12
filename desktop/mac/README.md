@@ -410,10 +410,34 @@ z zakładki Pliki, z tymi samymi uprawnieniami co w CRM; zmiany w Finderze trafi
   `GET ?op=events | list&event= | changes&since= | item&kind=&id= | download&id= | trash[&event=]`,
   `POST {op: prepareUpload | createFolder | createFile | update | remove | restore | deleteForever | purge}`.
   Kursor zmian z zakładką 5 min; starszy niż 25 dni → `reset`. Podmiana treści z `baseContentVersion` → 409 `conflict`,
-  gdy na serwerze jest nowsza wersja. Nazwy jak w CRM — „/” w nazwie Mac pokazuje w Finderze przez „:” w nazwie POSIX.
-- **Etap 2 — rozszerzenie File Provider, tylko odczyt** (podpis zespołem 5DC8P5M489; do rozdania potrzebny Developer ID).
-- **Etap 3 — zapis z Findera:** dodawanie, edycja, zmiana nazwy, przenoszenie, kosz, konflikty, praca offline.
-- **Etap 4:** „Pokaż w Finderze” w karcie wydarzenia, instrukcja dla ról. Katalog „Realizacje” na iCloud zostaje
+  gdy na serwerze jest nowsza wersja.
+- **Etap 2 — rozszerzenie File Provider, tylko odczyt (gotowe do testów):** `Sources/MavinciFileProvider/` (osobny program
+  w `Contents/PlugIns/MavinciFileProvider.appex`, piaskownica, sieć, grupa aplikacji `5DC8P5M489.pl.mavinci`) i
+  `Sources/Mavinci/Finder/` (`FinderShared` — wspólny z rozszerzeniem, `FinderDomain` — rejestracja „Mavinci” po
+  zalogowaniu, usunięcie po wylogowaniu, sygnał zmian co minutę). Rozszerzenie ma własną kopię struktury (wydarzenia
+  i otwarte w Finderze wydarzenia), treść pliku pobiera przy otwarciu. Nazwy jak w CRM, tylko „/” → „∕” i „:” → „∶”;
+  powtórzenia w folderze dostają „ (2)”.
+  - **Logowanie:** sesja Supabase w kontenerze grupy (`session.json`, tylko dla właściciela) — aplikacja i rozszerzenie
+    odświeżają token po kolei (blokada `session.lock`) i zawsze biorą nowszą sesję, więc działa też przy zamkniętej aplikacji.
+  - **Budowanie:** `yarn build:mac` sam wybiera podpis zespołu (Developer ID Application, a bez niego Apple Development
+    z OU=5DC8P5M489) i tylko wtedy dokłada rozszerzenie (wersja release; `FINDER=0` — bez). Po zmianie podpisu macOS raz
+    zapyta o pęk kluczy („Zawsze pozwalaj”).
+  - **Gdy „Mavinci” nie ma w Finderze:** Ustawienia systemowe → Ogólne → Rzeczy otwierane podczas logowania i rozszerzenia
+    → Rozszerzenia / Dostawcy plików → włącz Mavinci. Diagnostyka w Terminalu:
+    `pluginkit -m -v -p com.apple.fileprovider-nonui | grep -i mavinci` oraz
+    `log stream --predicate 'process == "MavinciFileProvider" OR eventMessage CONTAINS "Mavinci Finder"'`.
+- **Etap 3 — zapis z Findera (gotowe do testów):** dodawanie plików i folderów w folderach wydarzeń (wysyłka prosto do
+  magazynu przez podpisany adres, potem `createFile`), edycja treści (`update` z `baseContentVersion`; gdy ktoś zmienił plik
+  w międzyczasie — wersja z CRM zostaje, nasza trafia obok jako „Nazwa (konflikt RRRR-MM-DD GG.MM)”), zmiana nazwy,
+  przenoszenie (pliki także między wydarzeniami, foldery w obrębie wydarzenia), Kosz Findera = kosz CRM na 30 dni
+  („Odłóż” przywraca, „Opróżnij kosz” usuwa na zawsze; w Koszu widać elementy usunięte przez siebie). Odmowa serwera
+  (uprawnienia, zajęta nazwa, nazwa zastrzeżona dla dokumentów handlowych) przywraca w Finderze stan z CRM. Pliki systemowe
+  i tymczasowe (`.DS_Store`, `~$…`, `.tmp`) zostają tylko na Macu. Pracę offline obsługuje macOS — zmiany wysyłają się
+  po powrocie sieci.
+- **Pasek menu:** sygnet Mavinci (jak w dawnej aplikacji „Mavinci Reminders”, którą zastępuje) — stan połączenia i plików
+  w Finderze, wersja, „Otwórz Mavinci”, „Pliki w Finderze”, „Synchronizuj teraz”, CRM w przeglądarce, uruchamianie przy
+  logowaniu. Sygnet jest też ikoną „Mavinci” w pasku bocznym Findera (symbol w `Resources/FinderSymbol.xcassets`).
+- **Etap 4:** „Pokaż w Finderze” w zakładce Pliki karty wydarzenia (gotowe), instrukcja dla ról. Katalog „Realizacje” na iCloud zostaje
   archiwum — bez importu do CRM.
 
 ## Aktualizacja 0.17 — Karta wydarzenia (etap 3): przegląd przepływu, przestrzeń realizacji, Zespół

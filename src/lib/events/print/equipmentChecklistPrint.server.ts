@@ -1,4 +1,5 @@
 import 'server-only';
+import { compareEquipmentOrder, equipmentRowOrderKey } from '@/lib/events/equipment/equipmentChecklist';
 import { randomUUID } from 'node:crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { buildEquipmentChecklistHtml } from '@/app/(crm)/crm/events/[id]/helpers/buildEquipmentChecklistPdf';
@@ -85,8 +86,8 @@ export async function loadChecklistPrint(client: SupabaseClient, eventId: string
     client.from('event_equipment').select(`
       id, is_loaded, quantity, removed_from_offer, expand_kit_in_checklist, kit_id, cable_id,
       equipment:equipment_items(name, brand, model, category:warehouse_categories(name)),
-      kit:equipment_kits(name, items:equipment_kit_items(quantity, equipment:equipment_items(name, brand, model))),
-      cable:cables(name, length_meters)`)
+      kit:equipment_kits(name, category:warehouse_categories(name), items:equipment_kit_items(quantity, equipment:equipment_items(name, brand, model))),
+      cable:cables(name, length_meters, category:warehouse_categories(name))`)
       .eq('event_id', eventId).or('removed_from_offer.is.null,removed_from_offer.eq.false').order('created_at', { ascending: true }),
     client.rpc('get_event_access', { p_event_id: eventId }),
     e.location_id ? client.from('locations').select('name, address, postal_code, city').eq('id', e.location_id).maybeSingle() : Promise.resolve({ data: null }),
@@ -106,8 +107,7 @@ export async function loadChecklistPrint(client: SupabaseClient, eventId: string
     const isKit = Boolean(row.kit_id || kit);
     const expand = row.expand_kit_in_checklist === true;
     return {
-      sortIsKit: isKit,
-      sortName: String(equipmentItem?.name || kit?.name || cable?.name || 'Nieznany').toLocaleLowerCase('pl-PL'),
+      order: equipmentRowOrderKey(row),
       data: {
         is_loaded: row.is_loaded === true,
         name: equipmentItem?.name || kit?.name || cable?.name || 'Nieznany',
@@ -121,7 +121,7 @@ export async function loadChecklistPrint(client: SupabaseClient, eventId: string
         kit_items: expand ? kitItems(kit) : [],
       },
     };
-  }).sort((a, b) => (a.sortIsKit !== b.sortIsKit ? (a.sortIsKit ? -1 : 1) : a.sortName.localeCompare(b.sortName, 'pl'))).map((item) => item.data);
+  }).sort((a, b) => compareEquipmentOrder(a.order, b.order)).map((item) => item.data);
   const l = (location as any).data;
   const locationText = l ? `${l.name ?? ''}, ${l.address ?? ''}, ${l.postal_code ?? ''} ${l.city ?? ''}  ` : (e.location || '-');
   const calc = calculation.error ? null : (calculation.data as any);

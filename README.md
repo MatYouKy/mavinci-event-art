@@ -6,7 +6,7 @@ Next.js 14 (App Router) + Supabase (Postgres, RLS, Edge Functions, pg_cron). Ten
 - CRM (`src/app/(crm)/crm`): zapytania, przetargi, oferty, kalkulacje, wydarzenia, umowy, sprzęt, flota, faktury i KSeF,
 - portal sprzedawców zewnętrznych (`/seller`),
 - endpointy serwera (`src/app/bridge/**` — odpowiedniki `/api`),
-- aplikację mobilną (`mobile/`), synchronizację macOS (`macos-sync-app/`) i przekaźnik SMTP (`smtp-relay-worker/`).
+- aplikację mobilną (`mobile/`), aplikację na Maca (`desktop/mac/` — także „Mavinci” w Finderze i ikona na pasku menu; zastąpiła `macos-sync-app/`) i przekaźnik SMTP (`smtp-relay-worker/`).
 
 ## Uruchomienie lokalne
 

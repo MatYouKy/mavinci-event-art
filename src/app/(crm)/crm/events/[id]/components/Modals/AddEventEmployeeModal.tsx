@@ -17,8 +17,6 @@ export function AddEventEmployeeModal({
   const [selectedEmployee, setSelectedEmployee] = useState('');
   const [role, setRole] = useState('');
   const [responsibilities, setResponsibilities] = useState('');
-  const [accessLevels, setAccessLevels] = useState<any[]>([]);
-  const [selectedAccessLevel, setSelectedAccessLevel] = useState('');
   const [canEditEvent, setCanEditEvent] = useState(false);
   const [canEditPhases, setCanEditPhases] = useState(false);
   const [canEditAgenda, setCanEditAgenda] = useState(false);
@@ -45,7 +43,6 @@ export function AddEventEmployeeModal({
 
   useEffect(() => {
     if (isOpen) {
-      fetchAccessLevels();
       fetchEmployeesInPhases();
     }
   }, [isOpen, eventId]);
@@ -73,18 +70,6 @@ export function AddEventEmployeeModal({
       supabase.removeChannel(channel);
     };
   }, [isOpen, eventId]);
-
-  const fetchAccessLevels = async () => {
-    const { data, error } = await supabase.from('access_levels').select('*').order('order_index');
-
-    if (!error && data) {
-      setAccessLevels(data);
-      const defaultLevel = data.find((l) => l.slug === 'employee');
-      if (defaultLevel) {
-        setSelectedAccessLevel(defaultLevel.id);
-      }
-    }
-  };
 
   const fetchEmployeesInPhases = async () => {
     try {
@@ -173,7 +158,8 @@ export function AddEventEmployeeModal({
         employeeId: selectedEmployee,
         role,
         responsibilities,
-        access_level_id: selectedAccessLevel || null,
+        // Zakres widoczności wynika z roli pracownika (ustawienia pracownika) — przypisuje go baza.
+        access_level_id: null,
         permissions,
         sendInvitation: sendInvitationNow,
         includePhases: includePhasesInInvitation,
@@ -320,23 +306,10 @@ export function AddEventEmployeeModal({
             />
           </div>
 
-          <div>
-            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Poziom dostępu</label>
-            <select
-              value={selectedAccessLevel}
-              onChange={(e) => setSelectedAccessLevel(e.target.value)}
-              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
-            >
-              {accessLevels.map((level) => (
-                <option key={level.id} value={level.id}>
-                  {level.name} - {level.description}
-                </option>
-              ))}
-            </select>
-            <p className="mt-1 text-xs text-[#e5e4e2]/40">
-              Określa domyślny zakres widoczności dla tej osoby
-            </p>
-          </div>
+          <p className="text-xs text-[#e5e4e2]/50">
+            Co ta osoba widzi w wydarzeniu, wynika z jej roli w ustawieniach pracownika. Poniżej możesz dodatkowo
+            nadać uprawnienia do edycji w tym wydarzeniu.
+          </p>
 
           <div className="border-t border-[#d3bb73]/10 pt-4">
             <label className="mb-3 flex items-center gap-2 text-sm text-[#e5e4e2]/80">

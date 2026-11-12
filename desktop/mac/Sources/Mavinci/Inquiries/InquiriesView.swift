@@ -571,7 +571,7 @@ struct FlowBadges: View {
                     if let contact = inquiry.contactId { Button("Otwórz kontakt", systemImage: "person") { state.showContact(contact) } }
                 }
                 Button("Pełne szczegóły w CRM", systemImage: "safari") { actions.browser(inquiry) }
-            }.buttonStyle(.link)
+            }.buttonStyle(.link).linkCursor()
             if canManage {
                 HStack {
                     Button(role: .destructive) { actions.remove(inquiry) } label: { Label("Usuń…", systemImage: "trash") }

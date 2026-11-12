@@ -5,17 +5,43 @@ VERSION="${VERSION:-0.18.0}"
 CONFIGURATION="${CONFIGURATION:-release}"
 case "$CONFIGURATION" in debug|release) ;; *) echo "Nieznany wariant kompilacji"; exit 1;; esac
 BUILD="${BUILD:-$(date +%Y%m%d%H%M)}"
-IDENTITY="${SIGN_IDENTITY:--}"
-# Stały certyfikat „Mavinci Development” (Pęk kluczy → Asystent certyfikatów, typ „Podpisywanie kodu”) — z nim macOS
-# pamięta zgodę na pęk kluczy także po kolejnych budowaniach. Bez niego podpis jest jednorazowy (ad hoc) i po każdym
-# budowaniu macOS raz pyta o hasło do pęku kluczy.
+# Podpis zespołu Mavinci (Team ID 5DC8P5M489): „Developer ID Application” (do rozdania), a bez niego „Apple Development”
+# (testy na tym Macu). Tylko z nim w pakiecie jest rozszerzenie Findera („Mavinci” w pasku bocznym, grupa aplikacji
+# 5DC8P5M489.pl.mavinci). FINDER=0 — budowanie bez rozszerzenia.
+TEAM_ID="5DC8P5M489"
+TEAM_IDENTITY=""
+if [ "${FINDER:-1}" != "0" ] && [ "$CONFIGURATION" = "release" ]; then
+  while IFS= read -r name; do
+    case "$name" in "Developer ID Application:"*|"Apple Development:"*) ;; *) continue;; esac
+    subject="$(security find-certificate -c "$name" -p 2>/dev/null | openssl x509 -noout -subject 2>/dev/null || true)"
+    case "$subject" in *"OU=$TEAM_ID"*|*"OU = $TEAM_ID"*) ;; *) continue;; esac
+    case "$name" in "Developer ID Application:"*) TEAM_IDENTITY="$name"; break;; esac
+    [ -n "$TEAM_IDENTITY" ] || TEAM_IDENTITY="$name"
+  done < <(security find-identity -v -p codesigning 2>/dev/null | sed -n 's/^ *[0-9]*) [0-9A-F]* "\(.*\)"$/\1/p')
+fi
+# Bez podpisu zespołu: stały certyfikat „Mavinci Development” (Pęk kluczy → Asystent certyfikatów, typ „Podpisywanie
+# kodu”) — z nim macOS pamięta zgodę na pęk kluczy także po kolejnych budowaniach. Bez niego podpis jest jednorazowy
+# (ad hoc) i po każdym budowaniu macOS raz pyta o hasło do pęku kluczy.
 LOCAL_IDENTITY="Mavinci Development"
 IDENTITIES="$(security find-identity -p codesigning 2>/dev/null || true)"
-if [ -z "${SIGN_IDENTITY:-}" ] && [[ "$IDENTITIES" == *"\"$LOCAL_IDENTITY\""* ]]; then
-  IDENTITY="$LOCAL_IDENTITY"
-fi
+IDENTITY="${SIGN_IDENTITY:-}"
+if [ -z "$IDENTITY" ] && [ -n "$TEAM_IDENTITY" ]; then IDENTITY="$TEAM_IDENTITY"; fi
+if [ -z "$IDENTITY" ] && [[ "$IDENTITIES" == *"\"$LOCAL_IDENTITY\""* ]]; then IDENTITY="$LOCAL_IDENTITY"; fi
+IDENTITY="${IDENTITY:--}"
+WITH_FINDER=0
+if [ -n "$TEAM_IDENTITY" ] && [ "$IDENTITY" = "$TEAM_IDENTITY" ]; then WITH_FINDER=1; fi
 swift build -c "$CONFIGURATION"
 BIN="$(swift build -c "$CONFIGURATION" --show-bin-path)/Mavinci"
+# Rozszerzenie Findera — osobny program (punkt wejścia NSExtensionMain), kompilowany z plikami wspólnymi z aplikacją.
+if [ "$WITH_FINDER" = 1 ]; then
+  EXT_BUILD="build/finder-$CONFIGURATION"
+  mkdir -p "$EXT_BUILD"
+  swiftc -O -module-name MavinciFileProvider -parse-as-library -application-extension \
+    -target "$(uname -m)-apple-macos14.0" \
+    -Xlinker -e -Xlinker _NSExtensionMain \
+    -o "$EXT_BUILD/MavinciFileProvider" \
+    Sources/MavinciFileProvider/*.swift Sources/Mavinci/Finder/FinderShared.swift
+fi
 mkdir -p build
 if [ "$CONFIGURATION" = "debug" ]; then
   TARGET_APP="$(pwd)/build/Mavinci-Dev.app"
@@ -58,7 +84,26 @@ if swiftc -O -o build/icon/make-icon scripts/make-icon/main.swift Sources/Mavinc
   echo "Uwaga: nie udało się odświeżyć ikony z brandbooka — używam poprzedniej, jeśli jest."
 fi
 if [ -f build/icon/AppIcon.icns ]; then cp build/icon/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"; fi
-if [ "$IDENTITY" = "-" ] || [ "$IDENTITY" = "$LOCAL_IDENTITY" ]; then
+if [ "$WITH_FINDER" = 1 ]; then
+  EXT="$APP/Contents/PlugIns/MavinciFileProvider.appex"
+  mkdir -p "$EXT/Contents/MacOS"
+  cp "$EXT_BUILD/MavinciFileProvider" "$EXT/Contents/MacOS/MavinciFileProvider"
+  sed -e "s/__VERSION__/$VERSION/" -e "s/__BUILD__/$BUILD/" Resources/FileProvider-Info.plist > "$EXT/Contents/Info.plist"
+  # Ikona „Mavinci” w pasku bocznym Findera: sygnet jako własny symbol SF w zasobach rozszerzenia
+  # (Resources/FinderSymbol.xcassets, `CFBundleSymbolName` w FileProvider-Info.plist). Bez actool (Xcode) — symbol zastępczy.
+  mkdir -p "$EXT/Contents/Resources"
+  if ! xcrun actool Resources/FinderSymbol.xcassets --compile "$EXT/Contents/Resources" --platform macosx \
+      --minimum-deployment-target 14.0 --output-partial-info-plist "$EXT_BUILD/assets.plist" >"$EXT_BUILD/actool.log" 2>&1; then
+    echo "Uwaga: ikona Findera nie została skompilowana (actool) — szczegóły: desktop/mac/$EXT_BUILD/actool.log."
+    /usr/libexec/PlistBuddy -c "Set :CFBundleIcons:CFBundlePrimaryIcon:CFBundleSymbolName folder.fill" "$EXT/Contents/Info.plist" || true
+  fi
+  # Znacznik czasu Apple tylko dla Developer ID (rozdawanie); Apple Development — bez (działa bez sieci).
+  TIMESTAMP="--timestamp=none"
+  case "$IDENTITY" in "Developer ID Application:"*) TIMESTAMP="--timestamp";; esac
+  codesign --force --options runtime "$TIMESTAMP" --entitlements Resources/MavinciFileProvider.entitlements --sign "$IDENTITY" "$EXT"
+  codesign --force --options runtime "$TIMESTAMP" --entitlements Resources/Mavinci.entitlements --sign "$IDENTITY" "$APP"
+  echo "Podpis: $IDENTITY — z rozszerzeniem Findera („Mavinci” w pasku bocznym)."
+elif [ "$IDENTITY" = "-" ] || [ "$IDENTITY" = "$LOCAL_IDENTITY" ]; then
   codesign --force --options runtime --timestamp=none --sign "$IDENTITY" "$APP"
   if [ "$IDENTITY" = "-" ]; then
     echo "Podpis ad hoc: po tym budowaniu macOS raz zapyta o dostęp do pęku kluczy (kliknij „Zawsze pozwalaj”)."

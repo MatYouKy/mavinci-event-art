@@ -10,7 +10,7 @@ import { blockFormal, storagePath } from './eventFiles';
  * Synchronizacja: `events` i `list` na start, potem `changes?since=<kursor>` — zmienione wydarzenia, foldery, pliki i ślady
  * usunięć (z zakładką 5 min, powtórzenia są nieszkodliwe). Kursor starszy niż 25 dni → `reset` (Mac wczytuje wszystko od nowa).
  * Konflikty: podmiana treści podaje `baseContentVersion`; gdy na serwerze jest już nowsza wersja — 409 z aktualnym plikiem
- * (Mac zachowuje swoją wersję jako kopię „(konflikt …)”).
+ * (Mac zachowuje swoją wersję jako kopię „(konflikt …)”). Pliki można przenosić także między wydarzeniami, foldery — nie.
  * Usuwanie przenosi do kosza na 30 dni (wyzwalacze w bazie, migracja `20261112120000_finder_files_sync.sql`); obiekty w
  * magazynie usuwa dopiero `purge` / `deleteForever`, i tylko te, których nic już nie używa.
  */
@@ -251,10 +251,19 @@ export async function finderDownload(ctx: NativeContext, idValue: string) {
   const s = ctx.supabase;
   const { data, error } = await s.from('event_files').select(FILE_COLUMNS).eq('id', id).maybeSingle();
   if (error) throw error;
-  if (!data) fail('Nie znaleziono pliku.', 404);
-  const { data: signed, error: signError } = await s.storage.from(BUCKET).createSignedUrl((data as any).file_path, 3600);
+  let row: any = data;
+  if (!row) {
+    // Plik w koszu (np. podgląd w Koszu Findera) — treść z wpisu kosza.
+    const { data: trashed } = await s.from('event_file_trash').select('item_id,event_id,parent_folder_id,name,file_path,file_size,mime_type,deleted_at,snapshot')
+      .eq('item_id', id).eq('kind', 'file').order('deleted_at', { ascending: false }).limit(1).maybeSingle();
+    if (!trashed) fail('Nie znaleziono pliku.', 404);
+    const t = trashed as any;
+    row = { ...(t.snapshot || {}), id: t.item_id, event_id: t.event_id, folder_id: t.parent_folder_id, name: t.name, file_path: t.file_path,
+      file_size: t.file_size, mime_type: t.mime_type };
+  }
+  const { data: signed, error: signError } = await s.storage.from(BUCKET).createSignedUrl(row.file_path, 3600);
   if (signError || !signed?.signedUrl) fail('Pliku nie ma już w magazynie.', 410, { code: 'missing' });
-  return { url: signed.signedUrl, item: fileItem(data) };
+  return { url: signed.signedUrl, item: fileItem(row) };
 }
 
 /** Kosz: elementy usunięte w ostatnich 30 dniach, które użytkownik może przywrócić (całość albo jedno wydarzenie). */
@@ -284,6 +293,8 @@ export async function finderTrash(ctx: NativeContext, eventIdValue: string | nul
       batch: String(r.batch),
       deletedAt: r.deleted_at,
       deletedBy: r.deleted_by ? names.get(r.deleted_by) || null : null,
+      deletedById: r.deleted_by ?? null,
+      mine: !!r.deleted_by && (r.deleted_by === ctx.employee.id || r.deleted_by === ctx.employee.authUserId),
       purgeAfter: r.purge_after,
     })),
   };
@@ -368,7 +379,7 @@ export async function finderUpdate(ctx: NativeContext, body: Record<string, any>
     if (error) throw error;
     if (!current) fail('Nie znaleziono folderu.', 404);
     const folder = current as any;
-    if (body.eventId && body.eventId !== folder.event_id) fail('Pliki i foldery można przenosić tylko w obrębie jednego wydarzenia.', 400, { code: 'crossEvent' });
+    if (body.eventId && body.eventId !== folder.event_id) fail('Foldery można przenosić tylko w obrębie jednego wydarzenia — przenieś pliki.', 400, { code: 'crossEvent' });
     const patch: Record<string, unknown> = {};
     if (body.name !== undefined) {
       const name = cleanName(body.name, 'Podaj nazwę folderu.');
@@ -395,7 +406,10 @@ export async function finderUpdate(ctx: NativeContext, body: Record<string, any>
   if (error) throw error;
   if (!current) fail('Nie znaleziono pliku.', 404);
   const file = current as any;
-  if (body.eventId && body.eventId !== file.event_id) fail('Pliki i foldery można przenosić tylko w obrębie jednego wydarzenia.', 400, { code: 'crossEvent' });
+  // Plik można przenieść do innego wydarzenia (Finder: przeciągnięcie między folderami wydarzeń) — RLS sprawdza
+  // uprawnienia w obu wydarzeniach; obiekt w magazynie zostaje pod dotychczasową ścieżką.
+  const targetEvent = body.eventId ? uuidOf(body.eventId, 'Nieprawidłowe wydarzenie.') : file.event_id;
+  if (targetEvent !== file.event_id) await eventVisible(ctx, targetEvent);
   const content = body.content && typeof body.content === 'object' ? (body.content as Record<string, any>) : null;
   const uploaded = content ? String(content.path || '') : '';
   try {
@@ -404,9 +418,10 @@ export async function finderUpdate(ctx: NativeContext, body: Record<string, any>
       const name = cleanName(body.name, 'Podaj nazwę pliku.');
       if (name !== file.name) patch.name = name;
     }
-    if ('parentId' in body) {
-      const parentId = await folderInEvent(ctx, file.event_id, body.parentId);
+    if ('parentId' in body || targetEvent !== file.event_id) {
+      const parentId = await folderInEvent(ctx, targetEvent, body.parentId);
       if (parentId !== (file.folder_id ?? null)) patch.folder_id = parentId;
+      if (targetEvent !== file.event_id) patch.event_id = targetEvent;
     }
     let base: number | null = null;
     if (content) {
@@ -456,8 +471,26 @@ export async function finderRemove(ctx: NativeContext, body: Record<string, any>
 }
 
 /** Przywrócenie z kosza (folder wraca z zawartością usuniętą razem z nim). */
-export async function finderRestore(ctx: NativeContext, body: Record<string, any>) {
+/** Wpisy kosza wskazane wprost (`ids`) albo przez identyfikatory usuniętych plików / folderów (`itemIds` — Finder). */
+async function trashIds(ctx: NativeContext, body: Record<string, any>) {
   const ids = uuidList(body.ids);
+  const itemIds = uuidList(body.itemIds);
+  if (itemIds.length) {
+    const { data, error } = await ctx.supabase.from('event_file_trash').select('id,item_id,deleted_at').in('item_id', itemIds)
+      .order('deleted_at', { ascending: false });
+    if (error) throw error;
+    const seen = new Set<string>();
+    for (const r of (data || []) as any[]) {
+      if (seen.has(r.item_id)) continue;
+      seen.add(r.item_id);
+      ids.push(r.id);
+    }
+  }
+  return Array.from(new Set(ids));
+}
+
+export async function finderRestore(ctx: NativeContext, body: Record<string, any>) {
+  const ids = await trashIds(ctx, body);
   if (!ids.length) return { restored: 0, missing: 0, skipped: 0 };
   const { data, error } = await ctx.supabase.rpc('restore_event_trash', { p_ids: ids });
   if (error) {
@@ -469,7 +502,7 @@ export async function finderRestore(ctx: NativeContext, body: Record<string, any
 
 /** Usunięcie na zawsze z kosza (folder razem z zawartością usuniętą w tej samej operacji) i sprzątanie magazynu. */
 export async function finderDeleteForever(ctx: NativeContext, body: Record<string, any>) {
-  const ids = uuidList(body.ids);
+  const ids = await trashIds(ctx, body);
   if (!ids.length) return { removed: 0 };
   const s = ctx.supabase;
   const { data: chosen, error } = await s.from('event_file_trash').select('id,kind,item_id,event_id,batch').in('id', ids);

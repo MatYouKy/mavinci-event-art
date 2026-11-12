@@ -157,7 +157,7 @@ private struct SellerMessages: Decodable {
             VStack(alignment: .leading, spacing: 14) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(offer.partnerName + " · " + offer.brandName).font(.callout).foregroundStyle(.secondary)
-                    Button("Oferta źródłowa: " + offer.label) { openOffer(offer.id) }.buttonStyle(.link)
+                    Button("Oferta źródłowa: " + offer.label) { openOffer(offer.id) }.buttonStyle(.link).linkCursor()
                     Text("Ustalenia są wspólne z ofertą — nie tworzymy osobnej kopii. Ich zapis nie cofa akceptacji i nie zmienia automatycznie harmonogramu wydarzenia.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
@@ -175,7 +175,7 @@ private struct SellerMessages: Decodable {
                 VStack(alignment: .leading, spacing: 6) {
                     Label("Prowizja opiekuna", systemImage: "function").font(.headline)
                     Text("Prowizję opiekuna liczy teraz zakładka Podsumowanie w wydarzeniu (udział sprzedawcy, 5% / 10% od zysku).").font(.caption).foregroundStyle(.secondary)
-                    Button { go("summary") } label: { Label("Otwórz podsumowanie wydarzenia", systemImage: "arrow.right") }.buttonStyle(.link)
+                    Button { go("summary") } label: { Label("Otwórz podsumowanie wydarzenia", systemImage: "arrow.right") }.buttonStyle(.link).linkCursor()
                 }
                 .padding(14).frame(maxWidth: .infinity, alignment: .leading)
                 .background(theme.card.opacity(theme == .light ? 1 : 0.9), in: RoundedRectangle(cornerRadius: 12))
@@ -204,7 +204,7 @@ private struct SellerMessages: Decodable {
             Text("Zakres sprzętu pochodzi z produktów i konfiguracji oferty. Linie planowane nie rezerwują egzemplarzy. Zespół i pojazdy wybierasz w CRM; nie wysyłamy zaproszeń przy samej akceptacji. Prowizja jest planowana tylko przy włączonym modelu prowizyjnym — nie jest wypłatą.")
                 .font(.caption2).foregroundStyle(.secondary)
             Button { state.openCRM("/crm/events/\(eventID)?tab=seller-arrangements&offer=\(offer.id)") } label: { Label("Potwierdzenie realizacji (gdy oczekuje) — w CRM", systemImage: "checkmark.seal") }
-                .buttonStyle(.link).font(.caption)
+                .buttonStyle(.link).linkCursor().font(.caption)
         }
         .padding(14).frame(maxWidth: .infinity, alignment: .leading)
         .background(theme.card.opacity(theme == .light ? 1 : 0.9), in: RoundedRectangle(cornerRadius: 12))
@@ -275,7 +275,7 @@ private struct SellerMessages: Decodable {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 8) {
                         if hasOlder {
-                            Button(older ? "Wczytywanie…" : "Pokaż starsze wiadomości") { Task { await loadOlder() } }.buttonStyle(.link).disabled(older)
+                            Button(older ? "Wczytywanie…" : "Pokaż starsze wiadomości") { Task { await loadOlder() } }.buttonStyle(.link).linkCursor().disabled(older)
                         }
                         if loading { Text("Wczytywanie rozmowy…").font(.caption).foregroundStyle(.secondary) }
                         if !loading && messages.isEmpty { Text("Napisz pierwszą wiadomość. Rozmowa pozostanie w historii sprzedawcy.").font(.caption).foregroundStyle(.secondary) }

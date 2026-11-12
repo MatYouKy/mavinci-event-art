@@ -259,7 +259,7 @@ struct FileRenameRequest: Identifiable {
         HStack(spacing: 10) {
             Image(systemName: symbol(file.mime)).font(.title3).foregroundStyle(theme.accent).frame(width: 28)
             VStack(alignment: .leading, spacing: 2) {
-                Button { open(file) } label: { Text(file.name).lineLimit(1).truncationMode(.middle) }.buttonStyle(.link).help(file.name)
+                Button { open(file) } label: { Text(file.name).lineLimit(1).truncationMode(.middle) }.buttonStyle(.link).linkCursor().help(file.name)
                 let date = file.createdAt.flatMap(MeetingDates.parse).map { MeetingDates.format($0, "dd.MM.yyyy") } ?? ""
                 Text([WarehouseLabels.fileSize(file.size), date].filter { !$0.isEmpty }.joined(separator: " · ")).font(.caption).foregroundStyle(.secondary)
             }

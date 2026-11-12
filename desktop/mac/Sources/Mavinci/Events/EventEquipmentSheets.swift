@@ -302,7 +302,7 @@ import AppKit
                     .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction).disabled(adding || groups.isEmpty)
             }
         }
-        .padding(20).frame(width: 720, height: 680)
+        .padding(20).frame(width: 900, height: 700)
         .task { await verifyUnavailable() }
         .onChange(of: groups.isEmpty) { _, empty in if empty && !adding { close(skipped: false) } }
     }
@@ -340,35 +340,40 @@ import AppKit
                 .font(.caption).foregroundStyle(.secondary)
             ForEach(group.components) { component in
                 let isSelected = chosen[name] == component.targetId
-                HStack(alignment: .top, spacing: 10) {
+                HStack(alignment: .center, spacing: 10) {
                     Image(systemName: isSelected ? "largecircle.fill.circle" : "circle").foregroundStyle(isSelected ? theme.accent : Color.secondary)
                     componentBody(component, required: group.required, single: false, enabled: isSelected)
                 }
                 .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .background(isSelected ? theme.accent.opacity(0.1) : Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
                 .contentShape(Rectangle())
                 .onTapGesture { if let target = component.targetId { chosen[name] = target } }
             }
         }
-        .padding(12).background(Color.primary.opacity(0.03), in: RoundedRectangle(cornerRadius: 10))
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.primary.opacity(0.03), in: RoundedRectangle(cornerRadius: 10))
     }
 
     private func singleCard(_ group: EquipmentTabData.ComponentGroup, _ component: EquipmentTabData.Component) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            componentBody(component, required: group.required, single: true, enabled: true)
-            Text(group.required ? "Ten komponent jest niezbędny i zostanie dodany po zatwierdzeniu."
-                 : component.type == "optional" ? "Opcjonalny dodatek — ustaw ilość, jeśli chcesz go dodać do zestawu."
-                 : "Ten komponent warto dodać, jeśli będzie potrzebny w tej realizacji.")
-                .font(.caption).foregroundStyle(.secondary)
+        HStack(alignment: .center, spacing: 14) {
+            componentBody(component, required: group.required, single: true, enabled: true,
+                          hint: group.required ? "Niezbędny — zostanie dodany po zatwierdzeniu."
+                              : component.type == "optional" ? "Opcjonalny — ustaw ilość, jeśli chcesz go dodać."
+                              : "Warto dodać, jeśli będzie potrzebny w tej realizacji.")
             Button { Task { await dismissGroup(group) } } label: {
-                Label(group.required ? "Pomiń wymaganie w tym wydarzeniu" : "Nie używamy w tym rozwiązaniu", systemImage: "minus.circle")
+                Label(group.required ? "Pomiń wymaganie" : "Nie używamy", systemImage: "minus.circle")
             }
             .controlSize(.small)
+            .help(group.required ? "Pomiń wymaganie w tym wydarzeniu" : "Nie używamy w tym rozwiązaniu")
         }
-        .padding(12).background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
     }
 
-    private func componentBody(_ c: EquipmentTabData.Component, required: Bool, single: Bool, enabled: Bool) -> some View {
+    private func componentBody(_ c: EquipmentTabData.Component, required: Bool, single: Bool, enabled: Bool, hint: String? = nil) -> some View {
         let a = availability(c)
         let unit = c.unit
         let typeLabel = required ? "WYMAGANY" : c.type == "optional" ? "OPCJONALNY" : "REKOMENDOWANY"
@@ -376,22 +381,28 @@ import AppKit
         let needLabel = isRequired ? "Do dodania" : "Sugerowane"
         let targetLabel = isRequired ? "wymagane" : "docelowo"
         let need = "\(needLabel): \(Int(c.missing)) / \(targetLabel) \(Int(c.required)) \(unit)"
-        return HStack(alignment: .top, spacing: 10) {
-            WarehouseThumb(url: c.thumbnail, size: 48)
+        // Wiersz na całą szerokość: miniatura | nazwa, typ, dostępność, potrzeba | ilość do dodania.
+        return HStack(alignment: .center, spacing: 12) {
+            WarehouseThumb(url: c.thumbnail, size: 56)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
-                    Text(c.name ?? "Komponent").font(.callout.weight(.medium))
-                    if let a { availabilityBadge(a.isAvailable, a.isPartial, a.available) }
+                    Text(c.name ?? "Komponent").font(.body.weight(.semibold)).lineLimit(1)
+                    if single { tag(typeLabel, required ? .red : .blue) }
                     if c.kind == "kit" { tag("ZESTAW", theme.accent) }
                     if c.kind == "cable" { tag("PRZEWÓD", .cyan) }
-                    if single { tag(typeLabel, required ? .red : .blue) }
                 }
-                Text(need).font(.caption).foregroundStyle(.secondary)
+                HStack(spacing: 8) {
+                    Text(need).font(.callout).foregroundStyle(.secondary)
+                    if let a { availabilityBadge(a.isAvailable, a.isPartial, a.available) }
+                }
                 details(c)
-                quantitySelector(c, disabled: !enabled)
+                if let hint { Text(hint).font(.caption).foregroundStyle(.tertiary) }
                 conflictDetails(c)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            quantitySelector(c, disabled: !enabled)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     @ViewBuilder private func details(_ c: EquipmentTabData.Component) -> some View {
@@ -418,14 +429,13 @@ import AppKit
         let maximum = maxAddable(c)
         if maximum > 0 {
             let minimum = c.type == "optional" ? 0 : 1
-            HStack(spacing: 6) {
-                Text("Dodaj:").font(.caption).foregroundStyle(.secondary)
-                Stepper(value: Binding(get: { selectedQuantity(c) }, set: { quantities[c.id] = min(maximum, max(minimum, $0)) }), in: minimum...maximum) {
-                    Text("\(selectedQuantity(c))").font(.callout.monospacedDigit())
-                }
-                .fixedSize().disabled(disabled)
-                Text("z maks. \(maximum) \(c.unit)").font(.caption).foregroundStyle(.secondary)
+            VStack(alignment: .trailing, spacing: 2) {
+                Text("Dodaj").font(.caption).foregroundStyle(.secondary)
+                EquipmentStepper(value: selectedQuantity(c), lower: minimum, upper: maximum, unit: c.unit) { quantities[c.id] = min(maximum, max(minimum, $0)) }
+                    .disabled(disabled)
+                Text("maks. \(maximum) \(c.unit)").font(.caption2).foregroundStyle(.secondary)
             }
+            .fixedSize()
         }
     }
 
@@ -458,7 +468,7 @@ import AppKit
                     HStack(alignment: .top, spacing: 6) {
                         Image(systemName: "calendar.badge.clock").font(.caption).foregroundStyle(.red)
                         VStack(alignment: .leading, spacing: 1) {
-                            Button(conflict.eventName) { state.showEvent(conflict.eventId) }.buttonStyle(.link).font(.caption.weight(.medium))
+                            Button(conflict.eventName) { state.showEvent(conflict.eventId) }.buttonStyle(.link).linkCursor().font(.caption.weight(.medium))
                             Text("\(conflictDate(conflict.start)) – \(conflictDate(conflict.end))").font(.caption2)
                             Text("Ilość: \(Int(conflict.quantity))" + (conflict.source == "kit" ? " · element zarezerwowanego zestawu" : "")).font(.caption2).foregroundStyle(.secondary)
                         }

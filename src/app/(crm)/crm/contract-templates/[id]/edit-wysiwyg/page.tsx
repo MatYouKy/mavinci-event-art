@@ -54,6 +54,10 @@ import {
 import { createContractDraftPdf } from '../../printDraft';
 import { getContractDocumentCss } from '@/components/crm/events/calculations/helpers/getContractCssForPrint';
 import { SYSTEM_FONTS } from '@/lib/CRM/systemFonts';
+import { isContractDocumentStylesTemplate } from '@/lib/CRM/contracts/contractDocumentStyles';
+import { CONTRACT_PLACEHOLDER_GROUPS } from '@/lib/CRM/contracts/contractPlaceholderGroups';
+import ContractTemplateEditorV2 from '@/components/crm/contracts/editor/ContractTemplateEditorV2';
+import ContractTemplateConvertBanner from '@/components/crm/contracts/editor/ContractTemplateConvertBanner';
 
 const DEFAULT_LOGO = '/erulers_logo_vect.png';
 
@@ -118,133 +122,8 @@ const CLAUSE_TYPOGRAPHY_ROLES: Array<{
   { key: 'subpoint', label: 'Podpunkt' },
 ];
 
-const PLACEHOLDER_CONTEXT_GROUPS = [
-  {
-    label: 'Dokument',
-    items: [{ key: '§n', label: 'Automatyczny numer paragrafu' }],
-  },
-  {
-    label: 'Oferta',
-    items: [
-      { key: '{{offer_number}}', label: 'Numer oferty' },
-      { key: '{{offer_scope}}', label: 'Zakres oferty' },
-      { key: '{{offer_valid_until}}', label: 'Oferta ważna do' },
-      { key: '{{offer_items}}', label: 'Pozycje z oferty' },
-      { key: '{{OFFER_ITEMS_TABLE}}', label: 'Tabela pozycji' },
-    ],
-  },
-  {
-    label: 'Kontakt',
-    items: [
-      { key: '{{contact_first_name}}', label: 'Imię' },
-      { key: '{{contact_last_name}}', label: 'Nazwisko' },
-      { key: '{{contact_full_name}}', label: 'Imię i nazwisko' },
-      { key: '{{contact_email}}', label: 'E-mail' },
-      { key: '{{contact_phone}}', label: 'Telefon' },
-      { key: '{{contact_pesel}}', label: 'PESEL' },
-      { key: '{{contact_address}}', label: 'Adres' },
-      { key: '{{contact_city}}', label: 'Miasto' },
-      { key: '{{contact_postal_code}}', label: 'Kod pocztowy' },
-    ],
-  },
-  {
-    label: 'Firma',
-    items: [
-      { key: '{{organization_name}}', label: 'Nazwa firmy' },
-      { key: '{{organization_nip}}', label: 'NIP' },
-      { key: '{{organization_legal_form}}', label: 'Forma prawna' },
-      { key: '{{organization_krs}}', label: 'KRS' },
-      { key: '{{organization_regon}}', label: 'REGON' },
-      { key: '{{organization_full_address}}', label: 'Pełny adres' },
-      { key: '{{zamiownienie}}', label: 'Numer PO / zamówienia' },
-      { key: '{{primary_contact_full_name}}', label: 'Osoba kontaktowa' },
-      { key: '{{legal_representative_full_name}}', label: 'Reprezentant prawny' },
-      { key: '{{legal_representatives_list}}', label: 'Wszyscy reprezentanci podpisujący' },
-      { key: '{{client_representation_type_label}}', label: 'Typ reprezentacji' },
-      { key: '{{client_representation_rule}}', label: 'Dokładny sposób reprezentacji' },
-      { key: '{{client_representation_basis}}', label: 'Podstawa weryfikacji reprezentacji' },
-      { key: '{{client_representation_verified_at}}', label: 'Data weryfikacji reprezentacji' },
-      { key: '{{client_representation_block}}', label: 'Pełna informacja o reprezentacji' },
-      { key: '{{decision_makers_list}}', label: 'Osoby decyzyjne' },
-      { key: '{{client_contract_party_block}}', label: 'Pełne dane strony klienta' },
-      { key: '{{client_invoice_details_block}}', label: 'Dane do faktury — nabywca i odbiorca' },
-    ],
-  },
-  {
-    label: 'Wydarzenie',
-    items: [
-      { key: '{{event_name}}', label: 'Nazwa wydarzenia' },
-      { key: '{{event_date}}', label: 'Data i czas rozpoczęcia' },
-      { key: '{{event_end_date}}', label: 'Data i czas zakończenia' },
-      { key: '{{event_date_only}}', label: 'Data rozpoczęcia' },
-      { key: '{{event_end_date_only}}', label: 'Data zakończenia' },
-      { key: '{{event_time_start}}', label: 'Godzina rozpoczęcia' },
-      { key: '{{event_time_end}}', label: 'Godzina zakończenia' },
-      { key: '{{event_schedule_contract}}', label: 'Pełny termin jedno- lub wielodniowy' },
-      { key: '{{termin_dostarczenia_materialow}}', label: 'Termin dostarczenia materiałów' },
-      { key: '{{planned_setup_at}}', label: 'Planowany montaż — data i godzina' },
-      { key: '{{planned_setup_date}}', label: 'Planowany montaż — data' },
-      { key: '{{planned_setup_time}}', label: 'Planowany montaż — godzina' },
-      { key: '{{planned_teardown_at}}', label: 'Planowany demontaż — data i godzina' },
-      { key: '{{planned_teardown_date}}', label: 'Planowany demontaż — data' },
-      { key: '{{planned_teardown_time}}', label: 'Planowany demontaż — godzina' },
-      { key: '{{planned_technical_schedule}}', label: 'Pełny termin montażu i demontażu' },
-    ],
-  },
-  {
-    label: 'Lokalizacja',
-    items: [
-      { key: '{{location_name}}', label: 'Nazwa lokalizacji' },
-      { key: '{{location_address}}', label: 'Adres' },
-      { key: '{{location_city}}', label: 'Miasto' },
-      { key: '{{location_postal_code}}', label: 'Kod pocztowy' },
-      { key: '{{location_full}}', label: 'Pełny adres' },
-    ],
-  },
-  {
-    label: 'Finanse i umowa',
-    items: [
-      { key: '{{budget}}', label: 'Kwota umowy (alias)' },
-      { key: '{{budget_words}}', label: 'Kwota umowy słownie' },
-      { key: '{{budget_netto}}', label: 'Kwota umowy netto po rabacie' },
-      { key: '{{budget_netto_words}}', label: 'Kwota netto słownie' },
-      { key: '{{budget_brutto}}', label: 'Kwota umowy brutto po rabacie' },
-      { key: '{{budget_brutto_words}}', label: 'Kwota brutto słownie' },
-      { key: '{{budget_before_discount_netto}}', label: 'Wartość netto przed rabatem' },
-      { key: '{{discount_amount}}', label: 'Rabat kwotowy netto' },
-      { key: '{{discount_percent}}', label: 'Rabat procentowy' },
-      { key: '{{deposit_amount}}', label: 'Zadatek' },
-      { key: '{{deposit_words}}', label: 'Zadatek słownie' },
-      { key: '{{deposit_percent}}', label: 'Procent zadatku' },
-      { key: '{{payment_term_days}}', label: 'Termin płatności faktury końcowej (dni)' },
-      { key: '{{contract_number}}', label: 'Numer umowy' },
-      { key: '{{contract_date}}', label: 'Data umowy' },
-      { key: '{{accepted_calculation_number}}', label: 'Numer zaakceptowanej kalkulacji' },
-      { key: '{{accepted_calculation_name}}', label: 'Nazwa zaakceptowanej kalkulacji' },
-    ],
-  },
-  {
-    label: 'Wykonawca',
-    items: [
-      { key: '{{executor_name}}', label: 'Nazwa firmy' },
-      { key: '{{executor_address}}', label: 'Adres' },
-      { key: '{{executor_postal_code}}', label: 'Kod pocztowy' },
-      { key: '{{executor_city}}', label: 'Miasto' },
-      { key: '{{executor_nip}}', label: 'NIP' },
-      { key: '{{executor_regon}}', label: 'REGON' },
-      { key: '{{executor_krs}}', label: 'KRS' },
-      { key: '{{executor_phone}}', label: 'Telefon' },
-      { key: '{{executor_email}}', label: 'E-mail' },
-      { key: '{{executor_website}}', label: 'Strona WWW' },
-      { key: '{{executor_bank_account}}', label: 'Rachunek bankowy' },
-      { key: '{{executor_bank_name}}', label: 'Nazwa banku' },
-      { key: '{{executor_representative_name}}', label: 'Reprezentant wykonawcy' },
-      { key: '{{executor_representative_title}}', label: 'Stanowisko reprezentanta' },
-      { key: '{{executor_contract_party_block}}', label: 'Pełne dane wykonawcy' },
-    ],
-  },
-  { label: 'Sekcje klauzul', items: CONTRACT_CLAUSE_SLOTS, clauseSlots: true },
-] as const;
+// Pola szablonu — wspólne z nowym edytorem (`contractPlaceholderGroups.ts`).
+const PLACEHOLDER_CONTEXT_GROUPS = CONTRACT_PLACEHOLDER_GROUPS;
 
 export default function EditTemplateWYSIWYGPage() {
   const params = useParams();
@@ -328,6 +207,8 @@ export default function EditTemplateWYSIWYGPage() {
     footerContent,
     footerLogoScale,
     clauseTypography,
+    // Style dokumentu szablonu w nowym formacie (bez zmian w tym edytorze) — podgląd stron liczony jak w PDF.
+    ...(template?.page_settings?.documentStyles ? { documentStyles: template.page_settings.documentStyles } : {}),
   });
 
   useEffect(() => {
@@ -1686,9 +1567,32 @@ export default function EditTemplateWYSIWYGPage() {
     );
   }
 
+  // Szablon w nowym formacie (style dokumentu) — edytor jak Word. Umowy wydarzeń edytujemy na razie starym edytorem.
+  if (!isContractInstance && isContractDocumentStylesTemplate(template.page_settings)) {
+    return (
+      <ContractTemplateEditorV2
+        template={template}
+        brandLogos={brandLogos}
+        brandFonts={brandFonts}
+        footerTemplates={footerTemplates}
+        onBack={() => router.push('/crm/contract-templates')}
+        onSaved={(saved) => setTemplate((current: any) => ({ ...current, ...saved }))}
+      />
+    );
+  }
+
   return (
     <div className="-m-2 min-h-screen bg-[#0a0b14] sm:-m-4 md:-m-6">
       <style dangerouslySetInnerHTML={{ __html: getContractDocumentCss() }} />
+      {!isContractInstance && (
+        <div className="px-6 pt-4">
+          <ContractTemplateConvertBanner
+            template={template}
+            hasUnsavedChanges={historyIndex > 0}
+            onConverted={fetchTemplate}
+          />
+        </div>
+      )}
       <div className="sticky -top-2 z-40 max-h-[calc(100dvh-73px)] overflow-y-auto overscroll-contain bg-[#1c1f33] shadow-xl sm:-top-4 md:-top-6">
       {/* Header */}
       <div className="border-b border-[#d3bb73]/20 bg-[#1c1f33]">

@@ -64,7 +64,7 @@ import AppKit
             } else if let error = store.overviewErrors[eventID] {
                 HStack(spacing: 6) {
                     Text(error).foregroundStyle(.secondary)
-                    Button("Spróbuj ponownie") { Task { await store.loadOverview(eventID) } }.buttonStyle(.link)
+                    Button("Spróbuj ponownie") { Task { await store.loadOverview(eventID) } }.buttonStyle(.link).linkCursor()
                 }
                 .font(.callout)
             } else {

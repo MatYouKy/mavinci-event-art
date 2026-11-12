@@ -147,7 +147,7 @@ import AppKit
     }
 
     private func editButton(_ title: String = "Edytuj", _ action: @escaping () -> Void) -> some View {
-        Button(action: action) { Label(title, systemImage: "pencil").font(.caption) }.buttonStyle(.borderless).foregroundStyle(theme.accent)
+        Button(action: action) { Label(title, systemImage: "pencil").font(.caption) }.buttonStyle(.borderless).foregroundStyle(theme.accent).linkCursor()
     }
 
     private func labeled(_ label: String, _ symbol: String, _ value: String, edit: (() -> Void)? = nil) -> some View {
@@ -209,12 +209,12 @@ import AppKit
                         Button(name) {
                             if let id = location["id"]?.text.nonEmpty { state.openCRM("/crm/locations/\(id)") }
                         }
-                        .buttonStyle(.link).help("Otwórz lokalizację w CRM")
+                        .buttonStyle(.link).linkCursor().help("Otwórz lokalizację w CRM")
                         if canEdit && !event["location_id"].isEmpty && !editingRooms { editButton("Edytuj sale") { editingRooms = true } }
                     }
                     if let address = location["formatted_address"]?.text.nonEmpty { Text(address).font(.caption).foregroundStyle(.secondary) }
                     if let maps = location["google_maps_url"]?.text.nonEmpty.flatMap({ URL(string: $0) }) {
-                        Button("Zobacz na mapie", systemImage: "arrow.up.right.square") { NSWorkspace.shared.open(maps) }.buttonStyle(.link).font(.caption)
+                        Button("Zobacz na mapie", systemImage: "arrow.up.right.square") { NSWorkspace.shared.open(maps) }.buttonStyle(.link).linkCursor().font(.caption)
                     }
                 } else {
                     Text("Brak lokalizacji")
@@ -242,7 +242,7 @@ import AppKit
                     Image(systemName: "building.2").foregroundStyle(theme.accent).frame(width: 18)
                     VStack(alignment: .leading, spacing: 2) {
                         if let id = org["id"]?.text.nonEmpty {
-                            Button(org["alias"]?.text.nonEmpty ?? org["name"]?.text ?? "Klient") { state.open(.contacts, id: id) }.buttonStyle(.link)
+                            Button(org["alias"]?.text.nonEmpty ?? org["name"]?.text ?? "Klient") { state.open(.contacts, id: id) }.buttonStyle(.link).linkCursor()
                         } else {
                             Text("Brak klienta")
                         }
@@ -271,20 +271,20 @@ import AppKit
             VStack(alignment: .leading, spacing: 2) {
                 Text(label).font(.caption).foregroundStyle(.secondary)
                 if let id = contact["id"]?.text.nonEmpty {
-                    Button(name) { state.open(.contacts, id: id) }.buttonStyle(.link)
+                    Button(name) { state.open(.contacts, id: id) }.buttonStyle(.link).linkCursor()
                 } else {
                     Text(name)
                 }
                 if let email = contact["email"]?.text.nonEmpty { mailLink(email) }
                 if let phone, let url = URL(string: "tel:\(phone.replacingOccurrences(of: " ", with: ""))") {
-                    Button(phone, systemImage: "phone") { NSWorkspace.shared.open(url) }.buttonStyle(.link).font(.callout)
+                    Button(phone, systemImage: "phone") { NSWorkspace.shared.open(url) }.buttonStyle(.link).linkCursor().font(.callout)
                 }
             }
         }
     }
     private func mailLink(_ email: String) -> some View {
         Button(email, systemImage: "envelope") { if let url = URL(string: "mailto:\(email)") { NSWorkspace.shared.open(url) } }
-            .buttonStyle(.link).font(.callout)
+            .buttonStyle(.link).linkCursor().font(.callout)
     }
 
     // MARK: Budżet
@@ -318,7 +318,7 @@ import AppKit
     private func offerBreakdown(_ offer: EventBudget.Offer) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Button((offer.accepted ? "Zaakceptowana oferta " : "Wstępny plan z oferty ") + offer.number) { state.openCRM("/crm/offers/\(offer.id)") }
-                .buttonStyle(.link)
+                .buttonStyle(.link).linkCursor()
             if offer.discountAmount > 0 {
                 Text("Przed rabatem netto: \(Self.money(offer.listNet))")
                 Text("Rabat: −\(Self.money(offer.discountAmount))").foregroundStyle(theme.accent)
@@ -453,7 +453,7 @@ import AppKit
             HStack(spacing: 10) {
                 Button(saving ? "Zapisywanie…" : "Zapisz sale wydarzenia") { Task { await save(rooms) } }.buttonStyle(.borderedProminent).disabled(saving)
                 Button("Anuluj") { reset(rooms); error = nil; editing = false }.disabled(saving)
-                Button("Zarządzaj salami obiektu") { state.openCRM("/crm/locations/\(rooms.locationId)") }.buttonStyle(.link).font(.caption)
+                Button("Zarządzaj salami obiektu") { state.openCRM("/crm/locations/\(rooms.locationId)") }.buttonStyle(.link).linkCursor().font(.caption)
             }
         }
         .padding(12).background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 9))
@@ -583,7 +583,7 @@ import AppKit
             HStack {
                 Text("Twoje lokalizacje (\(filtered.count))").font(.caption).foregroundStyle(.secondary)
                 Spacer()
-                Button("Dodaj nową", systemImage: "plus") { adding = true }.buttonStyle(.link).font(.caption)
+                Button("Dodaj nową", systemImage: "plus") { adding = true }.buttonStyle(.link).linkCursor().font(.caption)
                     .help("Nowa lokalizacja (wyszukiwanie w Mapach Google)")
             }
             ScrollView {

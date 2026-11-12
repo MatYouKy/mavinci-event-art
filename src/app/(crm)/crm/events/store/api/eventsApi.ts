@@ -311,6 +311,7 @@ export const eventsApi = createApi({
               kit:equipment_kits(
                 name,
                 thumbnail_url,
+                category:warehouse_categories(name),
                 items:equipment_kit_items(
                   quantity,
                   equipment:equipment_items(
@@ -330,7 +331,8 @@ export const eventsApi = createApi({
                 description,
                 length_meters,
                 stock_unit,
-                thumbnail_url
+                thumbnail_url,
+                category:warehouse_categories(name)
               )
             `,
             )

@@ -16,6 +16,7 @@ import { cookies } from 'next/headers';
 import { GlobalLoaderProvider, RouteLoaderReset } from '@/contexts/GlobalLoaderContext';
 import BrandThemeProvider from '@/components/BrandThemeProvider';
 import { resolveCrmTheme } from '@/lib/CRM/theme/crmTheme';
+import AppVersionWatcher from '@/components/crm/AppVersionWatcher';
 
 export const metadata: Metadata = {
   title: 'Mavinci CRM',
@@ -47,6 +48,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     <html lang="pl" className="crm-document" data-crm-theme={resolveCrmTheme((employee as unknown as { crm_theme?: unknown }).crm_theme)}>
       <body className="crm-body brand-theme brand-theme--crm" data-brand-theme="mavinci">
         <BrandThemeProvider />
+        <AppVersionWatcher />
         <GlobalLoaderProvider>
           <RouteLoaderReset />
           <CrmProviders>

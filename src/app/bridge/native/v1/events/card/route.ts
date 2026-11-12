@@ -295,9 +295,23 @@ export async function POST(request: Request) {
       invalidateEvents();
       return nativeJson({ ok: true });
     }
-    if (['teamUpdate', 'teamPermissions', 'teamRemove', 'teamInvite'].includes(body.op)) {
+    if (['teamUpdate', 'teamPermissions', 'teamRemove', 'teamInvite', 'teamTransport'].includes(body.op)) {
       const assignmentId = String(body.assignmentId || '');
       if (!uuid.test(assignmentId)) return nativeJson({ error: 'Nieprawidłowe przypisanie.' }, 400);
+      if (body.op === 'teamTransport') {
+        // Którym autem jedzie osoba z zespołu (kierowca — w logistyce). `null` — bez auta / dojazd własny.
+        const vehicleId = body.eventVehicleId ? String(body.eventVehicleId) : null;
+        if (vehicleId && !uuid.test(vehicleId)) return nativeJson({ error: 'Nieprawidłowy pojazd.' }, 400);
+        const { error } = await ctx.supabase.from('employee_assignments')
+          .update({ transport_event_vehicle_id: vehicleId }).eq('id', assignmentId).eq('event_id', id);
+        if (error) {
+          return nativeJson({ error: error.code === 'PGRST204'
+            ? 'Przypisanie do auta wymaga aktualizacji bazy (migracja 20261112214000_event_team_transport.sql).'
+            : /nie jest przypisany/.test(error.message || '') ? error.message : 'Nie udało się zapisać transportu.' }, 400);
+        }
+        invalidateEvents();
+        return nativeJson({ ok: true });
+      }
       if (body.op === 'teamInvite') {
         const mode = body.mode === 'timeline_update' ? 'timeline_update' : 'invitation';
         const result = await sendTeamInvitation(ctx, assignmentId, body.includePhases === true, mode);

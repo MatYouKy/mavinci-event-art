@@ -483,7 +483,7 @@ struct ContactStars: View {
             if !entry.website.isEmpty {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Strona WWW").font(.caption).foregroundStyle(.secondary)
-                    Button(entry.website) { openWebsite(entry.website) }.buttonStyle(.link)
+                    Button(entry.website) { openWebsite(entry.website) }.buttonStyle(.link).linkCursor()
                 }
             }
             if !entry.fullAddress.isEmpty {
@@ -556,7 +556,7 @@ struct ContactStars: View {
 
     @ViewBuilder private func footer(_ entry: ContactEntry) -> some View {
         Button("Pełna karta w CRM (Klient 360°, oferty, faktury, historia)", systemImage: "safari") { actions.browser(entry) }
-            .buttonStyle(.link)
+            .buttonStyle(.link).linkCursor()
         if store.canManage {
             HStack {
                 Button(role: .destructive) { actions.remove(entry) } label: { Label("Usuń…", systemImage: "trash") }

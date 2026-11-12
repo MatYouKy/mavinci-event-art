@@ -467,7 +467,7 @@ private struct VehicleConflictsReply: Decodable {
     struct Conflict: Decodable, Hashable { var eventId: String; var name: String; var date: String?; var location: String }
     var conflicts: [Conflict]
 }
-private struct ConsumptionReply: Decodable { var value: Double?; var source: String?; var error: String? }
+private struct ConsumptionReply: Decodable { var value: Double?; var source: String?; var error: String?; var energyPrice: Double? }
 private struct FuelQuote: Decodable { var prices: [String: Double]; var source: String; var sourceUpdated: String; var fetchedAt: String }
 private struct RouteReply: Decodable {
     struct Leg: Decodable { var distanceMeters: Double; var durationSeconds: Double; var startAddress: String?; var endAddress: String? }
@@ -546,10 +546,14 @@ private let fuelTypes: [FuelOption] = [FuelOption(id: "benzyna95", label: "Benzy
     private var towHitch: Bool { selectedVehicle?.towHitch == true }
     private var fuelType: String { fuelOverride ?? (isExternal ? nil : selectedVehicle?.fuelType) ?? "diesel" }
     private var isLiquidFuel: Bool { fuelTypes.contains { $0.id == fuelType } }
+    /// Pojazd elektryczny: zużycie w kWh/100 km i cena prądu z karty auta (zł/kWh).
+    private var isElectric: Bool { fuelType == "elektryczny" }
+    private var canEstimate: Bool { isLiquidFuel || isElectric }
     private var consumption: String { manualConsumption ?? consumptionInfo?.value.map { EquipmentQty.text($0) } ?? "" }
-    private var price: String { manualPrice[fuelType] ?? quote?.prices[fuelType].map { String($0) } ?? "" }
+    private var vehicleEnergyPrice: String { consumptionInfo?.energyPrice.map { EquipmentQty.text($0) } ?? "" }
+    private var price: String { manualPrice[fuelType] ?? (isElectric ? vehicleEnergyPrice : quote?.prices[fuelType].map { String($0) } ?? "") }
     private var cost: Double? {
-        guard isLiquidFuel, let km = Double(distance.replacingOccurrences(of: ",", with: ".")) else { return nil }
+        guard canEstimate, let km = Double(distance.replacingOccurrences(of: ",", with: ".")) else { return nil }
         return Self.fuelCost(km, Double(consumption.replacingOccurrences(of: ",", with: ".")) ?? 0, Double(price.replacingOccurrences(of: ",", with: ".")) ?? 0)
     }
     private var completePeriod: Bool {
@@ -753,12 +757,14 @@ private let fuelTypes: [FuelOption] = [FuelOption(id: "benzyna95", label: "Benzy
                     }
                     .labelsHidden()
                 }
-                labeled("Średnie spalanie (l/100 km)") {
-                    TextField("Uzupełnij spalanie", text: Binding(get: { consumption }, set: { manualConsumption = $0 })).disabled(!isLiquidFuel || routeLoading)
+                labeled(isElectric ? "Zużycie energii (kWh/100 km)" : "Średnie spalanie (l/100 km)") {
+                    TextField(isElectric ? "np. 27" : "Uzupełnij spalanie", text: Binding(get: { consumption }, set: { manualConsumption = $0 }))
+                        .disabled(!canEstimate || routeLoading)
                 }
-                labeled("Cena paliwa (zł/l)") {
-                    TextField(priceLoading ? "Pobieranie…" : "Uzupełnij cenę", text: Binding(get: { isLiquidFuel ? price : "" }, set: { manualPrice[fuelType] = $0 }))
-                        .disabled(!isLiquidFuel || routeLoading)
+                labeled(isElectric ? "Cena prądu (zł/kWh)" : "Cena paliwa (zł/l)") {
+                    TextField(isElectric ? "np. 1,10" : priceLoading ? "Pobieranie…" : "Uzupełnij cenę",
+                              text: Binding(get: { canEstimate ? price : "" }, set: { manualPrice[fuelType] = $0 }))
+                        .disabled(!canEstimate || routeLoading)
                 }
             }
             if isLiquidFuel {
@@ -769,6 +775,8 @@ private let fuelTypes: [FuelOption] = [FuelOption(id: "benzyna95", label: "Benzy
                     Button("Pobierz cenę") { manualPrice[fuelType] = nil; priceRefresh += 1 }.disabled(priceLoading || routeLoading).controlSize(.small)
                 }
                 if !quoteError.isEmpty { Text(quoteError).font(.caption).foregroundStyle(.orange) }
+            } else if isElectric {
+                Text(electricText).font(.caption).foregroundStyle(.secondary)
             } else {
                 Text("Dla tego napędu uzupełnij koszt energii lub paliwa ręcznie w polu kosztu poniżej.").font(.caption).foregroundStyle(.secondary)
             }
@@ -782,10 +790,23 @@ private let fuelTypes: [FuelOption] = [FuelOption(id: "benzyna95", label: "Benzy
             .controlSize(.small)
             if !routeError.isEmpty { Text(routeError).font(.callout).foregroundStyle(.red) }
             if let route, Double(distance.replacingOccurrences(of: ",", with: ".")) == route.distanceKm { routeSummary(route) }
-            Text("Koszt = łączny dystans × spalanie / 100 × cena litra. Po korekcie spalania lub ceny kliknij „Zastosuj koszt”. Dystans i koszt zapiszesz razem z pojazdem.")
+            Text(isElectric
+                 ? "Koszt = łączny dystans × zużycie kWh / 100 × cena kWh. Po korekcie zużycia lub ceny kliknij „Zastosuj koszt”. Dystans i koszt zapiszesz razem z pojazdem."
+                 : "Koszt = łączny dystans × spalanie / 100 × cena litra. Po korekcie spalania lub ceny kliknij „Zastosuj koszt”. Dystans i koszt zapiszesz razem z pojazdem.")
                 .font(.caption2).foregroundStyle(.secondary)
         }
         .padding(12).background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    private var electricText: String {
+        let usage = manualConsumption != nil ? "Zużycie energii wpisane dla tego przejazdu."
+            : consumptionInfo?.source == "vehicle" && consumptionInfo?.value != nil
+                ? "Zużycie energii z karty auta. Możesz je skorygować dla tego przejazdu (np. obciążenie, teren, temperatura)."
+                : "Uzupełnij zużycie energii (kWh/100 km) na karcie auta lub wpisz je dla tego przejazdu."
+        let energy = manualPrice[fuelType] != nil ? "Cena prądu wpisana ręcznie."
+            : !vehicleEnergyPrice.isEmpty ? "Cena prądu z karty auta."
+            : "Uzupełnij cenę prądu (zł/kWh) na karcie auta lub wpisz ją dla tego przejazdu."
+        return usage + " " + energy
     }
 
     private var consumptionText: String {
@@ -861,7 +882,7 @@ private let fuelTypes: [FuelOption] = [FuelOption(id: "benzyna95", label: "Benzy
                                           URLQueryItem(name: "destination", value: end), URLQueryItem(name: "travelmode", value: "driving")]
                 if let url = components?.url { NSWorkspace.shared.open(url) }
             }
-            .buttonStyle(.link).font(.caption)
+            .buttonStyle(.link).linkCursor().font(.caption)
         }
         .padding(8).background(Color.green.opacity(0.07), in: RoundedRectangle(cornerRadius: 8))
     }
@@ -958,7 +979,7 @@ private let fuelTypes: [FuelOption] = [FuelOption(id: "benzyna95", label: "Benzy
             route = reply
             distance = EquipmentQty.text(reply.distanceKm).replacingOccurrences(of: ",", with: ".")
             apply(plan)
-            if isLiquidFuel {
+            if canEstimate {
                 let computed = Self.fuelCost(reply.distanceKm, Double(consumption.replacingOccurrences(of: ",", with: ".")) ?? 0, Double(price.replacingOccurrences(of: ",", with: ".")) ?? 0)
                 fuelCost = computed.map { String(format: "%.2f", $0) } ?? ""
             } else {

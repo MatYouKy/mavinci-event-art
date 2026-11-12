@@ -203,6 +203,32 @@ struct EventTeamMember: Codable, Hashable, Identifiable {
     var automatic: Bool
     var responsibilityRoles: [String]
     var permissions: [String: Bool]
+    /// Pojazd wydarzenia, którym jedzie osoba (kierowca — `EventTeamTransport.Vehicle.driverId`).
+    var transportVehicleId: String?
+}
+
+/// Transport zespołu: auta wydarzenia z obsadą i ostrzeżenia o miejscach (`summarizeTeamTransport`).
+struct EventTeamTransport: Codable, Equatable {
+    struct Vehicle: Codable, Hashable, Identifiable {
+        var id: String
+        var name: String
+        var registration: String?
+        var seats: Int?
+        var driverId: String?
+        var external: Bool
+        var people: Int
+        var overCapacity: Bool
+        /// „Robur (NO 1234) · 3/5 miejsc”.
+        var label: String {
+            name + (registration.map { " (\($0))" } ?? "") + " · \(people)/\(seats.map(String.init) ?? "?") miejsc"
+        }
+    }
+    var vehicles: [Vehicle]
+    var withoutVehicle: Int
+    var teamSize: Int
+    var knownSeats: Int
+    var shortage: Int?
+    var warnings: [String]
 }
 
 struct EventTeam: Codable, Equatable {
@@ -210,6 +236,7 @@ struct EventTeam: Codable, Equatable {
     var error: Bool
     var leadership: JSONValue?
     var leadershipError: Bool
+    var transport: EventTeamTransport?
     var managerID: String? { leadership?.object["realization"]?.object["manager_id"]?.text.nonEmpty }
     var canManageLeader: Bool { leadership?.object["can_manage"]?.flag == true }
     var canChangeLeader: Bool { leadership?.object["can_change"]?.flag == true }

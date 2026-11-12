@@ -33,7 +33,17 @@ actor HTTPBackend: WorkspaceBackend {
     func restore(_ session: Session) { self.session = session }
     private func persist(_ s: Session) throws {
         guard !invalidated else { throw AppError.unauthorized }
-        try Vault.write(sessionKey, JSONEncoder().encode(s)); session = s
+        let data = try JSONEncoder().encode(s)
+        try Vault.write(sessionKey, data); session = s
+        // Ta sama sesja dla rozszerzenia Findera (kontener grupy aplikacji) — `FinderShared`.
+        if FinderShared.bundledWithExtension { FinderShared.storeSession(data) }
+    }
+    /// Sesja odświeżona w międzyczasie przez rozszerzenie Findera (np. przy zamkniętej aplikacji) — nowsza od naszej.
+    private func sharedSession(newerThan s: Session) -> Session? {
+        guard FinderShared.bundledWithExtension, let data = FinderShared.sessionData(),
+              let shared = try? JSONDecoder().decode(Session.self, from: data),
+              shared.user.id == s.user.id, shared.refresh_token != s.refresh_token, shared.expiresAt > s.expiresAt else { return nil }
+        return shared
     }
     func login(email: String, password: String) async throws -> Session {
         let path = native ? "/api/native/v1/login" : "/auth/v1/token"
@@ -44,14 +54,29 @@ actor HTTPBackend: WorkspaceBackend {
         return s
     }
     func token() async throws -> String {
-        guard let s = session else { throw AppError.unauthorized }
+        guard var s = session else { throw AppError.unauthorized }
+        if let shared = sharedSession(newerThan: s), !invalidated {
+            s = shared; session = shared
+            try? Vault.write(sessionKey, JSONEncoder().encode(shared))
+        }
         if s.expiresAt > Date().timeIntervalSince1970 + 90 { return s.access_token }
         if let refreshJob { return try await refreshJob.value.access_token }
         let path = native ? "/api/native/v1/refresh" : "/auth/v1/token"
+        let current = s
         let job = Task<Session, Error> {
+            // Odświeżenie unieważnia poprzedni token odświeżania, więc aplikacja i rozszerzenie Findera robią to po kolei
+            // (blokada pliku w kontenerze grupy), a po uzyskaniu blokady sprawdzamy, czy drugi proces już nie odświeżył.
+            let lock = FinderShared.bundledWithExtension ? FinderShared.RefreshLock() : nil
+            await lock?.acquire()
+            defer { lock?.release() }
+            if lock != nil, let shared = self.sharedSession(newerThan: current), shared.expiresAt > Date().timeIntervalSince1970 + 90 {
+                return shared
+            }
             let data = try await self.request(path, query: self.native ? [] : [.init(name: "grant_type", value: "refresh_token")],
-                body: ["refresh_token": .string(s.refresh_token)], auth: false)
-            return try JSONDecoder().decode(Session.self, from: data)
+                body: ["refresh_token": .string(current.refresh_token)], auth: false)
+            let renewed = try JSONDecoder().decode(Session.self, from: data)
+            if lock != nil, let encoded = try? JSONEncoder().encode(renewed) { FinderShared.storeSession(encoded) }
+            return renewed
         }
         refreshJob = job
         defer { refreshJob = nil }

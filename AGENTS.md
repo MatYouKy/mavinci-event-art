@@ -40,7 +40,7 @@
 
 ## Mavinci: natywna aplikacja macOS
 
-- `desktop/mac/` jest aplikacją SwiftUI macOS 14+, na tym samym poziomie co `mobile/`; nie zastępuje `macos-sync-app/`. Instrukcja i jawne braki: `desktop/mac/README.md`; kontrakt przyszłego własnego serwera: `docs/desktop-native-api.md`.
+- `desktop/mac/` jest aplikacją SwiftUI macOS 14+, na tym samym poziomie co `mobile/`; zastąpiła usunięte `macos-sync-app/` (pliki wydarzeń w Finderze — rozszerzenie `Sources/MavinciFileProvider/`, ikona na pasku menu; synchronizacji Przypomnień Apple jeszcze nie przeniesiono, serwer `/bridge/tasks/sync` zostaje). Instrukcja i jawne braki: `desktop/mac/README.md`; kontrakt przyszłego własnego serwera: `docs/desktop-native-api.md`.
 - Każdy nowy moduł wykorzystuje istniejące reguły, zakres konta, RLS i RPC; nie przenoś uprawnień ani kalkulacji finansowych do Swift. Odwzoruj działanie CRM i mobile, a odłożone funkcje wpisuj do instrukcji.
 - Widoki macOS są natywne: tabele, zaznaczenie, menu kontekstowe, skróty i SF Symbols. Nie zastępuj czynności panelem WWW.
 - Backend jest źródłem prawdy. Lokalna kopia jest szyfrowana i oddzielona per konto / połączenie; offline tylko odczyt. Wylogowanie i zmiana zakresu usuwają starą kopię. Zapis wymaga potwierdzenia; nie ponawiaj automatycznie niepotwierdzonej operacji.

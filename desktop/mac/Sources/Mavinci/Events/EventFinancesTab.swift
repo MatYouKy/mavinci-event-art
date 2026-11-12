@@ -413,7 +413,7 @@ enum FinanceText {
             if c.automatic {
                 HStack(spacing: 6) {
                     Text("Z podsumowania wydarzenia · " + d.automaticHint.lowercased() + " ·").font(.caption2).foregroundStyle(.secondary)
-                    Button("Wyliczenie: zakładka Podsumowanie") { if let navigate { navigate("summary") } else { state.showEvent(eventID, cardTab: "summary") } }.buttonStyle(.link).font(.caption2)
+                    Button("Wyliczenie: zakładka Podsumowanie") { if let navigate { navigate("summary") } else { state.showEvent(eventID, cardTab: "summary") } }.buttonStyle(.link).linkCursor().font(.caption2)
                     Spacer()
                     if approve && (c.status == "planned" || c.status == "approved") { Button("Anuluj") { cancelReason = ""; cancelling = c }.controlSize(.small) }
                     if approve && c.status == "cancelled" {
@@ -941,7 +941,7 @@ enum FinanceText {
             Text(line).font(.caption).foregroundStyle(.secondary)
             if let invoiceID = item.invoiceId {
                 Button((data.invoices.first { $0.id == invoiceID }?.number ?? "Otwórz fakturę") + " · płatność aktualizowana z finansów") { state.openCRM("/crm/invoices/\(invoiceID)") }
-                    .buttonStyle(.link).font(.caption)
+                    .buttonStyle(.link).linkCursor().font(.caption)
             }
             if canManage {
                 HStack {

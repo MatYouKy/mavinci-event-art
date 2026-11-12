@@ -55,6 +55,7 @@ interface Vehicle {
   category: string;
   fuel_type: string;
   average_fuel_consumption?: number | null;
+  energy_price_per_kwh?: number | null;
   current_mileage: number;
   color: string;
   power_hp: number;
@@ -712,10 +713,19 @@ export default function VehicleDetailPage() {
                       <div className="mt-1"><SystemBadge value={vehicle.fuel_type} domain="fuel" preserveCustom /></div>
                     </div>
 
-                    {vehicle.fuel_type !== 'elektryczny' && <div>
-                      <span className="text-sm text-[#e5e4e2]/60">Średnie spalanie do kalkulacji</span>
+                    <div>
+                      <span className="text-sm text-[#e5e4e2]/60">
+                        {vehicle.fuel_type === 'elektryczny' ? 'Zużycie energii do kalkulacji' : 'Średnie spalanie do kalkulacji'}
+                      </span>
                       <p className="font-medium text-[#e5e4e2]">{vehicle.average_fuel_consumption != null
-                        ? `${Number(vehicle.average_fuel_consumption).toLocaleString('pl-PL', { maximumFractionDigits: 2 })} l/100 km`
+                        ? `${Number(vehicle.average_fuel_consumption).toLocaleString('pl-PL', { maximumFractionDigits: 2 })} ${vehicle.fuel_type === 'elektryczny' ? 'kWh/100 km' : 'l/100 km'}`
+                        : 'Nie podano'}</p>
+                    </div>
+
+                    {vehicle.fuel_type === 'elektryczny' && <div>
+                      <span className="text-sm text-[#e5e4e2]/60">Cena prądu do kalkulacji</span>
+                      <p className="font-medium text-[#e5e4e2]">{vehicle.energy_price_per_kwh != null
+                        ? `${Number(vehicle.energy_price_per_kwh).toLocaleString('pl-PL', { maximumFractionDigits: 4 })} zł/kWh`
                         : 'Nie podano'}</p>
                     </div>}
 

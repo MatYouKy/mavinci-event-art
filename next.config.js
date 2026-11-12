@@ -1,5 +1,8 @@
 const { PHASE_DEVELOPMENT_SERVER } = require('next/constants');
 
+// Znacznik builda — karta przeglądarki ze starszym kodem pokazuje pasek „Odśwież” (`AppVersionWatcher`, `/bridge/app-version`).
+const APP_BUILD = process.env.APP_BUILD_ID || Date.now().toString(36);
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'standalone',
@@ -32,7 +35,6 @@ const nextConfig = {
         protocol: 'https',
         hostname: '*.supabase.co',
       },
-      { protocol: 'https', hostname: 'fuuljhhuhfojtmmfmskq.supabase.co' }
     ],
   },
   reactStrictMode: true,
@@ -57,4 +59,7 @@ const nextConfig = {
 module.exports = (phase) => ({
   ...nextConfig,
   distDir: phase === PHASE_DEVELOPMENT_SERVER ? '.next' : '.next-build',
+  env: {
+    NEXT_PUBLIC_APP_BUILD: phase === PHASE_DEVELOPMENT_SERVER ? '' : APP_BUILD,
+  },
 });

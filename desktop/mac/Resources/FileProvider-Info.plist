@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleName</key><string>Mavinci</string>
+<key>CFBundleDisplayName</key><string>Mavinci</string>
+<key>CFBundleIdentifier</key><string>pl.mavinci.desktop.FileProvider</string>
+<key>CFBundleExecutable</key><string>MavinciFileProvider</string>
+<key>CFBundlePackageType</key><string>XPC!</string>
+<key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+<key>CFBundleShortVersionString</key><string>__VERSION__</string>
+<key>CFBundleVersion</key><string>__BUILD__</string>
+<key>CFBundleDevelopmentRegion</key><string>pl</string>
+<key>LSMinimumSystemVersion</key><string>14.0</string>
+<key>CFBundleIcons</key><dict>
+<key>CFBundlePrimaryIcon</key><dict><key>CFBundleSymbolName</key><string>mavinci.signet</string></dict>
+</dict>
+<key>NSExtension</key><dict>
+<key>NSExtensionPointIdentifier</key><string>com.apple.fileprovider-nonui</string>
+<key>NSExtensionPrincipalClass</key><string>MavinciFileProviderExtension</string>
+<key>NSExtensionFileProviderDocumentGroup</key><string>5DC8P5M489.pl.mavinci</string>
+<key>NSExtensionFileProviderSupportsEnumeration</key><true/>
+</dict>
+</dict></plist>

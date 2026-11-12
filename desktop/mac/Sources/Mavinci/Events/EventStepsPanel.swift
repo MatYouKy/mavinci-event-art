@@ -31,7 +31,7 @@ struct EventStepRequest: Identifiable { let step: EventStep; let action: String;
                 Text("Kroki realizacji").font(.headline)
                 HStack(spacing: 6) {
                     Text("Nie udało się wczytać kroków realizacji.").foregroundStyle(.red)
-                    Button("Spróbuj ponownie") { Task { await store.loadOverview(eventID) } }.buttonStyle(.link)
+                    Button("Spróbuj ponownie") { Task { await store.loadOverview(eventID) } }.buttonStyle(.link).linkCursor()
                 }
                 .font(.callout)
             }
@@ -71,7 +71,7 @@ struct EventStepRequest: Identifiable { let step: EventStep; let action: String;
             if let error = store.overviewErrors[eventID] {
                 HStack(spacing: 6) {
                     Text(error).foregroundStyle(CrmTheme.rgb(0xfde68a).opacity(0.85))
-                    Button("Odśwież") { Task { await store.loadOverview(eventID) } }.buttonStyle(.link)
+                    Button("Odśwież") { Task { await store.loadOverview(eventID) } }.buttonStyle(.link).linkCursor()
                 }
                 .font(.caption)
             }
@@ -114,7 +114,7 @@ struct EventStepRequest: Identifiable { let step: EventStep; let action: String;
             }
             if waiting.count > waitingPreview {
                 Button(showAllWaiting ? "Pokaż mniej" : "Pokaż wszystkie (\(waiting.count))") { showAllWaiting.toggle() }
-                    .buttonStyle(.link).font(.caption)
+                    .buttonStyle(.link).linkCursor().font(.caption)
             }
         }
         .padding(12).frame(maxWidth: .infinity, alignment: .leading)

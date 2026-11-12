@@ -1,5 +1,6 @@
 import 'server-only';
 import type { NativeContext } from './auth';
+import { compareEquipmentOrder, equipmentRowOrderKey } from '@/lib/events/equipment/equipmentChecklist';
 import { imageCrop } from './team';
 import { registerEventActions, registerEventQueries, registerEventTab } from './eventTabs';
 import { kitEventLimits } from '@/lib/CRM/equipment/kitInventory';
@@ -210,14 +211,15 @@ async function availability(ctx: NativeContext, event: EventDates, catalog: bool
 const EQUIPMENT_SELECT = `
   *,
   equipment:equipment_items(name, brand, model, cable_specs, thumbnail_url, warehouse_category_id, category:warehouse_categories(id, name, parent_id)),
-  kit:equipment_kits(name, thumbnail_url, items:equipment_kit_items(quantity, equipment:equipment_items(name, brand, model, cable_specs, thumbnail_url, warehouse_category_id, category:warehouse_categories(id, name, parent_id)))),
-  cable:cables(id, name, description, length_meters, stock_unit, thumbnail_url)`;
+  kit:equipment_kits(name, thumbnail_url, category:warehouse_categories(name), items:equipment_kit_items(quantity, equipment:equipment_items(name, brand, model, cable_specs, thumbnail_url, warehouse_category_id, category:warehouse_categories(id, name, parent_id)))),
+  cable:cables(id, name, description, length_meters, stock_unit, thumbnail_url, category:warehouse_categories(name))`;
 
 async function equipmentRows(ctx: NativeContext, eventId: string) {
   const { data, error } = await ctx.supabase.from('event_equipment').select(EQUIPMENT_SELECT).eq('event_id', eventId)
     .or('removed_from_offer.is.null,removed_from_offer.eq.false').order('created_at', { ascending: true });
   if (error) throw error;
-  return (data || []) as any[];
+  // Jedna kolejność wszędzie (CRM, Mac, telefon, PDF): zestawy, sprzęt, przewody; kategoria, nazwa.
+  return ((data || []) as any[]).sort((a, b) => compareEquipmentOrder(equipmentRowOrderKey(a), equipmentRowOrderKey(b)));
 }
 
 const rowKey = (row: any): string | null =>

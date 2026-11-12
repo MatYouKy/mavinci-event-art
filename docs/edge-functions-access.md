@@ -114,10 +114,10 @@ Kolejność (ważna — inaczej zadania cron przestaną działać):
 2. Zapisz ją w Vault: `select vault.create_secret('<wartość>', 'internal_function_secret', 'X-Internal-Function-Secret dla Edge Functions');`
 3. Migracja (sekcja 7, pkt 1): `invoke_scheduled_tender_scan()`, `invoke_ai_email_qualification()` i trigger `dispatch_notification_recipient_push()` wysyłają nagłówek `X-Internal-Function-Secret` (sekret czytany z `vault.decrypted_secrets`).
 4. Wdróż funkcje z sekcji 9 i CRM (nowy `ImportControls` wysyła token sesji).
-5. Na końcu: `supabase secrets set INTERNAL_FUNCTION_SECRET=<ta sama wartość> --project-ref fuuljhhuhfojtmmfmskq`.
+5. Na końcu: `supabase secrets set INTERNAL_FUNCTION_SECRET=<ta sama wartość> --project-ref wjxnyvcxhhxjytfwpwvu`.
 6. Sprawdź: `select status_code, count(*) from net._http_response where created > now() - interval '15 minutes' group by 1;` (oczekiwane 200), ręczny import przetargów w CRM, push z powiadomienia CRM na telefonie.
 
-Wycofanie: `supabase secrets unset INTERNAL_FUNCTION_SECRET --project-ref fuuljhhuhfojtmmfmskq` przywraca tryb zgodności bez ponownego wdrażania.
+Wycofanie: `supabase secrets unset INTERNAL_FUNCTION_SECRET --project-ref wjxnyvcxhhxjytfwpwvu` przywraca tryb zgodności bez ponownego wdrażania.
 
 ## 7. Zmiany wymagane w bazie
 
@@ -172,7 +172,7 @@ Wzorce w repo: `create-employee` (administrator), `send-event-confirmation` (zar
 supabase functions deploy create-employee create-auth-for-employee send-email send-push-notification \
   generate-contract-pdf generate-agenda-pdf send-event-invitation send-event-confirmation \
   track-marketing-event fetch-tenders qualify-incoming-email send-crm-notification-push \
-  --project-ref fuuljhhuhfojtmmfmskq
+  --project-ref wjxnyvcxhhxjytfwpwvu
 ```
 
 - Pilne (otwarte dziury): `create-employee`, `create-auth-for-employee`, `send-email`, `send-push-notification`, `generate-contract-pdf`, `generate-agenda-pdf`.

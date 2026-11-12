@@ -295,3 +295,72 @@ Aplikacja na Maca: karta wydarzenia nie wymusza minimalnej szerokości, więc pa
 ### Pliki wydarzeń w Finderze — etap 1: serwer, kosz na 30 dni (2026-11-12)
 
 Baza: migracja `20261112120000_finder_files_sync.sql` — w `event_files` wersja treści (`content_version`, `content_sha256`) i nazwy (`meta_version`), w `event_folders` `meta_version`, `updated_at` przy każdej zmianie; tabele `event_file_versions` (poprzednie treści), `event_file_tombstones` (ślady usunięć) i `event_file_trash` (kosz na 30 dni, wpisy tworzą wyzwalacze przy każdym usunięciu); funkcje `restore_event_trash` (przywracanie z uprawnieniami użytkownika, folder z zawartością), `event_file_paths_in_use` i `purge_event_file_tombstones`. API: `/bridge/native/v1/files` (`src/lib/native/finderFiles.ts`) — wydarzenia, zawartość, zmiany od kursora, pobieranie, wysyłanie, zmiana nazwy / przeniesienie, podmiana treści z wykrywaniem konfliktu, kosz, przywracanie, sprzątanie. Zmiana zachowania: usuwanie w zakładce Pliki (CRM i Mac) nie kasuje już obiektu z magazynu od razu — wpis trafia do kosza, magazyn sprząta `purge`. Mobile: nie dotyczy — telefon nie usuwa plików wydarzeń i nie ma Findera; kosz działa po stronie bazy dla każdego klienta. Kod zapisany; zgodnie z .build-policy.md bez builda, typechecka i lintowania; migrację uruchamia użytkownik.
+
+### Mac: „Mavinci” w Finderze — etap 2, przeglądanie plików wydarzeń (2026-11-12)
+
+Aplikacja na Maca: rozszerzenie File Provider `MavinciFileProvider` (Mavinci → Eventy → rok → „RRRR-MM-DD Nazwa” → foldery i pliki), tylko odczyt; korzysta z API `/bridge/native/v1/files` z etapu 1 (serwer i baza bez zmian). Sesja dzielona z rozszerzeniem przez kontener grupy aplikacji z blokadą odświeżania tokenu; `build-app.sh` dokłada rozszerzenie przy podpisie zespołem Mavinci. Mobile: nie dotyczy — Finder i rozszerzenia File Provider są tylko na macOS. Kod zapisany; zgodnie z .build-policy.md bez builda, typechecka i lintowania.
+
+### Mac: zapis z Findera, pasek menu, koniec „Mavinci Reminders” (2026-11-12)
+
+Aplikacja na Maca: rozszerzenie Findera zapisuje do CRM (dodawanie, edycja z kopią przy konflikcie, zmiana nazwy, przenoszenie, Kosz Findera = kosz CRM), ikona Mavinci na pasku menu (stan, wersja, skróty), „Pokaż w Finderze” w zakładce Pliki. API `/bridge/native/v1/files`: przenoszenie pliku między wydarzeniami, przywracanie i usuwanie z kosza po identyfikatorze elementu (`itemIds`), pobieranie pliku z kosza, `mine` w liście kosza. Usunięta stara synchronizacja folderów (`macos-sync-app`, `/bridge/mac-sync/*`, `src/lib/macSync.server.ts`, panel „Folder Mac / iCloud” `MacFolderSyncPanel` w zakładce Pliki CRM, migracja `20261112200000_drop_mac_sync.sql` — puste tabele `mac_sync_*`). Mobile: nie dotyczy — Finder, pasek menu i dawna aplikacja „Mavinci Reminders” są tylko na macOS; telefon nie korzystał z `/bridge/mac-sync`. Kod zapisany; zgodnie z .build-policy.md bez builda, typechecka i lintowania; migrację uruchamia użytkownik.
+
+### Mac: zakładki karty wydarzenia jak w Finderze, kolejność pracownika (2026-11-12)
+
+Aplikacja na Maca: pasek zakładek karty wydarzenia jak w Finderze — równe zakładki w obramowaniu z ikoną i nazwą (bez zamykania), aktywna w złotym akcencie motywu, przy wąskim oknie skracane, poniżej minimalnej szerokości przewijane; kolejność zmienia się przeciąganiem albo z menu (w lewo / w prawo / domyślna) i jest zapamiętywana na Macu osobno dla każdego pracownika. Serwer bez zmian. Mobile: nie dotyczy — telefon nie ma karty wydarzenia z tymi zakładkami. Kod zapisany; zgodnie z .build-policy.md bez builda, typechecka i lintowania.
+
+### Mac: podgląd PDF i szuflada „Wydruki” w karcie wydarzenia (2026-11-12)
+
+Aplikacja na Maca: podgląd dokumentów na niemal całą wysokość okna, PDF od razu w całości strony, powiększenie (−, %, +, szerokość, cała strona), przechodzenie po stronach, druk. Przycisk drukarki w karcie wydarzenia otwiera szufladę „Wydruki”: karta imprezy na żądanie i dokumenty wygenerowane w wydarzeniu (oferty, kalkulacje, umowy, agenda, checklisty sprzętu, faktury) z podglądem i szybkim drukiem. API: odczyt `/bridge/native/v1/events/card` → `op=tabQuery&tab=files&query=documents` (`event_files` z `document_type`, RLS jak w zakładce Pliki). Mobile: nie dotyczy — telefon nie ma karty wydarzenia z wydrukami; odczyt `documents` jest gotowy, gdyby miał je pokazać. Kod zapisany; zgodnie z .build-policy.md bez builda, typechecka i lintowania.
+
+### Mac: pasek zakładek karty wydarzenia ze strzałkami (2026-11-12)
+
+Zakładki karty wydarzenia w aplikacji na Maca mają szerokość według pełnej nazwy i stałą wysokość paska; gdy nie mieszczą się w oknie, po bokach pojawiają się strzałki ‹ › (przewijanie o widoczną szerokość) i lista wszystkich zakładek, a wybrana zakładka sama wjeżdża w widok. Mobile: nie dotyczy — zmiana wyglądu paska zakładek tylko w aplikacji na Maca; telefon ma własną nawigację karty wydarzenia. Kod zapisany; zgodnie z .build-policy.md bez builda.
+
+### Umowy: style dokumentu w szablonach — etap 1 (2026-11-12)
+
+Fundament nowego formatu szablonów umów: style jak w Wordzie zapisane raz w szablonie (`page_settings.documentStyles`: Tytuł, Nagłówek sekcji, Punkt, Podpunkt, Podpunkt 2. stopnia, Zwykły, Tabela) i znacznik stylu przy akapicie (`data-style`) zamiast powtarzanych stylów przy każdym fragmencie (`src/lib/CRM/contracts/contractDocumentStyles.ts`). Konwerter starych szablonów (`contractTemplateConverter.ts`) odczytuje wygląd z podglądu i buduje z niego style; pola, miejsca na klauzule, sekcje warunkowe i numeracja zostają. `renderContractDocument` nakłada style przed podziałem na strony, więc podgląd i PDF działają jak dotąd; typografia klauzul produktów wynika z tych samych stylów. Szablony w starym formacie i wystawione umowy bez zmian — żaden szablon nie jest jeszcze konwertowany (edytor w etapie 2). Mobile: nie dotyczy — telefon nie generuje ani nie edytuje umów; widzi gotowe PDF w plikach wydarzenia. Kod zapisany; zgodnie z .build-policy.md bez builda, typechecka i lintowania.
+
+### Powiadomienia: bez powiadomień o własnych działaniach (2026-11-12)
+
+Migracja `20261112210000_skip_own_action_notifications.sql`: osoba, która sama wykonała zmianę (np. dodała siebie jako kierowcę, wyznaczyła siebie na kierownika realizacji, sprzedawca zmienił swoje wydarzenie), nie dostaje o niej powiadomienia — strażnik na `notification_recipients` pomija odbiorcę równego `auth.uid()`; powiadomienia z zadań automatycznych bez zmian; wyjątek `metadata.allow_self = true`. „Wyznaczono Cię na kierownika realizacji” pomijane także przy `appointed_by` = wyznaczony. Mobile: obejmuje — telefon czyta te same powiadomienia i push z `notification_recipients`, zmiana działa bez zmian w aplikacji. Kod zapisany; migrację uruchamia użytkownik.
+
+### Zespół wydarzenia: zakres widoczności z roli pracownika (2026-11-12)
+
+Okna „Dodaj osobę do zespołu” w CRM i w aplikacji na Maca nie mają pola „Poziom dostępu” — co osoba widzi w wydarzeniu, wynika z jej roli w ustawieniach pracownika. Migracja `20261112212000_event_team_access_from_employee.sql` ustawia `employee_assignments.access_level_id` z `employees.access_level_id` przy każdym dodaniu (CRM, Mac, kreator, timeline, telefon). Uprawnienia do edycji w wydarzeniu bez zmian. Mobile: obejmuje — telefon nie ma tego pola; dodanie z telefonu też dostaje poziom pracownika z bazy. Kod zapisany; zgodnie z .build-policy.md bez builda; migrację uruchamia użytkownik.
+
+### Logistyka: pojazdy elektryczne — kWh/100 km i cena prądu (2026-11-12)
+
+Karta auta elektrycznego (CRM): „Średnie zużycie energii (kWh/100 km)” (w `vehicles.average_fuel_consumption`) i „Cena prądu (zł/kWh)” (nowa kolumna `vehicles.energy_price_per_kwh`, migracja `20261112213000_vehicle_energy_price.sql`). Kalkulator trasy pojazdu w CRM i w aplikacji na Maca liczy dla napędu elektrycznego koszt energii: dystans × kWh/100 km / 100 × cena kWh (wartości z karty auta, do skorygowania dla przejazdu); spalinowe bez zmian. Mobile: nie dotyczy — telefon nie edytuje kart aut ani nie liczy kosztów trasy. Kod zapisany; zgodnie z .build-policy.md bez builda; migrację uruchamia użytkownik.
+
+### Zespół: którym autem jedzie osoba, kontrola miejsc (2026-11-12)
+
+Migracja `20261112214000_event_team_transport.sql`: `employee_assignments.transport_event_vehicle_id` (auto z logistyki wydarzenia; kierowca nadal w `event_vehicles.driver_id`). Zakładka Zespół (CRM i aplikacja na Maca): kolumna/oznaczenie „Transport”, w menu ⋯ przy osobie „Jedzie autem” (auta z obsadą „3/5 miejsc”, „Bez auta (dojazd własny)”), nad listą obsada aut i ostrzeżenia, gdy w aucie lub we wszystkich autach brakuje miejsc siedzących (`vehicles.number_of_seats`). Wspólna logika: `src/lib/CRM/events/teamTransport.ts`. Mobile: nie dotyczy — telefon nie zarządza zespołem ani logistyką wydarzenia. Kod zapisany; zgodnie z .build-policy.md bez builda; migrację uruchamia użytkownik.
+
+### Mac: okno „Zarządzaj sprzętem” — znacznik, zatwierdzanie ilości, powiązania (2026-11-12)
+
+Aplikacja na Maca: pozycje już w wydarzeniu mają zielony znacznik ✓ i zieloną nazwę; ilość zmieniona przyciskami − / + (w oknie i na liście sprzętu) czeka na zatwierdzenie ✓ albo ↩ (✕ przywraca) — bez zapisu po każdym kliknięciu; dwuklik i menu dodają od razu. Dodany sprzęt z powiązanymi elementami (komponenty, np. blat) pokazuje w oknie informację i otwiera „Komponenty zestawu” nad oknem sprzętu; okno komponentów ma wiersze na całą szerokość (miniatura, typ, dostępność, ilość − / +, „Nie używamy”). Mobile: nie dotyczy — telefon nie dodaje sprzętu do wydarzenia. Kod zapisany; zgodnie z .build-policy.md bez builda.
+
+### Mac: kursor „łapka” nad linkami (2026-11-12)
+
+Aplikacja na Maca: nad elementami działającymi jak link (styl linku, „Edytuj” w szczegółach wydarzenia) kursor zmienia się w łapkę (`Brand/LinkCursor.swift`, `.linkCursor()`); zwykłe przyciski zostają ze strzałką jak w aplikacjach systemowych. Mobile: nie dotyczy — brak kursora. Kod zapisany; zgodnie z .build-policy.md bez builda.
+
+### Sprzęt i checklista: jedna kolejność wszędzie (2026-11-12)
+
+Lista sprzętu i checklista w CRM, w aplikacji na Maca i w telefonie oraz PDF checklisty mają tę samą kolejność: zestawy, sprzęt, przewody; w każdej grupie kategoria magazynu (bez kategorii na końcu), potem nazwa (polski alfabet, liczby naturalnie). Wspólna funkcja `compareEquipmentOrder` / `equipmentRowOrderKey` w `src/lib/events/equipment/equipmentChecklist.ts` (kopia w `mobile/src/lib/equipmentChecklist.ts`); `parseEquipmentChecklist` zwraca pozycje w tej kolejności; zapytania sprzętu pobierają kategorię zestawów i przewodów. Mobile: obejmuje — checklista w telefonie ma nagłówki grup (np. „Zestawy · Oświetlenie”) w tej samej kolejności. Kod zapisany; zgodnie z .build-policy.md bez builda.
+
+### Karta imprezy: „Jadą razem” z przydziału aut w zespole (2026-11-12)
+
+Karta imprezy (PDF, ten sam generator dla CRM, Maca i telefonu) w sekcji „Transport i trasy” pokazuje przy każdym aucie osoby przypisane w zakładce Zespół („Jedzie autem”); osoby z etapu „Dojazd” bez przypisania — jak dotąd (jedno auto: dopisane, kilka aut: komunikat z prośbą o przydział). Mobile: obejmuje — telefon otwiera ten sam PDF. Kod zapisany; zgodnie z .build-policy.md bez builda.
+
+### CRM w przeglądarce: pasek „Jest nowa wersja CRM” (2026-11-12)
+
+Po wdrożeniu karta CRM otwarta na starszej wersji pokazuje na dole pasek „Jest nowa wersja CRM. Zapisz zmiany i odśwież stronę.” z przyciskiem „Odśwież” (`AppVersionWatcher` porównuje znacznik builda z `/bridge/app-version` przy powrocie do karty i co 5 minut). Bez samoczynnego przeładowania — w karcie może być niezapisany formularz. Powód: po przeniesieniu bazy do Frankfurtu jedna karta otwarta od kilku dni dalej łączyła się ze starym projektem. Mobile: nie dotyczy — aplikacja sama pobiera aktualizacje OTA przy starcie i powrocie do aplikacji (`useOtaUpdates`). Mac: nie dotyczy — aplikacja natywna, wersję zmienia instalacja.
+
+### Umowy: edytor szablonów jak Word (etap 2, 2026-11-12)
+
+Szablon umowy w formacie stylów dokumentu (`page_settings.documentStyles`) otwiera się w nowym edytorze (TipTap): kartka A4 z logo, wstążka (Narzędzia główne, Wstaw, Układ, Podgląd), galeria stylów (Tytuł, Nagłówek sekcji, Punkt, Podpunkt, Podpunkt 2. stopnia, Zwykły, Tabela) z „Modyfikuj styl”, skróty ⌘⌥0–4 i ⌘S, Tab/Shift+Tab — poziom punktu. Wklejanie z Worda, Dokumentów Google i stron WWW zostawia akapity, listy z poziomami, tabele, pogrubienie, kursywę, podkreślenie i linki, a pomija czcionki, rozmiary, kolory i odstępy (`contractPasteCleaner.ts`). Zapis jest w tej samej formie co dotąd (`contractEditorHtml.ts`), więc podgląd, PDF i generowanie umów działają bez zmian — sprawdzone na „UNIWERSALNA” (4 strony przed i po) i „Wesela” (1 strona). Stary szablon ma nad edytorem pasek „Przekształć szablon” (porównanie liczby stron, kopia poprzedniej wersji w `page_settings.legacyFormatBackup`); nowe szablony od razu powstają w nowym formacie. Umowy wydarzeń edytuje na razie stary edytor (etap 4). Mobile: nie dotyczy — szablony umów edytuje się tylko w CRM w przeglądarce. Mac: zakładka umowy w etapie 5.
+
+### Umowy: sekcje warunkowe i scalanie wariantów (etap 3, 2026-11-12)
+
+Szablon umowy może mieć akapity, punkty i całe sekcje widoczne tylko w części umów (`data-contract-if`, `contractConditions.ts`): klient (firma / osoba prywatna — z wydarzenia), rodzaj wydarzenia (kategoria), opcja umowy (np. „Nocleg dla wykonawcy”, definiowana w szablonie z wartością domyślną, przełączana przy każdej umowie) albo wypełnione pole; każdy także odwrotnie. Edytor szablonu: zakładka „Warunki” (dodaj / zmień / usuń warunek, opcje umowy, „Scal z szablonem…” — różnice między szablonami stają się sekcjami warunkowymi, `contractTemplateMerge.ts`), symulacja „Pokaż jako” (przygasza treść, której nie dostanie klient; podgląd stron i PDF pokazują dokładnie jego wersję). Umowa wydarzenia: warunki liczą się automatycznie, a „Edycja informacji podstawowych” ma sekcję „Warunki umowy” (klient, opcje); źródło umowy zachowuje sekcje warunkowe, więc zmiana opcji przelicza treść. Dotychczasowy warunek „pole wypełnione” (np. numer zamówienia w UNIWERSALNEJ) działa bez zmian. Mobile: nie dotyczy — szablony i treść umów edytuje się w CRM w przeglądarce; telefon pokazuje gotowy PDF. Mac: zakładka umowy w etapie 5.
+

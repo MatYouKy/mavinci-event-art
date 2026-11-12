@@ -1,3 +1,5 @@
+import { applyContractConditionsInElement } from './contractConditions';
+
 export const CONTRACT_CLAUSE_SLOTS = [
   {
     key: '{{contract_clauses_conditions}}',
@@ -197,10 +199,19 @@ export const decorateContractClauseSlots = (html: string) => {
  * Brak obszaru jest raportowany wywołującemu. Nie doklejamy klauzul na końcu,
  * ponieważ tworzyłoby to dokument niezgodny z układem zatwierdzonym w szablonie.
  */
+export interface PlaceContractClausesOptions {
+  /**
+   * Zostaw sekcje warunkowe w treści (źródło umowy, które przelicza się po zmianie opcji). Bez tej flagi treść
+   * z niespełnionym warunkiem jest usuwana — jak w gotowej umowie.
+   */
+  keepConditions?: boolean;
+}
+
 export const placeContractClauses = (
   flow: string,
   sourceVariables: Record<string, string>,
   overriddenKeys: string[] = [],
+  options: PlaceContractClausesOptions = {},
 ) => {
   const nextVariables = { ...sourceVariables };
   const declaredSlots = new Set<string>();
@@ -272,10 +283,8 @@ export const placeContractClauses = (
   if (typeof document !== 'undefined') {
     const renderedTemplate = document.createElement('div');
     renderedTemplate.innerHTML = flowContent;
-    renderedTemplate.querySelectorAll<HTMLElement>('[data-contract-if]').forEach((block) => {
-      const key = block.dataset.contractIf || '';
-      if (/^[A-Za-z0-9_]+$/.test(key) && !hasVisibleClauseContent(sourceVariables[key])) block.remove();
-    });
+    // Warunki: klient (firma/osoba), kategoria wydarzenia, opcje umowy, wypełnione pola (`contractConditions.ts`).
+    if (!options.keepConditions) applyContractConditionsInElement(renderedTemplate, sourceVariables);
     const used = new Set<string>();
     renderedTemplate.querySelectorAll<HTMLElement>('[data-contract-clause-slot]').forEach((slot) => {
       const name = normalizeSlotName(slot.dataset.contractClauseSlot);

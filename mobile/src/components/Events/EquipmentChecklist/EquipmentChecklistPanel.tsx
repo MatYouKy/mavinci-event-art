@@ -19,6 +19,7 @@ import { useForegroundEffect } from '../../../hooks/useForegroundEffect';
 import { createRefreshQueue } from '../../../lib/refreshQueue';
 import { formatEventStepDate } from '../../../lib/eventSteps';
 import {
+  EQUIPMENT_KIND_SECTION_LABELS,
   EQUIPMENT_LOG_LABELS,
   EQUIPMENT_RETURN_PHOTO_LIMIT,
   EQUIPMENT_STAGE_HINTS,
@@ -1080,12 +1081,16 @@ export default function EquipmentChecklistPanel({ eventId, onChanged, legacy, re
           )}
           {!stageLocked &&
             visibleLines.map((line, index) => {
+              // Ta sama kolejność co w CRM i na Macu: zestawy, sprzęt, przewody; w grupie kategoria, potem nazwa.
               const category = line.category || 'Inne';
-              const previous = index > 0 ? visibleLines[index - 1].category || 'Inne' : null;
+              const prior = index > 0 ? visibleLines[index - 1] : null;
+              const section = EQUIPMENT_KIND_SECTION_LABELS[line.kind];
+              const newSection = !prior || prior.kind !== line.kind;
+              const newCategory = newSection || (prior?.category || 'Inne') !== category;
               const key = lineKey(selected, line.id);
               return (
                 <React.Fragment key={key}>
-                  {category !== previous && <Text style={styles.category}>{category}</Text>}
+                  {newCategory && <Text style={styles.category}>{line.kind === 'equipment' ? category : `${section} · ${category}`}</Text>}
                   <EquipmentLineRow
                     line={line}
                     stage={selected}

@@ -83,7 +83,7 @@ private struct NoteSpec {
                 HStack(spacing: 8) {
                     Image(systemName: "exclamationmark.triangle").foregroundStyle(.red)
                     Text(tab.error ?? "Nie udało się wczytać checklisty sprzętu.").font(.callout)
-                    Button("Spróbuj ponownie") { Task { await store.loadTab(eventID, "equipment-checklist") } }.buttonStyle(.link)
+                    Button("Spróbuj ponownie") { Task { await store.loadTab(eventID, "equipment-checklist") } }.buttonStyle(.link).linkCursor()
                 }
                 .padding(12).frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
@@ -91,7 +91,7 @@ private struct NoteSpec {
         } else if let error = store.tabErrors["\(eventID)|equipment-checklist"] {
             HStack(spacing: 8) {
                 Text(error).font(.callout).foregroundStyle(.red)
-                Button("Spróbuj ponownie") { Task { await store.loadTab(eventID, "equipment-checklist") } }.buttonStyle(.link)
+                Button("Spróbuj ponownie") { Task { await store.loadTab(eventID, "equipment-checklist") } }.buttonStyle(.link).linkCursor()
             }
         } else {
             Text("Wczytywanie checklisty sprzętu…").font(.callout).foregroundStyle(.secondary)

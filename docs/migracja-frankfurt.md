@@ -131,3 +131,20 @@ Supabase wycofuje klucze `anon` / `service_role` do końca 2026 ([Migrating to p
 - Funkcje w bazie czytają też sekrety Vault, których nie ma w starym projekcie (`marketing_worker_secret`, `subcontractor_reminder_secret`, `crm_base_url`, `marketing_cron_secret`, `service_role_key`, `supabase_url`) — przenosiny tego nie zmieniają; do sprawdzenia osobno.
 - `supabase/config.toml` ma `verify_jwt = false` dla `respond-subcontractor-assignment` i `process-subcontractor-reminders` (sprawdzają token / sekret same), starsze wdrożenie w produkcji ma `true` — w nowym projekcie wdrażamy zgodnie z repo.
 - Zrzut danych pomija pliki Storage, Vault, crony i kolejki `pg_net` — przenoszą je osobne kroki. Jeśli `03-restore.sh` zatrzyma się na błędzie, nic nie zostaje zapisane (jedna transakcja); poprawka → ponownie od `02-prepare.sh`.
+
+## Zamknięcie (2026-11-12)
+
+Stan po 3 dniach: wszyscy pracują na projekcie we Frankfurcie (`wjxnyvcxhhxjytfwpwvu`). Aplikacje mobilne wersji 56
+przeszły na Frankfurt aktualizacją OTA przy drugim uruchomieniu; do Ohio trafiała jeszcze tylko jedna karta przeglądarki
+otwarta przed przeniesieniem (zapytania kończą się 503) i obrazki ze stopek maili wysłanych przed przeniesieniem.
+Pliki magazynu skopiowane w całości (każdy kosz we Frankfurcie ma co najmniej tyle obiektów co w Ohio); w nowej bazie
+brak odwołań do Ohio w funkcjach, cronach i sekretach (adres Ohio został tylko w treści 8 odebranych maili — cytaty starych stopek).
+
+Od teraz karta CRM ze starszym kodem pokazuje po wdrożeniu pasek „Jest nowa wersja CRM — Odśwież” (`AppVersionWatcher`, `/bridge/app-version`).
+
+Do zrobienia przez właściciela projektu:
+1. Zostawić sobie ostatni zrzut bazy z Ohio (`01-dump.sh`) — po usunięciu projektu Supabase nie ma kopii.
+2. Usunąć projekt „Mavinci - CRM” (us-east-2) w panelu Supabase: Settings → General → Delete project.
+   Obrazki w stopkach maili wysłanych przed przeniesieniem przestaną się wyświetlać (nie da się ich przekierować).
+3. Przełączyć Supabase CLI: `supabase link --project-ref wjxnyvcxhhxjytfwpwvu` (plik `supabase/.temp/project-ref` wskazuje jeszcze Ohio).
+

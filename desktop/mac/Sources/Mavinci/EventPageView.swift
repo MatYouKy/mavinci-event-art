@@ -371,23 +371,136 @@ struct BinaryDocument:FileDocument {
     init(configuration:ReadConfiguration)throws { data=configuration.file.regularFileContents ?? Data() }
     func fileWrapper(configuration:WriteConfiguration)throws -> FileWrapper { FileWrapper(regularFileWithContents:data) }
 }
+/// Podgląd dokumentu (PDF, obraz): okno na niemal całą wysokość okna aplikacji, PDF od razu w całości strony, sterowanie
+/// powiększeniem (−, %, +, dopasowanie do szerokości / całej strony), przechodzenie po stronach, druk i zapis.
 struct NativeDocumentPreview:View {
     let preview:NativePreview
     @Environment(\.dismiss) private var dismiss
+    @StateObject private var control=PDFPreviewControl()
     @State private var exporting=false
     var pdf:Bool { preview.data.starts(with:Data("%PDF".utf8)) }
+    /// Wymiary okna podglądu: prawie cała wysokość okna aplikacji, szerokość z zapasem na stronę A4 w pionie.
+    /// Liczone raz, z okna aplikacji (nie z kluczowego okna — po otwarciu jest nim sam podgląd i przy każdym
+    /// odświeżeniu, np. w czasie przewijania, okno by się zmniejszało).
+    @State private var size=NativeDocumentPreview.preferredSize()
+    static func preferredSize()->CGSize {
+        let appWindow=NSApp.mainWindow ?? NSApp.windows.first { $0.isVisible && $0.canBecomeMain && $0.sheetParent==nil }
+        let window=appWindow?.frame.size ?? NSScreen.main?.visibleFrame.size ?? CGSize(width:1440,height:900)
+        let height=max(560,window.height-48)
+        let width=min(max(760,window.width-80),max(820,height*0.86))
+        return CGSize(width:width,height:height)
+    }
     var body:some View {
-        VStack {
-            HStack { Text(preview.name).font(.headline); Spacer(); Button("Zapisz jako…") { exporting=true }; Button("Zamknij") { dismiss() }.keyboardShortcut(.cancelAction) }.padding()
-            if pdf { NativePDF(data:preview.data) }
+        VStack(spacing:0) {
+            HStack(spacing:12) {
+                Text(preview.name).font(.headline).lineLimit(1).truncationMode(.middle)
+                Spacer(minLength:8)
+                if pdf { PDFPreviewControls(control:control) }
+                if pdf { Button { control.print() } label:{ Label("Drukuj…",systemImage:"printer") }.keyboardShortcut("p",modifiers:.command) }
+                Button("Zapisz jako…") { exporting=true }
+                Button("Zamknij") { dismiss() }.keyboardShortcut(.cancelAction)
+            }.padding(.horizontal,16).padding(.vertical,10)
+            if pdf { NativePDF(data:preview.data,control:control) }
             else if let image=NSImage(data:preview.data) { ScrollView([.horizontal,.vertical]) { Image(nsImage:image).resizable().scaledToFit() } }
             else { ContentUnavailableView("Podgląd tego formatu jest niedostępny",systemImage:"doc",description:Text("Zapisz plik i otwórz go w odpowiedniej aplikacji.")) }
-        }.frame(minWidth:700,minHeight:650)
+        }
+        .frame(width:size.width,height:size.height)
         .fileExporter(isPresented:$exporting,document:BinaryDocument(data:preview.data),contentType:pdf ? .pdf:.data,defaultFilename:preview.name) { _ in }
     }
 }
+
+/// Pasek podglądu PDF: strony (↑ ↓, „2 / 5”) i powiększenie (− / % / +; ⌘− ⌘+ ⌘0 szerokość, ⌘9 cała strona).
+struct PDFPreviewControls:View {
+    @ObservedObject var control:PDFPreviewControl
+    var body:some View {
+        HStack(spacing:6) {
+            Button { control.previous() } label:{ Image(systemName:"chevron.up") }.help("Poprzednia strona").disabled(control.page<=1)
+            Text("\(control.page) / \(max(control.pages,1))").monospacedDigit().foregroundStyle(.secondary).frame(minWidth:54)
+            Button { control.next() } label:{ Image(systemName:"chevron.down") }.help("Następna strona").disabled(control.page>=control.pages)
+            Divider().frame(height:16)
+            Button { control.zoom(by:1/1.25) } label:{ Image(systemName:"minus.magnifyingglass") }.help("Pomniejsz (⌘−)").keyboardShortcut("-",modifiers:.command)
+            Menu("\(control.percent)%") {
+                ForEach([50,75,100,125,150,200,300],id:\.self) { value in Button("\(value)%") { control.set(percent:value) } }
+                Divider()
+                Button("Dopasuj do szerokości") { control.fitWidth() }.keyboardShortcut("0",modifiers:.command)
+                Button("Cała strona") { control.fitPage() }.keyboardShortcut("9",modifiers:.command)
+            }.menuStyle(.borderlessButton).fixedSize().help("Powiększenie")
+            Button { control.zoom(by:1.25) } label:{ Image(systemName:"plus.magnifyingglass") }.help("Powiększ (⌘+)").keyboardShortcut("+",modifiers:.command)
+        }.buttonStyle(.borderless)
+    }
+}
+
+/// Stan i polecenia podglądu PDF (strona, liczba stron, powiększenie) — powiązane z `PDFView` przez powiadomienia PDFKit.
+@MainActor final class PDFPreviewControl:ObservableObject {
+    @Published var page=1
+    @Published var pages=0
+    @Published var percent=100
+    private weak var view:FittingPDFView?
+    private var observers:[NSObjectProtocol]=[]
+    func attach(_ view:FittingPDFView) {
+        guard self.view !== view else { return }
+        self.view=view
+        observers.forEach { NotificationCenter.default.removeObserver($0) }
+        observers=[Notification.Name.PDFViewPageChanged,.PDFViewScaleChanged,.PDFViewDocumentChanged].map { name in
+            NotificationCenter.default.addObserver(forName:name,object:view,queue:.main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.sync() }
+            }
+        }
+        sync()
+    }
+    func sync() {
+        guard let view,let document=view.document else { return }
+        pages=document.pageCount
+        if let current=view.currentPage { page=document.index(for:current)+1 }
+        percent=Int((view.scaleFactor*100).rounded())
+    }
+    func zoom(by factor:CGFloat) { guard let view else { return }; view.autoScales=false; view.scaleFactor=min(max(view.scaleFactor*factor,0.1),8) }
+    func set(percent value:Int) { guard let view else { return }; view.autoScales=false; view.scaleFactor=CGFloat(value)/100 }
+    func fitWidth() { view?.autoScales=true }
+    func fitPage() { view?.fitPage() }
+    func previous() { view?.goToPreviousPage(nil) }
+    func next() { view?.goToNextPage(nil) }
+    func print() { view?.print(with:NSPrintInfo.shared,autoRotate:true) }
+}
+
+/// `PDFView`, który po pierwszym ułożeniu pokazuje całą stronę (szerokość i wysokość), a nie tylko dopasowanie do szerokości.
+final class FittingPDFView:PDFView {
+    var fitOnLayout=false
+    override func layout() {
+        super.layout()
+        if fitOnLayout,document != nil,bounds.width>0,bounds.height>0 { fitOnLayout=false; fitPage() }
+    }
+    func fitPage() {
+        guard let page=currentPage ?? document?.page(at:0) else { return }
+        var rect=page.bounds(for:displayBox)
+        if page.rotation % 180 != 0 { rect=CGRect(x:0,y:0,width:rect.height,height:rect.width) }
+        guard rect.width>0,rect.height>0 else { return }
+        autoScales=false
+        scaleFactor=max(0.1,min((bounds.width-24)/rect.width,(bounds.height-24)/rect.height))
+    }
+}
+
 struct NativePDF:NSViewRepresentable {
     let data:Data
-    func makeNSView(context:Context) -> PDFView { let view=PDFView(); view.autoScales=true; return view }
-    func updateNSView(_ view:PDFView,context:Context) { if view.document?.dataRepresentation() != data { view.document=PDFDocument(data:data) } }
+    var control:PDFPreviewControl?=nil
+    final class Coordinator { var data:Data? }
+    func makeCoordinator() -> Coordinator { Coordinator() }
+    func makeNSView(context:Context) -> FittingPDFView {
+        let view=FittingPDFView()
+        view.displayMode = .singlePageContinuous
+        view.displaysPageBreaks=true
+        view.autoScales=true
+        view.backgroundColor=NSColor(white:0.16,alpha:1)
+        return view
+    }
+    func updateNSView(_ view:FittingPDFView,context:Context) {
+        if context.coordinator.data != data {
+            context.coordinator.data=data
+            view.document=PDFDocument(data:data)
+            // W podglądzie z paskiem sterowania — cała strona od razu; w innych miejscach jak dotąd (dopasowanie do szerokości).
+            view.fitOnLayout = control != nil
+            view.needsLayout=true
+        }
+        if let control { DispatchQueue.main.async { control.attach(view) } }
+    }
 }

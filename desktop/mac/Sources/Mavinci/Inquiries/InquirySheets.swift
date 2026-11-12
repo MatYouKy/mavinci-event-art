@@ -89,7 +89,7 @@ import SwiftUI
             .formStyle(.grouped)
 
             HStack {
-                Button("Otwórz w CRM") { state.openCRM("/crm/inquiries/\(inquiry.id)") }.buttonStyle(.link)
+                Button("Otwórz w CRM") { state.openCRM("/crm/inquiries/\(inquiry.id)") }.buttonStyle(.link).linkCursor()
                 Spacer()
                 Button("Anuluj") { dismiss() }.keyboardShortcut(.cancelAction)
                 Button("Zapisz") { Task { await save() } }.keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent).disabled(!valid || saving)

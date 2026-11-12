@@ -215,7 +215,7 @@ import AppKit
             var parts = URLComponents(); parts.scheme = scheme; parts.path = value.replacingOccurrences(of: " ", with: scheme == "tel" ? "" : " ")
             if let url = parts.url { NSWorkspace.shared.open(url) }
         } label: { Label(value, systemImage: symbol) }
-        .buttonStyle(.link).foregroundStyle(.secondary)
+        .buttonStyle(.link).linkCursor().foregroundStyle(.secondary)
     }
 
     private var tabBar: some View {
@@ -297,7 +297,7 @@ import AppKit
             card("Wynagrodzenie i prowizje", symbol: "banknote") {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Warunki wynagrodzenia, prowizje i rozliczenia trafią do aplikacji w kolejnym etapie.").font(.callout).foregroundStyle(.secondary)
-                    Button("Otwórz w CRM", systemImage: "safari") { state.openCRM("/crm/employees/\(m.id)") }.buttonStyle(.link)
+                    Button("Otwórz w CRM", systemImage: "safari") { state.openCRM("/crm/employees/\(m.id)") }.buttonStyle(.link).linkCursor()
                 }
             }
         }

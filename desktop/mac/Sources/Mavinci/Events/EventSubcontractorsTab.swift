@@ -735,7 +735,7 @@ private struct GeneratedGuidelines: Decodable { var scopeOfWork: String; var del
                 if settlement == "civil_contract" {
                     HStack(spacing: 4) {
                         Text("Umowa zlecenie wymaga pełnego kreatora danych i oświadczeń.").font(.caption)
-                        Button("Dodaj podwykonawcę i przygotuj umowę") { state.openCRM("/crm/subcontractors/new") }.buttonStyle(.link).font(.caption)
+                        Button("Dodaj podwykonawcę i przygotuj umowę") { state.openCRM("/crm/subcontractors/new") }.buttonStyle(.link).linkCursor().font(.caption)
                     }
                     .foregroundStyle(theme.accent)
                 }

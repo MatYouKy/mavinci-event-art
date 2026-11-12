@@ -1103,7 +1103,7 @@ private struct CalculationCatalogReply: Decodable { var options: [CalculationCat
                     travelPending = false
                     name = ""
                 }
-                .buttonStyle(.link)
+                .buttonStyle(.link).linkCursor()
             }
             .font(.callout).padding(10).frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
@@ -1218,7 +1218,7 @@ private struct CalculationCatalogReply: Decodable { var options: [CalculationCat
                     power = ""
                     unitPrice = "0"
                 }
-                .buttonStyle(.link)
+                .buttonStyle(.link).linkCursor()
             }
             .padding(10)
             .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
@@ -1358,7 +1358,7 @@ private struct CalculationCatalogReply: Decodable { var options: [CalculationCat
                         travelPending = false
                         estimate = nil
                     }
-                    .buttonStyle(.link).disabled(travelBusy)
+                    .buttonStyle(.link).linkCursor().disabled(travelBusy)
                 }
             }
             HStack(alignment: .bottom, spacing: 12) {
@@ -1572,7 +1572,7 @@ private struct CalculationConsumption: Decodable { var value: Double?; var sourc
                             destination = suggested.label
                             invalidateRoute()
                         }
-                        .buttonStyle(.link).disabled(routeLoading)
+                        .buttonStyle(.link).linkCursor().disabled(routeLoading)
                     }
                 }
                 .font(.caption).foregroundStyle(.secondary)
@@ -1710,7 +1710,7 @@ private struct CalculationConsumption: Decodable { var value: Double?; var sourc
                                           URLQueryItem(name: "destination", value: end), URLQueryItem(name: "travelmode", value: "driving")]
                 if let url = components?.url { NSWorkspace.shared.open(url) }
             }
-            .buttonStyle(.link).font(.caption)
+            .buttonStyle(.link).linkCursor().font(.caption)
         }
         .foregroundStyle(.secondary)
     }

@@ -244,21 +244,24 @@ async function availability(ctx: NativeContext, eventId: string, params: URLSear
   };
 }
 
-/** Spalanie auta: z karty pojazdu albo średnia z tankowań z 90 dni (ważona dystansem). */
+/** Spalanie auta: z karty pojazdu albo średnia z tankowań z 90 dni (ważona dystansem); dla auta elektrycznego kWh/100 km i cena prądu. */
 async function consumption(ctx: NativeContext, _eventId: string, params: URLSearchParams) {
   const vehicleId = params.get('vehicleId') || '';
   if (!uuid.test(vehicleId)) return { value: null, source: null, error: null };
   const from = new Date();
   from.setDate(from.getDate() - 90);
   const [vehicle, history] = await Promise.all([
-    ctx.supabase.from('vehicles').select('average_fuel_consumption').eq('id', vehicleId).maybeSingle(),
+    // `*` — działa także przed migracją ceny prądu (`energy_price_per_kwh`).
+    ctx.supabase.from('vehicles').select('*').eq('id', vehicleId).maybeSingle(),
     ctx.supabase.from('fuel_entries').select('avg_consumption,distance_since_last').eq('vehicle_id', vehicleId)
       .gte('date', from.toISOString().slice(0, 10)).lte('date', new Date().toISOString().slice(0, 10))
       .gt('avg_consumption', 0).gt('distance_since_last', 0),
   ]);
   const configured = Number((vehicle.data as any)?.average_fuel_consumption);
   const hasConfigured = !vehicle.error && Number.isFinite(configured) && configured > 0;
+  const energyPrice = Number((vehicle.data as any)?.energy_price_per_kwh);
   return {
+    energyPrice: Number.isFinite(energyPrice) && energyPrice > 0 ? energyPrice : null,
     value: hasConfigured ? configured : history.error ? null : averageFuelConsumption((history.data || []) as any[]),
     source: hasConfigured ? 'vehicle' : 'history',
     error: !hasConfigured && (vehicle.error || history.error) ? 'Nie udało się pobrać pełnych danych o spalaniu. Możesz wpisać je ręcznie.' : null,

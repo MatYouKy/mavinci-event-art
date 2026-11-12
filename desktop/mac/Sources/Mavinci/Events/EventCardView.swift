@@ -39,6 +39,12 @@ import AppKit
     @Environment(\.crmTheme) private var theme
 
     @AppStorage("eventCard.overview") private var overviewShown = true
+    /// Szuflada „Wydruki” pod przyciskiem drukarki.
+    @State private var printsShown = false
+    /// Pasek zakładek: ramki zakładek względem widocznej części paska, jego szerokość i szerokość całej karty.
+    @State private var tabFrames: [String: CGRect] = [:]
+    @State private var tabViewport: CGFloat = 0
+    @State private var tabBarWidth: CGFloat = 0
 
     private var cached: CachedEventCard? { store.card(eventID) }
     private var flags: EventCardFlags? { cached?.page.flags }
@@ -61,29 +67,188 @@ import AppKit
         if ids == ["finances", "summary"] { return "Rozliczenie" }
         return fallback
     }
-    private enum TabBarMode { case full, activeLabel, icons }
+    // MARK: Zakładki
+    //
+    // W obramowaniu, zawsze z ikoną i pełną nazwą (bez przycisku zamykania), szerokość według nazwy; aktywna w złotym akcencie
+    // motywu. Pasek ma stałą wysokość. Gdy zakładki nie mieszczą się w oknie, po bokach pojawiają się strzałki ‹ › (przewijają
+    // o widoczną szerokość) i lista wszystkich zakładek; wybrana zakładka sama wjeżdża w widok (także po ⌘⇧[ / ⌘⇧]).
+    // Kolejność ustawia się przeciąganiem zakładek (albo z menu pod prawym przyciskiem) — zapamiętana na tym Macu osobno
+    // dla każdego pracownika.
 
-    private func tabBar(_ groups: [TabGroup], _ selected: String, _ page: EventCardPage, mode: TabBarMode) -> some View {
-        HStack(spacing: 2) {
-            ForEach(groups) { group in
-                let active = group.contains(selected)
-                let symbol: String = group.id == "agenda" && page.flags?.isWeddingEvent == true ? "heart" : group.symbol
-                let showLabel: Bool = mode == .full || (mode == .activeLabel && active)
-                Button { if !active { tab = group.members.first?.id ?? tab } } label: {
-                    Group {
-                        if showLabel { Label(group.label, systemImage: symbol) } else { Image(systemName: symbol).frame(width: 18) }
+    @AppStorage("eventCard.tabOrder") private var tabOrderStore = ""
+    private var orderKey: String { state.employee?.id ?? "-" }
+    private var savedOrders: [String: [String]] {
+        guard let data = tabOrderStore.data(using: .utf8), let all = try? JSONDecoder().decode([String: [String]].self, from: data) else { return [:] }
+        return all
+    }
+
+    /// Zakładki w kolejności pracownika (nowe, których nie ma w zapisanej kolejności, na końcu w kolejności domyślnej).
+    private func ordered(_ groups: [TabGroup]) -> [TabGroup] {
+        guard let order = savedOrders[orderKey], !order.isEmpty else { return groups }
+        let defaults = groups.map(\.id)
+        return groups.sorted { lhs, rhs in
+            let l = order.firstIndex(of: lhs.id) ?? 1000 + (defaults.firstIndex(of: lhs.id) ?? 0)
+            let r = order.firstIndex(of: rhs.id) ?? 1000 + (defaults.firstIndex(of: rhs.id) ?? 0)
+            return l < r
+        }
+    }
+
+    private func saveOrder(_ ids: [String]) {
+        var all = savedOrders
+        all[orderKey] = ids.isEmpty ? nil : ids
+        tabOrderStore = (try? JSONEncoder().encode(all)).flatMap { String(data: $0, encoding: .utf8) } ?? ""
+    }
+
+    private func moveTab(_ id: String, to target: Int, in groups: [TabGroup]) {
+        var ids = groups.map(\.id)
+        guard let from = ids.firstIndex(of: id) else { return }
+        ids.remove(at: from)
+        ids.insert(id, at: max(0, min(target, ids.count)))
+        withAnimation(.easeInOut(duration: 0.15)) { saveOrder(ids) }
+    }
+
+    private static let tabSpace = "eventCardTabs"
+
+    /// Zakładki nie mieszczą się w szerokości karty (liczone bez strzałek, więc strzałki nie „migają”).
+    private func tabsOverflow(_ ids: [String]) -> Bool {
+        guard tabBarWidth > 0, let first = ids.first.flatMap({ tabFrames[$0] }), let last = ids.last.flatMap({ tabFrames[$0] }) else { return false }
+        return last.maxX - first.minX + 24 > tabBarWidth + 0.5
+    }
+
+    private func tabBar(_ groups: [TabGroup], _ selected: String, _ page: EventCardPage) -> some View {
+        let ids = groups.map(\.id)
+        let selectedID = groups.first { $0.contains(selected) }?.id
+        let overflow = tabsOverflow(ids)
+        let atStart = (ids.first.flatMap { tabFrames[$0] }?.minX ?? 0) >= -0.5
+        let atEnd = (ids.last.flatMap { tabFrames[$0] }?.maxX ?? 0) <= tabViewport + 0.5
+        return ScrollViewReader { proxy in
+            HStack(spacing: 6) {
+                if overflow {
+                    tabArrow("chevron.left", "Przewiń zakładki w lewo", enabled: !atStart) {
+                        // Ostatnia zakładka schowana z lewej staje przy prawej krawędzi — przesunięcie o widoczną szerokość.
+                        guard let target = ids.last(where: { (tabFrames[$0]?.minX ?? 0) < -0.5 }) else { return }
+                        withAnimation(.easeInOut(duration: 0.2)) { proxy.scrollTo(target, anchor: .trailing) }
                     }
-                    .padding(.horizontal, showLabel ? 11 : 9).padding(.vertical, 7)
-                    .foregroundStyle(active ? theme.accent : Color.secondary)
-                    .background(active ? theme.accent.opacity(0.14) : .clear, in: RoundedRectangle(cornerRadius: 7))
-                    .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
-                .help(group.label)
+                ScrollView(.horizontal) {
+                    HStack(spacing: 4) {
+                        ForEach(Array(groups.enumerated()), id: \.element.id) { index, group in
+                            tabItem(group, index: index, groups: groups, selected: selected, page: page)
+                                .id(group.id)
+                                .background(GeometryReader { geometry in
+                                    Color.clear.preference(key: EventTabFramesKey.self, value: [group.id: geometry.frame(in: .named(Self.tabSpace))])
+                                })
+                        }
+                    }
+                    .padding(.horizontal, overflow ? 2 : 12).padding(.vertical, 5)
+                }
+                .scrollIndicators(.never)
+                .coordinateSpace(.named(Self.tabSpace))
+                .background(GeometryReader { geometry in
+                    Color.clear.preference(key: EventTabViewportKey.self, value: geometry.size.width)
+                })
+                .onPreferenceChange(EventTabFramesKey.self) { frames in MainActor.assumeIsolated { tabFrames = frames } }
+                .onPreferenceChange(EventTabViewportKey.self) { width in MainActor.assumeIsolated { tabViewport = width } }
+                if overflow {
+                    tabArrow("chevron.right", "Przewiń zakładki w prawo", enabled: !atEnd) {
+                        // Pierwsza zakładka schowana z prawej staje przy lewej krawędzi.
+                        guard let target = ids.first(where: { (tabFrames[$0]?.maxX ?? 0) > tabViewport + 0.5 }) else { return }
+                        withAnimation(.easeInOut(duration: 0.2)) { proxy.scrollTo(target, anchor: .leading) }
+                    }
+                    tabList(groups, selectedID)
+                }
+            }
+            .padding(.horizontal, overflow ? 10 : 0)
+            .onAppear { if let selectedID { proxy.scrollTo(selectedID) } }
+            .onChange(of: selectedID) { _, id in
+                guard let id else { return }
+                withAnimation(.easeInOut(duration: 0.2)) { proxy.scrollTo(id) }
             }
         }
-        .fixedSize(horizontal: true, vertical: false)
-        .padding(.horizontal, 14).padding(.vertical, 6)
+        .frame(maxWidth: .infinity)
+        .frame(height: 38)
+        .background(GeometryReader { geometry in
+            Color.clear.preference(key: EventTabBarWidthKey.self, value: geometry.size.width)
+        })
+        .onPreferenceChange(EventTabBarWidthKey.self) { width in MainActor.assumeIsolated { tabBarWidth = width } }
+        .background(theme.sidebar)
+    }
+
+    private func tabArrow(_ symbol: String, _ help: String, enabled: Bool, action: @escaping () -> Void) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 7, style: .continuous)
+        return Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 11, weight: .semibold))
+                .frame(width: 26, height: 28)
+                .background(Color.primary.opacity(0.04), in: shape)
+                .overlay(shape.strokeBorder(Color.primary.opacity(0.16), lineWidth: 1))
+                .contentShape(shape)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(enabled ? Color.primary.opacity(0.8) : Color.secondary.opacity(0.35))
+        .disabled(!enabled)
+        .help(help)
+    }
+
+    /// Lista wszystkich zakładek (gdy nie mieszczą się w pasku) — przejście bez przewijania.
+    private func tabList(_ groups: [TabGroup], _ selectedID: String?) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 7, style: .continuous)
+        return Menu {
+            Picker("Zakładki", selection: Binding(
+                get: { selectedID ?? "" },
+                set: { id in if let group = groups.first(where: { $0.id == id }) { tab = group.members.first?.id ?? tab } }
+            )) {
+                ForEach(groups) { group in Label(group.label, systemImage: group.symbol).tag(group.id) }
+            }
+            .pickerStyle(.inline)
+            .labelsHidden()
+        } label: {
+            Image(systemName: "chevron.down")
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .frame(width: 26, height: 28)
+        .background(Color.primary.opacity(0.04), in: shape)
+        .overlay(shape.strokeBorder(Color.primary.opacity(0.16), lineWidth: 1))
+        .help("Wszystkie zakładki")
+    }
+
+    private func tabItem(_ group: TabGroup, index: Int, groups: [TabGroup], selected: String, page: EventCardPage) -> some View {
+        let active = group.contains(selected)
+        let symbol: String = group.id == "agenda" && page.flags?.isWeddingEvent == true ? "heart" : group.symbol
+        let shape = RoundedRectangle(cornerRadius: 7, style: .continuous)
+        return Button { if !active { tab = group.members.first?.id ?? tab } } label: {
+            HStack(spacing: 6) {
+                Image(systemName: symbol).font(.system(size: 12, weight: active ? .semibold : .regular))
+                Text(group.label).lineLimit(1).fixedSize()
+            }
+            .font(.system(size: 12, weight: active ? .semibold : .regular))
+            .foregroundStyle(active ? theme.accent : Color.secondary)
+            .padding(.horizontal, 12)
+            .frame(height: 28)
+            .background(active ? theme.accent.opacity(0.16) : Color.primary.opacity(0.04), in: shape)
+            .overlay(shape.strokeBorder(active ? theme.accent : Color.primary.opacity(0.16), lineWidth: active ? 1.5 : 1))
+            .contentShape(shape)
+        }
+        .buttonStyle(.plain)
+        .help(group.label)
+        .draggable(group.id) {
+            Label(group.label, systemImage: symbol).font(.system(size: 12, weight: .semibold))
+                .padding(.horizontal, 10).padding(.vertical, 6)
+                .background(theme.page, in: RoundedRectangle(cornerRadius: 6))
+        }
+        .dropDestination(for: String.self) { items, _ in
+            guard let dragged = items.first, dragged != group.id, groups.contains(where: { $0.id == dragged }) else { return false }
+            moveTab(dragged, to: index, in: groups)
+            return true
+        }
+        .contextMenu {
+            Button("Przesuń w lewo") { moveTab(group.id, to: index - 1, in: groups) }.disabled(index == 0)
+            Button("Przesuń w prawo") { moveTab(group.id, to: index + 1, in: groups) }.disabled(index + 1 >= groups.count)
+            Divider()
+            Button("Przywróć domyślną kolejność zakładek") { withAnimation(.easeInOut(duration: 0.15)) { saveOrder([]) } }
+                .disabled(savedOrders[orderKey] == nil)
+        }
     }
 
     /// Skróty klawiszowe przełączania zakładek (niewidoczne przyciski).
@@ -170,9 +335,24 @@ import AppKit
         }
         ToolbarItemGroup(placement: .primaryAction) {
             if store.loading.contains(eventID) { ProgressView().controlSize(.small).help("Odświeżanie karty") }
-            if cached?.page.canPrintCard == true || cached?.page.kind == "realization" {
-                Button { Task { await printCard() } } label: { Label("Karta imprezy", systemImage: "printer") }
-                    .help(ChromePdfEngine.available ? "Karta imprezy (PDF generowany na tym Macu)" : "Karta imprezy (PDF z serwera)")
+            if cached != nil {
+                // Szuflada wydruków: karta imprezy na żądanie i dokumenty wygenerowane w wydarzeniu (według zakresu pracownika).
+                Button { printsShown.toggle() } label: { Label("Drukuj", systemImage: "printer") }
+                    .help("Wydruki: karta imprezy, oferty, kalkulacje, umowy, agenda, checklisty sprzętu (⌥⌘P)")
+                    .keyboardShortcut("p", modifiers: [.command, .option])
+                    .popover(isPresented: $printsShown, arrowEdge: .bottom) {
+                        EventPrintDrawer(
+                            store: store, eventID: eventID,
+                            canPrintCard: cached?.page.canPrintCard == true || cached?.page.kind == "realization",
+                            tabs: Set((flags?.tabs ?? []).map(\.id)),
+                            printCard: { printsShown = false; Task { await printCard() } },
+                            openTab: { id in printsShown = false; tab = id },
+                            show: { file in
+                                printsShown = false
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { preview = file }
+                            })
+                        .environment(\.crmTheme, theme)
+                    }
             }
             Menu {
                 if let flags {
@@ -200,7 +380,7 @@ import AppKit
     private func full(_ page: EventCardPage) -> some View {
         let event = EventFields(raw: page.event ?? [:])
         let tabs = page.flags?.tabs ?? []
-        let groups = Self.groups(tabs)
+        let groups = ordered(Self.groups(tabs))
         let selected: String? = groups.contains(where: { $0.contains(tab) }) ? tab : (groups.first?.members.first?.id)
         let current = groups.first { group in selected.map { group.contains($0) } ?? false }
         let hasOverview = tabs.contains { $0.id == "overview" }
@@ -210,16 +390,10 @@ import AppKit
                 sellerBanner(event)
             }
             if let selected {
-                // Pasek zakładek zawsze mieści się w oknie: pełne nazwy → nazwa tylko aktywnej (reszta ikony z podpowiedzią)
-                // → same ikony; w ostateczności przewijanie z widocznym paskiem. ⌘⇧[ / ⌘⇧] i ⌃⇥ / ⌃⇧⇥ — poprzednia / następna zakładka.
-                ViewThatFits(in: .horizontal) {
-                    tabBar(groups, selected, page, mode: .full)
-                    tabBar(groups, selected, page, mode: .activeLabel)
-                    tabBar(groups, selected, page, mode: .icons)
-                    ScrollView(.horizontal, showsIndicators: true) { tabBar(groups, selected, page, mode: .icons) }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(tabShortcuts(groups, selected))
+                // Zakładki jak w Finderze (nazwy zawsze widoczne, kolejność pracownika). ⌘⇧[ / ⌘⇧] i ⌃⇥ / ⌃⇧⇥ — poprzednia / następna.
+                tabBar(groups, selected, page)
+                    .frame(maxWidth: .infinity)
+                    .background(tabShortcuts(groups, selected))
                 if let current, current.members.count > 1, !Self.isSettlement(current) {
                     Picker("", selection: $tab) {
                         ForEach(current.members) { member in Text(member.label).tag(member.id) }
@@ -518,4 +692,26 @@ enum EventCardText {
         let unit = product["unit"]?.text.nonEmpty.map { " \($0)" } ?? ""
         return "\(name) × \(text)\(unit)"
     }
+}
+
+// MARK: Pomiar paska zakładek karty wydarzenia
+
+/// Ramki zakładek względem widocznej części paska (strzałki ‹ › i ich wyłączanie na krańcach).
+private struct EventTabFramesKey: PreferenceKey {
+    static let defaultValue: [String: CGRect] = [:]
+    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
+        value.merge(nextValue()) { $1 }
+    }
+}
+
+/// Szerokość widocznej części paska zakładek (między strzałkami).
+private struct EventTabViewportKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
+}
+
+/// Szerokość całego paska zakładek (czy zakładki się mieszczą).
+private struct EventTabBarWidthKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
 }

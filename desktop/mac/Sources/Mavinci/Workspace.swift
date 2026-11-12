@@ -112,6 +112,7 @@ import Network
             let session = try JSONDecoder().decode(Session.self, from: data)
             let api = HTTPBackend(connection); backend = api
             await api.restore(session)
+            FinderDomain.activate(connection: connection, session: data, fresh: false)
             cache = LocalCache(namespace: digest("\(connection.identity)|\(session.user.id)"))
             native.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             messages.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
@@ -147,6 +148,7 @@ import Network
             guard employee.is_active else { throw AppError.noEmployee }
             guard ticket == generation else { return }
             backend = api
+            if let data = try? JSONEncoder().encode(session) { FinderDomain.activate(connection: connection, session: data, fresh: true) }
             cache = LocalCache(namespace: digest("\(connection.identity)|\(session.user.id)"))
             native.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             messages.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
@@ -169,6 +171,7 @@ import Network
         } catch {
             await api.logout()
             try? Vault.delete("session-\(connection.identity)")
+            if FinderShared.bundledWithExtension { FinderShared.signOut() }
             self.error = friendlyError(error)
         }
     }
@@ -311,6 +314,8 @@ import Network
     func logout() async {
         let old = backend
         generation = UUID()
+        // „Mavinci” znika z Findera razem z pobranymi kopiami plików.
+        FinderDomain.deactivate()
         AvatarCache.shared.clear()
         // Local sign-out is immediate; server revocation cannot keep data visible.
         backend = nil

@@ -4,6 +4,7 @@ import {
   renderContractDocument,
   type ContractClauseTypography,
 } from '@/lib/CRM/contracts/contractPagination';
+import type { ContractDocumentStyles } from '@/lib/CRM/contracts/contractDocumentStyles';
 import { supabase } from '@/lib/supabase/browser';
 
 interface TemplateSettings {
@@ -24,6 +25,7 @@ interface TemplateSettings {
   };
   footerLogoScale: number;
   clauseTypography?: Partial<ContractClauseTypography>;
+  documentStyles?: Partial<ContractDocumentStyles> | null;
 }
 
 const DEFAULT_FOOTER = {
@@ -48,6 +50,7 @@ const getTemplateSettings = (pageSettings: any): TemplateSettings => ({
   footerContent: pageSettings?.footerContent ?? DEFAULT_FOOTER,
   footerLogoScale: pageSettings?.footerLogoScale ?? 80,
   clauseTypography: pageSettings?.clauseTypography,
+  ...(pageSettings?.documentStyles ? { documentStyles: pageSettings.documentStyles } : {}),
 });
 
 const resolveLogoUrl = (url?: string) => {

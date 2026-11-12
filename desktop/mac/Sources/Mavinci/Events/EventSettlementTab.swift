@@ -694,7 +694,7 @@ struct SettlementConfirm: Identifiable {
                 Label("Historia podsumowania", systemImage: "clock.arrow.circlepath").font(.headline)
                 ForEach(visible) { version in versionRow(version) }
                 if s.versions.count > 5 {
-                    Button(showAllHistory ? "Pokaż mniej" : "Pokaż całą historię (\(s.versions.count))") { showAllHistory.toggle() }.buttonStyle(.link)
+                    Button(showAllHistory ? "Pokaż mniej" : "Pokaż całą historię (\(s.versions.count))") { showAllHistory.toggle() }.buttonStyle(.link).linkCursor()
                 }
             }
         }
@@ -1244,7 +1244,7 @@ private struct SellerCandidates: Decodable {
             if !candidate.ready && !candidate.inEvent {
                 HStack(spacing: 4) {
                     Text("Ustaw % od zysku na").font(.caption)
-                    Button("karcie sprzedawcy") { state.openCRM("/crm/salespeople?seller=\(candidate.partnerId)&section=settings") }.buttonStyle(.link).font(.caption)
+                    Button("karcie sprzedawcy") { state.openCRM("/crm/salespeople?seller=\(candidate.partnerId)&section=settings") }.buttonStyle(.link).linkCursor().font(.caption)
                     Text(", potem wróć tutaj.").font(.caption)
                 }
                 .foregroundStyle(.secondary)
@@ -1257,7 +1257,7 @@ private struct SellerCandidates: Decodable {
         let needsRate = customRate || !hasCardRate
         let card: String = hasCardRate ? "Karta sprzedawcy: " + SettlementText.percent(candidate.rate) + " od zysku" : "Karta sprzedawcy: stawka 0%"
         return VStack(alignment: .leading, spacing: 10) {
-            Button { selected = nil } label: { Label("Wybierz innego sprzedawcę", systemImage: "arrow.left") }.buttonStyle(.link)
+            Button { selected = nil } label: { Label("Wybierz innego sprzedawcę", systemImage: "arrow.left") }.buttonStyle(.link).linkCursor()
             Text(candidate.name + (candidate.organization.map { " · " + $0 } ?? "")).font(.headline)
             Text(card + (candidate.paymentMethod.map { " · " + (SettlementText.payments[$0] ?? $0) } ?? "")).font(.callout).foregroundStyle(.secondary)
             if hasCardRate {
@@ -1403,7 +1403,7 @@ private struct InvoiceCandidates: Decodable {
 
     private func form(_ candidate: InvoiceCandidates.Candidate) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Button { selected = nil } label: { Label("Wybierz inną fakturę", systemImage: "arrow.left") }.buttonStyle(.link).disabled(saving)
+            Button { selected = nil } label: { Label("Wybierz inną fakturę", systemImage: "arrow.left") }.buttonStyle(.link).linkCursor().disabled(saving)
             Text((candidate.sellerName ?? "Sprzedawca nieznany") + " · " + (candidate.number ?? "bez numeru")).font(.headline)
             Text(SettlementText.pln(candidate.gross) + " brutto · " + SettlementText.pln(candidate.net) + " netto · " + SettlementText.date(candidate.issueDate)).font(.callout).foregroundStyle(.secondary)
             Text("Pozostało do przypisania: " + SettlementText.pln(candidate.remainingGross) + " brutto").font(.callout)

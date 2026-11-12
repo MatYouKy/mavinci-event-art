@@ -2,7 +2,7 @@
     "id": "15a6083b-9c77-417e-91ad-545453908f8b",
     "name": "AMP RACK 2x LAB Gruppen",
     "description": "Zintegrowany zestaw wzmacniaczy do pasywnych zestawów nagłośnienia",
-    "thumbnail_url": "https://fuuljhhuhfojtmmfmskq.supabase.co/storage/v1/object/public/site-images/equipment-kits/1766773090729-xw5jwa.jpg",
+    "thumbnail_url": "https://wjxnyvcxhhxjytfwpwvu.supabase.co/storage/v1/object/public/site-images/equipment-kits/1766773090729-xw5jwa.jpg",
     "is_active": true,
     "created_by": "8f2b21d2-13c1-4d87-a783-95f524c6a01a",
     "created_at": "2025-12-26T18:19:13.562158+00:00",
@@ -25,7 +25,7 @@
                 "name": "LAB Gruppen FP 14000Q",
                 "brand": "LAB Gruppen",
                 "model": "FP 14000Q",
-                "thumbnail_url": "https://fuuljhhuhfojtmmfmskq.supabase.co/storage/v1/object/public/site-images/equipment-thumbnails/1766769698911-8yv3c.jpg"
+                "thumbnail_url": "https://wjxnyvcxhhxjytfwpwvu.supabase.co/storage/v1/object/public/site-images/equipment-thumbnails/1766769698911-8yv3c.jpg"
             }
         },
         {
@@ -43,7 +43,7 @@
                 "name": "LAB Gruppen FP 10000Q",
                 "brand": "LAB Gruppen ",
                 "model": "FP 10000Q",
-                "thumbnail_url": "https://fuuljhhuhfojtmmfmskq.supabase.co/storage/v1/object/public/site-images/equipment-thumbnails/1766769176448-q4n3pq.jpg"
+                "thumbnail_url": "https://wjxnyvcxhhxjytfwpwvu.supabase.co/storage/v1/object/public/site-images/equipment-thumbnails/1766769176448-q4n3pq.jpg"
             }
         },
         {
@@ -61,7 +61,7 @@
                 "name": "DBX VENU-360 - Procesor sterujący systemem nagłośnienia",
                 "brand": "DBX",
                 "model": "VENU-360",
-                "thumbnail_url": "https://fuuljhhuhfojtmmfmskq.supabase.co/storage/v1/object/public/site-images/equipment-thumbnails/1766769874856-qoa5x.jpg"
+                "thumbnail_url": "https://wjxnyvcxhhxjytfwpwvu.supabase.co/storage/v1/object/public/site-images/equipment-thumbnails/1766769874856-qoa5x.jpg"
             }
         },
         {
@@ -79,7 +79,7 @@
                 "name": "Rozdzielnia 16A  Eurolite SB-1000 ",
                 "brand": "Eurolite ",
                 "model": "SB-1000",
-                "thumbnail_url": "https://fuuljhhuhfojtmmfmskq.supabase.co/storage/v1/object/public/equipment-images/c1d63676-e959-4a5d-abc1-25756aa57bb3/1766770843287-q4dmo6.jpg"
+                "thumbnail_url": "https://wjxnyvcxhhxjytfwpwvu.supabase.co/storage/v1/object/public/equipment-images/c1d63676-e959-4a5d-abc1-25756aa57bb3/1766770843287-q4dmo6.jpg"
             }
         }
     ]

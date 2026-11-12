@@ -105,7 +105,7 @@ export async function loadEventCardData(
 
   // Uzupełnienia po potwierdzeniu dostępu — tylko kolumny operacyjne (bez kwot, kosztów i danych finansowych).
   const admin = createSupabaseAdminClient();
-  const [eventRes, contactsRes, vehiclesRes, phasesRes, equipmentRes, offersRes, handoffRes, subcontractorsRes, weddingRes, generatorRes, stepsRes] =
+  const [eventRes, contactsRes, vehiclesRes, phasesRes, equipmentRes, offersRes, handoffRes, subcontractorsRes, weddingRes, generatorRes, stepsRes, transportRes] =
     await Promise.all([
       admin
         .from('events')
@@ -150,12 +150,19 @@ export async function loadEventCardData(
         .in('stage', ['handoff', 'preparation'])
         .neq('status', 'archived')
         .order('sort_order', { ascending: true }),
+      // Kto jedzie którym autem (zakładka Zespół, migracja 20261112214000). Przed migracją — błąd i dotychczasowe zasady.
+      admin
+        .from('employee_assignments')
+        .select('employee_id,role,status,transport_event_vehicle_id,employee:employees!employee_assignments_employee_id_fkey(id,name,surname,phone_number)')
+        .eq('event_id', eventId)
+        .not('transport_event_vehicle_id', 'is', null),
     ]);
 
   if (eventRes.error || !eventRes.data) {
     throw new EventCardError('Nie udało się odczytać wydarzenia do karty imprezy. Spróbuj ponownie.', 500);
   }
   const vehiclesRows: Json[] = vehiclesRes.data ?? [];
+  const transportRows: Json[] = transportRes.error ? [] : ((transportRes.data ?? []) as Json[]);
 
   const event: Json = eventRes.data ?? {};
   const notices: string[] = [];
@@ -288,11 +295,15 @@ export async function loadEventCardData(
     if (v.return_departure_time && !hasTravelPhases) {
       schedule.push({ start: v.return_departure_time, title: `Powrót: ${name}`, people: driver?.name || null, kind: 'logistics' });
     }
+    // Pasażerowie przypisani do tego auta w zakładce Zespół (bez kierowcy i odrzuconych zaproszeń).
+    const assigned = transportRows
+      .filter((row) => row.transport_event_vehicle_id === v.id && row.status !== 'rejected' && row.employee && row.employee_id !== v.driver_id)
+      .map((row) => ({ name: fullName(row.employee), role: roleLabel(row.role) || null, phone: row.employee.phone_number || null }));
     return {
       name: `${name}${v.has_trailer ? ' + przyczepa' : ''}`,
       registration: text(v.vehicle?.registration_number) || null,
       driver,
-      passengers: [],
+      passengers: assigned,
       departure: { place: text(v.departure_location) || text(plan.origin) || null, time: departureTime },
       arrival: { place: text(plan.destination) || text(location.name) || null, time: arrivalTime },
       returnTime: v.return_arrival_time || v.return_departure_time || null,
@@ -302,11 +313,13 @@ export async function loadEventCardData(
     };
   });
   for (const v of activeVehicles) if (v.driver_id) driverIds.add(v.driver_id);
-  const passengers = [...travelCrew.entries()].filter(([id]) => !driverIds.has(id)).map(([, person]) => person);
+  // Osoby z etapu „Dojazd” bez przypisanego auta (przydział z zakładki Zespół ma pierwszeństwo).
+  const assignedIds = new Set(transportRows.filter((row) => row.status !== 'rejected').map((row) => String(row.employee_id)));
+  const passengers = [...travelCrew.entries()].filter(([id]) => !driverIds.has(id) && !assignedIds.has(id)).map(([, person]) => person);
   if (vehicles.length === 1) {
-    vehicles[0].passengers = passengers;
+    vehicles[0].passengers = [...vehicles[0].passengers, ...passengers];
   } else if (vehicles.length > 1 && passengers.length) {
-    notices.push(`Przydział osób do aut nie jest zapisany w CRM. Na dojazd są przypisani: ${passengers.map((p) => p.name).join(', ')} — ustal, kto jedzie którym autem.`);
+    notices.push(`Nie przypisano auta: ${passengers.map((p) => p.name).join(', ')} — ustal w zakładce Zespół (menu ⋯ → „Jedzie autem”), kto jedzie którym autem.`);
   }
   if (!vehicles.length && phases.some((p) => /dojazd/i.test(text(p.phase_type?.name) || text(p.name)))) {
     notices.push('Etap „Dojazd” nie ma przypisanego auta z kierowcą.');

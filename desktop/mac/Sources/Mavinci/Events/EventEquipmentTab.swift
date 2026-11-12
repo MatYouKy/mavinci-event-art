@@ -84,7 +84,7 @@ private struct ComponentsRequest: Identifiable {
         }
         .task(id: reviewSignature) { await finishEmptyReview() }
         .sheet(isPresented: $addOpen, onDismiss: { replacingExternal = nil; managerFocus = nil }) {
-            EquipmentManagerSheet(store: store, editor: editor, eventID: eventID, focus: managerFocus) { added in
+            EquipmentManagerSheet(store: store, editor: editor, eventID: eventID, focus: managerFocus, shownReviews: $autoOpened) { added in
                 if added, let index = replacingExternal { resolvedExternal.insert(index) }
                 replacingExternal = nil
             }
@@ -275,9 +275,9 @@ private struct ComponentsRequest: Identifiable {
             .padding(10).background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
         }
         .padding(14).background(theme.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
-        .task(id: review.id) {
-            // „Dodano ręcznie” otwiera okno komponentów od razu (`autoOpen`).
-            if review.source == "manual", !groups.isEmpty, !autoOpened.contains(review.id) {
+        .task(id: review.id + (addOpen ? "|manager" : "")) {
+            // „Dodano ręcznie” otwiera okno komponentów od razu (`autoOpen`); przy otwartym oknie sprzętu robi to ono (nad nim).
+            if !addOpen, review.source == "manual", !groups.isEmpty, !autoOpened.contains(review.id) {
                 autoOpened.insert(review.id)
                 components = ComponentsRequest(equipmentID: review.equipmentId, offerID: nil, reviewID: review.id)
             }
@@ -447,6 +447,13 @@ private struct ComponentsRequest: Identifiable {
             toggleExpand: { if expanded.contains(row.id) { expanded.remove(row.id) } else { expanded.insert(row.id) } },
             select: { select(row, ordered) },
             setQuantity: { qty in setQuantity(row, qty) },
+            stageQuantity: { qty in
+                // − / + i wpisana liczba czekają na ✓; pozycja występująca kilka razy — zapis tej jednej od razu.
+                let duplicates = (data?.rows ?? []).filter { $0.key != nil && $0.key == row.key && !$0.removed }.count > 1
+                if !duplicates, let target = target(for: row) { editor.stage(target, to: qty) } else { setQuantity(row, qty) }
+            },
+            confirmQuantity: { if let key = row.key { editor.confirm(key) } },
+            cancelQuantity: { if let key = row.key { editor.discard(key) } },
             removeSelection: { deleteSelected() },
             remove: { delete([row]) },
             reservations: {
@@ -659,6 +666,9 @@ struct EquipmentRowActions {
     var toggleExpand: () -> Void
     var select: () -> Void
     var setQuantity: (Int) -> Void
+    var stageQuantity: (Int) -> Void
+    var confirmQuantity: () -> Void
+    var cancelQuantity: () -> Void
     var removeSelection: () -> Void
     var remove: () -> Void
     var reservations: () -> Void
@@ -827,8 +837,10 @@ struct EquipmentRowActions {
     @ViewBuilder private var quantity: some View {
         let unit = row.isKit ? "szt." : row.unit
         if editable && !row.removed && row.key != nil {
-            EquipmentStepper(value: row.key.flatMap { editor.drafts[$0] } ?? row.qty, lower: 1, upper: max(1, limits.maxSet), unit: unit,
-                             saving: row.key.map { editor.saving.contains($0) } ?? false) { actions.setQuantity($0) }
+            EquipmentStepper(value: row.key.flatMap { editor.drafts[$0] } ?? row.qty, pending: row.key.flatMap { editor.pending[$0] },
+                             lower: 1, upper: max(1, limits.maxSet), unit: unit,
+                             saving: row.key.map { editor.saving.contains($0) } ?? false,
+                             confirm: actions.confirmQuantity, cancel: actions.cancelQuantity) { actions.stageQuantity($0) }
         } else {
             (Text("\(row.qty) ").font(.callout.weight(.semibold).monospacedDigit()) + Text(unit).font(.caption).foregroundColor(.secondary))
         }

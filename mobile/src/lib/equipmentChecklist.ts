@@ -200,6 +200,47 @@ export const EQUIPMENT_KIND_LABELS: Record<EquipmentLineKind, string> = {
   cable: 'Kabel',
 };
 
+/**
+ * Jedna kolejność sprzętu wszędzie — lista sprzętu i checklista w CRM, aplikacji na Maca i telefonie oraz PDF checklisty:
+ * zestawy, sprzęt, przewody; w każdej grupie kategoria magazynu (pozycje bez kategorii na końcu), potem nazwa
+ * (polski alfabet, liczby naturalnie: „Kabel 2 m” przed „Kabel 10 m”).
+ */
+export type EquipmentOrderKey = { kind: EquipmentLineKind; category: string | null; name: string; id: string };
+
+export const EQUIPMENT_KIND_SECTION_LABELS: Record<EquipmentLineKind, string> = {
+  kit: 'Zestawy',
+  equipment: 'Sprzęt',
+  cable: 'Przewody',
+};
+
+const EQUIPMENT_KIND_ORDER: Record<EquipmentLineKind, number> = { kit: 0, equipment: 1, cable: 2 };
+
+export function compareEquipmentOrder(a: EquipmentOrderKey, b: EquipmentOrderKey): number {
+  const kind = (EQUIPMENT_KIND_ORDER[a.kind] ?? 1) - (EQUIPMENT_KIND_ORDER[b.kind] ?? 1);
+  if (kind) return kind;
+  const categoryA = (a.category || '').trim();
+  const categoryB = (b.category || '').trim();
+  if (!categoryA !== !categoryB) return categoryA ? -1 : 1;
+  const category = categoryA.localeCompare(categoryB, 'pl', { sensitivity: 'base' });
+  if (category) return category;
+  const name = (a.name || '').localeCompare(b.name || '', 'pl', { sensitivity: 'base', numeric: true });
+  return name || String(a.id).localeCompare(String(b.id));
+}
+
+/** Klucz kolejności wiersza `event_equipment` z osadzonymi `equipment` / `kit` / `cable` (i ich `category`). */
+export function equipmentRowOrderKey(row: any): EquipmentOrderKey {
+  const pick = (value: any) => (Array.isArray(value) ? value[0] : value) ?? null;
+  const equipment = pick(row?.equipment), kit = pick(row?.kit), cable = pick(row?.cable);
+  const kind: EquipmentLineKind = row?.kit_id || kit ? 'kit' : row?.cable_id || cable ? 'cable' : 'equipment';
+  const owner = kind === 'kit' ? kit : kind === 'cable' ? cable : equipment;
+  return {
+    kind,
+    category: pick(owner?.category)?.name ?? null,
+    name: String(owner?.name || ''),
+    id: String(row?.id || ''),
+  };
+}
+
 export const EQUIPMENT_LOG_LABELS: Record<string, string> = {
   packed: 'Spakowano',
   filled: 'Wszystko zgodne',
@@ -443,7 +484,7 @@ export function parseEquipmentChecklist(raw: unknown): EquipmentChecklist | null
       return_damaged: num(summary.return_damaged),
       return_missing: num(summary.return_missing),
     },
-    lines: list(data.lines).map(parseLine).filter((line): line is EquipmentChecklistLine => line !== null),
+    lines: list(data.lines).map(parseLine).filter((line): line is EquipmentChecklistLine => line !== null).sort(compareEquipmentOrder),
     log: list(data.log).map((raw) => {
       const entry = obj(raw);
       const entryStage = str(entry.stage) as EquipmentStageKey | null;

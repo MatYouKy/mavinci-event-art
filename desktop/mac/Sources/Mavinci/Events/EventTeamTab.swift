@@ -48,11 +48,14 @@ private let teamPermissions: [(key: String, title: String, detail: String)] = [
             }
             .padding(.horizontal, 18).padding(.top, 12)
             EventArrangementsBanner(store: store, eventID: eventID, area: .team).padding(.horizontal, 18)
+            if let transport = team?.transport, !transport.vehicles.isEmpty {
+                transportSummary(transport).padding(.horizontal, 18)
+            }
             if let team {
                 if team.leadershipError {
                     HStack(spacing: 4) {
                         Text("Nie udało się odczytać kierownika realizacji. Spróbuj ponownie.")
-                        Button("Ponów odczyt") { Task { await store.loadTeam(eventID) } }.buttonStyle(.link)
+                        Button("Ponów odczyt") { Task { await store.loadTeam(eventID) } }.buttonStyle(.link).linkCursor()
                     }
                     .font(.callout).foregroundStyle(CrmTheme.rgb(0xfca5a5)).padding(.horizontal, 18)
                 }
@@ -125,6 +128,11 @@ private let teamPermissions: [(key: String, title: String, detail: String)] = [
                 TableColumn("Zakres obowiązków") { (member: EventTeamMember) in
                     Text(member.responsibilities ?? "").lineLimit(1).foregroundStyle(.secondary).help(member.responsibilities ?? "")
                 }.width(min: 90, ideal: 260)
+                TableColumn("Transport") { (member: EventTeamMember) in
+                    let text = transportText(member, team)
+                    Text(text.label).lineLimit(1).foregroundStyle(text.driver ? theme.accent : text.assigned ? Color.primary : Color.secondary)
+                        .help(text.label)
+                }.width(min: 80, ideal: 150)
                 TableColumn("Status") { (member: EventTeamMember) in
                     EventDotLabel(label: status(member.status).0, color: status(member.status).1)
                 }.width(min: 90, ideal: 130)
@@ -163,6 +171,80 @@ private let teamPermissions: [(key: String, title: String, detail: String)] = [
                 Button(action.title, systemImage: action.symbol, role: action.destructive ? .destructive : nil, action: action.run)
                     .disabled(action.disabled)
             }
+            if canManageTeam, let transport = team.transport, !transport.vehicles.isEmpty, member.status != "rejected" {
+                Divider()
+                transportMenu(member, transport)
+            }
+        }
+    }
+
+    // MARK: Transport — którym autem jedzie osoba; kierowca jest przypisany w logistyce
+
+    private func transportText(_ member: EventTeamMember, _ team: EventTeam) -> (label: String, driver: Bool, assigned: Bool) {
+        let vehicles = team.transport?.vehicles ?? []
+        if let driven = vehicles.first(where: { $0.driverId == member.employeeId && !member.employeeId.isEmpty }) {
+            return ("Kierowca · " + driven.name, true, true)
+        }
+        if let id = member.transportVehicleId, let vehicle = vehicles.first(where: { $0.id == id }) { return (vehicle.name, false, true) }
+        return (vehicles.isEmpty ? "—" : "Bez auta", false, false)
+    }
+
+    @ViewBuilder private func transportMenu(_ member: EventTeamMember, _ transport: EventTeamTransport) -> some View {
+        if let driven = transport.vehicles.first(where: { $0.driverId == member.employeeId && !member.employeeId.isEmpty }) {
+            Button("Kierowca: \(driven.name) — zmiana w logistyce", systemImage: "steeringwheel") {}.disabled(true)
+        } else {
+            Menu {
+                Picker("Jedzie autem", selection: Binding(
+                    get: { member.transportVehicleId ?? "" },
+                    set: { id in Task { await setTransport(member, id.isEmpty ? nil : id) } }
+                )) {
+                    Text("Bez auta (dojazd własny)").tag("")
+                    ForEach(transport.vehicles) { vehicle in
+                        Text(vehicle.label + (vehicle.seats.map { vehicle.people >= $0 && member.transportVehicleId != vehicle.id ? " — brak miejsc" : "" } ?? ""))
+                            .tag(vehicle.id)
+                    }
+                }
+                .pickerStyle(.inline).labelsHidden()
+            } label: {
+                Label("Jedzie autem", systemImage: "car")
+            }
+        }
+    }
+
+    /// Obsada aut i ostrzeżenia: za mało miejsc w aucie albo w całej flocie wydarzenia.
+    private func transportSummary(_ transport: EventTeamTransport) -> some View {
+        let warning = !transport.warnings.isEmpty
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Image(systemName: warning ? "exclamationmark.triangle.fill" : "car.2.fill")
+                    .foregroundStyle(warning ? Color.orange : theme.accent)
+                Text(transport.vehicles.map { $0.name + " \($0.people)/\($0.seats.map(String.init) ?? "?")" }.joined(separator: " · "))
+                    .font(.callout).lineLimit(1)
+                Spacer(minLength: 8)
+                if transport.withoutVehicle > 0 {
+                    Text("Bez auta: \(transport.withoutVehicle) os.").font(.callout).foregroundStyle(.secondary)
+                }
+            }
+            ForEach(transport.warnings, id: \.self) { text in
+                Text(text).font(.caption).foregroundStyle(.orange)
+            }
+            if canManageTeam && transport.withoutVehicle > 0 && !warning {
+                Text("Przypisz auto w menu ⋯ przy osobie (kierowcę ustawiasz w logistyce).").font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .padding(10)
+        .background((warning ? Color.orange : Color.primary).opacity(warning ? 0.10 : 0.04), in: RoundedRectangle(cornerRadius: 9))
+    }
+
+    private func setTransport(_ member: EventTeamMember, _ vehicleID: String?) async {
+        guard vehicleID != member.transportVehicleId else { return }
+        do {
+            try await store.teamRun(eventID, "teamTransport", [
+                "assignmentId": .string(member.id),
+                "eventVehicleId": vehicleID.map { JSONValue.string($0) } ?? .null,
+            ], success: vehicleID == nil ? "Bez auta — dojazd własny" : "Zapisano transport")
+        } catch {
+            state.error = store.failureText(error, "Nie udało się zapisać transportu.")
         }
     }
 
@@ -353,7 +435,6 @@ private let teamPermissions: [(key: String, title: String, detail: String)] = [
     @State private var employeeID = ""
     @State private var role = ""
     @State private var responsibilities = ""
-    @State private var accessLevelID = ""
     @State private var permissionsOpen = false
     @State private var permissions: [String: Bool] = [:]
     @State private var sendInvitation = true
@@ -401,13 +482,10 @@ private let teamPermissions: [(key: String, title: String, detail: String)] = [
                                 if responsibilities.isEmpty { Text("Opisz zakres obowiązków...").foregroundStyle(.tertiary).padding(8).allowsHitTesting(false) }
                             }
                     }
-                    field("Poziom dostępu") {
-                        Picker("Poziom dostępu", selection: $accessLevelID) {
-                            ForEach(candidates?.accessLevels ?? []) { level in Text("\(level.name) - \(level.description)").tag(level.id) }
-                        }
-                        .labelsHidden()
-                        Text("Określa domyślny zakres widoczności dla tej osoby").font(.caption).foregroundStyle(.tertiary)
-                    }
+                    // Zakres widoczności wynika z roli pracownika (ustawienia pracownika) — bez wyboru przy dodawaniu.
+                    Label("Co ta osoba widzi w wydarzeniu, wynika z jej roli w ustawieniach pracownika. Poniżej możesz dodatkowo nadać uprawnienia do edycji w tym wydarzeniu.",
+                          systemImage: "person.badge.shield.checkmark")
+                        .font(.caption).foregroundStyle(.secondary)
                     Divider()
                     Toggle("Nadaj uprawnienia współpracownika", isOn: Binding(get: { permissionsOpen || anyPermission }, set: { on in
                         permissionsOpen = on
@@ -459,7 +537,6 @@ private let teamPermissions: [(key: String, title: String, detail: String)] = [
             do {
                 let result = try await store.teamCandidates(eventID)
                 candidates = result
-                accessLevelID = result.accessLevels.first { $0.slug == "employee" }?.id ?? ""
                 if result.phasesError == true { state.error = "Błąd podczas pobierania pracowników z faz" }
             } catch {
                 state.error = store.failureText(error, "Nie udało się pobrać listy pracowników.")
@@ -494,7 +571,6 @@ private let teamPermissions: [(key: String, title: String, detail: String)] = [
         do {
             try await store.teamRun(eventID, "teamAdd", [
                 "employeeId": .string(employeeID), "role": .string(role), "responsibilities": .string(responsibilities),
-                "accessLevelId": accessLevelID.isEmpty ? .null : .string(accessLevelID),
                 "permissions": .object(Dictionary(uniqueKeysWithValues: Self.addLabels.map { ($0.0, JSONValue.bool(permissions[$0.0] == true)) })),
                 "sendInvitation": .bool(sendInvitation), "includePhases": .bool(includePhases),
             ], success: "Pracownik dodany do zespołu", pending: "Dodawanie…")

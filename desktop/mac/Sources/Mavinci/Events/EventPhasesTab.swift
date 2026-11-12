@@ -237,18 +237,18 @@ import AppKit
                     HStack(spacing: 8) {
                         if let phase {
                             Text("\(item.label): \(TimelineText.full(phase.start))")
-                            Button("Edytuj fazę") { editing = phase }.buttonStyle(.link).font(.caption)
+                            Button("Edytuj fazę") { editing = phase }.buttonStyle(.link).linkCursor().font(.caption)
                         } else if let legacy = item.legacy {
                             Text("\(item.label): \(TimelineText.full(legacy)) — wcześniejszy termin umowy")
                             if let type, let hours = type.durationHours {
                                 Button("Dodaj do Timeline (\(TimelineText.number(hours)) godz.)") { Task { await importContract(item.label, legacy, type, hours: hours, data: data) } }
-                                    .buttonStyle(.link).font(.caption).disabled(importingContract)
+                                    .buttonStyle(.link).linkCursor().font(.caption).disabled(importingContract)
                             } else {
-                                Button("Dodaj fazę") { addOpen = true }.buttonStyle(.link).font(.caption)
+                                Button("Dodaj fazę") { addOpen = true }.buttonStyle(.link).linkCursor().font(.caption)
                             }
                         } else {
                             Text("\(item.label): Brak fazy w Timeline")
-                            Button("Dodaj fazę") { addOpen = true }.buttonStyle(.link).font(.caption)
+                            Button("Dodaj fazę") { addOpen = true }.buttonStyle(.link).linkCursor().font(.caption)
                         }
                     }
                     .font(.callout)

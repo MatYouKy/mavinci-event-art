@@ -104,7 +104,7 @@ import AppKit
                     HStack {
                         (Text("Aktualnie: ").foregroundColor(.secondary) + Text(category?["name"]?.text ?? "brak")).font(.caption)
                         Spacer()
-                        Button("Anuluj") { editingCategory = false; categoryID = event["category_id"] }.buttonStyle(.link).font(.caption)
+                        Button("Anuluj") { editingCategory = false; categoryID = event["category_id"] }.buttonStyle(.link).linkCursor().font(.caption)
                     }
                     Picker("Kategoria", selection: $categoryID) {
                         Text("Brak kategorii").tag("")
@@ -174,7 +174,7 @@ import AppKit
                     HStack {
                         (Text("Aktualnie: ").foregroundColor(.secondary) + Text(Self.statusLabel(current))).font(.caption)
                         Spacer()
-                        Button("Anuluj") { draftStatus = current; editingStatus = false }.buttonStyle(.link).font(.caption)
+                        Button("Anuluj") { draftStatus = current; editingStatus = false }.buttonStyle(.link).linkCursor().font(.caption)
                     }
                     Picker("Status", selection: $draftStatus) {
                         if Self.warehouseStatuses.contains(current) {
@@ -224,7 +224,7 @@ import AppKit
                 if confirmation.historyError {
                     HStack(spacing: 4) {
                         Text("Nie udało się sprawdzić historii wysyłki.")
-                        Button("Ponów") { Task { await store.loadDetails(eventID) } }.buttonStyle(.link)
+                        Button("Ponów") { Task { await store.loadDetails(eventID) } }.buttonStyle(.link).linkCursor()
                     }
                     .font(.caption).foregroundStyle(CrmTheme.rgb(0xfcd34d))
                 } else {

@@ -4,9 +4,10 @@ import AppKit
 // MARK: Zarządzanie sprzętem wydarzenia — jedno okno do dodawania, zmiany ilości i usuwania (katalog z dysku, zapis od razu)
 // oraz wspólny zapis zmian ilości dla listy sprzętu (− / +, wpisanie liczby, Delete) z cofaniem ostatniej zmiany.
 
-/// Zmiany ilości sprzętu zapisywane od razu: seria kliknięć − / + to jeden zapis (po 0,6 s bez kolejnych zmian), zapisy idą
-/// po kolei (bez wyścigów), a komunikat na dole okna ma „Cofnij”. Serwer: czynności `add` / `quantity` / `remove` / `restore`
-/// zakładki Sprzęt (te same reguły dostępności co w CRM).
+/// Zmiany ilości sprzętu: − / + zmienia ilość tylko na ekranie (`pending`), zapis dopiero po zatwierdzeniu ✓ albo ↩ — szybkie
+/// klikanie nie wysyła serii zapisów. Dodanie, usunięcie i czynności z menu zapisują się od razu. Zapisy idą po kolei (bez
+/// wyścigów), a komunikat na dole okna ma „Cofnij”. Serwer: czynności `add` / `quantity` / `remove` / `restore` zakładki Sprzęt
+/// (te same reguły dostępności co w CRM).
 @MainActor final class EquipmentEditor: ObservableObject {
     /// Pozycja magazynu: rodzaj (`item` / `kit` / `cable`), identyfikator i klucz dostępności (`item-<id>`) jak na serwerze.
     struct Target: Hashable {
@@ -26,6 +27,8 @@ import AppKit
     @Published private(set) var drafts: [String: Int] = [:]
     /// Klucze w trakcie zapisu.
     @Published private(set) var saving: Set<String> = []
+    /// Ilości zmienione przyciskami − / +, czekające na zatwierdzenie ✓ (klucz dostępności → ilość).
+    @Published private(set) var pending: [String: Int] = [:]
     /// Liczba nowych pozycji dodanych przez ten zapis (okno „Zarządzaj sprzętem” rozpoznaje po niej, że coś dodano).
     @Published private(set) var added = 0
 
@@ -53,6 +56,7 @@ import AppKit
         let key = target.key
         targets[key] = target
         if let note { notes[key] = note }
+        pending[key] = nil
         drafts[key] = max(0, quantity)
         timers[key]?.cancel()
         timers[key] = Task { [weak self] in
@@ -60,6 +64,26 @@ import AppKit
             guard !Task.isCancelled else { return }
             self?.enqueue([key], undo: nil)
         }
+    }
+
+    /// Zmiana ilości do zatwierdzenia (− / +, wpisanie liczby) — bez zapisu.
+    func stage(_ target: Target, to quantity: Int) {
+        let key = target.key
+        targets[key] = target
+        let committed = drafts[key] ?? current(key)
+        pending[key] = quantity == committed ? nil : max(0, quantity)
+    }
+
+    /// Zatwierdzenie ilości (✓ albo ↩) — zapis od razu.
+    func confirm(_ key: String) {
+        guard let target = targets[key], let value = pending[key] else { return }
+        pending[key] = nil
+        set(target, to: value, immediate: true)
+    }
+
+    /// Rezygnacja ze zmienionej ilości.
+    func discard(_ key: String) {
+        pending[key] = nil
     }
 
     /// Usunięcie kilku pozycji naraz — jeden zapis i jedno „Cofnij” dla wszystkich.
@@ -174,22 +198,29 @@ import AppKit
     }
 }
 
-/// Ilość z przyciskami − / + i polem do wpisania liczby (↩ albo wyjście z pola zapisuje).
+/// Ilość z przyciskami − / + i polem do wpisania liczby. Z `confirm`: zmiana czeka na zatwierdzenie — obok pojawia się ✓
+/// (zapis, także ↩ w polu) i ✕ (rezygnacja). Bez `confirm` (np. ilość w oknie przed dodaniem): każda zmiana od razu.
 struct EquipmentStepper: View {
     let value: Int
+    var pending: Int? = nil
     let lower: Int
     let upper: Int
     var unit: String?
     var saving = false
+    var confirm: (() -> Void)? = nil
+    var cancel: (() -> Void)? = nil
     let set: (Int) -> Void
     @State private var text = ""
     @FocusState private var focused: Bool
 
+    private var shown: Int { pending ?? value }
+    private var changed: Bool { confirm != nil && pending != nil && pending != value }
+
     var body: some View {
-        let over = value > upper
+        let over = shown > upper
         HStack(spacing: 3) {
-            Button { set(max(lower, value - 1)) } label: { Image(systemName: "minus").frame(width: 16, height: 16).contentShape(Rectangle()) }
-                .disabled(value <= lower)
+            Button { set(max(lower, shown - 1)) } label: { Image(systemName: "minus").frame(width: 16, height: 16).contentShape(Rectangle()) }
+                .disabled(shown <= lower)
                 .help("Mniej")
             TextField("", text: $text)
                 .textFieldStyle(.roundedBorder)
@@ -198,25 +229,37 @@ struct EquipmentStepper: View {
                 .foregroundStyle(over ? Color.red : Color.primary)
                 .frame(width: 46)
                 .focused($focused)
-                .onSubmit { commit() }
-            Button { set(min(upper, value + 1)) } label: { Image(systemName: "plus").frame(width: 16, height: 16).contentShape(Rectangle()) }
-                .disabled(value >= upper)
-                .help(value >= upper ? "Brak kolejnych sztuk w terminie" : "Więcej")
+                .onSubmit {
+                    commit()
+                    if changed { confirm?() }
+                }
+            Button { set(min(upper, shown + 1)) } label: { Image(systemName: "plus").frame(width: 16, height: 16).contentShape(Rectangle()) }
+                .disabled(shown >= upper)
+                .help(shown >= upper ? "Brak kolejnych sztuk w terminie" : "Więcej")
             if let unit { Text(unit).font(.caption).foregroundStyle(.secondary) }
-            ProgressView().controlSize(.mini).opacity(saving ? 1 : 0)
+            if changed {
+                Button { confirm?() } label: {
+                    Image(systemName: "checkmark.circle.fill").font(.system(size: 16)).foregroundStyle(CrmTheme.rgb(0x4ade80))
+                }
+                .help("Zatwierdź ilość \(shown) (↩)")
+                Button { cancel?() } label: { Image(systemName: "xmark.circle").font(.system(size: 14)).foregroundStyle(.secondary) }
+                    .help("Przywróć \(value)")
+            } else {
+                ProgressView().controlSize(.mini).opacity(saving ? 1 : 0)
+            }
         }
         .buttonStyle(.borderless)
         .help(over ? "Przekroczona dostępność w terminie — maksymalnie \(upper)" : "Maksymalnie \(upper)")
-        .onAppear { text = String(value) }
-        .onChange(of: value) { _, new in if !focused { text = String(new) } }
+        .onAppear { text = String(shown) }
+        .onChange(of: shown) { _, new in if !focused { text = String(new) } }
         .onChange(of: focused) { _, now in if !now { commit() } }
     }
 
     private func commit() {
-        let parsed = Int(text.trimmingCharacters(in: .whitespaces)) ?? value
+        let parsed = Int(text.trimmingCharacters(in: .whitespaces)) ?? shown
         let clamped = min(max(parsed, lower), max(upper, lower))
         text = String(clamped)
-        if clamped != value { set(clamped) }
+        if clamped != shown { set(clamped) }
     }
 }
 
@@ -244,6 +287,8 @@ struct EquipmentReservations: Decodable {
     @ObservedObject var editor: EquipmentEditor
     let eventID: String
     var focus: String?
+    /// Kolejka weryfikacji zestawów, dla której okno komponentów już się pokazało (wspólna z zakładką Sprzęt).
+    @Binding var shownReviews: Set<String>
     let onFinished: (Bool) -> Void
     @EnvironmentObject private var state: Workspace
     @Environment(\.dismiss) private var dismiss
@@ -259,6 +304,20 @@ struct EquipmentReservations: Decodable {
     @State private var noteFor: EquipmentEditor.Target?
     @State private var noteText = ""
     @State private var addedAtOpen = 0
+    @State private var componentsFor: ManagerComponents?
+
+    /// Okno „Komponenty zestawu” otwierane nad oknem sprzętu.
+    struct ManagerComponents: Identifiable { var id: String { reviewID }; let equipmentID: String; let reviewID: String }
+
+    /// Pierwsza pozycja kolejki weryfikacji z powiązanymi elementami (komponentami) do sprawdzenia.
+    private var pendingReview: (review: EquipmentTabData.Review, missing: Int)? {
+        guard let data = tabData else { return nil }
+        for review in data.reviews {
+            let groups = data.components[review.equipmentId]?.groups ?? []
+            if !groups.isEmpty { return (review, groups.reduce(0) { $0 + ($1.name != nil ? 1 : $1.components.count) }) }
+        }
+        return nil
+    }
 
     /// Wiersz okna: pozycja katalogu i jej ilość w wydarzeniu.
     struct Line: Identifiable, Hashable {
@@ -345,7 +404,7 @@ struct EquipmentReservations: Decodable {
                 HStack(spacing: 12) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Zarządzaj sprzętem").font(.title3.weight(.semibold))
-                        Text("W wydarzeniu: \(inEvent.count) poz. · \(pieces) szt. · zmiany zapisują się od razu")
+                        Text("W wydarzeniu: \(inEvent.count) poz. · \(pieces) szt. · ilość zmienioną przyciskami − / + zatwierdzasz ✓")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer()
@@ -377,8 +436,27 @@ struct EquipmentReservations: Decodable {
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                if let pending = pendingReview {
+                    // Dodany sprzęt ma powiązane elementy (np. blat: nogi, schody, osłony) — informacja i skrót do okna komponentów.
+                    HStack(spacing: 10) {
+                        Image(systemName: "link").foregroundStyle(theme.accent)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("„\(pending.review.name)” ma powiązane elementy").font(.callout.weight(.semibold))
+                            Text("\(pending.missing) \(pending.missing == 1 ? "komponent wymaga" : "komponentów wymaga") sprawdzenia: wymagane, rekomendowane i opcjonalne.")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Button("Zobacz komponenty i dodaj") {
+                            componentsFor = ManagerComponents(equipmentID: pending.review.equipmentId, reviewID: pending.review.id)
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
+                    .padding(10)
+                    .background(theme.accent.opacity(0.1), in: RoundedRectangle(cornerRadius: 9))
+                    .padding(.horizontal, 14).padding(.top, 8)
+                }
                 HStack(spacing: 10) {
-                    Text("Dwuklik albo ↩ dodaje 1 szt. · + / − zmienia ilość zaznaczonej pozycji · 0 usuwa z wydarzenia")
+                    Text("Dwuklik dodaje 1 szt. · + / − zmienia ilość zaznaczonej pozycji, ✓ albo ↩ zatwierdza · 0 usuwa z wydarzenia")
                         .font(.caption).foregroundStyle(.secondary)
                     Spacer()
                     Button("Gotowe") { close() }.buttonStyle(.borderedProminent).keyboardShortcut(.cancelAction)
@@ -393,6 +471,17 @@ struct EquipmentReservations: Decodable {
         }
         .task { await store.syncEquipmentCatalog(eventID) }
         .task(id: selection) { await loadReservations() }
+        .task(id: pendingReview?.review.id) {
+            // Ręcznie dodany sprzęt z powiązaniami: okno komponentów od razu, nad oknem sprzętu (raz na pozycję kolejki).
+            guard let pending = pendingReview, pending.review.source == "manual", !shownReviews.contains(pending.review.id),
+                  componentsFor == nil else { return }
+            shownReviews.insert(pending.review.id)
+            componentsFor = ManagerComponents(equipmentID: pending.review.equipmentId, reviewID: pending.review.id)
+        }
+        .sheet(item: $componentsFor) { request in
+            EquipmentComponentsSheet(store: store, eventID: eventID, equipmentID: request.equipmentID, offerID: nil, reviewID: request.reviewID)
+                .warehouseSheetStyle(state)
+        }
         .alert("Dodaj z notatką", isPresented: Binding(get: { noteFor != nil }, set: { if !$0 { noteFor = nil } })) {
             TextField("Notatka (opcjonalnie)", text: $noteText)
             Button("Dodaj") {
@@ -422,10 +511,18 @@ struct EquipmentReservations: Decodable {
 
     private func table(_ lines: [Line]) -> some View {
         Table(lines, selection: $selection) {
+            TableColumn("") { (line: Line) in
+                // Pozycja już w wydarzeniu — zielony znacznik (poza tym, że jest na górze listy).
+                if line.current > 0 {
+                    Image(systemName: "checkmark.circle.fill").foregroundStyle(CrmTheme.rgb(0x4ade80))
+                        .help("W wydarzeniu: \(line.current) \(line.isKit ? "kpl." : "szt.")")
+                }
+            }.width(18)
             TableColumn("") { (line: Line) in thumb(line) }.width(40)
             TableColumn("Nazwa") { (line: Line) in
                 VStack(alignment: .leading, spacing: 1) {
                     Text(line.entry.name).fontWeight(value(line) > 0 ? .semibold : .regular).lineLimit(1)
+                        .foregroundStyle(line.current > 0 ? CrmTheme.rgb(0x4ade80) : Color.primary)
                     Text(subtitle(line)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
                 .help(line.entry.name)
@@ -457,7 +554,9 @@ struct EquipmentReservations: Decodable {
         .contextMenu(forSelectionType: String.self) { ids in
             if let id = ids.first, let line = lines.first(where: { $0.id == id }) { menu(line) }
         } primaryAction: { ids in
-            if let id = ids.first, let line = lines.first(where: { $0.id == id }) { bump(line, by: 1) }
+            // ↩ albo dwuklik: zatwierdza zmienioną ilość, a bez zmiany — dodaje 1 szt. od razu.
+            guard let id = ids.first, let line = lines.first(where: { $0.id == id }) else { return }
+            if editor.pending[line.key] != nil { editor.confirm(line.key) } else { add(line) }
         }
         .onKeyPress(characters: CharacterSet(charactersIn: "+=-")) { press in
             guard let id = selection, let line = lines.first(where: { $0.id == id }) else { return .ignored }
@@ -522,8 +621,9 @@ struct EquipmentReservations: Decodable {
             Text("\(line.current) szt. (kilka pozycji)").font(.caption).foregroundStyle(.secondary)
                 .help("Ta pozycja występuje na liście kilka razy — zmień ilość na liście sprzętu.")
         } else {
-            EquipmentStepper(value: value(line), lower: 0, upper: line.upper, unit: line.isKit ? "kpl." : "szt.",
-                             saving: editor.saving.contains(line.key)) { editor.set(line.target, to: $0) }
+            EquipmentStepper(value: value(line), pending: editor.pending[line.key], lower: 0, upper: line.upper, unit: line.isKit ? "kpl." : "szt.",
+                             saving: editor.saving.contains(line.key),
+                             confirm: { editor.confirm(line.key) }, cancel: { editor.discard(line.key) }) { editor.stage(line.target, to: $0) }
         }
     }
 
@@ -532,18 +632,33 @@ struct EquipmentReservations: Decodable {
             state.snack = Snack(kind: .info, text: "„\(line.entry.name)” występuje na liście kilka razy — zmień ilość na liście sprzętu.")
             return
         }
-        let current = value(line)
+        let current = editor.pending[line.key] ?? value(line)
         let next = current + delta
         if next < 0 { return }
         if delta > 0 && next > line.upper {
             state.snack = Snack(kind: .info, text: "Brak kolejnych sztuk w terminie: \(line.entry.name)")
             return
         }
-        editor.set(line.target, to: next)
+        editor.stage(line.target, to: next)
+    }
+
+    /// Dodanie / odjęcie 1 szt. z menu i dwuklikiem — zapis od razu.
+    private func add(_ line: Line, by delta: Int = 1) {
+        guard line.rows <= 1 else {
+            state.snack = Snack(kind: .info, text: "„\(line.entry.name)” występuje na liście kilka razy — zmień ilość na liście sprzętu.")
+            return
+        }
+        let next = value(line) + delta
+        if next < 0 { return }
+        if delta > 0 && next > line.upper {
+            state.snack = Snack(kind: .info, text: "Brak kolejnych sztuk w terminie: \(line.entry.name)")
+            return
+        }
+        editor.set(line.target, to: next, immediate: true)
     }
 
     @ViewBuilder private func menu(_ line: Line) -> some View {
-        Button("Dodaj 1 szt.", systemImage: "plus") { bump(line, by: 1) }.disabled(value(line) >= line.upper || line.rows > 1)
+        Button("Dodaj 1 szt.", systemImage: "plus") { add(line) }.disabled(value(line) >= line.upper || line.rows > 1)
         if line.current == 0 && line.rows == 0 {
             Button("Dodaj z notatką…", systemImage: "note.text.badge.plus") {
                 noteText = ""
@@ -552,7 +667,7 @@ struct EquipmentReservations: Decodable {
             .disabled(line.maxAdd <= 0)
         }
         if value(line) > 0 && line.rows <= 1 {
-            Button("Odejmij 1 szt.", systemImage: "minus") { bump(line, by: -1) }
+            Button("Odejmij 1 szt.", systemImage: "minus") { add(line, by: -1) }
             Button("Usuń z wydarzenia", systemImage: "trash", role: .destructive) { editor.set(line.target, to: 0, immediate: true) }
         }
         Divider()
@@ -634,7 +749,7 @@ struct EquipmentReservations: Decodable {
             } else if let error = reservationErrors[line.id] {
                 HStack(spacing: 6) {
                     Text(error).font(.caption).foregroundStyle(.red)
-                    Button("Ponów") { Task { await loadReservations() } }.buttonStyle(.link).font(.caption)
+                    Button("Ponów") { Task { await loadReservations() } }.buttonStyle(.link).linkCursor().font(.caption)
                 }
             } else {
                 ProgressView().controlSize(.small)
@@ -663,7 +778,7 @@ struct EquipmentReservations: Decodable {
                         close()
                         state.showEvent(reservation.eventId, cardTab: "equipment")
                     }
-                    .buttonStyle(.link).lineLimit(1).help("Otwórz kartę tego wydarzenia (zakładka Sprzęt)")
+                    .buttonStyle(.link).linkCursor().lineLimit(1).help("Otwórz kartę tego wydarzenia (zakładka Sprzęt)")
                 }
                 Text(from + " – " + to).font(.caption).foregroundStyle(.secondary).monospacedDigit()
             }

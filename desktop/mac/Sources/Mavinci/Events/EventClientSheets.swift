@@ -108,7 +108,7 @@ private struct EventBusinessContacts: Decodable { var contacts: [EventClientPers
             TextField("Szukaj klienta po nazwisku, e-mailu lub telefonie…", text: $individualQuery).textFieldStyle(.roundedBorder)
             pickList(matches.map { ($0.id, $0.name, [$0.email ?? "", $0.phone ?? ""].filter { !$0.isEmpty }.joined(separator: " · ")) }, selected: individualID) { individualID = $0 }
             Button(newIndividual ? "Anuluj" : "Dodaj nowego klienta", systemImage: newIndividual ? "xmark" : "plus") { newIndividual.toggle(); resetForm() }
-                .buttonStyle(.link)
+                .buttonStyle(.link).linkCursor()
             if newIndividual {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
@@ -161,7 +161,7 @@ private struct EventBusinessContacts: Decodable { var contacts: [EventClientPers
                         Spacer()
                         if !assigned.primary {
                             Button("Ustaw główną") { Task { await run("clientSetPrimary", ["id": .string(assigned.id)], "Główna osoba kontaktowa ustawiona") } }
-                                .buttonStyle(.link).font(.caption)
+                                .buttonStyle(.link).linkCursor().font(.caption)
                         }
                         Button(role: .destructive) { Task { await run("clientRemoveContact", ["id": .string(assigned.id)], "Osoba usunięta") } } label: { Image(systemName: "trash") }
                             .buttonStyle(.borderless)
@@ -171,7 +171,7 @@ private struct EventBusinessContacts: Decodable { var contacts: [EventClientPers
             }
             if !organizationID.isEmpty {
                 Button(newPerson ? "Anuluj" : "Dodaj nową osobę", systemImage: newPerson ? "xmark" : "plus") { newPerson.toggle(); resetForm() }
-                    .buttonStyle(.link)
+                    .buttonStyle(.link).linkCursor()
                 if newPerson {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {

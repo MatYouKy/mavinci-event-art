@@ -162,11 +162,11 @@ import AppKit
             card("Kontakt na wydarzeniu") {
                 optionalText(contact["name"])
                 if let phone = contact["phone"]?.text.nonEmpty {
-                    if let url = EventStepRules.telURL(phone) { Button(phone, systemImage: "phone") { NSWorkspace.shared.open(url) }.buttonStyle(.link) }
+                    if let url = EventStepRules.telURL(phone) { Button(phone, systemImage: "phone") { NSWorkspace.shared.open(url) }.buttonStyle(.link).linkCursor() }
                     else { Text(phone) }
                 }
                 if let email = contact["email"]?.text.nonEmpty {
-                    Button(email, systemImage: "envelope") { if let url = URL(string: "mailto:\(email)") { NSWorkspace.shared.open(url) } }.buttonStyle(.link)
+                    Button(email, systemImage: "envelope") { if let url = URL(string: "mailto:\(email)") { NSWorkspace.shared.open(url) } }.buttonStyle(.link).linkCursor()
                 }
             }
         }

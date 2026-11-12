@@ -259,7 +259,7 @@ private func phaseRoleLabel(_ role: String) -> String { phaseRoleLabels[role] ??
                             DatePicker("Zakończenie", selection: Binding(get: { end }, set: { end = $0; endManual = true }))
                                 .disabled(automaticTravel && isTravel)
                             if let hours = type?.durationHours {
-                                Button("Ustaw +" + TimelineText.hours(Int((hours * 60).rounded()), minutesInParentheses: false)) { endManual = false; recalculateEnd() }.buttonStyle(.link)
+                                Button("Ustaw +" + TimelineText.hours(Int((hours * 60).rounded()), minutesInParentheses: false)) { endManual = false; recalculateEnd() }.buttonStyle(.link).linkCursor()
                             }
                         }
                         Label("Czas trwania: \(durationText)", systemImage: "clock").foregroundStyle(CrmTheme.rgb(0x60a5fa))
@@ -580,7 +580,7 @@ struct PhaseConflictRow: Decodable, Hashable {
                     EmployeeAvatarView(name: person.name, url: person.avatarUrl, crop: person.avatar, size: 40)
                     Text("\(person.name) \(person.surname)").font(.callout.weight(.medium))
                     Spacer()
-                    Button("Zmień") { employee = nil; conflicts = [] }.buttonStyle(.link)
+                    Button("Zmień") { employee = nil; conflicts = [] }.buttonStyle(.link).linkCursor()
                 }
             }
             .padding(10).background(theme.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 9))

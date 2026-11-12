@@ -158,7 +158,8 @@ private struct UploadReply: Decodable { var added: Int; var failed: [String] }
             Button("Usuń", role: .destructive) { if let request = deleting { Task { await performDelete(request) } } }
             Button("Anuluj", role: .cancel) { deleting = nil }
         } message: {
-            Text(deleting?.kind == "folder" ? "Razem z folderem znikną jego podfoldery i pliki." : "Plików nie można przywrócić.")
+            Text(deleting?.kind == "folder" ? "Folder razem z podfolderami i plikami trafi do kosza — przez 30 dni można go przywrócić (Kosz w Finderze)."
+                 : "Pliki trafią do kosza — przez 30 dni można je przywrócić (Kosz w Finderze).")
         }
     }
 
@@ -223,10 +224,12 @@ private struct UploadReply: Decodable { var added: Int; var failed: [String] }
                 }
                 .padding(.horizontal, 8).padding(.bottom, 12)
             }
-            Button { state.openCRM("/crm/events/\(eventID)?tab=files") } label: { Label("Folder Mac / iCloud w CRM", systemImage: "folder.badge.gearshape") }
-                .buttonStyle(.borderless).font(.caption).foregroundStyle(.secondary)
-                .help("Klucze synchronizacji folderu Mac / iCloud obsługuje CRM w przeglądarce.")
-                .padding(12)
+            if FinderDomain.available {
+                Button { Task { await FinderDomain.reveal(event: eventID) } } label: { Label("Pokaż w Finderze", systemImage: "folder") }
+                    .buttonStyle(.borderless).font(.caption).foregroundStyle(.secondary)
+                    .help("Pliki tego wydarzenia w Finderze: Mavinci → Eventy → rok → wydarzenie (zmiany wracają do CRM).")
+                    .padding(12)
+            }
         }
     }
 
@@ -508,6 +511,7 @@ private struct UploadReply: Decodable { var added: Int; var failed: [String] }
                 try await store.tabAction(eventID, "files", "createFolder", ["name": .string(name), "parentId": prompt.parentID.map { JSONValue.string($0) } ?? JSONValue.null], reload: ["files"],
                                           success: "Folder został utworzony", pending: "Tworzenie folderu…")
             }
+            FinderDomain.signal()
         } catch {
             state.error = store.failureText(error, prompt.renameID == nil ? "Błąd podczas tworzenia folderu" : "Nie udało się zmienić nazwy")
         }
@@ -529,16 +533,17 @@ private struct UploadReply: Decodable { var added: Int; var failed: [String] }
         do {
             if request.kind == "folder" {
                 try await store.tabAction(eventID, "files", "remove", ["id": .string(request.ids[0]), "kind": .string("folder")], reload: ["files"],
-                                          success: "Folder został usunięty", pending: "Usuwanie…")
+                                          success: "Folder przeniesiono do kosza", pending: "Usuwanie…")
                 if currentFolder == request.ids[0] { currentFolder = nil }
             } else if request.count == 1 {
                 try await store.tabAction(eventID, "files", "remove", ["id": .string(request.ids[0]), "kind": .string("file")], reload: ["files"],
-                                          success: "Plik został usunięty", pending: "Usuwanie…")
+                                          success: "Plik przeniesiono do kosza", pending: "Usuwanie…")
             } else {
                 try await store.tabAction(eventID, "files", "removeFiles", ["ids": .array(request.ids.map { JSONValue.string($0) })], reload: ["files"],
-                                          success: "Pliki zostały usunięte", pending: "Usuwanie…")
+                                          success: "Pliki przeniesiono do kosza", pending: "Usuwanie…")
             }
             selection = []
+            FinderDomain.signal()
         } catch {
             state.error = store.failureText(error, request.kind == "folder" ? "Błąd podczas usuwania folderu" : "Błąd podczas usuwania pliku")
         }
@@ -552,6 +557,7 @@ private struct UploadReply: Decodable { var added: Int; var failed: [String] }
                                       reload: ["files"], success: "Pliki zostały wklejone", pending: clipboard.cut ? "Przenoszenie…" : "Kopiowanie…")
             if clipboard.cut { self.clipboard = nil }
             selection = []
+            FinderDomain.signal()
         } catch {
             state.error = store.failureText(error, "Nie udało się wkleić plików")
         }
@@ -603,7 +609,10 @@ private struct UploadReply: Decodable { var added: Int; var failed: [String] }
             let data = try await store.tabAction(eventID, "files", "registerUploads", ["folderId": folder.map { JSONValue.string($0) } ?? JSONValue.null, "files": .array(sent)],
                                                  reload: ["files"], success: nil, pending: "Zapisywanie plików…")
             let result = try JSONDecoder().decode(UploadReply.self, from: data)
-            if result.added > 0 { state.succeed(result.added == 1 ? "Plik został dodany" : "Dodano \(result.added) plików") }
+            if result.added > 0 {
+                state.succeed(result.added == 1 ? "Plik został dodany" : "Dodano \(result.added) plików")
+                FinderDomain.signal()
+            }
             if let failed = result.failed.first { state.error = "Błąd zapisu: \(failed)" }
         } catch {
             state.error = store.failureText(error, "Błąd podczas dodawania plików")
