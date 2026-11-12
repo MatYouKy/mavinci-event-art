@@ -142,6 +142,7 @@ enum LogisticsLabels {
         let cost = data.vehicles.reduce(0) { $0 + $1.fuelCost + $1.tollCost }
         return ScrollView {
             VStack(alignment: .leading, spacing: 14) {
+                EventArrangementsBanner(store: store, eventID: eventID, area: .logistics)
                 if store.tabLoading.contains("\(eventID)|logistics") {
                     Text("Aktualizowanie danych logistycznych…").font(.caption).foregroundStyle(.secondary)
                 }

@@ -20,6 +20,7 @@ import '@/lib/native/eventHistory';
 import '@/lib/native/eventSettlement';
 import '@/lib/native/eventFinances';
 import '@/lib/native/eventSeller';
+import '@/lib/native/eventArrangements';
 import '@/lib/native/eventCalculations';
 import '@/lib/native/eventContract';
 import '@/lib/native/eventClientLocation';

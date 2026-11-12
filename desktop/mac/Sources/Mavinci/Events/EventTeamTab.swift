@@ -47,6 +47,7 @@ private let teamPermissions: [(key: String, title: String, detail: String)] = [
                 }
             }
             .padding(.horizontal, 18).padding(.top, 12)
+            EventArrangementsBanner(store: store, eventID: eventID, area: .team).padding(.horizontal, 18)
             if let team {
                 if team.leadershipError {
                     HStack(spacing: 4) {

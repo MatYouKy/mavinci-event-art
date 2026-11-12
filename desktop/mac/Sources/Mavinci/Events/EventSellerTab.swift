@@ -62,29 +62,64 @@ private struct SellerMessages: Decodable {
         }
     }
 
-    private func content(_ data: SellerTabData) -> some View {
+    /// Oferty sprzedawców jako natywna lista z boku (gdy jest ich kilka), po prawej ustalenia z oferty i rozmowa.
+    @ViewBuilder private func content(_ data: SellerTabData) -> some View {
         let needle = query.trimmingCharacters(in: .whitespaces).lowercased()
         let visible = data.offers.filter { offer in
             needle.isEmpty || [offer.number ?? "", offer.title ?? "", offer.partnerName, offer.brandName].joined(separator: " ").lowercased().contains(needle)
         }
         let selected = data.offers.first { $0.id == selectedID } ?? data.offers.first
-        return ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Label("Ustalenia i rozmowa ze sprzedawcą", systemImage: "bubble.left.and.bubble.right").font(.title2.weight(.light))
-                    Text("Kontynuacja oferty w realizacji: te same ustalenia, kontakty i pełna historia rozmowy, z zachowanymi autorami i datami. Zmiany są widoczne także przy ofercie i w realizacji sprzedawcy. Rozmowy ogólne pozostają oddzielnie.")
-                        .font(.callout).foregroundStyle(.secondary)
-                }
-                if let error = data.error { Text(error).foregroundStyle(.red) }
-                if data.error == nil && data.offers.isEmpty {
-                    Text("Brak powiązanych ofert sprzedawców dostępnych w Twoim zakresie uprawnień. Po powiązaniu takiej oferty z wydarzeniem jej korespondencja pojawi się tutaj automatycznie.")
-                        .foregroundStyle(.secondary).padding(20)
-                }
-                if data.offers.count > 1 { picker(visible, selected) }
-                if let selected { offerPanel(selected) }
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Text("Ustalenia").font(.title2.weight(.semibold))
+                Text("ustalenia z oferty sprzedawcy i rozmowa o realizacji").foregroundStyle(.secondary).lineLimit(1)
+                Spacer()
             }
-            .padding(18)
+            .padding(.horizontal, 18).padding(.top, 12)
+            if let error = data.error { Text(error).foregroundStyle(.red).padding(.horizontal, 18) }
+            if data.error == nil && data.offers.isEmpty {
+                ContentUnavailableView("Brak powiązanych ofert sprzedawców", systemImage: "bubble.left.and.bubble.right",
+                                       description: Text("Po powiązaniu oferty sprzedawcy z wydarzeniem jej ustalenia i korespondencja pojawią się tutaj automatycznie."))
+            } else {
+                HStack(spacing: 0) {
+                    if data.offers.count > 1 {
+                        VStack(spacing: 6) {
+                            TextField("Szukaj oferty lub sprzedawcy…", text: $query).textFieldStyle(.roundedBorder).padding(.horizontal, 10).padding(.top, 8)
+                            List(visible, selection: Binding(get: { selected?.id }, set: { selectedID = $0 })) { offer in
+                                offerRow(offer).tag(offer.id)
+                            }
+                            .listStyle(.sidebar)
+                            .scrollContentBackground(.hidden)
+                        }
+                        .frame(width: 280)
+                        .background(Color.primary.opacity(0.03))
+                    }
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 14) {
+                            EventArrangementsCard(store: store, eventID: eventID)
+                            if let selected { offerPanel(selected) }
+                        }
+                        .padding(18)
+                    }
+                }
+            }
         }
+    }
+
+    private func offerRow(_ offer: SellerTabData.Offer) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 6) {
+                Text(offer.label).fontWeight(.medium).lineLimit(1)
+                Spacer(minLength: 4)
+                if let unread = offer.conversation?.unread, unread > 0 {
+                    Text("\(unread)").font(.caption2.weight(.bold)).padding(.horizontal, 6).padding(.vertical, 1)
+                        .background(theme.accent, in: Capsule()).foregroundStyle(.black).help("Nowe wiadomości")
+                }
+            }
+            Text(offer.partnerName + " · " + offer.brandName).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            Text(offer.conversation?.lastMessage ?? "Brak wiadomości").font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+        }
+        .padding(.vertical, 3)
     }
 
     private func picker(_ offers: [SellerTabData.Offer], _ selected: SellerTabData.Offer?) -> some View {

@@ -271,3 +271,19 @@ Aplikacja na Maca: Agenda edytowana w miejscu jako scenariusz (godzina, czas trw
 ### Mac: zakładka „Rozliczenie” zamiast „Finanse” i „Podsumowanie” (2026-11-11)
 
 Aplikacja na Maca: jedna zakładka „Rozliczenie” z paskiem wyników (plan i wykonanie) i sekcjami Przychody / Koszty / Marża i wynik / Prowizje / Zamknięcie, złożona z dotychczasowych widoków finansów i podsumowania (te same dane `tab=finances` i `tab=summary`, te same czynności). Serwer bez zmian. Mobile: nie dotyczy — telefon nie ma finansów ani podsumowania wydarzenia. Kod zapisany; zgodnie z .build-policy.md bez builda, typechecka i lintowania.
+
+### Ustalenia sprzedawcy dla zespołu realizacji i potwierdzenie przez kierownika (2026-11-11)
+
+Baza: migracja `20261111220000_event_arrangements_handoff.sql` — tabela `event_arrangement_acknowledgements` (potwierdzenie zapoznania z rewizją ustaleń, odczyt dla widzących wydarzenie, zapis tylko funkcją), `get_event_arrangements(p_event)` (ustalenia ofert wydarzenia bez kwot, z potwierdzeniami) i `acknowledge_event_arrangements(p_event)`. API: `/bridge/native/v1/events/card` — `op=tab&tab=arrangements` (dane, kierownik realizacji z `get_event_realization_assignment`) i `op=tabAction&tab=arrangements&action=acknowledge`; moduł `src/lib/native/eventArrangements.ts`. Mac: karta w Przeglądzie i paski w zakładkach Harmonogram, Agenda, Sprzęt, Logistyka, Zespół. Mobile: nie dotyczy — telefon nie ma karty wydarzenia z tymi zakładkami; API i funkcje bazy są gotowe, gdyby telefon miał pokazać ustalenia i potwierdzenie. Kod zapisany; zgodnie z .build-policy.md bez builda, typechecka i lintowania; migrację uruchamia użytkownik.
+
+### Mac: Harmonogram krok po kroku, lista ofert w Ustaleniach (2026-11-11)
+
+Aplikacja na Maca: pasek „Przygotowanie harmonogramu” w zakładce Harmonogram (fazy z umowy i ustaleń, „Dopasuj do faz”, auta, kontrola, wysyłka timeline'u) — zapisy przez te same operacje co ręcznie (`event_phases` insert, `assign_event_employee_to_phases_with_conflict_decision`, „Zastosuj czasy przejazdu”, `teamInvite` z `timeline_update`); oferty sprzedawców w zakładce Ustalenia jako lista z boku, statusy prowizji jako kropki. Serwer i baza bez zmian (poza wcześniejszą migracją ustaleń). Mobile: nie dotyczy — telefon nie ma harmonogramu faz ani zakładki Ustalenia. Kod zapisany; zgodnie z .build-policy.md bez builda, typechecka i lintowania.
+
+### Mac: pomoc „?” przy etapach, Mavinci LIVE wyłączone w aplikacji (2026-11-11)
+
+Aplikacja na Maca: przycisk „?” z opisem przy krokach przygotowania harmonogramu i sekcjach Rozliczenia; Mavinci LIVE ukryte w menu i karcie wydarzenia (filtr po stronie aplikacji, API i CRM bez zmian). Mobile: nie dotyczy — zmiana wyłącznie w aplikacji na Maca. Kod zapisany; zgodnie z .build-policy.md bez builda, typechecka i lintowania.
+
+### CRM: edycja spotkania — przełącznik „Wydarzenie całodniowe” (2026-11-12)
+
+Strona spotkania (`src/app/(crm)/crm/calendar/meeting/[id]/page.tsx`) w trybie edycji ma teraz pole „Wydarzenie całodniowe” (jak okno tworzenia): po zaznaczeniu daty bez godzin i zapis od 00:00 do 23:59:59, po odznaczeniu wracają godziny (z „całego dnia” — propozycja 9:00–10:00). Wcześniej edycja zachowywała `is_all_day` z bazy bez możliwości zmiany, więc spotkanie raz zapisane jako całodniowe pokazywało „Cały dzień” mimo ustawionych godzin. Mac: okno spotkania ma przełącznik „Cały dzień” od początku. Mobile: nie dotyczy — telefon tylko wyświetla spotkania, nie edytuje ich. Kod zapisany; zgodnie z .build-policy.md bez builda, typechecka i lintowania.

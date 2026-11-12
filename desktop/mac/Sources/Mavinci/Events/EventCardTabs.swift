@@ -24,6 +24,7 @@ import AppKit
             if sidebar {
                 VStack(alignment: .leading, spacing: 14) {
                     Text("Przegląd").font(.headline)
+                    EventArrangementsCard(store: store, eventID: eventID)
                     right
                     left
                 }

@@ -53,7 +53,7 @@ import AppKit
         func contains(_ tab: String) -> Bool { members.contains { $0.id == tab } }
     }
     static let tabOrder: [String] = ["details", "offer", "calculations", "contract", "equipment", "team", "subcontractors", "phases", "logistics",
-                                     "agenda", "seller-arrangements", "finances", "summary", "tasks", "files", "history", "mavinci-live"]
+                                     "agenda", "seller-arrangements", "finances", "summary", "tasks", "files", "history"]
     static let merged: [[String]] = [["offer", "calculations"], ["team", "subcontractors"], ["finances", "summary"]]
     static func groupLabel(_ ids: [String], _ fallback: String) -> String {
         if ids == ["offer", "calculations"] { return "Oferta i kalkulacje" }
@@ -64,7 +64,8 @@ import AppKit
     static func isSettlement(_ group: TabGroup) -> Bool { group.members.contains { $0.id == "finances" || $0.id == "summary" } }
 
     static func groups(_ tabs: [EventCardTabInfo]) -> [TabGroup] {
-        let visible = tabs.filter { $0.id != "overview" }
+        // Mavinci LIVE wyłączone w aplikacji na Maca (na razie niepotrzebne).
+        let visible = tabs.filter { $0.id != "overview" && $0.id != "mavinci-live" }
         let known = visible.filter { tabOrder.contains($0.id) }.sorted { (tabOrder.firstIndex(of: $0.id) ?? 99) < (tabOrder.firstIndex(of: $1.id) ?? 99) }
         let ordered = known + visible.filter { !tabOrder.contains($0.id) }
         var result: [TabGroup] = []
@@ -320,12 +321,6 @@ import AppKit
         case "agenda":
             if page.flags?.isWeddingEvent == true { EventWeddingCardTab(store: store, eventID: eventID) }
             else { EventAgendaTab(store: store, eventID: eventID) }
-        case "mavinci-live":
-            ContentUnavailableView {
-                Label("Mavinci LIVE", systemImage: "play.rectangle")
-            } description: { Text("Moduły Mavinci LIVE są obsługiwane w CRM w przeglądarce.") } actions: {
-                Button("Otwórz w CRM", systemImage: "safari") { state.openCRM("/crm/events/\(eventID)?tab=mavinci-live") }
-            }
         default:
             LegacyEventTabView(eventID: eventID, tabID: id, wedding: page.flags?.isWeddingEvent == true).id("\(eventID)-\(id)")
         }

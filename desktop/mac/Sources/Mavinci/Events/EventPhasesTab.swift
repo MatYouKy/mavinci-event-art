@@ -110,7 +110,11 @@ import AppKit
         let conflictIDs = conflicts(phases)
         return VStack(alignment: .leading, spacing: 0) {
             header(data, phases: phases, conflicts: !conflictIDs.isEmpty)
+            EventPhasesFlowBar(store: store, eventID: eventID, data: data, conflicts: conflictIDs.count,
+                               addPhase: { addOpen = true }, applyTravel: { Task { await applyTravel() } })
+                .padding(.horizontal, 16).padding(.bottom, 6)
             contractBox(data, phases: phases)
+            EventArrangementsBanner(store: store, eventID: eventID, area: .timeline).padding(.horizontal, 18).padding(.vertical, 6)
             if data.phases.isEmpty {
                 VStack(spacing: 12) {
                     Image(systemName: "clock").font(.system(size: 48)).foregroundStyle(.tertiary)

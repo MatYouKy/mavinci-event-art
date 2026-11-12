@@ -409,7 +409,6 @@ enum FinanceText {
         let ratePart: String = c.calculation == "percent" ? rateText + "% · " : ""
         let costPart: String = c.companyCost > c.amount ? " · koszt spółki " + FinanceText.money(c.companyCost, fraction: false) : ""
         let detail: String = ratePart + "dla osoby " + FinanceText.money(c.amount, fraction: false) + costPart
-        let kind: String = (FinanceText.beneficiaries[c.type] ?? "Inny") + " · " + (FinanceText.commissionStatus[c.status] ?? "Nie określono")
         return VStack(alignment: .leading, spacing: 4) {
             if c.automatic {
                 HStack(spacing: 6) {
@@ -425,7 +424,11 @@ enum FinanceText {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(c.name).font(.callout.weight(.medium))
-                    Text(kind).font(.caption).foregroundStyle(.secondary)
+                    HStack(spacing: 8) {
+                        Text(FinanceText.beneficiaries[c.type] ?? "Inny").font(.caption).foregroundStyle(.secondary)
+                        EventDotLabel(label: FinanceText.commissionStatus[c.status] ?? "Nie określono", color: Self.commissionColor(c.status), size: 6)
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                 }
                 Spacer()
                 Text(detail).font(.caption).foregroundStyle(.secondary)
@@ -448,6 +451,15 @@ enum FinanceText {
             }
         }
         .padding(10).background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    static func commissionColor(_ status: String) -> Color {
+        switch status {
+        case "approved": return CrmTheme.rgb(0x60a5fa)
+        case "paid": return CrmTheme.rgb(0x4ade80)
+        case "cancelled": return CrmTheme.rgb(0xf87171)
+        default: return CrmTheme.rgb(0xfacc15)
+        }
     }
 
     // MARK: Faktury

@@ -26,6 +26,21 @@ enum RozliczeniePart: String, CaseIterable, Identifiable {
         case .closing: return "Obieg, zatwierdzenie, historia"
         }
     }
+    /// Opis sekcji pod przyciskiem „?”: co w niej jest i po co.
+    var help: String {
+        switch self {
+        case .revenue:
+            return "Wszystko, co wpływa do firmy za to wydarzenie: klient, sposób rozliczenia i terminy płatności (zaliczka, raty, płatność końcowa), faktury oraz przychody netto ujęte w podsumowaniu.\n\nPo co: tu sprawdzasz, czy klient zapłacił i co jeszcze trzeba zafakturować."
+        case .costs:
+            return "Koszty wydarzenia: koszty dodane ręcznie (z akceptacją i oznaczeniem zapłaty), wykonawcy zewnętrzni, koszty bezpośrednie i ekipa z podsumowania. Budżet gotówkowy widzi tylko administrator.\n\nPo co: pełny obraz wydatków, z którego liczy się marża."
+        case .result:
+            return "Marża i wynik: plan z zaakceptowanej oferty lub kalkulacji porównany z wykonaniem (zatwierdzone koszty, czas pracy, zlecenia podwykonawców, faktyczne wpływy), jakość danych i wynik podsumowania.\n\nPo co: widzisz, czy wydarzenie zarabia tyle, ile zakładano, i których danych brakuje."
+        case .commissions:
+            return "Prowizje: rejestr prowizji i poleceń (sprzedawcy, hotele, sale, partnerzy) ze statusami planowana / zatwierdzona / wypłacona oraz wyliczenie prowizji pracowników i sprzedawców zewnętrznych z podsumowania, z podziałem udziałów.\n\nPo co: prowizje są kosztem firmy i zmniejszają zysk — tu ustalasz, komu i ile się należy."
+        case .closing:
+            return "Zamknięcie: stan podsumowania i jego obieg (wysłanie do zatwierdzenia, zatwierdzenie, zwrot do poprawy), zamknięcie wydarzenia i historia wersji.\n\nPo co: zatwierdzone podsumowanie jest ostatecznym rozliczeniem wydarzenia i podstawą wypłat prowizji."
+        }
+    }
     var symbol: String {
         switch self {
         case .revenue: return "arrow.down.circle"
@@ -44,6 +59,7 @@ enum RozliczeniePart: String, CaseIterable, Identifiable {
     let members: Set<String>
     @Environment(\.crmTheme) private var theme
     @AppStorage("eventSettlement.part") private var partRaw = RozliczeniePart.result.rawValue
+    @State private var helpFor: RozliczeniePart?
 
     private var part: RozliczeniePart { RozliczeniePart(rawValue: partRaw) ?? .result }
     private var finances: FinancesTabData? { members.contains("finances") ? store.tab(eventID, "finances", as: FinancesTabData.self) : nil }
@@ -64,12 +80,24 @@ enum RozliczeniePart: String, CaseIterable, Identifiable {
             HStack(spacing: 0) {
                 List(selection: Binding(get: { Optional(part) }, set: { if let value = $0 { partRaw = value.rawValue } })) {
                     ForEach(RozliczeniePart.allCases) { item in
-                        Label {
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(item.label)
-                                Text(item.detail).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                            }
-                        } icon: { Image(systemName: item.symbol) }
+                        HStack(spacing: 4) {
+                            Label {
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(item.label)
+                                    Text(item.detail).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                }
+                            } icon: { Image(systemName: item.symbol) }
+                            Spacer(minLength: 2)
+                            Button { helpFor = item } label: { Image(systemName: "questionmark.circle") }
+                                .buttonStyle(.borderless).foregroundStyle(.secondary).help("Co jest w tej sekcji i po co")
+                                .popover(isPresented: Binding(get: { helpFor == item }, set: { if !$0 { helpFor = nil } }), arrowEdge: .trailing) {
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        Text(item.label).font(.headline)
+                                        Text(item.help).font(.callout).fixedSize(horizontal: false, vertical: true)
+                                    }
+                                    .padding(14).frame(width: 340, alignment: .leading)
+                                }
+                        }
                         .padding(.vertical, 2)
                         .tag(item)
                     }

@@ -465,16 +465,24 @@ extension Workspace {
 extension Workspace {
     var openInquiries: Int { rows(.inquiries).count }
     private var navigationKey: String { "navigation-\(employee?.id ?? "")" }
+    /// Moduły wyłączone w aplikacji na Maca (na razie niepotrzebne): Mavinci LIVE. W CRM w przeglądarce bez zmian.
+    static let hiddenModules: Set<String> = ["mavinci-live"]
+    static func visibleNavigation(_ items: [NavItem]) -> [NavItem] {
+        items.filter { !hiddenModules.contains($0.key) }.map { item in
+            NavItem(key: item.key, name: item.name, href: item.href, iconKey: item.iconKey, children: item.children.map(visibleNavigation))
+        }
+    }
     func restoreNavigation() {
         guard let data = UserDefaults.standard.data(forKey: navigationKey), let items = try? JSONDecoder().decode([NavItem].self, from: data) else { return }
-        navigation = items
+        navigation = Self.visibleNavigation(items)
     }
     func loadNavigation() async {
         guard let api = nativeAPI() else { return }
         if navigation.isEmpty { restoreNavigation() }
         struct Reply: Decodable { let navigation: [NavItem] }
         guard let data = try? await api.get("/navigation"), let reply = try? JSONDecoder().decode(Reply.self, from: data) else { return }
-        if reply.navigation != navigation { navigation = reply.navigation }
+        let visible = Self.visibleNavigation(reply.navigation)
+        if visible != navigation { navigation = visible }
         if let encoded = try? JSONEncoder().encode(reply.navigation) { UserDefaults.standard.set(encoded, forKey: navigationKey) }
     }
     /// Dashboard i plan dnia z dysku (zaszyfrowane jak pozostałe dane) — widoczne od razu po uruchomieniu.

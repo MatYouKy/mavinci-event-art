@@ -253,18 +253,23 @@ export default function MeetingDetailPage() {
       return;
     }
 
-    const datetimeStart = localDatetimeStringToUTC(formData.datetime_start);
+    // Spotkanie całodniowe: od 00:00 pierwszego do 23:59:59 ostatniego dnia (jak przy tworzeniu w NewMeetingModal).
+    const startInput = formData.is_all_day ? `${formData.datetime_start.slice(0, 10)}T00:00:00` : formData.datetime_start;
+    const endInput = formData.is_all_day
+      ? `${(formData.datetime_end || formData.datetime_start).slice(0, 10)}T23:59:59`
+      : formData.datetime_end;
+    const datetimeStart = localDatetimeStringToUTC(startInput);
 
     if (!datetimeStart) {
       showSnackbar('Podaj poprawną datę rozpoczęcia', 'error');
       return;
     }
 
-    const datetimeEnd = formData.datetime_end
-      ? localDatetimeStringToUTC(formData.datetime_end)
+    const datetimeEnd = endInput
+      ? localDatetimeStringToUTC(endInput)
       : null;
 
-    if (formData.datetime_end && !datetimeEnd) {
+    if (endInput && !datetimeEnd) {
       showSnackbar('Podaj poprawną datę zakończenia', 'error');
       return;
     }
@@ -605,6 +610,31 @@ export default function MeetingDetailPage() {
             );
           })()}
 
+          {isEditing && (
+            <label className="flex cursor-pointer items-center gap-3">
+              <input
+                type="checkbox"
+                checked={formData.is_all_day}
+                onChange={(event) => {
+                  const allDay = event.target.checked;
+                  const firstDay = formData.datetime_start.slice(0, 10);
+                  const lastDay = (formData.datetime_end || formData.datetime_start).slice(0, 10);
+                  // Godziny 00:00–23:59 to tylko zapis „całego dnia” — po odznaczeniu proponujemy 9:00–10:00, inne godziny zostają.
+                  const placeholder = formData.datetime_start.slice(11, 16) === '00:00'
+                    && ['', '23:59'].includes((formData.datetime_end || '').slice(11, 16));
+                  setFormData({
+                    ...formData,
+                    is_all_day: allDay,
+                    datetime_start: allDay ? `${firstDay}T00:00` : placeholder ? `${firstDay}T09:00` : formData.datetime_start,
+                    datetime_end: allDay ? `${lastDay}T23:59` : placeholder ? `${lastDay}T10:00` : formData.datetime_end || `${firstDay}T10:00`,
+                  });
+                }}
+                className="h-4 w-4"
+              />
+              <span className="text-[#e5e4e2]">Wydarzenie całodniowe</span>
+            </label>
+          )}
+
           <div className="grid gap-6 md:grid-cols-2">
             <div>
               <label className="mb-2 flex items-center gap-2 text-sm font-medium text-[#d3bb73]">
@@ -613,9 +643,12 @@ export default function MeetingDetailPage() {
               </label>
               {isEditing ? (
                 <input
-                  type="datetime-local"
-                  value={formData.datetime_start}
-                  onChange={(e) => setFormData({ ...formData, datetime_start: e.target.value })}
+                  type={formData.is_all_day ? 'date' : 'datetime-local'}
+                  value={formData.is_all_day ? formData.datetime_start.slice(0, 10) : formData.datetime_start}
+                  onChange={(e) => setFormData({
+                    ...formData,
+                    datetime_start: formData.is_all_day ? `${e.target.value}T00:00` : e.target.value,
+                  })}
                   className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#13161f] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                 />
               ) : (
@@ -630,9 +663,12 @@ export default function MeetingDetailPage() {
               </label>
               {isEditing ? (
                 <input
-                  type="datetime-local"
-                  value={formData.datetime_end || ''}
-                  onChange={(e) => setFormData({ ...formData, datetime_end: e.target.value })}
+                  type={formData.is_all_day ? 'date' : 'datetime-local'}
+                  value={formData.is_all_day ? (formData.datetime_end || '').slice(0, 10) : formData.datetime_end || ''}
+                  onChange={(e) => setFormData({
+                    ...formData,
+                    datetime_end: formData.is_all_day ? (e.target.value ? `${e.target.value}T23:59` : '') : e.target.value,
+                  })}
                   className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#13161f] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                 />
               ) : (

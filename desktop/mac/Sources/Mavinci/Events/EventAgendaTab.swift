@@ -228,6 +228,7 @@ private struct AgendaTimeField: View {
                 actions(data)
             }
             .padding(.horizontal, 18).padding(.top, 12)
+            EventArrangementsBanner(store: store, eventID: eventID, area: .agenda).padding(.horizontal, 18)
             HSplitView {
                 program(data).frame(minWidth: 560, maxWidth: .infinity, maxHeight: .infinity)
                 notesPanel(data).frame(minWidth: 240, idealWidth: 320, maxWidth: 460, maxHeight: .infinity)

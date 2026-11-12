@@ -146,6 +146,7 @@ private struct ComponentsRequest: Identifiable {
         return ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 header(data)
+                EventArrangementsBanner(store: store, eventID: eventID, area: .equipment)
                 if data.event.hasShortage && data.hasUnresolvedConflicts { shortageBanner(data) }
                 if let review = data.reviews.first { reviewQueue(data, review) }
                 if !data.external.isEmpty { externalCard(data) }
