@@ -2,7 +2,7 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 'use client';
 
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { Fragment, useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Dialog from '@mui/material/Dialog';
@@ -612,6 +612,25 @@ type ContractStatus =
   | 'signed_returned'
   | 'cancelled';
 
+/** Kolejne statusy umowy (anulowanie jest osobną czynnością). */
+const CONTRACT_STATUS_FLOW: ContractStatus[] = ['draft', 'issued', 'sent', 'accepted', 'signed_by_client', 'signed_returned'];
+const NEXT_STATUS_ACTION: Partial<Record<ContractStatus, string>> = {
+  issued: 'Wystaw umowę',
+  sent: 'Oznacz jako wysłaną',
+  accepted: 'Oznacz jako zaakceptowaną',
+  signed_by_client: 'Podpisana przez klienta',
+  signed_returned: 'Podpisana i odesłana',
+};
+
+type ContractSection = 'content' | 'data' | 'clauses' | 'review' | 'documents';
+const CONTRACT_SECTIONS: Array<{ id: ContractSection; label: string }> = [
+  { id: 'content', label: 'Treść' },
+  { id: 'data', label: 'Dane i warunki' },
+  { id: 'clauses', label: 'Klauzule' },
+  { id: 'review', label: 'Sprawdzenie' },
+  { id: 'documents', label: 'Dokumenty i historia' },
+];
+
 /** Bez obszaru „kwoty” kalkulacje i kwoty są niedostępne (RLS) — umowa liczyłaby 0 zł. */
 const CONTRACT_AMOUNTS_REQUIRED =
   'Kwoty umowy widzi osoba z dostępem do kwot — poproś sprzedawcę lub administratora.';
@@ -644,12 +663,18 @@ export function EventContractTab({
   const [loading, setLoading] = useState(true);
   const refreshingSourcesRef = useRef(false);
   const [editMode, setEditMode] = useState(false);
-  const [showContractSettings, setShowContractSettings] = useState(false);
+  // Podzakładka zakładki Umowa; edycja pól zawsze w „Dane i warunki”.
+  const [contractSection, setContractSection] = useState<ContractSection>('content');
 
   useEffect(() => {
-    setShowContractSettings(false);
+    // Odnośnik z aplikacji na Maca może wskazać podzakładkę (`?tab=contract&contractSection=clauses`).
+    const requested = new URLSearchParams(window.location.search).get('contractSection');
+    setContractSection(CONTRACT_SECTIONS.find(({ id }) => id === requested)?.id ?? 'content');
     setEditMode(false);
   }, [eventId]);
+  useEffect(() => {
+    if (editMode) setContractSection('data');
+  }, [editMode]);
   const [contractContent, setContractContent] = useState('');
   const [originalTemplate, setOriginalTemplate] = useState('');
   const [variables, setVariables] = useState<Record<string, string>>({});
@@ -3260,37 +3285,31 @@ export function EventContractTab({
   };
 
   const actions = useMemo(() => {
-    const settingsAction = {
-      label: showContractSettings ? 'Ukryj ustawienia umowy' : 'Pokaż ustawienia umowy',
-      onClick: () => setShowContractSettings((visible) => !visible),
-      icon: <ListChecks className="h-4 w-4" />,
-      variant: 'default' as const,
-    };
+    const cancelAction = isAdmin && contractId && contractStatus !== 'cancelled' ? [{
+      label: 'Anuluj umowę',
+      onClick: () => setShowCancelContractModal(true),
+      icon: <X className="h-4 w-4" />,
+      variant: 'danger' as const,
+      disabled: isGeneratingPdf || isPrintingDraft,
+    }] : [];
     if (hasSignedDocument && contractId && !editMode) {
       const endpoint = `/bridge/events/contracts/signed-files?contractId=${encodeURIComponent(contractId)}&fileId=${encodeURIComponent(signedFiles[0].id)}`;
       return [
-        { label: 'Otwórz podpisaną umowę', onClick: () => { window.open(endpoint, '_blank', 'noopener,noreferrer'); }, icon: <Eye className="h-4 w-4" />, variant: 'default' as const },
-        { label: 'Pobierz podpisaną umowę', onClick: () => { window.open(`${endpoint}&download=1`, '_blank', 'noopener,noreferrer'); }, icon: <Download className="h-4 w-4" />, variant: 'default' as const },
+        { label: 'Otwórz podpisaną umowę', onClick: () => { window.open(endpoint, '_blank', 'noopener,noreferrer'); }, icon: <Eye className="h-4 w-4" />, variant: 'primary' as const, pin: true },
+        { label: 'Pobierz podpisaną umowę', onClick: () => { window.open(`${endpoint}&download=1`, '_blank', 'noopener,noreferrer'); }, icon: <Download className="h-4 w-4" />, variant: 'default' as const, pin: true },
         { label: documentPreviewOpen ? 'Zwiń podgląd treści umowy' : 'Rozwiń podgląd treści umowy', onClick: () => setDocumentPreviewOpen(open => !open), icon: <ChevronDown className="h-4 w-4" />, variant: 'default' as const },
-        { label: contractStatus === 'cancelled' ? 'Archiwum podpisanych dokumentów' : 'Zarządzaj podpisanymi dokumentami', onClick: () => setSignedFilesOpen(true), icon: <FileText className="h-4 w-4" />, variant: 'default' as const },
-        settingsAction,
-        ...(isAdmin && contractStatus !== 'cancelled' ? [{
-          label: 'Anuluj umowę',
-          onClick: () => setShowCancelContractModal(true),
-          icon: <X className="h-4 w-4" />,
-          variant: 'danger' as const,
-          disabled: isGeneratingPdf || isPrintingDraft,
-        }] : []),
+        { label: contractStatus === 'cancelled' ? 'Archiwum podpisanych dokumentów' : 'Zarządzaj podpisanymi dokumentami', onClick: () => { setContractSection('documents'); setSignedFilesOpen(true); }, icon: <FileText className="h-4 w-4" />, variant: 'default' as const },
+        ...cancelAction,
       ];
     }
     if (contractStatus === 'cancelled') {
       return generatedPdfPath ? [
-        settingsAction,
         {
           label: 'Pokaż archiwalny PDF',
           onClick: handleShowPdf,
           icon: <Eye className="h-4 w-4" />,
-          variant: 'default' as const,
+          variant: 'primary' as const,
+          pin: true,
         },
         {
           label: 'Pobierz archiwalny PDF',
@@ -3298,7 +3317,7 @@ export function EventContractTab({
           icon: <Download className="h-4 w-4" />,
           variant: 'default' as const,
         },
-      ] : [settingsAction];
+      ] : [];
     }
     if (editMode) {
       return [
@@ -3317,7 +3336,14 @@ export function EventContractTab({
       ];
     }
 
-    const baseActions = [settingsAction];
+    const baseActions: Array<{
+      label: string;
+      onClick: () => void;
+      icon: React.ReactNode;
+      variant: 'default' | 'primary' | 'danger';
+      disabled?: boolean;
+      pin?: boolean;
+    }> = [];
 
     if (isWorkingDraft) baseActions.push({
       label: isPrintingDraft ? 'Przygotowywanie…' : 'Drukuj draft',
@@ -3343,6 +3369,7 @@ export function EventContractTab({
         onClick: handlePrint,
         icon: <Download className="h-4 w-4" />,
         variant: 'primary' as const,
+        pin: true,
       });
     } else {
       baseActions.push(
@@ -3351,6 +3378,7 @@ export function EventContractTab({
           onClick: handleShowPdf,
           icon: <Eye className="h-4 w-4" />,
           variant: 'primary' as const,
+          pin: true,
         },
         {
           label: 'Pobierz PDF',
@@ -3371,6 +3399,7 @@ export function EventContractTab({
         },
         icon: <Mail className="h-4 w-4" />,
         variant: 'default' as const,
+        pin: true,
       });
     }
 
@@ -3385,7 +3414,6 @@ export function EventContractTab({
         ),
         variant: 'default' as const,
         disabled: isAuditingContract,
-        pin: true,
       });
     }
 
@@ -3397,10 +3425,12 @@ export function EventContractTab({
           icon: <RefreshCw className="h-4 w-4" />,
           variant: contractSourceOutdated ? ('primary' as const) : ('default' as const),
           disabled: loading || !(selectedTemplateId || templateId),
+          // Nieaktualne dane — przycisk na wierzchu, nie w menu.
+          pin: contractSourceOutdated,
         },
         {
-          label: 'Edytuj klauzule',
-          onClick: () => setShowEventContractClauses(true),
+          label: 'Zarządzaj klauzulami',
+          onClick: () => { setContractSection('clauses'); setShowEventContractClauses(true); },
           icon: <ListChecks className="h-4 w-4" />,
           variant: 'default' as const,
         },
@@ -3409,6 +3439,7 @@ export function EventContractTab({
           onClick: handleEditContractContent,
           icon: <FilePenLine className="h-4 w-4" />,
           variant: 'default' as const,
+          pin: true,
         },
         {
           label: 'Edytuj informacje podstawowe',
@@ -3419,10 +3450,21 @@ export function EventContractTab({
       );
     }
 
+    if (canChangeTemplate && contractStatus !== 'cancelled' && availableTemplates.length > 1) {
+      baseActions.push({
+        label: 'Zmień szablon umowy',
+        onClick: () => setEditingTemplate(true),
+        icon: <FileText className="h-4 w-4" />,
+        variant: 'default' as const,
+        disabled: changingTemplate || isGeneratingPdf,
+      });
+    }
+    baseActions.push(...cancelAction);
+
     return baseActions;
   }, [
     hasSignedDocument, signedFiles, documentPreviewOpen, isAdmin,
-    showContractSettings,
+    canChangeTemplate, availableTemplates.length, changingTemplate,
     editMode,
     canEdit,
     canSendEmail,
@@ -3497,6 +3539,43 @@ export function EventContractTab({
       </div>
     );
   }
+
+  const canChangeContractStatus = (isAdmin || canChangeTemplate) && contractStatus !== 'cancelled';
+  const isContractStatusDisabled = (status: ContractStatus) =>
+    (Boolean(contractLockedAt) && ['draft', 'issued', 'sent', 'accepted'].includes(status)) ||
+    (!isAdmin && ((status === 'cancelled' && contractStatus !== 'cancelled') || (status === 'draft' && contractStatus !== 'draft')));
+  const nextContractStatus = contractStatus === 'cancelled'
+    ? null
+    : CONTRACT_STATUS_FLOW[CONTRACT_STATUS_FLOW.indexOf(contractStatus) + 1] || null;
+  const contractAlerts: Array<{ key: string; label: string; section: ContractSection }> = [
+    ...(isWorkingDraft && contractPreflightIssues.length > 0
+      ? [{ key: 'preflight', label: `uwagi przed wystawieniem: ${contractPreflightIssues.length}`, section: 'review' as const }]
+      : []),
+    ...(isWorkingDraft && unresolvedProductClauseConflicts.length > 0
+      ? [{ key: 'conflicts', label: `rozbieżne wersje wspólnych ustaleń: ${unresolvedProductClauseConflicts.length}`, section: 'clauses' as const }]
+      : []),
+    ...(contractSourceOutdated ? [{ key: 'outdated', label: 'dane wydarzenia lub oferta zmieniły się — odśwież', section: 'review' as const }] : []),
+  ];
+  const contractSectionBadges: Partial<Record<ContractSection, { count: number; warn?: boolean }>> = {
+    clauses: isWorkingDraft && unresolvedProductClauseConflicts.length > 0
+      ? { count: unresolvedProductClauseConflicts.length, warn: true }
+      : { count: eventContractClauseItems.filter((item) => item.enabled).length },
+    review: { count: (isWorkingDraft ? contractPreflightIssues.length : 0) + (contractSourceOutdated ? 1 : 0), warn: true },
+    documents: { count: signedFiles.length + previousContracts.length },
+  };
+  let contentIndividuallyEdited = false;
+  try {
+    contentIndividuallyEdited = JSON.parse(contractContent)?.meta?.individuallyEdited === true;
+  } catch {
+    contentIndividuallyEdited = false;
+  }
+  const contractConditionsSummary = [
+    ...(contractConditionSettings.client
+      ? [`Klient: ${variables[CONTRACT_CLIENT_VARIABLE] === 'firma' ? 'firma' : 'osoba prywatna'}`]
+      : []),
+    ...contractConditionSettings.options.map((option) =>
+      `${option.label}: ${variables[contractOptionVariable(option.key)] ? 'tak' : 'nie'}`),
+  ].join(' · ');
 
   return (
     <>
@@ -3628,552 +3707,120 @@ export function EventContractTab({
                   <span className="text-sm text-[#e5e4e2]/60">Generowanie PDF...</span>
                 </div>
               ) : (
-                <ResponsiveActionBar actions={actions} alwaysDropdown={!editMode} />
+                <ResponsiveActionBar actions={actions} />
               )}
             </div>
           </div>
 
-            <div className="flex min-w-0 flex-wrap items-center gap-3 rounded-xl bg-[#210811]/65 px-4 py-3 lg:col-span-2 md:gap-4 md:px-5">
-                <label htmlFor={`contract-status-${eventId}`} className="shrink-0 text-xs font-medium uppercase tracking-wide text-[#e5e4e2]/55">
-                  Status umowy
-                </label>
-                <div className="min-w-0 max-w-full" title={!canEdit && contractStatus === 'issued' ? 'Tylko admin może anulować wystawioną umowę' : undefined}>
-                {(isAdmin || canChangeTemplate) && contractStatus !== 'cancelled' ? (
-              <select
-                id={`contract-status-${eventId}`}
-                value={contractStatus}
-                disabled={changingStatus || loading || isGeneratingPdf}
-                onChange={(e) => handleStatusChange(e.target.value as ContractStatus)}
-                className="min-h-11 w-full cursor-pointer rounded-lg border border-white/10 bg-[#351020] px-4 py-3 text-sm text-[#e5e4e2] transition-colors hover:bg-[#411326] focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-[#d3bb73]/50"
-              >
-                {(
-                  [
-                    'draft',
-                    'issued',
-                    'sent',
-                    'accepted',
-                    'signed_by_client',
-                    'signed_returned',
-                    'cancelled',
-                  ] as ContractStatus[]
-                ).map((status) => {
-                  const isDisabled =
-                    (Boolean(contractLockedAt) && ['draft', 'issued', 'sent', 'accepted'].includes(status)) ||
-                    !isAdmin &&
-                    ((status === 'cancelled' && contractStatus !== 'cancelled') ||
-                      (status === 'draft' && contractStatus !== 'draft'));
-
-                  return (
-                    <option
-                      key={status}
-                      value={status}
-                      disabled={isDisabled}
-                      className="bg-[#351020] text-[#e5e4e2]"
-                    >
-                      {getStatusLabel(status)}
-                    </option>
-                  );
-                })}
-              </select>
-                ) : (
-                  <p id={`contract-status-${eventId}`} className="py-1 text-sm font-medium text-[#e5e4e2]">
-                    {getStatusLabel(contractStatus)}
-                  </p>
-                )}
-
-                </div>
-
-              <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs">
-                <span className="whitespace-nowrap rounded-full bg-[#d3bb73]/10 px-2.5 py-1 text-[#d3bb73]">
-                  Wersja {contractVersion}
-                </span>
-                {contractLockedAt && (
-                  <span className="rounded-full bg-green-500/10 px-2.5 py-1 text-green-300">
-                    Dokument zablokowany po podpisaniu
-                  </span>
-                )}
-                {companySignedAt && (
-                  <span className="rounded-full bg-[#d3bb73]/10 px-2.5 py-1 text-[#d3bb73]">
-                    Podpis firmy potwierdzony
-                  </span>
-                )}
-              {getStatusDate(contractStatus) && (
-                <span className="text-xs text-[#e5e4e2]/55" title="Data zmiany statusu">
-                  {getStatusDate(contractStatus)}
-                </span>
-              )}
-              </div>
-
-              {isAdmin && contractId && contractStatus !== 'cancelled' && (
-                <div className="ml-auto flex shrink-0 flex-wrap items-center gap-2">
-                  {!companySignedAt && contractStatus !== 'draft' && (
-                    <button
-                      type="button"
-                      onClick={confirmCompanySignature}
-                      className="min-h-11 rounded-lg border-0 bg-[#d3bb73]/10 px-4 py-2.5 text-sm font-medium text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/15 focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-[#d3bb73]/50"
-                    >
-                      Potwierdź podpis firmy
-                    </button>
-                  )}
+          {/* Status jako ścieżka: kliknięcie zmienia status (te same reguły co dotąd), przycisk — następny krok. */}
+          <nav aria-label="Status umowy" className="flex flex-wrap items-center gap-x-1 gap-y-2">
+            {contractStatus === 'cancelled' ? (
+              <span className="rounded-full bg-red-400/10 px-3 py-1.5 text-xs font-medium text-red-200">{getStatusLabel('cancelled')}</span>
+            ) : CONTRACT_STATUS_FLOW.map((status, index) => {
+              const currentIndex = CONTRACT_STATUS_FLOW.indexOf(contractStatus);
+              const current = status === contractStatus;
+              const clickable = canChangeContractStatus && !current && !isContractStatusDisabled(status) && !changingStatus && !loading && !isGeneratingPdf;
+              return (
+                <Fragment key={status}>
+                  {index > 0 && <span aria-hidden="true" className="h-px w-3 bg-white/15 md:w-5" />}
                   <button
                     type="button"
-                    onClick={() => setShowCancelContractModal(true)}
-                    disabled={isGeneratingPdf || isPrintingDraft}
-                    className="min-h-11 rounded-lg border-0 bg-red-400/5 px-4 py-2.5 text-sm font-medium text-red-200/80 transition-colors hover:bg-red-400/10 focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-red-300/40 disabled:opacity-40"
+                    disabled={!clickable}
+                    aria-current={current ? 'step' : undefined}
+                    title={clickable ? `Zmień status na „${getStatusLabel(status)}”` : undefined}
+                    onClick={() => void handleStatusChange(status)}
+                    className={`rounded-full px-3 py-1.5 text-xs transition-colors ${
+                      current
+                        ? 'bg-[#d3bb73] font-medium text-[#1c1f33]'
+                        : index < currentIndex
+                          ? 'border border-[#d3bb73]/30 text-[#d3bb73]/80'
+                          : 'border border-white/15 text-[#e5e4e2]/60'
+                    } ${clickable ? 'hover:border-[#d3bb73]/60 hover:text-[#e5e4e2]' : 'cursor-default'}`}
                   >
-                    Anuluj umowę
+                    {getStatusLabel(status)}
                   </button>
-                </div>
-              )}
-            </div>
-
-          {!showContractSettings && (
-            <div className="flex flex-wrap items-center gap-3 text-xs text-[#e5e4e2]/60">
-
-              {isWorkingDraft && contractPreflightIssues.length > 0 && (
-                <button type="button" onClick={() => setShowContractSettings(true)} className="text-amber-300 hover:underline">
-                  Uwagi do sprawdzenia ({contractPreflightIssues.length})
+                </Fragment>
+              );
+            })}
+            <span className="ml-2 whitespace-nowrap rounded-full bg-[#d3bb73]/10 px-2.5 py-1 text-xs text-[#d3bb73]">Wersja {contractVersion}</span>
+            {contractLockedAt && <span className="rounded-full bg-green-500/10 px-2.5 py-1 text-xs text-green-300">Zablokowana po podpisaniu</span>}
+            {companySignedAt && <span className="rounded-full bg-[#d3bb73]/10 px-2.5 py-1 text-xs text-[#d3bb73]">Podpis firmy potwierdzony</span>}
+            {getStatusDate(contractStatus) && <span className="text-xs text-[#e5e4e2]/55" title="Data zmiany statusu">{getStatusDate(contractStatus)}</span>}
+            <span className="ml-auto flex flex-wrap items-center gap-2">
+              {isAdmin && contractId && contractStatus !== 'cancelled' && !companySignedAt && contractStatus !== 'draft' && (
+                <button type="button" onClick={confirmCompanySignature} className="rounded-lg bg-[#d3bb73]/10 px-3 py-1.5 text-xs font-medium text-[#d3bb73] hover:bg-[#d3bb73]/15">
+                  Potwierdź podpis firmy
                 </button>
               )}
+              {nextContractStatus && canChangeContractStatus && !isContractStatusDisabled(nextContractStatus) && (
+                <button
+                  type="button"
+                  disabled={changingStatus || loading || isGeneratingPdf}
+                  onClick={() => void handleStatusChange(nextContractStatus)}
+                  className="rounded-lg bg-[#d3bb73]/15 px-3 py-1.5 text-xs font-medium text-[#d3bb73] hover:bg-[#d3bb73]/25 disabled:opacity-50"
+                >
+                  {NEXT_STATUS_ACTION[nextContractStatus]} →
+                </button>
+              )}
+            </span>
+          </nav>
+
+          {/* Uwagi zawsze na wierzchu — wcześniej ukryte pod „Pokaż ustawienia umowy”. */}
+          {contractAlerts.length > 0 && (
+            <div role="status" className="mt-4 flex flex-wrap items-center gap-2 rounded-lg bg-amber-400/10 px-3 py-2 text-xs text-amber-100">
+              <span className="flex items-center gap-1 font-semibold text-amber-200"><ShieldAlert className="h-4 w-4" /> Do sprawdzenia:</span>
+              {contractAlerts.map((alert) => (
+                <button key={alert.key} type="button" onClick={() => setContractSection(alert.section)} className="rounded-full bg-black/20 px-2.5 py-1 hover:bg-black/30">
+                  {alert.label}
+                </button>
+              ))}
             </div>
           )}
-          {showContractSettings && (<>
-          <div className="mb-3 flex justify-end">
-            <button type="button" onClick={() => setShowContractSettings(false)} className="inline-flex items-center gap-2 rounded-lg bg-white/5 px-3 py-2 text-sm text-[#e5e4e2]/70 hover:bg-white/10">
-              <X className="h-4 w-4" /> Zamknij ustawienia
-            </button>
-          </div>
-          {clientPartyBase && usedContractVariableKeys.has('client_contract_party_block') && (
-            <section className="mb-4 rounded-lg bg-black/15 p-4">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h3 className="font-medium text-[#e5e4e2]">Dane klienta i osoby podpisujące umowę</h3>
-                {canEdit && isWorkingDraft && employee?.is_active && !editMode && (
-                  <button type="button" onClick={() => setEditMode(true)} className="rounded-lg bg-[#d3bb73]/10 px-3 py-2 text-sm text-[#d3bb73]">Edytuj dane i wybierz osoby</button>
-                )}
-              </div>
-              {editMode && canEdit && isWorkingDraft && (
-                <div className="my-3 space-y-2">
-                  {clientPartySigners.length > 0 ? <>
-                    <label className="flex items-center gap-2 text-sm text-[#d3bb73]">
-                      <input type="checkbox" className="accent-[#d3bb73]"
-                        checked={clientPartySigners.every(person => selectedClientSignerIds.includes(person.id))}
-                        onChange={event => selectClientSigners(event.target.checked ? clientPartySigners.map(person => person.id) : [])} />
-                      Uwzględnij wszystkie osoby uprawnione
-                    </label>
-                    {clientPartySigners.map(person => (
-                      <label key={person.id} className="flex items-start gap-2 text-sm text-[#e5e4e2]/80">
-                        <input type="checkbox" className="mt-1 accent-[#d3bb73]"
-                          checked={selectedClientSignerIds.includes(person.id)}
-                          onChange={event => selectClientSigners(event.target.checked ? [...selectedClientSignerIds, person.id] : selectedClientSignerIds.filter(id => id !== person.id))} />
-                        <span>{person.fullName}{person.title && <span className="text-[#e5e4e2]/50"> — {person.title}</span>}</span>
-                      </label>
-                    ))}
-                  </> : <p className="text-sm text-[#e5e4e2]/60">Brak osób uprawnionych do podpisu w danych organizacji.</p>}
-                  {clientPartySigners.length > 0 && <button type="button" onClick={() => selectClientSigners(selectedClientSignerIds)} className="rounded-lg bg-[#d3bb73]/10 px-3 py-2 text-sm text-[#d3bb73]">Wstaw wybrane osoby do bloku</button>}
-                  <p className="text-xs text-[#e5e4e2]/50">Wybór osoby ponownie składa blok z danych organizacji. Możesz następnie poprawić jego treść poniżej. Zmiany dotyczą tylko tej umowy.</p>
-                </div>
-              )}
-              <div className="mt-3">
-                {editMode && canEdit && isWorkingDraft ? (
-                  <ContractVariableHtmlField label="Pełne dane strony klienta" value={editedVariables.client_contract_party_block || ''}
-                    onChange={value => setEditedVariables(current => ({ ...current, client_contract_party_block: value }))} />
-                ) : (
-                  <div className="text-sm leading-relaxed text-[#e5e4e2]/80" dangerouslySetInnerHTML={{ __html: variables.client_contract_party_block || '' }} />
-                )}
-              </div>
-              {editMode && canEdit && isWorkingDraft && (
-                <p className="mt-2 text-xs text-[#e5e4e2]/50">Zastosuj zmiany przyciskiem „Zapisz” u góry, a następnie zapisz umowę.</p>
-              )}
-            </section>
-          )}
-          {previousContracts.length > 0 && (
-            <details className="mb-4 rounded-lg border border-white/10 p-3 text-sm">
-              <summary className="cursor-pointer text-[#d3bb73]">Poprzednie umowy ({previousContracts.length})</summary>
-              <ul className="mt-3 space-y-2">
-                {previousContracts.map((item) => (
-                  <li key={item.id} className="flex flex-wrap items-center justify-between gap-2">
-                    <span>{item.title} · {new Date(item.created_at).toLocaleString('pl-PL')}</span>
-                    {item.generated_pdf_path && <button type="button" className="text-[#d3bb73] underline" onClick={async () => {
-                      const { data, error } = await supabase.storage.from('event-files').createSignedUrl(item.generated_pdf_path!, 3600);
-                      if (error || !data?.signedUrl) { showSnackbar('Nie udało się otworzyć archiwalnego PDF', 'error'); return; }
-                      window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
-                    }}>Pokaż archiwalny PDF</button>}
-                  </li>
-                ))}
-              </ul>
-            </details>
-          )}
 
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            {isWorkingDraft && contractPreflightIssues.length > 0 && (
-              <div className="rounded-lg border border-amber-400/10 bg-amber-400/10 p-4 text-sm text-amber-100 lg:col-span-2">
-                <div className="flex items-start gap-3">
-                  <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-amber-300" />
-                  <div className="min-w-0 flex-1">
-                    <div className="font-semibold text-amber-200">
-                      Uwagi do sprawdzenia
-                    </div>
-                    <p className="mt-1 text-xs leading-5 text-amber-100/75">
-                      Poniższe uwagi nie blokują generowania PDF ani drukowania umowy.
-                      Aby wystawić lub wysłać finalną umowę mimo wskazanych braków, zaznacz
-                      zapoznanie się z odpowiednimi uwagami. Potwierdzenie nie uzupełnia danych
-                      i obowiązuje tylko dla bieżącej treści w tej sesji.
-                    </p>
-                    <div className="mt-3 space-y-2">
-                      {contractPreflightIssues.map((issue) => (
-                        <div
-                          key={issue.key}
-                          className="flex flex-col gap-2 rounded-md border border-amber-300/10 bg-black/10 px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
-                        >
-                          <label className="flex min-w-0 flex-1 cursor-pointer items-start gap-3 py-1">
-                            <input
-                              type="checkbox"
-                              checked={isPreflightIssueAcknowledged(issue.key)}
-                              onChange={(e) => acknowledgePreflightIssue(issue.key, e.target.checked)}
-                              disabled={!employee?.id || isGeneratingPdf}
-                              className="mt-1 h-4 w-4 shrink-0 rounded accent-[#d3bb73] disabled:cursor-not-allowed"
-                            />
-                            <span className="min-w-0">
-                              <span className="block leading-5">{issue.label}</span>
-                              <span className="mt-1 block text-xs leading-5 text-amber-100/75">
-                                {isPreflightIssueAcknowledged(issue.key)
-                                  ? 'Potwierdzono — świadomie akceptuję tę uwagę przy wystawieniu i wysłaniu finalnej umowy.'
-                                  : 'Zapoznałem(-am) się z uwagą i świadomie akceptuję wystawienie oraz wysłanie finalnej umowy mimo tego braku.'}
-                              </span>
-                            </span>
-                          </label>
-                          {issue.actionHref && (
-                            <a
-                              href={issue.actionHref}
-                              className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-[#d3bb73] hover:underline"
-                            >
-                              {issue.actionLabel || 'Uzupełnij'}
-                              <ExternalLink className="h-3.5 w-3.5" />
-                            </a>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-            {isWorkingDraft && unresolvedProductClauseConflicts.length > 0 && (
-              <div className="rounded-xl border border-[#d3bb73]/30 bg-[#2c0b18] p-4 text-sm text-[#e5e4e2] lg:col-span-2 md:p-5">
-                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                  <div>
-                    <div className="flex items-center gap-2 font-semibold text-[#d3bb73]">
-                      <ShieldAlert className="h-4 w-4" />
-                      Rozbieżne wersje wspólnych ustaleń
-                    </div>
-                    <p className="mt-1 max-w-3xl text-xs leading-5 text-[#e5e4e2]/60">
-                      W źródłach umowy występują różne wersje tej samej wspólnej zasady.
-                      Wybierz treść, która ma znaleźć się w umowie. Ustalenia specyficzne dla
-                      różnych produktów nie są wzajemnie wykluczane.
-                    </p>
-                  </div>
-                  <span className="w-fit rounded-full bg-[#d3bb73]/15 px-2.5 py-1 text-xs font-semibold text-[#d3bb73]">
-                    {unresolvedProductClauseConflicts.length}
-                  </span>
-                </div>
-
-                <div className="mt-4 space-y-4">
-                  {unresolvedProductClauseConflicts.map((conflict) => (
-                    <section key={conflict.key} className="rounded-lg border border-white/10 bg-black/15 p-3 md:p-4">
-                      <div className="mb-3 flex flex-wrap items-center gap-2">
-                        <span className="rounded bg-[#d3bb73]/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-[#d3bb73]">
-                          {CONTRACT_CLAUSE_CATEGORY_LABELS[conflict.category]}
-                        </span>
-                        <span className="font-medium text-[#f2eee2]">
-                          {getContractClauseTopicLabel(conflict.topic)}
-                        </span>
-                      </div>
-                      <div className="grid gap-2 lg:grid-cols-2">
-                        {conflict.candidates.map((candidate) => (
-                          <label
-                            key={candidate.id}
-                            className={`cursor-pointer rounded-lg border p-3 transition-colors ${
-                              productClauseSelectionDraft[conflict.key] === candidate.id
-                                ? 'border-white/10 bg-[#d3bb73]/15'
-                                : 'border-white/10 bg-white/[0.025] hover:border-white/20'
-                            }`}
-                          >
-                            <span className="flex items-start gap-2">
-                              <input
-                                type="radio"
-                                name={`product-clause-${conflict.key}`}
-                                checked={productClauseSelectionDraft[conflict.key] === candidate.id}
-                                onChange={() => setProductClauseSelectionDraft((current) => ({
-                                  ...current,
-                                  [conflict.key]: candidate.id,
-                                }))}
-                                className="mt-1 accent-[#d3bb73]"
-                              />
-                              <span className="min-w-0">
-                                <span className="block text-xs font-semibold text-[#d3bb73]">
-                                  {candidate.productName}
-                                </span>
-                                <span className="mt-1 block text-xs leading-5 text-[#e5e4e2]/65">
-                                  {candidate.preview || candidate.title}
-                                </span>
-                              </span>
-                            </span>
-                          </label>
-                        ))}
-                      </div>
-                    </section>
-                  ))}
-                </div>
-
-                <div className="mt-4 flex flex-col gap-2 border-t border-white/10 pt-4 sm:flex-row sm:items-center sm:justify-between">
-                  <p className="text-xs text-[#e5e4e2]/45">
-                    Wybrano {unresolvedProductClauseConflicts.filter((conflict) => Boolean(productClauseSelectionDraft[conflict.key])).length} z {unresolvedProductClauseConflicts.length} typów.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => void handleApplyProductClauseSelections()}
-                    disabled={
-                      isApplyingProductClauseSelections ||
-                      unresolvedProductClauseConflicts.some((conflict) => !productClauseSelectionDraft[conflict.key])
-                    }
-                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-semibold text-[#210811] disabled:cursor-not-allowed disabled:opacity-45"
-                  >
-                    {isApplyingProductClauseSelections && <Loader className="h-4 w-4 animate-spin" />}
-                    {isApplyingProductClauseSelections ? 'Aktualizowanie…' : 'Zastosuj wybory do umowy'}
-                  </button>
-                </div>
-              </div>
-            )}
-            {contractSourceOutdated && (
-              <div className="rounded-lg border border-amber-400/30 bg-amber-400/10 p-3 text-sm text-amber-200 lg:col-span-2">
-                Oferta, jej produkty lub harmonogram techniczny zmieniły się po indywidualnej
-                edycji umowy. Użyj „Dane zmienione — odśwież”, aby ponownie pobrać aktualne dane.
-                Operacja zastąpi indywidualnie zmienioną treść.
-              </div>
-            )}
-            {unplacedClauseCategories.length > 0 && (
-              <div className="rounded-lg border border-blue-400/25 bg-blue-400/10 p-3 text-sm text-blue-100 lg:col-span-2">
-                <strong>Klauzule produktowe zostały pominięte.</strong>{' '}
-                Ten szablon nie przewiduje miejsca dla sekcji: {unplacedClauseCategories.map(
-                  (category) => CONTRACT_CLAUSE_CATEGORY_LABELS[category] || category,
-                ).join(', ')}. Dokument zostanie wygenerowany bez nich — w przypadku umowy
-                uproszczonej nie musisz nic robić.
-              </div>
-            )}
-            {canEdit && (
-              <div className="rounded-lg border border-[#d3bb73]/15 bg-[#0f1119] p-3 lg:col-span-2 md:p-4">
-                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 text-sm font-semibold text-[#e5e4e2]">
-                      <ListChecks className="h-4 w-4 text-[#d3bb73]" />
-                      Klauzule tej umowy
-                    </div>
-                    <p className="mt-1 text-xs leading-5 text-[#e5e4e2]/50">
-                      Edytuj lub wyłącz automatyczne klauzule i dodaj ustalenia klienta tylko dla tego wydarzenia.
-                    </p>
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      {EVENT_CONTRACT_CLAUSE_CATEGORY_ORDER.map((category) => {
-                        const categoryItems = eventContractClauseItems.filter(
-                          (item) => item.category === category,
-                        );
-                        if (categoryItems.length === 0) return null;
-                        const activeItems = categoryItems.filter((item) => item.enabled).length;
-                        return (
-                          <span
-                            key={category}
-                            className="rounded-full border border-white/10 bg-white/[0.025] px-2.5 py-1 text-[10px] text-[#e5e4e2]/55"
-                          >
-                            {CONTRACT_CLAUSE_CATEGORY_LABELS[category] || category}: {activeItems}
-                          </span>
-                        );
-                      })}
-                      {eventContractClauseItems.length === 0 && (
-                        <span className="text-[11px] text-[#e5e4e2]/35">
-                          Brak klauzul automatycznych — możesz dodać własne.
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setShowEventContractClauses(true)}
-                    className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-[#d3bb73]/35 px-4 py-2.5 text-sm font-medium text-[#e7cf86] transition-colors hover:bg-[#d3bb73]/10"
-                  >
-                    <ListChecks className="h-4 w-4" />
-                    Zarządzaj klauzulami
-                  </button>
-                </div>
-              </div>
-            )}
-            {canChangeTemplate && contractStatus !== 'cancelled' && availableTemplates.length > 0 && (
-              <div className="rounded-lg bg-[#210811]/65 p-3 md:p-4 lg:col-span-2">
-                <label className="mb-2 block text-xs font-medium uppercase tracking-wide text-[#e5e4e2]/50">
-                  Szablon umowy
-                </label>
-
-                <select
-                  value={selectedTemplateId || ''}
-                  disabled={changingTemplate || isGeneratingPdf}
-                  onChange={(e) => {
-                    if (e.target.value && e.target.value !== selectedTemplateId) setPendingTemplateId(e.target.value);
-                  }}
-                  className="min-h-11 w-full cursor-pointer rounded-lg border border-white/10 bg-[#351020] px-3 py-2.5 text-sm text-[#e5e4e2] transition-colors hover:bg-[#411326] focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-[#d3bb73]/50"
+          <div role="tablist" aria-label="Sekcje umowy" className="-mb-4 mt-5 flex gap-1 overflow-x-auto border-b border-white/10 text-sm md:-mb-6">
+            {CONTRACT_SECTIONS.map(({ id, label }) => {
+              const badge = contractSectionBadges[id];
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  aria-selected={contractSection === id}
+                  onClick={() => setContractSection(id)}
+                  className={`-mb-px whitespace-nowrap border-b-2 px-4 py-2.5 transition-colors ${
+                    contractSection === id ? 'border-[#d3bb73] text-[#d3bb73]' : 'border-transparent text-[#e5e4e2]/65 hover:text-[#e5e4e2]'
+                  }`}
                 >
-                  {availableTemplates.map((template) => (
-                    <option
-                      key={template.id}
-                      value={template.id}
-                      className="bg-[#351020] text-[#e5e4e2]"
-                    >
-                      {template.name}
-                    </option>
-                  ))}
-                </select>
-
-                <p className="mt-2 text-xs text-amber-400/80">
-                  {changingTemplate ? 'Przygotowywanie nowego szablonu…' :
-                    'Zmiana szablonu po wygenerowaniu PDF lub wysłaniu umowy tworzy nowy szkic. Dotychczasowy dokument pozostaje w historii.'}
-                </p>
-              </div>
-            )}
-
-
+                  {label}
+                  {badge && badge.count > 0 && (
+                    <span className={`ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] ${badge.warn ? 'bg-amber-400/20 text-amber-200' : 'bg-white/10 text-[#e5e4e2]/70'}`}>
+                      {badge.count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
-          </>)}
         </div>
 
-        {contractId && !companySignedAt && ['signed_by_client', 'signed_returned'].includes(contractStatus) && (
-          <p className="no-print rounded-lg bg-[#d3bb73]/5 p-4 text-sm text-[#e5e4e2]/70">
-            Aby załączyć podpisany dokument, administrator musi jeszcze potwierdzić podpis firmy przy statusie umowy.
-          </p>
-        )}
-        {contractId && companySignedAt && ['signed_by_client', 'signed_returned', 'cancelled'].includes(contractStatus) && (
-          <SignedContractAttachments
-            key={contractId}
-            contractId={contractId}
-            onFilesChange={handleSignedFilesChange}
-            manageOpen={signedFilesOpen}
-            onManageClose={() => setSignedFilesOpen(false)}
-            cancelled={contractStatus === 'cancelled'}
-          />
-        )}
-
-        {editMode && (
-          <div className="no-print rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
-            <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-              <div>
-                <h3 className="text-lg font-medium text-[#e5e4e2]">Edycja informacji podstawowych</h3>
-                <p className="mt-1 text-sm text-[#e5e4e2]/50">
-                  Możesz edytować wszystkie pola użyte w szablonie. Zmiany dotyczą tylko tej umowy; po ich zastosowaniu zapisz umowę.
-                </p>
-              </div>
-              <label className="relative block w-full md:max-w-sm">
-                <span className="sr-only">Szukaj zmiennej</span>
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#e5e4e2]/45" />
-                <input
-                  type="search"
-                  value={variableSearch}
-                  onChange={(event) => setVariableSearch(event.target.value)}
-                  placeholder="Szukaj pola, np. numer umowy"
-                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] py-2 pl-10 pr-3 text-sm text-[#e5e4e2] placeholder:text-[#e5e4e2]/35 focus:border-[#d3bb73]/60 focus:outline-none"
-                />
-              </label>
+        {contractSection === 'content' && (<>
+          <div className="no-print grid gap-3 text-xs text-[#e5e4e2]/70 md:grid-cols-3">
+            <div className="rounded-lg border border-white/10 bg-[#1c1f33] p-3">
+              <div className="mb-1 font-medium text-[#e5e4e2]">Treść umowy</div>
+              {contentIndividuallyEdited ? 'Zmieniona indywidualnie dla tego wydarzenia.' : 'Wygenerowana z szablonu, danych wydarzenia i oferty.'}
             </div>
-
-            {(contractConditionSettings.client || contractConditionSettings.options.length > 0) && (
-              <section className="mb-4 rounded-lg border border-[#a083dc]/25 bg-[#a083dc]/5 p-4">
-                <h4 className="text-sm font-medium text-[#e5e4e2]">Warunki umowy</h4>
-                <p className="mt-1 text-xs text-[#e5e4e2]/50">
-                  Decydują, które akapity szablonu trafią do tej umowy. Zastosuj przyciskiem „Zapisz” u góry.
-                </p>
-                <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-[#e5e4e2]/85">
-                  {contractConditionSettings.client && (
-                    <label className="flex items-center gap-2">
-                      Klient:
-                      <select
-                        value={editedVariables[CONTRACT_CLIENT_VARIABLE] === 'firma' ? 'firma' : 'osoba'}
-                        onChange={(event) => setEditedVariables((current) => ({ ...current, [CONTRACT_CLIENT_VARIABLE]: event.target.value }))}
-                        className="rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-2 py-1 text-sm text-[#e5e4e2]"
-                      >
-                        <option value="firma">firma</option>
-                        <option value="osoba">osoba prywatna</option>
-                      </select>
-                    </label>
-                  )}
-                  {contractConditionSettings.options.map((option) => {
-                    const key = contractOptionVariable(option.key);
-                    return (
-                      <label key={option.key} className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          className="accent-[#d3bb73]"
-                          checked={Boolean(editedVariables[key])}
-                          onChange={(event) => setEditedVariables((current) => ({ ...current, [key]: event.target.checked ? 'tak' : '' }))}
-                        />
-                        {option.label}
-                      </label>
-                    );
-                  })}
-                </div>
-              </section>
-            )}
-
-            {editableContractVariables.length > 0 ? (
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                {editableContractVariables.map(({ key, value, label }) => {
-                  const isHtml = /<[a-z][\s\S]*>/i.test(variables[key] || '') ||
-                    key.endsWith('_block') || key.startsWith('contract_clauses_') ||
-                    ['offer_items', 'OFFER_ITEMS_TABLE', 'legal_representatives_list', 'decision_makers_list'].includes(key);
-                  const useTextarea =
-                    value.length > 100 ||
-                    ['client_representation_rule', 'client_representation_basis', 'offer_scope'].includes(key);
-
-                  return (
-                    <div key={key} className={isHtml ? 'md:col-span-2' : undefined}>
-                      <label className="mb-1 block text-sm text-[#e5e4e2]/70">{label}</label>
-                      <span className="mb-2 block text-xs text-[#e5e4e2]/40">{'{{' + key + '}}'}</span>
-                      {isHtml ? (
-                        <ContractVariableHtmlField value={value} label={label}
-                          onChange={(nextValue) => setEditedVariables((current) => ({ ...current, [key]: nextValue }))} />
-                      ) : useTextarea ? (
-                        <textarea
-                          value={value}
-                          rows={3}
-                          onChange={(event) =>
-                            setEditedVariables((current) => ({
-                              ...current,
-                              [key]: event.target.value,
-                            }))
-                          }
-                          className="w-full resize-y rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-2 text-sm text-[#e5e4e2]"
-                        />
-                      ) : (
-                        <input
-                          type="text"
-                          value={value}
-                          onChange={(event) =>
-                            setEditedVariables((current) => ({
-                              ...current,
-                              [key]: event.target.value,
-                            }))
-                          }
-                          className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-2 text-sm text-[#e5e4e2]"
-                        />
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="rounded-lg border border-dashed border-[#d3bb73]/20 px-4 py-8 text-center text-sm text-[#e5e4e2]/50">
-                {variableSearch
-                  ? 'Nie znaleziono pola o takiej nazwie.'
-                  : 'Ten szablon nie zawiera pól przeznaczonych do ręcznej edycji.'}
-              </div>
-            )}
+            <div className="rounded-lg border border-[#a083dc]/25 bg-[#a083dc]/5 p-3">
+              <div className="mb-1 font-medium text-[#e5e4e2]">Warunki umowy</div>
+              {contractConditionsSummary || 'Szablon nie ma warunków do wyboru.'}
+              {contractConditionsSummary && canEdit && isWorkingDraft && (
+                <button type="button" onClick={() => setContractSection('data')} className="mt-1 block text-[#d3bb73] hover:underline">Zmień w „Dane i warunki”</button>
+              )}
+            </div>
+            <div className="rounded-lg border border-white/10 bg-[#1c1f33] p-3">
+              <div className="mb-1 font-medium text-[#e5e4e2]">PDF</div>
+              {!generatedPdfPath ? 'Jeszcze nie wygenerowany.' : modifiedAfterGeneration ? 'Treść zmieniła się po wygenerowaniu — wygeneruj ponownie.' : 'Aktualny.'}
+            </div>
           </div>
-        )}
-
         {deferDocumentPreview && (
           <button type="button" aria-expanded={documentPreviewOpen} aria-controls="contract-document-preview" onClick={() => setDocumentPreviewOpen(open => !open)} className="no-print flex w-full items-center justify-between rounded-lg bg-white/[0.03] px-4 py-3 text-sm text-[#e5e4e2]/70 hover:bg-white/5">
             Podgląd treści umowy
@@ -4361,6 +4008,451 @@ export function EventContractTab({
             }
           })()}
         </div>}
+        </>)}
+
+        {contractSection === 'data' && (
+          <>
+          <div className="no-print space-y-4 rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-4 md:p-6">
+          {clientPartyBase && usedContractVariableKeys.has('client_contract_party_block') && (
+            <section className="mb-4 rounded-lg bg-black/15 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="font-medium text-[#e5e4e2]">Dane klienta i osoby podpisujące umowę</h3>
+                {canEdit && isWorkingDraft && employee?.is_active && !editMode && (
+                  <button type="button" onClick={() => setEditMode(true)} className="rounded-lg bg-[#d3bb73]/10 px-3 py-2 text-sm text-[#d3bb73]">Edytuj dane i wybierz osoby</button>
+                )}
+              </div>
+              {editMode && canEdit && isWorkingDraft && (
+                <div className="my-3 space-y-2">
+                  {clientPartySigners.length > 0 ? <>
+                    <label className="flex items-center gap-2 text-sm text-[#d3bb73]">
+                      <input type="checkbox" className="accent-[#d3bb73]"
+                        checked={clientPartySigners.every(person => selectedClientSignerIds.includes(person.id))}
+                        onChange={event => selectClientSigners(event.target.checked ? clientPartySigners.map(person => person.id) : [])} />
+                      Uwzględnij wszystkie osoby uprawnione
+                    </label>
+                    {clientPartySigners.map(person => (
+                      <label key={person.id} className="flex items-start gap-2 text-sm text-[#e5e4e2]/80">
+                        <input type="checkbox" className="mt-1 accent-[#d3bb73]"
+                          checked={selectedClientSignerIds.includes(person.id)}
+                          onChange={event => selectClientSigners(event.target.checked ? [...selectedClientSignerIds, person.id] : selectedClientSignerIds.filter(id => id !== person.id))} />
+                        <span>{person.fullName}{person.title && <span className="text-[#e5e4e2]/50"> — {person.title}</span>}</span>
+                      </label>
+                    ))}
+                  </> : <p className="text-sm text-[#e5e4e2]/60">Brak osób uprawnionych do podpisu w danych organizacji.</p>}
+                  {clientPartySigners.length > 0 && <button type="button" onClick={() => selectClientSigners(selectedClientSignerIds)} className="rounded-lg bg-[#d3bb73]/10 px-3 py-2 text-sm text-[#d3bb73]">Wstaw wybrane osoby do bloku</button>}
+                  <p className="text-xs text-[#e5e4e2]/50">Wybór osoby ponownie składa blok z danych organizacji. Możesz następnie poprawić jego treść poniżej. Zmiany dotyczą tylko tej umowy.</p>
+                </div>
+              )}
+              <div className="mt-3">
+                {editMode && canEdit && isWorkingDraft ? (
+                  <ContractVariableHtmlField label="Pełne dane strony klienta" value={editedVariables.client_contract_party_block || ''}
+                    onChange={value => setEditedVariables(current => ({ ...current, client_contract_party_block: value }))} />
+                ) : (
+                  <div className="text-sm leading-relaxed text-[#e5e4e2]/80" dangerouslySetInnerHTML={{ __html: variables.client_contract_party_block || '' }} />
+                )}
+              </div>
+              {editMode && canEdit && isWorkingDraft && (
+                <p className="mt-2 text-xs text-[#e5e4e2]/50">Zastosuj zmiany przyciskiem „Zapisz” u góry, a następnie zapisz umowę.</p>
+              )}
+            </section>
+          )}
+            {!(clientPartyBase && usedContractVariableKeys.has('client_contract_party_block')) && (
+              <p className="text-sm text-[#e5e4e2]/60">Dane stron, pola umowy i warunki (klient, opcje) edytujesz w trybie edycji.</p>
+            )}
+            {!editMode && canEdit && isWorkingDraft && (
+              <button type="button" onClick={() => setEditMode(true)} className="inline-flex items-center gap-2 rounded-lg bg-[#d3bb73]/10 px-4 py-2 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/15">
+                <Edit className="h-4 w-4" /> Edytuj pola i warunki umowy
+              </button>
+            )}
+          </div>
+        {editMode && (
+          <div className="no-print rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+            <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+              <div>
+                <h3 className="text-lg font-medium text-[#e5e4e2]">Edycja informacji podstawowych</h3>
+                <p className="mt-1 text-sm text-[#e5e4e2]/50">
+                  Możesz edytować wszystkie pola użyte w szablonie. Zmiany dotyczą tylko tej umowy; po ich zastosowaniu zapisz umowę.
+                </p>
+              </div>
+              <label className="relative block w-full md:max-w-sm">
+                <span className="sr-only">Szukaj zmiennej</span>
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#e5e4e2]/45" />
+                <input
+                  type="search"
+                  value={variableSearch}
+                  onChange={(event) => setVariableSearch(event.target.value)}
+                  placeholder="Szukaj pola, np. numer umowy"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] py-2 pl-10 pr-3 text-sm text-[#e5e4e2] placeholder:text-[#e5e4e2]/35 focus:border-[#d3bb73]/60 focus:outline-none"
+                />
+              </label>
+            </div>
+
+            {(contractConditionSettings.client || contractConditionSettings.options.length > 0) && (
+              <section className="mb-4 rounded-lg border border-[#a083dc]/25 bg-[#a083dc]/5 p-4">
+                <h4 className="text-sm font-medium text-[#e5e4e2]">Warunki umowy</h4>
+                <p className="mt-1 text-xs text-[#e5e4e2]/50">
+                  Decydują, które akapity szablonu trafią do tej umowy. Zastosuj przyciskiem „Zapisz” u góry.
+                </p>
+                <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-[#e5e4e2]/85">
+                  {contractConditionSettings.client && (
+                    <label className="flex items-center gap-2">
+                      Klient:
+                      <select
+                        value={editedVariables[CONTRACT_CLIENT_VARIABLE] === 'firma' ? 'firma' : 'osoba'}
+                        onChange={(event) => setEditedVariables((current) => ({ ...current, [CONTRACT_CLIENT_VARIABLE]: event.target.value }))}
+                        className="rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-2 py-1 text-sm text-[#e5e4e2]"
+                      >
+                        <option value="firma">firma</option>
+                        <option value="osoba">osoba prywatna</option>
+                      </select>
+                    </label>
+                  )}
+                  {contractConditionSettings.options.map((option) => {
+                    const key = contractOptionVariable(option.key);
+                    return (
+                      <label key={option.key} className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          className="accent-[#d3bb73]"
+                          checked={Boolean(editedVariables[key])}
+                          onChange={(event) => setEditedVariables((current) => ({ ...current, [key]: event.target.checked ? 'tak' : '' }))}
+                        />
+                        {option.label}
+                      </label>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+
+            {editableContractVariables.length > 0 ? (
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                {editableContractVariables.map(({ key, value, label }) => {
+                  const isHtml = /<[a-z][\s\S]*>/i.test(variables[key] || '') ||
+                    key.endsWith('_block') || key.startsWith('contract_clauses_') ||
+                    ['offer_items', 'OFFER_ITEMS_TABLE', 'legal_representatives_list', 'decision_makers_list'].includes(key);
+                  const useTextarea =
+                    value.length > 100 ||
+                    ['client_representation_rule', 'client_representation_basis', 'offer_scope'].includes(key);
+
+                  return (
+                    <div key={key} className={isHtml ? 'md:col-span-2' : undefined}>
+                      <label className="mb-1 block text-sm text-[#e5e4e2]/70">{label}</label>
+                      <span className="mb-2 block text-xs text-[#e5e4e2]/40">{'{{' + key + '}}'}</span>
+                      {isHtml ? (
+                        <ContractVariableHtmlField value={value} label={label}
+                          onChange={(nextValue) => setEditedVariables((current) => ({ ...current, [key]: nextValue }))} />
+                      ) : useTextarea ? (
+                        <textarea
+                          value={value}
+                          rows={3}
+                          onChange={(event) =>
+                            setEditedVariables((current) => ({
+                              ...current,
+                              [key]: event.target.value,
+                            }))
+                          }
+                          className="w-full resize-y rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-2 text-sm text-[#e5e4e2]"
+                        />
+                      ) : (
+                        <input
+                          type="text"
+                          value={value}
+                          onChange={(event) =>
+                            setEditedVariables((current) => ({
+                              ...current,
+                              [key]: event.target.value,
+                            }))
+                          }
+                          className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-2 text-sm text-[#e5e4e2]"
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="rounded-lg border border-dashed border-[#d3bb73]/20 px-4 py-8 text-center text-sm text-[#e5e4e2]/50">
+                {variableSearch
+                  ? 'Nie znaleziono pola o takiej nazwie.'
+                  : 'Ten szablon nie zawiera pól przeznaczonych do ręcznej edycji.'}
+              </div>
+            )}
+          </div>
+        )}
+          </>
+        )}
+
+        {contractSection === 'clauses' && (
+          <div className="no-print space-y-4 rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-4 md:p-6">
+            {canEdit && (
+              <div className="rounded-lg border border-[#d3bb73]/15 bg-[#0f1119] p-3 lg:col-span-2 md:p-4">
+                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-[#e5e4e2]">
+                      <ListChecks className="h-4 w-4 text-[#d3bb73]" />
+                      Klauzule tej umowy
+                    </div>
+                    <p className="mt-1 text-xs leading-5 text-[#e5e4e2]/50">
+                      Edytuj lub wyłącz automatyczne klauzule i dodaj ustalenia klienta tylko dla tego wydarzenia.
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {EVENT_CONTRACT_CLAUSE_CATEGORY_ORDER.map((category) => {
+                        const categoryItems = eventContractClauseItems.filter(
+                          (item) => item.category === category,
+                        );
+                        if (categoryItems.length === 0) return null;
+                        const activeItems = categoryItems.filter((item) => item.enabled).length;
+                        return (
+                          <span
+                            key={category}
+                            className="rounded-full border border-white/10 bg-white/[0.025] px-2.5 py-1 text-[10px] text-[#e5e4e2]/55"
+                          >
+                            {CONTRACT_CLAUSE_CATEGORY_LABELS[category] || category}: {activeItems}
+                          </span>
+                        );
+                      })}
+                      {eventContractClauseItems.length === 0 && (
+                        <span className="text-[11px] text-[#e5e4e2]/35">
+                          Brak klauzul automatycznych — możesz dodać własne.
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowEventContractClauses(true)}
+                    className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-[#d3bb73]/35 px-4 py-2.5 text-sm font-medium text-[#e7cf86] transition-colors hover:bg-[#d3bb73]/10"
+                  >
+                    <ListChecks className="h-4 w-4" />
+                    Zarządzaj klauzulami
+                  </button>
+                </div>
+              </div>
+            )}
+            {isWorkingDraft && unresolvedProductClauseConflicts.length > 0 && (
+              <div className="rounded-xl border border-[#d3bb73]/30 bg-[#2c0b18] p-4 text-sm text-[#e5e4e2] lg:col-span-2 md:p-5">
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <div className="flex items-center gap-2 font-semibold text-[#d3bb73]">
+                      <ShieldAlert className="h-4 w-4" />
+                      Rozbieżne wersje wspólnych ustaleń
+                    </div>
+                    <p className="mt-1 max-w-3xl text-xs leading-5 text-[#e5e4e2]/60">
+                      W źródłach umowy występują różne wersje tej samej wspólnej zasady.
+                      Wybierz treść, która ma znaleźć się w umowie. Ustalenia specyficzne dla
+                      różnych produktów nie są wzajemnie wykluczane.
+                    </p>
+                  </div>
+                  <span className="w-fit rounded-full bg-[#d3bb73]/15 px-2.5 py-1 text-xs font-semibold text-[#d3bb73]">
+                    {unresolvedProductClauseConflicts.length}
+                  </span>
+                </div>
+
+                <div className="mt-4 space-y-4">
+                  {unresolvedProductClauseConflicts.map((conflict) => (
+                    <section key={conflict.key} className="rounded-lg border border-white/10 bg-black/15 p-3 md:p-4">
+                      <div className="mb-3 flex flex-wrap items-center gap-2">
+                        <span className="rounded bg-[#d3bb73]/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-[#d3bb73]">
+                          {CONTRACT_CLAUSE_CATEGORY_LABELS[conflict.category]}
+                        </span>
+                        <span className="font-medium text-[#f2eee2]">
+                          {getContractClauseTopicLabel(conflict.topic)}
+                        </span>
+                      </div>
+                      <div className="grid gap-2 lg:grid-cols-2">
+                        {conflict.candidates.map((candidate) => (
+                          <label
+                            key={candidate.id}
+                            className={`cursor-pointer rounded-lg border p-3 transition-colors ${
+                              productClauseSelectionDraft[conflict.key] === candidate.id
+                                ? 'border-white/10 bg-[#d3bb73]/15'
+                                : 'border-white/10 bg-white/[0.025] hover:border-white/20'
+                            }`}
+                          >
+                            <span className="flex items-start gap-2">
+                              <input
+                                type="radio"
+                                name={`product-clause-${conflict.key}`}
+                                checked={productClauseSelectionDraft[conflict.key] === candidate.id}
+                                onChange={() => setProductClauseSelectionDraft((current) => ({
+                                  ...current,
+                                  [conflict.key]: candidate.id,
+                                }))}
+                                className="mt-1 accent-[#d3bb73]"
+                              />
+                              <span className="min-w-0">
+                                <span className="block text-xs font-semibold text-[#d3bb73]">
+                                  {candidate.productName}
+                                </span>
+                                <span className="mt-1 block text-xs leading-5 text-[#e5e4e2]/65">
+                                  {candidate.preview || candidate.title}
+                                </span>
+                              </span>
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    </section>
+                  ))}
+                </div>
+
+                <div className="mt-4 flex flex-col gap-2 border-t border-white/10 pt-4 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-xs text-[#e5e4e2]/45">
+                    Wybrano {unresolvedProductClauseConflicts.filter((conflict) => Boolean(productClauseSelectionDraft[conflict.key])).length} z {unresolvedProductClauseConflicts.length} typów.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void handleApplyProductClauseSelections()}
+                    disabled={
+                      isApplyingProductClauseSelections ||
+                      unresolvedProductClauseConflicts.some((conflict) => !productClauseSelectionDraft[conflict.key])
+                    }
+                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-semibold text-[#210811] disabled:cursor-not-allowed disabled:opacity-45"
+                  >
+                    {isApplyingProductClauseSelections && <Loader className="h-4 w-4 animate-spin" />}
+                    {isApplyingProductClauseSelections ? 'Aktualizowanie…' : 'Zastosuj wybory do umowy'}
+                  </button>
+                </div>
+              </div>
+            )}
+            {unplacedClauseCategories.length > 0 && (
+              <div className="rounded-lg border border-blue-400/25 bg-blue-400/10 p-3 text-sm text-blue-100 lg:col-span-2">
+                <strong>Klauzule produktowe zostały pominięte.</strong>{' '}
+                Ten szablon nie przewiduje miejsca dla sekcji: {unplacedClauseCategories.map(
+                  (category) => CONTRACT_CLAUSE_CATEGORY_LABELS[category] || category,
+                ).join(', ')}. Dokument zostanie wygenerowany bez nich — w przypadku umowy
+                uproszczonej nie musisz nic robić.
+              </div>
+            )}
+            {!canEdit && (
+              <p className="text-sm text-[#e5e4e2]/60">Klauzulami tej umowy zarządzają osoby z uprawnieniem do edycji umów.</p>
+            )}
+          </div>
+        )}
+
+        {contractSection === 'review' && (
+          <div className="no-print space-y-4 rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-4 md:p-6">
+            {isWorkingDraft && contractPreflightIssues.length > 0 && (
+              <div className="rounded-lg border border-amber-400/10 bg-amber-400/10 p-4 text-sm text-amber-100 lg:col-span-2">
+                <div className="flex items-start gap-3">
+                  <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-amber-300" />
+                  <div className="min-w-0 flex-1">
+                    <div className="font-semibold text-amber-200">
+                      Uwagi do sprawdzenia
+                    </div>
+                    <p className="mt-1 text-xs leading-5 text-amber-100/75">
+                      Poniższe uwagi nie blokują generowania PDF ani drukowania umowy.
+                      Aby wystawić lub wysłać finalną umowę mimo wskazanych braków, zaznacz
+                      zapoznanie się z odpowiednimi uwagami. Potwierdzenie nie uzupełnia danych
+                      i obowiązuje tylko dla bieżącej treści w tej sesji.
+                    </p>
+                    <div className="mt-3 space-y-2">
+                      {contractPreflightIssues.map((issue) => (
+                        <div
+                          key={issue.key}
+                          className="flex flex-col gap-2 rounded-md border border-amber-300/10 bg-black/10 px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
+                        >
+                          <label className="flex min-w-0 flex-1 cursor-pointer items-start gap-3 py-1">
+                            <input
+                              type="checkbox"
+                              checked={isPreflightIssueAcknowledged(issue.key)}
+                              onChange={(e) => acknowledgePreflightIssue(issue.key, e.target.checked)}
+                              disabled={!employee?.id || isGeneratingPdf}
+                              className="mt-1 h-4 w-4 shrink-0 rounded accent-[#d3bb73] disabled:cursor-not-allowed"
+                            />
+                            <span className="min-w-0">
+                              <span className="block leading-5">{issue.label}</span>
+                              <span className="mt-1 block text-xs leading-5 text-amber-100/75">
+                                {isPreflightIssueAcknowledged(issue.key)
+                                  ? 'Potwierdzono — świadomie akceptuję tę uwagę przy wystawieniu i wysłaniu finalnej umowy.'
+                                  : 'Zapoznałem(-am) się z uwagą i świadomie akceptuję wystawienie oraz wysłanie finalnej umowy mimo tego braku.'}
+                              </span>
+                            </span>
+                          </label>
+                          {issue.actionHref && (
+                            <a
+                              href={issue.actionHref}
+                              className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-[#d3bb73] hover:underline"
+                            >
+                              {issue.actionLabel || 'Uzupełnij'}
+                              <ExternalLink className="h-3.5 w-3.5" />
+                            </a>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+            {contractSourceOutdated && (
+              <div className="rounded-lg border border-amber-400/30 bg-amber-400/10 p-3 text-sm text-amber-200 lg:col-span-2">
+                Oferta, jej produkty lub harmonogram techniczny zmieniły się po indywidualnej
+                edycji umowy. Użyj „Dane zmienione — odśwież”, aby ponownie pobrać aktualne dane.
+                Operacja zastąpi indywidualnie zmienioną treść.
+              </div>
+            )}
+            {contractSourceOutdated && canEdit && (
+              <button type="button" disabled={loading} onClick={() => void handleRefreshFromOffer()} className="inline-flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] disabled:opacity-50">
+                <RefreshCw className="h-4 w-4" /> Odśwież szablon i dane
+              </button>
+            )}
+            {canEdit && isWorkingDraft && (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-white/10 bg-[#0f1119] p-3 text-sm text-[#e5e4e2]/70">
+                <span>Audyt AI sprawdza treść umowy (spójność, braki, ryzyka) i proponuje poprawki do zatwierdzenia.</span>
+                <button type="button" disabled={isAuditingContract} onClick={() => void handleStartContractAudit()} className="inline-flex items-center gap-2 rounded-lg bg-white/10 px-3 py-2 text-[#e5e4e2] hover:bg-white/15 disabled:opacity-50">
+                  {isAuditingContract ? <Loader className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                  {isAuditingContract ? 'Audytowanie…' : 'Audyt AI'}
+                </button>
+              </div>
+            )}
+            {!(isWorkingDraft && contractPreflightIssues.length > 0) && !contractSourceOutdated && (
+              <p className="text-sm text-[#e5e4e2]/60">Brak uwag do sprawdzenia.</p>
+            )}
+          </div>
+        )}
+
+        {contractSection === 'documents' && (
+          <div className="no-print space-y-4 rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-4 md:p-6">
+        {contractId && !companySignedAt && ['signed_by_client', 'signed_returned'].includes(contractStatus) && (
+          <p className="no-print rounded-lg bg-[#d3bb73]/5 p-4 text-sm text-[#e5e4e2]/70">
+            Aby załączyć podpisany dokument, administrator musi jeszcze potwierdzić podpis firmy przy statusie umowy.
+          </p>
+        )}
+        {contractId && companySignedAt && ['signed_by_client', 'signed_returned', 'cancelled'].includes(contractStatus) && (
+          <SignedContractAttachments
+            key={contractId}
+            contractId={contractId}
+            onFilesChange={handleSignedFilesChange}
+            manageOpen={signedFilesOpen}
+            onManageClose={() => setSignedFilesOpen(false)}
+            cancelled={contractStatus === 'cancelled'}
+          />
+        )}
+          {previousContracts.length > 0 && (
+            <details className="mb-4 rounded-lg border border-white/10 p-3 text-sm">
+              <summary className="cursor-pointer text-[#d3bb73]">Poprzednie umowy ({previousContracts.length})</summary>
+              <ul className="mt-3 space-y-2">
+                {previousContracts.map((item) => (
+                  <li key={item.id} className="flex flex-wrap items-center justify-between gap-2">
+                    <span>{item.title} · {new Date(item.created_at).toLocaleString('pl-PL')}</span>
+                    {item.generated_pdf_path && <button type="button" className="text-[#d3bb73] underline" onClick={async () => {
+                      const { data, error } = await supabase.storage.from('event-files').createSignedUrl(item.generated_pdf_path!, 3600);
+                      if (error || !data?.signedUrl) { showSnackbar('Nie udało się otworzyć archiwalnego PDF', 'error'); return; }
+                      window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
+                    }}>Pokaż archiwalny PDF</button>}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+            {!contractId || (!['signed_by_client', 'signed_returned', 'cancelled'].includes(contractStatus) && previousContracts.length === 0) ? (
+              <p className="text-sm text-[#e5e4e2]/60">Podpisane dokumenty pojawią się tu po podpisaniu umowy przez klienta; wcześniejsze wersje umowy — po zmianie szablonu.</p>
+            ) : null}
+          </div>
+        )}
+
       </div>
 
       <Dialog

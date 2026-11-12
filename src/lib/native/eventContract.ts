@@ -3,6 +3,20 @@ import { randomUUID } from 'node:crypto';
 import type { NativeContext } from './auth';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin.server';
 import { registerEventActions, registerEventQueries, registerEventTab } from './eventTabs';
+import {
+  CONTRACT_CATEGORY_VARIABLE,
+  CONTRACT_CLIENT_VARIABLE,
+  contractConditionVariableNames,
+  contractConditionVariables,
+  contractOptionVariable,
+  resolveContractOptions,
+} from '@/lib/CRM/contracts/contractConditions';
+import {
+  CONTRACT_CLAUSE_CATEGORY_LABELS,
+  CONTRACT_CLAUSE_PRIMARY_CATEGORIES,
+  getContractClauseTopicLabel,
+} from '@/lib/CRM/contracts/contractClauseContent';
+import { CONTRACT_PLACEHOLDER_GROUPS } from '@/lib/CRM/contracts/contractPlaceholderGroups';
 
 /**
  * Zakładka „Umowa” (`EventContractTab`) — obsługa dokumentu niewymagająca silnika składu przeglądarki: status z datami
@@ -10,6 +24,9 @@ import { registerEventActions, registerEventQueries, registerEventTab } from './
  * `/bridge/events/contracts/signed-files`: te same uprawnienia, bucket, ścieżki i walidacja PDF/JPG/PNG do 20 MB).
  * Treść umowy jest składana z szablonu, oferty i klauzul oraz dzielona na strony przez edytor w CRM — edycja danych i treści,
  * klauzule, szablon, depozyt, audyt AI, wystawienie szkicu, generowanie PDF, wysyłka i anulowanie (hasło) zostają w CRM.
+ * Podsumowanie zapisanej treści (`summary`) — do podzakładek jak w CRM: klient, kategoria, warunki umowy (rodzaj klienta
+ * i opcje szablonu, z wyborem zapisanym w umowie), pola zmienione dla tej umowy, wybrane osoby podpisujące i klauzule
+ * produktów według kategorii (z atrybutów, które nadaje im składanie umowy).
  */
 
 type Row = Record<string, any>;
@@ -69,6 +86,135 @@ async function signedFiles(ctx: NativeContext, eventId: string, contract: Row) {
   };
 }
 
+// MARK: Podsumowanie zapisanej treści umowy
+
+/** Nazwy pól umowy (`{{…}}`) jak w menu „Wstaw pole” edytora szablonu. */
+const FIELD_LABELS = new Map<string, string>(CONTRACT_PLACEHOLDER_GROUPS.flatMap((group) =>
+  (group.items as Array<{ key: string; label: string }>).map((item): [string, string] => [item.key.replace(/^\{\{|\}\}$/g, ''), item.label])));
+const CLAUSE_OPEN = /<div\b[^>]*\bclass="[^"]*\bproduct-contract-clause\b[^"]*"[^>]*>/g;
+
+const one = (value: unknown): Row | null => {
+  const row = Array.isArray(value) ? value[0] : value;
+  return row && typeof row === 'object' ? row as Row : null;
+};
+const decodeEntities = (value: string) => value
+  .replace(/&nbsp;|&#160;/g, ' ').replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'")
+  .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+const plainText = (html: string) => decodeEntities(html
+  .replace(/<\/?(?:p|div|li|ol|ul|br|h[1-6]|table|tr|td|th)\b[^>]*>/gi, ' ')
+  .replace(/<[^>]+>/g, '')).replace(/\s+/g, ' ').trim();
+const attribute = (tag: string, name: string) => decodeEntities(new RegExp(`\\s${name}="([^"]*)"`).exec(tag)?.[1] || '').trim();
+
+/** Klauzule produktów w treści umowy (`div.product-contract-clause` ze składania umowy), pogrupowane według kategorii. */
+function contractClauses(flow: string) {
+  const matches = Array.from(flow.matchAll(CLAUSE_OPEN));
+  const groups = new Map<string, { category: string; label: string; items: Array<{ topic: string; product: string; text: string }> }>();
+  matches.forEach((match, index) => {
+    const tag = match[0];
+    const start = (match.index ?? 0) + tag.length;
+    let body = flow.slice(start, index + 1 < matches.length ? matches[index + 1].index : undefined);
+    const close = /<\/ol>\s*<\/div>/.exec(body);
+    body = close ? body.slice(0, close.index) : body.slice(0, 800);
+    const text = plainText(body);
+    if (!text) return;
+    const category = attribute(tag, 'data-clause-category') || 'general';
+    const group = groups.get(category)
+      ?? { category, label: (CONTRACT_CLAUSE_CATEGORY_LABELS as Record<string, string>)[category] || 'Pozostałe', items: [] };
+    const topic = attribute(tag, 'data-clause-topic');
+    group.items.push({
+      topic: topic === 'event_custom' ? 'Ustalenie dla tego wydarzenia' : topic ? getContractClauseTopicLabel(topic) : '',
+      product: attribute(tag, 'data-product-name'),
+      text: text.length > 240 ? `${text.slice(0, 239).trimEnd()}…` : text,
+    });
+    groups.set(category, group);
+  });
+  const order = CONTRACT_CLAUSE_PRIMARY_CATEGORIES as string[];
+  const rank = (category: string) => (order.includes(category) ? order.indexOf(category) : order.length);
+  return Array.from(groups.values()).sort((a, b) => rank(a.category) - rank(b.category));
+}
+
+/**
+ * Podsumowanie zapisanej umowy jak w podzakładkach CRM. Wybór zapisany w umowie (`meta.variableOverrides`,
+ * `meta.clientContractSignerIds`) liczy się tylko dla szablonu, z którego powstała treść — jak w `fetchContractData`.
+ */
+async function contractSummary(ctx: NativeContext, eventId: string, contractId: string, templateId: string | null, template: Row | null) {
+  const s = ctx.supabase;
+  const [contentRes, eventRes] = await Promise.all([
+    s.from('contracts').select('content').eq('id', contractId).maybeSingle(),
+    s.from('events').select('organization_id, organizations:organizations!events_organization_id_fkey(name, alias), contacts(first_name, last_name, full_name), event_categories:category_id(name)')
+      .eq('id', eventId).maybeSingle(),
+  ]);
+  const raw = typeof (contentRes.data as Row | null)?.content === 'string' ? String((contentRes.data as Row).content) : '';
+  let parsed: Row = {};
+  if (raw) {
+    try {
+      const value = JSON.parse(raw);
+      parsed = Array.isArray(value) ? { pages: value } : value && typeof value === 'object' ? value as Row : {};
+    } catch {
+      parsed = { flowContent: raw, pages: [raw] };
+    }
+  }
+  const pages = Array.isArray(parsed.pages) ? (parsed.pages as unknown[]).filter((page): page is string => typeof page === 'string') : [];
+  const flow = typeof parsed.flowContent === 'string' ? parsed.flowContent : pages.join('');
+  const meta: Row = parsed.meta && typeof parsed.meta === 'object' ? parsed.meta as Row : {};
+  const sameTemplate = Boolean(templateId) && meta.sourceTemplateId === templateId;
+  const overrides: Record<string, string> = sameTemplate && meta.variableOverrides && typeof meta.variableOverrides === 'object' && !Array.isArray(meta.variableOverrides)
+    ? Object.fromEntries(Object.entries(meta.variableOverrides as Row).filter((entry): entry is [string, string] => typeof entry[1] === 'string'))
+    : {};
+
+  // Klient i kategoria — jak `contractConditionVariables` przy składaniu umowy (firma = wydarzenie z organizacją).
+  const event = eventRes.data as Row | null;
+  const organization = one(event?.organizations);
+  const contact = one(event?.contacts);
+  const company = Boolean(event?.organization_id);
+  const clientName = organization
+    ? String(organization.alias || organization.name || '').trim()
+    : contact ? String(contact.full_name || [contact.first_name, contact.last_name].filter(Boolean).join(' ')).trim() : '';
+  const category = String(one(event?.event_categories)?.name || '').trim();
+
+  const settings: Row = template?.page_settings && typeof template.page_settings === 'object' ? template.page_settings as Row : {};
+  const templateFlow = typeof settings.flowContent === 'string'
+    ? settings.flowContent
+    : Array.isArray(settings.pages) ? settings.pages.join('') : String(template?.content_html || '');
+  const options = resolveContractOptions(settings);
+  const values: Record<string, string | undefined> = { ...contractConditionVariables({ isCompany: company, categoryName: category, options }), ...overrides };
+  const conditions = [
+    ...(contractConditionVariableNames(templateFlow).has(CONTRACT_CLIENT_VARIABLE)
+      ? [{ label: 'Klient', value: values[CONTRACT_CLIENT_VARIABLE] === 'firma' ? 'firma' : 'osoba prywatna' }]
+      : []),
+    ...options.map((option) => ({ label: option.label, value: values[contractOptionVariable(option.key)] ? 'tak' : 'nie' })),
+  ];
+  const conditionKeys = new Set([CONTRACT_CLIENT_VARIABLE, CONTRACT_CATEGORY_VARIABLE, ...options.map((option) => contractOptionVariable(option.key))]);
+  const changedFields = Array.from(new Set(Object.keys(overrides).filter((key) => !conditionKeys.has(key)).map((key) => FIELD_LABELS.get(key) || key)));
+
+  // Osoby podpisujące po stronie firmy-klienta: zapisany wybór; bez zapisu CRM bierze wszystkie osoby uprawnione.
+  let signers: string[] | null = null;
+  if (company && sameTemplate && Array.isArray(meta.clientContractSignerIds)) {
+    const keys = (meta.clientContractSignerIds as unknown[]).filter((id): id is string => typeof id === 'string' && Boolean(id.trim()));
+    const ids = keys.filter((id) => UUID.test(id));
+    let rows: Row[] = [];
+    if (ids.length) {
+      const { data } = await s.from('contacts').select('id, full_name, first_name, last_name').in('id', ids);
+      rows = (data || []) as Row[];
+    }
+    const names = new Map(rows.map((row) => [String(row.id), String(row.full_name || [row.first_name, row.last_name].filter(Boolean).join(' ')).trim()]));
+    // Osoba bez kartoteki ma klucz z imienia i nazwiska (małymi literami).
+    signers = keys.map((key) => (UUID.test(key) ? names.get(key) || '' : key.replace(/(^|\s)(\p{L})/gu, (_m, space: string, letter: string) => space + letter.toLocaleUpperCase('pl-PL'))))
+      .filter(Boolean);
+  }
+
+  return {
+    individuallyEdited: meta.individuallyEdited === true,
+    pages: pages.length || (flow.trim() ? 1 : 0),
+    client: clientName ? { name: clientName, company } : null,
+    category: category || null,
+    conditions,
+    changedFields,
+    signers,
+    clauses: contractClauses(flow),
+  };
+}
+
 async function contractTab(ctx: NativeContext, eventId: string) {
   const s = ctx.supabase;
   const [permissions, contract, eventRes, historyRes] = await Promise.all([
@@ -80,9 +226,11 @@ async function contractTab(ctx: NativeContext, eventId: string) {
   const event = eventRes.data as Row | null;
   const templateId = contract?.template_id || event?.selected_contract_template_id || event?.event_categories?.contract_template_id || null;
   let templateName: string | null = null;
+  let template: Row | null = null;
   if (templateId) {
-    const { data } = await s.from('contract_templates').select('name').eq('id', templateId).maybeSingle();
-    templateName = (data as Row | null)?.name ?? null;
+    const { data } = await s.from('contract_templates').select('name, page_settings, content_html').eq('id', templateId).maybeSingle();
+    template = data as Row | null;
+    templateName = template?.name ?? null;
   }
   let companySignedBy: string | null = null;
   if (contract?.company_signed_by) {
@@ -107,6 +255,8 @@ async function contractTab(ctx: NativeContext, eventId: string) {
       pdf: h.generated_pdf_path ?? null, pdfAt: h.generated_pdf_at ?? null,
     })),
     signed: contract ? await signedFiles(ctx, eventId, contract) : { canView: false, canUpload: false, files: [], error: null },
+    // Podsumowanie nie blokuje zakładki — bez niego Mac pokazuje status, PDF i dokumenty.
+    summary: contract ? await contractSummary(ctx, eventId, contract.id, templateId, template).catch(() => null) : null,
   };
 }
 
