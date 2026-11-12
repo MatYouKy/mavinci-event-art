@@ -378,6 +378,10 @@ Okno „Zarządzaj sprzętem” zajmuje prawie całe okno aplikacji; pozycje dod
 
 **Harmonogram krok po kroku** — nad osią pasek „Przygotowanie harmonogramu” (zwijany) z pięcioma krokami i stanem każdego: ① Fazy — „Utwórz z umowy i ustaleń” tworzy brakujące fazy Montaż / Realizacja / Demontaż (montaż od terminu z ustaleń sprzedawcy albo umowy do startu wydarzenia, realizacja w terminie wydarzenia, demontaż od końca lub terminu demontażu przez domyślny czas typu fazy; bez nakładania na istniejące fazy, z podglądem godzin przed zapisem); ② Zespół na fazach — „Dopasuj do faz” przypisuje osoby bez godzin do faz pracy (bez załadunku i rozładunku), osoby z konfliktem lub nieobecnością pomija i wymienia; ③ Auta — liczba aut bez fazy, „Czasy przejazdu” i przejście do Logistyki; ④ Kontrola — nakładające się fazy, osoby bez godzin, auta bez fazy; ⑤ Wysyłka — „Wyślij zespołowi” wysyła aktualny harmonogram każdej osobie przypisanej do faz (zablokowane przy nakładaniu się faz). Te same zapisy co ręcznie.
 
+**Pasek zakładek zawsze w oknie** — gdy pełne nazwy się nie mieszczą (np. z panelem Przegląd), nazwę ma tylko aktywna zakładka, a pozostałe są ikonami z podpowiedzią; przy jeszcze węższym oknie same ikony, w ostateczności przewijanie z widocznym paskiem. Skróty: ⌘⇧[ / ⌘⇧] oraz ⌃⇧⇥ / ⌃⇥ — poprzednia / następna zakładka.
+
+**Pasek boczny zawsze widoczny** — karta wydarzenia nie wymusza minimalnej szerokości (`frame(minWidth: 0)` przed panelem Przegląd), więc szerokie zakładki (Agenda, Sprzęt) nie chowają paska bocznego aplikacji; Agenda: węższe minimum programu i uwag, zaznaczenie punktu w kolorze motywu zamiast systemowego niebieskiego, bez pustych pasków pod listą.
+
 **Pomoc przy etapach** — przy każdym kroku „Przygotowania harmonogramu” i przy każdej sekcji Rozliczenia jest przycisk „?” z opisem, co robi dany etap i po co (okienko obok przycisku).
 
 **Mavinci LIVE wyłączone na Macu** — pozycja menu i zakładka karty wydarzenia są ukryte w aplikacji (`Workspace.hiddenModules`, filtr zakładek karty); CRM w przeglądarce bez zmian.

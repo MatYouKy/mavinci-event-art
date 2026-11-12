@@ -61,6 +61,47 @@ import AppKit
         if ids == ["finances", "summary"] { return "Rozliczenie" }
         return fallback
     }
+    private enum TabBarMode { case full, activeLabel, icons }
+
+    private func tabBar(_ groups: [TabGroup], _ selected: String, _ page: EventCardPage, mode: TabBarMode) -> some View {
+        HStack(spacing: 2) {
+            ForEach(groups) { group in
+                let active = group.contains(selected)
+                let symbol: String = group.id == "agenda" && page.flags?.isWeddingEvent == true ? "heart" : group.symbol
+                let showLabel: Bool = mode == .full || (mode == .activeLabel && active)
+                Button { if !active { tab = group.members.first?.id ?? tab } } label: {
+                    Group {
+                        if showLabel { Label(group.label, systemImage: symbol) } else { Image(systemName: symbol).frame(width: 18) }
+                    }
+                    .padding(.horizontal, showLabel ? 11 : 9).padding(.vertical, 7)
+                    .foregroundStyle(active ? theme.accent : Color.secondary)
+                    .background(active ? theme.accent.opacity(0.14) : .clear, in: RoundedRectangle(cornerRadius: 7))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(group.label)
+            }
+        }
+        .fixedSize(horizontal: true, vertical: false)
+        .padding(.horizontal, 14).padding(.vertical, 6)
+    }
+
+    /// Skróty klawiszowe przełączania zakładek (niewidoczne przyciski).
+    private func tabShortcuts(_ groups: [TabGroup], _ selected: String) -> some View {
+        let index = groups.firstIndex { $0.contains(selected) } ?? 0
+        let previous: String? = index > 0 ? groups[index - 1].members.first?.id : nil
+        let next: String? = index + 1 < groups.count ? groups[index + 1].members.first?.id : nil
+        return ZStack {
+            Button("Poprzednia zakładka") { if let previous { tab = previous } }.keyboardShortcut("[", modifiers: [.command, .shift])
+            Button("Następna zakładka") { if let next { tab = next } }.keyboardShortcut("]", modifiers: [.command, .shift])
+            Button("Poprzednia zakładka") { if let previous { tab = previous } }.keyboardShortcut(.tab, modifiers: [.control, .shift])
+            Button("Następna zakładka") { if let next { tab = next } }.keyboardShortcut(.tab, modifiers: .control)
+        }
+        .frame(width: 1, height: 1)
+        .opacity(0)
+        .accessibilityHidden(true)
+    }
+
     static func isSettlement(_ group: TabGroup) -> Bool { group.members.contains { $0.id == "finances" || $0.id == "summary" } }
 
     static func groups(_ tabs: [EventCardTabInfo]) -> [TabGroup] {
@@ -169,22 +210,16 @@ import AppKit
                 sellerBanner(event)
             }
             if let selected {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 2) {
-                        ForEach(groups) { group in
-                            let active = group.contains(selected)
-                            Button { if !active { tab = group.members.first?.id ?? tab } } label: {
-                                Label(group.label, systemImage: group.id == "agenda" && page.flags?.isWeddingEvent == true ? "heart" : group.symbol)
-                                    .padding(.horizontal, 11).padding(.vertical, 7)
-                                    .foregroundStyle(active ? theme.accent : Color.secondary)
-                                    .background(active ? theme.accent.opacity(0.14) : .clear, in: RoundedRectangle(cornerRadius: 7))
-                                    .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(.horizontal, 14).padding(.vertical, 6)
+                // Pasek zakładek zawsze mieści się w oknie: pełne nazwy → nazwa tylko aktywnej (reszta ikony z podpowiedzią)
+                // → same ikony; w ostateczności przewijanie z widocznym paskiem. ⌘⇧[ / ⌘⇧] i ⌃⇥ / ⌃⇧⇥ — poprzednia / następna zakładka.
+                ViewThatFits(in: .horizontal) {
+                    tabBar(groups, selected, page, mode: .full)
+                    tabBar(groups, selected, page, mode: .activeLabel)
+                    tabBar(groups, selected, page, mode: .icons)
+                    ScrollView(.horizontal, showsIndicators: true) { tabBar(groups, selected, page, mode: .icons) }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(tabShortcuts(groups, selected))
                 if let current, current.members.count > 1, !Self.isSettlement(current) {
                     Picker("", selection: $tab) {
                         ForEach(current.members) { member in Text(member.label).tag(member.id) }
@@ -215,6 +250,9 @@ import AppKit
                 Spacer()
             }
         }
+        // Karta nie wymusza minimalnej szerokości: szerokie zakładki (Agenda, Sprzęt) nie mogą chować paska bocznego aplikacji
+        // przy panelu Przegląd — treść dopasowuje się do miejsca, które zostaje (MacBook Air 13" i Pro 16").
+        .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .inspector(isPresented: Binding(get: { hasOverview && overviewShown }, set: { if hasOverview { overviewShown = $0 } })) {
             EventOverviewTab(store: store, eventID: eventID, page: page, navigate: { tab = $0 }, sidebar: true)
                 .inspectorColumnWidth(min: 300, ideal: 380, max: 560)

@@ -287,3 +287,7 @@ Aplikacja na Maca: przycisk „?” z opisem przy krokach przygotowania harmonog
 ### CRM: edycja spotkania — przełącznik „Wydarzenie całodniowe” (2026-11-12)
 
 Strona spotkania (`src/app/(crm)/crm/calendar/meeting/[id]/page.tsx`) w trybie edycji ma teraz pole „Wydarzenie całodniowe” (jak okno tworzenia): po zaznaczeniu daty bez godzin i zapis od 00:00 do 23:59:59, po odznaczeniu wracają godziny (z „całego dnia” — propozycja 9:00–10:00). Wcześniej edycja zachowywała `is_all_day` z bazy bez możliwości zmiany, więc spotkanie raz zapisane jako całodniowe pokazywało „Cały dzień” mimo ustawionych godzin. Mac: okno spotkania ma przełącznik „Cały dzień” od początku. Mobile: nie dotyczy — telefon tylko wyświetla spotkania, nie edytuje ich. Kod zapisany; zgodnie z .build-policy.md bez builda, typechecka i lintowania.
+
+### Mac: pasek boczny widoczny przy każdej zakładce karty, wygląd Agendy (2026-11-12)
+
+Aplikacja na Maca: karta wydarzenia nie wymusza minimalnej szerokości, więc pasek boczny aplikacji nie znika w Agendzie i Sprzęcie; Agenda bez systemowego zaznaczenia i pustych pasków. Mobile: nie dotyczy — zmiana układu okna aplikacji na Maca. Kod zapisany; zgodnie z .build-policy.md bez builda, typechecka i lintowania.

@@ -230,8 +230,8 @@ private struct AgendaTimeField: View {
             .padding(.horizontal, 18).padding(.top, 12)
             EventArrangementsBanner(store: store, eventID: eventID, area: .agenda).padding(.horizontal, 18)
             HSplitView {
-                program(data).frame(minWidth: 560, maxWidth: .infinity, maxHeight: .infinity)
-                notesPanel(data).frame(minWidth: 240, idealWidth: 320, maxWidth: 460, maxHeight: .infinity)
+                program(data).frame(minWidth: 420, maxWidth: .infinity, maxHeight: .infinity)
+                notesPanel(data).frame(minWidth: 200, idealWidth: 280, maxWidth: 420, maxHeight: .infinity)
             }
         }
     }
@@ -302,14 +302,25 @@ private struct AgendaTimeField: View {
                 FinanceListHeader(columns: [("", 18, .center), ("Lp.", 26, .trailing), ("Godzina", 64, .leading), ("Czas trwania", 150, .leading),
                                             ("Do", 44, .leading), ("Punkt programu", nil, .leading), ("", 28, .center)])
                     .padding(.horizontal, 10)
-                List(selection: $selection) {
+                // Bez systemowego (niebieskiego) zaznaczenia i bez pustych pasków pod listą: zaznaczenie w kolorze motywu,
+                // delikatne tło co drugiego wiersza tylko tam, gdzie są punkty.
+                List {
                     ForEach(Array(rows.enumerated()), id: \.element.id) { item in
-                        row(item.offset, data.canManage).tag(item.element.id)
+                        row(item.offset, data.canManage)
+                            .contentShape(Rectangle())
+                            .simultaneousGesture(TapGesture().onEnded { selection = item.element.id })
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(
+                                RoundedRectangle(cornerRadius: 7)
+                                    .fill(selection == item.element.id ? theme.accent.opacity(0.16) : (item.offset % 2 == 0 ? Color.primary.opacity(0.035) : Color.clear))
+                                    .padding(.horizontal, 6)
+                            )
                     }
                     .onMove { from, to in if data.canManage { move(from, to) } }
                     .moveDisabled(!data.canManage)
                 }
-                .listStyle(.inset(alternatesRowBackgrounds: true))
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
                 .onDeleteCommand { if data.canManage, let index = selectedIndex { remove(index) } }
                 Text(data.canManage ? "Przeciągnij punkt, aby zmienić kolejność — godziny kolejnych punktów przeliczą się same. Zmiana godziny lub czasu trwania przesuwa dalszą część programu."
                                     : "Tylko do odczytu.")
