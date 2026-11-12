@@ -278,14 +278,8 @@ function EventFilesExplorerContent({
     // w tym MVP: kasujemy tylko pliki (foldery zbiorczo to osobny temat: rekurencja)
     const toDeleteFiles = files.filter((f) => ids.includes(f.id));
 
-    // 1) usuń ze storage
-    const paths = toDeleteFiles.map((f) => f.file_path);
-    if (paths.length) {
-      const { error: stErr } = await supabase.storage.from('event-files').remove(paths);
-      if (stErr) console.error(stErr);
-    }
-
-    // 2) usuń rekordy z DB
+    // Usunięte pliki trafiają do kosza na 30 dni (`event_file_trash`, wyzwalacz w bazie) — obiekt w magazynie zostaje
+    // do przywrócenia, sprząta go serwer (`src/lib/native/finderFiles.ts` → `purge`).
     const { error } = await supabase
       .from('event_files')
       .delete()
@@ -532,8 +526,7 @@ function EventFilesExplorerContent({
     } else {
       const file = files.find((f) => f.id === id);
       if (file) {
-        await supabase.storage.from('event-files').remove([file.file_path]);
-
+        // Do kosza na 30 dni — obiekt w magazynie zostaje (jak przy usuwaniu zaznaczonych).
         const { error } = await supabase.from('event_files').delete().eq('id', id);
 
         if (!error) {

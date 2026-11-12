@@ -400,6 +400,22 @@ Okno „Zarządzaj sprzętem” zajmuje prawie całe okno aplikacji; pozycje dod
 
 W CRM pozostają: kreator i wysyłka oferty, wysyłka kalkulacji e-mailem, edytor umowy, faktury z wydarzenia, sposób rozliczenia i panel prowizji w Szczegółach, folder Mac / iCloud, Mavinci LIVE.
 
+## W przygotowaniu — Pliki wydarzeń w Finderze
+
+Docelowo: „Mavinci” w pasku bocznym Findera (File Provider, jak Dropbox) → Eventy → rok → „RRRR-MM-DD Nazwa” → foldery i pliki
+z zakładki Pliki, z tymi samymi uprawnieniami co w CRM; zmiany w Finderze trafiają do CRM i odwrotnie.
+
+- **Etap 1 — serwer (gotowy):** migracja `20261112120000_finder_files_sync.sql` (wersje plików, ślady usunięć, kosz na 30 dni
+  z przywracaniem) i API `/bridge/native/v1/files` (`src/lib/native/finderFiles.ts`):
+  `GET ?op=events | list&event= | changes&since= | item&kind=&id= | download&id= | trash[&event=]`,
+  `POST {op: prepareUpload | createFolder | createFile | update | remove | restore | deleteForever | purge}`.
+  Kursor zmian z zakładką 5 min; starszy niż 25 dni → `reset`. Podmiana treści z `baseContentVersion` → 409 `conflict`,
+  gdy na serwerze jest nowsza wersja. Nazwy jak w CRM — „/” w nazwie Mac pokazuje w Finderze przez „:” w nazwie POSIX.
+- **Etap 2 — rozszerzenie File Provider, tylko odczyt** (podpis zespołem 5DC8P5M489; do rozdania potrzebny Developer ID).
+- **Etap 3 — zapis z Findera:** dodawanie, edycja, zmiana nazwy, przenoszenie, kosz, konflikty, praca offline.
+- **Etap 4:** „Pokaż w Finderze” w karcie wydarzenia, instrukcja dla ról. Katalog „Realizacje” na iCloud zostaje
+  archiwum — bez importu do CRM.
+
 ## Aktualizacja 0.17 — Karta wydarzenia (etap 3): przegląd przepływu, przestrzeń realizacji, Zespół
 
 **Poprawki przepływu karty** (sprawdzone z kodem CRM):

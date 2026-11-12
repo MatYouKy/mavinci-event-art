@@ -56,7 +56,7 @@ async function folderOfEvent(ctx: NativeContext, eventId: string, folderId: unkn
   return id;
 }
 
-async function blockFormal(ctx: NativeContext, eventId: string, name: string) {
+export async function blockFormal(ctx: NativeContext, eventId: string, name: string) {
   if (FORMAL_FOLDER_NAME.test(name.toLocaleLowerCase('pl-PL')) && !(await canViewCommercialDocs(ctx, eventId))) fail(FORMAL_FOLDER_BLOCKED);
 }
 
@@ -97,47 +97,38 @@ async function removeStored(ctx: NativeContext, paths: string[]) {
   }
 }
 
-/** `handleDelete` (plik: magazyn + wpis; folder: wpis — podfoldery i pliki usuwa baza, ich kopie w magazynie usuwamy tutaj). */
+/**
+ * `handleDelete` — do kosza na 30 dni: usuwamy wpis (folder razem z zawartością usuwa baza), kosz i ślad usunięcia zapisują
+ * wyzwalacze, a obiekt w magazynie zostaje do przywrócenia (sprząta go `finderFiles.ts` → `purge`).
+ */
 async function remove(ctx: NativeContext, eventId: string, body: Record<string, any>) {
   const id = String(body.id || '');
   if (!UUID.test(id)) fail('Nieprawidłowy element.');
   const s = ctx.supabase;
   if (body.kind === 'folder') {
-    const { data: all, error: foldersError } = await s.from('event_folders').select('id,parent_folder_id').eq('event_id', eventId);
-    if (foldersError) fail('Błąd podczas usuwania folderu');
-    const subtree = new Set([id]);
-    let grown = true;
-    while (grown) {
-      grown = false;
-      for (const f of all || []) if (f.parent_folder_id && subtree.has(f.parent_folder_id) && !subtree.has(f.id)) { subtree.add(f.id); grown = true; }
-    }
-    const { data: inside } = await s.from('event_files').select('file_path').eq('event_id', eventId).in('folder_id', Array.from(subtree));
     const { error } = await s.from('event_folders').delete().eq('id', id).eq('event_id', eventId);
     if (error) fail('Błąd podczas usuwania folderu');
-    await removeStored(ctx, (inside || []).map((f: any) => f.file_path));
     return { ok: true };
   }
   const { data: file } = await s.from('event_files').select('id,file_path').eq('id', id).eq('event_id', eventId).maybeSingle();
   if (!file) fail('Nie znaleziono pliku.');
-  await removeStored(ctx, [(file as any).file_path]);
   const { error } = await s.from('event_files').delete().eq('id', id).eq('event_id', eventId);
   if (error) fail('Błąd podczas usuwania pliku');
   return { ok: true };
 }
 
-/** `handleBulkDelete` — zaznaczone pliki. */
+/** `handleBulkDelete` — zaznaczone pliki (do kosza, jak `remove`). */
 async function removeFiles(ctx: NativeContext, eventId: string, body: Record<string, any>) {
   const ids = (Array.isArray(body.ids) ? body.ids : []).map(String).filter((id: string) => UUID.test(id));
   if (!ids.length) return { ok: true, removed: 0 };
   const { data: files, error: readError } = await ctx.supabase.from('event_files').select('id,file_path').eq('event_id', eventId).in('id', ids);
   if (readError) fail('Błąd podczas usuwania');
-  await removeStored(ctx, (files || []).map((f: any) => f.file_path));
   const { error } = await ctx.supabase.from('event_files').delete().eq('event_id', eventId).in('id', (files || []).map((f: any) => f.id));
   if (error) fail('Błąd podczas usuwania');
   return { ok: true, removed: (files || []).length };
 }
 
-const storagePath = (eventId: string, name: string) => {
+export const storagePath = (eventId: string, name: string) => {
   const ext = name.includes('.') ? name.split('.').pop()!.toLowerCase() : '';
   const safe = /^[a-z0-9]{1,12}$/.test(ext) ? ext : 'bin';
   return `${eventId}/${Date.now()}_${Math.random().toString(36).substring(7)}.${safe}`;
