@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { useEditorState, type Editor } from '@tiptap/react';
 import {
   AlignCenter,
@@ -85,21 +86,49 @@ function RibbonGroup({ title, children }: { title: string; children: ReactNode }
   );
 }
 
-/** Menu rozwijane wstążki (pola, klauzule) — zamyka się po wyborze, kliknięciu obok i Esc. */
+const MENU_WIDTH = 320;
+
+/**
+ * Menu rozwijane wstążki (pola, klauzule) — zamyka się po wyborze, kliknięciu obok i Esc. Rysowane w warstwie nad stroną
+ * (portal), bo wiersz wstążki przewija się poziomo i ucinał menu pod edytorem.
+ */
 function RibbonMenu({ label, icon, children }: { label: string; icon: ReactNode; children: (close: () => void) => ReactNode }) {
   const [open, setOpen] = useState(false);
+  const [position, setPosition] = useState<{ left: number; top: number; maxHeight: number } | null>(null);
   const ref = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const place = useCallback(() => {
+    const rect = ref.current?.getBoundingClientRect();
+    if (!rect) return;
+    const top = rect.bottom + 4;
+    setPosition({
+      left: Math.max(8, Math.min(rect.left, window.innerWidth - MENU_WIDTH - 8)),
+      top,
+      maxHeight: Math.max(160, window.innerHeight - top - 12),
+    });
+  }, []);
+  useEffect(() => {
+    if (open) place();
+    else setPosition(null);
+  }, [open, place]);
   useEffect(() => {
     if (!open) return;
-    const close = (event: MouseEvent) => { if (!ref.current?.contains(event.target as Node)) setOpen(false); };
+    const close = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (!ref.current?.contains(target) && !menuRef.current?.contains(target)) setOpen(false);
+    };
     const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(false); };
     window.addEventListener('mousedown', close);
     window.addEventListener('keydown', escape);
+    window.addEventListener('resize', place);
+    window.addEventListener('scroll', place, true);
     return () => {
       window.removeEventListener('mousedown', close);
       window.removeEventListener('keydown', escape);
+      window.removeEventListener('resize', place);
+      window.removeEventListener('scroll', place, true);
     };
-  }, [open]);
+  }, [open, place]);
   return (
     <div ref={ref} className="relative">
       <button
@@ -111,10 +140,15 @@ function RibbonMenu({ label, icon, children }: { label: string; icon: ReactNode;
         {icon}
         <span className="flex items-center gap-0.5">{label}<ChevronDown className="h-3 w-3" /></span>
       </button>
-      {open && (
-        <div className="absolute left-0 top-full z-50 mt-1 max-h-[60vh] w-80 overflow-y-auto rounded-lg border border-white/10 bg-[#1c1f33] p-1 shadow-2xl">
+      {open && position && createPortal(
+        <div
+          ref={menuRef}
+          style={{ left: position.left, top: position.top, maxHeight: position.maxHeight, width: MENU_WIDTH }}
+          className="fixed z-[95] overflow-y-auto rounded-lg border border-white/10 bg-[#1c1f33] p-1 shadow-2xl"
+        >
           {children(() => setOpen(false))}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
@@ -206,7 +240,7 @@ export default function ContractEditorRibbon({ editor, documentStyles, onModifyS
   const insert = (html: string) => run((chain) => chain.insertContent(html));
 
   return (
-    <div className="border-b border-white/10 bg-[#161827]">
+    <div className="border-b border-white/10 bg-[#151827]">
       <div className="flex gap-1 px-3 pt-1" role="tablist">
         {TABS.map((item) => (
           <button

@@ -568,7 +568,7 @@ export default function ContractTemplateEditorV2({ template, brandLogos, brandFo
   return (
     <div className="-m-2 flex h-[calc(100dvh-73px)] flex-col bg-[#0f1119] sm:-m-4 md:-m-6">
       <style dangerouslySetInnerHTML={{ __html: getContractDocumentCss() }} />
-      <div className="flex items-center gap-3 border-b border-white/10 bg-[#161827] px-4 py-2">
+      <div className="flex items-center gap-3 border-b border-white/10 bg-[#151827] px-4 py-2">
         <button type="button" onClick={onBack} className="rounded p-1.5 text-[#e5e4e2]/70 hover:bg-white/10 hover:text-[#e5e4e2]" aria-label="Wróć do listy szablonów">
           <ArrowLeft className="h-4 w-4" />
         </button>
@@ -600,7 +600,7 @@ export default function ContractTemplateEditorV2({ template, brandLogos, brandFo
         view={viewTab}
       />
 
-      <div className="flex-1 overflow-auto bg-[#2b2e3d] py-8">
+      <div className="flex-1 overflow-auto bg-[#2a2d3a] py-8">
         <div className={preview ? 'hidden' : ''}>
           <ContractDocumentEditor
             content={initialContent}

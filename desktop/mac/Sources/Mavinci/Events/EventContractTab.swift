@@ -115,6 +115,7 @@ enum ContractText {
         case "signed_by_client": return "✍️ Podpisana przez klienta"
         case "signed_returned": return "✅ Podpisana odesłana"
         case "cancelled": return "❌ Anulowana"
+        case "signed": return "✅ Podpisana"
         default: return value
         }
     }
@@ -150,6 +151,15 @@ enum ContractText {
     static func date(_ value: String?) -> String {
         guard let value, let date = MeetingDates.parse(value) else { return "—" }
         return MeetingDates.format(date, "dd.MM.yyyy, HH:mm")
+    }
+
+    /// Sama data („20.11.2026”) — z daty RRRR-MM-DD albo znacznika czasu.
+    static func day(_ value: String?) -> String {
+        guard let value, !value.isEmpty else { return "—" }
+        let parts = value.split(separator: "-")
+        if value.count == 10, parts.count == 3 { return "\(parts[2]).\(parts[1]).\(parts[0])" }
+        guard let date = MeetingDates.parse(value) else { return "—" }
+        return MeetingDates.format(date, "dd.MM.yyyy")
     }
 
     static func size(_ bytes: Double) -> String {

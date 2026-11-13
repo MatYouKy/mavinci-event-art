@@ -126,6 +126,8 @@ struct RootView: View {
                         else if state.screen == .rental { RentalView(store: state.warehouse) }
                         else if state.screen == .connectors { ConnectorsView(store: state.warehouse) }
                         else if state.screen == .warehouseCategories { WarehouseCategoriesView(store: state.warehouse) }
+                        else if state.screen == .contracts { ContractsView(store: state.contracts) }
+                        else if state.screen == .contractTemplates { ContractTemplatesView(store: state.contracts) }
                         else { ContentUnavailableView("Wybierz sekcję", systemImage: "sidebar.left") }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)

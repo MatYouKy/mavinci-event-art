@@ -134,7 +134,7 @@ export default function ContractDocumentEditor({
   return (
     <div className="contract-editor-canvas">
       <style>{css}</style>
-      <div className="contract-editor-sheet">
+      <div className="contract-editor-sheet" data-theme-preserve>
         {header}
         <EditorContent editor={editor} />
       </div>

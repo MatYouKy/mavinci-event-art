@@ -72,6 +72,8 @@ struct NavItem: Codable, Identifiable, Hashable {
         case "/crm/equipment/rental": return .rental
         case "/crm/equipment/connectors": return .connectors
         case "/crm/equipment/categories": return .warehouseCategories
+        case "/crm/contracts": return .contracts
+        case "/crm/contract-templates": return .contractTemplates
         default: return nil
         }
     }
@@ -80,7 +82,7 @@ struct NavItem: Codable, Identifiable, Hashable {
 
 /// Ekrany natywne, które nie są zbiorami danych obszaru roboczego (`Module`).
 enum CrmScreen: String {
-    case messages, meetings, companyTasks, myTasks, team, warehouse, kits, cables, rental, connectors, warehouseCategories
+    case messages, meetings, companyTasks, myTasks, team, warehouse, kits, cables, rental, connectors, warehouseCategories, contracts, contractTemplates
     /// Ekrany Magazynu (wspólna kopia danych `WarehouseStore`).
     var isWarehouse: Bool { [.warehouse, .kits, .cables, .rental, .connectors, .warehouseCategories].contains(self) }
 }

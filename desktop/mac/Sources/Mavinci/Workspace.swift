@@ -44,6 +44,8 @@ import Network
     let team = TeamStore()
     /// Magazyn (`/crm/equipment`) — kopia katalogu na dysku, karta sprzętu z jednostkami.
     let warehouse = WarehouseStore()
+    /// Umowy z klientami i szablony umów (`/crm/contracts`, `/crm/contract-templates`).
+    let contracts = ContractsStore()
     /// Wydarzenia (`/crm/events`) — kopia listy na dysku, synchronizacja przyrostowa.
     let events = EventsStore()
     /// Karty wydarzeń (`/crm/events/[id]`) — ostatnio otwierane i najbliższe na dysku, odświeżane po zmianie skrótu.
@@ -88,6 +90,7 @@ import Network
         contacts.workspace = self
         team.workspace = self
         warehouse.workspace = self
+        contracts.workspace = self
         events.workspace = self
         eventCards.workspace = self
         myTasks.workspace = self
@@ -122,6 +125,7 @@ import Network
             contacts.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             team.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             warehouse.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
+            contracts.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             events.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             eventCards.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             myTasks.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
@@ -158,6 +162,7 @@ import Network
             contacts.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             team.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             warehouse.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
+            contracts.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             events.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             eventCards.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             myTasks.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
@@ -250,6 +255,7 @@ import Network
             if current.canView(.contacts) { Task { await contacts.backgroundSync() } }
             if current.has("employees_view") || current.has("employees_manage") || current.isAdmin { Task { await team.backgroundSync() } }
             if current.has("equipment_view") || current.has("equipment_manage") { Task { await warehouse.backgroundSync() } }
+            if current.has("contracts_view") || current.has("contracts_manage") || current.isAdmin { Task { await contracts.backgroundSync() } }
             if current.canView(.events) { Task { await events.backgroundSync() } }
             // Do not extend the offline permission lease on a partial/failed synchronization.
             if moduleErrors.isEmpty { snapshot?.savedAt = Date() }
@@ -322,7 +328,7 @@ import Network
         snapshot = nil; selection = .day; focusedID = nil; eventRoute = nil; notificationsVisible = false
         verifiedConnection = false; offline = false; syncing = false; acting = false; editing = false
         moduleErrors = [:]; compatibilityMode = false; notice = nil; snack = nil; pending = nil
-        nativeSet = nil; nativeFocus = nil; native.clear(); messages.reset(); meetings.reset(); inquiries.reset(); companyTasks.reset(); myTasks.reset(); contacts.reset(); team.reset(); warehouse.reset(); events.reset(); eventCards.reset(); screen = nil
+        nativeSet = nil; nativeFocus = nil; native.clear(); messages.reset(); meetings.reset(); inquiries.reset(); companyTasks.reset(); myTasks.reset(); contacts.reset(); team.reset(); warehouse.reset(); contracts.reset(); events.reset(); eventCards.reset(); screen = nil
         navigation = []; sidebarHref = "/crm"; webItem = nil; dashboard = nil; dashboardLoadedAt = nil; dashboardError = nil
         scheduleRows = nil; scheduleFailed = false
         if let cacheNamespace { for name in ["dashboard", "schedule"] { try? SealedFile<Data>(namespace: "\(name)-\(cacheNamespace)").clear() } }
