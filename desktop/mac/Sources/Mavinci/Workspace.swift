@@ -46,6 +46,8 @@ import Network
     let warehouse = WarehouseStore()
     /// Umowy z klientami i szablony umów (`/crm/contracts`, `/crm/contract-templates`).
     let contracts = ContractsStore()
+    /// Katalog produktów oferty i karta produktu (`/crm/offers?tab=catalog`, `/crm/offers/products/[id]`).
+    let products = ProductsStore()
     /// Wydarzenia (`/crm/events`) — kopia listy na dysku, synchronizacja przyrostowa.
     let events = EventsStore()
     /// Karty wydarzeń (`/crm/events/[id]`) — ostatnio otwierane i najbliższe na dysku, odświeżane po zmianie skrótu.
@@ -91,6 +93,7 @@ import Network
         team.workspace = self
         warehouse.workspace = self
         contracts.workspace = self
+        products.workspace = self
         events.workspace = self
         eventCards.workspace = self
         myTasks.workspace = self
@@ -126,6 +129,7 @@ import Network
             team.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             warehouse.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             contracts.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
+            products.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             events.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             eventCards.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             myTasks.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
@@ -163,6 +167,7 @@ import Network
             team.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             warehouse.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             contracts.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
+            products.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             events.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             eventCards.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             myTasks.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
@@ -256,6 +261,7 @@ import Network
             if current.has("employees_view") || current.has("employees_manage") || current.isAdmin { Task { await team.backgroundSync() } }
             if current.has("equipment_view") || current.has("equipment_manage") { Task { await warehouse.backgroundSync() } }
             if current.has("contracts_view") || current.has("contracts_manage") || current.isAdmin { Task { await contracts.backgroundSync() } }
+            if current.has("offers_view") || current.has("offers_manage") || current.isAdmin { Task { await products.backgroundSync() } }
             if current.canView(.events) { Task { await events.backgroundSync() } }
             // Do not extend the offline permission lease on a partial/failed synchronization.
             if moduleErrors.isEmpty { snapshot?.savedAt = Date() }
@@ -328,7 +334,7 @@ import Network
         snapshot = nil; selection = .day; focusedID = nil; eventRoute = nil; notificationsVisible = false
         verifiedConnection = false; offline = false; syncing = false; acting = false; editing = false
         moduleErrors = [:]; compatibilityMode = false; notice = nil; snack = nil; pending = nil
-        nativeSet = nil; nativeFocus = nil; native.clear(); messages.reset(); meetings.reset(); inquiries.reset(); companyTasks.reset(); myTasks.reset(); contacts.reset(); team.reset(); warehouse.reset(); contracts.reset(); events.reset(); eventCards.reset(); screen = nil
+        nativeSet = nil; nativeFocus = nil; native.clear(); messages.reset(); meetings.reset(); inquiries.reset(); companyTasks.reset(); myTasks.reset(); contacts.reset(); team.reset(); warehouse.reset(); contracts.reset(); products.reset(); events.reset(); eventCards.reset(); screen = nil
         navigation = []; sidebarHref = "/crm"; webItem = nil; dashboard = nil; dashboardLoadedAt = nil; dashboardError = nil
         scheduleRows = nil; scheduleFailed = false
         if let cacheNamespace { for name in ["dashboard", "schedule"] { try? SealedFile<Data>(namespace: "\(name)-\(cacheNamespace)").clear() } }
@@ -557,6 +563,7 @@ extension Workspace {
                 case .kits: warehouse.openedKitID = nil
                 case .cables: warehouse.openedCableID = nil; warehouse.cableCategoriesShown = false
                 case .rental: warehouse.openedRentalID = nil
+                case .products: products.openedID = nil
                 default: break
                 }
             }
