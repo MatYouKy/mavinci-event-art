@@ -180,7 +180,7 @@ export function OfferPage({
     void (async () => {
       const [categoryResult, productResult] = await Promise.all([
         supabase.from('event_categories').select('*').eq('is_active', true).order('order_index').abortSignal(controller.signal),
-        supabase.from('offer_products').select(`*,category:event_categories(id,name,icon_id,custom_icon:custom_icons(id,name,svg_code,preview_color)),variants:offer_product_variants(id,product_id,name,price_net,price_gross,is_recommended,is_active,display_order,offer_image_path,offer_image_alt)`).order('display_order').abortSignal(controller.signal),
+        supabase.from('offer_products').select(`*,category:event_categories(id,name,icon_id,custom_icon:custom_icons(id,name,svg_code,preview_color)),variants:offer_product_variants(id,product_id,name,price_net,price_gross,is_recommended,is_active,display_order,offer_image_path,offer_image_alt,overrides_contract_clauses,recommended_contract_clauses),equipment:offer_product_equipment(id),staff:offer_product_staff(hourly_rate,estimated_hours,compensation,is_optional)`).order('display_order').abortSignal(controller.signal),
       ]);
       if (controller.signal.aborted) return;
       if (categoryResult.error || productResult.error) setCatalogError('Nie udało się wczytać katalogu. Spróbuj ponownie.');

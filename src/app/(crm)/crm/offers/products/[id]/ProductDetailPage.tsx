@@ -11,6 +11,8 @@ import ProductEquipmentTreeSection from '@/components/crm/offers/ProductEquipmen
 import { validateProductConfigurator } from '@/lib/CRM/Offers/modularProduct';
 import ProductAddonsSection from '@/components/crm/offers/ProductAddonsSection';
 import ProductSettingsDrawer from '@/components/crm/offers/ProductSettingsDrawer';
+import ProductReadinessPanel from '@/components/crm/offers/ProductReadiness';
+import { PRODUCT_SECTION_ANCHORS } from '@/lib/CRM/Offers/productReadiness';
 import ProductDataSection from '@/components/crm/offers/ProductDataSection';
 import ProductLanguageSwitch from '@/components/crm/offers/ProductLanguagePanel';
 import ProductTranslationModal from '@/components/crm/offers/ProductTranslationModal';
@@ -146,6 +148,8 @@ interface IProduct {
   subcontractor_settlement_method?: 'invoice' | 'cash_documented' | 'cash_non_deductible' | null;
   subcontractor_economic_cost?: number | null;
   offer_product_variants?: IProductVariant[];
+  /** Wymagania gotowości do oferty, które nie dotyczą produktu (`productReadiness.ts`). */
+  readiness_exemptions?: unknown;
 }
 
 const normalizeRequirementText = (value: string) => value
@@ -407,7 +411,7 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
   const router = useRouter();
   const params = useParams();
   const { showSnackbar } = useSnackbar();
-  const { hasScope, isAdmin } = useCurrentEmployee();
+  const { hasScope, isAdmin, employee } = useCurrentEmployee();
 
   const canEdit = isAdmin || hasScope('offers_manage');
 
@@ -1552,6 +1556,7 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
           onEditingChange={editing => setSectionEditing('image_crops', editing)}
         /></div>
         {/* Presentation in generated offer */}
+        <span id={PRODUCT_SECTION_ANCHORS.presentation} aria-hidden="true" className="absolute scroll-mt-6" />
         <ProductDataSection<IProduct>
           title="Prezentacja w ofercie PDF"
           value={displayProduct}
@@ -1874,6 +1879,7 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
           onSave={configuration_schema => saveProductSection('configurator', { configuration_schema })}
           onEditingChange={editing => setSectionEditing('configurator', editing)}
         /></div>}
+        <span id={PRODUCT_SECTION_ANCHORS.packages} aria-hidden="true" className="absolute scroll-mt-6" />
         <ProductSalesPackagesSection textOnly={contentLanguage === 'en'} productId={productId} value={displayProduct.sales_packages || []}
           enabled={Boolean(product.sales_packages_enabled)} elements={displayVariants.filter(variant => !variant.id.startsWith('temp-'))}
           canEdit={canEdit} disabled={productLanguage.busy || saving || savingVariants || savingAddons || savingRequirements || Boolean(savingProductSection)}
@@ -1910,7 +1916,7 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
             />
           </ProductSettingsDrawer>}
 
-<ProductSettingsDrawer title="Ceny i koszty" description={product.sales_packages_enabled && product.sales_packages?.length ? "Ceny i koszty poszczególnych pakietów oraz wspólna stawka VAT." : "Cena sprzedaży, koszty realizacji, transport i logistyka."}><ProductDataSection<IProduct>
+<ProductSettingsDrawer anchor={PRODUCT_SECTION_ANCHORS.pricing} title="Ceny i koszty" description={product.sales_packages_enabled && product.sales_packages?.length ? "Ceny i koszty poszczególnych pakietów oraz wspólna stawka VAT." : "Cena sprzedaży, koszty realizacji, transport i logistyka."}><ProductDataSection<IProduct>
               title="Ceny i koszty" value={displayProduct} fields={["vat_rate", "price_net", "price_gross", "cost_net", "cost_gross", "transport_cost_net", "transport_cost_gross", "logistics_cost_net", "logistics_cost_gross"]}
               canEdit={canEdit} disabled={productLanguage.busy || saving || savingVariants || savingAddons || savingRequirements || Boolean(savingProductSection)}
               onEditingChange={editing => setSectionEditing('pricing', editing)}
@@ -2000,7 +2006,7 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
         )}
 
 </ProductSettingsDrawer>)}
-{productId !== 'new' && !(product.sales_packages_enabled && product.sales_packages?.length) && (<ProductSettingsDrawer title="Sprzęt i zasoby" description="Wyposażenie potrzebne do realizacji." canEdit={canEdit} render={(canEdit) => (<>      {/* Equipment */}
+{productId !== 'new' && !(product.sales_packages_enabled && product.sales_packages?.length) && (<ProductSettingsDrawer anchor={PRODUCT_SECTION_ANCHORS.equipment} title="Sprzęt i zasoby" description="Wyposażenie potrzebne do realizacji." canEdit={canEdit} render={(canEdit) => (<>      {/* Equipment */}
       {productId !== 'new' && (
         <ProductEquipment
           canEdit={canEdit}
@@ -2016,7 +2022,7 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
       )}
 
 </>)} />)}
-{productId !== 'new' && !(product.sales_packages_enabled && product.sales_packages?.length) && (<ProductSettingsDrawer title="Obsada i personel" description="Role, liczba osób i koszty, również za realizację oraz przy wypłacie gotówką." canEdit={canEdit} render={(canEdit) => (<>      {/* Staff */}
+{productId !== 'new' && !(product.sales_packages_enabled && product.sales_packages?.length) && (<ProductSettingsDrawer anchor={PRODUCT_SECTION_ANCHORS.staff} title="Obsada i personel" description="Role, liczba osób i koszty, również za realizację oraz przy wypłacie gotówką." canEdit={canEdit} render={(canEdit) => (<>      {/* Staff */}
       {productId !== 'new' && (
         <ProductStaffSection
           productId={productId === 'new' ? null : productId}
@@ -2051,7 +2057,7 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
       )}
 
 </>)} />)}
-{productId !== 'new' && (<ProductSettingsDrawer title="Klauzule i warunki umowy" description="Stałe ustalenia wykorzystywane w dokumentach.">      {/* Contract Clauses */}
+{productId !== 'new' && (<ProductSettingsDrawer anchor={PRODUCT_SECTION_ANCHORS.clauses} title="Klauzule i warunki umowy" description="Stałe ustalenia wykorzystywane w dokumentach.">      {/* Contract Clauses */}
       {productId !== 'new' && product && (
         <ProductContractClauses
           productId={productId}
@@ -2374,6 +2380,15 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
 </>)} />)}
         </div>
         <aside className="min-w-0 order-first lg:order-last lg:sticky lg:top-6 lg:col-span-4 lg:max-h-[calc(100dvh-3rem)] lg:overflow-y-auto lg:[scrollbar-gutter:stable]">
+          {productId !== 'new' && (
+            <ProductReadinessPanel
+              productId={productId}
+              product={product}
+              canEdit={canEdit && contentLanguage === 'pl'}
+              employeeId={employee?.id ?? null}
+              onExemptionsSaved={next => setProduct(current => current ? { ...current, readiness_exemptions: next } : current)}
+            />
+          )}
           {product.sales_packages_enabled && Boolean(product.sales_packages?.length) && <div className="mb-3 flex gap-2 rounded-lg bg-[#1c1f33] p-2">
             <button type="button" aria-pressed={previewPage === 'elements'} onClick={() => setPreviewPage('elements')} className={`flex-1 rounded-md px-3 py-2 text-sm ${previewPage === 'elements' ? 'bg-[#d3bb73]/15 text-[#d3bb73]' : 'text-white/60'}`}>Elementy</button>
             <button type="button" aria-pressed={previewPage === 'packages'} onClick={() => setPreviewPage('packages')} className={`flex-1 rounded-md px-3 py-2 text-sm ${previewPage === 'packages' ? 'bg-[#d3bb73]/15 text-[#d3bb73]' : 'text-white/60'}`}>Pakiety</button>
