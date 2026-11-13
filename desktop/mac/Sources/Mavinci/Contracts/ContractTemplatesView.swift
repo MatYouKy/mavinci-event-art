@@ -2,7 +2,7 @@ import SwiftUI
 
 // MARK: Szablony umów (`/crm/contract-templates`) — tabela szablonów, obok karta z podsumowaniem treści (format, strony, pola,
 // warunki, opcje, kategorie wydarzeń i umowy, które z niego korzystają) i czynności jak w CRM: nowy szablon, nazwa i opis,
-// aktywny / nieaktywny, duplikat, usunięcie. Edytor treści na Macu — kolejny etap; do tego czasu „Edytuj treść” otwiera CRM.
+// aktywny / nieaktywny, duplikat, usunięcie. „Otwórz w edytorze” pokazuje szablon jako kartkę A4 (`ContractTemplateEditorView`).
 
 @MainActor struct ContractTemplatesView: View {
     @ObservedObject var store: ContractsStore
@@ -26,6 +26,14 @@ import SwiftUI
     }
 
     var body: some View {
+        if let id = store.editingTemplateID {
+            ContractTemplateEditorView(store: store, templateID: id).id(id)
+        } else {
+            listView
+        }
+    }
+
+    private var listView: some View {
         GeometryReader { outer in
             let wide = outer.size.width >= 1050
             VStack(spacing: 0) {
@@ -46,7 +54,7 @@ import SwiftUI
         .sheet(item: Binding(get: { sheetID.map(IdentifiedID.init) }, set: { sheetID = $0?.id })) { selected in
             if let item = store.template(selected.id) {
                 VStack(spacing: 0) {
-                    ContractTemplateDetailPane(store: store, item: item, edit: { sheetID = nil; editing = ContractTemplateForm(item) })
+                    ContractTemplateDetailPane(store: store, item: item, edit: { sheetID = nil; editing = ContractTemplateForm(item) }, onOpen: { sheetID = nil })
                     HStack { Spacer(); Button("Zamknij") { sheetID = nil }.keyboardShortcut(.cancelAction) }.padding(12)
                 }
                 .frame(minWidth: 440, minHeight: 520)
@@ -113,12 +121,13 @@ import SwiftUI
         }
         .contextMenu(forSelectionType: String.self) { ids in
             if let id = ids.first, let item = store.template(id) {
+                Button("Otwórz w edytorze") { store.editingTemplateID = item.id }
                 Button("Edytuj treść w CRM") { state.openCRM(editorHref(item)) }
                 if store.canManage { Button("Zmień nazwę i opis…") { editing = ContractTemplateForm(item) } }
             }
         } primaryAction: { ids in
-            guard let id = ids.first, let item = store.template(id) else { return }
-            state.openCRM(editorHref(item))
+            guard let id = ids.first, store.template(id) != nil else { return }
+            store.editingTemplateID = id
         }
         .overlay {
             if rows.isEmpty {
@@ -137,6 +146,7 @@ import SwiftUI
     @ObservedObject var store: ContractsStore
     let item: ContractTemplateItem
     let edit: () -> Void
+    var onOpen: () -> Void = {}
     @EnvironmentObject private var state: Workspace
     @Environment(\.crmTheme) private var theme
     @State private var deleting = false
@@ -186,10 +196,12 @@ import SwiftUI
 
     private var actions: some View {
         HStack(spacing: 8) {
-            Button { state.openCRM("/crm/contract-templates/\(item.id)/edit-wysiwyg") } label: { Label("Edytuj treść w CRM", systemImage: "safari") }
+            Button { onOpen(); store.editingTemplateID = item.id } label: { Label("Otwórz w edytorze", systemImage: "doc.richtext") }
                 .buttonStyle(.borderedProminent)
-                .help("Edytor treści szablonu na Macu powstaje w kolejnym etapie.")
+                .help("Szablon jako kartka A4 w stylach dokumentu. Edycja treści na Macu — w kolejnym etapie.")
             Menu {
+                Button { state.openCRM("/crm/contract-templates/\(item.id)/edit-wysiwyg") } label: { Label("Edytuj treść w CRM", systemImage: "safari") }
+                Divider()
                 if store.canManage {
                     Button { edit() } label: { Label("Zmień nazwę i opis…", systemImage: "pencil") }
                     Button {
@@ -216,7 +228,6 @@ import SwiftUI
                 }
             } label: { Image(systemName: "ellipsis.circle") }
                 .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
-                .disabled(!state.canWrite || (!store.canManage && !store.canCreate))
                 .help("Więcej czynności")
             Spacer()
         }

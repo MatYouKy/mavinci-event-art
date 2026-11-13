@@ -78,6 +78,11 @@ struct ContractsState: Codable {
     @Published var loadError: String?
     @Published var selectedContractID: String?
     @Published var selectedTemplateID: String?
+    /// Szablon otwarty w edytorze (ekran „Szablony umów” pokazuje wtedy kartkę zamiast listy).
+    @Published var editingTemplateID: String?
+    /// Otwarta edycja treści szablonu — zostaje (z niezapisanymi zmianami i historią cofania) przy przejściu do innej
+    /// części aplikacji; zamyka ją powrót do listy szablonów.
+    @Published var editorSession: ContractEditorController?
 
     private var namespace: String?
     private var file: SealedFile<ContractsState>?
@@ -110,7 +115,7 @@ struct ContractsState: Codable {
         syncTask?.cancel(); syncTask = nil
         if clearDisk, let file { try? file.clear() }
         file = nil; namespace = nil; state = nil; syncing = false; loadError = nil
-        selectedContractID = nil; selectedTemplateID = nil
+        selectedContractID = nil; selectedTemplateID = nil; editingTemplateID = nil; editorSession = nil
     }
 
     // MARK: Synchronizacja
@@ -171,6 +176,101 @@ struct ContractsState: Codable {
         } catch {
             workspace.error = failureText(error, "Nie udało się zapisać zmian.")
             await sync(force: true)
+            return nil
+        }
+    }
+
+    /// Treść szablonu dla edytora (HTML, style dokumentu, opcje, nazwy pól i miejsc na klauzule).
+    func templateDocument(_ id: String) async throws -> ContractTemplateDocumentPayload {
+        guard let api else { throw AppError.configuration }
+        return try JSONDecoder().decode(ContractTemplateDocumentPayload.self, from: try await api.get("/contracts?op=template&id=\(id)"))
+    }
+
+    /// Zapis treści szablonu z edytora na Macu (jak „Zapisz” w edytorze CRM) z kontrolą wersji. Zwraca nową wersję
+    /// (`updated_at`) albo `nil` — wtedy komunikat błędu jest już w oknie.
+    func saveTemplateContent(_ id: String, html: String, updatedAt: String?, layout: JSONValue, documentStyles: JSONValue) async -> String? {
+        guard let api, let workspace else { return nil }
+        guard workspace.canWrite else {
+            workspace.error = "Zapis wymaga połączenia z serwerem CRM."
+            return nil
+        }
+        struct Reply: Decodable { let updatedAt: String? }
+        do {
+            let body: [String: JSONValue] = [
+                "op": .string("templateContent"), "id": .string(id), "html": .string(html),
+                "updatedAt": updatedAt.map { JSONValue.string($0) } ?? JSONValue.null,
+                "layout": layout, "documentStyles": documentStyles,
+            ]
+            let data = try await workspace.withPending("Zapisywanie szablonu…") { try await api.post("/contracts", body) }
+            guard let next = (try? JSONDecoder().decode(Reply.self, from: data))?.updatedAt else { throw AppError.invalidResponse }
+            workspace.succeed("Szablon zapisany")
+            Task { await sync(force: true) }
+            return next
+        } catch {
+            workspace.error = failureText(error, "Nie udało się zapisać szablonu.")
+            return nil
+        }
+    }
+
+    /// Obraz do treści szablonu (logo, grafika) — wysyłka do magazynu logotypów; zwraca publiczny adres albo `nil`
+    /// (komunikat błędu w oknie).
+    func uploadTemplateImage(_ data: Data) async -> String? {
+        guard let api, let workspace else { return nil }
+        guard workspace.canWrite else {
+            workspace.error = "Wysłanie obrazu wymaga połączenia z serwerem CRM."
+            return nil
+        }
+        struct Reply: Decodable { let url: String }
+        do {
+            let body: [String: JSONValue] = ["op": .string("templateImage"), "data": .string(data.base64EncodedString())]
+            let reply = try await workspace.withPending("Wysyłanie obrazu…") { try await api.post("/contracts", body) }
+            return try JSONDecoder().decode(Reply.self, from: reply).url
+        } catch {
+            workspace.error = failureText(error, "Nie udało się wysłać obrazu.")
+            return nil
+        }
+    }
+
+    /// Szablon stopki (nowy albo zmiana zapisanego) — zwraca jego identyfikator i odświeżoną listę albo `nil`.
+    func saveFooterTemplate(id: String?, name: String, footer: ContractPageLayout.Footer, logoScale: Double)
+        async -> (id: String, list: [ContractTemplateDocumentPayload.FooterTemplate])? {
+        guard let api, let workspace else { return nil }
+        guard workspace.canWrite else {
+            workspace.error = "Zapis wymaga połączenia z serwerem CRM."
+            return nil
+        }
+        struct Reply: Decodable { let id: String; let footerTemplates: [ContractTemplateDocumentPayload.FooterTemplate] }
+        do {
+            var body: [String: JSONValue] = [
+                "op": .string("footerTemplateSave"), "name": .string(name), "companyName": .string(footer.companyName),
+                "tagline": .string(footer.tagline), "website": .string(footer.website), "email": .string(footer.email),
+                "phone": .string(footer.phone), "logoUrl": .string(footer.logoUrl), "logoScale": .number(logoScale),
+            ]
+            if let id { body["id"] = .string(id) }
+            let data = try await workspace.withPending("Zapisywanie stopki…") { try await api.post("/contracts", body) }
+            let reply = try JSONDecoder().decode(Reply.self, from: data)
+            workspace.succeed(id == nil ? "Szablon stopki zapisany" : "Szablon stopki zaktualizowany")
+            return (reply.id, reply.footerTemplates)
+        } catch {
+            workspace.error = failureText(error, "Nie udało się zapisać szablonu stopki.")
+            return nil
+        }
+    }
+
+    func deleteFooterTemplate(_ id: String) async -> [ContractTemplateDocumentPayload.FooterTemplate]? {
+        guard let api, let workspace else { return nil }
+        guard workspace.canWrite else {
+            workspace.error = "Usunięcie wymaga połączenia z serwerem CRM."
+            return nil
+        }
+        struct Reply: Decodable { let footerTemplates: [ContractTemplateDocumentPayload.FooterTemplate] }
+        do {
+            let body: [String: JSONValue] = ["op": .string("footerTemplateDelete"), "id": .string(id)]
+            let data = try await workspace.withPending("Usuwanie szablonu stopki…") { try await api.post("/contracts", body) }
+            workspace.succeed("Szablon stopki usunięty")
+            return try JSONDecoder().decode(Reply.self, from: data).footerTemplates
+        } catch {
+            workspace.error = failureText(error, "Nie udało się usunąć szablonu stopki.")
             return nil
         }
     }
