@@ -276,6 +276,13 @@ enum ProductText {
     @Published var openedID: String?
     @Published private(set) var details: [String: ProductDetail] = [:]
     @Published var detailErrors: [String: String] = [:]
+    /// Sprzęt, obsada, Mavinci LIVE i klauzule karty (część B) w wybranym zakresie: produkt bazowy albo wariant.
+    @Published var resources: [String: ProductResources] = [:]
+    @Published var resourceErrors: [String: String] = [:]
+    /// Wybrany zakres konfiguracji na karcie: identyfikator wariantu albo brak (produkt bazowy).
+    @Published var scopes: [String: String] = [:]
+    /// Katalog sprzętu i zestawów do wyboru (pobierany przy pierwszym „Dodaj sprzęt”).
+    @Published var equipmentCatalog: [ProductCatalogEquipment]?
 
     private var namespace: String?
     private var file: SealedFile<ProductsState>?
@@ -307,6 +314,7 @@ enum ProductText {
         if clearDisk, let file { try? file.clear() }
         file = nil; namespace = nil; state = nil; syncing = false; loadError = nil
         selectedID = nil; openedID = nil; details = [:]; detailErrors = [:]
+        resources = [:]; resourceErrors = [:]; scopes = [:]; equipmentCatalog = nil
     }
 
     // MARK: Synchronizacja

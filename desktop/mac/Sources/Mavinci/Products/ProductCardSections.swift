@@ -476,7 +476,6 @@ extension ProductCardView {
             ("Warianty i elementy", detail.facts.variants > 0 ? "\(detail.facts.variants)" : "brak"),
             ("Pakiety sprzedaży", detail.facts.packages > 0 ? "\(detail.facts.packages)" : "wyłączone"),
             ("Dodatki i limity", detail.facts.addons > 0 ? "\(detail.facts.addons)" : "brak"),
-            ("Sprzęt", ""), ("Obsada i personel", ""), ("Klauzule umowy", ""), ("Mavinci LIVE", ""),
             ("Przygotowanie i zamówienia", ""), ("Wymagania dodatkowe", ""), ("Powiązane usługi", ""), ("Kadrowanie zdjęć w ofercie", ""),
         ]
         return VStack(alignment: .leading, spacing: 10) {

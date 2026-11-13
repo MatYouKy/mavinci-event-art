@@ -11,6 +11,19 @@ import {
   subcontractorServices,
   uploadProductImage,
 } from '@/lib/native/products';
+import {
+  addEquipment,
+  customizeVariant,
+  equipmentCatalog,
+  inheritVariant,
+  productResources,
+  removeEquipment,
+  removeStaff,
+  saveClauses,
+  saveStaff,
+  toggleLiveModule,
+  updateEquipment,
+} from '@/lib/native/productResources';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -19,9 +32,11 @@ export const maxDuration = 200;
 
 /*
  * Produkty (katalog oferty) dla aplikacji na Maca (`src/lib/native/products.ts`): GET op=state (katalog z gotowością),
- * op=product&id=… (karta produktu), op=services&organization=… (usługi podwykonawcy);
+ * op=product&id=… (karta produktu), op=services&organization=… (usługi podwykonawcy), op=resources&id=…&variant=… (sprzęt,
+ * obsada, Mavinci LIVE i klauzule w zakresie produktu lub wariantu), op=equipmentCatalog (sprzęt i zestawy do wyboru);
  * POST op=create | delete | section (zapis sekcji karty) | exemption („nie dotyczy”) | image (zdjęcie do oferty) |
- * english (wersja angielska po zmianie treści, jak w CRM).
+ * english (wersja angielska po zmianie treści, jak w CRM) | equipmentAdd | equipmentUpdate | equipmentRemove | staffSave |
+ * staffRemove | liveToggle | clausesSave | variantCustomize | variantInherit (zakres wariantu).
  */
 
 const failure = (message: string, status = 400) => nativeJson({ error: message }, status);
@@ -38,6 +53,8 @@ export async function GET(request: Request) {
       case 'state': return nativeJson(await productsState(ctx));
       case 'product': return nativeJson(await productDetail(ctx, url.searchParams.get('id') || ''));
       case 'services': return nativeJson({ services: await subcontractorServices(ctx, url.searchParams.get('organization') || '') });
+      case 'resources': return nativeJson(await productResources(ctx, url.searchParams.get('id') || '', url.searchParams.get('variant') || null));
+      case 'equipmentCatalog': return nativeJson(await equipmentCatalog(ctx));
       default: return failure('Nieznana operacja.');
     }
   } catch (error) {
@@ -64,6 +81,15 @@ export async function POST(request: Request) {
       case 'exemption': return nativeJson(await setReadinessExemption(ctx, body));
       case 'image': return nativeJson(await uploadProductImage(ctx, body));
       case 'english': return nativeJson(await refreshProductEnglish(ctx, body));
+      case 'equipmentAdd': return nativeJson(await addEquipment(ctx, body));
+      case 'equipmentUpdate': return nativeJson(await updateEquipment(ctx, body));
+      case 'equipmentRemove': return nativeJson(await removeEquipment(ctx, body));
+      case 'staffSave': return nativeJson(await saveStaff(ctx, body));
+      case 'staffRemove': return nativeJson(await removeStaff(ctx, body));
+      case 'liveToggle': return nativeJson(await toggleLiveModule(ctx, body));
+      case 'clausesSave': return nativeJson(await saveClauses(ctx, body));
+      case 'variantCustomize': return nativeJson(await customizeVariant(ctx, body));
+      case 'variantInherit': return nativeJson(await inheritVariant(ctx, body));
       default: return failure('Nieznana operacja.');
     }
   } catch (error) {

@@ -147,6 +147,7 @@ enum ProductSectionFields {
     @ViewBuilder func mainSections(_ detail: ProductDetail) -> some View {
         basicSection(detail).id("product-section-basic")
         presentationSection(detail).id("product-section-presentation")
+        ProductResourcesBlock(store: store, productID: productID)
         crmSections(detail)
     }
 
@@ -209,6 +210,13 @@ enum ProductSectionFields {
                 if detail.canEdit && editing == nil { imageSheet = true }
             } else {
                 begin("presentation", detail)
+            }
+        case "product-section-equipment", "product-section-staff", "product-section-clauses":
+            // Sekcje części B — gdy produkt ma pakiety, sprzęt i obsada są w pakietach (na razie w CRM).
+            if let resources = store.resources[productID], !(resources.packages && check.anchor != "product-section-clauses") {
+                withAnimation { proxy.scrollTo(check.anchor, anchor: .top) }
+            } else {
+                state.openCRM("/crm/offers/products/\(productID)")
             }
         default:
             state.openCRM("/crm/offers/products/\(productID)")
