@@ -40,6 +40,8 @@ struct ContractTemplateDocumentPayload: Decodable {
     let brandLogos: [BrandLogo]?
     let fonts: [Font]?
     let footerTemplates: [FooterTemplate]?
+    let categories: [String]?
+    let conditionFields: [Field]?
 
     var fieldLabels: [String: String] {
         Dictionary(fieldGroups.flatMap { group in group.items.map { ($0.key, $0.label) } }, uniquingKeysWith: { first, _ in first })
@@ -158,6 +160,8 @@ struct ContractDocumentStats {
     @State private var confirmLeave = false
     @State private var confirmReload = false
     @State private var editingFooter = false
+    @State private var conditionRequest: ContractConditionRequest?
+    @State private var editingOptions = false
 
     private var name: String { store.template(controller.templateID)?.name ?? controller.payload.name }
     private var word: Bool { controller.payload.format == "word" }
@@ -182,6 +186,18 @@ struct ContractDocumentStats {
         }
         .sheet(isPresented: $editingFooter) {
             ContractFooterEditorSheet(store: store, controller: controller)
+        }
+        .sheet(item: $conditionRequest) { request in
+            ContractConditionSheet(request: request, options: controller.options, categories: controller.payload.categories ?? [],
+                                   fields: controller.payload.conditionFields ?? [], fieldLabels: conditionFieldLabels,
+                                   onApply: { expression, options in
+                                       controller.saveOptions(options)
+                                       controller.setCondition(expression)
+                                   },
+                                   onRemove: request.initial == nil ? nil : { controller.removeCondition() })
+        }
+        .sheet(isPresented: $editingOptions) {
+            ContractOptionsSheet(options: controller.options, usage: controller.optionUsage()) { controller.saveOptions($0) }
         }
         .confirmationDialog("Wczytać szablon ponownie?", isPresented: $confirmReload) {
             Button("Wczytaj ponownie", role: .destructive) { reload() }
@@ -215,7 +231,7 @@ struct ContractDocumentStats {
                 .buttonStyle(.borderless)
             }
             Menu {
-                Button("Edytuj w CRM (warunki, opcje umowy, tabele)") {
+                Button("Edytuj w CRM (scalanie szablonów)") {
                     state.openCRM("/crm/contract-templates/\(controller.templateID)/edit-wysiwyg")
                 }
                 Divider()
@@ -276,6 +292,7 @@ struct ContractDocumentStats {
             HStack(spacing: 12) {
                 Picker("", selection: $tab) {
                     Text("Wstaw").tag("insert")
+                    Text("Warunki").tag("conditions")
                     Text("Układ").tag("layout")
                 }
                 .pickerStyle(.segmented)
@@ -284,7 +301,11 @@ struct ContractDocumentStats {
                 Divider().frame(height: 22)
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 12) {
-                        if tab == "layout" { layoutRow } else { insertRow }
+                        switch tab {
+                        case "layout": layoutRow
+                        case "conditions": conditionsRow
+                        default: insertRow
+                        }
                     }
                     .padding(.vertical, 1)
                 }
@@ -373,6 +394,25 @@ struct ContractDocumentStats {
         .fixedSize()
         .help("Miejsce, w które generator umowy wstawi klauzule produktów z wybranej kategorii")
         Menu {
+            Button("Tabela 2 × 2") { controller.insertTable(signatures: false) }
+            Button("Miejsca na podpisy stron") { controller.insertTable(signatures: true) }
+        } label: {
+            Label("Tabela", systemImage: "tablecells")
+        }
+        .fixedSize()
+        .disabled(controller.inCell)
+        .help("Tabela albo gotowe miejsca na podpisy Zamawiającego i Wykonawcy")
+        if controller.inCell {
+            HStack(spacing: 2) {
+                Button("+ wiersz") { controller.tableRow(add: true) }.help("Wiersz poniżej")
+                Button("+ kolumna") { controller.tableColumn(add: true) }.help("Kolumna z prawej")
+                Button("− wiersz") { controller.tableRow(add: false) }.help("Usuń wiersz")
+                Button("− kolumna") { controller.tableColumn(add: false) }.help("Usuń kolumnę")
+                Button("Usuń tabelę", role: .destructive) { controller.deleteTable() }
+            }
+            .buttonStyle(.bordered)
+        }
+        Menu {
             let logos = controller.payload.brandLogos ?? []
             if !logos.isEmpty {
                 Section("Logo firmy") {
@@ -402,6 +442,65 @@ struct ContractDocumentStats {
             .pickerStyle(.segmented)
             .labelsHidden()
             .fixedSize()
+        }
+    }
+
+    // MARK: Warunki (warunek akapitu / punktu / sekcji, opcje umowy, „Pokaż jako”)
+
+    private var conditionFieldLabels: [String: String] {
+        var labels = controller.payload.fieldLabels
+        for field in controller.payload.conditionFields ?? [] { labels[field.key] = field.label }
+        return labels
+    }
+
+    @ViewBuilder private var conditionsRow: some View {
+        HStack(spacing: 4) {
+            Button { conditionRequest = ContractConditionRequest(initial: nil, scope: controller.conditionScope(editing: false)) } label: {
+                Label("Dodaj warunek", systemImage: "line.3.horizontal.decrease.circle")
+            }
+            .help("Warunek dla akapitu, punktu listy albo zaznaczonych akapitów (sekcja)")
+            Button("Zmień") { conditionRequest = ContractConditionRequest(initial: controller.conditionAtCursor, scope: controller.conditionScope(editing: true)) }
+                .disabled(controller.conditionAtCursor == nil)
+            Button { controller.removeCondition() } label: { Label("Usuń", systemImage: "trash") }
+                .disabled(controller.conditionAtCursor == nil)
+                .help("Usuń warunek (treść zostaje)")
+        }
+        .buttonStyle(.bordered)
+        if let condition = controller.conditionAtCursor {
+            Text(ContractConditionText.describe(condition, options: controller.options, fieldLabels: conditionFieldLabels))
+                .font(.caption).foregroundStyle(ContractColorsUI.condition).lineLimit(1)
+        }
+        Divider().frame(height: 22)
+        Button { editingOptions = true } label: { Label("Opcje (\(controller.options.count))", systemImage: "checklist") }
+            .buttonStyle(.bordered)
+            .help("Opcje włączane przy każdej umowie (np. nocleg)")
+        Divider().frame(height: 22)
+        Toggle(isOn: Binding(get: { controller.simulation != nil }, set: { on in
+            controller.simulation = on ? ContractSimulation(client: "osoba", category: controller.payload.categories?.first ?? "", options: [:]) : nil
+        })) {
+            Label("Pokaż jako", systemImage: "eye")
+        }
+        .toggleStyle(.button)
+        .help("Przygasza treść, której nie będzie w umowie dla wybranego klienta, wydarzenia i opcji")
+        if let simulation = controller.simulation {
+            Picker("Klient", selection: Binding(get: { simulation.client }, set: { controller.simulation?.client = $0 })) {
+                Text("Osoba prywatna").tag("osoba")
+                Text("Firma").tag("firma")
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .fixedSize()
+            Picker("Rodzaj wydarzenia", selection: Binding(get: { simulation.category }, set: { controller.simulation?.category = $0 })) {
+                Text("Bez kategorii").tag("")
+                ForEach(controller.payload.categories ?? [], id: \.self) { name in Text(name).tag(name) }
+            }
+            .labelsHidden()
+            .fixedSize()
+            ForEach(controller.options, id: \.key) { option in
+                Toggle(option.label, isOn: Binding(get: { simulation.options[option.key] ?? option.defaultOn },
+                                                   set: { controller.simulation?.options[option.key] = $0 }))
+                    .toggleStyle(.checkbox)
+            }
         }
     }
 
@@ -529,7 +628,8 @@ struct ContractDocumentStats {
         defer { controller.saving = false }
         let settings = controller.settingsPayload()
         guard let updated = await store.saveTemplateContent(controller.templateID, html: html, updatedAt: controller.updatedAt,
-                                                            layout: settings.layout, documentStyles: settings.styles) else { return false }
+                                                            layout: settings.layout, documentStyles: settings.styles,
+                                                            options: controller.optionsPayload) else { return false }
         controller.markSaved(updatedAt: updated, html: html, revision: revision)
         return true
     }

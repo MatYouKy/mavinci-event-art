@@ -39,6 +39,14 @@ import SwiftUI
     @Published private(set) var pageLayout = ContractPageLayout.standard
     /// Zapisane szablony stopek (edytor stopek odświeża listę po zapisie).
     @Published private(set) var footerTemplates: [ContractTemplateDocumentPayload.FooterTemplate] = []
+    /// Opcje umowy szablonu (np. nocleg) — przełączane przy każdej umowie, używane w warunkach.
+    @Published private(set) var options: [ContractOptionItem] = []
+    /// Warunek najbliższego akapitu, punktu albo sekcji pod kursorem.
+    @Published private(set) var conditionAtCursor: String?
+    /// „Pokaż jako” — klient, kategoria i opcje; `nil` — cała treść.
+    @Published var simulation: ContractSimulation? {
+        didSet { if simulation != oldValue { applySimulation() } }
+    }
     /// Obraz pod kursorem (rozmiar w %, wyrównanie) — do przycisków obrazu na wstążce.
     @Published private(set) var selectedImage: (width: Double, align: String)?
     var documentFont: String { context.styles.style("body").fontFamily }
@@ -59,6 +67,7 @@ import SwiftUI
         updatedAt = payload.updatedAt
         pageLayout = payload.layout ?? .standard
         footerTemplates = payload.footerTemplates ?? []
+        options = payload.options
         let document = ContractHTMLParser.parse(payload.format == "word" ? payload.html : "")
         stats = ContractDocumentStats(document)
         storage.beginEditing()
@@ -100,6 +109,10 @@ import SwiftUI
         let layout = (try? encoder.encode(pageLayout)).flatMap { try? decoder.decode(JSONValue.self, from: $0) } ?? .null
         let styles = (try? encoder.encode(context.styles)).flatMap { try? decoder.decode(JSONValue.self, from: $0) } ?? .null
         return (layout, styles)
+    }
+
+    var optionsPayload: JSONValue {
+        .array(options.map { .object(["key": .string($0.key), "label": .string($0.label), "defaultOn": .bool($0.defaultOn)]) })
     }
 
     func markSaved(updatedAt next: String, html: String, revision saved: Int) {
@@ -312,6 +325,8 @@ import SwiftUI
             image = (ContractImageLayout.widthPercent(attributes) ?? 100, ContractImageLayout.alignment(attributes))
         }
         if selectedImage?.width != image?.width || selectedImage?.align != image?.align { selectedImage = image }
+        let expression = info.flatMap { conditionTarget(of: $0)?.expression }
+        if conditionAtCursor != expression { conditionAtCursor = expression }
     }
 
     // MARK: Akapity — pomocnicze
@@ -1090,4 +1105,414 @@ import SwiftUI
         storage.endEditing()
         changed()
     }
+
+    // MARK: Warunki (jak zakładka „Warunki” w CRM)
+
+    enum ConditionTarget {
+        case paragraph(String)
+        case item(depth: Int, level: ContractItemLevel, String)
+        case section(id: Int, String)
+
+        var expression: String {
+            switch self {
+            case .paragraph(let value), .item(_, _, let value), .section(_, let value): return value
+            }
+        }
+    }
+
+    /// Najbliższy element z warunkiem: akapit, punkt listy albo sekcja (od środka na zewnątrz).
+    func conditionTarget(of info: ContractParagraphInfo) -> ConditionTarget? {
+        if let own = info.attributes[ContractHTMLParser.condition], !own.isEmpty { return .paragraph(own) }
+        for depth in stride(from: info.path.count - 1, through: 0, by: -1) {
+            switch info.path[depth] {
+            case .item(let level):
+                if let value = level.attributes[ContractHTMLParser.condition], !value.isEmpty { return .item(depth: depth, level: level, value) }
+            case .section(let id, let value, _):
+                return .section(id: id, value)
+            case .cell:
+                break
+            }
+        }
+        return nil
+    }
+
+    private func selectionParagraphs(_ list: [Paragraph], _ selection: NSRange) -> ClosedRange<Int> {
+        let first = paragraphIndex(list, at: selection.location)
+        let last = selection.length > 0 ? paragraphIndex(list, at: NSMaxRange(selection) - 1) : first
+        return first...max(first, last)
+    }
+
+    /// Opis miejsca warunku do okna („Akapit”, „Punkt listy”, „Sekcja”, „Zaznaczone akapity (sekcja)”).
+    func conditionScope(editing: Bool) -> String {
+        guard let textView else { return "Akapit" }
+        let list = paragraphs()
+        guard !list.isEmpty else { return "Akapit" }
+        let range = selectionParagraphs(list, textView.selectedRange())
+        let info = list[range.lowerBound].info
+        if editing, range.count == 1, let target = conditionTarget(of: info) {
+            switch target {
+            case .paragraph: return "Akapit"
+            case .item: return "Punkt listy"
+            case .section: return "Sekcja"
+            }
+        }
+        if range.count > 1 { return sameListItems(list, range) != nil ? "Zaznaczone punkty listy" : "Zaznaczone akapity (sekcja)" }
+        return nearestItem(info.path) != nil ? "Punkt listy" : "Akapit"
+    }
+
+    /// Wspólny początek ścieżek zaznaczonych akapitów.
+    private func commonDepth(_ list: [Paragraph], _ range: ClosedRange<Int>) -> Int {
+        var depth = list[range.lowerBound].info.path.count
+        for index in range { depth = min(depth, list[index].info.path.count) }
+        while depth > 0, !range.allSatisfy({ ContractStructure.samePrefix(list[$0].info.path, list[range.lowerBound].info.path, count: depth) }) { depth -= 1 }
+        return depth
+    }
+
+    /// Zaznaczone akapity leżą w punktach jednej listy — warunek dostaje każdy z tych punktów (numeracja zostaje).
+    private func sameListItems(_ list: [Paragraph], _ range: ClosedRange<Int>) -> (depth: Int, items: [ContractItemLevel])? {
+        let depth = commonDepth(list, range)
+        var listID: Int?
+        var items: [ContractItemLevel] = []
+        for index in range {
+            let path = list[index].info.path
+            guard path.count > depth, let level = path[depth].item else { return nil }
+            if listID == nil { listID = level.listID }
+            guard level.listID == listID else { return nil }
+            if !items.contains(where: { $0.itemID == level.itemID }) { items.append(level) }
+        }
+        return items.isEmpty ? nil : (depth, items)
+    }
+
+    /// Nadaje warunek: bez zaznaczenia — istniejącemu warunkowi w tym miejscu, punktowi listy albo akapitowi;
+    /// zaznaczonym punktom jednej listy — każdemu punktowi; innym zaznaczonym akapitom — nowa sekcja warunkowa.
+    func setCondition(_ expression: String) {
+        guard let textView else { return }
+        let selection = textView.selectedRange()
+        perform {
+            let list = paragraphs()
+            guard !list.isEmpty else { return nil }
+            let range = selectionParagraphs(list, selection)
+            let current = list[range.lowerBound]
+            if range.count == 1 {
+                if let target = conditionTarget(of: current.info) {
+                    replaceCondition(target, with: expression, paragraph: current)
+                } else if case let (depth, level)? = nearestItemTuple(current.info.path) {
+                    updateItem(level, depth: depth) { $0[ContractHTMLParser.condition] = expression }
+                } else {
+                    var own = current.info.attributes
+                    own[ContractHTMLParser.condition] = expression
+                    set(current.info.with(attributes: own), on: current.range)
+                }
+                return selection
+            }
+            if case let (depth, items)? = sameListItems(list, range) {
+                for level in items {
+                    let fresh = paragraphs().first { $0.info.path.count > depth && $0.info.path[depth].same(.item(level)) }
+                    if let fresh, let latest = fresh.info.path[depth].item { updateItem(latest, depth: depth) { $0[ContractHTMLParser.condition] = expression } }
+                }
+                return selection
+            }
+            // Sekcja: całe punkty, tabele i sekcje na wspólnym poziomie zaznaczenia.
+            let depth = commonDepth(list, range)
+            var first = range.lowerBound
+            var last = range.upperBound
+            if list[first].info.path.count > depth {
+                while first > 0, ContractStructure.samePrefix(list[first - 1].info.path, list[first].info.path, count: depth + 1) { first -= 1 }
+            }
+            if list[last].info.path.count > depth {
+                while last + 1 < list.count, ContractStructure.samePrefix(list[last + 1].info.path, list[last].info.path, count: depth + 1) { last += 1 }
+            }
+            let section = ContractContainer.section(id: ContractIDs.next(), condition: expression, attributes: [:])
+            for index in first...last {
+                var path = list[index].info.path
+                path.insert(section, at: depth)
+                set(list[index].info.with(path: path), on: list[index].range)
+            }
+            return selection
+        }
+    }
+
+    private func nearestItemTuple(_ path: [ContractContainer]) -> (Int, ContractItemLevel)? {
+        guard let found = nearestItem(path) else { return nil }
+        return (found.depth, found.level)
+    }
+
+    private func replaceCondition(_ target: ConditionTarget, with expression: String?, paragraph: Paragraph) {
+        switch target {
+        case .paragraph:
+            var own = paragraph.info.attributes
+            own[ContractHTMLParser.condition] = expression
+            set(paragraph.info.with(attributes: own), on: paragraph.range)
+        case .item(let depth, let level, _):
+            updateItem(level, depth: depth) { $0[ContractHTMLParser.condition] = expression }
+        case .section(let id, _):
+            for other in paragraphs() {
+                guard let depth = other.info.path.firstIndex(where: { $0.sectionID == id }) else { continue }
+                var path = other.info.path
+                if let expression, case .section(_, _, let attributes) = path[depth] {
+                    path[depth] = .section(id: id, condition: expression, attributes: attributes)
+                } else {
+                    path.remove(at: depth)
+                }
+                set(other.info.with(path: path), on: other.range)
+            }
+        }
+    }
+
+    /// Usuwa warunek z miejsca kursora (sekcja znika, jej treść zostaje).
+    func removeCondition() {
+        guard let textView else { return }
+        let selection = textView.selectedRange()
+        perform {
+            let list = paragraphs()
+            guard !list.isEmpty else { return nil }
+            let current = list[paragraphIndex(list, at: selection.location)]
+            guard let target = conditionTarget(of: current.info) else { return nil }
+            replaceCondition(target, with: nil, paragraph: current)
+            return selection
+        }
+    }
+
+    // MARK: Opcje umowy i „Pokaż jako”
+
+    /// Ile warunków w treści używa każdej opcji (użytej nie da się usunąć — jak w CRM).
+    func optionUsage() -> [String: Int] {
+        var usage: [String: Int] = [:]
+        var counted = Set<String>()
+        func count(_ expression: String?, key: String) {
+            guard let condition = ContractCondition.parse(expression), condition.kind == .option, counted.insert(key).inserted else { return }
+            usage[String(condition.variable.dropFirst(ContractCondition.optionPrefix.count)), default: 0] += 1
+        }
+        for paragraph in paragraphs() {
+            count(paragraph.info.attributes[ContractHTMLParser.condition], key: "p\(paragraph.range.location)")
+            for container in paragraph.info.path {
+                switch container {
+                case .item(let level): count(level.attributes[ContractHTMLParser.condition], key: "i\(level.itemID)")
+                case .section(let id, let expression, _): count(expression, key: "s\(id)")
+                case .cell: break
+                }
+            }
+        }
+        return usage
+    }
+
+    func saveOptions(_ list: [ContractOptionItem]) {
+        guard editable, list != options else { return }
+        options = list
+        context.options = list
+        formatter.context = context
+        if simulation != nil { applySimulation() } else { refreshDecorations() }
+        changed()
+    }
+
+    func simulationVariables(_ value: ContractSimulation) -> [String: String] {
+        var variables = [ContractCondition.clientVariable: value.client, ContractCondition.categoryVariable: value.category]
+        for option in options {
+            variables[ContractCondition.optionPrefix + option.key] = (value.options[option.key] ?? option.defaultOn) ? "tak" : ""
+        }
+        return variables
+    }
+
+    private func applySimulation() {
+        formatter.simulation = simulation.map(simulationVariables)
+        refreshDecorations()
+    }
+
+    /// Ponowne wyliczenie numerów, warunków i przygaszenia bez zmiany treści.
+    private func refreshDecorations() {
+        guard storage.length > 0 else { return }
+        storage.beginEditing()
+        storage.edited(.editedAttributes, range: NSRange(location: 0, length: 1), changeInLength: 0)
+        storage.endEditing()
+        textView?.needsDisplay = true
+    }
+
+    // MARK: Tabele (jak „Tabela” i „Podpisy” w CRM)
+
+    private struct TableContext {
+        let depth: Int
+        let cell: ContractCellLevel
+        let rows: [Int: [Int]]          // wiersz → indeksy akapitów
+        let range: ClosedRange<Int>     // akapity całej tabeli
+    }
+
+    private func tableContext(_ list: [Paragraph], at location: Int) -> TableContext? {
+        guard !list.isEmpty else { return nil }
+        let position = paragraphIndex(list, at: location)
+        let path = list[position].info.path
+        guard let depth = path.lastIndex(where: { $0.cell != nil }), let cell = path[depth].cell else { return nil }
+        func inTable(_ index: Int) -> Bool {
+            let other = list[index].info.path
+            return other.count > depth && other[depth].cell?.tableID == cell.tableID && ContractStructure.samePrefix(other, path, count: depth)
+        }
+        var first = position
+        while first > 0, inTable(first - 1) { first -= 1 }
+        var last = position
+        while last + 1 < list.count, inTable(last + 1) { last += 1 }
+        var rows: [Int: [Int]] = [:]
+        for index in first...last { if let row = list[index].info.path[depth].cell?.row { rows[row, default: []].append(index) } }
+        return TableContext(depth: depth, cell: cell, rows: rows, range: first...last)
+    }
+
+    private func setCell(_ paragraph: Paragraph, depth: Int, _ change: (inout ContractCellLevel) -> Void) {
+        guard var level = paragraph.info.path[depth].cell else { return }
+        change(&level)
+        var path = paragraph.info.path
+        path[depth] = .cell(level)
+        set(paragraph.info.with(path: path), on: paragraph.range)
+    }
+
+    private func emptyCellParagraph(_ base: [ContractContainer], _ cell: ContractCellLevel, text: String = "", attributes: [String: String] = [:]) -> NSAttributedString {
+        let piece = NSMutableAttributedString(string: text + "\n", attributes: [.contractMarks: ContractMarksBox.plain])
+        piece.addAttribute(.contractBlock, value: ContractParagraphInfo(tag: "p", attributes: attributes, path: base + [.cell(cell)]), range: NSRange(location: 0, length: piece.length))
+        return piece
+    }
+
+    /// Nowa tabela 2 × 2 albo miejsca na podpisy stron pod akapitem z kursorem (w pustym akapicie — zamiast niego).
+    func insertTable(signatures: Bool) {
+        guard let textView else { return }
+        let selection = textView.selectedRange()
+        perform {
+            let list = paragraphs()
+            guard !list.isEmpty else { return nil }
+            let current = list[paragraphIndex(list, at: selection.location)]
+            guard !current.info.path.contains(where: { $0.cell != nil }) else { NSSound.beep(); return nil }
+            let base = current.info.path
+            let tableID = ContractIDs.next()
+            let tableAttributes = signatures ? ["style": "width:100%;margin-top:14pt;border-collapse:collapse;"] : [:]
+            let cellAttributes = signatures ? ["style": "width:50%;", "data-style": "table"] : ["data-style": "table"]
+            let piece = NSMutableAttributedString()
+            let rows = signatures ? 1 : 2
+            for row in 0..<rows {
+                for column in 0..<2 {
+                    let cell = ContractCellLevel(tableID: tableID, tableAttributes: tableAttributes, row: row, rowAttributes: [:], column: column, header: false, attributes: cellAttributes)
+                    if signatures {
+                        piece.append(emptyCellParagraph(base, cell, text: column == 0 ? "ZAMAWIAJĄCY" : "WYKONAWCA"))
+                        piece.append(emptyCellParagraph(base, cell, text: "……………………………………", attributes: ["style": "padding-top:35pt;"]))
+                    } else {
+                        piece.append(emptyCellParagraph(base, cell))
+                    }
+                }
+            }
+            var at = NSMaxRange(current.range)
+            if current.contentLength == 0 && !current.object && current.hasTerminator && current.range.location > 0 {
+                at = current.range.location
+                storage.deleteCharacters(in: current.range)
+            } else if !current.hasTerminator {
+                storage.insert(NSAttributedString(string: "\n", attributes: [.contractMarks: ContractMarksBox.plain, .contractBlock: current.info]), at: at)
+                at += 1
+            }
+            storage.insert(piece, at: at)
+            // Akapit za tabelą, gdy tabela kończy dokument — żeby dało się pisać dalej.
+            if at + piece.length >= storage.length {
+                let after = NSAttributedString(string: "\n", attributes: [.contractMarks: ContractMarksBox.plain,
+                                                                         .contractBlock: ContractParagraphInfo(tag: "p", attributes: [ContractHTMLParser.style: "body"], path: base)])
+                storage.insert(after, at: storage.length)
+            }
+            return NSRange(location: at, length: 0)
+        }
+    }
+
+    /// Wiersz pod bieżącym (`add`) albo usunięcie bieżącego wiersza.
+    func tableRow(add: Bool) {
+        guard let textView else { return }
+        let selection = textView.selectedRange()
+        perform {
+            let list = paragraphs()
+            guard let table = tableContext(list, at: selection.location) else { NSSound.beep(); return nil }
+            let row = table.cell.row
+            guard let current = table.rows[row], let lastIndex = current.last else { return nil }
+            if !add && table.rows.count <= 1 { removeTable(list, table); return NSRange(location: list[table.range.lowerBound].range.location, length: 0) }
+            for index in table.range {
+                guard let other = list[index].info.path[table.depth].cell, other.row > row else { continue }
+                setCell(list[index], depth: table.depth) { $0.row += add ? 1 : -1 }
+            }
+            let base = Array(list[table.range.lowerBound].info.path.prefix(table.depth))
+            if add {
+                var columns: [ContractCellLevel] = []
+                for index in current {
+                    guard let cell = list[index].info.path[table.depth].cell, !columns.contains(where: { $0.column == cell.column }) else { continue }
+                    var fresh = cell
+                    fresh.row = row + 1
+                    fresh.header = false
+                    fresh.attributes = cell.attributes.filter { $0.key == ContractHTMLParser.style || $0.key == "style" }
+                    columns.append(fresh)
+                }
+                let piece = NSMutableAttributedString()
+                columns.forEach { piece.append(emptyCellParagraph(base, $0)) }
+                let at = NSMaxRange(list[lastIndex].range)
+                storage.insert(piece, at: at)
+                return NSRange(location: at, length: 0)
+            }
+            let start = list[current[0]].range.location
+            storage.deleteCharacters(in: NSRange(location: start, length: NSMaxRange(list[lastIndex].range) - start))
+            return NSRange(location: min(start, storage.length), length: 0)
+        }
+    }
+
+    /// Kolumna z prawej bieżącej (`add`) albo usunięcie bieżącej kolumny.
+    func tableColumn(add: Bool) {
+        guard let textView else { return }
+        let selection = textView.selectedRange()
+        perform {
+            let list = paragraphs()
+            guard let table = tableContext(list, at: selection.location) else { NSSound.beep(); return nil }
+            let column = table.cell.column
+            let columns = Set(table.range.compactMap { list[$0].info.path[table.depth].cell?.column })
+            if !add && columns.count <= 1 { removeTable(list, table); return NSRange(location: list[table.range.lowerBound].range.location, length: 0) }
+            for index in table.range {
+                guard let other = list[index].info.path[table.depth].cell, other.column > column else { continue }
+                setCell(list[index], depth: table.depth) { $0.column += add ? 1 : -1 }
+            }
+            let base = Array(list[table.range.lowerBound].info.path.prefix(table.depth))
+            // Od ostatniego wiersza — wstawianie i usuwanie nie przesuwa jeszcze nieobsłużonych wierszy.
+            for row in table.rows.keys.sorted(by: >) {
+                guard let indices = table.rows[row] else { continue }
+                let inColumn = indices.filter { list[$0].info.path[table.depth].cell?.column == column }
+                if add {
+                    let anchor = inColumn.last ?? indices.last
+                    guard let anchor, let cell = list[anchor].info.path[table.depth].cell else { continue }
+                    var fresh = cell
+                    fresh.column = column + 1
+                    fresh.header = false
+                    fresh.attributes = cell.attributes.filter { $0.key == ContractHTMLParser.style }
+                    storage.insert(emptyCellParagraph(base, fresh), at: NSMaxRange(list[anchor].range))
+                } else if let first = inColumn.first, let last = inColumn.last {
+                    let start = list[first].range.location
+                    storage.deleteCharacters(in: NSRange(location: start, length: NSMaxRange(list[last].range) - start))
+                }
+            }
+            return selection.location <= storage.length ? NSRange(location: selection.location, length: 0) : nil
+        }
+    }
+
+    func deleteTable() {
+        guard let textView else { return }
+        let selection = textView.selectedRange()
+        perform {
+            let list = paragraphs()
+            guard let table = tableContext(list, at: selection.location) else { NSSound.beep(); return nil }
+            removeTable(list, table)
+            return NSRange(location: min(list[table.range.lowerBound].range.location, storage.length), length: 0)
+        }
+    }
+
+    private func removeTable(_ list: [Paragraph], _ table: TableContext) {
+        let start = list[table.range.lowerBound].range.location
+        storage.deleteCharacters(in: NSRange(location: start, length: NSMaxRange(list[table.range.upperBound].range) - start))
+        if storage.length == 0 {
+            storage.insert(NSAttributedString(string: "\n", attributes: [.contractMarks: ContractMarksBox.plain,
+                                                                       .contractBlock: ContractParagraphInfo(tag: "p", attributes: [ContractHTMLParser.style: "body"], path: [])]), at: 0)
+        }
+    }
+
+    /// Kursor w tabeli (przyciski wierszy i kolumn na wstążce).
+    var inTable: Bool { inCell }
+}
+
+/// „Pokaż jako” — klient, kategoria wydarzenia i stan opcji umowy.
+struct ContractSimulation: Equatable {
+    var client = "osoba"
+    var category = ""
+    var options: [String: Bool] = [:]
 }

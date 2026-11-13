@@ -188,7 +188,8 @@ struct ContractsState: Codable {
 
     /// Zapis treści szablonu z edytora na Macu (jak „Zapisz” w edytorze CRM) z kontrolą wersji. Zwraca nową wersję
     /// (`updated_at`) albo `nil` — wtedy komunikat błędu jest już w oknie.
-    func saveTemplateContent(_ id: String, html: String, updatedAt: String?, layout: JSONValue, documentStyles: JSONValue) async -> String? {
+    func saveTemplateContent(_ id: String, html: String, updatedAt: String?, layout: JSONValue, documentStyles: JSONValue,
+                             options: JSONValue) async -> String? {
         guard let api, let workspace else { return nil }
         guard workspace.canWrite else {
             workspace.error = "Zapis wymaga połączenia z serwerem CRM."
@@ -199,7 +200,7 @@ struct ContractsState: Codable {
             let body: [String: JSONValue] = [
                 "op": .string("templateContent"), "id": .string(id), "html": .string(html),
                 "updatedAt": updatedAt.map { JSONValue.string($0) } ?? JSONValue.null,
-                "layout": layout, "documentStyles": documentStyles,
+                "layout": layout, "documentStyles": documentStyles, "contractOptions": options,
             ]
             let data = try await workspace.withPending("Zapisywanie szablonu…") { try await api.post("/contracts", body) }
             guard let next = (try? JSONDecoder().decode(Reply.self, from: data))?.updatedAt else { throw AppError.invalidResponse }

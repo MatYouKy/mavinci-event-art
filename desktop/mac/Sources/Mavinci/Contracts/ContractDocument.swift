@@ -488,3 +488,103 @@ enum ContractConditionText {
         return negate ? "Gdy puste: \(label)" : "Gdy wypełnione: \(label)"
     }
 }
+
+// MARK: Warunek — odczyt, zapis i ocena (`contractConditions.ts`: parse / serialize / evaluate)
+
+struct ContractCondition: Equatable {
+    enum Kind {
+        case client, category, option, filled, equals
+    }
+
+    static let clientVariable = "klient"
+    static let categoryVariable = "kategoria"
+    static let optionPrefix = "opcja_"
+
+    var kind: Kind
+    var variable: String
+    var values: [String]
+    var negate: Bool
+
+    private static let comparison = try? NSRegularExpression(pattern: #"^([A-Za-z0-9_]+)\s*(!=|=)\s*(.+)$"#)
+    private static let variablePattern = try? NSRegularExpression(pattern: #"^[A-Za-z0-9_]+$"#)
+
+    static func parse(_ expression: String?) -> ContractCondition? {
+        var text = (expression ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return nil }
+        let source = text as NSString
+        var negate = false
+        var variable: String
+        var values: [String] = []
+        if let match = comparison?.firstMatch(in: text, range: NSRange(location: 0, length: source.length)) {
+            variable = source.substring(with: match.range(at: 1))
+            negate = source.substring(with: match.range(at: 2)) == "!="
+            values = source.substring(with: match.range(at: 3)).split(separator: "|").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+            if values.isEmpty { return nil }
+        } else {
+            if text.hasPrefix("!") {
+                negate = true
+                text = String(text.dropFirst()).trimmingCharacters(in: .whitespaces)
+            }
+            guard variablePattern?.firstMatch(in: text, range: NSRange(location: 0, length: (text as NSString).length)) != nil else { return nil }
+            variable = text
+        }
+        let kind: Kind = variable == clientVariable && !values.isEmpty ? .client
+            : variable == categoryVariable && !values.isEmpty ? .category
+            : variable.hasPrefix(optionPrefix) && values.isEmpty ? .option
+            : values.isEmpty ? .filled : .equals
+        return ContractCondition(kind: kind, variable: variable, values: values, negate: negate)
+    }
+
+    var expression: String {
+        values.isEmpty ? "\(negate ? "!" : "")\(variable)" : "\(variable)\(negate ? "!=" : "=")\(values.joined(separator: "|"))"
+    }
+
+    /// Porównanie bez wielkości liter i polskich znaków („STUDNIÓWKA” = „studniowka”).
+    static func normalize(_ value: String?) -> String {
+        let text = (value ?? "").replacingOccurrences(of: "\u{00A0}", with: " ")
+            .components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }.joined(separator: " ")
+        return text.lowercased(with: Locale(identifier: "pl_PL")).replacingOccurrences(of: "ł", with: "l")
+            .folding(options: .diacriticInsensitive, locale: nil)
+    }
+
+    private static let falseValues: Set<String> = ["nie", "false", "0", "off", "brak"]
+
+    /// `true` / `false` — czy treść będzie w umowie; `nil` — nieprawidłowy warunek (treść zostaje).
+    static func evaluate(_ expression: String, variables: [String: String]) -> Bool? {
+        guard let condition = parse(expression) else { return nil }
+        let value = variables[condition.variable]
+        let result: Bool
+        if condition.values.isEmpty {
+            let text = normalize(value)
+            result = !text.isEmpty && !falseValues.contains(text)
+        } else {
+            result = condition.values.contains { normalize($0) == normalize(value) }
+        }
+        return condition.negate ? !result : result
+    }
+
+    /// Klucz opcji z nazwy: „Nocleg dla wykonawcy” → `nocleg_dla_wykonawcy` (unikalny w szablonie).
+    static func optionKey(_ label: String, existing: [String]) -> String {
+        var base = ""
+        var underscore = false
+        for character in normalize(label) {
+            if character.isASCII && (character.isLetter || character.isNumber) {
+                base.append(character)
+                underscore = false
+            } else if !underscore && !base.isEmpty {
+                base.append("_")
+                underscore = true
+            }
+        }
+        while base.hasSuffix("_") { base.removeLast() }
+        base = String(base.prefix(40))
+        if base.isEmpty { base = "opcja" }
+        var key = base
+        var index = 2
+        while existing.contains(key) {
+            key = "\(base)_\(index)"
+            index += 1
+        }
+        return key
+    }
+}

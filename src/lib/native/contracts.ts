@@ -6,7 +6,7 @@ import {
   isContractDocumentStylesTemplate,
   resolveContractDocumentStyles,
 } from '@/lib/CRM/contracts/contractDocumentStyles';
-import { resolveContractOptions } from '@/lib/CRM/contracts/contractConditions';
+import { contractOptionKeyFromLabel, resolveContractOptions } from '@/lib/CRM/contracts/contractConditions';
 import { CONTRACT_PLACEHOLDER_GROUPS } from '@/lib/CRM/contracts/contractPlaceholderGroups';
 import { CONTRACT_CLAUSE_SLOTS } from '@/lib/CRM/contracts/contractClauseSlots';
 import { SYSTEM_FONTS } from '@/lib/CRM/systemFonts';
@@ -146,7 +146,20 @@ export async function contractTemplateDocument(ctx: NativeContext, id: string) {
   const html = typeof settings.flowContent === 'string' && settings.flowContent.trim()
     ? settings.flowContent
     : Array.isArray(settings.pages) && settings.pages.length ? settings.pages.join('') : String(template.content_html || '');
-  const [assets, footers] = await Promise.all([brandAssets(ctx), footerTemplates(ctx)]);
+  const [assets, footers, categoriesRes] = await Promise.all([
+    brandAssets(ctx),
+    footerTemplates(ctx),
+    ctx.supabase.from('event_categories').select('name').eq('is_active', true).order('name'),
+  ]);
+  // Pola do warunku „Pole wypełnione” — jak `CONDITION_FIELDS` w edytorze CRM (bez numeru § i miejsc na klauzule).
+  const conditionFields = [
+    { key: 'zamowienie', label: 'Numer zamówienia klienta' },
+    ...CONTRACT_PLACEHOLDER_GROUPS
+      .filter((group) => !('clauseSlots' in group))
+      .flatMap((group) => group.items as ReadonlyArray<{ key: string; label: string }>)
+      .filter((item) => item.key.startsWith('{{'))
+      .map((item) => ({ key: item.key.replace(/[{}]/g, ''), label: item.label })),
+  ].filter((field, index, list) => list.findIndex((other) => other.key === field.key) === index);
   const fieldGroups = CONTRACT_PLACEHOLDER_GROUPS.map((group) => ({
     label: group.label,
     items: (group.items as ReadonlyArray<{ key: string; label: string }>).map((item) => ({ key: item.key.replace(/^\{\{|\}\}$/g, ''), label: item.label })),
@@ -166,7 +179,25 @@ export async function contractTemplateDocument(ctx: NativeContext, id: string) {
     brandLogos: assets.logos,
     fonts: assets.fonts,
     footerTemplates: footers,
+    categories: Array.from(new Set(((categoriesRes.data || []) as Row[]).map((row) => String(row.name || '').trim()).filter(Boolean))),
+    conditionFields,
   };
+}
+
+/** Opcje umowy z edytora na Macu (jak „Opcje umowy” w CRM): klucz `[A-Za-z0-9_]`, nazwa, domyślnie włączona. */
+function cleanOptions(input: unknown) {
+  if (!Array.isArray(input)) return undefined;
+  const keys: string[] = [];
+  return input.slice(0, 50).flatMap((item) => {
+    if (!item || typeof item !== 'object') return [];
+    const value = item as Row;
+    const label = String(value.label ?? '').trim().slice(0, 120);
+    let key = typeof value.key === 'string' && /^[A-Za-z0-9_]{1,60}$/.test(value.key) ? value.key : '';
+    if (!key && label) key = contractOptionKeyFromLabel(label, keys);
+    if (!key || keys.includes(key)) return [];
+    keys.push(key);
+    return [{ key, label: label || key, defaultOn: value.defaultOn === true }];
+  });
 }
 
 /** Zapisane szablony stopek (`footer_templates`) — domyślny pierwszy, potem alfabetycznie. */
@@ -485,6 +516,7 @@ export async function saveTemplateContent(ctx: NativeContext, body: Row) {
   const pageSettings = {
     ...settings,
     ...cleanLayout(body.layout),
+    ...(cleanOptions(body.contractOptions) ? { contractOptions: cleanOptions(body.contractOptions) } : {}),
     documentStyles: body.documentStyles ? styles : settings.documentStyles,
     selectedFont: styles.styles.body.fontFamily,
     lineHeight: styles.styles.body.lineHeight,

@@ -89,7 +89,7 @@ struct ContractRenderContext {
     var styles: ContractDocumentStyles
     let fieldLabels: [String: String]
     let slotLabels: [String: String]
-    let options: [ContractOptionItem]
+    var options: [ContractOptionItem]
 }
 
 enum ContractFonts {
@@ -450,6 +450,8 @@ final class ContractFormatter {
     struct Decorations {
         var markers: [Marker] = []
         var conditions: [Condition] = []
+        /// Treść, której nie będzie w umowie przy symulacji „Pokaż jako” (przygaszona).
+        var dimmed: [NSRange] = []
     }
 
     var context: ContractRenderContext {
@@ -459,6 +461,8 @@ final class ContractFormatter {
     private var tableColumns: [Int: Int] = [:]
     private var cells: [String: NSTextTableBlock] = [:]
     private var conditionLabels: [String: String] = [:]
+    /// Zmienne symulacji „Pokaż jako” (klient, kategoria, opcje); `nil` — pokaż wszystko.
+    var simulation: [String: String]?
     private let fieldPattern = try? NSRegularExpression(pattern: #"\{\{\s*([A-Za-z0-9_]+)\s*\}\}"#)
     private let paragraphPattern = try? NSRegularExpression(pattern: #"§\s*n\b"#)
 
@@ -562,6 +566,8 @@ final class ContractFormatter {
             if previousInCell && !role.inCell { previousAfter = 0 }
 
             let own = Dictionary(ContractHTMLParser.declarations(entry.info.attributes["style"] ?? ""), uniquingKeysWith: { _, last in last })
+            // Odstęp nad akapitem z jego stylu (np. linia podpisu w tabeli: `padding-top: 35pt`).
+            if let extra = own["padding-top"] ?? own["margin-top"], let points = ContractHTMLParser.points(extra) { before += CGFloat(points) }
             let paragraph = NSMutableParagraphStyle()
             paragraph.alignment = Self.alignment(own["text-align"] ?? style.textAlign)
             if !entry.object { paragraph.minimumLineHeight = size * CGFloat(style.lineHeight) }
@@ -596,6 +602,14 @@ final class ContractFormatter {
                     refresh = true
                 }
                 if refresh { applyCharacters(storage, text: text, range: range, style: style) }
+            }
+
+            if let simulation, role.conditions.contains(where: { ContractCondition.evaluate($0, variables: simulation) == false }) {
+                if let last = decorations.dimmed.last, NSMaxRange(last) == range.location {
+                    decorations.dimmed[decorations.dimmed.count - 1] = NSRange(location: last.location, length: last.length + range.length)
+                } else {
+                    decorations.dimmed.append(range)
+                }
             }
 
             // Sekcje warunkowe: kolejne akapity z tym samym warunkiem — jeden pasek z etykietą.
@@ -725,6 +739,22 @@ final class ContractFormatter {
 
 final class ContractLayoutManager: NSLayoutManager {
     var decorations = ContractFormatter.Decorations()
+
+    /// „Pokaż jako”: treść, której nie będzie w umowie, przygaszona (jak w edytorze CRM).
+    override func drawGlyphs(forGlyphRange glyphsToShow: NSRange, at origin: NSPoint) {
+        super.drawGlyphs(forGlyphRange: glyphsToShow, at: origin)
+        guard !decorations.dimmed.isEmpty, let storage = textStorage else { return }
+        let characters = characterRange(forGlyphRange: glyphsToShow, actualGlyphRange: nil)
+        NSColor.white.withAlphaComponent(0.65).setFill()
+        for range in decorations.dimmed where NSMaxRange(range) <= storage.length {
+            let visible = NSIntersectionRange(range, characters)
+            guard visible.length > 0 else { continue }
+            let glyphs = glyphRange(forCharacterRange: visible, actualCharacterRange: nil)
+            enumerateLineFragments(forGlyphRange: glyphs) { rect, _, _, _, _ in
+                rect.offsetBy(dx: origin.x, dy: origin.y).fill(using: .sourceOver)
+            }
+        }
+    }
 
     override func drawBackground(forGlyphRange glyphsToShow: NSRange, at origin: NSPoint) {
         super.drawBackground(forGlyphRange: glyphsToShow, at: origin)
