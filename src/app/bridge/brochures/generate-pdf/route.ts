@@ -5,7 +5,7 @@ import { brochurePalette, parseDecorativePages, parseComposer, resolvedBenefits,
 import { brochureFileName, brochurePageReferences, validateBrochureContent, type BrochureValidationIssue } from '@/lib/brochures/validation';
 import { validatePdfAssets, type BrochureImageSource } from '@/lib/brochures/validatePdfAssets.server';
 import { BROCHURE_PDF_SIZE_LIMIT, BROCHURE_IMAGE_PROFILES, installBrochureImageOptimization } from '@/lib/brochures/optimizePdfImages.server';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { chromium } from 'playwright';
 import { loadPdfFont } from '@/lib/brochures/loadPdfFont.server';
 import { createSupabaseServerClient } from '@/lib/supabase/server.app';
@@ -81,8 +81,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Brak identyfikatora broszury' }, { status: 400 });
     }
 
-    const userClient = createSupabaseServerClient(cookies());
-    const { data: authData } = await userClient.auth.getUser();
+    // Przeglądarka CRM — sesja w ciasteczkach; aplikacja na Maca — token pracownika (Bearer). W obu przypadkach RLS jak w CRM.
+    const bearer = /^Bearer\s+(\S+)$/i.exec(request.headers.get('authorization') || '')?.[1];
+    const userClient: SupabaseClient = bearer
+      ? createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
+        global: { headers: { Authorization: `Bearer ${bearer}` } },
+        auth: { persistSession: false, autoRefreshToken: false },
+      })
+      : createSupabaseServerClient(cookies());
+    const { data: authData } = bearer ? await userClient.auth.getUser(bearer) : await userClient.auth.getUser();
     if (!authData.user) {
       return NextResponse.json({ error: 'Wymagane logowanie' }, { status: 401 });
     }

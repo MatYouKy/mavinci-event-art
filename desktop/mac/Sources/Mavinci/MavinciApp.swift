@@ -131,6 +131,7 @@ struct RootView: View {
                         else if state.screen == .contractTemplates { ContractTemplatesView(store: state.contracts) }
                         else if state.screen == .products { ProductsView(store: state.products) }
                         else if state.screen == .offerTemplates { OfferTemplatesView() }
+                        else if state.screen == .brochures { BrochuresView() }
                         else { ContentUnavailableView("Wybierz sekcję", systemImage: "sidebar.left") }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
