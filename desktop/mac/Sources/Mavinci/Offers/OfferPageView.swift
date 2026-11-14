@@ -712,6 +712,22 @@ struct OfferHistoryCard: View {
     let detail: OfferDetail
     @EnvironmentObject private var state: Workspace
     @Environment(\.crmTheme) private var theme
+    /// Język dokumentu (jak przełącznik PL / EN na stronie oferty w CRM).
+    @State private var language = "pl"
+    @State private var english: OfferEnglishState?
+    @State private var englishBusy = false
+    @State private var englishError: String?
+    @State private var job: OfferPdfJob?
+    @State private var deletingPdf = false
+
+    private var contentKey: String { "\(detail.offer.updatedAt ?? "")|\(detail.offer.contentRevision ?? 0)" }
+    private var file: OfferDetail.PdfFile {
+        language == "en"
+            ? detail.pdf.en ?? OfferDetail.PdfFile(exists: false, stale: false, fileName: "")
+            : OfferDetail.PdfFile(exists: detail.pdf.exists, stale: detail.pdf.stale, fileName: detail.pdf.fileName)
+    }
+    private var code: String { language.uppercased() }
+    private var canGenerate: Bool { detail.canManage && state.canWrite && (language == "pl" || english?.ready == true) && !englishBusy }
 
     var body: some View {
         OfferCard(title: "Akcje") {
@@ -749,22 +765,10 @@ struct OfferHistoryCard: View {
                     }
                 }
                 Divider()
-                Text("Język dokumentu: ") + Text("PL").bold() + Text(" · kwoty w PLN")
-                if detail.pdf.exists {
-                    if detail.pdf.stale {
-                        Text("Zapisany PDF nie zawiera ostatnich zmian oferty. Możesz go obejrzeć lub pobrać. Przed wysłaniem wygeneruj aktualną wersję.")
-                            .font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
-                    }
-                    HStack {
-                        Button { Task { await store.pdf(detail.offer.id, open: true) } } label: { Label("Pokaż PDF (PL)", systemImage: "eye") }
-                        Button { Task { await store.pdf(detail.offer.id, open: false) } } label: { Label("Pobierz PDF (PL)", systemImage: "arrow.down.doc") }
-                    }
-                } else {
-                    Text("Oferta nie ma jeszcze wygenerowanego PDF.").font(.caption).foregroundStyle(.secondary)
-                }
+                documents
                 if detail.canManage {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("Generowanie PDF, wysyłka e-mailem, rezerwacja sprzętu i powiązania oferty — na razie w CRM.")
+                        Text("Wysyłka e-mailem, rezerwacja sprzętu i powiązania oferty — na razie w CRM.")
                             .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                         Button { state.openCRM("/crm/offers/\(detail.offer.id)") } label: { Label("Otwórz akcje w CRM", systemImage: "safari") }
                     }
@@ -772,6 +776,106 @@ struct OfferHistoryCard: View {
                 }
             }
             .controlSize(.small)
+        }
+        .sheet(item: $job) { job in
+            OfferPdfGenerateSheet(store: store, offerID: detail.offer.id, job: job) {
+                english = nil
+                Task { await prepareEnglish() }
+            }
+        }
+        .confirmationDialog("Czy na pewno chcesz usunąć pliki PDF tej oferty?", isPresented: $deletingPdf, titleVisibility: .visible) {
+            Button("Usuń PDF", role: .destructive) {
+                Task { await store.change(detail.offer.id, "pdfDelete", [:], pending: "Usuwanie PDF…", success: "Pliki PDF zostały usunięte") }
+            }
+            Button("Anuluj", role: .cancel) {}
+        } message: {
+            Text("Oferta zostanie zachowana, zostaną usunięte tylko wygenerowane pliki PDF.")
+        }
+        .onChange(of: contentKey) { _, _ in
+            // Treść oferty zmieniła się — wersja EN wymaga ponownego sprawdzenia (jak klucz w `useOfferLanguage`).
+            english = nil
+            if language == "en" { Task { await prepareEnglish() } }
+        }
+    }
+
+    // MARK: Dokument PDF
+
+    @ViewBuilder private var documents: some View {
+        HStack(spacing: 8) {
+            Text("Język dokumentu").font(.caption).foregroundStyle(.secondary)
+            Picker("Język dokumentu", selection: Binding(get: { language }, set: { next in
+                language = next
+                if next == "en" && english == nil && !englishBusy { Task { await prepareEnglish() } }
+            })) {
+                Text("PL").tag("pl")
+                Text("EN").tag("en")
+            }
+            .pickerStyle(.segmented).labelsHidden().fixedSize()
+            Text("· kwoty w PLN").font(.caption).foregroundStyle(.secondary)
+        }
+        if language == "en" { englishStatus }
+        if file.exists {
+            if file.stale {
+                Text("Zapisany PDF nie zawiera ostatnich zmian oferty. Możesz go obejrzeć lub pobrać. Przed wysłaniem wygeneruj aktualną wersję.")
+                    .font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+            }
+            actionButton("Pokaż PDF (\(code))", "eye") { Task { await store.pdf(detail.offer.id, open: true, language: language) } }
+            actionButton("Pobierz PDF (\(code))", "arrow.down.doc") { Task { await store.pdf(detail.offer.id, open: false, language: language) } }
+            if detail.canManage {
+                actionButton("Regeneruj PDF (\(code))", "arrow.clockwise") { generate() }.disabled(!canGenerate)
+            }
+        } else {
+            Text("Oferta nie ma jeszcze wygenerowanego PDF (\(code)).").font(.caption).foregroundStyle(.secondary)
+            if detail.canManage {
+                actionButton("Generuj PDF (\(code))", "doc.richtext") { generate() }.disabled(!canGenerate)
+            }
+        }
+        if language == "pl" && detail.pdf.exists && detail.canManage {
+            Button(role: .destructive) { deletingPdf = true } label: {
+                Label("Usuń PDF", systemImage: "xmark.bin").frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .disabled(!state.canWrite)
+        }
+    }
+
+    @ViewBuilder private var englishStatus: some View {
+        if englishBusy {
+            HStack(spacing: 8) {
+                ProgressView().controlSize(.small)
+                Text("Przygotowujemy angielską treść oferty (do 3 minut)…").font(.caption).foregroundStyle(.secondary)
+            }
+        } else if let englishError {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(englishError).font(.caption).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
+                Button("Spróbuj ponownie") { Task { await prepareEnglish() } }.buttonStyle(.link).font(.caption)
+            }
+        } else if english?.ready == true {
+            Label("Angielska treść oferty gotowa", systemImage: "checkmark.circle").font(.caption).foregroundStyle(.green)
+        }
+    }
+
+    private func actionButton(_ title: String, _ symbol: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) { Label(title, systemImage: symbol).frame(maxWidth: .infinity, alignment: .leading) }
+    }
+
+    private func generate() {
+        guard canGenerate else { return }
+        job = OfferPdfJob(language: language, signature: language == "en" ? english?.signature : nil)
+    }
+
+    /// Angielska treść oferty: zapisana albo przetłumaczona teraz (jak `useOfferLanguage`).
+    private func prepareEnglish() async {
+        guard !englishBusy else { return }
+        englishBusy = true
+        englishError = nil
+        defer { englishBusy = false }
+        do {
+            var reply = try await store.english(detail.offer.id, action: "read")
+            if !reply.ready { reply = try await store.english(detail.offer.id, action: "generate") }
+            english = reply
+            if !reply.ready { englishError = "Angielska treść nie jest jeszcze gotowa. Spróbuj ponownie za chwilę." }
+        } catch {
+            englishError = store.failureText(error, "Nie udało się przygotować angielskiej treści oferty.")
         }
     }
 

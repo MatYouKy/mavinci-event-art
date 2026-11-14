@@ -1,5 +1,5 @@
 import { nativeContext, nativeJson, nativeUnauthorized, readJson } from '@/lib/native/auth';
-import { deleteOffer, offerDetail, offerPdf, offersAccess, offersState, setOfferStatus } from '@/lib/native/offers';
+import { deleteOffer, deleteOfferPdf, offerDetail, offerEnglish, offerPdf, offersAccess, offersState, setOfferStatus } from '@/lib/native/offers';
 import {
   deleteOfferItem,
   draftOfferAssumptions,
@@ -31,8 +31,8 @@ import {
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-// Propozycja założeń z AI trwa do około minuty.
-export const maxDuration = 120;
+// Propozycja założeń z AI trwa do około minuty, tłumaczenie oferty na angielski — do 3 minut.
+export const maxDuration = 300;
 
 /*
  * Oferty dla aplikacji na Maca (`src/lib/native/offers.ts`): GET op=state (lista ofert do kopii na dysku), op=offer&id=… (strona
@@ -45,7 +45,8 @@ export const maxDuration = 120;
  * wymagania, pakiety i logistyka (`src/lib/native/offerSections.ts`): GET op=requirements&id=… | packages&id=…;
  * POST op=requirementsSave | packagesSave; propozycje dodatkowe (`src/lib/native/offerRecommendations.ts`): GET
  * op=recommendations&id=… (katalog do propozycji: op=itemCatalog&mode=recommendation&exclude=…); POST op=recommendationBuild |
- * recommendationPreview | recommendationsSave.
+ * recommendationPreview | recommendationsSave; dokumenty: GET op=pdf&id=…&language=pl|en; POST op=pdfDelete | english (angielska
+ * treść oferty, `translate-offer`). Sam PDF generuje `/bridge/offers/generate-pdf` (postęp w strumieniu, jak w CRM).
  */
 
 const failure = (message: string, status = 400) => nativeJson({ error: message }, status);
@@ -61,7 +62,7 @@ export async function GET(request: Request) {
     switch (url.searchParams.get('op')) {
       case 'state': return nativeJson(await offersState(ctx));
       case 'offer': return nativeJson(await offerDetail(ctx, url.searchParams.get('id') || ''));
-      case 'pdf': return nativeJson(await offerPdf(ctx, url.searchParams.get('id') || ''));
+      case 'pdf': return nativeJson(await offerPdf(ctx, url.searchParams.get('id') || '', url.searchParams.get('language')));
       case 'editor': return nativeJson(await offerEditor(ctx, url.searchParams.get('id') || ''));
       case 'contacts': return nativeJson(await organizationContacts(ctx, url.searchParams.get('organization') || ''));
       case 'calculations': return nativeJson(await offerCalculations(ctx, url.searchParams.get('id') || '', url.searchParams.get('event')));
@@ -98,6 +99,8 @@ export async function POST(request: Request) {
     switch (String(body.op || '')) {
       case 'status': return nativeJson(await setOfferStatus(ctx, body));
       case 'delete': return nativeJson(await deleteOffer(ctx, body));
+      case 'pdfDelete': return nativeJson(await deleteOfferPdf(ctx, body));
+      case 'english': return nativeJson(await offerEnglish(ctx, body));
       case 'basicSave': return nativeJson(await saveOfferBasic(ctx, body));
       case 'assumptionsSave': return nativeJson(await saveOfferAssumptions(ctx, body));
       case 'assumptionsAI': return nativeJson(await draftOfferAssumptions(ctx, body));

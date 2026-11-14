@@ -204,10 +204,17 @@ struct OfferDetail: Codable {
         var contactMessageId: String?
         var items: [ContextItem]
     }
+    struct PdfFile: Codable {
+        var exists: Bool
+        var stale: Bool
+        var fileName: String
+    }
     struct Pdf: Codable {
         var exists: Bool
         var stale: Bool
         var fileName: String
+        /// Ostatni PDF w wersji angielskiej (`offer_language_documents`).
+        var en: PdfFile?
     }
     var canView: Bool
     var canManage: Bool
@@ -455,13 +462,13 @@ enum OfferText {
         }
     }
 
-    /// Zapisany PDF oferty: `open` — podgląd w domyślnej aplikacji, inaczej zapis w Pobranych.
-    func pdf(_ id: String, open: Bool) async {
+    /// Zapisany PDF oferty (`language`: `pl` albo `en`): `open` — podgląd w domyślnej aplikacji, inaczej zapis w Pobranych.
+    func pdf(_ id: String, open: Bool, language: String = "pl") async {
         guard let api, let workspace else { return }
         struct Link: Decodable { let url: String; let name: String }
         do {
             let (data, name) = try await workspace.withPending(open ? "Otwieranie PDF…" : "Pobieranie PDF…") { () async throws -> (Data, String) in
-                let link = try JSONDecoder().decode(Link.self, from: try await api.get("/offers?op=pdf&id=\(id)"))
+                let link = try JSONDecoder().decode(Link.self, from: try await api.get("/offers?op=pdf&id=\(id)&language=\(language)"))
                 guard let url = URL(string: link.url) else { throw AppError.invalidResponse }
                 let (data, response) = try await URLSession.shared.data(from: url)
                 guard (response as? HTTPURLResponse).map({ (200..<300).contains($0.statusCode) }) ?? true else { throw URLError(.badServerResponse) }

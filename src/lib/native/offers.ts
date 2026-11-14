@@ -310,7 +310,7 @@ export async function offerDetail(ctx: NativeContext, id: string) {
   if (error) fail(error.message || 'Nie udało się pobrać oferty.');
   if (!data) fail('Nie znaleziono oferty');
   const offer = data as Row;
-  const [permission, history, amendment, calculation] = await Promise.all([
+  const [permission, history, amendment, calculation, english] = await Promise.all([
     ctx.supabase.rpc('sales_can_manage_offer', { p_offer: key }),
     ctx.supabase.from('offer_history').select('id, change_type, change_description, created_at, new_values, changed_by_employee:employees!changed_by(name, surname)')
       .eq('offer_id', key).order('created_at', { ascending: false }),
@@ -318,7 +318,11 @@ export async function offerDetail(ctx: NativeContext, id: string) {
     offer.pricing_source === 'calculation' && offer.source_calculation_id && !offer.calculation_snapshot
       ? ctx.supabase.from('event_calculations').select('id, name, created_at').eq('id', offer.source_calculation_id).maybeSingle()
       : Promise.resolve({ data: null, error: null }),
+    // Ostatni PDF w wersji angielskiej (jak `englishPdf` w `OfferActions`).
+    ctx.supabase.from('offer_language_documents').select('file_path, file_name, source_revision').eq('offer_id', key).eq('language', 'en')
+      .order('created_at', { ascending: false }).limit(1).maybeSingle(),
   ]);
+  const englishPdf = (english.data || null) as Row | null;
   const canManage = !permission.error && permission.data === true;
   const seller = offer.sales_channel === 'seller_portal';
   const items = ((offer.offer_items || []) as Row[]).slice()
@@ -452,6 +456,11 @@ export async function offerDetail(ctx: NativeContext, id: string) {
       exists: Boolean(offer.generated_pdf_url),
       stale: offer.modified_after_generation === true,
       fileName: offerPdfFileName(offer.offer_number),
+      en: {
+        exists: Boolean(englishPdf?.file_path),
+        stale: Boolean(englishPdf?.file_path) && Number(englishPdf?.source_revision) !== Number(offer.content_revision),
+        fileName: text(englishPdf?.file_name) || offerPdfFileName(offer.offer_number).replace(/\.pdf$/i, '-EN.pdf'),
+      },
     },
     amendmentSource: amendment.data?.source_offer_id || null,
   };
@@ -506,13 +515,62 @@ export async function deleteOffer(ctx: NativeContext, body: Row) {
 }
 
 /** Zapisany PDF oferty (PL) — podpisany adres na godzinę i nazwa pliku do pobrania (jak „Pokaż / Pobierz PDF”). */
-export async function offerPdf(ctx: NativeContext, id: string) {
+/** Zapisany PDF oferty: polski (`generated_pdf_url`) albo ostatni angielski (`offer_language_documents`). */
+export async function offerPdf(ctx: NativeContext, id: string, language: string | null = 'pl') {
   const key = offerId(id);
   const { data, error } = await ctx.supabase.from('offers').select('offer_number, generated_pdf_url').eq('id', key).maybeSingle();
   if (error || !data) fail('Nie znaleziono oferty.');
   const row = data as Row;
-  if (!row.generated_pdf_url) fail('Oferta nie ma jeszcze wygenerowanego PDF.');
-  const { data: link, error: linkError } = await ctx.supabase.storage.from('generated-offers').createSignedUrl(row.generated_pdf_url, 3600);
+  let path = text(row.generated_pdf_url);
+  let name = offerPdfFileName(row.offer_number);
+  if (language === 'en') {
+    const { data: english } = await ctx.supabase.from('offer_language_documents').select('file_path, file_name').eq('offer_id', key).eq('language', 'en')
+      .order('created_at', { ascending: false }).limit(1).maybeSingle();
+    path = text((english as Row | null)?.file_path);
+    name = text((english as Row | null)?.file_name) || name.replace(/\.pdf$/i, '-EN.pdf');
+  }
+  if (!path) fail('Oferta nie ma jeszcze wygenerowanego PDF.');
+  const { data: link, error: linkError } = await ctx.supabase.storage.from('generated-offers').createSignedUrl(path, 3600);
   if (linkError || !link?.signedUrl) fail('Nie udało się pobrać PDF');
-  return { url: link.signedUrl, name: offerPdfFileName(row.offer_number) };
+  return { url: link.signedUrl, name };
+}
+
+/**
+ * „Usuń PDF” jak `deleteOfferPdfFiles`: tylko pliki (oferta zostaje) — główny PDF, kopie w plikach wydarzenia, wpisy
+ * `event_files` i znacznik pliku w ofercie. Gdy oferta ma zapisane wersje dokumentów, pliki zostają.
+ */
+export async function deleteOfferPdf(ctx: NativeContext, body: Row) {
+  const id = offerId(body.id);
+  await requireManage(ctx, id);
+  const { data: versions, error: historyError } = await ctx.supabase.from('sales_document_files').select('id').eq('offer_id', id).limit(1);
+  if (historyError) fail(historyError.message || 'Błąd podczas usuwania plików PDF');
+  if (versions?.length) fail('Zachowujemy zapisane wersje dokumentów. Wygeneruj nową wersję PDF.');
+  const { data: offer } = await ctx.supabase.from('offers').select('generated_pdf_url').eq('id', id).maybeSingle();
+  const main = text((offer as Row | null)?.generated_pdf_url);
+  if (main) await ctx.supabase.storage.from('generated-offers').remove([main]);
+  const { data: files } = await ctx.supabase.from('event_files').select('file_path').eq('offer_id', id).eq('document_type', 'offer');
+  const paths = ((files || []) as Row[]).map((file) => text(file.file_path)).filter(Boolean);
+  if (paths.length) await ctx.supabase.storage.from('event-files').remove(paths);
+  await ctx.supabase.from('event_files').delete().eq('offer_id', id).eq('document_type', 'offer');
+  const { error } = await ctx.supabase.from('offers').update({ generated_pdf_url: null, modified_after_generation: false }).eq('id', id);
+  if (error) fail(error.message || 'Błąd podczas usuwania plików PDF');
+  return offerDetail(ctx, id);
+}
+
+/**
+ * Angielska treść oferty (`translate-offer`, jak `requestOfferEnglish`): `read` — zapisane tłumaczenie, `generate` — tłumaczenie
+ * brakujących tekstów (do 3 minut). Podpis potwierdza, że PDF EN powstanie z tej wersji treści.
+ */
+export async function offerEnglish(ctx: NativeContext, body: Row) {
+  const id = offerId(body.id);
+  const action = body.action === 'generate' ? 'generate' : 'read';
+  const { data, error } = await ctx.supabase.functions.invoke('translate-offer', { body: { offerId: id, action } });
+  let message = (data as Row | null)?.error as string | undefined;
+  if (error && !message) {
+    try { message = (await (error as any).context?.json())?.error; } catch { /* komunikat zastępczy */ }
+  }
+  if (error || message) fail(message || 'Nie udało się przygotować angielskiej treści oferty.');
+  const row = (data || {}) as Row;
+  if (typeof row.ready !== 'boolean') fail('Nieprawidłowa odpowiedź usługi tłumaczenia.');
+  return { ready: row.ready, signature: row.ready ? text(row.signature) || null : null };
 }
