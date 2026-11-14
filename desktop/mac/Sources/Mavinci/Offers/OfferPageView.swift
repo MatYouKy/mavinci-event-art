@@ -724,6 +724,14 @@ struct OfferHistoryCard: View {
     @State private var reasonOpen = false
     @State private var eventRoute: OfferEventRoute?
     @State private var loadingEvent = false
+    @State private var reserveOpen = false
+
+    /// Jak przycisk rezerwacji w `OfferActionsPanel`: oferta z wydarzeniem w statusie szkic / wysłana / zaakceptowana.
+    private var canReserve: Bool { detail.canManage && detail.offer.eventId != nil && ["draft", "sent", "accepted"].contains(detail.offer.status) }
+    private var reserveLabel: String {
+        if detail.offer.status == "accepted" { return "Aktualizuj rezerwację" }
+        return detail.amendmentSource != nil ? "Zatwierdź zmianę i rezerwację" : "Zarezerwuj sprzęt"
+    }
 
     private var contentKey: String { "\(detail.offer.updatedAt ?? "")|\(detail.offer.contentRevision ?? 0)" }
     private var file: OfferDetail.PdfFile {
@@ -786,13 +794,13 @@ struct OfferHistoryCard: View {
                 }
                 Divider()
                 documents
-                if detail.canManage {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Rezerwacja sprzętu i akceptacja oferty z wydarzeniem — na razie w CRM.")
-                            .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                        Button { state.openCRM("/crm/offers/\(detail.offer.id)") } label: { Label("Otwórz akcje w CRM", systemImage: "safari") }
+                if canReserve {
+                    Button { reserveOpen = true } label: {
+                        Label(reserveLabel, systemImage: "lock").frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .padding(.top, 2)
+                    .buttonStyle(.borderedProminent)
+                    .tint(.green)
+                    .disabled(!state.canWrite)
                 }
             }
             .controlSize(.small)
@@ -800,6 +808,7 @@ struct OfferHistoryCard: View {
         .sheet(isPresented: $emailOpen) { OfferEmailSheet(store: store, offerID: detail.offer.id) }
         .sheet(isPresented: $linkOpen) { OfferLinkSheet(store: store, detail: detail) }
         .sheet(isPresented: $reasonOpen) { OfferRevisionReasonSheet(store: store, offerID: detail.offer.id) }
+        .sheet(isPresented: $reserveOpen) { OfferReservationSheet(store: store, offerID: detail.offer.id) }
         .sheet(item: $eventRoute) { route in
             OfferEventSheet(store: store, offerID: detail.offer.id, setup: route.setup)
         }
@@ -959,7 +968,7 @@ struct OfferHistoryCard: View {
         if kind == "event" { state.showEvent(id) } else { state.showInquiry(id) }
     }
 
-    /// Jak `handleStatusChange`: akceptacja oferty z zapytania — w zapytaniu; z wydarzeniem — rezerwacja sprzętu (na razie w CRM).
+    /// Jak `handleStatusChange`: akceptacja oferty z zapytania — w zapytaniu; z wydarzeniem — przez okno rezerwacji sprzętu.
     private func change(_ next: String) async {
         guard next != detail.offer.status else { return }
         if next == "accepted" {
@@ -967,8 +976,7 @@ struct OfferHistoryCard: View {
                 state.notice = "Użyj akceptacji wariantu w zapytaniu."
                 state.showInquiry(inquiry)
             } else if detail.offer.eventId != nil {
-                state.notice = "Akceptacja oferty z wydarzeniem odbywa się przez rezerwację sprzętu — otwieram ofertę w CRM."
-                state.openCRM("/crm/offers/\(detail.offer.id)")
+                reserveOpen = true
             } else {
                 state.notice = "Użyj akceptacji wariantu w zapytaniu lub przycisku rezerwacji sprzętu."
             }

@@ -33,6 +33,7 @@ import {
   redactOfferEmail,
   sendOfferEmail,
 } from '@/lib/native/offerActions';
+import { confirmOfferReservation, offerReservation, offerSubstitutes, saveOfferSubstitution } from '@/lib/native/offerReservation';
 import {
   buildOfferRecommendation,
   offerRecommendations,
@@ -59,7 +60,9 @@ export const maxDuration = 300;
  * recommendationPreview | recommendationsSave; dokumenty: GET op=pdf&id=…&language=pl|en; POST op=pdfDelete | english (angielska
  * treść oferty, `translate-offer`). Sam PDF generuje `/bridge/offers/generate-pdf` (postęp w strumieniu, jak w CRM).
  * Czynności (`src/lib/native/offerActions.ts`): GET op=emailSetup&id=… | linkChoices&id=…&kind=event|inquiry&search=… |
- * eventSetup&id=…; POST op=emailPreview | emailAI | emailSend | link | draftRevision | eventCreate.
+ * eventSetup&id=…; POST op=emailPreview | emailAI | emailSend | link | draftRevision | eventCreate. Akceptacja z wydarzeniem
+ * i rezerwacja sprzętu (`src/lib/native/offerReservation.ts`): GET op=reservation&id=…&package=… | substitutes&id=…&item=…;
+ * POST op=substitutionSave | reservationConfirm.
  */
 
 const failure = (message: string, status = 400) => nativeJson({ error: message }, status);
@@ -93,6 +96,8 @@ export async function GET(request: Request) {
       case 'emailSetup': return nativeJson(await offerEmailSetup(ctx, url.searchParams.get('id') || ''));
       case 'linkChoices': return nativeJson(await offerLinkChoices(ctx, url.searchParams.get('id') || '', url.searchParams.get('kind') || 'event', url.searchParams.get('search') || ''));
       case 'eventSetup': return nativeJson(await offerEventSetup(ctx, url.searchParams.get('id') || ''));
+      case 'reservation': return nativeJson(await offerReservation(ctx, url.searchParams.get('id') || '', url.searchParams.get('package')));
+      case 'substitutes': return nativeJson(await offerSubstitutes(ctx, url.searchParams.get('id') || '', url.searchParams.get('item') || ''));
       default: return failure('Nieznana operacja.');
     }
   } catch (error) {
@@ -143,6 +148,11 @@ export async function POST(request: Request) {
       case 'link': return nativeJson(await linkOffer(ctx, body));
       case 'draftRevision': return nativeJson(await offerDraftRevision(ctx, body));
       case 'eventCreate': return nativeJson(await createOfferEvent(ctx, body));
+      case 'substitutionSave': return nativeJson(await saveOfferSubstitution(ctx, body));
+      case 'reservationConfirm': {
+        const token = /^Bearer\s+(\S+)$/i.exec(request.headers.get('authorization') || '')?.[1] || '';
+        return nativeJson(await confirmOfferReservation(ctx, body, token));
+      }
       default: return failure('Nieznana operacja.');
     }
   } catch (error) {
