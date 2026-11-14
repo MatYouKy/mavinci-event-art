@@ -58,6 +58,8 @@ struct OfferDetail: Codable {
         var updatedAt: String?
         var createdAt: String?
         var validUntil: String?
+        /// Wersja treści (`content_revision`) — kontrola zapisu pakietów i logistyki.
+        var contentRevision: Double?
     }
     struct Source: Codable {
         var kind: String

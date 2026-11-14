@@ -5,7 +5,8 @@ import SwiftUI
 // podstawowe (`OfferBasicInfo`), założenia wydarzenia, pozycje oferty z układem w PDF (`OfferItems`) i historia zmian;
 // prawa: akcje (status, przejścia do wydarzenia / zapytania, zapisany PDF), kontekst zapytania i podsumowanie (`OfferDetails`).
 // Część A — odczyt, zmiana statusu i usuwanie; część B1 — edycja informacji podstawowych, założeń, rabatu, kolejności, układu
-// i wariantów pozycji; część B2 — dodawanie i edycja pozycji. Generowanie PDF i wysyłka w kolejnych częściach (do tego czasu w CRM).
+// i wariantów pozycji; część B2 — dodawanie i edycja pozycji; część C1 — wymagania techniczne, pakiety oferty i logistyka.
+// Propozycje dodatkowe, generowanie PDF i wysyłka w kolejnych częściach (do tego czasu w CRM).
 
 @MainActor struct OfferPageView: View {
     @ObservedObject var store: OffersStore
@@ -133,6 +134,8 @@ import SwiftUI
         OfferAssumptionsCard(assumptions: detail.assumptions, onEdit: editAssumptions)
         if !detail.offer.seller {
             OfferItemsCard(store: store, detail: detail)
+            OfferRequirementsCard(store: store, detail: detail)
+            OfferPackagesCard(store: store, detail: detail)
             OfferPendingCard(offerID: offerID)
         }
         OfferHistoryCard(detail: detail)
@@ -618,8 +621,8 @@ struct OfferItemRoute: Identifiable {
     var body: some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Pozostałe sekcje oferty").font(.headline)
-                Text("Wymagania techniczne, pakiety oferty i propozycje dodatkowe dojdą na Macu w kolejnej części — do tego czasu zmienisz je w CRM.")
+                Text("Propozycje dodatkowe").font(.headline)
+                Text("Sekcja „Zobacz, co warto dobrać” dojdzie na Macu w kolejnej części — do tego czasu zmienisz ją w CRM.")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             Spacer()

@@ -21,6 +21,7 @@ import {
   saveOfferAudience,
   updateOfferItem,
 } from '@/lib/native/offerItems';
+import { offerPackages, offerRequirements, saveOfferPackages, saveOfferRequirements } from '@/lib/native/offerSections';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -34,7 +35,9 @@ export const maxDuration = 120;
  * POST op=status (szkic, wysłana, odrzucona, wygasła) | delete | basicSave | assumptionsSave | assumptionsAI | discountSave |
  * itemsReorder | itemPresentation (układ w PDF, warianty) | itemDelete (`src/lib/native/offerEdit.ts`);
  * pozycje (`src/lib/native/offerItems.ts`): GET op=itemCatalog&id=… | itemEditor&id=…&item=…; POST op=itemPreview (wycena
- * szkicu) | itemAdd | itemUpdate | audienceSave (liczba osób i stołów do wyceny).
+ * szkicu) | itemAdd | itemUpdate | audienceSave (liczba osób i stołów do wyceny);
+ * wymagania, pakiety i logistyka (`src/lib/native/offerSections.ts`): GET op=requirements&id=… | packages&id=…;
+ * POST op=requirementsSave | packagesSave.
  */
 
 const failure = (message: string, status = 400) => nativeJson({ error: message }, status);
@@ -57,6 +60,8 @@ export async function GET(request: Request) {
       case 'assumptions': return nativeJson(await offerAssumptionsEditor(ctx, url.searchParams.get('id') || ''));
       case 'itemCatalog': return nativeJson(await offerItemCatalog(ctx, url.searchParams.get('id') || ''));
       case 'itemEditor': return nativeJson(await offerItemEditor(ctx, url.searchParams.get('id') || '', url.searchParams.get('item') || ''));
+      case 'requirements': return nativeJson(await offerRequirements(ctx, url.searchParams.get('id') || ''));
+      case 'packages': return nativeJson(await offerPackages(ctx, url.searchParams.get('id') || ''));
       default: return failure('Nieznana operacja.');
     }
   } catch (error) {
@@ -90,6 +95,8 @@ export async function POST(request: Request) {
       case 'itemAdd': return nativeJson(await addOfferItem(ctx, body));
       case 'itemUpdate': return nativeJson(await updateOfferItem(ctx, body));
       case 'audienceSave': return nativeJson(await saveOfferAudience(ctx, body));
+      case 'requirementsSave': return nativeJson(await saveOfferRequirements(ctx, body));
+      case 'packagesSave': return nativeJson(await saveOfferPackages(ctx, body));
       default: return failure('Nieznana operacja.');
     }
   } catch (error) {
