@@ -71,7 +71,9 @@ enum ClauseHTML {
             }
             let run = Run(text: text, bold: bold > 0, italic: italic > 0, underline: underline > 0)
             if let last = current?.runs.last, last.bold == run.bold, last.italic == run.italic, last.underline == run.underline {
-                current?.runs[current!.runs.count - 1].text += text
+                // Indeks poza zapisem — jednoczesny odczyt i zmiana `current` to błąd wyłączności dostępu.
+                let index = (current?.runs.count ?? 1) - 1
+                current?.runs[index].text += text
             } else {
                 current?.runs.append(run)
             }

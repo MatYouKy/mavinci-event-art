@@ -22,6 +22,12 @@ import {
   updateOfferItem,
 } from '@/lib/native/offerItems';
 import { offerPackages, offerRequirements, saveOfferPackages, saveOfferRequirements } from '@/lib/native/offerSections';
+import {
+  buildOfferRecommendation,
+  offerRecommendations,
+  previewOfferRecommendation,
+  saveOfferRecommendations,
+} from '@/lib/native/offerRecommendations';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -37,7 +43,9 @@ export const maxDuration = 120;
  * pozycje (`src/lib/native/offerItems.ts`): GET op=itemCatalog&id=… | itemEditor&id=…&item=…; POST op=itemPreview (wycena
  * szkicu) | itemAdd | itemUpdate | audienceSave (liczba osób i stołów do wyceny);
  * wymagania, pakiety i logistyka (`src/lib/native/offerSections.ts`): GET op=requirements&id=… | packages&id=…;
- * POST op=requirementsSave | packagesSave.
+ * POST op=requirementsSave | packagesSave; propozycje dodatkowe (`src/lib/native/offerRecommendations.ts`): GET
+ * op=recommendations&id=… (katalog do propozycji: op=itemCatalog&mode=recommendation&exclude=…); POST op=recommendationBuild |
+ * recommendationPreview | recommendationsSave.
  */
 
 const failure = (message: string, status = 400) => nativeJson({ error: message }, status);
@@ -58,10 +66,16 @@ export async function GET(request: Request) {
       case 'contacts': return nativeJson(await organizationContacts(ctx, url.searchParams.get('organization') || ''));
       case 'calculations': return nativeJson(await offerCalculations(ctx, url.searchParams.get('id') || '', url.searchParams.get('event')));
       case 'assumptions': return nativeJson(await offerAssumptionsEditor(ctx, url.searchParams.get('id') || ''));
-      case 'itemCatalog': return nativeJson(await offerItemCatalog(ctx, url.searchParams.get('id') || ''));
+      case 'itemCatalog': {
+        const exclude = url.searchParams.get('mode') === 'recommendation'
+          ? (url.searchParams.get('exclude') || '').split(',').filter(Boolean).slice(0, 200)
+          : null;
+        return nativeJson(await offerItemCatalog(ctx, url.searchParams.get('id') || '', exclude));
+      }
       case 'itemEditor': return nativeJson(await offerItemEditor(ctx, url.searchParams.get('id') || '', url.searchParams.get('item') || ''));
       case 'requirements': return nativeJson(await offerRequirements(ctx, url.searchParams.get('id') || ''));
       case 'packages': return nativeJson(await offerPackages(ctx, url.searchParams.get('id') || ''));
+      case 'recommendations': return nativeJson(await offerRecommendations(ctx, url.searchParams.get('id') || ''));
       default: return failure('Nieznana operacja.');
     }
   } catch (error) {
@@ -97,6 +111,9 @@ export async function POST(request: Request) {
       case 'audienceSave': return nativeJson(await saveOfferAudience(ctx, body));
       case 'requirementsSave': return nativeJson(await saveOfferRequirements(ctx, body));
       case 'packagesSave': return nativeJson(await saveOfferPackages(ctx, body));
+      case 'recommendationBuild': return nativeJson(await buildOfferRecommendation(ctx, body));
+      case 'recommendationPreview': return nativeJson(await previewOfferRecommendation(ctx, body));
+      case 'recommendationsSave': return nativeJson(await saveOfferRecommendations(ctx, body));
       default: return failure('Nieznana operacja.');
     }
   } catch (error) {

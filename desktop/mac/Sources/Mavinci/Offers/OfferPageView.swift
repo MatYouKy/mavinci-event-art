@@ -5,8 +5,8 @@ import SwiftUI
 // podstawowe (`OfferBasicInfo`), założenia wydarzenia, pozycje oferty z układem w PDF (`OfferItems`) i historia zmian;
 // prawa: akcje (status, przejścia do wydarzenia / zapytania, zapisany PDF), kontekst zapytania i podsumowanie (`OfferDetails`).
 // Część A — odczyt, zmiana statusu i usuwanie; część B1 — edycja informacji podstawowych, założeń, rabatu, kolejności, układu
-// i wariantów pozycji; część B2 — dodawanie i edycja pozycji; część C1 — wymagania techniczne, pakiety oferty i logistyka.
-// Propozycje dodatkowe, generowanie PDF i wysyłka w kolejnych częściach (do tego czasu w CRM).
+// i wariantów pozycji; część B2 — dodawanie i edycja pozycji; część C1 — wymagania techniczne, pakiety oferty i logistyka;
+// część C2 — propozycje dodatkowe. Generowanie PDF i wysyłka w kolejnych częściach (do tego czasu w CRM).
 
 @MainActor struct OfferPageView: View {
     @ObservedObject var store: OffersStore
@@ -24,23 +24,28 @@ import SwiftUI
         VStack(spacing: 0) {
             header
             if let detail {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 14) {
-                        if detail.offer.seller { sellerNotice }
-                        ViewThatFits(in: .horizontal) {
-                            HStack(alignment: .top, spacing: 14) {
-                                VStack(spacing: 14) { mainColumn(detail) }.frame(minWidth: 560, maxWidth: .infinity)
-                                VStack(spacing: 14) { sideColumn(detail) }.frame(width: 400)
-                            }
-                            VStack(spacing: 14) {
-                                mainColumn(detail)
-                                sideColumn(detail)
+                // Dwie kolumny od ok. 1000 pkt szerokości: treść oferty po lewej, informacje podstawowe, akcje i podsumowanie
+                // w kolumnie bocznej po prawej; w wąskim oknie kolumna boczna nad treścią.
+                GeometryReader { proxy in
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 14) {
+                            if detail.offer.seller { sellerNotice }
+                            if proxy.size.width >= 1000 {
+                                HStack(alignment: .top, spacing: 14) {
+                                    VStack(spacing: 14) { mainColumn(detail) }.frame(maxWidth: .infinity, alignment: .top)
+                                    VStack(spacing: 14) { sideColumn(detail) }.frame(width: proxy.size.width >= 1400 ? 440 : 380)
+                                }
+                            } else {
+                                VStack(spacing: 14) {
+                                    sideColumn(detail)
+                                    mainColumn(detail)
+                                }
                             }
                         }
+                        .padding(16)
+                        .frame(maxWidth: 1680, alignment: .leading)
+                        .frame(maxWidth: .infinity)
                     }
-                    .padding(16)
-                    .frame(maxWidth: 1400, alignment: .leading)
-                    .frame(maxWidth: .infinity)
                 }
             } else if let problem = store.detailErrors[offerID] {
                 ContentUnavailableView {
@@ -128,20 +133,21 @@ import SwiftUI
 
     // MARK: Kolumny
     @ViewBuilder func mainColumn(_ detail: OfferDetail) -> some View {
-        let editBasic: (() -> Void)? = editable(detail) ? { basicSheet = true } : nil
         let editAssumptions: (() -> Void)? = editable(detail) ? { assumptionsSheet = true } : nil
-        OfferBasicInfoCard(detail: detail, onEdit: editBasic)
         OfferAssumptionsCard(assumptions: detail.assumptions, onEdit: editAssumptions)
         if !detail.offer.seller {
             OfferItemsCard(store: store, detail: detail)
             OfferRequirementsCard(store: store, detail: detail)
             OfferPackagesCard(store: store, detail: detail)
-            OfferPendingCard(offerID: offerID)
+            OfferRecommendationsCard(store: store, detail: detail)
         }
         OfferHistoryCard(detail: detail)
     }
 
+    /// Kolumna boczna: informacje podstawowe, akcje, kontekst zapytania i podsumowanie.
     @ViewBuilder func sideColumn(_ detail: OfferDetail) -> some View {
+        let editBasic: (() -> Void)? = editable(detail) ? { basicSheet = true } : nil
+        OfferBasicInfoCard(detail: detail, onEdit: editBasic)
         if !detail.offer.seller { OfferActionsCard(store: store, detail: detail) }
         if let inquiry = detail.inquiry { OfferInquiryContextCard(inquiry: inquiry) }
         OfferSummaryCard(store: store, detail: detail)
@@ -310,36 +316,69 @@ struct OfferAssumptionsCard: View {
         OfferCard(title: "Założenia wydarzenia", trailing: onEdit.map { edit in AnyView(Button(action: edit) { Label("Edytuj", systemImage: "pencil") }) }) {
             if let note = assumptions.guestNote { Text(note).font(.caption).foregroundStyle(.secondary) }
             if !assumptions.items.isEmpty {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), alignment: .topLeading)], alignment: .leading, spacing: 10) {
-                    ForEach(assumptions.items, id: \.self) { item in
-                        HStack(alignment: .top, spacing: 10) {
-                            Text(item.badge).font(.callout.weight(.bold)).monospacedDigit()
-                                .padding(.horizontal, 8).padding(.vertical, 4)
-                                .background(theme.accent.opacity(0.15), in: RoundedRectangle(cornerRadius: 6))
-                                .foregroundStyle(theme.accent)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(item.label).font(.callout.weight(.medium))
-                                if !item.detail.isEmpty { Text(item.detail).font(.caption).foregroundStyle(.secondary).textSelection(.enabled) }
-                            }
-                        }
-                        .padding(10)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
-                    }
+                // Jak strona „Założenia” w PDF: trzy poziome bloki jeden pod drugim, z burgundowym znacznikiem.
+                VStack(spacing: 10) {
+                    ForEach(assumptions.items, id: \.self) { item in OfferAssumptionBlock(item: item) }
                 }
             } else if !assumptions.legacy.isEmpty {
                 Text(assumptions.legacy).font(.callout).textSelection(.enabled)
             }
             if !assumptions.goal.isEmpty {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Cel wydarzenia").font(.caption).foregroundStyle(.secondary)
-                    Text(assumptions.goal).font(.callout).textSelection(.enabled)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("CEL WYDARZENIA").font(.caption.weight(.semibold)).foregroundStyle(theme.accent).tracking(0.6)
+                    Text(assumptions.goal).font(.body).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
                 }
+                .padding(.top, 4)
             }
             if assumptions.items.isEmpty && assumptions.legacy.isEmpty {
                 Text("Brak zapisanych założeń.").font(.callout).foregroundStyle(.secondary)
             }
         }
+    }
+}
+
+/// Blok założenia jak w PDF: znacznik z wartością (albo numerem 01–03), tytuł wielkimi literami i opis.
+struct OfferAssumptionBlock: View {
+    let item: OfferDetail.Assumption
+    @Environment(\.crmTheme) private var theme
+
+    var body: some View {
+        HStack(alignment: item.detail.isEmpty ? .center : .top, spacing: 16) {
+            OfferAssumptionTile(value: item.badge)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(item.label.uppercased(with: Locale(identifier: "pl_PL")))
+                    .font(.callout.weight(.bold)).foregroundStyle(theme.accent)
+                if !item.detail.isEmpty {
+                    Text(item.detail).font(.callout).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(.top, item.detail.isEmpty ? 0 : 2)
+            Spacer(minLength: 0)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.primary.opacity(0.06)))
+    }
+}
+
+/// Burgundowy znacznik z PDF (kwadrat z zaokrąglonymi rogami, biały napis, mniejsza czcionka dla dłuższych wartości).
+struct OfferAssumptionTile: View {
+    let value: String
+    static let burgundy = Color(red: 0x6B / 255, green: 0x00 / 255, blue: 0x24 / 255)
+
+    var body: some View {
+        let text = value.uppercased(with: Locale(identifier: "pl_PL"))
+        let size: CGFloat = text.count >= 6 ? 12 : text.count >= 4 ? 15 : 19
+        Text(text)
+            .font(.system(size: size, weight: .heavy))
+            .foregroundStyle(.white)
+            .lineLimit(1)
+            .minimumScaleFactor(0.6)
+            .padding(.horizontal, 4)
+            .frame(width: 56, height: 56)
+            .background(Self.burgundy, in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.12)))
     }
 }
 
@@ -357,6 +396,7 @@ struct OfferItemRoute: Identifiable {
     @EnvironmentObject private var state: Workspace
     @State private var deleting: OfferDetail.Item?
     @State private var route: OfferItemRoute?
+    @State private var dropTarget: String?
 
     private var canEdit: Bool { detail.canEdit && state.canWrite }
 
@@ -365,7 +405,7 @@ struct OfferItemRoute: Identifiable {
             ? AnyView(Button { route = OfferItemRoute(itemID: nil) } label: { Label("Dodaj pozycję", systemImage: "plus") })
             : nil
         OfferCard(title: "Pozycje oferty",
-                  subtitle: detail.items.isEmpty ? nil : canEdit ? "Kolejność zmienisz strzałkami lub z menu pozycji" : "\(detail.items.count) poz. · kolejność jak w PDF",
+                  subtitle: detail.items.isEmpty ? nil : canEdit ? "Kolejność zmienisz, przeciągając uchwyt, lub z menu pozycji" : "\(detail.items.count) poz. · kolejność jak w PDF",
                   trailing: addButton) {
             if detail.items.isEmpty {
                 Text("Brak pozycji w ofercie").font(.callout).foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(.vertical, 20)
@@ -377,6 +417,7 @@ struct OfferItemRoute: Identifiable {
                                      first: index == 0, last: index == detail.items.count - 1,
                                      onMove: { step in move(index, step) }, onDelete: { deleting = item },
                                      onEdit: { route = OfferItemRoute(itemID: item.id) })
+                            .offerDropTarget(id: item.id, enabled: canEdit, targeted: $dropTarget) { dragged in reorder(dragged, onto: item.id) }
                     }
                 }
             }
@@ -394,6 +435,18 @@ struct OfferItemRoute: Identifiable {
         } message: {
             Text("Tej operacji nie można cofnąć.")
         }
+    }
+
+    /// Upuszczenie przeciągniętej pozycji na innej (`reorder_offer_items` z kontrolą bieżącej kolejności).
+    private func reorder(_ dragged: String, onto target: String) -> Bool {
+        let expected = detail.items.map(\.id)
+        guard canEdit, let next = OfferReorder.order(expected, moving: dragged, onto: target) else { return false }
+        Task {
+            await store.change(detail.offer.id, "itemsReorder",
+                               ["itemIds": .array(next.map { JSONValue.string($0) }), "expectedIds": .array(expected.map { JSONValue.string($0) })],
+                               success: "Kolejność pozycji zaktualizowana")
+        }
+        return true
     }
 
     /// Przesunięcie pozycji o jedno miejsce (`reorder_offer_items` z kontrolą bieżącej kolejności).
@@ -439,12 +492,8 @@ struct OfferItemRoute: Identifiable {
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            if canEdit {
-                VStack(spacing: 2) {
-                    Button { onMove(-1) } label: { Image(systemName: "chevron.up") }.disabled(first).help("Przesuń wyżej")
-                    Button { onMove(1) } label: { Image(systemName: "chevron.down") }.disabled(last).help("Przesuń niżej")
-                }
-                .buttonStyle(.borderless).controlSize(.small)
+            if canEdit && !(first && last) {
+                OfferDragHandle(id: item.id, label: item.name)
             }
             Group {
                 if let path = item.imagePath, let url = item.imageUrl {
@@ -610,28 +659,6 @@ struct OfferItemRoute: Identifiable {
         if item.layout.showsVariantComparison { return "Wybór układu strony zacznie obowiązywać po wyłączeniu „Pokaż warianty”." }
         if !item.layout.stage && item.layout.blockedByElements { return "Produkt ma elementy lub warianty — układ kompaktowy jest wyłączony." }
         return nil
-    }
-}
-
-/// Sekcje strony oferty, które dochodzą w kolejnych częściach (do tego czasu w CRM).
-@MainActor struct OfferPendingCard: View {
-    let offerID: String
-    @EnvironmentObject private var state: Workspace
-    @Environment(\.crmTheme) private var theme
-    var body: some View {
-        HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Propozycje dodatkowe").font(.headline)
-                Text("Sekcja „Zobacz, co warto dobrać” dojdzie na Macu w kolejnej części — do tego czasu zmienisz ją w CRM.")
-                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer()
-            Button { state.openCRM("/crm/offers/\(offerID)") } label: { Label("Otwórz w CRM", systemImage: "safari") }.controlSize(.small)
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(theme.card.opacity(0.6), in: RoundedRectangle(cornerRadius: 10))
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.primary.opacity(0.08)))
     }
 }
 

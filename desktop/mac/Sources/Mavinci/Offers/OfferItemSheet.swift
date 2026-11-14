@@ -3,13 +3,19 @@ import SwiftUI
 // MARK: „Dodaj pozycję do oferty” i „Edytuj pozycję” (`AddOfferItemModal`, `EditOfferItemModal`): katalog produktów
 // (bez już dodanych), pakiet albo wycena elementów, wariant, ceny wariantów w tej ofercie, ilość (ręcznie, z liczby osób
 // lub stołów), dni, cena, rabat, dodatki, widoczność wariantów w PDF, stawka VAT i uczestnicy oferty. Wycenę podglądu
-// liczy serwer tymi samymi funkcjami co CRM; produkty z konfiguratorem (scena, LED) — w CRM.
+// liczy serwer tymi samymi funkcjami co CRM; produkty z konfiguratorem (scena, LED) — w CRM. Z `onRecommendation` okno
+// działa jak „Dodaj proponowany produkt” (`onAddRecommendation`): katalog bez produktów oferty i propozycji, rabat wliczony
+// w cenę, a gotowa propozycja od razu zapisuje się w sekcji propozycji.
 
 @MainActor struct OfferItemSheet: View {
     @ObservedObject var store: OffersStore
     let offerID: String
     /// `nil` — dodawanie pozycji; identyfikator — edycja.
     let itemID: String?
+    /// Propozycje dodatkowe: produkty już na liście w tej edycji (ukryte w katalogu).
+    var recommendationExclude: [String] = []
+    /// Dodanie i zapis propozycji w sekcji propozycji; zwraca komunikat błędu albo `nil`.
+    var onRecommendation: ((OfferRecommendationView) async -> String?)? = nil
     @EnvironmentObject private var state: Workspace
     @Environment(\.dismiss) private var dismiss
     @Environment(\.crmTheme) private var theme
@@ -33,6 +39,7 @@ import SwiftUI
     @State private var confirmMove = false
 
     private var editing: Bool { itemID != nil }
+    private var proposalMode: Bool { onRecommendation != nil }
     private var product: OfferCatalogProduct? { productID.flatMap { id in catalog?.products.first { $0.id == id } } }
 
     // Dane wyboru wspólne dla dodawania i edycji.
@@ -47,7 +54,7 @@ import SwiftUI
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(editing ? "Edytuj pozycję" : "Dodaj pozycję do oferty").font(.title3.weight(.semibold))
+                    Text(editing ? "Edytuj pozycję" : proposalMode ? "Dodaj proponowany produkt" : "Dodaj pozycję do oferty").font(.title3.weight(.semibold))
                     if editing, let name = draft?.name { Text(name).font(.caption).foregroundStyle(.secondary) }
                 }
                 Spacer()
@@ -79,8 +86,10 @@ import SwiftUI
                 if let problem { Text(problem).font(.callout).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true) }
                 Spacer()
                 Button("Anuluj") { dismiss() }.keyboardShortcut(.cancelAction).disabled(saving)
-                Button(saving ? "Zapisywanie…" : editing ? "Zapisz zmiany" : "Dodaj pozycję") {
-                    if !editing, product?.proposal != nil { confirmMove = true } else { Task { await save(move: false) } }
+                Button(saving ? "Zapisywanie…" : editing ? "Zapisz zmiany" : proposalMode ? "Dodaj propozycję" : "Dodaj pozycję") {
+                    if proposalMode { Task { await addRecommendation() } }
+                    else if !editing, product?.proposal != nil { confirmMove = true }
+                    else { Task { await save(move: false) } }
                 }
                 .keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent)
                 .disabled(saving || draft == nil || modular || preview?.error != nil || audienceDirty)
@@ -127,7 +136,10 @@ import SwiftUI
                 }
             }
             .listStyle(.bordered(alternatesRowBackgrounds: true))
-            if rows.isEmpty { Text("Brak produktów do dodania").font(.caption).foregroundStyle(.secondary) }
+            if rows.isEmpty {
+                Text(proposalMode ? "Brak pasujących propozycji. Produkty obecne w głównej ofercie są ukryte." : "Brak produktów do dodania")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
         }
         .padding(12)
     }
@@ -270,43 +282,48 @@ import SwiftUI
                         .buttonStyle(.plain)
                     }
                 }
-                let hasAddons = !(draft?.addons.isEmpty ?? true)
-                Toggle(isOn: Binding(get: { hasAddons ? false : (draft?.showVariants ?? true) }, set: { draft?.showVariants = $0 })) {
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("Pokaż wszystkie warianty w PDF")
-                        Text(hasAddons ? "Przy dodatkach pokazujemy wybrany wariant i jego szczegółową kalkulację" : "Po wyłączeniu drukowany jest tylko wybrany wariant")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                }
-                .disabled(hasAddons)
-                Toggle(isOn: Binding(get: { draft?.showVariantPrices ?? true }, set: { draft?.showVariantPrices = $0 })) {
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("Pokaż ceny wariantów w PDF")
-                        Text("Cena netto i brutto VAT 23% przy każdym wariancie").font(.caption).foregroundStyle(.secondary)
-                    }
-                }
-                .disabled(!(draft?.showVariants ?? true) || hasAddons)
-                DisclosureGroup("Ceny wariantów w tej ofercie") {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Kwoty netto za sztukę, przed rabatem. Ceny katalogowe pozostają bez zmian.").font(.caption).foregroundStyle(.secondary)
-                        ForEach(variants) { variant in
-                            HStack {
-                                Text(variant.name).frame(maxWidth: .infinity, alignment: .leading)
-                                ProductNumberField(value: Binding(get: { draft?.variantPrices[variant.id] ?? variant.priceNet }, set: { price in
-                                    let next = price ?? 0
-                                    draft?.variantPrices[variant.id] = next
-                                    if draft?.variantId == variant.id { draft?.unitPrice = next }
-                                }), suffix: "zł").frame(width: 160)
-                            }
-                        }
-                    }
-                    .padding(.top, 4)
-                }
-                .font(.callout)
+                if !proposalMode { variantOptions }
             }
             .toggleStyle(.checkbox)
             .padding(6)
         }
+    }
+
+    /// Widoczność wariantów w PDF i ceny wariantów w tej ofercie (bez propozycji dodatkowych, jak w CRM).
+    @ViewBuilder private var variantOptions: some View {
+        let hasAddons = !(draft?.addons.isEmpty ?? true)
+        Toggle(isOn: Binding(get: { hasAddons ? false : (draft?.showVariants ?? true) }, set: { draft?.showVariants = $0 })) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Pokaż wszystkie warianty w PDF")
+                Text(hasAddons ? "Przy dodatkach pokazujemy wybrany wariant i jego szczegółową kalkulację" : "Po wyłączeniu drukowany jest tylko wybrany wariant")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .disabled(hasAddons)
+        Toggle(isOn: Binding(get: { draft?.showVariantPrices ?? true }, set: { draft?.showVariantPrices = $0 })) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Pokaż ceny wariantów w PDF")
+                Text("Cena netto i brutto VAT 23% przy każdym wariancie").font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .disabled(!(draft?.showVariants ?? true) || hasAddons)
+        DisclosureGroup("Ceny wariantów w tej ofercie") {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Kwoty netto za sztukę, przed rabatem. Ceny katalogowe pozostają bez zmian.").font(.caption).foregroundStyle(.secondary)
+                ForEach(variants) { variant in
+                    HStack {
+                        Text(variant.name).frame(maxWidth: .infinity, alignment: .leading)
+                        ProductNumberField(value: Binding(get: { draft?.variantPrices[variant.id] ?? variant.priceNet }, set: { price in
+                            let next = price ?? 0
+                            draft?.variantPrices[variant.id] = next
+                            if draft?.variantId == variant.id { draft?.unitPrice = next }
+                        }), suffix: "zł").frame(width: 160)
+                    }
+                }
+            }
+            .padding(.top, 4)
+        }
+        .font(.callout)
     }
 
     private func selectVariant(_ variant: OfferItemVariant) {
@@ -405,7 +422,7 @@ import SwiftUI
             VStack(alignment: .leading, spacing: 10) {
                 Text("Ustawienia dotyczą tylko tej oferty. Ilości dodatków odnoszą się do jednego pakietu; liczba pakietów mnoży cały zakres. Dodatki korzystają ze stawki VAT oferty.")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                ForEach(draft?.addons.indices ?? 0..<0, id: \.self) { index in addonRow(index) }
+                OfferAddonRows(addons: Binding(get: { draft?.addons ?? [] }, set: { draft?.addons = $0 }))
                 HStack {
                     Button { draft?.addons.append(ProductAddonItem.blank()) } label: { Label("Dodaj indywidualny dodatek", systemImage: "plus") }
                         .disabled((draft?.addons.count ?? 0) >= 40)
@@ -424,92 +441,6 @@ import SwiftUI
             }
             .padding(6)
         }
-    }
-
-    private func addonRow(_ index: Int) -> some View {
-        let addon = draft?.addons[index] ?? ProductAddonItem.blank()
-        func binding<T>(_ key: WritableKeyPath<ProductAddonItem, T>) -> Binding<T> {
-            Binding(get: { (draft?.addons.indices.contains(index) == true ? draft?.addons[index][keyPath: key] : nil) ?? addon[keyPath: key] },
-                    set: { value in if draft?.addons.indices.contains(index) == true { draft?.addons[index][keyPath: key] = value } })
-        }
-        let automatic = addon.kind != "optional" && (addon.quantity_source ?? "manual") != "manual"
-        return VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                TextField("", text: binding(\.name), prompt: Text("Nazwa dodatku")).textFieldStyle(.roundedBorder)
-                Button(role: .destructive) { draft?.addons.remove(at: index) } label: { Image(systemName: "trash") }
-                    .buttonStyle(.borderless).help("Usuń dodatek")
-            }
-            HStack(alignment: .top, spacing: 10) {
-                ProductField(label: "Sposób naliczania") {
-                    Picker("", selection: Binding(get: { addon.kind }, set: { kind in
-                        guard draft?.addons.indices.contains(index) == true else { return }
-                        draft?.addons[index].kind = kind
-                        draft?.addons[index].enabled = false
-                        if kind == "optional" { draft?.addons[index].quantity_source = "manual" }
-                    })) {
-                        ForEach(ProductAddonItem.kinds, id: \.key) { kind in Text(kind.label).tag(kind.key) }
-                    }
-                    .labelsHidden().fixedSize()
-                }
-                ProductField(label: "Jednostka") {
-                    TextField("", text: binding(\.unit)).textFieldStyle(.roundedBorder).frame(width: 80)
-                }
-                if addon.kind != "optional" {
-                    ProductField(label: "Sposób wyliczania ilości") {
-                        Picker("", selection: Binding(get: { addon.quantity_source ?? "manual" }, set: { value in
-                            if draft?.addons.indices.contains(index) == true { draft?.addons[index].quantity_source = value }
-                        })) {
-                            ForEach(ProductText.quantitySources, id: \.key) { source in Text(source.label).tag(source.key) }
-                        }
-                        .labelsHidden().fixedSize()
-                    }
-                }
-            }
-            HStack(alignment: .top, spacing: 10) {
-                if addon.kind == "over_limit" {
-                    ProductField(label: "W cenie pakietu") {
-                        ProductNumberField(value: Binding(get: { addon.included_quantity }, set: { value in
-                            if draft?.addons.indices.contains(index) == true { draft?.addons[index].included_quantity = value ?? 0 }
-                        })).frame(width: 100)
-                    }
-                }
-                if addon.kind != "optional" {
-                    ProductField(label: addon.kind == "over_limit" ? "Łączna potrzebna ilość" : "Ilość") {
-                        ProductNumberField(value: Binding(get: { addon.quantity }, set: { value in
-                            if draft?.addons.indices.contains(index) == true { draft?.addons[index].quantity = value ?? 0 }
-                        })).frame(width: 100).disabled(automatic)
-                    }
-                }
-                ProductField(label: addon.kind == "optional" ? "Cena dodatku netto (zł)" : "Cena za dodatkową jednostkę netto (zł)") {
-                    ProductNumberField(value: Binding(get: { addon.unit_price }, set: { value in
-                        if draft?.addons.indices.contains(index) == true { draft?.addons[index].unit_price = value ?? 0 }
-                    }), prompt: addon.price_on_request == true ? "Do indywidualnej wyceny" : "").frame(width: 140)
-                }
-                if addon.kind == "optional" {
-                    Toggle("Dodaj do oferty", isOn: binding(\.enabled)).toggleStyle(.checkbox).padding(.top, 18)
-                }
-            }
-            if addon.price_on_request == true && addon.unit_price <= 0 {
-                Text(addon.payableQuantity > 0 ? "Wpisz uzgodnioną cenę, aby zapisać ofertę. Ta opcja nie jest bezpłatna." : "Opcja do indywidualnej wyceny. Cenę uzupełnisz po jej wybraniu.")
-                    .font(.caption).foregroundStyle(addon.payableQuantity > 0 ? .red : .secondary)
-            }
-            if let role = addon.staff_role, !role.isEmpty, addon.payableQuantity > 0 {
-                Text("Obsada pakietu: \(role) × \(OfferText.number(addon.payableQuantity)). Uzupełnij koszt i czas pracy w „Sprzęt i obsada pakietu” (CRM).")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            ProductField(label: "Zakres / warunki widoczne w kalkulacji") {
-                ProductTextArea(text: Binding(get: { addon.description }, set: { value in
-                    if draft?.addons.indices.contains(index) == true { draft?.addons[index].description = String(value.prefix(500)) }
-                }), lines: 2...4)
-            }
-            if !(addon.price_on_request == true && addon.unit_price <= 0) {
-                Text((addon.kind == "over_limit" ? "W pakiecie: \(OfferText.number(addon.included_quantity)). Płatne ponad limit: " : "Płatna ilość: ")
-                     + "\(OfferText.number(addon.payableQuantity)) × \(OfferText.number(addon.unit_price)) zł = \(OfferText.number((addon.payableQuantity * addon.unit_price * 100).rounded() / 100)) zł netto")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-        }
-        .padding(10)
-        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
     }
 
     // MARK: Podsumowanie
@@ -560,7 +491,7 @@ import SwiftUI
                 draft = data.draft
                 setAudience(data.audience)
             } else {
-                let data = try await store.itemCatalog(offerID)
+                let data = try await store.itemCatalog(offerID, recommendationExclude: proposalMode ? recommendationExclude : nil)
                 catalog = data
                 setAudience(data.audience)
             }
@@ -579,7 +510,7 @@ import SwiftUI
     private func refreshPreview() async {
         guard let draft, !modular, editing || productID != nil else { return }
         do {
-            preview = try await store.previewItem(offerID, productID: editing ? nil : productID, itemID: itemID, draft: draft)
+            preview = try await store.previewItem(offerID, productID: editing ? nil : productID, itemID: itemID, draft: draft, recommendation: proposalMode)
             previewError = nil
         } catch {
             preview = nil
@@ -612,7 +543,27 @@ import SwiftUI
     /// Aktualna liczba osób po konflikcie zapisu (ktoś zmienił ją w innym oknie).
     private func reloadAudience() async {
         if let itemID, let data = try? await store.itemEditor(offerID, item: itemID) { setAudience(data.audience) }
-        else if itemID == nil, let data = try? await store.itemCatalog(offerID) { setAudience(data.audience) }
+        else if itemID == nil, let data = try? await store.itemCatalog(offerID, recommendationExclude: proposalMode ? recommendationExclude : nil) {
+            setAudience(data.audience)
+        }
+    }
+
+    /// „Dodaj propozycję”: serwer buduje propozycję jak CRM, sekcja dopisuje ją do listy i zapisuje.
+    private func addRecommendation() async {
+        guard let draft, let productID, let onRecommendation else { problem = "Wybierz produkt"; return }
+        problem = nil
+        saving = true
+        defer { saving = false }
+        do {
+            let item = try await store.buildRecommendation(offerID, productID: productID, draft: draft, exclude: recommendationExclude)
+            if let failure = await onRecommendation(item) {
+                problem = failure
+                return
+            }
+            dismiss()
+        } catch {
+            problem = store.failureText(error, "Błąd podczas dodawania pozycji")
+        }
     }
 
     private func save(move: Bool) async {

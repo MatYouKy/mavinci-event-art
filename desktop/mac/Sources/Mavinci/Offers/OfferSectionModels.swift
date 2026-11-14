@@ -274,7 +274,7 @@ extension OffersStore {
         return try JSONDecoder().decode(OfferPackagesData.self, from: try await api.get("/offers?op=packages&id=\(id)"))
     }
 
-    private func writeSection<T: Decodable>(_ body: [String: JSONValue], pending: String, success: String, as type: T.Type) async throws -> T {
+    func writeSection<T: Decodable>(_ body: [String: JSONValue], pending: String, success: String, as type: T.Type) async throws -> T {
         guard let api, let workspace, workspace.canWrite else {
             throw NativeFailure(status: 0, message: "Zapis wymaga połączenia z serwerem CRM.", fieldErrors: [:])
         }

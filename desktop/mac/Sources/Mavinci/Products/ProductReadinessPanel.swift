@@ -86,22 +86,28 @@ import SwiftUI
                         .buttonStyle(.link).font(.caption)
                 }
                 if let key = check.exemptionKey, waiving == key { waiver(check, key: key) }
-            }
-            Spacer(minLength: 8)
-            if (check.state == "missing" || check.state == "waived") && waiving != check.exemptionKey {
-                HStack(spacing: 6) {
-                    if check.state == "missing" {
-                        Button(detail.canEdit ? "Uzupełnij" : "Pokaż") { show(check) }
+                // Czynności pod opisem — panel jest w wąskiej kolumnie bocznej karty.
+                if (check.state == "missing" || check.state == "waived") && waiving != check.exemptionKey {
+                    HStack(spacing: 6) {
+                        if check.state == "missing" {
+                            Button(detail.canEdit ? "Uzupełnij" : "Pokaż") { show(check) }
+                        }
+                        if check.state == "missing" && canEdit, let key = check.exemptionKey {
+                            Button("Nie dotyczy…") {
+                                waiving = key
+                                reason = ""
+                                reasonFocused = true
+                            }
+                        }
+                        if check.state == "waived" && canEdit {
+                            Button("Przywróć") { restore(check) }
+                        }
                     }
-                    if check.state == "missing" && canEdit, let key = check.exemptionKey {
-                        Button("Nie dotyczy…") { waiving = key; reason = ""; reasonFocused = true }
-                    }
-                    if check.state == "waived" && canEdit {
-                        Button("Przywróć") { restore(check) }
-                    }
+                    .controlSize(.small)
+                    .padding(.top, 2)
                 }
-                .controlSize(.small)
             }
+            Spacer(minLength: 0)
         }
     }
 

@@ -138,9 +138,12 @@ struct OfferItemPreview: Decodable, Equatable {
 }
 
 extension OffersStore {
-    func itemCatalog(_ id: String) async throws -> OfferItemCatalog {
+    /// Katalog do dodawania pozycji albo — `recommendationExclude != nil` — propozycji dodatkowych (bez produktów już na liście).
+    func itemCatalog(_ id: String, recommendationExclude: [String]? = nil) async throws -> OfferItemCatalog {
         guard let api else { throw AppError.configuration }
-        return try JSONDecoder().decode(OfferItemCatalog.self, from: try await api.get("/offers?op=itemCatalog&id=\(id)"))
+        var path = "/offers?op=itemCatalog&id=\(id)"
+        if let recommendationExclude { path += "&mode=recommendation&exclude=\(recommendationExclude.joined(separator: ","))" }
+        return try JSONDecoder().decode(OfferItemCatalog.self, from: try await api.get(path))
     }
 
     func itemEditor(_ id: String, item: String) async throws -> OfferItemEditorData {
@@ -149,9 +152,9 @@ extension OffersStore {
     }
 
     /// Podgląd wyceny: dodawanie (`productID`) albo edycja (`itemID`).
-    func previewItem(_ id: String, productID: String?, itemID: String?, draft: OfferItemDraft) async throws -> OfferItemPreview {
+    func previewItem(_ id: String, productID: String?, itemID: String?, draft: OfferItemDraft, recommendation: Bool = false) async throws -> OfferItemPreview {
         guard let api else { throw AppError.configuration }
-        var body: [String: JSONValue] = ["op": .string("itemPreview"), "id": .string(id), "draft": draft.json]
+        var body: [String: JSONValue] = ["op": .string("itemPreview"), "id": .string(id), "draft": draft.json, "recommendation": .bool(recommendation)]
         if let productID { body["productId"] = .string(productID) }
         if let itemID { body["itemId"] = .string(itemID) }
         return try JSONDecoder().decode(OfferItemPreview.self, from: try await api.post("/offers", body))

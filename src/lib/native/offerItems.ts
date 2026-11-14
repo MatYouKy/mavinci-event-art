@@ -35,7 +35,7 @@ const text = (value: unknown) => (value == null ? '' : String(value));
 const money = (value: number) => Math.round(value * 100) / 100;
 const VAT_RATES = [0, 5, 8, 23];
 
-async function editable(ctx: NativeContext, id: string) {
+export async function editable(ctx: NativeContext, id: string) {
   const [{ data: allowed, error: permissionError }, { data: offer, error }] = await Promise.all([
     ctx.supabase.rpc('sales_can_manage_offer', { p_offer: id }),
     ctx.supabase.from('offers').select('id, status, sales_channel, guest_count, guests_per_table, table_count, tax_percent, recommended_items').eq('id', id).maybeSingle(),
@@ -48,19 +48,19 @@ async function editable(ctx: NativeContext, id: string) {
   return row;
 }
 
-const audienceOf = (offer: Row): OfferAudience => ({
+export const audienceOf = (offer: Row): OfferAudience => ({
   guest_count: offer.guest_count ?? null, guests_per_table: offer.guests_per_table ?? 10, table_count: offer.table_count ?? null,
 });
 
-const PRODUCT_SELECT = `id, name, description, offer_description, unit, base_price, quantity_source, pricing_addons, sales_packages,
+export const PRODUCT_SELECT = `id, name, description, offer_description, unit, base_price, quantity_source, pricing_addons, sales_packages,
   sales_packages_enabled, configuration_schema, offer_image_path, pdf_thumbnail_url, is_active,
   variants:offer_product_variants(id, name, short_description, description, price_net, is_recommended, is_active, display_order, quantity_source, offer_image_path),
   category:event_categories(name)`;
 
-const activeVariants = (product: Row) => ((product.variants || []) as Row[])
+export const activeVariants = (product: Row) => ((product.variants || []) as Row[])
   .filter((variant) => variant.is_active !== false)
   .sort((a, b) => (Number(a.display_order) || 0) - (Number(b.display_order) || 0));
-const productPackages = (product: Row): ProductSalesPackage[] =>
+export const productPackages = (product: Row): ProductSalesPackage[] =>
   product.sales_packages_enabled && Array.isArray(product.sales_packages) ? product.sales_packages : [];
 
 /** Pakiety i warianty do wyboru (Mac zmienia szkic według tych samych zasad co okna CRM). */
@@ -77,7 +77,7 @@ const packageView = (option: ProductSalesPackage) => ({
 
 // MARK: Szkic pozycji
 
-type Draft = {
+export type Draft = {
   variantId: string | null;
   packageId: string;
   quantity: number;
@@ -95,7 +95,7 @@ type Draft = {
 
 const num = (value: unknown) => (value === null || value === undefined || value === '' ? NaN : Number(value));
 
-function addonOf(raw: Row): ProductAddon {
+export function addonOf(raw: Row): ProductAddon {
   const addon: Row = {
     id: text(raw.id).slice(0, 80), name: text(raw.name).slice(0, 120), description: text(raw.description).slice(0, 500),
     kind: ['over_limit', 'quantity', 'optional'].includes(raw.kind) ? raw.kind : 'quantity', unit: text(raw.unit).slice(0, 20),
@@ -110,7 +110,7 @@ function addonOf(raw: Row): ProductAddon {
   return addon as ProductAddon;
 }
 
-function draftOf(input: unknown): Draft {
+export function draftOf(input: unknown): Draft {
   const raw = input && typeof input === 'object' ? input as Row : {};
   const prices: Record<string, number> = {};
   if (raw.variantPrices && typeof raw.variantPrices === 'object') {
@@ -134,7 +134,7 @@ function draftOf(input: unknown): Draft {
 }
 
 /** Wycena szkicu (jak `rawConfiguration` → `resolveAudienceConfiguration` → `configurationPrice` w oknach CRM). */
-function evaluate(draft: Draft, options: ProductSalesPackage[], audience: OfferAudience) {
+export function evaluate(draft: Draft, options: ProductSalesPackage[], audience: OfferAudience) {
   const selectedPackage = options.find((option) => option.id === draft.packageId);
   const raw: OfferConfiguration = {
     ...createConfiguration(draft.unitPrice, draft.addons,
@@ -152,7 +152,7 @@ function evaluate(draft: Draft, options: ProductSalesPackage[], audience: OfferA
 }
 
 /** Sprawdzenia przed zapisem jak `handleAddItem` / `handleSave` w CRM. */
-function problem(draft: Draft, result: ReturnType<typeof evaluate>) {
+export function problem(draft: Draft, result: ReturnType<typeof evaluate>) {
   if (result.audienceError) return result.audienceError;
   if (!Number.isInteger(draft.days) || draft.days < 1 || draft.days > 3650) return 'Podaj liczbę dni od 1 do 3650.';
   if (!Number.isFinite(result.quantity) || result.quantity <= 0) return 'Ilość musi być większa od 0';
@@ -164,12 +164,15 @@ function problem(draft: Draft, result: ReturnType<typeof evaluate>) {
   return validateConfiguration(result.configuration);
 }
 
-function summary(draft: Draft, result: ReturnType<typeof evaluate>, audience: OfferAudience, vatRate: number) {
+function summary(draft: Draft, result: ReturnType<typeof evaluate>, audience: OfferAudience, vatRate: number, recommendation = false) {
   const quantity = Number.isFinite(result.quantity) ? result.quantity : 0;
   const days = Number.isFinite(draft.days) ? draft.days : 0;
   const discount = Number.isFinite(draft.discountPercent) ? draft.discountPercent : 0;
   const subtotal = quantity * days * result.price;
-  const total = Math.round((subtotal - Math.round(subtotal * discount) / 100) * 100) / 100;
+  // Propozycja dodatkowa: rabat wliczony w cenę jednostkową (jak `total` w `AddOfferItemModal` z `onAddRecommendation`).
+  const total = recommendation
+    ? Math.round(quantity * days * (Math.round(result.price * (1 - discount / 100) * 100) / 100) * 100) / 100
+    : Math.round((subtotal - Math.round(subtotal * discount) / 100) * 100) / 100;
   const vat = Math.round(total * vatRate) / 100;
   const guests = Number(audience.guest_count) || 0;
   return {
@@ -193,7 +196,7 @@ function summary(draft: Draft, result: ReturnType<typeof evaluate>, audience: Of
   };
 }
 
-const unitOf = (draft: Draft, selectedPackage: ProductSalesPackage | undefined, fallback: string) =>
+export const unitOf = (draft: Draft, selectedPackage: ProductSalesPackage | undefined, fallback: string) =>
   selectedPackage ? 'pakiet' : draft.quantitySource === 'guests' ? 'osoba' : draft.quantitySource === 'tables' ? 'stół' : fallback;
 
 // MARK: Katalog do dodawania
@@ -229,7 +232,11 @@ function initialDraft(product: Row, proposal: Row | undefined) {
   return { draft, packages: options };
 }
 
-export async function offerItemCatalog(ctx: NativeContext, id: string) {
+/**
+ * Katalog do dodawania pozycji albo — `exclude !== null` — propozycji dodatkowych: bez produktów z głównej oferty, zapisanych
+ * propozycji i propozycji dodanych w tej edycji (`exclude`), szkic bez danych propozycji (jak `onAddRecommendation`).
+ */
+export async function offerItemCatalog(ctx: NativeContext, id: string, exclude: string[] | null = null) {
   const key = uuid(id);
   const offer = await editable(ctx, key);
   const [items, products] = await Promise.all([
@@ -246,11 +253,12 @@ export async function offerItemCatalog(ctx: NativeContext, id: string) {
     (data || []).forEach((item: Row) => { if (item?.path && item?.signedUrl) urls.set(String(item.path), String(item.signedUrl)); });
   }
   const used = new Set(((items.data || []) as Row[]).map((row) => row.product_id).filter(Boolean));
+  if (exclude) [...exclude, ...proposals.map((item) => item.product_id)].forEach((productId) => used.add(productId));
   return {
     audience: audienceOf(offer),
     vatRate: Number(offer.tax_percent ?? 23),
     products: rows.filter((row) => !used.has(row.id)).map((row) => {
-      const proposal = proposals.find((item) => item.product_id === row.id);
+      const proposal = exclude ? undefined : proposals.find((item) => item.product_id === row.id);
       const start = initialDraft(row, proposal);
       const image = row.pdf_thumbnail_url || row.offer_image_path || null;
       return {
@@ -351,7 +359,7 @@ export async function previewOfferItem(ctx: NativeContext, body: Row) {
     options = proposal?.pricing_configuration?.product_package?.options || productPackages(product as Row);
   }
   const vatRate = draft.vatRate != null && VAT_RATES.includes(draft.vatRate) ? draft.vatRate : Number(offer.tax_percent ?? 23);
-  return summary(draft, evaluate(draft, options, audience), audience, vatRate);
+  return summary(draft, evaluate(draft, options, audience), audience, vatRate, body.recommendation === true);
 }
 
 export async function addOfferItem(ctx: NativeContext, body: Row) {

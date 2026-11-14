@@ -6,40 +6,117 @@ import UniformTypeIdentifiers
 // kontaktową albo klient indywidualny), wydarzenie, termin (z zapytania — tylko podgląd), źródło wyceny i kalkulacja, grafika
 // hero, miejsce, ważność, zachowane ustalenia ze starszych ofert i notatki. Zapis `op=basicSave`.
 
-/// Wybór z długiej listy z wyszukiwaniem (organizacje, klienci, wydarzenia).
+/// Wybór z długiej listy (organizacje, klienci, wydarzenia): pole wyszukiwania pokazuje wybraną pozycję, a lista podpowiedzi
+/// rozwija się pod nim dopiero po kliknięciu lub wpisaniu tekstu i zwija po wyborze.
 struct OfferPickList<Item: Identifiable & Hashable>: View where Item.ID == String {
     let items: [Item]
     @Binding var selection: String?
     var prompt: String
-    var height: CGFloat = 150
+    /// Maksymalna wysokość rozwiniętej listy.
+    var height: CGFloat = 240
+    /// Przycisk czyszczenia wyboru.
+    var clearable = false
     let title: (Item) -> String
     let detail: (Item) -> String
     @State private var query = ""
+    @State private var open = false
+    @FocusState private var focused: Bool
+    @Environment(\.crmTheme) private var theme
+
+    private var selected: Item? { selection.flatMap { id in items.first { $0.id == id } } }
 
     private var rows: [Item] {
         let needle = SearchText.fold(query)
         let matching = needle.isEmpty ? items : items.filter { SearchText.fold(title($0) + " " + detail($0)).contains(needle) }
-        var list = Array(matching.prefix(300))
-        if let selection, !list.contains(where: { $0.id == selection }), let chosen = items.first(where: { $0.id == selection }) {
-            list.insert(chosen, at: 0)
-        }
-        return list
+        return Array(matching.prefix(200))
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            TextField("", text: $query, prompt: Text(prompt)).textFieldStyle(.roundedBorder)
-            List(rows, selection: $selection) { item in
-                HStack {
-                    Text(title(item)).lineLimit(1)
-                    Spacer()
-                    Text(detail(item)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                ZStack(alignment: .leading) {
+                    TextField("", text: $query, prompt: Text(focused || selected == nil ? prompt : ""))
+                        .textFieldStyle(.plain)
+                        .focused($focused)
+                        .onSubmit { if let first = rows.first { pick(first) } }
+                    if !focused && query.isEmpty, let selected {
+                        HStack(spacing: 6) {
+                            Text(title(selected)).lineLimit(1)
+                            let info = detail(selected)
+                            if !info.isEmpty { Text(info).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
+                        }
+                        .allowsHitTesting(false)
+                    }
+                }
+                if clearable && selection != nil {
+                    Button { selection = nil } label: { Image(systemName: "xmark.circle.fill") }
+                        .buttonStyle(.borderless).foregroundStyle(.secondary).help("Wyczyść wybór")
+                }
+                Button {
+                    open.toggle()
+                    focused = open
+                } label: { Image(systemName: open ? "chevron.up" : "chevron.down") }
+                    .buttonStyle(.borderless).foregroundStyle(.secondary).help(open ? "Zwiń listę" : "Rozwiń listę")
+            }
+            .padding(.horizontal, 8).padding(.vertical, 6)
+            .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
+            .overlay(RoundedRectangle(cornerRadius: 6).stroke(focused ? theme.accent.opacity(0.6) : Color.primary.opacity(0.15)))
+            if open { dropdown }
+        }
+        .onChange(of: focused) { _, now in
+            if now {
+                open = true
+            } else {
+                // Kliknięcie w podpowiedź zabiera fokus z pola — lista zwija się chwilę później, gdy wybór już się zapisał.
+                Task {
+                    try? await Task.sleep(for: .milliseconds(200))
+                    if !focused { close() }
                 }
             }
-            .listStyle(.bordered(alternatesRowBackgrounds: true))
-            .frame(height: height)
-            if rows.isEmpty { Text("Brak pasujących pozycji").font(.caption).foregroundStyle(.secondary) }
         }
+        .onChange(of: query) { _, _ in if focused { open = true } }
+    }
+
+    private var dropdown: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 0) {
+                ForEach(rows) { item in
+                    Button { pick(item) } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "checkmark").font(.caption.weight(.semibold))
+                                .foregroundStyle(theme.accent).opacity(item.id == selection ? 1 : 0)
+                            Text(title(item)).lineLimit(1)
+                            Spacer(minLength: 8)
+                            Text(detail(item)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                        .padding(.horizontal, 8).padding(.vertical, 5)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                        .background(item.id == selection ? theme.accent.opacity(0.12) : Color.clear)
+                    }
+                    .buttonStyle(.plain)
+                }
+                if rows.isEmpty {
+                    Text("Brak pasujących pozycji").font(.caption).foregroundStyle(.secondary).padding(8)
+                }
+            }
+        }
+        // Stała wysokość (lista jest w przewijanym formularzu): do ok. 9 wierszy, dalej przewijanie.
+        .frame(height: min(height, CGFloat(max(rows.count, 1)) * 27 + 6))
+        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
+        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.primary.opacity(0.12)))
+    }
+
+    private func pick(_ item: Item) {
+        selection = item.id
+        close()
+        focused = false
+    }
+
+    private func close() {
+        open = false
+        query = ""
     }
 }
 
@@ -88,7 +165,7 @@ struct OfferPickList<Item: Identifiable & Hashable>: View where Item.ID == Strin
                 .padding(.horizontal, 18).padding(.top, 16).padding(.bottom, 10)
             if let data {
                 ScrollView { form(data).padding(.horizontal, 18).padding(.bottom, 12) }
-                    .frame(height: 620)
+                    .frame(height: 720)
                     .disabled(saving)
             } else if let loadError {
                 ContentUnavailableView {
@@ -109,7 +186,7 @@ struct OfferPickList<Item: Identifiable & Hashable>: View where Item.ID == Strin
             }
             .padding(18)
         }
-        .frame(width: 820)
+        .frame(width: 1120)
         .background(theme.page)
         .task { await load() }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.jpeg, .png, .webP]) { result in
@@ -118,205 +195,206 @@ struct OfferPickList<Item: Identifiable & Hashable>: View where Item.ID == Strin
     }
 
     // MARK: Formularz
+    /// Dwie kolumny: dane klienta i wydarzenia po lewej, wycena, grafika i notatki po prawej.
     @ViewBuilder private func form(_ data: OfferEditorData) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
+        HStack(alignment: .top, spacing: 18) {
+            VStack(alignment: .leading, spacing: 16) { primaryColumn(data) }.frame(maxWidth: .infinity, alignment: .top)
+            VStack(alignment: .leading, spacing: 16) { secondaryColumn(data) }.frame(maxWidth: .infinity, alignment: .top)
+        }
+    }
+
+    @ViewBuilder private func primaryColumn(_ data: OfferEditorData) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            ProductField(label: "Tytuł oferty", help: "Ten tytuł będzie widoczny na stronie oferty i na okładce generowanego PDF.") {
+                TextField("", text: Binding(get: { title }, set: { title = String($0.prefix(180)) }),
+                          prompt: Text(data.inheritedTitle.isEmpty ? "Np. Obsługa techniczna konferencji" : data.inheritedTitle))
+                    .textFieldStyle(.roundedBorder)
+            }
+            ProductField(label: "Liczba osób") {
+                TextField("", text: $guests, prompt: Text("Nie ustalono")).textFieldStyle(.roundedBorder).frame(width: 120)
+            }
+            .frame(width: 130)
+        }
+        if data.needsTables {
             HStack(alignment: .top, spacing: 12) {
-                ProductField(label: "Tytuł oferty", help: "Ten tytuł będzie widoczny na stronie oferty i na okładce generowanego PDF.") {
-                    TextField("", text: Binding(get: { title }, set: { title = String($0.prefix(180)) }),
-                              prompt: Text(data.inheritedTitle.isEmpty ? "Np. Obsługa techniczna konferencji" : data.inheritedTitle))
-                        .textFieldStyle(.roundedBorder)
+                ProductField(label: "Średnio osób przy okrągłym stole") {
+                    TextField("", text: $perTable, prompt: Text("10")).textFieldStyle(.roundedBorder).frame(width: 120)
                 }
-                ProductField(label: "Liczba osób") {
-                    TextField("", text: $guests, prompt: Text("Nie ustalono")).textFieldStyle(.roundedBorder).frame(width: 120)
+                ProductField(label: "Liczba stołów — opcjonalnie") {
+                    TextField("", text: $tables, prompt: Text("Oblicz automatycznie")).textFieldStyle(.roundedBorder).frame(width: 160)
                 }
-                .frame(width: 130)
             }
-            if data.needsTables {
-                HStack(alignment: .top, spacing: 12) {
-                    ProductField(label: "Średnio osób przy okrągłym stole") {
-                        TextField("", text: $perTable, prompt: Text("10")).textFieldStyle(.roundedBorder).frame(width: 120)
-                    }
-                    ProductField(label: "Liczba stołów — opcjonalnie") {
-                        TextField("", text: $tables, prompt: Text("Oblicz automatycznie")).textFieldStyle(.roundedBorder).frame(width: 160)
-                    }
-                }
-                Text(tablesHint).font(.caption).foregroundStyle(.secondary)
-            }
+            Text(tablesHint).font(.caption).foregroundStyle(.secondary)
+        }
 
-            GroupBox("Klient oferty") {
-                VStack(alignment: .leading, spacing: 10) {
-                    Picker("", selection: $clientType) {
-                        Text("Firma / organizacja").tag("business")
-                        Text("Klient indywidualny").tag("individual")
-                    }
-                    .pickerStyle(.segmented).labelsHidden().fixedSize()
-                    if clientType == "business" {
-                        HStack(alignment: .top, spacing: 12) {
-                            ProductField(label: "Organizacja") {
-                                OfferPickList(items: data.organizations, selection: Binding(get: { organizationID }, set: { next in
-                                    organizationID = next
-                                    Task { await loadPeople(autoPick: true) }
-                                }), prompt: "Szukaj organizacji…", title: { $0.label }, detail: { $0.alias?.isEmpty == false ? $0.name : "" })
-                            }
-                            ProductField(label: "Osoba kontaktowa") {
-                                if organizationID == nil {
-                                    Text("Najpierw wybierz organizację.").font(.caption).foregroundStyle(.secondary).frame(height: 180, alignment: .top)
-                                } else if loadingPeople {
-                                    ProgressView().controlSize(.small).frame(height: 180)
-                                } else {
-                                    OfferPickList(items: people, selection: $contactID, prompt: "Szukaj osoby…",
-                                                  title: { $0.name + ($0.primary == true ? " ★" : "") }, detail: { $0.detail })
-                                }
-                            }
-                        }
-                    } else {
-                        OfferPickList(items: data.individuals, selection: $individualID, prompt: "Szukaj klienta po nazwisku, e-mailu lub telefonie…",
-                                      title: { $0.name }, detail: { $0.detail })
-                    }
-                    Text("Nowego klienta lub osobę kontaktową dodasz w sekcji Kontakty.").font(.caption).foregroundStyle(.secondary)
+        GroupBox("Klient oferty") {
+            VStack(alignment: .leading, spacing: 10) {
+                Picker("", selection: $clientType) {
+                    Text("Firma / organizacja").tag("business")
+                    Text("Klient indywidualny").tag("individual")
                 }
-                .padding(6)
-            }
-
-            GroupBox("Wydarzenie i termin") {
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack {
-                        Text(eventID.flatMap { id in data.events.first { $0.id == id }?.name } ?? "Bez powiązanego wydarzenia")
-                            .font(.callout.weight(.medium))
-                        Spacer()
-                        if eventID != nil {
-                            Button("Usuń powiązanie") { eventID = nil; Task { await loadCalculations() } }.controlSize(.small)
+                .pickerStyle(.segmented).labelsHidden().fixedSize()
+                if clientType == "business" {
+                    ProductField(label: "Organizacja") {
+                        OfferPickList(items: data.organizations, selection: Binding(get: { organizationID }, set: { next in
+                            organizationID = next
+                            Task { await loadPeople(autoPick: true) }
+                        }), prompt: "Szukaj organizacji…", title: { $0.label }, detail: { $0.alias?.isEmpty == false ? $0.name : "" })
+                    }
+                    ProductField(label: "Osoba kontaktowa") {
+                        if organizationID == nil {
+                            Text("Najpierw wybierz organizację.").font(.caption).foregroundStyle(.secondary)
+                        } else if loadingPeople {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            OfferPickList(items: people, selection: $contactID, prompt: "Szukaj osoby…",
+                                          title: { $0.name + ($0.primary == true ? " ★" : "") }, detail: { $0.detail })
                         }
                     }
+                } else {
+                    OfferPickList(items: data.individuals, selection: $individualID, prompt: "Szukaj klienta po nazwisku, e-mailu lub telefonie…",
+                                  title: { $0.name }, detail: { $0.detail })
+                }
+                Text("Nowego klienta lub osobę kontaktową dodasz w sekcji Kontakty.").font(.caption).foregroundStyle(.secondary)
+            }
+            .padding(6)
+        }
+
+        GroupBox("Wydarzenie i termin") {
+            VStack(alignment: .leading, spacing: 10) {
+                ProductField(label: "Powiązane wydarzenie", help: eventID == nil ? "Bez powiązanego wydarzenia" : nil) {
                     OfferPickList(items: data.events, selection: Binding(get: { eventID }, set: { next in
                         eventID = next
                         Task { await loadCalculations() }
-                    }), prompt: "Wyszukaj wydarzenie po nazwie lub dacie…", height: 120, title: { $0.name }, detail: { $0.detail })
-                    if data.fromInquiry {
-                        HStack(spacing: 24) {
-                            ProductField(label: "Początek wydarzenia") { Text(data.scheduleStart) }
-                            ProductField(label: "Koniec wydarzenia") { Text(data.scheduleEnd) }
-                        }
-                        Text("Termin pobierany z zapytania. Początek i koniec zmienisz w jego sekcji „Miejsce i termin”.")
-                            .font(.caption).foregroundStyle(.secondary)
-                    } else {
-                        HStack {
-                            Toggle("Początek wydarzenia", isOn: $hasDate)
-                            if hasDate {
-                                DatePicker("", selection: $eventDate, displayedComponents: [.date, .hourAndMinute]).labelsHidden()
-                            }
-                        }
-                        Text("Termin zapisuje się w tej ofercie i jest używany w jej PDF. Nie zmienia terminu powiązanego wydarzenia.")
-                            .font(.caption).foregroundStyle(.secondary)
+                    }), prompt: "Wyszukaj wydarzenie po nazwie lub dacie…", clearable: true, title: { $0.name }, detail: { $0.detail })
+                }
+                if data.fromInquiry {
+                    HStack(spacing: 24) {
+                        ProductField(label: "Początek wydarzenia") { Text(data.scheduleStart) }
+                        ProductField(label: "Koniec wydarzenia") { Text(data.scheduleEnd) }
                     }
-                    ProductField(label: "Miejsce wydarzenia", help: "Ta lokalizacja pojawi się na pierwszej stronie oferty.") {
-                        TextField("", text: $location, prompt: Text("Wyszukaj miejsce lub wpisz własną lokalizację...")).textFieldStyle(.roundedBorder)
-                        let matches = placeMatches(data)
-                        if !matches.isEmpty {
-                            VStack(alignment: .leading, spacing: 2) {
-                                ForEach(matches) { place in
-                                    Button { location = place.label } label: {
-                                        Label(place.label, systemImage: "mappin.and.ellipse").frame(maxWidth: .infinity, alignment: .leading)
-                                    }
-                                    .buttonStyle(.plain).font(.caption)
-                                }
-                            }
-                            .padding(6)
-                            .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 6))
-                        }
-                    }
+                    Text("Termin pobierany z zapytania. Początek i koniec zmienisz w jego sekcji „Miejsce i termin”.")
+                        .font(.caption).foregroundStyle(.secondary)
+                } else {
                     HStack {
-                        Toggle("Ważna do", isOn: $hasValidity)
-                        if hasValidity { DatePicker("", selection: $validUntil, displayedComponents: .date).labelsHidden() }
+                        Toggle("Początek wydarzenia", isOn: $hasDate)
+                        if hasDate {
+                            DatePicker("", selection: $eventDate, displayedComponents: [.date, .hourAndMinute]).labelsHidden()
+                        }
                     }
+                    Text("Termin zapisuje się w tej ofercie i jest używany w jej PDF. Nie zmienia terminu powiązanego wydarzenia.")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
-                .padding(6)
-            }
-
-            GroupBox("Źródło wyceny w ofercie") {
-                VStack(alignment: .leading, spacing: 8) {
-                    Picker("", selection: Binding(get: { pricingSource }, set: { next in
-                        pricingSource = next
-                        if next == "calculation" && calculationID == nil {
-                            calculationID = calculations.first(where: \.accepted)?.id ?? calculations.first?.id
-                        }
-                        if next == "offer" { calculationID = nil }
-                    })) {
-                        Text("Wycena wynika z pozycji oferty").tag("offer")
-                        Text("Wycena wynika z zaakceptowanej kalkulacji").tag("calculation")
-                    }
-                    .labelsHidden().fixedSize()
-                    .disabled(calculations.isEmpty && pricingSource != "calculation")
-                    if pricingSource == "calculation" {
-                        if data.calculationId != nil {
-                            Toggle("Zastąp zapisaną wycenę aktualną wersją kalkulacji", isOn: $refreshCalculation)
-                        }
-                        ProductField(label: "Kalkulacja stanowiąca integralną część oferty",
-                                     help: "Przy wyborze kalkulacji oferta zachowa jej własną wersję. Późniejsze zmiany kalkulacji nie zmienią tej oferty.") {
-                            Picker("", selection: Binding(get: { calculationID ?? "" }, set: { calculationID = $0.isEmpty ? nil : $0 })) {
-                                Text("Wybierz kalkulację").tag("")
-                                ForEach(calculations) { item in Text(item.label + (item.accepted ? " · zaakceptowana" : "")).tag(item.id) }
-                            }
-                            .labelsHidden().fixedSize()
-                        }
-                    }
-                    if calculations.isEmpty {
-                        Text("Brak kalkulacji powiązanych z tym wydarzeniem lub zapytaniem.").font(.caption).foregroundStyle(.secondary)
-                    }
-                }
-                .padding(6)
-            }
-
-            GroupBox("Indywidualna grafika hero oferty") {
-                HStack(alignment: .top, spacing: 14) {
-                    heroPreview
-                        .frame(width: 260, height: 150)
-                        .dropDestination(for: URL.self) { urls, _ in
-                            guard let url = urls.first else { return false }
-                            chooseHero(url)
-                            return true
-                        }
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Po wgraniu zastąpi grafikę hero ustawioną w szablonie tylko dla tej oferty. JPG, PNG lub WEBP, maks. 12 MB.")
-                            .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                        HStack {
-                            Button(hasHero ? "Zmień…" : "Wybierz zdjęcie…") { importing = true }
-                            if hasHero { Button("Przywróć grafikę szablonu") { heroData = nil; heroImage = nil; removeHero = true } }
-                        }
-                        .controlSize(.small)
-                        if hasHero {
-                            Text(heroData != nil ? "Nowa grafika zostanie zapisana z ofertą" : "Ta oferta ma własną grafikę hero")
-                                .font(.caption).foregroundStyle(.secondary)
-                            ProductField(label: "Opis zdjęcia") {
-                                TextField("", text: $heroAlt, prompt: Text("np. Hotel i centrum konferencyjne klienta")).textFieldStyle(.roundedBorder)
-                            }
-                        }
-                    }
-                }
-                .padding(6)
-            }
-
-            if showsSections {
-                DisclosureGroup("Zapisane dodatkowe warunki ze starszej wersji") {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Wcześniej zapisane warunki pozostają w PDF. Nowe założenia edytuj w trzech kartach założeń. Puste dodatkowe karty nie będą drukowane.")
-                            .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                        ForEach(sections.indices, id: \.self) { index in
-                            HStack(alignment: .top, spacing: 8) {
-                                Text(String(format: "%02d", index + 3)).font(.callout.weight(.bold)).foregroundStyle(theme.accent)
-                                VStack(alignment: .leading, spacing: 4) {
-                                    TextField("", text: $sections[index].title).textFieldStyle(.roundedBorder)
-                                    ProductTextArea(text: $sections[index].content, prompt: "Dodatkowe ustalenie ze starszej oferty. Puste pole nie będzie drukowane.", lines: 2...5)
+                ProductField(label: "Miejsce wydarzenia", help: "Ta lokalizacja pojawi się na pierwszej stronie oferty.") {
+                    TextField("", text: $location, prompt: Text("Wyszukaj miejsce lub wpisz własną lokalizację...")).textFieldStyle(.roundedBorder)
+                    let matches = placeMatches(data)
+                    if !matches.isEmpty {
+                        VStack(alignment: .leading, spacing: 2) {
+                            ForEach(matches) { place in
+                                Button { location = place.label } label: {
+                                    Label(place.label, systemImage: "mappin.and.ellipse").frame(maxWidth: .infinity, alignment: .leading)
                                 }
+                                .buttonStyle(.plain).font(.caption)
+                            }
+                        }
+                        .padding(6)
+                        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 6))
+                    }
+                }
+                HStack {
+                    Toggle("Ważna do", isOn: $hasValidity)
+                    if hasValidity { DatePicker("", selection: $validUntil, displayedComponents: .date).labelsHidden() }
+                }
+            }
+            .padding(6)
+        }
+
+    }
+
+    @ViewBuilder private func secondaryColumn(_ data: OfferEditorData) -> some View {
+        GroupBox("Źródło wyceny w ofercie") {
+            VStack(alignment: .leading, spacing: 8) {
+                Picker("", selection: Binding(get: { pricingSource }, set: { next in
+                    pricingSource = next
+                    if next == "calculation" && calculationID == nil {
+                        calculationID = calculations.first(where: \.accepted)?.id ?? calculations.first?.id
+                    }
+                    if next == "offer" { calculationID = nil }
+                })) {
+                    Text("Wycena wynika z pozycji oferty").tag("offer")
+                    Text("Wycena wynika z zaakceptowanej kalkulacji").tag("calculation")
+                }
+                .labelsHidden().fixedSize()
+                .disabled(calculations.isEmpty && pricingSource != "calculation")
+                if pricingSource == "calculation" {
+                    if data.calculationId != nil {
+                        Toggle("Zastąp zapisaną wycenę aktualną wersją kalkulacji", isOn: $refreshCalculation)
+                    }
+                    ProductField(label: "Kalkulacja stanowiąca integralną część oferty",
+                                 help: "Przy wyborze kalkulacji oferta zachowa jej własną wersję. Późniejsze zmiany kalkulacji nie zmienią tej oferty.") {
+                        Picker("", selection: Binding(get: { calculationID ?? "" }, set: { calculationID = $0.isEmpty ? nil : $0 })) {
+                            Text("Wybierz kalkulację").tag("")
+                            ForEach(calculations) { item in Text(item.label + (item.accepted ? " · zaakceptowana" : "")).tag(item.id) }
+                        }
+                        .labelsHidden().fixedSize()
+                    }
+                }
+                if calculations.isEmpty {
+                    Text("Brak kalkulacji powiązanych z tym wydarzeniem lub zapytaniem.").font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            .padding(6)
+        }
+
+        GroupBox("Indywidualna grafika hero oferty") {
+            HStack(alignment: .top, spacing: 14) {
+                heroPreview
+                    .frame(width: 220, height: 130)
+                    .dropDestination(for: URL.self) { urls, _ in
+                        guard let url = urls.first else { return false }
+                        chooseHero(url)
+                        return true
+                    }
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Po wgraniu zastąpi grafikę hero ustawioną w szablonie tylko dla tej oferty. JPG, PNG lub WEBP, maks. 12 MB.")
+                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    HStack {
+                        Button(hasHero ? "Zmień…" : "Wybierz zdjęcie…") { importing = true }
+                        if hasHero { Button("Przywróć grafikę szablonu") { heroData = nil; heroImage = nil; removeHero = true } }
+                    }
+                    .controlSize(.small)
+                    if hasHero {
+                        Text(heroData != nil ? "Nowa grafika zostanie zapisana z ofertą" : "Ta oferta ma własną grafikę hero")
+                            .font(.caption).foregroundStyle(.secondary)
+                        ProductField(label: "Opis zdjęcia") {
+                            TextField("", text: $heroAlt, prompt: Text("np. Hotel i centrum konferencyjne klienta")).textFieldStyle(.roundedBorder)
+                        }
+                    }
+                }
+            }
+            .padding(6)
+        }
+
+        if showsSections {
+            DisclosureGroup("Zapisane dodatkowe warunki ze starszej wersji") {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Wcześniej zapisane warunki pozostają w PDF. Nowe założenia edytuj w trzech kartach założeń. Puste dodatkowe karty nie będą drukowane.")
+                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    ForEach(sections.indices, id: \.self) { index in
+                        HStack(alignment: .top, spacing: 8) {
+                            Text(String(format: "%02d", index + 3)).font(.callout.weight(.bold)).foregroundStyle(theme.accent)
+                            VStack(alignment: .leading, spacing: 4) {
+                                TextField("", text: $sections[index].title).textFieldStyle(.roundedBorder)
+                                ProductTextArea(text: $sections[index].content, prompt: "Dodatkowe ustalenie ze starszej oferty. Puste pole nie będzie drukowane.", lines: 2...5)
                             }
                         }
                     }
-                    .padding(.top, 6)
                 }
+                .padding(.top, 6)
             }
-
-            ProductField(label: "Notatki") { ProductTextArea(text: $notes, prompt: "Dodaj notatki...", lines: 3...8) }
         }
+
+        ProductField(label: "Notatki") { ProductTextArea(text: $notes, prompt: "Dodaj notatki...", lines: 4...12) }
     }
 
     private var hasHero: Bool { heroData != nil || (!removeHero && store.details[offerID]?.basic.heroPath != nil) }

@@ -56,26 +56,16 @@ enum ProductSectionFields {
         VStack(spacing: 0) {
             header
             if let detail {
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 14) {
-                            ProductHeroSection(store: store, detail: detail, editing: editing != nil) { imageSheet = true }
-                                .id("product-section-hero")
-                            ProductReadinessPanel(store: store, detail: detail) { check in show(check, proxy: proxy) }
-                            ViewThatFits(in: .horizontal) {
-                                HStack(alignment: .top, spacing: 14) {
-                                    VStack(spacing: 14) { mainSections(detail) }.frame(minWidth: 560, maxWidth: .infinity)
-                                    VStack(spacing: 14) { sideSections(detail) }.frame(width: 440)
-                                }
-                                VStack(spacing: 14) {
-                                    mainSections(detail)
-                                    sideSections(detail)
-                                }
-                            }
+                // Jak karta wydarzenia: treść produktu po lewej, kolumna boczna po prawej (gotowość do oferty, wycena i ceny,
+                // warunki techniczne, przygotowanie, podwykonawca, tagi); w wąskim oknie wszystko jedno pod drugim.
+                GeometryReader { geometry in
+                    ScrollViewReader { proxy in
+                        ScrollView {
+                            layout(detail, width: geometry.size.width) { check in show(check, proxy: proxy) }
+                                .padding(16)
+                                .frame(maxWidth: 1600, alignment: .leading)
+                                .frame(maxWidth: .infinity)
                         }
-                        .padding(16)
-                        .frame(maxWidth: 1280, alignment: .leading)
-                        .frame(maxWidth: .infinity)
                     }
                 }
             } else if let problem = store.detailErrors[productID] {
@@ -147,17 +137,44 @@ enum ProductSectionFields {
         .crmBar()
     }
 
-    // MARK: Układ sekcji (lewa kolumna — treść oferty, prawa — ustawienia jak szuflady w CRM)
-    @ViewBuilder func mainSections(_ detail: ProductDetail) -> some View {
+    // MARK: Układ sekcji
+    @ViewBuilder func layout(_ detail: ProductDetail, width: CGFloat, show: @escaping (ProductDetail.Check) -> Void) -> some View {
+        let readiness = ProductReadinessPanel(store: store, detail: detail, show: show)
+        if width >= 980 {
+            HStack(alignment: .top, spacing: 18) {
+                VStack(alignment: .leading, spacing: 14) { mainSections(detail, pairs: width >= 1420) }
+                    .frame(maxWidth: .infinity, alignment: .top)
+                VStack(alignment: .leading, spacing: 14) {
+                    readiness
+                    sideSections(detail)
+                }
+                .frame(width: width >= 1400 ? 420 : 380)
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 14) {
+                readiness
+                mainSections(detail, pairs: false)
+                sideSections(detail)
+            }
+        }
+    }
+
+    /// Treść produktu: zdjęcie i nazwa, informacje, prezentacja w PDF, zdjęcia, warianty, pakiety, dodatki, powiązane usługi,
+    /// wymagania, sprzęt, obsada, Mavinci LIVE, klauzule i wersja angielska. Bardzo szerokie okno — dodatki z powiązanymi
+    /// usługami i sprzęt z obsadą obok siebie.
+    @ViewBuilder func mainSections(_ detail: ProductDetail, pairs: Bool) -> some View {
+        ProductHeroSection(store: store, detail: detail, editing: editing != nil) { imageSheet = true }
+            .id("product-section-hero")
         basicSection(detail).id("product-section-basic")
         presentationSection(detail).id("product-section-presentation")
         ProductImageCropsSection(store: store, productID: productID, detail: detail, locked: editing != nil || !state.canWrite)
-        ProductExtrasBlock(store: store, productID: productID)
-        ProductResourcesBlock(store: store, productID: productID)
+        extrasSections(pairs: pairs)
+        resourcesSections(pairs: pairs)
         ProductEnglishSection(store: store, productID: productID, canEdit: detail.canEdit, locked: editing != nil || !state.canWrite,
                               revision: ProductValue.text(detail.product, "updated_at"))
     }
 
+    /// Kolumna boczna (po gotowości do oferty): wycena, ceny i koszty, warunki techniczne, przygotowanie, podwykonawca, tagi.
     @ViewBuilder func sideSections(_ detail: ProductDetail) -> some View {
         if !detail.packagePricing { pricingUnitsSection(detail) }
         pricingSection(detail).id("product-section-pricing")
@@ -165,6 +182,40 @@ enum ProductSectionFields {
         ProductPreparationSection(store: store, productID: productID)
         supplierSection(detail)
         tagsSection(detail)
+    }
+
+    /// Warianty, pakiety, dodatki, powiązane usługi, wymagania (dane `op=extras`); do wczytania — blok z postępem lub błędem.
+    @ViewBuilder func extrasSections(pairs: Bool) -> some View {
+        if let extras = store.extras[productID] {
+            ProductVariantsSection(store: store, productID: productID, extras: extras).id("product-section-variants")
+            ProductPackagesSection(store: store, productID: productID, extras: extras).id("product-section-packages")
+            ProductPair(wide: pairs) {
+                ProductAddonsSection(store: store, productID: productID, extras: extras)
+            } right: {
+                ProductRelatedSection(store: store, productID: productID, extras: extras)
+            }
+            ProductRequirementsSection(store: store, productID: productID, extras: extras)
+        } else {
+            ProductExtrasBlock(store: store, productID: productID)
+        }
+    }
+
+    /// Zakres wariantów, sprzęt, obsada, Mavinci LIVE i klauzule (dane `op=resources`).
+    @ViewBuilder func resourcesSections(pairs: Bool) -> some View {
+        if let resources = store.resources[productID] {
+            if !resources.variants.isEmpty { ProductScopeCard(store: store, productID: productID, resources: resources) }
+            if !resources.packages {
+                ProductPair(wide: pairs) {
+                    ProductEquipmentSection(store: store, productID: productID, resources: resources).id("product-section-equipment")
+                } right: {
+                    ProductStaffSection(store: store, productID: productID, resources: resources).id("product-section-staff")
+                }
+            }
+            ProductLiveSection(store: store, productID: productID, resources: resources)
+            ProductClausesSection(store: store, productID: productID, resources: resources).id("product-section-clauses")
+        } else {
+            ProductResourcesBlock(store: store, productID: productID)
+        }
     }
 
     // MARK: Edycja sekcji
@@ -252,6 +303,29 @@ enum ProductSectionFields {
     /// Liczba wymagana — puste pole to 0.
     func amount(_ key: String) -> Binding<Double?> {
         Binding(get: { ProductValue.number(draft, key) ?? 0 }, set: { draft[key] = .number($0 ?? 0) })
+    }
+}
+
+// MARK: Para sekcji
+
+/// Dwie powiązane sekcje obok siebie (szerokie okno, po połowie szerokości) albo jedna pod drugą.
+struct ProductPair<Left: View, Right: View>: View {
+    let wide: Bool
+    @ViewBuilder var left: Left
+    @ViewBuilder var right: Right
+
+    var body: some View {
+        if wide {
+            HStack(alignment: .top, spacing: 14) {
+                VStack(spacing: 14) { left }.frame(maxWidth: .infinity, alignment: .top)
+                VStack(spacing: 14) { right }.frame(maxWidth: .infinity, alignment: .top)
+            }
+        } else {
+            VStack(spacing: 14) {
+                left
+                right
+            }
+        }
     }
 }
 
