@@ -2,10 +2,14 @@ import { nativeContext, nativeJson, nativeUnauthorized, readJson } from '@/lib/n
 import {
   createProduct,
   deleteProduct,
+  draftProductOfferCopy,
+  draftVariantCopy,
   productDetail,
+  productEnglish,
   productsAccess,
   productsState,
   refreshProductEnglish,
+  saveProductEnglish,
   saveProductSection,
   setReadinessExemption,
   subcontractorServices,
@@ -45,9 +49,10 @@ export const maxDuration = 200;
  * Produkty (katalog oferty) dla aplikacji na Maca (`src/lib/native/products.ts`): GET op=state (katalog z gotowością),
  * op=product&id=… (karta produktu), op=services&organization=… (usługi podwykonawcy), op=resources&id=…&variant=… (sprzęt,
  * obsada, Mavinci LIVE i klauzule w zakresie produktu lub wariantu), op=equipmentCatalog (sprzęt i zestawy do wyboru),
- * op=extras&id=… (warianty, przygotowanie, wymagania, powiązane usługi, dodatki);
- * POST op=create | delete | section (zapis sekcji karty) | exemption („nie dotyczy”) | image (zdjęcie do oferty) |
- * english (wersja angielska po zmianie treści, jak w CRM) | equipmentAdd | equipmentUpdate | equipmentRemove | staffSave |
+ * op=extras&id=… (warianty, przygotowanie, wymagania, powiązane usługi, dodatki), op=english&id=… (teksty wersji EN);
+ * POST op=create | delete | section (zapis sekcji karty, także kadry zdjęć `image_crops`) | exemption („nie dotyczy”) |
+ * image (zdjęcie do oferty) | english („Przetłumacz PL → EN”, też w tle po zmianie treści, jak w CRM) | englishSave (poprawki
+ * tekstów EN) | aiOffer | aiVariant (propozycje treści z AI) | equipmentAdd | equipmentUpdate | equipmentRemove | staffSave |
  * staffRemove | liveToggle | clausesSave | variantCustomize | variantInherit (zakres wariantu) | variantsSave | preparationSave |
  * preparationToggle | preparationRemove | requirementsSave | relatedSave | addonsSave | packagesSave (pakiety sprzedaży).
  */
@@ -69,6 +74,7 @@ export async function GET(request: Request) {
       case 'resources': return nativeJson(await productResources(ctx, url.searchParams.get('id') || '', url.searchParams.get('variant') || null));
       case 'equipmentCatalog': return nativeJson(await equipmentCatalog(ctx));
       case 'extras': return nativeJson(await productExtras(ctx, url.searchParams.get('id') || ''));
+      case 'english': return nativeJson(await productEnglish(ctx, url.searchParams.get('id') || ''));
       default: return failure('Nieznana operacja.');
     }
   } catch (error) {
@@ -95,6 +101,9 @@ export async function POST(request: Request) {
       case 'exemption': return nativeJson(await setReadinessExemption(ctx, body));
       case 'image': return nativeJson(await uploadProductImage(ctx, body));
       case 'english': return nativeJson(await refreshProductEnglish(ctx, body));
+      case 'englishSave': return nativeJson(await saveProductEnglish(ctx, body));
+      case 'aiOffer': return nativeJson(await draftProductOfferCopy(ctx, body));
+      case 'aiVariant': return nativeJson(await draftVariantCopy(ctx, body));
       case 'equipmentAdd': return nativeJson(await addEquipment(ctx, body));
       case 'equipmentUpdate': return nativeJson(await updateEquipment(ctx, body));
       case 'equipmentRemove': return nativeJson(await removeEquipment(ctx, body));

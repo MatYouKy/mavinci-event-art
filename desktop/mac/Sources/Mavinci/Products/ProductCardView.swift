@@ -2,8 +2,9 @@ import SwiftUI
 
 // MARK: Karta produktu (`/crm/offers/products/[id]`, `ProductDetailPage.tsx`) — nagłówek z czynnościami (PL → EN, usunięcie),
 // gotowość do oferty z „Nie dotyczy” i przejściem do braków, sekcje z podglądem i edycją jak `ProductDataSection` w CRM:
-// podstawowe informacje, prezentacja w ofercie PDF z grafiką, ustawienia wyceny, ceny i koszty, warunki techniczne,
-// podwykonawca i tagi. Pozostałe sekcje karty (warianty, pakiety, sprzęt, obsada, klauzule…) — na razie w CRM.
+// podstawowe informacje, prezentacja w ofercie PDF z grafiką i propozycją AI, kadrowanie zdjęć, warianty, pakiety, dodatki,
+// wymagania, sprzęt, obsada, klauzule, wersja angielska, ustawienia wyceny, ceny i koszty, warunki techniczne, przygotowanie,
+// podwykonawca i tagi.
 
 /// Pola sekcji karty — te same listy co `fields` sekcji w CRM i `SECTION_FIELDS` na serwerze.
 enum ProductSectionFields {
@@ -45,6 +46,9 @@ enum ProductSectionFields {
     @State var loadingServices = false
     @State var imageSheet = false
     @State var deleting = false
+    /// Robocza propozycja AI dla prezentacji (część C2b) — wypełnia formularz dopiero po „Zastosuj”.
+    @State var offerAI: ProductOfferAIDraft?
+    @State var offerAIBusy = false
 
     var detail: ProductDetail? { store.details[productID] }
 
@@ -126,7 +130,7 @@ enum ProductSectionFields {
                 .disabled(editing != nil)
             if detail?.canEdit == true {
                 Button { Task { await store.translate(productID) } } label: { Label("Przetłumacz PL → EN", systemImage: "character.book.closed") }
-                    .disabled(editing != nil || !state.canWrite)
+                    .disabled(editing != nil || !state.canWrite || (store.englishBusy[productID] ?? 0) > 0)
             }
             Menu {
                 Button { state.openCRM("/crm/offers/products/\(productID)") } label: { Label("Otwórz w CRM", systemImage: "safari") }
@@ -147,9 +151,11 @@ enum ProductSectionFields {
     @ViewBuilder func mainSections(_ detail: ProductDetail) -> some View {
         basicSection(detail).id("product-section-basic")
         presentationSection(detail).id("product-section-presentation")
+        ProductImageCropsSection(store: store, productID: productID, detail: detail, locked: editing != nil || !state.canWrite)
         ProductExtrasBlock(store: store, productID: productID)
         ProductResourcesBlock(store: store, productID: productID)
-        crmSections(detail)
+        ProductEnglishSection(store: store, productID: productID, canEdit: detail.canEdit, locked: editing != nil || !state.canWrite,
+                              revision: ProductValue.text(detail.product, "updated_at"))
     }
 
     @ViewBuilder func sideSections(_ detail: ProductDetail) -> some View {
@@ -176,6 +182,7 @@ enum ProductSectionFields {
     func cancel() {
         editing = nil
         draft = [:]
+        offerAI = nil
         services = detail?.services ?? []
     }
 
@@ -194,6 +201,7 @@ enum ProductSectionFields {
             if await store.saveSection(productID, section: section, patch: patch) {
                 editing = nil
                 draft = [:]
+                offerAI = nil
             }
         }
     }

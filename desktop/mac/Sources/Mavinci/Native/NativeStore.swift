@@ -18,15 +18,17 @@ struct NativeAPI {
         c.timeoutIntervalForRequest = 60; c.timeoutIntervalForResource = 180; c.httpShouldSetCookies = false
         return URLSession(configuration: c)
     }()
-    func post(_ path: String, _ body: [String: JSONValue]) async throws -> Data {
-        try await send(path, method: "POST", body: body)
+    /// `timeout` — dłuższe oczekiwanie na odpowiedź (np. tłumaczenie produktu trwa do 3 minut); domyślnie 60 s.
+    func post(_ path: String, _ body: [String: JSONValue], timeout: TimeInterval? = nil) async throws -> Data {
+        try await send(path, method: "POST", body: body, timeout: timeout)
     }
     func get(_ path: String) async throws -> Data {
-        try await send(path, method: "GET", body: nil)
+        try await send(path, method: "GET", body: nil, timeout: nil)
     }
-    private func send(_ path: String, method: String, body: [String: JSONValue]?) async throws -> Data {
+    private func send(_ path: String, method: String, body: [String: JSONValue]?, timeout: TimeInterval?) async throws -> Data {
         guard let url = URL(string: base.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/bridge/native/v1" + path) else { throw AppError.configuration }
         var req = URLRequest(url: url)
+        if let timeout { req.timeoutInterval = timeout }
         req.httpMethod = method
         req.setValue("application/json", forHTTPHeaderField: "Accept")
         req.setValue("mac", forHTTPHeaderField: "X-Mavinci-Client")

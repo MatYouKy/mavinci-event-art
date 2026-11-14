@@ -12,6 +12,7 @@ import {
 } from '@/lib/CRM/Offers/productReadiness';
 import { compactProductBlockReason } from '@/lib/CRM/Offers/productPresentation';
 import { packageCostLineNet, staffCostItem } from '@/lib/CRM/Offers/productSalesPackages';
+import { IMAGE_CROP_LAYOUTS, imageCrop } from '@/lib/CRM/Offers/productImageCrop';
 
 /*
  * Produkty (katalog oferty) na Macu — `/crm/offers?tab=catalog` i karta produktu `/crm/offers/products/[id]`: te same dane
@@ -145,7 +146,7 @@ const CARD_FIELDS = [
   'is_subcontractor_service', 'subcontractor_id', 'subcontractor_service_catalog_id', 'subcontractor_settlement_method',
   'subcontractor_economic_cost', 'tags',
   'offer_image_path', 'offer_image_alt', 'offer_image_position_x', 'offer_image_position_y', 'offer_image_zoom',
-  'readiness_exemptions', 'sales_packages_enabled',
+  'readiness_exemptions', 'sales_packages_enabled', 'offer_image_crops',
 ] as const;
 
 const DETAIL_SELECT = '*,category:event_categories(id,name),'
@@ -278,6 +279,7 @@ const SECTION_FIELDS: Record<string, readonly string[]> = {
     'transport_cost_gross', 'logistics_cost_net', 'logistics_cost_gross', 'base_price'],
   tags: ['tags'],
   offer_image: ['offer_image_path', 'offer_image_alt', 'offer_image_position_x', 'offer_image_position_y', 'offer_image_zoom'],
+  image_crops: ['offer_image_crops'],
 };
 
 const BOOLEAN_FIELDS = new Set(['is_active', 'is_personnel_service', 'requires_vehicle', 'requires_driver', 'is_subcontractor_service']);
@@ -294,7 +296,27 @@ const TEXT_LIMITS: Record<string, number> = {
   offer_compact_description: 2000, product_page_url: 1000, offer_image_alt: 300, unit: 40, subcontractor_settlement_method: 60,
 };
 
+/**
+ * Kadry zdjęć w PDF (`ProductImageFraming` w CRM): ścieżka zdjęcia → układ karty → `{ fit, x, y, zoom }` w granicach jak
+ * `imageCrop` (pozycja 0–100%, skala 0,5–3). Nieznane układy i puste wpisy są pomijane.
+ */
+function imageCrops(value: unknown) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const result: Row = {};
+  for (const [path, layouts] of Object.entries(value as Row).slice(0, 100)) {
+    if (!path || path.length > 500 || path.includes('..') || !layouts || typeof layouts !== 'object' || Array.isArray(layouts)) continue;
+    const entry: Row = {};
+    for (const layout of IMAGE_CROP_LAYOUTS) {
+      const crop = imageCrop(value, path, layout.id);
+      if (crop) entry[layout.id] = crop;
+    }
+    if (Object.keys(entry).length) result[path] = entry;
+  }
+  return result;
+}
+
 function coerce(key: string, value: unknown) {
+  if (key === 'offer_image_crops') return imageCrops(value);
   if (BOOLEAN_FIELDS.has(key)) return value === true;
   if (NUMBER_FIELDS.has(key)) {
     if ((value === null || value === '') && NULLABLE_NUMBERS.has(key)) return null;
@@ -464,18 +486,126 @@ export async function uploadProductImage(ctx: NativeContext, body: Row) {
   return { ok: true, path, url: urls.get(path) || null };
 }
 
-/**
- * Wersja angielska po zmianie treści — jak `refreshEnglish` w CRM po zapisie sekcji (`translate-product`, action generate).
- * Mac wywołuje ją w tle; błąd nie cofa zapisu, a CRM pokaże nieaktualne tłumaczenie do ponownego wygenerowania.
- */
-export async function refreshProductEnglish(ctx: NativeContext, body: Row) {
-  if (!productsAccess(ctx).canEdit) fail('Nie masz uprawnień do zmiany produktów.');
-  const id = productId(body.id);
-  const { data, error } = await ctx.supabase.functions.invoke('translate-product', { body: { action: 'generate', productId: id } });
+/** Wywołanie funkcji Supabase tokenem pracownika (jak `supabase.functions.invoke` w CRM) z komunikatem błędu z odpowiedzi. */
+async function invokeFunction(ctx: NativeContext, name: string, body: Row, fallback: string): Promise<Row> {
+  const { data, error } = await ctx.supabase.functions.invoke(name, { body });
   let message = (data as Row | null)?.error as string | undefined;
   if (error && !message) {
     try { message = (await (error as any).context?.json())?.error; } catch { /* komunikat zastępczy */ }
   }
-  if (error || message) fail(message || 'Nie udało się przygotować wersji angielskiej.');
-  return { ok: true };
+  if (error || message) fail(message || fallback);
+  return (data || {}) as Row;
+}
+
+// MARK: Wersja angielska (`translate-product`, jak `useProductLanguage` w CRM)
+
+/** Pola EN: polski tekst źródłowy, tłumaczenie (puste — brak albo nieaktualne po zmianie PL) i limit znaków. */
+async function englishDocument(ctx: NativeContext, body: Row, fallback: string) {
+  const data = await invokeFunction(ctx, 'translate-product', body, fallback);
+  if (!Array.isArray(data.fields) || typeof data.revision !== 'number' || typeof data.version !== 'number') {
+    fail('Usługa tłumaczenia zwróciła nieprawidłową odpowiedź. Spróbuj ponownie.');
+  }
+  return {
+    revision: data.revision as number,
+    version: data.version as number,
+    fields: (data.fields as Row[]).map((field) => ({
+      key: String(field.key || ''),
+      label: String(field.label || ''),
+      source: String(field.source ?? ''),
+      target: String(field.target ?? ''),
+      limit: field.limit == null || !Number.isFinite(Number(field.limit)) ? null : Number(field.limit),
+    })),
+  };
+}
+
+/** Odczyt wersji EN (action read) — bez tłumaczenia, tylko zapisane teksty zgodne z bieżącą treścią PL. */
+export async function productEnglish(ctx: NativeContext, id: string) {
+  return englishDocument(ctx, { action: 'read', productId: productId(id) }, 'Nie udało się pobrać wersji angielskiej.');
+}
+
+/**
+ * „Przetłumacz PL → EN” i odświeżenie po zmianie treści — jak `refreshEnglish` w CRM po zapisie sekcji (action generate):
+ * tłumaczy brakujące i nieaktualne pola. Mac wywołuje je też w tle; błąd nie cofa zapisu sekcji.
+ */
+export async function refreshProductEnglish(ctx: NativeContext, body: Row) {
+  if (!productsAccess(ctx).canEdit) fail('Nie masz uprawnień do zmiany produktów.');
+  const id = productId(body.id);
+  return englishDocument(ctx, { action: 'generate', productId: id }, 'Nie udało się przygotować wersji angielskiej.');
+}
+
+/** Ręczna poprawka tekstów EN (action save) z kontrolą wersji — konflikt, gdy ktoś w międzyczasie zmienił PL albo EN. */
+export async function saveProductEnglish(ctx: NativeContext, body: Row) {
+  if (!productsAccess(ctx).canEdit) fail('Nie masz uprawnień do zmiany produktów.');
+  const id = productId(body.id);
+  const revision = Number(body.revision);
+  const version = Number(body.version);
+  if (!Number.isInteger(revision) || !Number.isInteger(version)) fail('Odśwież wersję angielską przed zapisaniem.');
+  const input = body.targets && typeof body.targets === 'object' && !Array.isArray(body.targets) ? body.targets as Row : {};
+  const targets: Record<string, string> = {};
+  for (const [key, value] of Object.entries(input).slice(0, 3000)) {
+    if (key.length <= 300 && typeof value === 'string') targets[key] = value;
+  }
+  return englishDocument(ctx, { action: 'save', productId: id, revision, version, targets }, 'Nie udało się zapisać wersji angielskiej.');
+}
+
+// MARK: Propozycje AI (`assist-inquiry`, jak „Zaproponuj treść z AI” na karcie i „Opisy z AI” w wariancie)
+
+const aiText = (value: unknown, limit: number) => String(value ?? '').slice(0, limit);
+const aiList = (value: unknown, count: number, limit: number) =>
+  (Array.isArray(value) ? value : []).map((item) => aiText(item, limit).trim()).filter(Boolean).slice(0, count);
+
+/** Robocza treść karty produktu (lead, opis, korzyści) z bieżącej, także niezapisanej treści edytora. */
+export async function draftProductOfferCopy(ctx: NativeContext, body: Row) {
+  if (!productsAccess(ctx).canEdit) fail('Nie masz uprawnień do zmiany produktów.');
+  const id = productId(body.id);
+  const current = body.current && typeof body.current === 'object' ? body.current as Row : {};
+  const data = await invokeFunction(ctx, 'assist-inquiry', {
+    action: 'draft_product_offer_content',
+    productId: id,
+    currentContent: {
+      short_description: aiText(current.short_description, 1000),
+      description: aiText(current.description, 8000),
+      benefits: aiList(current.benefits, 50, 500),
+      image_alt: aiText(current.image_alt, 300),
+    },
+  }, 'Nie udało się przygotować propozycji AI');
+  const result = data.result as Row | undefined;
+  if (!result || typeof result !== 'object') fail('AI nie zwróciło propozycji treści');
+  return {
+    shortDescription: String(result.short_description ?? ''),
+    description: String(result.description ?? ''),
+    benefits: aiList(result.benefits, 50, 500),
+    imageAlt: String(result.image_alt ?? ''),
+  };
+}
+
+/** Krótki opis (do 95 znaków) i opis (do 205) wariantu lub elementu według wytycznych — jak `generateAi` w `ProductVariantsEditor`. */
+export async function draftVariantCopy(ctx: NativeContext, body: Row) {
+  if (!productsAccess(ctx).canEdit) fail('Nie masz uprawnień do zmiany produktów.');
+  const id = productId(body.id);
+  const instructions = String(body.instructions ?? '');
+  if (!instructions.trim() || instructions.length > 2000) fail('Podaj wytyczne (maksymalnie 2000 znaków).');
+  const { data: product, error } = await ctx.supabase.from('offer_products').select('name, service_duration_hours').eq('id', id).maybeSingle();
+  if (error || !product) fail('Nie znaleziono produktu.');
+  const variant = body.variant && typeof body.variant === 'object' ? body.variant as Row : {};
+  const ownDuration = variant.service_duration_hours === '' || variant.service_duration_hours == null ? null : Number(variant.service_duration_hours);
+  const duration = ownDuration != null && Number.isFinite(ownDuration) ? ownDuration : (product as Row).service_duration_hours ?? null;
+  const data = await invokeFunction(ctx, 'assist-inquiry', {
+    action: 'draft_variant_copy',
+    additionalInstructions: instructions,
+    variantContext: {
+      product_name: aiText((product as Row).name, 300),
+      name: aiText(variant.name, 300),
+      short_description: aiText(variant.short_description, 95),
+      description: aiText(variant.description, 205),
+      benefits: aiList(variant.benefits, 30, 300),
+      service_duration_hours: duration,
+    },
+  }, 'Nie udało się wygenerować opisów. Spróbuj ponownie.');
+  const copy = (data.result && typeof data.result === 'object' ? data.result : {}) as Row;
+  if (typeof copy.short_description !== 'string' || !copy.short_description.trim() || copy.short_description.length > 95
+    || typeof copy.description !== 'string' || !copy.description.trim() || copy.description.length > 205) {
+    fail('AI nie zwróciło opisów w limicie znaków. Spróbuj ponownie.');
+  }
+  return { shortDescription: copy.short_description as string, description: copy.description as string };
 }

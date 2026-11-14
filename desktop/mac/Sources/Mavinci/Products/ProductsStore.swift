@@ -286,6 +286,10 @@ enum ProductText {
     /// Warianty, przygotowanie, wymagania, powiązane usługi i dodatki karty (część C1).
     @Published var extras: [String: ProductExtras] = [:]
     @Published var extrasErrors: [String: String] = [:]
+    /// Teksty wersji angielskiej karty (część C2b) i liczba trwających tłumaczeń produktu (także w tle po zapisie).
+    @Published var english: [String: ProductEnglishDocument] = [:]
+    @Published var englishErrors: [String: String] = [:]
+    @Published var englishBusy: [String: Int] = [:]
 
     private var namespace: String?
     private var file: SealedFile<ProductsState>?
@@ -318,6 +322,7 @@ enum ProductText {
         file = nil; namespace = nil; state = nil; syncing = false; loadError = nil
         selectedID = nil; openedID = nil; details = [:]; detailErrors = [:]
         resources = [:]; resourceErrors = [:]; scopes = [:]; equipmentCatalog = nil; extras = [:]; extrasErrors = [:]
+        english = [:]; englishErrors = [:]; englishBusy = [:]
     }
 
     // MARK: Synchronizacja
@@ -397,7 +402,8 @@ enum ProductText {
             details[id] = try JSONDecoder().decode(ProductDetail.self, from: data)
             workspace.succeed(success)
             Task { await sync(force: true) }
-            refreshEnglish(id)
+            // Kadry zdjęć nie zmieniają treści — wersja EN zostaje bez zmian.
+            if section != "image_crops" { refreshEnglish(id) }
             return true
         } catch {
             workspace.error = failureText(error, "Nie udało się zapisać sekcji.")
@@ -484,22 +490,36 @@ enum ProductText {
         }
     }
 
-    /// Wersja angielska po zmianie treści (w tle, jak w CRM po zapisie sekcji).
+    /// Wersja angielska po zmianie treści (w tle, jak w CRM po zapisie sekcji): tłumaczy brakujące i nieaktualne pola.
     func refreshEnglish(_ id: String) {
         guard let api else { return }
+        englishBusy[id, default: 0] += 1
         Task {
-            _ = try? await api.post("/products", ["op": .string("english"), "id": .string(id)])
+            if let data = try? await api.post("/products", ["op": .string("english"), "id": .string(id)], timeout: 190),
+               let document = try? JSONDecoder().decode(ProductEnglishDocument.self, from: data) {
+                english[id] = document
+                englishErrors[id] = nil
+            }
+            englishBusy[id] = max(0, (englishBusy[id] ?? 1) - 1)
         }
     }
 
-    /// „Przetłumacz PL → EN” z nagłówka karty — z oknem postępu i komunikatem.
+    /// „Przetłumacz PL → EN” — z oknem postępu i komunikatem (tłumaczenie trwa do 3 minut).
     func translate(_ id: String) async {
         guard case let (api, workspace)? = writable("Tłumaczenie wymaga połączenia z serwerem CRM.") else { return }
+        englishBusy[id, default: 0] += 1
+        defer { englishBusy[id] = max(0, (englishBusy[id] ?? 1) - 1) }
         do {
-            _ = try await workspace.withPending("Przygotowywanie wersji angielskiej…") {
-                try await api.post("/products", ["op": .string("english"), "id": .string(id)])
+            let data = try await workspace.withPending("Przygotowywanie wersji angielskiej…") {
+                try await api.post("/products", ["op": .string("english"), "id": .string(id)], timeout: 190)
             }
-            workspace.succeed("Wersja angielska jest aktualna")
+            let document = try JSONDecoder().decode(ProductEnglishDocument.self, from: data)
+            english[id] = document
+            englishErrors[id] = nil
+            if document.ready { workspace.succeed("Wersja angielska jest aktualna") }
+            else { workspace.error = "Nie wszystkie pola zostały przetłumaczone (\(document.missing.count)). Spróbuj ponownie albo uzupełnij je ręcznie." }
+        } catch let failure as URLError where failure.code == .timedOut {
+            workspace.error = "Przekroczono czas oczekiwania na odpowiedź. Serwer może nadal kończyć operację. Spróbuj ponownie za chwilę — gotowe tłumaczenia zostaną wykorzystane."
         } catch {
             workspace.error = failureText(error, "Nie udało się przygotować wersji angielskiej.")
         }

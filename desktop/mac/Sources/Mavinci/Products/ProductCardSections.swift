@@ -127,6 +127,19 @@ extension ProductCardView {
         let stage = detail.facts.stage
         let compact = ProductValue.text(draft, "offer_compact_description")
         VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Treść oferty możesz przygotować samodzielnie albo poprosić AI o propozycję na podstawie danych produktu.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                Spacer()
+                Button { Task { await proposeOfferCopy(detail) } } label: {
+                    Label(offerAIBusy ? "Przygotowywanie…" : "Zaproponuj treść z AI", systemImage: "sparkles")
+                }
+                .controlSize(.small)
+                .disabled(offerAIBusy || !state.canWrite)
+            }
+            if let proposal = offerAI {
+                ProductOfferAIDraftBox(draft: proposal, onDiscard: { offerAI = nil }, onApply: { applyOfferAI(proposal) })
+            }
             ProductField(label: "Lead — wspólne zdanie pod tytułem") {
                 TextField("", text: text("offer_short_description", limit: 220), prompt: Text("Jedno zdanie wyjaśniające wartość produktu"))
                     .textFieldStyle(.roundedBorder)
@@ -470,37 +483,30 @@ extension ProductCardView {
         }
     }
 
-    // MARK: Sekcje, które są jeszcze tylko w CRM
-    func crmSections(_ detail: ProductDetail) -> some View {
-        let items: [(String, String)] = [
-            ("Wersja angielska (EN)", ""), ("Kadrowanie zdjęć w ofercie", ""), ("Opis AI", ""),
+    // MARK: Propozycja AI w prezentacji (`handleGenerateOfferCopy` w CRM)
+    func proposeOfferCopy(_ detail: ProductDetail) async {
+        guard !offerAIBusy else { return }
+        offerAIBusy = true
+        defer { offerAIBusy = false }
+        offerAI = nil
+        let benefits = ProductValue.text(draft, "offer_benefits").split(separator: "\n")
+            .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }.map { JSONValue.string($0) }
+        let current: [String: JSONValue] = [
+            "short_description": .string(ProductValue.text(draft, "offer_short_description")),
+            "description": .string(ProductValue.text(draft, "offer_description")),
+            "benefits": .array(benefits),
+            "image_alt": .string(ProductValue.text(detail.product, "offer_image_alt")),
         ]
-        return VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Pozostałe sekcje karty").font(.headline)
-                    Text("Te części karty produktu dodamy na Macu w kolejnych etapach — do tego czasu zmienisz je w CRM.")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-                Spacer()
-                Button { state.openCRM("/crm/offers/products/\(productID)") } label: { Label("Otwórz w CRM", systemImage: "safari") }
-                    .controlSize(.small)
-            }
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), alignment: .leading)], alignment: .leading, spacing: 6) {
-                ForEach(items.indices, id: \.self) { index in
-                    HStack(spacing: 6) {
-                        Image(systemName: "arrow.up.forward.square").foregroundStyle(.secondary)
-                        Text(items[index].0)
-                        if !items[index].1.isEmpty { Text("(\(items[index].1))").foregroundStyle(.secondary) }
-                    }
-                    .font(.callout)
-                }
-            }
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(theme.card.opacity(0.6), in: RoundedRectangle(cornerRadius: 10))
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.primary.opacity(0.08)))
+        let result = await store.draftOfferCopy(productID, current: current)
+        if editing == "presentation" { offerAI = result }
+    }
+
+    /// „Zastosuj do formularza”: lead, opis i korzyści z propozycji (zapis dopiero przyciskiem „Zapisz”).
+    func applyOfferAI(_ value: ProductOfferAIDraft) {
+        draft["offer_short_description"] = .string(value.shortDescription)
+        draft["offer_description"] = .string(value.description)
+        draft["offer_benefits"] = .string(value.benefits.joined(separator: "\n"))
+        offerAI = nil
     }
 }
 

@@ -120,6 +120,9 @@ import UniformTypeIdentifiers
     @State private var importing = false
     @State private var problem: String?
     @State private var saving = false
+    /// „Opis AI” (część C2b): okno z wytycznymi; wytyczne zostają do ponownego generowania.
+    @State private var aiOpen = false
+    @State private var aiInstructions = ""
 
     init(store: ProductsStore, productID: String, extras: ProductExtras, variant: ProductExtras.Variant) {
         _store = ObservedObject(wrappedValue: store)
@@ -141,6 +144,9 @@ import UniformTypeIdentifiers
             HStack {
                 Text("\(existing ? "Edytuj" : "Dodaj") \(extras.elementMode ? "element produktu" : "wariant produktu")").font(.title3.weight(.semibold))
                 Spacer()
+                Button { aiOpen = true } label: { Label("Opis AI", systemImage: "sparkles") }
+                    .disabled(saving)
+                    .help("Krótki opis i opis według Twoich wytycznych — do sprawdzenia przed wstawieniem.")
                 Toggle(isOn: $draft.recommended) { Label(draft.recommended ? "Rekomendowany" : "Rekomenduj (opcjonalnie)", systemImage: "star") }
                     .toggleStyle(.button)
             }
@@ -256,6 +262,19 @@ import UniformTypeIdentifiers
         .fileImporter(isPresented: $importing, allowedContentTypes: [.jpeg, .png, .webP]) { result in
             if case .success(let url) = result { choose(url) }
         }
+        .sheet(isPresented: $aiOpen) {
+            ProductVariantAISheet(store: store, productID: productID, variant: currentVariant, instructions: $aiInstructions) { copy in
+                draft.shortDescription = copy.shortDescription
+                draft.description = copy.description
+            }
+        }
+    }
+
+    /// Bieżący formularz (z niezapisanym zakresem) jako kontekst dla AI.
+    private var currentVariant: ProductExtras.Variant {
+        var value = draft
+        value.benefits = benefits.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        return value
     }
 
     private func choose(_ url: URL) {
