@@ -164,11 +164,19 @@ struct OfferDetail: Codable {
         var gross: Double
         var emphasis: Bool?
     }
+    struct Discount: Codable {
+        var listNet: Double
+        var taxPercent: Double
+        var amount: Double
+        var percent: Double
+        var logisticsNet: Double
+    }
     struct Summary: Codable {
         var rows: [SummaryRow]
         var vat: String
         var logisticsNote: String?
         var calculation: Bool
+        var discount: Discount
     }
     struct HistoryEntry: Codable, Identifiable, Hashable {
         var id: String
@@ -255,6 +263,8 @@ enum OfferText {
     /// „Łączna wartość” na liście (jak `toLocaleString('pl-PL')`).
     static func sum(_ value: Double) -> String { (total.string(from: NSNumber(value: value)) ?? String(value)) + " zł" }
     static func number(_ value: Double) -> String { total.string(from: NSNumber(value: value)) ?? String(value) }
+    /// Kwota do pola edycji: „1234,50” (bez separatora tysięcy).
+    static func plainAmount(_ value: Double) -> String { String(format: "%.2f", value).replacingOccurrences(of: ".", with: ",") }
 
     private static let dayFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -389,6 +399,25 @@ enum OfferText {
             detailErrors[id] = nil
         } catch {
             detailErrors[id] = failureText(error, "Nie udało się pobrać oferty")
+        }
+    }
+
+    /// Zmiana treści oferty (część B): serwer zwraca odświeżoną stronę oferty; lista synchronizuje się w tle.
+    @discardableResult func change(_ id: String, _ op: String, _ fields: [String: JSONValue], pending: String = "Zapisywanie…",
+                                   success: String, timeout: TimeInterval? = nil) async -> Bool {
+        guard case let (api, workspace)? = writable("Zapis wymaga połączenia z serwerem CRM.") else { return false }
+        var body = fields
+        body["op"] = .string(op)
+        body["id"] = .string(id)
+        do {
+            let data = try await workspace.withPending(pending) { try await api.post("/offers", body, timeout: timeout) }
+            details[id] = try JSONDecoder().decode(OfferDetail.self, from: data)
+            workspace.succeed(success)
+            Task { await sync(force: true) }
+            return true
+        } catch {
+            workspace.error = failureText(error, "Nie udało się zapisać zmian.")
+            return false
         }
     }
 

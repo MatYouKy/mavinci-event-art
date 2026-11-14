@@ -295,6 +295,11 @@ function summaryView(offer: Row) {
     vat: `Kwoty w PLN · VAT ${totals.hasMixedVatRates ? 'według stawek pozycji' : `${totals.taxPercent}%`}: ${totals.taxAmount.toFixed(2)} zł`,
     logisticsNote: logisticsNet > 0 ? 'Logistyka jest ujęta w sumie. Rabat od całej oferty obejmuje również jej cenę.' : null,
     calculation: totals.source === 'calculation',
+    /** Podstawa rabatu całej oferty (jak edytor rabatu w `OfferDetails`). */
+    discount: {
+      listNet: totals.listNet, taxPercent: totals.taxPercent, amount: totals.discountAmount, percent: totals.discountPercent,
+      logisticsNet,
+    },
   };
 }
 

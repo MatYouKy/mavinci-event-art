@@ -4,7 +4,8 @@ import SwiftUI
 // MARK: Strona oferty (`/crm/offers/[id]`, `page.tsx`) — nagłówek z numerem, źródłem i statusem; lewa kolumna: informacje
 // podstawowe (`OfferBasicInfo`), założenia wydarzenia, pozycje oferty z układem w PDF (`OfferItems`) i historia zmian;
 // prawa: akcje (status, przejścia do wydarzenia / zapytania, zapisany PDF), kontekst zapytania i podsumowanie (`OfferDetails`).
-// Część A — odczyt, zmiana statusu i usuwanie; edycja treści, generowanie PDF i wysyłka w kolejnych częściach (do tego czasu w CRM).
+// Część A — odczyt, zmiana statusu i usuwanie; część B1 — edycja informacji podstawowych, założeń, rabatu, kolejności, układu
+// i wariantów pozycji. Dodawanie i edycja pozycji, generowanie PDF i wysyłka w kolejnych częściach (do tego czasu w CRM).
 
 @MainActor struct OfferPageView: View {
     @ObservedObject var store: OffersStore
@@ -12,6 +13,9 @@ import SwiftUI
     @EnvironmentObject var state: Workspace
     @Environment(\.crmTheme) var theme
     @State private var deleting = false
+    /// Edycja informacji podstawowych i założeń (część B).
+    @State private var basicSheet = false
+    @State private var assumptionsSheet = false
 
     var detail: OfferDetail? { store.details[offerID] }
 
@@ -57,6 +61,8 @@ import SwiftUI
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             Task { await store.loadDetail(offerID) }
         }
+        .sheet(isPresented: $basicSheet) { OfferBasicInfoSheet(store: store, offerID: offerID) }
+        .sheet(isPresented: $assumptionsSheet) { OfferAssumptionsSheet(store: store, offerID: offerID) }
         .confirmationDialog("Czy na pewno chcesz usunąć tę ofertę?", isPresented: $deleting, titleVisibility: .visible) {
             Button("Usuń ofertę", role: .destructive) { Task { _ = await store.delete(offerID) } }
             Button("Anuluj", role: .cancel) {}
@@ -121,10 +127,12 @@ import SwiftUI
 
     // MARK: Kolumny
     @ViewBuilder func mainColumn(_ detail: OfferDetail) -> some View {
-        OfferBasicInfoCard(detail: detail)
-        OfferAssumptionsCard(assumptions: detail.assumptions)
+        let editBasic: (() -> Void)? = editable(detail) ? { basicSheet = true } : nil
+        let editAssumptions: (() -> Void)? = editable(detail) ? { assumptionsSheet = true } : nil
+        OfferBasicInfoCard(detail: detail, onEdit: editBasic)
+        OfferAssumptionsCard(assumptions: detail.assumptions, onEdit: editAssumptions)
         if !detail.offer.seller {
-            OfferItemsCard(detail: detail)
+            OfferItemsCard(store: store, detail: detail)
             OfferPendingCard(offerID: offerID)
         }
         OfferHistoryCard(detail: detail)
@@ -133,8 +141,11 @@ import SwiftUI
     @ViewBuilder func sideColumn(_ detail: OfferDetail) -> some View {
         if !detail.offer.seller { OfferActionsCard(store: store, detail: detail) }
         if let inquiry = detail.inquiry { OfferInquiryContextCard(inquiry: inquiry) }
-        OfferSummaryCard(detail: detail)
+        OfferSummaryCard(store: store, detail: detail)
     }
+
+    /// Edycja treści jak `canEditCrmContent` w CRM (zarządzający, nie zaakceptowana, nie z portalu sprzedawcy) i połączenie.
+    private func editable(_ detail: OfferDetail) -> Bool { detail.canEdit && state.canWrite }
 }
 
 // MARK: Karta sekcji
@@ -144,13 +155,19 @@ struct OfferCard<Content: View>: View {
     let title: String
     var subtitle: String? = nil
     var symbol: String? = nil
+    /// Czynność w nagłówku karty (np. „Edytuj”).
+    var trailing: AnyView? = nil
     @ViewBuilder var content: Content
     @Environment(\.crmTheme) private var theme
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                if let symbol { Label(title, systemImage: symbol).font(.headline) } else { Text(title).font(.headline) }
-                if let subtitle { Text(subtitle).font(.caption).foregroundStyle(.secondary) }
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 2) {
+                    if let symbol { Label(title, systemImage: symbol).font(.headline) } else { Text(title).font(.headline) }
+                    if let subtitle { Text(subtitle).font(.caption).foregroundStyle(.secondary) }
+                }
+                Spacer()
+                if let trailing { trailing.controlSize(.small) }
             }
             content
         }
@@ -184,12 +201,13 @@ struct OfferInfoField<Content: View>: View {
 
 @MainActor struct OfferBasicInfoCard: View {
     let detail: OfferDetail
+    var onEdit: (() -> Void)? = nil
     @Environment(\.crmTheme) private var theme
     @State private var heroLarge = false
 
     var body: some View {
         let basic = detail.basic
-        OfferCard(title: "Informacje podstawowe") {
+        OfferCard(title: "Informacje podstawowe", trailing: onEdit.map { edit in AnyView(Button(action: edit) { Label("Edytuj", systemImage: "pencil") }) }) {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 250), alignment: .topLeading)], alignment: .leading, spacing: 14) {
                 OfferInfoField(symbol: "doc.text", label: "Tytuł oferty") {
                     Text(basic.title).font(.callout.weight(.medium)).textSelection(.enabled)
@@ -220,6 +238,10 @@ struct OfferInfoField<Content: View>: View {
                 }
                 OfferInfoField(symbol: "person.3", label: "Uczestnicy") {
                     Text(basic.audience).font(.callout)
+                    if let onEdit {
+                        Button(basic.guestCount == nil ? "Uzupełnij liczbę osób" : "Zmień liczbę osób", action: onEdit)
+                            .buttonStyle(.link).font(.caption)
+                    }
                 }
                 OfferInfoField(symbol: "function", label: "Źródło wyceny") {
                     Text(basic.pricingSource).font(.callout.weight(.medium))
@@ -278,10 +300,11 @@ struct OfferInfoField<Content: View>: View {
 
 struct OfferAssumptionsCard: View {
     let assumptions: OfferDetail.Assumptions
+    var onEdit: (() -> Void)? = nil
     @Environment(\.crmTheme) private var theme
 
     var body: some View {
-        OfferCard(title: "Założenia wydarzenia") {
+        OfferCard(title: "Założenia wydarzenia", trailing: onEdit.map { edit in AnyView(Button(action: edit) { Label("Edytuj", systemImage: "pencil") }) }) {
             if let note = assumptions.guestNote { Text(note).font(.caption).foregroundStyle(.secondary) }
             if !assumptions.items.isEmpty {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), alignment: .topLeading)], alignment: .leading, spacing: 10) {
@@ -320,39 +343,97 @@ struct OfferAssumptionsCard: View {
 // MARK: Pozycje oferty
 
 @MainActor struct OfferItemsCard: View {
+    @ObservedObject var store: OffersStore
     let detail: OfferDetail
     @EnvironmentObject private var state: Workspace
+    @State private var deleting: OfferDetail.Item?
+
+    private var canEdit: Bool { detail.canEdit && state.canWrite }
 
     var body: some View {
-        OfferCard(title: "Pozycje oferty", subtitle: detail.items.isEmpty ? nil : "\(detail.items.count) poz. · kolejność jak w PDF") {
+        let addButton: AnyView? = canEdit
+            ? AnyView(Button { state.openCRM("/crm/offers/\(detail.offer.id)") } label: { Label("Dodaj pozycję", systemImage: "plus") }
+                .help("Dodawanie i edycja pozycji — na razie w CRM"))
+            : nil
+        OfferCard(title: "Pozycje oferty",
+                  subtitle: detail.items.isEmpty ? nil : canEdit ? "Kolejność zmienisz strzałkami lub z menu pozycji" : "\(detail.items.count) poz. · kolejność jak w PDF",
+                  trailing: addButton) {
             if detail.items.isEmpty {
                 Text("Brak pozycji w ofercie").font(.callout).foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(.vertical, 20)
             } else {
                 VStack(spacing: 10) {
-                    ForEach(detail.items) { item in OfferItemRow(item: item, vatRate: detail.vatRate) }
+                    ForEach(detail.items) { item in
+                        let index = detail.items.firstIndex { $0.id == item.id } ?? 0
+                        OfferItemRow(store: store, offerID: detail.offer.id, item: item, vatRate: detail.vatRate, canEdit: canEdit,
+                                     first: index == 0, last: index == detail.items.count - 1,
+                                     onMove: { step in move(index, step) }, onDelete: { deleting = item })
+                    }
                 }
             }
+        }
+        .confirmationDialog("Czy na pewno chcesz usunąć tę pozycję?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
+                            titleVisibility: .visible) {
+            Button("Usuń pozycję", role: .destructive) {
+                if let item = deleting {
+                    Task { await store.change(detail.offer.id, "itemDelete", ["itemId": .string(item.id)], pending: "Usuwanie pozycji…", success: "Pozycja usunięta") }
+                }
+                deleting = nil
+            }
+            Button("Anuluj", role: .cancel) { deleting = nil }
+        } message: {
+            Text("Tej operacji nie można cofnąć.")
+        }
+    }
+
+    /// Przesunięcie pozycji o jedno miejsce (`reorder_offer_items` z kontrolą bieżącej kolejności).
+    private func move(_ index: Int, _ step: Int) {
+        let target = index + step
+        guard canEdit, detail.items.indices.contains(target) else { return }
+        let expected = detail.items.map(\.id)
+        var next = expected
+        next.swapAt(index, target)
+        Task {
+            await store.change(detail.offer.id, "itemsReorder",
+                               ["itemIds": .array(next.map { JSONValue.string($0) }), "expectedIds": .array(expected.map { JSONValue.string($0) })],
+                               success: "Kolejność pozycji zaktualizowana")
         }
     }
 }
 
 @MainActor struct OfferItemRow: View {
+    @ObservedObject var store: OffersStore
+    let offerID: String
     let item: OfferDetail.Item
     let vatRate: Double
+    var canEdit = false
+    var first = true
+    var last = true
+    var onMove: (Int) -> Void = { _ in }
+    var onDelete: () -> Void = {}
     @EnvironmentObject private var state: Workspace
     @Environment(\.crmTheme) private var theme
     @State private var large = false
 
-    private var layoutLabel: String {
-        switch item.layout.print {
+    private var layoutLabel: String { Self.layoutName(item.layout.print, stage: item.layout.stage) }
+    static func layoutName(_ layout: String, stage: Bool) -> String {
+        switch layout {
         case "compact": return "Kompaktowo · 3/str."
         case "visual": return "Duża grafika"
-        default: return item.layout.stage ? "Rozbudowany" : "Osobna strona"
+        default: return stage ? "Rozbudowany" : "Osobna strona"
         }
     }
+    /// Pole „Pokaż warianty” wyłączone (zapisane `show_product_variants_in_pdf = false`).
+    private var variantsHidden: Bool { !item.layout.showVariants && !item.layout.hasAddons }
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
+            if canEdit {
+                VStack(spacing: 2) {
+                    Button { onMove(-1) } label: { Image(systemName: "chevron.up") }.disabled(first).help("Przesuń wyżej")
+                    Button { onMove(1) } label: { Image(systemName: "chevron.down") }.disabled(last).help("Przesuń niżej")
+                }
+                .buttonStyle(.borderless).controlSize(.small)
+            }
             Group {
                 if let path = item.imagePath, let url = item.imageUrl {
                     Button { large = true } label: { ProductThumb(path: path, url: url) }
@@ -382,17 +463,7 @@ struct OfferAssumptionsCard: View {
                     Text("Cena brutto (VAT \(OfferText.number(vatRate))%): ") + Text(OfferText.pln(item.unitGross)).bold()
                 }
                 .font(.caption).monospacedDigit()
-                HStack(spacing: 6) {
-                    Text("Układ w PDF:").foregroundStyle(.secondary)
-                    Text(layoutLabel).fontWeight(.medium)
-                    if item.layout.hasProductVariants {
-                        Text("·").foregroundStyle(.secondary)
-                        Text(item.layout.showVariants ? "Pokaż warianty" : "Warianty ukryte")
-                        Text("·").foregroundStyle(.secondary)
-                        Text(item.layout.showVariantPrices && item.layout.showVariants ? "Ceny wariantów" : "Bez cen wariantów")
-                    }
-                }
-                .font(.caption)
+                if canEdit { layoutControls } else { layoutSummary }
                 if let note = layoutNote { Text(note).font(.caption2).foregroundStyle(.secondary) }
                 if !item.addons.isEmpty {
                     VStack(alignment: .leading, spacing: 3) {
@@ -412,6 +483,13 @@ struct OfferAssumptionsCard: View {
             .frame(maxWidth: .infinity, alignment: .leading)
 
             VStack(alignment: .trailing, spacing: 2) {
+                if canEdit {
+                    Menu {
+                        menuItems
+                    } label: { Image(systemName: "ellipsis.circle") }
+                        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                        .padding(.bottom, 4)
+                }
                 if item.discountPercent > 0 {
                     Text("Rabat: \(OfferText.number(item.discountPercent))%").font(.caption2).foregroundStyle(.green)
                 }
@@ -428,12 +506,89 @@ struct OfferAssumptionsCard: View {
         .padding(10)
         .background(Color.primary.opacity(0.03), in: RoundedRectangle(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.primary.opacity(0.06)))
-        .contextMenu {
-            if let product = item.productId {
-                Button("Otwórz produkt", systemImage: "shippingbox") { state.showProduct(product) }
-                Button("Publiczna karta produktu", systemImage: "safari") { state.openCRM("/produkty/\(product)") }
+        .contextMenu { menuItems }
+    }
+
+    @ViewBuilder private var menuItems: some View {
+        if let product = item.productId {
+            Button("Otwórz produkt", systemImage: "shippingbox") { state.showProduct(product) }
+            Button("Publiczna karta produktu", systemImage: "safari") { state.openCRM("/produkty/\(product)") }
+        }
+        if canEdit {
+            Divider()
+            Button("Edytuj pozycję w CRM", systemImage: "pencil") { state.openCRM("/crm/offers/\(offerID)") }
+            Button("Przesuń wyżej", systemImage: "arrow.up") { onMove(-1) }.disabled(first)
+            Button("Przesuń niżej", systemImage: "arrow.down") { onMove(1) }.disabled(last)
+            Divider()
+            Button("Usuń pozycję…", systemImage: "trash", role: .destructive) { onDelete() }
+        }
+    }
+
+    private var layoutSummary: some View {
+        HStack(spacing: 6) {
+            Text("Układ w PDF:").foregroundStyle(.secondary)
+            Text(layoutLabel).fontWeight(.medium)
+            if item.layout.hasProductVariants {
+                Text("·").foregroundStyle(.secondary)
+                Text(item.layout.showVariants ? "Pokaż warianty" : "Warianty ukryte")
+                Text("·").foregroundStyle(.secondary)
+                Text(item.layout.showVariantPrices && item.layout.showVariants ? "Ceny wariantów" : "Bez cen wariantów")
             }
         }
+        .font(.caption)
+    }
+
+    /// Przyciski układu i pola wariantów jak w `OfferItems` (te same blokady).
+    private var layoutControls: some View {
+        let layout = item.layout
+        let compactBlocked = !layout.stage && (layout.blockedByElements || layout.showsVariantComparison || layout.hasAddons || layout.hasPackages)
+        let pageBlocked = layout.showsVariantComparison || layout.hasPackages
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Text("Układ w PDF").font(.caption).foregroundStyle(.secondary)
+                layoutButton("compact", blocked: compactBlocked)
+                layoutButton("default", blocked: pageBlocked)
+                if !layout.stage { layoutButton("visual", blocked: pageBlocked) }
+            }
+            if layout.hasProductVariants {
+                HStack(spacing: 14) {
+                    Button("Edytuj ceny wariantów") { state.openCRM("/crm/offers/\(offerID)") }
+                        .buttonStyle(.link).font(.caption).help("Ceny wariantów — na razie w CRM")
+                    Toggle("Pokaż warianty", isOn: Binding(get: { layout.showVariants }, set: { next in
+                        Task {
+                            await store.change(offerID, "itemPresentation", ["itemId": .string(item.id), "showVariants": .bool(next)],
+                                               success: next ? "PDF pokaże porównanie wszystkich wariantów" : "PDF potraktuje wybrany wariant jak zwykły produkt")
+                        }
+                    }))
+                    .disabled(layout.hasAddons)
+                    Toggle("Ceny wariantów", isOn: Binding(get: { layout.showVariantPrices }, set: { next in
+                        Task {
+                            await store.change(offerID, "itemPresentation", ["itemId": .string(item.id), "showVariantPrices": .bool(next)],
+                                               success: next ? "Ceny wariantów pojawią się w PDF" : "Ceny wariantów zostały ukryte w PDF")
+                        }
+                    }))
+                    .disabled(variantsHidden)
+                }
+                .toggleStyle(.checkbox).font(.caption)
+            }
+        }
+        .controlSize(.small)
+    }
+
+    private func layoutButton(_ key: String, blocked: Bool) -> some View {
+        let selected = item.layout.print == key
+        return Button(Self.layoutName(key, stage: item.layout.stage)) {
+            guard !selected else { return }
+            Task {
+                await store.change(offerID, "itemPresentation", ["itemId": .string(item.id), "layout": .string(key)],
+                                   success: key == "compact" ? "Produkt zostanie wydrukowany kompaktowo"
+                                       : key == "visual" ? "Produkt otrzyma stronę z dużą grafiką" : "Produkt otrzyma osobną stronę")
+            }
+        }
+        .buttonStyle(.bordered)
+        .tint(selected ? theme.accent : nil)
+        .fontWeight(selected ? .semibold : .regular)
+        .disabled(blocked)
     }
 
     /// Objaśnienia układu jak pod przyciskami w CRM.
@@ -455,7 +610,7 @@ struct OfferAssumptionsCard: View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Pozostałe sekcje oferty").font(.headline)
-                Text("Wymagania techniczne, pakiety oferty i propozycje dodatkowe oraz edycja treści dojdą na Macu w kolejnych częściach — do tego czasu zmienisz je w CRM.")
+                Text("Dodawanie i edycja pozycji, wymagania techniczne, pakiety oferty i propozycje dodatkowe dojdą na Macu w kolejnych częściach — do tego czasu zmienisz je w CRM.")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             Spacer()
@@ -658,8 +813,43 @@ struct OfferHistoryCard: View {
 
 // MARK: Informacje i podsumowanie
 
-struct OfferSummaryCard: View {
+/// Podgląd rabatu jak `calculateOfferDiscount` (kwota, procent albo cena docelowa netto; `nil` — wartość spoza zakresu).
+struct OfferDiscountPreview {
+    var amount: Double
+    var percent: Double
+    var net: Double
+    var tax: Double
+    var gross: Double
+
+    static func make(listNet: Double, taxPercent: Double, mode: String, input: String) -> OfferDiscountPreview? {
+        let trimmed = input.trimmingCharacters(in: .whitespaces)
+        let value = trimmed.isEmpty ? 0 : Double(trimmed.replacingOccurrences(of: ",", with: "."))
+        guard let value, value.isFinite, value >= 0, listNet.isFinite, listNet >= 0,
+              mode == "percent" ? value <= 100 : value <= listNet else { return nil }
+        func round(_ number: Double) -> Double { ((number + .ulpOfOne) * 100).rounded() / 100 }
+        let discount = round(mode == "percent" ? listNet * value / 100 : mode == "target" ? listNet - value : value)
+        let net = round(listNet - discount)
+        let tax = round(net * taxPercent / 100)
+        return OfferDiscountPreview(amount: discount, percent: listNet > 0 ? discount / listNet * 100 : 0, net: net, tax: tax, gross: round(net + tax))
+    }
+}
+
+@MainActor struct OfferSummaryCard: View {
+    @ObservedObject var store: OffersStore
     let detail: OfferDetail
+    @EnvironmentObject private var state: Workspace
+    @State private var editing = false
+    @State private var mode = "amount"
+    @State private var value = ""
+    @State private var saving = false
+
+    /// Rabat całej oferty: zarządzający, oferta wyceniana z pozycji (jak `canEditDiscount`).
+    private var canEditDiscount: Bool { detail.canEdit && !detail.summary.calculation && state.canWrite }
+    private var base: OfferDetail.Discount { detail.summary.discount }
+    private var preview: OfferDiscountPreview? {
+        OfferDiscountPreview.make(listNet: base.listNet, taxPercent: base.taxPercent, mode: mode, input: value)
+    }
+
     var body: some View {
         OfferCard(title: "Informacje") {
             HStack {
@@ -689,6 +879,16 @@ struct OfferSummaryCard: View {
                 Text(detail.summary.vat).font(.caption).foregroundStyle(.secondary)
                 if let note = detail.summary.logisticsNote { Text(note).font(.caption).foregroundStyle(.secondary) }
             }
+            if canEditDiscount {
+                if editing { discountEditor } else {
+                    Button(base.amount > 0 ? "Edytuj rabat" : "Dodaj rabat") {
+                        mode = "amount"
+                        value = OfferText.plainAmount(base.amount)
+                        editing = true
+                    }
+                    .controlSize(.small)
+                }
+            }
             Divider()
             Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 4) {
                 GridRow {
@@ -705,6 +905,53 @@ struct OfferSummaryCard: View {
                 }
             }
             .font(.caption)
+        }
+        .onChange(of: detail.offer.id) { _, _ in editing = false }
+    }
+
+    /// Edytor rabatu (`OfferDetails`): kwota netto, procent albo cena docelowa netto całej oferty.
+    private var discountEditor: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Rabat").font(.callout.weight(.semibold))
+            Text("Podstawa rabatu: \(OfferText.money(base.listNet)) netto\(base.logisticsNet > 0 ? " — pozycje oferty wraz z logistyką" : ""). Ustaw rabat kwotowy, procentowy albo docelową cenę całej oferty.")
+                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            discountField("amount", "Rabat netto (zł)", preview?.amount)
+            discountField("percent", "Rabat (%)", preview?.percent)
+            discountField("target", "Cena docelowa netto (zł)", preview?.net)
+            if let preview {
+                Text("Po rabacie: \(OfferText.money(preview.net)) netto · VAT: \(OfferText.money(preview.tax)) · \(OfferText.money(preview.gross)) brutto")
+                    .font(.caption).monospacedDigit()
+            } else {
+                Text("Podaj kwotę od 0 do wartości oferty lub rabat od 0 do 100%.").font(.caption).foregroundStyle(.red)
+            }
+            HStack {
+                Button("Usuń rabat") { mode = "amount"; value = "0" }.disabled(saving)
+                Spacer()
+                Button("Anuluj") { editing = false }.disabled(saving)
+                Button(saving ? "Zapisuję…" : "Zapisz rabat") { Task { await save() } }
+                    .buttonStyle(.borderedProminent).disabled(saving || preview == nil)
+            }
+        }
+        .controlSize(.small)
+        .padding(10)
+        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func discountField(_ key: String, _ label: String, _ current: Double?) -> some View {
+        HStack {
+            Text(label).font(.caption).frame(width: 170, alignment: .leading)
+            TextField("", text: Binding(get: { mode == key ? value : OfferText.plainAmount(current ?? 0) },
+                                        set: { mode = key; value = $0 }))
+                .textFieldStyle(.roundedBorder).multilineTextAlignment(.trailing).monospacedDigit().frame(width: 140)
+        }
+    }
+
+    private func save() async {
+        guard preview != nil else { return }
+        saving = true
+        defer { saving = false }
+        if await store.change(detail.offer.id, "discountSave", ["mode": .string(mode), "value": .string(value)], success: "Rabat zapisany") {
+            editing = false
         }
     }
 
