@@ -1,8 +1,8 @@
 import SwiftUI
 
 // MARK: Oferty wydarzenia (1:1 z `EventTabOffer`): lista ofert z wartością brutto i netto, statusem, klientem i datami,
-// usuwanie (szkic / wysłana, administrator — każda), otwarcie oferty. Kreator nowej oferty, wysyłka e-mailem i rezerwacja
-// sprzętu należą do modułu Oferty i otwierają się w CRM.
+// usuwanie (szkic / wysłana, administrator — każda), otwarcie oferty. „Nowa oferta” otwiera kreator (`OfferWizardSheet`)
+// dla tego wydarzenia — pracownikom z dostępem do ofert; pozostałym kreator w CRM. Wysyłka e-mailem — w CRM.
 
 struct OfferTabData: Decodable {
     struct Offer: Decodable, Identifiable, Hashable {
@@ -22,6 +22,14 @@ struct OfferTabData: Decodable {
     @State private var deleting: OfferTabData.Offer?
     @State private var busy: String?
     @State private var selected: String?
+    @State private var wizard: OfferWizardRoute?
+
+    /// Kreator na Macu korzysta z modułu Oferty (dostęp do ofert); bez niego — kreator w CRM, jak dotąd.
+    private var nativeWizard: Bool { state.employee?.canView(.offers) == true }
+
+    private func newOffer() {
+        if nativeWizard { wizard = OfferWizardRoute(eventID: eventID) } else { state.openCRM("/crm/events/\(eventID)?tab=offer") }
+    }
 
     private var data: OfferTabData? { store.tab(eventID, "offer", as: OfferTabData.self) }
 
@@ -37,6 +45,9 @@ struct OfferTabData: Decodable {
             }
         }
         .task(id: eventID) { await store.loadTab(eventID, "offer") }
+        .sheet(item: $wizard) { route in
+            OfferWizardSheet(store: state.offers, eventID: route.eventID) { _ in Task { await store.loadTab(eventID, "offer") } }
+        }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in Task { await store.loadTab(eventID, "offer") } }
         .confirmationDialog("Czy na pewno chcesz usunąć tę ofertę?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), titleVisibility: .visible) {
             if let offer = deleting { Button("Usuń", role: .destructive) { Task { await remove(offer) } } }
@@ -54,15 +65,15 @@ struct OfferTabData: Decodable {
                     Button { state.openCRM("/crm/events/\(eventID)?tab=offer") } label: { Label("Wyślij ofertę", systemImage: "paperplane") }
                         .help("Wysyłka oferty e-mailem otworzy się w CRM.")
                 }
-                Button { state.openCRM("/crm/events/\(eventID)?tab=offer") } label: { Label("Nowa oferta", systemImage: "plus") }
-                    .buttonStyle(.borderedProminent).help("Kreator oferty otworzy się w CRM.")
+                Button { newOffer() } label: { Label("Nowa oferta", systemImage: "plus") }
+                    .buttonStyle(.borderedProminent).help(nativeWizard ? "Kreator oferty dla tego wydarzenia" : "Kreator oferty otworzy się w CRM.")
             }
             .padding(.horizontal, 18).padding(.top, 12)
             if data.offers.isEmpty {
                 ContentUnavailableView {
                     Label("Brak ofert dla tego eventu", systemImage: "dollarsign.circle")
-                } description: { Text("Kreator oferty otwiera się w CRM.") } actions: {
-                    Button("Utwórz pierwszą ofertę") { state.openCRM("/crm/events/\(eventID)?tab=offer") }
+                } description: { Text(nativeWizard ? "Utwórz ofertę kreatorem: klient, produkty i cena." : "Kreator oferty otwiera się w CRM.") } actions: {
+                    Button("Utwórz pierwszą ofertę") { newOffer() }
                 }
             } else {
                 table(data)

@@ -3,6 +3,7 @@
 import { Plus, Trash2, Wrench, Users, Pencil, Check, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { IOfferItem } from '@/app/(crm)/crm/offers/types';
+import { NotReadyProductsNotice } from '../WizardReadiness';
 
 export interface CustomItem {
   name: string;
@@ -140,6 +141,8 @@ export default function OfferStep4({
           </button>
         </div>
       </div>
+
+      <NotReadyProductsNotice items={offerItems} />
 
       {/* Custom Item Form */}
       {showCustomItemForm && (

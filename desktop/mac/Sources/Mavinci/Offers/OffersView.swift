@@ -2,7 +2,7 @@ import SwiftUI
 
 // MARK: Oferty (`/crm/offers`, `OfferPage.tsx` i `OffersViews.tsx`) — liczniki (wszystkie, szkice, wysłane, zaakceptowane,
 // łączna wartość), wyszukiwanie po ofercie, kliencie, kontakcie, e-mailu i telefonie, filtr statusu, widok listy / tabeli /
-// kafelków. Dwuklik otwiera stronę oferty (`OfferPageView`).
+// kafelków. Dwuklik otwiera stronę oferty (`OfferPageView`). „Nowa oferta” — kreator (`OfferWizardSheet`, najpierw wybór eventu).
 
 @MainActor struct OffersView: View {
     @ObservedObject var store: OffersStore
@@ -12,6 +12,7 @@ import SwiftUI
     @State private var search = ""
     @State private var status = "all"
     @State private var deleting: OfferListItem?
+    @State private var wizard: OfferWizardRoute?
     @State private var sortOrder = [KeyPathComparator(\OfferListItem.sortCreated, order: .reverse)]
 
     var body: some View {
@@ -47,6 +48,9 @@ import SwiftUI
                  ? "Sprzęt automatycznie dodany z tej oferty zostanie usunięty z eventu.\nWszystkie pliki PDF zostaną usunięte.\n\nTej operacji nie można cofnąć."
                  : "Wszystkie pliki PDF zostaną usunięte.\n\nTej operacji nie można cofnąć.")
         }
+        .sheet(item: $wizard) { route in
+            OfferWizardSheet(store: store, eventID: route.eventID) { id in store.selectedID = id }
+        }
         .task(id: state.employee?.id) {
             await store.backgroundSync()
             while !Task.isCancelled {
@@ -78,9 +82,9 @@ import SwiftUI
             if store.syncing { ProgressView().controlSize(.small) }
             Button { Task { await store.sync(force: true) } } label: { Image(systemName: "arrow.clockwise") }
                 .help("Odśwież listę ofert")
-            Button { state.openCRM("/crm/offers") } label: { Label("Nowa oferta", systemImage: "plus") }
+            Button { wizard = OfferWizardRoute(eventID: nil) } label: { Label("Nowa oferta", systemImage: "plus") }
                 .buttonStyle(.borderedProminent)
-                .help("Kreator oferty — na razie w CRM (w przeglądarce)")
+                .help("Kreator oferty: wybierz wydarzenie, klienta i produkty")
         }
         .controlSize(.small)
         .padding(.horizontal, 14).padding(.vertical, 9)

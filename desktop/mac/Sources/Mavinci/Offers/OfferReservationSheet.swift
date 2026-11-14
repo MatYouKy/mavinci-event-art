@@ -2,7 +2,8 @@ import SwiftUI
 
 // MARK: Oferty, część D3 — „Zarezerwuj sprzęt” (`ReserveEquipmentModal`): akceptowany pakiet i warianty, braki konfiguracji
 // pozycji, sprzęt z dostępnością w terminie wydarzenia, akceptowanie braków, zamienniki z wymaganymi komponentami,
-// opcjonalne potwierdzenie realizacji dla klienta i zapis akceptacji z rezerwacją. Serwer: `src/lib/native/offerReservation.ts`.
+// opcjonalne potwierdzenie realizacji dla klienta i zapis akceptacji z rezerwacją albo — gdy nic nie zaznaczono — akceptacja
+// bez rezerwacji sprzętu. Serwer: `src/lib/native/offerReservation.ts`.
 
 struct OfferReservationState: Decodable {
     struct Package: Decodable, Identifiable, Hashable {
@@ -113,7 +114,8 @@ extension OffersStore {
             "items": .array(items.map { JSONValue.string($0) }), "shortages": .array(shortages.map { JSONValue.string($0) }),
             "sendConfirmation": .bool(sendConfirmation), "expectedRecipientEmail": .string(expectedRecipient ?? ""),
         ]
-        let data = try await workspace.withPending(sendConfirmation ? "Zapisuję i wysyłam…" : "Rezerwuję…") { try await api.post("/offers", body, timeout: 120) }
+        let pending = sendConfirmation ? "Zapisuję i wysyłam…" : items.isEmpty && shortages.isEmpty ? "Zapisuję akceptację…" : "Rezerwuję…"
+        let data = try await workspace.withPending(pending) { try await api.post("/offers", body, timeout: 120) }
         let reply = try JSONDecoder().decode(Reply.self, from: data)
         await loadDetail(id)
         Task { await sync(force: true) }
@@ -139,12 +141,18 @@ extension OffersStore {
 
     private var equipment: [OfferReservationState.Equipment] { data?.equipment ?? [] }
     private var blocked: Bool { data == nil || data?.error != nil }
-    private var canConfirm: Bool { !blocked && (equipment.isEmpty || !selected.isEmpty || !accepted.isEmpty) }
+    /// Akceptacja jest możliwa także bez sprzętu: odznaczony sprzęt nie trafia do wydarzenia (jak w CRM po poprawce).
+    private var canConfirm: Bool { !blocked }
+    /// Oferta ma sprzęt, ale nic nie zaznaczono ani nie zaakceptowano braków — akceptacja bez rezerwacji sprzętu.
+    private var withoutEquipment: Bool { !equipment.isEmpty && selected.isEmpty && accepted.isEmpty }
+    /// Sprzęt, który można zaznaczyć (dostępny, bez zaakceptowanego braku).
+    private var selectable: [String] { equipment.filter { !$0.conflict && !accepted.contains($0.key) }.map(\.key) }
     private var recipient: String? { data?.confirmation?.preview?.recipientEmail }
     private var confirmLabel: String {
-        if confirming { return sendConfirmation ? "Zapisuję i wysyłam…" : "Rezerwuję…" }
+        if confirming { return sendConfirmation ? "Zapisuję i wysyłam…" : withoutEquipment ? "Zapisuję…" : "Rezerwuję…" }
         if sendConfirmation { return "Potwierdź i wyślij wiadomość" }
-        return equipment.isEmpty ? "Potwierdź ofertę" : "Potwierdź rezerwację"
+        if equipment.isEmpty { return "Potwierdź ofertę" }
+        return withoutEquipment ? "Potwierdź bez rezerwacji sprzętu" : "Potwierdź rezerwację"
     }
 
     var body: some View {
@@ -213,6 +221,15 @@ extension OffersStore {
                         .background(Color.blue.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
                 } else {
                     table
+                    if withoutEquipment {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Label("Bez rezerwacji sprzętu", systemImage: "info.circle").font(.callout.weight(.semibold)).foregroundStyle(.blue)
+                            Text("Nie zaznaczono żadnego sprzętu. Oferta zostanie zaakceptowana bez rezerwacji — sprzęt z produktów tej oferty nie trafi do wydarzenia. W razie potrzeby dodasz go później w zakładce Sprzęt wydarzenia.")
+                                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        }
+                        .padding(12).frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.blue.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+                    }
                     if !accepted.isEmpty {
                         VStack(alignment: .leading, spacing: 4) {
                             Label("Zaakceptowane braki", systemImage: "exclamationmark.triangle").font(.callout.weight(.semibold)).foregroundStyle(.yellow)
@@ -305,7 +322,19 @@ extension OffersStore {
     private var table: some View {
         VStack(spacing: 0) {
             HStack(spacing: 10) {
-                Color.clear.frame(width: 20)
+                Group {
+                    if selectable.isEmpty {
+                        Color.clear
+                    } else {
+                        Toggle("", isOn: Binding(get: { selectable.allSatisfy { selected.contains($0) } }, set: { on in
+                            if on { selected.formUnion(selectable) } else { selected.subtract(selectable) }
+                        }))
+                        .toggleStyle(.checkbox).labelsHidden()
+                        .help("Zaznacz albo odznacz cały dostępny sprzęt")
+                        .disabled(confirming)
+                    }
+                }
+                .frame(width: 20)
                 Text("Sprzęt").frame(maxWidth: .infinity, alignment: .leading)
                 Text("Wymagane").frame(width: 80, alignment: .trailing)
                 Text("Dostępne").frame(width: 90, alignment: .trailing)

@@ -44,8 +44,8 @@ export default function AddClientModal({
                 .from('contacts')
                 .insert([
                   {
-                    name,
-                    surname,
+                    first_name: name.trim(),
+                    last_name: surname.trim(),
                     email: email || null,
                     phone: phone || null,
                     contact_type: 'individual',

@@ -3,6 +3,9 @@ import type { ProductSalesPackage } from '@/lib/CRM/Offers/productSalesPackages'
 
 import { useMemo, useState } from 'react';
 import { useDialog } from '@/contexts/DialogContext';
+import { useSnackbar } from '@/contexts/SnackbarContext';
+import { readinessSummary } from '@/components/crm/offers/ProductReadiness';
+import { wizardReadiness } from '../WizardReadiness';
 import { useDispatch } from 'react-redux';
 import { eventsApi } from '@/app/(crm)/crm/events/store/api/eventsApi';
 
@@ -35,6 +38,7 @@ export function useOfferWizardLogic(opts: {
   onClose: () => void;
 }) {
   const { showDialog, showConfirm } = useDialog();
+  const { showSnackbar } = useSnackbar();
   const dispatch = useDispatch();
 
   const hasOrganization =
@@ -176,7 +180,13 @@ export function useOfferWizardLogic(opts: {
 
   const addProductToOffer = async (product: IProduct, variant?: IProductVariant, salesPackage?: ProductSalesPackage) => {
     // ✅ dostajesz "next" od razu
+    const isNew = !items.offerItems.some((item) => item.product_id === product.id);
     const nextItems = items.addProduct(product, variant, salesPackage);
+    // Gotowość do oferty (`productReadiness`): niegotowy produkt można dodać, ale z ostrzeżeniem o brakach.
+    const readiness = wizardReadiness(product);
+    if (isNew && readiness && !readiness.ready) {
+      showSnackbar(`„${product.name}” nie jest gotowy do oferty — ${readinessSummary(readiness).toLowerCase()}.`, 'warning');
+    }
 
     const rows = await conflicts.checkCartConflicts(nextItems);
     if (rows.length > 0) {

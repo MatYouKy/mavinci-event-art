@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Lock, AlertTriangle, CheckCircle, Package, X, Loader2 } from 'lucide-react';
+import { Lock, AlertTriangle, CheckCircle, Package, X, Loader2, Info } from 'lucide-react';
 import Image from 'next/image';
 import Popover from '@/components/UI/Tooltip';
 import OverlayPortal from '@/components/UI/OverlayPortal';
@@ -344,6 +344,15 @@ export default function ReserveEquipmentModal({
     setSelectedItems(newSelected);
   };
 
+  /** Nagłówek tabeli: zaznacz albo odznacz cały dostępny sprzęt (bez braków i zaakceptowanych braków). */
+  const handleToggleAll = () => {
+    const keys = selectableKeys;
+    const allSelected = keys.length > 0 && keys.every((key) => selectedItems.has(key));
+    const next = new Set(selectedItems);
+    keys.forEach((key) => (allSelected ? next.delete(key) : next.add(key)));
+    setSelectedItems(next);
+  };
+
   const handleAcceptShortage = (itemKey: string) => {
     const newAccepted = new Set(acceptedShortages);
     newAccepted.add(itemKey);
@@ -590,7 +599,11 @@ export default function ReserveEquipmentModal({
 
       const result = data as { success: boolean; reserved_count: number; shortage_count: number; rejected_offers_count: number };
 
-      if (result.rejected_offers_count > 0) {
+      if (itemsToReserve.length === 0 && acceptedShortageItems.length === 0) {
+        // Akceptacja bez rezerwacji: sprzęt z produktów nie trafia do wydarzenia.
+        const base = equipment.length > 0 ? 'Oferta zaakceptowana bez rezerwacji sprzętu' : 'Oferta została zaakceptowana';
+        showSnackbar(result.rejected_offers_count > 0 ? `${base}. Odrzucono ${result.rejected_offers_count} pozostałych ofert.` : base, 'success');
+      } else if (result.rejected_offers_count > 0) {
         showSnackbar(
           `Sprzęt zarezerwowany pomyślnie. Odrzucono ${result.rejected_offers_count} pozostałych ofert.`,
           'success'
@@ -624,7 +637,13 @@ export default function ReserveEquipmentModal({
   const hasUnresolvedConflicts =
     equipment.some((e) => e.has_conflict) && acceptedShortages.size === 0;
   const noEquipmentNeeded = equipment.length === 0;
-  const canConfirm = !equipmentError && (noEquipmentNeeded || selectedItems.size > 0 || acceptedShortages.size > 0);
+  const selectableKeys = equipment
+    .filter((item) => !item.has_conflict && !acceptedShortages.has(`${item.item_type}-${item.item_id}`))
+    .map((item) => `${item.item_type}-${item.item_id}`);
+  const reservedCount = selectableKeys.filter((key) => selectedItems.has(key)).length;
+  // Odznaczenie całego sprzętu = świadoma akceptacja bez rezerwacji (np. sprzęt z produktu niepotrzebny w tej realizacji).
+  const withoutEquipment = !noEquipmentNeeded && reservedCount === 0 && acceptedShortages.size === 0;
+  const canConfirm = !equipmentError;
 
   if (!open) return null;
 
@@ -745,7 +764,19 @@ export default function ReserveEquipmentModal({
                       <table className="w-full">
                         <thead className="bg-[#0f1117]">
                           <tr>
-                            <th className="w-10 px-4 py-3"></th>
+                            <th className="w-10 px-4 py-3">
+                              {selectableKeys.length > 0 && (
+                                <input
+                                  type="checkbox"
+                                  aria-label="Zaznacz albo odznacz cały dostępny sprzęt"
+                                  title="Zaznacz albo odznacz cały dostępny sprzęt"
+                                  checked={selectableKeys.every((key) => selectedItems.has(key))}
+                                  onChange={handleToggleAll}
+                                  disabled={confirming}
+                                  className="h-4 w-4 rounded border-[#d3bb73]/30 bg-[#0f1117] text-green-500 focus:ring-2 focus:ring-green-500/50"
+                                />
+                              )}
+                            </th>
                             <th className="px-4 py-3 text-left text-xs font-medium text-[#e5e4e2]/60">
                               Sprzęt
                             </th>
@@ -847,6 +878,18 @@ export default function ReserveEquipmentModal({
                     </div>
 
                     {/* Komunikaty */}
+                    {withoutEquipment && (
+                      <div role="status" className="mt-4 rounded-lg border border-blue-500/20 bg-blue-500/10 p-4">
+                        <div className="mb-2 flex items-center gap-2">
+                          <Info className="h-5 w-5 text-blue-400" />
+                          <strong className="text-sm text-blue-400">Bez rezerwacji sprzętu</strong>
+                        </div>
+                        <p className="text-sm text-blue-300/90">
+                          Nie zaznaczono żadnego sprzętu. Oferta zostanie zaakceptowana bez rezerwacji — sprzęt z produktów tej oferty
+                          nie trafi do wydarzenia. W razie potrzeby dodasz go później w zakładce Sprzęt wydarzenia.
+                        </p>
+                      </div>
+                    )}
                     {acceptedShortages.size > 0 && (
                       <div className="mt-4 rounded-lg border border-yellow-500/20 bg-yellow-500/10 p-4">
                         <div className="mb-2 flex items-center gap-2">
@@ -882,12 +925,12 @@ export default function ReserveEquipmentModal({
               {confirming ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  {sendConfirmationEmail ? 'Zapisuję i wysyłam…' : 'Rezerwuję...'}
+                  {sendConfirmationEmail ? 'Zapisuję i wysyłam…' : withoutEquipment ? 'Zapisuję...' : 'Rezerwuję...'}
                 </>
               ) : (
                 <>
                   <Lock className="h-4 w-4" />
-                  {sendConfirmationEmail ? 'Potwierdź i wyślij wiadomość' : noEquipmentNeeded ? 'Potwierdź Ofertę' : 'Potwierdź Rezerwację'}
+                  {sendConfirmationEmail ? 'Potwierdź i wyślij wiadomość' : noEquipmentNeeded ? 'Potwierdź Ofertę' : withoutEquipment ? 'Potwierdź bez rezerwacji sprzętu' : 'Potwierdź Rezerwację'}
                 </>
               )}
             </button>

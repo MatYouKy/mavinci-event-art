@@ -206,6 +206,15 @@ export async function saveOfferSubstitution(ctx: NativeContext, body: Row) {
 
 // MARK: Akceptacja i rezerwacja
 
+/** Komunikat po akceptacji (jak w `ReserveEquipmentModal`): rezerwacja, sama oferta albo akceptacja bez rezerwacji sprzętu. */
+function acceptanceMessage(kind: 'reserved' | 'offer' | 'none', rejected: number) {
+  if (kind === 'reserved') {
+    return rejected > 0 ? `Sprzęt zarezerwowany pomyślnie. Odrzucono ${rejected} pozostałych ofert.` : 'Sprzęt został zarezerwowany pomyślnie';
+  }
+  const base = kind === 'none' ? 'Oferta zaakceptowana bez rezerwacji sprzętu' : 'Oferta została zaakceptowana';
+  return rejected > 0 ? `${base}. Odrzucono ${rejected} pozostałych ofert.` : base;
+}
+
 /**
  * „Potwierdź rezerwację” / „Potwierdź ofertę”: zaznaczony dostępny sprzęt i zaakceptowane braki (ilości z bieżącej
  * dostępności), akceptowany pakiet, a przy nowej akceptacji — opcjonalnie potwierdzenie realizacji do klienta.
@@ -223,7 +232,8 @@ export async function confirmOfferReservation(ctx: NativeContext, body: Row, acc
     .map((item) => ({ item_type: item.type, item_id: item.itemId, qty: item.required }));
   const accepted = equipment.filter((item) => shortages.has(item.key))
     .map((item) => ({ item_type: item.type, item_id: item.itemId, shortage_qty: item.shortage }));
-  if (equipment.length && !items.length && !accepted.length) fail('Zaznacz sprzęt do rezerwacji albo zaakceptuj braki.');
+  // Bez zaznaczonego sprzętu i braków oferta jest akceptowana bez rezerwacji (sprzęt z produktów nie trafia do wydarzenia).
+  const withoutEquipment = !items.length && !accepted.length;
 
   const isNew = offer.status !== 'accepted';
   const sendConfirmation = body.sendConfirmation === true && isNew;
@@ -253,7 +263,7 @@ export async function confirmOfferReservation(ctx: NativeContext, body: Row, acc
   }
   const rejected = Number(result.rejected_offers_count) || 0;
   return {
-    message: rejected > 0 ? `Sprzęt zarezerwowany pomyślnie. Odrzucono ${rejected} pozostałych ofert.` : 'Sprzęt został zarezerwowany pomyślnie',
+    message: acceptanceMessage(withoutEquipment ? (equipment.length ? 'none' : 'offer') : 'reserved', rejected),
     confirmation,
     eventId: String(offer.event_id),
     offer: await offerDetail(ctx, offerId),

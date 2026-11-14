@@ -35,6 +35,13 @@ import {
 } from '@/lib/native/offerActions';
 import { confirmOfferReservation, offerReservation, offerSubstitutes, saveOfferSubstitution } from '@/lib/native/offerReservation';
 import {
+  addOfferWizardContact,
+  createOfferFromWizard,
+  offerWizardEvents,
+  offerWizardSetup,
+  previewOfferWizard,
+} from '@/lib/native/offerWizard';
+import {
   buildOfferRecommendation,
   offerRecommendations,
   previewOfferRecommendation,
@@ -62,7 +69,8 @@ export const maxDuration = 300;
  * Czynności (`src/lib/native/offerActions.ts`): GET op=emailSetup&id=… | linkChoices&id=…&kind=event|inquiry&search=… |
  * eventSetup&id=…; POST op=emailPreview | emailAI | emailSend | link | draftRevision | eventCreate. Akceptacja z wydarzeniem
  * i rezerwacja sprzętu (`src/lib/native/offerReservation.ts`): GET op=reservation&id=…&package=… | substitutes&id=…&item=…;
- * POST op=substitutionSave | reservationConfirm.
+ * POST op=substitutionSave | reservationConfirm. Kreator nowej oferty (`src/lib/native/offerWizard.ts`): GET op=wizardEvents |
+ * wizardSetup&event=…; POST op=wizardPreview | wizardCreate | wizardContact.
  */
 
 const failure = (message: string, status = 400) => nativeJson({ error: message }, status);
@@ -98,6 +106,8 @@ export async function GET(request: Request) {
       case 'eventSetup': return nativeJson(await offerEventSetup(ctx, url.searchParams.get('id') || ''));
       case 'reservation': return nativeJson(await offerReservation(ctx, url.searchParams.get('id') || '', url.searchParams.get('package')));
       case 'substitutes': return nativeJson(await offerSubstitutes(ctx, url.searchParams.get('id') || '', url.searchParams.get('item') || ''));
+      case 'wizardEvents': return nativeJson(await offerWizardEvents(ctx));
+      case 'wizardSetup': return nativeJson(await offerWizardSetup(ctx, url.searchParams.get('event') || ''));
       default: return failure('Nieznana operacja.');
     }
   } catch (error) {
@@ -153,6 +163,9 @@ export async function POST(request: Request) {
         const token = /^Bearer\s+(\S+)$/i.exec(request.headers.get('authorization') || '')?.[1] || '';
         return nativeJson(await confirmOfferReservation(ctx, body, token));
       }
+      case 'wizardPreview': return nativeJson(await previewOfferWizard(ctx, body));
+      case 'wizardCreate': return nativeJson(await createOfferFromWizard(ctx, body));
+      case 'wizardContact': return nativeJson(await addOfferWizardContact(ctx, body));
       default: return failure('Nieznana operacja.');
     }
   } catch (error) {

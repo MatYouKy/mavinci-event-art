@@ -25,6 +25,7 @@ import { useUserPreferences } from '@/app/(crm)/crm/PreferencesClientProvider';
 import type { IOfferItem, IProduct, IProductVariant } from '@/app/(crm)/crm/offers/types';
 import { supabase } from '@/lib/supabase/browser';
 import Popover from '@/components/UI/Tooltip';
+import { WizardReadinessLine } from '../WizardReadiness';
 
 interface ProductCategory {
   id: string;
@@ -454,6 +455,7 @@ export default function OfferStep3({
                         {product.description}
                       </p>
                     )}
+                    <WizardReadinessLine product={product} className="mt-2" />
 
                     {renderSelectionMode(product)}
                     {choices.length > 0 ? <div className="mt-2 space-y-2">
@@ -510,6 +512,7 @@ export default function OfferStep3({
                           {product.description}
                         </div>
                       )}
+                      <WizardReadinessLine product={product} className="mt-1" />
                     </td>
                     <td className="truncate px-2 py-2 text-[#e5e4e2]/60" title={product.category?.name || ''}>
                       {product.category?.name || '—'}
@@ -627,7 +630,7 @@ export default function OfferStep3({
                         </button>
                       </td>
                     </tr>
-                    <tr><td colSpan={6} className="px-3 pb-3"><details><summary className="cursor-pointer py-2 text-[#d3bb73]">Konfiguruj zakres i dodatki{item.pricing_configuration?.addons.length ? ` (${item.pricing_configuration.addons.length})` : ''}</summary>
+                    <tr><td colSpan={6} className="px-3 pb-3"><WizardReadinessLine product={product} onlyMissing className="pt-1" /><details><summary className="cursor-pointer py-2 text-[#d3bb73]">Konfiguruj zakres i dodatki{item.pricing_configuration?.addons.length ? ` (${item.pricing_configuration.addons.length})` : ''}</summary>
                       {item.pricing_configuration?.modular && <ModularProductConfigurator quantity={item.quantity} value={item.pricing_configuration.modular} onChange={modular => updateOfferItem(item.id, { pricing_configuration:createModularConfiguration(modular, item.pricing_configuration?.modular_price_source === 'manual' ? item.pricing_configuration.base_unit_price : undefined), name:modularTitle(modular), description:modularScope(modular).join('\n') })} />}
                       {item.pricing_configuration?.modular && <ModularPriceHint value={item.pricing_configuration.modular} manual={item.pricing_configuration.modular_price_source === 'manual'} onReset={() => updateOfferItem(item.id, { pricing_configuration: createModularConfiguration(item.pricing_configuration!.modular!) })} />}
                       {renderAddedSelection(item, product)}
