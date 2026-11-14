@@ -213,6 +213,9 @@ enum ProductSectionFields {
             } else {
                 begin("presentation", detail)
             }
+        case "product-section-packages":
+            if store.extras[productID] != nil { withAnimation { proxy.scrollTo("product-section-packages", anchor: .top) } }
+            else { state.openCRM("/crm/offers/products/\(productID)") }
         case "product-section-equipment", "product-section-staff", "product-section-clauses":
             // Sekcje części B — gdy produkt ma pakiety, sprzęt i obsada są w pakietach (na razie w CRM).
             if let resources = store.resources[productID], !(resources.packages && check.anchor != "product-section-clauses") {

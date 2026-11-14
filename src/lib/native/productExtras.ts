@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { NativeContext } from './auth';
 import { fail, PRODUCT_UUID, productsAccess } from './products';
 import { validateAddons, type ProductAddon } from '@/lib/CRM/Offers/offerAddons';
+import { validateSalesPackages, type ProductSalesPackage } from '@/lib/CRM/Offers/productSalesPackages';
 import { getOfferRequirementLabel, inferOfferRequirementCategory } from '@/lib/CRM/Offers/offerRequirements';
 import { relatedServicePagePath, servicePagePath } from '@/lib/CRM/Offers/relatedServices';
 
@@ -101,7 +102,8 @@ export async function productExtras(ctx: NativeContext, productValue: string) {
   const product = productRes.data as Row;
   const variants = (variantsRes.data || []) as Row[];
   const packages = product.sales_packages_enabled === true && Array.isArray(product.sales_packages) ? product.sales_packages as Row[] : [];
-  const paths = variants.map((variant) => variant.offer_image_path).filter(Boolean) as string[];
+  const allPackages = Array.isArray(product.sales_packages) ? product.sales_packages as Row[] : [];
+  const paths = [...variants.map((variant) => variant.offer_image_path), ...allPackages.map((item) => item?.image_path)].filter(Boolean) as string[];
   const signed = paths.length ? await ctx.supabase.storage.from(BUCKET).createSignedUrls(paths, 3600) : { data: [] as Row[] };
   const urls = new Map(((signed.data || []) as Row[]).filter((item) => item?.signedUrl).map((item) => [String(item.path), String(item.signedUrl)]));
   const individual = variants.some((variant) => variant.is_active !== false) || packages.length > 0;
@@ -168,6 +170,10 @@ export async function productExtras(ctx: NativeContext, productValue: string) {
       error: services.error ? 'Nie udało się wczytać katalogu usług.' : null,
     },
     addons: Array.isArray(product.pricing_addons) ? product.pricing_addons : [],
+    packages: {
+      enabled: product.sales_packages_enabled === true,
+      items: allPackages.map((item) => ({ ...item, image_url: item?.image_path ? urls.get(String(item.image_path)) || null : null })),
+    },
   };
 }
 
@@ -414,5 +420,71 @@ export async function saveAddons(ctx: NativeContext, body: Row) {
     ...(addon.max_quantity != null ? { max_quantity: Number(addon.max_quantity) } : {}),
   }));
   await patchProduct(ctx, productId, { pricing_addons: clean, ...(clean.length ? { offer_page_variant: 'default' } : {}) }, 'Nie udało się zapisać dodatków');
+  return productExtras(ctx, productId);
+}
+
+// MARK: Pakiety sprzedaży (druga strona oferty)
+
+/** Lista pakietów (do trzech) i przełącznik „Dwie strony” jak `ProductSalesPackagesSection` + `saveSalesPackages` w CRM. */
+export async function savePackages(ctx: NativeContext, body: Row) {
+  editor(ctx);
+  const productId = uuid(body.id, 'Nieprawidłowy produkt.');
+  const input = Array.isArray(body.packages) ? body.packages as Row[] : [];
+  const text = (value: unknown) => (typeof value === 'string' ? value : value == null ? '' : String(value));
+  const packages = input.map((item) => {
+    const next: Row = {
+      id: text(item?.id),
+      name: text(item?.name).trim(),
+      description: text(item?.description),
+      included_label: text(item?.included_label).trim(),
+      element_ids: Array.isArray(item?.element_ids) ? item.element_ids.map(String) : [],
+      price_net: Number(item?.price_net),
+      extension_price_net_per_hour: item?.extension_price_net_per_hour == null || item.extension_price_net_per_hour === '' ? null : Number(item.extension_price_net_per_hour),
+      bonus: text(item?.bonus),
+      highlighted: item?.highlighted === true,
+      image_path: typeof item?.image_path === 'string' && item.image_path ? item.image_path : null,
+      image_alt: text(item?.image_alt),
+    };
+    if (item?.price_on_request === true) next.price_on_request = true;
+    if (item?.include_product_addons === true) next.include_product_addons = true;
+    if (item?.audience_pricing && typeof item.audience_pricing === 'object') next.audience_pricing = item.audience_pricing;
+    if (Array.isArray(item?.cost_items)) next.cost_items = item.cost_items;
+    if (item?.resources && typeof item.resources === 'object') next.resources = item.resources;
+    return next as ProductSalesPackage;
+  });
+  const problem = validateSalesPackages(packages);
+  if (problem) fail(problem);
+  if (packages.some((item) => item.image_path && (!item.image_path.startsWith(`assets/${productId}/`) || item.image_path.includes('..')))) fail('Nieprawidłowe zdjęcie pakietu.');
+  const { data: variantRows, error: variantError } = await ctx.supabase.from('offer_product_variants').select('id').eq('product_id', productId);
+  if (variantError) fail(variantError.message);
+  const elements = new Set(((variantRows || []) as Row[]).map((row) => String(row.id)));
+  if (packages.some((item) => item.element_ids.some((id) => !elements.has(id)))) fail('Zaktualizuj skład pakietu — jeden z elementów został usunięty.');
+
+  const uploaded: string[] = [];
+  try {
+    for (const image of Array.isArray(body.images) ? body.images as Row[] : []) {
+      const target = packages.find((item) => item.id === image?.packageId);
+      if (!target || typeof image.data !== 'string' || !image.data) continue;
+      const bytes = Buffer.from(image.data, 'base64');
+      if (bytes.length > 8 * 1024 * 1024) fail('Zdjęcie pakietu jest za duże.');
+      const kind = IMAGE_TYPES.find((entry) => entry.test(bytes));
+      if (!kind) fail('Wybierz JPG, PNG lub WebP o wielkości do 10 MB.');
+      const path = `assets/${productId}/packages/${target.id}-${randomUUID()}.${kind.extension}`;
+      const { error } = await ctx.supabase.storage.from(BUCKET).upload(path, bytes, { contentType: kind.type, upsert: false });
+      if (error) fail(error.message || 'Nie udało się wysłać zdjęcia pakietu.');
+      uploaded.push(path);
+      target.image_path = path;
+    }
+    const enabled = body.enabled === true && packages.length > 0;
+    // Pakiety rozliczane są w sztukach pakietu (jak `saveProductSection` w CRM).
+    await patchProduct(ctx, productId, {
+      sales_packages: packages,
+      sales_packages_enabled: enabled,
+      ...(enabled ? { unit: 'pakiet', min_quantity: 1 } : {}),
+    }, 'Nie udało się zapisać pakietu.');
+  } catch (error) {
+    if (uploaded.length) await ctx.supabase.storage.from(BUCKET).remove(uploaded).catch(() => undefined);
+    throw error;
+  }
   return productExtras(ctx, productId);
 }

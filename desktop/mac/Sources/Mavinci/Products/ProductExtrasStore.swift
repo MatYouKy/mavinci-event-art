@@ -153,6 +153,12 @@ struct ProductExtras: Codable {
     var requirementCategories: [RequirementCategory]
     var related: Related
     var addons: [ProductAddonItem]
+    var packages: Packages
+
+    struct Packages: Codable {
+        var enabled: Bool
+        var items: [ProductSalesPackageItem]
+    }
 
     func requirementLabel(_ category: String) -> String { requirementCategories.first { $0.value == category }?.label ?? "Inne" }
 }
@@ -251,5 +257,120 @@ extension ProductAddonItem {
                   staff_role: try? c.decodeIfPresent(String.self, forKey: .staff_role),
                   staff_hours: number(.staff_hours),
                   max_quantity: number(.max_quantity))
+    }
+}
+
+// MARK: Pakiety sprzedaży (`ProductSalesPackage` w CRM — te same pola w `sales_packages`)
+
+struct ProductPackageCostItem: Codable, Identifiable, Hashable {
+    var id: String
+    var name: String
+    var quantity: Double
+    var unit_cost_net: Double
+    var settlement_method: String?
+    var compensation_snapshot: ProductStaffSnapshot?
+}
+
+struct ProductPackageEquipmentItem: Codable, Identifiable, Hashable {
+    var id: String
+    var name: String
+    var equipment_item_id: String?
+    var equipment_kit_id: String?
+    var quantity: Double
+    var is_optional: Bool
+    var notes: String
+}
+
+struct ProductPackageStaffItem: Codable, Identifiable, Hashable {
+    var id: String
+    var role: String
+    var quantity: Double
+    var estimated_hours: Double?
+    var is_optional: Bool
+    var notes: String
+    var compensation: ProductStaffCompensation?
+}
+
+struct ProductPackageResourcesItem: Codable, Hashable {
+    var equipment: [ProductPackageEquipmentItem]
+    var staff: [ProductPackageStaffItem]
+}
+
+struct ProductAudiencePricing: Codable, Hashable {
+    var fixed_net: Double
+    var per_guest_net: Double
+    var per_table_net: Double
+    var reference_guests: Double
+
+    /// Cena w katalogu dla liczby osób referencyjnych, średnio 10 osób przy stole (`audiencePackagePrice`).
+    var referencePrice: Double? {
+        guard reference_guests >= 1, reference_guests == reference_guests.rounded() else { return nil }
+        let tables = (reference_guests / 10).rounded(.up)
+        let price = ((fixed_net + per_guest_net * reference_guests + per_table_net * tables + .ulpOfOne) * 100).rounded() / 100
+        return price <= 999_999_999 ? price : nil
+    }
+}
+
+struct ProductSalesPackageItem: Codable, Identifiable, Hashable {
+    var id: String
+    var name: String
+    var description: String
+    var included_label: String
+    var element_ids: [String]
+    var price_net: Double
+    var extension_price_net_per_hour: Double?
+    var bonus: String
+    var highlighted: Bool
+    var image_path: String?
+    var image_alt: String
+    var price_on_request: Bool?
+    var include_product_addons: Bool?
+    var audience_pricing: ProductAudiencePricing?
+    var cost_items: [ProductPackageCostItem]?
+    var resources: ProductPackageResourcesItem?
+    var image_url: String?
+
+    static func blank() -> ProductSalesPackageItem {
+        ProductSalesPackageItem(id: UUID().uuidString.lowercased(), name: "", description: "", included_label: "", element_ids: [], price_net: 0,
+                                extension_price_net_per_hour: nil, bonus: "", highlighted: false, image_path: nil, image_alt: "")
+    }
+
+    var priceText: String { price_on_request == true && price_net <= 0 ? "Wycena indywidualna" : "\(ProductText.number(price_net)) zł netto" }
+
+    var json: JSONValue {
+        var copy = self
+        copy.image_url = nil
+        guard let data = try? JSONEncoder().encode(copy), let value = try? JSONDecoder().decode(JSONValue.self, from: data) else { return .null }
+        return value
+    }
+
+    /// Koszt spółki na 1 pakiet (`packageCostNet`): pozycje kosztowe i obsada ze stawkami; `nil` — nieustalony.
+    var costNet: Double? {
+        let staff = (resources?.staff ?? []).filter { !$0.is_optional && $0.compensation != nil }
+        if cost_items == nil && staff.isEmpty { return nil }
+        var total = 0.0
+        for row in cost_items ?? [] {
+            guard let line = ProductPackageCosts.line(row) else { return nil }
+            total += (line * 100).rounded()
+        }
+        for row in staff {
+            guard let line = ProductStaffCost.companyCost(quantity: row.quantity, hours: row.estimated_hours, compensation: row.compensation) else { return nil }
+            total += (line * 100).rounded()
+        }
+        return total / 100
+    }
+    var unpricedStaff: Int { (resources?.staff ?? []).filter { !$0.is_optional && $0.compensation == nil }.count }
+}
+
+enum ProductPackageCosts {
+    /// Koszt pozycji (`packageCostLineNet`): ilość × stawka, przy gotówce z zysku — z kosztem finansowania.
+    static func line(_ row: ProductPackageCostItem) -> Double? {
+        guard row.quantity.isFinite, row.quantity > 0, row.unit_cost_net.isFinite, row.unit_cost_net >= 0 else { return nil }
+        var cost = row.quantity * row.unit_cost_net
+        if row.settlement_method == "cash_non_deductible" {
+            guard let snapshot = row.compensation_snapshot, snapshot.valid, let cit = snapshot.cit_rate, let dividend = snapshot.dividend_rate else { return nil }
+            cost /= (1 - cit / 100) * (1 - dividend / 100)
+        }
+        return ((cost + .ulpOfOne) * 100).rounded() / 100
     }
 }

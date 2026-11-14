@@ -28,6 +28,7 @@ import {
   productExtras,
   removePreparation,
   saveAddons,
+  savePackages,
   savePreparation,
   saveRelatedServices,
   saveRequirements,
@@ -48,7 +49,7 @@ export const maxDuration = 200;
  * POST op=create | delete | section (zapis sekcji karty) | exemption („nie dotyczy”) | image (zdjęcie do oferty) |
  * english (wersja angielska po zmianie treści, jak w CRM) | equipmentAdd | equipmentUpdate | equipmentRemove | staffSave |
  * staffRemove | liveToggle | clausesSave | variantCustomize | variantInherit (zakres wariantu) | variantsSave | preparationSave |
- * preparationToggle | preparationRemove | requirementsSave | relatedSave | addonsSave.
+ * preparationToggle | preparationRemove | requirementsSave | relatedSave | addonsSave | packagesSave (pakiety sprzedaży).
  */
 
 const failure = (message: string, status = 400) => nativeJson({ error: message }, status);
@@ -110,6 +111,7 @@ export async function POST(request: Request) {
       case 'requirementsSave': return nativeJson(await saveRequirements(ctx, body));
       case 'relatedSave': return nativeJson(await saveRelatedServices(ctx, body));
       case 'addonsSave': return nativeJson(await saveAddons(ctx, body));
+      case 'packagesSave': return nativeJson(await savePackages(ctx, body));
       default: return failure('Nieznana operacja.');
     }
   } catch (error) {

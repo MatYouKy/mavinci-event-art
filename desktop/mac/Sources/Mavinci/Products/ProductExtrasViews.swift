@@ -15,6 +15,7 @@ import SwiftUI
                 VStack(spacing: 14) {
                     ProductRelatedSection(store: store, productID: productID, extras: extras)
                     ProductVariantsSection(store: store, productID: productID, extras: extras).id("product-section-variants")
+                    ProductPackagesSection(store: store, productID: productID, extras: extras).id("product-section-packages")
                     ProductAddonsSection(store: store, productID: productID, extras: extras)
                     ProductRequirementsSection(store: store, productID: productID, extras: extras)
                 }
