@@ -19,6 +19,7 @@ import SwiftUI
                     Label("Ustawienia broszury", systemImage: "gearshape").tag("settings")
                     if model.data?.canViewResults == true {
                         Label("Wysyłki", systemImage: "paperplane").tag("deliveries")
+                        Label("Demo i statystyki", systemImage: "chart.bar").tag("demo")
                     }
                 }
                 Section {
@@ -139,6 +140,9 @@ import SwiftUI
             if model.selectedPage == "deliveries" && model.data != nil {
                 // Historia wysyłek (część G3) — bez blokady edycji: przeglądanie i wysyłka przygotowanych wiadomości.
                 BrochureDeliveriesPanel(model: model)
+            } else if model.selectedPage == "demo" && model.draft != nil {
+                // Demo i statystyki (część G4).
+                BrochureDemoPanel(model: model)
             } else if let data = model.data, model.draft != nil {
                 Form {
                     if let blocked = model.saveBlocked { Section { notice(blocked, symbol: "exclamationmark.circle", color: .orange) } }
@@ -426,7 +430,7 @@ import SwiftUI
                         }
                     } else {
                         BrochureWebPreview(html: model.previewHtml, zoom: max(0.2, (proxy.size.width - 8) / 794), background: theme.page,
-                                           focus: ["settings", "deliveries"].contains(model.selectedPage) ? nil : model.selectedPage)
+                                           focus: ["settings", "deliveries", "demo"].contains(model.selectedPage) ? nil : model.selectedPage)
                     }
                 }
                 .frame(width: proxy.size.width, height: proxy.size.height)

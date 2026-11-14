@@ -313,7 +313,7 @@ struct BrochureAssetGroup: Identifiable {
             }
             VStack(alignment: .leading, spacing: 4) {
                 Text("Generowanie zapisuje osobny PDF, ale nie wysyła wiadomości. Plik przypisany do klienta zostaje w jego kartotece i nie zastępuje wersji ogólnej.")
-                if model.data?.brochure.sellerDemo == true {
+                if model.draft?.sellerDemo == true {
                     Text("Link demo w PDF będzie przypisany do Ciebie i podanego e-maila (ukrytego w zaszyfrowanym linku).")
                 }
             }

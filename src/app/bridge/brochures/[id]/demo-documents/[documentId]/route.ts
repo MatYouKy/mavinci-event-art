@@ -1,17 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { createSupabaseServerClient } from '@/lib/supabase/server.app';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { demoAdmin, isDemoUuid } from '@/lib/seller/demo.server';
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 const json=(body:unknown,status=200)=>NextResponse.json(body,{status,headers:{'Cache-Control':'no-store'}});
 export async function DELETE(request:NextRequest,{params}:{params:{id:string;documentId:string}}) {
   try {
-    const origin=request.headers.get('origin');
-    if(!origin||new URL(origin).host!==request.headers.get('host'))return json({error:'Nieprawidłowe źródło żądania.'},403);
+    // Przeglądarka CRM — sesja w ciasteczkach i kontrola źródła; aplikacja na Maca — token pracownika (Bearer). RLS jak w CRM.
+    const bearer=/^Bearer\s+(\S+)$/i.exec(request.headers.get('authorization')||'')?.[1];
+    if(!bearer){
+      const origin=request.headers.get('origin');
+      if(!origin||new URL(origin).host!==request.headers.get('host'))return json({error:'Nieprawidłowe źródło żądania.'},403);
+    }
     if(!isDemoUuid(params.id)||!isDemoUuid(params.documentId))return json({error:'Nieprawidłowy dokument.'},400);
-    const client=createSupabaseServerClient(cookies());
-    const {data:{user}}=await client.auth.getUser();
+    const client:SupabaseClient=bearer
+      ?createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,{
+        global:{headers:{Authorization:`Bearer ${bearer}`}},
+        auth:{persistSession:false,autoRefreshToken:false},
+      })
+      :createSupabaseServerClient(cookies());
+    const {data:{user}}=bearer?await client.auth.getUser(bearer):await client.auth.getUser();
     if(!user)return json({error:'Wymagane logowanie.'},401);
     const {data:canManage,error:permissionError}=await client.rpc('can_manage_sales_brochures');
     if(permissionError||!canManage)return json({error:'Brak uprawnień do usuwania próbnych ofert.'},403);

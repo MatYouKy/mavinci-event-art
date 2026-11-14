@@ -17,6 +17,7 @@ import {
   uploadBrochureImage,
 } from '@/lib/native/brochures';
 import { brochureDeliveries, brochureFileUrl, brochureMailCompose, brochureMailSetup, brochureOrganizationMembers } from '@/lib/native/brochureMail';
+import { brochureDemoReport } from '@/lib/native/brochureDemo';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -28,9 +29,11 @@ export const maxDuration = 60;
  * (klient wersji PDF) | ownPdf&id=… (ostatni własny PDF); POST op=create | manage (rename, remove, restore) | save | itemAdd |
  * itemRemove | preview (podgląd HTML ze szkicu) | pagePreview (jedna strona graficzna do płótna Studio stron) | imageUrls |
  * imageUpload | campaign. Wysyłka (`src/lib/native/brochureMail.ts`): GET op=mailSetup&id=… | members&organization=… |
- * deliveries&brochure|contact|organization|batch=…&all=…&employee=…&offset=…; POST op=mailCompose | fileUrl.
+ * deliveries&brochure|contact|organization|batch=…&all=…&employee=…&offset=…; POST op=mailCompose | fileUrl. Statystyki demo
+ * (`src/lib/native/brochureDemo.ts`): GET op=demoReport&id=…&all=…&employee=…&offset=….
  * PDF i sprawdzanie broszury generuje `/bridge/brochures/generate-pdf`, przygotowanie i wysyłkę wiadomości —
- * `/bridge/brochures/deliveries` (token pracownika, jak w CRM).
+ * `/bridge/brochures/deliveries`, usunięcie próbnej oferty z demo — `/bridge/brochures/[id]/demo-documents/[documentId]`
+ * (token pracownika, jak w CRM).
  */
 
 const failure = (message: string, status = 400) => nativeJson({ error: message }, status);
@@ -58,6 +61,7 @@ export async function GET(request: Request) {
       case 'clients': return nativeJson(await brochureClients(ctx, param('mode'), param('q')));
       case 'ownPdf': return nativeJson(await brochureOwnPdf(ctx, param('id')));
       case 'mailSetup': return nativeJson(await brochureMailSetup(ctx, param('id')));
+      case 'demoReport': return nativeJson(await brochureDemoReport(ctx, url.searchParams));
       case 'members': return nativeJson(await brochureOrganizationMembers(ctx, param('organization')));
       case 'deliveries': return nativeJson(await brochureDeliveries(ctx, url.searchParams));
       default: return failure('Nieznana operacja.');

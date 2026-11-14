@@ -74,13 +74,7 @@ struct BrochureDelivery: Decodable, Identifiable, Equatable {
         guard let source else { return "Broszura v—" }
         return "Broszura v" + String(source.version)
     }
-    var date: String {
-        let raw = sentAt ?? createdAt
-        let parser = ISO8601DateFormatter()
-        parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        let date = parser.date(from: raw) ?? ISO8601DateFormatter().date(from: raw)
-        return date.map { $0.formatted(date: .numeric, time: .shortened) } ?? raw
-    }
+    var date: String { BrochureDates.text(sentAt ?? createdAt) }
 }
 
 struct BrochureDeliveriesPage: Decodable {

@@ -15,6 +15,8 @@ struct BrochureDraft: Equatable {
     var myCompanyId: String
     var contactEmployeeId: String?
     var coverImagePath: String?
+    /// „Udostępnij demo z tej broszury” (`brand_config.seller_demo_enabled`, część G4).
+    var sellerDemo: Bool
     var composer: BrochureComposer
     var pages: [JSONValue]
     var items: [BrochureItem]
@@ -30,6 +32,7 @@ struct BrochureDraft: Equatable {
         myCompanyId = brochure.myCompanyId
         contactEmployeeId = brochure.contactEmployeeId
         coverImagePath = brochure.coverImagePath
+        sellerDemo = brochure.sellerDemo
         composer = brochure.composer
         pages = brochure.decorativePages
         self.items = items
@@ -37,7 +40,7 @@ struct BrochureDraft: Equatable {
 
     var pageInfos: [BrochurePageInfo] { pages.map { BrochurePageInfo(raw: $0.object) } }
 
-    /// Dane broszury dla zapisu i podglądu (stan demo zmienia się w części ze statystykami — tu zostaje bez zmian).
+    /// Dane broszury dla zapisu i podglądu (z udostępnieniem demo; podgląd go nie używa).
     var payload: [String: JSONValue] {
         let optional = { (value: String?) -> JSONValue in value.map { JSONValue.string($0) } ?? .null }
         return [
@@ -46,6 +49,7 @@ struct BrochureDraft: Equatable {
                 "closingText": .string(closingText), "audienceType": .string(audienceType), "organizationId": optional(organizationId),
                 "myCompanyId": .string(myCompanyId), "contactEmployeeId": optional(contactEmployeeId), "coverImagePath": optional(coverImagePath),
             ]),
+            "sellerDemo": .bool(sellerDemo),
             "composer": composer.json,
             "decorativePages": .array(pages),
             "items": .array(items.map(\.json)),
@@ -100,7 +104,7 @@ enum BrochureSaveState { case saved, pending, saving, failed }
     @Published private(set) var saveBlocked: String?
     @Published private(set) var hotelAssets: [BrochureAsset] = []
     @Published private(set) var assetNotice = ""
-    /// Historia wysyłek do odświeżenia po wysłaniu broszury.
+    /// Historia wysyłek i statystyki demo do odświeżenia po wysłaniu broszury lub nowej wersji PDF.
     @Published var deliveriesRevision = 0
     /// Tło za stronami podglądu (kolor motywu okna).
     var background = "#0f1119"
@@ -162,7 +166,7 @@ enum BrochureSaveState { case saved, pending, saving, failed }
         hotelKey = "\(fresh.organizationId ?? "")|\(fresh.myCompanyId)"
         if firstLoad {
             selectedPage = visibleKeys(fresh).first ?? "settings"
-        } else if !["settings", "deliveries"].contains(selectedPage) && !pageRows.contains(where: { $0.key == selectedPage }) {
+        } else if !["settings", "deliveries", "demo"].contains(selectedPage) && !pageRows.contains(where: { $0.key == selectedPage }) {
             selectedPage = visibleKeys(fresh).first ?? "settings"
         }
         draftChanged(immediate: true)
@@ -613,6 +617,7 @@ enum BrochureSaveState { case saved, pending, saving, failed }
                 try await store.generatePdf(body, fallback: "Nie udało się sprawdzić broszury.")
             }
             if !validateOnly, let next = try? await store.editor(id) { apply(next) }
+            if !validateOnly { deliveriesRevision += 1 }
             issues = []
             issuesStale = false
             if validateOnly { workspace.succeed("Sprawdzono obrazy, czcionki i układ. Broszura jest gotowa do PDF.") }

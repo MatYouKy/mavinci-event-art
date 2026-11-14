@@ -202,6 +202,7 @@ import SwiftUI
                         .disabled(!model.canEdit)
                     if data.canViewResults {
                         Button { model.selectedPage = "deliveries" } label: { Label("Historia wysyłek", systemImage: "clock.arrow.circlepath") }
+                        Button { model.selectedPage = "demo" } label: { Label("Demo i statystyki", systemImage: "chart.bar") }
                     }
                     Button { Task { await model.createCampaign() } } label: { Label("Utwórz szkic kampanii", systemImage: "megaphone") }
                         .disabled(!data.canManage || !data.canViewResults || model.dirty || !data.brochure.hasPdf || data.brochure.modified || model.busy != nil)
