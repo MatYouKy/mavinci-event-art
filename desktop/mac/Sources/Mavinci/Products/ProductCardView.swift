@@ -147,6 +147,7 @@ enum ProductSectionFields {
     @ViewBuilder func mainSections(_ detail: ProductDetail) -> some View {
         basicSection(detail).id("product-section-basic")
         presentationSection(detail).id("product-section-presentation")
+        ProductExtrasBlock(store: store, productID: productID)
         ProductResourcesBlock(store: store, productID: productID)
         crmSections(detail)
     }
@@ -155,6 +156,7 @@ enum ProductSectionFields {
         if !detail.packagePricing { pricingUnitsSection(detail) }
         pricingSection(detail).id("product-section-pricing")
         technicalSection(detail)
+        ProductPreparationSection(store: store, productID: productID)
         supplierSection(detail)
         tagsSection(detail)
     }

@@ -24,6 +24,16 @@ import {
   toggleLiveModule,
   updateEquipment,
 } from '@/lib/native/productResources';
+import {
+  productExtras,
+  removePreparation,
+  saveAddons,
+  savePreparation,
+  saveRelatedServices,
+  saveRequirements,
+  saveVariants,
+  togglePreparation,
+} from '@/lib/native/productExtras';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -33,10 +43,12 @@ export const maxDuration = 200;
 /*
  * Produkty (katalog oferty) dla aplikacji na Maca (`src/lib/native/products.ts`): GET op=state (katalog z gotowością),
  * op=product&id=… (karta produktu), op=services&organization=… (usługi podwykonawcy), op=resources&id=…&variant=… (sprzęt,
- * obsada, Mavinci LIVE i klauzule w zakresie produktu lub wariantu), op=equipmentCatalog (sprzęt i zestawy do wyboru);
+ * obsada, Mavinci LIVE i klauzule w zakresie produktu lub wariantu), op=equipmentCatalog (sprzęt i zestawy do wyboru),
+ * op=extras&id=… (warianty, przygotowanie, wymagania, powiązane usługi, dodatki);
  * POST op=create | delete | section (zapis sekcji karty) | exemption („nie dotyczy”) | image (zdjęcie do oferty) |
  * english (wersja angielska po zmianie treści, jak w CRM) | equipmentAdd | equipmentUpdate | equipmentRemove | staffSave |
- * staffRemove | liveToggle | clausesSave | variantCustomize | variantInherit (zakres wariantu).
+ * staffRemove | liveToggle | clausesSave | variantCustomize | variantInherit (zakres wariantu) | variantsSave | preparationSave |
+ * preparationToggle | preparationRemove | requirementsSave | relatedSave | addonsSave.
  */
 
 const failure = (message: string, status = 400) => nativeJson({ error: message }, status);
@@ -55,6 +67,7 @@ export async function GET(request: Request) {
       case 'services': return nativeJson({ services: await subcontractorServices(ctx, url.searchParams.get('organization') || '') });
       case 'resources': return nativeJson(await productResources(ctx, url.searchParams.get('id') || '', url.searchParams.get('variant') || null));
       case 'equipmentCatalog': return nativeJson(await equipmentCatalog(ctx));
+      case 'extras': return nativeJson(await productExtras(ctx, url.searchParams.get('id') || ''));
       default: return failure('Nieznana operacja.');
     }
   } catch (error) {
@@ -90,6 +103,13 @@ export async function POST(request: Request) {
       case 'clausesSave': return nativeJson(await saveClauses(ctx, body));
       case 'variantCustomize': return nativeJson(await customizeVariant(ctx, body));
       case 'variantInherit': return nativeJson(await inheritVariant(ctx, body));
+      case 'variantsSave': return nativeJson(await saveVariants(ctx, body));
+      case 'preparationSave': return nativeJson(await savePreparation(ctx, body));
+      case 'preparationToggle': return nativeJson(await togglePreparation(ctx, body));
+      case 'preparationRemove': return nativeJson(await removePreparation(ctx, body));
+      case 'requirementsSave': return nativeJson(await saveRequirements(ctx, body));
+      case 'relatedSave': return nativeJson(await saveRelatedServices(ctx, body));
+      case 'addonsSave': return nativeJson(await saveAddons(ctx, body));
       default: return failure('Nieznana operacja.');
     }
   } catch (error) {

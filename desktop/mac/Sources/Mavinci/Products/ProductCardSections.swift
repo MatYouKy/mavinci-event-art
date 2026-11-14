@@ -473,10 +473,8 @@ extension ProductCardView {
     // MARK: Sekcje, które są jeszcze tylko w CRM
     func crmSections(_ detail: ProductDetail) -> some View {
         let items: [(String, String)] = [
-            ("Warianty i elementy", detail.facts.variants > 0 ? "\(detail.facts.variants)" : "brak"),
             ("Pakiety sprzedaży", detail.facts.packages > 0 ? "\(detail.facts.packages)" : "wyłączone"),
-            ("Dodatki i limity", detail.facts.addons > 0 ? "\(detail.facts.addons)" : "brak"),
-            ("Przygotowanie i zamówienia", ""), ("Wymagania dodatkowe", ""), ("Powiązane usługi", ""), ("Kadrowanie zdjęć w ofercie", ""),
+            ("Wersja angielska (EN)", ""), ("Kadrowanie zdjęć w ofercie", ""), ("Opis AI", ""),
         ]
         return VStack(alignment: .leading, spacing: 10) {
             HStack {

@@ -283,6 +283,9 @@ enum ProductText {
     @Published var scopes: [String: String] = [:]
     /// Katalog sprzętu i zestawów do wyboru (pobierany przy pierwszym „Dodaj sprzęt”).
     @Published var equipmentCatalog: [ProductCatalogEquipment]?
+    /// Warianty, przygotowanie, wymagania, powiązane usługi i dodatki karty (część C1).
+    @Published var extras: [String: ProductExtras] = [:]
+    @Published var extrasErrors: [String: String] = [:]
 
     private var namespace: String?
     private var file: SealedFile<ProductsState>?
@@ -314,7 +317,7 @@ enum ProductText {
         if clearDisk, let file { try? file.clear() }
         file = nil; namespace = nil; state = nil; syncing = false; loadError = nil
         selectedID = nil; openedID = nil; details = [:]; detailErrors = [:]
-        resources = [:]; resourceErrors = [:]; scopes = [:]; equipmentCatalog = nil
+        resources = [:]; resourceErrors = [:]; scopes = [:]; equipmentCatalog = nil; extras = [:]; extrasErrors = [:]
     }
 
     // MARK: Synchronizacja
