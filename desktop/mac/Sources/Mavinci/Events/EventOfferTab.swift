@@ -160,10 +160,9 @@ struct OfferTabData: Decodable {
         return (formatter.string(from: NSNumber(value: value)) ?? String(value)) + " zł"
     }
 
-    /// Oferta na karcie natywnej (sekcja Oferty), a gdy niedostępna — w CRM.
+    /// Strona oferty na Macu (sekcja Oferty), a bez dostępu do ofert — w CRM.
     private func open(_ offer: OfferTabData.Offer) {
-        if state.native.meta("offers") != nil || state.native.records["offers"] != nil { state.showNative("offers", focus: offer.id) }
-        else { state.openCRM("/crm/offers/\(offer.id)") }
+        state.showOffer(offer.id)
     }
 
     private func remove(_ offer: OfferTabData.Offer) async {

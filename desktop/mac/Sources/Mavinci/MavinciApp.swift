@@ -114,6 +114,7 @@ struct RootView: View {
                         else if state.selection == .contacts, state.employee?.canView(.contacts) == true { ContactsView(store: state.contacts) }
                         else if state.selection == .events, state.employee?.canView(.events) == true { EventsListView(store: state.events) }
                         else if state.selection == .day { DashboardView() }
+                        else if state.selection == .offers, state.employee?.canView(.offers) == true { OffersView(store: state.offers) }
                         else if let module = state.selection, state.employee?.canView(module) == true { RecordsView(module: module).id(module) }
                         else if state.screen == .messages { MessagesView() }
                         else if state.screen == .meetings { MeetingsView(store: state.meetings) }

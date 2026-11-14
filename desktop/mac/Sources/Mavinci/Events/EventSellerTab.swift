@@ -246,8 +246,7 @@ private struct SellerMessages: Decodable {
     }
 
     private func openOffer(_ id: String) {
-        if state.native.meta("offers") != nil || state.native.records["offers"] != nil { state.showNative("offers", focus: id) }
-        else { state.openCRM("/crm/offers/\(id)") }
+        state.showOffer(id)
     }
 }
 

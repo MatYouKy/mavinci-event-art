@@ -1,0 +1,475 @@
+import AppKit
+import Foundation
+import SwiftUI
+
+// MARK: Oferty — lista (`/crm/offers`) na dysku z synchronizacją i strona oferty (`/crm/offers/[id]`) z serwera
+// (`/bridge/native/v1/offers`, `src/lib/native/offers.ts`). Część A: odczyt, status, usuwanie, PDF do podglądu.
+
+struct OfferListItem: Codable, Identifiable, Hashable {
+    var id: String
+    var number: String
+    var title: String?
+    var status: String
+    var client: String
+    var net: Double
+    var gross: Double
+    var totalAmount: Double
+    var validUntil: String?
+    var createdAt: String?
+    var updatedAt: String?
+    var creator: String?
+    var eventId: String?
+    var inquiryId: String?
+    var eventName: String?
+    var eventDate: String?
+    var seller: Bool
+    var search: String
+    var phones: [String]
+
+    var numberText: String { number.isEmpty ? "Brak numeru" : number }
+    /// „Event” na liście CRM: tytuł oferty albo nazwa wydarzenia.
+    var titleText: String { title ?? "-" }
+    var statusLabel: String { OfferText.status(status) }
+    var validText: String { validUntil.flatMap(OfferText.day) ?? "-" }
+    var sortValid: String { validUntil ?? "" }
+    var sortCreated: String { createdAt ?? "" }
+    var sortTitle: String { title ?? "" }
+}
+
+struct OffersState: Codable {
+    var hash: String
+    var canView: Bool
+    var canManage: Bool
+    var isAdmin: Bool
+    var offers: [OfferListItem]
+    var syncedAt: Date?
+}
+
+/// Strona oferty z serwera — widok policzony tymi samymi funkcjami co CRM.
+struct OfferDetail: Codable {
+    struct Head: Codable {
+        var id: String
+        var number: String
+        var title: String
+        var status: String
+        var seller: Bool
+        var eventId: String?
+        var inquiryId: String?
+        var updatedAt: String?
+        var createdAt: String?
+        var validUntil: String?
+    }
+    struct Source: Codable {
+        var kind: String
+        var id: String?
+        var label: String
+    }
+    struct Totals: Codable {
+        var gross: Double
+        var net: Double
+        var discountAmount: Double
+        var discountPercent: Double
+        var taxAmount: Double
+        var taxPercent: Double
+        var mixedVat: Bool
+    }
+    struct Generated: Codable {
+        var name: String
+        var at: String
+    }
+    struct Basic: Codable {
+        var title: String
+        var titleInherited: Bool
+        var clientType: String
+        var organization: String
+        var legalName: String?
+        var contactName: String
+        var contactEmail: String?
+        var contactPhone: String?
+        var sellerDescription: String?
+        var eventLabel: String
+        var audience: String
+        var guestCount: Double?
+        var pricingSource: String
+        var calculation: String?
+        var hero: String
+        var heroPath: String?
+        var heroUrl: String?
+        var heroAlt: String?
+        var start: String
+        var end: String
+        var location: String
+        var totals: Totals
+        var lastGenerated: Generated?
+        var notes: String?
+    }
+    struct Assumption: Codable, Hashable {
+        var key: String
+        var badge: String
+        var label: String
+        var detail: String
+    }
+    struct Assumptions: Codable {
+        var items: [Assumption]
+        var legacy: String
+        var goal: String
+        var guestNote: String?
+    }
+    struct Layout: Codable, Hashable {
+        var print: String
+        var stage: Bool
+        var hasAddons: Bool
+        var hasPackages: Bool
+        var blockedByElements: Bool
+        var hasProductVariants: Bool
+        var showsVariantComparison: Bool
+        var showVariants: Bool
+        var showVariantPrices: Bool
+    }
+    struct AddonRow: Codable, Identifiable, Hashable {
+        var id: String
+        var name: String
+        var quantity: Double
+        var unit: String
+        var days: Double
+        var unitPrice: Double
+        var subtotal: Double
+    }
+    struct Item: Codable, Identifiable, Hashable {
+        var id: String
+        var order: Double
+        var productId: String?
+        var name: String
+        var description: String
+        var variantName: String?
+        var baseProduct: String?
+        var quantity: Double
+        var unit: String
+        var days: Double
+        var unitPrice: Double
+        var unitGross: Double
+        var discountPercent: Double
+        var discountAmount: Double
+        var subtotal: Double
+        var net: Double
+        var gross: Double
+        var imagePath: String?
+        var imageUrl: String?
+        var layout: Layout
+        var addons: [AddonRow]
+    }
+    struct SummaryRow: Codable, Hashable {
+        var label: String
+        var net: Double
+        var gross: Double
+        var emphasis: Bool?
+    }
+    struct Summary: Codable {
+        var rows: [SummaryRow]
+        var vat: String
+        var logisticsNote: String?
+        var calculation: Bool
+    }
+    struct HistoryEntry: Codable, Identifiable, Hashable {
+        var id: String
+        var type: String
+        var description: String
+        var at: String?
+        var author: String?
+    }
+    struct ContextItem: Codable, Hashable {
+        var label: String
+        var value: String
+        var kind: String
+    }
+    struct Inquiry: Codable {
+        var id: String
+        var title: String
+        var message: String?
+        var source: String
+        var client: String?
+        var email: String?
+        var phone: String?
+        var receivedEmailId: String?
+        var contactMessageId: String?
+        var items: [ContextItem]
+    }
+    struct Pdf: Codable {
+        var exists: Bool
+        var stale: Bool
+        var fileName: String
+    }
+    var canView: Bool
+    var canManage: Bool
+    var canEdit: Bool
+    var offer: Head
+    var source: Source?
+    var basic: Basic
+    var assumptions: Assumptions
+    var vatRate: Double
+    var items: [Item]
+    var summary: Summary
+    var history: [HistoryEntry]
+    var updatedAfterAcceptance: String?
+    var inquiry: Inquiry?
+    var pdf: Pdf
+    var amendmentSource: String?
+}
+
+enum OfferText {
+    static let statuses: [(key: String, label: String)] = [
+        ("draft", "Szkic"), ("sent", "Wysłana"), ("accepted", "Zaakceptowana"), ("rejected", "Odrzucona"), ("expired", "Wygasła"),
+    ]
+    static func status(_ key: String) -> String { statuses.first { $0.key == key }?.label ?? key }
+    /// Kolory statusu jak w CRM (lista: wygasła szara; strona oferty: wygasła pomarańczowa).
+    static func color(_ status: String, page: Bool = false) -> Color {
+        switch status {
+        case "sent": return .blue
+        case "accepted": return .green
+        case "rejected": return .red
+        case "expired": return page ? .orange : .gray
+        default: return .gray
+        }
+    }
+    private static let fixed: NumberFormatter = {
+        let formatter = NumberFormatter()
+        formatter.locale = Locale(identifier: "pl_PL")
+        formatter.numberStyle = .decimal
+        formatter.minimumFractionDigits = 2
+        formatter.maximumFractionDigits = 2
+        return formatter
+    }()
+    private static let total: NumberFormatter = {
+        let formatter = NumberFormatter()
+        formatter.locale = Locale(identifier: "pl_PL")
+        formatter.numberStyle = .decimal
+        formatter.minimumFractionDigits = 0
+        formatter.maximumFractionDigits = 2
+        return formatter
+    }()
+    static func amount(_ value: Double) -> String { fixed.string(from: NSNumber(value: value)) ?? String(format: "%.2f", value) }
+    /// „1 230,00 zł”.
+    static func money(_ value: Double) -> String { amount(value) + " zł" }
+    /// „1 230,00 PLN” (strona oferty).
+    static func pln(_ value: Double) -> String { amount(value) + " PLN" }
+    /// „Łączna wartość” na liście (jak `toLocaleString('pl-PL')`).
+    static func sum(_ value: Double) -> String { (total.string(from: NSNumber(value: value)) ?? String(value)) + " zł" }
+    static func number(_ value: Double) -> String { total.string(from: NSNumber(value: value)) ?? String(value) }
+
+    private static let dayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "pl_PL")
+        formatter.timeZone = MeetingDates.zone
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
+    static func date(_ raw: String) -> Date? {
+        if raw.count == 10, let date = dayFormatter.date(from: raw) { return date }
+        return MeetingDates.parse(raw)
+    }
+    /// „1.12.2026” (jak `toLocaleDateString('pl-PL')`).
+    static func day(_ raw: String) -> String? { date(raw).map { MeetingDates.format($0, "d.MM.yyyy") } }
+    /// „1.12.2026, 18:00” (jak `toLocaleString('pl-PL')`).
+    static func dayTime(_ raw: String?) -> String {
+        guard let raw, let date = date(raw) else { return "-" }
+        return MeetingDates.format(date, "d.MM.yyyy, HH:mm")
+    }
+    /// „1 grudnia 2026 o 18:00” (ostatnie wygenerowanie PDF).
+    static func long(_ raw: String) -> String {
+        guard let date = date(raw) else { return raw }
+        return MeetingDates.format(date, "d MMMM yyyy, HH:mm")
+    }
+    /// Wyszukiwanie jak `matchesOfferSearch`: każde słowo w numerze, tytule, wydarzeniu lub danych klienta; numer telefonu cyframi.
+    static func matches(_ item: OfferListItem, _ query: String) -> Bool {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let terms = SearchText.fold(trimmed).split(separator: " ").map(String.init)
+        if terms.isEmpty { return true }
+        let digits = trimmed.filter(\.isNumber)
+        let phoneLike = trimmed.allSatisfy { $0.isNumber || " +().-".contains($0) }
+        if phoneLike && digits.count >= 3 && item.phones.contains(where: { $0.contains(digits) }) { return true }
+        return terms.allSatisfy { item.search.contains($0) }
+    }
+}
+
+@MainActor final class OffersStore: ObservableObject {
+    weak var workspace: Workspace?
+    @Published private(set) var state: OffersState?
+    @Published var syncing = false
+    @Published var loadError: String?
+    @Published var selectedID: String?
+    /// Strona oferty otwarta na ekranie Ofert (zamiast listy).
+    @Published var openedID: String?
+    @Published private(set) var details: [String: OfferDetail] = [:]
+    @Published var detailErrors: [String: String] = [:]
+
+    private var namespace: String?
+    private var file: SealedFile<OffersState>?
+    private var syncTask: Task<Void, Never>?
+
+    var api: NativeAPI? { workspace?.nativeAPI() }
+    var offers: [OfferListItem] { state?.offers ?? [] }
+    var loaded: Bool { state != nil }
+    func offer(_ id: String?) -> OfferListItem? { id.flatMap { id in offers.first { $0.id == id } } }
+
+    // MARK: Kopia na dysku
+    func open(namespace next: String) {
+        guard namespace != next else { return }
+        reset(clearDisk: false)
+        namespace = next
+        let sealed = SealedFile<OffersState>(namespace: "offers-\(next)")
+        Task {
+            let saved = await Task.detached(priority: .userInitiated) { try? sealed.load() }.value
+            guard namespace == next else { return }
+            file = sealed
+            if state == nil, let saved { state = saved }
+        }
+    }
+
+    func reset(clearDisk: Bool = true) {
+        syncTask?.cancel(); syncTask = nil
+        if clearDisk, let file { try? file.clear() }
+        file = nil; namespace = nil; state = nil; syncing = false; loadError = nil
+        selectedID = nil; openedID = nil; details = [:]; detailErrors = [:]
+    }
+
+    // MARK: Synchronizacja
+    func sync(force: Bool = false) async {
+        if let syncTask {
+            await syncTask.value
+            if !force { return }
+        }
+        let task = Task { await performSync() }
+        syncTask = task
+        await task.value
+        if syncTask == task { syncTask = nil }
+    }
+
+    func backgroundSync() async {
+        for _ in 0..<20 where file == nil && namespace != nil { try? await Task.sleep(for: .milliseconds(100)) }
+        await sync()
+    }
+
+    private func performSync() async {
+        guard let api else { return }
+        syncing = true
+        defer { syncing = false }
+        do {
+            var next = try JSONDecoder().decode(OffersState.self, from: try await api.get("/offers?op=state"))
+            next.syncedAt = Date()
+            if state?.hash != next.hash { state = next } else { state?.syncedAt = next.syncedAt }
+            loadError = nil
+            if let file, let snapshot = state {
+                await Task.detached(priority: .utility) { try? file.save(snapshot) }.value
+            }
+        } catch {
+            if state == nil { loadError = failureText(error, "Nie udało się pobrać ofert.") }
+        }
+    }
+
+    func failureText(_ error: Error, _ fallback: String) -> String {
+        if let failure = error as? NativeFailure { return failure.message }
+        if error is URLError { return "Brak połączenia z serwerem CRM. Spróbuj ponownie." }
+        return (error as? LocalizedError)?.errorDescription ?? fallback
+    }
+
+    private func writable(_ text: String) -> (NativeAPI, Workspace)? {
+        guard let api, let workspace else { return nil }
+        guard workspace.canWrite else {
+            workspace.error = text
+            return nil
+        }
+        return (api, workspace)
+    }
+
+    // MARK: Strona oferty
+    func loadDetail(_ id: String) async {
+        guard let api else { return }
+        do {
+            details[id] = try JSONDecoder().decode(OfferDetail.self, from: try await api.get("/offers?op=offer&id=\(id)"))
+            detailErrors[id] = nil
+        } catch {
+            detailErrors[id] = failureText(error, "Nie udało się pobrać oferty")
+        }
+    }
+
+    /// Status z listy „Status oferty” (bez akceptacji — ta ma osobną ścieżkę).
+    @discardableResult func setStatus(_ id: String, _ status: String) async -> Bool {
+        guard case let (api, workspace)? = writable("Zmiana statusu wymaga połączenia z serwerem CRM.") else { return false }
+        do {
+            let body: [String: JSONValue] = ["op": .string("status"), "id": .string(id), "status": .string(status)]
+            let data = try await workspace.withPending("Zmiana statusu…") { try await api.post("/offers", body) }
+            details[id] = try JSONDecoder().decode(OfferDetail.self, from: data)
+            workspace.succeed("Status oferty zmieniony na: \(OfferText.status(status))")
+            Task { await sync(force: true) }
+            return true
+        } catch {
+            workspace.error = failureText(error, "Błąd podczas zmiany statusu")
+            return false
+        }
+    }
+
+    func delete(_ id: String) async -> Bool {
+        guard case let (api, workspace)? = writable("Usunięcie wymaga połączenia z serwerem CRM.") else { return false }
+        do {
+            _ = try await workspace.withPending("Usuwanie oferty…") { try await api.post("/offers", ["op": .string("delete"), "id": .string(id)]) }
+            if openedID == id { openedID = nil }
+            if selectedID == id { selectedID = nil }
+            details[id] = nil
+            await sync(force: true)
+            workspace.succeed("Oferta i wszystkie pliki zostały usunięte")
+            return true
+        } catch {
+            workspace.error = failureText(error, "Błąd podczas usuwania oferty")
+            return false
+        }
+    }
+
+    /// Zapisany PDF oferty: `open` — podgląd w domyślnej aplikacji, inaczej zapis w Pobranych.
+    func pdf(_ id: String, open: Bool) async {
+        guard let api, let workspace else { return }
+        struct Link: Decodable { let url: String; let name: String }
+        do {
+            let (data, name) = try await workspace.withPending(open ? "Otwieranie PDF…" : "Pobieranie PDF…") { () async throws -> (Data, String) in
+                let link = try JSONDecoder().decode(Link.self, from: try await api.get("/offers?op=pdf&id=\(id)"))
+                guard let url = URL(string: link.url) else { throw AppError.invalidResponse }
+                let (data, response) = try await URLSession.shared.data(from: url)
+                guard (response as? HTTPURLResponse).map({ (200..<300).contains($0.statusCode) }) ?? true else { throw URLError(.badServerResponse) }
+                return (data, link.name)
+            }
+            if open {
+                let folder = FileManager.default.temporaryDirectory.appendingPathComponent("Mavinci-oferty", isDirectory: true)
+                try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+                let target = folder.appendingPathComponent(name)
+                try data.write(to: target, options: .atomic)
+                NSWorkspace.shared.open(target)
+            } else {
+                _ = try ContractFiles.saveToDownloads(data, name: name)
+                workspace.succeed("Pobieranie PDF...")
+            }
+        } catch {
+            workspace.error = failureText(error, open ? "Błąd podczas otwierania PDF" : "Błąd podczas pobierania PDF")
+        }
+    }
+}
+
+extension Workspace {
+    /// Strona oferty na ekranie Ofert (z pulpitu, zapytania, powiadomienia, karty wydarzenia); bez dostępu — strona w CRM.
+    func showOffer(_ id: String) {
+        guard UUID(uuidString: id) != nil else { return }
+        guard employee?.canView(.offers) == true else { openCRM("/crm/offers/\(id)"); return }
+        switchSection(.offers)
+        offers.selectedID = id
+        offers.openedID = id
+    }
+
+    /// Karta produktu z katalogu (pozycja oferty).
+    func showProduct(_ id: String) {
+        guard UUID(uuidString: id) != nil else { return }
+        guard let item = navigation.flatMap(\.flattened).first(where: { $0.screen == .products }) else {
+            openCRM("/crm/offers/products/\(id)"); return
+        }
+        openHref(item.href)
+        products.selectedID = id
+        products.openedID = id
+    }
+}

@@ -48,6 +48,8 @@ import Network
     let contracts = ContractsStore()
     /// Katalog produktów oferty i karta produktu (`/crm/offers?tab=catalog`, `/crm/offers/products/[id]`).
     let products = ProductsStore()
+    /// Oferty (`/crm/offers`, `/crm/offers/[id]`) — kopia listy na dysku, strona oferty.
+    let offers = OffersStore()
     /// Wydarzenia (`/crm/events`) — kopia listy na dysku, synchronizacja przyrostowa.
     let events = EventsStore()
     /// Karty wydarzeń (`/crm/events/[id]`) — ostatnio otwierane i najbliższe na dysku, odświeżane po zmianie skrótu.
@@ -94,6 +96,7 @@ import Network
         warehouse.workspace = self
         contracts.workspace = self
         products.workspace = self
+        offers.workspace = self
         events.workspace = self
         eventCards.workspace = self
         myTasks.workspace = self
@@ -130,6 +133,7 @@ import Network
             warehouse.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             contracts.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             products.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
+            offers.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             events.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             eventCards.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             myTasks.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
@@ -168,6 +172,7 @@ import Network
             warehouse.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             contracts.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             products.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
+            offers.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             events.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             eventCards.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             myTasks.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
@@ -262,6 +267,7 @@ import Network
             if current.has("equipment_view") || current.has("equipment_manage") { Task { await warehouse.backgroundSync() } }
             if current.has("contracts_view") || current.has("contracts_manage") || current.isAdmin { Task { await contracts.backgroundSync() } }
             if current.has("offers_view") || current.has("offers_manage") || current.isAdmin { Task { await products.backgroundSync() } }
+            if current.canView(.offers) { Task { await offers.backgroundSync() } }
             if current.canView(.events) { Task { await events.backgroundSync() } }
             // Do not extend the offline permission lease on a partial/failed synchronization.
             if moduleErrors.isEmpty { snapshot?.savedAt = Date() }
@@ -334,7 +340,7 @@ import Network
         snapshot = nil; selection = .day; focusedID = nil; eventRoute = nil; notificationsVisible = false
         verifiedConnection = false; offline = false; syncing = false; acting = false; editing = false
         moduleErrors = [:]; compatibilityMode = false; notice = nil; snack = nil; pending = nil
-        nativeSet = nil; nativeFocus = nil; native.clear(); messages.reset(); meetings.reset(); inquiries.reset(); companyTasks.reset(); myTasks.reset(); contacts.reset(); team.reset(); warehouse.reset(); contracts.reset(); products.reset(); events.reset(); eventCards.reset(); screen = nil
+        nativeSet = nil; nativeFocus = nil; native.clear(); messages.reset(); meetings.reset(); inquiries.reset(); companyTasks.reset(); myTasks.reset(); contacts.reset(); team.reset(); warehouse.reset(); contracts.reset(); products.reset(); offers.reset(); events.reset(); eventCards.reset(); screen = nil
         navigation = []; sidebarHref = "/crm"; webItem = nil; dashboard = nil; dashboardLoadedAt = nil; dashboardError = nil
         scheduleRows = nil; scheduleFailed = false
         if let cacheNamespace { for name in ["dashboard", "schedule"] { try? SealedFile<Data>(namespace: "\(name)-\(cacheNamespace)").clear() } }
@@ -357,6 +363,8 @@ import Network
     func switchSection(_ module:Module) {
         guard employee?.canView(module)==true else{return}
         eventRoute=nil;focusedID=nil;notificationsVisible=false;nativeSet=nil;webItem=nil;screen=nil;selection=module
+        // Wejście do Ofert z paska bocznego pokazuje listę (strona oferty otwiera się przez `showOffer`).
+        if module == .offers { offers.openedID = nil }
         sidebarHref = navigation.flatMap(\.flattened).first { $0.module == module }?.href ?? sidebarHref
     }
     func eventAPI() -> HTTPBackend? { backend }
@@ -385,6 +393,7 @@ import Network
         guard let owner,owner.canView(module),UUID(uuidString:id) != nil else {notice="Nie masz dostępu do tej sekcji.";return false}
         if module == .events {showEvent(id);return true}
         if module == .contacts {showContact(id);return true}
+        if module == .offers {showOffer(id);return true}
         if module == .tasks, myTasks.task(id) != nil || companyTasks.task(id) != nil {showTask(id);return true}
         var record=rows(module).first{$0.id==id || (module == .calendar && $0["source_id"]==id)}
         if record == nil,let backend,!offline {
