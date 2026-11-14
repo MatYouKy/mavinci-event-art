@@ -42,6 +42,14 @@ import {
   previewOfferWizard,
 } from '@/lib/native/offerWizard';
 import {
+  createOfferPageTemplate,
+  deleteOfferPageTemplate,
+  deleteOfferTemplateBackground,
+  offerTemplatesState,
+  saveOfferTemplateCategory,
+  uploadOfferTemplateBackground,
+} from '@/lib/native/offerTemplates';
+import {
   buildOfferRecommendation,
   offerRecommendations,
   previewOfferRecommendation,
@@ -70,7 +78,8 @@ export const maxDuration = 300;
  * eventSetup&id=…; POST op=emailPreview | emailAI | emailSend | link | draftRevision | eventCreate. Akceptacja z wydarzeniem
  * i rezerwacja sprzętu (`src/lib/native/offerReservation.ts`): GET op=reservation&id=…&package=… | substitutes&id=…&item=…;
  * POST op=substitutionSave | reservationConfirm. Kreator nowej oferty (`src/lib/native/offerWizard.ts`): GET op=wizardEvents |
- * wizardSetup&event=…; POST op=wizardPreview | wizardCreate | wizardContact.
+ * wizardSetup&event=…; POST op=wizardPreview | wizardCreate | wizardContact. Szablony ofert (`src/lib/native/offerTemplates.ts`):
+ * GET op=templates; POST op=templateCategorySave | templateCreate | templateDelete | templateBackground | templateBackgroundDelete.
  */
 
 const failure = (message: string, status = 400) => nativeJson({ error: message }, status);
@@ -108,6 +117,7 @@ export async function GET(request: Request) {
       case 'substitutes': return nativeJson(await offerSubstitutes(ctx, url.searchParams.get('id') || '', url.searchParams.get('item') || ''));
       case 'wizardEvents': return nativeJson(await offerWizardEvents(ctx));
       case 'wizardSetup': return nativeJson(await offerWizardSetup(ctx, url.searchParams.get('event') || ''));
+      case 'templates': return nativeJson(await offerTemplatesState(ctx));
       default: return failure('Nieznana operacja.');
     }
   } catch (error) {
@@ -166,6 +176,11 @@ export async function POST(request: Request) {
       case 'wizardPreview': return nativeJson(await previewOfferWizard(ctx, body));
       case 'wizardCreate': return nativeJson(await createOfferFromWizard(ctx, body));
       case 'wizardContact': return nativeJson(await addOfferWizardContact(ctx, body));
+      case 'templateCategorySave': return nativeJson(await saveOfferTemplateCategory(ctx, body));
+      case 'templateCreate': return nativeJson(await createOfferPageTemplate(ctx, body));
+      case 'templateDelete': return nativeJson(await deleteOfferPageTemplate(ctx, body));
+      case 'templateBackground': return nativeJson(await uploadOfferTemplateBackground(ctx, body));
+      case 'templateBackgroundDelete': return nativeJson(await deleteOfferTemplateBackground(ctx, body));
       default: return failure('Nieznana operacja.');
     }
   } catch (error) {
