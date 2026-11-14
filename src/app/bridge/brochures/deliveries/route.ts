@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { createSupabaseServerClient } from '@/lib/supabase/server.app';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { demoAdmin, isDemoUuid } from '@/lib/seller/demo.server';
 import { BrochureRequestError, requireBrochureEmployeeAccess } from '@/lib/brochures/access.server';
 import { randomUUID } from 'node:crypto';
@@ -12,10 +13,19 @@ const validEmail = (s: string) => s.length <= 200 && /^[^\s@,;<>]+@[^\s@,;<>]+\.
 
 export async function POST(request: NextRequest) {
   try {
-    const origin = request.headers.get('origin');
-    if (!origin || new URL(origin).host !== request.headers.get('host')) return json({ error: 'Nieprawidłowe źródło żądania.' }, 403);
-    const userClient = createSupabaseServerClient(cookies());
-    const { data: { user } } = await userClient.auth.getUser();
+    // Przeglądarka CRM — sesja w ciasteczkach i kontrola źródła; aplikacja na Maca — token pracownika (Bearer). RLS jak w CRM.
+    const bearer = /^Bearer\s+(\S+)$/i.exec(request.headers.get('authorization') || '')?.[1];
+    if (!bearer) {
+      const origin = request.headers.get('origin');
+      if (!origin || new URL(origin).host !== request.headers.get('host')) return json({ error: 'Nieprawidłowe źródło żądania.' }, 403);
+    }
+    const userClient: SupabaseClient = bearer
+      ? createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
+        global: { headers: { Authorization: `Bearer ${bearer}` } },
+        auth: { persistSession: false, autoRefreshToken: false },
+      })
+      : createSupabaseServerClient(cookies());
+    const { data: { user } } = bearer ? await userClient.auth.getUser(bearer) : await userClient.auth.getUser();
     if (!user) return json({ error: 'Wymagane logowanie.' }, 401);
     const employeeId = await requireBrochureEmployeeAccess(userClient);
     const input = await request.json();
@@ -161,9 +171,13 @@ export async function POST(request: NextRequest) {
       if (!Number.isSafeInteger(source.file_size) || source.file_size <= 0 || source.file_size > 30_000_000) {
         throw new Error('Zapisany PDF przekracza limit 30 MB lub ma nieprawidłowy rozmiar. Wygeneruj broszurę ponownie, aby skompresować zdjęcia.');
       }
-      const { data: { session } } = await userClient.auth.getSession();
-      if (!session) throw new Error('Sesja wygasła. Zaloguj się ponownie.');
-      token = session.access_token;
+      if (bearer) {
+        token = bearer;
+      } else {
+        const { data: { session } } = await userClient.auth.getSession();
+        if (!session) throw new Error('Sesja wygasła. Zaloguj się ponownie.');
+        token = session.access_token;
+      }
       // No message fields in this probe: an older deployment cannot accidentally
       // send a message without its attachment. Never fall back to base64.
       const probe = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-email`, {

@@ -16,6 +16,7 @@ import {
   saveBrochure,
   uploadBrochureImage,
 } from '@/lib/native/brochures';
+import { brochureDeliveries, brochureFileUrl, brochureMailCompose, brochureMailSetup, brochureOrganizationMembers } from '@/lib/native/brochureMail';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -26,8 +27,10 @@ export const maxDuration = 60;
  * hotelAssets&organization=…&company=… (zdjęcia hotelu z biblioteki organizacji) | clients&mode=contact|organization&q=…
  * (klient wersji PDF) | ownPdf&id=… (ostatni własny PDF); POST op=create | manage (rename, remove, restore) | save | itemAdd |
  * itemRemove | preview (podgląd HTML ze szkicu) | pagePreview (jedna strona graficzna do płótna Studio stron) | imageUrls |
- * imageUpload | campaign. PDF i sprawdzanie broszury generuje
- * `/bridge/brochures/generate-pdf` (token pracownika, jak w CRM).
+ * imageUpload | campaign. Wysyłka (`src/lib/native/brochureMail.ts`): GET op=mailSetup&id=… | members&organization=… |
+ * deliveries&brochure|contact|organization|batch=…&all=…&employee=…&offset=…; POST op=mailCompose | fileUrl.
+ * PDF i sprawdzanie broszury generuje `/bridge/brochures/generate-pdf`, przygotowanie i wysyłkę wiadomości —
+ * `/bridge/brochures/deliveries` (token pracownika, jak w CRM).
  */
 
 const failure = (message: string, status = 400) => nativeJson({ error: message }, status);
@@ -54,6 +57,9 @@ export async function GET(request: Request) {
       case 'hotelAssets': return nativeJson(await brochureHotelAssets(ctx, param('organization') || null, param('company') || null));
       case 'clients': return nativeJson(await brochureClients(ctx, param('mode'), param('q')));
       case 'ownPdf': return nativeJson(await brochureOwnPdf(ctx, param('id')));
+      case 'mailSetup': return nativeJson(await brochureMailSetup(ctx, param('id')));
+      case 'members': return nativeJson(await brochureOrganizationMembers(ctx, param('organization')));
+      case 'deliveries': return nativeJson(await brochureDeliveries(ctx, url.searchParams));
       default: return failure('Nieznana operacja.');
     }
   } catch (error) {
@@ -83,6 +89,8 @@ export async function POST(request: Request) {
       case 'imageUrls': return nativeJson(await brochureImageUrls(ctx, body));
       case 'imageUpload': return nativeJson(await uploadBrochureImage(ctx, body));
       case 'campaign': return nativeJson(await createBrochureCampaign(ctx, body));
+      case 'mailCompose': return nativeJson(await brochureMailCompose(ctx, body));
+      case 'fileUrl': return nativeJson(await brochureFileUrl(ctx, body));
       default: return failure('Nieznana operacja.');
     }
   } catch (error) {

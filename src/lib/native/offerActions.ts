@@ -40,8 +40,8 @@ async function managed(ctx: NativeContext, id: string) {
 
 type Account = { id: string; email_address: string; from_name?: string | null; account_type?: string | null; is_default?: boolean | null };
 
-/** Skrzynki do wysyłki jak w `SendOfferEmailModal`: osobiste (bez systemowych) i przypisane z prawem wysyłania. */
-async function sendingAccounts(ctx: NativeContext): Promise<Account[]> {
+/** Skrzynki do wysyłki jak w `SendOfferEmailModal`: osobiste (bez systemowych) i przypisane z prawem wysyłania (też broszury). */
+export async function sendingAccounts(ctx: NativeContext): Promise<Account[]> {
   const employeeId = ctx.employee.id;
   const [personal, assignments] = await Promise.all([
     ctx.supabase.from('employee_email_accounts').select('id, email_address, from_name, account_type, is_default')

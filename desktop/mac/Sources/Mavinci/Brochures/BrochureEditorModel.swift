@@ -100,6 +100,8 @@ enum BrochureSaveState { case saved, pending, saving, failed }
     @Published private(set) var saveBlocked: String?
     @Published private(set) var hotelAssets: [BrochureAsset] = []
     @Published private(set) var assetNotice = ""
+    /// Historia wysyłek do odświeżenia po wysłaniu broszury.
+    @Published var deliveriesRevision = 0
     /// Tło za stronami podglądu (kolor motywu okna).
     var background = "#0f1119"
     /// Podgląd PDF w oknie aplikacji (ustawiany przez widok edytora).
@@ -160,7 +162,7 @@ enum BrochureSaveState { case saved, pending, saving, failed }
         hotelKey = "\(fresh.organizationId ?? "")|\(fresh.myCompanyId)"
         if firstLoad {
             selectedPage = visibleKeys(fresh).first ?? "settings"
-        } else if selectedPage != "settings" && !pageRows.contains(where: { $0.key == selectedPage }) {
+        } else if !["settings", "deliveries"].contains(selectedPage) && !pageRows.contains(where: { $0.key == selectedPage }) {
             selectedPage = visibleKeys(fresh).first ?? "settings"
         }
         draftChanged(immediate: true)

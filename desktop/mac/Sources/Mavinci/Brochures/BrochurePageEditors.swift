@@ -17,6 +17,9 @@ import SwiftUI
             List(selection: Binding<String?>(get: { model.selectedPage }, set: { key in if let key { model.selectedPage = key } })) {
                 Section {
                     Label("Ustawienia broszury", systemImage: "gearshape").tag("settings")
+                    if model.data?.canViewResults == true {
+                        Label("Wysyłki", systemImage: "paperplane").tag("deliveries")
+                    }
                 }
                 Section {
                     ForEach(rows) { row in
@@ -133,7 +136,10 @@ import SwiftUI
 
     var body: some View {
         Group {
-            if let data = model.data, model.draft != nil {
+            if model.selectedPage == "deliveries" && model.data != nil {
+                // Historia wysyłek (część G3) — bez blokady edycji: przeglądanie i wysyłka przygotowanych wiadomości.
+                BrochureDeliveriesPanel(model: model)
+            } else if let data = model.data, model.draft != nil {
                 Form {
                     if let blocked = model.saveBlocked { Section { notice(blocked, symbol: "exclamationmark.circle", color: .orange) } }
                     if let error = model.validationError { Section { notice(error, symbol: "exclamationmark.triangle", color: .orange) } }
@@ -420,7 +426,7 @@ import SwiftUI
                         }
                     } else {
                         BrochureWebPreview(html: model.previewHtml, zoom: max(0.2, (proxy.size.width - 8) / 794), background: theme.page,
-                                           focus: model.selectedPage == "settings" ? nil : model.selectedPage)
+                                           focus: ["settings", "deliveries"].contains(model.selectedPage) ? nil : model.selectedPage)
                     }
                 }
                 .frame(width: proxy.size.width, height: proxy.size.height)

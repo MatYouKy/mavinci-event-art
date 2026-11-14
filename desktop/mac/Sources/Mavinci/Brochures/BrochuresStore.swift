@@ -438,6 +438,8 @@ struct BrochurePdfResult {
     var version: Int?
     var downloadURL: URL?
     var fileName: String
+    /// Zapisana wersja PDF (`sales_brochure_generations.id`) — załącznik przygotowanej wiadomości.
+    var generationId: String? = nil
 }
 
 @MainActor final class BrochuresStore: ObservableObject {
@@ -654,8 +656,10 @@ struct BrochurePdfResult {
         }
         let generation = result["generation"]?.object ?? [:]
         let version = generation["version"].map { value in Int(value.number) }
+        let generationId = generation["id"]?.text
         return BrochurePdfResult(version: version, downloadURL: (result["downloadUrl"]?.text).flatMap { URL(string: $0) },
-                                 fileName: result["fileName"]?.text.isEmpty == false ? result["fileName"]!.text : "Broszura.pdf")
+                                 fileName: result["fileName"]?.text.isEmpty == false ? result["fileName"]!.text : "Broszura.pdf",
+                                 generationId: generationId?.isEmpty == false ? generationId : nil)
     }
 }
 

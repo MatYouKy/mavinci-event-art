@@ -19,6 +19,7 @@ import SwiftUI
     @State private var pdf: OfferPdfPreview?
     @State private var pdfSheet = false
     @State private var catalogSheet = false
+    @State private var mailSheet = false
     @State private var issuesShown = false
 
     init(store: BrochuresStore, id: String, close: @escaping () -> Void) {
@@ -53,6 +54,7 @@ import SwiftUI
             .sheet(item: $pdf) { file in OfferPdfViewer(file: file) }
             .sheet(isPresented: $pdfSheet) { BrochurePdfSheet(model: model) }
             .sheet(isPresented: $catalogSheet) { BrochureCatalogSheet(model: model) }
+            .sheet(isPresented: $mailSheet) { BrochureMailSheet(model: model) }
             .confirmationDialog("Nie udało się zapisać zmian. Opuścić edytor?", isPresented: $confirmLeave, titleVisibility: .visible) {
                 Button("Opuść bez zapisywania", role: .destructive) { close() }
                 Button("Zostań", role: .cancel) {}
@@ -136,6 +138,17 @@ import SwiftUI
         }
     }
 
+    /// „Wyślij broszurę” — PDF-y powstają z zapisanej treści, więc najpierw zapis bieżących zmian.
+    private func openMail() {
+        Task {
+            if model.dirty {
+                let saved = await model.save()
+                if !saved { return }
+            }
+            mailSheet = true
+        }
+    }
+
     private func route(_ action: String) {
         guard let brochure = model.data?.brochure else { return }
         management = BrochureManagementRoute(action: action, brochureID: brochure.id, name: model.draft?.name ?? brochure.name,
@@ -171,6 +184,11 @@ import SwiftUI
                     .help("Generuj PDF — ogólny albo dla klienta (⇧⌘E)")
                     .keyboardShortcut("e", modifiers: [.command, .shift])
                     .disabled(!model.canGenerate || !state.canWrite)
+                if data.canManage && data.canViewResults {
+                    Button { openMail() } label: { Label("Wyślij", systemImage: "paperplane") }
+                        .help("Wyślij broszurę e-mailem — każdy odbiorca dostaje osobną wiadomość i własny PDF")
+                        .disabled(!model.canGenerate || !state.canWrite)
+                }
                 Menu {
                     Button { Task { await model.save() } } label: { Label("Zapisz teraz", systemImage: "square.and.arrow.down") }
                         .disabled(!model.dirty || !model.canEdit)
@@ -182,8 +200,9 @@ import SwiftUI
                     Divider()
                     Button { catalogSheet = true } label: { Label("Dodaj usługę…", systemImage: "plus") }
                         .disabled(!model.canEdit)
-                    Button { state.openCRM("/crm/brochures/\(id)") } label: { Label("Wyślij broszurę (w CRM)", systemImage: "paperplane") }
-                        .disabled(!data.canManage || !data.canViewResults)
+                    if data.canViewResults {
+                        Button { model.selectedPage = "deliveries" } label: { Label("Historia wysyłek", systemImage: "clock.arrow.circlepath") }
+                    }
                     Button { Task { await model.createCampaign() } } label: { Label("Utwórz szkic kampanii", systemImage: "megaphone") }
                         .disabled(!data.canManage || !data.canViewResults || model.dirty || !data.brochure.hasPdf || data.brochure.modified || model.busy != nil)
                     if data.canManage {
