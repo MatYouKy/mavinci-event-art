@@ -15,7 +15,8 @@ import SellerOnsiteContactFields from './SellerOnsiteContactFields';
 import { useOfferRefresh } from '@/lib/seller/useOfferRefresh';
 import { sellerCommissionsVisible, useSellerPortalContext } from '@/lib/seller/portal';
 import { SellerOfferSummary } from './SellerOfferOverview';
-import SellerJourney from './SellerJourney';
+import SellerJourneyAxis from './SellerJourney';
+import { sellerJourney } from '@/lib/seller/offerJourney';
 import SellerRealizationCommission from './SellerRealizationCommission';
 import SellerOfferConversation from './SellerOfferConversation';
 import SellerRealizationDocuments from './SellerRealizationDocuments';
@@ -156,7 +157,7 @@ export default function SellerRealizationWorkspace({ offerId }: { offerId: strin
   };
 
   if (!data) return <div className="mx-auto max-w-7xl space-y-4 p-6 text-[#e5e4e2]">
-    <Link href="/seller/realizations" className={button}><ArrowLeft className="h-4 w-4"/>Potwierdzone wydarzenia</Link>
+    <Link href="/seller/realizations" className={button}><ArrowLeft className="h-4 w-4"/>Wydarzenia</Link>
     {loading ? <p role="status" className="flex items-center gap-2 py-8 text-sm text-white/60"><Loader2 className="h-4 w-4 animate-spin"/>Wczytywanie realizacji…</p>
       : <div role="alert" className={card}><p>{error || 'Realizacja nie jest dostępna.'}</p><button className={`${button} mt-4`} onClick={refresh}>Spróbuj ponownie</button></div>}
   </div>;
@@ -191,10 +192,13 @@ export default function SellerRealizationWorkspace({ offerId }: { offerId: strin
   return <div className="min-h-screen p-4 text-[#e5e4e2] md:p-6">
     <div className="mx-auto max-w-7xl space-y-5">
       <header className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3"><Link href="/seller/realizations" className="inline-flex min-h-10 items-center gap-2 text-sm text-white/60 hover:text-[#d3bb73]"><ArrowLeft className="h-4 w-4"/>Potwierdzone wydarzenia</Link><button type="button" className={button} disabled={loading || submitting} onClick={refresh}><RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`}/>Odśwież</button></div>
+        <div className="flex flex-wrap items-center justify-between gap-3"><Link href="/seller/realizations" className="inline-flex min-h-10 items-center gap-2 text-sm text-white/60 hover:text-[#d3bb73]"><ArrowLeft className="h-4 w-4"/>Wydarzenia</Link><button type="button" className={button} disabled={loading || submitting} onClick={refresh}><RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`}/>Odśwież</button></div>
         <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><p className="text-xs text-white/45">{data.offer_number} · Realizacja</p><h1 className="mt-2 break-words text-xl uppercase sm:text-2xl">{arrangements?.event?.name || data.title}</h1>{location && <p className="mt-2 flex items-center gap-2 text-sm text-white/55"><MapPin className="h-4 w-4 shrink-0"/>{location}</p>}</div><span className={`rounded-full px-3 py-2 text-xs ${stage.cancelled ? 'bg-rose-300/10 text-rose-200' : 'bg-[#d3bb73]/10 text-[#d3bb73]'}`}>{stage.label}</span></div>
       </header>
-      <SellerJourney state={data} showCommission={commissionVisible} />
+      <SellerJourneyAxis journey={sellerJourney({
+        offerStatus: data.realization?.offer_status || 'accepted', isRealization: true,
+        realizationStage: data.realization?.stage, eventStatus: data.realization?.event_status,
+      }, { viewer: 'seller', managerName: portalContext?.manager?.name })} />
       {error && <p role="alert" className="rounded-xl bg-amber-200/10 p-4 text-sm text-amber-100">{error} Wyświetlane dane mogą być nieaktualne.</p>}
       {[data.seller_arrangements_error, data.seller_progress_error].filter(Boolean).map((message) => <p role="alert" key={message} className="rounded-xl bg-amber-200/10 p-4 text-sm text-amber-100">{message}</p>)}
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">

@@ -1,31 +1,32 @@
 'use client';
 
 import { useState } from 'react';
-import { Banknote, Eye, FileText, Handshake, MailPlus, PartyPopper, ShieldCheck, Sparkles, UserRound, Wand2, type LucideIcon } from 'lucide-react';
+import { Banknote, FileText, Handshake, MailPlus, PartyPopper, ShieldCheck, Sparkles, UserRound, Wand2, type LucideIcon } from 'lucide-react';
 import { hexAlpha, readableOn, type DemoConfig } from './demoData';
 
 type Step = { title: string; who: string; icon: LucideIcon; text: string };
 
-/** Ścieżka współpracy w 6 krokach: wizyta → zaproszenie → pierwsza oferta → odsłonięcie wynagrodzenia → realizacja → wypłata. */
+/** Ścieżka współpracy: wizyta → zaproszenie → oferta i klient → u opiekuna → wydarzenie → rozliczenie (jak oś w portalu). */
 export default function DemoHowItWorks({ config }: { config: DemoConfig }) {
   const [active, setActive] = useState(0);
   const brand = config.brand?.name || 'MAVINCI';
   const hotel = config.hotelName.trim() || 'hotel';
   const onAccent = readableOn(config.accent);
+  // Dwa kroki startu i oś każdej oferty — te same etapy hotel zobaczy w portalu (src/lib/seller/offerJourney.ts).
   const steps: Step[] = [
-    { title: 'Wizyta', who: `Opiekun ${brand}`, icon: Handshake, text: `Poznajemy ${hotel}, sale i typowe wydarzenia gości. Ustalamy, kto w hotelu będzie przygotowywał oferty.` },
+    { title: 'Wizyta', who: `Opiekun ${brand}`, icon: Handshake, text: `Poznajemy ${hotel}, sale i typowe wydarzenia. Ustalamy, kto w hotelu będzie przygotowywał oferty.` },
     { title: 'Zaproszenie', who: 'Opiekun → hotel', icon: MailPlus, text: 'Osoba z hotelu dostaje e-mail z zaproszeniem i sama ustawia hasło. Portal od razu ma logo i kolory hotelu.' },
-    { title: 'Pierwsza oferta', who: 'Hotel + opiekun', icon: Wand2, text: 'Pierwszą ofertę przygotowujemy razem: kreator, usługi, cena dla gościa. Opiekun sprawdza termin, zespół i sprzęt.' },
-    { title: 'Odsłonięcie wynagrodzenia', who: 'Opiekun', icon: Eye, text: 'Gdy współpraca ruszy, opiekun włącza widoczność wynagrodzenia — sprzedawca widzi stawkę, naliczenia i dostaje powiadomienie.' },
-    { title: 'Realizacja', who: brand, icon: PartyPopper, text: 'Gość akceptuje ofertę, a my przejmujemy realizację: plan wydarzenia, osoba na miejscu, sprzęt i obsługa w dniu wydarzenia.' },
-    { title: 'Wypłata', who: `${brand} → sprzedawca`, icon: Banknote, text: 'Po rozliczeniu wydarzenia wynagrodzenie trafia do wypłaty. Historia naliczeń i wypłat jest zawsze dostępna w portalu.' },
+    { title: 'Oferta i klient', who: 'Hotel', icon: Wand2, text: 'Hotel przygotowuje ofertę w kreatorze i dołącza PDF do swojej oferty dla klienta. Może też wysłać link do akceptacji online.' },
+    { title: 'U opiekuna', who: `Opiekun ${brand}`, icon: ShieldCheck, text: 'Po zgodzie klienta hotel wysyła ofertę do opiekuna. Opiekun sprawdza termin, zespół i sprzęt, a potem przyjmuje ofertę.' },
+    { title: 'Wydarzenie', who: `Hotel + ${brand}`, icon: PartyPopper, text: `Opiekun potwierdza termin. Hotel uzupełnia trzy krótkie kroki: osoba na miejscu, sala, materiały. ${brand} przygotowuje plan i obsługę.` },
+    { title: 'Rozliczenie', who: `${brand} → sprzedawca`, icon: Banknote, text: 'Po rozliczeniu wydarzenia wynagrodzenie trafia do wypłaty. Opiekun pokazuje je w portalu — z podsumowaniem, skąd wzięła się kwota.' },
   ];
   const current = steps[active];
 
   return <div className="space-y-6">
     <section>
       <h2 className="text-2xl font-light md:text-3xl">Jak to działa</h2>
-      <p className="mt-2 max-w-2xl text-sm leading-6 text-white/55">Sześć kroków od pierwszej rozmowy do wypłaty. Przez cały czas {hotel} ma jednego opiekuna po stronie {brand}.</p>
+      <p className="mt-2 max-w-2xl text-sm leading-6 text-white/55">Dwa kroki startu, potem etapy każdej oferty — te same, które {hotel} zobaczy w portalu. Przez cały czas hotel ma jednego opiekuna po stronie {brand}.</p>
     </section>
 
     <ol className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
@@ -61,7 +62,7 @@ export default function DemoHowItWorks({ config }: { config: DemoConfig }) {
     <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
       {[
         { icon: UserRound, title: 'Jeden opiekun', text: 'Czat w portalu, telefon i pomoc przy każdej ofercie.' },
-        { icon: FileText, title: 'Oferta w kilka minut', text: 'Gotowe opisy, zdjęcia i ceny — PDF i link dla gościa.' },
+        { icon: FileText, title: 'Oferta w kilka minut', text: 'Gotowe opisy, zdjęcia i ceny — PDF jako wkładka do oferty hotelu.' },
         { icon: Sparkles, title: 'Marka hotelu', text: 'Logo i kolory hotelu na ofertach i w portalu.' },
         { icon: ShieldCheck, title: 'Bez ryzyka', text: 'Termin i zasoby potwierdza opiekun, realizację prowadzi partner.' },
       ].map(item => <div key={item.title} className="rounded-2xl bg-[#1c1f33] p-5">

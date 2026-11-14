@@ -1,15 +1,68 @@
-import { pageDesign, requiresPageImage, type BrochureDecorativePage, type PageRect } from './decorativePages';
+import { pageDesign, requiresPageImage, type BrochureDecorativePage, type BrochurePageDesign, type PageRect } from './decorativePages';
 import { renderBrochureIcon } from './brochureIcons';
 const escape = (v: unknown) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
 const url = (v: string = '') => /^(https?:|data:image\/)/i.test(v) ? escape(v) : '';
 export const rectStyle = (r: PageRect) => `left:${r.x}%;top:${r.y}%;width:${r.width}%;height:${r.height}%;`;
+
+/*
+ * Motywy w tle strony (rysunki w milimetrach strony A4, 210 × 297, zakotwiczone w prawym górnym rogu; inne rogi — odbicie
+ * warstwy). Kolor: akcent marki (`--brochure-primary`); rysunki są stałe, więc PDF i podgląd wyglądają tak samo.
+ */
+const n = (value: number) => Number(value.toFixed(1));
+const closedCurve = (cx: number, cy: number, radius: (angle: number) => number, steps = 120) => {
+  const points = Array.from({ length: steps }, (_, i) => {
+    const angle = (i / steps) * Math.PI * 2, r = radius(angle);
+    return `${n(cx + Math.cos(angle) * r)} ${n(cy + Math.sin(angle) * r)}`;
+  });
+  return `M${points.join('L')}Z`;
+};
+const ORNAMENT_ART: Record<string, string> = {
+  waves: Array.from({ length: 9 }, (_, i) => {
+    const o = i * 4.2;
+    return `<path d="M${n(58 + i * 6)} -2C${n(96 + i * 3)} ${n(26 + o)} ${n(140 + i * 2)} ${n(-8 + o)} 214 ${n(30 + o * 1.25)}" fill="none" stroke="currentColor" stroke-width="0.35" stroke-opacity="${n(0.9 - i * 0.07)}"/>`;
+  }).join(''),
+  ripples: [14, 25, 38, 53, 70, 89, 110, 133].map((r, i) =>
+    `<circle cx="196" cy="16" r="${r}" fill="none" stroke="currentColor" stroke-width="${i % 3 === 0 ? 0.5 : 0.3}" stroke-opacity="${n(0.95 - i * 0.1)}"/>`).join(''),
+  contours: Array.from({ length: 9 }, (_, k) => `<path d="${closedCurve(192, 26, (a) => (9 + k * 10.5)
+    * (1 + 0.075 * Math.sin(3 * a + 0.7 * k) + 0.045 * Math.sin(5 * a + 1.4 * k) + 0.03 * Math.cos(2 * a - k)))}" fill="none" stroke="currentColor" stroke-width="0.3" stroke-opacity="${n(0.9 - k * 0.08)}"/>`).join(''),
+  blob: `<path d="${closedCurve(194, 20, (a) => 66 * (1 + 0.11 * Math.sin(2 * a + 0.4) + 0.07 * Math.sin(3 * a + 2.1) + 0.04 * Math.cos(5 * a)))}" fill="currentColor" fill-opacity="0.13"/>`
+    + `<path d="${closedCurve(186, 30, (a) => 44 * (1 + 0.09 * Math.sin(3 * a + 1.2) + 0.05 * Math.cos(4 * a + 0.3)))}" fill="none" stroke="currentColor" stroke-width="0.35" stroke-opacity="0.65"/>`
+    + `<path d="${closedCurve(205, 106, (a) => 9 * (1 + 0.12 * Math.sin(3 * a) + 0.06 * Math.cos(2 * a + 1)))}" fill="currentColor" fill-opacity="0.16"/>`,
+  ribbon: '<defs><linearGradient id="creative-ribbon" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="currentColor" stop-opacity="0.26"/><stop offset="1" stop-color="currentColor" stop-opacity="0"/></linearGradient></defs>'
+    + '<path d="M104 -4C142 36 182 26 214 74L214 118C186 62 140 66 92 -4Z" fill="url(#creative-ribbon)"/>'
+    + '<path d="M118 -4C150 30 186 22 214 62" fill="none" stroke="currentColor" stroke-width="0.35" stroke-opacity="0.75"/>'
+    + '<path d="M86 -4C134 58 182 58 214 132" fill="none" stroke="currentColor" stroke-width="0.3" stroke-opacity="0.45"/>',
+  halftone: (() => {
+    const dots: string[] = [];
+    for (let y = 2.5; y < 150; y += 5) {
+      for (let x = 72.5; x < 212; x += 5) {
+        const near = 1 - Math.hypot(210 - x, y) / 150;
+        const r = 1.05 * near * (0.65 + 0.35 * Math.sin(x / 11 + y / 8));
+        if (r > 0.14) dots.push(`<circle cx="${n(x)}" cy="${n(y)}" r="${n(r)}"/>`);
+      }
+    }
+    return `<g fill="currentColor" fill-opacity="0.55">${dots.join('')}</g>`;
+  })(),
+  lines: Array.from({ length: 14 }, (_, i) =>
+    `<line x1="${n(84 + i * 9)}" y1="-2" x2="212" y2="${n(126 - i * 9)}" stroke="currentColor" stroke-width="0.3" stroke-opacity="${n(0.35 + i * 0.045)}"/>`).join(''),
+};
+/** Motyw w tle: dotychczasowe łuki i siatka w prawym górnym rogu mają niezmieniony zapis (te same PDF-y). */
+function renderOrnament(design: BrochurePageDesign) {
+  const ornament = design.ornament || 'none', place = design.ornamentPlace || 'top-right';
+  if (ornament === 'none') return '';
+  const art = ornament === 'arc' || ornament === 'grid'
+    ? `<div class="creative-ornament creative-ornament-${ornament}"></div>`
+    : ORNAMENT_ART[ornament] ? `<svg class="creative-ornament-art" viewBox="0 0 210 297" preserveAspectRatio="none" aria-hidden="true">${ORNAMENT_ART[ornament]}</svg>` : '';
+  if (!art) return '';
+  return place === 'top-right' && (ornament === 'arc' || ornament === 'grid') ? art : `<div class="creative-ornament-layer creative-ornament-${place}">${art}</div>`;
+}
 export function renderCreativePage(page: BrochureDecorativePage & { imageUrl?: string | null }, company: { name: string; logoUrl?: string | null }, targetName: string, number: string) {
   const d = pageDesign(page), photo = url(page.imageUrl || '');
   const personal = (text: string) => text.replace(/\{\{klient\}\}/g, targetName || 'Państwa organizacji');
   const points = (page.points || []).map((point, index) => ({ point, icon: page.pointIcons?.[index] })).filter(({ point }) => point.trim());
   const cards = ['features', 'features-photo', 'process', 'timeline', 'showcase', 'signature'].includes(page.layout);
   return `<section class="page creative-page creative-${page.layout} creative-${d.theme}" style="--creative-font:${d.fontSize}px;text-align:${d.align}">
-    ${d.ornament && d.ornament !== 'none' ? `<div class="creative-ornament creative-ornament-${d.ornament}"></div>` : ''}
+    ${renderOrnament(d)}
     ${photo && requiresPageImage(page.layout) ? `<div class="creative-image" style="${rectStyle(d.image)}--creative-tint:${(d.imageTint || 0) / 100};--creative-desaturation:${(d.imageTint || 0) / 125};--creative-fade:${(d.imageFade || 0) / 100}"><img src="${photo}" alt="" style="object-fit:${d.imageFit};object-position:${d.imageX}% ${page.imagePosition}%"/><div style="position:absolute;inset:0;background:linear-gradient(180deg,transparent,var(--brochure-secondary));opacity:${d.overlay / 100}"></div></div>` : ''}
     ${d.showBrand ? `<div class="decorative-brand">${company.logoUrl ? `<img class="logo" src="${url(company.logoUrl)}" alt="${escape(company.name)}"/>` : `<span class="wordmark">${escape(company.name)}</span>`}</div>` : ''}
     ${page.layout !== 'artwork' ? `<div class="creative-text" data-fit-box style="${rectStyle(d.text)}">${page.icon || page.eyebrow ? `<div class="creative-kicker">${renderBrochureIcon(page.icon)}<span>${escape(personal(page.eyebrow || ''))}</span></div>` : '<div class="creative-rule"></div>'}<h2>${page.layout === 'signature' ? personal(page.slogan).toLocaleUpperCase('pl-PL').split('\n').map((line) => `<span>${escape(line)}</span>`).join('') : escape(personal(page.slogan).toLocaleUpperCase('pl-PL'))}</h2>${page.caption ? `<p>${escape(personal(page.caption)).replace(/\n/g, '<br>')}</p>` : ''}</div>` : ''}
@@ -101,4 +154,10 @@ export const creativePageCss = `
 .creative-ornament-arc { width:340px;height:340px;border:1px solid var(--brochure-primary);border-radius:50%;top:-175px;right:-110px;opacity:.38; }
 .creative-ornament-arc:after { content:'';position:absolute;inset:28px;border:1px solid var(--brochure-primary);border-radius:50%; }
 .creative-ornament-grid { width:35%;height:28%;right:0;top:0;opacity:.13;background-image:radial-gradient(var(--brochure-primary) 1px,transparent 1px);background-size:16px 16px; }
+.creative-ornament-layer { position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:0; }
+.creative-ornament-top-left { transform:scaleX(-1); }
+.creative-ornament-bottom-right { transform:scaleY(-1); }
+.creative-ornament-bottom-left { transform:scale(-1,-1); }
+.creative-ornament-art { position:absolute;inset:0;width:100%;height:100%;color:var(--brochure-primary);opacity:.6; }
+.creative-light .creative-ornament-art { opacity:1; }
 `;

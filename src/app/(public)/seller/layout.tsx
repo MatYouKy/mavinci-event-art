@@ -11,6 +11,7 @@ import {
   CircleUser,
   FileText,
   LayoutDashboard,
+  LifeBuoy,
   Loader2,
   LockKeyhole,
   LogOut,
@@ -25,17 +26,20 @@ import { supabase } from '@/lib/supabase/browser';
 import { sellerAnyCommissionsVisible, useSellerPortalContext } from '@/lib/seller/portal';
 import { sellerInboxCounts, useSellerInbox } from '@/lib/seller/inbox';
 import { SellerCountBadge } from '@/components/seller/SellerInboxPanel';
+import { HelpButton, HelpDrawerHost } from '@/components/help/HelpDrawer';
+import { SELLER_HELP } from '@/lib/help/sellerHelp';
 
 const navigation = [
   { name: 'Pulpit', href: '/seller', icon: LayoutDashboard },
   { name: 'Moje oferty', href: '/seller/offers', icon: FileText },
   { name: 'Zapytania', href: '/seller/inquiries', icon: CalendarSearch },
   { name: 'Kontakty', href: '/seller/contacts', icon: Users },
-  { name: 'Potwierdzone wydarzenia', href: '/seller/realizations', icon: CalendarDays },
+  { name: 'Wydarzenia', href: '/seller/realizations', icon: CalendarDays },
   { name: 'Rozmowy z opiekunem', href: '/seller/messages', icon: MessageSquare },
   { name: 'Materiały dla hotelu', href: '/seller/materials', icon: QrCode },
   { name: 'Moje wynagrodzenie', href: '/seller/commissions', icon: BadgePercent },
   { name: 'Ustawienia', href: '/seller/profile', icon: Settings },
+  { name: 'Pomoc', href: '/seller/help', icon: LifeBuoy },
 ];
 // Page names for the top bar on nested routes (the page itself owns the h1).
 const sectionTitle = (pathname: string) => {
@@ -221,7 +225,8 @@ export default function SellerLayout({ children }: { children: React.ReactNode }
                 {inboxCounts.total > 0 && <span aria-hidden="true" className="absolute -right-0.5 -top-0.5 inline-flex min-w-5 items-center justify-center rounded-full bg-rose-500/90 px-1.5 py-0.5 text-[10px] font-semibold leading-4 text-white">{inboxCounts.total > 99 ? '99+' : inboxCounts.total}</span>}
               </button>
               {/* Section name only; each page renders its own single h1. */}
-              <p className="text-lg font-light text-[#e5e4e2] md:text-xl">{sectionTitle(pathname)}</p>
+              <p className="min-w-0 flex-1 truncate text-lg font-light text-[#e5e4e2] md:text-xl">{sectionTitle(pathname)}</p>
+              <HelpButton audience="seller" />
             </div>
           </header>
           <main className="flex-1 overflow-y-auto">{children}</main>
@@ -229,6 +234,11 @@ export default function SellerLayout({ children }: { children: React.ReactNode }
       </div>
 
       {sidebarOpen && <button type="button" aria-label="Zamknij menu" className="fixed inset-0 z-40 bg-black/50 lg:hidden" onClick={() => setSidebarOpen(false)} />}
+
+      <HelpDrawerHost audience="seller" defaultChapter={SELLER_HELP.chapterFor(pathname)} footer={<>
+        <Link href="/seller/messages" className="inline-flex min-h-10 items-center rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#111522]">Zapytaj opiekuna</Link>
+        <Link href="/seller/help" className="inline-flex min-h-10 items-center rounded-lg bg-white/5 px-4 py-2 text-sm text-[#e5e4e2]/80 hover:bg-white/10">Cała instrukcja</Link>
+      </>} />
 
       {drawerOpen && (
         <div className="fixed inset-0 z-50">

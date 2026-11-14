@@ -5,8 +5,10 @@ import Link from 'next/link';
 import { FileText, Plus, RefreshCw, Search } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { sellerCommissionsVisible, sellerMoney, useSellerPortalContext } from '@/lib/seller/portal';
-import { loadSellerOfferDeliveries, sellerOfferStage, sellerOfferStageFilters, sellerOfferToneClass, type SellerOfferDelivery } from '@/lib/seller/offerStatus';
+import { loadSellerOfferDeliveries, loadSellerOfferPdfs, sellerOfferStage, sellerOfferStageFilters, sellerOfferStageMatches, sellerOfferToneClass, type SellerOfferDelivery } from '@/lib/seller/offerStatus';
 import SellerInboxPanel from '@/components/seller/SellerInboxPanel';
+import { SellerJourneyDots } from '@/components/seller/SellerJourney';
+import { HelpButton } from '@/components/help/HelpDrawer';
 import { useOfferRefresh } from '@/lib/seller/useOfferRefresh';
 
 type OfferRow = {
@@ -24,8 +26,9 @@ type OfferRow = {
   partner_approval_status: string;
   created_at: string;
   delivery?: SellerOfferDelivery;
+  /** undefined — nie udało się sprawdzić PDF (oś nie zgaduje). */
+  hasPdf?: boolean;
 };
-const offerStage = (offer: OfferRow) => sellerOfferStage(offer, offer.delivery);
 const FORECAST_NOTE = 'Szacunek od wartości oferty — prowizja liczy się od zysku po kosztach wydarzenia';
 
 export default function SellerOffersPage() {
@@ -33,7 +36,12 @@ export default function SellerOffersPage() {
   const [offers, setOffers] = useState<OfferRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [status, setStatus] = useState('all');
+  // Pulpit otwiera listę z filtrem etapu (?etap=offer|client|manager|mine).
+  const [status, setStatus] = useState(() => {
+    if (typeof window === 'undefined') return 'all';
+    const requested = new URLSearchParams(window.location.search).get('etap') || 'all';
+    return sellerOfferStageFilters.some((filter) => filter.value === requested) ? requested : 'all';
+  });
   const [error, setError] = useState('');
   const [retry, setRetry] = useState(0);
   const revision = useOfferRefresh(context ? `sales_partner_id=eq.${context.profile.id}` : undefined);
@@ -56,10 +64,12 @@ export default function SellerOffersPage() {
       if (!active) return;
       if (loadError) { setError('Nie udało się odświeżyć listy ofert.'); setLoading(false); return; }
       const rows = (data || []) as OfferRow[];
-      const { deliveries: byOffer, error: progressError } = await loadSellerOfferDeliveries(rows.map((offer) => offer.id));
+      const ids = rows.map((offer) => offer.id);
+      const [{ deliveries: byOffer, error: progressError }, pdfs] = await Promise.all([loadSellerOfferDeliveries(ids), loadSellerOfferPdfs(ids)]);
       if (!active) return;
       setError(progressError);
-      setOffers(rows.map((offer) => ({ ...offer, delivery: byOffer.get(offer.id) })).filter((offer) => !offer.delivery?.is_realization));
+      setOffers(rows.map((offer) => ({ ...offer, delivery: byOffer.get(offer.id), hasPdf: pdfs ? pdfs.has(offer.id) : undefined }))
+        .filter((offer) => !offer.delivery?.is_realization));
       setLoading(false);
       } catch {
         if (active) { setError('Nie udało się odświeżyć ofert. Spróbuj ponownie.'); setLoading(false); }
@@ -68,15 +78,17 @@ export default function SellerOffersPage() {
     return () => { active = false; };
   }, [context, contextLoading, revision, retry]);
 
+  const managerName = context?.manager?.name;
+  const offerStage = (offer: OfferRow) => sellerOfferStage(offer, offer.delivery, { hasPdf: offer.hasPdf, managerName });
   const filtered = useMemo(() => {
     const query = search.trim().toLocaleLowerCase('pl');
     return offers.filter((offer) => {
-      if (status !== 'all' && offerStage(offer).value !== status) return false;
+      if (!sellerOfferStageMatches(sellerOfferStage(offer, offer.delivery, { hasPdf: offer.hasPdf, managerName }), status)) return false;
       return !query || `${offer.offer_number || ''} ${offer.title || ''} ${offer.portal_client_name || ''} ${offer.portal_client_company || ''}`
         .toLocaleLowerCase('pl')
         .includes(query);
     });
-  }, [offers, search, status]);
+  }, [offers, search, status, managerName]);
 
   if (contextLoading || loading) return <div className="p-10 text-center text-[#d3bb73]">Ładowanie ofert...</div>;
   if (!context) return <div className="p-10 text-center text-[#e5e4e2]/50">Brak dostępu do portalu sprzedawcy.</div>;
@@ -86,8 +98,8 @@ export default function SellerOffersPage() {
       <div className="mx-auto max-w-7xl space-y-5">
         <header className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-light uppercase">Moje oferty</h1>
-            <p className="mt-1 text-sm text-[#e5e4e2]/50">Przygotuj ofertę → potwierdź akceptację klienta i przekaż do MAVINCI → po akceptacji opiekuna kontynuuj w zakładce <Link href="/seller/realizations" className="text-[#d3bb73] underline underline-offset-4">Potwierdzone wydarzenia</Link>.</p>
+            <h1 className="flex items-center gap-1 text-2xl font-light uppercase">Moje oferty <HelpButton audience="seller" chapter="jak-to-dziala" /></h1>
+            <p className="mt-1 text-sm text-[#e5e4e2]/50">Oferty przed przyjęciem przez opiekuna. Przyjęte znajdziesz w <Link href="/seller/realizations" className="text-[#d3bb73] underline underline-offset-4">Wydarzeniach</Link>.</p>
           </div>
           <Link href="/seller/offers/new" className="flex min-h-11 items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2.5 text-sm font-medium text-[#111522]"><Plus className="h-4 w-4" /> Nowa oferta</Link>
         </header>
@@ -112,9 +124,13 @@ export default function SellerOffersPage() {
                   <p className="mt-1 truncate pl-6 text-xs text-[#e5e4e2]/45">{offer.portal_client_company || offer.portal_client_name || 'Klient do uzupełnienia'}{offer.offer_number ? ` · ${offer.offer_number}` : ''}</p>
                   {stage.next && <p className="mt-2 pl-6 text-xs leading-5 text-white/50">{stage.next}</p>}
                 </div>
-                <div className="col-span-2 lg:col-span-1"><span className={`inline-block rounded-md px-2 py-1 text-[11px] ${sellerOfferToneClass[stage.tone]}`}>{stage.label}</span>{offer.partner_approval_status === 'required' && <p className="mt-1 text-[10px] text-amber-300">Cena wymaga zgody opiekuna</p>}</div>
+                <div className="col-span-2 space-y-1.5 lg:col-span-1">
+                  <SellerJourneyDots journey={stage.journey} />
+                  <p className="text-[11px] text-white/45">{stage.journey.stageLabel}</p>
+                  <span className={`inline-block rounded-md px-2 py-1 text-[11px] ${sellerOfferToneClass[stage.tone]}`}>{stage.label}</span>
+                </div>
                 <div><p className="text-[10px] uppercase text-[#e5e4e2]/40">Cena MAVINCI</p><p className="mt-1 text-sm">{sellerMoney(offer.partner_base_net)}</p></div>
-                <div><p className="text-[10px] uppercase text-[#e5e4e2]/40">Cena klienta</p><p className="mt-1 text-sm">{sellerMoney(offer.client_total_net)}</p></div>
+                <div><p className="text-[10px] uppercase text-[#e5e4e2]/40">Cena dla klienta</p><p className="mt-1 text-sm">{sellerMoney(offer.client_total_net)}</p></div>
                 {showEarnings && <div title={commission ? FORECAST_NOTE : undefined}><p className="text-[10px] uppercase text-[#e5e4e2]/40">{commission ? 'Prowizja · szacunek' : 'Marża hotelu'}</p><p className="mt-1 text-sm text-[#d3bb73]">{sellerMoney(offer.partner_earnings_amount)}</p>{commission && <p className="mt-0.5 text-[10px] leading-4 text-white/35">przed kosztami wydarzenia</p>}</div>}
               </Link>;
             })}

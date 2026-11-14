@@ -8,10 +8,10 @@ import { formatSellerRelative } from './sellerUi';
 const KINDS: Record<SalesDaySellersItemKind, { label: string; icon: LucideIcon }> = {
   review: { label: 'Oferta do sprawdzenia', icon: FileSearch },
   chat: { label: 'Rozmowa czeka', icon: MessagesSquare },
-  inquiry: { label: 'Zapytanie gościa', icon: Inbox },
+  inquiry: { label: 'Zapytanie klienta', icon: Inbox },
   wizard: { label: 'Krok realizacji', icon: ClipboardCheck },
   event: { label: 'Wydarzenie do potwierdzenia', icon: CalendarCheck2 },
-  guest: { label: 'Akceptacja gościa', icon: PartyPopper },
+  guest: { label: 'Akceptacja klienta', icon: PartyPopper },
 };
 
 /** „Mój dzień” → Sprzedawcy — do zrobienia (get_my_sales_day().sellers). */
@@ -22,7 +22,7 @@ export default function SalesDaySellersCard({ sellers, className }: { sellers: S
     { label: 'Zapytania', value: sellers.inquiries },
     { label: 'Kroki', value: sellers.wizard_steps },
     { label: 'Wydarzenia', value: sellers.events_pending },
-    { label: 'Goście', value: sellers.guest_acceptances },
+    { label: 'Akceptacje klientów', value: sellers.guest_acceptances },
   ];
   const total = counts.reduce((sum, item) => sum + item.value, 0);
   return <article className={className}>

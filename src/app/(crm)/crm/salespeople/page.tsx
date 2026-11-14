@@ -30,6 +30,7 @@ import CrmSellerProfileSettings, {
 } from '@/components/seller/CrmSellerProfileSettings';
 import SellerInboxPanel, { SellerCountBadge } from '@/components/seller/SellerInboxPanel';
 import CrmSellerWorkspace from '@/components/seller/CrmSellerWorkspace';
+import { HelpButton, HelpDrawerHost } from '@/components/help/HelpDrawer';
 import { CrmCartesianChart } from '@/components/crm/charts/CrmCharts';
 import { sellerInboxCounts } from '@/lib/seller/inbox';
 import SalesCommissionSettingsSection from '@/components/crm/commissions/SalesCommissionSettingsSection';
@@ -367,7 +368,7 @@ export default function SalespeoplePage() {
             <div className="flex items-center gap-3">
               <span className="rounded-xl bg-[#d3bb73]/10 p-3"><BadgePercent className="h-6 w-6 text-[#d3bb73]" /></span>
               <div>
-                <h1 className="text-2xl font-light">Sprzedawcy</h1>
+                <h1 className="flex items-center gap-1 text-2xl font-light">Sprzedawcy <HelpButton audience="manager" chapter="kokpit" /></h1>
                 <p className="mt-1 text-sm text-[#e5e4e2]/45">{isAdmin ? 'Wszyscy sprzedawcy CRM oraz zewnętrzni.' : 'Twoi sprzedawcy zewnętrzni — zgodnie z opiekunem przypisanym przez administratora.'}</p>
               </div>
             </div>
@@ -384,6 +385,7 @@ export default function SalespeoplePage() {
           </div>
         </header>
 
+        <HelpDrawerHost audience="manager" defaultChapter={showForm ? 'nowy-sprzedawca' : workspaceProfile ? 'rola' : 'kokpit'} />
         {workspaceProfile && <section className="rounded-xl bg-black/10 p-4"><Link href="/crm/salespeople" className="mb-4 inline-block text-xs text-[#d3bb73]">← Wróć do sprzedawców</Link><CrmSellerWorkspace key={workspaceProfile.id} partnerId={workspaceProfile.id} contactId={workspaceProfile.contact_id || undefined} /></section>}
 
         {!loading && !loadError && workspaceSellerId && !workspaceProfile && (

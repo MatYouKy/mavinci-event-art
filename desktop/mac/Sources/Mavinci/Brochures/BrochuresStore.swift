@@ -245,6 +245,14 @@ struct BrochureStudio: Decodable {
     var defaults: [String: BrochurePageDesign]
     var presets: [Preset]
     var maxPages: Int
+    /// Motywy w tle i ich położenie (`BROCHURE_ORNAMENTS`, `BROCHURE_ORNAMENT_PLACES`); starszy serwer — lista podstawowa.
+    var ornaments: [Icon]?
+    var ornamentPlaces: [Icon]?
+
+    var ornamentOptions: [Icon] {
+        ornaments ?? [Icon(key: "none", label: "Bez motywu"), Icon(key: "arc", label: "Łuki"), Icon(key: "grid", label: "Siatka punktów")]
+    }
+    var placeOptions: [Icon] { ornamentPlaces ?? [Icon(key: "top-right", label: "Prawy górny róg")] }
 
     func label(_ layout: String) -> String { layouts.first(where: { $0.key == layout })?.label ?? layout }
     func requiresImage(_ layout: String) -> Bool { layouts.first(where: { $0.key == layout })?.requiresImage ?? false }
@@ -280,6 +288,7 @@ struct BrochurePageDesign: Codable, Equatable {
     var imageX: Double
     var showBrand: Bool
     var ornament: String?
+    var ornamentPlace: String? = nil
 
     static let fallback = BrochurePageDesign(
         text: BrochureRect(x: 10, y: 59, width: 80, height: 29), image: BrochureRect(x: 0, y: 0, width: 100, height: 100),
@@ -310,7 +319,10 @@ struct BrochurePageDesign: Codable, Equatable {
         let theme = raw["theme"]?.text ?? ""
         let align = raw["align"]?.text ?? ""
         let fit = raw["imageFit"]?.text ?? ""
+        // Motyw i położenie sprawdza serwer (`pageDesign`); tu tylko format klucza — nowy motyw z CRM nie znika po zapisie z Maca.
+        let key = { (value: String) -> Bool in value.range(of: "^[a-z-]{1,24}$", options: .regularExpression) != nil }
         let ornament = raw["ornament"]?.text ?? ""
+        let place = raw["ornamentPlace"]?.text ?? ""
         var showBrand = base.showBrand
         if case .bool(let flag) = raw["showBrand"] ?? .null { showBrand = flag }
         return BrochurePageDesign(
@@ -324,7 +336,8 @@ struct BrochurePageDesign: Codable, Equatable {
             imageFit: ["cover", "contain"].contains(fit) ? fit : base.imageFit,
             imageX: bounded(raw["imageX"], 50, 0, 100),
             showBrand: showBrand,
-            ornament: ["arc", "grid"].contains(ornament) ? ornament : "none")
+            ornament: key(ornament) ? ornament : "none",
+            ornamentPlace: key(place) ? place : "top-right")
     }
 }
 

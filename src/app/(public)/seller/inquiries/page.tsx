@@ -87,8 +87,8 @@ export default function SellerInquiriesPage() {
     <div className="mx-auto max-w-6xl space-y-5">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div><h1 className="flex items-center gap-3 text-2xl font-light uppercase"><CalendarSearch className="h-6 w-6 text-[#d3bb73]" />Sprawdź termin</h1>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-white/55">Gość pyta o wydarzenie? Wyślij szybkie zapytanie — opiekun MAVINCI sprawdzi termin i odpowie tutaj. Pełną ofertę przygotujesz później.</p></div>
-        <Link href="/seller/materials" className={button}><QrCode className="h-4 w-4" />Formularz QR dla gości</Link>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-white/55">Klient pyta o wydarzenie? Wyślij szybkie zapytanie — opiekun MAVINCI sprawdzi termin i odpowie tutaj. Pełną ofertę przygotujesz później.</p></div>
+        <Link href="/seller/materials" className={button}><QrCode className="h-4 w-4" />Formularz QR dla gości hotelu</Link>
       </header>
 
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
@@ -121,7 +121,7 @@ export default function SellerInquiriesPage() {
             </div>
             <p className="text-[11px] text-white/40">{sellerInquirySourceLabel(inquiry.source)}{inquiry.label ? ` · ${inquiry.label}` : ''}{inquiry.brand_name && context.brands.length > 1 ? ` · ${inquiry.brand_name}` : ''} · wysłane {new Date(inquiry.created_at).toLocaleString('pl-PL', { dateStyle: 'short', timeStyle: 'short' })}</p>
             {inquiry.response && <div className="rounded-lg bg-[#d3bb73]/10 p-3"><p className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-[#d3bb73]"><MessageSquare className="h-3.5 w-3.5" />Odpowiedź opiekuna{inquiry.responded_at ? ` · ${new Date(inquiry.responded_at).toLocaleString('pl-PL', { dateStyle: 'short', timeStyle: 'short' })}` : ''}</p><p className="mt-1.5 whitespace-pre-wrap break-words text-sm leading-6">{inquiry.response}</p></div>}
-            {inquiry.status === 'answered' && <Link href="/seller/offers/new" className="inline-flex min-h-10 items-center text-xs text-[#d3bb73] underline underline-offset-4">Przygotuj ofertę dla tego gościa</Link>}
+            {inquiry.status === 'answered' && <Link href={`/seller/offers/new?inquiry=${inquiry.id}`} className="inline-flex min-h-10 items-center text-xs text-[#d3bb73] underline underline-offset-4">Przygotuj ofertę dla tego klienta</Link>}
           </li>)}</ul>
         </section>
       </div>

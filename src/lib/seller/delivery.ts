@@ -11,6 +11,8 @@ export type SellerOfferSummaryData = {
   seller_name: string; seller_organization: string;
   client_name: string; client_company: string;
   event_date: string | null; event_location: string;
+  /** offers.partner_approval_status = 'required' (pozycja własna albo cena poniżej stawki). */
+  price_approval_required?: boolean;
   items: { id: string; name: string; quantity: number; unit: string; days: number }[];
 };
 export type SellerDocument = { id: string; filename: string; created_at: string; source_key: string; current: boolean };

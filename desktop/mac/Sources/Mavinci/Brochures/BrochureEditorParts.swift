@@ -642,11 +642,7 @@ struct BrochureWebPreview: NSViewRepresentable {
             coordinator.html = html
             coordinator.pendingFocus = focusChanged || coordinator.firstLoad
             coordinator.firstLoad = false
-            let next = html
-            view.evaluateJavaScript("window.scrollY") { value, _ in
-                coordinator.scroll = (value as? Double) ?? 0
-                view.loadHTMLString(next, baseURL: nil)
-            }
+            coordinator.update(view, html: html)
         } else if focusChanged {
             coordinator.scrollToFocus(view)
         }
@@ -658,6 +654,65 @@ struct BrochureWebPreview: NSViewRepresentable {
         var scroll: Double = 0
         var pendingFocus = false
         var firstLoad = true
+        /// Dokument wczytany — kolejne zmiany podmieniają tylko zmienione strony, bez przeładowania całego podglądu.
+        private var loaded = false
+
+        /// Podmiana w miejscu (jak przy pisaniu): style, gdy się zmieniły, i tylko te strony, których treść się zmieniła —
+        /// przewinięcie i wczytane zdjęcia zostają. Inna kolejność stron przebudowuje treść, a błąd — wczytuje całość.
+        private static let patch = """
+        const signed = /https?:\\/\\/[^"'\\s)]+?\\?token=[^"'\\s)&]+/g;
+        const strip = (value) => value.replace(/\\?token=[^"'\\s)&]+/g, '');
+        const known = new Map();
+        for (const match of document.documentElement.innerHTML.matchAll(signed)) known.set(strip(match[0]), match[0]);
+        const reuse = (markup) => markup.replace(signed, (url) => known.get(strip(url)) || url);
+        const next = new DOMParser().parseFromString(html, 'text/html');
+        if (!document.body || !next.body) return 'reload';
+        if (strip(next.head.innerHTML) !== strip(document.head.innerHTML)) document.head.innerHTML = reuse(next.head.innerHTML);
+        const before = Array.from(document.body.querySelectorAll(':scope > [data-page-key]'));
+        const after = Array.from(next.body.querySelectorAll(':scope > [data-page-key]'));
+        const same = before.length === after.length && before.length === document.body.children.length
+          && after.length === next.body.children.length
+          && before.every((page, index) => page.getAttribute('data-page-key') === after[index].getAttribute('data-page-key'));
+        if (!same) {
+          document.body.innerHTML = reuse(next.body.innerHTML);
+          return 'body';
+        }
+        let changed = 0;
+        after.forEach((page, index) => {
+          if (strip(page.outerHTML) === strip(before[index].outerHTML)) return;
+          before[index].outerHTML = reuse(page.outerHTML);
+          changed += 1;
+        });
+        return 'pages:' + changed;
+        """
+
+        func update(_ view: WKWebView, html: String) {
+            guard loaded else {
+                load(view, html: html)
+                return
+            }
+            view.callAsyncJavaScript(Self.patch, arguments: ["html": html], in: nil, in: .defaultClient) { [weak self] result in
+                guard let self, self.html == html else { return }
+                switch result {
+                case .success(let value) where (value as? String) != "reload":
+                    if self.pendingFocus {
+                        self.pendingFocus = false
+                        self.scrollToFocus(view)
+                    }
+                default:
+                    self.load(view, html: html)
+                }
+            }
+        }
+
+        private func load(_ view: WKWebView, html: String) {
+            loaded = false
+            view.evaluateJavaScript("window.scrollY") { [weak self] value, _ in
+                guard let self else { return }
+                self.scroll = (value as? Double) ?? 0
+                view.loadHTMLString(html, baseURL: nil)
+            }
+        }
 
         func scrollToFocus(_ view: WKWebView) {
             guard let focus, focus.range(of: #"^[A-Za-z0-9:_-]+$"#, options: .regularExpression) != nil else { return }
@@ -665,6 +720,7 @@ struct BrochureWebPreview: NSViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            loaded = true
             if pendingFocus {
                 pendingFocus = false
                 scrollToFocus(webView)

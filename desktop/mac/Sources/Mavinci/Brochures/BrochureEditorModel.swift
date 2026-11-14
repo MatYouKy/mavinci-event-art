@@ -589,6 +589,9 @@ enum BrochureSaveState { case saved, pending, saving, failed }
         if let first = found.first(where: { issue in pageRows.contains(where: { $0.key == issue.pageKey }) }) { selectedPage = first.pageKey }
     }
 
+    /// Problemy z okna wysyłki (generowanie załącznika) — na stronach w spisie stron.
+    func showIssues(_ found: [BrochureIssue]) { show(found) }
+
     /// „Sprawdź broszurę” (`validateOnly`) albo „Generuj PDF” — ogólny lub przypisany do klienta, bez wysyłki wiadomości.
     /// Zwraca wynik generatora; przy problemach raport trafia na strony w spisie stron.
     @discardableResult

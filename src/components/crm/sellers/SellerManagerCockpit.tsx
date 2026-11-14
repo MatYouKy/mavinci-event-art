@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { AlertTriangle, CalendarDays, FileText, Hotel, Presentation, RefreshCw, Sparkles, UserPlus, Users, WalletCards } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
-import { parseSellerCockpit, sellerCockpitTodayCount, type SellerCockpit } from '@/lib/seller/sellerCockpit';
+import { parseSellerCockpit, parseSellerPriceRequests, sellerCockpitTodayCount, type SellerCockpit } from '@/lib/seller/sellerCockpit';
 import CockpitToday from './cockpit/CockpitToday';
 import CockpitSellers from './cockpit/CockpitSellers';
 import { CockpitPipeline, CockpitUpcoming, CockpitWarnings } from './cockpit/CockpitOverview';
@@ -38,7 +38,11 @@ export default function SellerManagerCockpit({ onTodayCount }: Props) {
     if (managerFilter === null) return;
     const request = ++revision.current;
     if (!background) setLoading(true);
-    const { data, error: rpcError } = await supabase.rpc('get_my_seller_cockpit', managerFilter ? { p_manager: managerFilter } : {});
+    const [{ data, error: rpcError }, prices] = await Promise.all([
+      supabase.rpc('get_my_seller_cockpit', managerFilter ? { p_manager: managerFilter } : {}),
+      // Zgoda na cenę (migracja 20261114230000) — bez migracji grupa jest pusta, kokpit działa dalej.
+      supabase.rpc('get_my_seller_price_requests', managerFilter ? { p_manager: managerFilter } : {}),
+    ]);
     if (request !== revision.current) return;
     if (rpcError) {
       setError(isMissingRpc(rpcError)
@@ -47,6 +51,7 @@ export default function SellerManagerCockpit({ onTodayCount }: Props) {
       if (!background) setCockpit(null);
     } else {
       const parsed = parseSellerCockpit(data);
+      parsed.today.price_requests = prices.error ? [] : parseSellerPriceRequests(prices.data);
       // Filtr opiekuna działa tylko dla administratora; nieaktualny wybór czyścimy.
       if (managerFilter && (!parsed.viewer.is_admin || (parsed.managers.length > 0 && !parsed.managers.some(item => item.id === managerFilter) && managerFilter !== parsed.viewer.employee_id))) {
         storeFilter('');
@@ -134,7 +139,7 @@ export default function SellerManagerCockpit({ onTodayCount }: Props) {
         </div>
       </div>
       <ol className="space-y-2 text-sm">
-        {['Odwiedź hotel i pokaż portal w trybie pokazowym', 'Dodaj osobę z hotelu jako sprzedawcę i wyślij zaproszenie', 'Administrator przypisuje Cię jako opiekuna', 'Tu zobaczysz oferty, rozmowy i zapytania gości'].map((step, index) => (
+        {['Odwiedź hotel i pokaż portal w trybie pokazowym', 'Dodaj osobę z hotelu jako sprzedawcę i wyślij zaproszenie', 'Administrator przypisuje Cię jako opiekuna', 'Tu zobaczysz oferty, rozmowy i zapytania klientów'].map((step, index) => (
           <li key={step} className="flex items-start gap-3 rounded-xl bg-[#0f1119]/60 p-3"><span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#d3bb73]/15 text-xs text-[#d3bb73]">{index + 1}</span><span className="text-white/70">{step}</span></li>
         ))}
       </ol>

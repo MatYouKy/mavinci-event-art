@@ -6,11 +6,23 @@ export const BROCHURE_LAYOUTS = {
   split: 'Zdjęcie obok tekstu', features: 'Korzyści / strefa sprzedawcy', 'features-photo': 'Zdjęcie nad kafelkami', process: 'Etapy współpracy', artwork: 'Gotowa grafika', showcase: 'Zdjęcie i karty usług', timeline: 'Oś czasu',
 } as const;
 export type BrochureLayout = keyof typeof BROCHURE_LAYOUTS;
+/** Motywy graficzne w tle strony graficznej (rysowane przez `renderCreativePage`) i ich położenie na stronie. */
+export const BROCHURE_ORNAMENTS = {
+  none: 'Bez motywu', arc: 'Łuki', grid: 'Siatka punktów', waves: 'Fale', ripples: 'Kręgi na wodzie', contours: 'Linie konturowe',
+  blob: 'Plama', ribbon: 'Wstęga', halftone: 'Fala punktów', lines: 'Skośne linie',
+} as const;
+export type BrochureOrnament = keyof typeof BROCHURE_ORNAMENTS;
+export const BROCHURE_ORNAMENT_PLACES = {
+  'top-right': 'Prawy górny róg', 'top-left': 'Lewy górny róg', 'bottom-right': 'Prawy dolny róg', 'bottom-left': 'Lewy dolny róg',
+} as const;
+export type BrochureOrnamentPlace = keyof typeof BROCHURE_ORNAMENT_PLACES;
+const isOrnament = (value: unknown): value is BrochureOrnament => typeof value === 'string' && Object.prototype.hasOwnProperty.call(BROCHURE_ORNAMENTS, value);
+const isOrnamentPlace = (value: unknown): value is BrochureOrnamentPlace => typeof value === 'string' && Object.prototype.hasOwnProperty.call(BROCHURE_ORNAMENT_PLACES, value);
 export type PageRect = { x: number; y: number; width: number; height: number };
 export type BrochurePageDesign = {
   text: PageRect; image: PageRect; details: PageRect;
   theme: 'light' | 'dark'; align: 'left' | 'center' | 'right'; fontSize: number;
-  imageTint?: number; imageFade?: number; overlay: number; imageFit: 'cover' | 'contain'; imageX: number; showBrand: boolean; ornament?: 'none' | 'arc' | 'grid';
+  imageTint?: number; imageFade?: number; overlay: number; imageFit: 'cover' | 'contain'; imageX: number; showBrand: boolean; ornament?: BrochureOrnament; ornamentPlace?: BrochureOrnamentPlace;
 };
 export type BrochureDecorativePage = {
   id: string; layout: BrochureLayout; slogan: string; caption: string;
@@ -57,7 +69,7 @@ export function normalizeRect(value: unknown, fallback: PageRect): PageRect {
 export function pageDesign(page: Pick<BrochureDecorativePage, 'layout' | 'design'>): BrochurePageDesign {
   const base = pageDefaults(page.layout), v = record(page.design);
   return { text: normalizeRect(v.text, base.text), image: normalizeRect(v.image, base.image), details: normalizeRect(v.details, base.details),
-    ornament: v.ornament === 'arc' || v.ornament === 'grid' ? v.ornament : 'none',
+    ornament: isOrnament(v.ornament) ? v.ornament : 'none', ornamentPlace: isOrnamentPlace(v.ornamentPlace) ? v.ornamentPlace : 'top-right',
     theme: v.theme === 'light' || v.theme === 'dark' ? v.theme : base.theme,
     align: v.align === 'left' || v.align === 'center' || v.align === 'right' ? v.align : base.align, fontSize: bounded(v.fontSize, base.fontSize, 20, 64),
     imageTint: bounded(v.imageTint, base.imageTint || 0, 0, 100), imageFade: bounded(v.imageFade, base.imageFade || 0, 0, 100),

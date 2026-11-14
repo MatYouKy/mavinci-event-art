@@ -28,9 +28,9 @@ const escapeHtml = (value: string) => value
   .replaceAll("'", '&#039;');
 
 const SELLER_BENEFITS = [
-  ['Oferta dla gościa w kilka minut', 'Gotowy katalog usług MAVINCI, ceny i PDF z brandingiem Twojego hotelu.'],
+  ['Oferta dla klienta w kilka minut', 'Gotowy katalog usług MAVINCI, ceny i PDF z brandingiem Twojego hotelu.'],
   ['Stały opiekun MAVINCI', 'Sprawdza termin, odpowiada na pytania i prowadzi realizację wydarzenia.'],
-  ['Wszystko w jednym miejscu', 'Zapytania gości, oferty, potwierdzone wydarzenia i rozmowy z opiekunem.'],
+  ['Wszystko w jednym miejscu', 'Zapytania klientów, oferty, wydarzenia i rozmowy z opiekunem.'],
 ] as const;
 
 const buildEmailHtml = ({

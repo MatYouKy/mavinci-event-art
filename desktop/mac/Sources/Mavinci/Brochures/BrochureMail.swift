@@ -2,7 +2,8 @@ import SwiftUI
 
 // MARK: Broszury, część G3 — „Wyślij broszurę” (`SendBrochureEmailModal`, `BrochureRecipients`) i historia wysyłek
 // (`BrochureDeliveryHistory`). Każdy odbiorca dostaje osobną wiadomość i własny PDF; przygotowanie i wysyłka przez
-// `/bridge/brochures/deliveries` tokenem pracownika, jak w CRM. Serwer: `src/lib/native/brochureMail.ts`.
+// `/bridge/brochures/deliveries` tokenem pracownika, jak w CRM. Serwer: `src/lib/native/brochureMail.ts`. Okno wysyłki i historia
+// działają w edytorze broszury i w karcie klienta (część G5, `BrochureClientBrochures.swift`).
 
 struct BrochureMailSetup: Decodable {
     struct Account: Decodable, Identifiable {
@@ -63,6 +64,8 @@ struct BrochureDelivery: Decodable, Identifiable, Equatable {
     var organizationId: String?
     var source: Source?
     var authorName: String?
+    /// Ręcznie przygotowane ponowienie niepewnej wysyłki (poprzednia próba zostaje w historii).
+    var retryOfDeliveryId: String?
 
     static let labels = [
         "prepared": "Gotowa do wysłania", "sending": "Wysyłka rozpoczęta — oczekiwanie na potwierdzenie", "sent": "Wysłano",
@@ -103,7 +106,7 @@ struct BrochureMembers: Decodable {
 }
 
 extension BrochuresStore {
-    private static var snakeDecoder: JSONDecoder {
+    static var snakeDecoder: JSONDecoder {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         return decoder
@@ -185,10 +188,18 @@ extension BrochuresStore {
 }
 
 /// „Wyślij broszurę”: odbiorcy, treść z podglądem, przygotowanie osobnych PDF-ów i wiadomości, zatwierdzenie wysyłki.
+/// Z edytora — dla tej broszury; z karty klienta — z wyborem broszury i klientem jako odbiorcą.
 @MainActor struct BrochureMailSheet: View {
-    @ObservedObject var model: BrochureEditorModel
+    @ObservedObject var store: BrochuresStore
+    /// Wysyłane wiadomości i historia do odświeżenia (np. w edytorze broszury).
+    var changed: () -> Void = {}
+    /// Problemy ze sprawdzenia broszury — w edytorze oznaczane na stronach.
+    var showIssues: (([BrochureIssue]) -> Void)? = nil
+    let context: BrochureRecipientContext?
     @Environment(\.dismiss) private var dismiss
     @Environment(\.crmTheme) private var theme
+    @State private var brochureId: String
+    private let fixedBrochure: Bool
     @State private var setup: BrochureMailSetup?
     @State private var accountId = ""
     @State private var subject = ""
@@ -206,7 +217,17 @@ extension BrochuresStore {
     @State private var generated: [String: String] = [:]
     @State private var prepared: [String: BrochureDelivery] = [:]
 
-    private var store: BrochuresStore { model.store }
+    init(store: BrochuresStore, brochureId: String?, context: BrochureRecipientContext? = nil, onChange: @escaping () -> Void = {},
+         showIssues: (([BrochureIssue]) -> Void)? = nil) {
+        self.store = store
+        self.context = context
+        self.changed = onChange
+        self.showIssues = showIssues
+        fixedBrochure = brochureId != nil
+        _brochureId = State(initialValue: brochureId ?? "")
+    }
+
+    private var activeBrochures: [BrochureListState.Brochure] { (store.state?.brochures ?? []).filter { $0.status != "archived" } }
     private var ready: Bool { !recipients.isEmpty && deliveries.count == recipients.count }
     private var pending: Int { deliveries.filter { ["prepared", "failed"].contains($0.status) }.count }
     private var allSent: Bool { ready && pending == 0 && deliveries.allSatisfy { $0.status == "sent" } }
@@ -220,14 +241,17 @@ extension BrochuresStore {
             }
             .padding(16)
             Divider()
-            if let setup {
+            if !fixedBrochure && brochureId.isEmpty {
+                Form { brochurePicker }.formStyle(.grouped)
+            } else if let setup {
                 Form {
+                    if !fixedBrochure { brochurePicker }
                     if let error {
                         Section { Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true) }
                     }
                     if !issues.isEmpty { issuesSection }
                     Section {
-                        BrochureRecipientsEditor(store: store, recipients: $recipients, disabled: locked || busy != nil)
+                        BrochureRecipientsEditor(store: store, recipients: $recipients, disabled: locked || busy != nil, context: context)
                     } header: {
                         Text("Wyślij do")
                     } footer: {
@@ -262,8 +286,25 @@ extension BrochuresStore {
         }
         .frame(width: 720, height: 760)
         .interactiveDismissDisabled(busy != nil)
-        .task { await load() }
+        .task {
+            if !fixedBrochure && store.state == nil { await store.load() }
+        }
+        .task(id: brochureId) { await load() }
         .sheet(item: $pdf) { file in OfferPdfViewer(file: file) }
+    }
+
+    /// Wybór broszury (okno z karty klienta) — zablokowany po przygotowaniu wiadomości.
+    private var brochurePicker: some View {
+        Section {
+            Picker("Broszura", selection: $brochureId) {
+                Text("Wybierz broszurę").tag("")
+                ForEach(activeBrochures) { brochure in Text(brochure.name).tag(brochure.id) }
+            }
+            .disabled(locked || busy != nil)
+            if store.state == nil { Text("Wczytywanie broszur…").font(.caption).foregroundStyle(.secondary) }
+        } footer: {
+            Text("Każdy odbiorca dostanie osobny PDF tej broszury, przypisany do niego w kartotece klienta.")
+        }
     }
 
     private var previewKey: String { "\(previewShown)|\(accountId)|\(subject)|\(text)|\(recipients.first?.name ?? "")" }
@@ -285,7 +326,7 @@ extension BrochuresStore {
             if !ready {
                 Button(prepareTitle) { Task { await prepare() } }
                     .buttonStyle(.borderedProminent)
-                    .disabled(setup == nil || busy != nil || recipients.isEmpty)
+                    .disabled(setup == nil || brochureId.isEmpty || busy != nil || recipients.isEmpty)
             } else if pending > 0 {
                 Button { Task { await send() } } label: { Label("Wyślij osobne wiadomości (\(pending))", systemImage: "paperplane.fill") }
                     .buttonStyle(.borderedProminent)
@@ -304,11 +345,17 @@ extension BrochuresStore {
                     Text(issue.message).font(.caption).foregroundStyle(.orange)
                 }
             }
-            Button("Pokaż strony do poprawy w edytorze") {
-                model.issues = issues
-                model.issuesStale = false
-                if let first = issues.first(where: { issue in model.pageRows.contains(where: { $0.key == issue.pageKey }) }) { model.selectedPage = first.pageKey }
-                dismiss()
+            if let showIssues {
+                Button("Pokaż strony do poprawy w edytorze") {
+                    showIssues(issues)
+                    dismiss()
+                }
+            } else {
+                Button("Otwórz broszurę w edytorze") {
+                    let id = brochureId
+                    dismiss()
+                    store.workspace?.showBrochure(id)
+                }
             }
         } header: {
             Text("Broszura wymaga poprawy przed wysyłką")
@@ -342,13 +389,18 @@ extension BrochuresStore {
     // MARK: Działania
 
     private func load() async {
+        guard !brochureId.isEmpty else { return }
+        issues = []
         do {
-            let loaded = try await store.mailSetup(model.id)
+            let loaded = try await store.mailSetup(brochureId)
+            let first = setup == nil
             setup = loaded
-            accountId = loaded.accounts.first?.id ?? ""
-            subject = loaded.subject
-            text = loaded.text
-            if loaded.accounts.isEmpty { error = "Brak skrzynki, z której możesz wysyłać wiadomości. Dodaj skrzynkę w ustawieniach poczty CRM." }
+            if first || !loaded.accounts.contains(where: { $0.id == accountId }) { accountId = loaded.accounts.first?.id ?? "" }
+            if first {
+                subject = loaded.subject
+                text = loaded.text
+            }
+            error = loaded.accounts.isEmpty ? "Brak skrzynki, z której możesz wysyłać wiadomości. Dodaj skrzynkę w ustawieniach poczty CRM." : nil
         } catch {
             self.error = store.failureText(error, "Nie udało się pobrać broszury lub kont pocztowych.")
         }
@@ -360,7 +412,7 @@ extension BrochuresStore {
         }
         try? await Task.sleep(for: .milliseconds(400))
         guard !Task.isCancelled else { return }
-        if let result = try? await store.mailCompose(model.id, accountId: accountId, subject: subject, text: text, recipientName: recipients.first?.name ?? "") {
+        if let result = try? await store.mailCompose(brochureId, accountId: accountId, subject: subject, text: text, recipientName: recipients.first?.name ?? "") {
             if !Task.isCancelled { previewHtml = result.html }
         }
     }
@@ -393,7 +445,7 @@ extension BrochuresStore {
                 stage = "Przygotowanie treści wiadomości"
                 busy = "Przygotowywanie wiadomości \(index + 1) z \(recipients.count) · \(recipient.email)"
                 // Najpierw dokładna treść, potem spersonalizowany załącznik (jak w CRM).
-                let composed = try await store.mailCompose(model.id, accountId: accountId, subject: subject, text: text, recipientName: recipient.name)
+                let composed = try await store.mailCompose(brochureId, accountId: accountId, subject: subject, text: text, recipientName: recipient.name)
                 var generationId = generated[recipient.email]
                 if generationId == nil {
                     stage = "Generowanie załącznika PDF"
@@ -405,7 +457,7 @@ extension BrochuresStore {
                         if let organizationId = recipient.organizationId { fields["organizationId"] = .string(organizationId) }
                         client = .object(fields)
                     }
-                    let result = try await store.generatePdf(["brochureId": .string(model.id), "recipientEmail": .string(recipient.email), "recipient": client],
+                    let result = try await store.generatePdf(["brochureId": .string(brochureId), "recipientEmail": .string(recipient.email), "recipient": client],
                                                              fallback: "Nie udało się wygenerować załącznika.")
                     guard let id = result.generationId else {
                         throw NativeFailure(status: 0, message: "Generator nie zwrócił identyfikatora PDF.", fieldErrors: [:])
@@ -426,14 +478,14 @@ extension BrochuresStore {
             stage = "Odczyt przygotowanych wiadomości"
             current = ""
             try await refresh()
-            model.deliveriesRevision += 1
+            changed()
         } catch {
             if let failure = error as? BrochureValidationFailure { issues = failure.issues }
             let who = current.isEmpty ? "" : " (" + current + ")"
             let reason = store.failureText(error, "Nie udało się przygotować wiadomości.")
             let message = stage + who + ": " + reason + " Żadna wiadomość nie została wysłana w tym kroku."
             self.error = message
-            model.workspace?.error = message
+            store.workspace?.error = message
             _ = try? await refresh()
         }
         if prepared.isEmpty && generated.isEmpty { locked = false }
@@ -461,11 +513,11 @@ extension BrochuresStore {
                 }
             }
             let latest = try await refresh()
-            model.deliveriesRevision += 1
+            changed()
             let completed = !recipients.isEmpty && recipients.allSatisfy { recipient in latest.contains { $0.recipientEmail == recipient.email && $0.status == "sent" } }
             busy = nil
             if completed {
-                model.workspace?.succeed(recipients.count == 1 ? "Broszura została wysłana." : "Wszystkie wiadomości z broszurą zostały wysłane.")
+                store.workspace?.succeed(recipients.count == 1 ? "Broszura została wysłana." : "Wszystkie wiadomości z broszurą zostały wysłane.")
                 dismiss()
                 return
             }
@@ -477,7 +529,7 @@ extension BrochuresStore {
                 .joined(separator: "\n")
         }
         busy = nil
-        if let error { model.workspace?.error = error }
+        if let error { store.workspace?.error = error }
     }
 
     private func openAttachment(_ delivery: BrochureDelivery) async {
@@ -494,7 +546,10 @@ extension BrochuresStore {
     let store: BrochuresStore
     @Binding var recipients: [BrochureRecipient]
     let disabled: Bool
+    /// Klient z karty kontaktu: organizacja — jej adres i osoby do zaznaczenia; kontakt — od razu jako odbiorca.
+    var context: BrochureRecipientContext? = nil
     @Environment(\.crmTheme) private var theme
+    @State private var contextLoaded = false
     @State private var mode = "organization"
     @State private var query = ""
     @State private var results: [BrochureClientResult] = []
@@ -522,8 +577,8 @@ extension BrochuresStore {
                         .onSubmit { addManual() }
                     Button("Dodaj") { addManual() }
                 }
-                if let members {
-                    Text("Ręcznie wpisany adres będzie powiązany w historii z: \(members.organization.name).").font(.caption).foregroundStyle(.secondary)
+                if let link = manualLinkName {
+                    Text("Ręcznie wpisany adres będzie powiązany w historii z: \(link).").font(.caption).foregroundStyle(.secondary)
                 }
             } else {
                 TextField("", text: $query, prompt: Text(mode == "organization" ? "Nazwa organizacji lub e-mail (min. 2 znaki)" : "Imię, nazwisko lub e-mail (min. 2 znaki)"))
@@ -550,6 +605,41 @@ extension BrochuresStore {
         }
         .disabled(disabled)
         .task(id: "\(mode)|\(query)") { await search() }
+        .task { await loadContext() }
+    }
+
+    private var manualLinkName: String? {
+        if context?.type == "contact" { return context?.name }
+        return members?.organization.name ?? context?.name
+    }
+
+    /// Odbiorca z karty klienta — raz, przy otwarciu okna (późniejsze zmiany listy nie są nadpisywane).
+    private func loadContext() async {
+        guard let context, !contextLoaded else { return }
+        contextLoaded = true
+        loading = true
+        defer { loading = false }
+        if context.type == "organization" {
+            mode = "organization"
+            do {
+                members = try await store.members(context.id)
+            } catch {
+                self.error = "Nie udało się pobrać kontaktów organizacji."
+            }
+            return
+        }
+        mode = "contact"
+        do {
+            let recipient = try await store.contactRecipient(context.id)
+            if recipient.email.isEmpty {
+                mode = "email"
+                error = "Kontakt nie ma prawidłowego e-maila. Możesz wpisać adres ręcznie."
+            } else if recipients.isEmpty {
+                recipients = [recipient]
+            }
+        } catch {
+            self.error = "Nie udało się wczytać odbiorcy."
+        }
     }
 
     private var resultList: some View {
@@ -657,7 +747,9 @@ extension BrochuresStore {
             error = "Wpisz prawidłowy adres e-mail."
             return
         }
-        add(BrochureRecipient(email: email, name: email, contactId: nil, organizationId: members?.organization.id, manualAddress: true))
+        let contactId = context?.type == "contact" ? context?.id : nil
+        let organizationId = contactId == nil ? (members?.organization.id ?? (context?.type == "organization" ? context?.id : nil)) : nil
+        add(BrochureRecipient(email: email, name: email, contactId: contactId, organizationId: organizationId, manualAddress: true))
         manual = ""
     }
 
@@ -678,9 +770,15 @@ extension BrochuresStore {
     }
 }
 
-/// Historia wysyłek broszury: data i wersja, odbiorca, stan; wiadomość i załącznik; wysłanie przygotowanej wiadomości.
+/// Historia wysyłek (broszury albo klienta): data i wersja, odbiorca, stan; wiadomość i załącznik; wysłanie przygotowanej wiadomości.
 @MainActor struct BrochureDeliveriesPanel: View {
-    @ObservedObject var model: BrochureEditorModel
+    @ObservedObject var store: BrochuresStore
+    /// Zakres historii: `brochure=…`, `contact=…` albo `organization=…`.
+    let scope: String
+    /// Zmiana (np. po wysyłce) — ponowne wczytanie.
+    let revision: Int
+    var title = "Historia wysyłek"
+    var changed: () -> Void = {}
     @State private var page: BrochureDeliveriesPage?
     @State private var all = false
     @State private var offset = 0
@@ -695,7 +793,7 @@ extension BrochuresStore {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("Historia wysyłek").font(.title3.weight(.semibold))
+                Text(title).font(.title3.weight(.semibold))
                 Spacer()
                 if page?.canViewAll == true {
                     Picker("", selection: $all) {
@@ -754,11 +852,12 @@ extension BrochuresStore {
         }
         .padding(16)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .task(id: "\(all)|\(offset)|\(model.deliveriesRevision)") { await load() }
+        .task(id: "\(all)|\(offset)|\(revision)|\(scope)") { await load() }
         .onChange(of: all) { _, _ in offset = 0 }
         .sheet(item: $details) { row in
-            BrochureDeliverySheet(model: model, delivery: row, canSend: page?.canSend == true && row.employeeId == page?.currentEmployeeId) { updated in
+            BrochureDeliverySheet(store: store, delivery: row, canSend: page?.canSend == true && row.employeeId == page?.currentEmployeeId) { updated in
                 if let index = page?.deliveries.firstIndex(where: { $0.id == updated.id }) { page?.deliveries[index] = updated }
+                changed()
                 Task { await load() }
             }
         }
@@ -769,7 +868,7 @@ extension BrochuresStore {
         loading = true
         defer { loading = false }
         do {
-            page = try await model.store.deliveries("brochure=\(model.id)&all=\(all)&offset=\(offset)")
+            page = try await store.deliveries("\(scope)&all=\(all)&offset=\(offset)")
             error = nil
         } catch {
             self.error = "Nie udało się wczytać historii wysyłek."
@@ -778,13 +877,13 @@ extension BrochuresStore {
 
     private func openPdf(_ row: BrochureDelivery) async {
         guard let source = row.source else { return }
-        if let file = await model.store.savedPdf(bucket: "generated-brochures", path: source.pdfPath, fileName: source.fileName) { pdf = file }
+        if let file = await store.savedPdf(bucket: "generated-brochures", path: source.pdfPath, fileName: source.fileName) { pdf = file }
     }
 }
 
 /// Zapisana wiadomość z broszurą: adresat, temat, stan, treść; własną przygotowaną lub nieudaną można wysłać.
 @MainActor struct BrochureDeliverySheet: View {
-    @ObservedObject var model: BrochureEditorModel
+    let store: BrochuresStore
     let delivery: BrochureDelivery
     let canSend: Bool
     let updated: (BrochureDelivery) -> Void
@@ -832,18 +931,17 @@ extension BrochuresStore {
         var body: [String: JSONValue] = ["action": .string("send"), "deliveryId": .string(row.id)]
         if let revision = row.draftRevision { body["expectedRevision"] = .number(Double(revision)) }
         do {
-            let sent = try await model.store.deliveryRequest(body)
+            let sent = try await store.deliveryRequest(body)
             current = sent
             updated(sent)
-            model.deliveriesRevision += 1
-            if sent.status == "sent" { model.workspace?.succeed("Broszura została wysłana.") }
+            if sent.status == "sent" { store.workspace?.succeed("Broszura została wysłana.") }
         } catch {
-            self.error = model.store.failureText(error, "Nie udało się wysłać wiadomości.")
+            self.error = store.failureText(error, "Nie udało się wysłać wiadomości.")
         }
     }
 
     private func openPdf() async {
         guard let source = row.source else { return }
-        if let file = await model.store.savedPdf(bucket: "generated-brochures", path: source.pdfPath, fileName: source.fileName) { pdf = file }
+        if let file = await store.savedPdf(bucket: "generated-brochures", path: source.pdfPath, fileName: source.fileName) { pdf = file }
     }
 }

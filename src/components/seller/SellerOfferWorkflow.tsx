@@ -1,6 +1,8 @@
 'use client';
 
-import SellerJourney from './SellerJourney';
+import SellerJourneyAxis from './SellerJourney';
+import { sellerJourney } from '@/lib/seller/offerJourney';
+import { HelpButton, HelpDrawerHost, HelpTip } from '@/components/help/HelpDrawer';
 import SellerRealizationWizard from './SellerRealizationWizard';
 import SellerOfferReviewBrief from './SellerOfferReviewBrief';
 import SellerReviewSubmission from './SellerReviewSubmission';
@@ -10,10 +12,12 @@ import { canConfirmEquipment } from '@/lib/seller/equipmentReview';
 import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
 import { useDialog } from '@/contexts/DialogContext';
 import type { SellerReviewContext } from '@/lib/seller/review';
-import { SellerOfferSummary, SellerOfferNextStep } from './SellerOfferOverview';
+import { SellerOfferSummary, SellerOfferNextStep, SellerOfferReady, sellerAcceptanceChannelLabel, type SellerClientAcceptance } from './SellerOfferOverview';
+import { CrmPriceApprovalReview, SellerPriceApprovalPanel } from './SellerPriceApproval';
+import { sellerPriceRequestStage, useSellerPriceApproval } from '@/lib/seller/priceApproval';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Download, Eye, MessageSquare, Printer, RefreshCw } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
@@ -28,7 +32,7 @@ import { useOfferRefresh } from '@/lib/seller/useOfferRefresh';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { sellerReviewIdentity, type DeliveryProgress, type SellerDeliveryState } from '@/lib/seller/delivery';
 import SellerGuestOfferLink, { useSellerOfferShare } from './SellerGuestOfferLink';
-import { sellerCommissionsVisible, useSellerPortalContext } from '@/lib/seller/portal';
+import { useSellerPortalContext } from '@/lib/seller/portal';
 
 type DocumentVersion={id:string;filename:string;created_at:string;source_key:string;current:boolean};
 type Workflow={review_context?:SellerReviewContext;source?:{sales_partner_id:string;seller_contact_id?:string|null;seller_name:string;seller_organization:string;portal_client_company?:string;portal_client_name?:string;portal_client_email?:string;portal_client_phone?:string;event_date?:string;event_location?:string};review_notification_count?:number;can_manage:boolean;can_configure:boolean;source_key:string;recipient:string;title:string;offer_number:string;
@@ -40,12 +44,17 @@ type Workflow={review_context?:SellerReviewContext;source?:{sales_partner_id:str
  review?:{document_id:string;source_key:string;status:string;request_note:string;response_note:string;requested_at?:string;reviewed_at?:string|null};
  chat?:{sales_partner_id:string;my_company_id:string;can_start:boolean};chat_error?:string;
  managers?:{id:string;name:string;surname:string}[]};
+/** Decyzja opiekuna dotyczy bieżącej wersji tylko wtedy, gdy klucz źródła się zgadza. */
+const currentReviewStatus=(state:Workflow)=>state.review?.source_key===state.source_key ? state.review.status : null;
 const field='min-h-11 w-full rounded-lg border border-white/10 bg-[#0f1119] px-3 py-2.5 text-sm text-[#e5e4e2] outline-none focus:border-[#d3bb73]/30';
 const button='inline-flex items-center justify-center gap-2 rounded-lg bg-[#d3bb73]/10 px-3 py-2.5 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/20 disabled:cursor-not-allowed disabled:opacity-40';
 
 export default function SellerOfferWorkflow({offerId,crm=false,onChanged,onRealizationChange,children,sidebarContent}:{offerId:string;crm?:boolean;onChanged?:()=>void;onRealizationChange?:(confirmed:boolean)=>void;children?:ReactNode;sidebarContent?:ReactNode}){
  const router=useRouter();
+ const pathname=usePathname();
  const searchParams=useSearchParams();
+ // Po zapisie w kreatorze (?gotowe=1) karta „Gotowe — co dalej?”.
+ const [readyOpen,setReadyOpen]=useState(()=>!crm && searchParams.get('gotowe')==='1');
  const requestedDocument=searchParams.get('document') || '';
  const requestedPreview=searchParams.get('preview')==='1';
  const requestedGeneration=searchParams.get('generate')==='1';
@@ -249,7 +258,41 @@ export default function SellerOfferWorkflow({offerId,crm=false,onChanged,onReali
  // Guest link and commission visibility exist only in the external portal.
  const guestShare=useSellerOfferShare(offerId,!crm && Boolean(state) && !accepted && !confirmed && !cancelled);
  const {context:portalContext}=useSellerPortalContext(!crm);
- const commissionVisible=!crm && sellerCommissionsVisible(portalContext,state?.seller_progress?.my_company_id || state?.chat?.my_company_id);
+ // Zgoda na cenę przed pokazaniem oferty klientowi (migracja 20261114230000).
+ const priceApproval=useSellerPriceApproval(offerId,Boolean(state) && !accepted && !confirmed && !cancelled,state?.source_key);
+ const priceStage=sellerPriceRequestStage(priceApproval.approval);
+ const managerFirstName=(portalContext?.manager?.name || state?.manager?.manager_name || '').trim().split(/\s+/)[0] || 'Opiekun';
+ const priceBlocked=priceApproval.approval?.status==='required'
+   ? priceStage==='pending' ? `${managerFirstName} sprawdza ceny. PDF dla klienta pobierzesz i wyślesz po zgodzie — dostaniesz powiadomienie.`
+     : 'Cena wymaga zgody opiekuna. PDF dla klienta pobierzesz po zgodzie.'
+   : undefined;
+ const refreshPrice=()=>{void priceApproval.reload();void guestShare.reload();void reload().catch(()=>{});};
+ // Wspólna oś w 5 etapach (portal i CRM) — src/lib/seller/offerJourney.ts.
+ const journey=state ? sellerJourney({
+   offerStatus:realization?.offer_status || 'draft',
+   reviewStatus:currentReviewStatus(state),
+   priceApprovalRequired:priceApproval.approval ? priceApproval.approval.status==='required' : state.offer_summary?.price_approval_required ?? (guestShare.state?.guest_ready===false),
+   priceRequest:priceStage,
+   hasPdf:state.documents.length>0,
+   pdfCurrent:state.documents.some((doc)=>doc.current),
+   clientAcceptedOnline:Boolean(guestShare.state?.accepted_at),
+   clientViewed:Number(guestShare.state?.view_count || 0)>0,
+   isRealization:accepted || confirmed,
+   realizationStage:realization?.stage,
+   eventStatus:realization?.event_status,
+ },{viewer:crm ? 'manager' : 'seller',managerName:crm ? null : portalContext?.manager?.name || state.manager?.manager_name}) : null;
+ const saveDocument=async(id:string,filename:string)=>{
+   const blob=await api({action:'document',documentId:id,download:true}) as Blob;
+   const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=filename;a.click();window.setTimeout(()=>URL.revokeObjectURL(url),30000);
+ };
+ // PDF jest najczęściej wkładką do własnej oferty hotelu — pobranie aktualnej wersji jednym kliknięciem.
+ const downloadCurrent=()=>priceBlocked ? notify(priceBlocked,'info') : void run('Pobieranie aktualnego PDF',async()=>{
+   let current=state?.documents.find((doc)=>doc.current);
+   if(!current){await generate();current=(await reload()).documents.find((doc)=>doc.current);}
+   if(!current)throw new Error('Nie udało się przygotować aktualnego PDF. Spróbuj ponownie.');
+   await saveDocument(current.id,current.filename);
+   notify('PDF pobrany. Dołącz go do swojej oferty dla klienta.');
+ });
  const equipmentReview=useSellerEquipmentReview(offerId,crm && Boolean(state?.can_manage) && !accepted && !confirmed && !cancelled,state?.review_context?.key);
  useEffect(()=>{
    if(!crm && (accepted || confirmed || cancelled)){
@@ -337,50 +380,60 @@ export default function SellerOfferWorkflow({offerId,crm=false,onChanged,onReali
    <div className={`grid min-w-0 grid-cols-1 items-start gap-6 text-[#e5e4e2] ${hasSidebar ? 'lg:grid-cols-3' : ''}`}>
    <div className={`min-w-0 space-y-6 ${hasSidebar ? 'lg:col-span-2' : ''}`}>
    <section className="min-w-0 space-y-4 rounded-xl bg-[#1c1f33] p-4 sm:p-5">
-   <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-lg uppercase">{accepted || confirmed ? 'Realizacja — dokumenty i ustalenia' : crm ? 'Ocena oferty sprzedawcy' : state?.title || 'Twoja oferta'}</h2><p className="mt-1 text-xs text-white/45">{crm ? 'Sprawdź zakres i PDF, porozmawiaj ze sprzedawcą i zapisz decyzję. Potwierdzenie wydarzenia to następny krok.' : 'Zakres oferty, decyzja klienta i jedna rozmowa z opiekunem.'}</p></div>
+   <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="flex items-center gap-1 text-lg uppercase">{accepted || confirmed ? 'Realizacja — dokumenty i ustalenia' : crm ? 'Ocena oferty sprzedawcy' : state?.title || 'Twoja oferta'}{crm && <HelpButton audience="manager" chapter={accepted || confirmed ? 'potwierdzenie' : 'ocena'} />}</h2><p className="mt-1 text-xs text-white/45">{crm ? 'Sprawdź zakres i PDF, porozmawiaj ze sprzedawcą i zapisz decyzję. Potwierdzenie wydarzenia to następny krok.' : 'Zakres oferty, decyzja klienta i jedna rozmowa z opiekunem.'}</p></div>
      <button type="button" className={button} onClick={()=>void run('Odświeżanie',async()=>{await reload();setArrangementsRefresh((value)=>value+1);})}><RefreshCw className="h-4 w-4"/> Odśwież status</button>
    </div>
    {message && <p role="alert" className="rounded-lg bg-[#d3bb73]/10 p-3 text-sm text-[#e5e4e2]">{message}</p>}
    {!state && <p className="text-sm text-white/50">Wczytywanie danych oferty… Jeśli to trwa zbyt długo, kliknij „Odśwież status”.</p>}
    {state && <div className="min-w-0 space-y-4">
+     {journey && <SellerJourneyAxis journey={journey} viewer={crm ? 'manager' : 'seller'} />}
+     {!crm && readyOpen && !accepted && !confirmed && !cancelled && <SellerOfferReady managerName={portalContext?.manager?.name} priceStage={priceStage}
+       busy={Boolean(busy)} onDownload={downloadCurrent} onClose={()=>{
+         setReadyOpen(false);
+         const params=new URLSearchParams(searchParams.toString());params.delete('gotowe');
+         router.replace(`${pathname}${params.toString() ? `?${params}` : ''}${window.location.hash}`,{scroll:false});
+       }} />}
+     {!crm && priceApproval.approval && <SellerPriceApprovalPanel offerId={offerId} approval={priceApproval.approval} managerName={portalContext?.manager?.name}
+       canEdit={['draft','sent','viewed'].includes(realization?.offer_status || '') && currentReview?.status!=='pending'} onChanged={refreshPrice} />}
+     {crm && priceApproval.approval && !accepted && !confirmed && !cancelled && <CrmPriceApprovalReview offerId={offerId} approval={priceApproval.approval} onChanged={refreshPrice} />}
+     {crm && priceApproval.error && <p role="alert" className="rounded-lg bg-amber-300/10 p-3 text-sm text-amber-100">{priceApproval.error}</p>}
      {!crm && <>
        <SellerOfferNextStep key={`${offerId}:${reviewRound}`} offerId={offerId} state={state}
          selected={selected} busy={Boolean(busy)} submitted={submittedKey===submissionContextKey}
          guestAcceptance={guestShare.state?.accepted_at ? {at:guestShare.state.accepted_at,name:guestShare.state.accepted_name || '',email:guestShare.state.accepted_email || ''} : undefined}
+         onDownload={downloadCurrent} priceBlocked={priceBlocked}
          onPreparePdf={()=>void run('Przygotowanie aktualnego PDF',async()=>{
            const current=state.documents.find(document=>document.current);
            if(current)await showPdf(current.id);else await generate();
          })}
-         onConfirm={(correction)=>void run(correction ? 'Przekazywanie poprawek do weryfikacji' : 'Przekazywanie akceptacji klienta',async()=>{
+         onConfirm={(correction,acceptance?:SellerClientAcceptance)=>void run(correction ? 'Wysyłanie poprawek do opiekuna' : 'Wysyłanie oferty do opiekuna',async()=>{
            // A new caretaker decision starts a new submission round, even for
            // the same PDF. Identical retries retain their request ID.
-           const key=JSON.stringify([submissionContextKey,correction?.note || '',correction?.confirmed===true]);
+           const key=JSON.stringify([submissionContextKey,correction?.note || '',correction?.confirmed===true,acceptance?.channel || '',acceptance?.note || '']);
            if(clientRequest.current?.key!==key)clientRequest.current={key,id:crypto.randomUUID()};
            const result=await api({action:'request_review',documentId:selectedId,requestId:clientRequest.current.id,clientConfirmed:true,
              expectedReview:sellerReviewIdentity(state.review),expectedSourceKey:state.source_key,
-             ...(correction ? {correctionNote:correction.note,correctionsConfirmed:correction.confirmed} : {})});
+             ...(correction ? {correctionNote:correction.note,correctionsConfirmed:correction.confirmed} : {}),
+             ...(acceptance ? {acceptanceChannel:acceptance.channel,acceptanceLabel:sellerAcceptanceChannelLabel(acceptance.channel),sellerNote:acceptance.note} : {})});
            setSubmittedKey(submissionContextKey);
            try{
              await reload();
-             notify(result.alreadySubmitted ? 'To przekazanie zostało już zapisane. Wczytano bieżący status oferty.'
-               : correction ? 'Poprawki i odpowiedź przekazane do ponownej weryfikacji. Opiekun otrzymał powiadomienie.'
-               : 'Akceptacja klienta zapisana. Opiekun otrzymał ofertę do potwierdzenia.');
+             notify(result.alreadySubmitted ? 'Ta oferta jest już u opiekuna. Wczytano bieżący status.'
+               : correction ? 'Poprawki wysłane do opiekuna. Dostaniesz powiadomienie o decyzji.'
+               : 'Oferta wysłana do opiekuna. Teraz nic nie musisz robić — dostaniesz powiadomienie.');
            }
-           catch{notify('Przekazanie jest zapisane. Odśwież status — nie wysyłaj ponownie.','warning');}
+           catch{notify('Oferta jest wysłana. Odśwież status — nie wysyłaj ponownie.','warning');}
          })} />
-       {!accepted && !confirmed && !cancelled && <SellerGuestOfferLink offerId={offerId} share={guestShare}
-         disabled={!['draft','sent','viewed'].includes(realization?.offer_status || '')} />}
-       <SellerJourney state={state} submitted={submittedKey===submissionContextKey} showCommission={commissionVisible} />
        <SellerOfferSummary state={state} />
      </>}
      {(accepted || confirmed) && <div role="status" className={`space-y-3 rounded-lg p-4 text-sm ${cancelled ? 'bg-rose-300/10 text-rose-200' : confirmed ? 'bg-emerald-300/10 text-emerald-200' : 'bg-amber-300/10 text-amber-100'}`}>
        <p className="font-medium">{cancelled ? 'Powiązane wydarzenie zostało anulowane.' : confirmed ? 'Realizacja potwierdzona przez CRM — wydarzenie jest zapisane.' : 'Oferta zaakceptowana — realizacja oczekuje na osobne potwierdzenie CRM.'}</p>
-       {!confirmed && !cancelled && <p className="text-xs">{crm ? 'Oferta jest już w Realizacjach sprzedawcy' : 'Oferta jest już w zakładce „Potwierdzone wydarzenia”'}, ale nie stanowi jeszcze potwierdzenia wydarzenia.{crm ? ' Następny krok: uzupełnij wydarzenie i zatwierdź realizację poniżej.' : ' O ostatecznym potwierdzeniu poinformujemy Cię osobno.'}</p>}
+       {!confirmed && !cancelled && <p className="text-xs">{crm ? 'Oferta jest już w Realizacjach sprzedawcy' : 'Oferta jest już w zakładce „Wydarzenia”'}, ale nie stanowi jeszcze potwierdzenia wydarzenia.{crm ? ' Następny krok: uzupełnij wydarzenie i zatwierdź realizację poniżej.' : ' O ostatecznym potwierdzeniu poinformujemy Cię osobno.'}</p>}
        {crm && realization?.event_id && realization.can_view_event && <Link href={`/crm/events/${realization.event_id}`} className={button}>Przejdź do wydarzenia</Link>}
        {crm && realization?.event_id && realization.can_view_event && <Link href={`/crm/events/${realization.event_id}?tab=seller-arrangements&offer=${offerId}`} className={button}><MessageSquare className="h-4 w-4"/>Kontynuuj rozmowę i ustalenia w realizacji</Link>}
        {crm && !confirmed && !cancelled && <a href="#seller-offer-review" className={button}>Przejdź do potwierdzenia wydarzenia</a>}
        {!crm && <Link href={`/seller/realizations/${offerId}#seller-offer-conversation`} className={button}><MessageSquare className="h-4 w-4"/>Kontynuuj rozmowę w realizacji</Link>}
-       {!crm && <Link href="/seller/realizations" className={button}>Przejdź do potwierdzonych wydarzeń</Link>}
+       {!crm && <Link href="/seller/realizations" className={button}>Przejdź do wydarzeń</Link>}
      </div>}
      {crm && <>
        <SellerOfferReviewBrief state={state} managerName={state.manager?.manager_name}
@@ -389,12 +442,12 @@ export default function SellerOfferWorkflow({offerId,crm=false,onChanged,onReali
        {state.review_context?.past_date && <p role="alert" className="rounded-lg bg-amber-300/10 p-3 text-sm text-amber-100">Uwaga: termin wydarzenia jest w przeszłości. Sprawdź rok i poproś sprzedawcę o poprawkę, jeśli to pomyłka. Nie zmieniamy daty automatycznie.</p>}
      </>}
      <div id="seller-offer-documents" className="scroll-mt-6 space-y-3">
-     <h3 className="text-sm uppercase">{crm ? 'PDF przekazany do oceny' : 'PDF dla klienta'}</h3>
+     <h3 className="flex items-center gap-1 text-sm uppercase">{crm ? 'PDF wysłany do oceny' : 'PDF dla klienta'}{!crm && <HelpTip audience="seller" tip="pdfVersions" label="wersje PDF" />}</h3>
      {crm && state.review && <p className="text-xs text-white/55">Zapytanie z {state.review.requested_at ? new Date(state.review.requested_at).toLocaleString('pl-PL',{timeZone:'Europe/Warsaw'}) : 'wcześniejszego przekazania'}. Oceniasz tę zapisaną wersję — bez ponownego generowania.</p>}
      {crm && pendingReview && requestedPreview && requestedDocument && requestedDocument!==currentReview?.document_id && displayedDocumentId===currentReview?.document_id && <p className="text-xs text-[#d3bb73]">Link wskazywał starszy PDF. Wczytano dokument z najnowszego przekazania sprzedawcy. Poprzednie wersje pozostają w historii.</p>}
      <div className="flex flex-wrap gap-2">
-       {!crm && <button type="button" className={button} onClick={()=>void run('Generowanie PDF',generate)}><RefreshCw className="h-4 w-4"/>{state.documents.length ? 'Regeneruj PDF' : 'Wygeneruj PDF'}</button>}
-       {(!crm || !pdfUrl) && <button type="button" disabled={!selected || Boolean(busy)} className={button} onClick={()=>void run('Otwieranie PDF',()=>showPdf(selectedId))}><Eye className="h-4 w-4"/>{crm ? 'Wczytaj PDF' : 'Pokaż ofertę'}</button>}
+       {!crm && <button type="button" className={button} onClick={()=>void run('Generowanie PDF',generate)}><RefreshCw className="h-4 w-4"/>{state.documents.length ? 'Zaktualizuj PDF' : 'Wygeneruj PDF'}</button>}
+       {(!crm || !pdfUrl) && <button type="button" disabled={!selected || Boolean(busy)} className={button} onClick={()=>void run('Otwieranie PDF',()=>showPdf(selectedId))}><Eye className="h-4 w-4"/>{crm ? 'Wczytaj PDF' : 'Pokaż PDF'}</button>}
        {crm ? <ResponsiveActionBar alwaysDropdown compact actions={[
          {label:'Pobierz zapisany PDF',icon:<Download className="h-4 w-4"/>,disabled:!selected || Boolean(busy),onClick:()=>void run('Pobieranie PDF',async()=>{
            const blob=await api({action:'document',documentId:selectedId,download:true}) as Blob;
@@ -405,16 +458,14 @@ export default function SellerOfferWorkflow({offerId,crm=false,onChanged,onReali
            catch{notify('Otwórz PDF w nowej karcie i wydrukuj go z przeglądarki.','info');}
          }},
        ]}/> : <>
-       <button type="button" disabled={!selected} className={button} onClick={()=>void run('Pobieranie PDF',async()=>{
-         const blob=await api({action:'document',documentId:selectedId,download:true}) as Blob;
-         const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=selected!.filename;a.click();window.setTimeout(()=>URL.revokeObjectURL(url),30000);
-       })}><Download className="h-4 w-4"/>Pobierz</button>
+       <button type="button" disabled={!selected || Boolean(priceBlocked)} title={priceBlocked || undefined} className={button} onClick={()=>void run('Pobieranie PDF',()=>saveDocument(selectedId,selected!.filename))}><Download className="h-4 w-4"/>Pobierz</button>
        <button type="button" disabled={!pdfUrl || !pdfReady} className={button} onClick={()=>{
          try{frameRef.current?.contentWindow?.focus();frameRef.current?.contentWindow?.print();}
          catch{setMessage('Otwórz PDF w nowej karcie i użyj przycisku drukowania w przeglądarce.');}
        }}><Printer className="h-4 w-4"/>Drukuj ofertę</button>
        </>}
        {!crm && state.chat && <a href="#seller-offer-conversation" className={button}><MessageSquare className="h-4 w-4"/>Napisz do opiekuna</a>}
+     {!crm && priceBlocked && <p className="basis-full text-xs text-sky-100/80">{priceBlocked} Podgląd jest dostępny.</p>}
      </div>
      {state.documents.length>0 && <details open={!crm} className="rounded-lg bg-white/[0.025] p-3">
        <summary className="cursor-pointer text-xs text-white/60">Historia dokumentów ({state.documents.length})</summary>
@@ -424,11 +475,13 @@ export default function SellerOfferWorkflow({offerId,crm=false,onChanged,onReali
      }} className={field+' mt-1.5 !h-11'}>
        {state.documents.map((doc,index)=><option key={doc.id} value={doc.id}>Wersja {state.documents.length-index} · {new Date(doc.created_at).toLocaleString('pl-PL')} · {doc.current ? 'aktualna' : 'historyczna'}</option>)}
      </select></label></details>}
-     {selected && !selected.current && !(currentReview?.status==='approved' && selected.id===currentReview.document_id) && <p className="rounded-lg bg-amber-300/10 p-3 text-sm text-amber-100">{crm ? 'Ten PDF nie odpowiada bieżącym danym oferty. Nie zastępuje nowej wersji od sprzedawcy. Wcześniejsza decyzja pozostaje w historii.' : 'To historyczny PDF. Wygeneruj aktualny dokument, aby uwzględnić najnowsze dane i decyzję opiekuna. Zapisana akceptacja jest widoczna osobno poniżej.'}</p>}
-     {!crm && <p className="text-xs text-white/50">PDF możesz pobrać, wydrukować lub wysłać samodzielnie ze swojej skrzynki. Drukowanie jest dostępne po otwarciu podglądu.</p>}
-     {crm && !state.documents.length && <p className="rounded-lg bg-amber-300/10 p-3 text-sm text-amber-100">Sprzedawca nie przekazał jeszcze PDF. Poproś o wygenerowanie i przekazanie oferty.</p>}
+     {selected && !selected.current && !(currentReview?.status==='approved' && selected.id===currentReview.document_id) && <p className="rounded-lg bg-amber-300/10 p-3 text-sm text-amber-100">{crm ? 'Ten PDF nie odpowiada bieżącym danym oferty. Nie zastępuje nowej wersji od sprzedawcy. Wcześniejsza decyzja pozostaje w historii.' : 'To starsza wersja PDF. Kliknij „Zaktualizuj PDF”, aby uwzględnić najnowsze dane oferty.'}</p>}
+     {!crm && <p className="text-xs text-white/50">Pobierz PDF i dołącz go do swojej oferty dla klienta. Drukowanie działa po otwarciu podglądu.</p>}
+     {crm && !state.documents.length && <p className="rounded-lg bg-amber-300/10 p-3 text-sm text-amber-100">Sprzedawca nie wysłał jeszcze PDF. Poproś o wygenerowanie i wysłanie oferty.</p>}
      {pdfUrl && <div><a href={pdfUrl} target="_blank" rel="noreferrer" className="mb-2 inline-block text-xs text-[#d3bb73]">Otwórz PDF w nowej karcie / drukuj</a><iframe key={displayedDocumentId} ref={frameRef} onLoad={()=>setPdfReady(true)} src={pdfUrl} title="Wygenerowana oferta PDF" className="h-[75vh] w-full rounded-lg bg-white"/></div>}
      </div>
+     {!crm && !accepted && !confirmed && !cancelled && <SellerGuestOfferLink offerId={offerId} share={guestShare} managerName={portalContext?.manager?.name}
+       disabled={!['draft','sent','viewed'].includes(realization?.offer_status || '')} />}
      {crm && <div id="seller-offer-review" className="scroll-mt-6 rounded-lg bg-[#0f1119]/70 p-4">
        <h3 className="text-sm uppercase">{accepted ? 'Oferta zaakceptowana — następny krok' : 'Decyzja opiekuna'}</h3>
        <p className="mt-2 text-xs text-white/55">Akceptujesz zakres i możliwość obsługi. Nie zmieniasz ceny klienta, treści ani brandingu. Akceptacja tworzy wydarzenie w CRM do przygotowania. Nie potwierdza jeszcze realizacji ani rezerwacji sprzętu.</p>
@@ -540,6 +593,7 @@ export default function SellerOfferWorkflow({offerId,crm=false,onChanged,onReali
    </section>
    {children}
    </div>
+   {crm && <HelpDrawerHost audience="manager" defaultChapter={accepted || confirmed ? 'potwierdzenie' : 'ocena'} />}
    {hasSidebar && <aside aria-label={crm ? 'Rozmowa ze sprzedawcą i informacje o ofercie' : 'Rozmowa z opiekunem'} className="flex min-w-0 flex-col gap-4 lg:sticky lg:top-6 lg:max-h-[calc(100dvh-3rem)]">
      {state?.chat && <SellerOfferConversation key={`${offerId}:${state.chat.sales_partner_id}:${state.chat.my_company_id}`} offerId={offerId} partnerId={state.chat.sales_partner_id} companyId={state.chat.my_company_id} canStart={state.chat.can_start} crm={crm} compact standalone realization={accepted || confirmed}/>}
      {state?.chat_error && <p id="seller-offer-conversation" className="shrink-0 rounded-xl bg-[#1c1f33] p-4 text-sm text-amber-200 sm:p-5">{state.chat_error}</p>}

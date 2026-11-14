@@ -1,7 +1,7 @@
 'use client';
 import { BROCHURE_ICONS, type BrochureIcon } from '@/lib/brochures/brochureIcons';
 import { Copy, Plus, Trash2 } from 'lucide-react';
-import { BROCHURE_LAYOUTS, BROCHURE_PRESETS, BROCHURE_SLOGANS, pageDefaults, pageDesign, requiresPageImage, type BrochureDecorativePage, type BrochureImageAsset, type BrochureLayout } from '@/lib/brochures/decorativePages';
+import { BROCHURE_LAYOUTS, BROCHURE_ORNAMENT_PLACES, BROCHURE_ORNAMENTS, BROCHURE_PRESETS, BROCHURE_SLOGANS, pageDefaults, pageDesign, requiresPageImage, type BrochureDecorativePage, type BrochureImageAsset, type BrochureLayout, type BrochureOrnament, type BrochureOrnamentPlace } from '@/lib/brochures/decorativePages';
 import type { SalesBrochureSnapshot } from '@/lib/brochures/buildSalesBrochureHtml';
 import BrochureImagePicker from './BrochureImagePicker';
 import BrochurePageCanvas from './BrochurePageCanvas';
@@ -66,7 +66,8 @@ export default function BrochureDecorativePagesEditor({ brochureId, pages, selec
       {!selected.design && <div className="rounded-lg bg-black/15 p-3 text-xs leading-5 text-white/55">Ta strona zachowuje dotychczasowy układ widoczny w podglądzie broszury. Aby ją swobodnie rozmieścić, włącz nowy układ.<button type="button" className={`${button} mt-2 block`} onClick={() => update({ design: pageDefaults(selected.layout) })}>Włącz edycję rozmieszczenia</button></div>}
       {selected.design && <><BrochurePageCanvas key={selected.id} page={selected} company={company} organizationName={organizationName} imageUrl={imageUrls[`${selected.imageBucket}:${selected.imagePath}`]} disabled={disabled} onChange={(design) => update({ design })} />
       <div className="grid gap-3 sm:grid-cols-2">
-        <label className="text-xs text-white/55">Motyw graficzny<select value={d.ornament || 'none'} className={`${inputClass} mt-1.5`} onChange={(e) => adjust({ ornament: e.target.value as 'none' | 'arc' | 'grid' })}><option value="none">Bez motywu</option><option value="arc">Łuki</option><option value="grid">Siatka punktów</option></select></label>
+        <label className="text-xs text-white/55">Motyw graficzny w tle<select value={d.ornament || 'none'} className={`${inputClass} mt-1.5`} onChange={(e) => adjust({ ornament: e.target.value as BrochureOrnament })}>{(Object.keys(BROCHURE_ORNAMENTS) as BrochureOrnament[]).map((key) => <option key={key} value={key}>{BROCHURE_ORNAMENTS[key]}</option>)}</select></label>
+        {d.ornament && d.ornament !== 'none' && <label className="text-xs text-white/55">Położenie motywu<select value={d.ornamentPlace || 'top-right'} className={`${inputClass} mt-1.5`} onChange={(e) => adjust({ ornamentPlace: e.target.value as BrochureOrnamentPlace })}>{(Object.keys(BROCHURE_ORNAMENT_PLACES) as BrochureOrnamentPlace[]).map((key) => <option key={key} value={key}>{BROCHURE_ORNAMENT_PLACES[key]}</option>)}</select></label>}
         <label className="text-xs text-white/55">Tło<select value={d.theme} className={`${inputClass} mt-1.5`} onChange={(e) => adjust({ theme: e.target.value as 'light' | 'dark' })}><option value="light">Jasne</option><option value="dark">Kolor marki</option></select></label>
         <label className="text-xs text-white/55">Wyrównanie tekstu<select value={d.align} className={`${inputClass} mt-1.5`} onChange={(e) => adjust({ align: e.target.value as 'left' | 'center' | 'right' })}><option value="left">Do lewej</option><option value="center">Na środku</option><option value="right">Do prawej</option></select></label>
         <label className="text-xs text-white/55">Wielkość hasła: {d.fontSize}<input type="range" min={20} max={64} value={d.fontSize} className="mt-2 block w-full accent-[#d3bb73]" onChange={(e) => adjust({ fontSize: Number(e.target.value) })} /></label>

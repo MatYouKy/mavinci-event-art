@@ -27,7 +27,7 @@ export const BROCHURE_MAIL_TEXT = 'Dzień dobry,\n\nw załączeniu przesyłam br
   + 'Chętnie porozmawiam o potrzebach Państwa obiektu i możliwościach wspólnej realizacji wydarzeń.\n\nZapraszam do kontaktu.';
 
 /** Wysyłka wymaga zarządzania broszurami i dostępu do własnych PDF-ów (jak przycisk „Wyślij broszurę” w CRM). */
-async function requireSender(ctx: NativeContext) {
+export async function requireSender(ctx: NativeContext) {
   const access = await brochureAccess(ctx);
   if (!access.canManage || !access.canViewResults) fail('Brak uprawnień do przygotowania i wysyłki broszur.');
   return access;
@@ -63,6 +63,11 @@ export async function brochureMailSetup(ctx: NativeContext, rawId: string) {
 export async function brochureMailCompose(ctx: NativeContext, body: Row) {
   await requireSender(ctx);
   const brochure = await brochureOf(ctx, uuid(body.id, 'Nie znaleziono broszury.'));
+  return composeBrochureEmail(ctx, text(brochure.my_company_id) || null, body);
+}
+
+/** Treść wiadomości z broszurą (szablon i stopka marki broszury, skrzynka nadawcy) — wysyłka nowej i zapisanej wersji PDF. */
+export async function composeBrochureEmail(ctx: NativeContext, companyId: string | null, body: Row) {
   const accounts = await sendingAccounts(ctx);
   const account = accounts.find((item) => item.id === text(body.accountId));
   if (!account) fail('Wybierz skrzynkę, z której ma zostać wysłana broszura.');
@@ -70,7 +75,6 @@ export async function brochureMailCompose(ctx: NativeContext, body: Row) {
   const content = text(body.text);
   if (!subject || subject.length > 250 || /[\r\n]/.test(subject)) fail('Uzupełnij temat wiadomości (do 250 znaków).');
   if (!content.trim()) fail('Uzupełnij treść wiadomości.');
-  const companyId = text(brochure.my_company_id) || null;
   const signature = await buildCompanySignatureHtml({ client: ctx.supabase, employeeId: ctx.employee.id, companyId, emailAccountId: account!.id } as any);
   const result = await buildCompanyEmailBody({
     client: ctx.supabase,
@@ -119,7 +123,7 @@ export async function brochureOrganizationMembers(ctx: NativeContext, rawId: str
 }
 
 /**
- * Historia wysyłek (`BrochureDeliveryHistory`): broszura, kontakt, organizacja lub partia wysyłki; „Moje” albo — z prawem
+ * Historia wysyłek (`BrochureDeliveryHistory`): broszura, kontakt, organizacja, partia wysyłki lub zapisana wersja PDF; „Moje” albo — z prawem
  * do wyników wszystkich — „Wszystkie” z filtrem pracownika. Po 25 na stronę, najnowsze pierwsze (partia — w kolejności).
  */
 export async function brochureDeliveries(ctx: NativeContext, params: URLSearchParams) {
@@ -128,10 +132,15 @@ export async function brochureDeliveries(ctx: NativeContext, params: URLSearchPa
   const canViewAll = ctx.employee.isAdmin || ctx.employee.permissions.includes('offers_brochures_view_all');
   const offset = Math.max(0, Math.min(100_000, Number.parseInt(params.get('offset') || '0', 10) || 0));
   const batch = params.get('batch');
+  const generation = params.get('generation');
   let query = ctx.supabase.from('sales_brochure_deliveries')
     .select('*,source:sales_brochure_generations(version,pdf_path,file_name),author:employees!sales_brochure_deliveries_employee_id_fkey(name,surname)');
   if (batch) {
     query = query.eq('batch_id', uuid(batch, 'Nieprawidłowa wysyłka.')).order('created_at').limit(50);
+  } else if (generation) {
+    // Ostatnia wiadomość zapisanej wersji PDF (wysyłka z karty klienta).
+    query = query.eq('generation_id', uuid(generation, 'Nieprawidłowa wersja broszury.')).order('created_at', { ascending: false })
+      .order('id', { ascending: false }).limit(1);
   } else {
     query = query.order('created_at', { ascending: false }).order('id').range(offset, offset + 24);
     const brochure = params.get('brochure');

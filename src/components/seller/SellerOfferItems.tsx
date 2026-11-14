@@ -84,8 +84,8 @@ function ItemCard({ item, index, count, imageUrl, commission, disabled, configur
         </select>
       </label>
     </div>
-    {!commission && !item.isCustom && margin < 0 && <p className="text-[11px] text-amber-200">Cena poniżej Twojej stawki — wymaga akceptacji opiekuna.</p>}
-    {item.isCustom && <p className="text-[11px] text-amber-100">Pozycja własna — cena trafi do oferty bez zmian i wymaga akceptacji opiekuna MAVINCI.</p>}
+    {!commission && !item.isCustom && margin < 0 && <p className="text-[11px] text-amber-200">Cena poniżej Twojej stawki — wymaga zgody opiekuna.</p>}
+    {item.isCustom && <p className="text-[11px] text-amber-100">Pozycja własna — cena trafi do oferty bez zmian i wymaga zgody opiekuna.</p>}
   </article>;
 }
 

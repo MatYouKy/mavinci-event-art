@@ -3,11 +3,12 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { CalendarCheck2, CheckCheck, ClipboardCheck, FileSearch, Inbox, MessagesSquare, PartyPopper, X, type LucideIcon } from 'lucide-react';
+import { BadgeDollarSign, CalendarCheck2, CheckCheck, ClipboardCheck, FileSearch, Inbox, MessagesSquare, PartyPopper, X, type LucideIcon } from 'lucide-react';
 import {
   SELLER_EVENT_TYPE_LABELS,
   SELLER_INQUIRY_STATUS_LABELS,
   SELLER_REALIZATION_STEP_LABELS,
+  formatPriceItems,
   formatWaitingHours,
   sellerCockpitTodayCount,
   type SellerCockpit,
@@ -72,11 +73,11 @@ export default function CockpitToday({ cockpit, onChanged }: { cockpit: SellerCo
     <div className="flex flex-wrap items-end justify-between gap-2">
       <div>
         <h2 id="cockpit-today-heading" className="flex items-center gap-2 text-lg font-medium">Dziś <SellerCountChip count={total} /></h2>
-        <p className="mt-0.5 text-xs text-white/45">Oferty do sprawdzenia, kroki realizacji, rozmowy i zapytania gości od Twoich sprzedawców.</p>
+        <p className="mt-0.5 text-xs text-white/45">Ceny do zgody, oferty do sprawdzenia, kroki realizacji, rozmowy i zapytania klientów od Twoich sprzedawców.</p>
       </div>
     </div>
     {converted && <div role="status" className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-emerald-400/10 px-4 py-3 text-sm text-emerald-100">
-      <span>Utworzono zapytanie CRM dla gościa {converted.guest}.</span>
+      <span>Utworzono zapytanie CRM dla klienta {converted.guest}.</span>
       <span className="flex items-center gap-2">
         <Link href={`/crm/inquiries/${converted.id}`} className="rounded-lg bg-white/10 px-3 py-1.5 text-xs hover:bg-white/15">Otwórz zapytanie</Link>
         <button type="button" onClick={() => setConverted(null)} aria-label="Zamknij" className="rounded-lg p-1 hover:bg-white/10"><X className="h-4 w-4" /></button>
@@ -87,6 +88,16 @@ export default function CockpitToday({ cockpit, onChanged }: { cockpit: SellerCo
       <div><p className="font-medium">Wszystko załatwione</p><p className="mt-1 text-sm text-white/45">Żaden sprzedawca nie czeka teraz na Twoją decyzję ani odpowiedź.</p></div>
     </div> : (
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {today.price_requests.length > 0 && <TodayGroup title="Ceny do zgody" icon={BadgeDollarSign} tone="warning" items={today.price_requests} empty="Brak próśb o zgodę na cenę." render={(price) => (
+          <li key={price.request_id}><Link href={`/crm/offers/${price.offer_id}#seller-price-approval`} className={rowClass}>
+            <span className="min-w-0">
+              <span className="block truncate text-sm group-hover:text-[#d3bb73]">{price.offer_number ? `${price.offer_number} · ` : ''}{price.offer_title}</span>
+              <Meta>{price.seller_name} · {formatPriceItems(price.items)}</Meta>
+              {price.note && <span className="mt-0.5 line-clamp-2 text-xs text-white/50">„{price.note}”</span>}
+            </span>
+            <span className="shrink-0 text-[11px] text-white/45">{formatSellerRelative(price.requested_at, '')}</span>
+          </Link></li>
+        )} />}
         <TodayGroup title="Oferty do sprawdzenia" icon={FileSearch} items={today.reviews} empty="Brak ofert czekających na decyzję." render={(review) => (
           <li key={review.offer_id}><Link href={sellerReviewHref(review)} className={rowClass}>
             <span className="min-w-0">
@@ -127,7 +138,7 @@ export default function CockpitToday({ cockpit, onChanged }: { cockpit: SellerCo
             <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] ${chat.waiting_hours >= 24 ? 'bg-red-400/10 text-red-200' : chat.waiting_hours >= 4 ? 'bg-amber-400/10 text-amber-200' : 'bg-white/5 text-white/55'}`}>czeka {formatWaitingHours(chat.waiting_hours)}</span>
           </Link></li>
         )} />
-        <TodayGroup title="Zapytania gości" icon={Inbox} items={today.inquiries} forceExpanded={focusIndex >= VISIBLE} empty="Brak nowych zapytań od gości hoteli." render={(inquiry) => (
+        <TodayGroup title="Zapytania klientów" icon={Inbox} items={today.inquiries} forceExpanded={focusIndex >= VISIBLE} empty="Brak nowych zapytań klientów." render={(inquiry) => (
           <li key={inquiry.id} id={`seller-inquiry-${inquiry.id}`} className={`rounded-xl px-3 py-2.5 ${inquiry.id === focusInquiry ? 'bg-[#d3bb73]/10' : 'bg-[#0f1119]/60'}`}>
             <div className="flex items-start justify-between gap-3">
               <span className="min-w-0">
@@ -144,11 +155,11 @@ export default function CockpitToday({ cockpit, onChanged }: { cockpit: SellerCo
             <div className="mt-2"><CockpitInquiryActions inquiry={inquiry} onChanged={onChanged} onConverted={(id, guest) => setConverted({ id, guest })} /></div>
           </li>
         )} />
-        <TodayGroup title="Akceptacje gości" icon={PartyPopper} items={today.guest_acceptances} empty="Brak nowych akceptacji ofert przez gości." render={(acceptance) => (
+        <TodayGroup title="Akceptacje klientów" icon={PartyPopper} items={today.guest_acceptances} empty="Brak nowych akceptacji ofert przez klientów." render={(acceptance) => (
           <li key={acceptance.offer_id}><Link href={`/crm/offers/${acceptance.offer_id}`} className={rowClass}>
             <span className="min-w-0">
               <span className="block truncate text-sm group-hover:text-[#d3bb73]">{acceptance.title}</span>
-              <Meta>{acceptance.accepted_name ? `Zaakceptował(a): ${acceptance.accepted_name}` : 'Gość zaakceptował ofertę'} · {acceptance.seller_name}</Meta>
+              <Meta>{acceptance.accepted_name ? `Zaakceptował(a): ${acceptance.accepted_name}` : 'Klient zaakceptował ofertę'} · {acceptance.seller_name}</Meta>
             </span>
             <span className="shrink-0 text-[11px] text-emerald-200/80">{formatSellerRelative(acceptance.accepted_at, '')}</span>
           </Link></li>

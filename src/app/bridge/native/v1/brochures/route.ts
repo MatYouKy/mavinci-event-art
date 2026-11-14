@@ -18,6 +18,7 @@ import {
 } from '@/lib/native/brochures';
 import { brochureDeliveries, brochureFileUrl, brochureMailCompose, brochureMailSetup, brochureOrganizationMembers } from '@/lib/native/brochureMail';
 import { brochureDemoReport } from '@/lib/native/brochureDemo';
+import { brochureContactRecipient, savedBrochures, savedEditText, savedMailAI, savedMailCompose, savedMailSetup } from '@/lib/native/brochureClient';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -30,7 +31,9 @@ export const maxDuration = 60;
  * itemRemove | preview (podgląd HTML ze szkicu) | pagePreview (jedna strona graficzna do płótna Studio stron) | imageUrls |
  * imageUpload | campaign. Wysyłka (`src/lib/native/brochureMail.ts`): GET op=mailSetup&id=… | members&organization=… |
  * deliveries&brochure|contact|organization|batch=…&all=…&employee=…&offset=…; POST op=mailCompose | fileUrl. Statystyki demo
- * (`src/lib/native/brochureDemo.ts`): GET op=demoReport&id=…&all=…&employee=…&offset=….
+ * (`src/lib/native/brochureDemo.ts`): GET op=demoReport&id=…&all=…&employee=…&offset=…. Broszury klienta
+ * (`src/lib/native/brochureClient.ts`): GET op=saved&contact|organization=…&all=…&offset=… | savedSetup&id=… | savedEdit&id=… |
+ * contactRecipient&id=…; POST op=savedCompose | savedAI; historia zapisanej wersji — deliveries&generation=….
  * PDF i sprawdzanie broszury generuje `/bridge/brochures/generate-pdf`, przygotowanie i wysyłkę wiadomości —
  * `/bridge/brochures/deliveries`, usunięcie próbnej oferty z demo — `/bridge/brochures/[id]/demo-documents/[documentId]`
  * (token pracownika, jak w CRM).
@@ -64,6 +67,10 @@ export async function GET(request: Request) {
       case 'demoReport': return nativeJson(await brochureDemoReport(ctx, url.searchParams));
       case 'members': return nativeJson(await brochureOrganizationMembers(ctx, param('organization')));
       case 'deliveries': return nativeJson(await brochureDeliveries(ctx, url.searchParams));
+      case 'saved': return nativeJson(await savedBrochures(ctx, url.searchParams));
+      case 'savedSetup': return nativeJson(await savedMailSetup(ctx, param('id')));
+      case 'savedEdit': return nativeJson(await savedEditText(ctx, param('id')));
+      case 'contactRecipient': return nativeJson(await brochureContactRecipient(ctx, param('id')));
       default: return failure('Nieznana operacja.');
     }
   } catch (error) {
@@ -95,6 +102,8 @@ export async function POST(request: Request) {
       case 'campaign': return nativeJson(await createBrochureCampaign(ctx, body));
       case 'mailCompose': return nativeJson(await brochureMailCompose(ctx, body));
       case 'fileUrl': return nativeJson(await brochureFileUrl(ctx, body));
+      case 'savedCompose': return nativeJson(await savedMailCompose(ctx, body));
+      case 'savedAI': return nativeJson(await savedMailAI(ctx, body));
       default: return failure('Nieznana operacja.');
     }
   } catch (error) {

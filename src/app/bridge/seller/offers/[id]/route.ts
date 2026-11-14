@@ -49,7 +49,7 @@ async function authorize(request: NextRequest,id: string){
 // Called only after authorize() has checked access to this exact offer.
 async function loadOfferSummary(admin: ReturnType<typeof createSupabaseAdminClient>, offerId: string): Promise<SellerOfferSummaryData> {
   const result = await admin.from('offers')
-    .select('sales_partner_id,partner_organization_id,partner_branding_snapshot,portal_client_name,portal_client_company,event_date,event_location,offer_items(id,name,quantity,unit,days,display_order)')
+    .select('sales_partner_id,partner_organization_id,partner_branding_snapshot,partner_approval_status,portal_client_name,portal_client_company,event_date,event_location,offer_items(id,name,quantity,unit,days,display_order)')
     .eq('id', offerId).eq('sales_channel', 'seller_portal').single();
   check(result.error);
   const offer = result.data!;
@@ -75,6 +75,8 @@ async function loadOfferSummary(admin: ReturnType<typeof createSupabaseAdminClie
     seller_name: sellerName || 'Sprzedawca', seller_organization: organizationName,
     client_name: offer.portal_client_name || '', client_company: offer.portal_client_company || '',
     event_date: offer.event_date || null, event_location: offer.event_location || '',
+    // Pozycja własna albo cena poniżej stawki — wspólna oś pokazuje „cena do zgody opiekuna”.
+    price_approval_required: offer.partner_approval_status === 'required',
     // No internal prices, margins, notes, credentials or raw branding payload.
     items: [...(offer.offer_items || [])].sort((a, b) => Number(a.display_order || 0) - Number(b.display_order || 0))
       .map(item => ({ id: item.id, name: item.name, quantity: Number(item.quantity), unit: item.unit || 'szt.', days: Number(item.days || 1) })),
@@ -303,6 +305,12 @@ export async function POST(request: NextRequest,{params}:{params:{id:string}}){
     }
     if(body.action==='document'){
       if(!uuid(body.documentId)) throw new Error('Wybierz wersję PDF');
+      // Zgoda na cenę przed pokazaniem klientowi: sprzedawca pobiera PDF dla klienta dopiero po zgodzie (podgląd działa).
+      if(body.download && !state.can_manage){
+        const approval=await admin.from('offers').select('partner_approval_status').eq('id',offerId).eq('sales_channel','seller_portal').single();
+        check(approval.error);
+        if(approval.data?.partner_approval_status==='required') throw Object.assign(new Error('Cena czeka na zgodę opiekuna. PDF dla klienta pobierzesz po zgodzie — podgląd jest dostępny.'),{status:409});
+      }
       const {data:document,error}=await admin.from('seller_offer_documents').select('*').eq('offer_id',offerId).eq('id',body.documentId).single();
       check(error);
       const file=await admin.storage.from('seller-offer-documents').download(document.storage_path);
@@ -392,8 +400,14 @@ export async function POST(request: NextRequest,{params}:{params:{id:string}}){
         ].filter(value=>value!==false && value!=null).join('\n') : '';
         // Keep the full correction reply first, so a long product list cannot
         // truncate it. Public reply only: no internal equipment/financial notes.
+        // „Klient zaakceptował poza portalem”: jak i uwagi sprzedawcy idą na początek wiadomości do opiekuna.
+        const channels:Record<string,string>={email:'e-mailem',phone:'telefonicznie',meeting:'osobiście, na spotkaniu',signed:'podpisał ofertę hotelu',other:'inaczej'};
+        const channel=typeof body.acceptanceChannel==='string' && channels[body.acceptanceChannel] ? channels[body.acceptanceChannel] : '';
+        const sellerNote=typeof body.sellerNote==='string' ? body.sellerNote.trim().slice(0,1000) : '';
         reviewNote=[
           correctionSummary,
+          channel && 'Jak klient zaakceptował: '+channel+'.',
+          sellerNote && 'Uwagi sprzedawcy: '+sellerNote,
           'Oferta: '+state.title,
           'Sprzedawca: '+[summary.seller_name,summary.seller_organization].filter(Boolean).join(' · '),
           'Klient: '+[summary.client_company,summary.client_name].filter(Boolean).join(' · '),

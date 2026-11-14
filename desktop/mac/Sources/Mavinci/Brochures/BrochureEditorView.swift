@@ -54,7 +54,9 @@ import SwiftUI
             .sheet(item: $pdf) { file in OfferPdfViewer(file: file) }
             .sheet(isPresented: $pdfSheet) { BrochurePdfSheet(model: model) }
             .sheet(isPresented: $catalogSheet) { BrochureCatalogSheet(model: model) }
-            .sheet(isPresented: $mailSheet) { BrochureMailSheet(model: model) }
+            .sheet(isPresented: $mailSheet) {
+                BrochureMailSheet(store: store, brochureId: id, onChange: { model.deliveriesRevision += 1 }, showIssues: { issues in model.showIssues(issues) })
+            }
             .confirmationDialog("Nie udało się zapisać zmian. Opuścić edytor?", isPresented: $confirmLeave, titleVisibility: .visible) {
                 Button("Opuść bez zapisywania", role: .destructive) { close() }
                 Button("Zostań", role: .cancel) {}

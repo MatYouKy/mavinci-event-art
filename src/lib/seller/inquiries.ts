@@ -60,7 +60,7 @@ const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
 /** Client-side check mirroring the RPC rules. Returns a Polish message or null. */
 export function validateSellerInquiry(values: SellerInquiryValues, { datesValid = true }: { datesValid?: boolean } = {}): string | null {
-  if (!values.guest_name.trim()) return 'Podaj imię i nazwisko gościa.';
+  if (!values.guest_name.trim()) return 'Podaj imię i nazwisko klienta.';
   if (!values.guest_email.trim() && !values.guest_phone.trim()) return 'Podaj e-mail lub telefon, abyśmy mogli odpowiedzieć.';
   if (values.guest_email.trim() && !emailPattern.test(values.guest_email.trim())) return 'Sprawdź adres e-mail.';
   if (values.guest_phone.trim() && values.guest_phone.replace(/\D/g, '').length < 7) return 'Sprawdź numer telefonu.';

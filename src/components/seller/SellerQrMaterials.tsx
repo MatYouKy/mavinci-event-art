@@ -133,7 +133,7 @@ export default function SellerQrMaterials({ context }: { context: SellerPortalCo
       </section>
 
       <section aria-labelledby="qr-preview-title" className="space-y-4 rounded-xl bg-[#1c1f33] p-4 sm:p-5">
-        <h2 id="qr-preview-title" className="text-base uppercase">Karta dla gości</h2>
+        <h2 id="qr-preview-title" className="text-base uppercase">Karta dla gości hotelu</h2>
         {!selected ? <p className="text-sm text-white/55">Utwórz lub wybierz kod, aby zobaczyć kartę do druku.</p> : <>
           <div className="mx-auto w-full max-w-xs rounded-2xl bg-white p-6 text-center text-[#16131a] shadow-xl">
             <p className="text-[11px] uppercase tracking-[0.22em] text-[#6d6570]">{hotelName}</p>

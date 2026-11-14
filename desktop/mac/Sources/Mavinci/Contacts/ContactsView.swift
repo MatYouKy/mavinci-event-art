@@ -2,7 +2,7 @@ import SwiftUI
 import AppKit
 
 // MARK: Kontakty — 1:1 ze stroną `/crm/contacts`: typy (organizacje, kontakty, osoby prywatne), „Tylko sprzedawcy”, wyszukiwanie,
-// kafelki i lista, szczegóły w panelu bocznym (dane, powiązania, zapytania), edycja, usuwanie, e-mail i spotkanie z karty.
+// kafelki i lista, szczegóły w panelu bocznym (dane, powiązania, zapytania, broszury klienta), edycja, usuwanie, e-mail i spotkanie z karty.
 
 /// Czynności karty, listy i szczegółów.
 struct ContactActions {
@@ -430,6 +430,7 @@ struct ContactStars: View {
                 }
             }
             relatedInquiries(entry)
+            brochures(entry)
             if !entry.tags.isEmpty { group("Tagi") { Text(entry.tags.joined(separator: ", ")).textSelection(.enabled) } }
             if !entry.notes.isEmpty { group("Notatki") { Text(entry.notes).textSelection(.enabled) } }
             field("Dodano", ContactFormat.date(entry.created))
@@ -531,6 +532,17 @@ struct ContactStars: View {
         if state.employee?.canView(.inquiries) == true && !related.isEmpty {
             group("Zapytania (\(related.count))") {
                 ForEach(related.prefix(12)) { inquiry in inquiryRow(inquiry) }
+            }
+        }
+    }
+
+    /// Broszury klienta (jak „Wyślij broszurę”, „Broszury klienta” i „Historia wysyłek broszur” w karcie CRM).
+    @ViewBuilder private func brochures(_ entry: ContactEntry) -> some View {
+        if state.employee?.has("offers_brochures_view_own") == true || state.employee?.has("offers_brochures_view_all") == true {
+            group("Broszury") {
+                ContactBrochureActions(context: BrochureRecipientContext(type: entry.isOrganization ? "organization" : "contact", id: entry.id,
+                                                                         name: entry.name))
+                    .id(entry.id)
             }
         }
     }

@@ -2,7 +2,7 @@ import 'server-only';
 import type { NativeContext } from './auth';
 import { fail } from './offers';
 import {
-  BROCHURE_LAYOUTS, BROCHURE_PRESETS, BROCHURE_SLOGANS, brochureAssetKey, brochurePalette, imageBucket, pageDefaults, pageDesign,
+  BROCHURE_LAYOUTS, BROCHURE_ORNAMENT_PLACES, BROCHURE_ORNAMENTS, BROCHURE_PRESETS, BROCHURE_SLOGANS, brochureAssetKey, brochurePalette, imageBucket, pageDefaults, pageDesign,
   parseComposer, parseDecorativePages, requiresPageImage, resolvedBenefits, type BrochureLayout,
 } from '@/lib/brochures/decorativePages';
 import { BROCHURE_ICONS } from '@/lib/brochures/brochureIcons';
@@ -271,6 +271,8 @@ function brochureStudio(brochureId: string) {
   return {
     layouts: layouts.map((key) => ({ key, label: BROCHURE_LAYOUTS[key], requiresImage: requiresPageImage(key) })),
     icons: Object.entries(BROCHURE_ICONS).map(([key, label]) => ({ key, label })),
+    ornaments: Object.entries(BROCHURE_ORNAMENTS).map(([key, label]) => ({ key, label })),
+    ornamentPlaces: Object.entries(BROCHURE_ORNAMENT_PLACES).map(([key, label]) => ({ key, label })),
     defaults: Object.fromEntries(layouts.map((key) => [key, pageDefaults(key)])),
     presets: [
       { key: 'custom', label: 'Własna strona', page: newPage(null) },

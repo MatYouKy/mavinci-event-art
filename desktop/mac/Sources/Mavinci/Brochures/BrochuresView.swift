@@ -7,6 +7,8 @@ import SwiftUI
     @EnvironmentObject private var state: Workspace
     @Environment(\.crmTheme) private var theme
     @StateObject private var store = BrochuresStore()
+    /// Broszura do otwarcia z innego ekranu („Otwórz broszurę bazową” w karcie klienta).
+    @ObservedObject private var router = BrochureRouter.shared
     @State private var archived = false
     @State private var query = ""
     @State private var opened: String?
@@ -33,11 +35,19 @@ import SwiftUI
         }
         .task {
             store.workspace = state
+            consumeRoute()
             if store.state == nil { await store.load() }
         }
+        .onChange(of: router.pending) { _, _ in consumeRoute() }
         .sheet(item: $management) { route in
             BrochureManagementSheet(store: store, route: route) { _ in }
         }
+    }
+
+    private func consumeRoute() {
+        guard let id = router.pending else { return }
+        router.pending = nil
+        opened = id
     }
 
     private func filtered(_ data: BrochureListState) -> [BrochureListState.Brochure] {

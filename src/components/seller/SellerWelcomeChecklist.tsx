@@ -40,10 +40,10 @@ export default function SellerWelcomeChecklist({ context, offerCount }: { contex
   if (!flags || flags.dismissed) return null;
   const branded = context.brands.some((brand) => Boolean(brand.branding?.organization_branding_configured || brand.branding?.hotel_logo_url));
   const steps = [
-    { id: 'branding', label: 'Ustaw branding ofert', detail: 'Logo i kolory hotelu pojawią się w PDF i na stronie oferty dla gościa.', href: '/seller/profile?tab=branding', done: branded },
+    { id: 'branding', label: 'Ustaw branding ofert', detail: 'Logo i kolory hotelu pojawią się w PDF i na stronie oferty dla klienta.', href: '/seller/profile?tab=branding', done: branded },
     { id: 'manager', label: 'Poznaj swojego opiekuna', detail: 'Zapisz kontakt i napisz pierwszą wiadomość.', href: '/seller/messages', done: Boolean(flags.manager) },
     { id: 'first', label: 'Wyślij pierwsze zapytanie lub ofertę', detail: 'Zacznij od „Sprawdź termin” albo od razu przygotuj ofertę.', href: offerCount ? '/seller/offers' : '/seller/inquiries', done: offerCount > 0 || Boolean(activity?.inquiries) },
-    { id: 'qr', label: 'Przygotuj materiały QR', detail: 'Wydrukuj kartę z kodem QR — goście sami wyślą zapytanie.', href: '/seller/materials', done: Boolean(activity?.links) },
+    { id: 'qr', label: 'Przygotuj materiały QR', detail: 'Wydrukuj kartę z kodem QR — goście hotelu sami zapytają o wydarzenie.', href: '/seller/materials', done: Boolean(activity?.links) },
   ];
   const doneCount = steps.filter((step) => step.done).length;
   if (activity && doneCount === steps.length) return null;

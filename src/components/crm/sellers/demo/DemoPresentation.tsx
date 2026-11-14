@@ -51,7 +51,7 @@ export default function DemoPresentation({ config, services, servicesSource, onE
   const tabs: { id: DemoTab; label: string; icon: LucideIcon }[] = [
     { id: 'dashboard', label: 'Pulpit', icon: LayoutDashboard },
     { id: 'wizard', label: 'Kreator oferty', icon: Wand2 },
-    { id: 'guest', label: 'Oferta dla gościa', icon: FileText },
+    { id: 'guest', label: 'Oferta dla klienta', icon: FileText },
     ...(config.showEarnings ? [{ id: 'earnings' as DemoTab, label: 'Wynagrodzenie', icon: BadgePercent }] : []),
     { id: 'how', label: 'Jak to działa', icon: Route },
   ];

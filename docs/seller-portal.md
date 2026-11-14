@@ -18,6 +18,30 @@ Migracja: `supabase/migrations/20261105150000_seller_manager_cockpit.sql` (wymag
 - Wydarzenie z oferty z portalu prowadzi opiekun przez udział sprzedaży (podsumowanie wydarzenia: `seller_partner_manager_id`) — widzi wydarzenie (`current_employee_sells_event`), a krok „sprzedaż” idzie do głównego udziału sprzedaży. Autora wydarzenia (`created_by`) baza nie zmienia.
 - Prowizja z „Ustaleń ze sprzedawcą” i dla kontaktu rozliczeniowego hotelu / agencji należy się osobie, która pracowała w tej organizacji w dniu wydarzenia (`contact_organizations.is_current` albo `ended_at` ≥ data wydarzenia) — odejście po wydarzeniu nie odbiera prowizji.
 
+## Oś oferty, słownictwo i pomoc „?” (audyt kreatora, etap 1)
+
+- **Jedna oś w 5 etapach** zamiast kilkunastu nazw statusów: Oferta → U klienta → U opiekuna → Wydarzenie → Rozliczenie (`src/lib/seller/offerJourney.ts`, komponent `src/components/seller/SellerJourney.tsx`). Pod osią zawsze stan („Do poprawy”, „Czeka na potwierdzenie terminu”…), kto działa („Teraz działa: Ty / Anna / Klient”) i jedno zdanie „Teraz”. Ta sama oś: pulpit, lista ofert (kreski i filtr `?etap=offer|client|manager|mine`), strona oferty, „Wydarzenia”, ocena oferty w CRM (widok opiekuna). Etap liczy się z zapisanych decyzji (status oferty, ocena bieżącej wersji, realizacja, status wydarzenia, istnienie i aktualność PDF) — daty niczego nie przesuwają.
+- **„Klient”** = osoba zamawiająca wydarzenie (wcześniej zamiennie „gość”). „Liczba gości” i „goście hotelu” (kody QR) pozostają. Teksty z bazy (powiadomienia „Gość zaakceptował…”, błędy linku) zmieni migracja etapu 2.
+- **PDF jako wkładka**: hotel najczęściej pobiera PDF i dołącza go do własnej oferty — „Pobierz PDF” jest głównym przyciskiem na stronie oferty; „Link dla klienta” jest opcjonalny i stoi pod PDF.
+- Nazwy czynności: „Zaktualizuj PDF” (wcześniej „Regeneruj PDF”), „Wyślij do opiekuna” (wcześniej „Przekaż akceptację opiekunowi”), menu „Wydarzenia” (wcześniej „Potwierdzone wydarzenia”) z sekcjami „Czeka na potwierdzenie terminu”, „Potwierdzone”, „Zakończone, wstrzymane i anulowane”.
+- Kreator: krok „Klient i termin”, lista wszystkich braków kroku naraz, „Twoje rozliczenie: marża / prowizja” na górze usług, „Do rozważenia przez klienta” (dawniej propozycje dodatkowe), baner „Cena do zgody opiekuna (N pozycji)” w podsumowaniu, przy braku sal — „Napisz do opiekuna” z gotową wiadomością (`/seller/messages?draft=…`, tekst tylko wpisany w pole rozmowy ogólnej).
+- **Pomoc pod „?”** (`src/lib/help/`, `src/components/help/HelpDrawer.tsx`): panel z boku z rozdziałem dla bieżącego ekranu, wyszukiwarką i „Zapytaj opiekuna”; klawisz „?” poza polami tekstowymi; „?” przy pojęciach (sposób rozliczenia, do rozważenia, zgoda na cenę, wersje PDF, link dla klienta). Portal: przycisk w górnym pasku i strona `/seller/help` („Pomoc” w menu). CRM: instrukcja opiekuna w „Sprzedawcach” i na ocenie oferty. Zasada: zmiana procesu zmienia też rozdział instrukcji.
+- Tryb pokazowy CRM („Jak to działa”) opowiada tę samą ścieżkę: wizyta, zaproszenie, oferta i klient, u opiekuna, wydarzenie, rozliczenie.
+
+## Zgoda na cenę i akceptacja online (audyt kreatora, etap 2)
+
+Migracja: `supabase/migrations/20261114230000_seller_price_approval_and_auto_review.sql` (po `20261105150000_seller_manager_cockpit.sql`, można uruchomić ponownie).
+
+- **Zgoda na cenę przed pokazaniem oferty klientowi.** Pozycja własna albo cena poniżej stawki → `offers.partner_approval_status = 'required'` (jak dotąd liczy to zapis oferty i trigger sum). Kreator po każdym zapisie wywołuje `request_seller_offer_price_approval(p_offer, p_note)` — prośba trafia do opiekuna i zastępcy (powiadomienie „Prośba o zgodę na cenę”, grupa „Ceny do zgody” w kokpicie CRM i w aplikacji). Prośba o te same ceny nie dubluje się; nowe ceny zastępują starą prośbę (`superseded`). Opiekun decyduje w CRM na stronie oferty (`decide_seller_offer_price_approval(p_offer, 'approved'|'changes_requested', p_note, p_expected_key)` — klucz cen, które widział; prośba o zmianę wymaga uzasadnienia). Stan: `get_seller_offer_price_approval(p_offer)` (sprzedawca i „mój sprzedawca”), lista w kokpicie: `get_my_seller_price_requests(p_manager)`.
+- Do zgody: link dla klienta nie działa (`guest_ready`, bez zmian), a **PDF dla klienta** nie pobierze się z portalu (trasa `/bridge/seller/offers/[id]`, akcja `document` z `download`, błąd 409). Podgląd PDF działa.
+- **Zgoda trzyma się cen**, nie wersji: `offers.partner_price_approval_key` = odcisk pozycji wymagających zgody (`private.seller_offer_price_key`: produkt, nazwa, ilość, dni, cennik i cena dla klienta). Trigger `trg_keep_seller_price_approval` przywraca `approved`, gdy zapis oferty ustawia `required`, a odcisk jest ten sam (zmiana tytułu, terminu czy klienta nie kasuje zgody); każde przejście na `approved` (zgoda na cenę albo przyjęcie oferty w ocenie) zapamiętuje odcisk. Po zgodzie PDF trzeba zaktualizować (klucz źródła oferty zawiera stan zgody) — „Pobierz PDF” robi to sam.
+- Historia: `seller_offer_price_requests` (tylko przez RPC, RLS bez polityk) i `partner_offer_activities` (`price_approval_requested`, `price_approved`, `price_changes_requested`).
+- **Akceptacja online klienta przekazuje ofertę do oceny** (`accept_shared_seller_offer` → `private.request_seller_offer_review_after_client_acceptance`): tylko gdy zaakceptowany PDF jest aktualny, oferta ma termin, nie ma już oceny tej wersji, a powiadomienie ma odbiorcę. Zapisuje też zgodę klienta przy tej wersji (`seller_offer_client_acceptances`, opis „Akceptacja online klienta: …”, konto sprzedawcy jako właściciel oferty). Gdy się nie da, akceptacja zostaje, a sprzedawca dostaje powiadomienie z powodem i wysyła ofertę sam. Wynik: `{ok, accepted_at, forwarded}`.
+- **„Klient zaakceptował poza portalem”** w portalu: trzy kroki (jak — e-mail, telefon, spotkanie, podpisana oferta hotelu, inaczej; aktualna wersja PDF; uwagi dla opiekuna). Sposób i uwagi trafiają na początek wiadomości do opiekuna (`request_review`: `acceptanceChannel`, `sellerNote`).
+- Kreator: start od zera, z zapytania (`/seller/offers/new?inquiry=<id>` — klient, termin, liczba gości) albo jako kopia poprzedniej oferty (`?copy=<id>` — usługi, propozycje, tytuł, opis; usługi z konfiguratora trzeba skonfigurować ponownie). Po zapisie strona oferty pokazuje „Gotowe — co dalej?” (`?gotowe=1`).
+- Lista ofert: `get_seller_offer_delivery_states` zwraca też `approval_status` i `price_request` — oś pokazuje „Cena czeka na zgodę”, „Opiekun prosi o zmianę ceny”, „Poproś o zgodę na cenę”.
+- Teksty z bazy: „Klient otworzył ofertę”, „Klient zaakceptował…”, „Link dla klienta będzie dostępny po zgodzie opiekuna na cenę”, „Gość hotelu zostawił zapytanie” (kody QR), „Klient: …” w zapytaniu CRM.
+
 ## Podsumowanie wydarzenia w portalu
 
 `get_seller_event_summary(p_event)` (sesja sprzedawcy) — „Moje wynagrodzenie” (przy każdym wydarzeniu „Podsumowanie wydarzenia — skąd ta kwota”, `?event=<id>` otwiera to wydarzenie) i realizacja z portalu. Dostęp: sprzedawca jest w podsumowaniu wydarzenia (albo ma wpis prowizji w wydarzeniu) i marka ma widoczne wynagrodzenie. Wynik: `{event{id, name, date, end_date, location, cancelled}, source forecast|submitted|approved, as_of, base_rule profit|revenue_minus_subcontractors, forecast, lines[{kind, category, name, net_amount, date, to_confirm}], totals{revenue_net, subcontractor_net, direct_cost_net, team_net, external_commission_lines, event_costs_net, profit_before_external, external_commission_auto, own_commission_cost, other_sellers_cost, profit_net, partner_base, rounding_difference}, mine{rate, rate_label, base, amount, company_cost, payment_method, dividend_tax_rate}|null, commissions[{id, entry_kind, status, amount, paid_amount, offset_amount}]}` — typy i odczyt: `src/lib/seller/sellerEventSummary.ts`. Wysłane / zatwierdzone podsumowanie = wersja z chwili wysłania / zatwierdzenia (`event_settlement_versions`), inaczej prognoza. Pozycje włączone do podsumowania z kwotą netto; ekipa jedną kwotą (bez nazwisk i stawek), prowizje / narzuty innych sprzedawców bez nazwisk; bez prowizji pracowników, notatek, opisów i autorów zmian. Starsze zatwierdzenia (sprzed zasady „od zysku”) mają `base_rule = revenue_minus_subcontractors` i taki opis.
@@ -79,8 +103,9 @@ Powiadomienia sprzedawcy trafiają do dzwonka i skrzynki portalu (`notifications
 **Portal sprzedawcy**
 - Pulpit: „Do zrobienia”, karta „Twój opiekun” (zdjęcie, telefon, WhatsApp, e-mail, czat), lista startowa (pierwsze logowanie), prognoza wynagrodzenia tylko dla marek z widocznym wynagrodzeniem.
 - „Sprawdź termin” (`/seller/inquiries`): formularz i lista zapytań z odpowiedzią opiekuna.
-- Kreator oferty w 3 krokach (Gość i termin / Usługi / Podsumowanie) z paskiem sumy na telefonie i ochroną przed wyjściem; pozycja własna ma cenę klienta w obu modelach rozliczenia.
-- Oferta → „Link dla gościa” (kopiuj, udostępnij, podgląd, wyłącz, nowy link, wyświetlenia, akceptacja z kwotą).
+- Kreator oferty w 3 krokach (Klient i termin / Usługi / Podsumowanie) z paskiem sumy na telefonie i ochroną przed wyjściem; pozycja własna ma cenę klienta w obu modelach rozliczenia.
+- Oferta → oś w 5 etapach, „Pobierz PDF” (wkładka do oferty hotelu), „Link dla klienta — opcjonalnie” (kopiuj, udostępnij, podgląd, wyłącz, nowy link, wyświetlenia, akceptacja z kwotą).
+- „Pomoc” (`/seller/help`) i „?” w górnym pasku każdego ekranu.
 - „Materiały dla hotelu” (`/seller/materials`): kody QR (PNG, karta A5 do druku).
 - „Moje wynagrodzenie” — tylko gdy któraś marka ma widoczne wynagrodzenie.
 - Zaproszenie e-mail: „Zaproszenie do współpracy z MAVINCI” z nazwiskiem zapraszającego.
@@ -89,7 +114,7 @@ Powiadomienia sprzedawcy trafiają do dzwonka i skrzynki portalu (`notifications
 
 ## Wdrożenie
 
-1. SQL Editor: `20261105150000_seller_manager_cockpit.sql` (po `20261105130000_event_settlement_commissions.sql`).
+1. SQL Editor: `20261105150000_seller_manager_cockpit.sql` (po `20261105130000_event_settlement_commissions.sql`), potem `20261114230000_seller_price_approval_and_auto_review.sql`.
 2. Sprzedawcy bez opiekuna (ostrzeżenie w kokpicie administratora) — przypisz opiekuna w karcie sprzedawcy.
 3. Nowi sprzedawcy mają wynagrodzenie ukryte — opiekun odsłania je, gdy przyjdzie pora.
 

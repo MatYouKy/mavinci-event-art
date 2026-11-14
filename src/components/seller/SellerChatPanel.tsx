@@ -20,13 +20,14 @@ export type SellerConversation = {
 };
 type Message = { id: string; seq: number; sender_kind: string; sender_name: string; body: string; created_at: string; own: boolean };
 
-export function ConversationMessages({ conversation, crm, onRead, compact = false, fitViewport = false, realization = false }: { conversation: SellerConversation; crm: boolean; onRead: () => void; compact?: boolean; fitViewport?: boolean; realization?: boolean }) {
+export function ConversationMessages({ conversation, crm, onRead, compact = false, fitViewport = false, realization = false, draft = '' }: { conversation: SellerConversation; draft?: string; crm: boolean; onRead: () => void; compact?: boolean; fitViewport?: boolean; realization?: boolean }) {
   const isRealization = Boolean(conversation.offer_id && (realization || conversation.has_event));
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [older, setOlder] = useState(false);
   const [hasOlder, setHasOlder] = useState(false);
-  const [text, setText] = useState('');
+  // Gotowa wiadomość z linku portalu (?draft=…) — tylko wpisana w pole, nigdy wysłana automatycznie.
+  const [text, setText] = useState(draft.slice(0, 10000));
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
   const pending = useRef<{ id: string; text: string } | null>(null);
@@ -255,7 +256,8 @@ export default function SellerChatPanel({ partnerId, brands, offers = [], crm = 
           {!loading && !visibleThreads.length && <p className="p-3 text-xs text-white/40">{query ? 'Brak pasujących rozmów.' : 'Nie ma jeszcze rozmów w tej sekcji.'}</p>}
         </div>
       </div>
-      {selectedThread ? <ConversationMessages key={selectedThread.id} conversation={selectedThread} crm={crm} onRead={() => void reload()} /> : <p className="rounded-xl bg-black/10 px-5 py-14 text-center text-sm text-white/40">Wybierz rozmowę lub rozpocznij nową.</p>}
+      {selectedThread ? <ConversationMessages key={selectedThread.id} conversation={selectedThread} crm={crm} onRead={() => void reload()}
+        draft={!crm && !selectedThread.offer_id ? searchParams.get('draft') || '' : ''} /> : <p className="rounded-xl bg-black/10 px-5 py-14 text-center text-sm text-white/40">Wybierz rozmowę lub rozpocznij nową.</p>}
     </div>
   </section>;
 }

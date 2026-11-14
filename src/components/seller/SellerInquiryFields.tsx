@@ -9,7 +9,7 @@ export const sellerInquiryFieldClass = 'mt-1.5 min-h-11 w-full rounded-lg bg-[#0
  * Shared fields of the quick inquiry ("Sprawdź termin"): the seller portal form
  * and the public QR form send the same values to the database.
  */
-export default function SellerInquiryFields({ value, onChange, onDateValidity, disabled = false, compact = false, guestLabel = 'Gość — imię i nazwisko *' }: {
+export default function SellerInquiryFields({ value, onChange, onDateValidity, disabled = false, compact = false, guestLabel = 'Klient — imię i nazwisko *' }: {
   value: SellerInquiryValues;
   onChange: (patch: Partial<SellerInquiryValues>) => void;
   onDateValidity: (field: 'event_date' | 'event_end_date', valid: boolean) => void;
@@ -43,7 +43,7 @@ export default function SellerInquiryFields({ value, onChange, onDateValidity, d
       </select>
     </label>
     {!compact && <>
-      <label className="text-xs text-white/60">Firma gościa
+      <label className="text-xs text-white/60">Firma klienta
         <input autoComplete="organization" maxLength={200} value={value.guest_company} onChange={(event) => onChange({ guest_company: event.target.value })} className={sellerInquiryFieldClass} placeholder="Opcjonalnie" />
       </label>
       <label className="text-xs text-white/60">Budżet netto (zł)
@@ -53,7 +53,7 @@ export default function SellerInquiryFields({ value, onChange, onDateValidity, d
         <input maxLength={300} value={value.venue_note} onChange={(event) => onChange({ venue_note: event.target.value })} className={sellerInquiryFieldClass} placeholder="np. sala balowa, ogród" />
       </label>
     </>}
-    <label className="text-xs text-white/60 sm:col-span-2">{compact ? 'Krótko o wydarzeniu' : 'Czego potrzebuje gość?'}
+    <label className="text-xs text-white/60 sm:col-span-2">{compact ? 'Krótko o wydarzeniu' : 'Czego potrzebuje klient?'}
       <textarea rows={3} maxLength={3000} value={value.note} onChange={(event) => onChange({ note: event.target.value })} className={`${sellerInquiryFieldClass} resize-y`} placeholder={compact ? 'np. wesele, potrzebujemy DJ-a i oświetlenia' : 'np. DJ i oświetlenie, pierwszy taniec, ok. 6 godzin'} />
     </label>
   </fieldset>;

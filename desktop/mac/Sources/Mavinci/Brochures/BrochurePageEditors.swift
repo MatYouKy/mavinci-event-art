@@ -139,7 +139,8 @@ import SwiftUI
         Group {
             if model.selectedPage == "deliveries" && model.data != nil {
                 // Historia wysyłek (część G3) — bez blokady edycji: przeglądanie i wysyłka przygotowanych wiadomości.
-                BrochureDeliveriesPanel(model: model)
+                BrochureDeliveriesPanel(store: model.store, scope: "brochure=\(model.id)", revision: model.deliveriesRevision,
+                                        changed: { model.deliveriesRevision += 1 })
             } else if model.selectedPage == "demo" && model.draft != nil {
                 // Demo i statystyki (część G4).
                 BrochureDemoPanel(model: model)
@@ -162,6 +163,8 @@ import SwiftUI
                     }
                 }
                 .formStyle(.grouped)
+                // Pola z ramką — od razu widać, co można edytować (jak w karcie usługi).
+                .textFieldStyle(.roundedBorder)
                 .disabled(!model.canEdit)
             }
         }
@@ -271,8 +274,12 @@ import SwiftUI
         let path = composerPath.isEmpty ? (draft?.coverImagePath ?? "") : composerPath
         let bucket = composerPath.isEmpty ? "offer-product-pages" : (draft?.composer.coverImageBucket ?? "offer-product-pages")
         Section("Treść okładki") {
-            TextField("Tytuł", text: text(\.title), prompt: Text("Wymagany"), axis: .vertical).lineLimit(1...4)
-            TextField("Podtytuł", text: text(\.subtitle), axis: .vertical).lineLimit(1...4)
+            ProductField(label: "Tytuł") {
+                TextField("", text: text(\.title), prompt: Text("Wymagany"), axis: .vertical).labelsHidden().lineLimit(1...4)
+            }
+            ProductField(label: "Podtytuł") {
+                TextField("", text: text(\.subtitle), axis: .vertical).labelsHidden().lineLimit(1...4)
+            }
         }
         Section {
             BrochureImageField(model: model, path: path, bucket: bucket, emptyLabel: "Automatycznie — zdjęcie pierwszej usługi",

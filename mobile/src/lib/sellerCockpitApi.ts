@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { type SellerCockpit, type SellerCockpitReview, parseSellerCockpit } from './sellerCockpit';
+import { type SellerCockpit, type SellerCockpitReview, parseSellerCockpit, parseSellerPriceRequests } from './sellerCockpit';
 
 /*
  * Kokpit opiekuna sprzedawców zewnętrznych w aplikacji — to samo RPC co CRM: get_my_seller_cockpit
@@ -42,7 +42,11 @@ export async function fetchSellerCockpit(): Promise<SellerCockpitResult> {
       console.warn('Error loading seller cockpit:', error);
       return { status: 'error', message: cockpitErrorMessage(error, fallback) };
     }
-    return { status: 'ready', data: parseSellerCockpit(data) };
+    const cockpit = parseSellerCockpit(data);
+    // Prośby o zgodę na cenę (migracja 20261114230000) — bez migracji grupa zostaje pusta.
+    const prices = await supabase.rpc('get_my_seller_price_requests');
+    cockpit.today.price_requests = prices.error ? [] : parseSellerPriceRequests(prices.data);
+    return { status: 'ready', data: cockpit };
   } catch (error) {
     console.warn('Error loading seller cockpit:', error);
     return { status: 'error', message: cockpitErrorMessage(error, fallback) };
@@ -63,6 +67,7 @@ export const sellerCockpitCrmPath = {
   review: (item: Pick<SellerCockpitReview, 'offer_id' | 'document_id'>) =>
     `/crm/offers/${item.offer_id}${item.document_id ? `?document=${item.document_id}&preview=1` : ''}#seller-offer-review`,
   offer: (offerId: string) => `/crm/offers/${offerId}`,
+  priceApproval: (offerId: string) => `/crm/offers/${offerId}#seller-price-approval`,
   event: (eventId: string) => `/crm/events/${eventId}`,
   eventArrangements: (eventId: string) => `/crm/events/${eventId}?tab=seller-arrangements`,
   seller: (sellerId: string) => `/crm/salespeople?seller=${sellerId}`,

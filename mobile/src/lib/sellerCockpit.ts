@@ -115,6 +115,19 @@ export type SellerCockpitGuestAcceptance = {
   accepted_at: string | null;
   accepted_name: string | null;
 };
+/** Prośba sprzedawcy o zgodę na cenę (get_my_seller_price_requests, migracja 20261114230000_seller_price_approval_and_auto_review.sql). */
+export type SellerCockpitPriceRequest = {
+  request_id: string;
+  offer_id: string;
+  offer_title: string;
+  offer_number: string | null;
+  sales_partner_id: string;
+  seller_name: string;
+  requested_at: string | null;
+  /** Liczba pozycji do zgody (pozycja własna albo cena poniżej stawki). */
+  items: number;
+  note: string;
+};
 export type SellerCockpitUpcoming = {
   event_id: string;
   name: string;
@@ -135,6 +148,8 @@ export type SellerCockpit = {
     chats_waiting: SellerCockpitChat[];
     inquiries: SellerCockpitInquiry[];
     guest_acceptances: SellerCockpitGuestAcceptance[];
+    /** Osobne RPC get_my_seller_price_requests — uzupełnia je ekran kokpitu (parseSellerPriceRequests). */
+    price_requests: SellerCockpitPriceRequest[];
   };
   sellers: SellerCockpitSeller[];
   pipeline: Record<SellerPipelineStage, number>;
@@ -227,7 +242,7 @@ export function parseSellerCockpit(data: unknown): SellerCockpit {
         sales_partner_id: str(item.sales_partner_id),
         seller_name: str(item.seller_name, 'Sprzedawca'),
         source: item.source === 'qr' ? 'qr' : 'portal',
-        guest_name: str(item.guest_name, 'Gość'),
+        guest_name: str(item.guest_name, 'Klient'),
         event_date: strOrNull(item.event_date),
         guest_count: numOrNull(item.guest_count),
         event_type: strOrNull(item.event_type),
@@ -242,6 +257,7 @@ export function parseSellerCockpit(data: unknown): SellerCockpit {
         accepted_at: strOrNull(item.accepted_at),
         accepted_name: strOrNull(item.accepted_name),
       })),
+      price_requests: [],
     },
     sellers: list(raw.sellers).map(item => {
       const offers = obj(item.offers);
@@ -384,5 +400,27 @@ export function formatWaitingHours(hours: number): string {
 export function sellerCockpitTodayCount(cockpit: SellerCockpit): number {
   const t = cockpit.today;
   return t.reviews.length + t.wizard_steps.length + t.events_pending.length + t.chats_waiting.length + t.inquiries.length
-    + t.guest_acceptances.length;
+    + t.guest_acceptances.length + t.price_requests.length;
+}
+
+/** Bezpieczny odczyt wyniku get_my_seller_price_requests (zgoda na cenę przed pokazaniem oferty klientowi). */
+export function parseSellerPriceRequests(data: unknown): SellerCockpitPriceRequest[] {
+  return list(data).map(item => ({
+    request_id: str(item.request_id),
+    offer_id: str(item.offer_id),
+    offer_title: str(item.offer_title, 'Oferta'),
+    offer_number: strOrNull(item.offer_number),
+    sales_partner_id: str(item.sales_partner_id),
+    seller_name: str(item.seller_name, 'Sprzedawca'),
+    requested_at: strOrNull(item.requested_at),
+    items: num(item.items),
+    note: str(item.note),
+  })).filter(item => item.offer_id);
+}
+
+/** „1 pozycja / 3 pozycje / 5 pozycji do zgody”. */
+export function formatPriceItems(count: number): string {
+  if (count === 1) return '1 pozycja do zgody';
+  const tens = count % 100;
+  return count % 10 >= 2 && count % 10 <= 4 && (tens < 12 || tens > 14) ? `${count} pozycje do zgody` : `${count} pozycji do zgody`;
 }

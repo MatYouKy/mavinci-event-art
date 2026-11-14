@@ -200,6 +200,7 @@ extension BrochureEditorModel {
     let removePage: (String) -> Void
     @Environment(\.crmTheme) private var theme
     @State private var block = "text"
+    @State private var largeArrangement = false
 
     var body: some View {
         if let raw = model.selectedPageRaw, let studio = model.data?.studio {
@@ -253,10 +254,16 @@ extension BrochureEditorModel {
                 Text("Bez ikony").tag("")
                 ForEach(studio.icons) { icon in Text(icon.label).tag(icon.key) }
             }
-            TextField("Hasło / tytuł", text: text(raw, "slogan", limit: 120), axis: .vertical)
-                .lineLimit(layout == "signature" ? 2...4 : 1...3)
-            TextField("Treść", text: text(raw, "caption", limit: 600), axis: .vertical)
-                .lineLimit(3...8)
+            ProductField(label: "Hasło / tytuł") {
+                TextField("", text: text(raw, "slogan", limit: 120), axis: .vertical)
+                    .labelsHidden()
+                    .lineLimit(layout == "signature" ? 2...4 : 1...3)
+            }
+            ProductField(label: "Treść") {
+                TextField("", text: text(raw, "caption", limit: 600), axis: .vertical)
+                    .labelsHidden()
+                    .lineLimit(3...8)
+            }
         } header: {
             Text("Treść")
         } footer: {
@@ -358,22 +365,21 @@ extension BrochureEditorModel {
     @ViewBuilder private func arrangement(_ design: BrochurePageDesign, layout: String) -> some View {
         let blocks = BrochureBlocks.blocks(for: layout)
         let current = blocks.contains(block) ? block : (blocks.first ?? "text")
-        let rect = design.rect(current)
         Section {
             BrochurePageCanvasView(model: model, design: design, blocks: blocks, selected: Binding(get: { current }, set: { value in block = value }))
                 .frame(maxWidth: .infinity)
+            Button { largeArrangement = true } label: {
+                Label("Rozmieść w dużym oknie…", systemImage: "arrow.up.left.and.arrow.down.right")
+            }
+            .help("Duży podgląd strony z siatką — do precyzyjnego rozmieszczania pól")
+            .sheet(isPresented: $largeArrangement) { BrochureArrangementSheet(model: model, block: $block) }
             if blocks.count > 1 {
                 Picker("Pole", selection: Binding(get: { current }, set: { value in block = value })) {
                     ForEach(blocks, id: \.self) { entry in Text(BrochureBlocks.labels[entry] ?? entry).tag(entry) }
                 }
                 .pickerStyle(.segmented)
             }
-            HStack(spacing: 10) {
-                number("Poziom", rect.x) { value in update(design, current) { rect in rect.x = value } }
-                number("Pion", rect.y) { value in update(design, current) { rect in rect.y = value } }
-                number("Szerokość", rect.width) { value in update(design, current) { rect in rect.width = value } }
-                number("Wysokość", rect.height) { value in update(design, current) { rect in rect.height = value } }
-            }
+            BrochureRectFields(model: model, design: design, block: current, vertical: false)
         } header: {
             Text("Rozmieszczenie")
         } footer: {
@@ -381,33 +387,23 @@ extension BrochureEditorModel {
         }
     }
 
-    private func update(_ design: BrochurePageDesign, _ block: String, _ change: (inout BrochureRect) -> Void) {
-        var rect = design.rect(block)
-        change(&rect)
-        var next = design
-        next.setRect(block, rect.normalized())
-        model.setDesign(next)
-    }
-
-    private func number(_ label: String, _ value: Double, set: @escaping (Double) -> Void) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text("\(label) %").font(.caption2).foregroundStyle(.secondary)
-            TextField("", value: Binding(get: { value.rounded() }, set: { next in set(next) }), format: .number.precision(.fractionLength(0)))
-                .textFieldStyle(.roundedBorder)
-                .labelsHidden()
-        }
-    }
-
     @ViewBuilder private func appearance(_ raw: [String: JSONValue], design: BrochurePageDesign, layout: String, studio: BrochureStudio) -> some View {
         Section {
-            Picker("Motyw graficzny", selection: Binding(get: { design.ornament ?? "none" }, set: { value in
+            Picker("Motyw graficzny w tle", selection: Binding(get: { design.ornament ?? "none" }, set: { value in
                 var next = design
                 next.ornament = value
                 model.setDesign(next)
             })) {
-                Text("Bez motywu").tag("none")
-                Text("Łuki").tag("arc")
-                Text("Siatka punktów").tag("grid")
+                ForEach(studio.ornamentOptions) { option in Text(option.label).tag(option.key) }
+            }
+            if (design.ornament ?? "none") != "none" && studio.placeOptions.count > 1 {
+                Picker("Położenie motywu", selection: Binding(get: { design.ornamentPlace ?? "top-right" }, set: { value in
+                    var next = design
+                    next.ornamentPlace = value
+                    model.setDesign(next)
+                })) {
+                    ForEach(studio.placeOptions) { option in Text(option.label).tag(option.key) }
+                }
             }
             Picker("Tło", selection: Binding(get: { design.theme }, set: { value in
                 var next = design
@@ -473,6 +469,10 @@ extension BrochureEditorModel {
     let design: BrochurePageDesign
     let blocks: [String]
     @Binding var selected: String
+    /// Szerokość płótna: w panelu edytora do 440 pt, w dużym oknie rozmieszczenia — cała wysokość okna.
+    var maxWidth: CGFloat = 440
+    /// Siatka co 5% strony (duże okno rozmieszczenia).
+    var grid = false
     @Environment(\.crmTheme) private var theme
     @State private var dragging: String?
     @State private var start: BrochureRect?
@@ -490,12 +490,13 @@ extension BrochureEditorModel {
                 } else {
                     ProgressView().controlSize(.small).frame(width: size.width, height: size.height)
                 }
+                if grid { gridLines(size) }
                 ForEach(blocks, id: \.self) { block in box(block, size: size) }
             }
             .frame(width: size.width, height: size.height)
         }
         .aspectRatio(210.0 / 297.0, contentMode: .fit)
-        .frame(maxWidth: 440)
+        .frame(maxWidth: maxWidth)
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .shadow(color: .black.opacity(0.25), radius: 6, y: 2)
         .focusable()
@@ -511,6 +512,25 @@ extension BrochureEditorModel {
             return .handled
         }
         .disabled(!model.canEdit)
+    }
+
+    /// Linie co 5% (co 25% mocniejsze) — punkty odniesienia przy rozmieszczaniu.
+    private func gridLines(_ size: CGSize) -> some View {
+        Canvas { context, canvas in
+            for step in 1..<20 {
+                let strong = step % 5 == 0
+                let x = canvas.width * CGFloat(step) / 20
+                let y = canvas.height * CGFloat(step) / 20
+                var path = Path()
+                path.move(to: CGPoint(x: x, y: 0))
+                path.addLine(to: CGPoint(x: x, y: canvas.height))
+                path.move(to: CGPoint(x: 0, y: y))
+                path.addLine(to: CGPoint(x: canvas.width, y: y))
+                context.stroke(path, with: .color(Color.cyan.opacity(strong ? 0.45 : 0.2)), lineWidth: strong ? 1 : 0.5)
+            }
+        }
+        .frame(width: size.width, height: size.height)
+        .allowsHitTesting(false)
     }
 
     private func rect(_ block: String) -> BrochureRect {
@@ -581,5 +601,114 @@ extension BrochureEditorModel {
         var next = design
         next.setRect(block, rect)
         model.setDesign(next)
+    }
+}
+
+/// Położenie i rozmiar zaznaczonego pola w procentach strony (panel edytora i duże okno rozmieszczenia).
+@MainActor struct BrochureRectFields: View {
+    @ObservedObject var model: BrochureEditorModel
+    let design: BrochurePageDesign
+    let block: String
+    let vertical: Bool
+
+    var body: some View {
+        let rect = design.rect(block)
+        let fields = Group {
+            number("Poziom", rect.x) { value in update { rect in rect.x = value } }
+            number("Pion", rect.y) { value in update { rect in rect.y = value } }
+            number("Szerokość", rect.width) { value in update { rect in rect.width = value } }
+            number("Wysokość", rect.height) { value in update { rect in rect.height = value } }
+        }
+        if vertical {
+            VStack(alignment: .leading, spacing: 8) { fields }
+        } else {
+            HStack(spacing: 10) { fields }
+        }
+    }
+
+    private func update(_ change: (inout BrochureRect) -> Void) {
+        var rect = design.rect(block)
+        change(&rect)
+        var next = design
+        next.setRect(block, rect.normalized())
+        model.setDesign(next)
+    }
+
+    private func number(_ label: String, _ value: Double, set: @escaping (Double) -> Void) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("\(label) %").font(.caption2).foregroundStyle(.secondary)
+            TextField("", value: Binding(get: { value.rounded() }, set: { next in set(next) }), format: .number.precision(.fractionLength(0)))
+                .textFieldStyle(.roundedBorder)
+                .labelsHidden()
+        }
+    }
+}
+
+/// „Rozmieść w dużym oknie”: strona na całą wysokość okna z siatką, lista pól i ich wymiary — do precyzyjnego układu.
+/// Zmiany działają od razu (jak na małym płótnie) i zapisują się same.
+@MainActor struct BrochureArrangementSheet: View {
+    @ObservedObject var model: BrochureEditorModel
+    @Binding var block: String
+    @Environment(\.dismiss) private var dismiss
+    @State private var grid = true
+
+    private var size: CGSize {
+        let screen = NSScreen.main?.visibleFrame.size ?? CGSize(width: 1280, height: 900)
+        return CGSize(width: max(900, screen.width * 0.86), height: max(680, screen.height * 0.9))
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 14) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Rozmieszczenie").font(.title3.weight(.semibold))
+                    Text(model.selectedRow?.title ?? "Strona graficzna").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
+                Spacer()
+                Toggle("Siatka co 5%", isOn: $grid).toggleStyle(.switch)
+                Button("Gotowe") { dismiss() }.keyboardShortcut(.defaultAction)
+            }
+            .padding(14)
+            Divider()
+            if let raw = model.selectedPageRaw, let design = model.design(of: raw) {
+                let blocks = BrochureBlocks.blocks(for: raw["layout"]?.text ?? "photo")
+                let current = blocks.contains(block) ? block : (blocks.first ?? "text")
+                HStack(spacing: 0) {
+                    BrochurePageCanvasView(model: model, design: design, blocks: blocks,
+                                           selected: Binding(get: { current }, set: { value in block = value }),
+                                           maxWidth: .infinity, grid: grid)
+                        .padding(24)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(Color.black.opacity(0.18))
+                    Divider()
+                    sidebar(design, blocks: blocks, current: current)
+                        .frame(width: 250)
+                }
+            } else {
+                ContentUnavailableView("Ta strona nie ma swobodnego rozmieszczenia", systemImage: "rectangle.dashed")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .frame(width: size.width, height: size.height)
+    }
+
+    private func sidebar(_ design: BrochurePageDesign, blocks: [String], current: String) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Pole").font(.caption).foregroundStyle(.secondary)
+            Picker("", selection: Binding(get: { current }, set: { value in block = value })) {
+                ForEach(blocks, id: \.self) { entry in Text(BrochureBlocks.labels[entry] ?? entry).tag(entry) }
+            }
+            .pickerStyle(.radioGroup)
+            .labelsHidden()
+            Divider()
+            BrochureRectFields(model: model, design: design, block: current, vertical: true)
+            Divider()
+            Text("Przeciągnij pole lub jego narożnik. Strzałki przesuwają zaznaczone pole o 1%, z Shift — o 5%. Wartości w procentach strony.")
+                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            Spacer()
+            Button("Przywróć rozmieszczenie szablonu") { model.resetDesign() }
+                .disabled(!model.canEdit)
+        }
+        .padding(16)
     }
 }

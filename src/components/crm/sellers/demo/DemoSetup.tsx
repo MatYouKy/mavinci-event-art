@@ -124,7 +124,7 @@ export default function DemoSetup({ config, onChange, onLogo, brands, brandsLoad
               <div className="grid grid-cols-3 gap-2">
                 {['Oferty', 'Wydarzenia', config.showEarnings ? 'Wynagrodzenie' : 'Zapytania'].map(label => <div key={label} className="rounded-xl bg-[#0f1119]/70 p-3"><p className="text-[10px] uppercase tracking-wide text-white/35">{label}</p><p className="mt-1 h-5 w-10 rounded bg-white/10" /></div>)}
               </div>
-              <div className="rounded-xl p-3 text-sm font-medium" style={{ background: config.accent, color: onAccent }}>Nowa oferta dla gościa →</div>
+              <div className="rounded-xl p-3 text-sm font-medium" style={{ background: config.accent, color: onAccent }}>Nowa oferta dla klienta →</div>
               <p className="text-xs text-white/45">{servicesSource === 'loading' ? 'Wczytywanie katalogu usług…' : servicesSource === 'catalog' ? `Usługi z katalogu: ${servicesCount} (tylko podgląd, ceny poglądowe).` : 'Katalog jest pusty — pokaz użyje przykładowych usług.'}</p>
             </div>
           </div>

@@ -14,7 +14,7 @@ type Props = {
   onShowGuestOffer: () => void;
 };
 
-const STEPS = ['Wydarzenie', 'Usługi', 'Cena dla gościa'];
+const STEPS = ['Wydarzenie', 'Usługi', 'Cena dla klienta'];
 const field = 'w-full rounded-xl bg-[#0f1119] px-4 py-3 text-base text-[#e5e4e2] outline-none ring-1 ring-white/[0.06] placeholder:text-white/25 focus:ring-white/20';
 
 /** Kreator oferty w 3 krokach — jak w portalu, ale bez zapisu (stan tylko w pamięci). */
@@ -38,7 +38,7 @@ export default function DemoOfferWizard({ config, services, servicesSource, draf
     update({ items: quantity > 0 ? [...rest, { serviceId: id, quantity: Math.min(quantity, 99) }] : rest });
   };
   const canNext = step === 0 ? dateValid && draft.guests > 0 && draft.guestName.trim().length > 0 : step === 1 ? draft.items.length > 0 : true;
-  const nextHint = step === 0 ? (!draft.guestName.trim() ? 'Wpisz nazwę gościa lub firmy.' : !dateValid ? 'Popraw datę wydarzenia.' : '') : step === 1 && !draft.items.length ? 'Dodaj co najmniej jedną usługę.' : '';
+  const nextHint = step === 0 ? (!draft.guestName.trim() ? 'Wpisz nazwę klienta lub firmy.' : !dateValid ? 'Popraw datę wydarzenia.' : '') : step === 1 && !draft.items.length ? 'Dodaj co najmniej jedną usługę.' : '';
 
   return <div className="space-y-5">
     <ol className="grid grid-cols-3 gap-2" aria-label="Kroki kreatora">
@@ -53,7 +53,7 @@ export default function DemoOfferWizard({ config, services, servicesSource, draf
 
     {step === 0 && <section className="space-y-5 rounded-3xl bg-[#1c1f33] p-5 md:p-7">
       <div>
-        <h2 className="text-xl font-light">Jakie wydarzenie planuje gość?</h2>
+        <h2 className="text-xl font-light">Jakie wydarzenie planuje klient?</h2>
         <p className="mt-1 text-sm text-white/50">Rodzaj, termin i liczba gości — opiekun od razu sprawdzi dostępność zespołu i sprzętu.</p>
       </div>
       <div className="flex flex-wrap gap-2">
@@ -69,7 +69,7 @@ export default function DemoOfferWizard({ config, services, servicesSource, draf
             <button type="button" aria-label="Więcej gości" onClick={() => update({ guests: Math.min(2000, draft.guests + 10) })} className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/[0.06] hover:bg-white/10"><Plus className="h-4 w-4" /></button>
           </div>
         </div>
-        <label className="text-xs text-white/50">Gość / zamawiający<input value={draft.guestName} onChange={(event) => update({ guestName: event.target.value.slice(0, 80) })} className={`${field} mt-1.5`} placeholder="np. Anna i Piotr Nowak" /></label>
+        <label className="text-xs text-white/50">Klient / zamawiający<input value={draft.guestName} onChange={(event) => update({ guestName: event.target.value.slice(0, 80) })} className={`${field} mt-1.5`} placeholder="np. Anna i Piotr Nowak" /></label>
         <label className="text-xs text-white/50">Firma <span className="text-white/30">(opcjonalnie)</span><input value={draft.guestCompany} onChange={(event) => update({ guestCompany: event.target.value.slice(0, 80) })} className={`${field} mt-1.5`} placeholder="np. LogiTrans sp. z o.o." /></label>
       </div>
     </section>}
@@ -113,8 +113,8 @@ export default function DemoOfferWizard({ config, services, servicesSource, draf
 
     {step === 2 && <section className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
       <div className="rounded-3xl bg-[#1c1f33] p-5 md:p-7">
-        <h2 className="text-xl font-light">Cena dla gościa</h2>
-        <p className="mt-1 text-sm text-white/50">Pracujesz na cenniku partnera. Narzut hotelu dodajesz sam — gość widzi jedną, końcową cenę.</p>
+        <h2 className="text-xl font-light">Cena dla klienta</h2>
+        <p className="mt-1 text-sm text-white/50">Pracujesz na cenniku partnera. Narzut hotelu dodajesz sam — klient widzi jedną, końcową cenę.</p>
         <div className="mt-6">
           <div className="flex items-center justify-between text-sm"><span>Narzut hotelu</span><span className="text-2xl font-light" style={{ color: config.accent }}>{draft.markupPercent}%</span></div>
           <input type="range" min={0} max={40} step={1} value={draft.markupPercent} onChange={(event) => update({ markupPercent: Number(event.target.value) })} className="mt-3 h-10 w-full cursor-pointer" style={{ accentColor: config.accent }} aria-label="Narzut hotelu w procentach" />
@@ -129,7 +129,7 @@ export default function DemoOfferWizard({ config, services, servicesSource, draf
       </div>
       <aside className="space-y-3">
         <div className="rounded-3xl p-5 md:p-6" style={{ background: `linear-gradient(135deg, ${hexAlpha(config.accent, 0.3)}, ${hexAlpha(config.accent, 0.08)})` }}>
-          <p className="text-xs uppercase tracking-wide text-white/60">Gość zapłaci</p>
+          <p className="text-xs uppercase tracking-wide text-white/60">Klient zapłaci</p>
           <p className="mt-1 text-4xl font-light">{demoPln(totals.guestNet)}<span className="text-base text-white/60"> netto</span></p>
           <p className="mt-1 text-sm text-white/60">{demoPln(totals.gross)} brutto (VAT 23%)</p>
           {totals.onRequest > 0 && <p className="mt-3 text-xs text-white/60">+ {totals.onRequest === 1 ? '1 pozycja' : `${totals.onRequest} pozycje`} do indywidualnej wyceny przez opiekuna</p>}
@@ -138,8 +138,8 @@ export default function DemoOfferWizard({ config, services, servicesSource, draf
           <div className="rounded-2xl bg-[#1c1f33] p-4"><p className="text-[11px] uppercase tracking-wide text-white/40">Cennik partnera</p><p className="mt-1 text-lg font-light">{demoPln(totals.baseNet)}</p></div>
           <div className="rounded-2xl bg-[#1c1f33] p-4"><p className="text-[11px] uppercase tracking-wide text-white/40">Narzut hotelu</p><p className="mt-1 text-lg font-light" style={{ color: config.accent }}>{demoPln(totals.markup)}</p></div>
         </div>
-        <button type="button" onClick={onShowGuestOffer} className="flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl text-base font-medium shadow-lg transition-transform hover:scale-[1.01]" style={{ background: config.accent, color: onAccent }}><FileText className="h-5 w-5" />Zobacz ofertę dla gościa</button>
-        <p className="text-center text-xs text-white/40">W portalu jednym kliknięciem powstaje PDF i link dla gościa, a opiekun sprawdza termin i zasoby.</p>
+        <button type="button" onClick={onShowGuestOffer} className="flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl text-base font-medium shadow-lg transition-transform hover:scale-[1.01]" style={{ background: config.accent, color: onAccent }}><FileText className="h-5 w-5" />Zobacz ofertę dla klienta</button>
+        <p className="text-center text-xs text-white/40">W portalu jednym kliknięciem powstaje PDF i link dla klienta, a opiekun sprawdza termin i zasoby.</p>
       </aside>
     </section>}
 

@@ -10,7 +10,7 @@ import { SellerDialog, errorText, sellerFieldClass, sellerPrimaryButton, sellerS
 
 const RESPONSE_STATUSES: SellerInquiryStatus[] = ['in_progress', 'answered', 'closed'];
 
-/** Odpowiedź na zapytanie gościa (respond_seller_inquiry) i przekazanie do zapytań CRM (convert_seller_inquiry). */
+/** Odpowiedź na zapytanie klienta (respond_seller_inquiry) i przekazanie do zapytań CRM (convert_seller_inquiry). */
 export default function CockpitInquiryActions({ inquiry, onChanged, onConverted }: {
   inquiry: SellerCockpitInquiry;
   onChanged: () => void;
@@ -49,7 +49,7 @@ export default function CockpitInquiryActions({ inquiry, onChanged, onConverted 
     if (busy) return;
     const confirmed = await showConfirm({
       title: 'Przekazać do zapytań CRM?',
-      message: `Powstanie zapytanie CRM z danymi gościa ${inquiry.guest_name}, przypisane do opiekuna sprzedawcy. Sprzedawca zobaczy status „${SELLER_INQUIRY_STATUS_LABELS.converted}”.`,
+      message: `Powstanie zapytanie CRM z danymi klienta ${inquiry.guest_name}, przypisane do opiekuna sprzedawcy. Sprzedawca zobaczy status „${SELLER_INQUIRY_STATUS_LABELS.converted}”.`,
       confirmText: 'Utwórz zapytanie',
       cancelText: 'Wróć',
     });

@@ -93,7 +93,7 @@ export const hexAlpha = (hex: string, alpha: number) => {
 
 export const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]?.toLocaleUpperCase('pl-PL')).join('') || 'H';
 
-/** Sumy oferty pokazowej: cena bazowa (cennik), narzut hotelu, cena dla gościa. Pozycje bez ceny = wycena indywidualna. */
+/** Sumy oferty pokazowej: cena bazowa (cennik), narzut hotelu, cena dla klienta. Pozycje bez ceny = wycena indywidualna. */
 export function demoTotals(draft: DemoOfferDraft, services: DemoService[]) {
   const lines = draft.items.map(item => {
     const service = services.find(entry => entry.id === item.serviceId);

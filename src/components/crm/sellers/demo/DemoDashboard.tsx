@@ -5,8 +5,8 @@ import { demoPln, hexAlpha, initials, readableOn, type DemoConfig } from './demo
 import type { DemoTab } from './DemoPresentation';
 
 const SAMPLE_OFFERS = [
-  { title: 'Wesele — sala balowa', guest: 'Anna i Piotr', value: 18400, status: 'Zaakceptowana przez gościa', tone: 'emerald' },
-  { title: 'Konferencja firmy LogiTrans', guest: 'LogiTrans sp. z o.o.', value: 12650, status: 'PDF wysłany gościowi', tone: 'sky' },
+  { title: 'Wesele — sala balowa', guest: 'Anna i Piotr', value: 18400, status: 'Zaakceptowana przez klienta', tone: 'emerald' },
+  { title: 'Konferencja firmy LogiTrans', guest: 'LogiTrans sp. z o.o.', value: 12650, status: 'PDF wysłany klientowi', tone: 'sky' },
   { title: 'Jubileusz 40-lecia', guest: 'Rodzina Kowalskich', value: 7900, status: 'U opiekuna — sprawdzenie', tone: 'amber' },
   { title: 'Gala firmowa — grudzień', guest: 'Nordic Pharma', value: 26300, status: 'Szkic', tone: 'muted' },
 ] as const;
@@ -41,12 +41,12 @@ export default function DemoDashboard({ config, onNavigate }: { config: DemoConf
   const hotel = config.hotelName.trim() || 'Twój hotel';
   const onAccent = readableOn(config.accent);
   const tiles: { label: string; value: string; helper: string; icon: typeof FileText; target: DemoTab }[] = [
-    { label: 'Oferty w tym miesiącu', value: '6', helper: '2 czekają na gościa', icon: FileText, target: 'guest' },
+    { label: 'Oferty w tym miesiącu', value: '6', helper: '2 czekają na klienta', icon: FileText, target: 'guest' },
     { label: 'Zaakceptowane', value: '3', helper: 'skuteczność 50%', icon: Sparkles, target: 'guest' },
     { label: 'Nadchodzące wydarzenia', value: '3', helper: 'najbliższe za 9 dni', icon: CalendarDays, target: 'how' },
     config.showEarnings
       ? { label: 'Twoje wynagrodzenie', value: demoPln(4860), helper: `prognoza ${demoPln(9420)}`, icon: BadgePercent, target: 'earnings' }
-      : { label: 'Zapytania gości', value: '4', helper: '1 nowe z kodu QR', icon: QrCode, target: 'how' },
+      : { label: 'Zapytania klientów', value: '4', helper: '1 nowe z kodu QR', icon: QrCode, target: 'how' },
   ];
 
   return <div className="space-y-6">
@@ -54,7 +54,7 @@ export default function DemoDashboard({ config, onNavigate }: { config: DemoConf
       <div>
         <p className="text-sm text-white/60">Dzień dobry!</p>
         <h2 className="mt-1 text-2xl font-light md:text-3xl">Sprzedawaj wydarzenia w {hotel}</h2>
-        <p className="mt-2 max-w-xl text-sm leading-6 text-white/60">Ofertę dla gościa przygotujesz w kilka minut — z logo hotelu, cenami i opisem usług. Opiekun z {config.brand?.name || 'MAVINCI'} sprawdzi termin i zasoby.</p>
+        <p className="mt-2 max-w-xl text-sm leading-6 text-white/60">Ofertę dla klienta przygotujesz w kilka minut — z logo hotelu, cenami i opisem usług. Opiekun z {config.brand?.name || 'MAVINCI'} sprawdzi termin i zasoby.</p>
       </div>
       <button type="button" onClick={() => onNavigate('wizard')} className="inline-flex min-h-14 shrink-0 items-center gap-2 rounded-2xl px-6 text-base font-medium shadow-lg transition-transform hover:scale-[1.02]" style={{ background: config.accent, color: onAccent }}><Plus className="h-5 w-5" />Nowa oferta</button>
     </section>
@@ -92,7 +92,7 @@ export default function DemoDashboard({ config, onNavigate }: { config: DemoConf
         </div>
         <div className="flex items-center gap-4 rounded-2xl bg-[#1c1f33] p-5">
           <span className="h-24 w-24 shrink-0 overflow-hidden rounded-xl bg-white p-1.5"><DecorativeQr seed={hotel} color={config.accent} /></span>
-          <span><span className="block text-sm font-medium">Zapytania gości z kodu QR</span><span className="mt-1 block text-xs leading-5 text-white/50">Kod przy recepcji lub w pokoju. Gość zostawia zapytanie, a Ty i opiekun dostajecie powiadomienie.</span></span>
+          <span><span className="block text-sm font-medium">Zapytania z kodu QR</span><span className="mt-1 block text-xs leading-5 text-white/50">Kod przy recepcji lub w pokoju. Gość hotelu zostawia zapytanie, a Ty i opiekun dostajecie powiadomienie.</span></span>
         </div>
       </section>
     </div>

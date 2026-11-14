@@ -18,6 +18,7 @@ import {
   type SellerCockpitSeller,
   type SellerPortalAccount,
   type SellerWarningCode,
+  formatPriceItems,
   formatWaitingHours,
   sellerCockpitTodayCount,
 } from '../lib/sellerCockpit';
@@ -90,6 +91,19 @@ function buildTodayRows(cockpit: SellerCockpit): TodayRow[] {
       onPress: () => navigateToSellerChat(chat.conversation_id),
     });
   }
+  for (const price of t.price_requests) {
+    rows.push({
+      key: `price-${price.request_id}`,
+      icon: 'tag',
+      kind: 'Zgoda na cenę',
+      title: joinMeta(price.offer_title, price.offer_number) || 'Oferta',
+      meta: joinMeta(price.seller_name, formatDate(price.requested_at, true)),
+      detail: joinMeta(formatPriceItems(price.items), price.note ? `„${price.note}”` : null) || undefined,
+      inApp: false,
+      urgent: true,
+      onPress: () => openInCrmWeb(sellerCockpitCrmPath.priceApproval(price.offer_id)),
+    });
+  }
   for (const review of t.reviews) {
     rows.push({
       key: `review-${review.offer_id}-${review.document_id ?? ''}`,
@@ -147,7 +161,7 @@ function buildTodayRows(cockpit: SellerCockpit): TodayRow[] {
     rows.push({
       key: `guest-${guest.offer_id}`,
       icon: 'check-circle',
-      kind: 'Akceptacja gościa',
+      kind: 'Akceptacja klienta',
       title: guest.title,
       meta: joinMeta(guest.seller_name, guest.accepted_name, formatDate(guest.accepted_at, true)),
       inApp: false,
@@ -158,12 +172,13 @@ function buildTodayRows(cockpit: SellerCockpit): TodayRow[] {
 }
 
 const TODAY_COUNTS: { key: keyof SellerCockpit['today']; label: string }[] = [
+  { key: 'price_requests', label: 'Ceny do zgody' },
   { key: 'reviews', label: 'Do sprawdzenia' },
   { key: 'chats_waiting', label: 'Rozmowy bez odpowiedzi' },
   { key: 'inquiries', label: 'Zapytania' },
   { key: 'wizard_steps', label: 'Kroki realizacji' },
   { key: 'events_pending', label: 'Wydarzenia do potwierdzenia' },
-  { key: 'guest_acceptances', label: 'Akceptacje gości' },
+  { key: 'guest_acceptances', label: 'Akceptacje klientów' },
 ];
 
 const OFFER_COUNTS: ('draft' | 'pdf' | 'review' | 'accepted')[] = ['draft', 'pdf', 'review', 'accepted'];
