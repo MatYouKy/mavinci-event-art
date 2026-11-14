@@ -3,7 +3,7 @@ import UniformTypeIdentifiers
 
 // MARK: Szablony ofert — „Projekt oferty PDF” (`OfferPageTemplatesEditor`): kategorie (przypisanie do kategorii wydarzeń,
 // zdjęcie hero, wygląd), pięć etapów dokumentu z szablonami stron, własne tło PDF, „Wróć do Mavinci”, nowy szablon i usuwanie.
-// Rozmieszczanie pól na tle i tabela wyceny — w następnej części (na razie w CRM).
+// „Rozmieść dane” na tle PDF i „Tabela wyceny” — `OfferTemplateFieldsEditor.swift`, `OfferTemplateTableEditor.swift`.
 
 @MainActor struct OfferTemplatesView: View {
     @EnvironmentObject private var state: Workspace
@@ -16,10 +16,16 @@ import UniformTypeIdentifiers
     @State private var removingBackground: OfferTemplatesState.Template?
     @State private var uploadTarget: OfferTemplatesState.Template?
     @State private var importing = false
+    @State private var fieldsRoute: EditorRoute?
+    @State private var tableRoute: EditorRoute?
 
     /// Okno kategorii: nowa (`category == nil`) albo edycja.
     struct CategoryRoute: Identifiable {
         let category: OfferTemplatesState.Category?
+        let id = UUID()
+    }
+    struct EditorRoute: Identifiable {
+        let data: OfferTemplateEditorData
         let id = UUID()
     }
     struct CreateRoute: Identifiable {
@@ -54,6 +60,8 @@ import UniformTypeIdentifiers
         .sheet(item: $createRoute) { route in
             OfferTemplateCreateSheet(store: store, categoryID: route.categoryID, type: route.type)
         }
+        .sheet(item: $fieldsRoute) { route in OfferTemplateFieldsEditor(store: store, data: route.data) }
+        .sheet(item: $tableRoute) { route in OfferTemplateTableSheet(store: store, data: route.data) }
         .confirmationDialog("Usunąć szablon?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), titleVisibility: .visible) {
             if let template = deleting {
                 Button("Usuń", role: .destructive) { Task { await store.deleteTemplate(template.id) } }
@@ -292,15 +300,15 @@ import UniformTypeIdentifiers
                 }
                 .help("Opcjonalnie wgraj własne tło PDF")
                 if template.pdfPath != nil {
-                    Button { state.openCRM("/crm/offers?tab=templates") } label: { Label("Rozmieść dane", systemImage: "character.cursor.ibeam") }
-                        .help("Rozmieszczanie pól na tle PDF — na razie w CRM")
+                    Button { openEditor(template.id, table: false) } label: { Label("Rozmieść dane", systemImage: "character.cursor.ibeam") }
+                        .help("Konfiguruj pola")
                     Button(role: .destructive) { removingBackground = template } label: { Label("Wróć do Mavinci", systemImage: "trash") }
                         .help("Usuń własne tło i wróć do gotowego układu Mavinci")
                 }
             }
             if template.type == "pricing" && data.canEditTemplates {
-                Button { state.openCRM("/crm/offers?tab=templates") } label: { Label("Tabela wyceny", systemImage: "tablecells") }
-                    .help("Wygląd tabeli wyceny — na razie w CRM")
+                Button { openEditor(template.id, table: true) } label: { Label("Tabela wyceny", systemImage: "tablecells") }
+                    .help("Konfiguruj tabelę wyceny")
             }
             if data.canDeleteTemplates {
                 Button(role: .destructive) { deleting = template } label: { Image(systemName: "trash") }
@@ -311,6 +319,15 @@ import UniformTypeIdentifiers
         .padding(10)
         .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(theme.accent.opacity(0.1)))
+    }
+}
+
+extension OfferTemplatesView {
+    fileprivate func openEditor(_ id: String, table: Bool) {
+        Task {
+            guard let data = await store.editor(id) else { return }
+            if table { tableRoute = EditorRoute(data: data) } else { fieldsRoute = EditorRoute(data: data) }
+        }
     }
 }
 

@@ -130,24 +130,76 @@ enum OfferTemplateKind {
         }
     }
 
-    /// Zapis z odświeżeniem listy; komunikat sukcesu albo błąd w snackbarze.
+    /// Zapis z odświeżeniem listy; komunikat sukcesu albo błąd w snackbarze. Zwraca identyfikator zapisanej kategorii („” dla
+    /// pozostałych zapisów) albo `nil` przy błędzie.
     @discardableResult
     func perform(_ body: [String: JSONValue], pending: String) async -> String? {
+        struct Reply: Decodable { var savedId: String? }
+        guard let data = await send(body, pending: pending) else { return nil }
+        return (try? JSONDecoder().decode(Reply.self, from: data))?.savedId ?? ""
+    }
+
+    private func send(_ body: [String: JSONValue], pending: String) async -> Data? {
         guard let api, let workspace, workspace.canWrite else {
             workspace?.error = "Zapis wymaga połączenia z serwerem CRM."
             return nil
         }
-        struct Reply: Decodable { var message: String?; var savedId: String? }
+        struct Reply: Decodable { var message: String? }
         do {
             let data = try await workspace.withPending(pending) { try await api.post("/offers", body, timeout: 120) }
             state = try JSONDecoder().decode(OfferTemplatesState.self, from: data)
-            let reply = try? JSONDecoder().decode(Reply.self, from: data)
-            if let message = reply?.message { workspace.succeed(message) }
-            return reply?.savedId ?? ""
+            if let message = (try? JSONDecoder().decode(Reply.self, from: data))?.message { workspace.succeed(message) }
+            return data
         } catch {
             workspace.error = failureText(error, "Nie udało się zapisać zmian.")
             return nil
         }
+    }
+
+    // MARK: Część F2 — pola na tle PDF i tabela wyceny
+
+    func editor(_ id: String) async -> OfferTemplateEditorData? {
+        guard let api, let workspace else { return nil }
+        do {
+            let data = try await workspace.withPending("Ładowanie…") { try await api.get("/offers?op=templateEditor&id=\(id)") }
+            return try JSONDecoder().decode(OfferTemplateEditorData.self, from: data)
+        } catch {
+            workspace.error = failureText(error, "Nie udało się otworzyć szablonu.")
+            return nil
+        }
+    }
+
+    /// „Zapisz konfigurację”: pola, położenie tabeli (przy wycenie) i wymiary strony z pliku PDF.
+    func saveFields(_ id: String, fields: [OfferTemplateField], table: OfferTemplateEditorData.Layout?, page: CGSize?) async -> Bool {
+        var body: [String: JSONValue] = ["op": .string("templateFieldsSave"), "id": .string(id), "fields": .array(fields.map { JSONValue.object($0.raw) })]
+        if let table {
+            body["table"] = .object(["x": .number(table.x), "y": .number(table.y), "width": .number(table.width), "height": .number(table.height)])
+        } else {
+            body["table"] = .null
+        }
+        if let page {
+            body["pdfWidth"] = .number(Double(page.width).rounded())
+            body["pdfHeight"] = .number(Double(page.height).rounded())
+        }
+        return await send(body, pending: "Zapisywanie...") != nil
+    }
+
+    /// „Zapisz tabelę”: wygląd tabeli wyceny (zapisana konfiguracja wraca z serwera).
+    func saveTable(_ id: String, config: OfferTableConfig) async -> OfferTableConfig? {
+        struct Reply: Decodable { var table: OfferTableConfig }
+        guard let data = await send(["op": .string("templateTableSave"), "id": .string(id), "config": config.json], pending: "Zapisywanie...") else { return nil }
+        return (try? JSONDecoder().decode(Reply.self, from: data))?.table
+    }
+
+    /// Strona tła PDF jako obraz (2×) i jej wymiary w punktach — podkład edytora pól (jak `embed` + pdf.js w CRM).
+    static func backgroundPage(_ address: String) async -> (image: NSImage, size: CGSize)? {
+        guard let url = URL(string: address), let result = try? await URLSession.shared.data(from: url),
+              let page = PDFDocument(data: result.0)?.page(at: 0) else { return nil }
+        let box = page.bounds(for: .mediaBox)
+        let rotated = page.rotation % 180 != 0
+        let size = CGSize(width: rotated ? box.height : box.width, height: rotated ? box.width : box.height)
+        let image = page.thumbnail(of: NSSize(width: size.width * 2, height: size.height * 2), for: .mediaBox)
+        return (image, size)
     }
 
     func createTemplate(category: String, type: String, name: String, description: String, variant: String, isDefault: Bool, isActive: Bool) async -> Bool {
@@ -197,5 +249,79 @@ enum OfferTemplateKind {
     private static func fontDescriptor(_ address: String) async -> CTFontDescriptor? {
         guard let url = URL(string: address), let result = try? await URLSession.shared.data(from: url) else { return nil }
         return CTFontManagerCreateFontDescriptorFromData(result.0 as CFData)
+    }
+}
+
+// MARK: Część F2 — dane edytora pól
+
+struct OfferTemplateEditorData: Decodable {
+    struct Layout: Decodable, Equatable {
+        var x: Double
+        var y: Double
+        var width: Double
+        var height: Double
+    }
+    struct Available: Decodable, Identifiable, Hashable {
+        var value: String
+        var label: String
+        var type: String
+        var id: String { value }
+    }
+    var id: String
+    var name: String
+    var type: String
+    var pdfUrl: String?
+    var pdfWidth: Double
+    var pdfHeight: Double
+    var fields: [[String: JSONValue]]
+    var table: OfferTableConfig
+    var tableLayout: Layout?
+    var available: [Available]
+    var defaults: OfferTableConfig
+}
+
+/// Pole na tle — pełny zapis z bazy (klucze generatora PDF spoza edytora zostają) i właściwości do edycji.
+struct OfferTemplateField: Identifiable, Equatable {
+    let id = UUID()
+    var raw: [String: JSONValue]
+
+    var name: String { raw["field_name"]?.text ?? "" }
+    var label: String {
+        get { raw["label"]?.text ?? name }
+        set { raw["label"] = .string(newValue) }
+    }
+    var x: Double {
+        get { number("x") ?? 0 }
+        set { raw["x"] = .number(newValue) }
+    }
+    var y: Double {
+        get { number("y") ?? 0 }
+        set { raw["y"] = .number(newValue) }
+    }
+    var type: String {
+        let value = raw["type"]?.text ?? ""
+        return value.isEmpty ? "text" : value
+    }
+    var isImage: Bool { type == "image" }
+    var fontColor: String {
+        get { (raw["font_color"]?.text).flatMap { $0.isEmpty ? nil : $0 } ?? "#000000" }
+        set { raw["font_color"] = .string(newValue) }
+    }
+    var align: String {
+        get { (raw["align"]?.text).flatMap { $0.isEmpty ? nil : $0 } ?? "left" }
+        set { raw["align"] = .string(newValue) }
+    }
+    var circular: Bool {
+        get { raw["is_circular"]?.flag ?? false }
+        set { raw["is_circular"] = .bool(newValue) }
+    }
+
+    func number(_ key: String) -> Double? {
+        if case .number(let value) = raw[key] { return value }
+        return nil
+    }
+
+    mutating func set(_ key: String, _ value: Double?) {
+        raw[key] = value.map { JSONValue.number($0) }
     }
 }

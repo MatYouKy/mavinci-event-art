@@ -206,7 +206,7 @@ export async function renderOfferPdf(req: Request, report?: ReportOfferPdfProgre
         contact:contacts!contact_id(*),
         contact_person:contacts!contact_id(*),
         inquiry:tasks!inquiry_id(id, title, description, due_date, inquiry_details),
-        event:events(*, location:locations(*), category:event_categories(id, name, default_offer_template_category_id)),
+        event:events!event_id(*, location:locations(*), category:event_categories(id, name, default_offer_template_category_id)),
         created_by_employee:employees!created_by(
           id,
           name,

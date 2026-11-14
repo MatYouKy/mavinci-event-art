@@ -468,29 +468,38 @@ enum OfferText {
     }
 
     /// Zapisany PDF oferty (`language`: `pl` albo `en`): `open` — podgląd w domyślnej aplikacji, inaczej zapis w Pobranych.
-    func pdf(_ id: String, open: Bool, language: String = "pl") async {
-        guard let api, let workspace else { return }
+    /// Zapisany PDF oferty (podpisany adres z serwera i pobranie pliku).
+    private func pdfFile(_ id: String, language: String, pending: String) async throws -> (data: Data, name: String) {
+        guard let api, let workspace else { throw AppError.configuration }
         struct Link: Decodable { let url: String; let name: String }
+        return try await workspace.withPending(pending) { () async throws -> (data: Data, name: String) in
+            let link = try JSONDecoder().decode(Link.self, from: try await api.get("/offers?op=pdf&id=\(id)&language=\(language)"))
+            guard let url = URL(string: link.url) else { throw AppError.invalidResponse }
+            let result = try await URLSession.shared.data(from: url)
+            guard (result.1 as? HTTPURLResponse).map({ (200..<300).contains($0.statusCode) }) ?? true else { throw URLError(.badServerResponse) }
+            return (result.0, link.name)
+        }
+    }
+
+    /// „Pokaż PDF” — plik do podglądu w oknie aplikacji (`OfferPdfViewer`).
+    func pdfPreview(_ id: String, language: String = "pl") async -> OfferPdfPreview? {
         do {
-            let (data, name) = try await workspace.withPending(open ? "Otwieranie PDF…" : "Pobieranie PDF…") { () async throws -> (Data, String) in
-                let link = try JSONDecoder().decode(Link.self, from: try await api.get("/offers?op=pdf&id=\(id)&language=\(language)"))
-                guard let url = URL(string: link.url) else { throw AppError.invalidResponse }
-                let (data, response) = try await URLSession.shared.data(from: url)
-                guard (response as? HTTPURLResponse).map({ (200..<300).contains($0.statusCode) }) ?? true else { throw URLError(.badServerResponse) }
-                return (data, link.name)
-            }
-            if open {
-                let folder = FileManager.default.temporaryDirectory.appendingPathComponent("Mavinci-oferty", isDirectory: true)
-                try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-                let target = folder.appendingPathComponent(name)
-                try data.write(to: target, options: .atomic)
-                NSWorkspace.shared.open(target)
-            } else {
-                _ = try ContractFiles.saveToDownloads(data, name: name)
-                workspace.succeed("Pobieranie PDF...")
-            }
+            let file = try await pdfFile(id, language: language, pending: "Otwieranie PDF…")
+            return OfferPdfPreview(data: file.data, name: file.name)
         } catch {
-            workspace.error = failureText(error, open ? "Błąd podczas otwierania PDF" : "Błąd podczas pobierania PDF")
+            workspace?.error = failureText(error, "Błąd podczas otwierania PDF")
+            return nil
+        }
+    }
+
+    /// „Pobierz PDF” — zapis w Pobranych.
+    func downloadPdf(_ id: String, language: String = "pl") async {
+        do {
+            let file = try await pdfFile(id, language: language, pending: "Pobieranie PDF…")
+            _ = try ContractFiles.saveToDownloads(file.data, name: file.name)
+            workspace?.succeed("Pobieranie PDF...")
+        } catch {
+            workspace?.error = failureText(error, "Błąd podczas pobierania PDF")
         }
     }
 }

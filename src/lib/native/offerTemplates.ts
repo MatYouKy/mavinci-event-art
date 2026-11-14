@@ -6,7 +6,8 @@ import { fail } from './offers';
  * Oferty na Macu — „Szablony ofert” (`/crm/offers?tab=templates`, `OfferPageTemplatesEditor`), część F1: kategorie szablonów
  * (nazwa, opis, kolor, domyślna, zdjęcie hero, kreator wyglądu: kolory, hero, logo, układ założeń i wyceny, strony „Informacje
  * i warunki” oraz wymagań), przypisania kategorii wydarzeń, szablony stron (5 etapów dokumentu, wariant karty produktu),
- * własne tło PDF i powrót do gotowego układu Mavinci. Te same tabele i ten sam magazyn plików co CRM (RLS tokenem pracownika).
+ * własne tło PDF i powrót do gotowego układu Mavinci; część F2: pola danych na tle PDF („Rozmieść dane”) i wygląd tabeli wyceny.
+ * Te same tabele i ten sam magazyn plików co CRM (RLS tokenem pracownika).
  */
 
 type Row = Record<string, any>;
@@ -321,4 +322,212 @@ export async function deleteOfferTemplateBackground(ctx: NativeContext, body: Ro
   if (error || !data) fail(error?.message || 'Nie masz uprawnień do zmiany tego szablonu.');
   await ctx.supabase.storage.from(BUCKET).remove([path]);
   return { ...(await offerTemplatesState(ctx)), message: 'Plik PDF usunięty' };
+}
+
+// MARK: Część F2 — „Rozmieść dane” na tle PDF i „Tabela wyceny”
+
+/** Pola danych CRM do rozmieszczenia na tle (jak `AVAILABLE_FIELDS` w CRM). */
+export const TEMPLATE_FIELDS: Array<{ value: string; label: string; type: 'text' | 'image' | 'email' | 'phone' }> = [
+  { value: 'client_name', label: 'Nazwa klienta', type: 'text' },
+  { value: 'organization_name', label: 'Organizacja: nazwa / alias', type: 'text' },
+  { value: 'organization_legal_name', label: 'Organizacja: pełna nazwa prawna', type: 'text' },
+  { value: 'contact_person_name', label: 'Osoba kontaktowa: imię i nazwisko', type: 'text' },
+  { value: 'contact_person_email', label: 'Osoba kontaktowa: e-mail', type: 'email' },
+  { value: 'contact_person_phone', label: 'Osoba kontaktowa: telefon', type: 'phone' },
+  { value: 'client_address', label: 'Adres klienta', type: 'text' },
+  { value: 'client_nip', label: 'NIP klienta', type: 'text' },
+  { value: 'client_city', label: 'Miasto klienta', type: 'text' },
+  { value: 'client_postal_code', label: 'Kod pocztowy klienta', type: 'text' },
+  { value: 'client_street', label: 'Ulica klienta', type: 'text' },
+  { value: 'offer_number', label: 'Numer oferty', type: 'text' },
+  { value: 'offer_name', label: 'Nazwa oferty', type: 'text' },
+  { value: 'offer_date', label: 'Data oferty', type: 'text' },
+  { value: 'event_name', label: 'Nazwa eventu', type: 'text' },
+  { value: 'event_category_name', label: 'Kategoria wydarzenia', type: 'text' },
+  { value: 'event_date', label: 'Data eventu', type: 'text' },
+  { value: 'event_location', label: 'Lokalizacja eventu', type: 'text' },
+  { value: 'event_assumptions', label: 'Założenia wydarzenia', type: 'text' },
+  { value: 'event_goal', label: 'Cel wydarzenia', type: 'text' },
+  { value: 'category_hero_image', label: 'Kategoria: zdjęcie hero', type: 'image' },
+  { value: 'company_logo', label: 'Firma: logo z my_companies', type: 'image' },
+  { value: 'product_name', label: 'Produkt: nazwa', type: 'text' },
+  { value: 'product_short_description', label: 'Produkt: krótki opis', type: 'text' },
+  { value: 'product_description', label: 'Produkt: opis do oferty', type: 'text' },
+  { value: 'product_benefits', label: 'Produkt: lista korzyści', type: 'text' },
+  { value: 'product_image', label: 'Produkt: grafika', type: 'image' },
+  { value: 'product_quantity', label: 'Pozycja: ilość', type: 'text' },
+  { value: 'product_unit', label: 'Pozycja: jednostka', type: 'text' },
+  { value: 'product_unit_price', label: 'Pozycja: cena jednostkowa', type: 'text' },
+  { value: 'product_total', label: 'Pozycja: wartość', type: 'text' },
+  { value: 'product_1_name', label: 'Kompaktowy 1: nazwa', type: 'text' },
+  { value: 'product_1_short_description', label: 'Kompaktowy 1: lead', type: 'text' },
+  { value: 'product_1_description', label: 'Kompaktowy 1: opis', type: 'text' },
+  { value: 'product_1_image', label: 'Kompaktowy 1: zdjęcie', type: 'image' },
+  { value: 'product_2_name', label: 'Kompaktowy 2: nazwa', type: 'text' },
+  { value: 'product_2_short_description', label: 'Kompaktowy 2: lead', type: 'text' },
+  { value: 'product_2_description', label: 'Kompaktowy 2: opis', type: 'text' },
+  { value: 'product_2_image', label: 'Kompaktowy 2: zdjęcie', type: 'image' },
+  { value: 'product_3_name', label: 'Kompaktowy 3: nazwa', type: 'text' },
+  { value: 'product_3_short_description', label: 'Kompaktowy 3: lead', type: 'text' },
+  { value: 'product_3_description', label: 'Kompaktowy 3: opis', type: 'text' },
+  { value: 'product_3_image', label: 'Kompaktowy 3: zdjęcie', type: 'image' },
+  { value: 'total_price', label: 'Całkowita cena', type: 'text' },
+  { value: 'employee_first_name', label: 'Imię pracownika', type: 'text' },
+  { value: 'employee_last_name', label: 'Nazwisko pracownika', type: 'text' },
+  { value: 'employee_full_name', label: 'Imię i nazwisko pracownika', type: 'text' },
+  { value: 'employee_email', label: 'Email pracownika', type: 'text' },
+  { value: 'employee_phone', label: 'Telefon pracownika', type: 'text' },
+  { value: 'employee_avatar_url', label: 'Avatar pracownika', type: 'image' },
+  { value: 'seller_name', label: 'Nazwa sprzedawcy', type: 'text' },
+  { value: 'seller_address', label: 'Adres sprzedawcy', type: 'text' },
+  { value: 'seller_nip', label: 'NIP sprzedawcy', type: 'text' },
+];
+
+/** Wygląd tabeli wyceny (jak `DEFAULT_CONFIG` w `PricingTableConfigEditor`). */
+export const DEFAULT_TABLE_CONFIG = {
+  start_y: 200, margin_left: 50, margin_right: 50,
+  header_color: '#d3bb73', header_text_color: '#ffffff', row_bg_color: '#f2f2f2', row_odd_bg_color: '#ffffff', text_color: '#1c1f33',
+  border_color: '#cccccc', border_width: 0.5, show_borders: false, show_horizontal_borders: true, show_vertical_borders: false, show_outer_border: false,
+  header_font_size: 11, body_font_size: 10, row_height: 25, header_height: 30, summary_color: '#d3bb73', summary_label_color: '#1c1f33',
+  show_unit_price_net: true, show_value_net: true, show_value_gross: true, show_vat_column: false, show_description: false, vat_rate: 23,
+  col_lp_width: 30, col_name_width: 0, col_qty_width: 50, col_unit_width: 45, col_unit_price_width: 70, col_vat_width: 45,
+  col_value_net_width: 80, col_value_gross_width: 80, summary_separator_thickness: 2, table_width: 0,
+};
+type TableConfig = typeof DEFAULT_TABLE_CONFIG;
+const TABLE_COLORS = ['header_color', 'header_text_color', 'row_bg_color', 'row_odd_bg_color', 'text_color', 'border_color', 'summary_color', 'summary_label_color'] as const;
+const TABLE_FLAGS = ['show_borders', 'show_horizontal_borders', 'show_vertical_borders', 'show_outer_border', 'show_unit_price_net', 'show_value_net',
+  'show_value_gross', 'show_vat_column', 'show_description'] as const;
+const LAYOUT_KEYS = ['_layout_x', '_layout_y', '_layout_width', '_layout_height'];
+
+const objectOf = (value: unknown): Row => (value && typeof value === 'object' && !Array.isArray(value) ? value as Row : {});
+const finite = (value: unknown, fallback: number, min = -10000, max = 10000) => {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.min(max, Math.max(min, number)) : fallback;
+};
+
+/** Tabela z bazy uzupełniona domyślnymi wartościami (jak `{ ...DEFAULT_CONFIG, ...initialConfig }`). */
+function tableView(raw: unknown): TableConfig & Row {
+  const source = { ...DEFAULT_TABLE_CONFIG, ...objectOf(raw) } as Row;
+  const result: Row = { ...source };
+  for (const key of Object.keys(DEFAULT_TABLE_CONFIG) as Array<keyof TableConfig>) {
+    const fallback = DEFAULT_TABLE_CONFIG[key];
+    if (typeof fallback === 'number') result[key] = finite(source[key], fallback);
+    else if (typeof fallback === 'boolean') result[key] = typeof source[key] === 'boolean' ? source[key] : fallback;
+    else result[key] = HEX.test(text(source[key])) ? text(source[key]) : fallback;
+  }
+  return result as TableConfig & Row;
+}
+
+/** Wygląd tabeli z Maca: znane pola (kolory, przełączniki, liczby); układ na tle (`_layout_*`) zostaje z bazy. */
+function normalizeTable(input: unknown, current: unknown) {
+  const raw = objectOf(input);
+  const base = tableView(current);
+  const next: Row = { ...base };
+  for (const key of TABLE_COLORS) if (raw[key] != null) next[key] = HEX.test(text(raw[key])) ? text(raw[key]).toLowerCase() : base[key];
+  for (const key of TABLE_FLAGS) if (raw[key] != null) next[key] = raw[key] === true;
+  for (const key of Object.keys(DEFAULT_TABLE_CONFIG) as Array<keyof TableConfig>) {
+    if (typeof DEFAULT_TABLE_CONFIG[key] === 'number' && raw[key] != null) next[key] = finite(raw[key], base[key] as number, 0, 5000);
+  }
+  return next;
+}
+
+const FIELD_NAMES = new Map(TEMPLATE_FIELDS.map((field) => [field.value, field]));
+
+/**
+ * Pole na tle (`TextFieldConfig`). Generator PDF obsługuje też pola i klucze spoza listy edytora (np. `page_number`,
+ * `font_role`, `cta_button`, `image_fit`) — zostają bez zmian; poprawiane są tylko liczby, kolor i wyrównanie.
+ */
+function normalizeField(input: unknown) {
+  const raw = objectOf(input);
+  const name = text(raw.field_name).trim();
+  if (!/^[a-z0-9_]{1,80}$/i.test(name)) return null;
+  const field: Row = {
+    ...raw,
+    field_name: name,
+    label: text(raw.label).slice(0, 160) || FIELD_NAMES.get(name)?.label || name,
+    x: finite(raw.x, 50),
+    y: finite(raw.y, 50),
+  };
+  for (const key of ['font_size', 'max_width', 'width', 'height', 'border_radius', 'line_height']) {
+    if (raw[key] == null || raw[key] === '') { delete field[key]; continue; }
+    const number = Number(raw[key]);
+    if (Number.isFinite(number) && number > 0) field[key] = number; else delete field[key];
+  }
+  if (field.font_color != null && !HEX.test(text(field.font_color))) delete field.font_color;
+  if (field.align != null && !['left', 'center', 'right'].includes(field.align)) delete field.align;
+  if (field.type != null && typeof field.type !== 'string') delete field.type;
+  return field;
+}
+
+async function editableTemplate(ctx: NativeContext, value: unknown) {
+  if (!access(ctx).canEditTemplates) fail('Nie masz uprawnień do zmiany szablonów.');
+  const id = uuid(value, 'Nie znaleziono szablonu.');
+  const { data } = await ctx.supabase.from('offer_page_templates')
+    .select('id, name, type, pdf_url, pdf_width, pdf_height, text_fields_config, table_config').eq('id', id).maybeSingle();
+  if (!data) fail('Nie znaleziono szablonu.');
+  return data as Row;
+}
+
+/** „Rozmieść dane” / „Tabela wyceny”: tło PDF (podpisany adres), pola, układ i wygląd tabeli, lista pól danych CRM. */
+export async function offerTemplateEditor(ctx: NativeContext, id: string) {
+  const template = await editableTemplate(ctx, id);
+  let pdfUrl: string | null = null;
+  if (template.pdf_url) {
+    const { data } = await ctx.supabase.storage.from(BUCKET).createSignedUrl(String(template.pdf_url), 3600);
+    pdfUrl = data?.signedUrl || null;
+  }
+  const table = tableView(template.table_config);
+  const raw = objectOf(template.table_config);
+  return {
+    id: String(template.id),
+    name: text(template.name),
+    type: text(template.type),
+    pdfUrl,
+    pdfWidth: Number(template.pdf_width) || 595,
+    pdfHeight: Number(template.pdf_height) || 842,
+    fields: (Array.isArray(template.text_fields_config) ? template.text_fields_config : []).map(normalizeField).filter(Boolean),
+    table,
+    tableLayout: raw._layout_x != null
+      ? { x: finite(raw._layout_x, 50), y: finite(raw._layout_y, 200), width: finite(raw._layout_width, 495) || 495, height: finite(raw._layout_height, 200) || 200 }
+      : null,
+    available: TEMPLATE_FIELDS,
+    defaults: DEFAULT_TABLE_CONFIG,
+  };
+}
+
+/** „Zapisz konfigurację” (`handleSaveAll`): pola na tle; przy wycenie — położenie tabeli (wygląd tabeli z bazy zostaje). */
+export async function saveOfferTemplateFields(ctx: NativeContext, body: Row) {
+  const template = await editableTemplate(ctx, body.id);
+  const fields = (Array.isArray(body.fields) ? body.fields : []).slice(0, 200).map(normalizeField).filter(Boolean);
+  const patch: Row = { text_fields_config: fields };
+  const width = Math.round(Number(body.pdfWidth));
+  const height = Math.round(Number(body.pdfHeight));
+  const pageWidth = width >= 50 && width <= 5000 ? width : Number(template.pdf_width) || 595;
+  if (width >= 50 && width <= 5000 && height >= 50 && height <= 5000) Object.assign(patch, { pdf_width: width, pdf_height: height });
+  if (template.type === 'pricing') {
+    const table: Row = { ...objectOf(template.table_config) };
+    const layout = body.table && typeof body.table === 'object' ? body.table as Row : null;
+    if (layout) {
+      const x = Math.round(finite(layout.x, 50, 0, 5000));
+      const y = Math.round(finite(layout.y, 200, 0, 5000));
+      const w = Math.round(finite(layout.width, 495, 200, 5000));
+      const h = Math.round(finite(layout.height, 200, 80, 5000));
+      Object.assign(table, { _layout_x: x, _layout_y: y, _layout_width: w, _layout_height: h, start_y: y, margin_left: x, margin_right: pageWidth - x - w });
+    } else {
+      LAYOUT_KEYS.forEach((key) => delete table[key]);
+    }
+    patch.table_config = table;
+  }
+  const { data, error } = await ctx.supabase.from('offer_page_templates').update(patch).eq('id', template.id).select('id').maybeSingle();
+  if (error || !data) fail(error?.message || 'Nie masz uprawnień do zmiany tego szablonu.');
+  return { ...(await offerTemplatesState(ctx)), message: 'Konfiguracja zapisana' };
+}
+
+/** „Zapisz tabelę” (`PricingTableConfigEditor`): wygląd tabeli wyceny; położenie na tle zostaje. */
+export async function saveOfferTemplateTable(ctx: NativeContext, body: Row) {
+  const template = await editableTemplate(ctx, body.id);
+  const table = { ...objectOf(template.table_config), ...normalizeTable(body.config, template.table_config) };
+  const { data, error } = await ctx.supabase.from('offer_page_templates').update({ table_config: table }).eq('id', template.id).select('id').maybeSingle();
+  if (error || !data) fail(error?.message || 'Nie masz uprawnień do zmiany tego szablonu.');
+  return { ...(await offerTemplatesState(ctx)), message: 'Konfiguracja tabeli zapisana', table: tableView(table) };
 }

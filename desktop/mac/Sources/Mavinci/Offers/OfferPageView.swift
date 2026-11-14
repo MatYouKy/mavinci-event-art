@@ -725,6 +725,7 @@ struct OfferHistoryCard: View {
     @State private var eventRoute: OfferEventRoute?
     @State private var loadingEvent = false
     @State private var reserveOpen = false
+    @State private var preview: OfferPdfPreview?
 
     /// Jak przycisk rezerwacji w `OfferActionsPanel`: oferta z wydarzeniem w statusie szkic / wysłana / zaakceptowana.
     private var canReserve: Bool { detail.canManage && detail.offer.eventId != nil && ["draft", "sent", "accepted"].contains(detail.offer.status) }
@@ -809,6 +810,7 @@ struct OfferHistoryCard: View {
         .sheet(isPresented: $linkOpen) { OfferLinkSheet(store: store, detail: detail) }
         .sheet(isPresented: $reasonOpen) { OfferRevisionReasonSheet(store: store, offerID: detail.offer.id) }
         .sheet(isPresented: $reserveOpen) { OfferReservationSheet(store: store, offerID: detail.offer.id) }
+        .sheet(item: $preview) { file in OfferPdfViewer(file: file) }
         .sheet(item: $eventRoute) { route in
             OfferEventSheet(store: store, offerID: detail.offer.id, setup: route.setup)
         }
@@ -854,8 +856,10 @@ struct OfferHistoryCard: View {
                 Text("Zapisany PDF nie zawiera ostatnich zmian oferty. Możesz go obejrzeć lub pobrać. Przed wysłaniem wygeneruj aktualną wersję.")
                     .font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
             }
-            actionButton("Pokaż PDF (\(code))", "eye") { Task { await store.pdf(detail.offer.id, open: true, language: language) } }
-            actionButton("Pobierz PDF (\(code))", "arrow.down.doc") { Task { await store.pdf(detail.offer.id, open: false, language: language) } }
+            actionButton("Pokaż PDF (\(code))", "eye") {
+                Task { if let file = await store.pdfPreview(detail.offer.id, language: language) { preview = file } }
+            }
+            actionButton("Pobierz PDF (\(code))", "arrow.down.doc") { Task { await store.downloadPdf(detail.offer.id, language: language) } }
             if detail.canManage {
                 actionButton("Regeneruj PDF (\(code))", "arrow.clockwise") { generate() }.disabled(!canGenerate)
             }

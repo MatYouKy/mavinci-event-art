@@ -45,8 +45,11 @@ import {
   createOfferPageTemplate,
   deleteOfferPageTemplate,
   deleteOfferTemplateBackground,
+  offerTemplateEditor,
   offerTemplatesState,
   saveOfferTemplateCategory,
+  saveOfferTemplateFields,
+  saveOfferTemplateTable,
   uploadOfferTemplateBackground,
 } from '@/lib/native/offerTemplates';
 import {
@@ -79,7 +82,8 @@ export const maxDuration = 300;
  * i rezerwacja sprzętu (`src/lib/native/offerReservation.ts`): GET op=reservation&id=…&package=… | substitutes&id=…&item=…;
  * POST op=substitutionSave | reservationConfirm. Kreator nowej oferty (`src/lib/native/offerWizard.ts`): GET op=wizardEvents |
  * wizardSetup&event=…; POST op=wizardPreview | wizardCreate | wizardContact. Szablony ofert (`src/lib/native/offerTemplates.ts`):
- * GET op=templates; POST op=templateCategorySave | templateCreate | templateDelete | templateBackground | templateBackgroundDelete.
+ * GET op=templates | templateEditor&id=…; POST op=templateCategorySave | templateCreate | templateDelete | templateBackground |
+ * templateBackgroundDelete | templateFieldsSave | templateTableSave.
  */
 
 const failure = (message: string, status = 400) => nativeJson({ error: message }, status);
@@ -118,6 +122,7 @@ export async function GET(request: Request) {
       case 'wizardEvents': return nativeJson(await offerWizardEvents(ctx));
       case 'wizardSetup': return nativeJson(await offerWizardSetup(ctx, url.searchParams.get('event') || ''));
       case 'templates': return nativeJson(await offerTemplatesState(ctx));
+      case 'templateEditor': return nativeJson(await offerTemplateEditor(ctx, url.searchParams.get('id') || ''));
       default: return failure('Nieznana operacja.');
     }
   } catch (error) {
@@ -181,6 +186,8 @@ export async function POST(request: Request) {
       case 'templateDelete': return nativeJson(await deleteOfferPageTemplate(ctx, body));
       case 'templateBackground': return nativeJson(await uploadOfferTemplateBackground(ctx, body));
       case 'templateBackgroundDelete': return nativeJson(await deleteOfferTemplateBackground(ctx, body));
+      case 'templateFieldsSave': return nativeJson(await saveOfferTemplateFields(ctx, body));
+      case 'templateTableSave': return nativeJson(await saveOfferTemplateTable(ctx, body));
       default: return failure('Nieznana operacja.');
     }
   } catch (error) {
