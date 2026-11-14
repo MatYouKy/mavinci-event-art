@@ -5,7 +5,7 @@ import SwiftUI
 // podstawowe (`OfferBasicInfo`), założenia wydarzenia, pozycje oferty z układem w PDF (`OfferItems`) i historia zmian;
 // prawa: akcje (status, przejścia do wydarzenia / zapytania, zapisany PDF), kontekst zapytania i podsumowanie (`OfferDetails`).
 // Część A — odczyt, zmiana statusu i usuwanie; część B1 — edycja informacji podstawowych, założeń, rabatu, kolejności, układu
-// i wariantów pozycji. Dodawanie i edycja pozycji, generowanie PDF i wysyłka w kolejnych częściach (do tego czasu w CRM).
+// i wariantów pozycji; część B2 — dodawanie i edycja pozycji. Generowanie PDF i wysyłka w kolejnych częściach (do tego czasu w CRM).
 
 @MainActor struct OfferPageView: View {
     @ObservedObject var store: OffersStore
@@ -342,18 +342,24 @@ struct OfferAssumptionsCard: View {
 
 // MARK: Pozycje oferty
 
+/// Okno pozycji: dodawanie (`itemID == nil`) albo edycja.
+struct OfferItemRoute: Identifiable {
+    let itemID: String?
+    var id: String { itemID ?? "new" }
+}
+
 @MainActor struct OfferItemsCard: View {
     @ObservedObject var store: OffersStore
     let detail: OfferDetail
     @EnvironmentObject private var state: Workspace
     @State private var deleting: OfferDetail.Item?
+    @State private var route: OfferItemRoute?
 
     private var canEdit: Bool { detail.canEdit && state.canWrite }
 
     var body: some View {
         let addButton: AnyView? = canEdit
-            ? AnyView(Button { state.openCRM("/crm/offers/\(detail.offer.id)") } label: { Label("Dodaj pozycję", systemImage: "plus") }
-                .help("Dodawanie i edycja pozycji — na razie w CRM"))
+            ? AnyView(Button { route = OfferItemRoute(itemID: nil) } label: { Label("Dodaj pozycję", systemImage: "plus") })
             : nil
         OfferCard(title: "Pozycje oferty",
                   subtitle: detail.items.isEmpty ? nil : canEdit ? "Kolejność zmienisz strzałkami lub z menu pozycji" : "\(detail.items.count) poz. · kolejność jak w PDF",
@@ -366,11 +372,13 @@ struct OfferAssumptionsCard: View {
                         let index = detail.items.firstIndex { $0.id == item.id } ?? 0
                         OfferItemRow(store: store, offerID: detail.offer.id, item: item, vatRate: detail.vatRate, canEdit: canEdit,
                                      first: index == 0, last: index == detail.items.count - 1,
-                                     onMove: { step in move(index, step) }, onDelete: { deleting = item })
+                                     onMove: { step in move(index, step) }, onDelete: { deleting = item },
+                                     onEdit: { route = OfferItemRoute(itemID: item.id) })
                     }
                 }
             }
         }
+        .sheet(item: $route) { route in OfferItemSheet(store: store, offerID: detail.offer.id, itemID: route.itemID) }
         .confirmationDialog("Czy na pewno chcesz usunąć tę pozycję?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
                             titleVisibility: .visible) {
             Button("Usuń pozycję", role: .destructive) {
@@ -410,6 +418,7 @@ struct OfferAssumptionsCard: View {
     var last = true
     var onMove: (Int) -> Void = { _ in }
     var onDelete: () -> Void = {}
+    var onEdit: () -> Void = {}
     @EnvironmentObject private var state: Workspace
     @Environment(\.crmTheme) private var theme
     @State private var large = false
@@ -516,7 +525,7 @@ struct OfferAssumptionsCard: View {
         }
         if canEdit {
             Divider()
-            Button("Edytuj pozycję w CRM", systemImage: "pencil") { state.openCRM("/crm/offers/\(offerID)") }
+            Button("Edytuj pozycję…", systemImage: "pencil") { onEdit() }
             Button("Przesuń wyżej", systemImage: "arrow.up") { onMove(-1) }.disabled(first)
             Button("Przesuń niżej", systemImage: "arrow.down") { onMove(1) }.disabled(last)
             Divider()
@@ -552,8 +561,8 @@ struct OfferAssumptionsCard: View {
             }
             if layout.hasProductVariants {
                 HStack(spacing: 14) {
-                    Button("Edytuj ceny wariantów") { state.openCRM("/crm/offers/\(offerID)") }
-                        .buttonStyle(.link).font(.caption).help("Ceny wariantów — na razie w CRM")
+                    Button("Edytuj ceny wariantów") { onEdit() }
+                        .buttonStyle(.link).font(.caption)
                     Toggle("Pokaż warianty", isOn: Binding(get: { layout.showVariants }, set: { next in
                         Task {
                             await store.change(offerID, "itemPresentation", ["itemId": .string(item.id), "showVariants": .bool(next)],
@@ -610,7 +619,7 @@ struct OfferAssumptionsCard: View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Pozostałe sekcje oferty").font(.headline)
-                Text("Dodawanie i edycja pozycji, wymagania techniczne, pakiety oferty i propozycje dodatkowe dojdą na Macu w kolejnych częściach — do tego czasu zmienisz je w CRM.")
+                Text("Wymagania techniczne, pakiety oferty i propozycje dodatkowe dojdą na Macu w kolejnej części — do tego czasu zmienisz je w CRM.")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             Spacer()

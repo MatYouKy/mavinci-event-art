@@ -13,6 +13,14 @@ import {
   saveOfferDiscount,
   updateOfferItemPresentation,
 } from '@/lib/native/offerEdit';
+import {
+  addOfferItem,
+  offerItemCatalog,
+  offerItemEditor,
+  previewOfferItem,
+  saveOfferAudience,
+  updateOfferItem,
+} from '@/lib/native/offerItems';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -24,7 +32,9 @@ export const maxDuration = 120;
  * oferty), op=pdf&id=… (podpisany adres zapisanego PDF), op=editor&id=… (dane do edycji informacji podstawowych),
  * op=contacts&organization=… (osoby kontaktowe organizacji), op=calculations&id=…&event=… (kalkulacje), op=assumptions&id=…;
  * POST op=status (szkic, wysłana, odrzucona, wygasła) | delete | basicSave | assumptionsSave | assumptionsAI | discountSave |
- * itemsReorder | itemPresentation (układ w PDF, warianty) | itemDelete (`src/lib/native/offerEdit.ts`).
+ * itemsReorder | itemPresentation (układ w PDF, warianty) | itemDelete (`src/lib/native/offerEdit.ts`);
+ * pozycje (`src/lib/native/offerItems.ts`): GET op=itemCatalog&id=… | itemEditor&id=…&item=…; POST op=itemPreview (wycena
+ * szkicu) | itemAdd | itemUpdate | audienceSave (liczba osób i stołów do wyceny).
  */
 
 const failure = (message: string, status = 400) => nativeJson({ error: message }, status);
@@ -45,6 +55,8 @@ export async function GET(request: Request) {
       case 'contacts': return nativeJson(await organizationContacts(ctx, url.searchParams.get('organization') || ''));
       case 'calculations': return nativeJson(await offerCalculations(ctx, url.searchParams.get('id') || '', url.searchParams.get('event')));
       case 'assumptions': return nativeJson(await offerAssumptionsEditor(ctx, url.searchParams.get('id') || ''));
+      case 'itemCatalog': return nativeJson(await offerItemCatalog(ctx, url.searchParams.get('id') || ''));
+      case 'itemEditor': return nativeJson(await offerItemEditor(ctx, url.searchParams.get('id') || '', url.searchParams.get('item') || ''));
       default: return failure('Nieznana operacja.');
     }
   } catch (error) {
@@ -74,6 +86,10 @@ export async function POST(request: Request) {
       case 'itemsReorder': return nativeJson(await reorderOfferItems(ctx, body));
       case 'itemPresentation': return nativeJson(await updateOfferItemPresentation(ctx, body));
       case 'itemDelete': return nativeJson(await deleteOfferItem(ctx, body));
+      case 'itemPreview': return nativeJson(await previewOfferItem(ctx, body));
+      case 'itemAdd': return nativeJson(await addOfferItem(ctx, body));
+      case 'itemUpdate': return nativeJson(await updateOfferItem(ctx, body));
+      case 'audienceSave': return nativeJson(await saveOfferAudience(ctx, body));
       default: return failure('Nieznana operacja.');
     }
   } catch (error) {
