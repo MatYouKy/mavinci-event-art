@@ -23,6 +23,17 @@ import {
 } from '@/lib/native/offerItems';
 import { offerPackages, offerRequirements, saveOfferPackages, saveOfferRequirements } from '@/lib/native/offerSections';
 import {
+  createOfferEvent,
+  linkOffer,
+  offerDraftRevision,
+  offerEmailPreview,
+  offerEmailSetup,
+  offerEventSetup,
+  offerLinkChoices,
+  redactOfferEmail,
+  sendOfferEmail,
+} from '@/lib/native/offerActions';
+import {
   buildOfferRecommendation,
   offerRecommendations,
   previewOfferRecommendation,
@@ -47,6 +58,8 @@ export const maxDuration = 300;
  * op=recommendations&id=… (katalog do propozycji: op=itemCatalog&mode=recommendation&exclude=…); POST op=recommendationBuild |
  * recommendationPreview | recommendationsSave; dokumenty: GET op=pdf&id=…&language=pl|en; POST op=pdfDelete | english (angielska
  * treść oferty, `translate-offer`). Sam PDF generuje `/bridge/offers/generate-pdf` (postęp w strumieniu, jak w CRM).
+ * Czynności (`src/lib/native/offerActions.ts`): GET op=emailSetup&id=… | linkChoices&id=…&kind=event|inquiry&search=… |
+ * eventSetup&id=…; POST op=emailPreview | emailAI | emailSend | link | draftRevision | eventCreate.
  */
 
 const failure = (message: string, status = 400) => nativeJson({ error: message }, status);
@@ -77,6 +90,9 @@ export async function GET(request: Request) {
       case 'requirements': return nativeJson(await offerRequirements(ctx, url.searchParams.get('id') || ''));
       case 'packages': return nativeJson(await offerPackages(ctx, url.searchParams.get('id') || ''));
       case 'recommendations': return nativeJson(await offerRecommendations(ctx, url.searchParams.get('id') || ''));
+      case 'emailSetup': return nativeJson(await offerEmailSetup(ctx, url.searchParams.get('id') || ''));
+      case 'linkChoices': return nativeJson(await offerLinkChoices(ctx, url.searchParams.get('id') || '', url.searchParams.get('kind') || 'event', url.searchParams.get('search') || ''));
+      case 'eventSetup': return nativeJson(await offerEventSetup(ctx, url.searchParams.get('id') || ''));
       default: return failure('Nieznana operacja.');
     }
   } catch (error) {
@@ -117,6 +133,16 @@ export async function POST(request: Request) {
       case 'recommendationBuild': return nativeJson(await buildOfferRecommendation(ctx, body));
       case 'recommendationPreview': return nativeJson(await previewOfferRecommendation(ctx, body));
       case 'recommendationsSave': return nativeJson(await saveOfferRecommendations(ctx, body));
+      case 'emailPreview': return nativeJson(await offerEmailPreview(ctx, body));
+      case 'emailAI': return nativeJson(await redactOfferEmail(ctx, body));
+      case 'emailSend': {
+        // Wysyłka idzie do funkcji poczty tokenem pracownika (jak `dispatchCrmEmail` w przeglądarce).
+        const token = /^Bearer\s+(\S+)$/i.exec(request.headers.get('authorization') || '')?.[1] || '';
+        return nativeJson(await sendOfferEmail(ctx, body, token));
+      }
+      case 'link': return nativeJson(await linkOffer(ctx, body));
+      case 'draftRevision': return nativeJson(await offerDraftRevision(ctx, body));
+      case 'eventCreate': return nativeJson(await createOfferEvent(ctx, body));
       default: return failure('Nieznana operacja.');
     }
   } catch (error) {

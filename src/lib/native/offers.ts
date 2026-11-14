@@ -310,7 +310,7 @@ export async function offerDetail(ctx: NativeContext, id: string) {
   if (error) fail(error.message || 'Nie udało się pobrać oferty.');
   if (!data) fail('Nie znaleziono oferty');
   const offer = data as Row;
-  const [permission, history, amendment, calculation, english] = await Promise.all([
+  const [permission, history, amendment, calculation, english, draftRevision] = await Promise.all([
     ctx.supabase.rpc('sales_can_manage_offer', { p_offer: key }),
     ctx.supabase.from('offer_history').select('id, change_type, change_description, created_at, new_values, changed_by_employee:employees!changed_by(name, surname)')
       .eq('offer_id', key).order('created_at', { ascending: false }),
@@ -321,6 +321,8 @@ export async function offerDetail(ctx: NativeContext, id: string) {
     // Ostatni PDF w wersji angielskiej (jak `englishPdf` w `OfferActions`).
     ctx.supabase.from('offer_language_documents').select('file_path, file_name, source_revision').eq('offer_id', key).eq('language', 'en')
       .order('created_at', { ascending: false }).limit(1).maybeSingle(),
+    // Szkic wcześniej zaakceptowanej oferty (`OfferDraftRevisionActions`).
+    ctx.supabase.from('offer_draft_revisions').select('saved_revision').eq('offer_id', key).maybeSingle(),
   ]);
   const englishPdf = (english.data || null) as Row | null;
   const canManage = !permission.error && permission.data === true;
@@ -463,6 +465,7 @@ export async function offerDetail(ctx: NativeContext, id: string) {
       },
     },
     amendmentSource: amendment.data?.source_offer_id || null,
+    draftRevision: draftRevision.data ? { savedRevision: (draftRevision.data as Row).saved_revision ?? null } : null,
   };
 }
 

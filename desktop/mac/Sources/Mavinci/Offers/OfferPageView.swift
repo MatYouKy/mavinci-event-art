@@ -719,6 +719,11 @@ struct OfferHistoryCard: View {
     @State private var englishError: String?
     @State private var job: OfferPdfJob?
     @State private var deletingPdf = false
+    @State private var emailOpen = false
+    @State private var linkOpen = false
+    @State private var reasonOpen = false
+    @State private var eventRoute: OfferEventRoute?
+    @State private var loadingEvent = false
 
     private var contentKey: String { "\(detail.offer.updatedAt ?? "")|\(detail.offer.contentRevision ?? 0)" }
     private var file: OfferDetail.PdfFile {
@@ -746,6 +751,7 @@ struct OfferHistoryCard: View {
                         OfferStatusBadge(status: detail.offer.status, page: true)
                     }
                 }
+                if detail.canManage { revisionActions }
                 if let previous = detail.amendmentSource, detail.offer.status != "accepted" {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Edytujesz zmianę oferty. Poprzednia rezerwacja pozostaje aktywna do zatwierdzenia tej wersji.").font(.caption)
@@ -753,6 +759,20 @@ struct OfferHistoryCard: View {
                     }
                     .padding(8)
                     .background(Color.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
+                }
+                if detail.canManage && detail.offer.status == "accepted" && detail.offer.eventId == nil && detail.offer.inquiryId != nil {
+                    Button { Task { await openEventCreation() } } label: {
+                        Label(loadingEvent ? "Wczytywanie…" : "Utwórz wydarzenie", systemImage: "calendar.badge.plus").frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(loadingEvent || !state.canWrite)
+                }
+                if detail.canManage && (detail.offer.eventId == nil || detail.offer.inquiryId == nil) {
+                    Button { linkOpen = true } label: {
+                        Label(detail.offer.eventId == nil ? "Powiąż z wydarzeniem lub zapytaniem" : "Powiąż z zapytaniem", systemImage: "link")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .disabled(!state.canWrite)
                 }
                 if let source = detail.source, let id = source.id {
                     Button { openSource(source.kind, id) } label: {
@@ -768,7 +788,7 @@ struct OfferHistoryCard: View {
                 documents
                 if detail.canManage {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("Wysyłka e-mailem, rezerwacja sprzętu i powiązania oferty — na razie w CRM.")
+                        Text("Rezerwacja sprzętu i akceptacja oferty z wydarzeniem — na razie w CRM.")
                             .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                         Button { state.openCRM("/crm/offers/\(detail.offer.id)") } label: { Label("Otwórz akcje w CRM", systemImage: "safari") }
                     }
@@ -776,6 +796,12 @@ struct OfferHistoryCard: View {
                 }
             }
             .controlSize(.small)
+        }
+        .sheet(isPresented: $emailOpen) { OfferEmailSheet(store: store, offerID: detail.offer.id) }
+        .sheet(isPresented: $linkOpen) { OfferLinkSheet(store: store, detail: detail) }
+        .sheet(isPresented: $reasonOpen) { OfferRevisionReasonSheet(store: store, offerID: detail.offer.id) }
+        .sheet(item: $eventRoute) { route in
+            OfferEventSheet(store: store, offerID: detail.offer.id, setup: route.setup)
         }
         .sheet(item: $job) { job in
             OfferPdfGenerateSheet(store: store, offerID: detail.offer.id, job: job) {
@@ -824,6 +850,15 @@ struct OfferHistoryCard: View {
             if detail.canManage {
                 actionButton("Regeneruj PDF (\(code))", "arrow.clockwise") { generate() }.disabled(!canGenerate)
             }
+            // Wysyłka tylko aktualnego polskiego PDF (jak `!offer.modified_after_generation` w CRM).
+            if language == "pl" && detail.canManage && !file.stale {
+                Button { emailOpen = true } label: {
+                    Label("Wyślij ofertę", systemImage: "paperplane").frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.green)
+                .disabled(!state.canWrite)
+            }
         } else {
             Text("Oferta nie ma jeszcze wygenerowanego PDF (\(code)).").font(.caption).foregroundStyle(.secondary)
             if detail.canManage {
@@ -851,6 +886,47 @@ struct OfferHistoryCard: View {
             }
         } else if english?.ready == true {
             Label("Angielska treść oferty gotowa", systemImage: "checkmark.circle").font(.caption).foregroundStyle(.green)
+        }
+    }
+
+    // MARK: Aktualizacja zaakceptowanej oferty (`OfferDraftRevisionActions`)
+
+    @ViewBuilder private var revisionActions: some View {
+        if detail.offer.status == "accepted" {
+            Button {
+                Task {
+                    await store.change(detail.offer.id, "draftRevision", ["action": .string("reopen")], pending: "Otwieranie szkicu…",
+                                       success: "Oferta jest szkicem. Edytuj ją zwykłymi przyciskami, a potem zapisz aktualizację z uzasadnieniem.")
+                }
+            } label: {
+                Label("Aktualizuj zaakceptowaną ofertę", systemImage: "pencil.and.outline").frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .disabled(!state.canWrite)
+        } else if detail.offer.status == "draft", let revision = detail.draftRevision {
+            let needsReason = revision.savedRevision != detail.offer.contentRevision
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Edytujesz szkic wcześniej zaakceptowanej oferty. Poprzednie rezerwacje pozostają do zatwierdzenia nowego zakresu. "
+                     + (needsReason ? "Po zmianach zapisz aktualizację z uzasadnieniem." : "Uzasadnienie aktualizacji zapisane."))
+                    .font(.caption).fixedSize(horizontal: false, vertical: true)
+                Button("Zapisz aktualizację") { reasonOpen = true }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!needsReason || !state.canWrite)
+            }
+            .padding(8)
+            .background(Color.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
+        }
+    }
+
+    /// „Utwórz wydarzenie”: istniejące wydarzenie zapytania otwiera się od razu, inaczej formularz (`ConvertInquiryModal`).
+    private func openEventCreation() async {
+        guard !loadingEvent else { return }
+        loadingEvent = true
+        defer { loadingEvent = false }
+        do {
+            let setup = try await store.eventSetup(detail.offer.id)
+            if let eventId = setup.eventId { state.showEvent(eventId) } else { eventRoute = OfferEventRoute(setup: setup) }
+        } catch {
+            state.error = store.failureText(error, "Nie udało się otworzyć formularza wydarzenia")
         }
     }
 
@@ -900,6 +976,12 @@ struct OfferHistoryCard: View {
         }
         _ = await store.setStatus(detail.offer.id, next)
     }
+}
+
+/// Okno „Utwórz wydarzenie z zapytania” z danymi formularza.
+struct OfferEventRoute: Identifiable {
+    let setup: OfferEventSetup
+    let id = UUID()
 }
 
 // MARK: Kontekst zapytania

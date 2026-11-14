@@ -204,6 +204,10 @@ struct OfferDetail: Codable {
         var contactMessageId: String?
         var items: [ContextItem]
     }
+    /// Szkic wcześniej zaakceptowanej oferty: wersja treści z zapisanym uzasadnieniem aktualizacji.
+    struct DraftRevision: Codable {
+        var savedRevision: Double?
+    }
     struct PdfFile: Codable {
         var exists: Bool
         var stale: Bool
@@ -231,6 +235,7 @@ struct OfferDetail: Codable {
     var inquiry: Inquiry?
     var pdf: Pdf
     var amendmentSource: String?
+    var draftRevision: DraftRevision?
 }
 
 enum OfferText {
