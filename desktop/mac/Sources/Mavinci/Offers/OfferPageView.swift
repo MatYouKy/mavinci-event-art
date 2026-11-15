@@ -29,7 +29,8 @@ import SwiftUI
                 GeometryReader { proxy in
                     ScrollView {
                         VStack(alignment: .leading, spacing: 14) {
-                            if detail.offer.seller { sellerNotice }
+                            // Oferta z portalu sprzedawcy: oś, zgoda na cenę i ocena opiekuna (`Sellers/SellerOfferReview.swift`).
+                            if detail.offer.seller { SellerOfferReviewPanel(offerID: offerID) { Task { await store.loadDetail(offerID) } } }
                             if proxy.size.width >= 1000 {
                                 HStack(alignment: .top, spacing: 14) {
                                     VStack(spacing: 14) { mainColumn(detail) }.frame(maxWidth: .infinity, alignment: .top)
@@ -114,21 +115,6 @@ import SwiftUI
         .controlSize(.small)
         .padding(.horizontal, 14).padding(.vertical, 9)
         .crmBar()
-    }
-
-    private var sellerNotice: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "person.crop.circle.badge.checkmark").foregroundStyle(theme.accent)
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Oferta z portalu sprzedawcy").font(.callout.weight(.semibold))
-                Text("Obsługa zapytania sprzedawcy, akceptacja terminu i zasobów — w CRM. Poniżej dane oferty i historia.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            Spacer()
-            Button("Otwórz w CRM") { state.openCRM("/crm/offers/\(offerID)") }.controlSize(.small)
-        }
-        .padding(12)
-        .background(theme.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
     }
 
     // MARK: Kolumny

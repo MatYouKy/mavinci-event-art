@@ -12,6 +12,7 @@ import {
 import type { SellerInboxItem } from '@/lib/seller/inbox';
 import type { SellerPortalAccount } from '@/lib/seller/sellerCockpit';
 import { sellerWriteErrorText } from '@/components/crm/sellers/sellerUi';
+import { sellerProfileProblems } from '@/lib/seller/sellerProfileForm';
 
 export type PartnerType = 'internal_employee' | 'hotel_employee' | 'agency_employee' | 'independent_referrer';
 export type PartnerStatus = 'onboarding' | 'active' | 'inactive';
@@ -265,30 +266,14 @@ export default function CrmSellerProfileSettings({ partnerId, contactId, onCance
   );
 
   type FormSection = 'organization' | 'pricing' | 'access';
-  /** Wszystkie braki naraz (wcześniej zapis pokazywał tylko pierwszy). Kolejność = kolejność komunikatów przy zapisie. */
+  /** Wszystkie braki naraz — te same warunki co kreator „Nowy sprzedawca” na Macu (`src/lib/seller/sellerProfileForm.ts`). */
   const formProblems = useMemo(() => {
-    const list: { section: FormSection; text: string }[] = [];
     const organization = organizations.find((org) => org.id === organizationId);
-    const activeTerms = Object.values(draftTerms).filter((term) => term.is_active);
-    const effectiveDefault = activeTerms.length === 1 ? activeTerms[0].my_company_id : defaultCompanyId;
-    if (!personId) list.push({ section: 'organization', text: 'Wybierz osobę z bazy pracowników lub kontaktów' });
-    if (partnerType === 'hotel_employee' && !organizationId) list.push({ section: 'organization', text: 'Pracownik hotelu musi mieć przypisany hotel' });
-    else if (portalEnabled && !organizationId) list.push({ section: 'organization', text: 'Wybierz organizację, w imieniu której sprzedawca będzie tworzył oferty' });
-    if (organizationId && (partnerType === 'hotel_employee' || organization?.business_type === 'hotel') && !organization?.location_id) {
-      list.push({ section: 'organization', text: 'Powiąż hotel z lokalizacją w kartotece organizacji. Sale i teren zewnętrzny dodaj w tej lokalizacji.' });
-    }
-    if (portalEnabled && personSource !== 'contact') list.push({ section: 'access', text: 'Konto portalu hotelowego musi być powiązane z osobą z kartoteki kontaktów' });
-    else if (portalEnabled && personId && !contacts.find((contact) => contact.id === personId)?.email) list.push({ section: 'access', text: 'Aby wysłać dane logowania, uzupełnij adres e-mail w kartotece kontaktu' });
-    if (portalEnabled && status !== 'active') list.push({ section: 'access', text: 'Dostęp do portalu można nadać tylko aktywnemu sprzedawcy' });
-    if (!activeTerms.length) list.push({ section: 'pricing', text: 'Włącz co najmniej jedną markę dla sprzedawcy' });
-    else if (portalEnabled && !activeTerms.some((term) => term.my_company_id === effectiveDefault)) list.push({ section: 'pricing', text: 'Wskaż domyślny cennik nowych ofert sprzedawcy' });
-    if (Object.values(draftTerms).some((term) => term.is_active && term.commission_enabled && !(Number(term.default_commission_rate) > 0))) {
-      list.push({ section: 'pricing', text: 'Podaj % od zysku większy od 0 albo wyłącz rozliczenie prowizyjne dla marki.' });
-    }
-    if (Object.values(draftTerms).some((term) => !Number.isFinite(Number(term.default_commission_rate)) || Number(term.default_commission_rate) < 0 || !Number.isFinite(Number(term.dividend_tax_rate)) || Number(term.dividend_tax_rate) < 0 || Number(term.dividend_tax_rate) >= 100)) {
-      list.push({ section: 'pricing', text: 'Podaj nieujemną prowizję oraz podatek od 0 do poniżej 100%.' });
-    }
-    return list;
+    return sellerProfileProblems({
+      personSource, personId, personEmail: contacts.find((contact) => contact.id === personId)?.email || null,
+      partnerType, organizationId, organization: organization ? { business_type: organization.business_type, location_id: organization.location_id } : null,
+      portalEnabled, status, terms: Object.values(draftTerms), defaultCompanyId,
+    });
   }, [contacts, defaultCompanyId, draftTerms, organizationId, organizations, partnerType, personId, personSource, portalEnabled, status]);
   const scrollToSection = (section: FormSection) => {
     document.getElementById(`seller-${section}-heading`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });

@@ -55,6 +55,8 @@ import Network
     /// Karty wydarzeń (`/crm/events/[id]`) — ostatnio otwierane i najbliższe na dysku, odświeżane po zmianie skrótu.
     let eventCards = EventCardStore()
     let myTasks = TasksStore(board: .mine)
+    /// Sprzedawcy zewnętrzni (`/crm/salespeople`) — kokpit opiekuna, karty sprzedawców, instrukcja opiekuna.
+    let sellers = SellersStore()
     /// Ekran natywny spoza `Module` (np. Wiadomości) wybrany z paska bocznego CRM.
     @Published var screen: CrmScreen?
     /// Motyw okna (`employees.crm_theme`); do pierwszego odczytu profilu — ostatni motyw zapisany na tym Macu.
@@ -100,6 +102,7 @@ import Network
         events.workspace = self
         eventCards.workspace = self
         myTasks.workspace = self
+        sellers.workspace = self
         monitor.pathUpdateHandler = { [weak self] path in
             Task { @MainActor in
                 self?.pathAvailable = path.status == .satisfied
@@ -340,7 +343,7 @@ import Network
         snapshot = nil; selection = .day; focusedID = nil; eventRoute = nil; notificationsVisible = false
         verifiedConnection = false; offline = false; syncing = false; acting = false; editing = false
         moduleErrors = [:]; compatibilityMode = false; notice = nil; snack = nil; pending = nil
-        nativeSet = nil; nativeFocus = nil; native.clear(); messages.reset(); meetings.reset(); inquiries.reset(); companyTasks.reset(); myTasks.reset(); contacts.reset(); team.reset(); warehouse.reset(); contracts.reset(); products.reset(); offers.reset(); events.reset(); eventCards.reset(); screen = nil
+        nativeSet = nil; nativeFocus = nil; native.clear(); messages.reset(); meetings.reset(); inquiries.reset(); companyTasks.reset(); myTasks.reset(); contacts.reset(); team.reset(); warehouse.reset(); contracts.reset(); products.reset(); offers.reset(); events.reset(); eventCards.reset(); sellers.reset(); screen = nil
         navigation = []; sidebarHref = "/crm"; webItem = nil; dashboard = nil; dashboardLoadedAt = nil; dashboardError = nil
         scheduleRows = nil; scheduleFailed = false
         if let cacheNamespace { for name in ["dashboard", "schedule"] { try? SealedFile<Data>(namespace: "\(name)-\(cacheNamespace)").clear() } }

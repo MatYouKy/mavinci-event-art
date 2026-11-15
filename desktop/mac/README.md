@@ -400,6 +400,18 @@ Okno „Zarządzaj sprzętem” zajmuje prawie całe okno aplikacji; pozycje dod
 
 W CRM pozostają: kreator i wysyłka oferty, wysyłka kalkulacji e-mailem, edytor umowy, faktury z wydarzenia, sposób rozliczenia i panel prowizji w Szczegółach, folder Mac / iCloud, Mavinci LIVE.
 
+## Aktualizacja — Sprzedawcy: kokpit opiekuna i karta sprzedawcy
+
+**Sprzedawcy** (`/crm/salespeople`) — natywnie zamiast przeglądarki:
+1. **Kokpit opiekuna**: kafelki (sprawy na dziś, sprzedawcy, oferty w toku, wydarzenia w 14 dni, do wypłaty), **Dziś** w tych samych grupach co CRM (ceny do zgody, oferty do sprawdzenia, kroki realizacji, wydarzenia do potwierdzenia, rozmowy, zapytania klientów — **Odpowiedz** i **Utwórz zapytanie CRM**, akceptacje klientów), **oferty na osi** w 5 etapach (Oferta → U klienta → U opiekuna → Wydarzenie → Rozliczenie — te same nazwy widzi hotel), najbliższe wydarzenia, ostrzeżenia. Administrator wybiera opiekuna.
+2. **Lista sprzedawców i karta**: **Gotowość do pracy** (te same kroki co CRM; **Wyślij zaproszenie ponownie**), opiekun i konto w portalu, marki i widoczność prowizji, **oferty na osi** w widoku opiekuna (z filtrem etapów i zdaniem „Teraz”), realizacje. Oferta otwiera się w karcie oferty, wydarzenie — w karcie wydarzenia.
+3. **Instrukcja opiekuna** (znak „?”) — ta sama treść co w CRM.
+4. **Ocena oferty z portalu** w karcie oferty: oś, **zgoda na cenę** (Zatwierdź ceny / Poproś o zmianę ceny), PDF z wysłania w podglądzie, potwierdzenia terminu i zespołu, **kontrola sprzętu** (z wyjątkiem i uzasadnieniem), wiadomość dla sprzedawcy i decyzja: **Zaakceptuj ofertę** (tworzy wydarzenie), **Poproś o zmiany**, **Nie przyjmuj**. Potwierdzenie realizacji — w CRM.
+5. **Kreator „Nowy sprzedawca”** („Dodaj sprzedawcę”): osoba, hotel i sale, warunki marek, opiekun i zastępca (administrator), zaproszenie do portalu. Lista **Gotowość** od pierwszego kroku, zapis przy komplecie; warunki zapisu te same co w CRM.
+6. Rozmowy, ustawienia istniejącego sprzedawcy, potwierdzenie realizacji i tryb pokazowy — na razie w CRM (przyciski otwierają właściwe miejsce).
+
+Serwer: `GET /bridge/native/v1/sellers?op=cockpit|seller|help|offer|newSeller|people|organizations`, `POST op=inquiryRespond|inquiryConvert|priceDecide|validate|create` (`src/lib/native/sellers.ts`, `src/lib/native/sellerOffer.ts`, `src/lib/native/sellerCreate.ts`); zaproszenie — `/bridge/seller/invite`; ocena, PDF i analiza sprzętu — `/bridge/seller/offers/[id]` (jak w CRM).
+
 ## W przygotowaniu — Pliki wydarzeń w Finderze
 
 Docelowo: „Mavinci” w pasku bocznym Findera (File Provider, jak Dropbox) → Eventy → rok → „RRRR-MM-DD Nazwa” → foldery i pliki

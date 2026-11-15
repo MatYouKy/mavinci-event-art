@@ -49,6 +49,7 @@ export const MANAGER_HELP: HelpManual = {
         'Po zapisie sprawdź „Gotowość do pracy” w sprzedaży sprzedawcy: sale w lokalizacji, opiekun, logowanie, wygląd ofert, pierwsza oferta.',
       ],
       notes: [
+        'Na Macu „Dodaj sprzedawcę” w „Sprzedawcach” otwiera kreator: osoba, hotel i sale, warunki, opiekun, zaproszenie. Braki widać od pierwszego kroku, a zapis jest możliwy przy komplecie — warunki są te same co w CRM.',
         'Kontakt musi mieć adres e-mail, który nie należy do pracownika CRM ani innego sprzedawcy.',
         'Bez sal w lokalizacji hotel nie wybierze przestrzeni w kreatorze. Dodaj je w kartotece lokalizacji.',
         'Zaproszenie zawiera jednorazowy link do ustawienia hasła. Wygasły link wyślij ponownie z „Gotowości do pracy”.',
@@ -143,10 +144,11 @@ export const MANAGER_HELP: HelpManual = {
     {
       id: 'gdzie',
       title: 'Gdzie co jest: CRM, Mac, telefon',
-      summary: 'Decyzje dotyczące sprzedawców podejmujesz w CRM w przeglądarce. Aplikacje pokazują sprawy i ustalenia.',
+      summary: 'Kokpit, karty sprzedawców, nowego sprzedawcę, zgodę na cenę i ocenę oferty masz w CRM i na Macu. Ustawienia istniejącego sprzedawcy, potwierdzenie realizacji i wynagrodzenie prowadzisz w CRM w przeglądarce.',
       steps: [
-        'CRM — kokpit, ocena oferty, potwierdzenie wydarzenia, ustawienia sprzedawcy, wynagrodzenie.',
-        'Aplikacja na Maca — oferta z portalu i zakładka ustaleń ze sprzedawcą w wydarzeniu. Ocena — w CRM.',
+        'CRM — kokpit, ocena oferty, potwierdzenie wydarzenia, ustawienia sprzedawcy, „Gotowość do pracy”, wynagrodzenie.',
+        'Aplikacja na Maca — „Sprzedawcy”: kokpit „Dziś”, oferty na osi, karta sprzedawcy z „Gotowością do pracy”, kreator „Nowy sprzedawca”, odpowiedzi na zapytania klientów i ta instrukcja.',
+        'Na Macu karta oferty z portalu ma oś, zgodę na cenę i ocenę: PDF z wysłania, termin, zespół, analizę sprzętu i decyzję. Potwierdzenie realizacji — w CRM.',
         'Aplikacja mobilna — podgląd kokpitu i karta „Sprzedawcy — do zrobienia” w „Moim dniu”.',
       ],
     },
